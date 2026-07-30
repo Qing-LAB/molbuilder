@@ -342,12 +342,8 @@ def api_spectra_render():
         return jsonify({"ok": False,
                         "error": f"could not parse structure text: {exc}"}), 400
 
-    # 2026-06-14 contract update: prefer in-body labels (the
-    # viewer-is-truth contract).  When the body carries
-    # ``frozen_atoms`` / ``regions``, apply them directly with no
-    # disk re-read; fall back to disk sidecar only when neither
-    # in-body key is present (back-compat for the path-driven
-    # flow).  See _shared.apply_labels_to_struct docstring.
+    # F2 (science/validation.md 4.1): the body carries ``frozen_atoms`` /
+    # ``regions`` from the model; omitting them is a 400, not a disk re-read.
     from ._shared import apply_labels_to_struct
     sidecar_notice: Optional[str] = apply_labels_to_struct(struct, body)
     from ._shared import apply_periodicity_from_body

@@ -300,11 +300,22 @@ def test_bake_workstation_emits_no_sbatch_even_with_hpc_config(tmp_path,
     assert "conda activate" in (out_dir / "job-cpu.run.sh").read_text()
 
 
-def test_bake_hpc_without_config_raises(tmp_path):
-    # HPC target, no shipped activation -> refuse with a pointer (clean job
-    # shell, nothing to autodetect; job-execution.md § 3.3 row M / § 7.5).
+def test_bake_hpc_without_config_raises(tmp_path, monkeypatch):
+    """HPC target with no SHIPPED activation -> refuse with a pointer (a clean
+    job shell has nothing to autodetect; docs/execution/running-a-job.md § 5).
+
+    The server-wide scope is stubbed out deliberately.  ``get_script_generation``
+    reads server-wide config as well as the bundle, so without this the test
+    asserts something about the MACHINE rather than the code: on any box that
+    has a real ``molbuilder.json`` (a deployed server -- ours has one, gitignored,
+    in the repo root) the server-wide ``script_generation`` is found, the refusal
+    correctly does not fire, and the test fails for a reason that has nothing to
+    do with the behaviour under test.  It passed only where that file happened to
+    be absent.  Stubbing the scope pins the intended condition -- "nothing
+    shipped in the bundle, nothing configured server-wide" -- on every machine."""
     import molbuilder.runtime_config as rc
     from molbuilder.bench.generate import bake_target_wrappers
+    monkeypatch.setattr(rc, "_read_server_wide", lambda: {})
     out_dir = _make_bundle(tmp_path)                   # NO .molbuilder.json
     with pytest.raises(rc.RuntimeConfigError, match="4.4.2|script_generation"):
         bake_target_wrappers(out_dir, _env("slurm"))

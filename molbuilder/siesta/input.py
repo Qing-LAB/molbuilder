@@ -297,35 +297,6 @@ def copy_pseudopotentials(species: Sequence[str], lib: Path,
 # --------------------------------------------------------------------- #
 
 
-# Recommended per-side vacuum (Angstrom) for an isolated molecule so its periodic
-# images don't interact: >= 25 A for a charged system (image-image Coulomb decays
-# slowly), a smaller floor for a neutral one (density/wavefunction overlap).
-_VACUUM_MIN_NEUTRAL = 8.0
-_VACUUM_MIN_CHARGED = 25.0
-
-
-def _warn_insufficient_vacuum(struct: Structure, charge: int) -> None:
-    """WARN (never mutate) when an ISOLATED axis carries too little vacuum for a
-    clean SIESTA calc.  Skipped for periodic / transport axes -- a device or
-    crystal cell sets the box there, not the vacuum.  Geometry is left untouched;
-    the structure is the single source of truth (structure-periodicity.md)."""
-    import warnings
-    min_vac = _VACUUM_MIN_CHARGED if charge != 0 else _VACUUM_MIN_NEUTRAL
-    kinds = struct.axis_kind or ("isolated", "isolated", "isolated")
-    thin = [(i, float(struct.vacuum[i])) for i, k in enumerate(kinds)
-            if k == "isolated" and float(struct.vacuum[i]) < min_vac]
-    if not thin:
-        return
-    where = ", ".join(f"axis {i} (vacuum={v:g} A)" for i, v in thin)
-    warnings.warn(
-        f"Thin vacuum on an isolated system: {where}.  Recommended >= {min_vac:g} "
-        f"A per side ({'charged' if charge else 'neutral'}) so the molecule's "
-        f"periodic images don't interact.  Set 'vacuum' on the structure "
-        f"(Modify -> Cell tab).  The FDF is emitted with the structure's geometry "
-        f"unchanged.",
-        RuntimeWarning, stacklevel=3)
-
-
 def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, cell: Optional[np.ndarray] = None) -> str:
     """Format a Structure as SIESTA .fdf text.
@@ -398,31 +369,55 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             raise ValueError(
                 "cannot derive a vacuum cell: the structure is empty")
         cell = np.asarray(cell, dtype=float).reshape(3, 3)
-        # A flat / linear molecule (water, benzene, a DNA base) has a thin axis
-        # with zero extent; with vacuum = 0 the box has no thickness there -> a
-        # zero-volume cell SIESTA cannot run.  Fail with a clear, actionable
-        # message (we never invent a vacuum -- the structure is the source of
-        # truth) rather than the generic "degenerate cell" validation error.
+        # LAST LINE OF DEFENCE: SIESTA builds reciprocal vectors from the cell,
+        # so a zero-volume lattice fails outright -- it must never be emitted.
+        #
+        # A flat / linear molecule used to land here (thin axis, vacuum 0), but
+        # the 6.1 minimum-thickness floor now gives every ISOLATED axis at least
+        # 3 A per side, so that path is gone.  What can still reach this is an
+        # axis where vacuum does not apply: a TRANSPORT axis, whose length is the
+        # captured device length rather than bbox + padding.  The message names
+        # the offending axes and their kinds, because telling the user to "set a
+        # vacuum" would be wrong advice for exactly the case that gets here.
         if abs(float(np.linalg.det(cell))) < 1e-6:
+            _kinds = struct.axis_kind or ("isolated",) * 3
+            _thin = [(i, _kinds[i]) for i in range(3)
+                     if abs(float(cell[i, i])) < 1e-6]
+            _detail = ", ".join(f"axis {i} (kind '{k}')" for i, k in _thin) \
+                or "no single axis -- the three vectors are not independent"
             raise ValueError(
-                "the vacuum cell derived from the structure is degenerate (zero "
-                "volume): a flat or linear molecule has a thin axis where "
-                "vacuum = 0, so the box has no thickness there.  Set 'vacuum' > 0 "
-                "on the structure (Modify -> Cell tab) so SIESTA has a real box "
-                "-- the geometry is not changed for you.")
+                f"the cell derived from the structure is degenerate (zero "
+                f"volume), and SIESTA cannot run without a real box: {_detail}. "
+                f"Vacuum padding applies only to an 'isolated' axis -- on a "
+                f"'transport' axis the length IS the device length captured at "
+                f"construction, and a structure with zero extent along it cannot "
+                f"define that length. Set an explicit unit cell for that "
+                f"direction (Modify -> Cell tab), or correct the axis kind. The "
+                f"geometry is never changed for you.")
         origin = struct.resolve_cell_origin()
         if origin is not None:
             positions = positions - np.asarray(origin, dtype=float)
-        # WARN (never mutate): too little vacuum on an isolated axis lets the
-        # molecule's periodic images interact.  The user sets vacuum in the
-        # structure (Modify -> Cell); we only flag it.
-        _warn_insufficient_vacuum(struct, auto_charge)
+        # Vacuum adequacy is checked by the VALIDATOR
+        # (validation/siesta.py:_check_siesta_vacuum_adequacy), which the
+        # report(validate(...)) call below runs -- so the finding reaches the
+        # web panel and this stderr report alike.  It used to be a
+        # warnings.warn here, which no web user could ever see (contract R5,
+        # science/validation.md 4.1).
         sizes = np.diag(cell)
+        # Report the EFFECTIVE vacuum: the § 6.1 minimum-thickness floor may
+        # have raised it on a flat/linear axis, and the provenance comment must
+        # describe the box that was actually emitted -- printing the stored
+        # value would make the note disagree with the LatticeVectors above it.
+        _eff = struct.effective_vacuum()
+        _floored = struct.vacuum_floor_axes()
         cell_note = (
             f"# (vacuum cell derived from the structure: "
             f"{sizes[0]:.2f} x {sizes[1]:.2f} x {sizes[2]:.2f} A; "
-            f"vacuum = {tuple(round(float(v), 2) for v in struct.vacuum)} A/side; "
-            f"atoms centred)"
+            f"vacuum = {tuple(round(float(v), 2) for v in _eff)} A/side"
+            + (f"; minimum-thickness floor raised axes {_floored} from "
+               f"{tuple(round(float(v), 2) for v in struct.vacuum)}"
+               if _floored else "")
+            + f"; atoms centred)"
         )
     else:
         cell = np.asarray(cell, dtype=float).reshape(3, 3)

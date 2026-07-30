@@ -56,16 +56,32 @@ function _mvdata() {
 
     // ----- State ------------------------------------------------------
     const state = {
-        xyz: null,            // last successful build's XYZ string
         pdb: null,
         title: null,
         labels: [],           // 3Dmol label objects so we can clear them
         fdf: null,
         pyscf: null,
-        // (labels -- regions / frozen -- are NOT held here: the Generate POST reads
-        // them FRESH off the model via getRegions/getFrozen at emit time, so there is
-        // no state.* mirror to desync.  viewer-is-truth, unified-API.)
+        // NOTHING structural is held here.  Coordinates, labels and periodicity
+        // are read LIVE off the model at request time via
+        // molview.data.factsForRequest() -- contract F1
+        // (docs/science/validation.md 4.1).  ``state.xyz`` used to live here,
+        // filled once at load, so a request could carry fresh labels + fresh
+        // periodicity + STALE coordinates and validation judged a structure the
+        // viewer was not showing.  There is no mirror to desync now.
     };
+
+    // The facts for a request, read live from the ONE fact holder (F1).
+    // Returns null when nothing is loaded -- callers must not invent a payload.
+    function _facts() {
+        const d = _data();
+        return (d && typeof d.factsForRequest === "function")
+            ? d.factsForRequest() : null;
+    }
+    // Coordinates only, for the call sites that need just the geometry.
+    function _liveXyz() {
+        const f = _facts();
+        return (f && f.xyz) || "";
+    }
 
     // Embedded MolViewer (#198, 2026-06-02; contract:
     // docs/web/molview.md).  Site migration #202
@@ -104,96 +120,29 @@ function _mvdata() {
         el.className = "status" + (kind ? " " + kind : "");
     }
 
-    // Render a structured issues panel from a list of {severity,
-    // message, where} dicts.  Hides the panel when there are no
-    // issues; otherwise emits one <li class="issue-item"
-    // data-severity="..."> per issue, with the where-tag floated to
-    // the right.  Used both by the live preflight loop and by the
-    // post-Generate response handler.
-    // Render one Issue <li> into the supplied <ul>.  Shared between
-    // the residual panel + the per-card panels.
-    function _appendIssueItem(ul, issue) {
-        const li = document.createElement("li");
-        li.className = "issue-item";
-        li.setAttribute("data-severity", issue.severity || "info");
-        const msg = document.createElement("span");
-        msg.className = "issue-msg";
-        msg.textContent = issue.message || "";
-        li.appendChild(msg);
-        if (issue.where) {
-            const tag = document.createElement("span");
-            tag.className = "issue-where";
-            tag.textContent = issue.where;
-            li.appendChild(tag);
-        }
-        ul.appendChild(li);
-    }
-
-    // Per docs/web/ui-contract.md Rule 2, issues that
-    // carry a ``workflow_group`` tag (profile / stage / budget)
-    // render INSIDE the relevant workflow-group card; un-tagged
-    // issues (geometry / cell / polymer / legacy untagged config
-    // fields) render in the legacy residual panel referenced by
-    // ``panelId``.  ``formContainerId`` scopes the per-card render
-    // to one engine's form so siesta + pyscf issues don't cross-
-    // pollinate when the two forms share the page.
+    // Findings rendering lives in ONE module for the whole app
+    // (lib/validation-findings.js, contract R2 in
+    // docs/science/validation.md 4.1).  The three per-tab copies this
+    // page used to own each silently dropped a finding whose
+    // workflow_group named a card the schema had not rendered; the
+    // shared module iterates the FINDINGS instead of the panels, so
+    // an unroutable one lands in the residual panel (R3).  These two
+    // thin wrappers keep the existing call sites readable.
     function renderIssues(panelId, issues, formContainerId) {
-        const list = (issues || []).filter(Boolean);
-        // Fan grouped issues into per-card panels first.  Always
-        // clear every per-card panel (whether or not we'll write to
-        // it) so a stale finding from a previous render disappears.
-        const form = formContainerId ? $(formContainerId) : null;
-        const cardPanels = form
-            ? form.querySelectorAll(".card-issues[data-workflow-group]")
-            : [];
-        for (const cp of cardPanels) {
-            cp.innerHTML = "";
-            cp.hidden = true;
-        }
-        const residual = $(panelId);
-        if (residual) {
-            residual.innerHTML = "";
-            residual.hidden = true;
-        }
-        if (!list.length) return;
-        // Split: per-group buckets + residual.
-        const buckets = new Map();   // role → array
-        const residualList = [];
-        for (const issue of list) {
-            const g = issue.workflow_group;
-            if (g && form) {
-                if (!buckets.has(g)) buckets.set(g, []);
-                buckets.get(g).push(issue);
-            } else {
-                residualList.push(issue);
-            }
-        }
-        // Write per-card buckets.
-        for (const cp of cardPanels) {
-            const role = cp.getAttribute("data-workflow-group");
-            const bucket = buckets.get(role);
-            if (!bucket || !bucket.length) continue;
-            for (const issue of bucket) _appendIssueItem(cp, issue);
-            cp.hidden = false;
-        }
-        // Write residual.
-        if (residual && residualList.length) {
-            for (const issue of residualList) _appendIssueItem(residual, issue);
-            residual.hidden = false;
-        }
+        const f = (window.molbuilder || {}).validationFindings;
+        if (!f) return { total: 0, residual: 0, byGroup: {},
+                         counts: { error: 0, warn: 0, info: 0 } };
+        return f.render(issues, {
+            panel:     $(panelId),
+            formScope: formContainerId ? $(formContainerId) : null,
+        });
     }
 
     function clearIssues(panelId, formContainerId) {
-        const ul = $(panelId);
-        if (ul) { ul.innerHTML = ""; ul.hidden = true; }
-        const form = formContainerId ? $(formContainerId) : null;
-        if (form) {
-            for (const cp of form.querySelectorAll(
-                                ".card-issues[data-workflow-group]")) {
-                cp.innerHTML = "";
-                cp.hidden = true;
-            }
-        }
+        const f = (window.molbuilder || {}).validationFindings;
+        if (!f) return;
+        f.clear({ panel:     $(panelId),
+                  formScope: formContainerId ? $(formContainerId) : null });
     }
 
     // Debounce helper -- collapses a burst of form-input events into
@@ -209,13 +158,13 @@ function _mvdata() {
     }
 
     // Live preflight: when the user has already built a structure
-    // (state.xyz exists) and they tweak any tab's params, hit
+    // (a structure is loaded) and they tweak any tab's params, hit
     // /api/build/preflight to refresh the issues panel before they
     // click Generate.  No-op until the first successful build, so a
     // user who just landed on the page and is fiddling with form
     // defaults doesn't see warnings that haven't been earned yet.
     async function refreshPreflight(engine) {
-        if (!state.xyz) return;
+        if (!_liveXyz()) return;
         const params = (engine === "siesta")
             ? collectFdfParams()
             : collectPyscfParams();
@@ -226,7 +175,7 @@ function _mvdata() {
             const r = await fetch("/api/build/preflight", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ xyz: state.xyz, engine, params,
+                body: JSON.stringify({ xyz: _liveXyz(), engine, params,
                     periodicity: _modelPeriodicity() }),
             }).then(x => x.json());
             if (r.ok) renderIssues(panelId, r.issues, formContainerId);
@@ -307,7 +256,7 @@ function _mvdata() {
 
     // Populate the page state + info panel FROM THE MODEL (the single source of truth
     // the ONE load door installed) -- NOT from a hand-rolled /api/build/load response +
-    // a separate sidecar fetch.  The Generate/preflight POST reads state.xyz + the
+    // a separate sidecar fetch.  The Generate/preflight POST reads the live facts + the
     // sidecar labels; the info panel reads the counts; all come off molview.data.
     function _applyLoadedModel(filename) {
         const d = _data();
@@ -317,7 +266,6 @@ function _mvdata() {
         const elements = (d && typeof d.getElements === "function")
             ? d.getElements() : atoms.map((a) => a && a.element);
         const n_atoms = atoms.length;
-        state.xyz = (s && s.text) || "";
         state.title = filename;
         state.fdf = null;
         state.pyscf = null;
@@ -1300,7 +1248,7 @@ function _mvdata() {
     // enable Download/Save.  Does NOT touch disk.  The user clicks
     // "Save to current dir" once they're happy with the preview.
     $("generate-fdf").addEventListener("click", async () => {
-        if (!state.xyz) {
+        if (!_liveXyz()) {
             setStatus("fdf-status", "Build a structure first.", "error");
             return;
         }
@@ -1348,7 +1296,7 @@ function _mvdata() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    xyz:            state.xyz,
+                    xyz:            _liveXyz(),
                     params,
                     dest_dir:       _destDir || null,
                     // structure_path remains a back-compat fallback
@@ -1537,7 +1485,7 @@ function _mvdata() {
                     body: JSON.stringify({
                         psml_lib:        psmlLib,
                         dest_dir:        written.dir,
-                        structure_text:  state.xyz,
+                        structure_text:  _liveXyz(),
                     }),
                     signal: abortSignal,
                 }).then(x => x.json());
@@ -1756,7 +1704,7 @@ function _mvdata() {
 
     // ----- 4. Generate PySCF script (render-only preview) -----------
     $("generate-pyscf").addEventListener("click", async () => {
-        if (!state.xyz) {
+        if (!_liveXyz()) {
             setStatus("pyscf-status", "Build a structure first.", "error");
             return;
         }
@@ -1783,7 +1731,7 @@ function _mvdata() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    xyz:            state.xyz,
+                    xyz:            _liveXyz(),
                     params,
                     // structure_path: back-compat fallback when
                     // in-body labels aren't present.
@@ -2228,7 +2176,7 @@ function _mvdata() {
     // Wire each engine-scoped form input to the debounced preflight
     // refresh so the issues panel updates live as the user adjusts
     // settings.  p-* IDs feed SIESTA's panel; py-* IDs feed PySCF's.
-    // No-op until the user has built a structure (state.xyz set) --
+    // No-op until the user has built a structure (the model is non-empty) --
     // see refreshPreflight().
     //
     // CRITICAL: must run AFTER initFormsFromSchema renders the form,

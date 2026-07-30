@@ -247,6 +247,55 @@ def _check_siesta_charged_makov_payne_notice(struct: Structure,
     )]
 
 
+# Recommended per-side vacuum (Angstrom) for an isolated molecule so its
+# periodic images don't interact: basis orbitals reach 4-7 A per atom with a DZP
+# basis and the inter-image gap is 2*vacuum, so the neutral floor is set above
+# the largest orbital radius; a charged system needs far more because the
+# image-charge Coulomb bias decays only as 1/L (see the Makov-Payne notice).
+_VACUUM_MIN_NEUTRAL = 8.0
+_VACUUM_MIN_CHARGED = 25.0
+
+
+def _check_siesta_vacuum_adequacy(struct: Structure, cfg) -> List[Issue]:
+    """Too little vacuum on an ISOLATED axis lets the molecule interact with
+    its own periodic images.
+
+    Lives HERE, in the validator, rather than in the emitter: it used to be a
+    Python ``warnings.warn`` inside ``render_fdf``, which reached the server's
+    stderr and therefore never reached a web user at all -- a 2.5 A vacuum box
+    went to SIESTA with nothing said, and the user learnt of it only from
+    SIESTA's own "multiply-connected orbital pairs" message (2026-07-29).
+    Clause R5 of the delivery contract (science/validation.md 4.1): a finding
+    never travels as a warning.  As an Issue it reaches BOTH surfaces -- the
+    web panel through the endpoint's ``issues[]``, and the CLI through
+    ``render_fdf``'s own ``report(validate(...))``.
+
+    Periodic / transport axes are skipped: a crystal or a device sets the box
+    there, not the vacuum.  Never mutates -- the structure is the truth."""
+    from ..chemistry import resolve_net_charge
+    try:
+        q = resolve_net_charge(struct, getattr(cfg, "net_charge", None))
+    except Exception:                      # noqa: BLE001 -- charge is advisory here
+        q = 0
+    min_vac = _VACUUM_MIN_CHARGED if q else _VACUUM_MIN_NEUTRAL
+    kinds = struct.axis_kind or ("isolated", "isolated", "isolated")
+    thin = [(i, float(struct.vacuum[i])) for i, k in enumerate(kinds)
+            if k == "isolated" and float(struct.vacuum[i]) < min_vac]
+    if not thin:
+        return []
+    where = ", ".join(f"axis {i} ({v:g} Å)" for i, v in thin)
+    return [Issue(
+        "warn",
+        (f"Thin vacuum on an isolated system: {where}. Recommended ≥ "
+         f"{min_vac:g} Å per side ({'charged' if q else 'neutral'}) so the "
+         f"molecule's periodic images don't interact — the gap between images "
+         f"is 2×vacuum, and basis orbitals reach several Å per atom. Set "
+         f"'vacuum' on the structure (Modify → Cell tab); the geometry is not "
+         f"changed for you."),
+        "cell.vacuum_thin",
+    )]
+
+
 def _check_siesta_spin_polarized_needs_spin_total(struct: Structure,
                                                     cfg) -> List[Issue]:
     """SIESTA-specific: spin_polarized=True + spin_total=None + open-
@@ -355,6 +404,10 @@ def _validate_siesta(struct: Structure, cfg,
     # design.md decisions log); we surface it so the user knows
     # what's missing.
     issues += _check_siesta_charged_makov_payne_notice(struct, cfg)
+
+    # Vacuum adequacy on isolated axes (R5: was a warnings.warn in the
+    # emitter, invisible to the web; now a finding on every surface).
+    issues += _check_siesta_vacuum_adequacy(struct, cfg)
 
     # Open-shell metal + closed-shell SCF: shared rule with PySCF.
     issues += check_open_shell_metal(

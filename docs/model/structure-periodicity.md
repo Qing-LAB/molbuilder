@@ -71,6 +71,30 @@ Every consumer branches on this one field.
 >   whether a k-grid dimension may exceed 1 — but the dimension value itself is
 >   a `SiestaConfig` parameter (see the k-grid note at the top).
 
+**Which axis an image belongs to decides whether it is a defect.** The kind
+answers one question that recurs all over the stack: *is what sits in the
+neighbouring cell intended, or an artefact of the box?*
+
+| kind | images across this axis are… | so a check must… |
+|---|---|---|
+| **periodic** | the crystal itself — bulk gold has 2.88 Å contacts across the boundary *by construction* | ignore this direction |
+| **transport** | the device continuing into its leads — it tiles seamlessly by design | ignore this direction |
+| **isolated** | copies of the molecule that only exist because the box is finite | measure this direction |
+
+Two consumers follow from that one rule, and both were bugs before they did:
+
+* **Containment** (§ 6.1 heal table) is required along non-periodic axes only —
+  requiring it everywhere made real crystals and junction files unopenable.
+* **The atom-to-nearest-image distance check** (`cell.image_distance`,
+  `validation/geometry.py`) steps only along **isolated** axes. It used to walk
+  all 26 neighbour translations, so it reported every crystal's own nearest
+  neighbours as image overlap — a warning that was guaranteed to be wrong
+  exactly where the periodicity was deliberate. For a slab (periodic in-plane,
+  isolated out-of-plane) it now measures precisely the vacuum gap, and it names
+  the direction it measured. A fully periodic cell has no vacuum direction, so
+  the check is *not applicable* there — which is different from a check that
+  could not run, and stays quiet rather than reporting itself.
+
 ---
 
 ## 3. `bbox` is min/max only — used ONLY on an `isolated` axis
@@ -273,6 +297,35 @@ to these or is a bug:
    | explicit `cell`, no origin | NO | legal: the corner is **derived** — the wrapping corner, or the structure centred in the box where the per-side vacuum does not fit — and reported as an `info` notice. **Nothing is written into the truth.** A cell the structure cannot fit for ANY origin (fractional extent > 1 on a non-periodic axis) is a hard error at the edit, so an unfittable cell is never stored |
    | explicit `cell` + origin | yes | legal, user-owned; **never healed**; vacuum reference-only |
    | explicit `cell` + origin | NO | **user-owned in both halves**: warned (actual per-side clearances reported), **never auto-fixed** — at the live edit *and* on load (a stored manual origin must round-trip verbatim; silently flipping it on reload was the corrected defect) |
+
+   **The minimum-thickness floor** (decided 2026-07-29). On an **isolated** axis
+   whose derived length would come out below **3 Å**, the box uses at least
+   **3 Å of vacuum per side**. A flat or linear molecule — water, benzene, a
+   diatomic — has zero extent along an axis, so with no vacuum it produced a
+   zero-thickness box: a zero determinant that surfaced as a "degenerate cell"
+   error from the emitter and refused a reset-to-derived in the gate. With the
+   floor, **the derived cell is always genuinely three-dimensional and there is
+   always a real gap between periodic images.**
+
+   Three properties make it safe:
+
+   * It is a **resolved value**, never written back (clause 1):
+     `Structure.effective_vacuum()` applies it, `struct.vacuum` keeps exactly
+     what the user typed, and the wire carries both (`vacuum` +
+     `resolved_vacuum`).
+   * It is **never silent**: the gate emits an `info` notice naming the axes and
+     the before → after value, because the box is then thicker than the number
+     on the Cell page.
+   * The **corner uses the same floored value** (`expected_cell_corner`), so a
+     floored axis grows symmetrically and the molecule stays centred.
+
+   It is a **structural** minimum, not a claim of physical adequacy: 3 Å keeps
+   the cell well-formed, while a converged isolated-molecule calculation wants
+   far more — the SIESTA validator still asks for ≥ 8 Å per side (≥ 25 Å
+   charged) and says so as `cell.vacuum_thin`. Vacuum is meaningless on a
+   periodic axis (the lattice sets the length) and on a transport axis (the
+   device length is matched), so the floor applies to neither, and a
+   zero-extent *transport* axis still refuses to reset to derived.
 
    **"No explicit origin" means "derive the corner"** (decided 2026-07-29, after
    the live pass on `projects/hemeC-dithiol`). The corner for row 3 used to be

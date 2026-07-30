@@ -1060,15 +1060,39 @@ class TestPySCFScriptIRScaffold:
         assert "_mf.dip_moment(unit='Debye'" in s
 
     def test_ir_validation_banner_in_header(self):
-        """The header docstring carries a NOT-YET-VALIDATED warning
-        when IR is on -- this is the user-facing trigger to read
-        spec.md §13.1 before quoting absolute IR magnitudes."""
+        """CONTRACT: with IR on, the emitted script's header must carry the
+        NOT-YET-VALIDATED warning, the charged-molecule caveat, and a pointer a
+        reader can actually follow -- it is the user-facing trigger to check the
+        validation status BEFORE quoting absolute IR magnitudes.
+
+        This test earned its keep: it caught a real regression rather than
+        rotting.  It used to assert the literal ``spec.md``; the 2026-07 docs
+        migration archived that spec, and the emitter was left citing a bare
+        "§ 13.1" with NO document -- so the scientist the caveat exists to warn
+        was sent to a section of nothing.  The pointer now names
+        docs/roadmap.md (where the IR validation status and its closure plan
+        live).  The assertion RESOLVES every doc path in the banner instead of
+        matching a filename, so a future move cannot leave a dangling pointer
+        behind, and cannot fail merely because a file was renamed."""
         from molbuilder.spectra.pyscf_script import render_spectra_script
         s = render_spectra_script(_struct_water(),
                                   SpectraConfig(compute_raman=True,
                                                 compute_ir=True))
         assert "NOT YET VALIDATED" in s
-        assert "spec.md" in s    # pointer to the validation status
+        # A followable pointer to the validation status: every doc path the
+        # banner cites must exist in the tree.
+        import re
+        from pathlib import Path
+        repo = Path(__file__).resolve().parents[2]
+        banner = s[s.index("IR INTENSITY SCAFFOLD"):]
+        banner = banner[:banner.index("Dependencies:")]
+        refs = re.findall(r"docs/[\w/.-]+\.md", banner)
+        assert refs, ("the IR banner cites no document for the validation "
+                      "status; a bare section number is not followable")
+        for ref in refs:
+            assert (repo / ref).is_file(), (
+                f"the IR banner points at {ref!r}, which does not exist -- the "
+                f"reader is told to check the validation status and cannot")
         # Charged-molecule caveat (origin-shift contamination) must be
         # visible to a user reading the header.  Test prevents silent
         # removal during a future header-doc refactor.

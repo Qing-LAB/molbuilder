@@ -1131,8 +1131,11 @@ def apply_periodicity_from_body(struct, body):
 
 
 def apply_labels_to_struct(struct, body):
-    """Apply ``frozen_atoms`` + ``regions`` from the request body,
-    falling back to disk sidecar lookup only when neither key is
+    """Apply ``frozen_atoms`` + ``regions`` from the request body.
+
+    THE inbound label seam (contract F2, science/validation.md § 4.1): the body
+    is the only source.  A body that omits the keys declares NO labels; the
+    sidecar is never read for an emitted structure, which used to happen when neither key is
     present in the body.
 
     Contract (2026-06-14, ``feedback_three_stage_contract``):
@@ -1172,7 +1175,23 @@ def apply_labels_to_struct(struct, body):
     has_in_body = ("frozen_atoms" in body) or ("regions" in body) \
         or ("annotations" in body)
     if not has_in_body:
-        return apply_sidecar_if_possible(struct, body.get("structure_path"))
+        # F2 (science/validation.md 4.1): NO second source.  The server does not
+        # read the sidecar for an emitted structure -- a validated deck must
+        # never mix body geometry with disk labels the model has since changed.
+        # A body with no label keys therefore declares NO labels.
+        #
+        # There is deliberately no server-side refusal here.  The obvious hook
+        # would be "refuse when structure_path is set", and an earlier cut did
+        # exactly that -- but ``structure_path`` is a general-purpose field
+        # (pseudopotential resolution, dest-dir anchoring, provenance), so
+        # keying on it conflates "here is where the file lives" with "please
+        # read my sidecar" and refuses a great many legitimate callers.
+        #
+        # Loudness belongs on the side that can actually guarantee it: F1 --
+        # ``molview.data.factsForRequest()`` assembles coordinates, labels and
+        # periodicity together, so a tab cannot send a partial set, and that is
+        # pinned by tests.  What used to be a disk read is now simply absent.
+        return None
 
     # In-body branch: the client claims authority over the labels.
     # 2026-06-14: Structure is a plain ``@dataclass`` -- assigning

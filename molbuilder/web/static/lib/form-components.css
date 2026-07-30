@@ -307,3 +307,22 @@ a.btn-like:hover {
     border-color: var(--accent-strong);
     color: var(--text-primary);
 }
+
+/* The message text of a finding.  Previously written by every renderer and
+ * styled by NONE -- it inherited whatever the panel gave it, which differed
+ * per page because two sheets owned .issues-panel.  One owner now
+ * (lib/validation-findings.js writes it, this rule styles it). */
+.issues-panel .issue-msg {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+/* The empty state, for panels that prefer a word over disappearing (the
+ * spectra Issues panel).  Panels without `emptyText` just hide. */
+.issues-panel .issues-empty {
+    list-style: none;
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.82rem;
+    padding: 2px 0;
+}

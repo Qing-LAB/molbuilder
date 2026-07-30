@@ -973,48 +973,73 @@ class TestPartialSelectionPanelEndpoint:
 
 
 class TestSpectraIssuesPanelSeverityCoverage:
-    """Task #304 regression: ``lib/spectra/core.js`` previously
-    filtered the issues array into ``errs + warns`` and silently
-    dropped ``info`` severity, so the Pattern-B regions notice
-    (and any future info-level message) would be invisible on the
-    Spectra results panel even though the API delivered it.
+    """PINS: task #304's invariant — an ``info``-severity finding (the Pattern-B
+    regions notice, and anything future) must be VISIBLE on the Spectra panel,
+    never filtered out — now that the renderer it originally guarded is gone.
 
-    Static asserts on the source so a regression would surface in
-    code review rather than waiting for the right-shaped fixture
-    to flow through an e2e."""
+    HISTORY, because this class is a worked example of pin rot.  #304 fixed
+    ``lib/spectra/core.js``, which filtered the issues array into ``errs +
+    warns`` and silently dropped ``info``.  The guard was written as two
+    SOURCE-TEXT greps: one for ``i.severity === "info"`` and ``.concat(infos)``
+    in that renderer, one for ``.issue.info`` colour rules in
+    ``spectra/style.css``.  On 2026-07-29 the per-tab renderers were replaced by
+    the single ``lib/validation-findings.js`` (contract R2,
+    docs/science/validation.md § 4.1) and the page's second row vocabulary
+    (``.issue`` / ``.badge``) was deleted with it — so both greps failed while
+    the invariant they protected was actually STRONGER than before.
 
-    def test_spectra_renderIssues_includes_info_severity(self):
+    A source-text pin outlives the code it describes; that is precisely what
+    makes it residue-prone.  These are behaviour + one-home pins now:
+
+      * the RENDERING half — an ``info`` finding reaching the panel, and an
+        unrecognised severity being coerced to ``info`` rather than dropped — is
+        pinned against the shared module in
+        ``tests/test_validation_findings_js.py::TestSeverityIsUniform``, executed
+        under node, not grepped;
+      * this class pins that the Spectra page delegates to that module (so the
+        behaviour above governs it) and that ``info`` has visible styling in the
+        ONE stylesheet that owns the row vocabulary.
+    """
+
+    def test_the_spectra_page_delegates_to_the_shared_renderer(self):
+        """If the page ever re-grows a private renderer, the severity behaviour
+        pinned in test_validation_findings_js.py stops governing this panel."""
         from pathlib import Path
         src = Path(__file__).resolve().parents[1] \
             / "molbuilder/web/static/lib/spectra/core.js"
         text = src.read_text()
-        # The function must filter info alongside error + warn.
-        assert 'i.severity === "info"' in text, (
-            "spectra/core.js renderIssues must filter info-severity "
-            "issues into the rendered list; pre-#304 it dropped them "
-            "silently.  See docs/execution/job-system.md."
+        assert "validationFindings" in text, (
+            "spectra/core.js must render findings through "
+            "molbuilder.validationFindings (contract R2); a private renderer "
+            "would escape the severity guarantees pinned for the shared module."
         )
-        # ...and must concatenate info into the rendered list (the
-        # iteration step, not just the filter expression).  Catches a
-        # regression where someone filters info-severity issues but
-        # forgets to include them in errs.concat(warns).concat(infos).
-        assert ".concat(infos)" in text or "concat(infos)" in text, (
-            "spectra/core.js renderIssues filters info but never "
-            "concatenates them into the rendered list."
+        # The tell-tales of a private row builder returning.
+        assert 'className = "issue-item"' not in text
+        assert '"data-severity"' not in text
+        # ...and specifically not the old drop-info-then-reorder shape.
+        assert ".concat(infos)" not in text, (
+            "the hand-rolled severity split is back; the shared module keeps "
+            "server order and coerces unknown severities to info instead."
         )
 
-    def test_spectra_style_has_info_severity_rules(self):
+    def test_info_severity_is_visibly_styled_in_its_one_home(self):
+        """The row vocabulary is styled once, in lib/form-components.css.  An
+        ``info`` finding must be distinguishable there — the original concern
+        ("unstyled blocks") applies to whichever sheet owns the rows."""
         from pathlib import Path
-        src = Path(__file__).resolve().parents[1] \
-            / "molbuilder/web/static/spectra/style.css"
-        text = src.read_text()
-        assert ".issue.info" in text, (
-            "spectra/style.css is missing .issue.info colour rules; "
-            "the renderer emits class 'issue info' but the panel "
-            "would render unstyled blocks without these rules."
+        root = Path(__file__).resolve().parents[1]
+        shared = (root / "molbuilder/web/static/lib/form-components.css"
+                  ).read_text()
+        assert '.issue-item[data-severity="info"]' in shared, (
+            "form-components.css must style info-severity findings; it is the "
+            "ONE home for the row vocabulary (docs/web/ui-contract.md § 5.1)."
         )
-        assert ".issue.info  .badge" in text \
-               or ".issue.info .badge" in text, (
-            "spectra/style.css needs a badge colour for the info "
-            "severity, matching error + warn."
+        # Every severity the contract defines is styled, so none renders bare.
+        for sev in ("error", "warn", "info"):
+            assert f'[data-severity="{sev}"]' in shared, sev
+        # And the page sheet must NOT re-declare a competing vocabulary.
+        page = (root / "molbuilder/web/static/spectra/style.css").read_text()
+        assert ".issue.info" not in page and ".issue .badge" not in page, (
+            "the /spectra page sheet has re-grown its own issue vocabulary; "
+            "one owner only (ui-contract.md § 1)."
         )

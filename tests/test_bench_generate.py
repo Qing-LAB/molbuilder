@@ -298,14 +298,40 @@ def test_generate_preamble_only_persists_preamble(tmp_path, monkeypatch):
 
 
 def test_generate_help_documents_molbuilder_json_explicitly():
-    # config file must be explicit in --help (where it lives + an example)
+    """CONTRACT: ``bench generate --help`` must document the config file the
+    bundle depends on -- name it, say WHERE it goes and WHAT it holds, show a
+    concrete example, and point at the full reference -- so a user reading only
+    the help can produce a runnable bundle.
+
+    The pointer is checked by RESOLVING it, not by matching a filename.  This
+    test used to assert the literal string ``config.md``; the 2026-07 docs
+    migration retired that file (it is under docs/archive/old_docs/ now) and the
+    help was correctly repointed at ``docs/execution/running-a-job.md``, whose
+    § 5.2 is the home of ``script_generation``.  So the contract held and only
+    the assertion had rotted.  Resolving the path instead pins what actually
+    matters -- the help sends you somewhere that EXISTS -- and it survives the
+    next reorganisation while still catching a dangling pointer, which a
+    filename match can never do."""
+    import re
+    from pathlib import Path
     from click.testing import CliRunner
     from molbuilder.bench._cli import bench_group
     out = CliRunner().invoke(bench_group, ["generate", "-h"]).output
     assert ".molbuilder.json" in out
     assert "WHERE" in out and "WHAT" in out          # location + content
     assert '"script_generation"' in out               # a concrete example
-    assert "config.md" in out                          # pointer to full ref
+    # A pointer to the full reference, and it must resolve.
+    repo = Path(__file__).resolve().parents[1]
+    refs = re.findall(r"docs/[\w/.-]+\.md", out)
+    assert refs, (
+        "the help no longer points at any doc for the config file; a user who "
+        "reads only --help has nowhere to go for the full reference")
+    for ref in refs:
+        assert (repo / ref).is_file(), (
+            f"--help points at {ref!r}, which does not exist -- a dangling "
+            f"pointer is worse than none.  Update the help text (and prefer "
+            f"the doc that owns the section, e.g. execution/running-a-job.md "
+            f"§ 5.2 for script_generation).")
 
 
 def test_detect_conda_activation_finds_local_conda():

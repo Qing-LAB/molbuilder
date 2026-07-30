@@ -99,18 +99,31 @@ def test_s2_pyscf_charge_override():
 
 
 def test_d3_charged_system_warns_on_thin_vacuum(deprotonated_diester):
+    """A charged molecule with 10 A/side vacuum is below the >= 25 A charged
+    recommendation (image-image Coulomb decays only as 1/L), so it must be
+    reported -- and the geometry must be left alone.
+
+    The DELIVERY changed on 2026-07-29: this used to be a Python
+    ``warnings.warn`` inside ``render_fdf``, which reached the server's stderr
+    and therefore no web user at all.  It is now an ``Issue`` from the SIESTA
+    validator (``cell.vacuum_thin``), so the same advice reaches the browser
+    panel and the CLI report alike -- clause R5 of the delivery contract,
+    docs/science/validation.md 4.1.  The assertion follows the finding to its
+    new channel; the invariant (report, never mutate) is unchanged.
+    """
     import dataclasses
-    import warnings
-    from molbuilder.siesta import SiestaConfig, render_fdf
-    # A charged molecule with 10 A/side vacuum: below the >=25 A charged
-    # recommendation -> WARN (image-image Coulomb), geometry unchanged.
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.validation import validate
     s = dataclasses.replace(deprotonated_diester, vacuum=(10.0, 10.0, 10.0))
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        render_fdf(s, SiestaConfig(verbose_comments=False))
-    msgs = " ".join(str(x.message) for x in w)
-    assert "25 A per side (charged)" in msgs, msgs
-    assert "periodic images" in msgs
+    findings = [i for i in validate(s, SiestaConfig(verbose_comments=False))
+                if i.where == "cell.vacuum_thin"]
+    assert findings, "no cell.vacuum_thin finding for a charged 10 A/side box"
+    msg = findings[0].message
+    assert "25" in msg and "charged" in msg, msg
+    assert "periodic images" in msg, msg
+    assert findings[0].severity == "warn"
+    # Geometry untouched: the vacuum the user set is still the vacuum stored.
+    assert s.vacuum == (10.0, 10.0, 10.0)
 
 
 def test_d3_neutral_uses_the_structures_vacuum(water_structure):

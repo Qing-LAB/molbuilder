@@ -1015,105 +1015,20 @@
     // did this via viewer.js::renderIssues; this brings spectra
     // into alignment.
     function renderIssues(issues) {
-        const panel = els.issuesPanel;
-        const list = (issues || []).filter(Boolean);
-
-        // Fan grouped issues into per-card panels first.  Clear
-        // every card panel so a stale finding from a previous
-        // render disappears.
-        const form = els.formContainer || null;
-        const cardPanels = form
-            ? form.querySelectorAll(".card-issues[data-workflow-group]")
-            : [];
-        for (const cp of cardPanels) {
-            cp.innerHTML = "";
-            cp.hidden = true;
-        }
-        if (!list.length) {
-            panel.innerHTML =
-                '<p class="status muted">No issues.</p>';
-            return;
-        }
-
-        // Split into per-group buckets + residual.
-        const buckets = new Map();
-        const residual = [];
-        for (const issue of list) {
-            const g = issue.workflow_group;
-            if (g && form) {
-                if (!buckets.has(g)) buckets.set(g, []);
-                buckets.get(g).push(issue);
-            } else {
-                residual.push(issue);
-            }
-        }
-
-        // Write per-card buckets.  Each card uses textContent (the
-        // panel was rendered by form-schema.js as a UL; per-li
-        // structure mirrors the SIESTA/PySCF appendIssueItem).
-        for (const cp of cardPanels) {
-            const role = cp.getAttribute("data-workflow-group");
-            const bucket = buckets.get(role);
-            if (!bucket || !bucket.length) continue;
-            for (const i of bucket) _appendCardIssue(cp, i);
-            cp.hidden = false;
-        }
-
-        // Write residual.  G8 2026-06-14: when all issues are
-        // tagged (the common case post-Rule-2), the residual is
-        // empty.  Treat that as "nothing left to surface here" and
-        // collapse the residual to the same muted ``No issues``
-        // filler the no-issues-at-all branch uses (above).  Pre-
-        // fix this branch wrote ``No untagged issues.`` which
-        // leaked internal jargon ("untagged" is the dev-side word
-        // for "no workflow_group metadata"; a chemistry user has
-        // no reason to know that).  Aligns with the SIESTA / PySCF
-        // / transport renderers' "hide the panel when empty"
-        // behaviour — see viewer.js:159-163, transport/core.js
-        // residual hide.
-        if (!residual.length) {
-            panel.innerHTML =
-                '<p class="status muted">No issues.</p>';
-            return;
-        }
-        const errs  = residual.filter(i => i.severity === "error");
-        const warns = residual.filter(i => i.severity === "warn");
-        const infos = residual.filter(i => i.severity === "info");
-        const html = [];
-        for (const i of errs.concat(warns).concat(infos)) {
-            const cls = (i.severity === "error" ? "issue error"
-                : i.severity === "warn"  ? "issue warn"
-                                         : "issue info");
-            html.push(
-                '<div class="' + cls + '">'
-                + '<span class="badge">' + escapeHtml(i.severity) + '</span> '
-                + '<span class="msg">' + escapeHtml(i.message) + '</span>'
-                + (i.where ? ' <code class="where">' + escapeHtml(i.where) + '</code>' : '')
-                + '</div>'
-            );
-        }
-        panel.innerHTML = html.join("\n");
-    }
-
-    // Append one Issue to a per-card .card-issues UL.  Uses
-    // textContent / element creation so server strings can't leak
-    // as HTML (XSS guard).  Same shape as SIESTA/PySCF
-    // _appendIssueItem in viewer.js.
-    function _appendCardIssue(ul, issue) {
-        const li = document.createElement("li");
-        li.className = "issue-item";
-        li.setAttribute("data-severity", issue.severity || "info");
-        const msg = document.createElement("span");
-        msg.className = "issue-msg";
-        msg.textContent = issue.message || "";
-        li.appendChild(msg);
-        if (issue.where) {
-            const tag = document.createElement("span");
-            tag.className = "issue-where";
-            tag.textContent = issue.where;
-            li.appendChild(tag);
-        }
-        ul.appendChild(li);
+        const f = (window.molbuilder || {}).validationFindings;
+        if (!f) return;
+        // ONE renderer for the whole app (contract R2).  The copy that lived
+        // here had drifted furthest: a SECOND row vocabulary for the residual
+        // (div.issue + .badge, built with innerHTML), a severity whitelist that
+        // silently dropped anything outside error/warn/info, a re-order the
+        // other tabs don't do, and no null guard on the panel (it threw AFTER
+        // clearing the cards).  All of it goes; the shared module keeps server
+        // order, coerces an unknown severity to info, and drops nothing.
+        f.render(issues, {
+            panel:     els.issuesPanel,
+            formScope: els.formContainer || null,
+            emptyText: "No issues.",
+        });
     }
 
     // ----- Download / copy script ------------------------------

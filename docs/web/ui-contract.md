@@ -117,6 +117,29 @@ re-picks the color. Change `--error` once in `tokens.css` and every error on
 every tab moves together. That is the whole contract in one example: **one
 owner, one token, consistent everywhere.**
 
+### 5.1 And why a *finding* looks the same on every tab
+
+The same rule, one layer up. A scientific finding (a validator `Issue`) is
+rendered by exactly one module — `lib/validation-findings.js` — which every page
+that shows findings mounts. One row shape
+(`li.issue-item[data-severity]`), styled once in `lib/form-components.css`;
+`workflow_group` puts a finding on its form card, everything else lands in the
+page's residual panel, and **nothing is dropped**.
+
+This was four implementations until 2026-07-29 — one per tab plus the per-card
+panels `form-schema.js` creates — and the drift was not cosmetic. All three tab
+copies silently discarded a finding whose `workflow_group` named a card the form
+schema had not rendered (they iterated the card *panels*, so a bucket with no
+panel was built and never read); the Spectra copy also dropped any severity
+outside `error`/`warn`/`info`, re-ordered the rest, and carried a second row
+vocabulary (`div.issue` + `.badge`) plus a competing `.issues-panel {display:
+grid}` that beat the shared sheet on that one page. Deleting the copies fixed
+all of it at once.
+
+The full producer-to-panel contract — where the facts come from, how the finding
+travels, and what the UI must do with it — is
+[`science/validation.md` § 4.1](?doc=science/validation.md).
+
 ## 6. The `[hidden]` gotcha
 
 One trap worth knowing, because it bites every contributor once. When JavaScript

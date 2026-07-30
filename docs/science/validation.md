@@ -260,6 +260,94 @@ form) and **reverse** (Generate-time check).
 
 ---
 
+## 4.1 The delivery contract — facts in, findings out (decided 2026-07-29)
+
+A check that never runs, or runs on the wrong structure, or produces a finding
+nobody sees, is worse than no check: it reads as a clean bill of health. Three
+real failures forced this contract (all three were live on `qlabsrv`):
+
+* the min-atom-to-nearest-image check worked correctly and had **never once been
+  shown in the browser** — `validate()` skips cell-dependent checks when `cell`
+  is `None`, and every web caller omitted it;
+* the SIESTA thin-vacuum advice reached only the server's `stderr`, because it
+  was a Python `warnings.warn` rather than an `Issue`;
+* a Generate request could carry fresh labels, fresh periodicity and **stale
+  coordinates**, because one tab mirrored the geometry into a page-local
+  variable while reading the other facts live from the model.
+
+**The layer between a tab and validation owns both directions.** That layer is
+MolView's concealed data model (`molview.data`): the facts leave from it, the
+findings come back to it for routing. A tab wires the two and contributes
+nothing of its own. Everything below follows from that.
+
+### Facts (inbound)
+
+| # | Clause | Enforced by |
+|---|---|---|
+| **F1** | **One fact holder.** Coordinates, elements, labels (regions / frozen), periodicity and annotations are read from `molview.data` **at request time** — never from a page-local mirror, a second fetch, or a re-read of disk. One accessor assembles the payload so a tab cannot assemble a partial one. | `molview.data.factsForRequest()`; `test_validation_contract.py` |
+| **F2** | **No server-side second source.** The server builds its `Structure` from the request body alone — one seam applies the in-body labels and periodicity and runs the frame-contract gate. **The sidecar is never read for an emitted structure**, so a validated structure is never a body/disk mixture, and a body with no label keys declares *no labels*. `structure_path` still travels (it anchors pseudopotential and dest-dir resolution) but is not a label source — an earlier cut refused requests that named a path without label keys, which conflated "here is where the file lives" with "read my sidecar" and rejected many legitimate callers. Loudness belongs on the side that can guarantee it (F1), not on an unrelated field. | `apply_labels_to_struct`; `test_validation_delivery_contract.py` proves a sidecar on disk cannot reach an emitted deck |
+| **F3** | **The model is complete by construction.** The model always carries periodicity — defaults when the pair has none, full values otherwise — so a tab is never in a position where it must invent a fact. | [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 7; `TestTabEmitContract` |
+| **F4** | **Derived facts are derived from those facts, server-side.** The cell a check needs is `struct.resolve_cell()`, resolved inside `validate()` — never an argument a caller can forget. It is derived only when the structure actually **declares a box** (an explicit `cell`, a non-zero vacuum, or a non-isolated axis): a gas-phase molecule never asked for a lattice, and a *planar* one's bounding box has zero thickness, so checking it would report a degenerate cell for a calculation that has no cell. A check that cannot run says so as `info`; silence is never the answer. | `_structure_declares_a_box`; `validate()`'s cell default; contract tests |
+
+### Findings (outbound)
+
+| # | Clause | Enforced by |
+|---|---|---|
+| **R1** | **One result type, web-shaped by construction.** Every finding is an `Issue` → `{severity, message, where, workflow_group?}` from the one serializer (`_shared.issues_to_json`). `where` is the **stable machine-readable identifier** (`geometry.min_distance`, `cell.image_distance`, `config.mesh_cutoff`) — the UI binds behaviour to it and never parses `message`, which is prose for humans and may be reworded freely. | `issues_to_json`; contract tests |
+| **R2** | **One channel into the UI.** The layer that holds the facts also takes the result: a single client module (`lib/validation-findings.js`) receives `issues[]` and routes them — per workflow-group card where the finding names a config field, residual structure panel otherwise — and every page mounts it. No page implements its own renderer. | `validation-findings.js`; `test_no_second_issue_renderer` |
+| **R3** | **Nothing is dropped.** Rendered count equals received count. An unknown or missing `workflow_group` falls to the residual panel; it is never skipped, and the list is never truncated. | contract tests |
+| **R4** | **Severity means the same everywhere.** `error` blocks generation and says why; `warn` renders without blocking; `info` is advisory. No surface downgrades a severity to keep a screen quiet, and the CLI prints the same three. | contract tests |
+
+**Which severity a spatial check gets** (decided 2026-07-29). Two different
+questions get two different answers, and conflating them is how a tool becomes
+either nagging or dangerous:
+
+* **Is there *enough* space?** — `cell.vacuum_thin`, `cell.image_distance`,
+  `cell.volume`. These are **warnings, never blocking.** The cell is well-formed;
+  what is in question is the *physics quality* of the result, and that is the
+  user's call to make. They may be probing convergence, reproducing a published
+  tight-box run, or deliberately accepting image interaction. molbuilder states
+  the number and the recommendation and gets out of the way — it never resizes
+  the box and never refuses the run.
+* **Can this cell exist at all?** — `cell.determinant` (zero volume or
+  left-handed). This is an **error**, and upstream of it the gate refuses the
+  edit outright (§ 6.1). Not a judgement about quality: a zero-volume lattice
+  makes SIESTA fail when it builds reciprocal vectors, so emitting it with a
+  warning would hand the user a guaranteed-failed run dressed as a choice. See
+  [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.1
+  for the four layers that make it unreachable.
+
+So: **adequacy is advisory, representability is blocking.** A check that reports
+"your box is small" must not stop the run; a check that reports "this box is not
+a box" must.
+| **R5** | **One channel means one channel.** A finding never travels as a Python `warnings.warn` — it cannot reach a web user. Code that wants to warn returns an `Issue` from a validator. | `test_no_warnings_warn_in_emitters` |
+| **R6** | **Visible before the irreversible step.** Findings accompany the artifact at render time *and* the preflight — before engine input is written or a job is submitted, never after. | endpoint tests |
+
+```mermaid
+flowchart LR
+    M["molview.data<br/>(the fact holder)"] -->|"F1 factsForRequest()"| REQ["request body"]
+    REQ -->|"F2 body only, no disk"| S["Structure"]
+    S -->|"F4 cell = resolve_cell()"| V["validate(struct, cfg)<br/>the ONE gate"]
+    V -->|"List[Issue]"| J["R1 issues_to_json"]
+    J -->|"issues[]"| P["R2 validation-findings.js"]
+    P -->|"named a config field"| C["workflow-group card"]
+    P -->|"otherwise (R3)"| RES["residual structure panel"]
+```
+
+**Worked example — the thin vacuum that reached SIESTA (2026-07-29).** A user
+generated `hemeC-dithiol` with 2.5 Å of vacuum per side. Two checks had
+something to say and neither arrived: `validate_geometry`'s image-distance check
+was skipped (no `cell` passed — F4), and the emitter's vacuum advice went to
+`stderr` (a `warnings.warn` — R5). SIESTA itself reported the consequence
+(*"Gamma-point calculation with multiply-connected orbital pairs"* — basis
+orbitals overlapping the periodic images), which is not an error but means the
+molecule interacted with its own copies. Under this contract the same run
+surfaces `cell.image_distance` (`warn`, "min atom-to-nearest-image distance is
+5.15 Å") in the structure panel *before* the deck is written, with the actionable
+number in the message.
+
+---
+
 ## 5. Pattern-B — regions the engine doesn't consume
 
 When `struct.regions` is populated but the engine doesn't consume region labels,

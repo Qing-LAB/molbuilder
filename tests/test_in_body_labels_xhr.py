@@ -11,8 +11,8 @@ flows through ``apply_labels_to_struct`` and asserts:
   * In-body ``frozen_atoms = []`` is an explicit "no labels"
     claim -- the server applies it AND does NOT fall back to the
     sidecar.
-  * In-body labels WIN over a disagreeing on-disk sidecar (the
-    viewer-is-truth rule).
+  * In-body labels are the ONLY labels: a disagreeing -- or stale, or
+    corrupt -- on-disk sidecar cannot reach an emitted deck at all.
   * Out-of-range / wrong-type indices are rejected with a clear
     warn-severity notice rather than silently corrupting the
     output.
@@ -20,6 +20,17 @@ flows through ``apply_labels_to_struct`` and asserts:
 Pre-2026-06-14 the whole contract was checked only at source-text
 level -- a regression that made ``apply_labels_to_struct`` ignore
 in-body keys would have passed CI.  These tests close that gap.
+
+WHERE THE RULE LIVES: the "viewer is truth" idea graduated on 2026-07-29 into
+clause **F2** of the delivery contract, docs/science/validation.md § 4.1 -- the
+server builds an emitted structure from the request BODY alone, and the sidecar
+is never read for one.  Two consequences these tests now pin: omitting the label
+keys declares NO labels (it does not trigger a disk read), and ``structure_path``
+is not a label source even though it still travels for pseudopotential and
+dest-dir resolution.  The client half of F1 -- one accessor
+(``molview.data.factsForRequest()``) assembling coordinates, labels and
+periodicity together so a tab cannot send a partial set -- is pinned in
+tests/test_validation_delivery_contract.py.
 """
 from __future__ import annotations
 
@@ -76,6 +87,14 @@ def _post_pyscf(web, **body) -> dict:
 
 
 class TestBuildFdfInBodyLabels:
+    """PINS: docs/science/validation.md § 4.1 clause F2 — no server-side second
+    source — on the SIESTA /api/build/fdf seam.
+
+    INVARIANT: ``frozen_atoms`` / ``regions`` in the request body ARE the labels;
+    an empty list / dict is the client's explicit "nothing to declare", and
+    omitting the keys declares no labels rather than triggering a disk read.
+    Out-of-range or wrong-typed indices are refused instead of being coerced.
+    """
 
     def test_in_body_frozen_atoms_reach_the_fdf(self, web):
         """The smoking gun: the rendered .fdf MUST contain a
@@ -133,23 +152,56 @@ class TestBuildFdfInBodyLabels:
             "``[]``."
         )
 
-    def test_missing_key_falls_back_to_sidecar_path(self, web):
-        """Absent in-body keys are the legacy ``structure_path``
-        flow.  No sidecar on disk = no labels.  Pin that the
-        fall-through still works (back-compat)."""
-        # Inline POST so the status_code check + body negative-
-        # assertion live in the same scope -- satisfies the
-        # tests/test_negative_body_assert_lint.py guard (a 404 must
-        # not silently pass the "Constraints block not present"
-        # check against the Flask error page).
+    def test_a_named_disk_path_is_not_a_label_source(self, web, tmp_path):
+        """Contract F2 (science/validation.md 4.1): the server builds an emitted
+        structure from the BODY alone.
+
+        This used to fall back to a disk sidecar read against
+        ``structure_path``, so an emitted deck could carry labels the model had
+        already changed.  ``structure_path`` still travels (it anchors
+        pseudopotential + dest-dir resolution) -- it is simply not a source of
+        labels any more, and omitting the label keys means "no labels".
+        """
+        xyz_file = tmp_path / "probe.xyz"
+        xyz_file.write_text(_XYZ, encoding="utf-8")
+        # A sidecar that WOULD have frozen atom 0 under the old behaviour.
+        import hashlib, json as _json
+        (tmp_path / "probe.molstruct.json").write_text(_json.dumps({
+            "schema_version": 3,
+            "n_atoms_total": len([l for l in _XYZ.strip().splitlines()[2:] if l.strip()]),
+            "structure_hash": hashlib.sha256(xyz_file.read_bytes()).hexdigest(),
+            "regions": {}, "frozen_atoms": [0], "selection_rules": {},
+        }), encoding="utf-8")
+        r = web.post("/api/build/fdf", json={
+            "xyz": _XYZ, "params": {}, "structure_path": str(xyz_file)})
+        assert r.status_code == 200
+        body = r.get_json() or {}
+        assert body.get("ok") is True
+        assert "%block Geometry.Constraints" not in body.get("fdf", ""), (
+            "the disk sidecar's frozen atom leaked into the emitted deck")
+
+    def test_explicit_empty_label_keys_are_a_valid_claim(self, web):
+        """The other half of F2: `{}` / `[]` IS the client saying "nothing to
+        declare", and it emits cleanly with no Constraints block."""
         r = web.post(
             "/api/build/fdf",
-            json={"xyz": _XYZ, "params": {}},
+            json={"xyz": _XYZ, "params": {},
+                  "regions": {}, "frozen_atoms": []},
         )
         assert r.status_code == 200
         body = r.get_json() or {}
         assert body.get("ok") is True
-        # Without a sidecar, no Constraints block.
+        assert "%block Geometry.Constraints" not in body.get("fdf", "")
+
+    def test_no_path_and_no_label_keys_means_no_labels(self, web):
+        """A body with neither label keys nor a disk path is unambiguous --
+        there is no second source to confuse it with, so it means what it
+        says.  Demanding two empty keys from such a caller would be ceremony
+        with no information in it."""
+        r = web.post("/api/build/fdf", json={"xyz": _XYZ, "params": {}})
+        assert r.status_code == 200
+        body = r.get_json() or {}
+        assert body.get("ok") is True
         assert "%block Geometry.Constraints" not in body.get("fdf", "")
 
     @pytest.mark.parametrize(
@@ -228,6 +280,14 @@ class TestBuildFdfInBodyLabels:
 
 
 class TestBuildPyscfInBodyLabels:
+    """PINS: docs/science/validation.md § 4.1 clause F2 — no server-side second
+    source — on the PySCF /api/build/pyscf seam.
+
+    INVARIANT: ``frozen_atoms`` / ``regions`` in the request body ARE the labels;
+    an empty list / dict is the client's explicit "nothing to declare", and
+    omitting the keys declares no labels rather than triggering a disk read.
+    Out-of-range or wrong-typed indices are refused instead of being coerced.
+    """
 
     def test_in_body_frozen_atoms_reach_the_script(self, web):
         """PySCF emits frozen_atoms as a constraints-file reference

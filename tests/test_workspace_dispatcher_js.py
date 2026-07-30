@@ -216,6 +216,10 @@ _DATA_SURFACE = sorted([
     "getVacuumInfo",
     "getAxisKindInfo", "getAtomsByLabel", "getLabelAtoms", "getLabels",
     "getFrozen", "getRegions",
+    # F1 (science/validation.md 4.1): THE request fact payload -- coordinates +
+    # labels + periodicity assembled in one place, read live, so no tab can send
+    # a partial or stale set of facts to a validating endpoint.
+    "factsForRequest",
     "draftIdentity", "suspendPersist",
     "resumePersist", "isPersistSuspended", "onPersistStateChange",
     "commitPeriodicityOp", "setLabel", "isDirty", "isEmpty",

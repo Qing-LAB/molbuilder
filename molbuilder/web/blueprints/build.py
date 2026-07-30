@@ -938,10 +938,10 @@ def api_build_fdf():
         return jsonify({"ok": False,
                         "error": f"could not parse xyz: {exc}"}), 400
 
-    # 2026-06-14 contract update: prefer in-body labels (the
-    # viewer-is-truth contract); fall back to disk sidecar lookup
-    # against ``structure_path`` only when neither in-body key was
-    # sent.  See _shared.apply_labels_to_struct docstring.
+    # F2 (science/validation.md 4.1): labels come from the BODY, which the
+    # viewer model fills via factsForRequest().  A body that omits them is a
+    # 400 -- there is no disk fallback, so an emitted deck can never mix body
+    # geometry with disk labels the model has since changed.
     from ._shared import apply_labels_to_struct, apply_periodicity_from_body
     sidecar_notice = apply_labels_to_struct(struct, body)
     # The tab-emit contract: the body carries the MODEL's periodicity

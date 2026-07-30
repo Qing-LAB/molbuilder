@@ -17,7 +17,7 @@ from molbuilder.issues import Issue, ValidationError
 from molbuilder.pyscf import PySCFConfig
 from molbuilder.siesta import SiestaConfig
 from molbuilder.structure import Structure
-from molbuilder.validation import report, validate
+from molbuilder.validation import report, validate, validate_geometry
 from ._helpers import _vacuum_cell
 
 
@@ -419,3 +419,88 @@ def test_atoms_inside_with_no_wrap_no_warn(water_struct):
     )
     issues = validate(s, cfg, cell=cell)
     assert [i for i in issues if i.where == "config.wrap_into_cell"] == []
+
+
+class TestImageDistanceOnlyCrossesVacuum:
+    """The image-distance check measures ARTEFACTS, so it may only step along
+    isolated (vacuum) axes.
+
+    Along a periodic axis the neighbouring cell holds the crystal's real
+    neighbours -- bulk gold sits 2.88 Å across the boundary by construction --
+    and along a transport axis the device is meant to tile seamlessly.  Stepping
+    there reported the intended physics as a defect: a warn on every crystal and
+    every junction (owner's catch, 2026-07-29).  Same reasoning as containment
+    being required on non-periodic axes only (structure-periodicity.md § 2).
+    """
+
+    @staticmethod
+    def _au_bulk():
+        """4 Au atoms in a 2.88 Å cube: nearest neighbours ARE across the
+        boundary."""
+        s = Structure(elements=["Au"] * 4,
+                      positions=np.array([[0.00, 0.00, 0.00],
+                                          [1.44, 1.44, 0.00],
+                                          [1.44, 0.00, 1.44],
+                                          [0.00, 1.44, 1.44]]))
+        s.cell = np.diag([2.88, 2.88, 2.88])
+        return s
+
+    def _wheres(self, s):
+        return {i.where for i in validate_geometry(s, s.resolve_cell())}
+
+    def test_a_fully_periodic_crystal_is_not_reported(self):
+        """A 3-D crystal has no vacuum direction, so it has no artificial
+        images at all and the check is NOT APPLICABLE -- which is different from
+        a check that could not run, so it stays quiet rather than reporting
+        itself (contrast clause F4's "say so as info" in
+        docs/science/validation.md § 4.1)."""
+        s = self._au_bulk()
+        s.axis_kind = ("periodic", "periodic", "periodic")
+        s.__post_init__()
+        assert "cell.image_distance" not in self._wheres(s)
+
+    def test_a_transport_axis_is_not_reported_either(self):
+        """The device tiles along the transport direction by design."""
+        s = self._au_bulk()
+        s.axis_kind = ("periodic", "periodic", "transport")
+        s.__post_init__()
+        assert "cell.image_distance" not in self._wheres(s)
+
+    def test_a_slab_is_measured_across_its_vacuum_axis_only(self):
+        """periodic in-plane, isolated out-of-plane: the out-of-plane gap is
+        exactly what should be checked."""
+        s = Structure(elements=["Au", "Au"],
+                      positions=np.array([[0.0, 0.0, 0.0], [1.44, 1.44, 0.0]]),
+                      vacuum=(0.0, 0.0, 1.0))
+        s.cell = np.diag([2.88, 2.88, 2.0])
+        s.axis_kind = ("periodic", "periodic", "isolated")
+        s.__post_init__()
+        found = [i for i in validate_geometry(s, s.resolve_cell())
+                 if i.where == "cell.image_distance"]
+        assert found, "the slab's vacuum gap must still be checked"
+        # 2.0 Å cell along c with a flat slab -> the images are 2 Å apart.
+        assert "2.00" in found[0].message
+        # And the message says WHICH direction was measured.
+        assert "direction(s) c" in found[0].message
+
+    def test_an_all_isolated_molecule_is_measured_in_every_direction(self):
+        """The hemeC shape: every axis is vacuum, so every axis is measured and
+        the message names all three."""
+        s = Structure(elements=["C", "C"],
+                      positions=np.array([[0.0, 0.0, 0.0], [1.4, 0.0, 0.0]]),
+                      vacuum=(1.0, 1.0, 1.0))
+        found = [i for i in validate_geometry(s, s.resolve_cell())
+                 if i.where == "cell.image_distance"]
+        assert found and "direction(s) a, b, c" in found[0].message
+
+    def test_the_helper_refuses_to_step_where_it_was_not_asked(self):
+        """Unit-level: a translation along a non-permitted axis must not be
+        considered even when it is the shortest one."""
+        from molbuilder.validation.geometry import _min_image_distance
+        pos = np.array([[0.0, 0.0, 0.0]])
+        cell = np.diag([2.0, 40.0, 40.0])     # x images are 2 Å away
+        assert _min_image_distance(pos, cell, axes=[0]) == pytest.approx(2.0)
+        # Not allowed to step along x -> the nearest permitted image is 40 Å.
+        assert _min_image_distance(pos, cell, axes=[1, 2]) == pytest.approx(40.0)
+        # Nothing steppable at all -> no artificial images exist.
+        assert _min_image_distance(pos, cell, axes=[]) == float("inf")

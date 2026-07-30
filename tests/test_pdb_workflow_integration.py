@@ -271,6 +271,13 @@ class TestPdbWorkflowEndToEnd:
         r = web.post("/api/spectra/render", json={
             "structure_text": pdb_path.read_text(),
             "structure_path": self._path(pdb_path),
+            # F2 (docs/science/validation.md 4.1): the STRUCTURE's labels reach
+            # the server in the body, as the tab sends them.  Pattern A is the
+            # divergence between this structure-side claim and the FORM's
+            # (params.frozen_indices, absent here) -- so the delivery moves but
+            # the two-sided comparison under test does not.
+            "frozen_atoms":   [0, 1, 2],
+            "regions":        {"L-electrode": [3, 4]},
             # Both PDB fixtures (synthetic tripeptide + user's 1c75)
             # have odd electron counts at charge=0, so spin=0 fails
             # the parity check added 2026-05-22.  Pass charge=0,
@@ -360,6 +367,11 @@ class TestPdbWorkflowEndToEnd:
         r = web.post("/api/spectra/render", json={
             "structure_text": pdb_path.read_text(),
             "structure_path": self._path(pdb_path),
+            # F2: the structure-side claim rides in the body; the FORM is
+            # cleared in params.  The whole point is that these DISAGREE and the
+            # user is told, rather than the override being absorbed silently.
+            "frozen_atoms":   [0, 1, 2],
+            "regions":        {},
             "params":         {"frozen_indices": "",
                                  "charge": 0, "spin": 1, "method": "UKS"},
         })
@@ -446,12 +458,20 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
         on_disk = json.loads(sidecar.read_text())
         assert on_disk["frozen_atoms"] == [0, 4, 7]
 
-    def test_step_b_build_fdf_sees_sidecar_via_structure_path(
+    def test_step_b_build_fdf_emits_constraints_for_frozen_atoms(
             self, web, simple_pdb_under_root):
-        """The actual regression catch: POST /api/build/fdf with
-        structure_path pointing at the .pdb, and the emitted FDF
-        MUST contain %block Geometry.Constraints with 1-based
-        indices = [1, 5, 8]  (the sidecar's [0, 4, 7] shifted +1)."""
+        """The regression catch: frozen atoms must reach the emitted FDF as
+        ``%block Geometry.Constraints`` with 1-BASED indices [1, 5, 8] (the
+        model's 0-based [0, 4, 7] shifted +1), and the validator must say so.
+
+        The frozen list now travels in the REQUEST BODY, as the tab sends it
+        (``molview.data.factsForRequest()``).  Before F2
+        (docs/science/validation.md § 4.1) this test delivered it by writing a
+        sidecar next to the .pdb and letting the server read it -- the second
+        source the contract removed, because an emitted deck must never mix body
+        geometry with disk labels the model may have changed.  The sidecar is
+        still seeded here: step_a asserts the SAVE path writes it, and it must
+        now be visibly irrelevant to what the deck contains."""
         pdb_path = simple_pdb_under_root
         # Re-save sidecar (this test runs independently of step_a in
         # principle, though pytest's order makes it sequential here).
@@ -471,15 +491,18 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
                                           # block is meaningful
             },
             "structure_path": str(pdb_path.resolve()),
+            # F2: labels are a BODY fact; the sidecar on disk is not read.
+            "frozen_atoms":   [0, 4, 7],
+            "regions":        {},
         })
         assert r.status_code == 200, r.data
         body = r.get_json()
         # The actual regression check:
         assert "%block Geometry.Constraints" in body["fdf"], (
-            "/api/build/fdf didn't emit Geometry.Constraints even "
-            "though the .molstruct.json sidecar next to the structure "
-            "has frozen_atoms = [0, 4, 7].  The sidecar -> Structure "
-            "-> render_fdf wiring is broken (2026-05-25 regression)."
+            "/api/build/fdf didn't emit Geometry.Constraints even though the "
+            "request carried frozen_atoms = [0, 4, 7].  The body -> Structure "
+            "-> render_fdf wiring is broken (2026-05-25 regression; the "
+            "delivery moved from the disk sidecar to the body with F2)."
         )
         assert "position 1 5 8" in body["fdf"], (
             f"Expected 1-based indices ``position 1 5 8`` but got fdf:\n"
@@ -489,13 +512,16 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
         info = [i for i in body["issues"]
                 if i["where"] == "config.frozen_atoms"]
         assert info, (
-            "Sidecar applied but validator didn't emit the "
+            "frozen_atoms applied but the validator didn't emit the "
             "``N atom(s) held fixed`` info line -- the user gets no "
-            "preflight signal that frozen_atoms made it through."
+            "preflight signal that they made it through (clause R6: findings "
+            "accompany the artifact, docs/science/validation.md § 4.1)."
         )
 
-    def test_step_c_build_pyscf_also_sees_sidecar(self, web, simple_pdb_under_root):
-        """Same wiring check for PySCF Build."""
+    def test_step_c_build_pyscf_also_emits_frozen_constraints(
+            self, web, simple_pdb_under_root):
+        """Same wiring check for PySCF Build: the frozen list travels in the
+        body (F2) and must reach the emitted script's constraints file."""
         pdb_path = simple_pdb_under_root
         _seed_sidecar_for(pdb_path, n_atoms=10, frozen=[0, 4, 7])
         from molbuilder.structure import Structure
@@ -511,6 +537,8 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
                 "method":    "UKS",
             },
             "structure_path": str(pdb_path.resolve()),
+            "frozen_atoms":   [0, 4, 7],      # F2: a body fact, not a disk read
+            "regions":        {},
         })
         assert r.status_code == 200, r.data
         body = r.get_json()

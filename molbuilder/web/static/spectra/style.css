@@ -137,48 +137,15 @@ button > code {
  * global --error (was the softer panel --ps-danger-fg) — one severity palette. */
 
 /* ---- Issues panel ---- */
-
-.issues-panel {
-    display: grid;
-    gap: 0.45rem;
-}
-/* 2026-05-28 [hidden]-attribute audit (same pattern as the matching
- * rule in style.css for the Build issues panel): ``display: grid``
- * ties with the UA ``[hidden]`` rule and wins, so the panel was
- * always-visible at page load.  Explicit guard restores the
- * attribute-driven visibility. */
-.issues-panel[hidden] { display: none; }
-.issue {
-    padding: 0.45rem 0.7rem;
-    border-radius: 6px;
-    border: 1px solid var(--border-soft);
-    font-size: 0.88rem;
-    line-height: 1.4;
-}
-.issue.error  { border-color: var(--ps-danger); background: var(--sp-exclude-bg); }
-.issue.warn   { border-color: var(--ps-warn-bg); background: var(--ps-warn-bg); }
-.issue.info   { border-color: var(--sp-accent); background: var(--sp-accent-bg); }
-.issue .badge {
-    display: inline-block;
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    padding: 0.05rem 0.45rem;
-    border-radius: 3px;
-    margin-right: 0.4rem;
-    vertical-align: 1px;
-}
-.issue.error .badge { background: var(--ps-danger); color: var(--ps-selected-fg); }
-.issue.warn  .badge { background: var(--ps-warn-bg); color: var(--ps-selected-fg); }
-.issue.info  .badge { background: var(--sp-accent); color: var(--ps-selected-fg); }
-.issue .where {
-    margin-left: 0.4rem;
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-    background: var(--bg-input);
-    padding: 0.05rem 0.4rem;
-    border-radius: 3px;
-}
+/* The findings panel is styled ONCE, in lib/form-components.css
+ * (.issues-panel + .issue-item + data-severity).  This page used to
+ * re-declare .issues-panel with ``display: grid`` -- loading after the
+ * shared sheet, so grid won here and the shared flex row layout silently
+ * behaved differently on this one page (logged as debt in the migration
+ * archive; a one-owner violation per docs/web/ui-contract.md 1).  It also
+ * carried a SECOND row vocabulary (.issue / .badge / .where) for its own
+ * renderer.  Both are gone with that renderer: findings now come from
+ * lib/validation-findings.js in the one shared shape. */
 
 /* ---- Generated-script preview ---- */
 

@@ -33,6 +33,7 @@ Design notes
 import argparse
 import json
 import os
+import fcntl
 import subprocess
 import sys
 import time
@@ -51,6 +52,49 @@ BATCHES = {
 
 def _progress_path(batch):
     return os.path.join(PROGRESS_DIR, f"{batch}.jsonl")
+
+
+def _lock_path(batch):
+    return os.path.join(PROGRESS_DIR, f"{batch}.lock")
+
+
+def _acquire_batch_lock(batch):
+    """Take an exclusive lock for this batch, or return None if held.
+
+    ``flock`` on a lock file, which is the whole mechanism: the kernel releases
+    it when this process exits -- normally, on Ctrl-C, or on SIGKILL -- so there
+    is no stale state to detect and nothing to clean up.  The returned handle
+    must stay open for the run's lifetime (keep it in a local).
+
+    Deliberately NOT a pid file: that needs liveness probing, /proc reading to
+    survive pid reuse, and deleting files we inferred were stale -- inference
+    plus deletion, to solve a problem the kernel already solves.  The lock file
+    itself is left in place; it holds no state.
+
+    The pid inside is advisory only, so a refusal can name who holds it.
+    """
+    os.makedirs(PROGRESS_DIR, exist_ok=True)
+    fh = open(_lock_path(batch), "a+")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:                     # held by another run
+        fh.close()
+        return None
+    fh.seek(0)
+    fh.truncate()
+    fh.write(str(os.getpid()))
+    fh.flush()
+    return fh
+
+
+def _lock_holder(batch):
+    """Best-effort pid of the run holding the lock, or None.  Informational
+    only -- never used to decide anything."""
+    try:
+        text = open(_lock_path(batch)).read().strip()
+        return int(text) if text else None
+    except (OSError, ValueError):
+        return None
 
 
 def _read_events(path):
@@ -113,12 +157,45 @@ def cmd_run(args):
         sel = [args.batch] + list(extra)
         batch_file = "custom"
     prog = _progress_path(batch_file)
+
+    # One run per batch.  Two runs of the same batch append to one progress
+    # file, and the interleaved events make `status` nonsense -- more tests
+    # "ran" than were collected, the two runs' failures mixed, and the first
+    # run's "done" reported while the second is still going.  That cost real
+    # debugging time on 2026-07-29.  (Different batches are fine and intended:
+    # separate files, separate locks.)
+    lock = _acquire_batch_lock(batch_file)
+    if lock is None:
+        holder = _lock_holder(batch_file)
+        who = f" (pid {holder})" if holder else ""
+        if not args.force:
+            print(f"[testrun] REFUSING: batch {batch_file!r} is already "
+                  f"running{who}.", file=sys.stderr)
+            print(f"[testrun]   watch it: python tools/testrun.py status "
+                  f"{batch_file}", file=sys.stderr)
+            print(f"[testrun] Two runs of one batch share {prog} and make the "
+                  f"counts meaningless.  Pass --force to run anyway.",
+                  file=sys.stderr)
+            return 2
+        print(f"[testrun] --force: second {batch_file} run alongside the one "
+              f"already going{who}; both write {prog}, so `status "
+              f"{batch_file}` interleaves them until the older exits.",
+              file=sys.stderr)
+
     cmd = [sys.executable, "-m", "pytest", *sel,
            "-p", "tools.progress_plugin", f"--progress-file={prog}",
            "-q", "-rf", "--tb=line"]
     print(f"[testrun] batch={batch_file}  progress={prog}", flush=True)
     print("[testrun] " + " ".join(cmd), flush=True)
     # cache provider ON (default) so `run lf` works.
+    #
+    # ``lock`` stays in scope until this returns -- that is what holds it for
+    # the run's duration; the kernel drops it however we exit.  On the --force
+    # path it is None (the first run still holds it), so a THIRD run sees the
+    # batch as free and is allowed too.  That is the honest consequence of
+    # --force: it means "I accept an interleaved progress file", and pretending
+    # to serialise the forced runs against each other would be a half-guarantee
+    # worse than none.
     return subprocess.call(cmd, cwd=REPO)
 
 
@@ -168,6 +245,9 @@ def main(argv=None):
     pr = sub.add_parser("run", help="launch a batch with live progress")
     pr.add_argument("batch", help="none2e | e2e | all | lf | <target path>")
     pr.add_argument("targets", nargs="*", help="explicit pytest targets/args")
+    pr.add_argument("--force", action="store_true",
+                    help="run even if this batch is already running "
+                         "(their progress files will interleave)")
     pr.set_defaults(func=cmd_run)
 
     ps = sub.add_parser("status", help="summarise live progress")

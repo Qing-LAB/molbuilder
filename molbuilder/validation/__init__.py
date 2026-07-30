@@ -112,6 +112,28 @@ def _register_engine_validator(cfg_cls: Type):
 # --------------------------------------------------------------------- #
 
 
+def _structure_declares_a_box(struct: Structure) -> bool:
+    """True when this structure asks for a unit cell at all (F4).
+
+    ``resolve_cell()`` will happily hand back a bare bounding box for a
+    gas-phase molecule that never asked for one -- and for a PLANAR molecule
+    (water, benzene) that box has zero thickness, so a determinant check on it
+    reports a degenerate cell for a calculation that has no cell.  PySCF /
+    Spectra are gas-phase: there is no lattice to check.
+
+    A box is declared by an explicit ``cell``, a non-zero vacuum on some axis,
+    or a non-isolated axis kind (periodic / transport).  Anything else is a
+    molecule in free space, and the cell-dependent checks have nothing to say
+    about it.  (A SIESTA run with vacuum 0 still gets a clear degenerate-box
+    error, from ``render_fdf`` -- the engine that genuinely needs a box is the
+    right place for that.)"""
+    if struct.cell is not None:
+        return True
+    if any(float(v) > 0.0 for v in (struct.vacuum or ())):
+        return True
+    return any(k != "isolated" for k in (struct.axis_kind or ()))
+
+
 def validate(struct: Structure, cfg, *,
              cell: Optional[np.ndarray] = None,
              dest_dir: "Optional[object]" = None,
@@ -127,9 +149,19 @@ def validate(struct: Structure, cfg, *,
         config-field metadata pass runs on anything dataclass-shaped).
     cell
         Optional pre-computed (3, 3) lattice the generator is going
-        to use.  If None, cell-dependent checks are skipped.  The
-        SIESTA generator computes the cell anyway, so it should pass
-        the same matrix here.
+        to use.  **Omit it and the gate resolves the structure's own
+        cell** (``struct.resolve_cell()``) -- clause F4 of the
+        delivery contract (science/validation.md 4.1): a check must
+        never be silently skipped because a caller forgot an
+        argument.  Pass it only to validate a cell that differs from
+        the structure's (a generator overriding the box); an explicit
+        ``cell`` still wins.
+
+        This default is the fix for a real invisible failure: every
+        web caller omitted ``cell``, so the volume / determinant /
+        min-atom-to-nearest-image checks never ran in the browser --
+        a 2.5 A vacuum box reached SIESTA with nothing said
+        (2026-07-29).
     dest_dir
         Optional destination directory hint -- the path the user is
         about to save the rendered .fdf into.  Used by the SIESTA
@@ -156,6 +188,21 @@ def validate(struct: Structure, cfg, *,
     silent-skip class the backend-architecture review flagged; V1/V2).
     """
     issues: List[Issue] = []
+    # F4: resolve the structure's own box when the caller passed none, so the
+    # cell-dependent checks cannot go silent on an omitted argument.  A
+    # structure that cannot resolve a cell (a periodic axis with no explicit
+    # lattice, an empty structure) says so as `info` rather than skipping in
+    # silence -- the contract forbids a check disappearing without a trace.
+    if cell is None and _structure_declares_a_box(struct):
+        try:
+            cell = struct.resolve_cell()
+        except Exception as exc:              # noqa: BLE001 -- reported, not raised
+            cell = None
+            issues.append(Issue(
+                "info",
+                f"cell-dependent checks (volume, determinant, image distance) "
+                f"were skipped: this structure has no resolvable cell ({exc})",
+                "cell.unresolved"))
     issues += validate_geometry(struct, cell)
     issues += _validate_config_metadata(cfg)
 

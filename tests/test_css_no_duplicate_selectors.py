@@ -76,13 +76,14 @@ ALLOWLIST: dict[str, str] = {
     "header .tagline": "phase 3: scope per-tab .tagline overrides",
     # (`.viewer-controls` allowlist entry removed: it's no longer a cross-file
     #  duplicate -- only spectra/style.css defines it as a rule now.)
-    # Issues panel uses different DOM contracts on /spectra
-    # (`.issue` children) vs the optimization tab
-    # (`.issues-panel .issue-item` children).  Renaming the spectra
-    # variant to `.spectra-issues-panel` is the planned fix but
-    # touches the form-error rendering path — deferred to Phase 3.
-    ".issues-panel":          "phase 3: rename spectra variant to .spectra-issues-panel (different DOM contract)",
-    ".issues-panel[hidden]":  "phase 3: ditto",
+    # (`.issues-panel` + `.issues-panel[hidden]` allowlist entries removed
+    #  2026-07-29: the /spectra page no longer has its own findings renderer or
+    #  its own `.issue`/`.badge` row vocabulary, so the competing
+    #  `display: grid` declaration is gone and lib/form-components.css is the
+    #  single home.  The planned fix was a rename to `.spectra-issues-panel`;
+    #  deleting the duplicate DOM contract turned out to be the real fix --
+    #  one renderer, one row shape, one sheet.  See
+    #  docs/science/validation.md 4.1 contract R2.)
 }
 
 

@@ -79,13 +79,41 @@ def test_system_label_drives_filenames():
 
 
 def test_cell_rides_on_the_structure_no_separate_input():
-    """§ 15.6: the cell is carried by the structure.  A linear molecule with
-    NO vacuum has a degenerate box, so the producer (delegating to render_fdf)
-    raises -- identical to the single-.fdf path -- proving the cell is not a
-    separate producer input that could diverge."""
-    with pytest.raises(ValueError, match="degenerate|vacuum"):
-        build_siesta_stage_bundle(_h2(vacuum=(0.0, 0.0, 0.0)),
-                                  _publishable_cfg())
+    """§ 15.6: the cell is carried by the STRUCTURE, not handed to the producer
+    separately where the two could diverge.
+
+    Pinned directly: every stage's emitted lattice equals
+    ``struct.resolve_cell()``, and changing the structure's vacuum changes every
+    stage's lattice with it.  (This used to be probed indirectly -- a linear
+    molecule with no vacuum gave a degenerate box, so the producer raised like
+    the single-.fdf path.  The § 6.1 minimum-thickness floor deliberately made
+    that state legal -- 3 A/side rather than a zero-volume cell,
+    docs/model/structure-periodicity.md § 6.1 -- so the old probe no longer
+    fires.  Asserting the lattice itself is what the section actually claims,
+    and it cannot be satisfied by a stale separate input.)"""
+    def _lattices(bundle):
+        out = []
+        for text in bundle.fdf_files.values():
+            block = text.split("%block LatticeVectors")[1].split("%endblock")[0]
+            out.append(np.array([[float(x) for x in row.split()]
+                                 for row in block.strip().splitlines()]))
+        return out
+
+    tight = _h2(vacuum=(4.0, 4.0, 4.0))
+    roomy = _h2(vacuum=(9.0, 9.0, 9.0))
+    tight_bundle = build_siesta_stage_bundle(tight, _publishable_cfg())
+    roomy_bundle = build_siesta_stage_bundle(roomy, _publishable_cfg())
+
+    assert _lattices(tight_bundle), "no stage files produced"
+    for lat in _lattices(tight_bundle):
+        assert np.allclose(lat, tight.resolve_cell()), (
+            "a stage's lattice does not match the structure's resolved cell — "
+            "the cell is coming from somewhere other than the structure")
+    # The vacuum is a STRUCTURE fact, so a different structure gives a
+    # different box in every stage; a separate producer input would not move.
+    for lat_t, lat_r in zip(_lattices(tight_bundle), _lattices(roomy_bundle)):
+        assert not np.allclose(lat_t, lat_r)
+        assert np.allclose(lat_r, roomy.resolve_cell())
 
 
 def test_no_enabled_stage_raises():

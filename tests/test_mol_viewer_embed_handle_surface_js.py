@@ -58,6 +58,13 @@ EXPECTED_METHODS = sorted([
     "setStructure", "appendFrames",
     # Style + overlays + projection
     "setStyle", "setAxes", "setCell", "setLabels", "setAtomLabels",
+    # setCellBox: geometry-only cell update (box + origin), added 2026-07-29 so
+    # the periodicity tier can move the wireframe without re-sending style or
+    # re-installing the model -- the one-onChange path in
+    # docs/model/structure-periodicity.md § 7 drives it via
+    # molview/engine/embed-io.js:setCellGeometry.  setCell stays the
+    # style+visibility door; this one only moves the box.
+    "setCellBox",
     "setArrows", "setOverlay", "setPick", "setBackground",
     "setOverlays", "setSelectionHalo", "setAtomStyle", "setProjection",
     # Camera

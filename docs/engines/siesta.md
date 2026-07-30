@@ -159,15 +159,32 @@ Resolved charge is computed **once** per `render_fdf`, via
 A non-zero result emits `NetCharge ±N` (with a verbose comment naming the source:
 "user-specified" or "auto (phosphate protonation)").
 
-**Vacuum for charged systems — warn, never mutate.** The cell comes from
+**Vacuum adequacy — report, never mutate.** The cell comes from
 `struct.resolve_cell()` (isolated axes = bbox + 2·vacuum — see
 [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)); there is
-**no `cfg.cell_padding`** field. When a charged system has an isolated axis with
-< 25 Å vacuum (`_VACUUM_MIN_CHARGED = 25.0`, `input.py:304`) the emitter **warns**
-(`_warn_insufficient_vacuum`, `:307`, "WARN never mutate") and leaves the cell
-untouched — it does **not** silently resize. ≥ 25 Å is what SIESTA's
-compensating-background-charge correction needs for image–image Coulomb to drop
-below ~1 meV (Makov-Payne scaling — see References); a neutral molecule doesn't need it.
+**no `cfg.cell_padding`** field. Too little vacuum on an isolated axis is
+**reported and never fixed for you**: the geometry is the user's, so molbuilder
+says what is wrong and leaves it alone. The thresholds are
+`_VACUUM_MIN_NEUTRAL = 8.0` and `_VACUUM_MIN_CHARGED = 25.0`
+(`validation/siesta.py`). ≥ 25 Å is what SIESTA's compensating-background-charge
+correction needs for image–image Coulomb to drop below ~1 meV (Makov-Payne
+scaling — see References); a neutral molecule needs ≥ 8 Å, enough that basis
+orbitals (4–7 Å per atom at DZP) cannot reach across the gap, which is 2×vacuum.
+
+The check is a **validator** (`_check_siesta_vacuum_adequacy`, emitting
+`cell.vacuum_thin`), not a Python warning inside the emitter. It used to be
+`warnings.warn` in `input.py`, which reached the server's stderr and therefore no
+web user at all — a 2.5 Å box went to SIESTA with nothing said, and the user
+learnt of it only from SIESTA's own *"multiply-connected orbital pairs"* message.
+As an `Issue` the same advice reaches the browser panel and the CLI report alike;
+that is clause **R5** of the delivery contract,
+[`science/validation.md`](?doc=science/validation.md) § 4.1.
+
+Distinct from adequacy, and much smaller: the § 6.1 **minimum-thickness floor**
+gives an isolated axis at least 3 Å per side when the derived box would otherwise
+be thinner than that, so a flat or linear molecule cannot produce a zero-volume
+cell SIESTA would refuse to run. That floor keeps the cell *well-formed*; it says
+nothing about the vacuum being *enough*, which is what the check above is for.
 
 *(When the resolved charge ≠ 0, `convert()` additionally writes a
 `makov_payne_correction.py` post-process script — `siesta/makov_payne.py:80,153` —

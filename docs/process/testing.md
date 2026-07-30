@@ -128,6 +128,48 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   isolation but wrong once composed with a sibling piece of state. These get an
   explicit test that exercises the *combination*, not each part alone.
 
+## 6.1 How to actually run the suite — `tools/testrun.py`
+
+Use the project's runner. It exists because a bare `pytest` gives you nothing
+until it exits ~25 minutes later, and piping it to a file or through `tail` is
+worse than nothing: the output buffers until the process ends, and a `tail`
+silently truncates the failure list, so you draw conclusions from a fraction of
+the failures.
+
+```bash
+python tools/testrun.py run none2e   # every non-e2e test (run it in the background)
+python tools/testrun.py run e2e      # the Playwright batch
+python tools/testrun.py run lf       # rerun ONLY the last run's failures
+python tools/testrun.py status              # live summary of every batch
+python tools/testrun.py status --fails      # every failed id + its reason
+python tools/testrun.py failed none2e       # bare node-ids, to feed back to pytest
+```
+
+`tools/progress_plugin.py` streams **each test outcome** to
+`.test-progress/<batch>.jsonl`, flushed per test, so `status` is accurate *while
+the run is in flight* and readable from any other shell or session — the path is
+stable and git-ignored, never a job-specific temp file. The two batches are
+single-process, so `none2e` and `e2e` can run concurrently on a multi-core box
+without contention.
+
+The working loop this enables: launch a batch, read `status --fails`, fix, then
+`run lf` to verify just those failures instead of paying for a whole re-run, and
+finally one clean full batch before committing.
+
+> **Why this is documented so emphatically.** On 2026-07-29 a session ran three
+> full sweeps as `pytest … | tail -14`, saw 7 of 31 failures, inferred the rest
+> from whichever files it was already touching, and pushed two regressions as a
+> result — a half-migrated per-slot map in `warning-modal.js`, and a new embed
+> handle method missing from its documented-surface list. Both were sitting in
+> the 24 failures the `tail` had cut off. `status --fails` shows all of them in
+> one line each.
+
+Two habits that go with it: never conclude "the suite is green" from a truncated
+view, and when an unfamiliar test fails, check it against `HEAD` in a throwaway
+`git worktree` before assuming it is someone else's problem — that is how you
+tell a regression you just pushed from breakage that was already there, and it
+takes a few seconds.
+
 ## 7. What gates a commit
 
 There is **no CI** — enforcement is the **pre-commit hook**

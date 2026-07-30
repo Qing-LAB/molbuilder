@@ -8,7 +8,7 @@ file is an organizational move, not a behaviour change.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -119,35 +119,40 @@ def validate_geometry(struct: Structure,
                 "cell.volume",
             ))
 
-    # Atom-to-nearest-image (PBC minimum-image distance).
-    # For each atom, find the closest image of any OTHER atom under
-    # the lattice translations spanning the 27 nearest cells.  When
-    # this is < 6 Å (a generous "atoms close enough to interact"
-    # threshold; below the typical electronic exchange-correlation
-    # cutoff), warn -- the user is likely seeing image-image overlap.
-    if n >= 2:
-        try:
-            inv = np.linalg.inv(cell)
-        except np.linalg.LinAlgError:
-            inv = None
-        if inv is not None:
-            min_image = _min_image_distance(pos, cell, inv)
-            if min_image < 6.0:
-                issues.append(Issue(
-                    "warn",
-                    f"min atom-to-nearest-image distance is "
-                    f"{min_image:.2f} Å -- molecule images interact through "
-                    f"the periodic boundary; increase the cell or the "
-                    f"structure's vacuum so this exceeds ~6 Å",
-                    "cell.image_distance",
-                ))
+    # Atom-to-nearest-image (PBC minimum-image distance) along the VACUUM
+    # directions only.  Stepping along a periodic axis would measure the
+    # crystal's own neighbours (bulk gold: 2.88 A across the boundary, by
+    # construction) and along a transport axis the device's intended tiling --
+    # reporting the physics as a defect.  Only an ISOLATED axis has images that
+    # are an artefact of the box, so only those are stepped
+    # (structure-periodicity.md 2: the same reason containment is required on
+    # non-periodic axes only).  A fully periodic cell has no vacuum direction
+    # and the check is simply not applicable -- that is different from a check
+    # that could not run, so it stays quiet rather than emitting an info.
+    _kinds = struct.axis_kind or ("isolated", "isolated", "isolated")
+    _vac_axes = [i for i, k in enumerate(_kinds) if k == "isolated"]
+    if n >= 2 and _vac_axes:
+        min_image = _min_image_distance(pos, cell, axes=_vac_axes)
+        if min_image < 6.0:
+            _dirs = ", ".join("abc"[i] for i in _vac_axes)
+            issues.append(Issue(
+                "warn",
+                f"min atom-to-nearest-image distance is "
+                f"{min_image:.2f} Å across the vacuum direction(s) {_dirs} -- "
+                f"molecule images interact through the periodic boundary; "
+                f"increase the cell or the structure's vacuum so this exceeds "
+                f"~6 Å",
+                "cell.image_distance",
+            ))
 
     return issues
 
 
 def _min_image_distance(positions: np.ndarray,
                         cell: np.ndarray,
-                        inv:  np.ndarray) -> float:
+                        inv:  np.ndarray = None,
+                        *,
+                        axes: Optional[Sequence[int]] = None) -> float:
     """Closest distance between any atom and any atom in a NEIGHBOURING
     cell (translation != (0, 0, 0)).
 
@@ -155,18 +160,37 @@ def _min_image_distance(positions: np.ndarray,
     are real bonds, not images.  We only care about how close the
     molecule sits to its periodic copies.
 
-    For each atom i, distance to (atom j shifted by t) is computed
-    over all 26 non-identity lattice translations and over all atoms
-    j (including j == i, which is "this atom seeing its own copy").
+    ``axes`` restricts which lattice directions may be stepped along.  This is
+    the difference between a real finding and a false alarm: along an
+    **isolated** (vacuum) axis a close image is an artefact of the box, but
+    along a **periodic** axis the neighbouring cell holds the crystal's real
+    neighbours -- bulk gold sits 2.88 Å across the boundary BY CONSTRUCTION --
+    and along a **transport** axis the device is meant to tile seamlessly.
+    Stepping along those would report the intended physics as a defect
+    (a false positive on every crystal and every junction).  ``None`` steps
+    along all three (the caller has decided they are all vacuum-like).
+
+    For each atom i, distance to (atom j shifted by t) is computed over the
+    permitted non-identity lattice translations and over all atoms j (including
+    j == i, which is "this atom seeing its own copy").
+
+    (``inv`` is vestigial -- the distances are computed in Cartesian space, so
+    no inverse is needed.  Kept as an optional positional so existing callers
+    keep working.)
     """
     n = positions.shape[0]
     if n == 0:
         return float("inf")
-    # 26 non-identity translations spanning the immediate neighbour shell.
+    steppable = tuple(range(3)) if axes is None else tuple(axes)
+    if not steppable:
+        return float("inf")          # nothing vacuum-like: no artificial images
+    # Non-identity translations spanning the immediate neighbour shell, but
+    # only along the permitted axes.
+    ranges = [(-1, 0, 1) if i in steppable else (0,) for i in range(3)]
     shifts = [(a, b, c)
-              for a in (-1, 0, 1) for b in (-1, 0, 1) for c in (-1, 0, 1)
+              for a in ranges[0] for b in ranges[1] for c in ranges[2]
               if (a, b, c) != (0, 0, 0)]
-    translations = np.asarray(shifts, dtype=float) @ cell   # (26, 3)
+    translations = np.asarray(shifts, dtype=float) @ cell
     best = float("inf")
     for i in range(n):
         # Vector from atom i to every (atom j + every non-zero translation):

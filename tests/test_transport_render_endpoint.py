@@ -75,6 +75,13 @@ def _write_sidecar(xyz_path: Path, regions: dict) -> Path:
     """Write a .molstruct.json sidecar next to the XYZ with the
     given region map.  Uses the canonical sidecar shape per
     molstruct_json.py.
+
+    NOTE (F2, science/validation.md 4.1): the server no longer READS this on
+    the render path -- electrode labels must travel in the POST body, which is
+    what the Transport tab does (``_mvData.getRegions()``).  The sidecar is
+    still written because it is the on-disk truth a real project would have,
+    and because other flows (the loader) do consume it.  Tests that render must
+    pass the same regions via ``regions=`` in the body -- see ``_render_body``.
     """
     from molbuilder.sidecars.molstruct import (
         sidecar_path_for, sha256_of_file, to_dict,
@@ -87,6 +94,24 @@ def _write_sidecar(xyz_path: Path, regions: dict) -> Path:
     )
     sidecar_path.write_text(json.dumps(payload))
     return sidecar_path
+
+
+def _render_body(xyz_path: Path, params: dict,
+                 regions: dict = None, frozen: list = None) -> dict:
+    """The body shape the Transport tab actually posts: the structure path plus
+    the label facts read off the viewer model (F2 -- the server does not read
+    the sidecar for an emitted deck)."""
+    body = {"structure_path": str(xyz_path), "params": params,
+            "regions": regions if regions is not None else {},
+            "frozen_atoms": frozen if frozen is not None else []}
+    return body
+
+
+_JUNCTION_REGIONS = {
+    "L-electrode": [0, 1],
+    "bridge":      [2, 3],
+    "R-electrode": [4, 5],
+}
 
 
 # --------------------------------------------------------------------- #
@@ -106,12 +131,12 @@ def test_render_returns_fdf_for_labeled_au_s_junction(web):
         ("S",  (4, 0, 0)), ("C",  (6, 0, 0)),
         ("Au", (8, 0, 0)), ("Au", (10, 0, 0)),
     ])
-    _write_sidecar(xyz, {
-        "L-electrode":  [0, 1],
-        "bridge":       [2, 3],
-        "R-electrode":  [4, 5],
-    })
+    _write_sidecar(xyz, _JUNCTION_REGIONS)
     r = client.post("/api/transport/render", json={
+        # F2: the electrode labels travel in the BODY (the tab reads them off
+        # the viewer model); the sidecar on disk is no longer a label source.
+        "regions":        _JUNCTION_REGIONS,
+        "frozen_atoms":   [],
         "structure_path": str(xyz),
         "params": {"engine": "transiesta", "job_name": "ausau"},
     })
@@ -144,7 +169,8 @@ def test_render_blocks_when_regions_missing(web):
     xyz = _write_xyz(proj, "raw.xyz", [
         ("C", (0, 0, 0)), ("H", (1, 0, 0)),
     ])
-    # NO sidecar written → struct.regions stays empty
+    # No regions in the body (and none on disk) -> struct.regions stays empty,
+    # which is what transport must refuse (F2: absence is the body's claim).
     r = client.post("/api/transport/render", json={
         "structure_path": str(xyz),
         "params": {"engine": "transiesta", "job_name": "unlabeled"},
@@ -233,12 +259,12 @@ def test_render_response_has_documented_shape(web):
         ("S",  (4, 0, 0)), ("C",  (6, 0, 0)),
         ("Au", (8, 0, 0)), ("Au", (10, 0, 0)),
     ])
-    _write_sidecar(xyz, {
-        "L-electrode":  [0, 1],
-        "bridge":       [2, 3],
-        "R-electrode":  [4, 5],
-    })
+    _write_sidecar(xyz, _JUNCTION_REGIONS)
     r = client.post("/api/transport/render", json={
+        # F2: the electrode labels travel in the BODY (the tab reads them off
+        # the viewer model); the sidecar on disk is no longer a label source.
+        "regions":        _JUNCTION_REGIONS,
+        "frozen_atoms":   [],
         "structure_path": str(xyz),
         "params": {"engine": "transiesta", "job_name": "shape"},
     })
@@ -266,12 +292,12 @@ def test_render_coerces_bias_voltages_v_from_comma_string(web):
         ("S",  (4, 0, 0)), ("C",  (6, 0, 0)),
         ("Au", (8, 0, 0)), ("Au", (10, 0, 0)),
     ])
-    _write_sidecar(xyz, {
-        "L-electrode":  [0, 1],
-        "bridge":       [2, 3],
-        "R-electrode":  [4, 5],
-    })
+    _write_sidecar(xyz, _JUNCTION_REGIONS)
     r = client.post("/api/transport/render", json={
+        # F2: the electrode labels travel in the BODY (the tab reads them off
+        # the viewer model); the sidecar on disk is no longer a label source.
+        "regions":        _JUNCTION_REGIONS,
+        "frozen_atoms":   [],
         "structure_path": str(xyz),
         "params": {
             "engine":          "transiesta",
@@ -303,7 +329,7 @@ def test_render_preflight_error_envelope_carries_top_level_error(web):
     xyz = _write_xyz(proj, "raw.xyz", [
         ("C", (0, 0, 0)), ("H", (1, 0, 0)),
     ])
-    # No sidecar → struct.regions empty → preflight raises error
+    # No regions in the body -> struct.regions empty -> preflight errors (F2).
     r = client.post("/api/transport/render", json={
         "structure_path": str(xyz),
         "params": {"engine": "transiesta", "job_name": "envelope"},

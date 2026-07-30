@@ -495,6 +495,37 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         }
         return out;
     }
+    // THE fact payload every validating / emitting request carries (contract F1,
+    // docs/science/validation.md § 4.1).  ONE accessor assembles it, read live at
+    // the moment of the request, so a tab cannot send a PARTIAL set of facts.
+    //
+    // That was a real bug, not a hypothetical: the structure-optimization tab
+    // read labels and periodicity fresh off this model at emit time but kept the
+    // GEOMETRY in a page-local ``state.xyz`` filled once at load, so a request
+    // could carry fresh labels + fresh periodicity + stale coordinates, and
+    // validation then judged a structure the viewer was not showing.
+    //
+    // Returns null when there is nothing loaded (the caller must not invent an
+    // empty structure).  ``periodicity`` is the model's TRUTH block only -- the
+    // resolved views are the server's business (§ 6.1 clause 1).
+    function factsForRequest() {
+        var s = getStructure();
+        if (!s || !s.text) return null;
+        var per = s.periodicity || {};
+        return {
+            xyz:          s.text,
+            source_format: s.source_format || "xyz",
+            regions:      getRegions(),
+            frozen_atoms: getFrozen(),
+            periodicity: {
+                cell:        per.cell || null,
+                cell_origin: per.cell_origin || null,
+                axis_kind:   per.axis_kind || null,
+                vacuum:      per.vacuum || null,
+                pbc:         per.pbc || null,
+            },
+        };
+    }
     // The FULL label -> indices map (all regions) -- the single place per-atom labels
     // are gathered for save/draft serialisation (kills the duplicate scans that used
     // to live in both save.js and _scratchBlob).  A plain ``regions`` read once D4
@@ -1688,6 +1719,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         getLabels:             getLabels,         // all label names (regions + "frozen")
         getFrozen:             getFrozen,
         getRegions:            getRegions,
+        factsForRequest:       factsForRequest,  // F1: THE request fact payload, read live
         draftIdentity:         _timeline.draftIdentity,  // the draft key a Save must drop (b1)
         suspendPersist:        suspendPersist, // F4: bracket a multi-step data op (holds persists)
         resumePersist:         resumePersist,  //     -> flushes the coalesced final state on the outermost resume

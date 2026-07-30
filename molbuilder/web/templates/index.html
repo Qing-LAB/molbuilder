@@ -328,6 +328,7 @@
    card.  One shared include instead of a hand-pasted copy (ui-design-contract
    §2.1); the include also provides 3Dmol + mol-viewer-embed. #}
 {% include "_molview_scripts.html" %}
+<script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>

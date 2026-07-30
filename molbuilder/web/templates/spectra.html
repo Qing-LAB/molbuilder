@@ -184,12 +184,14 @@
     </details>
 
     <h3>Issues</h3>
-    <div id="issues-panel" class="issues-panel">
-      <p class="status muted">
-        No issues yet.  Click "Generate" to see configuration
-        checks.
-      </p>
-    </div>
+    {#- The row parent IS the panel (one findings vocabulary app-wide);
+        lib/validation-findings.js owns its contents, including the
+        empty state, so no static placeholder here. -#}
+    <ul id="issues-panel" class="issues-panel">
+      <li class="issues-empty">
+        No issues yet.  Click "Generate" to see configuration checks.
+      </li>
+    </ul>
 
     <h3>Generated script</h3>
     <div class="inline-row">
@@ -244,6 +246,7 @@
    mol-viewer-embed, which VibrationView also borrows for the mode viewer.  One
    shared include instead of a hand-pasted copy (ui-design-contract §2.1). #}
 {% include "_molview_scripts.html" %}
+<script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>

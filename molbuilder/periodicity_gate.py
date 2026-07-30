@@ -237,21 +237,25 @@ def _reset_to_derived(s: Structure, what: str,
     axis_kind} moves the box back to the DERIVED regime — explicit cell +
     origin cleared, boundary recomputed from the structure + vacuum.
 
-    Refuses when the derived box would be DEGENERATE (a zero-extent axis
-    with zero vacuum — e.g. a planar structure, or a transport axis whose
-    captured device length the derived bbox cannot reproduce): resetting
-    would ship a zero-volume lattice (review finding, 2026-07-29)."""
+    Refuses when the derived box would be DEGENERATE.  On an ISOLATED axis that
+    can no longer happen — the § 6.1 minimum-thickness floor gives a flat or
+    linear molecule a real 3 Å-per-side gap (``Structure.effective_vacuum``), so
+    a planar structure resets cleanly now instead of being told to set a vacuum
+    first.  A TRANSPORT axis still refuses: its length is the captured device
+    length, vacuum does not apply there, and a zero-extent bbox cannot
+    reproduce it."""
     if s.n_atoms:
         ext = s.positions.max(axis=0) - s.positions.min(axis=0)
         kinds = s.axis_kind or ("isolated",) * 3
+        eff = s.effective_vacuum()
         for i, kind in enumerate(kinds):
-            pad = 2.0 * float(s.vacuum[i]) if kind == "isolated" else 0.0
+            pad = 2.0 * float(eff[i]) if kind == "isolated" else 0.0
             if float(ext[i]) + pad < 1e-6:
                 raise ValueError(
                     f"cannot reset to the derived box: axis {i} would be "
-                    f"degenerate (structure extent ~0 and no vacuum). Set "
-                    f"a non-zero vacuum on that axis first, or keep an "
-                    f"explicit cell.")
+                    f"degenerate (a '{kind}' axis whose structure extent is ~0, "
+                    f"and vacuum does not apply to it). Keep an explicit cell "
+                    f"for that direction.")
     had_manual = s.cell is not None or s.cell_origin is not None
     s.cell = None
     s.cell_origin = None
@@ -262,6 +266,31 @@ def _reset_to_derived(s: Structure, what: str,
             "explicit cell and origin were reset, and the boundary is now "
             "recomputed from the structure size + per-direction vacuum "
             "(molecule centred on isolated axes)."))
+    notices.extend(_floor_notices(s))
+
+
+def _floor_notices(s: Structure) -> List[dict]:
+    """Say so when the § 6.1 minimum-thickness floor is in effect.
+
+    The box is then THICKER than the vacuum shown on the Cell page, and that
+    must never be a surprise -- the stored vacuum keeps what the user typed (a
+    resolved value is never written back), so the only way they learn the box
+    used something else is if we tell them."""
+    axes = s.vacuum_floor_axes()
+    if not axes:
+        return []
+    eff = s.effective_vacuum()
+    where = ", ".join(
+        f"axis {i} ({float(s.vacuum[i]):g} → {eff[i]:g} Å)" for i in axes)
+    return [_notice(
+        "info",
+        f"minimum-thickness floor applied to the derived box: {where}. A flat "
+        f"or linear molecule would otherwise give a zero-thickness cell, so "
+        f"the box uses at least 3 Å per side on such an axis. Your stored "
+        f"vacuum is unchanged; this is the value the box was drawn and emitted "
+        f"with (§ 6.1). It keeps the cell well-formed — it is NOT enough vacuum "
+        f"for a converged isolated-molecule run (see the vacuum adequacy "
+        f"check)." )]
 
 
 def apply_edit(struct: Structure, op: str,

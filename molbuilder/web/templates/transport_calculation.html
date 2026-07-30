@@ -138,10 +138,12 @@
     {#- Issues panel — preflight results + script-render warnings.
         Populated by transport/core.js after a successful POST to
         /api/transport/render.  Hidden until first generate. -#}
-    <div id="transport-issues" class="issues-panel" hidden
-         role="region" aria-label="Transport preflight issues">
-      <ul id="transport-issues-list"></ul>
-    </div>
+    {#- ONE element: the row parent IS the visibility owner, like every other
+        findings panel.  The old wrapper-div + nested bare <ul> put residual
+        rows outside the .issues-panel list reset, so they drew a UA disc
+        marker on top of the ::before severity glyph. -#}
+    <ul id="transport-issues" class="issues-panel" hidden
+        role="region" aria-label="Transport preflight issues"></ul>
 
     {#- Generated script preview + download.  Shown after Generate
         succeeds; the user can copy the .fdf text or download as a
@@ -210,6 +212,7 @@
 {# MolView component stack (viewer + selection/cell panel) — card 1 mounts it
    for structure inspection.  Loaded before transport/core.js, which mounts it. #}
 {% include "_molview_scripts.html" %}
+<script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>

@@ -323,10 +323,22 @@ def test_fdf_default_params(web_client, peptide_xyz):
 # --------------------------------------------------------------------- #
 
 
+#: The region map the Pattern-B tests below hand to the generate endpoints.
+#: Named once so the on-disk sidecar and the request body cannot drift.
+_PATTERN_B_REGIONS = {"L-electrode": [0, 1, 2]}
+
+
 def _xyz_with_region_sidecar(tmp_path, peptide_xyz):
-    """Write an XYZ + a sibling .molstruct.json carrying a
-    ``L-electrode`` region label so /api/build/fdf's sidecar-apply
-    pass picks it up.  Returns (xyz_path, xyz_text)."""
+    """Write an XYZ + a sibling .molstruct.json carrying an ``L-electrode``
+    region label.
+
+    The sidecar is written because a real project has one, but since F2
+    (docs/science/validation.md § 4.1) the generate endpoints do NOT read it --
+    labels travel in the request body, which is what the tabs send via
+    ``molview.data.factsForRequest()``.  Callers must therefore pass
+    ``regions=_PATTERN_B_REGIONS`` in the POST; the sidecar alone would leave
+    the structure unlabelled and the Pattern-B notice would (correctly) not
+    fire.  Returns (xyz_path, xyz_text)."""
     import hashlib
     import json
     xyz = tmp_path / "with_region.xyz"
@@ -343,7 +355,7 @@ def _xyz_with_region_sidecar(tmp_path, peptide_xyz):
         "n_atoms_total":  n_atoms,
         "structure_hash": structure_hash,
         "frozen_atoms":   [],
-        "regions":        {"L-electrode": [0, 1, 2]},
+        "regions":        dict(_PATTERN_B_REGIONS),
         "created_by":     "test",
         "created_at":     "2026-06-09T00:00:00Z",
     }))
@@ -377,6 +389,11 @@ def test_fdf_surfaces_info_when_structure_carries_regions(
         "xyz":            xyz_text,
         "params":         {},
         "structure_path": xyz_path,
+        # F2: the labels are a BODY fact (the server no longer reads the
+        # sidecar for an emitted deck); Pattern B is about what the ENGINE
+        # does with labels it was given, not about where they came from.
+        "regions":        dict(_PATTERN_B_REGIONS),
+        "frozen_atoms":   [],
     })
     body = r.get_json()
     assert body["ok"] is True, body
@@ -413,6 +430,11 @@ def test_pyscf_surfaces_info_when_structure_carries_regions(
         "xyz":            xyz_text,
         "params":         {},
         "structure_path": xyz_path,
+        # F2: the labels are a BODY fact (the server no longer reads the
+        # sidecar for an emitted deck); Pattern B is about what the ENGINE
+        # does with labels it was given, not about where they came from.
+        "regions":        dict(_PATTERN_B_REGIONS),
+        "frozen_atoms":   [],
     })
     body = r.get_json()
     assert body["ok"] is True, body

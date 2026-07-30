@@ -282,6 +282,7 @@ def test_transport_render_issues_carry_workflow_group(
     Copy them into tmp_path + register tmp_path as a picker root so
     the endpoint accepts the path.
     """
+    import json
     import shutil
     from pathlib import Path
 
@@ -302,8 +303,16 @@ def test_transport_render_issues_carry_workflow_group(
     shutil.copy(fixture_dir / "au_bdt_au.xyz", xyz_path)
     shutil.copy(fixture_dir / "au_bdt_au.molstruct.json", sidecar_path)
 
+    # F2 (science/validation.md 4.1): the electrode regions travel in the BODY.
+    # The fixture sidecar is still copied to disk (a real project has one) but
+    # the server no longer reads it for an emitted deck, so the request carries
+    # the same labels the Transport tab would read off the viewer model.
+    _fixture_regions = json.loads(
+        sidecar_path.read_text(encoding="utf-8")).get("regions") or {}
     body = _post(web_client, "/api/transport/render", {
         "structure_path": str(xyz_path.resolve()),
+        "regions":        _fixture_regions,
+        "frozen_atoms":   [],
         "params": {
             "engine": "transiesta",
             # TransportConfig.electronic_temperature_k range=(10, 2000),

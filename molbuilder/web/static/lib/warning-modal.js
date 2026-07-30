@@ -45,11 +45,13 @@
     var CANCEL  = "Cancel";
     var DISCARD = "Discard and continue";
 
-    // Single-instance state.  Reset to null when the dialog closes.
-    // Per-SLOT in-flight guard: the discard dialog and the generic
-    // confirm are independent conversations -- re-entering one must
-    // not inherit the other's answer.
-    var _active = {};   // { dialog, resolve, promise }
+    // Per-SLOT in-flight state: the discard dialog and the generic confirm are
+    // independent conversations, so re-entering one must not inherit the
+    // other's answer.  Shape: { <slot>: {dialog, resolve, promise} | null }.
+    // EVERY reader must key by slot -- isOpen() and _reset() below were left
+    // reading it as a single record when this became a map, which made isOpen()
+    // always true and made _reset() throw (regression caught 2026-07-29).
+    var _active = {};
 
     /**
      * Show the discard-unsaved confirmation modal.
@@ -178,24 +180,37 @@
      * Production code should not need this; tests use it to assert
      * single-instance semantics.
      */
-    function isOpen() { return _active !== null; }
+    function isOpen(slot) {
+        // ANY slot open, or a named one.  This read used to be
+        // ``_active !== null`` from the days when _active was a single
+        // record; against the per-slot MAP that is always true, so
+        // isOpen() reported "open" forever (regression, 2026-07-29).
+        if (slot) return !!_active[slot];
+        return Object.keys(_active).some(function (k) { return !!_active[k]; });
+    }
 
     /**
      * Test seam — force-close any open modal (resolves the pending
      * Promise to ``false``, like Cancel).  Production code should
      * never call this.
      */
-    function _reset() {
-        if (!_active) return;
-        var pending = _active;
-        _active = null;
-        try { pending.dialog.close(); } catch (_) {}
-        try {
-            if (pending.dialog.parentNode) {
-                pending.dialog.parentNode.removeChild(pending.dialog);
-            }
-        } catch (_) {}
-        pending.resolve(false);
+    function _reset(slot) {
+        // Every slot by default, or one named slot.  Same regression as
+        // isOpen(): this treated the per-slot MAP as a single pending
+        // record, so ``pending.resolve`` was undefined and the module threw.
+        var slots = slot ? [slot] : Object.keys(_active);
+        slots.forEach(function (key) {
+            var pending = _active[key];
+            if (!pending) return;
+            _active[key] = null;
+            try { pending.dialog.close(); } catch (_) {}
+            try {
+                if (pending.dialog.parentNode) {
+                    pending.dialog.parentNode.removeChild(pending.dialog);
+                }
+            } catch (_) {}
+            pending.resolve(false);
+        });
     }
 
     var api = {

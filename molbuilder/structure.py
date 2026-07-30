@@ -106,6 +106,18 @@ _CHANNEL_KINDS = ("tag", "flag", "value")
 #: to :meth:`Structure.cell_contains_atoms`.
 _CONTAIN_EPS = 1e-6
 
+#: Minimum-thickness floor for a DERIVED box (§ 6.1, decided 2026-07-29).  An
+#: isolated axis whose derived length would fall below _MIN_DERIVED_CELL_LENGTH
+#: (Angstrom) gets its per-side vacuum raised to _MIN_ISOLATED_VACUUM, so a flat
+#: or linear molecule can never yield a zero-thickness box (a zero determinant,
+#: which used to surface as "degenerate cell" from the emitter and blocked a
+#: reset-to-derived in the gate) and there is always a real gap between periodic
+#: images.  STRUCTURAL minimum only -- physical adequacy is a separate, larger
+#: number the validator asks for (>= 8 A per side neutral; see
+#: validation/siesta.py:_check_siesta_vacuum_adequacy).
+_MIN_DERIVED_CELL_LENGTH = 3.0
+_MIN_ISOLATED_VACUUM = 3.0
+
 
 @dataclass
 class AtomChannel:
@@ -465,8 +477,10 @@ class Structure:
                     f"periodic axis needs a commensurate lattice from "
                     f"construction/import (never a bounding box)."
                 )
-            # vacuum is the PER-SIDE gap -> 2*vacuum total padding.
-            pad = 2.0 * self.vacuum[i] if kind == "isolated" else 0.0
+            # vacuum is the PER-SIDE gap -> 2*vacuum total padding.  The
+            # EFFECTIVE vacuum applies the § 6.1 floor so a flat or linear
+            # molecule can never produce a zero-thickness box.
+            pad = 2.0 * self.effective_vacuum()[i] if kind == "isolated" else 0.0
             out[i, i] = float(extent[i]) + pad
         return out
 
@@ -508,17 +522,66 @@ class Structure:
     # periodicity_gate.expected_corner / contains_atoms delegate here so the
     # rule cannot fork between the view and the gate.
 
+    def effective_vacuum(self) -> Tuple[float, float, float]:
+        """The per-side vacuum the DERIVED box actually uses (§ 6.1).
+
+        Identical to ``self.vacuum`` except for the **minimum-thickness floor**:
+        on an ISOLATED axis whose derived length would come out below
+        ``_MIN_DERIVED_CELL_LENGTH``, the vacuum is raised to
+        ``_MIN_ISOLATED_VACUUM``.  That guarantees two things the rest of the
+        stack relied on and never had: the derived cell is always genuinely
+        three-dimensional, and there is always a real gap between periodic
+        images.  Without it a FLAT molecule (water, benzene — zero extent along
+        one axis) with no vacuum produced a zero-thickness box: a zero
+        determinant that surfaced as "degenerate cell" errors from the emitter
+        and blocked a reset-to-derived in the gate.
+
+        This is a RESOLVED value, never written back: ``self.vacuum`` keeps
+        exactly what the user typed (§ 6.1 clause 1), and the gate emits a
+        notice when the floor is in effect so the box is never silently
+        different from the number on screen.
+
+        The floor is a STRUCTURAL minimum, not a claim of physical adequacy: 3 Å
+        keeps the cell well-formed, while a converged isolated-molecule
+        calculation wants far more (the SIESTA validator still asks for ≥ 8 Å
+        per side, ≥ 25 Å charged — ``cell.vacuum_thin``).  Vacuum is meaningless
+        on a periodic axis (the lattice sets the length) and on a transport axis
+        (the device length is matched), so the floor applies to neither."""
+        vac = [float(v) for v in self.vacuum]
+        if len(self.positions) == 0:
+            return (vac[0], vac[1], vac[2])
+        extent = self.positions.max(axis=0) - self.positions.min(axis=0)
+        for i, kind in enumerate(self.axis_kind):
+            if kind != "isolated":
+                continue
+            if float(extent[i]) + 2.0 * vac[i] < _MIN_DERIVED_CELL_LENGTH:
+                vac[i] = max(vac[i], _MIN_ISOLATED_VACUUM)
+        return (vac[0], vac[1], vac[2])
+
+    def vacuum_floor_axes(self) -> List[int]:
+        """Isolated axes where :meth:`effective_vacuum` raised the stored value
+        (the § 6.1 minimum-thickness floor).  Empty in the normal case; the gate
+        turns a non-empty list into a user notice."""
+        eff = self.effective_vacuum()
+        return [i for i in range(3)
+                if abs(eff[i] - float(self.vacuum[i])) > 1e-9]
+
     def expected_cell_corner(self) -> np.ndarray:
         """The low corner that wraps the structure honouring the per-direction
         vacuum: ``bbox_min - vacuum`` on an isolated axis, ``bbox_min`` on a
-        transport axis, ``0`` on a periodic axis (the phase convention)."""
+        transport axis, ``0`` on a periodic axis (the phase convention).
+
+        Uses the EFFECTIVE vacuum (§ 6.1 floor) so the corner and the cell
+        length agree — otherwise a floored axis would grow the box on both faces
+        while the corner stayed put, and the molecule would sit off-centre."""
         out = np.zeros(3, dtype=float)
         if len(self.positions) == 0:
             return out
         lo = self.positions.min(axis=0).astype(float)
+        eff = self.effective_vacuum()
         for i, kind in enumerate(self.axis_kind):
             if kind == "isolated":
-                out[i] = lo[i] - float(self.vacuum[i])
+                out[i] = lo[i] - eff[i]
             elif kind == "transport":
                 out[i] = lo[i]
         return out
@@ -731,6 +794,14 @@ class Structure:
                 "axis_kind":            (list(self.axis_kind)
                                          if self.axis_kind is not None else None),
                 "vacuum":               [float(x) for x in self.vacuum],
+                # The vacuum the derived box ACTUALLY uses: identical to
+                # ``vacuum`` unless the § 6.1 minimum-thickness floor raised it
+                # on a flat/linear axis.  Sent so the Cell page can show the
+                # effective number -- a box thicker than the vacuum on screen
+                # must never be a surprise (it is a VIEW, like resolved_cell:
+                # the stored vacuum keeps what the user typed).
+                "resolved_vacuum":      [float(x) for x in
+                                         self.effective_vacuum()],
                 # (No "kgrid": a sampling knob on the config, not geometry --
                 # structure-periodicity.md.)
             },

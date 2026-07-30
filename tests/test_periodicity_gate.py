@@ -31,6 +31,18 @@ def _mol(off=(10.0, 10.0, 10.0), vacuum=(2.5, 2.5, 2.5)):
 
 
 class TestHealTable:
+    """PINS: docs/model/structure-periodicity.md § 6.1 — the heal table, one
+    row per stored state.
+
+    INVARIANT: for every (cell, cell_origin, containment) combination the gate
+    takes exactly the action § 6.1 tabulates — and since the 2026-07-29
+    "derive the corner" decision that action never REWRITES the truth: a
+    resolved corner is a view (clause 1), so the gate validates and reports.
+
+    PREVENTS: the 2026-07 hemeC corruption class — a resolved cell materialised
+    into ``cell`` with the origin dropped, which drew the box from (0,0,0) with
+    the molecule outside it.
+    """
 
     def test_derived_state_is_untouched(self):
         s = _mol()
@@ -113,6 +125,16 @@ class TestHealTable:
 
 
 class TestApplyEditV3:
+    """PINS: docs/model/structure-periodicity.md § 6.2 — the v3 regime model,
+    one row per Cell-page op.
+
+    INVARIANT: an edit to an UPSTREAM parameter never silently contradicts
+    downstream state — it resets it, loudly.  Editing vacuum or axis kinds
+    returns the box to the DERIVED regime; an explicit cell demotes vacuum to
+    reference-only; an explicit origin overrides the derived corner
+    ("origin first, then vacuum").  No op ever moves an atom: coordinate
+    rewrites are a Modify op, not a periodicity edit.
+    """
 
     def test_calibrate_is_not_a_periodicity_op(self):
         assert "calibrate" not in OPS
@@ -252,6 +274,14 @@ def test_calibrated_then_emit_equals_emit():
 
 
 class TestPeriodicityDoor:
+    """PINS: docs/model/structure-periodicity.md § 6.2 — the unified door
+    ``POST /api/structure/periodicity``.
+
+    INVARIANT: Python owns every metadata change and the client only calls.  The
+    door returns the TRUTH blob the gate accepted plus the § 3 resolved views,
+    and the client adopts that blob verbatim; an unknown op is a 400, never a
+    silent no-op.
+    """
 
     @pytest.fixture
     def client(self):
@@ -290,7 +320,10 @@ class TestPeriodicityDoor:
 
 
 class TestLoaderGate:
-    """The gate must sit on BOTH pair seams.  from_scratch alone left
+    """PINS: docs/model/structure-periodicity.md § 6.1 clause 2 — ONE gate,
+    on both seams of the .xyz/.molstruct.json pair.
+
+    The gate must sit on BOTH pair seams.  from_scratch alone left
     /api/build/load serving corrupted pairs unhealed — MolView drew the
     box from the world origin while the Cell page showed healed values
     (observed live on projects/hemeC-dithiol, 2026-07-29)."""
@@ -346,7 +379,11 @@ class TestLoaderGate:
 
 
 class TestPeriodicAxesAreNeverContained:
-    """Along a periodic axis, atoms outside [0, cell) are periodic
+    """PINS: docs/model/structure-periodicity.md § 2 (which axis an image
+    belongs to decides whether it is a defect) + § 6.1 (containment is required
+    along NON-PERIODIC axes only).
+
+    Along a periodic axis, atoms outside [0, cell) are periodic
     images — legal.  Requiring containment there made real crystal and
     junction files unopenable."""
 
@@ -390,12 +427,20 @@ class TestPeriodicAxesAreNeverContained:
         with pytest.raises(ValueError, match="cannot contain"):
             apply_edit(s, "cell", (np.eye(3) * 1.0).tolist())
 
-    def test_reset_to_derived_refuses_a_degenerate_axis(self):
+    def test_reset_to_derived_survives_a_zero_extent_isolated_axis(self):
+        """Was a refusal ("axis would be degenerate") until the § 6.1
+        minimum-thickness floor landed: a zero-extent ISOLATED axis is now
+        rescued with 3 Å per side instead of blocking the reset.  A transport
+        axis, where vacuum has no meaning, still refuses -- see
+        TestMinimumThicknessFloor."""
         s = _mol(vacuum=(2.5, 2.5, 0.0))              # extent 0 on y,z
         s.cell = np.eye(3) * 10.0
         s.__post_init__()
-        with pytest.raises(ValueError, match="degenerate"):
-            apply_edit(s, "vacuum", [3.0, 3.0, 0.0])
+        out, notes = apply_edit(s, "vacuum", [3.0, 3.0, 0.0])
+        assert out.cell is None                        # reset went through
+        assert float(np.linalg.det(out.resolve_cell())) > 0.0
+        assert out.effective_vacuum()[2] == 3.0
+        assert any("minimum-thickness floor" in n["message"] for n in notes)
 
 
 # ------------------------------------------------------------------ #
@@ -548,6 +593,15 @@ class TestLoadHealIsVisible:
 
 
 class TestDoorHygieneAndRemainingOps:
+    """PINS: docs/model/structure-periodicity.md § 6.2 — the door's error
+    contract and the remaining op paths end to end.
+
+    INVARIANT: every contract violation reaches the caller as a clean 400 with
+    a reason (never a 500, never a silent success): a malformed blob, a bad cell
+    shape, and an edit the gate refuses.  Each op is exercised through the HTTP
+    door, not just the Python function, so the endpoint and the gate cannot
+    drift apart.
+    """
     """Door error hygiene (approved batch item 2) + the door-op endpoint
     pins the coverage audit called for."""
 
@@ -617,6 +671,15 @@ class TestDoorHygieneAndRemainingOps:
 
 
 class TestDocMatchesTheDoor:
+    """PINS: the op set stays identical in all THREE places that state it —
+    ``periodicity_gate.OPS``, the § 6.2 table in
+    docs/model/structure-periodicity.md, and the door's own docstring.
+
+    INVARIANT: documentation and code cannot disagree about what the door
+    accepts.  Also pins that the notice envelope is documented where it is
+    produced AND where it is consumed, because ``kind: "heal"`` is load-bearing
+    (the load door marks the session dirty on it) rather than decorative.
+    """
     """The op set is documented in three places; a guard so they cannot rot
     apart again (the door's docstring claimed FIVE ops including a
     ``calibrate`` that was deliberately removed -- found 2026-07-29)."""
@@ -657,3 +720,197 @@ class TestDocMatchesTheDoor:
             "molbuilder/web/static/lib/molview/data-model.js").read_text(
                 encoding="utf-8")
         assert 'kind: "heal"' in js
+
+
+class TestMinimumThicknessFloor:
+    """§ 6.1 (2026-07-29): an isolated axis whose derived length would fall
+    below 3 Å gets at least 3 Å of vacuum per side, so a flat or linear
+    molecule can never produce a zero-thickness box."""
+
+    @staticmethod
+    def _planar():
+        """Water: exactly zero extent along z."""
+        return Structure(
+            elements=["O", "H", "H"],
+            positions=np.array([[0.0, 0.0, 0.0],
+                                [0.757, 0.586, 0.0],
+                                [-0.757, 0.586, 0.0]]))
+
+    @staticmethod
+    def _linear():
+        """A diatomic: zero extent along TWO axes."""
+        return Structure(elements=["H", "H"],
+                         positions=np.array([[0.0, 0.0, 0.0],
+                                             [0.0, 0.0, 0.74]]))
+
+    def test_a_planar_molecule_gets_a_three_dimensional_box(self):
+        """Water has exactly zero extent along z; with no vacuum the box used to
+        have zero thickness there (a zero determinant)."""
+        s = self._planar()
+        cell = s.resolve_cell()
+        assert float(np.linalg.det(cell)) > 0.0, "box is still degenerate"
+        assert np.diag(cell)[2] >= 3.0            # the flat axis
+        assert s.vacuum == (0.0, 0.0, 0.0), "the STORED vacuum must not change"
+        assert s.effective_vacuum()[2] == 3.0
+
+    def test_a_linear_molecule_gets_a_three_dimensional_box(self):
+        """A diatomic is the harder case: TWO axes have zero extent."""
+        cell = self._linear().resolve_cell()
+        assert float(np.linalg.det(cell)) > 0.0
+        assert min(np.diag(cell)) >= 3.0
+
+    def test_the_floored_box_stays_centred_on_the_structure(self):
+        """The corner must use the same floored vacuum, or the box grows on one
+        face only and the molecule sits off-centre."""
+        s = self._planar()
+        cell, origin = s.resolve_cell(), s.resolve_cell_origin()
+        lo, hi = s.positions.min(axis=0), s.positions.max(axis=0)
+        assert np.allclose((lo + hi) / 2.0, origin + np.diag(cell) / 2.0)
+
+    def test_an_axis_with_enough_vacuum_is_untouched(self):
+        """The floor is a floor, not an override -- a real vacuum wins."""
+        s = self._planar()
+        s.vacuum = (8.0, 8.0, 8.0)
+        s.__post_init__()
+        assert s.effective_vacuum() == (8.0, 8.0, 8.0)
+        assert s.vacuum_floor_axes() == []
+
+    def test_only_the_thin_axis_is_floored(self):
+        """Per-axis, not per-structure: a thin z must not inflate x and y."""
+        s = self._planar()
+        s.vacuum = (4.0, 4.0, 0.0)
+        s.__post_init__()
+        assert s.vacuum_floor_axes() == [2]
+        assert s.effective_vacuum() == (4.0, 4.0, 3.0)
+
+    def test_a_periodic_or_transport_axis_is_never_floored(self):
+        """Vacuum has no meaning there: the lattice / device length sets it."""
+        s = self._planar()
+        s.cell = np.diag([5.0, 5.0, 5.0])
+        s.axis_kind = ("periodic", "transport", "isolated")
+        s.__post_init__()
+        eff = s.effective_vacuum()
+        assert eff[0] == 0.0 and eff[1] == 0.0
+        assert eff[2] == 3.0
+
+    def test_the_floor_is_announced_not_silent(self):
+        """The box ends up thicker than the vacuum on screen, so the gate must
+        say so -- the stored value is deliberately left alone."""
+        s = self._planar()
+        out, notes = apply_edit(s, "vacuum", [4.0, 4.0, 0.0])
+        floor = [n for n in notes if "minimum-thickness floor" in n["message"]]
+        assert floor, [n["message"][:60] for n in notes]
+        assert "axis 2" in floor[0]["message"]
+        assert floor[0]["level"] == "info"
+        assert out.vacuum == (4.0, 4.0, 0.0)
+
+    def test_a_planar_structure_can_now_reset_to_derived(self):
+        """It used to be refused ("axis 2 would be degenerate"): a planar
+        molecule with an explicit cell could not go back to the derived box."""
+        s = self._planar()
+        s.cell = np.diag([9.0, 9.0, 9.0])
+        s.__post_init__()
+        out, _ = apply_edit(s, "vacuum", [0.0, 0.0, 0.0])
+        assert out.cell is None
+        assert float(np.linalg.det(out.resolve_cell())) > 0.0
+
+    def test_a_zero_extent_transport_axis_still_refuses(self):
+        """Vacuum cannot rescue a transport axis -- its length is the captured
+        device length, so the refusal must stay."""
+        s = self._planar()
+        s.cell = np.diag([9.0, 9.0, 9.0])
+        s.axis_kind = ("isolated", "isolated", "transport")
+        s.__post_init__()
+        with pytest.raises(ValueError, match="degenerate"):
+            apply_edit(s, "vacuum", [2.0, 2.0, 2.0])
+
+    def test_the_wire_carries_both_the_stored_and_the_effective_vacuum(self):
+        """Clause 1 on the wire: `vacuum` is the truth the user typed,
+        `resolved_vacuum` is the view the box was built from, and the Cell page
+        needs both so a thicker-than-displayed box is never a surprise."""
+        per = self._planar().to_wire()["periodicity"]
+        assert per["vacuum"] == [0.0, 0.0, 0.0]
+        assert per["resolved_vacuum"] == [3.0, 3.0, 3.0]
+
+
+class TestSiestaNeverReceivesAZeroVolumeCell:
+    """PINS: docs/model/structure-periodicity.md § 6.1 (the minimum-thickness
+    floor) + the emitter's own last-line check.
+
+    INVARIANT: no code path can hand SIESTA a zero-volume lattice.  SIESTA
+    builds reciprocal vectors from the cell, so a zero determinant fails the run
+    outright — we refuse first, at whichever layer sees it, with a message that
+    matches the actual cause.
+    """
+    """SIESTA builds reciprocal vectors from the lattice, so a zero-volume cell
+    fails outright.  FOUR independent layers stop one from ever being emitted;
+    this pins each so a future change cannot quietly remove the last of them."""
+
+    @staticmethod
+    def _flat():
+        return Structure(elements=["O", "H", "H"],
+                         positions=np.array([[0.0, 0.0, 0.0],
+                                             [0.757, 0.586, 0.0],
+                                             [-0.757, 0.586, 0.0]]))
+
+    def test_layer1_a_singular_explicit_cell_cannot_even_be_constructed(self):
+        s = self._flat()
+        s.cell = np.diag([8.0, 8.0, 0.0])
+        with pytest.raises(ValueError, match="singular|degenerate"):
+            s.__post_init__()
+
+    def test_layer2_the_gate_refuses_a_zero_volume_cell_edit(self):
+        with pytest.raises(ValueError, match="right-handed"):
+            apply_edit(self._flat(), "cell",
+                       [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 0.0]])
+
+    def test_layer3_the_floor_makes_an_isolated_axis_never_zero(self):
+        """The path that used to reach the emitter: a flat molecule with no
+        vacuum.  The § 6.1 floor closes it."""
+        cell = self._flat().resolve_cell()
+        assert abs(float(np.linalg.det(cell))) > 1e-6
+        assert min(np.diag(cell)) >= 3.0
+
+    def test_layer4_the_emitter_refuses_the_one_remaining_case(self):
+        """A zero-extent TRANSPORT axis: vacuum does not pad it, so the floor
+        deliberately does not apply and the emitter is the last stop."""
+        import warnings
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.siesta import render_fdf
+        s = self._flat()
+        s.axis_kind = ("isolated", "isolated", "transport")
+        s.__post_init__()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with pytest.raises(ValueError, match="degenerate") as exc:
+                render_fdf(s, SiestaConfig())
+        msg = str(exc.value)
+        # It must name the offending axis AND its kind: "set a vacuum" is wrong
+        # advice for a transport axis, and that used to be what it said.
+        assert "axis 2" in msg and "transport" in msg
+        assert "device length" in msg
+
+    def test_no_emitted_fdf_ever_carries_a_zero_lattice_row(self):
+        """Belt across the shapes a user actually builds: flat, linear, and a
+        single atom -- each must emit a lattice with three real rows."""
+        import warnings
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.siesta import render_fdf
+        shapes = {
+            "planar":  self._flat(),
+            "linear":  Structure(elements=["H", "H"],
+                                 positions=np.array([[0.0, 0.0, 0.0],
+                                                     [0.0, 0.0, 0.74]])),
+            "single":  Structure(elements=["He"],
+                                 positions=np.array([[0.0, 0.0, 0.0]])),
+        }
+        for name, s in shapes.items():
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                fdf = render_fdf(s, SiestaConfig())
+            rows = fdf.split("%block LatticeVectors")[1].split(
+                "%endblock")[0].strip().splitlines()
+            assert len(rows) == 3, name
+            for r, row in enumerate(rows):
+                length = max(abs(float(x)) for x in row.split())
+                assert length > 1e-6, f"{name}: lattice row {r} is zero"

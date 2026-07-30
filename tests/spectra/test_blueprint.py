@@ -1397,16 +1397,22 @@ class TestRenderHonorsSidecar:
     def test_sidecar_frozen_divergence_warns_in_render(
         self, web_client, tmp_path, monkeypatch,
     ):
-        """Live render call: sidecar says freeze atom 0, form says
-        freeze nothing -> preflight Pattern A WARN fires in the
-        response.  Pin the end-to-end stage-3 contract."""
+        """Live render call: the MODEL says freeze atom 0, the form says
+        freeze nothing -> preflight Pattern A WARN fires in the response.  Pin
+        the end-to-end stage-3 contract.
+
+        The labels arrive in the BODY, the way the tab sends them
+        (molview.data.factsForRequest); before F2 this test delivered them by
+        writing a sidecar next to the .xyz and letting the server read it,
+        which is the second source the contract removed
+        (science/validation.md 4.1)."""
         self._setup_root(monkeypatch, tmp_path)
-        xyz = self._write_water_with_sidecar(tmp_path, frozen_atoms=[0])
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
                 "structure_text": _WATER_XYZ,
-                "structure_path": str(xyz),
+                "frozen_atoms":   [0],
+                "regions":        {},
                 "params":         {},  # empty form -> no frozen_indices
             }),
             content_type="application/json",
@@ -1422,21 +1428,17 @@ class TestRenderHonorsSidecar:
     def test_sidecar_regions_unrecognized_warns_in_render(
         self, web_client, tmp_path, monkeypatch,
     ):
-        """Live render call: sidecar has region labels, /spectra
-        doesn't consume them -> preflight Pattern B WARN fires.
-        Pin the end-to-end stage-3 contract for the labels-the-
-        engine-doesn't-understand case."""
+        """Live render call: the model carries region labels, /spectra doesn't
+        consume them -> preflight Pattern B WARN fires.  Pin the end-to-end
+        stage-3 contract for the labels-the-engine-doesn't-understand case.
+        Labels ride in the body (F2), not a sidecar on disk."""
         self._setup_root(monkeypatch, tmp_path)
-        xyz = self._write_water_with_sidecar(
-            tmp_path,
-            frozen_atoms=[],
-            regions={"L-electrode": [0], "bridge": [1, 2]},
-        )
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
                 "structure_text": _WATER_XYZ,
-                "structure_path": str(xyz),
+                "frozen_atoms":   [],
+                "regions":        {"L-electrode": [0], "bridge": [1, 2]},
                 "params":         {},
             }),
             content_type="application/json",
@@ -1479,20 +1481,25 @@ class TestRenderHonorsSidecar:
                          or i.get("where") == "structure.regions"]
         assert sidecar_warns == []
 
-    def test_render_with_bad_structure_path_surfaces_notice(
-        self, web_client,
+    def test_a_sidecar_on_disk_is_never_absorbed(
+        self, web_client, tmp_path, monkeypatch,
     ):
-        """A structure_path that resolves outside the roots: render
-        still succeeds (the form's freeze rules are authoritative),
-        but the response carries a warn-severity Issue at
-        ``structure_path`` so the user knows their sidecar is NOT a
-        factor in this run.  Per "no silent absorption" rule
-        (design.md three-stage contract)."""
+        """"No silent absorption" (design.md three-stage contract) under F2
+        (science/validation.md 4.1).
+
+        This used to be a pair of WARNINGS: the server tried to read a sidecar
+        from ``structure_path``, and said so when the path was outside the roots
+        or the sidecar failed to load.  The server no longer reads it at all, so
+        there is nothing to absorb and nothing to warn about -- what the sidecar
+        says cannot reach the run, whether it is valid, stale or corrupt.
+        """
+        self._setup_root(monkeypatch, tmp_path)
+        xyz = self._write_water_with_sidecar(tmp_path, frozen_atoms=[0])
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
                 "structure_text": _WATER_XYZ,
-                "structure_path": "/etc/passwd",
+                "structure_path": str(xyz),   # names the file; not a label source
                 "params":         {},
             }),
             content_type="application/json",
@@ -1500,45 +1507,28 @@ class TestRenderHonorsSidecar:
         assert r.status_code == 200, r.data
         body = r.get_json()
         assert body["ok"] is True
-        warns = [i for i in body.get("issues", [])
-                 if i["severity"] == "warn"
-                 and i["where"] == "structure_path"]
-        assert warns, [i for i in body.get("issues", [])]
-        # The notice tells the user the form is the sole truth so
-        # they aren't surprised by "I thought atoms X were frozen".
-        assert "form" in warns[0]["message"].lower()
+        # The sidecar froze atom 0; the run must show no sign of it.
+        assert not [i for i in body.get("issues", [])
+                    if i["where"] == "config.frozen_indices"
+                    and "sidecar" in i["message"]], body.get("issues")
 
-    def test_render_with_corrupt_sidecar_surfaces_notice(
+    def test_a_path_WITH_label_facts_ignores_disk_entirely(
         self, web_client, tmp_path, monkeypatch,
     ):
-        """A sidecar that exists but fails to load (atom-count
-        mismatch with the pasted XYZ, malformed, etc.): render
-        still succeeds (form authoritative), and the response
-        carries a warn-severity Issue naming the failure -- per
-        "no silent absorption"."""
+        """The other half: when the body carries the facts, a stale or corrupt
+        sidecar next to the .xyz is irrelevant -- it is never read, so it can
+        neither help nor break the run."""
         self._setup_root(monkeypatch, tmp_path)
-        # Sidecar promises 99 atoms; water has 3.
-        xyz = self._write_water_with_sidecar(
-            tmp_path, frozen_atoms=[0],
-        )
-        # Now corrupt the sidecar to have n_atoms_total=99 (apply
-        # raises MolstructJsonError on the mismatch).
+        xyz = self._write_water_with_sidecar(tmp_path, frozen_atoms=[0])
         sidecar = xyz.with_name(xyz.stem + ".molstruct.json")
-        import hashlib
-        sha = hashlib.sha256(xyz.read_bytes()).hexdigest()
-        sidecar.write_text(json.dumps({
-            "schema_version":  3,
-            "n_atoms_total":   99,
-            "structure_hash":  sha,
-            "regions":         {},
-            "frozen_atoms":    [],
-            "selection_rules": {},
-        }))
+        sidecar.write_text("{ this is not valid json")      # would have raised
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
                 "structure_text": _WATER_XYZ,
                 "structure_path": str(xyz),
+                "frozen_atoms":   [],
+                "regions":        {},
                 "params":         {},
             }),
             content_type="application/json",
@@ -1546,14 +1536,9 @@ class TestRenderHonorsSidecar:
         assert r.status_code == 200, r.data
         body = r.get_json()
         assert body["ok"] is True
-        warns = [i for i in body.get("issues", [])
-                 if i["severity"] == "warn"
-                 and i["where"] == "structure_path"]
-        assert warns, body["issues"]
-        # The notice should be specific (mention the sidecar) and
-        # tell the user the form is now authoritative.
-        assert "sidecar" in warns[0]["message"].lower()
-        assert "form" in warns[0]["message"].lower()
+        assert not [i for i in body.get("issues", [])
+                    if i["where"] == "structure_path"], (
+            "the sidecar must not be consulted when the body carries facts")
 
 
 # --------------------------------------------------------------------- #

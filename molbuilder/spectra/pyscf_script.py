@@ -250,8 +250,14 @@ def _emit_header_docstring(struct: Structure,
         out.append("    Gaussian/ORCA 42.2561 km/mol per (D/Å)²/amu prefactor.")
         out.append("    The math is textbook, but absolute magnitudes have NOT")
         out.append("    been cross-checked against an external code the way")
+        # Both pointers must NAME a document that exists.  This cited
+        # "§ 13.1" with no document after the 2026-07 docs migration retired
+        # the spec that owned that section -- so a scientist told to check the
+        # validation status before quoting absolute IR magnitudes had nowhere
+        # to go.  Caught by test_ir_validation_banner_in_header.
         out.append("    Raman was (see docs/web/spectra.md for")
-        out.append("    the Raman validation; § 13.1 for IR validation status).")
+        out.append("    the Raman validation, and docs/roadmap.md for the IR")
+        out.append("    validation status + its closure plan).")
         out.append("    Use for relative IR intensities + qualitative work;")
         out.append("    quote absolute values only with the caveat.")
         out.append("    For CHARGED molecules (charge != 0) IR intensities")

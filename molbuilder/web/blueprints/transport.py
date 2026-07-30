@@ -165,12 +165,11 @@ def api_transport_render() -> Any:
             "error": f"could not parse structure file: {exc}",
         }), 400
 
-    # 2026-06-14 contract update: prefer in-body labels (the
-    # viewer-is-truth contract).  Transport's L-electrode /
-    # R-electrode / bridge region labels travel in the POST body
-    # from the Transport tab's in-memory state; only when neither
-    # in-body key is present do we re-read the sidecar from disk.
-    # See _shared.apply_labels_to_struct docstring.
+    # F2 (science/validation.md 4.1): Transport's L-electrode / R-electrode /
+    # bridge labels travel in the POST body; omitting them is a 400, never a
+    # disk re-read.  (This tab's GEOMETRY is still path-driven -- it reads the
+    # structure file the user picked -- which is the one remaining deviation
+    # from F1, tracked with the pending TranSIESTA workflow rework.)
     from ._shared import apply_labels_to_struct
     # ``body`` doesn't yet carry ``structure_path`` in the local
     # name scope here; the helper reads it via body.get for the

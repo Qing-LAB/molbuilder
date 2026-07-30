@@ -367,7 +367,10 @@ def test_load_directory_empty_returns_chain_error(client, tmp_path):
     body = r.get_json()
     assert r.status_code == 404
     assert body["ok"] is False
-    assert "job-layout.md" in body["error"]
+    # The discovery chain cites its protocol doc; that doc was renamed
+    # protocols/job-layout.md -> execution/job-contracts.md in the
+    # 2026-07 docs migration, and this assertion was left behind.
+    assert "docs/execution/job-contracts.md" in body["error"]
     assert "*.molwatch.log" in body["error"]
     assert "*.fdf" in body["error"]
 
