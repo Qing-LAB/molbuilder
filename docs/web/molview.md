@@ -50,7 +50,7 @@ current code.
 >   it knows that library exists.
 >
 > Atom numbering: **0-based in code, 1-based on screen**, translated in exactly
-> one place (§ 11.4).
+> one place (§ 11.5).
 
 ---
 
@@ -77,7 +77,7 @@ atoms look closer together.
 **Appearance.** The View menu holds style (stick, ball & stick, sphere, line), a
 radius slider from 0.2 to 2.5 that scales stick thickness / sphere size / line
 width, and a background colour with preset swatches plus a picker. One preset is
-transparent — choose it before exporting a snapshot to drop onto a slide.
+transparent — choose it before exporting a picture to drop onto a slide.
 
 **The toolbar switches.** Six icon buttons sit down the left edge, always
 outside the canvas, never on top of the molecule:
@@ -139,7 +139,7 @@ orange-red by relative size, so converging forces visibly shrink.
 
 - **Data** — the current frame's coordinates as `.xyz`, plus the metadata that
   goes with them as `.json`.
-- **Image** — a `.png` of the molecule exactly as it is drawn right now,
+- **Snapshot** — a `.png` of the molecule exactly as it is drawn right now,
   transparent if you chose that background.
 - **Animation** — the whole trajectory as `.webm` or `.gif`, rendered frame by
   frame with the view you have set. It appears only when there is more than one
@@ -547,7 +547,7 @@ overlays and the busy state also travel down, but none of them is per frame —
 | `positions` | `Vec3[]` | the atoms **actually drawn** — cut down to the selection when isolate is on |
 | `sourceIndex` | `int[]` | `sourceIndex[m]` = the **original** number of drawn atom `m`. This map from drawn back to original is why labels still show the right number under isolate |
 | `elements` | `string[]` | element per **drawn** atom |
-| `labels` | `{position, text}[]` or `null` | the atom-number labels, when that switch is on. `text` is the **1-based original** number (§ 11.4) |
+| `labels` | `{position, text}[]` or `null` | the atom-number labels, when that switch is on. `text` is the **1-based original** number (§ 11.5) |
 | `selection` | `int[]` or `null` | which drawn atoms to highlight. `null` means *draw no highlight* — which happens both when nothing is selected and under isolate, where every drawn atom is selected and a highlight would say nothing |
 | `arrows` | `{start, end}[]` or `null` | force vectors for **this** frame, where `end = start + force × scale` |
 
@@ -689,8 +689,8 @@ each real job to a small helper that does only that job.**
 **When the central file builds a helper, it hands over exactly the functions that
 helper is allowed to call.** The helper never reaches out on its own. The undo
 helper is the clearest case: it has to save and restore the structure, but it
-does not need to know the file format — it is simply handed a "make a snapshot"
-function and a "put a snapshot back" function. That keeps each helper small,
+does not need to know the file format — it is simply handed a "record the state"
+function and a "put a state back" function. That keeps each helper small,
 testable on its own with stand-in functions, and replaceable without disturbing
 anything else.
 
@@ -704,7 +704,7 @@ flowchart TB
       OP["the geometry edits"]
       SS["what is selected + the switches"]
     end
-    DM -->|"hands it: make a snapshot, put a snapshot back"| ST
+    DM -->|"hands it: record the state, put a state back"| ST
     DM -->|"hands it: read the atoms, apply the server's result"| OP
     DM -->|"hands it: read everything needed to write out"| SE
     DM -->|"hands it: where to put a loaded structure"| IN
@@ -714,7 +714,7 @@ flowchart TB
 | Helper | Its job | What it is handed |
 |---|---|---|
 | load | put a loaded structure into the model | where to put it; how to announce a change; a way to record the first state |
-| write out | turn the structure into text, for export and for snapshots | read-only access to the atoms, cell, selection and history position |
+| write out | turn the structure into text, for export and for saved states | read-only access to the atoms, cell, selection and history position |
 | history | undo / redo (§ 11.2) | "record the current state" + "put a state back"; where the bytes go |
 | edits | the geometry operations (§ 11.1) | read the atoms; apply the structure the server sends back |
 | selection | what is selected + the switches (§ 9.5) | *(an optional starting selection)* |
@@ -950,7 +950,7 @@ none of them keeps its own answer.
   matched against positions rather than names. The user types 1-based, matching
   what is on screen; the rule sent is 0-based; the shift happens exactly once, at
   the point the row becomes a rule, through the one translation that owns it
-  (§ 11.4). Every other row compares names to names and never touches a number.
+  (§ 11.5). Every other row compares names to names and never touches a number.
 
 - **Which rows are worth offering is read from the structure, not hard-coded.**
   The label names in the by-label list, and whether a by-residue row makes sense
@@ -1148,7 +1148,7 @@ now third in the list.
 
 | Overlay | Produced when | From what | Note |
 |---|---|---|---|
-| **atom-number labels** | the labels switch is on | one label per drawn atom | the text is the atom's **original** number, recovered through the map from step 1, and converted to 1-based by the one shared translation (§ 11.4). Never its position in the filtered list |
+| **atom-number labels** | the labels switch is on | one label per drawn atom | the text is the atom's **original** number, recovered through the map from step 1, and converted to 1-based by the one shared translation (§ 11.5). Never its position in the filtered list |
 | **the selection highlight** | something is selected **and isolate is off** | the list of drawn atoms to highlight | under isolate this is deliberately empty: the drawn set already *is* the selection, so highlighting all of it would say nothing. The pipeline emits only *which* atoms — never what the highlight looks like |
 | **force arrows** | the forces switch is on and the data carried forces | frame `f`'s forces, times the scale | frame `f`'s arrows come from frame `f`'s forces. Getting this wrong shows converged forces on an unconverged frame |
 The result, for every frame, is the finished data of § 6.5.
@@ -1161,7 +1161,7 @@ identical answer four hundred times.
 
 **Measurement is deliberately not in this list.** The position / distance / angle
 readout is the result of a user *interacting* with the view, not part of
-producing a frame. It lives on its own (§ 11.4), takes its atoms from the panel's
+producing a frame. It lives on its own (§ 11.5), takes its atoms from the panel's
 selection, and reads coordinates from the master copy — which is exactly why it
 stays correct under isolate, where the drawn numbering has changed.
 
@@ -1458,14 +1458,14 @@ visible without opening a menu.
 **There is no automatic write.** Only installing a structure — the one anchoring
 write — and an explicit save or load touch storage, and each moves the history
 position only after its round trip has finished. The history mechanism is blind
-to the file format: the model hands it a way to make a snapshot and a way to put
+to the file format: the model hands it a way to record a state and a way to put
 one back, and nothing else.
 
 **Opening a new structure invalidates the old one's pending writes.** Anchoring a
 new molecule prunes the previous one's saved states and resets the position — so
 a save or a load of the *previous* structure that is still queued or still
 waiting on its round trip must not land. It is abandoned rather than applied,
-because applying it would put an old snapshot over a freshly opened structure.
+because applying it would put an old state over a freshly opened structure.
 
 That is the same rule as § 10.9's, in a different subsystem: **the more
 authoritative statement about what the structure is supersedes whatever is
@@ -1483,7 +1483,7 @@ mount. That is the entire division. See
 
 **State is the truth. What you are looking at is not state.**
 
-That one line decides everything about what a snapshot holds, and it is worth
+That one line decides everything about what a saved state holds, and it is worth
 stating before the list, because otherwise every entry looks like a judgement
 call and none of them are.
 
@@ -1498,10 +1498,10 @@ had picked out still picked out. It opens at the first frame, fitted, with the
 switches off — because none of that was ever part of what you were working on.
 
 **The mechanism does not know or care what is in it.** It is handed a way to make
-a snapshot and a way to put one back, and it never looks inside. So **nothing
-about saving constrains what may be saved**: a trajectory needs no new mechanism
-to become restorable, and neither does anything added to the truth later. Only
-the thing that writes the snapshot has to include it.
+a state and a way to put one back, and it never looks inside. So **nothing about
+saving constrains what may be saved**: a trajectory needs no new mechanism to
+become restorable, and neither does anything added to the truth later. Only the
+thing that writes the state has to include it.
 
 Which is why this section lists no exclusions of its own. Nothing is left out by
 the saving machinery. Things are left out because they are not the truth, and
@@ -1509,29 +1509,39 @@ that is one rule rather than a list to maintain.
 
 > **Transition.** Today's serialiser writes a structure with one set of
 > coordinates, so a session saved while a trajectory was loaded comes back as a
-> single structure. Frames *are* the truth and belong in a snapshot; the
+> single structure. Frames *are* the truth and belong in a saved state; the
 > serialiser is simply behind, and that is where it is fixed.
 
 ### 11.3 Three different things that all look like saving
 
-They are not variants of each other. They differ in **what they produce**, **what
-they read it from**, and **whether you can go back** — and the first two split
-along the same line as § 11.2's: the truth, or a view of the truth.
+Three kinds of thing, not variants of each other:
+
+1. **a saved state** — somewhere to get back to;
+2. **an export of the truth** — a structure, to compute on;
+3. **an export of the view** — a picture, to look at.
+
+They differ in **what they produce**, **what they read it from**, and **whether
+you can go back**. The first two are the truth; the third is a view of it — the
+same line § 11.2 draws.
 
 | | Produces | Reads from | Which frames | Undoable |
 |---|---|---|---|:--:|
 | **Save state** (and Retract) | one point in an ordered, persistent sequence — undo that survives a reload | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
 | **Export → Data** | two files: the coordinates as `.xyz`, and the metadata that travels with them as `.json` | **the truth** — the master copy | the displayed one, only | no |
-| **Export → Image** | a `.png` of the molecule as it is drawn right now | **the drawing** | the displayed one, only | no |
+| **Export → Snapshot** | a `.png` of the molecule as it is drawn right now | **the drawing** | the displayed one, only | no |
 | **Export → Animation** | a `.webm` or `.gif` of the whole trajectory | **the drawing** | every frame | no |
 
-Both exports go either into the project or to a download — that choice is
-separate from all of the above.
+Snapshot and Animation are one kind in two sizes — both are renders, differing
+only in how many frames they cover.
+
+Every export goes either into the project or to a download. That choice is a
+separate axis from all of the above, and it is the subject of the second half of
+this section.
 
 **Save state is not a file.** It is how you get back to where you were after a
 modification. Nothing appears in the project, nothing is named, and it is the
-only one of the three you can step backwards through — the other two produce
-something and are finished.
+only one you can step backwards through — an export produces something and is
+finished.
 
 **Only the Data export is about the truth.** The other two are renders, and
 nothing else. That is the division worth remembering, because the rest follows
@@ -1594,20 +1604,23 @@ back to where you were (§ 11.2). Nothing reads it but this viewer, nothing is
 generated from it, and it never appears in the project. The project is what you
 *meant to keep*; a saved state is where you happened to be.
 
-**The Export menu is MolView's own, and every export enters through it.** That is
-the rule, and it is the one this section most depends on. MolView decides what an
-export produces and what it is read from — nothing below it makes that call.
+Which leaves one question: who decides any of this. That is § 11.4.
 
-It lives in **MolView's own menu surface** — part of the card MolView assembles
-(§ 8), separate from the drawing layer's controls rather than the same menu with
-different wiring behind it.
+### 11.4 Who owns the Export menu
+
+**It is MolView's own, and every export enters through it.** MolView decides what
+an export produces and what it is read from — nothing below it makes that call.
+
+It lives in **MolView's own menu surface**, part of the card MolView assembles
+(§ 8), separate from the drawing layer's controls rather than being the same menu
+with different wiring behind it.
 
 Having a place of its own is the part that matters. A menu is where something is
-*decided*, and the drawing layer decides nothing (§ 7) — so when a
-MolView-level decision needed somewhere to live and the only menu in sight
-belonged to the embed, it went there, and the embed started deciding what a
-structure export means. A surface at the right level means the next such control
-has an obvious home, instead of landing one layer too low again.
+*decided*, and the drawing layer decides nothing (§ 7) — so when a MolView-level
+decision needed somewhere to live and the only menu in sight belonged to the
+embed, it went there, and the embed started deciding what a structure export
+means. A surface at the right level means the next such control has an obvious
+home instead of landing one layer too low again.
 
 **Which menu a control belongs to has a test:** *what does it decide?*
 
@@ -1625,7 +1638,7 @@ down** and keeps everything else: the menu, the choice, the destination. Asking
 the layer that can draw to draw is a command like any other (§ 9.8). Letting it
 decide what an export *is* would not be.
 
-That distinction is not academic — it is exactly where this went wrong:
+That is not an academic distinction — it is exactly where this went wrong:
 
 > **Where the code has not caught up — and this one loses data.** The Export menu
 > is currently the **embed's**. Its Data rows write **coordinates only**:
@@ -1646,12 +1659,15 @@ That distinction is not academic — it is exactly where this went wrong:
 > `.pdb` cannot carry this metadata at all, so a format that cannot hold the
 > truth probably belongs on the download row and not on save-to-project.
 
-> **A word that means two things.** The Export menu's **Snapshot** is a picture.
-> The code that saves state also uses the word *snapshot* for a saved point in
-> history. They have nothing to do with each other, so this document says **saved
-> state** for the second one and keeps *snapshot* for the picture.
+> **A word that means two things.** The Export menu's **Snapshot** is a picture —
+> that is its label on screen. The saving machinery also uses *snapshot* for a
+> point in history, which is a completely different thing. This document avoids
+> the collision by calling the second one a **saved state** everywhere, and
+> leaving *snapshot* to mean the picture. (Whether the menu item should be
+> renamed to something unambiguous is worth deciding while § 11.4's move happens
+> — task #39.)
 
-### 11.4 One atom-numbering translation, in one place
+### 11.5 One atom-numbering translation, in one place
 
 Atom numbers are **0-based in code** and **1-based on screen**, and MolView never
 writes a bare `+1` of its own anywhere.
@@ -1692,7 +1708,7 @@ A user selects two atoms in the panel and clicks Delete.
 3. Because the structure changed, the model tells the **history helper** to
    record the new state.
 4. The user clicks Undo. The model asks the history helper to step back one
-   state, and hands the previous snapshot to the **load helper** to put back.
+   state, and hands the previous one to the **load helper** to put back.
 
 Every step crosses exactly one helper, and each helper only ever calls the
 functions the model gave it. That is why the module stays sealed: the outside
@@ -1822,14 +1838,14 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 10.3 — forces in, arrows out | handing in ready-made arrows draws nothing |
 | § 11.1 — the count requirement is checked first | `orient` with one atom and `delete` with none are refused locally, with no request sent |
 | § 11.2 — state is the truth, not the view of it | restoring brings back the structure and the selection; it does not bring back the camera, the displayed frame or the switches — and the saving mechanism itself excludes nothing |
-| § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its snapshot over the new one |
+| § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its state over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
 | § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds; an image and an animation are renders and carry whatever the view was set to |
 | § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so labels and frozen atoms survive into whatever is generated from it |
-| § 11.3 — every export enters at MolView | no export decides anything below the model; a picture is rendered by the sealed layer on request, but what to export and where it goes is decided above |
+| § 11.4 — every export enters at MolView | no export decides anything below the model; a picture is rendered by the sealed layer on request, but what to export and where it goes is decided above |
 | § 11.3 — save-to-project and download differ only in destination | both produce identical bytes, and neither has MolView writing a file |
-| § 11.4 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
+| § 11.5 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
 
 ### 13.4 What makes this testable at all
 
@@ -1861,7 +1877,8 @@ accident of the implementation or documenting something that belongs elsewhere.
 | § 9.4 read-only | 5.1, 5.2 | one rule instead of a list of disabled buttons that drifts |
 | § 9.6 the camera is not held | **5.2** | the one fact MolView cannot own without owning something that goes stale — so it owns none of it |
 | § 10 the render pipeline | **5.1, 5.2, 5.3** | the one path from the master copy to the picture: what each switch produces, in what order, at what cost |
-| § 11 the other connections | 5.2, 5.5 | the server, the workspace, and the one atom-numbering translation |
+| § 11 the other connections | 5.2, 5.5 | the server, the workspace, the three kinds of saving, and the one atom-numbering translation |
+| § 11.3–11.4 saving, and who decides it | **5.1, 5.2, 5.5** | three things wear the same word; separating them is what makes "the truth" and "a view of it" mean something at the point a user acts |
 | § 12 worked examples | — | the concepts above, in the order they actually happen |
 | § 13 the tests | all six | a test derived from the source cannot defend an idea |
 | § 15 the file map | — | for when you open the code |
@@ -1886,7 +1903,7 @@ below lives under `lib/molview/`.
 | `render-engine/` | the renderEngine: what to redraw, the per-frame maths, the drawing commands (§ 9.7–9.8) |
 | `selection/` | the panel, the click-to-select wiring, the distance/angle maths (§ 9.5) |
 | `frame-controls.js` · `measurement-overlay.js` | the frame bar and the measurement readout |
-| `_atom-index.js` | the one atom-numbering translation (§ 11.4) |
+| `_atom-index.js` | the one atom-numbering translation (§ 11.5) |
 | `_atom-channels.js` | what kinds of thing an atom can be filtered by, and in what order (§ 9.5) |
 | `_viewer-overlay.js` | one consistent way to put a small badge in a corner of the 3D window |
 | `demo.js` | the in-repo multi-frame demo page (§ 13.4) |
