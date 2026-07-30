@@ -633,7 +633,6 @@ neither what a viewer holds nor anything in this document.
 | parsed structure text | the **server** | MolView never parses. It posts bytes and adopts the structure that comes back (§ 11.1) |
 | files on disk | the **projects** module | `exportFile()` returns bytes; MolView owns no file route |
 | the saved session bytes | the **workspace** module | MolView decides when and how far; the workspace knows where (§ 11.2) |
-| trajectory frames, across a session | *nobody yet* | saving more than one frame is planned, not built — see [`roadmap.md`](?doc=roadmap.md) |
 
 ---
 
@@ -1469,30 +1468,36 @@ underneath: where the bytes actually go, reached through an accessor handed in a
 mount. That is the entire division. See
 [`workspace.md`](?doc=web/workspace.md).
 
-**What a snapshot carries: the structure and the selection** — what the user was
-working on, and which atoms they had picked out.
+**State is the truth. What you are looking at is not state.**
 
-**What it does not:** the camera (§ 9.6), the switches, or the trajectory.
+That one line decides everything about what a snapshot holds, and it is worth
+stating before the list, because otherwise every entry looks like a judgement
+call and none of them are.
 
-A snapshot has no concept of frames. It stores **a structure with one set of
-coordinates**, so a session saved while a 400-frame optimization was loaded comes
-back as a single structure and the movie is gone. That is a real limit, not a
-detail of the format — restoring a trajectory is planned, not built.
+| | |
+|---|---|
+| **Saved — it is the truth** | the structure: every atom, every frame, the cell, the labels. And the selection: which atoms the user picked out, because that is intent they expressed, not a way of looking (§ 5.5) |
+| **Not saved — it is a view of the truth** | where the camera is pointing, which frame is on screen, which switches are on |
 
-The switches deserve a word, because leaving them out is a choice rather than an
-oversight. Isolate, labels, arrows, the cell, the axes are **display state**, and
-they have the same problem the camera has: flipping one changes nothing about the
-structure, so nothing pushes a save. Restoring them would mean giving a toggle
-the power to write, which is a lot of machinery so that a user does not have to
-click a button again. The structure and the selection are the expensive things to
-recreate; a switch is one click.
+Reopen a saved session and you get **what you were working on**, not what you
+were looking at. The molecule is back, with every frame it had and the atoms you
+had picked out still picked out. It opens at the first frame, fitted, with the
+switches off — because none of that was ever part of what you were working on.
 
-> **Undecided, and it should not be.** § 5.1 promises that what you see is what
-> you save — scroll to frame 40, save, get frame 40 — and § 9.3 states that for
-> `exportFile()`. For the **session** save it is unstated: this document does not
-> say whether the snapshot takes the coordinates of the displayed frame or of the
-> first one. A user who scrubs to frame 40 and saves a session has no answer here
-> about what they get back. It needs deciding rather than describing.
+**The mechanism does not know or care what is in it.** It is handed a way to make
+a snapshot and a way to put one back, and it never looks inside. So **nothing
+about saving constrains what may be saved**: a trajectory needs no new mechanism
+to become restorable, and neither does anything added to the truth later. Only
+the thing that writes the snapshot has to include it.
+
+Which is why this section lists no exclusions of its own. Nothing is left out by
+the saving machinery. Things are left out because they are not the truth, and
+that is one rule rather than a list to maintain.
+
+> **Transition.** Today's serialiser writes a structure with one set of
+> coordinates, so a session saved while a trajectory was loaded comes back as a
+> single structure. Frames *are* the truth and belong in a snapshot; the
+> serialiser is simply behind, and that is where it is fixed.
 
 ### 11.3 One atom-numbering translation, in one place
 
@@ -1664,7 +1669,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 10.8 — same atoms, every frame | a frame with a different atom count is a hard error, never coerced |
 | § 10.3 — forces in, arrows out | handing in ready-made arrows draws nothing |
 | § 11.1 — the count requirement is checked first | `orient` with one atom and `delete` with none are refused locally, with no request sent |
-| § 11.2 — a snapshot carries the structure and the selection | restoring brings back what was loaded and what was picked out; it does not restore switches or the camera, and nothing about a toggle triggers a write |
+| § 11.2 — state is the truth, not the view of it | restoring brings back the structure and the selection; it does not bring back the camera, the displayed frame or the switches — and the saving mechanism itself excludes nothing |
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its snapshot over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
 | § 11.3 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
