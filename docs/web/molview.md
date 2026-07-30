@@ -141,16 +141,19 @@ route and never learns where anything landed.
 
 ## 2. What MolView is not
 
-Four jobs a viewer could plausibly grow into, and does not. Each boundary is
-here for a reason, and every one of them has been crossed at some point by
-something that seemed convenient at the time.
+Three jobs a viewer could plausibly grow into, and does not. Each boundary is
+here for a reason, and each has been crossed at some point by something that
+seemed convenient at the time.
+
+A boundary earns a row here only if a viewer would plausibly drift across it.
+Jobs that simply belong to other modules are not listed — naming them would keep
+them present in a document they have no business being in.
 
 | Not | Whose job it is | Why the boundary is there |
 |---|---|---|
 | a structure **parser** | the server | one parser, one set of chemistry rules. A parser in the browser would be a second, weaker opinion about what a file means, and the two would disagree on the awkward cases |
 | a **file manager** | the projects module | MolView produces and consumes bytes. Where those bytes live on disk is not a viewing concern, and MolView holds no file route |
 | a place to **keep** a saved session | the workspace module | MolView decides *when* to save and *how far* to step back; the workspace only knows *where the bytes go* (§ 11.2) |
-| an **animator of vibrations** | a separate module, with its own document | animating a normal mode is a different job with different data; it is not this module's business and is not described here |
 
 ---
 
@@ -616,14 +619,12 @@ flowchart TB
       ST["undo / redo history"]
       OP["the geometry edits"]
       SS["what is selected + the switches"]
-      CS["the cell / working state"]
     end
     DM -->|"hands it: make a snapshot, put a snapshot back"| ST
     DM -->|"hands it: read the atoms, apply the server's result"| OP
     DM -->|"hands it: read everything needed to write out"| SE
     DM -->|"hands it: where to put a loaded structure"| IN
     DM -->|"builds it"| SS
-    DM -->|"builds it"| CS
 ```
 
 | Helper | Its job | What it is handed |
@@ -633,7 +634,11 @@ flowchart TB
 | history | undo / redo (§ 11.2) | "make a snapshot" + "put a snapshot back"; where the bytes go |
 | edits | the geometry operations (§ 11.1) | read the atoms; apply the structure the server sends back |
 | selection | what is selected + the switches (§ 9.5) | *(an optional starting selection)* |
-| cell state | the cell and working state | *(nothing — it stands alone)* |
+
+The cell is **not** in this list, deliberately. It is a field of the structure
+(§ 6.2), so it lives with the structure and is edited through the one cell door
+(§ 9.3). A helper holding "the cell" beside the structure that already has one
+would be a second home for it, which is the thing § 5.2 exists to prevent.
 
 Two more groups sit beside the model and are built the same sealed way: the
 **renderEngine**, which turns the master copy into what you see, and the
@@ -1075,8 +1080,8 @@ recompute. That is why changing the forces switch or the arrow scale re-derives
 arrows for every frame and **re-bakes them in place**, without touching the
 coordinates: an overlay refresh, not a rebuild.
 
-**Labels, the highlight and other marker shapes are re-placed for the shown
-frame on each swap.** They are free-standing objects sitting at atom coordinates.
+**Labels and the highlight are re-placed for the shown frame on each swap.**
+They are free-standing objects sitting at atom coordinates.
 A frame swap moves the atoms but not those objects, so each swap must repaint
 them at the new positions. That is a handful of shapes — one frame's worth — not
 a movie rebuild, and critically it **never restyles the molecule's geometry**.
@@ -1206,9 +1211,11 @@ anybody; it triggers a rebuild.
 Today an overlay refresh re-derives the overlays. It could re-derive only the
 ones that actually changed.
 
-The scene is a fixed stack of independent layers — atom style, labels, force
-arrows, the highlight, the cell box, the axes — drawn in that order, each a
-function of a **declared** set of inputs and of nothing else. Two rules would
+The scene is a fixed stack of independent layers — labels, force arrows, the
+highlight, the cell box, the axes — drawn in that order, each a function of a
+**declared** set of inputs and of nothing else. (Draw style is not one of them:
+it is a window fact, applied by the sealed layer without the frame calculation
+ever seeing it — § 9.6.) Two rules would
 follow: a change dirties only the layers that declare it as an input (a click
 dirties the highlight and nothing else; the labels switch dirties labels and
 nothing else; a frame swap dirties no layer's content at all, only positions),
@@ -1497,7 +1504,7 @@ accident of the implementation or documenting something that belongs elsewhere.
 | § 15 the file map | — | for when you open the code |
 
 Two parts of this document earn their place by what they **exclude**: § 2 refuses
-four jobs by name, and § 11.1 keeps field-level JSON out. Boundaries are
+three jobs by name, and § 11.1 keeps field-level JSON out. Boundaries are
 load-bearing — most of what has gone wrong in this module was a fact quietly
 acquiring a second home.
 
