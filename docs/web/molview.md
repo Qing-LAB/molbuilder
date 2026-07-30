@@ -338,8 +338,8 @@ all of it.
 ### 6.1 The four things
 
 **The structure — the same for every frame.** Per atom: its element, the labels
-it carries, a residue name when the source had one, and any per-atom numbers a
-calculation produced. Plus, for the structure as a whole, an optional unit cell.
+it carries, and a residue name when the source had one. Plus, for the structure
+as a whole, an optional unit cell.
 A frame never carries any of these; they are fixed when the structure loads and
 are identical for frame 0 and frame 400. That is exactly what makes a trajectory
 *one molecule moving* instead of a sequence of different molecules.
@@ -371,7 +371,6 @@ classDiagram
     class AtomFacts {
       +string[] labels
       +string residue
-      +Values values
     }
     class Coordinates {
       +Frame[] frames
@@ -422,7 +421,7 @@ classDiagram
 | Field | Shape | What it is |
 |---|---|---|
 | `elements` | `string[]` | element per atom. **Shared by every frame.** |
-| `annotations` | per atom: the labels it carries, its residue name if it has one, and any per-atom numbers | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them and filters on them (§ 9.5); the drawing does not use them. Some label names are **reserved** and mean something downstream (§ 6.6) |
+| `annotations` | per atom: the labels it carries, and its residue name if the source had one | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them and filters on them (§ 9.5); the drawing does not use them. Some label names are **reserved** and mean something downstream (§ 6.6) |
 | `cell` | `{lattice: [Vec3,Vec3,Vec3], origin: Vec3}` or `null` | the a/b/c vectors, plus the corner the box is anchored at |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no tags |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
@@ -430,11 +429,9 @@ classDiagram
 Atom **count**, `elements` and `annotations` are fixed when the structure loads
 and are identical for every frame. That *is* the same-atoms rule of § 10.8.
 
-Those four — element, labels, residue, per-atom numbers — are exactly what the
-filter enumerates (§ 9.5). They are the same list, which is why filtering needs
-no case per property. Per-atom **numbers** are the one entry the filter model
-supports but nothing yet produces end to end; that is tracked in
-[`roadmap.md`](?doc=roadmap.md), not here.
+Those three — element, labels, residue — are exactly what the filter enumerates
+from an atom (§ 9.5). They are the same list, which is why filtering needs no
+case per property.
 
 **The switches.** Only `selection` and `isolate` change which atoms are drawn at
 all; every other switch adds or removes something drawn alongside them. That is
@@ -917,13 +914,20 @@ none of them keeps its own answer.
   not in the panel.
 - **What an atom can be filtered by is one enumerated list, not a set of special
   cases.** Each atom offers its properties as a small, ordered list — its
-  element, its residue, the labels it carries — reserved ones included — and any
-  per-atom numbers. Each has a kind, and the kind decides how filtering works:
-  *one-of* (element, residue), *is-in-the-set* (any label), *compare* (a
-  number). The panel builds its filter UI from that list rather than hard-coding
-  a filter per property, which is why a new kind of per-atom property becomes
-  filterable without the panel changing — and why filtering for frozen atoms
-  needs no case of its own (§ 6.6).
+  element, its residue, and the labels it carries, reserved ones included. Each
+  carries a kind, and the kind decides how matching works: *one-of* for element
+  and residue, *is-in-the-set* for a label. The panel builds its filter UI from
+  that list rather than hard-coding a filter per property, which is why filtering
+  for frozen atoms needs no case of its own (§ 6.6) and why a new per-atom
+  property becomes filterable without the panel changing.
+
+- **Filtering by atom number is the one that is not in that list, and cannot
+  be.** An atom's number is not something it *has* — it is *where it sits*. So it
+  is not enumerated from the atom; it is matched against a range the user types,
+  like `1-4, 6, 10-11`. That also makes it the only filter that has to cross the
+  numbering boundary: what the user types is 1-based and what it selects is
+  0-based, translated in the one place that owns that (§ 11.3). Every other
+  filter compares names to names and never touches a number.
 - **What it offers:** turn isolate on or off, set a switch, apply a filter, write
   a label onto the selected atoms (which replaces that label's previous set),
   adopt a restored session's selection, the click-selection operations
@@ -1537,7 +1541,8 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.5 — the drawn-to-original map holds | under isolate, labels carry original numbers and measurement resolves panel numbers against the master copy |
 | § 6.5 — the highlight is content, not styling | per-frame data carries no colour, radius or opacity |
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
-| § 6.2 — the data holds what the filter enumerates | every property the filter offers — element, labels, residue, per-atom numbers — is a property the structure actually carries; neither list can grow without the other |
+| § 6.2 — the data holds what the filter enumerates | every property the filter enumerates from an atom — element, labels, residue — is a property the structure actually carries; neither list can grow without the other |
+| § 9.5 — filtering by atom number crosses the numbering boundary | a typed range like `1-4, 6` selects the atoms a user would count off on screen, and the same range in a structure of any size never drifts by one |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
