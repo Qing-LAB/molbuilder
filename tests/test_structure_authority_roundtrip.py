@@ -193,3 +193,70 @@ def test_illegal_stored_pair_comes_back_healed_not_verbatim(tmp_path):
     back = codec.read(tmp_path / "bad.xyz")
     assert back.cell_origin is not None
     assert np.allclose(back.cell_origin, [7.5, 7.5, 7.5])   # bbox_min - vacuum
+
+
+def test_derived_structure_round_trips_with_cell_still_null(tmp_path):
+    """§ 6.1 clause 1: derived-ness SURVIVES the pair round-trip — a
+    resolved view must never be persisted as truth."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    s = Structure(elements=["H", "H"],
+                  positions=np.array([[1.0, 1.0, 1.0], [3.0, 1.0, 1.0]]),
+                  vacuum=(3.0, 3.0, 3.0))
+    codec = StructureCodec()
+    codec.write(s, tmp_path / "d.xyz")
+    back = codec.read(tmp_path / "d.xyz")
+    assert back.cell is None and back.cell_origin is None
+    assert back.vacuum == (3.0, 3.0, 3.0)
+
+
+def test_to_wire_derived_keeps_cell_null_and_resolves_view():
+    """Truth vs view never conflated on the wire for the DERIVED case."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    s = Structure(elements=["H", "H"],
+                  positions=np.array([[10.0, 10.0, 10.0],
+                                      [12.0, 10.0, 10.0]]),
+                  vacuum=(2.5, 2.5, 2.5))
+    per = s.to_wire()["periodicity"]
+    assert per["cell"] is None
+    assert np.allclose(np.diag(np.array(per["resolved_cell"])),
+                       [7.0, 5.0, 5.0])
+    assert np.allclose(per["resolved_cell_origin"], [7.5, 7.5, 7.5])
+
+
+def test_save_endpoint_heals_a_corrupted_blob_before_writing(
+        tmp_path, monkeypatch):
+    """The SAVER half of the gate (§ 6.1 clause 2): a browser blob in the
+    hemeC-corrupted state is healed by from_scratch before the pair hits
+    disk."""
+    import json as _json
+    import numpy as np
+    import pytest as _pytest
+    _pytest.importorskip("flask")
+    from molbuilder.diagnostics import Capabilities, set_capabilities
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    monkeypatch.chdir(tmp_path)
+    sdir = tmp_path / "projects" / "P" / "structure"
+    sdir.mkdir(parents=True)
+    s = Structure(elements=["H", "H"],
+                  positions=np.array([[10.0, 10.0, 10.0],
+                                      [12.0, 10.0, 10.0]]),
+                  vacuum=(2.5, 2.5, 2.5))
+    s.cell = np.eye(3) * 7.0          # corrupted: no origin, atoms outside
+    s.__post_init__()
+    blob = StructureCodec().scratch_blob(s)
+    set_capabilities(Capabilities(runtime_config={},
+                                  conda_binary="/usr/bin/conda"))
+    try:
+        from molbuilder.web.app import create_app
+        client = create_app(config={}).test_client()
+        r = client.post("/api/structure/save", json={
+            "path": str(sdir / "m.xyz"), "blob": blob})
+        assert r.status_code == 200, r.get_json()
+        side = _json.loads((sdir / "m.molstruct.json").read_text())
+        assert np.allclose(side["cell_origin"], [7.5, 7.5, 7.5])
+    finally:
+        set_capabilities(None)
