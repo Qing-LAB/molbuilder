@@ -16,8 +16,10 @@ the Modify tab's source panels and its save dialog — belongs to
 
 MolView is the one 3D molecular viewer used everywhere in the browser. The Modify
 tab edits a structure in it; the Results, Spectra and Transport tabs show one in
-it without letting you edit; the trajectory inspector plays an optimization in
-it. Every tab embeds the same component with the same controls.
+it without letting you edit. Within Results, the view that opens depends on the
+file you picked — a trajectory file opens a view that plays the optimization and
+draws its energy and force plots alongside. Every one of them embeds the same
+component with the same controls.
 
 **This document is the design of that component** — what it is for, what it
 refuses to do, what it holds, how it is layered, what each API is for, how the
@@ -760,7 +762,7 @@ rather than maintained separately.
 | Hear that the structure changed | `subscribe(fn)` — the structure only; the frame has its own channel | | — |
 | Reach the selection / the window state | `selection` (§ 9.5) · `view` (§ 9.6) | | — |
 | Put a structure in | `installMolecule(input)` | | **yes** |
-| Edit the geometry | `applyOp(name)` (§ 11.1) · `discard` | | **yes** |
+| Edit the geometry | `applyOp(name)` (§ 11.1) | | **yes** |
 | Edit the cell | `commitPeriodicityOp` — the one way the cell changes | | **yes** |
 | Load or extend the frames | `reloadFrames` · `addFrame` · `addFrames` · `setForces` | | **yes** |
 | Move through the session history | `save` · `load(delta)` · `undo` · `state_index` · `uncommitted` (§ 11.2) | | **yes** — `load` and `undo` restore a different structure |
@@ -833,6 +835,14 @@ none of them keeps its own answer.
 
 - **The switches live here** (all off by default), not in the renderEngine and
   not in the panel.
+- **What an atom can be filtered by is one enumerated list, not a set of special
+  cases.** Each atom offers its properties as a small, ordered list — its
+  element, its residue, the labels it carries, whether it is frozen, and any
+  per-atom numbers. Each has a kind, and the kind decides how filtering works:
+  *one-of* (element, residue), *is-in-the-set* (a label), *is-set* (frozen),
+  *compare* (a number). The panel builds its filter UI from that list rather
+  than hard-coding four kinds of filter, which is why a new kind of per-atom
+  property becomes filterable without the panel changing.
 - **What it offers:** turn isolate on or off, set a switch, apply a filter, write
   a region label onto the selected atoms (which replaces that label's previous
   set), adopt a restored session's selection, the click-selection operations
@@ -1289,6 +1299,10 @@ at), a flag saying whether there are unsaved changes, and the save/restore chain
 itself: **save** takes a snapshot of the current state; **load(delta)** moves
 along the history, so `load(-1)` steps back; **undo** is exactly `load(-1)`.
 
+The unsaved-changes flag is not just bookkeeping — it is shown, as a small badge
+in the corner of the 3D window, so "there is work here that is not saved" is
+visible without opening a menu.
+
 **There is no automatic write.** Only installing a structure — the one anchoring
 write — and an explicit save or load touch storage, and each moves the history
 position only after its round trip has finished. The history mechanism is blind
@@ -1524,8 +1538,8 @@ below lives under `lib/molview/`.
 | `selection/` | the panel, the click-to-select wiring, the distance/angle maths (§ 9.5) |
 | `frame-controls.js` · `measurement-overlay.js` | the frame bar and the measurement readout |
 | `_atom-index.js` | the one atom-numbering translation (§ 11.3) |
-| `_atom-channels.js` | the per-atom channels behind the selection store |
-| `_viewer-overlay.js` | the internal corner-overlay framework |
+| `_atom-channels.js` | what kinds of thing an atom can be filtered by, and in what order (§ 9.5) |
+| `_viewer-overlay.js` | one consistent way to put a small badge in a corner of the 3D window |
 | `demo.js` | the in-repo multi-frame demo page (§ 13.4) |
 
 **Deliberately not listed:** the sealed layer. No consumer names its file and
