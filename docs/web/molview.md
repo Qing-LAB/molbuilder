@@ -1610,22 +1610,43 @@ before I deleted those atoms" still works after a reload.
 `save`, `load` and `undo` are that history, and the mechanism is internal to
 MolView.
 
-It owns the position in the edit sequence (0 is the state the structure opened
-at), a flag saying whether there are unsaved changes, and the save/restore chain
-itself: **save** records a **saved state**; **load(delta)** moves along the
-history, so `load(-1)` steps back; **undo** is exactly `load(-1)`. (Not to be
-confused with the Export menu's *Snapshot*, which is a picture — § 11.3.)
+It owns the position in the sequence (0 is the state the structure opened at), a
+flag saying whether there are unsaved changes, and the save/restore chain itself.
+Both `save` and `load` take a **step**, and the step is what tells them apart:
+
+| The call | What it does | The user calls it |
+|---|---|---|
+| `save(1)` | write a new point one step on, and **drop every point above it** | **Save state** |
+| `save(0)` | re-write the current point where it is, without moving | — |
+| `load(-1)` | step back one point; `undo` is exactly this | **Retract** |
+| `load(+1)` | step forward again, into a point a Retract moved away from | — |
+| `load(0)` | **not a move**: put back the point you were on — how a reopened page returns to where it was | — |
+
+`load(0)` is the one worth reading twice. Zero is not "move by nothing"; it is a
+different verb. The three things this surface does are *step back*, *step forward*,
+and *restore where I was* — and the third is what a session restore needs.
+
+(None of this is the Export menu's *Snapshot*, which is a picture — § 11.3.)
 
 **Saving a state is something the user does.** Nothing else puts a point on the
 sequence. An edit — a delete, a rotate, a new electrode — changes the structure
 and does **not** record a state; the user decides when the structure is worth
 being able to come back to, and says so.
 
-Two consequences follow, and they are the whole user-facing shape of this:
+Three consequences follow, and they are the whole user-facing shape of this:
 
 - **Undo returns to the last state the user saved**, not to the moment before the
   last edit. Three edits after a save are undone together, because they were never
-  three points — they were one stretch of work between two of them.
+  three points — they were one stretch of work between two of them. **A Retract
+  spends that unsaved work first:** from a saved point with edits sitting on top of
+  it, the first Retract discards the edits and leaves you *on* that point; only the
+  next one steps to the point before it. The first press undoes what you just did,
+  not what you had already decided to keep.
+- **Stepping forward lasts until you save.** After a Retract you can step forward
+  again into the points you moved away from. Saving ends that: a new point is
+  written and everything above it is dropped. The moment a user commits to a
+  different path, the abandoned one stops existing — which is the same rule as
+  *opening a new structure prunes the old sequence* below, one scale smaller.
 - **The badge is what makes that honest.** The unsaved-changes flag is not
   bookkeeping: it shows as a small badge in the corner of the 3D window, so "there
   is work here that is not on the sequence yet" is visible without opening a menu.
@@ -2103,6 +2124,9 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its state over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
 | § 11.2 — saving a state is the user's act, and undo returns to it | an edit records nothing and raises the badge; after three edits with no save between them, one undo restores the state before all three |
+| § 11.2 — a Retract spends unsaved work first | from a saved point with edits on top, one Retract lands **on** that point with the edits discarded; a second lands on the point before it |
+| § 11.2 — Save state drops what was above it | after retracting past two points and saving, stepping forward is no longer possible — the abandoned points are gone |
+| § 11.2 — reopening returns to the point you were on | a reload comes back to the current point rather than to the anchor, and does not move the position |
 | § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds, whatever isolate is doing; a picture and an animation are renders and carry whatever the view was set to |
 | § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so labels and frozen atoms survive into whatever is generated from it |
