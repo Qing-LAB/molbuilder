@@ -569,6 +569,26 @@ input or a freeze list for a geometry optimiser — is decided by the code that
 generates the input, not here. The viewer's job ends at "these atoms carry this
 name".
 
+**Typing a reserved name is allowed, and the viewer says so.** A user can type
+any label they like, including one of the five. Nothing refuses it — refusing
+would be inventing a rule, and a reserved name is *just a label*, which is the
+entire point. What happens instead is that the moment what they typed matches a
+reserved name, the viewer tells them: **this name is reserved, and here is what
+it does.**
+
+That turns the one real hazard into an informed choice. Somebody labelling a
+group `frozen atoms` as a note to themselves would otherwise have those atoms
+silently constrained in the next calculation; now they are told before it
+happens, and can pick another name or go ahead deliberately.
+
+**Knowing a name is reserved is not interpreting it.** MolView holds the list of
+reserved names and a short human description of each — the same descriptions the
+label reference shows — so it can name the conflict and explain it. It never
+*acts* on the meaning: no code here holds an atom still, and tagging atoms
+`frozen atoms` changes what is stored and nothing about what is drawn. Carrying a
+description to show a user and implementing a behaviour are different things, and
+only the first is a viewer's business.
+
 That split is the whole point. **A reserved meaning costs a name and a
 translator at the point of use — not a mechanism.** The alternative, which this
 design rejects, is to give each special meaning its own storage: its own field
@@ -1499,6 +1519,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.5 — the drawn-to-original map holds | under isolate, labels carry original numbers and measurement resolves panel numbers against the master copy |
 | § 6.5 — the highlight is content, not styling | per-frame data carries no colour, radius or opacity |
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
+| § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
 | § 9.2 — the handle refuses appearance | there is no way through the handle to push arrows, labels, a busy state or a toggle |
