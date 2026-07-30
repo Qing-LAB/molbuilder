@@ -139,6 +139,13 @@ speed box in milliseconds per frame (20–3000, default 150), and a slider with 
 with the frames — the largest force is drawn gold, the rest shade dim-red to
 orange-red by relative size, so converging forces visibly shrink.
 
+**Keeping a point to come back to.** In an editable view you can save the current
+state — the structure as it stands, with the atoms you have picked out — and step
+back to it later, even after a reload. It is undo that survives closing the page.
+Saving is something you do: nothing is recorded on its own, and a small badge in
+the corner says when there is work that is not on the sequence yet. This is not a
+file and nothing appears in your project (§ 11.2, § 11.3).
+
 **Getting things out.** The Export menu offers three things, each with a *Save*
 (into the project) and a *Download* row:
 
@@ -1573,9 +1580,21 @@ itself: **save** records a **saved state**; **load(delta)** moves along the
 history, so `load(-1)` steps back; **undo** is exactly `load(-1)`. (Not to be
 confused with the Export menu's *Snapshot*, which is a picture — § 11.3.)
 
-The unsaved-changes flag is not just bookkeeping — it is shown, as a small badge
-in the corner of the 3D window, so "there is work here that is not saved" is
-visible without opening a menu.
+**Saving a state is something the user does.** Nothing else puts a point on the
+sequence. An edit — a delete, a rotate, a new electrode — changes the structure
+and does **not** record a state; the user decides when the structure is worth
+being able to come back to, and says so.
+
+Two consequences follow, and they are the whole user-facing shape of this:
+
+- **Undo returns to the last state the user saved**, not to the moment before the
+  last edit. Three edits after a save are undone together, because they were never
+  three points — they were one stretch of work between two of them.
+- **The badge is what makes that honest.** The unsaved-changes flag is not
+  bookkeeping: it shows as a small badge in the corner of the 3D window, so "there
+  is work here that is not on the sequence yet" is visible without opening a menu.
+  Without it, an explicit-save history would silently lose work that a user
+  assumed was being kept.
 
 **There is no automatic write.** Only installing a structure — the one anchoring
 write — and an explicit save or load touch storage, and each moves the history
@@ -2046,6 +2065,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — state is the truth, not the view of it | restoring brings back the structure and the selection; it does not bring back the camera, the displayed frame or the switches — and the saving mechanism itself excludes nothing |
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its state over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
+| § 11.2 — saving a state is the user's act, and undo returns to it | an edit records nothing and raises the badge; after three edits with no save between them, one undo restores the state before all three |
 | § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds, whatever isolate is doing; a picture and an animation are renders and carry whatever the view was set to |
 | § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so labels and frozen atoms survive into whatever is generated from it |
