@@ -91,7 +91,7 @@ width, and a background colour with preset swatches plus a picker. One preset is
 transparent — choose it before exporting a picture to drop onto a slide.
 
 The View menu and the Export menu are not the same kind of thing, and § 11.4 is
-why: View changes how the drawing paints what it already has, so it belongs to
+why: View changes how the drawing paints what it already has, so it can live in
 the 3D window's own controls; Export decides what leaves the viewer and what it
 is read from, so it is MolView's.
 
@@ -509,8 +509,8 @@ The coordinates exist in **exactly two** forms, and only two.
 **The master copy — the real structure.** Every atom, every frame, in the
 original order. This is what gets measured, exported, saved, and handed to a
 calculation. It is kept clean — never overwritten with a cut-down list — so every redraw
-starts from it rather than from whatever is currently on screen. That is what lets the whole structure come back the moment isolate is
-turned off.
+starts from it rather than from whatever is currently on screen. That is what
+lets the whole structure come back the moment isolate is turned off.
 
 **The drawing copy — what the graphics library was handed.** Under isolate the
 unselected atoms are gone from it entirely, the survivors are renumbered, and
@@ -596,8 +596,9 @@ something a user sets; this is something a movie drives.
 ### 6.5 Worked out fresh on every redraw, never stored
 
 One frame, after the switches have been applied, becomes a **processed frame** —
-and that is the only *per-frame* thing that ever goes down. (The cell geometry, the axes and the busy-state cover also
-travel down; none of those is per frame — § 10.3.)
+and that is the only *per-frame* thing that ever goes down. (The cell geometry,
+the axes and the busy-state cover also travel down; none of those is per frame —
+§ 10.3.)
 
 | Field | Shape | What it is |
 |---|---|---|
@@ -1016,8 +1017,9 @@ The line falls exactly where the two copies do. Read-only is a statement about
 **the master copy**; the drawing copy is the picture, and looking at the picture
 is what a read-only viewer is *for*. Somebody studying a finished calculation can
 still select atoms, isolate them, measure them, scrub the trajectory, turn on
-force arrows, spin the camera and export what they see — none of that touches the
-structure. What they cannot do is change the structure the calculation ran on.
+force arrows, spin the camera, and export — the structure itself or a picture of
+it — none of which touches the structure. What they cannot do is change the
+structure the calculation ran on.
 
 Three consequences that are easy to get backwards:
 
@@ -1053,8 +1055,8 @@ What is selected, and which of the things that go *into* a frame are switched on
 all in one place. The panel, the highlight and the measurements are all
 **readers** of it; none of them keeps its own answer.
 
-- **The switches live here** (all off by default), not in the renderEngine and
-  not in the panel.
+- **The switches live here** — every one of them off by default, and the arrow
+  scale at its default — not in the renderEngine and not in the panel.
 - **The selection is the truth; click and filter are two editors of it.**
   Switching between them does not touch what is selected. Click mode edits atom
   by atom, entirely in the browser. Filter mode composes a query that the user
@@ -1125,9 +1127,10 @@ mechanism and becomes a fact.
 
 Draw style, radius, background colour, projection — and the camera.
 
-**The first four are settings the user chose.** They arrive from a menu, MolView
-was handed them, and it holds them like any other input. Nothing has to be read
-back to know which style is active: the answer is whatever was last set.
+**The first four are settings the user chose.** They are written here by whatever
+control the user touched, wherever that control happens to sit (§ 11.4), and
+MolView holds them like any other input. Nothing has to be read back to know
+which style is active: the answer is whatever was last set.
 
 **Nothing above the 3D window keeps the camera.** The window itself has one — a
 view of a 3D scene must have a point of view, and § 9.9 lists it among the things
@@ -1154,7 +1157,7 @@ on. The test is: *does working out what a frame contains require reading it?*
 
 | | **What a frame is made of** — `selection` | **How that frame is painted** — `view` |
 |---|---|---|
-| Examples | what is selected, isolate, atom labels, force arrows and their scale, the cell box, the axes | draw style, radius, background, perspective vs orthographic |
+| Examples | what is selected, isolate, atom-number labels, force arrows and their scale, the cell box, the axes | draw style, radius, background, perspective vs orthographic |
 | What they change | **what is in a frame** — which atoms, and what is drawn beside them | **how the same frame is painted** |
 | Who reads them | the renderEngine, when working out a processed frame (§ 6.5) | nobody in that calculation — they go straight to the sealed layer |
 | If one changed and nothing was recomputed | the picture would be *wrong* | the picture would be *correct, painted differently* |
@@ -1250,6 +1253,17 @@ them over.
 This is why the module can promise "the same viewer everywhere". A second render
 path would be a second answer to "what does this structure look like", and the
 two would diverge the first time somebody fixed a bug in one of them.
+
+**One interaction is deliberately not one of these: changing a drawing setting.**
+Style, radius, background and projection never reach the frame calculation
+(§ 9.6) — the sealed layer applies them to the movie it already holds. No frame
+is re-derived, which is why they appear in none of § 10.5's four costs: those are
+the costs of *working out frames*, not of painting them.
+
+That is not the same as free. Repainting in a new style makes the library rebuild
+its own geometry — the very cost § 10.7 measured — which is exactly why a
+*selection* is never allowed to trigger one. A user changing style is asking for
+that work; a user clicking an atom is not.
 
 ### 10.2 What goes in, and what comes out
 
@@ -1387,6 +1401,10 @@ flowchart TD
 
 Those four questions, in that order, are the whole decision. **"How many atoms are
 there?" is not one of them**, and a change that adds it has changed the design.
+
+The table below is exhaustive of the changes that reach this pipeline — which is
+not the same as every change a user can make. A drawing setting reaches the
+sealed layer directly and derives nothing (§ 10.1), so it has no row here.
 
 | What changed | What it costs | What actually happens | "Updating view…" cover |
 |---|---|---|---|
@@ -1710,12 +1728,13 @@ call and none of them are.
 | | |
 |---|---|
 | **Saved — it is the truth** | the whole structure: every atom, every frame, **and the metadata that goes with it** — the unit cell, the labels. And the selection: which atoms the user picked out, because that is intent they expressed, not a way of looking (§ 5.5) |
-| **Not saved — it is a view of the truth** | where the camera is pointing, which frame is on screen, which switches are on |
+| **Not saved — it is a view of the truth** | where the camera is pointing, which frame is on screen, which switches are on, and how the molecule is being drawn — the style, the radius, the background (§ 9.6) |
 
 Reopen a saved session and you get **what you were working on**, not what you
 were looking at. The molecule is back, with every frame it had and the atoms you
 had picked out still picked out. It opens at the first frame, fitted, with the
-switches off — because none of that was ever part of what you were working on.
+switches off and the drawing back at its defaults — because none of that was ever
+part of what you were working on.
 
 **The mechanism does not know or care what is in it.** It is handed a way to make
 a state and a way to put one back, and it never looks inside. So **nothing about
@@ -1904,8 +1923,8 @@ That is not an academic distinction — it is exactly where this went wrong:
 >
 > The consequence is not cosmetic. A structure saved to the project this way
 > reaches script generation with its labels **silently gone** — frozen atoms,
-> electrodes and all —
-> and the calculation that results looks right and is not. It matters most for
+> electrodes and all — and the calculation that results looks right and is not.
+> It matters most for
 > **save-to-project**: a lossy download is the user's problem, a lossy project
 > file is the next calculation's.
 >
@@ -2128,6 +2147,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 9.8 — the drawing commands answer nothing upward | they offer the renderEngine its two self-check questions and nothing else — no coordinates, no frame read-back |
 | § 9.9 — the sealed layer faces downward only | the only questions it answers are the two self-checks of § 10.10; coordinates, the shown frame and the camera cannot be read out of it |
 | § 10.1 — one render place | no control produces a picture on the side; every interaction is a data or switch write followed by one render |
+| § 10.1 — a drawing setting derives nothing | changing style, radius, background or projection re-derives no frame and reloads no movie; the picture changes and the frames do not |
 | § 10.3 — the two steps, in that order | the isolate cut runs before the overlays, and the overlays are keyed to the atoms that survived it |
 | § 10.3 — a label carries the original number | under isolate, a drawn atom's label shows where it came from, not its position in the cut-down list |
 | § 10.3 — frame *f*'s arrows come from frame *f* | arrows on a played trajectory match their own frame's forces |
