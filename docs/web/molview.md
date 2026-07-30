@@ -883,7 +883,7 @@ rather than maintained separately.
 | Get the cell | `getUnitCellInfo` — the resolved cell, always answerable | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` | — |
 | Get one frame's coordinates | `getFrameAllAtoms(i)` — **every** atom, original order, before any filtering | | — |
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
-| Build a server request | `factsForRequest()` — the one payload a request is built from | | — |
+| Build a server request | `factsForRequest()` — the one bundle a request carries: the coordinates, the labels, the frozen atoms and the cell, gathered in a single read at the moment of sending | | — |
 | Get the structure out as text | `exportFile()` | | — |
 | Hear that the structure changed | `subscribe(fn)` — the structure only; the frame has its own channel | | — |
 | Reach the selection / the drawing settings | `selection` (§ 9.5) · `view` (§ 9.6) | | — |
@@ -920,6 +920,31 @@ and export writes the frame from it. Naming the promise means no call site has t
 restate it, and there is no rival: reading coordinates back out of the drawing
 would give the isolated subset under its own renumbering, which is a different
 thing and one MolView does not offer.
+
+**`factsForRequest()` — everything that leaves the browser, gathered in one go.**
+
+When a tab asks the server to check a structure, or to generate a calculation
+input from it, the request has to carry more than the coordinates: the labels,
+which atoms are held still, and the cell. This door gathers all of that in one
+read, at the moment the request is made, and hands back a single bundle. A tab
+never assembles one itself.
+
+It is not a second `getStructure`, and the difference is not *what* is in it — it
+is that everything in it is read **at once, at the last moment**. A tab that
+collects the pieces one at a time can send a set that does not agree with itself,
+and one did exactly that: it read the labels and the cell fresh as it sent, while
+the coordinates came from a copy it had taken when the page loaded. The request
+carried the current labels with stale positions, and the server judged a structure
+that was not the one on screen. So this is § 5.2's rule enforced at the edge of the
+module: **facts that leave together must be read together.**
+
+With nothing loaded it returns **nothing**, rather than an empty structure. "There
+is nothing here" and "here is a structure with no atoms" are different answers, and
+a caller has to be able to tell them apart.
+
+Which requests are obliged to carry this bundle, and what the server does with it,
+is [`science/validation.md`](?doc=science/validation.md) § 4.1 — that document owns
+the contract; this one owns the door.
 
 **The two structure primitives.**
 
@@ -2033,6 +2058,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 9.2 — the handle refuses appearance | there is no way through the handle to push arrows, labels, a busy state or a toggle — arrows come from the forces in the data or are not drawn at all |
 | § 9.3 — a read cannot be used to write | changing what a read returned leaves the viewer untouched |
 | § 9.3 — one need, one main way in | a narrower cut returns exactly what the main way in holds for that field — the two cannot disagree |
+| § 9.3 — the facts a request carries are read together | after an edit, a request built from the viewer carries that edit in **every** part of its bundle — no piece of it can be older than another; with nothing loaded the door returns nothing rather than an empty structure |
 | § 9.3 — a structure that cannot be written out is not written out | when the geometry and the per-atom tags disagree about how many atoms there are, the export door returns nothing rather than a corrupt structure |
 | § 9.4 — read-only freezes the master copy and nothing else | every change to the master copy is a no-op **and does not throw**, while select, isolate, scrub, camera and export all work normally |
 | § 9.4 — a read-only viewer has no history | `save`, `load` and `undo` do nothing, and the unsaved-changes badge never appears |
