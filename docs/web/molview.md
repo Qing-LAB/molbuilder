@@ -48,6 +48,11 @@ current code.
 > - **The sealed layer** — the one place in this module allowed to talk to
 >   3Dmol.js, the third-party library that does the actual drawing. Nothing above
 >   it knows that library exists.
+> - **The panel** — the strip beside the 3D window: where you select atoms, tag
+>   them, and see the unit cell. It belongs to the viewer, not to the tab.
+> - **The sidecar** — the small companion file that travels beside a structure
+>   file and carries what coordinates cannot: the labels, the cell, what the user
+>   said about the atoms. Written as `.molstruct.json`.
 >
 > Atom numbering: **0-based in code, 1-based on screen**, translated in exactly
 > one place (§ 11.5).
@@ -122,7 +127,7 @@ type. Tags show as chips you can remove. These are not decoration: they are
 written into the structure's sidecar file and into the generated input script, so
 the calculation and the results view both see what was set here.
 
-Five of those names are **reserved** — they are ordinary labels, but something
+Some of those names are **reserved** — they are ordinary labels, but something
 downstream knows what they mean. Tagging atoms *frozen atoms* is how you say
 "hold these still", and the calculation is generated with those atoms
 constrained. You do not tick a separate box; the label is the mechanism (§ 6.6).
@@ -148,7 +153,14 @@ orange-red by relative size, so converging forces visibly shrink.
 Two things are worth knowing about that menu, both in § 11.3: **Data** comes from
 the structure while **Snapshot** and **Animation** come from what is on screen —
 and *Save* versus *Download* is only a choice of destination, since MolView
-produces bytes and never writes a file itself.
+produces bytes and never writes a file itself. Who the menu belongs to is § 11.4,
+which also records the one thing here the code has not caught up with: today's
+Data rows write the coordinates and leave the `.json` behind.
+
+**The unit cell.** When a structure is periodic, the panel shows its cell too, and
+in an editable view it can be changed there. A cell edit goes through one door and
+only one (§ 9.3), so everything drawn from it — the box, the axes — cannot end up
+describing a different cell from the one the structure has.
 
 ---
 
@@ -183,12 +195,14 @@ flowchart TB
     end
     subgraph viewer["One viewer — everything below belongs to one owner"]
       H["the handle<br/>make it, drive it, tear it down"]
+      UI["MolView's own UI<br/>the panel, the frame bar,<br/>the Export menu"]
       M["the model<br/>holds the MASTER COPY,<br/>the selection, the displayed frame"]
       RE["the renderEngine<br/>decides what to redraw,<br/>works out what each frame looks like"]
       SEAL["the sealed layer<br/>holds the DRAWING COPY,<br/>the only code that talks to 3Dmol"]
     end
     TAB -->|"holds"| H
     H --> M
+    UI -->|"reads and writes, like any other caller"| M
     M -->|"load / edit a structure"| SRV
     SRV -->|"the structure it made"| M
     M -->|"save / restore session bytes"| WS
@@ -196,7 +210,7 @@ flowchart TB
     RE -->|"here is this frame, painted"| SEAL
 ```
 
-Three things to read off it:
+Four things to read off it:
 
 **Data flows down.** The model hands the renderEngine what to draw; the
 renderEngine hands the sealed layer a finished frame. Nothing lower ever answers
@@ -208,6 +222,11 @@ answer goes no further — § 10.10.)
 **A tab owns none of it.** A tab has a handle. It does not have the structure,
 the renderer, the camera, or a way to reach 3Dmol. What it does own is its own
 business: its plots, its parsed run file, its own layout.
+
+**MolView brings its own controls.** The panel, the frame bar and the Export menu
+are the viewer's, not the tab's — which is why the same controls appear in every
+tab (§ 1.1) and why a tab that wants a viewer builds no UI (§ 11.4). They are
+callers of the model like anything else; none of them reaches further down.
 
 **Everything inside the box belongs to one owner.** Mount twice and you get two
 of these, sharing nothing — two structures, two selections, two displayed
@@ -273,7 +292,8 @@ that breaks one is wrong no matter how convenient it is.
 ### 5.1 What you see is what you save
 
 The structure on screen and the structure that goes to a calculation are the same
-structure, at the same frame. Scroll to frame 40, click Save, get frame 40.
+structure, at the same frame. Scroll to frame 40, export it, and frame 40 is what
+the file holds (§ 11.3).
 
 "Which frame am I looking at" and "which frame am I working on" must not be able
 to have different answers — which is why there is exactly one number saying which
@@ -305,11 +325,21 @@ project.
 
 ### 5.5 The user's intent is data, and it travels
 
-The labels a user attaches, the selection, the frame in view — these are not
-decoration. They are written into the structure's sidecar and into the generated
-input script, so the calculation and the results view both see what the user set
-here. The viewer is where scientific intent gets expressed, so that intent has
-to survive the trip.
+What a user does in the viewer is not decoration, and each kind of intent has its
+own way of surviving the trip out:
+
+- **the labels they attach** go into the structure's sidecar and into the
+  generated input script, so the calculation and the results view both see them
+  (§ 6.6);
+- **the atoms they picked out** decide what an edit acts on, and come back with a
+  restored session (§ 11.2);
+- **the frame they stopped on** is the frame an export writes (§ 5.1, § 11.3).
+
+Three different journeys, and they are worth keeping apart — collapsing them into
+"the user's state gets saved" is how a document comes to promise that the frame
+you were looking at is stored somewhere, which it is not (§ 11.2). The viewer is
+where scientific intent gets expressed, so none of it may be silently lost between
+here and the calculation.
 
 ### 5.6 A viewer is owned
 
@@ -362,8 +392,8 @@ usable alone (§ 6.4).
 the order they were picked in — a three-atom angle has to know which one was
 picked second — the filter settings, and the on/off switches: isolate, atom
 labels, force arrows, unit cell, axes, and the arrow scale. How the molecule is
-*drawn* — style, radius, background — is held separately (§ 9.6), and the camera
-is not held at all.
+*drawn* — style, radius, background — is held separately (§ 9.6), and nothing
+above the drawing itself keeps the camera at all (§ 9.6).
 
 ### 6.2 The shapes
 
@@ -427,7 +457,7 @@ classDiagram
 | Field | Shape | What it is |
 |---|---|---|
 | `elements` | `string[]` | element per atom. **Shared by every frame.** |
-| `annotations` | per atom: the labels it carries, and its residue name if the source had one | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them and filters on them (§ 9.5); the drawing does not use them. Some label names are **reserved** and mean something downstream (§ 6.6) |
+| `annotations` | per atom: the labels it carries, and its residue name if the source had one | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them, writes them and filters on them (§ 9.5); the drawing does not use them. Writing one is a change to the structure, gated like any other (§ 9.4). Some label names are **reserved** and mean something downstream (§ 6.6) |
 | `cell` | `{lattice: [Vec3,Vec3,Vec3], origin: Vec3}` or `null` | the a/b/c vectors, plus the corner the box is anchored at |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no tags |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
@@ -591,7 +621,7 @@ generates the input, not here. The viewer's job ends at "these atoms carry this
 name".
 
 **Typing a reserved name is allowed, and the viewer says so.** A user can type
-any label they like, including one of the five. Nothing refuses it — refusing
+any label they like, including a reserved one. Nothing refuses it — refusing
 would be inventing a rule, and a reserved name is *just a label*, which is the
 entire point. What happens instead is that the moment what they typed matches a
 reserved name, the viewer tells them: **this name is reserved, and here is what
@@ -651,9 +681,9 @@ home** — it is the enforceable half of § 5.2.
 | | The level | What it offers, and who calls it | Never |
 |---|---|---|---|
 | **1** | **the tab** | *No API — it is the caller.* Owns its own UI, its own run file, its own plots. Holds a handle and reaches its viewer only through it | keeps its own copy of the displayed frame, the range, or anything else the viewer holds; reaches past the handle; consults its own file to answer a question about the viewer |
-| **2** | **the handle** | Making, driving and tearing down a viewer (§ 9.2). A handle *is* a viewer: one owner, one structure, one of everything. Called by a tab | holds structure data of its own — it passes every read and write down to the model |
+| **2** | **the handle** | Making, driving and tearing down a viewer (§ 9.2). A handle *is* a viewer: one owner, one structure, one of everything. Called by a tab | holds structure data of its own, or answers a question the model already answers (§ 9.2) |
 | **3** | **the model** | The data API (§ 9.3), one per owner. Called through the handle, and by every level inside the same viewer. **Holds the master copy**, the selection, the displayed frame and its range. This is where the rules are enforced and where read-only is applied, so nothing may go around it | touches the drawing library; exists as one shared instance behind several viewers |
-| **4** | **the stores** | Change-and-subscribe. Called only by the model, which assembles them. They exist so state has a home that knows nothing about drawing | draw anything; hold the displayed frame — that is not a switch (§ 6.4) |
+| **4** | **the stores** | Change-and-subscribe. Assembled by the model and reached only through it (§ 9.3), so a change asked for through a store meets the same rules as one asked for anywhere else (§ 9.4). They exist so state has a home that knows nothing about drawing | draw anything; hold the displayed frame — that is not a switch (§ 6.4); be kept by anything outside the viewer once it has been reached |
 | **5** | **the renderEngine** | Commands only — "draw this", "add these frames", "the forces changed", "throw it away". **Called only by the model.** It is *handed* the master copy and the switches, works out what each frame looks like, and passes the result down. It holds nothing of its own | keep its own copy of the displayed frame; answer a question about what the data is; run a change notification of its own |
 | **6** | **the drawing commands** | Small, decision-free operations that translate a processed frame into calls the library understands, plus two questions the renderEngine asks *about the drawing* to check its own work (§ 10.10). **Called only by the renderEngine.** It owns exactly one fact: the multi-frame format the library expects | decide how much work a change needs; hold state; answer anything upward |
 | **7** | **the sealed layer** | The only code that names 3Dmol. **Called only by level 6.** **Holds the drawing copy** — the movie, the camera, the styles, the picking, the highlight spheres | keep its own frame number, or be a source of truth about coordinates. It draws the frame it is handed and offers no way to read coordinates or frames back out |
@@ -749,10 +779,14 @@ if (!viewer.ok) {
 viewer.dispose();            // tears down in reverse order of assembly
 ```
 
-`mount` assembles a complete viewer in one call — the 3D window, the
-selection/cell panel, the switches, and MolView's own menu surface (§ 11.3). The frame bar is not part of that
-decision: a viewer mounts before it has a structure, and the bar appears once a
-structure with more than one frame is loaded into it.
+`mount` assembles a complete viewer in one call — the 3D window, the panel beside
+it, the switches, and MolView's own menu surface (§ 11.4). The frame bar is the
+one piece that is not decided at mount: a viewer mounts before it has a structure,
+and the bar appears once a structure with more than one frame is loaded into it.
+
+The **workspace** handed in is a door, not a module: anything that can store and
+return bytes satisfies it. That is what lets a viewer mount in a test page with a
+stand-in, and it is the whole of § 4's "nothing it needs comes from a global".
 
 **`owner` names the viewer, and therefore everything in it.** It is not a prefix
 on a settings key; it is the identity of an instance. The structure, the
@@ -791,11 +825,11 @@ is the only import a consumer ever writes.
 
 | A tab must be able to | Refused, deliberately |
 |---|---|
-| find out whether it got a viewer, and tear it down | reaching the 3Dmol object, the stores, or the DOM |
-| reach everything this viewer holds — the structure, the selection, the frames, the drawing settings | reaching *another* viewer's; or reaching any of it without going through the model, which is where the rules and the read-only gate live |
+| find out whether it got a viewer, and tear it down | reaching the 3Dmol object, or the DOM inside the card |
+| reach everything this viewer holds — the structure, the selection, the frames, the drawing settings | reaching *another* viewer's; or reaching any of it except through the model, which is where the rules and the read-only gate live |
 | run the movie — play, pause, ask whether it is playing | owning the timer. Playback lives in the mount layer and moves the frame through the same write everyone else uses (§ 6.4) |
 | hear that something changed | polling for it |
-| set what the viewer *shows* — by changing the data or a switch (§ 10.1) | set how it *looks*. There is no "set the arrows", "set the labels", "show a busy state", "add a toggle". Arrows and labels are **worked out from the data** by the renderEngine, never handed in by a consumer |
+| change what the viewer shows — the data, a switch, a drawing setting (§ 10.1) | hand in a finished appearance. There is no "set the arrows", "set the labels", "show a busy state", "add a toggle". Arrows, labels and the highlight are **worked out from the data** by the renderEngine, never given to it |
 
 **The handle contains the model; it does not mirror it.** This is what being
 owned forces. When there was one shared model, a handle that also carried
@@ -822,8 +856,11 @@ and no other viewer's model is reachable from it.
 
 ### 9.3 The model — the one place the structure lives
 
-Every read returns a **copy**, so changing what you were given can never change
-the viewer.
+Every read of data returns a **copy**, so changing what you were given can never
+change the viewer. The two entries that are not data — `selection` and `view` —
+are doors rather than values: reaching one is how you *ask* for a change, and
+every change asked for through one meets the same rules as a change asked for
+here (§ 9.4). Nothing outside holds on to a door after it has used it.
 
 The surface is organised by **what a caller needs**, not by how the internals
 happen to be split. **One need, one main way in.** Where several names serve one
@@ -835,7 +872,7 @@ rather than maintained separately.
 
 | The need | The main way in | Narrower cuts of it | Changes the master copy |
 |---|---|---|:--:|
-| Get the whole structure | `getStructure` | `getAtoms`, `getElements`, `getCoordinates`, `getSource`, `getRegions`, and `getFrozen` — the atoms carrying the reserved `frozen atoms` label (§ 6.6) | — |
+| Get the whole structure | `getStructure` | `getAtoms`, `getElements`, `getCoordinates`, `getSource`; `getRegions` — the atoms grouped by the label they carry; `getFrozen` — the atoms carrying the reserved `frozen atoms` label (§ 6.6) | — |
 | Get the cell | `getUnitCellInfo` — the resolved cell, always answerable | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` | — |
 | Get one frame's coordinates | `getFrameAllAtoms(i)` — **every** atom, original order, before any filtering | | — |
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
@@ -847,11 +884,27 @@ rather than maintained separately.
 | Edit the geometry | `applyOp(name)` (§ 11.1) | | **yes** |
 | Edit the cell | `commitPeriodicityOp` — the one way the cell changes | | **yes** |
 | Load or extend the frames | `reloadFrames` · `addFrame` · `addFrames` · `setForces` | | **yes** |
-| Move through the session history | `save` · `load(delta)` · `undo` · `state_index` · `uncommitted` (§ 11.2) | | **yes** — `load` and `undo` restore a different structure |
+| Tag the selected atoms | the label door on `selection` (§ 9.5) — the atoms it applies to are the selection, but what it writes is the structure | | **yes** |
+| Move through the session history | `save` · `load(delta)` (§ 11.2) | `undo`, which is exactly `load(-1)` | **yes** |
+| Know where you are in the history | `state_index` · `uncommitted` | | — |
 
-Thirteen needs. That count is the honest measure of the surface; everything else
+Fifteen needs. That count is the honest measure of the surface; everything else
 is a narrower cut, and a cut earns its place only by being what a caller actually
 asks for.
+
+**A cut with no stated caller is a cut on its way out.** `getSource` is the one on
+this table that nothing in this document asks for. By the rule above it has not
+earned its place, and the design's answer is to remove it rather than to invent a
+justification for it. (`getRegions` earns its place by name: "which atoms are the
+electrodes" is a real question, and it is a *cut of the labels* — not a second
+place where groups of atoms are stored, § 6.6.)
+
+Two of those rows are the ones this table used to get wrong, and both are worth
+naming. **Tagging** looks like a selection action and is a structure change, so it
+is listed here where the gate can see it. **Reading the history position** was
+sitting in the same row as the writes that move it, which made the last column
+unanswerable — a row has to be one kind of thing or the question "does this change
+the master copy?" has no single answer.
 
 **`getFrameAllAtoms(i)` is named for exactly what it promises:** every atom of
 frame `i`, in the original numbering, before any selection or isolate filtering.
@@ -901,19 +954,39 @@ still select atoms, isolate them, measure them, scrub the trajectory, turn on
 force arrows, spin the camera and export what they see — none of that touches the
 structure. What they cannot do is change the structure the calculation ran on.
 
-Two consequences that are easy to get backwards:
+Three consequences that are easy to get backwards:
 
 - **Isolate is not an edit.** It hides atoms from the drawing; the master copy
   still has all of them, which is why the whole structure comes back when isolate
   goes off. A read-only viewer isolates freely.
 - **Export is a read.** Getting bytes out of a viewer you cannot edit is the
   point of a read-only viewer, and it changes nothing.
+- **Tagging is an edit.** A label becomes part of what an atom *is* and travels
+  to the calculation (§ 5.5), so writing one is frozen along with the rest. It is
+  the one truth change reached through the selection door, which is precisely why
+  it is listed in § 9.3's table where the question can be asked of it.
 
-### 9.5 `selection` — the facts about the molecule
+**A read-only viewer has no history.** `save` is the one entry where the question
+needs a moment's thought: saving does not itself change the master copy, it
+records it. But a history exists to get back to a state you left, and in a
+read-only viewer nothing can leave one — there is nothing to record and nowhere to
+go back to. So `save`, `load` and `undo` are no-ops here too, and the
+unsaved-changes badge (§ 11.2) never appears.
 
-What is selected and which of the molecule's features are drawn, all in one
-place. The panel, the highlight and the measurements are all **readers** of it;
-none of them keeps its own answer.
+**A control that would do nothing should not be offered.** The rule above is what
+the *API* does; a button that silently does nothing is a bad answer for a *user*.
+So a read-only viewer does not show the controls the gate would swallow — the tag
+box, the edit operations, Save state. The two are not in tension: the gate is what
+makes the guarantee true even if a control is ever shown by mistake, and hiding
+the control is what makes the viewer honest. The gate is the contract; the hiding
+is courtesy, and it may never be the only thing standing between a read-only
+viewer and a changed structure.
+
+### 9.5 `selection` — what is picked out, and what is drawn beside it
+
+What is selected, and which of the things that go *into* a frame are switched on,
+all in one place. The panel, the highlight and the measurements are all
+**readers** of it; none of them keeps its own answer.
 
 - **The switches live here** (all off by default), not in the renderEngine and
   not in the panel.
@@ -960,13 +1033,22 @@ none of them keeps its own answer.
   of its own (§ 6.6).
 
 **What this store lets you do:** turn isolate on or off, set a switch, apply a
-filter, write a label onto the selected atoms (which replaces that label's
-previous set), adopt a restored session's selection, the click operations
-(toggle, add, remove, all, invert, clear), and build the filter rows themselves
-(which mode, which rows, how they combine).
+filter, adopt a restored session's selection, the click operations (toggle, add,
+remove, all, invert, clear), and build the filter rows themselves (which mode,
+which rows, how they combine).
 
-**All of it stays live in a read-only viewer** — selecting and isolating change
+**All of that stays live in a read-only viewer** — selecting and isolating change
 the drawing, not the structure (§ 9.4).
+
+**Writing a label is the one thing reached from here that is not like the
+others.** It is a change to the structure: the label becomes part of what the atom
+is, goes into the sidecar, and reaches the calculation (§ 5.5, § 6.6). So it
+behaves like every other truth change and not like its neighbours — applying a
+label **replaces that label's previous set of atoms**, and in a read-only viewer it
+does nothing at all. It is reached from here only because the atoms it applies to
+are the selection; that is a matter of convenience, and it does not make it a
+drawing concern. This is why it appears in § 9.3's table: a change the gate cannot
+see is a change the gate does not stop.
 
 **One selection per owner, and that is the whole of how viewers stay out of each
 other's way.** A read-only inspector's selection cannot disturb an editable tab's,
@@ -982,9 +1064,12 @@ Draw style, radius, background colour, projection — and the camera.
 was handed them, and it holds them like any other input. Nothing has to be read
 back to know which style is active: the answer is whatever was last set.
 
-**The camera is not held at all.** It is the one thing a user changes without
-telling MolView — a drag rotates it directly in the 3D window. MolView does not
-track it, does not read it back, and does not save it. On load, and on Reset, the
+**Nothing above the 3D window keeps the camera.** The window itself has one — a
+view of a 3D scene must have a point of view, and § 9.9 lists it among the things
+the sealed layer holds. What no layer above it does is *track* it. It is the one
+thing a user changes without telling MolView — a drag rotates it directly in the
+window — and MolView never records where it ended up, never reads it back, and
+never saves it. On load, and on Reset, the
 camera is **fitted to the structure**, which is the only orientation guaranteed
 to show the molecule.
 
@@ -1002,16 +1087,16 @@ slot that has to be patched independently of the structure it belongs to.
 **Why these are not the switches of § 9.5**, when both are things a user turns
 on. The test is: *does working out what a frame contains require reading it?*
 
-| | **Facts about the molecule** — `selection` | **How it is drawn** — `view` |
+| | **What a frame is made of** — `selection` | **How that frame is painted** — `view` |
 |---|---|---|
 | Examples | what is selected, isolate, atom labels, force arrows and their scale, the cell box, the axes | draw style, radius, background, perspective vs orthographic |
 | What they change | **what is in a frame** — which atoms, and what is drawn beside them | **how the same frame is painted** |
 | Who reads them | the renderEngine, when working out a processed frame (§ 6.5) | nobody in that calculation — they go straight to the sealed layer |
 | If one changed and nothing was recomputed | the picture would be *wrong* | the picture would be *correct, painted differently* |
 
-That line is checkable, not a convention to remember: a switch that reaches the
-processed frame is a molecule fact; a setting the sealed layer applies without
-the frame calculation ever seeing it belongs here. The camera is in neither
+That line is checkable, not a convention to remember: a switch the frame
+calculation has to read belongs to `selection`; a setting the sealed layer applies
+without that calculation ever seeing it belongs here. The camera is in neither
 column, because it is in neither place.
 
 ### 9.7 The renderEngine — commands only
@@ -1032,7 +1117,7 @@ no browser at all (§ 13.2).
 Load frames, swap to a frame, append frames, apply the overlays, set this frame's
 arrows, set the cell geometry, show or hide the "Updating view…" cover, batch a
 group of changes so the screen updates once — and **produce a picture of what is
-currently drawn**, since only the bottom can do that (§ 11.3). Each one translates finished data
+currently drawn**, since only the bottom can do that (§ 11.4). Each one translates finished data
 into something the layer below can act on. None of them decides anything — which
 operation to use is the renderEngine's call, made one level up.
 
@@ -1046,7 +1131,9 @@ neither answer ever reaches a user.
 
 Beneath the commands sits the one piece of code that names the drawing library.
 It **holds the drawing copy** — the movie, the camera, the styles, the picking,
-the highlight spheres — and it draws the frame it is handed.
+the highlight spheres — and it draws the frame it is handed. (The camera is here
+because a window must have a point of view; § 9.6 is why nothing above it keeps
+one.)
 
 **It answers exactly two questions, and they are both about itself.** *Is there a
 movie loaded at all?* and *how many frames does it have?* Both are asked only by
@@ -1101,9 +1188,9 @@ two would diverge the first time somebody fixed a bug in one of them.
 
 ### 10.2 What goes in, and what comes out
 
-The whole pipeline is a **function of two inputs**: the **data** (the master
-copy) and the **switches** (§ 6.1). Both are plain values — no drawing-library
-objects, no DOM anywhere in it.
+The whole pipeline is a **function of two inputs**: the **data** (the master copy)
+and **what the user has set** — the selection and the switches (§ 6.1). Both are
+plain values — no drawing-library objects, no DOM anywhere in it.
 
 **Everything is treated as multi-frame.** There is no single-structure path. One
 frame is a set of length one, and it runs through exactly the same steps as four
@@ -1127,7 +1214,7 @@ For **each** frame, two steps, and the order matters:
 flowchart TD
     subgraph PF["for every frame f"]
       C0["start: the master copy's frames[f]<br/>+ the shared identity (elements, tags)"]
-      SEL["STEP 1 — filter by selection<br/>isolate ON and something selected?<br/>keep only those atoms, renumber them,<br/>and record where each came from"]
+      SEL["STEP 1 — keep only what is shown<br/>isolate ON and something selected?<br/>keep only those atoms, renumber them,<br/>and record where each came from"]
       OV["STEP 2 — add the overlays<br/>keyed to the atoms that survived step 1"]
       OUT["the finished frame f"]
       C0 --> SEL --> OV --> OUT
@@ -1135,9 +1222,14 @@ flowchart TD
     OUT --> LOAD["load ALL finished frames into 3Dmol at once (§ 10.4)"]
 ```
 
-**Step 1 — filter by selection.** If isolate is on *and* something is selected,
-the frame keeps only the selected atoms and drops the rest. Otherwise it keeps
-everything.
+**Step 1 — keep only what is shown.** If isolate is on *and* something is
+selected, the frame keeps only the selected atoms and drops the rest. Otherwise it
+keeps everything.
+
+(This step is deliberately *not* called filtering. "Filter" already means
+something else in this viewer — the panel's Filter mode, which is a question asked
+of the server about which atoms to select (§ 9.5). One word for two mechanisms is
+how a reader comes to believe the server is consulted on every redraw.)
 
 Dropping atoms renumbers them, so this step also records **where each drawn atom
 came from** — the map back to its original number. Everything downstream depends
@@ -1151,6 +1243,7 @@ now third in the list.
 | **atom-number labels** | the labels switch is on | one label per drawn atom | the text is the atom's **original** number, recovered through the map from step 1, and converted to 1-based by the one shared translation (§ 11.5). Never its position in the filtered list |
 | **the selection highlight** | something is selected **and isolate is off** | the list of drawn atoms to highlight | under isolate this is deliberately empty: the drawn set already *is* the selection, so highlighting all of it would say nothing. The pipeline emits only *which* atoms — never what the highlight looks like |
 | **force arrows** | the forces switch is on and the data carried forces | frame `f`'s forces, times the scale | frame `f`'s arrows come from frame `f`'s forces. Getting this wrong shows converged forces on an unconverged frame |
+
 The result, for every frame, is the finished data of § 6.5.
 
 **Two things are deliberately not in that table, because they are not per-frame.**
@@ -1207,6 +1300,28 @@ place and one decision, not a second path.
 
 **The cost is chosen by *what changed*, never by how big the system is.** There
 is no atom-count threshold and no magic number anywhere in this decision.
+
+```mermaid
+flowchart TD
+    Q0["something changed —<br/>what was it?"]
+    Q1{"did the set of drawn atoms change?<br/>isolate toggled · selection changed<br/>while isolating · a new structure"}
+    Q2{"did new frames arrive?"}
+    Q3{"did only the displayed<br/>frame move?"}
+    RB["REBUILD<br/>re-process every frame and<br/>reload the movie — cover shown"]
+    AP["APPEND<br/>process the new frames only,<br/>extend the movie"]
+    SW["FRAME SWAP<br/>show a frame the library<br/>already holds"]
+    OV["OVERLAY REFRESH<br/>re-derive and re-apply the<br/>overlays; coordinates untouched"]
+    Q0 --> Q1
+    Q1 -->|yes| RB
+    Q1 -->|no| Q2
+    Q2 -->|yes| AP
+    Q2 -->|no| Q3
+    Q3 -->|yes| SW
+    Q3 -->|no| OV
+```
+
+Those four questions, in that order, are the whole decision. **"How many atoms are
+there?" is not one of them**, and a change that adds it has changed the design.
 
 | What changed | What it costs | What actually happens | "Updating view…" cover |
 |---|---|---|---|
@@ -1414,6 +1529,13 @@ the network. `calibrate` always takes the whole-structure path even with a
 partial selection, because it rigidly maps every atom into the cell and clears
 the cell origin.
 
+**If the edit does not come back, nothing happened.** A request the server refuses
+— or one that never arrives — leaves the structure exactly as it was: nothing is
+half-applied, no history state is recorded, and the caller is told. That is the
+other half of "all at once". It is what lets a failed edit be a state the viewer
+can sit in without being wrong, and it is why the model, not the caller, decides
+when a structure has changed.
+
 ```js
 await viewer.data.applyOp("delete");                 // delete the selected atoms
 await viewer.data.applyOp("symmetric_electrodes");   // electrodes anchored on the selection
@@ -1524,6 +1646,20 @@ They differ in **what they produce**, **what they read it from**, and **whether
 you can go back**. The first two are the truth; the third is a view of it — the
 same line § 11.2 draws.
 
+```mermaid
+flowchart LR
+    T["THE TRUTH<br/>the master copy"]
+    V["WHAT IS DRAWN<br/>the drawing copy"]
+    S["Save state<br/>every frame · undoable<br/>never leaves the viewer"]
+    D["Export → Data<br/>the displayed frame<br/>.xyz + .json"]
+    P["Export → Snapshot<br/>the displayed frame<br/>.png"]
+    A["Export → Animation<br/>every frame<br/>.webm / .gif"]
+    T --> S
+    T --> D
+    V --> P
+    V --> A
+```
+
 | | Produces | Reads from | Which frames | Undoable |
 |---|---|---|---|:--:|
 | **Save state** (and Retract) | one point in an ordered, persistent sequence — undo that survives a reload | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
@@ -1543,9 +1679,10 @@ modification. Nothing appears in the project, nothing is named, and it is the
 only one you can step backwards through — an export produces something and is
 finished.
 
-**Only the Data export is about the truth.** The other two are renders, and
-nothing else. That is the division worth remembering, because the rest follows
-from it.
+**Of the three Export menu items, only Data is about the truth.** Snapshot and
+Animation are renders and nothing else. (A saved state is the truth too — it is
+just not an export, which is the distinction the numbered list above makes.) That
+division is the one worth remembering, because the rest follows from it.
 
 **Data has to be the truth.** You export a structure to run a calculation on it.
 Taken from the drawing it would be missing every atom isolate had hidden, with
@@ -1553,6 +1690,18 @@ the survivors renumbered (§ 6.3). It comes from the master copy at the displaye
 frame — § 5.1, at the user's end of it — and it is **two files, not one**: the
 coordinates, and the metadata that has to travel with them (§ 5.5). One without
 the other is a structure that has lost what the user said about it.
+
+**What the second file carries** is everything about the structure that a
+coordinate file cannot hold: the labels each atom carries, reserved names included
+(§ 6.6); the unit cell and the corner it is anchored at; residue names where the
+source had them. That is the sidecar, and its field-by-field shape belongs to
+[`model/structure-molstruct.md`](?doc=model/structure-molstruct.md), not here.
+What it does **not** carry is anything about looking — no camera, no switches, no
+displayed frame — nor the selection, which is working state rather than a fact
+about the molecule. That is § 11.2's line drawn a second time, at the file. (One
+piece of code writes both this and a saved state, which is why § 7.3 hands it more
+than an export needs; what each *writes* is decided per job, not by what it can
+reach.)
 
 It exports the **displayed frame**, and that is the point of it rather than a
 limit on it. Scrubbing a trajectory is how a user *chooses* a geometry: look
@@ -1596,8 +1745,9 @@ Which retro-justifies two things that would otherwise look like details. The Dat
 export **must** be the truth, because a script generated from a filtered drawing
 would compute the wrong system. And it **must** be both files, because the
 metadata is where the user's intent lives (§ 5.5) — a `.xyz` saved without its
-`.json` is a structure whose frozen atoms and regions have been quietly dropped
-on the way to the calculation that needed them.
+`.json` is a structure whose labels have been quietly dropped on the way to the
+calculation that needed them: which atoms were to be held still, which were the
+electrodes, gone without a word.
 
 **A saved state is not a record.** It is private working history — how you get
 back to where you were (§ 11.2). Nothing reads it but this viewer, nothing is
@@ -1612,25 +1762,33 @@ Which leaves one question: who decides any of this. That is § 11.4.
 an export produces and what it is read from — nothing below it makes that call.
 
 It lives in **MolView's own menu surface**, part of the card MolView assembles
-(§ 8), separate from the drawing layer's controls rather than being the same menu
+(§ 8), separate from the 3D window's own controls rather than being the same menu
 with different wiring behind it.
 
 Having a place of its own is the part that matters. A menu is where something is
-*decided*, and the drawing layer decides nothing (§ 7) — so when a MolView-level
-decision needed somewhere to live and the only menu in sight belonged to the
-embed, it went there, and the embed started deciding what a structure export
-means. A surface at the right level means the next such control has an obvious
-home instead of landing one layer too low again.
+*decided*, and the sealed layer decides nothing (§ 7) — so when a MolView-level
+decision needed somewhere to live and the only menu in sight was the 3D window's
+own, it went there, and the layer that draws started deciding what a structure
+export means. A surface at the right level means the next such control has an
+obvious home instead of landing one layer too low again.
 
 **Which menu a control belongs to has a test:** *what does it decide?*
 
 | The control decides… | It belongs to |
 |---|---|
 | what leaves the viewer, in what form, read from which copy, and where it goes | **MolView's menu** — export, and anything later that touches the structure or the truth |
-| how the drawing layer draws what it was already given — style, radius, background, projection, reset | the **drawing layer's own controls** (§ 9.6); it is setting its own state, not deciding on anyone's behalf |
+| how the same molecule is painted — style, radius, background, projection, reset | it may sit in the **3D window's own controls**, because it decides nothing on anyone's behalf |
 
-The embed's own export menu is switched off rather than rewired: the possibility
-is removed, not the behaviour corrected.
+**Where a control sits and where a fact lives are different questions.** A style
+control may live in the window's own menu; the setting it changes still has one
+home, `view` (§ 9.6), and the control writes into it exactly the way the panel
+writes into the selection — as a caller of the model (§ 3). What is not allowed is
+the drawing keeping its own copy of the style so that two places both believe they
+know which one is active (§ 5.2). A control's home is a UI choice; a fact's home
+never is.
+
+The 3D window's own export menu is switched off rather than rewired: the
+possibility is removed, not the behaviour corrected.
 
 For a picture and an animation the actual rendering has to happen at the bottom,
 because only the sealed layer can draw. So MolView **delegates the rendering
@@ -1641,19 +1799,20 @@ decide what an export *is* would not be.
 That is not an academic distinction — it is exactly where this went wrong:
 
 > **Where the code has not caught up — and this one loses data.** The Export menu
-> is currently the **embed's**. Its Data rows write **coordinates only**:
+> currently belongs to the 3D window. Its Data rows write **coordinates only**:
 > save-to-project and download each offer `.xyz` or `.pdb`, and neither emits the
 > `.json`. The model's export door builds the sidecar correctly and the Modify
 > tab's save dialog writes both files — the Export menu never goes through it.
 >
 > The consequence is not cosmetic. A structure saved to the project this way
-> reaches script generation with its frozen atoms and regions **silently gone**,
+> reaches script generation with its labels **silently gone** — frozen atoms,
+> electrodes and all —
 > and the calculation that results looks right and is not. It matters most for
 > **save-to-project**: a lossy download is the user's problem, a lossy project
 > file is the next calculation's.
 >
 > The root cause is the layering, not a missing line. An export that needs the
-> model's truth was built in the drawing layer, so it serialised the coordinates
+> model's truth was built at the bottom, so it serialised the coordinates
 > it happened to have. Adding a `.json` write down there would paper over that.
 > Tracked as **task #39**, along with a question the menu does not currently ask:
 > `.pdb` cannot carry this metadata at all, so a format that cannot hold the
@@ -1702,12 +1861,14 @@ it is correct while a trajectory plays and correct under isolate.
 
 A user selects two atoms in the panel and clicks Delete.
 
-1. The tab calls the delete operation on its handle.
+1. The tab calls the delete operation on its viewer's model — `viewer.data`, the
+   one route the handle offers (§ 9.2).
 2. The model passes it to the **edits helper**, which sends the selected atoms to
-   the server and applies the smaller structure that comes back — all at once.
-3. Because the structure changed, the model tells the **history helper** to
-   record the new state.
-4. The user clicks Undo. The model asks the history helper to step back one
+   the server and applies the smaller structure that comes back — all at once. If
+   the server refuses, nothing is applied and the structure is untouched (§ 11.1).
+3. The structure changed, so the viewer now has unsaved work: the badge appears in
+   the corner of the 3D window (§ 11.2). Nothing is written on its own.
+4. The user clicks Undo. The model asks the **history helper** to step back one
    state, and hands the previous one to the **load helper** to put back.
 
 Every step crosses exactly one helper, and each helper only ever calls the
@@ -1759,6 +1920,46 @@ frame, and computes the angle from the master copy — never from the drawing. S
 the angle stays correct while the movie plays, and it stays correct under
 isolate, where the drawn numbering no longer matches the real one.
 
+### 12.5 Take one frame out of an optimization and keep it
+
+A user is looking at a finished optimization. They scrub to frame 40, decide that
+is the geometry worth taking forward, and choose **Export → Data → Save to
+project** — with isolate switched on, because they had been looking at one region.
+
+1. The menu is MolView's (§ 11.4), so MolView decides what this means: **the
+   truth, at the displayed frame**.
+2. It asks the model for frame 40's coordinates — *every* atom, in the original
+   numbering, whatever isolate is doing to the picture (§ 6.3).
+3. It produces **two** files: the coordinates as `.xyz`, and the sidecar as
+   `.json` carrying the labels, the cell and the residues (§ 11.3).
+4. It hands both to the projects module. MolView writes no file itself (§ 2).
+
+Later, an input script is generated from that pair, and the atoms tagged `frozen
+atoms` come out held still — because the label reached the file and the file
+reached the generator (§ 6.6). Had step 3 produced only the `.xyz`, everything
+would have looked right and the calculation would have been a different one.
+
+Notice what isolate did to the file: nothing. Isolate is a property of the
+drawing, and an export of the truth never reads the drawing.
+
+### 12.6 Two viewers on one page
+
+A tab shows a structure in an editable viewer and the same run's optimization in a
+read-only one beside it.
+
+```js
+const left  = await mount(hostA, workspace, { owner: "modify-structure" });
+const right = await mount(hostB, workspace, { owner: "results-trajectory",
+                                              mode: "readonly" });
+```
+
+They share nothing. Selecting atoms in `right` leaves `left`'s selection exactly
+as it was (§ 9.5). Scrubbing `right` to frame 40 does not move `left`, which has
+one frame and no frame bar at all. An edit in `left` changes `left`'s structure,
+and `right` never hears of it. There is no registry to look a viewer up in, so
+`left` cannot reach `right` even by mistake — the only way to a viewer is the
+handle you were handed (§ 5.6).
+
 ---
 
 ## 13. How the tests are designed
@@ -1797,54 +1998,59 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 
 | The rule | A test must show |
 |---|---|
-| § 4 — the module is self-contained | nothing outside is importable but the entry point; the module mounts with only a host element and a workspace |
-| § 5.6 — a viewer is owned | two mounts hold two structures, two selections, two displayed frames, two cameras; changing one leaves the other untouched, and neither is reachable from the other's handle |
+| § 4 — the module is self-contained | nothing outside is importable but the entry point; the module mounts given only a host element and something that satisfies the workspace door |
+| § 5.6 — a viewer is owned | two mounts hold two structures, two selections, two displayed frames, two points of view; changing one leaves the other untouched, and neither is reachable from the other's handle |
 | § 6.1 — one frame is not a special case | no read, edit, export or save path treats a single frame differently from four hundred |
-| § 6.3 — saving writes the displayed frame | exporting at frame *N* yields frame *N*'s coordinates, not frame 0's |
+| § 6.2 — the data holds what the filter enumerates | every property the filter enumerates from an atom — element, labels, residue — is a property the structure actually carries; neither list can grow without the other |
+| § 6.3 — each question goes to the copy that can answer it | measurement, export and a server request all read the master copy; nothing outside the renderEngine reads the drawing, and nothing reads coordinates out of it at all |
 | § 6.4 — nothing keeps its own copy | exactly one place answers "which frame"; one write reaches **every** subscriber, whatever moved it |
 | § 6.4 — master copy, then range, then frame, then notify | after a load that shortens a trajectory, no subscriber ever sees a range from the new structure beside a frame number from the old one; an out-of-range write is resolved against the range, not accepted |
 | § 6.5 — the drawn-to-original map holds | under isolate, labels carry original numbers and measurement resolves panel numbers against the master copy |
 | § 6.5 — the highlight is content, not styling | per-frame data carries no colour, radius or opacity |
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
-| § 6.2 — the data holds what the filter enumerates | every property the filter enumerates from an atom — element, labels, residue — is a property the structure actually carries; neither list can grow without the other |
-| § 9.5 — the selection survives an editor switch | moving between click and filter mode leaves the selection exactly as it was |
-| § 9.5 — a half-typed row constrains nothing | a blank row combined under *and* leaves the other rows' result intact rather than emptying it |
-| § 9.5 — by atom index crosses the numbering boundary once | a typed range like `1-4, 6` selects the atoms a user would count off on screen, at any structure size, without drifting by one — and the shift happens at one point, not at each row |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
-| § 9.2 — the handle refuses appearance | there is no way through the handle to push arrows, labels, a busy state or a toggle |
+| § 9.2 — the handle refuses appearance | there is no way through the handle to push arrows, labels, a busy state or a toggle — arrows come from the forces in the data or are not drawn at all |
+| § 9.3 — a read cannot be used to write | changing what a read returned leaves the viewer untouched |
 | § 9.3 — one need, one main way in | a narrower cut returns exactly what the main way in holds for that field — the two cannot disagree |
+| § 9.3 — a structure that cannot be written out is not written out | when the geometry and the per-atom tags disagree about how many atoms there are, the export door returns nothing rather than a corrupt structure |
 | § 9.4 — read-only freezes the master copy and nothing else | every change to the master copy is a no-op **and does not throw**, while select, isolate, scrub, camera and export all work normally |
+| § 9.4 — a read-only viewer has no history | `save`, `load` and `undo` do nothing, and the unsaved-changes badge never appears |
+| § 9.5 — the selection survives an editor switch | moving between click and filter mode leaves the selection exactly as it was |
+| § 9.5 — a half-typed row constrains nothing | a blank row combined under *and* leaves the other rows' result intact rather than emptying it |
+| § 9.5 — by atom index crosses the numbering boundary once | a typed range like `1-4, 6` selects the atoms a user would count off on screen, at any structure size, without drifting by one — and the shift happens at one point, not at each row |
+| § 9.5 — a label is a change to the truth | applying a label replaces that label's previous set of atoms, and in a read-only viewer it does nothing at all |
 | § 9.5 — one selection per owner | a read-only viewer's selection changes leave an editable viewer's selection untouched |
-| § 9.6 — the camera is not held, saved or read back | nothing anywhere reports where the camera is pointing, and a reload fits it to the structure rather than restoring an angle |
+| § 9.6 — the camera is not kept, saved or read back | nothing above the drawing reports where the camera is pointing, and a reload fits it to the structure rather than restoring an angle |
 | § 9.7 — the renderEngine answers nothing | it offers no read of the data and no read of the displayed frame |
 | § 9.8 — the drawing commands answer nothing upward | they offer the renderEngine its two self-check questions and nothing else — no coordinates, no frame read-back |
+| § 9.9 — the sealed layer faces downward only | the only questions it answers are the two self-checks of § 10.10; coordinates, the shown frame and the camera cannot be read out of it |
 | § 10.1 — one render place | no control produces a picture on the side; every interaction is a data or switch write followed by one render |
-| § 10.3 — the two steps, in that order | the filter runs before the overlays, and the overlays are keyed to the atoms that survived it |
-| § 10.3 — a label carries the original number | under isolate, a drawn atom's label shows where it came from, not its position in the filtered list |
+| § 10.3 — the two steps, in that order | the isolate cut runs before the overlays, and the overlays are keyed to the atoms that survived it |
+| § 10.3 — a label carries the original number | under isolate, a drawn atom's label shows where it came from, not its position in the cut-down list |
 | § 10.3 — frame *f*'s arrows come from frame *f* | arrows on a played trajectory match their own frame's forces |
 | § 10.3 — cell geometry and cell visibility travel separately | turning the cell on **after** a hidden load draws the box at the structure's corner, and a cell edit while the cell is hidden still updates the anchor. The assertion is where the wireframe is drawn, not what the cell data says |
 | § 10.3 — the cell box and the axes are worked out once | they are not recomputed per frame, and playing a trajectory does not re-derive them |
-| § 9.9 — the sealed layer faces downward only | it offers no read at all: not coordinates, not the shown frame, not the camera |
 | § 10.4 — playing does not re-process | stepping or playing issues no per-frame derivation; the frames were finished at load |
 | § 10.5 — the cost matches what changed | flipping a switch does not reload coordinates; an isolate does; the choice never consults the atom count |
 | § 10.6 — shapes move with the frames | after a swap, labels and the highlight sit on the atoms' new positions, not where frame 0 left them |
 | § 10.7 — a selection never restyles the model | a click adds or removes shapes and issues no model restyle, and its cost does not grow with atom count |
+| § 10.8 — same atoms, every frame | a frame with a different atom count is a hard error, never coerced |
 | § 10.9 — nothing is lost during a rebuild | frames that arrive mid-rebuild all appear afterwards; a seek and a force update keep only the last; a full load cancels what was queued and supersedes the rebuild |
 | § 10.10 — the offered frames are drawable | appending to a structure with no movie rebuilds instead of extending nothing; a short drawing heals |
 | § 10.10 — only the master copy's count is offered | the count a consumer reads never comes from the drawing |
-| § 10.8 — same atoms, every frame | a frame with a different atom count is a hard error, never coerced |
-| § 10.3 — forces in, arrows out | handing in ready-made arrows draws nothing |
 | § 11.1 — the count requirement is checked first | `orient` with one atom and `delete` with none are refused locally, with no request sent |
+| § 11.1 — an empty selection means what the table says | with nothing selected, `translate` acts on every atom, `orient` refuses and `electrode` centres on the origin — three different answers, each read from the table rather than hand-coded per operation |
+| § 11.1 — a failed edit changes nothing | when the server refuses, the structure is exactly as it was and no history state is recorded |
 | § 11.2 — state is the truth, not the view of it | restoring brings back the structure and the selection; it does not bring back the camera, the displayed frame or the switches — and the saving mechanism itself excludes nothing |
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its state over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
-| § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds; an image and an animation are renders and carry whatever the view was set to |
+| § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds, whatever isolate is doing; a picture and an animation are renders and carry whatever the view was set to |
 | § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so labels and frozen atoms survive into whatever is generated from it |
-| § 11.4 — every export enters at MolView | no export decides anything below the model; a picture is rendered by the sealed layer on request, but what to export and where it goes is decided above |
 | § 11.3 — save-to-project and download differ only in destination | both produce identical bytes, and neither has MolView writing a file |
+| § 11.4 — every export enters at MolView | no export decides anything below the model; a picture is rendered by the sealed layer on request, but what to export and where it goes is decided above |
 | § 11.5 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
 
 ### 13.4 What makes this testable at all
@@ -1858,9 +2064,12 @@ signals the module publishes for that purpose.
 
 ## 14. Every section, and what it is for
 
-The check that keeps this document honest: each section exists because one of
-§ 5's ideas needs it. A section that serves none of them is either describing an
-accident of the implementation or documenting something that belongs elsewhere.
+The check that keeps this document honest: every section **that states a rule**
+exists because one of § 5's ideas needs it. A rule-stating section serving none of
+them is either describing an accident of the implementation or documenting
+something that belongs elsewhere. Three sections state no rules and are marked
+`—`: § 5 is the source the others are checked against, § 12 only walks through
+what they already said, and § 15 is a map for reading the code.
 
 | Section | Serves | Because |
 |---|---|---|
