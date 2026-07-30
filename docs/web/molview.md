@@ -53,6 +53,10 @@ current code.
 > - **The sidecar** — the small companion file that travels beside a structure
 >   file and carries what coordinates cannot: the labels, the cell, what the user
 >   said about the atoms. Written as `.molstruct.json`.
+> - **A label** — a name a user attaches to a set of atoms: `L-electrode`,
+>   `frozen atoms`, or anything they type (§ 6.6). The atom **numbers** that the
+>   `#` switch draws in the 3D window are a different thing entirely; this
+>   document always calls those **atom-number labels**, never just "labels".
 >
 > Atom numbering: **0-based in code, 1-based on screen**, translated in exactly
 > one place (§ 11.5).
@@ -273,7 +277,7 @@ with a clear error if the library is missing. Swapping the drawing library
 touches that one file and reaches no consumer of MolView.
 
 **It contains its own state.** The structure, the selection, the switches, the
-displayed frame and the undo history all live inside the viewer. It keeps
+displayed frame and the session history all live inside the viewer. It keeps
 nothing in a global, and nothing outside it keeps a copy of anything it holds.
 
 **The test of all of this:** delete every other web module and MolView still
@@ -312,7 +316,7 @@ Every fact — the atoms, the cell, the selection, which frame — has one home.
 copies of a fact are two things that must be kept in step, and every mechanism
 for keeping them in step is a place they can fall out of step.
 
-Where two forms genuinely must coexist — the real structure and the filtered
+Where two forms genuinely must coexist — the real structure and the cut-down
 thing the graphics library draws (§ 6.3) — one of them is unambiguously the real
 one, the other cannot be reached as an answer to anything, and a single number
 joins them.
@@ -465,7 +469,7 @@ classDiagram
 |---|---|---|
 | `elements` | `string[]` | element per atom. **Shared by every frame.** |
 | `annotations` | per atom: the labels it carries, and its residue name if the source had one | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them, writes them and filters on them (§ 9.5); the drawing does not use them. Writing one is a change to the structure, gated like any other (§ 9.4). Some label names are **reserved** and mean something downstream (§ 6.6) |
-| `cell` | `{lattice: [Vec3,Vec3,Vec3], origin: Vec3}` or `null` | the a/b/c vectors, plus the corner the box is anchored at |
+| `cell` | the a/b/c vectors, the corner the box is anchored at, how each axis is treated — repeating, isolated, or a transport lead — and how much empty space an isolated axis should have. `null` when there is no cell | **One fact that travels together**, which is why there is one door to change it (§ 9.3). The field names and the rules for resolving them belong to [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md); MolView carries the block, offers it, edits it through that one door, and interprets none of it |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no tags |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
 
@@ -486,8 +490,7 @@ The coordinates exist in **exactly two** forms, and only two.
 
 **The master copy — the real structure.** Every atom, every frame, in the
 original order. This is what gets measured, exported, saved, and handed to a
-calculation. It is kept clean — never overwritten with a filtered or reduced
-list — so every redraw starts from it rather than from whatever is currently on
+calculation. It is kept clean — never overwritten with a cut-down list — so every redraw starts from it rather than from whatever is currently on
 screen. That is what lets the whole structure come back the moment isolate is
 turned off.
 
@@ -506,8 +509,8 @@ number is what routes them:
 
 | The question | Answered from | How |
 |---|---|---|
-| Which frame is displayed — and which one will be saved? | the displayed frame number | `currentFrame()` |
-| Where is **every** atom at that frame — to measure, export, save | **the master copy** | `getFrameAllAtoms(i)` |
+| Which frame is displayed — and which one an export writes? | the displayed frame number | `currentFrame()` |
+| Where is **every** atom at that frame — to measure it, to export it | **the master copy** | `getFrameAllAtoms(i)` |
 | What is on screen right now? | **the drawing copy** | nothing outside the renderEngine asks it, and nothing ever asks it for coordinates. It is output, not a source — the one exception is the renderEngine checking its own work (§ 10.10) |
 | What was the energy / SCF history at that step? | not MolView's data at all — the tab's own run file | the tab reads its own file, at the same frame number |
 
@@ -553,7 +556,7 @@ see is what you save" survive a structure changing underneath a user.
 
 | | Who uses it, and why |
 |---|---|
-| **read** — `currentFrame()`, `frameCount()` | anyone who needs to know which frame is meant and how many there are: the frame bar, the measurement readout, export and save, a tab |
+| **read** — `currentFrame()`, `frameCount()` | anyone who needs to know which frame is meant and how many there are: the frame bar, the measurement readout, an export, a tab |
 | **write** — `setCurrentFrame(i)` | anyone who moves it: the frame bar, playback, a tab following the end of a growing run, a session being restored. A number outside the range is resolved against the range, never taken on trust |
 | **subscribe** — `onFrameChange(fn)` | anyone who must react: the slider and its counter, the measurement readout, the renderEngine |
 
@@ -575,16 +578,15 @@ something a user sets; this is something a movie drives.
 ### 6.5 Worked out fresh on every redraw, never stored
 
 One frame, after the switches have been applied, becomes a **processed frame** —
-and that is the only *per-frame* thing that ever goes down. (Cell geometry, the
-overlays and the busy state also travel down, but none of them is per frame —
-§ 10.3.)
+and that is the only *per-frame* thing that ever goes down. (The cell geometry, the axes and the busy-state cover also
+travel down; none of those is per frame — § 10.3.)
 
 | Field | Shape | What it is |
 |---|---|---|
 | `positions` | `Vec3[]` | the atoms **actually drawn** — cut down to the selection when isolate is on |
 | `sourceIndex` | `int[]` | `sourceIndex[m]` = the **original** number of drawn atom `m`. This map from drawn back to original is why labels still show the right number under isolate |
 | `elements` | `string[]` | element per **drawn** atom |
-| `labels` | `{position, text}[]` or `null` | the atom-number labels, when that switch is on. `text` is the **1-based original** number (§ 11.5) |
+| `labels` | `{position, text}[]` or `null` | the atom-number labels — *not* the labels a user attaches — when that switch is on. `text` is the **1-based original** number (§ 11.5) |
 | `selection` | `int[]` or `null` | which drawn atoms to highlight. `null` means *draw no highlight* — which happens both when nothing is selected and under isolate, where every drawn atom is selected and a highlight would say nothing |
 | `arrows` | `{start, end}[]` or `null` | force vectors for **this** frame, where `end = start + force × scale` |
 
@@ -614,11 +616,13 @@ A label is just a name attached to a set of atoms. **Some names are reserved**:
 they are stored, filtered and displayed exactly like any other label, and the
 only difference is that something downstream knows what they mean.
 
-`frozen atoms` is one. The transport vocabulary — `L-electrode`, `R-electrode`,
-`bridge`, `interface` — is the rest of the set today. **The list itself does not
-live in this document**, and deliberately: it belongs with the descriptions the
-label reference already shows, keyed by name, so that adding a reserved meaning
-touches that list and its translator and nothing else.
+Today's set is `frozen atoms` and the transport vocabulary — `L-electrode`,
+`R-electrode`, `bridge`, `interface`. They are named here as examples, not as a
+list this document keeps: **the list lives with the labels themselves**, in
+[`model/structure-annotations.md`](?doc=model/structure-annotations.md), keyed by
+name and next to the description each one shows a user. That is deliberate, so
+that adding a reserved meaning touches that list and its translator and nothing
+else — not this document, and nothing in the viewer.
 
 **MolView does not interpret any of them.** It stores them, offers them in the
 label list, filters by them, and writes them out. What `frozen atoms` *means* —
@@ -639,9 +643,9 @@ group `frozen atoms` as a note to themselves would otherwise have those atoms
 silently constrained in the next calculation; now they are told before it
 happens, and can pick another name or go ahead deliberately.
 
-**Knowing a name is reserved is not interpreting it.** MolView holds the list of
-reserved names and a short human description of each — the same descriptions the
-label reference shows — so it can name the conflict and explain it. It never
+**Knowing a name is reserved is not interpreting it.** MolView reads that list —
+the names and the one-line description each carries — so it can name the conflict
+and explain it. It never
 *acts* on the meaning: no code here holds an atom still, and tagging atoms
 `frozen atoms` changes what is stored and nothing about what is drawn. Carrying a
 description to show a user and implementing a behaviour are different things, and
@@ -691,7 +695,7 @@ home** — it is the enforceable half of § 5.2.
 | **2** | **the handle** | Making, driving and tearing down a viewer (§ 9.2). A handle *is* a viewer: one owner, one structure, one of everything. Called by a tab | holds structure data of its own, or answers a question the model already answers (§ 9.2) |
 | **3** | **the model** | The data API (§ 9.3), one per owner. Called through the handle, and by every level inside the same viewer. **Holds the master copy**, the selection, the displayed frame and its range. This is where the rules are enforced and where read-only is applied, so nothing may go around it | touches the drawing library; exists as one shared instance behind several viewers |
 | **4** | **the stores** | Change-and-subscribe. Assembled by the model and reached only through it (§ 9.3), so a change asked for through a store meets the same rules as one asked for anywhere else (§ 9.4). They exist so state has a home that knows nothing about drawing | draw anything; hold the displayed frame — that is not a switch (§ 6.4); be kept by anything outside the viewer once it has been reached |
-| **5** | **the renderEngine** | Commands only — "draw this", "add these frames", "the forces changed", "throw it away". **Called only by the model.** It is *handed* the master copy and the switches, works out what each frame looks like, and passes the result down. It holds nothing of its own | keep its own copy of the displayed frame; answer a question about what the data is; run a change notification of its own |
+| **5** | **the renderEngine** | Commands only — "draw this", "add these frames", "the forces changed", "throw it away". **Called only by the model.** It is *handed* the master copy, the selection and the switches, works out what each frame looks like, and passes the result down. It holds nothing of its own | keep its own copy of the displayed frame; answer a question about what the data is; run a change notification of its own |
 | **6** | **the drawing commands** | Small, decision-free operations that translate a processed frame into calls the library understands, plus two questions the renderEngine asks *about the drawing* to check its own work (§ 10.10). **Called only by the renderEngine.** It owns exactly one fact: the multi-frame format the library expects | decide how much work a change needs; hold state; answer anything upward |
 | **7** | **the sealed layer** | The only code that names 3Dmol. **Called only by level 6.** **Holds the drawing copy** — the movie, the camera, the styles, the picking, the highlight spheres | keep its own frame number, or be a source of truth about coordinates. It draws the frame it is handed and offers no way to read coordinates or frames back out |
 
@@ -724,7 +728,7 @@ The model is not one big file. **One central file holds the structure, and hands
 each real job to a small helper that does only that job.**
 
 **When the central file builds a helper, it hands over exactly the functions that
-helper is allowed to call.** The helper never reaches out on its own. The undo
+helper is allowed to call.** The helper never reaches out on its own. The history
 helper is the clearest case: it has to save and restore the structure, but it
 does not need to know the file format — it is simply handed a "record the state"
 function and a "put a state back" function. That keeps each helper small,
@@ -797,7 +801,7 @@ stand-in, and it is the whole of § 4's "nothing it needs comes from a global".
 
 **`owner` names the viewer, and therefore everything in it.** It is not a prefix
 on a settings key; it is the identity of an instance. The structure, the
-selection, the switches, the displayed frame and its range, the undo history,
+selection, the switches, the displayed frame and its range, the session history,
 the renderEngine and its sealed layer all belong to that owner. Two
 mounts with different owners share nothing (§ 5.6). A viewer with no owner has no
 identity, which is why one is always given.
@@ -836,7 +840,7 @@ is the only import a consumer ever writes.
 | reach everything this viewer holds — the structure, the selection, the frames, the drawing settings | reaching *another* viewer's; or reaching any of it except through the model, which is where the rules and the read-only gate live |
 | run the movie — play, pause, ask whether it is playing | owning the timer. Playback lives in the mount layer and moves the frame through the same write everyone else uses (§ 6.4) |
 | hear that something changed | polling for it |
-| change what the viewer shows — the data, a switch, a drawing setting (§ 10.1) | hand in a finished appearance. There is no "set the arrows", "set the labels", "show a busy state", "add a toggle". Arrows, labels and the highlight are **worked out from the data** by the renderEngine, never given to it |
+| change what the viewer shows — the data, a switch, a drawing setting (§ 10.1) | hand in a finished appearance. There is no "set the arrows", "set the atom-number labels", "show a busy state", "add a toggle". Arrows, labels and the highlight are **worked out from the data** by the renderEngine, never given to it |
 
 **The handle contains the model; it does not mirror it.** This is what being
 owned forces. When there was one shared model, a handle that also carried
@@ -844,7 +848,7 @@ owned forces. When there was one shared model, a handle that also carried
 — two ways to the same object. Now that each viewer owns its model, a mirrored
 read is a *second surface over the same fact*, and one of the two is the one
 somebody forgets to update. So the handle carries lifecycle, playback, and one
-route to the model; the model carries the data API with the selection and window
+route to the model; the model carries the data API with the selection and view
 stores beneath it.
 
 Adding a read to the handle that the model already answers is the specific move
@@ -880,8 +884,8 @@ rather than maintained separately.
 | The need | The main way in | Narrower cuts of it | Changes the master copy |
 |---|---|---|:--:|
 | Get the whole structure | `getStructure` | `getAtoms`, `getElements`, `getCoordinates`, `getSource`; `getRegions` — the atoms grouped by the label they carry; `getFrozen` — the atoms carrying the reserved `frozen atoms` label (§ 6.6) | — |
-| Get the cell | `getUnitCellInfo` — the resolved cell, always answerable | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` | — |
-| Get one frame's coordinates | `getFrameAllAtoms(i)` — **every** atom, original order, before any filtering | | — |
+| Get the cell | `getUnitCellInfo` — the cell as it will actually be used, with the defaults filled in for whatever the structure left unsaid, so it always has an answer | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` | — |
+| Get one frame's coordinates | `getFrameAllAtoms(i)` — **every** atom, original order, before isolate cuts anything down | | — |
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
 | Get the structure out as text | `exportFile()` | | — |
 | Hear that the structure changed | `subscribe(fn)` — the structure only; the frame has its own channel | | — |
@@ -891,7 +895,7 @@ rather than maintained separately.
 | Edit the cell | `commitPeriodicityOp` — the one way the cell changes | | **yes** |
 | Load or extend the frames | `reloadFrames` · `addFrame` · `addFrames` · `setForces` | | **yes** |
 | Tag the selected atoms | the label door on `selection` (§ 9.5) — the atoms it applies to are the selection, but what it writes is the structure | | **yes** |
-| Move through the session history | `save` · `load(delta)` (§ 11.2) | `undo`, which is exactly `load(-1)` | **yes** |
+| Save a point, and move through the sequence | `save(step)` · `load(step)` (§ 11.2) | `undo`, which is exactly `load(-1)`. `load(0)` is not a move — it puts back the point you were on | **yes** |
 | Know where you are in the history | `state_index` · `uncommitted` | | — |
 
 Fourteen needs. That count is the honest measure of the surface; everything else
@@ -913,7 +917,7 @@ unanswerable — a row has to be one kind of thing or the question "does this ch
 the master copy?" has no single answer.
 
 **`getFrameAllAtoms(i)` is named for exactly what it promises:** every atom of
-frame `i`, in the original numbering, before any selection or isolate filtering.
+frame `i`, in the original numbering, before isolate cuts anything down.
 That is what its callers want — measurement resolves panel numbers against it,
 and export writes the frame from it. Naming the promise means no call site has to
 restate it, and there is no rival: reading coordinates back out of the drawing
@@ -953,7 +957,7 @@ answers, and a caller has to be able to tell them apart.
 > into name → atoms, the frozen atoms into a list of numbers — renames the fields
 > to the server's, and narrows the cell block. It adds no fact. Retiring it in
 > favour of one read plus one translation is a change to
-> [`science/validation.md`](?doc=science/validation.md) § 4.1, which states the
+> [`science/validation.md`](?doc=science/validation.md) (its § 4.1), which states the
 > obligation in terms of that name, and to the test that guards it — not to this
 > module alone.
 
@@ -961,7 +965,7 @@ answers, and a caller has to be able to tell them apart.
 
 - **`installMolecule(input)`** — the only way a structure gets in. It sends the
   text (and an optional sidecar) to the server and, on the structure that comes
-  back, replaces the whole model at once and resets the undo history. Everything
+  back, replaces the whole model at once and resets the session history. Everything
   upstream converges here — whatever built or fetched the text, it arrives this
   way. One entrance means one place the rules are checked and one place the
   history is anchored.
@@ -1240,9 +1244,9 @@ frame is a set of length one, and it runs through exactly the same steps as four
 hundred. The only thing that changes is that the frame bar does not appear.
 
 **The output is fully-ready data.** What reaches 3Dmol is finished — every frame
-already filtered, with its arrows baked in. The pipeline does not micro-manage
+already cut down, with its arrows baked in. The pipeline does not micro-manage
 the library frame by frame; it hands over the complete set and 3Dmol then uses
-its own GPU acceleration to display and animate it. (Labels and the highlight are
+its own GPU acceleration to display and animate it. (Atom-number labels and the highlight are
 the exception, and § 10.6 explains why: they are free-standing objects, re-placed
 per frame rather than carried inside it.)
 
@@ -1283,7 +1287,7 @@ now third in the list.
 
 | Overlay | Produced when | From what | Note |
 |---|---|---|---|
-| **atom-number labels** | the labels switch is on | one label per drawn atom | the text is the atom's **original** number, recovered through the map from step 1, and converted to 1-based by the one shared translation (§ 11.5). Never its position in the filtered list |
+| **atom-number labels** | that switch is on | one label per drawn atom | the text is the atom's **original** number, recovered through the map from step 1, and converted to 1-based by the one shared translation (§ 11.5). Never its position in the cut-down list |
 | **the selection highlight** | something is selected **and isolate is off** | the list of drawn atoms to highlight | under isolate this is deliberately empty: the drawn set already *is* the selection, so highlighting all of it would say nothing. The pipeline emits only *which* atoms — never what the highlight looks like |
 | **force arrows** | the forces switch is on and the data carried forces | frame `f`'s forces, times the scale | frame `f`'s arrows come from frame `f`'s forces. Getting this wrong shows converged forces on an unconverged frame |
 
@@ -1369,7 +1373,7 @@ there?" is not one of them**, and a change that adds it has changed the design.
 | What changed | What it costs | What actually happens | "Updating view…" cover |
 |---|---|---|---|
 | the displayed frame only — scrubbing or playing | **frame swap** | ask the library to show a frame it already has (§ 10.4) | no |
-| an overlay switch, with the same atoms drawn — the highlight while *not* isolating, labels, forces or their scale, the cell, the axes, **or a cell edit** | **overlay refresh** | re-derive and re-apply just the overlays. The coordinates are not rebuilt | no |
+| an overlay switch, with the same atoms drawn — the highlight while *not* isolating, atom-number labels, forces or their scale, the cell, the axes, **or a cell edit** | **overlay refresh** | re-derive and re-apply just the overlays. The coordinates are not rebuilt | no |
 | new frames arrived from a running job | **append** | process only the new frames and extend the movie. The displayed frame does not move | no |
 | **the set of drawn atoms changed** — isolate toggled, or the selection changed *while* isolating — or a whole new structure loaded | **rebuild** | re-process every frame and reload the movie | **yes** |
 
@@ -1392,14 +1396,14 @@ recompute. That is why changing the forces switch or the arrow scale re-derives
 arrows for every frame and **re-bakes them in place**, without touching the
 coordinates: an overlay refresh, not a rebuild.
 
-**Labels and the highlight are re-placed for the shown frame on each swap.**
+**Atom-number labels and the highlight are re-placed for the shown frame on each swap.**
 They are free-standing objects sitting at atom coordinates.
 A frame swap moves the atoms but not those objects, so each swap must repaint
 them at the new positions. That is a handful of shapes — one frame's worth — not
 a movie rebuild, and critically it **never restyles the molecule's geometry**.
 
 A rebuild is the only cost that reparses coordinates: it rebuilds the movie, and
-also re-bakes the arrows and re-applies the shown frame's labels and highlight.
+also re-bakes the arrows and re-applies the shown frame's atom-number labels and highlight.
 It is the only one that raises the cover.
 
 > If those shapes are not re-placed on a swap, they stay where frame 0 put them
@@ -1523,14 +1527,14 @@ anybody; it triggers a rebuild.
 Today an overlay refresh re-derives the overlays. It could re-derive only the
 ones that actually changed.
 
-The scene is a fixed stack of independent layers — labels, force arrows, the
-highlight, the cell box, the axes — drawn in that order, each a function of a
+The scene is a fixed stack of independent layers — atom-number labels, force
+arrows, the highlight, the cell box, the axes — drawn in that order, each a function of a
 **declared** set of inputs and of nothing else. (Draw style is not one of them:
 it is a drawing setting, applied by the sealed layer without the frame
 calculation ever seeing it — § 9.6.) Two rules would
 follow: a change dirties only the layers that declare it as an input (a click
-dirties the highlight and nothing else; the labels switch dirties labels and
-nothing else; a frame swap dirties no layer's content at all, only positions),
+dirties the highlight and nothing else; the atom-number switch dirties those
+labels and nothing else; a frame swap dirties no layer's content at all, only positions),
 and a dirty layer applies **only its difference** rather than clearing and
 rebuilding.
 
@@ -1818,7 +1822,7 @@ source a calculation's input script is generated from, and what analysis later
 refers back to. That is the handoff out of the viewer and into the workflow.
 
 Which retro-justifies two things that would otherwise look like details. The Data
-export **must** be the truth, because a script generated from a filtered drawing
+export **must** be the truth, because a script generated from a cut-down drawing
 would compute the wrong system. And it **must** be both files, because the
 metadata is where the user's intent lives (§ 5.5) — a `.xyz` saved without its
 `.json` is a structure whose labels have been quietly dropped on the way to the
@@ -2107,6 +2111,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 10.3 — the two steps, in that order | the isolate cut runs before the overlays, and the overlays are keyed to the atoms that survived it |
 | § 10.3 — a label carries the original number | under isolate, a drawn atom's label shows where it came from, not its position in the cut-down list |
 | § 10.3 — frame *f*'s arrows come from frame *f* | arrows on a played trajectory match their own frame's forces |
+| § 6.2 — the cell is one fact with one door | every path that changes the cell goes through that door; nothing writes a part of it — the vectors, the anchor, how an axis is treated — on its own |
 | § 10.3 — cell geometry and cell visibility travel separately | turning the cell on **after** a hidden load draws the box at the structure's corner, and a cell edit while the cell is hidden still updates the anchor. The assertion is where the wireframe is drawn, not what the cell data says |
 | § 10.3 — the cell box and the axes are worked out once | they are not recomputed per frame, and playing a trajectory does not re-derive them |
 | § 10.4 — playing does not re-process | stepping or playing issues no per-frame derivation; the frames were finished at load |
