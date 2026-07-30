@@ -56,7 +56,7 @@ showing one read-only, the trajectory inspector playing an optimization. A user
 who learns to select, isolate, measure and scrub in one of them can do it in all
 of them, and a developer who wants a viewer does not build one.
 
-Five things follow from that goal. They are the reason every rule in this
+Six things follow from that goal. They are the reason every rule in this
 document exists; a design choice that breaks one of them is wrong regardless of
 how convenient it is.
 
@@ -99,6 +99,24 @@ decoration. They are written into the structure's sidecar and into the generated
 input script, so the calculation and the results view both see the regions the
 user set here (§ 7). The viewer is where scientific intent is expressed, so that
 intent has to survive the trip.
+
+### 6. A viewer is owned
+
+**Every mounted viewer is its own MolView, and it belongs to its owner.** Two
+viewers on one page are two structures, two selections, two displayed frames, two
+cameras — not one set of facts that both of them fight over. The `owner` a host
+passes at mount is what makes that true, and it names *everything* the viewer
+holds, not just its camera.
+
+This is the goal the module was always reaching for, and it is what makes goal 2
+mean something: "one place holds each fact" is only a real rule once *which*
+viewer's fact you mean is unambiguous. A single shared structure behind two
+viewers is not one home for a fact — it is one home for two facts that happen to
+collide.
+
+It follows that **the handle is the door** (§ 13). A tab holds a handle, and a
+handle *is* a particular viewer; there is no global to look a viewer up in and no
+way to reach the wrong one by accident.
 
 ### What MolView is deliberately not
 
@@ -291,33 +309,35 @@ workspace's job** (MolView holds no file endpoint), and **everything in
 between — the live structure, the selection, the view state — is
 `molview.data`'s job**.
 
-## 12. The one door and the read rule
+## 12. The one door
 
-MolView has a single ES-module entry point:
+MolView has a single ES-module entry point, and it exports a **factory**:
 
 ```js
 import { mount, formula } from "/static/lib/molview/index.js";
+
+const viewer = await mount(hostEl, workspace, { owner: "results-structure" });
+const selected = viewer.getSelection();   // [0-based atom indices]
 ```
 
-`index.js` (`lib/molview/index.js`) exports **`mount`** (the viewer factory) and
-**`formula`** (a Hill-formula helper), and re-exports the data model and the
-internal submodules (engine, selection, timeline, …) so the module graph is
-reachable from the door. Production consumers use only `mount` and `formula`,
-and must **not** import-and-hold the data object — they look it up live at read
-time:
+`mount` makes a viewer; `formula` is a Hill-formula helper that needs no viewer.
+That is the whole import surface.
 
-```js
-// read the CURRENT structure/selection — always look it up, never cache it:
-const data = window.molbuilder.molview.data;
-const selected = data.getSelection();   // [0-based atom indices]
-```
+**The handle you get back *is* the viewer** (goal 6). It is not a pointer into a
+shared object — it owns its structure, its selection, its displayed frame, its
+camera. Holding it is correct and expected: a handle never goes stale, because
+its identity is the viewer, not a snapshot of one. Two mounts give two handles
+that share nothing, and there is no global to look a viewer up in, so a tab
+cannot reach the wrong one.
 
-Why look up instead of import: the data object is a long-lived singleton whose
-contents change as the user works; a consumer that imported a snapshot would go
-stale. The `data` export exists for **tests and tooling**; every live tab
-(`modify/viewer.js`, `lib/trajectory/core.js`, `lib/inspectors/structure.js`,
-`lib/transport/core.js`, `spectra/viewer.js`) looks up
-`window.molbuilder.molview.data` at the moment it reads.
+> **Transition.** Today the module also publishes
+> `window.molbuilder.molview.data` — a **single** shared model, from before
+> viewers were owned. It is what tabs currently read through, and while it exists
+> the old rule still applies to it: look it up at read time, never cache it,
+> because its *contents* swap under you. It is a seam being removed, not a second
+> door; new code takes the handle. The other `window.molbuilder.molview.*`
+> publishes are live test and readiness seams (§ 22.4). Both are
+> [`roadmap.md`](?doc=roadmap.md)'s business.
 
 **The concealed 3Dmol seal.** The name `3Dmol` appears in **exactly one place**
 in the module — the innermost seal (L7, § 24), which is the only code allowed to
@@ -326,27 +346,29 @@ Nothing above it — no tab, no panel, no renderEngine — names the library or 
 of its types. That is goal 3 made structural: swapping the drawing library
 touches one file and no consumer.
 
-Alongside the door, the module still publishes transitional
-`window.molbuilder.molview.*` globals. They are **live seams**, not dead
-scaffolding — see § 22.4 for what depends on them; retiring them is
-[`roadmap.md`](?doc=roadmap.md)'s business, not this contract's.
-
 ## 13. `mount()` and the handle
 
 ```js
 const handle = await mount(hostEl, workspace, { mode, owner });
 ```
 
-`mount(hostEl, workspace, opts) → Promise<handle>` (`lib/molview/mount.js:109`)
-assembles a complete viewer — the 3D embed, the selection/cell panel, the view
-toggles, and (for a trajectory) the frame bar — in one call. `opts.mode` is
-`"readonly"` for a look-only view; `opts.owner` namespaces the view state so two
-mounts on one page do not collide.
+`mount(hostEl, workspace, opts) → Promise<handle>` assembles a complete viewer —
+the 3D embed, the selection/cell panel, the view toggles, and (for a trajectory)
+the frame bar — in one call.
 
-**Two assembly paths** (`mount.js:142-175`):
+**`opts.owner` names the viewer, and therefore everything in it.** It is not a
+prefix on a settings key; it is the identity of an instance. The structure, the
+selection, the view flags, the displayed frame and its range, the camera, the
+undo timeline, the renderEngine and its seal all belong to that owner. Two mounts
+with different owners share nothing (goal 6). A mount with no owner is a viewer
+with no identity, which is why one is always given.
+
+**`opts.mode: "readonly"` freezes copy 1 and nothing else** — the rule is § 13.1.
+
+**Two assembly paths:**
 
 - an **empty host** → MolView builds the whole fused card itself (embed + panel
-  + engine);
+  + renderEngine);
 - a **pre-built `.molview-card` host** → MolView wires the existing panel and
   toggles (the transitional path the Modify tab's template uses).
 
@@ -366,35 +388,79 @@ handle.dispose();                 // on teardown — LIFO drain: attachments →
 ```
 
 A viewer that cannot fit (the host is narrower than the card's minimum width)
-renders a blank card with an inline error rather than a broken half-viewer
-(`mount.js:183-205`).
+renders a blank card with an inline error rather than a broken half-viewer.
 
-**What the handle must be able to do**, and what it must refuse. The obligations
-are the contract; the spelling below is how they are met today.
+**What the handle must be able to do**, and what it must refuse:
 
 | A tab must be able to | Refused, deliberately |
 |---|---|
-| know whether it got a viewer, and tear it down — `ok`, `dispose` | reaching the 3Dmol viewer, the stores, or the DOM |
-| put a structure in and get one out — `installMolecule`, `exportFile`, `undo` | pushing appearance — there is no `setArrows`, `setLabels`, `setBusy`, `addViewToggle`; arrows and labels are **baked from the data** by the renderEngine (§ 16), never handed in by a consumer |
-| read what it is showing — `getStructure`, `getSelection`, `getFrameAllAtoms` | writing that data around the door (§ 14.6) |
-| move and follow the displayed frame — `currentFrame`, `setCurrentFrame`, `frameCount` | keeping its own copy of any of the three (§ 14.3) |
-| run the movie — `play`, `pause`, `isPlaying` | owning the timer; playback lives in the mount layer, and it drives the index through `setCurrentFrame` like every other writer |
-| hear about changes — `onChange` | polling |
+| know whether it got a viewer, and tear it down | reaching the 3Dmol viewer, the stores, or the DOM |
+| reach everything the viewer holds — its structure, selection, frames, window state | reaching *another* viewer's, or reaching any of it without going through the model, where the invariants and the read-only gate live (§ 14.6) |
+| run the movie — `play`, `pause`, `isPlaying` | owning the timer; playback lives in the mount layer and drives the frame through `setCurrentFrame` like every other writer |
+| hear that something changed | polling |
+| — | pushing appearance: there is no `setArrows`, `setLabels`, `setBusy`, `addViewToggle`. Arrows and labels are **baked from the data** by the renderEngine (§ 16), never handed in by a consumer |
 
-That is 15 keys. The count is a consequence of the obligations, not a rule of its
-own: an obligation that disappears takes its key with it, and a new key without a
-row above is a leak. `handle.undo` is session-state undo (`data.load(-1)`), not a
-geometry undo. Playback speed is the user's setting (§ 8), owned in one place.
+**The handle does not mirror the model; it contains it.** This is the difference
+the owner decision forces. When the model was a single shared object, a handle
+that also carried `getStructure`, `getFrameAllAtoms`, `currentFrame` and the rest
+was a convenience — two ways to the same object. Once each viewer owns its model,
+a mirrored read is a *second surface over the same fact*, and one of the two will
+be the one somebody forgets to update. So: the handle carries **lifecycle,
+playback, and one route to the model**, and the model carries the data API
+(§ 14.6) with `selection` and `view` beneath it.
 
-## 14. The data — what MolView holds
+Adding a read to the handle that the model already answers is the specific move
+this rule forbids.
 
-MolView holds **one structure**. If that structure came from a trajectory, it
+> **Transition.** Today's handle is 15 keys — lifecycle and playback, plus eight
+> reads and writes forwarded from the model. The forwarded eight are what the
+> rule above retires; they are how a tab reached a viewer before there were
+> viewers to reach. `undo` is session-state undo, not a geometry undo. Playback
+> speed is the user's setting (§ 8), owned in one place.
+
+### 13.1 Read-only means one thing
+
+**A read-only viewer freezes copy 1. Nothing else changes.**
+
+That is the entire rule, and it is worth stating in one line because every
+previous attempt to describe read-only turned into a list of disabled buttons
+that had to be maintained. There is no list. There is one question, asked of each
+door: *does this change the truth?* If it does, in a read-only viewer it is a
+**no-op** — it returns without effect and without throwing. If it does not, it
+works exactly as it does anywhere else.
+
+| Does it change copy 1? | Doors | In read-only |
+|---|---|---|
+| **Yes** | `installMolecule`, `applyOp`, `discard`, `commitPeriodicityOp`, `reloadFrames`, `addFrame`, `addFrames`, `setForces`, and the timeline's `load` / `undo` (they restore a *different* truth) | no-op |
+| **No — it changes what is drawn, or reads** | `setCurrentFrame` and the whole frame API, everything under `selection`, every view flag including isolate, everything under `view` (camera, style, background), `getStructure` and every other read, `exportFile`, `factsForRequest` | fully live |
+
+The line falls exactly where the two copies do (§ 14.3). Read-only is a statement
+about **copy 1**; copy 2 is the render, and rendering is what a read-only viewer
+is *for*. A user looking at a finished calculation can still select atoms, isolate
+them, measure them, scrub the trajectory, turn on force arrows, spin the camera
+and export what they see — none of that touches the truth. What they cannot do is
+change the structure the calculation ran on.
+
+Two consequences worth naming, because they are easy to get backwards:
+
+- **Isolate is not an edit.** It hides atoms from the drawing; the truth still has
+  all of them, which is why the whole structure comes back when it is turned off
+  (§ 14.3). A read-only viewer isolates freely.
+- **`exportFile` is a read.** Getting bytes out of a viewer you cannot edit is
+  exactly the point of a read-only viewer, and it changes nothing.
+
+## 14. The data — what a viewer holds
+
+A viewer holds **one structure**. If that structure came from a trajectory, it
 holds **many frames** of that same structure, and **one number** saying which
 frame you mean. It holds **what you have selected** and **which view switches are
 on**. Everything else you see — the drawn atoms, the force arrows, the selection
 glow — is worked out fresh on each redraw and never stored.
 
-### 14.1 The four things it holds
+*A viewer*, not *the module*: everything below belongs to one owner (goal 6). Two
+viewers on a page hold two of everything in this section and share none of it.
+
+### 14.1 The four things a viewer holds
 
 **The structure — identical for every frame.** One element symbol per atom, one
 set of per-atom tags (a region label, a frozen flag), and optionally a unit cell.
@@ -407,14 +473,17 @@ in frame `f`. Per-atom forces, when a run produced them, sit in a parallel list
 of the same shape. A structure that is not a trajectory is simply a list of
 **one** frame — there is no separate "static" mode anywhere in the module.
 
-**The index — which frame you mean.** A single number. It answers *which frame is
+**The index, and the range it lives in — which frame you mean.** A single number
+and the bounds it is valid in, held together. The number answers *which frame is
 on screen* and *which frame gets saved or exported* — the same question, so the
-same number. It lives above the render engine (§ 14.3).
+same number. The range says which numbers are legal, and it is recomputed from
+the coordinates every time they change. Both sit above the renderEngine (§ 14.3).
 
 **What is selected, and the view switches.** The selected atom indices with the
 order you picked them (a 3-atom angle needs to know which you picked second), the
 filter settings, and the on/off view flags — isolate, atom labels, force arrows,
-unit cell, axes, plus the force-arrow scale.
+unit cell, axes, plus the force-arrow scale. Window settings — camera, style,
+background — are a separate store, for the reason in § 18.
 
 ### 14.2 The shapes
 
@@ -505,15 +574,14 @@ index is what routes them**:
 
 | The question | Answered from | Through |
 |---|---|---|
-| Which frame is displayed — and which will be saved? | the index, held above the renderer | `molview.data.currentFrame()` |
-| The coordinates of **every** atom at that frame — measure, export, save | **copy 1, the truth** | `molview.data.getFrameAllAtoms(i)` |
+| Which frame is displayed — and which will be saved? | the index, held above the renderEngine | `currentFrame()` |
+| The coordinates of **every** atom at that frame — measure, export, save | **copy 1, the truth** | `getFrameAllAtoms(i)` |
 | What is on screen? | **copy 2, the render copy** | nothing reads it — it is output, never a source |
 | The energy / forces / SCF at that step | *not MolView's data at all* — the tab's own run file | the tab reads its own file, at the same index |
 
 Because the index means *which frame the user intends to work on*, it is a fact
-about intent, not about rendering. It lives in **MolView, above the render
-engine**, and **no layer keeps a copy of it** — not the renderer, not the drawing
-seal.
+about intent, not about rendering. It lives in **MolView, above the renderEngine**,
+and **no layer keeps a copy of it** — not the renderEngine, not the drawing seal.
 
 **Why no copy.** There is nothing to gain. It is one integer, read a handful of
 times per redraw, so a local copy saves no measurable work. What a copy *does*
@@ -522,27 +590,60 @@ it in step is a place it can fall out of step. This index answers two questions
 that must never disagree (what is on screen, what gets saved); a copy is exactly
 how they would come to disagree.
 
-**One number, three doors:**
+**The index and its range are one fact, kept in one place.** An index without the
+range it is valid in is not usable — you cannot offer a slider, clamp a seek, or
+follow a tail without both — so they are held together, next to each other,
+updated together, and read through one API. Splitting them is how a slider comes
+to offer a frame nothing can draw.
+
+**They are answerable to the truth, in this order:**
+
+```mermaid
+flowchart LR
+    T["copy 1 — the truth<br/>is updated first, completely"] --> R["the range<br/>is recomputed from it"]
+    R --> I["the index<br/>is checked against the range"]
+    I --> N["everyone is notified<br/>once, of a consistent pair"]
+```
+
+1. **The truth is updated first, and fully.** A load, an append, an edit, a
+   restore — copy 1 reaches its final state before anything else moves.
+2. **The range is recomputed from the truth.** Not from the movie, not from what
+   the caller said it was adding. The truth is the only thing entitled to say how
+   many frames there are.
+3. **The index is checked against that range**, and moved if it no longer fits.
+4. **Only then is anyone notified**, and what they see is a matched set.
+
+Nothing observes a half-updated state: there is no moment when the range belongs
+to the new structure and the index still belongs to the old one, because the
+notification comes after both have settled. This is what makes "what you see is
+what you save" survive a structure changing underneath a user — the pair is never
+briefly wrong.
+
+**One fact, three doors:**
 
 | Door | Who uses it, and why |
 |---|---|
-| `currentFrame()` | anyone who needs to know which frame is meant — the frame bar, the measurement overlay, export/save, a tab |
-| `setCurrentFrame(i)` | anyone who moves it — the frame bar, the playback timer, a tab following the tail of a growing run, a restored session |
-| `onFrameChange(fn)` | anyone who must react — the bar's slider and counter, the measurement overlay, the render engine |
+| `currentFrame()` · `frameCount()` | anyone who needs to know which frame is meant, and how many there are — the frame bar, the measurement overlay, export/save, a tab |
+| `setCurrentFrame(i)` | anyone who moves it — the frame bar, the playback timer, a tab following the tail of a growing run, a restored session. Out-of-range values are resolved against the range, never trusted |
+| `onFrameChange(fn)` | anyone who must react — the bar's slider and counter, the measurement overlay, the renderEngine |
+
+**Every UI gets and sets the displayed frame through exactly this API** — the
+frame bar under the viewer, a tab's own scrubber, a keyboard shortcut, playback,
+a restored session. There is no privileged writer and no back channel. A UI that
+tracked the frame itself would be a second answer to a question that must have
+one, and it would be the stale one the moment anything else moved.
 
 `setCurrentFrame` is the **single write door**, and it notifies **every**
-subscriber regardless of what moved the index: a user dragging the slider,
-playback ticking, a tab seeking to a live tail, a session restoring. A subscriber
-never has to know which of those happened, and nothing anywhere needs a private
-"did it change?" check.
+subscriber regardless of what moved the index. A subscriber never has to know
+which of those happened, and nothing anywhere needs a private "did it change?"
+check.
 
-The render engine keeps no copy either, and it does not run a notification of its
+The renderEngine keeps no copy either, and it does not run a notification of its
 own. It is **told** to draw a frame when the index moves; and when a *view flag*
 changes — a label toggle, say — it reads `currentFrame()` to know whose overlays
-to re-apply, through the same injected reader it is handed for the view flags.
-Fanning the change out to subscribers is entirely the door's job.
+to re-apply. Fanning the change out to subscribers is entirely the door's job.
 
-It is also **not a view flag**: the index has its own change channel, because
+The index is also **not a view flag**: it has its own change channel, because
 playback moves it many times a second, and firing the view store that often would
 re-render the selection panel and steal focus from a filter input mid-play. A
 flag is something a user sets; this is something a movie drives.
@@ -597,22 +698,27 @@ happen to keep separate. One need, one door — where several doors serve one ne
 exactly one of them is canonical and the rest are convenience slices of it that
 may shrink but must never grow.
 
-| The need | The door | Canonical |
-|---|---|---|
-| Get the whole structure | `getStructure` | ✔ — `getAtoms`, `getElements`, `getCoordinates`, `getSource`, `getFrozen`, `getRegions` are slices of it |
-| Get the cell | `getUnitCellInfo` (the resolved cell, always answerable) | ✔ — `getUnitCell` (raw explicit 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` are slices |
-| Get a frame's coordinates | `getFrameAllAtoms(i)` — every atom, original order (§ 16.4) | ✔ |
-| Know / move / follow the displayed frame | `currentFrame()` · `setCurrentFrame(i)` · `onFrameChange(fn)` — the three doors of § 14.3, and `frameCount()` for the range | ✔ |
-| Build a server request from the structure | `factsForRequest()` — the one fact payload a request is built from | ✔ |
-| Put a structure in / get one out | `installMolecule(input)` · `exportFile()` | ✔ — the two primitives below |
-| Edit the geometry | `applyOp(name)` (§ 15), `discard` | ✔ — every geometry edit is an op |
-| Edit the cell | `commitPeriodicityOp` | ✔ — **the** periodicity door |
-| Load or extend the frames | `reloadFrames` · `addFrame` · `addFrames` · `setForces` | ✔ |
-| Move through session history | `save` · `load(delta)` · `undo` · `state_index` · `uncommitted` (§ 17) | ✔ |
-| Hear that the structure changed | `subscribe(fn)` — structure changes only; the index has its own channel (§ 14.3) | ✔ |
-| Reach the selection / the view state | `selection` (§ 19) · `view` (§ 18) | ✔ — sub-namespaces, not loose methods |
+The last column is the read-only gate (§ 13.1) — and it is read straight off the
+table, not maintained separately: **a door that changes copy 1 is a no-op in a
+read-only viewer.**
 
-Reading down the *need* column is the honest measure of the surface: **twelve
+| The need | The door | Slices of it | Changes copy 1 |
+|---|---|---|:--:|
+| Get the whole structure | `getStructure` | `getAtoms`, `getElements`, `getCoordinates`, `getSource`, `getFrozen`, `getRegions` | — |
+| Get the cell | `getUnitCellInfo` (the resolved cell, always answerable) | `getUnitCell` (raw explicit 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` | — |
+| Get a frame's coordinates | `getFrameAllAtoms(i)` — every atom, original order (§ 16.4) | | — |
+| Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` — § 14.3 | | — |
+| Build a server request from the structure | `factsForRequest()` — the one payload a request is built from | | — |
+| Get a structure out | `exportFile()` | | — |
+| Hear that the structure changed | `subscribe(fn)` — structure only; the frame has its own channel (§ 14.3) | | — |
+| Reach the selection / the window state | `selection` (§ 19) · `view` (§ 18) | | — |
+| Put a structure in | `installMolecule(input)` | | **yes** |
+| Edit the geometry | `applyOp(name)` (§ 15) · `discard` | | **yes** |
+| Edit the cell | `commitPeriodicityOp` — **the** periodicity door | | **yes** |
+| Load or extend the frames | `reloadFrames` · `addFrame` · `addFrames` · `setForces` | | **yes** |
+| Move through session history | `save` · `load(delta)` · `undo` · `state_index` · `uncommitted` (§ 17) | | **yes** — `load`/`undo` restore a different truth |
+
+Reading down the *need* column is the honest measure of the surface: **thirteen
 needs**. Everything else is a slice, and a slice earns its place only by being
 what a caller actually asks for.
 
@@ -672,9 +778,9 @@ origin, so it always takes the whole-structure path even with a partial
 selection.
 
 ```js
-const data = window.molbuilder.molview.data;
-await data.applyOp("delete");                 // delete the selected atoms
-await data.applyOp("symmetric_electrodes");   // add electrodes anchored on the selected group
+await viewer.applyOp("delete");                 // delete the selected atoms
+await viewer.applyOp("symmetric_electrodes");   // add electrodes anchored on the selected group
+// in a read-only viewer both are no-ops — they would change copy 1 (§ 13.1)
 ```
 
 > The canonical op name **is** the server route segment — the delete op is
@@ -736,30 +842,36 @@ supersedes an in-flight rebuild.
 
 ### 16.3 The offered range must be a drawable range
 
-The index's **valid range** is part of the same contract as the index itself: a
-frame the user is offered must be a frame the movie can actually show. The movie
-is the only thing that can show one, so the render engine guarantees the two
-agree.
+**The range comes from the truth; the movie is made to match it.** That is the
+direction, and it is the whole of this section. Copy 1 says how many frames there
+are (§ 14.3), the frame bar offers exactly that many, and the renderEngine's
+obligation is to make copy 2 able to draw every one of them.
 
-Two rules keep them equal, both in the append tier:
+Which turns the seal's frame count into what it should be: not a source, but a
+**check**. After the renderEngine has done its work it can ask copy 2 how many
+frames it ended up with, and compare. The two agreeing proves the work landed;
+the two disagreeing proves it did not.
+
+Two rules follow, both in the append tier:
 
 - **An append onto a structure with no movie promotes to a rebuild.** A movie is
   only built for more than one frame, so a run caught at its very first geometry
-  has none — and the embed's append is a documented no-op without one.
-- **A movie found lagging the clean data is rebuilt.**
+  has none — and appending to a movie that does not exist quietly does nothing.
+- **A movie found short of the truth is rebuilt from it.**
 
-The reason this is a rule and not an implementation detail: **a count is only
-meaningful when it comes from the thing that has to honour it.** A count taken
-from the copy that was just grown always agrees with itself, so it can confirm
-nothing. The frame bar's range and the movie's range are the same range, or the
-viewer is offering frames it cannot draw.
+The reason this is a rule and not an implementation detail: **a check is only
+worth making against something that could disagree.** Asking the copy you just
+grew how big it is confirms nothing — it agrees with itself by construction. The
+only informative question is whether the *drawing* got as many frames as the
+*truth* has, and that question can only be asked of the seal.
 
-**Two counts exist, and only one is offered to anybody.** `frameCount()` on the
-data door is copy 1's length — it is what the frame bar, a tab, and every other
-consumer read, and it is the only count that ever reaches a user. The seal's
-`frameCount` probe (L6, § 24) reports copy 2's length and exists for exactly one
-purpose: so the renderEngine can compare the two and discover that it failed. A
-disagreement is never surfaced; it is the trigger to rebuild.
+So: **`frameCount()` is copy 1's length and the only count anyone is ever
+offered** — the frame bar, a tab, a keyboard seek, all read it. The seal's
+`frameCount` probe (L6, § 24) reports copy 2's length, is not reachable from
+outside the renderEngine, and exists for one purpose: to catch a redraw that
+silently failed. A disagreement is never surfaced to a user; it is the trigger to
+rebuild. This is exactly how a viewer once shipped offering frames it could not
+draw — it asked the copy that could only ever agree.
 
 ### 16.4 `getFrameAllAtoms(i)` is named for its contract
 
@@ -788,7 +900,7 @@ these two before it forwards anything to the renderEngine:
 
 ```js
 // load a trajectory with per-frame forces — the renderEngine bakes the arrows:
-window.molbuilder.molview.data.reloadFrames(frames, { forces });
+viewer.reloadFrames(frames, { forces });
 ```
 
 ## 17. Session-state timeline
@@ -813,31 +925,65 @@ timeline logic (see `workspace.md`). The timeline snapshot includes the view
 state (§ 18) but **not** trajectory frames: multi-frame persistence is planned,
 not shipped (see [`roadmap.md`](?doc=roadmap.md)).
 
-## 18. The view sub-namespace and the persistence seam
+## 18. Two stores, and the line between them
 
-`data.view.applyState(patch)` / `data.view.getState()` hold the camera/style/
-toggle state. The embed's view handle is registered at mount via
-`attachViewHandle(h)`; any view state stashed before the embed was ready is
-applied on registration. `flushViewState` pushes the current view into the
-snapshot. View state is namespaced by `opts.owner`, so two viewers on one page
-keep independent cameras.
+A viewer holds two kinds of switch, and they look alike on screen — both are
+things a user turns on. They are not alike underneath, and putting them in one
+place would break a rule that matters more than the tidiness of a single store.
 
-## 19. The selection store — `molview.data.selection`
+**The test is: does the renderEngine's pure half have to read it to work out what
+a frame contains?**
 
-The selection lives in a store (`lib/molview/_selection-store-impl.js`), reached
-as `molview.data.selection`. Panel, viewer glow, and measurements are all
-**consumers** that read from this one store — the single source of truth for
-what is selected and which view flags are on.
+| | **Facts about the molecule** — `data.selection` | **Facts about the window** — `data.view` |
+|---|---|---|
+| Examples | what is selected, isolate, atom labels, force arrows and their scale, the unit cell box, the axes | camera position and zoom, projection (perspective / orthographic), draw style, radius, background colour |
+| What they do | change **what is in a frame** — which atoms are in it, what is drawn alongside them | change **how the same frame is painted** |
+| Where they are consumed | by the renderEngine's pure half; they become fields of `ProcessedFrame` (§ 14.4) | nowhere in the pure half — they pass straight through to the seal |
+| If you changed one and re-derived nothing | the picture would be wrong | the picture would be correct, painted differently |
+| Belong to | the structure the user is working on | the window they are looking at it through |
 
-- **View flags** (all default off) live here — the store is the one authority;
-  the engine reads them and draws. What each flag means, and which two of them
-  change the drawn atom set, is § 14.2.
-- **Mutators:** `adoptSession`, `setIsolate`, `setViewFlag(name, value)`,
-  `applyFilter`, `writeLabel(target, indices)` (replace-per-target), plus the
+That line is not a convention to remember; it is checkable. A flag that reaches
+`ProcessedFrame` is a molecule fact and lives in the selection store. A setting
+the seal applies without the pure half ever seeing it is a window fact and lives
+in `view`. Nothing sits in both, and there is no third category.
+
+**Neither store mirrors the other.** The rule that keeps them from collapsing
+back into one home for two facts: when the session snapshot is written it
+**reads** each store at snapshot time and, on restore, **puts each value back
+through the store that owns it**. It never keeps a parallel set of switches of
+its own. A snapshot that carried its own copy of `isolate` would be a second
+answer to "is isolate on", and the first thing to go wrong would be a restored
+session that draws one thing and reports another.
+
+The seal is attached at mount; window state set before the seal exists is stashed
+and applied when it registers, so a restore that lands early is not lost.
+
+Both stores belong to the **owner** (goal 6) — two viewers on a page have two
+selections and two cameras, and neither can see the other's.
+
+## 19. The selection store — `data.selection`
+
+The molecule facts of § 18 live in one store, reached as `data.selection`. Panel,
+viewer glow, and measurements are all **consumers** that read from it — the
+single authority for what is selected and which of the molecule's features are
+drawn.
+
+- **The view flags** (all default off) live here, not in the renderEngine and not
+  in the panel. What each one means, and which two change the drawn atom set, is
+  § 14.2.
+- **Mutators:** `setIsolate`, `setViewFlag(name, value)`, `applyFilter`,
+  `writeLabel(target, indices)` (replace-per-target), `adoptSession`, plus the
   click-selection set operations (toggle / add / remove / all / invert / clear)
   and the filter builder (mode / filters / combinator).
-- A read-only inspector gets its own `createEphemeralStore()` so it never
-  disturbs the editable tab's selection.
+- Every one of them stays live in a **read-only** viewer — selecting and
+  isolating change the drawing, not the truth (§ 13.1).
+
+**One store per owner, and that is the whole isolation mechanism.** A read-only
+inspector's selection cannot disturb an editable tab's, because they are not the
+same store — not because something copies one aside. The separate throwaway store
+that used to exist for exactly this purpose is a workaround for a shared model,
+and it goes away with the shared model (goal 6). When every viewer owns its
+state, "don't let them collide" stops being a mechanism and becomes a fact.
 
 **Selection is drawn as shape-glow, and only shape-glow.** The engine emits
 *which* atoms are selected; the embed draws one translucent sphere per selected
@@ -924,7 +1070,10 @@ This table is the test plan. A clause with no row is a clause nothing guards.
 
 | Clause | A test must show |
 |---|---|
-| § 12 — look the data up live, never cache it | a consumer that holds a reference across an edit sees the edit |
+| goal 6 — a viewer is owned | two mounts hold two structures, two selections, two displayed frames, two cameras; changing one leaves the other untouched, and neither can be reached from the other's handle |
+| § 13.1 — read-only freezes copy 1 and nothing else | in a read-only viewer every truth-changing door is a no-op **and does not throw**, while select, isolate, scrub, camera and `exportFile` all work normally |
+| § 14.3 — truth, then range, then index, then notify | after a load that shortens a trajectory, no subscriber ever observes a range from the new structure beside an index from the old one; an out-of-range `setCurrentFrame` is resolved against the range rather than accepted |
+| § 18 — the two stores do not mirror each other | a session snapshot carries no second copy of a molecule flag; restoring puts each value back through its owning store |
 | § 13 — mount always resolves | a mount that cannot fit still returns a handle with `ok === false` **and** a working `dispose`; nothing rejects, nothing returns null |
 | § 13 — the handle refuses appearance | there is no way through the handle to push arrows, labels, a busy state, or a toggle |
 | § 14.1 — a non-trajectory is a list of one frame | no read, edit, export or save path special-cases a single frame |
@@ -968,14 +1117,15 @@ implementation or documenting something that belongs elsewhere.
 | § 9 export | **goal 1** | what you see is what you save, at the user's end of it |
 | § 10 VibrationView pointer | boundary | names the sibling so the reader stops looking for it here |
 | § 11 how data is exchanged | goal 4 | shows the host what it does *not* own |
-| § 12 the one door + the read rule | **goal 3, goal 4** | one import; look up live, never cache; the graphics library never escapes |
-| § 13 `mount()` and the handle | **goal 4** | embedding a viewer is one call and a small handle |
+| § 12 the one door | **goal 3, goal 4, goal 6** | one import, and the handle it returns *is* the viewer; the graphics library never escapes |
+| § 13 `mount()` and the handle | **goal 4, goal 6** | embedding a viewer is one call and a small handle, and `owner` is what makes it a viewer of its own |
+| § 13.1 read-only | **goal 1, goal 2** | one rule — the truth is frozen — instead of a list of disabled buttons that drifts |
 | § 14 the data | **goal 1, goal 2** | the whole of what-you-see-is-what-you-save and one-home-per-fact |
 | § 15 `applyOp` | goal 2 | edits are the server's opinion, adopted atomically — no second geometry authority |
 | § 16 trajectories | goal 1, goal 2 | the offered frame range must be drawable, or "what you see" stops being true |
 | § 17 session timeline | goal 4 | MolView owns the policy so a host does not have to |
-| § 18 view sub-namespace | goal 4 | camera/style survive a round trip without the host managing it |
-| § 19 the selection store | goal 2, goal 5 | one authority for what is selected and which flags are on |
+| § 18 the two stores | **goal 2** | molecule facts and window facts are different facts; the line is checkable, and neither store mirrors the other |
+| § 19 the selection store | goal 2, goal 5 | one authority for what is selected and which of the molecule's features are drawn |
 | § 20 measurement + the atom-index rule | **goal 5** | the number a user reads must equal the number in the generated input |
 | § 21 the wire contract | goal 2 | names the three routes; the field shapes belong to the API doc, not here |
 | § 22 how MolView is tested | all five | a test derived from the source cannot defend a goal |
@@ -1030,13 +1180,13 @@ flowchart TB
 **A worked example — delete two atoms, then undo.** When a user selects two
 atoms and clicks Delete:
 
-1. the tab calls `molview.data.applyOp("delete")`;
+1. the tab calls `viewer.applyOp("delete")` on its handle;
 2. the central file passes it to the **edits helper**, which sends the selected
    atoms to the server (`POST /api/modify/delete`) and applies the smaller
    structure that comes back;
 3. because the structure changed, the central file tells the **undo helper** to
    record the new state;
-4. the user clicks Undo → `molview.data.undo()` → the central file asks the undo
+4. the user clicks Undo → `viewer.undo()` → the central file asks the undo
    helper to step back one state, and it hands the previous snapshot to the
    **load helper** to put back in place.
 
@@ -1070,9 +1220,9 @@ home.
 
 | | Level | Its API — and who calls it | Never |
 |---|---|---|---|
-| **L1** | the tab / consumer<br/>`lib/trajectory/core.js`, `modify/viewer.js`, spectra, transport | *No API — it is the caller.* Owns its own UI, its parsed run file, its plots. Reaches MolView through L2 and L3 only. | keeps its own copy of the displayed index or frame count; reaches past the door; consults its own file for a viewer control |
-| **L2** | the `mount()` handle<br/>`mount.js` | **The six obligations** (§ 13). Called by a tab, once per viewer, to assemble and tear down. Deliberately coarse: it is the surface for *having* a viewer, not for driving its internals. | holds structure data; carries a second delegate set — the handle and the frame bar share one frame surface |
-| **L3** | **the one door**<br/>`data-model.js` (`molview.data`) | **The data API** (§ 14.6). Called by tabs at read time, and by every layer inside the module. It is where invariants are enforced, so nothing may route around it. **Holds copy 1** — the structure, its coordinates for every frame, the metadata that travels with it, and the displayed index with its change channel (§ 14). | touches the drawing library |
+| **L1** | the tab / consumer<br/>`lib/trajectory/core.js`, `modify/viewer.js`, spectra, transport | *No API — it is the caller.* Owns its own UI, its parsed run file, its plots. Holds **a handle**, and reaches its viewer only through it. | keeps its own copy of the displayed frame, the range, or anything else the viewer holds; reaches past the handle; consults its own file for a viewer control |
+| **L2** | the `mount()` handle<br/>`mount.js` | **The six obligations** (§ 13). A handle *is* a viewer (goal 6): one owner, one structure, one everything. Called by a tab to assemble, drive at the coarse level, and tear down. | holds structure data of its own — it delegates every read and write down to L3; carries a second delegate set (the handle and the frame bar share one frame surface) |
+| **L3** | **the model**<br/>`data-model.js` | **The data API** (§ 14.6), one instance per owner. Called through the handle, and by every layer inside that viewer. It is where invariants are enforced and where read-only is gated, so nothing may route around it. **Holds copy 1** — the structure, its coordinates for every frame, the metadata that travels with it, and the displayed frame with its range and change channel (§ 14). | touches the drawing library; exist as a singleton shared between owners |
 | **L4** | the stores<br/>`_canvas-state-impl.js`, `_selection-store-impl.js` | **Mutators + `subscribe`.** Called only by L3, which composes them. They exist so state has a home that knows nothing about rendering. | render; carry the displayed frame index — it is not a view flag (§ 14.3) |
 | **L5** | the renderEngine<br/>`render-engine/` | `setData` · `setCell` · `appendFrames` · `setForces` · `showFrame` · `render` · `dispose`. **Write-only, called only by L3.** All verbs, because it is *told* what to draw and answers no questions about the data. It is **handed** copy 1 and the view flags, **processes** them per frame (selection, isolate, arrows), and hands the result down. It holds no truth of its own — not the data, not the index. | keep a copy of the displayed index; answer what the data is; run a frame notification of its own |
 | **L6** | the drawing seal<br/>`render-engine/embed-io.js` | `loadFrames` · `swapFrame` · `appendFrames` · `applyOverlays` · `setFrameArrows` · `setCellGeometry` · `setBusy` · `beginBatch`/`endBatch`, plus two probes (`animationKind`, `frameCount`) the engine uses to check its own work. **Called only by L5.** Pure translation — it owns one fact, the multi-frame wire format. | choose a tier; hold state; expose a read upward |
@@ -1141,7 +1291,14 @@ relationship between the two modules; it is a leftover.
 ---
 
 > **Planned work, not contract.** Multi-frame trajectory persistence
-> (`_serialise` does not yet carry frames — trajectories are demo-only today),
-> the finer-grained render invalidation refinements, and retiring the
-> transitional module globals all live in [`roadmap.md`](?doc=roadmap.md). This
-> doc describes only what ships.
+> (trajectories are demo-only today) and the finer-grained render invalidation
+> refinements live in [`roadmap.md`](?doc=roadmap.md).
+
+> **The transition to owned viewers.** Goal 6 and its consequences — one model
+> per owner instead of one shared model; the handle as the door rather than a
+> mirror of it (§ 13); the index and its range held together and updated after
+> the truth (§ 14.3); read-only as a gate on copy 1 (§ 13.1); the separate
+> throwaway selection store retired (§ 19) — describe where the module is going,
+> and the three places above marked **Transition** say what the code does today.
+> This is deliberate: the design was settled first so the change has something to
+> be measured against. Everything *not* marked Transition describes what ships.
