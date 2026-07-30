@@ -1472,8 +1472,12 @@ mount. That is the entire division. See
 **What a snapshot carries: the structure and the selection** — what the user was
 working on, and which atoms they had picked out.
 
-**What it does not:** the camera (§ 9.6), the switches, or more than one frame of
-a trajectory.
+**What it does not:** the camera (§ 9.6), the switches, or the trajectory.
+
+A snapshot has no concept of frames. It stores **a structure with one set of
+coordinates**, so a session saved while a 400-frame optimization was loaded comes
+back as a single structure and the movie is gone. That is a real limit, not a
+detail of the format — restoring a trajectory is planned, not built.
 
 The switches deserve a word, because leaving them out is a choice rather than an
 oversight. Isolate, labels, arrows, the cell, the axes are **display state**, and
@@ -1483,7 +1487,12 @@ the power to write, which is a lot of machinery so that a user does not have to
 click a button again. The structure and the selection are the expensive things to
 recreate; a switch is one click.
 
-Multi-frame saving is planned, not built.
+> **Undecided, and it should not be.** § 5.1 promises that what you see is what
+> you save — scroll to frame 40, save, get frame 40 — and § 9.3 states that for
+> `exportFile()`. For the **session** save it is unstated: this document does not
+> say whether the snapshot takes the coordinates of the displayed frame or of the
+> first one. A user who scrubs to frame 40 and saves a session has no answer here
+> about what they get back. It needs deciding rather than describing.
 
 ### 11.3 One atom-numbering translation, in one place
 
