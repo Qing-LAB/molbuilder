@@ -157,8 +157,10 @@ orange-red by relative size, so converging forces visibly shrink.
 state — the structure as it stands, with the atoms you have picked out — and step
 back to it later, even after a reload. It is undo that survives closing the page.
 Saving is something you do: nothing is recorded on its own, and a small badge in
-the corner says when there is work that is not on the sequence yet. This is not a
-file and nothing appears in your project (§ 11.2, § 11.3).
+the corner says when there is work that is not on the sequence yet. The button
+itself belongs to the page rather than to the viewer — in the Modify tab it sits
+with the editing (§ 11.2). This is not a file and nothing appears in your project
+(§ 11.3).
 
 **Getting things out.** The Export menu offers three things, each with a *Save*
 (into the project) and a *Download* row:
@@ -1045,12 +1047,15 @@ unsaved-changes badge (§ 11.2) never appears.
 
 **A control that would do nothing should not be offered.** The rule above is what
 the *API* does; a button that silently does nothing is a bad answer for a *user*.
-So a read-only viewer does not show the controls the gate would swallow — the
-label box, the edit operations, Save state. The two are not in tension: the gate is what
-makes the guarantee true even if a control is ever shown by mistake, and hiding
-the control is what makes the viewer honest. The gate is the contract; the hiding
-is courtesy, and it may never be the only thing standing between a read-only
-viewer and a changed structure.
+So a read-only viewer does not show the controls the gate would swallow. MolView
+hides the ones it draws — the label box, the edit operations. The ones a host
+placed itself, Save state and Retract among them (§ 11.2), the host leaves out,
+and it knows to because it is the one that asked for a read-only viewer.
+
+The two are not in tension: the gate is what makes the guarantee true even if a
+control is ever shown by mistake, and hiding the control is what makes the viewer
+honest. The gate is the contract; the hiding is courtesy, and it may never be the
+only thing standing between a read-only viewer and a changed structure.
 
 ### 9.5 `selection` — what is picked out, and what is drawn beside it
 
@@ -1717,11 +1722,25 @@ save here. Two places, one principle — which is a good sign it is the right on
 Writes also pass a gate that can hold and coalesce them, so a burst of changes
 does not become a burst of round trips.
 
-**MolView owns the whole mechanism and the policy** — when to save, what to
-prune, how far back to step. The **workspace** module owns only what sits
-underneath: where the bytes actually go, reached through an accessor handed in at
-mount. That is the entire division. See
-[`workspace.md`](?doc=web/workspace.md).
+**MolView owns the whole mechanism and the policy** — what a save records, what
+to prune, how far back a step goes, and the rule that nothing is recorded on its
+own. The **workspace** module owns only what sits underneath: where the bytes
+actually go, reached through an accessor handed in at mount. That is the entire
+division. See [`workspace.md`](?doc=web/workspace.md).
+
+**Save state and Retract are calls, not controls.** MolView offers the doors and
+draws no button for them. That is deliberate, and it is the opposite of the Export
+menu (§ 11.4) for a reason worth stating plainly: an export carries a **decision**
+— which copy it is read from, which frame, which files — and a decision made in
+the wrong place is exactly how the sidecar came to be dropped. Saving a state
+carries no decision. What a save *means* is fixed here, identically for every
+caller; the only thing that varies is *when* it is worth offering one, and a host
+knows that better than a viewer does. So the host places the control where its own
+workflow puts it — today the Modify tab, beside the editing it belongs next to.
+
+A host that mounted a read-only viewer knows not to offer it, because it is the
+one that passed the flag. The gate (§ 9.4) is what makes the guarantee true even
+if it does.
 
 **State is the truth. What you are looking at is not state.**
 
@@ -1899,6 +1918,7 @@ obvious home instead of landing one layer too low again.
 |---|---|
 | what leaves the viewer, in what form, read from which copy, and where it goes | **MolView's menu** — export, and anything later that touches the structure or the truth |
 | how the same molecule is painted — style, radius, background, projection, reset | it may sit in the **3D window's own controls**, because it decides nothing on anyone's behalf |
+| nothing at all — it only triggers an operation this document has already fixed the meaning of | **the host**, which knows where and when offering it fits its workflow. Save state and Retract are that case (§ 11.2): MolView offers the calls and draws no button |
 
 **Where a control sits and where a fact lives are different questions.** A style
 control may live in the window's own menu; the setting it changes still has one
@@ -2186,6 +2206,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its state over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
 | § 11.2 — saving a state is the user's act, and undo returns to it | an edit records nothing and raises the badge; after three edits with no save between them, one undo restores the state before all three |
+| § 11.2 — the history is offered as calls, not as a control | a mounted viewer draws no save-state or retract button of its own, and the calls work all the same when a host wires its own |
 | § 11.2 — a Retract spends unsaved work first | from a saved point with edits on top, one Retract lands **on** that point with the edits discarded; a second lands on the point before it |
 | § 11.2 — Save state drops what was above it | after retracting past two points and saving, stepping forward is no longer possible — the abandoned points are gone |
 | § 11.2 — reopening returns to the point you were on | a reload comes back to the current point rather than to the anchor, and does not move the position |
