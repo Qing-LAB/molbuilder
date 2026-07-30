@@ -1420,6 +1420,20 @@ position only after its round trip has finished. The history mechanism is blind
 to the file format: the model hands it a way to make a snapshot and a way to put
 one back, and nothing else.
 
+**Opening a new structure invalidates the old one's pending writes.** Anchoring a
+new molecule prunes the previous one's saved states and resets the position — so
+a save or a load of the *previous* structure that is still queued or still
+waiting on its round trip must not land. It is abandoned rather than applied,
+because applying it would put an old snapshot over a freshly opened structure.
+
+That is the same rule as § 10.9's, in a different subsystem: **the more
+authoritative statement about what the structure is supersedes whatever is
+in flight.** A full load beats a queued redraw there; a new anchor beats a queued
+save here. Two places, one principle — which is a good sign it is the right one.
+
+Writes also pass a gate that can hold and coalesce them, so a burst of changes
+does not become a burst of round trips.
+
 **MolView owns the whole mechanism and the policy** — when to save, what to
 prune, how far back to step. The **workspace** module owns only what sits
 underneath: where the bytes actually go, reached through an accessor handed in at
@@ -1599,6 +1613,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 10.8 — same atoms, every frame | a frame with a different atom count is a hard error, never coerced |
 | § 10.3 — forces in, arrows out | handing in ready-made arrows draws nothing |
 | § 11.1 — the count requirement is checked first | `orient` with one atom and `delete` with none are refused locally, with no request sent |
+| § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its snapshot over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
 | § 11.3 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
 
@@ -1672,9 +1687,18 @@ neither does this document (§ 4).
 
 > **Where the code has not caught up.** Being owned (§ 5.6) and its consequences
 > — one model per viewer instead of one shared model, the handle as the way in
-> rather than a mirror of the model (§ 9.2), the frame number and its range held
-> together and updated after the master copy (§ 6.4), read-only as a rule about
-> the master copy (§ 9.4) — describe where the module is going. The places marked
+> rather than a mirror of the model (§ 9.2), read-only as a rule about the master
+> copy (§ 9.4) — describe where the module is going.
+>
+> One of those is worth naming exactly, because it is an inversion and not just
+> an absence: today the model answers **which frame** and **how many frames** by
+> asking the renderEngine, which answers from the data it was handed. The number
+> that comes back is right, but the direction is upside down — the layer that
+> holds the master copy is deferring to a layer that is supposed to hold no truth
+> at all (§ 7, level 5). It also means the range is read back out of the renderer
+> rather than recomputed from the master copy, so the ordering rule of § 6.4 has
+> nothing to stand on. Every *caller* is already correct; only the model's own
+> implementation of those two reads is inverted. The places marked
 > **Transition** say what the code does today. The design was settled first, so
 > the change has something to be measured against; everything not marked
 > Transition describes what ships.
