@@ -13,10 +13,7 @@
 <title>MolView component demo</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/viewer/mol-viewer-embed.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/selection/selection-panel.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/selection/measurement-chip.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/molview.css') }}">
 <style>
   body { padding: 1.5rem; max-width: 1100px; margin: 0 auto; }
   .demo-head { margin-bottom: 1rem; }
@@ -53,6 +50,6 @@
   {% include "_molview_scripts.html" %}
 
   {#- External file (not inline) so it satisfies the app CSP script-src 'self'. -#}
-  <script type="module" src="{{ url_for('static', filename='molview/demo.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='lib/molview/demo.js') }}"></script>
 </body>
 </html>

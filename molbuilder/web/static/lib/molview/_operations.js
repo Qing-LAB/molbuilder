@@ -1,7 +1,7 @@
 /* MolView data model — modifier OPERATIONS (server round-trips).  MolView-internal submodule.
  *
  * MODULE: molview (lib/molview/).  Extracted from data-model.js (the god-hub split) as an
- *   INJECTED FACTORY — the same pattern _state-timeline-impl.js uses.  It has NO global shim:
+ *   INJECTED FACTORY — the same pattern _history.js uses.  It has NO global shim:
  *   data-model.js is its sole consumer and IMPORTS `createOperations` directly (the 4a real
  *   import graph), so there is no transitional `window.molbuilder.*` mount to retire.
  *

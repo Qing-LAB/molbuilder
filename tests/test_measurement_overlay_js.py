@@ -92,7 +92,7 @@ def test_dispose_removes_the_overlay():
 def test_measurement_works_under_isolate_reading_original_coords():
     """molview-render-streamline.md §7.3: under ISOLATE the render engine draws a re-indexed
     (filtered) model, but measurement does NOT read that. coordsProvider() is the CURRENT
-    frame's CLEAN, ORIGINAL-indexed coords (engine.getFrame -- ALL atoms), and meas.compute
+    frame's CLEAN, ORIGINAL-indexed coords (engine.getFrameAllAtoms -- ALL atoms), and meas.compute
     indexes them by the panel's original atom index. No re-key -- the array IS in global order,
     so isolate on/off is identical.
 
@@ -100,7 +100,7 @@ def test_measurement_works_under_isolate_reading_original_coords():
     returns the FULL original coords. Distance |(1,0,0)-(0,1,0)| = sqrt(2) ~ 1.414."""
     out = _run_node(_HARNESS + """
         const store = makeStore({ pickOrder: [1,2], indices: [1,2], atoms, isolate: true });
-        mk(viewerHost, { store, coordsProvider: () => coords });   // FULL original coords (getFrame)
+        mk(viewerHost, { store, coordsProvider: () => coords });   // FULL original coords (getFrameAllAtoms)
         console.log(JSON.stringify(snap()));
     """)
     assert out["hidden"] is False, "measurement must stay visible under isolate"

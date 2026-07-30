@@ -1,7 +1,12 @@
-/* MolView render engine -- engine: the orchestrator (the single render place).
+/* MolView renderEngine -- the orchestrator (the single render place).
+ *
+ * NAME: "renderEngine", never bare "engine". Across this project an *engine* is a
+ * CALCULATION backend (SIESTA, PySCF, TranSIESTA, geometric -- `--engine siesta`,
+ * `docs/engines/`, `validation/siesta.py`). This computes no physics: it turns
+ * coordinate frames + view flags into what the drawing seal redraws.
  *
  * Contract: docs/web/molview.md, §8, §9.
- * Module:   molbuilder.molview.engine.create   (lib/molview/engine/engine.js)
+ * Module:   molbuilder.molview.renderEngine.create   (lib/molview/render-engine/engine.js)
  * Used by:  mount.js (Phase 3) -- the ONE thing that turns data + flags into what 3Dmol shows.
  *
  * It holds the CLEAN StructureData (§7.1) + reads the ViewFlags (§7.2) from the store, runs
@@ -15,20 +20,23 @@
  *                        while NOT isolating, showCell, showAxis, a cell edit) -> re-apply the
  *                        current frame's overlays; the coordinate movie is NOT rebuilt. No busy.
  *   - APPEND          : streamed new frames (§6.2) -> validate + extend the movie. No busy.
+ *                        Only valid when a movie EXISTS; without one (a trajectory whose first
+ *                        load carried a single frame) it promotes to a structural regen, and a
+ *                        movie that fell behind the data heals the same way.
  *   - STRUCTURAL REGEN: the drawn atom set changed (isolate; selection while isolating; force
  *                        overlay/scale -- the per-frame arrows are baked into the movie), or a
  *                        full new load -> re-process all frames + reload the movie. Raises BUSY.
  *
  * A native ES module (private submodule of the MolView module, frontend-module-architecture.md
  * §4) that ALSO publishes the transitional browser global
- * (``window.molbuilder.molview.engine.create``, §3) so still-classic consumers (mount.js /
+ * (``window.molbuilder.molview.renderEngine.create``, §3) so still-classic consumers (mount.js /
  * data-model.js) keep reading it until they convert. process/embedIo are IMPORTED directly from
  * the sibling submodules (below); the globals those leaf modules publish are TEST SEAMS only.
  */
 "use strict";
 
-import { process as processMod } from "./process.js";
 import { embedIo as embedIoMod } from "./embed-io.js";
+import { atomIndexModel } from "../_atom.js";   // the per-frame maths below reads it
 
 function _noop() {}
 
@@ -50,7 +58,11 @@ function create(handle, opts) {
     var _prevStructSig = null;   // last structural signature (the §8 tier decision).
     var _prevArrowSig = null;    // last force-overlay signature (in-place arrow re-bake tier).
     var _storeUnsub = _noop;
-    var _frameListeners = [];    // the frame-bar channel (NOT the view store; §7.2).
+    var _notifyFrameChanged = _noop;  // ONE notifier, injected by the data model (see
+                                 // setFrameNotifier). The engine owns the displayed index but
+                                 // keeps no subscriber list of its own -- molview.data owns the
+                                 // one list, so a frame change walks it once instead of being
+                                 // relayed through two identical lists.
     var _regenRaf = null;        // pending structural-regen paint yield (rAF id).
     var _regenTimer = null;      // fallback timer (a backgrounded tab suspends rAF).
     var _locked = false;         // an update is in flight -> the viewer is busy; incoming ops queue.
@@ -151,6 +163,20 @@ function create(handle, opts) {
     function _arrowSig() {
         return "force:" + (_flags.showForces ? "1" : "0")
              + "|scale:" + (_flags.showForces ? (_flags.forceScale === undefined ? "d" : _flags.forceScale) : "");
+    }
+    // Does the embed hold a real trajectory movie? The APPEND tier can only EXTEND one, and
+    // loadFrames only builds one for >1 frame -- so a trajectory whose first load carried a
+    // single frame has a plain static structure instead. PROBED, never remembered: the answer
+    // has to come from the thing that renders, not from a flag we set ourselves (a flag would
+    // just be a third place for the frame count to be wrong).
+    function _movieExists() {
+        return typeof embedIo.animationKind === "function"
+            && embedIo.animationKind() === "trajectory";
+    }
+    // The movie's own frame count -- what the viewer can actually SHOW. Falls back to our own
+    // count when a stub embedIo has no such read (then the check below is a no-op).
+    function _movieFrameCount() {
+        return (typeof embedIo.frameCount === "function") ? embedIo.frameCount() : frameCount();
     }
     function _cancelPendingRegen() {
         if (_regenRaf != null && typeof globalThis.cancelAnimationFrame === "function") globalThis.cancelAnimationFrame(_regenRaf);
@@ -342,10 +368,27 @@ function create(handle, opts) {
         // (not-yet-rebuilt) movie could even mismatch its atom count (e.g. an isolate regen is
         // pending). So skip the incremental append; the pending regen picks them up.
         if (_regenRaf == null) {
-            var processedNew = list.map(function (_, i) {
-                return processFrame(_frameInput(startF + i), _identity(), _flags);
-            });
-            embedIo.appendFrames({ frames: processedNew });
+            if (!_movieExists()) {
+                // There is no movie to extend. The embed's appendFrames AND setAnimationFrame
+                // are both documented no-ops without a trajectory animation, so an incremental
+                // append here would grow _data.frames -- and frameCount, and the frame bar --
+                // while the screen kept showing frame 0 forever. That is bug #35: a correct
+                // frame count over a frozen structure, invisible because the only witness
+                // anyone asked was the counter we had just incremented ourselves.
+                // Promote to a STRUCTURAL REGEN, which rebuilds from _data.frames (now the
+                // whole series) so setAnimation runs and a real movie exists.
+                _structuralRegen();
+            } else {
+                var processedNew = list.map(function (_, i) {
+                    return processFrame(_frameInput(startF + i), _identity(), _flags);
+                });
+                embedIo.appendFrames({ frames: processedNew });
+                // The movie must now hold exactly what we hold. It is the thing that can SHOW a
+                // frame, so a movie that fell behind means the frame bar is offering frames the
+                // viewer cannot render. Rebuild rather than leave the two disagreeing -- the
+                // divergence is the defect, not the append.
+                if (_movieFrameCount() !== frameCount()) _structuralRegen();
+            }
         }
         _notifyFrame();
         return frameCount();
@@ -385,24 +428,27 @@ function create(handle, opts) {
 
     function frameCount() { return _data ? _data.frames.length : 0; }
     function currentFrame() { return _frame; }
-    // Read a frame's CLEAN, ORIGINAL-indexed coords (all atoms, never the isolate-filtered
-    // draw). This is the accessor the interaction layer uses: measurement takes the panel
-    // selection (original 0-based indices) and reads those atoms' coords here at the current
-    // frame -- no drawn->original translation, no in-window picking (§7.3 interaction note).
-    // Returns a defensive copy; null if out of range.
-    function getFrame(i) {
+    // THE frame-coordinate owner: every atom, in original 0-based order, before any selection
+    // or isolate filtering -- the name says so because that is the whole reason this exists.
+    // Measurement takes the panel selection (original indices) and reads those atoms here at the
+    // current frame; export/save serialise the shown frame from here. No drawn->original
+    // translation, no in-window picking (§7.3). Returns a defensive copy; null if out of range.
+    //
+    // Not readable from the 3Dmol movie: the movie is a RENDER of this data, and under isolate a
+    // render of only the drawn atoms, so reading it back would give a filtered, renumbered array.
+    function getFrameAllAtoms(i) {
         var idx = (i === undefined) ? _frame : Math.floor(Number(i));
         if (!_data || !(idx >= 0 && idx < _data.frames.length)) return null;
         return _data.frames[idx].map(function (p) { return [p[0], p[1], p[2]]; });
     }
-    // The frame-bar subscribes HERE (not the view store) so playback never re-renders the panel.
-    function onFrameChange(fn) {
-        if (typeof fn !== "function") return _noop;
-        _frameListeners.push(fn);
-        return function () { var i = _frameListeners.indexOf(fn); if (i >= 0) _frameListeners.splice(i, 1); };
-    }
+    // The displayed index changed. Consumers do NOT subscribe here -- they subscribe to
+    // molview.data.onFrameChange, which owns the single listener list; the data model injects
+    // its notifier below at attach time. The channel stays separate from the view store because
+    // playback moves the index ~10x/s and firing the store would re-render the selection panel
+    // and steal focus from a filter input mid-play (streamline doc §7.2).
+    function setFrameNotifier(fn) { _notifyFrameChanged = (typeof fn === "function") ? fn : _noop; }
     function _notifyFrame() {
-        for (var i = 0; i < _frameListeners.length; i++) { try { _frameListeners[i](); } catch (_) {} }
+        try { _notifyFrameChanged(); } catch (_) {}
     }
 
     function dispose() {
@@ -412,7 +458,7 @@ function create(handle, opts) {
         _cancelPendingRegen();
         try { embedIo.setBusy(null); } catch (_) {}
         try { _storeUnsub(); } catch (_) {}
-        _frameListeners = [];
+        _notifyFrameChanged = _noop;
     }
 
     // The engine holds ONE subscription to the view store: a flag write -> render() (§5).
@@ -429,8 +475,8 @@ function create(handle, opts) {
         render:        render,
         frameCount:    frameCount,
         currentFrame:  currentFrame,
-        getFrame:      getFrame,
-        onFrameChange: onFrameChange,
+        getFrameAllAtoms:      getFrameAllAtoms,
+        setFrameNotifier: setFrameNotifier,
         dispose:       dispose,
     };
 }
@@ -441,6 +487,145 @@ export { create };
 if (typeof window !== "undefined") {
     window.molbuilder = window.molbuilder || {};
     window.molbuilder.molview = window.molbuilder.molview || {};
-    window.molbuilder.molview.engine = window.molbuilder.molview.engine || {};
-    window.molbuilder.molview.engine.create = create;
+    window.molbuilder.molview.renderEngine = window.molbuilder.molview.renderEngine || {};
+    window.molbuilder.molview.renderEngine.create = create;
 }
+
+/* ── The per-frame maths — the § 9.7 maths half, was process.js ──────────────── */
+
+// ---- Overlay tokens. Named constants, not inline literals. -------------------------- //
+
+// Neutral default force scale (Å per force unit): identity, so raw forces draw at magnitude.
+// The consumer overrides via flags.forceScale for a physically-meaningful length.
+var DEFAULT_FORCE_SCALE = 1.0;
+// Force-vector styling (§2.4): the largest drawn force is highlighted gold; the rest ramp from
+// dim-red to orange-red by RELATIVE magnitude, and the arrow radius grows with it -- so the
+// eye lands on the atom under the most force (the relaxation "hot spot"). A consumer suppresses
+// a force (frozen atom, sub-threshold) by handing a ZERO vector: magnitudes at/under FORCE_EPS
+// draw no arrow, so the consumer owns WHICH forces show; the engine owns HOW they look.
+var FORCE_MAX_COLOR    = "#ffc400";           // gold: the single largest drawn force
+var FORCE_RADIUS_MIN   = 0.05;                // Å: the thinnest (zero-relative-magnitude) arrow
+var FORCE_RADIUS_SPAN  = 0.04;                // Å: added at the largest force
+var FORCE_EPS          = 1e-9;                // |f| at/under this -> no arrow (a suppressed force)
+function _forceRampColor(t) {                 // t in [0,1]: dim-red -> orange-red
+    return "rgb(" + Math.floor(170 + 85 * t) + "," + Math.floor(40 + 60 * t) + ",32)";
+}
+
+// §2.3 selection filter: the DRAWN atom set, in original-atom order (ascending). Isolate ON
+// with a non-empty selection keeps only the selected atoms; otherwise every atom is drawn.
+// (Selection alone -- isolate off -- draws all atoms; it only highlights, §2.3.)
+function _drawnAtoms(nAtoms, flags) {
+    var sel = Array.isArray(flags.selection) ? flags.selection : [];
+    var isolate = !!flags.isolate && sel.length > 0;
+    var drawn = [];
+    if (isolate) {
+        var selSet = {};
+        for (var k = 0; k < sel.length; k++) selSet[sel[k]] = true;
+        for (var a = 0; a < nAtoms; a++) if (selSet[a]) drawn.push(a);
+    } else {
+        for (var b = 0; b < nAtoms; b++) drawn.push(b);
+    }
+    return drawn;
+}
+
+// §2.4 selection highlight: the DRAWN indices of the selected atoms -- but ONLY when NOT
+// isolating. Isolate makes the selection the entire drawn set, so an in-view highlight would add
+// nothing (the selection IS all that's shown). Isolate off -> drawn = all atoms in original order,
+// so a selected ORIGINAL index equals its drawn index. Returns the drawn indices (or null); the
+// embed draws a translucent glow on them (the glow style is the embed's, not the engine's, §8.1).
+function _selectionHighlight(drawn, flags) {
+    if (flags.isolate) return null;                                   // no highlight under isolate
+    var sel = Array.isArray(flags.selection) ? flags.selection : [];
+    if (!sel.length) return null;
+    var selSet = {};
+    sel.forEach(function (i) { selSet[i] = true; });
+    var out = [];
+    for (var m = 0; m < drawn.length; m++) if (selSet[drawn[m]]) out.push(m);
+    return out.length ? out : null;
+}
+
+// THE per-frame processor (§2). Returns a ProcessedFrame (§7.3).
+function processFrame(frame, identity, flags) {
+    frame = frame || {};
+    identity = identity || {};
+    flags = flags || {};
+    var coords = Array.isArray(frame.coords) ? frame.coords : [];
+    var elements = Array.isArray(identity.elements) ? identity.elements : [];
+    var nAtoms = coords.length;
+
+    // §2.3 -- which atoms are drawn, + the drawn->original index map.
+    var drawn = _drawnAtoms(nAtoms, flags);
+    var positions = drawn.map(function (a) { var p = coords[a] || [0, 0, 0]; return [p[0], p[1], p[2]]; });
+    var sourceIndex = drawn.slice();                       // sourceIndex[m] = original atom index
+    var outElements = drawn.map(function (a) { return elements[a] || "X"; });
+
+    // §2.4 -- index labels: explicit TEXT (the ORIGINAL index) at the drawn atom's position,
+    // so an isolate-filtered / re-indexed model still shows the true atom index (the embed's
+    // format:"index" would show the drawn index -- wrong under isolate). The displayed number
+    // is 1-based (SIESTA/Fortran convention, data-vocabulary.md §3.1 / molview-module §16):
+    // sourceIndex stays 0-based internal, but the label text goes through the L1 helper
+    // `atomIndexModel.toDisplay` -- REUSED, never re-derived (a bare `a+1` would drift).
+    // IMPORTED from the pure L1 index leaf (§16) -- always resolved, no load-order guard needed.
+    var labels = null;
+    if (flags.showIndex) {
+        var toDisplay = atomIndexModel.toDisplay;
+        labels = drawn.map(function (a, m) {
+            return { position: positions[m], text: String(toDisplay(a)) };   // 1-based, SIESTA
+        });
+    }
+
+    // §2.4 -- selection highlight: the drawn indices to glow (isolate off), or null.
+    var selection = _selectionHighlight(drawn, flags);
+
+    // §2.4 -- force vectors for THIS frame, built from the raw per-atom forces × scale, for
+    // the drawn atoms only (isolate-aware). null when there are no forces or the overlay is off.
+    var arrows = null;
+    if (flags.showForces && Array.isArray(frame.forces)) {
+        var scale = (typeof flags.forceScale === "number") ? flags.forceScale : DEFAULT_FORCE_SCALE;
+        // The KEPT (non-suppressed) set: a zero force -- the consumer's way to hide a frozen or
+        // sub-threshold atom -- draws no arrow. maxMag over this set drives the gold highlight +
+        // the color/radius ramp, so "biggest force" is relative to what is actually shown.
+        var kept = [];
+        var maxMag = 0, maxKi = -1;
+        for (var ai = 0; ai < drawn.length; ai++) {
+            var v = frame.forces[drawn[ai]] || [0, 0, 0];
+            var mag = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+            if (mag <= FORCE_EPS) continue;
+            if (mag > maxMag) { maxMag = mag; maxKi = kept.length; }
+            kept.push({ p: positions[ai], v: v, mag: mag });
+        }
+        arrows = kept.map(function (e, ki) {
+            var t = maxMag > 0 ? e.mag / maxMag : 0;
+            return {
+                start:  [e.p[0], e.p[1], e.p[2]],
+                end:    [e.p[0] + e.v[0] * scale, e.p[1] + e.v[1] * scale, e.p[2] + e.v[2] * scale],
+                color:  ki === maxKi ? FORCE_MAX_COLOR : _forceRampColor(t),
+                radius: FORCE_RADIUS_MIN + FORCE_RADIUS_SPAN * t,
+            };
+        });
+        if (!arrows.length) arrows = null;   // nothing above the suppression floor -> no overlay
+    }
+
+    return {
+        positions:   positions,
+        sourceIndex: sourceIndex,
+        elements:    outElements,
+        labels:      labels,
+        selection:   selection,   // drawn indices to glow (isolate off), or null
+        arrows:      arrows,
+    };
+}
+
+export const process = { processFrame: processFrame };
+
+// TEST SEAM: tests/test_render_engine_process_js.py reads globalThis.molbuilder.molview.renderEngine.process.
+// engine.js imports the export above; production reads no global.  Window-guarded.
+if (typeof window !== "undefined") {
+    window.molbuilder = window.molbuilder || {};
+    window.molbuilder.molview = window.molbuilder.molview || {};
+    window.molbuilder.molview.renderEngine = window.molbuilder.molview.renderEngine || {};
+    window.molbuilder.molview.renderEngine.process = process;
+}
+
+// The orchestrator above refers to the maths under its former import name.
+const processMod = process;

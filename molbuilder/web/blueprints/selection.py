@@ -10,7 +10,7 @@ The selection system is layered:
     plus the atom-list read and sidecar save endpoints.  Stateless:
     every request is self-contained, the server stores no per-user
     selection state.
-  * L3 (``lib/molview/_selection-store-impl.js`` since Phase 9 /
+  * L3 (``lib/molview/_selection-store.js`` since Phase 9 /
     2026-06-13) -- workspace-internal JS state holder (atoms,
     selection, filters, mode, error).  One process-wide instance
     owned by the workspace dispatcher; external consumers reach

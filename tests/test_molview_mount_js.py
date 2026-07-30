@@ -35,7 +35,7 @@ MODULES = [
 
 # The complete §18.1 handle key set (sorted): the seven core owner-API calls (§D) + the
 # frame axis (§14.5), and NOTHING else -- no store, no viewer, no DOM refs.
-HANDLE_KEYS = ["currentFrame", "dispose", "exportFile", "frameCount", "getFrame",
+HANDLE_KEYS = ["currentFrame", "dispose", "exportFile", "frameCount", "getFrameAllAtoms",
                "getSelection", "getStructure", "installMolecule", "isPlaying",
                "ok",   # uniform mount contract: success handle -> ok:true (mount.js _failMount)
                "onChange", "pause", "play", "setFrame", "undo"]
@@ -79,7 +79,7 @@ _HARNESS = """
         exportFile:   () => { dataCalls.push('exportFile'); return { xyz: 'XYZ-BYTES', sidecar: {} }; },
         undo:         () => { dataCalls.push('undo'); return Promise.resolve('undone'); },
         setFrame:     (i) => { dataCalls.push(['setFrame', i]); return i; },
-        getFrame:     (i) => [[0, 0, 0]], frameCount: () => 3, currentFrame: () => 0,
+        getFrameAllAtoms:     (i) => [[0, 0, 0]], frameCount: () => 3, currentFrame: () => 0,
         // OBSOLETE doors (retired at the carve) -- TRAPS: no handle method may call these.
         loadFromFile:     () => { obsoleteHit.push('loadFromFile');    return Promise.resolve(); },
         loadFromText:     () => { obsoleteHit.push('loadFromText');    return Promise.resolve(); },

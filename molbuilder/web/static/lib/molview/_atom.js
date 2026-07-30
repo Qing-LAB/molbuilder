@@ -1,35 +1,58 @@
-/* Per-atom channel model — the pure L1 layer of the unified selection
- * (atom-annotations.md § 5).  The JS mirror of Python
- * ``Structure.channels()``: given one normalized atom, produce its unified
- * channels; aggregate the filterable channels across a set of atoms.
+/* MolView — what an atom IS to everything above: how it is numbered, and what it can be
+ * filtered by.  Two pure, dependency-free leaves; nothing here touches the DOM, a store,
+ * the network or the drawing.
  *
- * ──────────────────────────── L1 CONTRACT ────────────────────────────
- * WHAT L1 IS.  The LOW-LEVEL PRESENTATION API for atom metadata.  It OWNS the
- *   channel taxonomy (category/tag/flag/value), the mapping "raw atom fields →
- *   its channels", and the stable enumeration ORDER.  (Mostly presentation-
- *   support; the enumeration also feeds the filter, which becomes a server
- *   query — so it borders on data-model, but the taxonomy + order are its
- *   presentation contract.)
- * PRIMITIVES, NOT FINISHED PRESENTATION.  atomChannels/channelKinds return the
- *   channel MODEL (values + kinds + order).  They do NOT render dropdowns,
- *   columns, colours, or labels — higher presentation layers (L2 store /
- *   L3 panel + viewer-adapter) COMPOSE the model into UI.
- * HIGHER LAYERS BUILD ON THIS.  L2/L3 MUST use this taxonomy + order and never
- *   re-derive them (e.g. no re-implementing the regions-vs-frozen split).  The
- *   panel's FROZEN_TAG_LABEL is drift-guarded against FROZEN_CHANNEL here.
- * GUARANTEES (bound by tests/test_atom_channels_js.py):
- *   kinds are category/tag/flag/value; channelKinds order is element, residue,
- *   sorted tags, frozen, sorted values; atomChannels is null-safe + accepts
- *   both wire and normalized atom shapes.
- * ──────────────────────────────────────────────────────────────────────
+ * Contract: docs/web/molview.md § 11.5 (ONE atom-numbering translation, in one place —
+ * "MolView never writes a bare +1 of its own anywhere") and § 9.5 / § 6.2 (the channels a
+ * filter row can match: element, labels, residue — the same list the structure carries,
+ * which is why filtering needs no case per property).
  *
- * PURE by contract: no DOM, no store, no HTTP, no molbuilder deps.  A native ES
- * module (private submodule of the MolView module, frontend-module-architecture.md
- * §4) that ALSO publishes the transitional browser global
- * (``window.molbuilder.atomChannelModel``, §3.2) so still-classic consumers
- * (selection store / panel) keep reading it until they convert.
+ * Both halves are the bottom of the import graph: every layer above reads them and none of
+ * them reads anything back.  That is why they are one file — same layer, same subject, and
+ * § 11.5's "one place" is satisfied by one place whatever it is called.
+ *
+ * Assembled 2026-07-30 from _atom-index.js + _atom-channels.js.  Bodies unchanged.
  */
 "use strict";
+
+
+/* ── Numbering: 0-based in code, 1-based on screen (§ 11.5) — was _atom-index.js  */
+
+export function toDisplay(i)   { return i + 1; }   // internal -> user-facing
+export function fromDisplay(i) { return i - 1; }   // user-facing -> internal
+
+/**
+ * Shift every integer / range bound in a by-index expression by ``delta``.
+ * "1-4, 6, 10-11"  --shiftExpression(-1)-->  "0-3, 5, 9-10".
+ * Used to translate the user's 1-based filter input into the 0-based
+ * expression the server ``by_index_range`` rule expects.  Preserves token
+ * order; tolerates whitespace; leaves unrecognised tokens untouched (the
+ * server validates).
+ */
+export function shiftExpression(expr, delta) {
+    if (typeof expr !== "string") return expr;
+    return expr.split(",").map(function (tok) {
+        var t = tok.trim();
+        if (t === "") return t;
+        var m = t.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (m) {
+            return (parseInt(m[1], 10) + delta) + "-"
+                 + (parseInt(m[2], 10) + delta);
+        }
+        if (/^\d+$/.test(t)) return String(parseInt(t, 10) + delta);
+        return t;
+    }).join(", ");
+}
+
+export const atomIndexModel = { toDisplay, fromDisplay, shiftExpression };
+
+// ── Transitional global (removed once every consumer imports this module) ──
+if (typeof window !== "undefined") {
+    window.molbuilder = window.molbuilder || {};
+    window.molbuilder.atomIndexModel = atomIndexModel;
+}
+
+/* ── Channels: what a filter row can match (§ 9.5) — was _atom-channels.js ───── */
 
 // Channel kinds mirror Python § 2 + the two reserved categories the UI
 // always offers:

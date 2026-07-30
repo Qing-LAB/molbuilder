@@ -65,7 +65,7 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     page.wait_for_function(
         "() => window.__molview && typeof window.__molview.onChange === 'function'")
     keys = page.evaluate("() => Object.keys(window.__molview).sort()")
-    assert keys == ["currentFrame", "dispose", "exportFile", "frameCount", "getFrame",
+    assert keys == ["currentFrame", "dispose", "exportFile", "frameCount", "getFrameAllAtoms",
                     "getSelection", "getStructure", "installMolecule", "isPlaying", "ok",
                     "onChange", "pause", "play", "setFrame", "undo"]
 

@@ -24,8 +24,9 @@
  *     installMolecule, generate, applyOp, discard, undo,
  *     // Session-state timeline (§19.5): one save + one load, index-delta parameterized
  *     save, load, state_index, uncommitted,
- *     // Frames (molview-module.md §14.5) — coords owned by the embed movie (single owner)
- *     reloadFrames, setForces, addFrame, addFrames, setFrame, getFrame, currentFrame, frameCount,
+ *     // Frames (molview-module.md §14.5) — coords owned by the render engine's clean per-frame
+ *     // data; getFrameAllAtoms = every atom, original order, pre-isolate
+ *     reloadFrames, setForces, addFrame, addFrames, setFrame, getFrameAllAtoms, currentFrame, frameCount,
  *     // Serialisation (the format is MolView's): project-file export + draft key + persist bracket
  *     exportFile, draftIdentity, suspendPersist, resumePersist,
  *     // Sub-namespaces
@@ -89,9 +90,9 @@
 // single instances per module load -- canvasState is a module singleton; the store factory +
 // timeline factory are each called ONCE by this module (it is their sole creator), so importing
 // them keeps the one-instance-per-page invariant the whole UI shares through `data.selection`.
-import { createStore, cloneAtom, surfaceSnapshot } from "./_selection-store-impl.js";
+import { createStore, cloneAtom, surfaceSnapshot } from "./_selection-store.js";
 import { canvasState } from "./_canvas-state-impl.js";
-import { createStateTimeline } from "./_state-timeline-impl.js";
+import { createStateTimeline } from "./_history.js";
 import { createOperations } from "./_operations.js";
 import { createSerialiser } from "./_serialise.js";
 import { createInstall } from "./_install.js";
@@ -118,7 +119,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // Phase 9 (2026-06-13): the selection store is no longer a
     // public global — the dispatcher creates the one process-wide
     // instance from the factory at lib/workspace/
-    // _selection-store-impl.js and holds it for the lifetime of
+    // _selection-store.js and holds it for the lifetime of
     // the page.  The factory must be mounted before this IIFE
     // executes (templates load the impl file just before the
     // dispatcher; test_workspace_dispatcher_js.py mirrors that
@@ -147,10 +148,16 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         _selectionStore = seeded || createStore();
         return _selectionStore;
     }
-    // The coordinate time axis (§14.5) lives in the embed's native 3Dmol movie -- the
-    // SINGLE coord owner (task #33).  The frame API below (reloadFrames / addFrame /
-    // setFrame / getFrame / …) is a thin coordinator: it validates the same-atoms
-    // invariant and forwards to the embed handle; it holds NO coordinate copy of its own.
+    // The coordinate time axis (§14.5).  The SINGLE owner of the per-frame coordinates is the
+    // render engine's clean StructureData (engine.js `_data.frames`): it is the only copy that
+    // holds EVERY atom in original indexing, which is what measurement, export and a save all
+    // need.  The 3Dmol native movie is a RENDER of that data -- and under isolate a render of
+    // only the drawn subset -- so it cannot be the owner; the engine instead guarantees the
+    // movie's frame count matches its own (engine.js §8 APPEND), because the movie is the thing
+    // that can actually show a frame.  The frame API below (reloadFrames / addFrame / setFrame /
+    // getFrameAllAtoms / …) is a thin coordinator over the engine: it validates the same-atoms
+    // invariant
+    // and forwards; it holds NO coordinate copy of its own.
     // The 3Dmol embed handle is the view-state render target (§20).  The ACTIVE molview
     // registers it here at mount (onReady -> attachViewHandle); §18 "molview owns the whole
     // assembly", one active molview per page.  Pre-migration this was read off the tab-owned
@@ -175,30 +182,36 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     // ── The render engine (molview-render-streamline.md) ─────────────────────────────── //
     // The data model OWNS the data; the engine is the single render place. mount.js registers
-    // the engine here at onReady (attachEngine). The data model builds StructureData (§7.1) from
+    // the engine here at onReady (attachRenderEngine). The data model builds StructureData (§7.1) from
     // its atoms + periodicity and hands it to the engine; the engine reads view flags from the
     // store and draws. The data model never touches 3Dmol -- every draw goes engine -> embedIo.
-    var _engine = null;
-    var _engineFrameUnsub = function () {};
-    // Register the engine + relay its frame channel into the data model's onFrameChange, so the
-    // frame bar / measurement (which subscribe to data.onFrameChange) track engine-driven swaps
-    // and playback regardless of when they subscribed (before or after the engine attaches).
-    function attachEngine(engine) {
-        try { _engineFrameUnsub(); } catch (_) {}
-        _engine = engine || null;
-        _engineFrameUnsub = (_engine && typeof _engine.onFrameChange === "function")
-            ? _engine.onFrameChange(_notifyFrame) : function () {};
+    var _renderEngine = null;
+    // Register the engine and hand it THE frame notifier. The engine owns the displayed index
+    // (it is the one that changes it); the data model owns the one subscriber list, and the
+    // engine simply calls into it. Previously the engine kept its OWN listener list and this
+    // relayed it into a second, identical list here -- one index change walking two lists.
+    // Injecting the notifier keeps subscribe-before-attach working (subscribers are on the data
+    // model's list from the start; the engine just starts calling it once attached).
+    function attachRenderEngine(renderEngine) {
+        if (_renderEngine && typeof _renderEngine.setFrameNotifier === "function") {
+            try { _renderEngine.setFrameNotifier(null); } catch (_) {}   // stop the outgoing engine
+        }
+        _renderEngine = renderEngine || null;
+        if (_renderEngine && typeof _renderEngine.setFrameNotifier === "function") {
+            _renderEngine.setFrameNotifier(_notifyFrame);
+        }
         // Backfill on attach: a session restore (or any load) runs at DOMContentLoaded, BEFORE
         // the embed's onReady attaches the engine -- so the _pushToEngine() at load time found
         // no engine and no-op'd, leaving the viewer blank for a restored structure. Push the
         // already-loaded structure now that the engine is here (no-op if nothing is loaded).
-        if (_engine) _pushToEngine();
+        if (_renderEngine) _pushToEngine();
     }
-    function detachEngine(engine) {
-        if (engine && engine !== _engine) return;
-        try { _engineFrameUnsub(); } catch (_) {}
-        _engineFrameUnsub = function () {};
-        _engine = null;
+    function detachRenderEngine(renderEngine) {
+        if (renderEngine && renderEngine !== _renderEngine) return;
+        if (_renderEngine && typeof _renderEngine.setFrameNotifier === "function") {
+            try { _renderEngine.setFrameNotifier(null); } catch (_) {}
+        }
+        _renderEngine = null;
     }
 
     // Build the engine's cell (explicit lattice + the origin that wraps the atoms), or null.
@@ -228,12 +241,12 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // Push the CURRENT single structure (one frame, from the store atoms) to the engine.
     // Called after a load/edit adopts atoms -- the engine re-renders from this clean data.
     function _pushToEngine() {
-        if (!_engine) return;
+        if (!_renderEngine) return;
         var s = _store() && _store().getState();
         var atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
         if (!atoms.length) return;
         var frame = atoms.map(function (a) { return [a.x, a.y, a.z]; });
-        _engine.setData(_structureDataFor([frame], null));
+        _renderEngine.setData(_structureDataFor([frame], null));
         _lastCellSig = JSON.stringify(_cellForEngine());   // geometry baseline
     }
     // The periodicity tier's change detector (§6.2 v3): the canvas onChange
@@ -242,12 +255,12 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // baseline is (re)set by every full push above.
     var _lastCellSig = null;
     function _syncEngineCell() {
-        if (!_engine || typeof _engine.setCell !== "function") return;
+        if (!_renderEngine || typeof _renderEngine.setCell !== "function") return;
         var geom = _cellForEngine();
         var sig = JSON.stringify(geom);
         if (sig === _lastCellSig) return;
         _lastCellSig = sig;
-        _engine.setCell(geom);
+        _renderEngine.setCell(geom);
     }
     function _runtime() {
         return (root.molbuilder && root.molbuilder.runtime)
@@ -270,8 +283,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     /** Return the structure slice (or null when nothing's loaded). */
     // Serialise the CURRENT atoms (element + live x/y/z) to plain XYZ.  Used only when
     // a frame is scrubbed (§14.5.4): the canvas text is frame 0, but the SHOWN frame's coords
-    // come from the embed's native movie (read on demand via getFrame/_scrubbedFrameCoords),
-    // so ``getStructure().text`` / a save must reflect the VISIBLE frame, not frame 0.
+    // come from the render engine's clean per-frame data (read on demand via
+    // getFrameAllAtoms/_scrubbedFrameCoords), so ``getStructure().text`` / a save must reflect the
+    // VISIBLE frame, not frame 0.
     function _atomsToXyz(title) {
         var els = getElements();
         var co  = getCoordinates();
@@ -283,14 +297,16 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         }
         return lines.join("\n") + "\n";
     }
-    // The VISIBLE frame's coords when a trajectory is scrubbed (currentFrame > 0),
-    // read from the embed movie (the single owner) ON DEMAND -- so getStructure /
-    // getCoordinates / export reflect the shown frame without a per-frame store push
-    // (§14.5.4).  Returns null for frame 0 / a static structure (fast path unchanged).
+    // The VISIBLE frame's coords when a trajectory is scrubbed (currentFrame > 0), read from the
+    // render engine's clean per-frame data (the owner) ON DEMAND -- so getStructure /
+    // getCoordinates / export reflect the shown frame without a per-frame store push (§14.5.4).
+    // NOT from the 3Dmol movie: under isolate the movie holds only the DRAWN subset, while a
+    // save needs every atom in original order.  Returns null for frame 0 / a static structure
+    // (fast path unchanged).
     function _scrubbedFrameCoords() {
         var cf = currentFrame();
         if (cf <= 0) return null;
-        var fc = getFrame(cf);   // -> embed getFrameCoords(cf)
+        var fc = getFrameAllAtoms(cf);
         return (Array.isArray(fc) && fc.length === _atomsInternal().length) ? fc : null;
     }
     function getStructure() {
@@ -763,7 +779,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // write), `save`, and `load` touch disk.  save/load are SERIALIZED through the submodule's
     // push/pop chain so the index advances/retreats only after each workspace round-trip resolves.
     // The state timeline (Save-state / Retract) is a MolView-internal SUBMODULE
-    // (lib/molview/_state-timeline-impl.js): it owns `state_index`, the `uncommitted` flag, and
+    // (lib/molview/_history.js): it owns `state_index`, the `uncommitted` flag, and
     // the ordered save/load chain.  This model injects the serialise / applySnapshot / workspace
     // / trace seams and still owns WHEN the data changed — it calls `_timeline.markUncommitted()`
     // on every data change.  The factory is IMPORTED (4a); this module is its sole caller.  Browser: the factory is a global mounted by the sibling <script>
@@ -867,7 +883,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
      * readers see identical objects.
      *
      * Delegates to the ONE surface-snapshot shaper in
-     * _selection-store-impl.js (loaded first) — was a hand-maintained
+     * _selection-store.js (loaded first) — was a hand-maintained
      * character-identical twin of that function; now a single source so a
      * new store field can't be mirrored into one copy but not the other.
      * Returns a fresh defensive copy.
@@ -1344,11 +1360,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         }
         return n0;
     }
-    // Frame-change channel -- DELIBERATELY SEPARATE from the selection store's
-    // notify.  A native frame swap must update ONLY the frame-controls bar
-    // (slider/counter); firing the whole store would re-render the selection panel
-    // every frame and steal focus from a filter input the user is typing in during
-    // playback.  So the bar subscribes HERE (mount.js), not to the store.
+    // THE frame-change channel -- the ONE subscriber list for "the displayed frame index
+    // moved".  The render engine owns the index itself and calls _notifyFrame (injected at
+    // attachRenderEngine); everyone who cares subscribes HERE.  There is no second list.
+    //
+    // DELIBERATELY SEPARATE from the selection store's notify: a native frame swap must update
+    // ONLY the frame-controls bar (slider/counter); firing the whole store would re-render the
+    // selection panel every frame and steal focus from a filter input the user is typing in
+    // during playback (streamline doc §7.2).
     var _frameListeners = [];
     function onFrameChange(fn) {
         if (typeof fn !== "function") return function () {};
@@ -1374,7 +1393,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // force arrows). The engine owns the movie; the data model no longer drives 3Dmol.
         // (Legacy opts.arrowsPerFrame -- pre-built arrows -- is superseded by opts.forces; a
         // consumer still on arrowsPerFrame gets no force overlay until it moves to forces.)
-        if (_engine) _engine.setData(_structureDataFor(frames, opts.forces));
+        if (_renderEngine) _renderEngine.setData(_structureDataFor(frames, opts.forces));
         if (!_applying) _timeline.markUncommitted();   // frame DATA changed -> uncommitted (§19.5)
         return frameCount();
     }
@@ -1384,7 +1403,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // (threshold / hide-frozen) is cheap. forcesPerFrame is in ORIGINAL atom order; a zero
     // vector suppresses that atom's arrow; null clears the overlay.
     function setForces(forcesPerFrame) {
-        if (_engine) _engine.setForces(forcesPerFrame);
+        if (_renderEngine) _renderEngine.setForces(forcesPerFrame);
     }
     function addFrame(coords) { return addFrames([coords]); }
     // Append one OR MANY new frames (a live poll can bring several at once). Validates the
@@ -1394,7 +1413,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         const frames = Array.isArray(list) ? list : [];
         if (!frames.length) return frameCount();
         frames.forEach(function (coords) { _requireMatch(coords, "addFrames"); });
-        if (_engine) _engine.appendFrames(frames, { forces: opts.forces });
+        if (_renderEngine) _renderEngine.appendFrames(frames, { forces: opts.forces });
         if (!_applying) _timeline.markUncommitted();   // frame DATA changed -> uncommitted (§19.5)
         return frameCount();
     }
@@ -1405,22 +1424,23 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             throw new Error("setFrame(" + i + ") out of range [0.." + (n - 1) + "]");
         }
         // Native frame swap (§3): the engine swaps to the pre-parsed movie frame + re-applies
-        // the shown frame's overlays. It fires its OWN frame channel (engine.onFrameChange),
+        // the shown frame's overlays. It then calls THE frame notifier (onFrameChange above),
         // which the frame bar + measurement subscribe to -- not the selection store.
-        if (_engine) _engine.showFrame(idx);
+        if (_renderEngine) _renderEngine.showFrame(idx);
         return currentFrame();
     }
     // Frame reads -- delegate to the render engine (the single coord + frame owner, §7.1/§9).
-    // getFrame returns the CLEAN original-indexed coords (all atoms), the accessor measurement
+    // The ONE frame-coordinate door out of MolView (forwards to the engine, the owner): every
+    // atom, original order, pre-isolate. The accessor measurement
     // reads by the panel's original atom index.
-    function getFrame(i) {
-        return _engine ? _engine.getFrame(i) : null;
+    function getFrameAllAtoms(i) {
+        return _renderEngine ? _renderEngine.getFrameAllAtoms(i) : null;
     }
     function currentFrame() {
-        return _engine ? _engine.currentFrame() : 0;
+        return _renderEngine ? _renderEngine.currentFrame() : 0;
     }
     function frameCount() {
-        return _engine ? _engine.frameCount() : 0;
+        return _renderEngine ? _renderEngine.frameCount() : 0;
     }
 
     // ─── Persistence (Phase 8) ─────────────────────────────────── //
@@ -1686,7 +1706,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     // The save-state / retract mechanics (`_enqueue`, `save`, `load`, `undo`, anchor) live in the
-    // state-timeline submodule (`_state-timeline-impl.js`), built as `_timeline` above.  The model
+    // state-timeline submodule (`_history.js`), built as `_timeline` above.  The model
     // injects `_serialise` / `_applySnapshot` (kept here — they read/write the model) and exposes
     // the public save/load/undo (mapped to `_timeline.*` on the api below).
 
@@ -1757,15 +1777,15 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         addFrame:              addFrame,
         addFrames:             addFrames,
         setFrame:              setFrame,
-        getFrame:              getFrame,
+        getFrameAllAtoms:              getFrameAllAtoms,
         currentFrame:          currentFrame,
         frameCount:            frameCount,
         selection:             selection,
         view:                  view,
         attachViewHandle:      attachViewHandle,   // §20: the active molview registers its embed
         detachViewHandle:      detachViewHandle,   // handle here at mount (retires modify.handle)
-        attachEngine:          attachEngine,       // the render engine (molview-render-streamline.md)
-        detachEngine:          detachEngine,
+        attachRenderEngine:    attachRenderEngine,   // the renderEngine (docs/web/molview.md § 16, § 23)
+        detachRenderEngine:          detachRenderEngine,
         flushViewState:        flushViewState,     // §20: pagehide flush -- mirror the live view
     };
 

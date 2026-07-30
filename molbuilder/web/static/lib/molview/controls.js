@@ -1,21 +1,23 @@
-/* Frame controls bar for MolView (molview-module.md §14.5) -- the trajectory PLAYBACK UI.
+/* MolView — THE CONTROLS IT DRAWS AROUND THE CANVAS.
  *
- * MolView renders this itself (like the isolate view-toggle), so a consumer that
- * hands MolView a trajectory gets the navigation UI for free.  A compact bar:
- *   ‹ play/pause › · loop · speed(ms) · ──slider── · i / N .
- * Speed feeds api.play({fps}); loop feeds api.setLoop.
+ * Contract: docs/web/molview.md § 1.1 (what the user operates) and § 6.4 (the frame bar
+ * reads and writes the displayed frame through the ONE API — there is no privileged writer
+ * and no back channel; a control that tracked the frame itself would be a second answer to
+ * a question that must have one).
  *
- * Overlays (force arrows, atom-index labels) are NOT here: force arrows are baked by the
- * engine from each frame's forces -- not a viewer toggle (molview-module §14.5.1).
+ * Every control here is a CALLER of the model, exactly like the panel: it writes into a
+ * store and reads the result back through a subscription.  None of them reaches the
+ * drawing, and none of them decides anything on anyone's behalf — which is the test § 11.4
+ * uses to keep them out of menu.js, where Export lives.
  *
- * SHOWN only for a trajectory (frameCount > 1); a single static structure has no bar.  It
- * subscribes to the store so the slider + counter track the current frame (incl. during
- * playback) and the bar appears/disappears as the frame count changes.
- *
- *   molview.mountFrameControls(hostEl, api, store) -> { refresh, dispose }
- *     api = { setFrame(i), frameCount(), currentFrame(), play(), pause(), isPlaying() }
+ * Renamed 2026-07-30 from frame-controls.js.  At plan Phase 6 the six toolbar switches, the
+ * View menu (style · radius · background · projection) and Reset arrive here from the seal's
+ * knob bar, and the frame strip's animation interval is replaced by mount's one timer.
  */
 "use strict";
+
+
+/* ── The frame bar — was frame-controls.js ───────────────────────────────────── */
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 

@@ -55,7 +55,7 @@
  */
 "use strict";
 
-import { atomIndexModel } from "./_atom-index.js";
+import { atomIndexModel } from "./_atom.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 

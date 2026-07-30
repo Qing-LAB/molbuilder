@@ -15,11 +15,8 @@
    shell → form-schema → per-page.  Missing link was flagged by the
    2026-05-19 review (forms rendered unstyled). #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/viewer/mol-viewer-embed.css') }}">
 {# MolView component styles — the Inspect-structure card mounts the fused card. #}
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/selection/selection-panel.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/selection/measurement-chip.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/molview.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='structure-optimization/style.css') }}">
 {# 3Dmol + the mol-viewer stack now load via _molview_scripts.html at the end of

@@ -112,7 +112,7 @@ header code {
 /* The old ``#viewer { width/height:100% }`` mount rule was removed 2026-07-17: the page
  * hands MolView an empty ``#viewer-host`` and the module builds + sizes its own viewer
  * (``.viewer`` is a CLASS, inside the fused card).  Viewer sizing is owned end-to-end by
- * lib/molview/fused-layout.css -- no page rule sizes it. */
+ * lib/molview/molview.css -- no page rule sizes it. */
 
 /* Disabled compatibility-locked inputs inside index fieldsets. */
 fieldset input:disabled,

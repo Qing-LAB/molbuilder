@@ -2,9 +2,9 @@
 
     Mounted by tabs that need atom selection (initially /modify; later
     /spectra to replace the three frozen-atoms inputs).  Owned by
-    ``lib/molview/selection/panel.js`` which subscribes via the workspace
+    ``lib/molview/selection.js`` which subscribes via the workspace
     dispatcher (``ws.selection.subscribe`` → the store instance the
-    dispatcher created from ``lib/molview/_selection-store-impl.js``).
+    dispatcher created from ``lib/molview/_selection-store.js``).
 
     Layout (compact, single-column -- fits beside the 3D viewer):
 
@@ -202,7 +202,7 @@
       </label>
       <select id="selection-assign-target"
               class="selection-assign-select">
-        {#- Populated dynamically by lib/molview/selection/panel.js
+        {#- Populated dynamically by lib/molview/selection.js
             (renderAssignTarget). -#}
       </select>
       <button type="button" id="selection-target-info-btn"

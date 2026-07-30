@@ -166,7 +166,8 @@ function _mvdata() {
     //
     //   fileState  -- replaced atomically each LOADING -> LOADED
     //                 (path, mtime, format, label, parsed data)
-    //   viewState  -- per-file user interaction (currentFrame, firstFit, picks)
+    //   viewState  -- per-file user interaction (firstFit, picks; NOT the playhead --
+    //                 MolView owns that)
     //   uiPrefs    -- per-session knobs (hideFrozen etc.)
     //   lifecycle  -- controllers + timers (poll timer, abort controllers, fetchSeq)
     //   derived    -- recomputed from fileState (scfPollHistory)
@@ -210,7 +211,10 @@ function _mvdata() {
         },
 
         viewState: {
-            currentFrame: 0,
+            // NO currentFrame here.  MolView owns the playhead; a tab-side copy was written
+            // (reset to 0 on every load) and never read, so it could only ever be a stale
+            // second answer.  The one place that needs the shown frame asks
+            // molview.data.currentFrame() at the moment it needs it.
             firstFit:     true,
         },
 
@@ -218,8 +222,9 @@ function _mvdata() {
         // knobs (sessionStorage-persisted, survives file-switch).
         // Trajectory has NO fields here today: hide-frozen is owned
         // by mol-viewer-embed's own sessionStorage with its own key
-        // (mol.viewer.hideFrozen), playback speed/loop live in the
-        // embed.  When/if a trajectory-only pref appears (e.g. a
+        // (mol.viewer.hideFrozen), and playback speed/loop are knobs
+        // on MolView's frame-controls bar.  When/if a
+        // trajectory-only pref appears (e.g. a
         // plot tab selection that isn't a viewer concern), populate
         // this bucket and wire the sessionStorage roundtrip
         // (key: molbuilder.results.trajectory.uiPrefs.v1).  Keeping
@@ -265,7 +270,7 @@ function _mvdata() {
 
     // Backward-compat aliases.  Render code throughout this file
     // still reads/writes the legacy flat shape (state.mtime,
-    // state.data, state.currentFrame, state.firstFit, ...).  The
+    // state.data, state.firstFit, ...).  The
     // aliases route through to the bucketed canonical home so the
     // entire body of render code keeps working unchanged; the
     // contract's reset matrix is enforced at transition() and at
@@ -291,7 +296,6 @@ function _mvdata() {
         alias("label",        "fileState");
         alias("data",         "fileState");
         alias("atomMetadata", "fileState");
-        alias("currentFrame", "viewState");
         alias("firstFit",     "viewState");
         alias("pollTimer",    "lifecycle");
         alias("pollInFlight", "lifecycle");
@@ -312,8 +316,8 @@ function _mvdata() {
     //   target = 'IDLE'                    -> {} (dispose path)
     //
     // Reset matrix (contract § 3) enforced here:
-    //   -> LOADING: empty fileState, reset viewState (currentFrame=0,
-    //               firstFit=true), keep uiPrefs, abort + clear all
+    //   -> LOADING: empty fileState, reset viewState (firstFit=true),
+    //               keep uiPrefs, abort + clear all
     //               in-flight controllers, clear derived, bump fetchSeq.
     //   -> IDLE:    clear fileState, viewState, derived; abort + clear
     //               all controllers; stop poll timer.
@@ -345,9 +349,9 @@ function _mvdata() {
             state.fileState.label  = null;
             state.fileState.data   = null;
             state.fileState.atomMetadata = null;
-            // Reset viewState per matrix: playhead to 0, refit camera
-            // on next render.
-            state.viewState.currentFrame = 0;
+            // Reset viewState per matrix: refit the camera on the next render.  The
+            // playhead is NOT reset here -- MolView owns it, and a fresh load resets it
+            // there (setData lands on frame 0).
             state.viewState.firstFit     = true;
             // Clear derived caches.
             state.derived.scfPollHistory.length = 0;
@@ -384,7 +388,6 @@ function _mvdata() {
             state.fileState.label  = null;
             state.fileState.data   = null;
             state.fileState.atomMetadata = null;
-            state.viewState.currentFrame = 0;
             state.viewState.firstFit     = true;
             state.derived.scfPollHistory.length = 0;
             state.machine = "IDLE";
@@ -825,13 +828,10 @@ function _mvdata() {
         return new Set(arr);
     }
 
-    // The frame MolView is currently showing.  MolView owns the playhead (its
-    // frame bar); the inspector reads it to build force arrows for the right
-    // frame.  0 before the handle resolves.
-    function _curFrame() {
-        return (_mv && typeof _mv.currentFrame === "function")
-            ? _mv.currentFrame() : 0;
-    }
+    // (There is no local "which frame is showing?" helper.  MolView owns the playhead and the
+    // tab ASKS it at the one place that needs it -- through molview.data, the single door this
+    // file uses for every frame read and write.  A tab-side reader would be a second answer to
+    // a question that already has an owner, and the tab keeps no copy of the playhead.)
 
     // Build the per-atom force vectors for ONE frame under the current FILTER knobs.
     // Returns a per-atom array (ORIGINAL atom order) of [fx,fy,fz]; a SUPPRESSED atom is
@@ -978,13 +978,9 @@ function _mvdata() {
         }
     }
 
-    function showFrame(idx) {
-        if (!_mv || typeof _mv.setFrame !== "function") return;
-        const n = _mv.frameCount ? _mv.frameCount() : 0;
-        if (n <= 0) return;
-        idx = Math.max(0, Math.min(n - 1, idx));
-        try { _mv.setFrame(idx); } catch (_) {}
-    }
+    // (No local showFrame(): seeking is `molview.data.setFrame(i)`, which already range-checks
+    // against the frames MolView holds.  A tab-side clamp re-derived that range from a second
+    // count, which is exactly the drift this file no longer carries.)
 
     /* ------------------------------------------------------------------ */
     /*  Plotly traces                                                      */
@@ -2371,9 +2367,12 @@ function _mvdata() {
             return;
         }
 
-        // The frame the user is on RIGHT NOW (MolView owns the playhead), read
-        // before the reload so a full rebuild can restore it / follow the tail.
-        const prevFrame = _curFrame();
+        // The frame the user is on RIGHT NOW, read before the reload so a full rebuild can
+        // restore it / follow the tail.  MolView owns the playhead -- the tab asks it here and
+        // keeps no copy of the answer.
+        const _mvd = _mvdata();
+        const prevFrame = (_mvd && typeof _mvd.currentFrame === "function")
+            ? _mvd.currentFrame() : 0;
         const wasAtEnd  = !oldData || prevFrame >= oldLen - 1;
 
         // Contract § 2: full-rebuild path -- route the atomic
@@ -2437,9 +2436,15 @@ function _mvdata() {
                 // (Perf note: this re-bakes every frame's arrows per poll; an incremental
                 // force-append is a future optimisation if long live trajectories need it.)
                 drawForces();
-                // Follow the tail if the user was watching the end; otherwise leave
-                // the playhead where it is.
-                if (wasAtEnd) showFrame(n - 1);
+                // Follow the tail if the user was watching the end; otherwise leave the
+                // playhead where it is.  The target comes from MolView's own count, not from
+                // `n` (the parsed feed's length): the feed's job is to FEED MolView, never to
+                // be the authority on what the viewer is showing.  When those two disagreed --
+                // the feed's count grown, the movie's not -- that was #35.
+                if (wasAtEnd) {
+                    const shown = _mvdata().frameCount();
+                    if (shown > 1) _mvdata().setFrame(shown - 1);
+                }
             }
         } else {
             // Structure changed / frames shrank: full rebuild.  Keep the
@@ -2621,14 +2626,16 @@ function _mvdata() {
     /*  Playback                                                           */
     /* ------------------------------------------------------------------ */
 
-    // Playback control (step / play / pause / state.playTimer)
-    // removed by #246 A1.  The embed owns playback now via its
-    // animation loop + auto-mounted frame strip (prev/play/next
-    // + slider per § 6.3).  The Inspect tab's #speed and #loop
-    // controls flow into the embed via setAnimation partial
-    // updates per § 3.9.  showFrame() above is still used by the
-    // load path (jump to last frame on append) but goes through
-    // _handle.setAnimationFrame.
+    // The tab owns NO playback: no step / play / pause / timer, and no #speed or #loop
+    // controls.  MolView owns all of it -- the playback timer lives in its mount.js and it
+    // renders its own frame-controls bar (prev/play/next + loop + speed + slider + counter),
+    // so a tab that hands MolView a trajectory gets the navigation UI for free.  The embed's
+    // own frame strip is deliberately OFF (`frameStrip: false` at the loadFrames seam), so
+    // there is exactly one bar and one timer.
+    //
+    // The only seek this file performs is the follow-the-tail jump after an append, and it
+    // goes through `molview.data.setFrame` like every other frame write -- never through the
+    // embed handle.
 
     /* ------------------------------------------------------------------ */
     /*  UI wiring                                                          */
@@ -2650,7 +2657,7 @@ function _mvdata() {
         //   * abort in-flight loadAbort + pollAbort
         //   * stop poll timer + clear pollInFlight
         //   * empty fileState (sets path = new path)
-        //   * reset viewState (currentFrame=0, firstFit=true)
+        //   * reset viewState (firstFit=true)
         //   * clear derived (scfPollHistory)
         //   * bump fetchSeq for the file-identity guard
         // Refresh button arrives here too -- same code path, same

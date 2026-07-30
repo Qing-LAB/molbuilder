@@ -10,7 +10,7 @@ from pathlib import Path
 from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/molview/engine/embed-io.js"
+MODULE = ROOT / "molbuilder/web/static/lib/molview/render-engine/embed-io.js"
 
 
 _BOOT = """
@@ -38,7 +38,7 @@ _BOOT = """
                     getAnimationKind:  () => reads.kind,
                 };
             }
-            const embedIo = globalThis.molbuilder.molview.engine.embedIo;
+            const embedIo = globalThis.molbuilder.molview.renderEngine.embedIo;
             // Two processed frames: 2 atoms each. (positions differ per frame.)
             const F = [
                 { positions: [[0,0,0],[1,0,0]], elements: ["C","H"],
@@ -152,6 +152,10 @@ def test_apply_overlays_forwards_only_present_fields():
 
 
 def test_setBusy_and_reads_delegate():
+    """The two reads are the engine's probes of the render seam: does a movie exist, and how
+    many frames can it show.  There is deliberately no ``currentFrame`` read -- the shown frame
+    is the engine's owned state (``_frame``) and the embed follows it via swapFrame, so a
+    read-back door would be a second answer to a question that already has an owner."""
     out = _run_node("""
         const h = makeHandle({ frameCount: 7, currentFrame: 3, kind: "trajectory" });
         const io = embedIo.create(h);
@@ -159,14 +163,14 @@ def test_setBusy_and_reads_delegate():
         console.log(JSON.stringify({
             busy: byName(h, "setBusy")[0].args[0],
             frameCount: io.frameCount(),
-            currentFrame: io.currentFrame(),
             kind: io.animationKind(),
+            hasCurrentFrame: typeof io.currentFrame,
         }));
     """)
     assert out["busy"] == "Updating…"
     assert out["frameCount"] == 7
-    assert out["currentFrame"] == 3
     assert out["kind"] == "trajectory"
+    assert out["hasCurrentFrame"] == "undefined"   # retired: the engine owns the playhead
 
 
 def test_create_requires_a_handle():

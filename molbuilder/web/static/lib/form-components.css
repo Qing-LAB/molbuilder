@@ -226,7 +226,7 @@ button.primary:disabled {
     border-radius: 3px;
     border: 1px solid var(--border-soft);
 }
-/* ``.viewer-wrap`` sizing + chrome moved to lib/molview/fused-layout.css (2026-07-17):
+/* ``.viewer-wrap`` sizing + chrome moved to lib/molview/molview.css (2026-07-17):
  * ``.viewer-wrap`` is BUILT BY the MolView module (mount.js), so the module owns its
  * dimensions + chrome.  This shared sheet used to re-size it here with its OWN magic
  * (aspect-ratio, min-height:320px, max-height:56vh) that duplicated -- and drifted from

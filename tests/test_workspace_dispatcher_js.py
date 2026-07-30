@@ -57,9 +57,9 @@ DATA_MODEL_PATH   = ROOT / "molbuilder/web/static/lib/molview/data-model.js"
 # The render engine (molview-render-streamline.md): the data model delegates every render to
 # it, so frame tests attach a real engine (over a permissive fake handle -- see _FAKE_EMBED).
 ATOM_INDEX_PATH   = ROOT / "molbuilder/web/static/lib/molview/_atom-index.js"
-ENG_PROCESS_PATH  = ROOT / "molbuilder/web/static/lib/molview/engine/process.js"
-ENG_EMBEDIO_PATH  = ROOT / "molbuilder/web/static/lib/molview/engine/embed-io.js"
-ENG_ENGINE_PATH   = ROOT / "molbuilder/web/static/lib/molview/engine/engine.js"
+ENG_PROCESS_PATH  = ROOT / "molbuilder/web/static/lib/molview/render-engine/process.js"
+ENG_EMBEDIO_PATH  = ROOT / "molbuilder/web/static/lib/molview/render-engine/embed-io.js"
+ENG_ENGINE_PATH   = ROOT / "molbuilder/web/static/lib/molview/render-engine/engine.js"
 # The state-timeline factory (``_state-timeline-impl.js``) self-mounts
 # ``molbuilder.molview._createStateTimeline``; the data model builds ``_timeline`` from it at
 # import.  Production loads it as a classic <script> BEFORE the data model runs; mirror that here
@@ -176,8 +176,9 @@ _FAKE_EMBED = """
     // A permissive fake 3Dmol handle: the frame-movie slice (so a trajectory round-trips) PLUS
     // no-op stubs for every door the render engine's embedIo drives (setStructure/setBusy/
     // overlays/...). The data model now delegates every render to the ENGINE, which we attach
-    // over this handle; the engine holds the clean frames, so data.getFrame/frameCount read the
-    // engine's own state -- this handle just absorbs the engine's draw calls without a real viewer.
+    // over this handle; the engine holds the clean frames, so data.getFrameAllAtoms/frameCount
+    // read the engine's own state -- this handle just absorbs the engine's draw calls without a
+    // real viewer.
     const fake = {
         setAnimation: function (a) {
             if (a && a.kind === "trajectory") { _frames = a.frames.map(cp); _kind = "trajectory"; _cur = 0; }
@@ -188,15 +189,14 @@ _FAKE_EMBED = """
         getAnimationFrame: function () { return _cur; },
         getAnimationKind:  function () { return _kind; },
         getFrameCount:     function () { return _frames ? _frames.length : 0; },
-        getFrameCoords:    function (i) { return (_frames && _frames[i]) ? cp([_frames[i]])[0] : null; },
         // embedIo draw doors -- no-ops (no real 3Dmol here).
         setStructure: function () {}, setBusy: function () {}, setAtomLabels: function () {},
         setOverlays: function () {}, setCell: function () {}, setAxes: function () {}, setArrows: function () {},
     };
     const data = window.molbuilder.molview.data;
     data.attachViewHandle(fake);
-    const engine = window.molbuilder.molview.engine.create(fake, { store: data.selection });
-    data.attachEngine(engine);
+    const engine = window.molbuilder.molview.renderEngine.create(fake, { store: data.selection });
+    data.attachRenderEngine(engine);
 })();
 """
 
@@ -235,10 +235,12 @@ _DATA_SURFACE = sorted([
     # to (separate from the selection store, so a frame swap doesn't re-render the
     # panel + steal input focus during playback).
     "setForces", "onFrameChange",
-    # getForces/currentForces removed with the frame-series (task #33): forces are
-    # the CONSUMER's data now, and coords are owned by the embed movie -- getFrame
-    # reads a frame through the handle, not a data-model coords copy.
-    "getFrame", "currentFrame", "frameCount",
+    # getForces/currentForces removed with the frame-series (task #33): forces are the
+    # CONSUMER's data now.  getFrameAllAtoms is the ONE frame-coordinate door: every atom, in
+    # original order, before any isolate filtering -- which is what measurement, export and a
+    # save all need.  The 3Dmol movie is a RENDER of those coords (and under isolate a render of
+    # only the drawn subset), so it is not the owner and hands out no coords door of its own.
+    "getFrameAllAtoms", "currentFrame", "frameCount",
     "selection", "view",
     # §20 view-state lifecycle: the active molview registers its embed handle
     # (attach/detach) so view.get/applyState reach it, and flushViewState mirrors
@@ -246,7 +248,7 @@ _DATA_SURFACE = sorted([
     "attachViewHandle", "detachViewHandle", "flushViewState",
     # The render engine (molview-render-streamline.md): the active molview registers
     # it here; the data model builds StructureData + delegates every render to it.
-    "attachEngine", "detachEngine",
+    "attachRenderEngine", "detachRenderEngine",
     # §19.5 state timeline — save(delta)/load(delta) + the two live reads.
     "state_index", "uncommitted",
 ])

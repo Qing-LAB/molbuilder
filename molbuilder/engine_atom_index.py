@@ -21,7 +21,7 @@ WHERE THE TRANSLATION HAPPENS (this module).
     so the convention is auditable in one place and bound by tests.
 
 DISPLAY CONSISTENCY.
-    The frontend displays 1-based (``_atom-index.js``), chosen to equal the
+    The frontend displays 1-based (``lib/molview/_atom.js``), chosen to equal the
     atom number the user reads in the generated files they cross-reference —
     SIESTA ``.fdf`` and geomeTRIC ``$freeze`` are both 1-based.  So
     ``siesta_atom_index(i)`` / ``geometric_atom_index(i)`` == the frontend's

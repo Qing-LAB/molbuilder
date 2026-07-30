@@ -304,7 +304,42 @@ by Phase 1's copy, **#22**'s MolView rows by Phase 7.
 
 ---
 
-## 4. Open
+## 4. The breakage log
+
+What the rework knocked over, recorded rather than chased (§ 1). Phase 7 works the consumer
+half off; each test dies with the unit it pins.
+
+### Phase 1 — one directory *(landed 2026-07-30)*
+
+**One real bug, found and fixed.** The prior session's `engine/` → `render-engine/` rename
+changed what the module *publishes* (`molview.engine` → `molview.renderEngine`) but not
+`mount.js:251`, which still looked up `mvApi.engine.create`. The guard around it turns a
+missing factory into a no-op, so **every viewer mounted and then never drew** — no atoms,
+`frameCount()` stuck at 0, no frame bar. Invisible to node tests, which stub the engine;
+caught by the demo page in a real browser, which is the whole reason that check is in the
+phase. This is the failure mode a namespace rename always has, and the reason a runtime
+global lookup is worse than an import.
+
+**20 test files reference paths this phase moved.** None repointed. MolView's own —
+`test_atom_index_js` · `test_atom_channels_js` · `test_render_engine_process_js` ·
+`test_render_engine_orchestrator_js` · `test_selection_measurements_js` ·
+`test_selection_mount_panel_js` · `test_selection_store_js` · `test_measurement_overlay_js`
+· `test_mol_viewer_embed_js` · `test_mol_viewer_embed_handle_surface_js` ·
+`test_workspace_dispatcher_js` · `test_workspace_dispatcher_canvas_mount_js` — die with
+their units in Phases 2–7. Repo-wide guards that merely name a moved path —
+`test_xss_audit` (its allowlist points at `selection/mount-panel.js`, whose `innerHTML` is
+now in `mount.js`) · `test_css_no_hex_literals` · `test_engine_atom_index` ·
+`test_atom_list_render_paths` · `test_live_poll_invariants_audit` ·
+`test_no_legacy_store_consumers` · `test_results_blueprint` ·
+`test_ui_presence_data_independent_js` — these guard invariants worth keeping, so they get
+repointed at Phase 7 rather than deleted.
+
+**`lib/viewer/` is now dead but still on disk**, as planned: nothing imports its JS and
+nothing links its CSS. It stays until VibrationView takes its own copy (Phase 7).
+
+---
+
+## 5. Open
 
 1. **Canvas-state's three-way split** (Phase 4) reaches `workspace/dispatcher.js` and
    `snapshot-io.js` — not MolView's call alone.

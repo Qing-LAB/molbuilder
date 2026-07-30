@@ -62,7 +62,7 @@ EXPECTED_METHODS = sorted([
     # the periodicity tier can move the wireframe without re-sending style or
     # re-installing the model -- the one-onChange path in
     # docs/model/structure-periodicity.md § 7 drives it via
-    # molview/engine/embed-io.js:setCellGeometry.  setCell stays the
+    # molview/render-engine/embed-io.js:setCellGeometry.  setCell stays the
     # style+visibility door; this one only moves the box.
     "setCellBox",
     "setArrows", "setOverlay", "setPick", "setBackground",
@@ -78,9 +78,20 @@ EXPECTED_METHODS = sorted([
     # VibrationView drives)
     "setAnimation", "setAtomCoords", "setAnimationProvider",
     "playAnimation", "pauseAnimation",
-    "isAnimationPlaying", "setAnimationFrame", "getAnimationFrame",
+    # setAnimationFrame: the WRITE door -- the render engine tells 3Dmol which frame to draw.
+    # There is deliberately no getAnimationFrame read-back: the render engine OWNS the displayed
+    # index and every consumer reads it through molview.data.currentFrame().  The embed's own
+    # `a.currentFrame` is render-local bookkeeping (what it last drew, so its internal loop knows
+    # where to step from), not an answer anyone may consult.
+    "isAnimationPlaying", "setAnimationFrame",
     "appendFrameArrows",
-    "getAnimationKind", "getFrameCount", "getFrameCoords",
+    # getFrameCount: how many frames the MOVIE holds -- MolView's engine probes it to verify
+    # its own data and the movie agree (a movie that fell behind can't show what the frame bar
+    # offers).  There is deliberately NO getFrameCoords door: the movie is a render of MolView's
+    # per-frame data, and under isolate a render of only the DRAWN subset, so a coords read here
+    # would hand back a filtered, renumbered array.  Frame coords come from
+    # molview.data.getFrameAllAtoms.
+    "getAnimationKind", "getFrameCount",
     # Read accessors
     "getAtomCount", "getElements", "getAtomCoords",
     "getPickedIndices", "setPickedIndices",

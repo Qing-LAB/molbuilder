@@ -1,36 +1,303 @@
-/* mol-viewer-embed.js — the standard embeddable 3D viewer.
+/* MolView — THE SEALED LAYER.  The only file in this module that names 3Dmol.
  *
- * Contract: docs/web/molview.md.  The contract is
- * the SOLE source of truth; this file implements it.  When the
- * contract changes, this file changes in the same commit.
+ * Contract: docs/web/molview.md § 9.9 (what this layer holds and the two questions it
+ * answers), § 4 ("within this module the name `3Dmol` occurs in exactly one file"), § 5.3
+ * ("the graphics library is invisible").  Nothing above this file knows which library
+ * draws the molecule; swapping it touches here and reaches no consumer of MolView.
  *
- *   window.molbuilder.viewer.embed(host, opts) -> handle
+ * Called only by render-engine/embed-io.js (§ 7, level 6).  No consumer names this file,
+ * and § 15's file map deliberately does not list it.
  *
- * Composes the existing primitives (mol-style, mol-axes,
- * mol-format) into a card/panel + 3Dmol viewer that maintains its
- * own drawing.  The pick halo geometry is internal — see
- * ``_redrawPickHalos``; the caller never reaches into 3Dmol directly --
- * all mutations go through the handle's methods.
+ * Assembled 2026-07-30 from the four files that named 3Dmol — lib/viewer/mol-viewer.js
+ * (the GLViewer factory), mol-style.js (the style-spec builder), mol-axes.js (the axis
+ * triad) and mol-viewer-embed.js (the embed itself).  They were one layer in four files;
+ * § 4 says one.  Bodies are otherwise unchanged: this move carries no behaviour with it.
  *
- * This file covers the STATIC-FEATURES contract (no animation):
- * structure load, style, axes, cell wireframe, labels, arrows,
- * atom-pick, card chrome, dispose.  Animation (trajectory +
- * trajectory) is a separate stage so the static feature surface
- * lands first + gets exercised by /modify / Build / structure-
- * inspector migrations before the animation loop is added.
+ * STILL TO CARVE (plan Phase 6, docs/web/molview-rework-plan.md).  This file currently
+ * holds a whole viewer, not a sealed layer: the card scaffold and info line belong to
+ * mount.js, the knob bar to controls.js, the frame strip and animation interval to
+ * controls.js + mount's one timer, and the export menu / snapshot / GIF encoder to menu.js
+ * (§ 11.4).  The `molbuilder.projects` reach and the /api/files/* calls are a file route at
+ * the bottom of the stack and are deleted outright (§ 6.7, task #39).
  */
 "use strict";
+
+import { formula } from "./_formula.js";   // Hill formula — the info line reads it
+
+const root = (typeof window !== "undefined") ? window : globalThis;
+
+
+/* ══════════════════════════════════════════════════════════════════
+   The GLViewer factory — was mol-viewer.js
+   ══════════════════════════════════════════════════════════════════ */
+
+export function create(target, opts) {
+    const $3Dmol = root.$3Dmol;
+    if (!$3Dmol) {
+        throw new Error("mol-viewer.create: 3Dmol-min.js must be loaded first");
+    }
+    const defaults = {
+        backgroundColor: "white",
+        defaultcolors:   $3Dmol.elementColors.Jmol,
+    };
+    const merged = Object.assign({}, defaults, opts || {});
+    return $3Dmol.createViewer(target, merged);
+}
+
+// The shared viewer surface.  mol-viewer-embed.js imports THIS object and adds `.embed` to it, so
+// `import { viewer }` from either file resolves to the one object (create + embed).
+export const viewer = { create };
+
+// ── Transitional global (§3.2 shim): the SAME object as the export. ──
+root.molbuilder = root.molbuilder || {};
+root.molbuilder.viewer = viewer;
+
+/* ══════════════════════════════════════════════════════════════════
+   The style-spec builder — was mol-style.js
+   ══════════════════════════════════════════════════════════════════ */
+
+export function spec(opts) {
+    opts = opts || {};
+    const rep   = opts.rep   || "stick";
+    const scale = opts.scale || 1.0;
+    const cs    = opts.colorscheme;
+    // Drop the colorscheme key when null/undefined so 3Dmol uses its viewer-level defaultcolors.
+    const colorOpt = cs ? { colorscheme: cs } : {};
+
+    switch (rep) {
+        case "sphere":
+            // True CPK: full vdW radius per element.
+            return { sphere: { scale: 1.0 * scale, ...colorOpt } };
+        case "line":
+            return { line: { linewidth: 1 + 2 * scale, ...colorOpt } };
+        case "ballstick":
+            // Balls scale with vdW radius, sticks are a fixed thickness.
+            return {
+                stick:  { radius: 0.12 * scale, ...colorOpt },
+                sphere: { scale:  0.32 * scale, ...colorOpt },
+            };
+        case "stick":
+        default:
+            // Plain licorice has no per-element size; tack on tiny spheres so Au reads apart from H.
+            return {
+                stick:  { radius: 0.16 * scale, ...colorOpt },
+                sphere: { scale:  0.18 * scale, ...colorOpt },
+            };
+    }
+}
+// The embed refers to the style builder under its import alias.
+const buildStyleSpec = spec;
+
+
+/* ══════════════════════════════════════════════════════════════════
+   The axis triad — was mol-axes.js
+   ══════════════════════════════════════════════════════════════════ */
+
+// (IIFE unwrapped -> native ES module; the former body stays indented, harmless.)
+
+    // Fixed length for the Cartesian-mode triad.  At 1.5 Å the triad
+    // is longer than a typical bond (~1.4 Å) and short enough to stay
+    // out of the way of the structure even in dense junctions.
+    const DEFAULT_CARTESIAN_LEN_ANG = 1.5;
+
+    // Default per-axis colors.  Same hex codes as the legacy
+    // modify/viewer.js triad to preserve visual continuity.
+    // Cartesian (x/y/z) and cell (a/b/c) share the same triplet:
+    // red / green / blue maps to the first / second / third axis
+    // in each mode.
+    const DEFAULT_COLORS = {
+        x: "0xff5555", y: "0x55cc55", z: "0x5588ff",
+        a: "0xff5555", b: "0x55cc55", c: "0x5588ff",
+    };
+
+    // Label is placed 15 % past the arrow tip so it sits clear of the
+    // arrowhead without flying off into space at long cell vectors.
+    const LABEL_PAST_TIP_FRACTION = 1.15;
+
+    /**
+     * Compute the three arrow specs (start / end / label / color)
+     * for a given options object.  Pure: no 3Dmol calls, no DOM, no
+     * mutation of opts.  Returns an array of three plain objects.
+     *
+     * Exported (on the `axes` object: ``axes._buildAxisSpecs``) for
+     * unit testing; production callers should use ``draw(viewer, opts)``.
+     */
+    function _buildAxisSpecs(opts) {
+        opts = opts || {};
+        const origin = (opts.origin && opts.origin.length === 3)
+            ? [opts.origin[0], opts.origin[1], opts.origin[2]]
+            : [0, 0, 0];
+        const colors = Object.assign({}, DEFAULT_COLORS, opts.colors || {});
+
+        let vectors;
+        let labels;
+        if (_looksLikeCell(opts.cell)) {
+            // Cell mode: vectors are the supplied lattice rows.
+            vectors = opts.cell.map((v) => [v[0], v[1], v[2]]);
+            labels  = opts.labels || ["a", "b", "c"];
+        } else {
+            // Cartesian mode: unit X/Y/Z scaled by ``length``.
+            const L = (typeof opts.length === "number" && opts.length > 0)
+                ? opts.length
+                : DEFAULT_CARTESIAN_LEN_ANG;
+            vectors = [[L, 0, 0], [0, L, 0], [0, 0, L]];
+            labels  = opts.labels || ["x", "y", "z"];
+        }
+
+        const specs = [];
+        for (let i = 0; i < 3; i++) {
+            const v = vectors[i];
+            const lbl = labels[i];
+            // Color lookup: explicit per-label override wins, then
+            // per-mode default ("a"/"b"/"c" or "x"/"y"/"z").  An
+            // unrecognised label falls back to grey so a typo is
+            // visible rather than silently invisible.
+            const color = colors[lbl]
+                || colors[lbl && lbl.toLowerCase && lbl.toLowerCase()]
+                || "0x888888";
+            const start = { x: origin[0], y: origin[1], z: origin[2] };
+            const end = {
+                x: origin[0] + v[0],
+                y: origin[1] + v[1],
+                z: origin[2] + v[2],
+            };
+            const labelPos = {
+                x: origin[0] + v[0] * LABEL_PAST_TIP_FRACTION,
+                y: origin[1] + v[1] * LABEL_PAST_TIP_FRACTION,
+                z: origin[2] + v[2] * LABEL_PAST_TIP_FRACTION,
+            };
+            specs.push({ start, end, label: lbl, color, labelPos });
+        }
+        return specs;
+    }
+
+    /**
+     * Cheap "is this a 3x3 lattice" check.  Returns true iff cell is
+     * an array of 3 length-3 numeric arrays.  Null / undefined /
+     * malformed shape returns false (Cartesian fallback fires).
+     */
+    function _looksLikeCell(cell) {
+        if (!Array.isArray(cell) || cell.length !== 3) return false;
+        for (let i = 0; i < 3; i++) {
+            const row = cell[i];
+            if (!Array.isArray(row) || row.length !== 3) return false;
+            for (let j = 0; j < 3; j++) {
+                if (typeof row[j] !== "number"
+                    || !Number.isFinite(row[j])) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Draw an axis triad in a 3Dmol viewer.  Returns a handle with
+     * ``.clear()`` that removes every shape + label the call created.
+     * Safe to call ``.clear()`` multiple times.
+     *
+     * **Two modes** (selected by whether ``opts.cell`` is present):
+     *
+     *   * Cartesian — unit X/Y/Z arrows at the origin, labels "x"/
+     *     "y"/"z", length = ``opts.length`` (default 1.5 Å).
+     *   * Cell      — arrows along the supplied lattice vectors a/b/c,
+     *     labels "a"/"b"/"c", length = the cell vector lengths
+     *     themselves.
+     *
+     * Options:
+     *   * ``cell``     (number[3][3] | null) — 3 lattice row vectors
+     *                                          in Å.  Triggers cell
+     *                                          mode when valid.
+     *   * ``origin``   (number[3])           — start point; default
+     *                                          [0,0,0].
+     *   * ``length``   (number)              — Cartesian-mode length
+     *                                          (Å); default 1.5.
+     *   * ``labels``   (string[3])           — override per-axis labels.
+     *   * ``colors``   ({label: hex})        — override per-axis color.
+     *   * ``radius``   (number)              — arrow shaft radius;
+     *                                          default 0.05 Å (matches
+     *                                          legacy modify triad).
+     *   * ``render``   (bool)                — call viewer.render()
+     *                                          after the shapes land;
+     *                                          default true.
+     *
+     * Returns: { clear() }
+     */
+    function draw(viewer, opts) {
+        opts = opts || {};
+        if (!viewer || typeof viewer.addArrow !== "function") {
+            // Defensive: return a no-op handle so callers don't have
+            // to guard every call site.  Errors that would have come
+            // from the missing viewer are documented at the API level
+            // rather than producing runtime exceptions.
+            return { clear: function () { /* no shapes to clear */ } };
+        }
+        const specs = _buildAxisSpecs(opts);
+        const radius = (typeof opts.radius === "number" && opts.radius > 0)
+            ? opts.radius
+            : 0.05;
+
+        const shapes = [];
+        const labelHandles = [];
+        for (let i = 0; i < specs.length; i++) {
+            const s = specs[i];
+            const arrow = viewer.addArrow({
+                start:       s.start,
+                end:         s.end,
+                radius:      radius,
+                radiusRatio: 2.5,
+                mid:         0.85,
+                color:       s.color,
+            });
+            shapes.push(arrow);
+            const lbl = viewer.addLabel(s.label, {
+                position:          s.labelPos,
+                fontColor:         s.color,
+                backgroundOpacity: 0.0,
+                fontSize:          12,
+                inFront:           true,
+            });
+            labelHandles.push(lbl);
+        }
+        if (opts.render !== false && typeof viewer.render === "function") {
+            viewer.render();
+        }
+
+        let cleared = false;
+        return {
+            clear: function () {
+                if (cleared) return;
+                cleared = true;
+                for (const s of shapes) {
+                    try { viewer.removeShape(s); }
+                    catch (_) { /* viewer torn down; ignore */ }
+                }
+                for (const l of labelHandles) {
+                    try { viewer.removeLabel(l); }
+                    catch (_) { /* viewer torn down; ignore */ }
+                }
+            },
+        };
+    }
+
+    export const axes = {
+        draw:             draw,
+        _buildAxisSpecs:  _buildAxisSpecs,  // exported for unit tests
+        _looksLikeCell:   _looksLikeCell,   // exported for unit tests
+    };
+// The embed refers to the axis drawer under its import alias.
+const molAxes = axes;
+
+
+/* ══════════════════════════════════════════════════════════════════
+   The embed — was mol-viewer-embed.js
+   ══════════════════════════════════════════════════════════════════ */
 
 // Native ES module (the MolView embed graph).  Import the shared `viewer` object from mol-viewer.js
 // and EXTEND it with `.embed` (+ the _normalise* helpers) below -- so `import { viewer }` from this
 // file resolves to the one object carrying create + embed.  (IIFE unwrapped; the former body stays
 // indented, harmless.)
-import { viewer } from "./mol-viewer.js";
-import { formula } from "./mol-format.js";   // Hill formula formatter (sibling in the molview embed graph)
-import { spec as buildStyleSpec } from "./mol-style.js";  // 3Dmol style-spec builder (Style menu)
-import { axes as molAxes } from "./mol-axes.js";          // xyz/cell axis drawer (Axes toggle)
 
-const root = (typeof window !== "undefined") ? window : globalThis;
 
     /* ------------------------------------------------------------ */
     /*  CSS class constants                                          */
@@ -6528,4 +6795,3 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 // The shared viewer object (imported from mol-viewer.js, extended with .embed above) is the module
 // export; mount.js imports it.  root.molbuilder.viewer === this object (the §3.2 shim), so classic
 // readers and ESM importers see the SAME create+embed surface.
-export { viewer };

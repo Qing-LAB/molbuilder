@@ -104,7 +104,10 @@ class TestBackcompatAliases:
         ("path",           "fileState"),
         ("format",         "fileState"),
         ("label",          "fileState"),
-        ("currentFrame",   "viewState"),
+        # No ("currentFrame", "viewState") row: the tab-side playhead copy was RETIRED.
+        # MolView owns the shown frame, and the one place that needs it asks
+        # molview.data.currentFrame() at read time -- a second record that was written on
+        # every load and never read could only ever be a stale rival answer.
         ("firstFit",       "viewState"),
         ("pollTimer",      "lifecycle"),
         ("pollInFlight",   "lifecycle"),

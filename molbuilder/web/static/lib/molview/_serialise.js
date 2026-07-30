@@ -1,7 +1,7 @@
 /* MolView data model — SERIALISATION codec (model -> bytes).  MolView-internal submodule.
  *
  * MODULE: molview (lib/molview/).  Extracted from data-model.js (the god-hub split) as an
- *   INJECTED FACTORY, like _operations.js / _state-timeline-impl.js.  No global shim: data-model.js
+ *   INJECTED FACTORY, like _operations.js / _history.js.  No global shim: data-model.js
  *   is the sole consumer and IMPORTS `createSerialiser` directly (the 4a real import graph).
  *
  * ROLE: the model -> bytes direction, in BOTH shapes the app persists:

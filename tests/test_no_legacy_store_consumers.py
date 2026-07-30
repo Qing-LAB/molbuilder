@@ -300,7 +300,7 @@ _WORKSPACE_DATA_METHODS = (
     "getSource|getSourceFile|getLastSavedTo|getState|isDirty|isEmpty|"
     "installStructure|applyOp|applyPayload|setUnitCell|setLattice|"
     "setAxisKind|setVacuum|setLabel|commitPeriodicity|loadFromFile|loadFromText|"
-    "generate|discard|undo|save|setFrame|addFrame|addFrames|reloadFrames|getFrame|"
+    "generate|discard|undo|save|setFrame|addFrame|addFrames|reloadFrames|getFrameAllAtoms|"
     "getForces|currentForces|currentFrame|frameCount|getScratchBlob|draftIdentity|"
     "suspendPersist|resumePersist|markDirty|markSaved|selection|view"
 )

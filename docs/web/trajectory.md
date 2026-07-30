@@ -106,6 +106,15 @@ flowchart TD
   POLL -.->|"still going"| POLL
 ```
 
+Appending is the cheap path: the movie keeps playing, the camera holds still,
+and your frame position stays put (if you were watching the newest frame, it
+follows the tail). One case costs a visible rebuild instead — the poll that
+turns a **single**-frame load into a trajectory. A run caught at its very first
+geometry has no movie to extend yet, so the viewer builds one from the whole
+series and you see the brief "Updating view…" overlay. Before this, that append
+went nowhere: the frame counter and slider grew while every position showed the
+first geometry, until you hit Refresh.
+
 **Refresh is a clean reload**, not a nudge: it re-runs the whole load, so the
 movie returns to its first frame and the camera refits — the same reset a
 file-switch does. This is deliberate (it closed a class of half-refreshed-state

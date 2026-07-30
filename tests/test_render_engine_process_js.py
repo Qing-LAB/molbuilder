@@ -10,13 +10,13 @@ from pathlib import Path
 from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/molview/engine/process.js"
+MODULE = ROOT / "molbuilder/web/static/lib/molview/render-engine/process.js"
 # process.js reuses the L1 index helper for 1-based (SIESTA) label text -- load it first.
 INDEX_HELPER = ROOT / "molbuilder/web/static/lib/molview/_atom-index.js"
 
 
 _BOOT = """
-    const processFrame = globalThis.molbuilder.molview.engine.process.processFrame;
+    const processFrame = globalThis.molbuilder.molview.renderEngine.process.processFrame;
     // 4 atoms on the x-axis. identity is elements only -- process no longer reads annotations
     // (region/frozen halos removed, §8.1); the panel reads annotations straight from molview.data.
     const COORDS = [[0,0,0],[1,0,0],[2,0,0],[3,0,0]];

@@ -1,53 +1,27 @@
-/* Selection-driven measurements: xyz / distance / angle.
+/* MolView — MEASUREMENT: its own layer, not part of drawing.
  *
- * Pure helpers — no DOM, no fetch, no store coupling.  Consumers
- * (Selection panel on Molbuilder, trajectory inspector + structure
- * inspector on Results) pass in the current selection indices, the
- * atoms-metadata array (for labels), and a positions array
- * ``[[x,y,z], …]``.  The module returns ``null`` for selections
- * that don't map to a measurement (0 or 4+ atoms), or a typed
- * envelope describing the result + a pre-formatted human display
- * string.
+ * Contract: docs/web/molview.md § 11.6.  The readout in the 3D window is the result of a
+ * user INTERACTING with the view, not part of producing a frame — so it is not an overlay
+ * and the render pipeline does not make it.
  *
- * Why this is its own module: both the Modify selection panel and
- * the trajectory inspector need the same math + the same display
- * conventions (1-based indexing, 3-decimal coords, 4-decimal
- * distances, 1-decimal angles, atom-name vs element fallback for
- * labels).  Drift between the two — different decimal counts, one
- * using 0-based and the other 1-based — was the original sin that
- * prompted this extraction.
+ * What it reads: its atoms come from the selection in PICK ORDER (which is why the vertex
+ * of a three-atom angle is the atom picked second, not the middle one by number), and its
+ * coordinates come from the MASTER COPY at the current frame (§ 6.3) — never from the
+ * drawing.  That is what keeps it correct while a trajectory plays and under isolate,
+ * where the drawn numbering no longer matches the real one (§ 6.5).
  *
- * Result envelope (one of):
+ * When it repaints: on a selection change OR a frame change — it subscribes to both.
  *
- *   null  — selection is empty or 4+ atoms (caller hides the row).
- *
- *   { kind: "xyz",
- *     indices: [i],
- *     labels:  [labelOf(i)],
- *     xyz:     [x, y, z],
- *     display: "Au #3 — (0.000, 0.000, 0.000) Å" }
- *
- *   { kind: "distance",
- *     indices: [i, j],
- *     labels:  [labelOf(i), labelOf(j)],
- *     valueAng: 0.957,
- *     display:  "|H #5 – O #1| = 0.957 Å" }
- *
- *   { kind: "angle",
- *     indices: [i, j, k],
- *     labels:  [labelOf(i), labelOf(j), labelOf(k)],
- *     valueDeg: 104.5,
- *     display:  "∠H #5 – O #1 – H #6 = 104.5°" }
- *
- * Indices in the envelope preserve the input order; the second
- * atom in an angle is the vertex (the 1-2 and 2-3 bonds meet at
- * it).  Atom-name (e.g. "OE1") is preferred over element if the
- * atoms-metadata row carries one — chemists read residue names
- * faster than raw indices.
+ * Assembled 2026-07-30 from selection/measurements.js (the distance / angle maths) +
+ * measurement-overlay.js (the readout that mounts them).  One layer, one file; the panel
+ * imports the maths from here.  Bodies unchanged.
  */
 "use strict";
 
-import { atomIndexModel } from "../_atom-index.js";
+import { atomIndexModel } from "./_atom.js";
+
+
+/* ── The maths: position · distance · angle — was selection/measurements.js ──── */
 
 function _vec3sub(a, b) {
     return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -287,4 +261,77 @@ if (typeof window !== "undefined") {
     window.molbuilder.molview = window.molbuilder.molview || {};
     window.molbuilder.molview.selection = window.molbuilder.molview.selection || {};
     window.molbuilder.molview.selection.measurements = measurements;
+}
+
+/* ── The readout in the 3D window — was measurement-overlay.js ───────────────── */
+
+export function mountMeasurementOverlay(viewerHost, opts) {
+    opts = opts || {};
+    const store = opts.store;
+    const coordsProvider = opts.coordsProvider;
+    if (!viewerHost || typeof viewerHost.appendChild !== "function") {
+        throw new Error("mountMeasurementOverlay: a viewerHost element is required");
+    }
+    if (!store || typeof store.getState !== "function") {
+        throw new Error("mountMeasurementOverlay: a store with getState() is required");
+    }
+    if (typeof coordsProvider !== "function") {
+        throw new Error("mountMeasurementOverlay: a coordsProvider() is required");
+    }
+    const meas = measurements;   // imported pure geometry leaf (4a)
+
+    const el = document.createElement("div");
+    el.className = "molview-measurement-overlay selection-measurement-overlay";
+    el.hidden = true;
+    viewerHost.appendChild(el);
+
+    function render() {
+        const s = store.getState() || {};
+        // Ordered picks: pickOrder (click order -> angle vertex) else indices. Both are
+        // ORIGINAL 0-based atom indices, curated via the panel (§7.3 interaction contract).
+        const picks = (Array.isArray(s.pickOrder) && s.pickOrder.length)
+            ? s.pickOrder
+            : (Array.isArray(s.indices) ? s.indices : []);
+        if (!meas || picks.length < 1 || picks.length > 3) {
+            el.hidden = true;
+            el.textContent = "";
+            return;
+        }
+        // coordsProvider() is the CURRENT frame's CLEAN, ORIGINAL-indexed coords (all atoms,
+        // via molview.data.getFrameAllAtoms -- never the isolate-filtered draw). meas.compute indexes by
+        // GLOBAL atom index, which is exactly this array's index -> NO re-keying, and it works
+        // identically whether or not isolate is on (molview-render-streamline.md §7.3).
+        const coords = coordsProvider() || [];
+        const result = meas.compute(picks, s.atoms || [], coords, picks);
+        if (result && result.display) {
+            el.hidden = false;
+            el.dataset.kind = result.kind;
+            el.textContent = result.display;
+        } else {
+            el.hidden = true;
+            el.textContent = "";
+        }
+    }
+
+    let _unsub = null;
+    if (typeof store.subscribe === "function") {
+        _unsub = store.subscribe(function () { render(); });   // fires immediately
+    } else {
+        render();
+    }
+
+    return {
+        render: render,
+        dispose: function () {
+            if (_unsub) { try { _unsub(); } catch (_) {} }
+            if (el.parentNode) el.parentNode.removeChild(el);
+        },
+    };
+}
+
+// ── Transitional global (removed once every consumer imports this module) ──
+if (typeof window !== "undefined") {
+    window.molbuilder = window.molbuilder || {};
+    window.molbuilder.molview = window.molbuilder.molview || {};
+    window.molbuilder.molview.mountMeasurementOverlay = mountMeasurementOverlay;
 }

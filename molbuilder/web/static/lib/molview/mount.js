@@ -10,7 +10,8 @@
  *
  *   molview.mount(hostEl, workspace, { mode, owner }) -> Promise<handle>
  *   handle = { installMolecule({text}), exportFile(), undo(),          // WRITE
- *              setFrame(i), getFrame(i), frameCount(), currentFrame(), // FRAMES (§14.5)
+ *              setFrame(i), getFrameAllAtoms(i),                        // FRAMES (§14.5)
+ *              frameCount(), currentFrame(),                            //   (all atoms, pre-isolate)
  *              play(opts), pause(), isPlaying(),                       //   navigation + playback
  *              getStructure(), getSelection(),                         // READ
  *              onChange(fn), dispose() }                               // notify + teardown
@@ -41,9 +42,8 @@
 
 // The concealed viewer-overlay framework -- one consistent, token-styled corner overlay for the
 // whole module (import, not a global, so the dependency is legible).
-import { createViewerOverlay } from "./_viewer-overlay.js";
 // The 3Dmol viewer embed -- now an ES module in the graph (was the classic `mb.viewer` global).
-import { viewer as _embedViewer } from "../viewer/mol-viewer-embed.js";
+import { viewer as _embedViewer } from "./_seal.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
@@ -119,8 +119,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
         if (!hostEl || !workspace || !store)
             return _failMount("missing host / workspace / data store");
-        if (!selApi || typeof selApi.mountPanel !== "function")
-            return _failMount("selection.mountPanel unavailable (load order?)");
+        if (!selApi || !selApi.panel || typeof selApi.panel.mount !== "function")
+            return _failMount("selection panel unavailable (load order?)");
 
         // Tell the workspace who this molview belongs to, so IT namespaces its saving
         // points (sessionStorage mirror key + the on-disk state-file id) by `owner` --
@@ -244,17 +244,23 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                             });
                         }
                         // The render ENGINE (molview-render-streamline.md) is the SINGLE render
-                        // place: data.attachEngine feeds it StructureData; it reads the view flags
+                        // place: data.attachRenderEngine feeds it StructureData; it reads the view flags
                         // from the store and draws through embedIo. The engine (engine/engine.js)
                         // is now the single render place; the old pre-engine render controllers
                         // are deleted.
-                        if (mvApi && mvApi.engine && typeof mvApi.engine.create === "function") {
-                            const engine = mvApi.engine.create(h, { store: store });
-                            if (data && typeof data.attachEngine === "function") {
-                                data.attachEngine(engine);
+                        // NOTE the namespace: `renderEngine`, never bare `engine` -- across this
+                        // project an *engine* is a CALCULATION backend (SIESTA, PySCF).  This
+                        // lookup read `mvApi.engine` until 2026-07-30 and silently found nothing
+                        // once the module renamed its publish, so the viewer mounted and never
+                        // drew: the guard below turns a missing factory into a no-op.
+                        if (mvApi && mvApi.renderEngine
+                            && typeof mvApi.renderEngine.create === "function") {
+                            const engine = mvApi.renderEngine.create(h, { store: store });
+                            if (data && typeof data.attachRenderEngine === "function") {
+                                data.attachRenderEngine(engine);
                             }
                             cleanups.push(function () {
-                                try { if (data && data.detachEngine) data.detachEngine(engine); } catch (_) {}
+                                try { if (data && data.detachRenderEngine) data.detachRenderEngine(engine); } catch (_) {}
                                 try { engine && engine.dispose && engine.dispose(); } catch (_) {}
                             });
                         }
@@ -292,14 +298,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                         }
                         // Measurement readout -- a SEPARATE interaction layer (§2.4), not the render
                         // machine. It reads the panel selection + the CURRENT frame's clean coords
-                        // (data.getFrame -> engine.getFrame) and repaints on selection OR frame
+                        // (data.getFrameAllAtoms: every atom, original order) and repaints on selection OR frame
                         // change. It owns its own overlay in the viewer window.
                         if (mvApi && typeof mvApi.mountMeasurementOverlay === "function") {
                             const meas = mvApi.mountMeasurementOverlay(built.viewerHost, {
                                 store: store,
                                 coordsProvider: function () {
-                                    return (data && typeof data.getFrame === "function")
-                                        ? (data.getFrame(data.currentFrame()) || []) : [];
+                                    return (data && typeof data.getFrameAllAtoms === "function")
+                                        ? (data.getFrameAllAtoms(data.currentFrame()) || []) : [];
                                 },
                             });
                             const measFrameUnsub = (data && typeof data.onFrameChange === "function")
@@ -331,7 +337,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // attachments leak (WebGL context, engine subscription) on the throw path.
         let panelMount = null;
         try {
-            panelMount = await selApi.mountPanel(panelHost, { store: store, mode: mode });
+            panelMount = await mountPanel(panelHost, { store: store, mode: mode });
         } catch (e) {
             _drain(cleanups);
             return _failMount("selection panel mount threw: "
@@ -378,29 +384,45 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // (isolate "show selected only" is added as view toggle #5 via the embed's
         // addViewToggle in the onReady above -- no separate control bar.)
 
+        // The frame surface (§14.5), defined ONCE.  Both consumers read frames through THIS
+        // object: the frame-controls bar MolView renders itself, and the handle it returns to
+        // the tab.  They used to carry two independently-written delegate sets over the same
+        // molview.data doors -- two places for the same answer, which is how a frame count and
+        // the frames a viewer can actually show drift apart (#35).  Navigation and the reads
+        // belong to molview.data (the data owner); the playback TIMER is mount's own.
+        const _frames = {
+            setFrame: function (i) {
+                return (typeof data.setFrame === "function") ? data.setFrame(i) : undefined;
+            },
+            getFrameAllAtoms: function (i) {
+                return (typeof data.getFrameAllAtoms === "function") ? data.getFrameAllAtoms(i) : null;
+            },
+            frameCount: function () {
+                return (typeof data.frameCount === "function") ? data.frameCount() : 0;
+            },
+            currentFrame: function () {
+                return (typeof data.currentFrame === "function") ? data.currentFrame() : 0;
+            },
+            play:      function (opts) { _play(opts); },
+            pause:     function () { _stopPlay(); },
+            isPlaying: function () { return _playTimer != null; },
+        };
+
         // Frame controls bar (§14.5) -- play/pause + slider + counter.  MolView renders it (like
         // the view-toggles); hidden until a trajectory is loaded (frameCount > 1).  Force/label
         // overlays are NOT here: the render engine bakes them from the data's per-frame forces
         // (molview-render-streamline.md §2.4), not a consumer push or a viewer toggle.
         if (fcHost && mvApi && typeof mvApi.mountFrameControls === "function") {
-            const fc = mvApi.mountFrameControls(fcHost, {
-                setFrame:     function (i) { return data.setFrame(i); },
-                frameCount:   function () {
-                    return (typeof data.frameCount === "function") ? data.frameCount() : 0;
-                },
-                currentFrame: function () {
-                    return (typeof data.currentFrame === "function") ? data.currentFrame() : 0;
-                },
-                play:      _play,
-                pause:     _stopPlay,
-                isPlaying: function () { return _playTimer != null; },
+            // The bar gets the shared frame surface plus the loop flag it alone owns (loop is
+            // bar UI, deliberately not on the tab-facing handle's 15 keys).
+            const fc = mvApi.mountFrameControls(fcHost, Object.assign({}, _frames, {
                 getLoop:   function () { return _loop; },
                 setLoop:   function (on) { _loop = !!on; },
             // Subscribe the bar to the DATA model's dedicated frame-change channel --
             // NOT the selection store.  A native frame swap fires this channel only, so
             // the slider/counter track the shown frame WITHOUT re-rendering the
             // selection panel (which would steal focus from a filter input mid-play).
-            }, { subscribe: (typeof data.onFrameChange === "function")
+            }), { subscribe: (typeof data.onFrameChange === "function")
                     ? data.onFrameChange
                     : (store && store.subscribe && store.subscribe.bind(store)) });
             cleanups.push(function () { try { fc.dispose && fc.dispose(); } catch (_) {} });
@@ -504,23 +526,17 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                     : Promise.reject(new Error("molview.undo: data.undo missing"));
             },
             // ---- Frames -- the coordinate time axis (workspace §1.5, molview §14.5) -------- //
-            // Navigation delegates to the workspace (the data owner); MolView owns the playback
-            // timer.  A frame's coord swap notifies the store, so the render redraws on its own.
-            setFrame: function (i) {
-                return (typeof data.setFrame === "function") ? data.setFrame(i) : undefined;
-            },
-            getFrame: function (i) {
-                return (typeof data.getFrame === "function") ? data.getFrame(i) : null;
-            },
-            frameCount: function () {
-                return (typeof data.frameCount === "function") ? data.frameCount() : 0;
-            },
-            currentFrame: function () {
-                return (typeof data.currentFrame === "function") ? data.currentFrame() : 0;
-            },
-            play:  function (opts) { _play(opts); },
-            pause: function () { _stopPlay(); },
-            isPlaying: function () { return _playTimer != null; },
+            // The SAME _frames surface the frame-controls bar drives (defined once, above):
+            // navigation and the reads belong to molview.data (the data owner), the playback
+            // timer to MolView.  A frame's coord swap notifies the store, so the render redraws
+            // on its own.
+            setFrame:     _frames.setFrame,
+            getFrameAllAtoms:     _frames.getFrameAllAtoms,
+            frameCount:   _frames.frameCount,
+            currentFrame: _frames.currentFrame,
+            play:         _frames.play,
+            pause:        _frames.pause,
+            isPlaying:    _frames.isPlaying,
             // (No consumer overlay API: the render engine bakes force arrows / labels from the
             // data's per-frame forces itself -- molview-render-streamline.md §2.4. The old
             // consumer-push doors -- setArrows / setLabels / setFrameArrows -- are gone.)
@@ -564,3 +580,114 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
 export { mount };
+
+/* ── Composing the panel beside the viewer (§ 8) — was selection/mount-panel.js  */
+
+const DEFAULT_PARTIAL = "/partials/selection-panel";
+
+function _mb() { return root.molbuilder || {}; }
+
+function _renderFailure(host, message) {
+    const banner = document.createElement("div");
+    banner.className = "selection-bootstrap-error";
+    banner.setAttribute("role", "alert");
+    banner.textContent = "Selection panel failed to load: " + message;
+    host.innerHTML = "";
+    host.appendChild(banner);
+}
+
+async function _fetchPartial(host, url) {
+    try {
+        const r = await fetch(url);
+        if (!r.ok) {
+            _renderFailure(host, "HTTP " + r.status + " from " + url);
+            return false;
+        }
+        host.innerHTML = await r.text();
+        return true;
+    } catch (e) {
+        _renderFailure(host, (e && e.message) ? e.message : String(e));
+        return false;
+    }
+}
+
+async function _resolveHandle(opts) {
+    if (opts.viewerHandle) return opts.viewerHandle;
+    const key = opts.viewerHandleKey;
+    if (!key) return null;
+    const rt = _mb().runtime;
+    if (!rt || typeof rt.whenReady !== "function") return null;
+    try { return await rt.whenReady(key); }
+    catch (_) { return null; }
+}
+
+export async function mountPanel(host, opts) {
+    opts = opts || {};
+    if (!host) throw new Error("selection.mountPanel: host is required");
+    const mb = _mb();
+    const store = opts.store || (mb.molview && mb.molview.data && mb.molview.data.selection);
+
+    // 1. fetch + insert the partial.
+    const ok = await _fetchPartial(host, opts.partialUrl || DEFAULT_PARTIAL);
+    if (!ok) return { panel: null, adapterHandle: null };
+
+    // 2. mount the panel against the store.  The panel + adapter share ALL
+    // state through the store (selection, filters, isolate), so the panel
+    // needs no reference to the adapter -- no handle threading.
+    const _panelMod = mb.molview && mb.molview.selection && mb.molview.selection.panel;
+    if (!_panelMod || typeof _panelMod.mount !== "function") {
+        _renderFailure(host, "selectionPanel module missing");
+        return { panel: null, adapterHandle: null };
+    }
+    const panel = _panelMod.mount(host, { store: store, mode: opts.mode });
+
+    // 3. attach the viewer-adapter to the viewer handle.
+    let adapterHandle = null;
+    const adapter = mb.molview && mb.molview.selection && mb.molview.selection.viewerAdapter;
+    const handle = await _resolveHandle(opts);
+    if (adapter && typeof adapter.attach === "function" && handle) {
+        adapterHandle = adapter.attach(handle, { store: store, mode: opts.mode });
+    }
+    return { panel: panel, adapterHandle: adapterHandle };
+}
+
+// ── Transitional global (removed once every consumer imports this module) ──
+if (typeof window !== "undefined") {
+    window.molbuilder = window.molbuilder || {};
+    window.molbuilder.molview = window.molbuilder.molview || {};
+    window.molbuilder.molview.selection = window.molbuilder.molview.selection || {};
+    window.molbuilder.molview.selection.mountPanel = mountPanel;
+}
+
+/* ── A badge in a corner of the 3D window — was _viewer-overlay.js ───────────── */
+
+const CORNERS = { "top-right": 1, "top-left": 1, "bottom-right": 1, "bottom-left": 1 };
+
+export function createViewerOverlay(anchorEl, opts) {
+    opts = opts || {};
+    // DOM-only (browser).  In a document-less context (node mount-test stub) return an inert handle
+    // so callers need no guard of their own.
+    if (typeof document === "undefined" || !anchorEl || typeof anchorEl.appendChild !== "function") {
+        return { el: null, show: function () {}, hide: function () {},
+                 toggle: function () {}, setText: function () {}, dispose: function () {} };
+    }
+    const corner = CORNERS[opts.corner] ? opts.corner : "top-right";
+    const el = document.createElement("div");
+    el.className = "molview-overlay molview-overlay--" + corner
+                 + (opts.kind ? " molview-overlay--" + opts.kind : "");
+    el.hidden = true;
+    if (opts.role)  el.setAttribute("role", opts.role);
+    if (opts.live)  el.setAttribute("aria-live", opts.live);
+    if (opts.title) el.title = opts.title;
+    if (opts.text != null) el.textContent = opts.text;
+    anchorEl.appendChild(el);
+
+    return {
+        el: el,
+        show:    function () { el.hidden = false; },
+        hide:    function () { el.hidden = true; },
+        toggle:  function (on) { el.hidden = !on; },
+        setText: function (t) { el.textContent = t; },
+        dispose: function () { try { el.remove(); } catch (_) { /* already detached */ } },
+    };
+}

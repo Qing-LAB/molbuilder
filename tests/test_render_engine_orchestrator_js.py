@@ -16,24 +16,47 @@ from _node_esm import run_node
 ROOT = Path(__file__).resolve().parents[1]
 MODS = [
     ROOT / "molbuilder/web/static/lib/molview/_atom-index.js",
-    ROOT / "molbuilder/web/static/lib/molview/engine/process.js",
-    ROOT / "molbuilder/web/static/lib/molview/engine/engine.js",
+    ROOT / "molbuilder/web/static/lib/molview/render-engine/process.js",
+    ROOT / "molbuilder/web/static/lib/molview/render-engine/engine.js",
 ]
 
 
 _BOOT = """
-            // Stub embedIo: record every primitive call by name.
+            // Stub embedIo: record every primitive call by name, AND model the one piece of
+            // embed state the engine's tier choice depends on -- how many frames the movie
+            // actually holds, and therefore whether a trajectory movie exists at all.
+            //
+            // This must be modelled, not faked. The real embed builds a movie only when
+            // loadFrames gets >1 frame (embed-io.js: the setAnimation guard), and its
+            // appendFrames / setAnimationFrame doors are BOTH silent no-ops without one. A stub
+            // that reported animationKind()===null while claiming a 2-frame movie had loaded
+            // described an embed that cannot exist -- and that lie is precisely why bug #35
+            // (correct frame count, frozen coordinates) survived this suite.
             function makeIo() {
                 const calls = [];
+                let movie = 0;                     // frames the movie holds (0 = nothing loaded)
                 const rec = (name) => (...args) => { calls.push({ name, args }); };
                 return { _calls: calls, _names: () => calls.map(c => c.name),
-                    loadFrames: rec("loadFrames"), swapFrame: rec("swapFrame"),
-                    appendFrames: rec("appendFrames"), applyOverlays: rec("applyOverlays"),
+                    // Let a test force the movie out of sync with the data, the way a dropped
+                    // embed-side append would.
+                    _setMovieFrames: (n) => { movie = n; },
+                    loadFrames: (movieIn, ...rest) => {
+                        calls.push({ name: "loadFrames", args: [movieIn, ...rest] });
+                        movie = (movieIn && movieIn.frames) ? movieIn.frames.length : 0;
+                    },
+                    appendFrames: (tail, ...rest) => {
+                        calls.push({ name: "appendFrames", args: [tail, ...rest] });
+                        // Mirrors the real door: no movie -> silently does nothing.
+                        if (movie > 1) movie += (tail && tail.frames) ? tail.frames.length : 0;
+                    },
+                    swapFrame: rec("swapFrame"), applyOverlays: rec("applyOverlays"),
                     setFrameArrows: rec("setFrameArrows"), setBusy: rec("setBusy"),
                     // render-coalescing plumbing (§1/§5): non-recording no-ops so the primitive
                     // call-SEQUENCE assertions below are unaffected by batch open/close.
                     beginBatch: () => {}, endBatch: () => {},
-                    frameCount: () => 0, currentFrame: () => 0, animationKind: () => null };
+                    frameCount: () => movie, currentFrame: () => 0,
+                    // A movie exists only for >1 frame -- the embed's own rule.
+                    animationKind: () => (movie > 1 ? "trajectory" : null) };
             }
             // Stub store: getState + subscribe + a _set that patches state and fires subscribers.
             function makeStore(init) {
@@ -44,7 +67,7 @@ _BOOT = """
                     return () => { const i = subs.indexOf(fn); if (i>=0) subs.splice(i,1); }; },
                     _set: (p) => { s = Object.assign({}, s, p); subs.forEach(fn => fn(s)); } };
             }
-            const engineNs = global.molbuilder.molview.engine;
+            const engineNs = global.molbuilder.molview.renderEngine;
             // 3-atom, 2-frame data set.
             const DATA = {
                 frames: [ [[0,0,0],[1,0,0],[2,0,0]], [[0,0,1],[1,0,1],[2,0,1]] ],
@@ -181,6 +204,77 @@ def test_append_valid_extends_movie_without_moving_frame():
     assert out["current"] == 0                 # append does NOT move the shown frame
 
 
+def test_append_onto_a_single_frame_load_builds_the_movie_instead():
+    """Bug #35 regression pin.
+
+    The APPEND tier can only EXTEND a movie, and ``loadFrames`` builds one only for >1 frame.
+    So a trajectory whose FIRST load carried a single frame -- a live-watched run caught at its
+    first geometry -- holds a plain static structure, where the embed's ``appendFrames`` and
+    ``setAnimationFrame`` are both silent no-ops (mol-viewer-embed.js: the
+    ``animation.kind !== "trajectory"`` early returns).
+
+    Appending incrementally there grew the engine's ``_data.frames`` -- so ``frameCount()`` and
+    the frame bar reported the new total -- while the viewer went on showing frame 0 for every
+    slider position.  The append MUST promote to a structural regen, which rebuilds from
+    ``_data.frames`` (now the whole series) and calls ``setAnimation``.
+
+    Contract: engine.js §8 APPEND ("only valid when a movie EXISTS"); docs/web/molview.md
+    § Trajectories.
+    """
+    out = _run_node("""
+        const { io, e } = mk();
+        e.setData({ frames: [ [[0,0,0],[1,0,0],[2,0,0]] ],   // ONE frame -> no movie
+                    elements: ["C","H","O"], annotations: [{},{},{}],
+                    cell: null, forcesPerFrame: null });
+        const hadMovie = io.animationKind();                 // null: static structure
+        io._calls.length = 0;
+        e.appendFrames([ [[0,0,1],[1,0,1],[2,0,1]] ]);
+        console.log(JSON.stringify({
+            hadMovie: hadMovie,
+            names: io._names(),
+            loadedFrames: (io._calls.find(c => c.name === "loadFrames") || {args:[{}]}).args[0].frames.length,
+            kindNow: io.animationKind(),
+            movieCount: io.frameCount(),
+            frameCount: e.frameCount(),
+        }));
+    """)
+    assert out["hadMovie"] is None              # precondition: a single-frame load has no movie
+    assert "loadFrames" in out["names"]         # promoted to a structural regen...
+    assert "appendFrames" not in out["names"]   # ...instead of a no-op incremental append
+    assert out["loadedFrames"] == 2             # the WHOLE series is rebuilt, not just the tail
+    assert out["kindNow"] == "trajectory"       # a real movie now exists
+    # The count the frame bar reads and the count the movie can show must agree -- the
+    # divergence was the bug, and it is what made it invisible.
+    assert out["movieCount"] == out["frameCount"] == 2
+
+
+def test_append_heals_a_movie_that_fell_behind_the_data():
+    """A movie that silently drops an appended frame must be rebuilt, not left disagreeing.
+
+    ``frameCount()`` answers from the engine's clean ``_data.frames``, but the 3Dmol movie is
+    what can actually SHOW a frame.  If the movie falls behind, the frame bar offers frames the
+    viewer cannot render (the #35 failure mode, reached by a different route).  The engine
+    verifies the render seam after every incremental append and heals with a regen.
+
+    Contract: engine.js §8 APPEND.
+    """
+    out = _run_node("""
+        const { io, e } = mk();
+        e.setData(DATA);                     // 2 frames -> a real movie
+        io._setMovieFrames(2);
+        io._calls.length = 0;
+        // Simulate the embed dropping the appended frame (its atom-count guard bailing via
+        // onError, say): the movie stays at 2 while our data goes to 3.
+        const realAppend = io.appendFrames;
+        io.appendFrames = (tail) => { realAppend(tail); io._setMovieFrames(2); };
+        e.appendFrames([ [[0,0,2],[1,0,2],[2,0,2]] ]);
+        console.log(JSON.stringify({ names: io._names(), frameCount: e.frameCount() }));
+    """)
+    assert "appendFrames" in out["names"]   # the cheap tier is tried first...
+    assert "loadFrames" in out["names"]     # ...then the mismatch forces a full rebuild
+    assert out["frameCount"] == 3
+
+
 def test_append_atom_count_mismatch_is_hard_error():
     out = _run_node("""
         const { e } = mk();
@@ -200,12 +294,12 @@ def test_getFrame_returns_clean_original_coords_not_the_filtered_draw():
         e.setData(DATA);
         store._set({ indices: [1], isolate: true });   // isolate -> the DRAW is 1 atom
         console.log(JSON.stringify({
-            frame0: e.getFrame(0),        // still all 3 original atoms
-            current: e.getFrame(),        // defaults to current frame
-            oob: e.getFrame(9),
+            frame0: e.getFrameAllAtoms(0),        // still all 3 original atoms
+            current: e.getFrameAllAtoms(),        // defaults to current frame
+            oob: e.getFrameAllAtoms(9),
         }));
     """)
-    # getFrame returns the CLEAN original-indexed coords (all 3 atoms) regardless of isolate,
+    # getFrameAllAtoms returns the CLEAN original-indexed coords (all 3 atoms) regardless of isolate,
     # so measurement can index it by the panel's original atom index.
     assert out["frame0"] == [[0, 0, 0], [1, 0, 0], [2, 0, 0]]
     assert out["current"] == [[0, 0, 0], [1, 0, 0], [2, 0, 0]]

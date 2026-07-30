@@ -1,8 +1,8 @@
 /* MolView render engine -- embedIo: the ONE seal over the 3Dmol embed handle.
  *
  * Contract: docs/web/molview.md (and §3, §4, §8).
- * Module:   molbuilder.molview.engine.embedIo   (lib/molview/engine/embed-io.js)
- * Used by:  engine.js -- the orchestrator (§9), the ONLY caller. Nothing else in MolView
+ * Module:   molbuilder.molview.renderEngine.embedIo   (lib/molview/render-engine/embed-io.js)
+ * Used by:  engine.js -- the renderEngine orchestrator (§9), the ONLY caller. Nothing else in MolView
  *           may touch the 3Dmol handle: every setStructure / setAnimation / setArrows /
  *           setLabels / setOverlays / setBusy call funnels through HERE.
  *
@@ -18,8 +18,12 @@
  *   appendFrames(tail)     -- APPEND: extend the movie with processed new frames (§6.2).
  *   applyOverlays(overlay) -- OVERLAY REFRESH: (re)apply labels/halos/arrows/cell/axis.
  *   setBusy(msg|null)      -- the §4 busy scrim.
- * Reads (single-owner: the native movie is the coord owner, §7.1):
- *   frameCount() / currentFrame() / animationKind().
+ * Reads -- the engine's INTERNAL probes of the render seam, never surfaced upward:
+ *   animationKind() -- does a trajectory movie exist? (the APPEND tier's precondition)
+ *   frameCount()    -- how many frames the movie can actually show (the post-append check).
+ * There is deliberately no currentFrame() read here: the shown frame is the ENGINE's owned
+ * state (`_frame`, the §7.2 frame channel), and the embed follows it via swapFrame. A read-back
+ * door would be a second answer to a question that already has an owner.
  *
  * INPUT SHAPES (all plain data -- no 3Dmol objects, no DOM):
  *   Movie = {
@@ -40,7 +44,7 @@
  *
  * A native ES module (private submodule of the MolView module, frontend-module-architecture.md
  * §4).  engine.js IMPORTS it directly; the browser-global publish at the bottom is a TEST SEAM
- * (tests/test_engine_embed_io_js.py reads molview.engine.embedIo), not a production consumer edge.
+ * (tests/test_render_engine_embed_io_js.py reads molview.renderEngine.embedIo), not a production edge.
  */
 "use strict";
 
@@ -149,12 +153,9 @@ function createEmbedIo(handle) {
         if (typeof handle.setBusy === "function") handle.setBusy(msg);
     }
 
-    // Reads -- the native movie is the single coord owner (§7.1).
+    // Reads -- the engine's two probes of what the movie can actually do (see the header).
     function frameCount() {
         return (typeof handle.getFrameCount === "function") ? handle.getFrameCount() : 0;
-    }
-    function currentFrame() {
-        return (typeof handle.getAnimationFrame === "function") ? handle.getAnimationFrame() : 0;
     }
     function animationKind() {
         return (typeof handle.getAnimationKind === "function") ? handle.getAnimationKind() : null;
@@ -177,18 +178,17 @@ function createEmbedIo(handle) {
         beginBatch:    beginBatch,   // engine wraps a whole §8 tier update -> ONE render
         endBatch:      endBatch,
         frameCount:    frameCount,
-        currentFrame:  currentFrame,
         animationKind: animationKind,
     };
 }
 
 export const embedIo = { create: createEmbedIo };
 
-// TEST SEAM: tests/test_engine_embed_io_js.py reads globalThis.molbuilder.molview.engine.embedIo.
+// TEST SEAM: tests/test_render_engine_embed_io_js.py reads globalThis.molbuilder.molview.renderEngine.embedIo.
 // engine.js imports the export above; production reads no global.  Window-guarded.
 if (typeof window !== "undefined") {
     window.molbuilder = window.molbuilder || {};
     window.molbuilder.molview = window.molbuilder.molview || {};
-    window.molbuilder.molview.engine = window.molbuilder.molview.engine || {};
-    window.molbuilder.molview.engine.embedIo = embedIo;
+    window.molbuilder.molview.renderEngine = window.molbuilder.molview.renderEngine || {};
+    window.molbuilder.molview.renderEngine.embedIo = embedIo;
 }
