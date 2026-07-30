@@ -134,11 +134,16 @@ speed box in milliseconds per frame (20–3000, default 150), and a slider with 
 with the frames — the largest force is drawn gold, the rest shade dim-red to
 orange-red by relative size, so converging forces visibly shrink.
 
-**Getting things out.** The Export menu is organised by what you are exporting,
-each with a *Save* (into the project) and a *Download* row: **Data** — the
-structure as text (xyz / pdb); **Snapshot** — a PNG of the current view,
-transparent if you chose that background; **Animation** — the trajectory as a
-gif or webm, shown only when there is an animation to export.
+**Getting things out.** The Export menu offers three things, each with a *Save*
+(into the project) and a *Download* row:
+
+- **Data** — the current frame's coordinates as `.xyz`, plus the metadata that
+  goes with them as `.json`.
+- **Image** — a `.png` of the molecule exactly as it is drawn right now,
+  transparent if you chose that background.
+- **Animation** — the whole trajectory as `.webm` or `.gif`, rendered frame by
+  frame with the view you have set. It appears only when there is more than one
+  frame.
 
 Two things are worth knowing about that menu, both in § 11.3: **Data** comes from
 the structure while **Snapshot** and **Animation** come from what is on screen —
@@ -1512,29 +1517,54 @@ They are not variants of each other. They differ in **what they produce**, **wha
 they read it from**, and **whether you can go back** — and the first two split
 along the same line as § 11.2's: the truth, or a view of the truth.
 
-| | Produces | Reads from | Goes to | Undoable |
+| | Produces | Reads from | Which frames | Undoable |
 |---|---|---|---|:--:|
-| **Save state** (and Retract) | one point in an ordered, persistent sequence — undo that survives a reload | the truth — the structure with its cell and labels, and the selection (§ 11.2) | the workspace, as session bytes; never a file you see | **yes** — going back is the whole point of it |
-| **Export → Data** | a structure file, xyz or pdb | the **master copy**, at the displayed frame | the project, or a download | no |
-| **Export → Snapshot / Animation** | a picture (PNG) or a movie (gif, webm) | the **drawing copy** — camera angle, style, background, isolate, labels, exactly as on screen | the project, or a download | no |
+| **Save state** (and Retract) | one point in an ordered, persistent sequence — undo that survives a reload | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
+| **Export → Data** | two files: the coordinates as `.xyz`, and the metadata that travels with them as `.json` | **the truth** — the master copy | the displayed one, only | no |
+| **Export → Image** | a `.png` of the molecule as it is drawn right now | **the drawing** | the displayed one, only | no |
+| **Export → Animation** | a `.webm` or `.gif` of the whole trajectory | **the drawing** | every frame | no |
+
+Both exports go either into the project or to a download — that choice is
+separate from all of the above.
 
 **Save state is not a file.** It is how you get back to where you were after a
 modification. Nothing appears in the project, nothing is named, and it is the
 only one of the three you can step backwards through — the other two produce
 something and are finished.
 
-**Export → Data is the truth, and has to be.** You export a structure to run a
-calculation on it. Taken from the drawing copy it would be missing every atom
-isolate had hidden and would carry renumbered atoms (§ 6.3). It comes from the
-master copy at the displayed frame — which is § 5.1, at the user's end of it.
+**Only the Data export is about the truth.** The other two are renders, and
+nothing else. That is the division worth remembering, because the rest follows
+from it.
 
-**A picture is the view, and should be.** A PNG is for a slide. What you want is
-exactly what was on screen, including the transparent background you picked and
-the atoms you isolated to make the point. It would be useless if it came from the
-truth.
+**Data has to be the truth.** You export a structure to run a calculation on it.
+Taken from the drawing it would be missing every atom isolate had hidden, with
+the survivors renumbered (§ 6.3). It comes from the master copy at the displayed
+frame — § 5.1, at the user's end of it — and it is **two files, not one**: the
+coordinates, and the metadata that has to travel with them (§ 5.5). One without
+the other is a structure that has lost what the user said about it.
+
+It exports the **displayed frame only**, because a structure file is one
+geometry — the thing a calculation runs on. That is a deliberate scope, not a
+missing feature.
+
+**A picture has to be the view.** A `.png` is for a slide, so what you want is
+exactly what was on screen — the camera angle, the style, the transparent
+background you picked, the atoms you isolated to make the point. From the truth
+it would be useless. MolView does not draw it either: the drawing library already
+has the image, so it is asked for it.
+
+**An animation is the same thing, every frame.** The whole trajectory is rendered
+frame by frame, each with the **current** view settings — so the isolate, the
+labels, the arrows and the camera in the file are the ones on screen when it was
+made. It is the only export that spans frames, and it is still entirely a render.
+
+Notice those are two independent axes. Data is **one frame of the truth**; an
+animation is **every frame of the view**. Neither "which frames" nor "truth or
+view" predicts the other, which is exactly why these are three menu items and not
+one with options.
 
 **Save-to-project and Download differ only in destination.** The bytes are
-identical. MolView produces them and stops there: putting them in the project is
+identical, for any of the three. MolView produces them and stops there: putting them in the project is
 the projects module's job (§ 2), and a download is the browser's. Neither is
 MolView writing a file — it holds no file route at all.
 
@@ -1716,7 +1746,8 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — state is the truth, not the view of it | restoring brings back the structure and the selection; it does not bring back the camera, the displayed frame or the switches — and the saving mechanism itself excludes nothing |
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its snapshot over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
-| § 11.3 — the three savings stay distinct | exporting data reads the master copy at the displayed frame; exporting a picture reads what is on screen; a saved state is neither and appears as no file at all |
+| § 11.3 — only the data export is the truth | exporting data yields the displayed frame's coordinates **and** its metadata, from the master copy; an image and an animation are renders and carry whatever the view was set to |
+| § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
 | § 11.3 — save-to-project and download differ only in destination | both produce identical bytes, and neither has MolView writing a file |
 | § 11.4 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
 
