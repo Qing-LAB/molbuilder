@@ -103,9 +103,10 @@ atom to pick — so turn isolate off to select again.
 
 The panel beside the viewer is the other way to select. **Click** mode picks by
 hand; **Filter** mode selects everything matching a rule — by element (`Au,C`),
-by atom number (`1-4, 6, 10-11`), by residue (`ALA,DA`), or by label
-(`L-electrode`). Several filters combine with AND / OR. The panel shows a live
-count and measurement of what is currently selected.
+by atom index (`1-4, 6, 10-11`), by residue (`ALA,DA`), or by label
+(`L-electrode`). Add several rows and combine them with AND / OR. Switching
+between Click and Filter does not disturb what you already have selected. The
+panel shows a live count and measurement of the current selection.
 
 **Measuring.** Measurements come from what you selected, in the order you picked
 it:
@@ -912,22 +913,47 @@ none of them keeps its own answer.
 
 - **The switches live here** (all off by default), not in the renderEngine and
   not in the panel.
-- **What an atom can be filtered by is one enumerated list, not a set of special
-  cases.** Each atom offers its properties as a small, ordered list — its
-  element, its residue, and the labels it carries, reserved ones included. Each
-  carries a kind, and the kind decides how matching works: *one-of* for element
-  and residue, *is-in-the-set* for a label. The panel builds its filter UI from
-  that list rather than hard-coding a filter per property, which is why filtering
-  for frozen atoms needs no case of its own (§ 6.6) and why a new per-atom
-  property becomes filterable without the panel changing.
+- **The selection is the truth; click and filter are two editors of it.**
+  Switching between them does not touch what is selected. Click mode edits atom
+  by atom, entirely in the browser. Filter mode composes a query that the user
+  explicitly applies, and applying it **replaces** the selection.
 
-- **Filtering by atom number is the one that is not in that list, and cannot
-  be.** An atom's number is not something it *has* — it is *where it sits*. So it
-  is not enumerated from the atom; it is matched against a range the user types,
-  like `1-4, 6, 10-11`. That also makes it the only filter that has to cross the
-  numbering boundary: what the user types is 1-based and what it selects is
-  0-based, translated in the one place that owns that (§ 11.3). Every other
-  filter compares names to names and never touches a number.
+- **Filtering is a question asked of the server, not a scan done here.** The
+  panel builds a small rule and sends it; the server evaluates it against the
+  structure and answers with the atoms. MolView holds no matching logic — which
+  is the same boundary as § 2's: one place decides what a structure means.
+
+- **Four kinds of rule, and they compose.** Each row of the filter is one of:
+
+  | Row | Matches | What the user types |
+  |---|---|---|
+  | by element | atoms of those elements | `Au,C` |
+  | by atom index | atoms at those positions | `1-4, 6, 10-11` |
+  | by residue | atoms in residues of those names | `ALA,DA` |
+  | by label | atoms carrying that label — reserved names included (§ 6.6) | picked from the labels present |
+
+  Several rows combine under one **and** / **or**. One row is the rule by
+  itself; no rows means no filter at all.
+
+- **A half-typed row constrains nothing — it does not match nothing.** An empty
+  row is dropped before the rule is built, so a row the user has not finished
+  filling in cannot silently empty the result under *and*. "You have not told me
+  anything to intersect with yet" is the correct reading of a blank row, and
+  treating it as "match nothing" would make the panel feel broken mid-typing.
+
+- **By atom index is the one row that crosses the numbering boundary.** An atom's
+  index is not something it *has* — it is *where it sits* — so it is the one rule
+  matched against positions rather than names. The user types 1-based, matching
+  what is on screen; the rule sent is 0-based; the shift happens exactly once, at
+  the point the row becomes a rule, through the one translation that owns it
+  (§ 11.3). Every other row compares names to names and never touches a number.
+
+- **What the panel offers is enumerated from the atoms themselves.** Which label
+  names appear in the by-label list, and whether a by-residue row is worth
+  offering at all, come from reading the structure — not from a hard-coded list.
+  That enumeration decides *what to offer*; the four rules above decide *how to
+  match*. Keeping those apart is why a new label needs no panel change, and why
+  filtering for frozen atoms needs no case of its own (§ 6.6).
 - **What it offers:** turn isolate on or off, set a switch, apply a filter, write
   a label onto the selected atoms (which replaces that label's previous set),
   adopt a restored session's selection, the click-selection operations
@@ -1410,7 +1436,8 @@ writes a bare `+1` of its own anywhere.
 
 One shared piece of code owns the translation in both directions: the number a
 user reads, and the reverse — turning a typed 1-based input like `1-4, 6` in the
-"by atom number" filter back into the 0-based numbers the server expects.
+"by atom index" filter row back into the 0-based numbers the server expects
+(§ 9.5).
 
 **Every** surface that shows or accepts an atom number goes through it: the
 measurement readout, the atom-list column, the labels in the 3D window (§ 10.3 step 2),
@@ -1542,7 +1569,9 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.5 — the highlight is content, not styling | per-frame data carries no colour, radius or opacity |
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
 | § 6.2 — the data holds what the filter enumerates | every property the filter enumerates from an atom — element, labels, residue — is a property the structure actually carries; neither list can grow without the other |
-| § 9.5 — filtering by atom number crosses the numbering boundary | a typed range like `1-4, 6` selects the atoms a user would count off on screen, and the same range in a structure of any size never drifts by one |
+| § 9.5 — the selection survives an editor switch | moving between click and filter mode leaves the selection exactly as it was |
+| § 9.5 — a half-typed row constrains nothing | a blank row combined under *and* leaves the other rows' result intact rather than emptying it |
+| § 9.5 — by atom index crosses the numbering boundary once | a typed range like `1-4, 6` selects the atoms a user would count off on screen, at any structure size, without drifting by one — and the shift happens at one point, not at each row |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
