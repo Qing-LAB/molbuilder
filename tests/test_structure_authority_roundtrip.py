@@ -175,10 +175,13 @@ def test_from_dict_rejects_none():
         Structure.from_dict(None)
 
 
-def test_illegal_stored_pair_comes_back_healed_not_verbatim(tmp_path):
-    """The frame contract's read gate (structure-periodicity.md 6.1): a
-    stored pair whose explicit cell does NOT wrap its atoms is healed on
-    read (origin -> the vacuum-respecting corner), never served verbatim."""
+def test_stored_pair_without_an_origin_resolves_the_corner_not_the_world(
+        tmp_path):
+    """The frame contract's read gate (structure-periodicity.md 6.1 row 3): a
+    stored pair whose explicit cell does NOT wrap its atoms round-trips
+    VERBATIM, and the wrapping corner comes back as the resolved VIEW -- the
+    box never jumps to the world origin, and no computed value is written into
+    the truth (2026-07-29 decision)."""
     import numpy as np
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
@@ -191,8 +194,9 @@ def test_illegal_stored_pair_comes_back_healed_not_verbatim(tmp_path):
     codec = StructureCodec()
     codec.write(s, tmp_path / "bad.xyz")
     back = codec.read(tmp_path / "bad.xyz")
-    assert back.cell_origin is not None
-    assert np.allclose(back.cell_origin, [7.5, 7.5, 7.5])   # bbox_min - vacuum
+    assert back.cell_origin is None                          # truth untouched
+    assert np.allclose(back.resolve_cell_origin(), [7.5, 7.5, 7.5])
+    assert back.cell_contains_atoms(back.resolve_cell_origin())
 
 
 def test_derived_structure_round_trips_with_cell_still_null(tmp_path):
@@ -226,11 +230,12 @@ def test_to_wire_derived_keeps_cell_null_and_resolves_view():
     assert np.allclose(per["resolved_cell_origin"], [7.5, 7.5, 7.5])
 
 
-def test_save_endpoint_heals_a_corrupted_blob_before_writing(
+def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
         tmp_path, monkeypatch):
     """The SAVER half of the gate (§ 6.1 clause 2): a browser blob in the
-    hemeC-corrupted state is healed by from_scratch before the pair hits
-    disk."""
+    hemeC-corrupted state passes through the gate on its way to disk, and the
+    written sidecar carries NO invented origin -- the corner is a view, so the
+    file that comes back resolves the wrapping corner (2026-07-29)."""
     import json as _json
     import numpy as np
     import pytest as _pytest
@@ -257,6 +262,8 @@ def test_save_endpoint_heals_a_corrupted_blob_before_writing(
             "path": str(sdir / "m.xyz"), "blob": blob})
         assert r.status_code == 200, r.get_json()
         side = _json.loads((sdir / "m.molstruct.json").read_text())
-        assert np.allclose(side["cell_origin"], [7.5, 7.5, 7.5])
+        assert side.get("cell_origin") is None
+        back = StructureCodec().read(sdir / "m.xyz")
+        assert np.allclose(back.resolve_cell_origin(), [7.5, 7.5, 7.5])
     finally:
         set_capabilities(None)

@@ -529,6 +529,16 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // vacuum; origin edits warn) and returns the corrected TRUTH blob +
     // resolved views + notices.  This client adopts — it never computes.
     // Returns Promise<{ok, notices, error?}>.
+    //
+    // NOTICES (the contract's machine-readable half, § 6.1): each entry is
+    // {level: "info"|"warn", message}, and one reporting state the gate
+    // MODIFIED also carries kind: "heal" — _install.js keys on that to mark
+    // the session dirty, since the disk pair still holds the old value until
+    // the user saves.  Surface notices; never parse message text.
+    //
+    // The blob is adopted VERBATIM: a resolved corner is a view, so
+    // sidecar.cell_origin stays null whenever the corner is derived, and
+    // resolved_cell_origin (not the truth) is what the box is drawn from.
     function commitPeriodicityOp(op, payload) {
         var blob = _scratchBlob();
         if (!blob || !root.fetch) {

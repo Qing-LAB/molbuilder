@@ -31,14 +31,42 @@ Heal table (§ 6.1, stored state; right-handed cells only, det > 0):
   | stored state                | contained? | action                       |
   |-----------------------------|-----------|-------------------------------|
   | no cell, no origin          |     —     | derived; vacuum authoritative |
-  | explicit cell, no origin    |    yes    | legal (imported crystal)      |
-  | explicit cell, no origin    |    no     | heal origin -> expected corner|
+  | explicit cell, no origin    |    yes    | legal (imported crystal): the |
+  |                             |           | corner IS the world origin    |
+  | explicit cell, no origin    |    no     | legal: the corner is DERIVED  |
+  |                             |           | (wrapping/centred) + info     |
   | explicit cell + origin      |    yes    | legal, user-owned, never healed|
-  | explicit cell + origin      |    no     | stored pair -> heal + notice; |
-  |                             |           | live edit -> accept + warn    |
+  | explicit cell + origin      |    no     | user-owned in BOTH halves:    |
+  |                             |           | warn, never auto-fix          |
 
 ``expected_corner`` respects the per-direction vacuum: ``bbox_min −
 vacuum`` on isolated axes, ``bbox_min`` on transport, ``0`` on periodic.
+
+NOTHING IS MATERIALISED (decided 2026-07-29).  "No explicit origin" means
+"derive the corner" — ``Structure.resolve_cell_origin`` answers it at every
+seam — so this module never writes a resolved corner into the truth.  The
+earlier behaviour DID (it healed ``cell_origin = expected_corner`` on load),
+and that disagreed with the reset-origin op, which left the same state
+alone: one state, two answers, and a save+reload silently changed what the
+user had been shown.  The rule now lives once, on ``Structure``
+(``expected_cell_corner`` / ``cell_contains_atoms``), and this module
+delegates to it.
+
+Notices (the machine-readable half of the contract).  Every entry is
+``{"level": "info"|"warn", "message": str}``.  A notice that reports state
+the gate MODIFIED additionally carries ``"kind": "heal"`` — the web load
+door keys on it to mark the session dirty (the disk pair still holds the
+old value until the user saves), so the key is load-bearing, not
+decoration.  Callers surface notices; they never parse the message text.
+
+Errors vs notices.  ``ValueError`` (mapped to HTTP 400 by the door) is
+raised ONLY for states that cannot be represented: a left-handed cell
+(``det <= 0``), a cell no origin could make contain the structure
+(fractional extent > 1 on a non-periodic axis), a degenerate derived box
+(zero extent and no vacuum), a periodic axis with no explicit cell, and
+malformed payloads.  Everything else — including a box that does not
+contain its atoms under a user-owned origin — is a notice, never an
+exception: the gate reports, the user decides.
 """
 from __future__ import annotations
 
@@ -64,18 +92,12 @@ def _notice(level: str, message: str) -> Dict[str, str]:
 
 def expected_corner(struct: Structure) -> np.ndarray:
     """The § 6.1 'correct corner': the low corner that wraps the structure
-    honouring the per-direction vacuum on isolated axes."""
-    lo = struct.positions.min(axis=0).astype(float)
-    kinds = struct.axis_kind or ("isolated",) * 3
-    out = np.zeros(3, dtype=float)
-    for i, kind in enumerate(kinds):
-        if kind == "isolated":
-            out[i] = lo[i] - float(struct.vacuum[i])
-        elif kind == "transport":
-            out[i] = lo[i]
-        else:                              # periodic: phase convention = 0
-            out[i] = 0.0
-    return out
+    honouring the per-direction vacuum on isolated axes.
+
+    Delegates to :meth:`Structure.expected_cell_corner` — the rule lives with
+    the view resolver so the gate and ``resolve_cell_origin`` can never fork
+    (they did: the gate healed a state the resolver drew from ``(0,0,0)``)."""
+    return struct.expected_cell_corner()
 
 
 def _fractional(struct: Structure, origin: np.ndarray) -> np.ndarray:
@@ -92,20 +114,11 @@ def contains_atoms(struct: Structure,
     outside the cell are legitimate periodic images (SIESTA wraps them), so
     containment is NEVER required there — requiring it made real crystals
     and junction files unopenable (review finding, 2026-07-29).
-    ``origin=None`` means the world origin (imported-crystal semantics)."""
-    if struct.cell is None or struct.n_atoms == 0:
-        return True
-    o = (np.zeros(3) if origin is None
-         else np.asarray(origin, dtype=float).reshape(3))
-    frac = _fractional(struct, o)
-    kinds = struct.axis_kind or ("isolated",) * 3
-    for i in range(3):
-        if kinds[i] == "periodic":
-            continue
-        if not (np.all(frac[:, i] >= -_EPS)
-                and np.all(frac[:, i] <= 1.0 + _EPS)):
-            return False
-    return True
+    ``origin=None`` means the world origin (imported-crystal semantics).
+
+    Delegates to :meth:`Structure.cell_contains_atoms` (one definition,
+    shared with the view resolver)."""
+    return struct.cell_contains_atoms(origin)
 
 
 def _too_small_axes(struct: Structure) -> List[int]:
@@ -160,8 +173,16 @@ def validate_and_heal(struct: Structure, *,
     """Apply the § 6.1 heal table to STORED state.  Returns
     (possibly-corrected struct, notices).  ``live_edit=True`` = the
     explicit-origin manual-edit row: accept as typed, warn, never auto-fix.
-    Raises ``ValueError`` for a left-handed cell or one too small to
-    contain its atoms."""
+
+    Since 2026-07-29 this returns the struct UNCHANGED in every row — a
+    resolved corner is a view (``resolve_cell_origin``), never truth — so the
+    function is a validator that reports, and the second element is the whole
+    output.  It stays named ``validate_and_heal`` because the heal table is the
+    contract it enforces, and a future row may legitimately need to correct
+    stored state; callers must keep adopting the returned struct.
+
+    Raises ``ValueError`` (the door maps it to HTTP 400) for a left-handed
+    cell (``det <= 0``) or one no origin could make contain the structure."""
     notices: List[dict] = []
     if struct.cell is None or struct.n_atoms == 0:
         return struct, notices                      # derived: nothing stored
@@ -183,7 +204,14 @@ def validate_and_heal(struct: Structure, *,
             + ". The manual origin is kept as typed (user-owned); vacuum "
             "values are not respected under a manual origin."))
         return struct, notices
-    # Row 3: no origin stored — heal to the expected corner, if it can fit.
+    # Row 3: explicit cell, NO stored origin.  Since the 2026-07-29 decision
+    # this state is LEGAL and needs no repair: "no explicit origin" means
+    # "derive the corner", so ``resolve_cell_origin`` already returns the
+    # wrapping (or centred) corner and the box encloses the structure.  The
+    # gate therefore VALIDATES and INFORMS here — it does not write a resolved
+    # view back into the truth (§ 6.1 clause 1).  Materialising the corner was
+    # the old behaviour, and it disagreed with the reset-origin op, which left
+    # the same state alone: one state, two answers (the bug this closes).
     bad = _too_small_axes(struct)
     if bad:
         raise ValueError(
@@ -191,33 +219,16 @@ def validate_and_heal(struct: Structure, *,
             f"non-periodic axis(es) {bad} for ANY origin (fractional "
             "extent > 1); enlarge the cell along those axes or clear it "
             "to return to the derived box.")
-    corner = expected_corner(struct)
-    healed = struct.copy()
-    healed.cell_origin = corner.copy()
-    healed.__post_init__()
-    if not contains_atoms(healed, corner):
-        # The requested vacuum pushes atoms past the far face (cell fits
-        # the structure but not structure + vacuum): centre instead.
-        frac = _fractional(struct, np.zeros(3))
-        lens = np.linalg.norm(cell, axis=1)
-        lo = struct.positions.min(axis=0)
-        kinds = struct.axis_kind or ("isolated",) * 3
-        for i in range(3):
-            if kinds[i] == "periodic":
-                continue
-            ext = float(frac[:, i].max() - frac[:, i].min()) * lens[i]
-            corner[i] = lo[i] - max(0.0, (lens[i] - ext)) / 2.0
-        healed.cell_origin = corner.copy()
-        healed.__post_init__()
-    heal_note = _notice(
-        "warn",
-        "healed: the explicit cell did not contain the structure, so "
-        "cell_origin was set to the wrapping corner "
-        f"{np.round(corner, 4).tolist()} (bbox_min − vacuum per isolated "
-        "axis, centred where the per-side vacuum does not fit; § 6.1).")
-    heal_note["kind"] = "heal"        # machine-readable: state was MODIFIED
-    notices.append(heal_note)
-    return healed, notices
+    corner = struct.resolve_cell_origin()
+    notices.append(_notice(
+        "info",
+        "the explicit cell stores no origin, so the box corner is DERIVED: "
+        f"{np.round(np.asarray(corner, dtype=float), 4).tolist()} "
+        "(bbox_min − vacuum per isolated axis; centred where the per-side "
+        "vacuum does not fit). The box wraps the structure, nothing was "
+        "changed, and vacuum stays reference-only under an explicit "
+        "cell (§ 6.1)."))
+    return struct, notices
 
 
 def _reset_to_derived(s: Structure, what: str,
@@ -357,12 +368,17 @@ def apply_edit(struct: Structure, op: str,
                 "the new cell cannot contain the structure along "
                 f"non-periodic axis(es) {bad} (fractional extent > 1); "
                 "enlarge the cell along those axes.")
-        s, heal_notes = validate_and_heal(s)     # anchors via the heal path
-        notices.extend(heal_notes)
+        # No explicit origin: leave it unset — the corner is DERIVED from the
+        # structure + vacuum by ``resolve_cell_origin``, so the box wraps the
+        # structure without storing a computed value as truth (§ 6.1 clause 1).
+        s.__post_init__()
         notices.append(_notice(
             "info",
-            "explicit cell set (origin first, then vacuum — § 6.2). "
-            "Vacuum values are reference-only from now on."))
+            "explicit cell set (origin first, then vacuum — § 6.2); no "
+            "explicit origin, so the corner stays DERIVED at "
+            f"{np.round(np.asarray(s.resolve_cell_origin(), dtype=float), 4).tolist()}"
+            " and the box wraps the structure. Vacuum values are "
+            "reference-only from now on."))
         return s, notices
 
     # op == "cell_origin"
@@ -371,17 +387,19 @@ def apply_edit(struct: Structure, op: str,
             "cell_origin is only meaningful with an explicit cell — "
             "the derived box computes its own corner (§ 3c)")
     if payload is None:
-        # "Reset origin to default": literal cell_origin = None.  The view
-        # falls back to imported-crystal semantics (world origin) until a
-        # vacuum/periodicity edit re-derives the box or a new origin is set.
+        # "Reset origin to default": literal cell_origin = None.  The corner is
+        # then DERIVED again (structure + vacuum), so the box keeps wrapping the
+        # structure — it does NOT jump to (0,0,0).  Same rule the load seam
+        # applies to the same state (§ 6.1 row 3).
         s.cell_origin = None
         s.__post_init__()
         notices.append(_notice(
             "info",
-            "cell_origin cleared. The box is drawn from the world origin "
-            "(imported-crystal semantics) until you update vacuum / "
-            "periodicity (re-derives the box) or set a new origin; the "
-            "other parameters have their freedom back."))
+            "cell_origin cleared — the box corner is DERIVED again at "
+            f"{np.round(np.asarray(s.resolve_cell_origin(), dtype=float), 4).tolist()}"
+            " (bbox_min − vacuum per isolated axis), so the box still wraps "
+            "the structure. The other parameters have their freedom back; a "
+            "vacuum / periodicity edit re-derives the whole box."))
         return s, notices
     origin = [float(x) for x in payload]
     if len(origin) != 3:

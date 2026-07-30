@@ -48,6 +48,11 @@ import pytest
 
 _L1_MODULES = {
     "structure", "frame", "issues",
+    "periodicity_gate",  # the frame-contract gate (structure-periodicity.md
+                         # 6.1/6.2): defaults + validation for cell / origin /
+                         # vacuum / axis kinds.  L1 because it imports
+                         # ``structure`` and nothing else, and both the L2
+                         # codec seam and the L3 web door call it.
     "chemistry", "residues",
     "config",            # siesta / pyscf / spectra / transport config dataclasses
     "trajectory_log",    # format + emitter (data-shape, no domain logic)

@@ -269,10 +269,38 @@ to these or is a bug:
    | Stored state | Atoms contained (non-periodic axes)? | Gate action |
    |---|---|---|
    | no `cell`, no `cell_origin` | — | fully derived (§ 4); **vacuum authoritative**; nothing to heal |
-   | explicit `cell`, no origin | yes | legal (imported-crystal); vacuum **reference-only**; no heal |
-   | explicit `cell`, no origin | NO | **heal**: `cell_origin = expected_corner` (centred where the per-side vacuum does not fit) + user notice; a cell the structure cannot fit for ANY origin (fractional extent > 1 on a non-periodic axis) → hard error at the edit, so an unfittable cell is never stored |
+   | explicit `cell`, no origin | yes | legal (imported-crystal): the corner **is** the world origin; vacuum **reference-only**; no heal |
+   | explicit `cell`, no origin | NO | legal: the corner is **derived** — the wrapping corner, or the structure centred in the box where the per-side vacuum does not fit — and reported as an `info` notice. **Nothing is written into the truth.** A cell the structure cannot fit for ANY origin (fractional extent > 1 on a non-periodic axis) is a hard error at the edit, so an unfittable cell is never stored |
    | explicit `cell` + origin | yes | legal, user-owned; **never healed**; vacuum reference-only |
    | explicit `cell` + origin | NO | **user-owned in both halves**: warned (actual per-side clearances reported), **never auto-fixed** — at the live edit *and* on load (a stored manual origin must round-trip verbatim; silently flipping it on reload was the corrected defect) |
+
+   **"No explicit origin" means "derive the corner"** (decided 2026-07-29, after
+   the live pass on `projects/hemeC-dithiol`). The corner for row 3 used to be
+   *materialised* into `cell_origin` by the load/save gate, while the
+   reset-origin op (§ 6.2) left the same state alone and the viewer drew the box
+   from `(0,0,0)` — one state, two answers, and a save-then-reload silently
+   changed what the user had been shown. The rule now lives in exactly one
+   place, `Structure.resolve_cell_origin` (with `expected_cell_corner` /
+   `cell_contains_atoms` beside it), and `periodicity_gate` delegates to it: the
+   gate **validates and reports**, it does not rewrite. `tests/
+   test_periodicity_gate.py::TestHealTable::
+   test_no_seam_materialises_a_resolved_corner` pins the agreement between the
+   two seams.
+
+   **Notices are part of the contract, not decoration.** Every notice is
+   `{level: "info"|"warn", message: str}`; one that reports state the gate
+   *modified* additionally carries `kind: "heal"`, which the web load door keys
+   on to mark the session dirty (the disk pair still holds the old value until
+   the user saves). No row emits `kind: "heal"` today — nothing is materialised
+   — and the mechanism stays for any future row that must correct stored state.
+   Callers surface notices; they never parse the message text.
+
+   **Errors vs notices.** `ValueError` (HTTP 400 at the door) is raised only for
+   states that cannot be represented: a left-handed cell (`det ≤ 0`), a cell no
+   origin could make contain the structure, a degenerate derived box (zero
+   extent and no vacuum), a periodic axis with no explicit cell, and malformed
+   payloads. Everything else — including a box that does not contain its atoms
+   under a user-owned origin — is a notice: the gate reports, the user decides.
 
 5. **Engine frames are one-way with provenance.** Emission translates the
    truth into the engine's frame (SIESTA: cell at `(0,0,0)`, atoms shifted by
@@ -308,8 +336,8 @@ silently contradicts downstream state — it resets it, loudly:
 |---|---|
 | `vacuum` | **Resets to derived** (explicit cell + origin cleared; the boundary moves — the UI warns *before* committing). Refused while an axis is periodic (a bbox is not a lattice — make the axis isolated first or edit the cell). |
 | `axis_kind` | Same reset-to-derived when the new kinds are non-periodic. Switching **to** periodic keeps an existing explicit cell (respected) or is refused when there is none. |
-| `cell` | Explicit (`det > 0`): **respects an existing origin first** (kept; containment-warned), else **respects vacuum** — origin anchored at the expected corner, with notice. `null` = back to derived (refused on a periodic axis). |
-| `cell_origin` | Accepted **as typed** + warning: *vacuum is not respected under a manual origin — only the unit-cell parameters are* (+ actual per-side clearances). `null` = the **Reset-origin-to-default** button: origin cleared, other parameters regain their freedom (world-origin view until a vacuum/periodicity edit re-derives). |
+| `cell` | Explicit (`det > 0`): **respects an existing origin first** (kept; containment-warned), else **respects vacuum** — no origin is stored and the corner stays derived at the expected corner, reported in the notice. `null` = back to derived (refused on a periodic axis). |
+| `cell_origin` | Accepted **as typed** + warning: *vacuum is not respected under a manual origin — only the unit-cell parameters are* (+ actual per-side clearances). `null` = the **Reset-origin-to-default** button: the override is cleared and the corner is **derived again**, so the box keeps wrapping the structure instead of jumping to `(0,0,0)`; the other parameters regain their freedom, and a vacuum / periodicity edit re-derives the whole box. |
 
 **There is no calibrate button.** Coordinate rewrites are not a periodicity
 edit: emission translates to the engine frame implicitly (and stamps the

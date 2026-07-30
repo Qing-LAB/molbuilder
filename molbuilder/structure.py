@@ -100,6 +100,12 @@ def _resolve_source(source: Union[str, Path]) -> str:
 
 _CHANNEL_KINDS = ("tag", "flag", "value")
 
+#: Containment tolerance in FRACTIONAL units (§ 6.1): loose enough to forgive a
+#: round-tripped float, tight enough that "half the molecule outside the box"
+#: can never pass.  Shared with periodicity_gate, which delegates containment
+#: to :meth:`Structure.cell_contains_atoms`.
+_CONTAIN_EPS = 1e-6
+
 
 @dataclass
 class AtomChannel:
@@ -475,23 +481,93 @@ class Structure:
           * EXPLICIT cell + ``cell_origin`` set (an electrode junction: the cell was
             built AROUND off-origin atoms) -> ``cell_origin``.  The box wraps the
             atoms where they are; generation shifts them into the cell.
-          * EXPLICIT cell + no ``cell_origin`` (an imported crystal: atoms already
-            in ``[0, cell)``) -> ``None`` (= the world origin; no shift).
+          * EXPLICIT cell, NO ``cell_origin`` -> the corner is **derived**, never
+            assumed to be the world origin (decided 2026-07-29, § 6.1): ``None``
+            (= world origin, no shift) only when the box AT the world origin
+            already contains every atom along the non-periodic axes (an imported
+            crystal), otherwise the wrapping corner so the box encloses the
+            structure instead of jumping to ``(0,0,0)``.
           * DERIVED (bbox) cell -> ``bbox_min - vacuum`` (isolated) / ``bbox_min``
             (transport), so the molecule is centred with ``vacuum`` clearance/side.
+
+        "No explicit origin" therefore means "derive the corner" at EVERY seam,
+        and a derived corner is never materialised back into the truth (§ 6.1
+        clause 1).  The frame-contract gate validates this state; it does not
+        rewrite it.
 
         Returns ``None`` for an empty structure (nothing to anchor)."""
         if len(self.positions) == 0:
             return None
-        if self.cell is not None:
-            # Explicit cell: the stored intent (cell_origin) or the world origin.
-            return (self.cell_origin.astype(float)
-                    if self.cell_origin is not None else None)
+        if self.cell is None:
+            return self.expected_cell_corner()
+        if self.cell_origin is not None:
+            return self.cell_origin.astype(float)
+        return self._derived_corner_under_explicit_cell()
+
+    # -- the ONE definition of the derived corner + containment (§ 6.1) -- #
+    # periodicity_gate.expected_corner / contains_atoms delegate here so the
+    # rule cannot fork between the view and the gate.
+
+    def expected_cell_corner(self) -> np.ndarray:
+        """The low corner that wraps the structure honouring the per-direction
+        vacuum: ``bbox_min - vacuum`` on an isolated axis, ``bbox_min`` on a
+        transport axis, ``0`` on a periodic axis (the phase convention)."""
+        out = np.zeros(3, dtype=float)
+        if len(self.positions) == 0:
+            return out
         lo = self.positions.min(axis=0).astype(float)
-        origin = np.zeros(3, dtype=float)
         for i, kind in enumerate(self.axis_kind):
-            origin[i] = lo[i] - (self.vacuum[i] if kind == "isolated" else 0.0)
-        return origin
+            if kind == "isolated":
+                out[i] = lo[i] - float(self.vacuum[i])
+            elif kind == "transport":
+                out[i] = lo[i]
+        return out
+
+    def _frac_coords(self, origin) -> np.ndarray:
+        """Fractional coordinates relative to ``(origin, cell)``.  Triclinic-
+        safe: solves ``cell.T @ frac = pos - origin``."""
+        rel = (self.positions.astype(float)
+               - np.asarray(origin, dtype=float).reshape(1, 3))
+        return np.linalg.solve(np.asarray(self.cell, dtype=float).T, rel.T).T
+
+    def cell_contains_atoms(self, origin=None) -> bool:
+        """True when every atom sits inside ``[origin, origin + cell)`` along
+        every NON-PERIODIC axis.  Along a periodic axis atoms outside the cell
+        are legitimate periodic images (the engine wraps them), so containment
+        is never required there.  ``origin=None`` = the world origin; trivially
+        True with no explicit cell or no atoms."""
+        if self.cell is None or len(self.positions) == 0:
+            return True
+        o = (np.zeros(3) if origin is None
+             else np.asarray(origin, dtype=float).reshape(3))
+        frac = self._frac_coords(o)
+        for i, kind in enumerate(self.axis_kind):
+            if kind == "periodic":
+                continue
+            if not (np.all(frac[:, i] >= -_CONTAIN_EPS)
+                    and np.all(frac[:, i] <= 1.0 + _CONTAIN_EPS)):
+                return False
+        return True
+
+    def _derived_corner_under_explicit_cell(self) -> Optional[np.ndarray]:
+        """The corner for an explicit cell that stores no origin: the world
+        origin when the atoms are already inside it (imported crystal), else
+        the wrapping corner, else -- when the cell fits the structure but not
+        structure + vacuum -- the structure centred in the box."""
+        if self.cell_contains_atoms(None):
+            return None
+        corner = self.expected_cell_corner()
+        if self.cell_contains_atoms(corner):
+            return corner
+        frac = self._frac_coords(np.zeros(3))
+        lens = np.linalg.norm(np.asarray(self.cell, dtype=float), axis=1)
+        lo = self.positions.min(axis=0).astype(float)
+        for i, kind in enumerate(self.axis_kind):
+            if kind == "periodic":
+                continue
+            ext = float(frac[:, i].max() - frac[:, i].min()) * lens[i]
+            corner[i] = lo[i] - max(0.0, lens[i] - ext) / 2.0
+        return corner
 
     # ------------------------------------------------------------------ #
     #  Sidecar-metadata contract -- the ONE get/set (data-vocabulary.md)  #

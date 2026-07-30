@@ -731,6 +731,35 @@
 
         <p class="op-hint" id="pv-empty-hint">Load a structure to edit its cell.</p>
 
+        {#- § 6.1: the gate is INVISIBLE otherwise -- the user sees a corrected
+            value or a notice with no way to know a backend rule produced it.
+            Collapsed by default so it explains on demand without shouting. -#}
+        <details class="pv-help">
+          <summary>How the box is decided</summary>
+          <p>
+            By default the box is <b>derived</b>: it is the structure's extent
+            plus the vacuum you set on each side, centred on the molecule. If
+            you set an explicit <b>unit cell</b>, the box switches to
+            <b>manual</b> — the cell is then what it says, and the vacuum
+            numbers only tell you what the gaps happen to be.
+          </p>
+          <p>
+            Every change here is checked by the backend before it is applied,
+            and it may be <b>corrected or refused</b>: cells must be
+            right-handed, and along a non-periodic direction the box must
+            contain every atom (along a periodic direction, atoms outside are
+            legitimate periodic images). Whenever no origin of your own is
+            set, the corner is <b>derived</b> so the box wraps the structure —
+            it never jumps to (0,&nbsp;0,&nbsp;0). Anything the check has to
+            say appears in the message bar at the top of the page.
+          </p>
+          <p class="muted">
+            Details:
+            <a href="?doc=model/structure-periodicity.md">Periodicity — cell,
+            origin, axis kinds, and vacuum</a>.
+          </p>
+        </details>
+
         <fieldset class="op-block">
           <legend>Vacuum (Å) <span id="pv-vac-tag" class="pv-tag"></span></legend>
           <div class="op-row pv-triple">
@@ -784,10 +813,12 @@
           <legend>Cell origin (Å) <span id="pv-org-tag" class="pv-tag"></span></legend>
           {#- § 3c: the low corner the EXPLICIT cell box is drawn from (an electrode
               junction whose cell wraps off-origin atoms).  Editing moves the BOX, not
-              the atoms -- SIESTA gets the shift at generation, or bake it with
-              "Calibrate coordinates to cell" above.  Only meaningful with an explicit
-              cell; with a bounding-box cell the corner is auto (molecule bbox - vacuum)
-              and this group is disabled. -#}
+              the atoms -- SIESTA gets the shift at generation (there is no calibrate
+              button; the explicit rewrite is a Modify op).  Only meaningful with an
+              explicit cell; with a bounding-box cell the corner is auto (molecule bbox
+              - vacuum) and this group is disabled.  Clearing it (Reset origin to
+              default) does NOT move the box to (0,0,0): the corner is derived again
+              (§ 6.1, 2026-07-29). -#}
           <div class="op-row pv-vec">
             <input type="number" id="pv-org-a" class="pv-num" step="0.1"
                    aria-label="cell origin x" />

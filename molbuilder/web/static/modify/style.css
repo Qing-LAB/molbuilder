@@ -608,6 +608,30 @@ footer a:hover { color: var(--accent-hover); }
     font-size: 0.85em;
     margin-left: 0.4rem;
 }
+/* "How the box is decided" -- the frame-contract gate explained on demand
+ * (structure-periodicity.md 6.1).  Same click-to-expand idiom as the form
+ * schema's long help (.schema-help*), scoped to the Cell panel. */
+.pv-help {
+    margin: 0 0 0.7rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+.pv-help > summary {
+    cursor: pointer;
+    user-select: none;
+    color: var(--accent);
+    opacity: 0.85;
+    padding: 1px 0;
+    width: max-content;
+}
+.pv-help > summary:hover {
+    opacity: 1;
+    text-decoration: underline;
+}
+.pv-help p {
+    margin: 0.45rem 0 0;
+    line-height: 1.45;
+}
 .pv-triple,
 .pv-matrix {
     display: grid;

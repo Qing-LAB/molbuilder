@@ -44,16 +44,35 @@ class TestHealTable:
         healed, notes = validate_and_heal(s)
         assert healed.cell_origin is None and not notes   # row 2
 
-    def test_hemec_state_heals_to_expected_corner(self):
+    def test_hemec_state_derives_the_corner_without_materialising_it(self):
         """Row 3 — the 2026-07 hemeC corruption: explicit cell, no origin,
-        atoms far outside [0, cell)."""
+        atoms far outside [0, cell).  The corner is DERIVED (a view), the
+        truth is left alone, and the box wraps the structure (2026-07-29
+        decision: no explicit origin means derive the corner)."""
         s = _mol()                                   # atoms near (10,10,10)
         s.cell = np.eye(3) * 7.0
         s.__post_init__()
-        healed, notes = validate_and_heal(s)
-        assert np.allclose(healed.cell_origin, [7.5, 7.5, 7.5])  # 10 − 2.5
-        assert notes and notes[0]["level"] == "warn"
-        assert contains_atoms(healed, healed.cell_origin)
+        out, notes = validate_and_heal(s)
+        assert out.cell_origin is None               # truth untouched
+        assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
+        assert contains_atoms(out, out.resolve_cell_origin())
+        assert notes and notes[0]["level"] == "info"
+        # Nothing was modified, so nothing claims the session is dirty.
+        assert not any(n.get("kind") == "heal" for n in notes)
+
+    def test_no_seam_materialises_a_resolved_corner(self):
+        """The invariant behind the 2026-07-29 decision: for ONE state
+        (explicit cell, no origin, atoms outside), the load/save gate and the
+        reset-origin op must agree — both leave cell_origin None and both
+        resolve the same wrapping corner.  Disagreement here was the bug."""
+        s = _mol()
+        s.cell = np.eye(3) * 7.0
+        s.__post_init__()
+        gated, _ = validate_and_heal(s)
+        reset, _ = apply_edit(s, "cell_origin", None)
+        assert gated.cell_origin is None and reset.cell_origin is None
+        assert np.allclose(gated.resolve_cell_origin(),
+                           reset.resolve_cell_origin())
 
     def test_user_owned_origin_is_never_healed(self):
         s = _mol(off=(1.0, 1.0, 1.0))
@@ -154,8 +173,12 @@ class TestApplyEditV3:
     def test_cell_edit_without_origin_respects_vacuum(self):
         s = _mol()                                   # atoms near (10,10,10)
         out, notes = apply_edit(s, "cell", (np.eye(3) * 8.0).tolist())
-        assert np.allclose(out.cell_origin, expected_corner(out))
-        assert np.allclose(out.cell_origin, [7.5, 7.5, 7.5])
+        # The corner honours the vacuum, but as a VIEW: the truth keeps no
+        # explicit origin, so a later reset has nothing to undo and the two
+        # seams cannot drift (2026-07-29).
+        assert out.cell_origin is None
+        assert np.allclose(out.resolve_cell_origin(), expected_corner(out))
+        assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
         assert any("origin first, then vacuum" in n["message"]
                    for n in notes)
 
@@ -287,9 +310,12 @@ class TestLoaderGate:
     def test_codec_read_heals_a_corrupted_pair(self, tmp_path):
         from molbuilder.workingcopy_structure import StructureCodec
         xyz = self._write_corrupted_pair(tmp_path)
-        healed = StructureCodec().read(xyz)
-        assert np.allclose(healed.cell_origin, [7.5, 7.5, 7.5])
-        assert contains_atoms(healed, healed.cell_origin)
+        out = StructureCodec().read(xyz)
+        # The pair round-trips VERBATIM (no origin invented in the sidecar);
+        # the wrapping corner comes back as the resolved view.
+        assert out.cell_origin is None
+        assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
+        assert contains_atoms(out, out.resolve_cell_origin())
 
     def test_load_endpoint_serves_the_healed_resolved_origin(
             self, tmp_path, monkeypatch):
@@ -340,10 +366,11 @@ class TestPeriodicAxesAreNeverContained:
         s.cell = np.diag([10.0, 10.0, 2.0])
         s.axis_kind = ("periodic", "periodic", "transport")
         s.__post_init__()
-        healed, notes = validate_and_heal(s)
-        # x/y ignored (periodic); z extent 0 fits; origin healed to
-        # bbox_min on the transport axis only where needed.
-        assert contains_atoms(healed, healed.cell_origin)
+        out, notes = validate_and_heal(s)
+        # x/y ignored (periodic); z extent 0 fits; the transport axis takes
+        # its corner from the DERIVED view (bbox_min), not a stored value.
+        assert out.cell_origin is None
+        assert contains_atoms(out, out.resolve_cell_origin())
 
     def test_stored_manual_origin_is_warned_never_healed(self):
         """Row 5 stored half: a manual origin round-trips verbatim (the
@@ -498,8 +525,16 @@ class TestLoadHealIsVisible:
             r = client.post("/api/build/load",
                             json={"path": str(sdir / "m.xyz")})
             assert r.status_code == 200
-            notices = r.get_json().get("notices") or []
-            assert any(n.get("kind") == "heal" for n in notices)
+            j = r.get_json()
+            notices = j.get("notices") or []
+            # The corner is DERIVED, so the load REPORTS it (info) and
+            # changes nothing: no "heal" kind, hence no phantom dirty state.
+            assert notices and notices[0]["level"] == "info"
+            assert not any(n.get("kind") == "heal" for n in notices)
+            # The served model: no invented truth, the corner as a view.
+            per = j["periodicity"]
+            assert per.get("cell_origin") is None
+            assert np.allclose(per["resolved_cell_origin"], [7.5, 7.5, 7.5])
         finally:
             set_capabilities(None)
 
@@ -555,8 +590,10 @@ class TestDoorHygieneAndRemainingOps:
             "data": self._blob(_mol()), "op": "cell",
             "payload": (np.eye(3) * 8.0).tolist()})
         assert r.status_code == 200
-        sc = r.get_json()["blob"]["sidecar"]
-        assert np.allclose(sc["cell_origin"], [7.5, 7.5, 7.5])
+        j = r.get_json()
+        # Truth carries no invented origin; the view carries the corner.
+        assert j["blob"]["sidecar"].get("cell_origin") is None
+        assert np.allclose(j["resolved_cell_origin"], [7.5, 7.5, 7.5])
 
     def test_axis_kind_op_resets_to_derived_through_the_door(self, client):
         s = _mol(off=(1.0, 1.0, 1.0))
@@ -577,3 +614,46 @@ class TestDoorHygieneAndRemainingOps:
             "data": self._blob(s), "op": "cell_origin", "payload": None})
         assert r.status_code == 200
         assert r.get_json()["blob"]["sidecar"]["cell_origin"] is None
+
+
+class TestDocMatchesTheDoor:
+    """The op set is documented in three places; a guard so they cannot rot
+    apart again (the door's docstring claimed FIVE ops including a
+    ``calibrate`` that was deliberately removed -- found 2026-07-29)."""
+
+    DOC = "docs/model/structure-periodicity.md"
+
+    def test_every_op_has_a_row_in_the_doc_table(self):
+        import pathlib
+        text = pathlib.Path(self.DOC).read_text(encoding="utf-8")
+        for op in OPS:
+            assert f"| `{op}` |" in text, (
+                f"op {op!r} has no row in {self.DOC} § 6.2 — the door and the "
+                f"doc disagree")
+
+    def test_the_doc_does_not_advertise_a_calibrate_op(self):
+        import pathlib
+        text = pathlib.Path(self.DOC).read_text(encoding="utf-8")
+        assert "| `calibrate` |" not in text
+        assert "There is no calibrate button." in text
+
+    def test_the_door_docstring_names_the_real_op_set(self):
+        from molbuilder.web.blueprints.build import api_periodicity
+        doc = api_periodicity.__doc__ or ""
+        for op in OPS:
+            assert f"``{op}``" in doc, (
+                f"the door's docstring does not name op {op!r}")
+        assert "NO ``calibrate`` op" in doc
+
+    def test_notice_shape_is_documented_where_it_is_produced(self):
+        """The ``kind: 'heal'`` key is load-bearing (the load door marks the
+        session dirty on it), so it must be documented in the module that
+        emits it and in the client that consumes it."""
+        import pathlib
+        gate = pathlib.Path("molbuilder/periodicity_gate.py").read_text(
+            encoding="utf-8")
+        assert '"kind": "heal"' in gate and "load-bearing" in gate
+        js = pathlib.Path(
+            "molbuilder/web/static/lib/molview/data-model.js").read_text(
+                encoding="utf-8")
+        assert 'kind: "heal"' in js

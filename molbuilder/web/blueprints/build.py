@@ -638,15 +638,30 @@ def api_build_molecule():
 @bp.route("/api/structure/periodicity", methods=["POST"])
 def api_periodicity():
     """The unified periodicity door (structure-periodicity.md § 6.2): ONE
-    entry point for the five Cell-page edits — vacuum / axis_kind / cell /
-    cell_origin / calibrate — through the frame-contract gate.
+    entry point for the FOUR Cell-page edits — ``vacuum`` / ``axis_kind`` /
+    ``cell`` / ``cell_origin`` (``periodicity_gate.OPS``) — through the
+    frame-contract gate.  There is deliberately NO ``calibrate`` op: moving
+    atoms is not a periodicity edit, it lives with the Modify ops
+    (``/api/modify/calibrate``), and emission translates to the engine frame
+    implicitly.
 
-    Body: ``{"data": <scratch blob>, "op": <one of §6.2>, "payload": ...}``.
+    Body: ``{"data": <scratch blob>, "op": <one of OPS>, "payload": ...}``.
+    ``payload`` is required (may be ``null``) for ``cell`` / ``cell_origin``,
+    where ``null`` means "clear it" — omitting the key is an error rather than
+    a silent clear.
+
     Response: ``{ok, blob, resolved_cell, resolved_cell_origin, notices}``
-    — ``blob`` is the corrected TRUTH pair (the client adopts it verbatim;
-    it never computes truth itself), the resolved values are the § 3 views,
-    and ``notices`` carry the gate's heal/reference-only warnings for the
-    Cell page + the app notify bar."""
+    — ``blob`` is the TRUTH pair as the gate accepted it (the client adopts it
+    verbatim; it never computes truth itself), the resolved values are the § 3
+    views (a derived corner is a view and is never written into ``blob``), and
+    ``notices`` is a list of ``{level, message}`` for the Cell page + the app
+    notify bar, where an entry that reports state the gate MODIFIED also
+    carries ``kind: "heal"``.
+
+    400 on: an unknown op, a missing payload for ``cell`` / ``cell_origin``, a
+    malformed blob, and every contract violation the gate raises (a
+    left-handed cell, a cell no origin could make fit, a degenerate derived
+    box, a periodic axis with no explicit cell)."""
     from molbuilder.workingcopy_structure import StructureCodec
     from molbuilder.periodicity_gate import apply_edit, OPS
     body = request.get_json(silent=True) or {}
