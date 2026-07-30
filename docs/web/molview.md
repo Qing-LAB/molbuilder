@@ -48,7 +48,7 @@ current code.
 >   it knows that library exists.
 >
 > Atom numbering: **0-based in code, 1-based on screen**, translated in exactly
-> one place (§ 9.6).
+> one place (§ 11.3).
 
 ---
 
@@ -132,6 +132,11 @@ structure as text (xyz / pdb); **Snapshot** — a PNG of the current view,
 transparent if you chose that background; **Animation** — the trajectory as a
 gif or webm, shown only when there is an animation to export.
 
+Note what "Save into the project" means here, because it crosses a boundary:
+**MolView produces the bytes and stops there.** Putting them in the project is
+the projects module's job (§ 2), wired up by the host — the viewer holds no file
+route and never learns where anything landed.
+
 ---
 
 ## 2. What MolView is not
@@ -143,7 +148,7 @@ something that seemed convenient at the time.
 | Not | Whose job it is | Why the boundary is there |
 |---|---|---|
 | a structure **parser** | the server | one parser, one set of chemistry rules. A parser in the browser would be a second, weaker opinion about what a file means, and the two would disagree on the awkward cases |
-| a structure **generator** | the server, driven by the Modify tab | building a molecule from a SMILES string, a name, a sequence or a file is a server call the tab's own panels make. A viewer that dispatched generation would have to know its host's modules by name — the exact inversion § 5.4 exists to prevent |
+| a structure **generator** | the server, driven by the Modify tab | building a molecule from a SMILES string, a name, a sequence or a file is a server call the tab's own panels make. A viewer that dispatched generation would have to know its host's modules by name — the exact inversion § 4 exists to prevent |
 | a **file manager** | the projects module | MolView produces and consumes bytes. Where those bytes live on disk is not a viewing concern, and MolView holds no file route |
 | a place to **keep** a saved session | the workspace module | MolView decides *when* to save and *how far* to step back; the workspace only knows *where the bytes go* (§ 11.2) |
 | an **animator of vibrations** | a separate module, with its own document | animating a normal mode is a different job with different data; it is not this module's business and is not described here |
@@ -178,10 +183,12 @@ flowchart TB
 
 Three things to read off it:
 
-**Data flows down and nothing flows back up.** The model hands the renderEngine
-what to draw; the renderEngine hands the sealed layer a finished frame. Nothing
-lower ever answers a question about what the structure *is*. If you want to know
-where an atom is, you ask the model — never the drawing.
+**Data flows down.** The model hands the renderEngine what to draw; the
+renderEngine hands the sealed layer a finished frame. Nothing lower ever answers
+a question about what the structure *is*. If you want to know where an atom is,
+you ask the model — never the drawing. (One narrow thing does travel back up: the
+renderEngine asking the drawing whether its own last instruction landed. That
+answer goes no further — § 10.10.)
 
 **A tab owns none of it.** A tab has a handle. It does not have the structure,
 the renderer, the camera, or a way to reach 3Dmol. What it does own is its own
@@ -219,10 +226,10 @@ not look up the tab it is inside, does not read app configuration, and does not
 consult any other module by name.
 
 **Nothing leaks out.** No 3Dmol object, no store, no DOM node, and no internal
-function ever appears on the handle. The name `3Dmol` occurs in exactly one file
-in the entire application — the sealed layer — which is also the only place that
-fails with a clear error if the library is missing. Swapping the drawing library
-touches that one file and reaches no consumer.
+function ever appears on the handle. Within this module the name `3Dmol` occurs
+in exactly one file — the sealed layer — which is also the only place that fails
+with a clear error if the library is missing. Swapping the drawing library
+touches that one file and reaches no consumer of MolView.
 
 **It contains its own state.** The structure, the selection, the switches, the
 displayed frame, the undo history and the camera all live inside the viewer. It
@@ -439,7 +446,7 @@ number is what routes them:
 |---|---|---|
 | Which frame is displayed — and which one will be saved? | the displayed frame number | `currentFrame()` |
 | Where is **every** atom at that frame — to measure, export, save | **the master copy** | `getFrameAllAtoms(i)` |
-| What is on screen right now? | **the drawing copy** | nothing asks it. It is output, never a source |
+| What is on screen right now? | **the drawing copy** | nothing outside the renderEngine asks it, and nothing ever asks it for coordinates. It is output, not a source — the one exception is the renderEngine checking its own work (§ 10.10) |
 | What was the energy / SCF history at that step? | not MolView's data at all — the tab's own run file | the tab reads its own file, at the same frame number |
 
 ### 6.4 The displayed frame and the range it lives in
@@ -513,7 +520,7 @@ and that is the only thing the sealed layer ever receives.
 | `positions` | `Vec3[]` | the atoms **actually drawn** — cut down to the selection when isolate is on |
 | `sourceIndex` | `int[]` | `sourceIndex[m]` = the **original** number of drawn atom `m`. This map from drawn back to original is why labels still show the right number under isolate |
 | `elements` | `string[]` | element per **drawn** atom |
-| `labels` | `{position, text}[]` or `null` | the atom-number labels, when that switch is on. `text` is the **1-based original** number (§ 9.6) |
+| `labels` | `{position, text}[]` or `null` | the atom-number labels, when that switch is on. `text` is the **1-based original** number (§ 11.3) |
 | `selection` | `int[]` or `null` | which drawn atoms to highlight. `null` means *draw no highlight* — which happens both when nothing is selected and under isolate, where every drawn atom is selected and a highlight would say nothing |
 | `arrows` | `{start, end}[]` or `null` | force vectors for **this** frame, where `end = start + force × scale` |
 
@@ -655,8 +662,9 @@ viewer.dispose();            // tears down in reverse order of assembly
 ```
 
 `mount` assembles a complete viewer in one call — the 3D window, the
-selection/cell panel, the switches, and (when there is more than one frame) the
-frame bar.
+selection/cell panel and the switches. The frame bar is not part of that
+decision: a viewer mounts before it has a structure, and the bar appears once a
+structure with more than one frame is loaded into it.
 
 **`owner` names the viewer, and therefore everything in it.** It is not a prefix
 on a settings key; it is the identity of an instance. The structure, the
@@ -681,7 +689,8 @@ card with the error written in it, rather than a half-built viewer.
 
 ## 9. The APIs, and who each one serves
 
-Seven surfaces, outermost first. Each says who calls it and what it is for.
+Eight surfaces, outermost first — each with who calls it and what it is for —
+plus one rule (§ 9.4) that cuts across all of them.
 
 ### 9.1 The module entry point
 
@@ -698,7 +707,7 @@ is the only import a consumer ever writes.
 | reach everything this viewer holds — the structure, the selection, the frames, the window state | reaching *another* viewer's; or reaching any of it without going through the model, which is where the rules and the read-only gate live |
 | run the movie — play, pause, ask whether it is playing | owning the timer. Playback lives in the mount layer and moves the frame through the same write everyone else uses (§ 6.4) |
 | hear that something changed | polling for it |
-| | pushing appearance. There is no "set the arrows", "set the labels", "show a busy state", "add a toggle". Arrows and labels are **worked out from the data** by the renderEngine, never handed in by a consumer |
+| set what the viewer *shows* — by changing the data or a switch (§ 10.1) | set how it *looks*. There is no "set the arrows", "set the labels", "show a busy state", "add a toggle". Arrows and labels are **worked out from the data** by the renderEngine, never handed in by a consumer |
 
 **The handle contains the model; it does not mirror it.** This is what being
 owned forces. When there was one shared model, a handle that also carried
@@ -711,6 +720,10 @@ stores beneath it.
 
 Adding a read to the handle that the model already answers is the specific move
 this rule forbids.
+
+In the examples below that one route is written `viewer.data` — the handle is the
+viewer, and `viewer.data` is that viewer's model. There is no other way to it,
+and no other viewer's model is reachable from it.
 
 > **Transition.** Today's handle carries fifteen names: lifecycle and playback,
 > plus eight reads and writes forwarded from the model. Those eight are what the
@@ -824,11 +837,11 @@ none of them keeps its own answer.
 - **All of it stays live in a read-only viewer** — selecting and isolating change
   the drawing, not the structure (§ 9.4).
 
-**One selection per owner, and that is the entire isolation mechanism.** A
-read-only inspector's selection cannot disturb an editable tab's, because they
-are not the same selection — not because something copies one aside. When every
-viewer owns its state, "don't let them collide" stops being a mechanism and
-becomes a fact.
+**One selection per owner, and that is the whole of how viewers stay out of each
+other's way.** A read-only inspector's selection cannot disturb an editable tab's,
+because they are not the same selection — not because something copies one aside.
+When every viewer owns its state, "don't let them collide" stops being a
+mechanism and becomes a fact.
 
 ### 9.6 `view` — the facts about the window
 
@@ -874,17 +887,34 @@ allowed to issue drawing commands. That split is why the interesting part — ho
 much work a change needs, and what each frame turns into — can be exercised with
 no browser at all (§ 13.2).
 
-### 9.8 The sealed layer — the only code that knows about 3Dmol
+### 9.8 The drawing commands — small operations with no decisions in them
 
 Load frames, swap to a frame, append frames, apply the overlays, set this frame's
 arrows, set the cell geometry, show or hide the "Updating view…" cover, and batch
-a group of changes so the screen updates once.
+a group of changes so the screen updates once. Each one translates finished data
+into something the layer below can act on. None of them decides anything — which
+operation to use is the renderEngine's call, made one level up.
 
 Plus **two questions, asked only by the renderEngine, only about the drawing
 itself**: *is there a movie loaded at all?* and *how many frames does it have?*
 Both exist for one purpose — so the renderEngine can check whether its own last
 instruction actually landed (§ 10.10). Neither is reachable from outside, and
 neither answer ever reaches a user.
+
+### 9.9 The sealed layer — the only code that knows about 3Dmol
+
+Beneath the commands sits the one piece of code that names the drawing library.
+It **holds the drawing copy** — the movie, the camera, the styles, the picking,
+the highlight spheres — and it draws the frame it is handed.
+
+Its surface faces **downward only**. It offers no way to read coordinates back
+out, and no way to ask which frame is showing. That is not an oversight: a viewer
+that could be asked what it is displaying would be a second answer to a question
+the model already owns (§ 6.4), and the wrong one whenever the two had drifted.
+
+This is the layer that makes § 5.3 true. Everything above it — the commands, the
+renderEngine, the model, the panel, the tab — could be read end to end without
+learning which library draws the molecule.
 
 ---
 
@@ -921,10 +951,12 @@ objects, no DOM anywhere in it.
 frame is a set of length one, and it runs through exactly the same steps as four
 hundred. The only thing that changes is that the frame bar does not appear.
 
-**The output is fully-ready data.** What reaches 3Dmol is finished — every frame,
-already filtered, already carrying its labels and arrows. The pipeline does not
-micro-manage the library frame by frame; it hands over the complete set and 3Dmol
-then uses its own GPU acceleration to display and animate it.
+**The output is fully-ready data.** What reaches 3Dmol is finished — every frame
+already filtered, with its arrows baked in. The pipeline does not micro-manage
+the library frame by frame; it hands over the complete set and 3Dmol then uses
+its own GPU acceleration to display and animate it. (Labels and the highlight are
+the exception, and § 10.6 explains why: they are free-standing objects, re-placed
+per frame rather than carried inside it.)
 
 That division of labour is the whole performance story: **we do the derivation
 once, up front; the library does the fast part, repeatedly.**
@@ -961,10 +993,13 @@ now third in the list.
 | **atom-number labels** | the labels switch is on | one label per drawn atom | the text is the atom's **original** number, recovered through the map from step 1, and converted to 1-based by the one shared translation (§ 11.3). Never its position in the filtered list |
 | **the selection highlight** | something is selected **and isolate is off** | the list of drawn atoms to highlight | under isolate this is deliberately empty: the drawn set already *is* the selection, so highlighting all of it would say nothing. The pipeline emits only *which* atoms — never what the highlight looks like |
 | **force arrows** | the forces switch is on and the data carried forces | frame `f`'s forces, times the scale | frame `f`'s arrows come from frame `f`'s forces. Getting this wrong shows converged forces on an unconverged frame |
-| **the unit cell box** | the structure has a cell | the cell's vectors and its anchor corner | see the geometry/visibility split below |
-| **the axes** | the axes switch is on | the origin | |
-
 The result, for every frame, is the finished data of § 6.5.
+
+**Two things are deliberately not in that table, because they are not per-frame.**
+The **unit cell box** and the **axes** are scene-level: they are worked out once
+from the cell and the origin, and are the same for every frame unless the cell
+itself changes (§ 6.5). Recomputing them per frame would be work that produces an
+identical answer four hundred times.
 
 **Measurement is deliberately not in this list.** The position / distance / angle
 readout is the result of a user *interacting* with the view, not part of
@@ -972,15 +1007,26 @@ producing a frame. It lives on its own (§ 11.3), takes its atoms from the panel
 selection, and reads coordinates from the master copy — which is exactly why it
 stays correct under isolate, where the drawn numbering has changed.
 
-> **The cell's geometry rides the load; only its visibility rides the overlay.**
-> The box's vectors and anchor corner are structure data and are handed down
-> **unconditionally** at load — even when the cell is currently hidden — so the
-> anchor is always current. The overlay carries only a boolean: show it or don't.
-> The reason is concrete: gating the geometry behind the visibility switch means
-> the geometry only arrives when the cell is already shown, so turning the cell on
-> after a hidden load draws the box from the world origin instead of the
-> structure's corner. A test of this must assert **where the wireframe is drawn**,
-> not what the cell data says — the data was right the whole time.
+> **The cell's geometry and the cell's visibility travel separately.**
+>
+> The box's vectors and its anchor corner are **structure** data. They are handed
+> down **unconditionally** whenever they change — at load, and again when the cell
+> is edited, through their own command (§ 9.8) — **even while the cell is
+> hidden**. So the anchor is always current.
+>
+> The visibility switch carries **only a boolean**: show it or don't. It never
+> carries geometry.
+>
+> Keeping those two apart is what makes a cell edit an overlay refresh rather than
+> a rebuild (§ 10.5): the atoms did not move, so only the box and the axes need
+> re-applying.
+>
+> The reason it is stated as a rule: if geometry is gated behind the visibility
+> switch, it only ever arrives while the cell is already shown — so turning the
+> cell **on after a hidden load** draws the box from the world origin instead of
+> the structure's corner. A test of this must assert **where the wireframe is
+> drawn**, not what the cell data says. The cell data is right the whole time;
+> that is exactly why checking it proves nothing.
 
 ### 10.4 Load once; playing is a frame swap, not a redraw
 
@@ -1402,7 +1448,9 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 10.3 — the two steps, in that order | the filter runs before the overlays, and the overlays are keyed to the atoms that survived it |
 | § 10.3 — a label carries the original number | under isolate, a drawn atom's label shows where it came from, not its position in the filtered list |
 | § 10.3 — frame *f*'s arrows come from frame *f* | arrows on a played trajectory match their own frame's forces |
-| § 10.3 — the cell's geometry rides the load | turning the cell on **after** a hidden load draws the box at the structure's corner. The assertion is where the wireframe is drawn, not what the cell data says |
+| § 10.3 — cell geometry and cell visibility travel separately | turning the cell on **after** a hidden load draws the box at the structure's corner, and a cell edit while the cell is hidden still updates the anchor. The assertion is where the wireframe is drawn, not what the cell data says |
+| § 10.3 — the cell box and the axes are worked out once | they are not recomputed per frame, and playing a trajectory does not re-derive them |
+| § 9.9 — the sealed layer faces downward only | there is no way to ask it for coordinates and no way to ask it which frame is showing |
 | § 10.4 — playing does not re-process | stepping or playing issues no per-frame derivation; the frames were finished at load |
 | § 10.5 — the cost matches what changed | flipping a switch does not reload coordinates; an isolate does; the choice never consults the atom count |
 | § 10.6 — shapes move with the frames | after a swap, labels and the highlight sit on the atoms' new positions, not where frame 0 left them |
