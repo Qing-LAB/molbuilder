@@ -76,8 +76,11 @@ developer who needs a viewer does not build one.
 
 ### 1.1 What that looks like in use
 
-This is the behaviour the rest of the document exists to protect. It is the same
-in every tab.
+This is the behaviour the rest of the document exists to protect. The controls
+are the same wherever a viewer appears — with one split: the ones that change the
+structure (tagging, editing the cell, the edit operations, saving a state) appear
+only in an editable view, because a control that would do nothing should not be
+offered (§ 9.4).
 
 **Moving around.** Drag to rotate, scroll to zoom, right-drag (or shift-drag) to
 pan. `⟲` re-centres and re-fits the camera. The View menu offers **Perspective**
@@ -134,7 +137,7 @@ it:
 
 **Tagging atoms.** In an editable view the panel tags the selected atoms with a
 label — L-electrode, R-electrode, bridge, interface, frozen atoms, or a name you
-type. Tags show as chips you can remove. These are not decoration: they are
+type. They show as chips you can remove. These are not decoration: they are
 written into the structure's sidecar file and into the generated input script, so
 the calculation and the results view both see what was set here.
 
@@ -488,7 +491,7 @@ classDiagram
 | `elements` | `string[]` | element per atom. **Shared by every frame.** |
 | `annotations` | per atom: the labels it carries, and its residue name if the source had one | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them, writes them and filters on them (§ 9.5); the drawing does not use them. Writing one is a change to the structure, gated like any other (§ 9.4). Some label names are **reserved** and mean something downstream (§ 6.6) |
 | `cell` | the a/b/c vectors, the corner the box is anchored at, how each axis is treated — repeating, isolated, or a transport lead — and how much empty space an isolated axis should have. `null` when there is no cell | **One fact that travels together**, which is why there is one door to change it (§ 9.3). The field names and the rules for resolving them belong to [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md); MolView carries the block, offers it, edits it through that one door, and interprets none of it |
-| `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no tags |
+| `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no labels |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
 
 Atom **count**, `elements` and `annotations` are fixed when the structure loads
@@ -990,7 +993,7 @@ answers, and a caller has to be able to tell them apart.
   history is anchored.
 - **`exportFile()`** — its exact inverse. Returns the structure text plus its
   sidecar, written from **the frame currently displayed** (§ 6.4). It **refuses**
-  to produce anything when the geometry and the per-atom tags disagree about how
+  to produce anything when the geometry and the per-atom labels disagree about how
   many atoms there are, returning nothing rather than writing a corrupt
   structure. It is not a disk write and not the session save.
 
@@ -1042,8 +1045,8 @@ unsaved-changes badge (§ 11.2) never appears.
 
 **A control that would do nothing should not be offered.** The rule above is what
 the *API* does; a button that silently does nothing is a bad answer for a *user*.
-So a read-only viewer does not show the controls the gate would swallow — the tag
-box, the edit operations, Save state. The two are not in tension: the gate is what
+So a read-only viewer does not show the controls the gate would swallow — the
+label box, the edit operations, Save state. The two are not in tension: the gate is what
 makes the guarantee true even if a control is ever shown by mistake, and hiding
 the control is what makes the viewer honest. The gate is the contract; the hiding
 is courtesy, and it may never be the only thing standing between a read-only
@@ -1244,7 +1247,8 @@ becomes what 3Dmol paints. It is one path. There is no second one.
 2. change a **switch**, then
 3. ask for **one render**.
 
-That is all any button, toggle, panel or streamed update ever does. **There is no
+That is all any button, toggle, panel or streamed update ever does — with one
+exception, named at the end of this section. **There is no
 hand-crafted render anywhere.** No control builds its own view, pokes the drawing
 library directly, or produces a picture on the side. Given the current data and
 the current switches, one piece of code produces the finished frames and hands
@@ -1278,9 +1282,9 @@ hundred. The only thing that changes is that the frame bar does not appear.
 **The output is fully-ready data.** What reaches 3Dmol is finished — every frame
 already cut down, with its arrows baked in. The pipeline does not micro-manage
 the library frame by frame; it hands over the complete set and 3Dmol then uses
-its own GPU acceleration to display and animate it. (Atom-number labels and the highlight are
-the exception, and § 10.6 explains why: they are free-standing objects, re-placed
-per frame rather than carried inside it.)
+its own GPU acceleration to display and animate it. (Atom-number labels and the
+highlight are the exception, and § 10.6 explains why: they are free-standing
+objects, re-placed per frame rather than carried inside it.)
 
 That division of labour is the whole performance story: **we do the derivation
 once, up front; the library does the fast part, repeatedly.**
@@ -1292,7 +1296,7 @@ For **each** frame, two steps, and the order matters:
 ```mermaid
 flowchart TD
     subgraph PF["for every frame f"]
-      C0["start: the master copy's frames[f]<br/>+ the shared identity (elements, tags)"]
+      C0["start: the master copy's frames[f]<br/>+ the shared identity (elements, labels)"]
       SEL["STEP 1 — keep only what is shown<br/>isolate ON and something selected?<br/>keep only those atoms, renumber them,<br/>and record where each came from"]
       OV["STEP 2 — add the overlays<br/>keyed to the atoms that survived step 1"]
       OUT["the finished frame f"]
@@ -1333,7 +1337,7 @@ identical answer four hundred times.
 
 **Measurement is deliberately not in this list.** The position / distance / angle
 readout is the result of a user *interacting* with the view, not part of
-producing a frame. It lives on its own (§ 11.5), takes its atoms from the panel's
+producing a frame. It lives on its own (§ 11.6), takes its atoms from the panel's
 selection, and reads coordinates from the master copy — which is exactly why it
 stays correct under isolate, where the drawn numbering has changed.
 
@@ -1954,9 +1958,9 @@ user reads, and the reverse — turning a typed 1-based input like `1-4, 6` in t
 (§ 9.5).
 
 **Every** surface that shows or accepts an atom number goes through it: the
-measurement readout, the atom-list column, the labels in the 3D window (§ 10.3 step 2),
-the filter panel. That is why they cannot drift apart, and why the first atom
-reads as `#1` everywhere even though the code sees `0`.
+measurement readout, the atom-list column, the atom-number labels in the 3D
+window (§ 10.3 step 2), the filter panel. That is why they cannot drift apart,
+and why the first atom reads as `#1` everywhere even though the code sees `0`.
 
 This is the browser end of a rule that spans the whole application — the same
 translation exists on the server side, and the number a user reads must equal the
@@ -1964,11 +1968,24 @@ atom number in the generated input file. Its single home is
 [`model/overview.md`](?doc=model/overview.md) § 2, and MolView defers to it
 rather than restating it.
 
-**Measurement is its own layer, not part of drawing.** The readout in the 3D
-window repaints on a selection change **or** a frame change. Its maths comes from
-pick order — which is why the vertex of a three-atom angle is the atom picked
-second — and its coordinates come from the master copy at the current frame, so
-it is correct while a trajectory plays and correct under isolate.
+### 11.6 Measurement is its own layer, not part of drawing
+
+The readout in the 3D window (§ 1.1) is not produced by the render pipeline and is
+not an overlay. It is the result of a user *interacting* with the view, and it
+lives on its own.
+
+**What it reads.** Its atoms come from the selection, in **pick order** — which is
+why the vertex of a three-atom angle is the atom picked second, not the middle one
+by number. Its coordinates come from the **master copy at the current frame**
+(§ 6.3), never from the drawing.
+
+**When it repaints.** On a selection change **or** a frame change — it subscribes
+to both (§ 6.4).
+
+That is what makes it correct in the two places a drawing-derived readout would be
+wrong: while a trajectory plays, because it re-reads the current frame; and under
+isolate, because the drawn numbering no longer matches the real one and it never
+looked at the drawn numbering (§ 6.5).
 
 ---
 
@@ -2134,7 +2151,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 9.3 — a read cannot be used to write | changing what a read returned leaves the viewer untouched |
 | § 9.3 — one need, one main way in | a narrower cut returns exactly what the main way in holds for that field — the two cannot disagree |
 | § 9.3 — the facts a request carries are read together | after an edit, a request built from the viewer carries that edit in **every** part of what it sends — no piece can be older than another, because it all came from one read of the structure; with nothing loaded that read returns nothing rather than an empty structure |
-| § 9.3 — a structure that cannot be written out is not written out | when the geometry and the per-atom tags disagree about how many atoms there are, the export door returns nothing rather than a corrupt structure |
+| § 9.3 — a structure that cannot be written out is not written out | when the geometry and the per-atom labels disagree about how many atoms there are, the export door returns nothing rather than a corrupt structure |
 | § 9.4 — read-only freezes the master copy and nothing else | every change to the master copy is a no-op **and does not throw**, while select, isolate, scrub, camera and export all work normally |
 | § 9.4 — a read-only viewer has no history | `save`, `load` and `undo` do nothing, and the unsaved-changes badge never appears |
 | § 9.5 — the selection survives an editor switch | moving between click and filter mode leaves the selection exactly as it was |
@@ -2178,6 +2195,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.3 — save-to-project and download differ only in destination | both produce identical bytes, and neither has MolView writing a file |
 | § 11.4 — every export enters at MolView | no export decides anything below the model; a picture is rendered by the sealed layer on request, but what to export and where it goes is decided above |
 | § 11.5 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
+| § 11.6 — measurement reads the truth, in pick order | the vertex of an angle is the atom picked second, not the middle one by number; the readout stays correct while a trajectory plays and under isolate, because it reads the master copy at the current frame |
 
 ### 13.4 What makes this testable at all
 
@@ -2237,7 +2255,7 @@ below lives under `lib/molview/`.
 | `data-model.js` | the model — the master copy and the data API (§ 6, § 9.3) |
 | `render-engine/` | the renderEngine: what to redraw, the per-frame maths, the drawing commands (§ 9.7–9.8) |
 | `selection/` | the panel, the click-to-select wiring, the distance/angle maths (§ 9.5) |
-| `frame-controls.js` · `measurement-overlay.js` | the frame bar and the measurement readout |
+| `frame-controls.js` · `measurement-overlay.js` | the frame bar (§ 6.4) and the measurement readout (§ 11.6) |
 | `_atom-index.js` | the one atom-numbering translation (§ 11.5) |
 | `_atom-channels.js` | what kinds of thing an atom can be filtered by, and in what order (§ 9.5) |
 | `_viewer-overlay.js` | one consistent way to put a small badge in a corner of the 3D window |
