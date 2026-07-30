@@ -2738,9 +2738,41 @@ const molAxes = axes;
     /*  Arrow overlays                                               */
     /* ------------------------------------------------------------ */
 
+    // The force-arrow appearance — a constant owned by THIS layer, exactly like
+    // _SELECTION_GLOW below.  Per-frame data says which arrows exist and where they point
+    // and nothing else (molview.md § 6.5); what they look like is decided here, from the set
+    // handed in.  The largest force in the set draws gold and the rest ramp dim-red ->
+    // orange-red by RELATIVE magnitude, with the shaft thickening the same way, so the eye
+    // lands on the atom under the most force — the relaxation hot spot.
+    const _FORCE_ARROW = {
+        maxColor:   "#ffc400",   // gold: the single largest arrow in the set
+        radiusMin:  0.05,        // Å, at zero relative magnitude
+        radiusSpan: 0.04,        // Å, added at the largest
+    };
+    function _forceRampColor(t) {   // t in [0,1]: dim-red -> orange-red
+        return "rgb(" + Math.floor(170 + 85 * t) + "," + Math.floor(40 + 60 * t) + ",32)";
+    }
+    // |end - start| — the drawn length, which is the force magnitude times whatever scale the
+    // caller applied.  The ramp uses the RATIO to the largest, so the scale cancels.
+    function _arrowMagnitude(a) {
+        const dx = a.end[0] - a.start[0], dy = a.end[1] - a.start[1], dz = a.end[2] - a.start[2];
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
     function _drawArrows(viewer, arrows) {
         const shapes = [];
         const labels = [];
+        // Rank the set first: the gold goes to the largest, everything else ramps against it.
+        // An arrow that arrives WITH a colour keeps it — the axis triad hands its own per-axis
+        // colours through this same door, and those are its to choose.
+        let maxMag = 0, maxAt = -1;
+        for (let i = 0; i < arrows.length; i++) {
+            const a = arrows[i];
+            if (!a || !a.start || !a.end) continue;
+            const m = _arrowMagnitude(a);
+            if (m > maxMag) { maxMag = m; maxAt = i; }
+        }
+        let at = -1;
         // Task #33: batch ALL arrows into ONE GLShape.  ``viewer.addArrow`` returns
         // a GLShape; every subsequent arrow appends to that same shape via
         // ``shape.addArrow`` (per-arrow colour is preserved as vertex colour), so a
@@ -2749,9 +2781,14 @@ const molAxes = axes;
         // whose addArrow return lacks ``addArrow`` falls back to one shape per arrow.
         let batch = null;
         for (const a of arrows) {
+            at += 1;
             if (!a || !a.start || !a.end) continue;
-            const color = a.color || "#888";
-            const radius = typeof a.radius === "number" ? a.radius : 0.05;
+            const t = maxMag > 0 ? _arrowMagnitude(a) / maxMag : 0;
+            const color = a.color
+                || (at === maxAt ? _FORCE_ARROW.maxColor : _forceRampColor(t));
+            const radius = typeof a.radius === "number"
+                ? a.radius
+                : _FORCE_ARROW.radiusMin + _FORCE_ARROW.radiusSpan * t;
             const spec = {
                 start: { x: a.start[0], y: a.start[1], z: a.start[2] },
                 end:   { x: a.end[0],   y: a.end[1],   z: a.end[2] },

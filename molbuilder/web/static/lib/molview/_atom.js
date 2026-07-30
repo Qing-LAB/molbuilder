@@ -54,6 +54,21 @@ if (typeof window !== "undefined") {
 
 /* ── Channels: what a filter row can match (§ 9.5) — was _atom-channels.js ───── */
 
+// TWO CHANNELS THE CONTRACT DOES NOT NAME, both parked elsewhere on purpose.
+//
+//   `frozen`  — § 6.6 says `frozen atoms` is an ORDINARY LABEL and that MolView's end of it
+//               is "one mechanism, no special case".  It is still a separate field on the
+//               atom (`isFrozen`), so it still needs a channel of its own here.  Folding it
+//               onto the same footing as the other reserved names changes the structure
+//               model, the sidecar format and the input generators, so it belongs to
+//               model/structure-annotations.md — not to this file, and not to this phase.
+//   `values`  — per-atom scalars (charge, spin).  Not in § 6.2's per-atom facts; they are
+//               task #24's programme.  Kept because removing a channel would remove the
+//               filter row in front of it.
+//
+// Both are recorded rather than changed: § 6.2's rule is that the enumerated list and the
+// carried list move TOGETHER, and both of these do come from a field the atom carries.
+
 // Channel kinds mirror Python § 2 + the two reserved categories the UI
 // always offers:
 //   category — one value per atom (element, residue); filter = equals

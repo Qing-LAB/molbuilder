@@ -498,18 +498,12 @@ if (typeof window !== "undefined") {
 // Neutral default force scale (Å per force unit): identity, so raw forces draw at magnitude.
 // The consumer overrides via flags.forceScale for a physically-meaningful length.
 var DEFAULT_FORCE_SCALE = 1.0;
-// Force-vector styling (§2.4): the largest drawn force is highlighted gold; the rest ramp from
-// dim-red to orange-red by RELATIVE magnitude, and the arrow radius grows with it -- so the
-// eye lands on the atom under the most force (the relaxation "hot spot"). A consumer suppresses
-// a force (frozen atom, sub-threshold) by handing a ZERO vector: magnitudes at/under FORCE_EPS
-// draw no arrow, so the consumer owns WHICH forces show; the engine owns HOW they look.
-var FORCE_MAX_COLOR    = "#ffc400";           // gold: the single largest drawn force
-var FORCE_RADIUS_MIN   = 0.05;                // Å: the thinnest (zero-relative-magnitude) arrow
-var FORCE_RADIUS_SPAN  = 0.04;                // Å: added at the largest force
-var FORCE_EPS          = 1e-9;                // |f| at/under this -> no arrow (a suppressed force)
-function _forceRampColor(t) {                 // t in [0,1]: dim-red -> orange-red
-    return "rgb(" + Math.floor(170 + 85 * t) + "," + Math.floor(40 + 60 * t) + ",32)";
-}
+// A consumer suppresses a force (a frozen or sub-threshold atom) by handing a ZERO vector:
+// magnitudes at/under this draw no arrow.  That is CONTENT -- WHICH arrows exist -- which is
+// why it lives here.  What an arrow LOOKS like is not here at all: the gold on the largest
+// force, the dim-red -> orange-red ramp and the shaft radius are a constant owned by the
+// sealed layer (§ 6.5), exactly like the selection highlight.
+var FORCE_EPS = 1e-9;
 
 // §2.3 selection filter: the DRAWN atom set, in original-atom order (ascending). Isolate ON
 // with a non-empty selection keeps only the selected atoms; otherwise every atom is drawn.
@@ -577,32 +571,28 @@ function processFrame(frame, identity, flags) {
     // §2.4 -- selection highlight: the drawn indices to glow (isolate off), or null.
     var selection = _selectionHighlight(drawn, flags);
 
-    // §2.4 -- force vectors for THIS frame, built from the raw per-atom forces × scale, for
-    // the drawn atoms only (isolate-aware). null when there are no forces or the overlay is off.
+    // § 10.3 step 2 -- force vectors for THIS frame: `end = start + force × scale`, for the
+    // drawn atoms only (isolate-aware).  FRAME f's arrows come from FRAME f's forces -- getting
+    // that wrong shows converged forces on an unconverged frame.  null when there are no forces
+    // or the overlay is off.
+    //
+    // Two fields and no more (§ 6.5).  Colour and radius are NOT here: they are what an arrow
+    // looks like, and appearance is a constant owned by the sealed layer, re-derived there from
+    // the set it is handed.  Keeping it out is what keeps every frame's data identically shaped.
     var arrows = null;
     if (flags.showForces && Array.isArray(frame.forces)) {
         var scale = (typeof flags.forceScale === "number") ? flags.forceScale : DEFAULT_FORCE_SCALE;
-        // The KEPT (non-suppressed) set: a zero force -- the consumer's way to hide a frozen or
-        // sub-threshold atom -- draws no arrow. maxMag over this set drives the gold highlight +
-        // the color/radius ramp, so "biggest force" is relative to what is actually shown.
-        var kept = [];
-        var maxMag = 0, maxKi = -1;
+        arrows = [];
         for (var ai = 0; ai < drawn.length; ai++) {
             var v = frame.forces[drawn[ai]] || [0, 0, 0];
             var mag = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-            if (mag <= FORCE_EPS) continue;
-            if (mag > maxMag) { maxMag = mag; maxKi = kept.length; }
-            kept.push({ p: positions[ai], v: v, mag: mag });
+            if (mag <= FORCE_EPS) continue;          // a suppressed force draws no arrow
+            var p = positions[ai];
+            arrows.push({
+                start: [p[0], p[1], p[2]],
+                end:   [p[0] + v[0] * scale, p[1] + v[1] * scale, p[2] + v[2] * scale],
+            });
         }
-        arrows = kept.map(function (e, ki) {
-            var t = maxMag > 0 ? e.mag / maxMag : 0;
-            return {
-                start:  [e.p[0], e.p[1], e.p[2]],
-                end:    [e.p[0] + e.v[0] * scale, e.p[1] + e.v[1] * scale, e.p[2] + e.v[2] * scale],
-                color:  ki === maxKi ? FORCE_MAX_COLOR : _forceRampColor(t),
-                radius: FORCE_RADIUS_MIN + FORCE_RADIUS_SPAN * t,
-            };
-        });
         if (!arrows.length) arrows = null;   // nothing above the suppression floor -> no overlay
     }
 
