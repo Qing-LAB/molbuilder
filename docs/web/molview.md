@@ -242,9 +242,8 @@ with a clear error if the library is missing. Swapping the drawing library
 touches that one file and reaches no consumer of MolView.
 
 **It contains its own state.** The structure, the selection, the switches, the
-displayed frame, the undo history and the camera all live inside the viewer. It
-keeps nothing in a global, and nothing outside it keeps a copy of anything it
-holds.
+displayed frame and the undo history all live inside the viewer. It keeps
+nothing in a global, and nothing outside it keeps a copy of anything it holds.
 
 **The test of all of this:** delete every other web module and MolView still
 loads, mounts, draws, selects, measures and exports. The only things it would
@@ -357,8 +356,9 @@ usable alone (§ 6.4).
 **What is selected, and which switches are on.** The selected atom numbers with
 the order they were picked in — a three-atom angle has to know which one was
 picked second — the filter settings, and the on/off switches: isolate, atom
-labels, force arrows, unit cell, axes, and the arrow scale. Window settings
-(camera, style, background) are held separately, for the reason in § 9.6.
+labels, force arrows, unit cell, axes, and the arrow scale. How the molecule is
+*drawn* — style, radius, background — is held separately (§ 9.6), and the camera
+is not held at all.
 
 ### 6.2 The shapes
 
@@ -710,7 +710,7 @@ flowchart TB
 | Helper | Its job | What it is handed |
 |---|---|---|
 | load | put a loaded structure into the model | where to put it; how to announce a change; a way to record the first state |
-| write out | turn the structure into text, for export and for snapshots | read-only access to the atoms, cell, selection, window state and history position |
+| write out | turn the structure into text, for export and for snapshots | read-only access to the atoms, cell, selection and history position |
 | history | undo / redo (§ 11.2) | "make a snapshot" + "put a snapshot back"; where the bytes go |
 | edits | the geometry operations (§ 11.1) | read the atoms; apply the structure the server sends back |
 | selection | what is selected + the switches (§ 9.5) | *(an optional starting selection)* |
@@ -752,8 +752,8 @@ structure with more than one frame is loaded into it.
 
 **`owner` names the viewer, and therefore everything in it.** It is not a prefix
 on a settings key; it is the identity of an instance. The structure, the
-selection, the switches, the displayed frame and its range, the camera, the undo
-history, the renderEngine and the sealed layer all belong to that owner. Two
+selection, the switches, the displayed frame and its range, the undo history,
+the renderEngine and its sealed layer all belong to that owner. Two
 mounts with different owners share nothing (§ 5.6). A viewer with no owner has no
 identity, which is why one is always given.
 
@@ -788,7 +788,7 @@ is the only import a consumer ever writes.
 | A tab must be able to | Refused, deliberately |
 |---|---|
 | find out whether it got a viewer, and tear it down | reaching the 3Dmol object, the stores, or the DOM |
-| reach everything this viewer holds — the structure, the selection, the frames, the window state | reaching *another* viewer's; or reaching any of it without going through the model, which is where the rules and the read-only gate live |
+| reach everything this viewer holds — the structure, the selection, the frames, the drawing settings | reaching *another* viewer's; or reaching any of it without going through the model, which is where the rules and the read-only gate live |
 | run the movie — play, pause, ask whether it is playing | owning the timer. Playback lives in the mount layer and moves the frame through the same write everyone else uses (§ 6.4) |
 | hear that something changed | polling for it |
 | set what the viewer *shows* — by changing the data or a switch (§ 10.1) | set how it *looks*. There is no "set the arrows", "set the labels", "show a busy state", "add a toggle". Arrows and labels are **worked out from the data** by the renderEngine, never handed in by a consumer |
@@ -838,7 +838,7 @@ rather than maintained separately.
 | Build a server request | `factsForRequest()` — the one payload a request is built from | | — |
 | Get the structure out as text | `exportFile()` | | — |
 | Hear that the structure changed | `subscribe(fn)` — the structure only; the frame has its own channel | | — |
-| Reach the selection / the window state | `selection` (§ 9.5) · `view` (§ 9.6) | | — |
+| Reach the selection / the drawing settings | `selection` (§ 9.5) · `view` (§ 9.6) | | — |
 | Put a structure in | `installMolecule(input)` | | **yes** |
 | Edit the geometry | `applyOp(name)` (§ 11.1) | | **yes** |
 | Edit the cell | `commitPeriodicityOp` — the one way the cell changes | | **yes** |
@@ -970,49 +970,45 @@ because they are not the same selection — not because something copies one asi
 When every viewer owns its state, "don't let them collide" stops being a
 mechanism and becomes a fact.
 
-### 9.6 `view` — the window, which MolView does not hold
+### 9.6 `view` — how the molecule is drawn, and where the camera is not
 
-Camera position and zoom, projection, draw style, radius, background colour.
+Draw style, radius, background colour, projection — and the camera.
 
-**`view` is a door, not a store.** MolView keeps no copy of any of these. Asked
-for the window state it goes and asks the sealed layer; told to change it, it
-passes the change down. This is deliberate and it is the same rule as everywhere
-else: a live 3D camera exists in exactly one place — the thing doing the drawing
-— and a copy of it up here would be a second answer to "where is the camera
-pointing", stale the moment a user drags.
+**The first four are settings the user chose.** They arrive from a menu, MolView
+was handed them, and it holds them like any other input. Nothing has to be read
+back to know which style is active: the answer is whatever was last set.
+
+**The camera is not held at all.** It is the one thing a user changes without
+telling MolView — a drag rotates it directly in the 3D window. MolView does not
+track it, does not read it back, and does not save it. On load, and on Reset, the
+camera is **fitted to the structure**, which is the only orientation guaranteed
+to show the molecule.
+
+That is a deliberate trade. Restoring an orientation across a session sounds
+useful and mostly is not: after the structure changes, an old camera can leave
+the molecule off-screen, which is exactly why a reload re-fits. What matters
+across a session is the **structure and the selection** (§ 11.2); the angle you
+happened to be looking from is cheap to recreate and easy to get wrong.
+
+What that costs is one sentence. What it buys is the removal of an entire
+mechanism: without it, nothing ever asks the sealed layer a question (§ 9.9),
+there is no separate trigger for saving a view-only change, and no persisted
+slot that has to be patched independently of the structure it belongs to.
 
 **Why these are not the switches of § 9.5**, when both are things a user turns
 on. The test is: *does working out what a frame contains require reading it?*
 
-| | **Facts about the molecule** — `selection` | **Facts about the window** — `view` |
+| | **Facts about the molecule** — `selection` | **How it is drawn** — `view` |
 |---|---|---|
-| Examples | what is selected, isolate, atom labels, force arrows and their scale, the cell box, the axes | camera and zoom, perspective vs orthographic, draw style, radius, background |
+| Examples | what is selected, isolate, atom labels, force arrows and their scale, the cell box, the axes | draw style, radius, background, perspective vs orthographic |
 | What they change | **what is in a frame** — which atoms, and what is drawn beside them | **how the same frame is painted** |
 | Who reads them | the renderEngine, when working out a processed frame (§ 6.5) | nobody in that calculation — they go straight to the sealed layer |
 | If one changed and nothing was recomputed | the picture would be *wrong* | the picture would be *correct, painted differently* |
-| Held by | MolView, in a store it owns | the sealed layer; `view` only reaches it |
 
 That line is checkable, not a convention to remember: a switch that reaches the
-processed frame is a molecule fact and MolView holds it; a setting the sealed
-layer applies without the frame calculation ever seeing it is a window fact and
-the sealed layer holds it.
-
-**Window state is applied even if it arrives early.** The sealed layer is
-attached during mount, so a restore can land before there is anything to apply it
-to. Settings that arrive first are held and applied the moment it registers,
-rather than dropped.
-
-**Saving the window needs a nudge, because nothing else triggers it.** Persistence
-is push-only (§ 11.2): something has to happen to the *structure* for a save to
-be pushed. Rotating the camera or flipping a switch is not that — it changes
-nothing about the structure, so on its own it would reach storage only by luck,
-the next time an unrelated edit happened to save.
-
-So there is one deliberate exception: when the page is being hidden or left, the
-current window state is read and patched into the already-saved session — **that
-slot only**, never the structure or the selection. That keeps a view-only change
-across a tab round-trip without giving a camera rotate the power to write a
-structure.
+processed frame is a molecule fact; a setting the sealed layer applies without
+the frame calculation ever seeing it belongs here. The camera is in neither
+column, because it is in neither place.
 
 ### 9.7 The renderEngine — commands only
 
@@ -1047,19 +1043,21 @@ Beneath the commands sits the one piece of code that names the drawing library.
 It **holds the drawing copy** — the movie, the camera, the styles, the picking,
 the highlight spheres — and it draws the frame it is handed.
 
-**It holds two different kinds of thing, and only one of them can be read back.**
+**Its surface faces downward only. Nothing asks it anything.** It is handed
+frames, overlays, cell geometry and settings; it draws them. There is no way to
+read coordinates out, no way to ask which frame is showing, and no way to ask
+where the camera is pointing.
 
-The **drawing copy is derived** — worked out from the master copy every redraw.
-So it offers no way to read coordinates out and no way to ask which frame is
-showing. A derived thing cannot be a source: asking it would be a second answer
-to a question the model already owns (§ 6.4), and the wrong one the moment the
-two had drifted.
+That is not an oversight, and it is the reason § 9.6 gives up saving the camera.
+Everything the sealed layer holds is either **derived** — the drawing copy,
+worked out from the master copy every redraw — or **given to it**. A derived
+thing can never be a source: asking it would be a second answer to a question the
+model already owns (§ 6.4), and the wrong one the moment the two had drifted. A
+given thing does not need asking, because whoever gave it still knows.
 
-The **window state is primary** — the camera is not computed from anything, it is
-where the user pointed it. Nothing above can hold it without holding a copy that
-goes stale on the next drag. So it lives here, and § 9.6 reaches it through one
-door. That is not an exception to the rule; it is the rule applied to a fact
-whose only sensible home is the bottom.
+Keeping the camera out of what MolView tracks is what lets that sentence have no
+exceptions. One question would have been enough to require a door, a way to keep
+the answer fresh, and a rule about which of the two answers wins.
 
 This is the layer that makes § 5.3 true. Everything above it — the commands, the
 renderEngine, the model, the panel, the tab — could be read end to end without
@@ -1359,8 +1357,8 @@ ones that actually changed.
 The scene is a fixed stack of independent layers — labels, force arrows, the
 highlight, the cell box, the axes — drawn in that order, each a function of a
 **declared** set of inputs and of nothing else. (Draw style is not one of them:
-it is a window fact, applied by the sealed layer without the frame calculation
-ever seeing it — § 9.6.) Two rules would
+it is a drawing setting, applied by the sealed layer without the frame
+calculation ever seeing it — § 9.6.) Two rules would
 follow: a change dirties only the layers that declare it as an input (a click
 dirties the highlight and nothing else; the labels switch dirties labels and
 nothing else; a frame swap dirties no layer's content at all, only positions),
@@ -1465,8 +1463,10 @@ underneath: where the bytes actually go, reached through an accessor handed in a
 mount. That is the entire division. See
 [`workspace.md`](?doc=web/workspace.md).
 
-A snapshot carries the window state (§ 9.6) but **not** trajectory frames; saving
-more than one frame is planned, not built.
+A snapshot carries **the structure and the selection** — what the user was
+working on and what they had picked out. It does not carry the camera (§ 9.6),
+and it does not yet carry more than one frame of a trajectory; multi-frame saving
+is planned, not built.
 
 ### 11.3 One atom-numbering translation, in one place
 
@@ -1618,17 +1618,16 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 9.3 — one need, one main way in | a narrower cut returns exactly what the main way in holds for that field — the two cannot disagree |
 | § 9.4 — read-only freezes the master copy and nothing else | every change to the master copy is a no-op **and does not throw**, while select, isolate, scrub, camera and export all work normally |
 | § 9.5 — one selection per owner | a read-only viewer's selection changes leave an editable viewer's selection untouched |
-| § 9.6 — MolView holds no window state | asking for the camera reaches the sealed layer; there is no copy up here to go stale when the user drags |
-| § 9.6 — a view-only change survives leaving the page | rotating the camera and leaving writes the window state into the saved session, and writes nothing else into it |
+| § 9.6 — the camera is not held, saved or read back | nothing anywhere reports where the camera is pointing, and a reload fits it to the structure rather than restoring an angle |
 | § 9.7 — the renderEngine answers nothing | it offers no read of the data and no read of the displayed frame |
-| § 9.8 — the sealed layer answers nothing upward | it offers the renderEngine its two self-check questions and nothing else — no coordinates, no frame read-back |
+| § 9.8 — the drawing commands answer nothing upward | they offer the renderEngine its two self-check questions and nothing else — no coordinates, no frame read-back |
 | § 10.1 — one render place | no control produces a picture on the side; every interaction is a data or switch write followed by one render |
 | § 10.3 — the two steps, in that order | the filter runs before the overlays, and the overlays are keyed to the atoms that survived it |
 | § 10.3 — a label carries the original number | under isolate, a drawn atom's label shows where it came from, not its position in the filtered list |
 | § 10.3 — frame *f*'s arrows come from frame *f* | arrows on a played trajectory match their own frame's forces |
 | § 10.3 — cell geometry and cell visibility travel separately | turning the cell on **after** a hidden load draws the box at the structure's corner, and a cell edit while the cell is hidden still updates the anchor. The assertion is where the wireframe is drawn, not what the cell data says |
 | § 10.3 — the cell box and the axes are worked out once | they are not recomputed per frame, and playing a trajectory does not re-derive them |
-| § 9.9 — the sealed layer faces downward only | there is no way to ask it for coordinates and no way to ask it which frame is showing |
+| § 9.9 — the sealed layer faces downward only | it offers no read at all: not coordinates, not the shown frame, not the camera |
 | § 10.4 — playing does not re-process | stepping or playing issues no per-frame derivation; the frames were finished at load |
 | § 10.5 — the cost matches what changed | flipping a switch does not reload coordinates; an isolate does; the choice never consults the atom count |
 | § 10.6 — shapes move with the frames | after a swap, labels and the highlight sit on the atoms' new positions, not where frame 0 left them |
@@ -1671,6 +1670,7 @@ accident of the implementation or documenting something that belongs elsewhere.
 | § 8 making a viewer | **5.4, 5.6** | embedding is one call, and `owner` is what makes it a viewer of its own |
 | § 9 the APIs | 5.2, 5.4 | each surface named with who it serves, so nothing grows a second way to the same fact |
 | § 9.4 read-only | 5.1, 5.2 | one rule instead of a list of disabled buttons that drifts |
+| § 9.6 the camera is not held | **5.2** | the one fact MolView cannot own without owning something that goes stale — so it owns none of it |
 | § 10 the render pipeline | **5.1, 5.2, 5.3** | the one path from the master copy to the picture: what each switch produces, in what order, at what cost |
 | § 11 the other connections | 5.2, 5.5 | the server, the workspace, and the one atom-numbering translation |
 | § 12 worked examples | — | the concepts above, in the order they actually happen |
