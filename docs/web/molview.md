@@ -116,10 +116,15 @@ it:
   `∠H #5 – O #1 – H #6 = 104.5°`
 
 **Tagging atoms.** In an editable view the panel tags the selected atoms with a
-region label — L-electrode, R-electrode, bridge, interface, frozen atoms, or a
-name you type. Tags show as chips you can remove. These are not decoration: they
-are written into the structure's sidecar file and into the generated input
-script, so the calculation and the results view both see the regions set here.
+label — L-electrode, R-electrode, bridge, interface, frozen atoms, or a name you
+type. Tags show as chips you can remove. These are not decoration: they are
+written into the structure's sidecar file and into the generated input script, so
+the calculation and the results view both see what was set here.
+
+Five of those names are **reserved** — they are ordinary labels, but something
+downstream knows what they mean. Tagging atoms *frozen atoms* is how you say
+"hold these still", and the calculation is generated with those atoms
+constrained. You do not tick a separate box; the label is the mechanism (§ 6.6).
 
 **Playing a trajectory.** When a structure has more than one frame, a playback
 bar appears under the viewer: `‹` / `›` step, `▶`/`❙❙` play-pause, `⟳` loop, a
@@ -410,7 +415,7 @@ classDiagram
 | Field | Shape | What it is |
 |---|---|---|
 | `elements` | `string[]` | element per atom. **Shared by every frame.** |
-| `annotations` | `{label?, frozen?}[]` | per-atom region label and frozen flag. **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them; the drawing does not use them |
+| `annotations` | `{label?}[]` | the labels an atom carries. **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them; the drawing does not use them. Some label names are **reserved** and mean something downstream (§ 6.6) |
 | `cell` | `{lattice: [Vec3,Vec3,Vec3], origin: Vec3}` or `null` | the a/b/c vectors, plus the corner the box is anchored at |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no tags |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
@@ -548,7 +553,44 @@ reads their coordinates from the **master copy** at the current frame, so it
 stays correct and frame-aware without touching the drawing at all. Clicking
 returns when isolate is off, where drawn number and real number agree again.
 
-### 6.6 What a viewer does not hold
+### 6.6 Reserved labels — one mechanism, interpreted at the end
+
+A label is just a name attached to a set of atoms. **Some names are reserved**:
+they are stored, filtered and displayed exactly like any other label, and the
+only difference is that something downstream knows what they mean.
+
+Five are reserved today: `L-electrode`, `R-electrode`, `bridge`, `interface`,
+and `frozen atoms`.
+
+**MolView does not interpret any of them.** It stores them, offers them in the
+label list, filters by them, and writes them out. What `frozen atoms` *means* —
+that those atoms are held still, which becomes a constraints block in a SIESTA
+input or a freeze list for a geometry optimiser — is decided by the code that
+generates the input, not here. The viewer's job ends at "these atoms carry this
+name".
+
+That split is the whole point. **A reserved meaning costs a name and a
+translator at the point of use — not a mechanism.** The alternative, which this
+design rejects, is to give each special meaning its own storage: its own field
+on the structure, its own kind of thing to filter by, its own key in the saved
+file, its own control in the panel, and a translation between the name the user
+sees and the name the field has. That is five places to keep in step for
+something a label already expresses.
+
+So: adding a sixth reserved meaning later is a name and one entry in a
+translator. It is not a change to what a viewer holds, and it is not a change to
+this document.
+
+> **Where the code has not caught up.** `frozen atoms` is currently the odd one
+> out — the other four are plain labels, while frozen is stored as a separate
+> field and shown as a label, which costs an alias between the two spellings, a
+> special case when the label is written, and a test to keep the two names from
+> drifting. Folding it onto the same footing as the other four is a change to the
+> structure model, the saved file format and the input generators, so it belongs
+> to [`model/structure-annotations.md`](?doc=model/structure-annotations.md) —
+> this document states only MolView's end: one mechanism, no special case.
+
+### 6.7 What a viewer does not hold
 
 | Not held | Whose it is | Why |
 |---|---|---|
@@ -753,7 +795,7 @@ rather than maintained separately.
 
 | The need | The main way in | Narrower cuts of it | Changes the master copy |
 |---|---|---|:--:|
-| Get the whole structure | `getStructure` | `getAtoms`, `getElements`, `getCoordinates`, `getSource`, `getFrozen`, `getRegions` | — |
+| Get the whole structure | `getStructure` | `getAtoms`, `getElements`, `getCoordinates`, `getSource`, `getRegions`, and `getFrozen` — the atoms carrying the reserved `frozen atoms` label (§ 6.6) | — |
 | Get the cell | `getUnitCellInfo` — the resolved cell, always answerable | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` | — |
 | Get one frame's coordinates | `getFrameAllAtoms(i)` — **every** atom, original order, before any filtering | | — |
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
@@ -837,12 +879,13 @@ none of them keeps its own answer.
   not in the panel.
 - **What an atom can be filtered by is one enumerated list, not a set of special
   cases.** Each atom offers its properties as a small, ordered list — its
-  element, its residue, the labels it carries, whether it is frozen, and any
+  element, its residue, the labels it carries — reserved ones included — and any
   per-atom numbers. Each has a kind, and the kind decides how filtering works:
-  *one-of* (element, residue), *is-in-the-set* (a label), *is-set* (frozen),
-  *compare* (a number). The panel builds its filter UI from that list rather
-  than hard-coding four kinds of filter, which is why a new kind of per-atom
-  property becomes filterable without the panel changing.
+  *one-of* (element, residue), *is-in-the-set* (any label), *compare* (a
+  number). The panel builds its filter UI from that list rather than hard-coding
+  a filter per property, which is why a new kind of per-atom property becomes
+  filterable without the panel changing — and why filtering for frozen atoms
+  needs no case of its own (§ 6.6).
 - **What it offers:** turn isolate on or off, set a switch, apply a filter, write
   a region label onto the selected atoms (which replaces that label's previous
   set), adopt a restored session's selection, the click-selection operations
@@ -1455,7 +1498,8 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.4 — master copy, then range, then frame, then notify | after a load that shortens a trajectory, no subscriber ever sees a range from the new structure beside a frame number from the old one; an out-of-range write is resolved against the range, not accepted |
 | § 6.5 — the drawn-to-original map holds | under isolate, labels carry original numbers and measurement resolves panel numbers against the master copy |
 | § 6.5 — the highlight is content, not styling | per-frame data carries no colour, radius or opacity |
-| § 6.6 — no file route | the module reaches no file endpoint |
+| § 6.6 — MolView interprets no reserved label | tagging atoms `frozen atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
+| § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
 | § 9.2 — the handle refuses appearance | there is no way through the handle to push arrows, labels, a busy state or a toggle |
 | § 9.3 — one need, one main way in | a narrower cut returns exactly what the main way in holds for that field — the two cannot disagree |
@@ -1507,6 +1551,7 @@ accident of the implementation or documenting something that belongs elsewhere.
 | § 4 a self-contained module | **5.3, 5.4** | sealed at every edge is what makes the other five enforceable rather than aspirational |
 | § 5 the ideas | — | the source everything else is checked against |
 | § 6 the data | **5.1, 5.2** | the whole of what-you-see-is-what-you-save, and one-home-per-fact |
+| § 6.6 reserved labels | **5.2, 5.5** | a special meaning costs a name and a translator, not a second mechanism — and it is the user's intent travelling to the calculation |
 | § 7 the layers | **5.2, 5.3** | the "never" column is how one-home-per-fact and an invisible library get enforced instead of remembered |
 | § 8 making a viewer | **5.4, 5.6** | embedding is one call, and `owner` is what makes it a viewer of its own |
 | § 9 the APIs | 5.2, 5.4 | each surface named with who it serves, so nothing grows a second way to the same fact |
