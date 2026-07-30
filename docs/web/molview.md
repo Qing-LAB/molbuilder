@@ -1593,6 +1593,23 @@ back to where you were (§ 11.2). Nothing reads it but this viewer, nothing is
 generated from it, and it never appears in the project. The project is what you
 *meant to keep*; a saved state is where you happened to be.
 
+> **Where the code has not caught up — and this one loses data.** The Export
+> menu is currently the embed's, and its Data rows write **coordinates only**:
+> save-to-project and download each offer `.xyz` or `.pdb`, and neither emits the
+> `.json`. The model's export door builds the sidecar correctly and the Modify
+> tab's save dialog writes both files — the Export menu simply does not use it.
+>
+> The consequence is not cosmetic. A structure saved to the project this way
+> reaches script generation with its frozen atoms and regions **silently gone**,
+> and the calculation that results looks right and is not. Of the two
+> destinations this matters most for **save-to-project**, because that is the
+> scientific record; a lossy download is the user's problem, a lossy project file
+> is the next calculation's.
+>
+> It also raises a question the menu currently does not ask: `.pdb` cannot carry
+> this metadata at all. A format that cannot hold the truth may belong on the
+> download row and not on the save-to-project one.
+
 > **A word that means two things.** The Export menu's **Snapshot** is a picture.
 > The code that saves state also uses the word *snapshot* for a saved point in
 > history. They have nothing to do with each other, so this document says **saved
