@@ -300,7 +300,7 @@ project.
 
 ### 5.5 The user's intent is data, and it travels
 
-Region labels, frozen flags, the selection, the frame in view — these are not
+The labels a user attaches, the selection, the frame in view — these are not
 decoration. They are written into the structure's sidecar and into the generated
 input script, so the calculation and the results view both see what the user set
 here. The viewer is where scientific intent gets expressed, so that intent has
@@ -337,8 +337,9 @@ all of it.
 
 ### 6.1 The four things
 
-**The structure — the same for every frame.** One element symbol per atom, one
-set of per-atom tags (a region label, a frozen flag), and optionally a unit cell.
+**The structure — the same for every frame.** Per atom: its element, the labels
+it carries, a residue name when the source had one, and any per-atom numbers a
+calculation produced. Plus, for the structure as a whole, an optional unit cell.
 A frame never carries any of these; they are fixed when the structure loads and
 are identical for frame 0 and frame 400. That is exactly what makes a trajectory
 *one molecule moving* instead of a sequence of different molecules.
@@ -364,8 +365,13 @@ labels, force arrows, unit cell, axes, and the arrow scale. Window settings
 classDiagram
     class Structure {
       +string[] elements
-      +AtomTag[] annotations
+      +AtomFacts[] annotations
       +Cell cell
+    }
+    class AtomFacts {
+      +string[] labels
+      +string residue
+      +Values values
     }
     class Coordinates {
       +Frame[] frames
@@ -400,6 +406,7 @@ classDiagram
       +CellBox cellBox
       +Axes axes
     }
+    Structure *-- AtomFacts : one per atom
     Structure --> ProcessedFrame : identity, every frame
     Coordinates --> ProcessedFrame : the frame at the index
     DisplayedFrame --> ProcessedFrame : picks which frame
@@ -415,13 +422,19 @@ classDiagram
 | Field | Shape | What it is |
 |---|---|---|
 | `elements` | `string[]` | element per atom. **Shared by every frame.** |
-| `annotations` | `{label?}[]` | the labels an atom carries. **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them; the drawing does not use them. Some label names are **reserved** and mean something downstream (§ 6.6) |
+| `annotations` | per atom: the labels it carries, its residue name if it has one, and any per-atom numbers | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them and filters on them (§ 9.5); the drawing does not use them. Some label names are **reserved** and mean something downstream (§ 6.6) |
 | `cell` | `{lattice: [Vec3,Vec3,Vec3], origin: Vec3}` or `null` | the a/b/c vectors, plus the corner the box is anchored at |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no tags |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
 
 Atom **count**, `elements` and `annotations` are fixed when the structure loads
 and are identical for every frame. That *is* the same-atoms rule of § 10.8.
+
+Those four — element, labels, residue, per-atom numbers — are exactly what the
+filter enumerates (§ 9.5). They are the same list, which is why filtering needs
+no case per property. Per-atom **numbers** are the one entry the filter model
+supports but nothing yet produces end to end; that is tracked in
+[`roadmap.md`](?doc=roadmap.md), not here.
 
 **The switches.** Only `selection` and `isolate` change which atoms are drawn at
 all; every other switch adds or removes something drawn alongside them. That is
@@ -522,7 +535,9 @@ something a user sets; this is something a movie drives.
 ### 6.5 Worked out fresh on every redraw, never stored
 
 One frame, after the switches have been applied, becomes a **processed frame** —
-and that is the only thing the sealed layer ever receives.
+and that is the only *per-frame* thing that ever goes down. (Cell geometry, the
+overlays and the busy state also travel down, but none of them is per frame —
+§ 10.3.)
 
 | Field | Shape | What it is |
 |---|---|---|
@@ -559,8 +574,11 @@ A label is just a name attached to a set of atoms. **Some names are reserved**:
 they are stored, filtered and displayed exactly like any other label, and the
 only difference is that something downstream knows what they mean.
 
-Five are reserved today: `L-electrode`, `R-electrode`, `bridge`, `interface`,
-and `frozen atoms`.
+`frozen atoms` is one. The transport vocabulary — `L-electrode`, `R-electrode`,
+`bridge`, `interface` — is the rest of the set today. **The list itself does not
+live in this document**, and deliberately: it belongs with the descriptions the
+label reference already shows, keyed by name, so that adding a reserved meaning
+touches that list and its translator and nothing else.
 
 **MolView does not interpret any of them.** It stores them, offers them in the
 label list, filters by them, and writes them out. What `frozen atoms` *means* —
@@ -589,17 +607,17 @@ label reference shows — so it can name the conflict and explain it. It never
 description to show a user and implementing a behaviour are different things, and
 only the first is a viewer's business.
 
-That split is the whole point. **A reserved meaning costs a name and a
-translator at the point of use — not a mechanism.** The alternative, which this
-design rejects, is to give each special meaning its own storage: its own field
-on the structure, its own kind of thing to filter by, its own key in the saved
-file, its own control in the panel, and a translation between the name the user
-sees and the name the field has. That is five places to keep in step for
-something a label already expresses.
+**Why it is worth being strict about this.** A reserved meaning costs a **name**
+and a **translator at the point of use** — nothing else. The alternative, which
+this design rejects, is to give each special meaning its own storage: its own
+field on the structure, its own kind of thing to filter by, its own key in the
+saved file, its own control in the panel, and a translation between the name the
+user sees and the name the field has. That is five places to keep in step for
+something a label already expresses — and it is exactly the state `frozen atoms`
+is in today.
 
-So: adding a sixth reserved meaning later is a name and one entry in a
-translator. It is not a change to what a viewer holds, and it is not a change to
-this document.
+So adding a reserved meaning later is a name and one translator entry. It changes
+neither what a viewer holds nor anything in this document.
 
 > **Where the code has not caught up.** `frozen atoms` is currently the odd one
 > out — the other four are plain labels, while frozen is stored as a separate
@@ -907,8 +925,8 @@ none of them keeps its own answer.
   filterable without the panel changing — and why filtering for frozen atoms
   needs no case of its own (§ 6.6).
 - **What it offers:** turn isolate on or off, set a switch, apply a filter, write
-  a region label onto the selected atoms (which replaces that label's previous
-  set), adopt a restored session's selection, the click-selection operations
+  a label onto the selected atoms (which replaces that label's previous set),
+  adopt a restored session's selection, the click-selection operations
   (toggle, add, remove, all, invert, clear), and the filter builder (mode,
   filters, and how they combine).
 - **All of it stays live in a read-only viewer** — selecting and isolating change
@@ -1519,6 +1537,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.5 — the drawn-to-original map holds | under isolate, labels carry original numbers and measurement resolves panel numbers against the master copy |
 | § 6.5 — the highlight is content, not styling | per-frame data carries no colour, radius or opacity |
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
+| § 6.2 — the data holds what the filter enumerates | every property the filter offers — element, labels, residue, per-atom numbers — is a property the structure actually carries; neither list can grow without the other |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
