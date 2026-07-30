@@ -1543,9 +1543,12 @@ frame — § 5.1, at the user's end of it — and it is **two files, not one**: 
 coordinates, and the metadata that has to travel with them (§ 5.5). One without
 the other is a structure that has lost what the user said about it.
 
-It exports the **displayed frame only**, because a structure file is one
-geometry — the thing a calculation runs on. That is a deliberate scope, not a
-missing feature.
+It exports the **displayed frame**, and that is the point of it rather than a
+limit on it. Scrubbing a trajectory is how a user *chooses* a geometry: look
+through the optimization, stop on the one worth taking forward, export that. The
+frame bar and this export are one workflow, not two features that happen to meet
+— and § 5.1 is the promise holding it together, that the frame you stopped on is
+the frame you get.
 
 **A picture has to be the view.** A `.png` is for a slide, so what you want is
 exactly what was on screen — the camera angle, the style, the transparent
@@ -1768,7 +1771,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — state is the truth, not the view of it | restoring brings back the structure and the selection; it does not bring back the camera, the displayed frame or the switches — and the saving mechanism itself excludes nothing |
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its snapshot over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
-| § 11.3 — only the data export is the truth | exporting data yields the displayed frame's coordinates **and** its metadata, from the master copy; an image and an animation are renders and carry whatever the view was set to |
+| § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds; an image and an animation are renders and carry whatever the view was set to |
 | § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so labels and frozen atoms survive into whatever is generated from it |
 | § 11.3 — save-to-project and download differ only in destination | both produce identical bytes, and neither has MolView writing a file |
