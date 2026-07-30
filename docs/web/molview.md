@@ -1744,73 +1744,62 @@ that is one rule rather than a list to maintain.
 > looking at.
 
 **Nothing is written on a timer, and nothing is written because something
-changed.** Storage is touched by exactly three things: opening a structure
-(which lays down point 0), an explicit save, and a load. Each moves the position
-only after its own round trip has finished.
+changed.** Storage is touched by exactly three things: opening a structure (which
+lays down point 0), an explicit save, and a load.
 
-The mechanism is blind to the file format: the model hands it a way to record a
-state and a way to put one back, and nothing else.
-
-**Opening a new structure invalidates the old one's pending writes.** Anchoring a
-new molecule prunes the previous one's saved states and resets the position — so
-a save or a load of the *previous* structure that is still queued or still
-waiting on its round trip must not land. It is abandoned rather than applied,
-because applying it would put an old state over a freshly opened structure.
-
-That is the same rule as § 10.9's, in a different subsystem: **the more
-authoritative statement about what the structure is supersedes whatever is
-in flight.** A full load beats a queued redraw there; a new anchor beats a queued
-save here. Two places, one principle — which is a good sign it is the right one.
-
-**Writes happen one at a time, in order.** A save and a load cannot overlap, and
-neither can jump ahead of the other: each waits for the one before it, and the
-position moves only when its own round trip has landed. Two calls in flight at
-once is how a position comes to describe a state that was never written.
-
-**Some changes happen in two steps, and nothing may be written in between.**
-
-Opening a structure is the clearest one. The new coordinates arrive first. The
-labels for those atoms arrive a moment later, in a second answer from the server.
-Between the two, the viewer is holding the **new positions with the previous
-file's labels** — a structure that never existed and never will.
-
-If anything wrote to storage in that gap, the saved file would carry exactly that:
-these positions, those labels. Nothing downstream could catch it, because both
-files have the same number of atoms, so every check still passes.
-
-So the operation runs in this order:
+**When a write may go out is a state machine, and it has three states.** Every
+rule below is a transition of it; there is no fourth state and no other reason a
+write is delayed.
 
 ```mermaid
-flowchart TD
-    H["1 — hold anything that wants to be written"]
-    S1["2 — the new coordinates go in"]
-    S2["3 — the new labels go in"]
-    R["4 — release: one write, from the finished structure"]
-    G["in between, the viewer holds<br/>NEW positions with the OLD labels —<br/>this is what must not be written"]
-    H --> S1 --> S2 --> R
-    S1 -.-> G -.-> S2
+flowchart LR
+    SETTLED(["SETTLED<br/>the structure is consistent"])
+    CHANGING(["CHANGING<br/>a multi-step change is under way"])
+    WRITING(["WRITING<br/>a write is on its way to storage"])
+    SETTLED -->|"a multi-step change starts"| CHANGING
+    CHANGING -->|"a write is asked for:<br/>remembered, not sent"| CHANGING
+    CHANGING -->|"the change finishes:<br/>send what was remembered"| WRITING
+    CHANGING -->|"the change finishes,<br/>nothing was remembered"| SETTLED
+    SETTLED -->|"a write is asked for"| WRITING
+    WRITING -->|"it landed:<br/>the position moves"| SETTLED
+    WRITING -->|"it failed:<br/>the position does not move"| SETTLED
+    WRITING -->|"another write is asked for:<br/>it waits its turn"| WRITING
 ```
 
-**An example.** A viewer is showing `wire.xyz`, whose first twenty atoms are
+| In this state | A write asked for now | Why |
+|---|---|---|
+| **SETTLED** | goes out immediately | the structure is consistent, so there is nothing to wait for |
+| **CHANGING** | is remembered and sent when the change finishes. At most one is remembered; if a **saved state** is among them, that is the one sent, and a routine write arriving after it does not replace it | the structure is halfway between two files, and what is halfway is wrong — see below |
+| **WRITING** | waits until the one already on its way has landed | two writes in flight is how the position comes to describe a state that was never written |
+
+Two rules sit on top of the machine:
+
+- **Opening a new structure clears it.** Anything remembered, and anything still
+  on its way, belongs to the structure that was just replaced. It is dropped
+  rather than applied — applying it would put an old state over a freshly opened
+  structure. This is the same rule as § 10.9's, one subsystem over: the more
+  authoritative statement about what the structure is beats whatever is in flight.
+- **A save is never asked for during CHANGING.** It moves your position on the
+  sequence, and the write has to land together with the move. Anything that wants
+  both waits until the change has finished.
+
+**Why CHANGING exists at all.** Opening a structure arrives in two steps. The new
+coordinates come first; the labels for those atoms come a moment later, in a
+second answer from the server. Between the two, the viewer is holding the **new
+positions with the previous file's labels** — a structure that never existed.
+
+**The example.** A viewer is showing `wire.xyz`, whose first twenty atoms are
 labelled `L-electrode`. The user opens `slab.xyz` over it. Both files have sixty
 atoms.
 
-Without the hold, a write landing between step 2 and step 3 saves `slab`'s
-positions carrying `wire`'s labels. Twenty atoms of the slab are now marked as an
-electrode. The atom count matches, so nothing complains, and the next calculation
-generated from that file puts an electrode where the user never put one.
+A write landing in that gap saves the slab's positions carrying the wire's
+labels: twenty slab atoms marked as an electrode. The atom count matches, so
+nothing complains — and the next calculation generated from that file puts an
+electrode where the user never put one. That is the whole reason writes are held
+rather than sent.
 
-With the hold, nothing is written until step 4, and what is written is the
-finished structure.
-
-Two smaller rules go with it:
-
-- **If several writes wanted to happen during the hold, one happens at the end.**
-  And if one of them was a saved state — a real point on the sequence — that is
-  the one written. A routine write that came after it does not replace it.
-- **Saving a state is never done inside a hold.** It moves your position on the
-  sequence, and the write has to land together with the move. Anything that wants
-  both saves after the hold is released.
+The mechanism is blind to the file format: the model hands it a way to record a
+state and a way to put one back, and nothing else.
 
 **MolView owns the whole mechanism and the policy** — what a save records, what
 to prune, how far back a step goes, and the rule that nothing is recorded on its
