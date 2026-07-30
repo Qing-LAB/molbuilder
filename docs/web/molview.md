@@ -1030,8 +1030,9 @@ no browser at all (§ 13.2).
 ### 9.8 The drawing commands — small operations with no decisions in them
 
 Load frames, swap to a frame, append frames, apply the overlays, set this frame's
-arrows, set the cell geometry, show or hide the "Updating view…" cover, and batch
-a group of changes so the screen updates once. Each one translates finished data
+arrows, set the cell geometry, show or hide the "Updating view…" cover, batch a
+group of changes so the screen updates once — and **produce a picture of what is
+currently drawn**, since only the bottom can do that (§ 11.3). Each one translates finished data
 into something the layer below can act on. None of them decides anything — which
 operation to use is the renderEngine's call, made one level up.
 
@@ -1593,22 +1594,36 @@ back to where you were (§ 11.2). Nothing reads it but this viewer, nothing is
 generated from it, and it never appears in the project. The project is what you
 *meant to keep*; a saved state is where you happened to be.
 
-> **Where the code has not caught up — and this one loses data.** The Export
-> menu is currently the embed's, and its Data rows write **coordinates only**:
+**The Export menu is MolView's, and every export enters through it.** That is
+the rule, and it is the one this section most depends on. MolView decides what an
+export produces and what it is read from — nothing below it makes that call.
+
+For a picture and an animation the actual rendering has to happen at the bottom,
+because only the sealed layer can draw. So MolView **delegates the rendering
+down** and keeps everything else: the menu, the choice, the destination. Asking
+the layer that can draw to draw is a command like any other (§ 9.8). Letting it
+decide what an export *is* would not be.
+
+That distinction is not academic — it is exactly where this went wrong:
+
+> **Where the code has not caught up — and this one loses data.** The Export menu
+> is currently the **embed's**. Its Data rows write **coordinates only**:
 > save-to-project and download each offer `.xyz` or `.pdb`, and neither emits the
 > `.json`. The model's export door builds the sidecar correctly and the Modify
-> tab's save dialog writes both files — the Export menu simply does not use it.
+> tab's save dialog writes both files — the Export menu never goes through it.
 >
 > The consequence is not cosmetic. A structure saved to the project this way
 > reaches script generation with its frozen atoms and regions **silently gone**,
-> and the calculation that results looks right and is not. Of the two
-> destinations this matters most for **save-to-project**, because that is the
-> scientific record; a lossy download is the user's problem, a lossy project file
-> is the next calculation's.
+> and the calculation that results looks right and is not. It matters most for
+> **save-to-project**: a lossy download is the user's problem, a lossy project
+> file is the next calculation's.
 >
-> It also raises a question the menu currently does not ask: `.pdb` cannot carry
-> this metadata at all. A format that cannot hold the truth may belong on the
-> download row and not on the save-to-project one.
+> The root cause is the layering, not a missing line. An export that needs the
+> model's truth was built in the drawing layer, so it serialised the coordinates
+> it happened to have. Adding a `.json` write down there would paper over that.
+> Tracked as **task #39**, along with a question the menu does not currently ask:
+> `.pdb` cannot carry this metadata at all, so a format that cannot hold the
+> truth probably belongs on the download row and not on save-to-project.
 
 > **A word that means two things.** The Export menu's **Snapshot** is a picture.
 > The code that saves state also uses the word *snapshot* for a saved point in
@@ -1791,6 +1806,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds; an image and an animation are renders and carry whatever the view was set to |
 | § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so labels and frozen atoms survive into whatever is generated from it |
+| § 11.3 — every export enters at MolView | no export decides anything below the model; a picture is rendered by the sealed layer on request, but what to export and where it goes is decided above |
 | § 11.3 — save-to-project and download differ only in destination | both produce identical bytes, and neither has MolView writing a file |
 | § 11.4 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
 
