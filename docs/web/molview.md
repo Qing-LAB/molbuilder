@@ -1767,25 +1767,50 @@ neither can jump ahead of the other: each waits for the one before it, and the
 position moves only when its own round trip has landed. Two calls in flight at
 once is how a position comes to describe a state that was never written.
 
-**A multi-step change holds its writes until it has finished.** Some operations
-reach their final state in more than one step — loading a structure sets the
-geometry, then adopts its labels a round trip later. In the window between, the
-model is internally inconsistent: the new geometry carrying the *previous*
-file's labels. A write landing there records a structure that never existed, and
-nothing downstream can tell, because the atom count matches.
+**Some changes happen in two steps, and nothing may be written in between.**
 
-So a caller wraps an operation like that in a bracket — **hold, do the steps,
-release** — and the held writes collapse into one that lands when the bracket
-closes. Collapsing never drops a checkpoint: if anything held was a real saved
-state, that is what gets written, not a later refresh that happened to follow
-it. An explicit save is the one thing never bracketed: it moves the position,
-and holding the write while the position moved would separate the two.
+Opening a structure is the clearest one. The new coordinates arrive first. The
+labels for those atoms arrive a moment later, in a second answer from the server.
+Between the two, the viewer is holding the **new positions with the previous
+file's labels** — a structure that never existed and never will.
 
-This is § 6.4's rule in a different subsystem. There, nobody is *told* anything
-until the master copy, the range and the frame number agree. Here, nothing is
-*written* until a multi-step change has settled. Two places, one principle: **an
-inconsistent halfway state is never allowed out** — not to a subscriber, not to
-storage.
+If anything wrote to storage in that gap, the saved file would carry exactly that:
+these positions, those labels. Nothing downstream could catch it, because both
+files have the same number of atoms, so every check still passes.
+
+So the operation runs in this order:
+
+```mermaid
+flowchart TD
+    H["1 — hold anything that wants to be written"]
+    S1["2 — the new coordinates go in"]
+    S2["3 — the new labels go in"]
+    R["4 — release: one write, from the finished structure"]
+    G["in between, the viewer holds<br/>NEW positions with the OLD labels —<br/>this is what must not be written"]
+    H --> S1 --> S2 --> R
+    S1 -.-> G -.-> S2
+```
+
+**An example.** A viewer is showing `wire.xyz`, whose first twenty atoms are
+labelled `L-electrode`. The user opens `slab.xyz` over it. Both files have sixty
+atoms.
+
+Without the hold, a write landing between step 2 and step 3 saves `slab`'s
+positions carrying `wire`'s labels. Twenty atoms of the slab are now marked as an
+electrode. The atom count matches, so nothing complains, and the next calculation
+generated from that file puts an electrode where the user never put one.
+
+With the hold, nothing is written until step 4, and what is written is the
+finished structure.
+
+Two smaller rules go with it:
+
+- **If several writes wanted to happen during the hold, one happens at the end.**
+  And if one of them was a saved state — a real point on the sequence — that is
+  the one written. A routine write that came after it does not replace it.
+- **Saving a state is never done inside a hold.** It moves your position on the
+  sequence, and the write has to land together with the move. Anything that wants
+  both saves after the hold is released.
 
 **MolView owns the whole mechanism and the policy** — what a save records, what
 to prune, how far back a step goes, and the rule that nothing is recorded on its
