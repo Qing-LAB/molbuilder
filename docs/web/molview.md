@@ -750,7 +750,7 @@ viewer.dispose();            // tears down in reverse order of assembly
 ```
 
 `mount` assembles a complete viewer in one call — the 3D window, the
-selection/cell panel and the switches. The frame bar is not part of that
+selection/cell panel, the switches, and MolView's own menu surface (§ 11.3). The frame bar is not part of that
 decision: a viewer mounts before it has a structure, and the bar appears once a
 structure with more than one frame is loaded into it.
 
@@ -1594,9 +1594,30 @@ back to where you were (§ 11.2). Nothing reads it but this viewer, nothing is
 generated from it, and it never appears in the project. The project is what you
 *meant to keep*; a saved state is where you happened to be.
 
-**The Export menu is MolView's, and every export enters through it.** That is
+**The Export menu is MolView's own, and every export enters through it.** That is
 the rule, and it is the one this section most depends on. MolView decides what an
 export produces and what it is read from — nothing below it makes that call.
+
+It lives in **MolView's own menu surface** — part of the card MolView assembles
+(§ 8), separate from the drawing layer's controls rather than the same menu with
+different wiring behind it.
+
+Having a place of its own is the part that matters. A menu is where something is
+*decided*, and the drawing layer decides nothing (§ 7) — so when a
+MolView-level decision needed somewhere to live and the only menu in sight
+belonged to the embed, it went there, and the embed started deciding what a
+structure export means. A surface at the right level means the next such control
+has an obvious home, instead of landing one layer too low again.
+
+**Which menu a control belongs to has a test:** *what does it decide?*
+
+| The control decides… | It belongs to |
+|---|---|
+| what leaves the viewer, in what form, read from which copy, and where it goes | **MolView's menu** — export, and anything later that touches the structure or the truth |
+| how the drawing layer draws what it was already given — style, radius, background, projection, reset | the **drawing layer's own controls** (§ 9.6); it is setting its own state, not deciding on anyone's behalf |
+
+The embed's own export menu is switched off rather than rewired: the possibility
+is removed, not the behaviour corrected.
 
 For a picture and an animation the actual rendering has to happen at the bottom,
 because only the sealed layer can draw. So MolView **delegates the rendering
