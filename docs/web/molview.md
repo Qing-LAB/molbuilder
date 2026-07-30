@@ -57,6 +57,8 @@ current code.
 >   `frozen atoms`, or anything they type (§ 6.6). The atom **numbers** that the
 >   `#` switch draws in the 3D window are a different thing entirely; this
 >   document always calls those **atom-number labels**, never just "labels".
+>   (The switch on screen is named "Show atom labels", which is where the
+>   collision comes from.)
 >
 > Atom numbering: **0-based in code, 1-based on screen**, translated in exactly
 > one place (§ 11.5).
@@ -87,6 +89,11 @@ atoms look closer together.
 radius slider from 0.2 to 2.5 that scales stick thickness / sphere size / line
 width, and a background colour with preset swatches plus a picker. One preset is
 transparent — choose it before exporting a picture to drop onto a slide.
+
+The View menu and the Export menu are not the same kind of thing, and § 11.4 is
+why: View changes how the drawing paints what it already has, so it belongs to
+the 3D window's own controls; Export decides what leaves the viewer and what it
+is read from, so it is MolView's.
 
 **The toolbar switches.** Six icon buttons sit down the left edge, always
 outside the canvas, never on top of the molecule:
@@ -300,7 +307,7 @@ importing anything.
 Six of them. They are the reason every rule below exists, and a design choice
 that breaks one is wrong no matter how convenient it is.
 
-### 5.1 What you see is what you save
+### 5.1 What you see is what you get out
 
 The structure on screen and the structure that goes to a calculation are the same
 structure, at the same frame. Scroll to frame 40, export it, and frame 40 is what
@@ -374,14 +381,14 @@ reach the wrong viewer by accident.
 
 A viewer holds **one structure**. If it came from a trajectory, it holds **many
 frames** of that same structure and **one number** saying which frame you mean.
-It holds **what is selected** and **which switches are on**. Everything else you
-see — the drawn atoms, the arrows, the highlight — is worked out fresh on each
-redraw and never stored.
+It holds **what is selected**, **which switches are on**, and **how the molecule
+is being drawn**. Everything else you see — the drawn atoms, the arrows, the
+highlight — is worked out fresh on each redraw and never stored.
 
 Everything in this section belongs to one owner (§ 5.6). Two viewers hold two of
 all of it.
 
-### 6.1 The four things
+### 6.1 The five things it holds
 
 **The structure — the same for every frame.** Per atom: its element, the labels
 it carries, and a residue name when the source had one. Plus, for the structure
@@ -401,10 +408,14 @@ usable alone (§ 6.4).
 
 **What is selected, and which switches are on.** The selected atom numbers with
 the order they were picked in — a three-atom angle has to know which one was
-picked second — the filter settings, and the on/off switches: isolate, atom
-labels, force arrows, unit cell, axes, and the arrow scale. How the molecule is
-*drawn* — style, radius, background — is held separately (§ 9.6), and nothing
-above the drawing itself keeps the camera at all (§ 9.6).
+picked second — the filter settings, and the on/off switches: isolate,
+atom-number labels, force arrows, unit cell, axes, and the arrow scale.
+
+**How it is drawn.** Style, radius, background colour, and perspective or
+orthographic. These are held like anything else a user set, and they are listed
+last because they are the one group the frame calculation never reads — they go
+straight to the drawing (§ 9.6). The camera is not held here or anywhere else
+above the drawing itself (§ 9.6).
 
 ### 6.2 The shapes
 
@@ -452,6 +463,12 @@ classDiagram
       +CellBox cellBox
       +Axes axes
     }
+    class ViewSettings {
+      +string style
+      +number radius
+      +string background
+      +bool orthographic
+    }
     Structure *-- AtomFacts : one per atom
     Structure --> ProcessedFrame : identity, every frame
     Coordinates --> ProcessedFrame : the frame at the index
@@ -461,6 +478,7 @@ classDiagram
     Structure --> Scene : the cell, if there is one
     note for ProcessedFrame "worked out per redraw, never stored"
     note for Scene "the same every frame unless the cell changes"
+    note for ViewSettings "held, but handed straight to the drawing — the frame calculation never reads it (§ 9.6)"
 ```
 
 **The structure and its coordinates:**
@@ -482,7 +500,7 @@ case per property.
 
 **The switches.** Only `selection` and `isolate` change which atoms are drawn at
 all; every other switch adds or removes something drawn alongside them. That is
-why turning labels or the cell on never rebuilds the geometry (§ 10.5).
+why turning atom-number labels or the cell on never rebuilds the geometry (§ 10.5).
 
 ### 6.3 Two copies, and which one answers what
 
@@ -490,8 +508,8 @@ The coordinates exist in **exactly two** forms, and only two.
 
 **The master copy — the real structure.** Every atom, every frame, in the
 original order. This is what gets measured, exported, saved, and handed to a
-calculation. It is kept clean — never overwritten with a cut-down list — so every redraw starts from it rather than from whatever is currently on
-screen. That is what lets the whole structure come back the moment isolate is
+calculation. It is kept clean — never overwritten with a cut-down list — so every redraw
+starts from it rather than from whatever is currently on screen. That is what lets the whole structure come back the moment isolate is
 turned off.
 
 **The drawing copy — what the graphics library was handed.** Under isolate the
@@ -550,7 +568,7 @@ flowchart LR
 No one ever observes a half-updated state. There is no moment when the range
 belongs to the new structure and the frame number still belongs to the old one,
 because nobody is notified until both have settled. This is what makes "what you
-see is what you save" survive a structure changing underneath a user.
+see is what you get out" survive a structure changing underneath a user.
 
 **Three kinds of access, and no fourth:**
 
@@ -1948,8 +1966,10 @@ A user selects two atoms in the panel and clicks Delete.
    the server refuses, nothing is applied and the structure is untouched (§ 11.1).
 3. The structure changed, so the viewer now has unsaved work: the badge appears in
    the corner of the 3D window (§ 11.2). Nothing is written on its own.
-4. The user clicks Undo. The model asks the **history helper** to step back one
-   state, and hands the previous one to the **load helper** to put back.
+4. The user clicks Undo. There is unsaved work, so this first press spends it
+   (§ 11.2): the model asks the **history helper** for the point it is sitting on
+   and hands that state to the **load helper** to put back. The delete is undone.
+   A second press would step to the point before it.
 
 Every step crosses exactly one helper, and each helper only ever calls the
 functions the model gave it. That is why the module stays sealed: the outside
@@ -2068,7 +2088,7 @@ suite that came before was largely the opposite.
 
 | Level | Runs | Derived from | Shows |
 |---|---|---|---|
-| **Behaviour, no browser** | node | § 6, § 10.3 | the model's rules, and the per-frame calculation — values in, values out |
+| **Behaviour, no browser** | node | § 6, § 10.3, § 11.2 | the model's rules, and the per-frame calculation — values in, values out |
 | **Boundary behaviour** | node, with stand-ins that obey this document | § 7, § 10.5–10.10 | how much work a change takes, and that each level refuses what its "never" column forbids |
 | **End to end** | a real page | § 1.1 | what a user does: select, isolate, measure, scrub, play, export |
 
@@ -2085,7 +2105,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.3 — each question goes to the copy that can answer it | measurement, export and a server request all read the master copy; nothing outside the renderEngine reads the drawing, and nothing reads coordinates out of it at all |
 | § 6.4 — nothing keeps its own copy | exactly one place answers "which frame"; one write reaches **every** subscriber, whatever moved it |
 | § 6.4 — master copy, then range, then frame, then notify | after a load that shortens a trajectory, no subscriber ever sees a range from the new structure beside a frame number from the old one; an out-of-range write is resolved against the range, not accepted |
-| § 6.5 — the drawn-to-original map holds | under isolate, labels carry original numbers and measurement resolves panel numbers against the master copy |
+| § 6.5 — the drawn-to-original map holds | under isolate, atom-number labels carry original numbers and measurement resolves panel numbers against the master copy |
 | § 6.5 — the highlight is content, not styling | per-frame data carries no colour, radius or opacity |
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
@@ -2164,7 +2184,7 @@ what they already said, and § 15 is a map for reading the code.
 | § 3 the overall shape | 5.4 | one picture of what a host does *not* own |
 | § 4 a self-contained module | **5.3, 5.4** | sealed at every edge is what makes the other five enforceable rather than aspirational |
 | § 5 the ideas | — | the source everything else is checked against |
-| § 6 the data | **5.1, 5.2** | the whole of what-you-see-is-what-you-save, and one-home-per-fact |
+| § 6 the data | **5.1, 5.2** | the whole of what-you-see-is-what-you-get-out, and one-home-per-fact |
 | § 6.6 reserved labels | **5.2, 5.5** | a special meaning costs a name and a translator, not a second mechanism — and it is the user's intent travelling to the calculation |
 | § 7 the layers | **5.2, 5.3** | the "never" column is how one-home-per-fact and an invisible library get enforced instead of remembered |
 | § 8 making a viewer | **5.4, 5.6** | embedding is one call, and `owner` is what makes it a viewer of its own |
