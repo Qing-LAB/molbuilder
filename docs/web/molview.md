@@ -1563,10 +1563,32 @@ animation is **every frame of the view**. Neither "which frames" nor "truth or
 view" predicts the other, which is exactly why these are three menu items and not
 one with options.
 
-**Save-to-project and Download differ only in destination.** The bytes are
-identical, for any of the three. MolView produces them and stops there: putting them in the project is
-the projects module's job (§ 2), and a download is the browser's. Neither is
-MolView writing a file — it holds no file route at all.
+**Save-to-project and Download produce identical bytes — and mean different
+things.** MolView writes neither: it produces the bytes and stops there, the
+project is the projects module's job (§ 2) and a download is the browser's. It
+holds no file route at all.
+
+But where those bytes land decides what happens next.
+
+**A download leaves the application.** It is for the user — a file on their
+machine, for a paper, a colleague, another tool. Nothing here will read it again.
+
+**The project is the scientific record.** A structure saved there — the `.xyz`
+and its `.json` together — is what the rest of the app builds on: it is the
+source a calculation's input script is generated from, and what analysis later
+refers back to. That is the handoff out of the viewer and into the workflow.
+
+Which retro-justifies two things that would otherwise look like details. The Data
+export **must** be the truth, because a script generated from a filtered drawing
+would compute the wrong system. And it **must** be both files, because the
+metadata is where the user's intent lives (§ 5.5) — a `.xyz` saved without its
+`.json` is a structure whose frozen atoms and regions have been quietly dropped
+on the way to the calculation that needed them.
+
+**A saved state is not a record.** It is private working history — how you get
+back to where you were (§ 11.2). Nothing reads it but this viewer, nothing is
+generated from it, and it never appears in the project. The project is what you
+*meant to keep*; a saved state is where you happened to be.
 
 > **A word that means two things.** The Export menu's **Snapshot** is a picture.
 > The code that saves state also uses the word *snapshot* for a saved point in
@@ -1748,6 +1770,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
 | § 11.3 — only the data export is the truth | exporting data yields the displayed frame's coordinates **and** its metadata, from the master copy; an image and an animation are renders and carry whatever the view was set to |
 | § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
+| § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so labels and frozen atoms survive into whatever is generated from it |
 | § 11.3 — save-to-project and download differ only in destination | both produce identical bytes, and neither has MolView writing a file |
 | § 11.4 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
 
