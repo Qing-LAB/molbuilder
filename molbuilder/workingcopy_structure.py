@@ -46,12 +46,13 @@ def _sha256_bytes(b: bytes) -> str:
 def _metadata_is_default(meta: dict) -> bool:
     """True when a metadata dict (``Structure.metadata_to_dict`` output) carries
     nothing worth a sidecar -- a plain molecule (no cell / origin / pbc /
-    regions / frozen / annotations / vacuum / non-isolated axis).  Decides
+    labels / annotations / vacuum / non-isolated axis).  `regions` covers the
+    reserved labels too; there is no second store to check.  Decides
     whether the ``.molstruct.json`` half of the pair exists at all
     (``no .json == empty metadata``)."""
     if meta.get("cell") is not None or meta.get("cell_origin") is not None:
         return False
-    if meta.get("regions") or meta.get("frozen_atoms") or meta.get("annotations"):
+    if meta.get("regions") or meta.get("annotations"):
         return False
     if meta.get("pbc") and any(meta["pbc"]):
         return False

@@ -3,7 +3,7 @@ Structure per-atom annotations layer + all-channel remap."""
 import numpy as np
 import pytest
 
-from molbuilder.structure import (Structure, AtomChannel,
+from molbuilder.structure import (FROZEN_LABEL, Structure, AtomChannel,
                                    copy_annotations, remap_annotations)
 from molbuilder import modify
 
@@ -39,14 +39,17 @@ def test_annotations_default_empty_and_backcompat():
     assert s.channels() == {}               # no regions/frozen either
 
 
-def test_channels_unify_regions_frozen_and_extras():
+def test_channels_unify_every_label_and_the_extras():
     s = _struct()
     s.regions = {"L-electrode": [0, 1]}
     s.frozen_atoms = [4]
     s.set_channel("charge", AtomChannel("value", {0: -1.0, 1: 0.5}))
     ch = s.channels()
     assert ch["L-electrode"].kind == "tag" and ch["L-electrode"].data == [0, 1]
-    assert ch["frozen"].kind == "flag" and ch["frozen"].data == [4]
+    # The reserved label is a `tag` like every other label -- same kind, same
+    # shape.  It was a `flag` channel synthesised beside the labels while it had
+    # a store of its own (atom-annotations.md § 2).
+    assert ch[FROZEN_LABEL].kind == "tag" and ch[FROZEN_LABEL].data == [4]
     assert ch["charge"].kind == "value" and ch["charge"].data == {0: -1.0, 1: 0.5}
 
 
@@ -55,16 +58,21 @@ def test_atom_annotations_per_atom_view():
     s.regions = {"bridge": [0]}
     s.frozen_atoms = [0]
     s.set_channel("charge", AtomChannel("value", {0: -1.0}))
-    assert s.atom_annotations(0) == {"bridge": True, "frozen": True, "charge": -1.0}
+    assert s.atom_annotations(0) == {"bridge": True, FROZEN_LABEL: True,
+                                     "charge": -1.0}
     assert s.atom_annotations(3) == {}
 
 
-def test_set_channel_rejects_builtin_names_and_bad_index():
+def test_set_channel_rejects_a_name_a_label_already_has():
+    """An extra channel sits BESIDE the labels, so it may not take a name a
+    label already holds -- and the reserved label is covered by that one rule
+    rather than by a clause naming it."""
     s = _struct()
     s.regions = {"L": [0]}
-    with pytest.raises(ValueError, match="built-in"):
-        s.set_channel("frozen", AtomChannel("flag", [1]))
-    with pytest.raises(ValueError, match="built-in"):
+    s.frozen_atoms = [2]
+    with pytest.raises(ValueError, match="already a label"):
+        s.set_channel(FROZEN_LABEL, AtomChannel("flag", [1]))
+    with pytest.raises(ValueError, match="already a label"):
         s.set_channel("L", AtomChannel("tag", [1]))
     with pytest.raises(ValueError, match="out of range"):
         s.set_channel("charge", AtomChannel("value", {99: 1.0}))
@@ -74,7 +82,7 @@ def test_validation_rejects_out_of_range_and_collision_at_construction():
     with pytest.raises(ValueError, match="out of range"):
         Structure(elements=["C"], positions=[[0, 0, 0]],
                   annotations={"x": AtomChannel("tag", [5])})
-    with pytest.raises(ValueError, match="built-in"):
+    with pytest.raises(ValueError, match="already a label"):
         Structure(elements=["C", "C"], positions=[[0, 0, 0], [1, 0, 0]],
                   regions={"L": [0]}, annotations={"L": AtomChannel("tag", [1])})
 
@@ -127,7 +135,8 @@ def test_atom_metadata_block_roundtrips_annotations():
     assert "molstruct-json/v4" in block and '"annotations"' in block
     back = _struct(5)
     assert sc.apply_inbody_atom_metadata(back, block) is True
-    assert back.regions == {"bridge": [1]} and back.frozen_atoms == [4]
+    assert back.regions == {"bridge": [1], FROZEN_LABEL: [4]}
+    assert back.frozen_atoms == [4]
     assert back.get_channel("charge").data == {0: -1.0, 2: 0.5}   # int keys
 
 

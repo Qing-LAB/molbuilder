@@ -238,13 +238,12 @@ class TestEval:
         ``frozen_atoms`` is stored as a separate sidecar field, not
         as a region.
 
-        The fix exposes ``struct.frozen_atoms`` as a synthetic region
-        named ``frozen_atoms`` ONLY during rule resolution (eval +
-        toggle endpoints).  The synthetic does NOT leak into
-        ``/api/selection/atoms`` (no duplicate ``frozen_atoms`` tag
-        on the per-atom regions list) and does NOT leak into the
-        sidecar on save (the on-disk file's ``regions`` block stays
-        user-defined).
+        Nothing synthetic is involved any more: ``frozen_atoms`` is an
+        ordinary label in the ONE label store, so the by-label rule
+        that resolves ``L-electrode`` resolves this with no case of its
+        own (molview.md § 6.6).  It used to be a second store exposed
+        as a synthetic region on this route only -- see the companion
+        test below for what that cost.
         """
         # Save frozen_atoms via the whole-sidecar writer.
         _seed_sidecar(selection_root, n_atoms=11, frozen=[5, 6, 7])
@@ -256,26 +255,32 @@ class TestEval:
         assert r.status_code == 200, r.get_json()
         assert r.get_json()["selected_indices"] == [5, 6, 7]
 
-    def test_by_region_frozen_does_not_leak_into_atoms_list(
+    def test_the_reserved_label_appears_on_the_atoms_route_too(
             self, web, selection_root):
-        """Companion of the test above: the synthetic ``frozen_atoms``
-        region must NOT appear in ``/api/selection/atoms``'s per-atom
-        ``regions`` field — otherwise frozen atoms would carry BOTH
-        the (correct) ``is_frozen`` flag AND a (duplicate)
-        ``frozen_atoms`` tag in the panel's atom rows.
+        """Companion of the test above, INVERTED by the design (2026-07-31).
+
+        It used to assert the opposite: that the frozen label must NOT
+        appear here.  That was true while the fact had two homes -- an
+        atom carried the ``is_frozen`` flag AND would have carried a
+        duplicate label -- so the label was withheld on this route and
+        supplied on ``/api/selection/eval``.  Two routes, two answers
+        about the same structure.
+
+        With one store there is one representation, and it is the same
+        on every route: the label, in the list of labels, once.
         """
         _seed_sidecar(selection_root, n_atoms=11, frozen=[5, 6, 7])
         r = web.post("/api/selection/atoms", json={
             "structure_path": _path(selection_root),
         })
         atoms = r.get_json()["atoms"]
-        assert atoms[5]["is_frozen"] is True
-        assert atoms[6]["is_frozen"] is True
-        assert "frozen_atoms" not in atoms[5]["regions"], (
-            "synthetic frozen_atoms region must not appear in per-atom "
-            "regions; got " + repr(atoms[5]["regions"])
+
+        assert "is_frozen" not in atoms[5], (
+            "the fact is on the atom twice: " + repr(sorted(atoms[5]))
         )
-        assert "frozen_atoms" not in atoms[6]["regions"]
+        assert atoms[5]["regions"].count("frozen_atoms") == 1
+        assert atoms[6]["regions"] == ["frozen_atoms"]
+        assert "frozen_atoms" not in atoms[0]["regions"]
 
 
 
@@ -368,8 +373,8 @@ class TestAtomsEndpoint:
         atoms = r.get_json()["atoms"]
         assert atoms[0]["regions"] == ["L-electrode"]
         assert atoms[4]["regions"] == []
-        assert atoms[10]["is_frozen"] is True
-        assert atoms[0]["is_frozen"] is False
+        assert atoms[10]["regions"] == ["frozen_atoms"]
+        assert "frozen_atoms" not in atoms[0]["regions"]
 
     def test_cell_from_sidecar_surfaces_in_atoms_response(
             self, web, selection_root):
@@ -476,17 +481,18 @@ class TestAtomsEndpoint:
         assert body["n_atoms"] == 11   # XYZ's actual count
         atoms = body["atoms"]
         # In-range labels apply.
-        assert atoms[0]["regions"] == ["L-electrode"]
+        # The reserved label filters by the SAME orphan rule as the others,
+        # because it is in the same store -- atom 0 carries both names.
+        assert atoms[0]["regions"] == ["L-electrode", "frozen_atoms"]
         assert atoms[1]["regions"] == ["L-electrode"]
         assert atoms[5]["regions"] == ["bridge"]
         # Empty regions after filter ("ghosts" — all indices orphaned)
         # are dropped entirely: no atom carries it.
         for a in atoms:
             assert "ghosts" not in a["regions"]
-        # In-range frozen flags apply, orphans dropped.
-        assert atoms[0]["is_frozen"] is True
-        assert atoms[10]["is_frozen"] is True
-        assert atoms[5]["is_frozen"] is False  # not in frozen list
+        # In-range members of the reserved label apply, orphans (18) dropped.
+        assert atoms[10]["regions"] == ["frozen_atoms"]
+        assert "frozen_atoms" not in atoms[5]["regions"]
 
     def test_sidecar_with_all_orphan_indices_loads_clean(
             self, web, selection_root):
@@ -513,8 +519,7 @@ class TestAtomsEndpoint:
         assert r.status_code == 200
         atoms = r.get_json()["atoms"]
         for a in atoms:
-            assert a["regions"] == []
-            assert a["is_frozen"] is False
+            assert a["regions"] == []          # the reserved label included
 
 
 class TestStateless:

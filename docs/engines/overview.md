@@ -107,9 +107,11 @@ flowchart LR
 ```
 
 - **Stage 1 — UI → config (capture intent visibly).** The selection panel writes
-  `frozen_atoms` / `regions` into the [`.molstruct.json` sidecar](?doc=model/structure-molstruct.md)
-  (the region-label *vocabulary* — `L-electrode` / `bridge` / `interface` — is owned by
-  [`model/structure-annotations.md`](?doc=model/structure-annotations.md)).
+  the labels into the [`.molstruct.json` sidecar](?doc=model/structure-molstruct.md)'s
+  one `regions` store — `frozen_atoms` is one of them, a *reserved* label rather
+  than a key of its own (schema 7). The label *vocabulary* — `L-electrode` /
+  `bridge` / `interface` / `frozen_atoms` — is owned by
+  [`model/structure-annotations.md`](?doc=model/structure-annotations.md).
   When the user opens an engine form against that structure, the schema endpoint
   **pre-fills** the freeze field from the sidecar (`web/blueprints/spectra.py::_seed_frozen_indices_from_sidecar`),
   so the user **sees** what will be frozen *before* Generate. The form is then

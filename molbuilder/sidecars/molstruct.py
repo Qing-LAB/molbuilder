@@ -69,7 +69,10 @@ except ImportError:                  # pragma: no cover - Windows branch
     _HAVE_FLOCK = False
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
+#: 7 (2026-07-31) -- the reserved ``frozen`` label moved into ``regions`` with
+#: every other label; the top-level ``frozen_atoms`` key is no longer written.
+#: :func:`frozen_atoms` reads either, so a 6 keeps opening.
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
 _SIDECAR_SUFFIX = ".molstruct.json"
@@ -157,12 +160,36 @@ def structure_fields_via_dataclass(
     return scratch.metadata_to_dict()
 
 
+def frozen_atoms(payload: Optional[Dict[str, Any]]) -> List[int]:
+    """The atoms carrying the reserved ``frozen`` label in a sidecar payload.
+
+    THE way to ask a sidecar dict, the same way :attr:`Structure.frozen_atoms`
+    is the way to ask a Structure.  Callers that spell the key themselves are
+    callers that have to know which schema wrote the file; this knows, in one
+    place: schema 7 keeps it in ``regions`` with every other label, schema 6
+    and earlier kept it in a top-level ``frozen_atoms`` key.
+    """
+    from molbuilder.structure import FROZEN_LABEL   # lazy: same reason as :152
+    if not isinstance(payload, dict):
+        return []
+    regions = payload.get("regions")
+    found = set()
+    if isinstance(regions, dict):
+        found |= {int(i) for i in (regions.get(FROZEN_LABEL) or ())
+                  if isinstance(i, int) and not isinstance(i, bool)}
+    legacy = payload.get("frozen_atoms")          # schema <= 6
+    if isinstance(legacy, list):
+        found |= {int(i) for i in legacy
+                  if isinstance(i, int) and not isinstance(i, bool)}
+    return sorted(found)
+
+
 def normalise_selection_rules(
     selection_rules: Optional[Dict[str, Any]],
     valid_regions,
 ) -> Dict[str, Any]:
     """Validate the sidecar-only ``selection_rules`` map (NOT a Structure field):
-    each target must name a normalised region or the literal ``"frozen_atoms"``,
+    each target must name a normalised label,
     and each value is re-parsed through :mod:`molbuilder.selection` so a
     malformed recipe fails at sidecar-build time.  Shared by the write + read
     validators so the rule schema is enforced in ONE place.
@@ -173,16 +200,19 @@ def normalise_selection_rules(
     from molbuilder.selection import from_json as _rule_from_json
     from molbuilder.selection import to_json as _rule_to_json
     from molbuilder.selection import SelectionError
-    valid_targets = set(valid_regions) | {"frozen_atoms"}
+    valid_targets = set(valid_regions)
     for target, rule_payload in selection_rules.items():
         if not isinstance(target, str) or not target:
             raise MolstructJsonError(
                 f"selection_rules: target label must be non-empty string; "
                 f"got {target!r}")
+        # A schema-6 rule targeting the reserved label needs no special case
+        # here: it spelled the target `frozen_atoms`, which IS the label's name,
+        # so it lands in `valid_regions` like any other target.
         if target not in valid_targets:
             raise MolstructJsonError(
-                f"selection_rules: target {target!r} doesn't match any region "
-                f"or 'frozen_atoms' (known: {sorted(valid_targets)!r})")
+                f"selection_rules: target {target!r} doesn't match any label "
+                f"(known: {sorted(valid_targets)!r})")
         try:
             rule = _rule_from_json(rule_payload)
         except SelectionError as exc:
@@ -441,6 +471,7 @@ def load_text(text, *, source="<sidecar>"):
 
 __all__ = [
     "SCHEMA_VERSION",
+    "frozen_atoms",
     "dumps",
     "MolstructJsonError",
     "apply_to_structure",

@@ -480,7 +480,9 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         residue_names = list(struct.residue_names),
         chain_ids     = list(struct.chain_ids),
         title         = struct.title,
-        frozen_atoms  = list(getattr(struct, "frozen_atoms", []) or []),
+        # regions carries every label, reserved ones included -- so the frozen
+        # set rides along and cannot be dropped between the Build endpoint that
+        # loaded the sidecar and the validator meant to consume it.
         # struct.regions is Dict[str, List[int]] per Structure's
         # declaration; the previous list-comprehension assumed an
         # iterable of lists and crashed at __post_init__ when the

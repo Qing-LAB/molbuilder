@@ -39,8 +39,8 @@ globalThis.__requests = [];
 globalThis.fetch = async function (route, init) {
     globalThis.__requests.push({ route, body: JSON.parse(init.body) });
     return { ok: true, status: 200, json: async () => ({ atoms: [
-        { index: 0, element: "C", x: 0, y: 0, z: 0, regions: [], is_frozen: false },
-        { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [], is_frozen: false },
+        { index: 0, element: "C", x: 0, y: 0, z: 0, regions: [] },
+        { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
     ] }) };
 };
 globalThis.setInterval = globalThis.setInterval;
@@ -919,9 +919,10 @@ def test_bytes_leave_through_the_door_and_the_sidecar_goes_with_them():
     assert sidecar["regions"] == {"L-electrode": [0]}, (
         f"the labels did not survive into the sidecar: {sidecar}"
     )
-    assert sidecar["frozen_atoms"] == []
     assert sidecar["n_atoms_total"] == 2
-    assert set(sidecar) == {"n_atoms_total", "regions", "frozen_atoms",
+    # ONE key for labels. A `frozen_atoms` key beside `regions` was the second
+    # store, and it is what the codec no longer writes or expects (§ 6.6).
+    assert set(sidecar) == {"n_atoms_total", "regions",
                             "cell", "cell_origin", "axis_kind", "vacuum"}, (
         f"the sidecar carries fields the codec does not know, or is missing ones "
         f"it does: {sorted(sidecar)}"

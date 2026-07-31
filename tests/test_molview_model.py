@@ -39,8 +39,11 @@ globalThis.__serverFails = false;
 globalThis.__nextPayload = null;
 
 function atomRow(i, element, x, opts) {
-    return Object.assign({ index: i, element, x, y: 0, z: 0, regions: [],
-                           is_frozen: false }, opts || {});
+    /* The labels the atom carries, and nothing beside them: a reserved label
+     * is IN `regions` (§ 6.6). The row used to carry an `is_frozen` flag too,
+     * which is what the server sent while it kept a second store. */
+    return Object.assign({ index: i, element, x, y: 0, z: 0, regions: [] },
+                         opts || {});
 }
 globalThis.__atomRow = atomRow;
 
@@ -241,7 +244,7 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
         """
         globalThis.__nextPayload = globalThis.__payload([
             globalThis.__atomRow(0, "C", 0, { regions: ["anchor"] }),
-            globalThis.__atomRow(1, "O", 1, { is_frozen: true, residue_name: "ALA" }),
+            globalThis.__atomRow(1, "O", 1, { regions: ["frozen_atoms"], residue_name: "ALA" }),
         ], { periodicity: { cell: [[4,0,0],[0,4,0],[0,0,4]], cell_origin: [1,1,1] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
@@ -273,17 +276,22 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
     )
 
 
-def test_the_frozen_flag_becomes_an_ordinary_label_at_the_boundary():
+def test_the_reserved_label_needs_no_boundary_translation():
     """§ 6.6: MolView's end is "one mechanism, no special case".
 
-    The server keeps `is_frozen` apart from `regions`, so the fold happens once
-    at the inbound translation and downstream there is one mechanism — a frozen
-    atom's label sits in the same list as any other.
+    This used to assert a FOLD — the server sent an `is_frozen` flag beside the
+    labels and the module turned it into a label on the way in. The server keeps
+    one store now, so there is nothing to fold: the label arrives as a label and
+    the translator that existed for it is gone.
+
+    (The reserved label's full contract — one store, one designated read, both
+    boundaries — is `test_molview_reserved_label_js.py`. This keeps the § 6.6 row
+    of § 13.3 anchored in the model's own suite.)
     """
     out = _run(
         """
         globalThis.__nextPayload = globalThis.__payload([
-            globalThis.__atomRow(0, "C", 0, { is_frozen: true, regions: ["mine"] }),
+            globalThis.__atomRow(0, "C", 0, { regions: ["mine", "frozen_atoms"] }),
         ]);
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
@@ -294,15 +302,12 @@ def test_the_frozen_flag_becomes_an_ordinary_label_at_the_boundary():
         }));
         """
     )
-    assert len(out["labels"]) == 2, (
-        f"a frozen atom must carry its frozen label like any other: {out['labels']}"
+    assert out["labels"] == ["mine", "frozen_atoms"], (
+        f"the reserved label is not carried like any other: {out['labels']}"
     )
-    assert "mine" in out["labels"]
-    assert out["frozen"] == [0]
-    assert len(out["regions"]) == 2, (
-        "the frozen label must appear in the label grouping like any other — "
-        f"a separate field would keep it out: {out['regions']}"
-    )
+    assert out["regions"] == ["frozen_atoms", "mine"]
+    assert out["frozen"] == [0], "the designated read did not find it in the labels"
+
 
 
 # ---------------------------------------------------------------------------

@@ -66,10 +66,8 @@ def read_frozen_atoms(traj_path: str) -> Set[int]:
             data = _json.load(fh)
     except (OSError, ValueError):
         return set()
-    frozen = data.get("frozen_atoms")
-    if not isinstance(frozen, list):
-        return set()
-    return {int(i) for i in frozen if isinstance(i, int)}
+    from molbuilder.sidecars import molstruct
+    return set(molstruct.frozen_atoms(data))
 
 
 _FDF_BLOCK_START_RE = re.compile(

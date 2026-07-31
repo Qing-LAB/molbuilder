@@ -206,7 +206,7 @@ def _seed_frozen_indices_from_sidecar(
         return (f"sidecar at {sidecar_path.name} could not be read "
                 f"({exc}); frozen-atom field not pre-filled")
 
-    frozen = list(sidecar_data.get("frozen_atoms") or [])
+    frozen = _molstruct_json.frozen_atoms(sidecar_data)
     if not frozen:
         return None
 

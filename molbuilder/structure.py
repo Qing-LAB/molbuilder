@@ -100,6 +100,21 @@ def _resolve_source(source: Union[str, Path]) -> str:
 
 _CHANNEL_KINDS = ("tag", "flag", "value")
 
+#: THE spelling of the reserved "held still during relaxation" label
+#: (atom-annotations.md § 2, molview.md § 6.6).  It is an ORDINARY label: same
+#: store (``Structure.regions``), same validation, same serialisation, same
+#: filtering, same panel row as ``L-electrode`` or anything a user types.  The
+#: only thing that makes it reserved is that something downstream ACTS on it --
+#: the SIESTA ``%block Geometry.Constraints`` emitter, the PySCF freeze list --
+#: and for that there is exactly one designated read, :attr:`Structure.frozen_atoms`.
+#:
+#: One constant because the name is the whole cost of a reserved meaning.  It is
+#: the name the label has ALWAYS had on the wire, on disk and in the browser;
+#: what a second storage bought was a SECOND spelling for the same fact -- the
+#: ``frozen`` flag channel this module used to synthesise beside the label --
+#: and an alias between them at every boundary that touched both.
+FROZEN_LABEL = "frozen_atoms"
+
 #: Containment tolerance in FRACTIONAL units (§ 6.1): loose enough to forgive a
 #: round-tripped float, tight enough that "half the molecule outside the box"
 #: can never pass.  Shared with periodicity_gate, which delegates containment
@@ -277,21 +292,18 @@ class Structure:
                       assemble junctions with explicit electrode
                       regions.
 
-        frozen_atoms  0-based indices of atoms whose positions stay
-                      fixed during downstream relaxations and
-                      Hessian builds.  ("Frozen" is molbuilder's
-                      canonical term; some QC contexts call this
-                      "fixed atoms".  The two names are
-                      synonymous; we standardise on "frozen" to
-                      match the spectroscopy literature.)  Carried
-                      through from build / modify time; consumed
-                      by SpectraConfig (relax + Hessian) and
-                      TransportConfig (NEGF lead-fixing).  Sorted +
-                      deduped on validation.  Empty default.
+    Some labels are RESERVED -- something downstream acts on the
+    name.  ``frozen`` (:data:`FROZEN_LABEL`) marks atoms whose
+    positions stay fixed during relaxations and Hessian builds;
+    it is consumed by SpectraConfig (relax + Hessian) and
+    TransportConfig (NEGF lead-fixing).  A reserved label is stored,
+    validated, filtered and serialised exactly like any other; the
+    only thing it gets of its own is one designated read, the
+    :attr:`frozen_atoms` accessor.
 
-    Both fields are pure metadata -- nothing in this module reads
-    them.  Downstream consumers (spectra, transport) decide what to
-    do with them.
+    ``regions`` is pure metadata -- nothing in this module reads it.
+    Downstream consumers (spectra, transport) decide what the names
+    mean.
     """
 
     elements: List[str]
@@ -303,8 +315,25 @@ class Structure:
     title:         str = ""
     # Transport-oriented metadata (2026-05-20).  Defaults keep every
     # existing call site working without change.
+    # THE label store -- every label, including the reserved ones (FROZEN_LABEL).
+    # There is no second store: a reserved meaning costs a NAME and one
+    # designated read (`frozen_atoms` below), and nothing else.  `frozen_atoms`
+    # was a field here until 2026-07-31, which bought two of everything --
+    # two validators, two remaps on every atom-count change, two keys in the
+    # saved file, two spellings on the wire -- and a live inconsistency: the
+    # selection panel saw frozen as a label on `/api/selection/eval` and as a
+    # flag on `/api/selection/atoms`, so it double-rendered until a route-
+    # conditional patch hid it.
     regions:       Dict[str, List[int]] = field(default_factory=dict)
-    frozen_atoms:  List[int]            = field(default_factory=list)
+    # NOT A FIELD -- a constructor door onto the reserved label, replaced below
+    # the class by the `frozen_atoms` property.  Declared here so `Structure(...,
+    # frozen_atoms=[...])` still reaches the ONE place that spells the name,
+    # instead of every construction site writing `regions={FROZEN_LABEL: ...}`
+    # for itself.  `regions` is declared FIRST on purpose: the dataclass assigns
+    # in declaration order, so the store exists when the setter writes into it.
+    # Default None means "say nothing about it" -- a caller passing only
+    # `regions` (with the label already in it) must not have it cleared.
+    frozen_atoms:  Optional[List[int]] = None
     # Periodic lattice (2026-06-27).  ``cell`` is the (3, 3) matrix whose
     # ROWS are the lattice vectors in Angstrom (ASE convention), or None
     # for a non-periodic molecule.  ``pbc`` is per-axis periodicity:
@@ -439,7 +468,6 @@ class Structure:
         # so a caller that doesn't care about regions / frozen atoms
         # sees no behaviour change.
         self._validate_regions(n)
-        self._validate_frozen_atoms(n)
         self._validate_annotations(n)
 
     def resolve_cell(self) -> Optional[np.ndarray]:
@@ -655,9 +683,11 @@ class Structure:
         sidecar field set).  The fields are already validated by
         ``__post_init__``; this is a pure conversion to JSON types."""
         return {
+            # Every label, reserved ones included -- ONE key, because there is
+            # one store.  A `frozen_atoms` key beside this one is what schema 6
+            # wrote; `apply_metadata_dict` still reads it, nothing writes it.
             "regions":      {k: list(v)
                              for k, v in (self.regions or {}).items()},
-            "frozen_atoms": list(self.frozen_atoms or []),
             "cell":         self.cell.tolist() if self.cell is not None else None,
             "cell_origin":  (self.cell_origin.tolist()
                              if self.cell_origin is not None else None),
@@ -681,7 +711,14 @@ class Structure:
         constructed Structure enforces."""
         data = data or {}
         self.regions      = dict(data.get("regions") or {})
-        self.frozen_atoms = list(data.get("frozen_atoms") or [])
+        # SCHEMA 6 AND EARLIER kept the reserved label in its own top-level key.
+        # Read it into the label store where it belongs; a file written then
+        # opens now, and nothing writes that key again.  Union rather than
+        # overwrite: a schema-7 file has the label in `regions` already, and a
+        # hand-merged file could carry both.
+        if data.get("frozen_atoms"):
+            self.frozen_atoms = sorted(set(self.frozen_atoms)
+                                       | {int(i) for i in data["frozen_atoms"]})
         self.cell         = (np.asarray(data["cell"], dtype=float)
                              if data.get("cell") is not None else None)
         self.cell_origin  = (np.asarray(data["cell_origin"], dtype=float)
@@ -844,34 +881,17 @@ class Structure:
             normalised[region_name] = sorted(unique)
         self.regions = normalised
 
-    def _validate_frozen_atoms(self, n: int) -> None:
-        """0-based indices in [0, n); sorted + deduped in place."""
-        if not self.frozen_atoms:
-            return
-        unique: set = set()
-        for raw in self.frozen_atoms:
-            idx = int(raw)
-            if not 0 <= idx < n:
-                raise ValueError(
-                    f"Structure.frozen_atoms: atom index {idx} out of "
-                    f"range [0, {n})"
-                )
-            unique.add(idx)
-        self.frozen_atoms = sorted(unique)
-
     def _validate_annotations(self, n: int) -> None:
-        """Extra channels: names must not collide with a built-in
-        (a region label or ``"frozen"``); atom indices must be in
+        """Extra channels: names must not collide with a label;
+        atom indices must be in
         [0, n).  Normalises tag/flag data to sorted-unique in place."""
         if not self.annotations:
             return
-        reserved = set(self.regions) | {"frozen"}
         for name, ch in self.annotations.items():
-            if name in reserved:
+            if name in self.regions:
                 raise ValueError(
-                    f"Structure.annotations[{name!r}] collides with a "
-                    f"built-in channel (a region label or 'frozen'); "
-                    f"edit .regions / .frozen_atoms instead.")
+                    f"Structure.annotations[{name!r}]: {name!r} is already a "
+                    f"label; edit .regions instead.")
             if not isinstance(ch, AtomChannel):
                 raise ValueError(
                     f"Structure.annotations[{name!r}] must be an "
@@ -890,15 +910,13 @@ class Structure:
     # ------------------------------------------------------------------ #
 
     def channels(self) -> Dict[str, AtomChannel]:
-        """The unified per-atom channel registry: each region label as a
-        ``tag`` channel, ``frozen`` as a ``flag`` channel (when non-empty),
-        plus every extensible channel in ``self.annotations``.  This is
-        the one place to read ALL per-atom metadata uniformly."""
+        """The unified per-atom channel registry: every label as a ``tag``
+        channel -- reserved ones included, on identical footing -- plus every
+        extensible channel in ``self.annotations``.  The one place to read ALL
+        per-atom metadata uniformly."""
         out: Dict[str, AtomChannel] = {}
         for label, idxs in self.regions.items():
             out[label] = AtomChannel("tag", list(idxs))
-        if self.frozen_atoms:
-            out["frozen"] = AtomChannel("flag", list(self.frozen_atoms))
         for name, ch in self.annotations.items():
             out[name] = ch
         return out
@@ -921,15 +939,53 @@ class Structure:
         return out
 
     def set_channel(self, name: str, channel: AtomChannel) -> None:
-        """Set an EXTENSIBLE channel (stored in ``annotations``).  Reject
-        built-in names -- edit ``.regions`` / ``.frozen_atoms`` for those.
+        """Set an EXTENSIBLE channel (stored in ``annotations``).  A name that
+        is already a label belongs to the label store -- edit ``.regions``.
         Re-validates against the current atom count."""
-        if name in self.regions or name == "frozen":
+        if name in self.regions:
             raise ValueError(
-                f"{name!r} is a built-in channel; edit .regions / "
-                f".frozen_atoms instead.")
+                f"{name!r} is already a label; edit .regions instead.")
         self.annotations[name] = channel
         self._validate_annotations(len(self.positions))
+
+    # ------------------------------------------------------------------ #
+    #  The reserved-label read (molview.md § 6.6)                        #
+    # ------------------------------------------------------------------ #
+
+    @property
+    def _frozen_atoms(self) -> List[int]:
+        """The atoms carrying the reserved :data:`FROZEN_LABEL` label.
+
+        THE one way to ask.  A reserved label is an ordinary label -- it is in
+        ``regions`` with everything else and is stored, validated, filtered and
+        displayed identically -- but because something downstream ACTS on this
+        one (SIESTA's ``%block Geometry.Constraints``, PySCF's freeze list), it
+        gets a designated read so that "which atoms are held still" is answered
+        in one place instead of at every point of use.
+
+        A cut of the label store, never a second home for the fact.  Callers use
+        this rather than reaching into ``regions`` for the name themselves:
+        every caller that spells the name is another place it can be spelled
+        differently, which is the same defect as a separate field reached from
+        the other side.
+        """
+        return list(self.regions.get(FROZEN_LABEL, ()))
+
+    @_frozen_atoms.setter
+    def _frozen_atoms(self, indices) -> None:
+        """Write the reserved label -- an ordinary label write, normalised
+        (sorted + deduped) the way ``_validate_regions`` normalises every other.
+        An empty set REMOVES the label rather than storing an empty one, so
+        "carries no label" and "carries an empty label" cannot both exist.
+        ``None`` says nothing about it and leaves the store untouched, which is
+        what an omitted constructor argument means."""
+        if indices is None:
+            return
+        kept = sorted({int(i) for i in indices})
+        if kept:
+            self.regions[FROZEN_LABEL] = kept
+        else:
+            self.regions.pop(FROZEN_LABEL, None)
 
     # ------------------------------------------------------------------ #
     #  Convenience accessors                                              #
@@ -1368,7 +1424,6 @@ class Structure:
             chain_ids     = list(self.chain_ids),
             title         = self.title,
             regions       = {k: list(v) for k, v in self.regions.items()},
-            frozen_atoms  = list(self.frozen_atoms),
             annotations   = copy_annotations(self.annotations),
             **self._carry_periodicity(),
         )
@@ -1409,7 +1464,6 @@ class Structure:
             chain_ids     = list(self.chain_ids),
             title         = self.title,
             regions       = {k: list(v) for k, v in self.regions.items()},
-            frozen_atoms  = list(self.frozen_atoms),
             annotations   = copy_annotations(self.annotations),
             **per,
         )
@@ -1454,12 +1508,11 @@ class Structure:
         residue_names: List[str] = []
         chain_ids: List[str] = []
         positions = []
-        # Transport metadata (frozen_atoms + regions) must be re-indexed
-        # per-input because each structure's atom indices are 0-based and
-        # the concatenation shifts the i-th structure's atoms by the sum
-        # of n_atoms across all earlier structures.  Regions with the
-        # same label across inputs merge into one combined index list.
-        frozen_atoms: List[int] = []
+        # Labels must be re-indexed per-input because each structure's atom
+        # indices are 0-based and the concatenation shifts the i-th structure's
+        # atoms by the sum of n_atoms across all earlier structures.  The same
+        # label across inputs merges into one combined index list -- reserved
+        # labels included, by the same rule, because they are the same thing.
         regions: Dict[str, List[int]] = {}
         annotations: Dict[str, AtomChannel] = {}
         atom_offset = 0
@@ -1477,7 +1530,6 @@ class Structure:
                 offset = max(residue_ids)
             else:
                 residue_ids.extend(ids)
-            frozen_atoms.extend(i + atom_offset for i in s.frozen_atoms)
             for label, idxs in s.regions.items():
                 regions.setdefault(label, []).extend(
                     i + atom_offset for i in idxs
@@ -1506,9 +1558,17 @@ class Structure:
             chain_ids     = chain_ids,
             title         = title,
             regions       = regions,
-            frozen_atoms  = frozen_atoms,
             annotations   = annotations,
             cell          = (base_cell.copy() if base_cell is not None
                              else None),
             pbc           = base_pbc,
         )
+
+
+# The reserved label's accessor, installed under its real name AFTER ``@dataclass``
+# has read the class body.  Defining it as ``frozen_atoms`` inside the body would
+# make the property object the field's default; defining it here means the
+# generated ``__init__`` executes ``self.frozen_atoms = <arg>`` straight into the
+# setter, so construction and later assignment go through the same one door.
+Structure.frozen_atoms = Structure._frozen_atoms
+del Structure._frozen_atoms

@@ -37,24 +37,19 @@
  * ever in an engine's numbering, so there is nothing here to convert.
  */
 
-/* THE ONE RESERVED-LABEL ALIAS, and the only place a reserved name is written.
+/* THE reserved label's ONE name, the same name the server stores it under.
  *
  * § 6.2 says an atom's facts are its labels and its residue — there is no frozen
- * field — and § 6.6 says MolView's end of a reserved label is "one mechanism, no
- * special case". The server has not caught up: it sends `regions` (the labels)
- * and a separate `is_frozen` flag, deliberately keeping them apart so the panel
- * does not render an atom's frozen state twice.
+ * field — and § 6.6 says a reserved label costs a NAME and one accessor and
+ * nothing else. Both ends now hold that: the label arrives in `regions` with
+ * every other label, and `getFrozen` is the one designated read of it.
  *
- * So the flag becomes a label here, at the boundary, and downstream there is
- * exactly one mechanism. § 6.6 calls this "a translator at the point of use" and
- * names the whole arrangement — a separate field plus an alias between two
- * spellings — as what folding frozen onto the other four reserved labels will
- * remove. That fold belongs to model/structure-annotations.md, not here.
- *
- * The NAME matters and is not free to choose: this is the name MolView will
- * OFFER as a filter row, and the server's `by label` rule resolves the frozen
- * set under `frozen_atoms`. Offering a name the server cannot match would give a
- * row that always answers nothing.
+ * This file used to carry two translators here, and both are gone with the
+ * server's second store (2026-07-31): an inbound alias that turned an
+ * `is_frozen` flag into a label, and an outbound split that pulled the label
+ * back out into a `frozen_atoms` field. The NAME did not have to change for
+ * either to go: it is the name the server's `by label` rule always matched, and
+ * now it is the name the server stores it under too.
  */
 export const FROZEN_LABEL = "frozen_atoms";
 
@@ -79,7 +74,6 @@ export function structureFromServer(payload) {
     const elements = atoms.map((a) => a.element);
     const annotations = atoms.map((a, i) => {
         const labels = Array.isArray(a.regions) ? a.regions.slice() : [];
-        if (a.is_frozen && labels.indexOf(FROZEN_LABEL) < 0) labels.push(FROZEN_LABEL);
         const residue = a.residue_name != null
             ? a.residue_name
             : (residueNames ? residueNames[i] : null);
@@ -114,7 +108,7 @@ export function structureFromServer(payload) {
     };
 }
 
-/* ══ The labels, walked once and split once ══════════════════════════════════
+/* ══ The labels, walked once ════════════════════════════════════════════════
  *
  * An atom carries a list of the names it is tagged with. Everything that needs
  * the flipped form — `{"L-electrode": [0, 1]}` — gets it from here, and the walk
@@ -133,26 +127,6 @@ export function groupByLabel(annotations) {
 }
 
 /**
- * The same grouping, in the shape the server takes.
- *
- * THE ONE RESERVED-LABEL SPLIT, and the only place it happens. § 6.6 says a
- * frozen tag is an ORDINARY LABEL — "one mechanism, no special case" — so
- * everything above this line treats it as one. The server has not caught up: it
- * keeps `frozen_atoms` in a field of its own. That difference is a translation,
- * and a translation belongs at the boundary, which is here.
- */
-export function labelsForServer(regions) {
-    const out = {};
-    let frozen = [];
-    for (const name of Object.keys(regions || {})) {
-        if (name === FROZEN_LABEL) frozen = regions[name].slice();
-        else out[name] = regions[name].slice();
-    }
-    return { regions: out, frozen_atoms: frozen };
-}
-
-
-/**
  * The same facts, shaped for the wire — the outbound half.
  *
  * Takes ONE read of the structure and one frame of coordinates, so "the facts
@@ -165,12 +139,11 @@ export function labelsForServer(regions) {
  */
 export function structureForServer(structure, positions) {
     if (!structure) return null;
-    const split = labelsForServer(groupByLabel(structure.annotations));
+    const labels = groupByLabel(structure.annotations);
     return {
         elements:     structure.elements.slice(),
         positions:    positions.map((p) => [p[0], p[1], p[2]]),
-        regions:      split.regions,
-        frozen_atoms: split.frozen_atoms,
+        regions:      labels,
         periodicity:  structure.periodicity,
     };
 }
@@ -301,7 +274,7 @@ export function structureAsData(structure, positions) {
         lines.push(structure.elements[i] + " " + p[0] + " " + p[1] + " " + p[2]);
     }
 
-    const split = labelsForServer(groupByLabel(structure.annotations));
+    const labels = groupByLabel(structure.annotations);
 
     /* COPIED, not referenced: this is handed to a caller (§ 9.3), and a blob
      * holding the master copy's own arrays is a write into the structure
@@ -314,8 +287,7 @@ export function structureAsData(structure, positions) {
         xyz: lines.join("\n") + "\n",
         sidecar: {
             n_atoms_total: count,
-            regions:       split.regions,
-            frozen_atoms:  split.frozen_atoms,
+            regions:       labels,
             cell:          clone(per.cell),
             cell_origin:   clone(per.cell_origin),
             axis_kind:     clone(per.axis_kind),

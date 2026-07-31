@@ -62,7 +62,7 @@ family.
 | door | how the structure is sent today |
 |---|---|
 | `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format, sidecar}` |
-| `/api/modify/*` | `{xyz, atom_names, residue_ids, residue_names, chain_ids, regions, frozen_atoms, periodicity, annotations, title, …the op's own arguments}` — flattened columns |
+| `/api/modify/*` | `{xyz, atom_names, residue_ids, residue_names, chain_ids, regions, periodicity, annotations, title, …the op's own arguments}` — flattened columns (`regions` is the whole label store, reserved labels included) |
 | `/api/structure/periodicity`, `/api/structure/save` | `{xyz, sidecar}` — a coordinate document plus the sidecar's metadata fields |
 | `/api/selection/eval` | `{atoms: [{element, labels, residueName}], rule}` — a cut-down atom list |
 
@@ -92,7 +92,7 @@ whose inverse is `Structure.from_dict()`:
     "elements":  ["C", "O"],
     "positions": [[0.0, 0.0, 0.0], [1.4, 0.0, 0.0]],
     "atom_names": [], "residue_ids": [], "residue_names": [], "chain_ids": [],
-    "metadata": { "regions": {"L-electrode": [0]}, "frozen_atoms": [1],
+    "metadata": { "regions": {"L-electrode": [0], "frozen_atoms": [1]},
                   "cell": null, "cell_origin": null, "pbc": [false,false,false],
                   "axis_kind": ["isolated","isolated","isolated"],
                   "vacuum": [0.0, 0.0, 0.0], "annotations": {} }

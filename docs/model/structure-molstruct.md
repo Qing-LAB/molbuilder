@@ -30,14 +30,13 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "n_atoms_total": 2,
   "structure_hash": "9f2c…(sha256 hex)",
   "created_by": "molbuilder",
   "created_at": "2026-07-26T12:00:00Z",
 
-  "regions": {"L-electrode": [0]},
-  "frozen_atoms": [0],
+  "regions": {"L-electrode": [0], "frozen_atoms": [1]},
   "cell": [[10,0,0],[0,10,0],[0,0,10]],
   "cell_origin": null,
   "pbc": [true, true, false],
@@ -57,7 +56,7 @@ plus the structure's **metadata fields** spread in alongside them.
 | `created_by` / `created_at` | provenance stamp (`created_at` is ISO-8601 UTC, `…Z`) |
 | `selection_rules` | a sidecar-**only** pass-through, **not** a `Structure` field (§ 4) |
 
-The **metadata fields** (`regions`, `frozen_atoms`, `cell`, `cell_origin`,
+The **metadata fields** (`regions`, `cell`, `cell_origin`,
 `pbc`, `axis_kind`, `vacuum`, `annotations`) are exactly the set `Structure`'s
 codec owns — they are **spread in, not re-listed** by the sidecar
 (`structure_fields_via_dataclass` round-trips them through a scratch `Structure`,
@@ -80,7 +79,8 @@ is refused with a clear error.
 | v3 | `regions` + `frozen_atoms` (no annotations) |
 | v4 | **adds** the extensible annotation channels (`structure-annotations.md`) — additive, so v3 files still load (annotations absent → empty) |
 | v5 | **drops** `kgrid` (it is a `SiestaConfig` sampling knob, not geometry — see `structure-periodicity.md`); a stray `kgrid` in an older file loads fine, ignored |
-| v6 | current |
+| v6 | `frozen_atoms` still a top-level key of its own |
+| v7 | **current** — the reserved `frozen_atoms` label moves into `regions` with every other label and the top-level key is no longer written. One store, one key. v3–v6 files still load: `apply_metadata_dict` folds the old key into the label store on read. Code holding a raw payload asks `molstruct.frozen_atoms(payload)`, the one read that knows which schema put it where (`structure-annotations.md` § 2) |
 
 **The tolerance rules** make old files keep working: on read, an **unknown key
 is ignored** and an **absent key falls back to its default** (`apply_metadata_dict`
@@ -114,7 +114,8 @@ Two independent guards, deliberately kept separate:
 metadata codec. It is a sidecar-only map, keyed by region label, that records
 *how* a region was selected (a rule, e.g. "all atoms within 3 Å of …") so the
 selection can be re-evaluated. It is validated by `normalise_selection_rules`
-(each target must name a real region **or the literal `frozen_atoms`**) and
+(each target must name a real label — `frozen_atoms` is one, so it needs no
+clause of its own; a v6 rule targeting it keeps working unchanged) and
 **normalised** — each rule is re-parsed and re-serialised, so the stored form is
 canonical, not byte-for-byte. It rides in the envelope, alongside the metadata,
 not inside it.
@@ -177,7 +178,7 @@ a rename.
 
 ## 7. What this file's metadata drives (pointer)
 
-Storing `frozen_atoms` / `regions` is one thing; *delivering* them correctly to
+Storing the labels is one thing; *delivering* them correctly to
 an engine's input script — the **three-stage boundary-condition contract**
 (the setup form pre-fills from the sidecar, the config is authoritative at
 Generate, the script emits the user's set verbatim, and preflight **warns**
@@ -186,11 +187,12 @@ separate contract. It spans the setup form, the config, and each engine's
 emitter + preflight, so it lives with the engines: **`engines/`** (migrating
 from `sidecar-contract.md`; preserved in the kept source until the engines
 wave). The per-engine table of *which* labels each engine consumes (SIESTA
-`frozen`→`Geometry.Constraints`; TranSIESTA `regions`→electrode blocks; spectra
+`frozen_atoms`→`Geometry.Constraints`; TranSIESTA `regions`→electrode blocks; spectra
 warns on both) is part of that contract.
 
 **Sidecar consumers** (which code reads a `.molstruct.json`): the SIESTA and
 PySCF/spectra and TranSIESTA generators (at emit), the selection endpoints
 (`/api/selection/eval`, `/api/selection/atoms`), and the PySCF trajectory
-parser (reads `frozen_atoms` to mask pinned atoms from the max-force series).
+parser (reads the `frozen_atoms` label to mask pinned atoms from the
+max-force series).
 The engines-wave contract carries the full, current consumer list.

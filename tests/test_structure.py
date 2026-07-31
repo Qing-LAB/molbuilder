@@ -231,7 +231,8 @@ class TestStructureTransportMetadataCarryThrough:
         s  = self._struct_with_meta()
         s2 = s.translated([10.0, 0.0, 0.0])
         assert s2.frozen_atoms == [0, 1, 4]
-        assert s2.regions == {"L-electrode": [0, 1], "bridge": [2]}
+        assert s2.regions == {"L-electrode": [0, 1], "bridge": [2],
+                              "frozen_atoms": [0, 1, 4]}
 
     def test_centered_preserves_frozen_atoms_and_regions(self):
         # ``centered()`` is implemented in terms of ``translated()`` --
@@ -240,7 +241,8 @@ class TestStructureTransportMetadataCarryThrough:
         s  = self._struct_with_meta()
         s2 = s.centered()
         assert s2.frozen_atoms == [0, 1, 4]
-        assert s2.regions == {"L-electrode": [0, 1], "bridge": [2]}
+        assert s2.regions == {"L-electrode": [0, 1], "bridge": [2],
+                              "frozen_atoms": [0, 1, 4]}
 
     def test_concat_offsets_frozen_atoms_per_input(self):
         # Two structures, each with its own frozen list.  Indices in the

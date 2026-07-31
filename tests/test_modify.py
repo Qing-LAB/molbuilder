@@ -22,7 +22,7 @@ from molbuilder.modify import (
     orient_along_axis,
     rotate_around_axis,
 )
-from molbuilder.structure import Structure
+from molbuilder.structure import FROZEN_LABEL, Structure
 
 
 @pytest.fixture
@@ -1298,7 +1298,8 @@ def test_delete_atoms_remaps_frozen_atoms_and_regions():
     s2 = delete_atoms(s, [2])
     assert s2.n_atoms == 4
     assert s2.frozen_atoms == [0, 3]
-    assert s2.regions == {"electrode": [0, 3], "bridge": [1, 2]}
+    assert s2.regions == {"electrode": [0, 3], "bridge": [1, 2],
+                          FROZEN_LABEL: [0, 3]}
 
 
 def test_delete_atoms_drops_deleted_indices_from_frozen():
@@ -1341,7 +1342,8 @@ def test_add_atom_preserves_existing_frozen_and_regions():
     s2 = add_atom(s, "H", anchor_index=0, offset=(0.5, 0.0, 0.0))
     assert s2.n_atoms == 6
     assert s2.frozen_atoms == [0, 4]
-    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3]}
+    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3],
+                          FROZEN_LABEL: [0, 4]}
 
 
 def test_orient_along_axis_preserves_metadata():
@@ -1350,7 +1352,8 @@ def test_orient_along_axis_preserves_metadata():
     s2 = orient_along_axis(s, anchor_indices=[0, 4], axis="z",
                             center="first")
     assert s2.frozen_atoms == [0, 4]
-    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3]}
+    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3],
+                          FROZEN_LABEL: [0, 4]}
 
 
 def test_rotate_around_axis_preserves_metadata():
@@ -1358,7 +1361,8 @@ def test_rotate_around_axis_preserves_metadata():
     s2 = rotate_around_axis(s, axis="z", angle=90.0,
                              center="centroid")
     assert s2.frozen_atoms == [0, 4]
-    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3]}
+    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3],
+                          FROZEN_LABEL: [0, 4]}
 
 
 def test_add_electrode_slab_preserves_existing_metadata():
@@ -1379,7 +1383,7 @@ def test_add_electrode_slab_preserves_existing_metadata():
     assert s2.n_atoms > 1
     # The original S at index 0 must still be frozen + in 'anchor'.
     assert 0 in s2.frozen_atoms
-    assert s2.regions == {"anchor": [0]}
+    assert s2.regions == {"anchor": [0], FROZEN_LABEL: [0]}
     # No electrode atom was added to the existing lists.
     assert all(i == 0 for i in s2.frozen_atoms)
     assert all(i == 0 for v in s2.regions.values() for i in v)

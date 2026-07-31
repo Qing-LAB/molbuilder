@@ -41,7 +41,7 @@ flowchart TD
 |---|---|---|
 | [`structure.md`](?doc=model/structure.md) | The `Structure` object — the lingua franca; its serialization codec (`to_dict`/`from_dict`/`to_wire`), geometry I/O, the paired-file door, and the JS load/save doors. **The master of the Structure aspect.** | touch the core object, save/load, or the wire shape |
 | [`structure-periodicity.md`](?doc=model/structure-periodicity.md) | Per-axis box behaviour: `cell`, `cell_origin`, `axis_kind`, derived `pbc`, `vacuum`; `resolve_cell` + calibration. | work on cells, vacuum, transport axes, or the FDF cell |
-| [`structure-annotations.md`](?doc=model/structure-annotations.md) | The per-atom channel model (`tag`/`flag`/`value`; `regions`/`frozen` built-ins), persistence, engine translation, and the region-label vocabulary. | add per-atom metadata, regions, or a selection filter |
+| [`structure-annotations.md`](?doc=model/structure-annotations.md) | The per-atom channel model (`tag`/`flag`/`value`), the ONE label store with reserved labels in it, persistence, engine translation, and the region-label vocabulary. | add per-atom metadata, regions, or a selection filter |
 | [`structure-molstruct.md`](?doc=model/structure-molstruct.md) | The `.molstruct.json` save file: envelope, schema versioning, the codec, and the `.xyz`↔sidecar pairing rule. | change what a saved structure carries, or the sidecar format |
 | [`chemistry.md`](?doc=model/chemistry.md) | Chemistry helpers on a `Structure`: net-charge resolution, protonation, `add_hydrogens`, clash relief, dipole (spin/open-shell **correctness** → `science/`). | resolve charge, add hydrogens, or clean up geometry |
 | [`parse.md`](?doc=model/parse.md) | The unified read stack: three ABCs, the `ParseResult` hierarchy, the registry, and how to add a parser. | read a file/dir/text body into typed data, or add a parser |
@@ -60,7 +60,7 @@ them silently is the classic off-by-one hazard.
 
 | Layer | Base | Where |
 |---|---|---|
-| **Internal / machine** | **0-based** | Python `Structure` (`regions`/`frozen_atoms`/positions), the `.molstruct.json` sidecar + the `.fdf`/`.py` ATOM-METADATA block, `/api/selection/*` rules, the JS selection store `atom.index`, all wiring |
+| **Internal / machine** | **0-based** | Python `Structure` (`regions`/positions), the `.molstruct.json` sidecar + the `.fdf`/`.py` ATOM-METADATA block, `/api/selection/*` rules, the JS selection store `atom.index`, all wiring |
 | **User-facing** | **1-based** | everything a user reads or types: the atom-list index column, the viewer's atom labels, measurement chips, the "by atom index" filter |
 | **Engine input** | **engine-specific** | SIESTA `.fdf` (1-based), geomeTRIC `$freeze` (1-based), PySCF `mol.atom` (0-based) |
 
@@ -72,7 +72,7 @@ when parsed. Nothing invents an index; that order *is* the identity.
 
 **CARRIED** — it travels 0-based and untranslated through the JS selection
 store, `/api/selection/*`, the `.molstruct.json` sidecar, the ATOM-METADATA
-block, and all metadata (`frozen_atoms`/`regions`/`annotations`). These indices
+block, and all metadata (`regions`/`annotations`). These indices
 are valid only against the structure they were computed on — **pinned by
 `structure_hash`**; a mismatch must refuse, not mis-apply.
 

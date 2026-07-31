@@ -76,7 +76,7 @@ class TestToDict:
         assert d["n_atoms_total"]  == 4
         assert d["structure_hash"] == "a" * 64
         assert d["regions"]        == {}
-        assert d["frozen_atoms"]    == []
+        assert "frozen_atoms" not in d      # one label store, one key
         # Auto-generated timestamp + default created_by:
         assert d["created_by"] == "molbuilder"
         assert d["created_at"].endswith("Z")
@@ -88,12 +88,15 @@ class TestToDict:
         )
         assert d["regions"]["L-electrode"] == [0, 1, 3]
 
-    def test_frozen_atoms_sorted_and_deduped(self):
+    def test_the_reserved_label_is_sorted_and_deduped_like_any_other(self):
+        """It goes through the same normalisation as `L-electrode` above,
+        because it goes through the same store."""
         d = msj.to_dict(
             {"frozen_atoms": [5, 1, 1, 0]},
             n_atoms_total=10, structure_hash="b" * 32,
         )
-        assert d["frozen_atoms"] == [0, 1, 5]
+        assert d["regions"]["frozen_atoms"] == [0, 1, 5]
+        assert msj.frozen_atoms(d) == [0, 1, 5]
 
     def test_region_out_of_range_raises(self):
         with pytest.raises(msj.MolstructJsonError, match="out of range"):
@@ -149,7 +152,7 @@ class TestSaveLoadRoundTrip:
         loaded = msj.load(side)
         # Everything except created_at (timestamp) should match:
         for key in ("schema_version", "n_atoms_total", "structure_hash",
-                    "regions", "frozen_atoms", "created_by"):
+                    "regions", "created_by"):
             assert loaded[key] == payload[key]
 
     def test_atomic_write_no_partial_on_disk(self, tmp_path):
@@ -389,7 +392,8 @@ class TestApplyToStructure:
             n_atoms_total=4, structure_hash="b" * 32,
         )
         msj.apply_to_structure(s, data)
-        assert s.regions == {"L-electrode": [0, 1], "R-electrode": [3]}
+        assert s.regions == {"L-electrode": [0, 1], "R-electrode": [3],
+                             "frozen_atoms": [0]}
         assert s.frozen_atoms == [0]
 
     def test_atom_count_mismatch_raises(self, tmp_path):
@@ -438,15 +442,18 @@ class TestSchemaVersioning:
         with pytest.raises(msj.MolstructJsonError, match="reads versions"):
             msj.load(p)
 
-    def test_writes_current_schema_with_frozen_atoms_key(self, tmp_path):
-        """Canonical write: the key is ``frozen_atoms``."""
+    def test_writes_the_reserved_label_into_the_one_label_store(self, tmp_path):
+        """Canonical write (schema 7): the reserved label is a label. Neither
+        the schema-6 top-level `frozen_atoms` key nor the older `fixed_atoms`
+        one is written -- both were second homes for the same fact."""
         d = msj.to_dict(
             {"regions": {"L-electrode": [0]}, "frozen_atoms": [1, 2]},
             n_atoms_total=3, structure_hash="b" * 32,
         )
-        assert d["schema_version"] == msj.SCHEMA_VERSION   # current (5; kgrid dropped)
-        assert "frozen_atoms" in d
-        assert "fixed_atoms" not in d   # the old key is gone
+        assert d["schema_version"] == msj.SCHEMA_VERSION
+        assert d["regions"] == {"L-electrode": [0], "frozen_atoms": [1, 2]}
+        assert "frozen_atoms" not in d
+        assert "fixed_atoms" not in d
 
     def test_unknown_version_raises(self, tmp_path):
         p = tmp_path / "v99.molstruct.json"

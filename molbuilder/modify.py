@@ -73,25 +73,29 @@ from .structure import Structure, copy_annotations, remap_annotations
 
 def _reindex_transport_metadata(
     struct: Structure, keep: Sequence[int],
-) -> Tuple[List[int], "dict[str, List[int]]", "dict"]:
-    """Remap ``struct.frozen_atoms``, ``struct.regions`` AND the
-    extensible ``struct.annotations`` channels after a slice/delete
-    operation, dropping any index that fell off and renumbering survivors
-    to their new 0-based position (atom-annotations.md § 2.1).
+) -> Tuple["dict[str, List[int]]", "dict"]:
+    """Remap ``struct.regions`` and the extensible ``struct.annotations``
+    channels after a slice/delete operation, dropping any index that fell off
+    and renumbering survivors to their new 0-based position
+    (atom-annotations.md § 2.1).
 
-    Used by ``delete_atoms`` (the only modify-op that changes the
-    index space).  Pure-passthrough ops (translate / rotate / orient)
-    can carry frozen_atoms + regions through verbatim without this.
+    ONE pass over the label store -- reserved labels are in it and remap by the
+    same rule.  Until 2026-07-31 frozen was a second store and needed its own
+    line here, in lockstep with this one; a remap that forgot it silently
+    constrained the wrong atoms.
+
+    Used by ``delete_atoms`` (the only modify-op that changes the index space).
+    Pure-passthrough ops (translate / rotate / orient) carry labels through
+    verbatim without this.
     """
     old_to_new = {old: new for new, old in enumerate(keep)}
-    new_frozen = [old_to_new[i] for i in struct.frozen_atoms if i in old_to_new]
     new_regions = {}
     for label, idxs in struct.regions.items():
         remapped = [old_to_new[i] for i in idxs if i in old_to_new]
         if remapped:
             new_regions[label] = remapped
     new_annotations = remap_annotations(struct.annotations, old_to_new)
-    return new_frozen, new_regions, new_annotations
+    return new_regions, new_annotations
 
 
 def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
@@ -107,7 +111,7 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
     if len(keep) == struct.n_atoms:
         # No-op (or all indices were out of range / already absent).
         return struct.copy()
-    new_frozen, new_regions, new_annotations = _reindex_transport_metadata(
+    new_regions, new_annotations = _reindex_transport_metadata(
         struct, keep)
     return Structure(
         elements=     [struct.elements[i]      for i in keep],
@@ -118,7 +122,6 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
         chain_ids=    [struct.chain_ids[i]     for i in keep],
         title=struct.title,
         regions=new_regions,
-        frozen_atoms=new_frozen,
         annotations=new_annotations,
         **struct._carry_periodicity(),   # deleting atoms keeps the lattice
     )
@@ -216,7 +219,6 @@ def add_atom(
         chain_ids=struct.chain_ids + [struct.chain_ids[anchor_index]],
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
-        frozen_atoms=list(struct.frozen_atoms),
         annotations=copy_annotations(struct.annotations),
         **struct._carry_periodicity(),   # appending an atom keeps the lattice
     )
@@ -973,7 +975,6 @@ def add_electrode_slab(
         chain_ids=list(struct.chain_ids) + ["A"] * n_new,
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
-        frozen_atoms=list(struct.frozen_atoms),
         annotations=copy_annotations(struct.annotations),
     )
 
@@ -1103,7 +1104,6 @@ def calibrate_to_cell(struct: Structure) -> Structure:
         chain_ids=list(struct.chain_ids),
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
-        frozen_atoms=list(struct.frozen_atoms),
         annotations=copy_annotations(struct.annotations),
     )
 

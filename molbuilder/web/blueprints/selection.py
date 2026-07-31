@@ -64,7 +64,7 @@ clear "unsupported structure extension" error.  If a
 ``<basename>.molstruct.json`` sidecar sits next to the structure
 file, its ``regions`` + ``frozen_atoms`` are applied to the
 Structure so :class:`ByRegion` rules can resolve and the
-``is_frozen`` flag on each atom-list row reflects the sidecar.
+reserved ``frozen`` label on each atom-list row reflects the sidecar.
 Missing sidecar is fine -- selection still works for everything
 that doesn't reference a region.
 """
@@ -81,7 +81,7 @@ from molbuilder.selection import (
     Rule, SelectionError, evaluate,
     from_json as rule_from_json,
 )
-from molbuilder.structure import Structure
+from molbuilder.structure import FROZEN_LABEL, Structure
 
 # Reuse the files-blueprint path validator -- same allow-list semantics,
 # same error type.  Internal helper but selection has identical needs
@@ -197,41 +197,16 @@ def _load_structure(structure_path: str) -> Structure:
                         if isinstance(i, int) and 0 <= i < struct_n]
                 if kept:
                     filtered_regions[name] = sorted(set(kept))
-            filtered_frozen = sorted({
-                i for i in (data.get("frozen_atoms") or [])
-                if isinstance(i, int) and 0 <= i < struct_n
-            })
-            struct.regions      = filtered_regions
-            struct.frozen_atoms = filtered_frozen
+            # A schema-6 sidecar kept the reserved label in its own key; fold
+            # it into the label store and filter it by the same rule as every
+            # other label, then commit ONCE.
+            legacy_frozen = [i for i in (data.get("frozen_atoms") or [])
+                             if isinstance(i, int) and 0 <= i < struct_n]
+            if legacy_frozen:
+                filtered_regions[FROZEN_LABEL] = sorted(
+                    set(filtered_regions.get(FROZEN_LABEL, ())) | set(legacy_frozen))
+            struct.regions = filtered_regions
     return struct
-
-
-def _expose_frozen_as_region(struct) -> None:
-    """Expose ``struct.frozen_atoms`` as a synthetic region named
-    ``frozen_atoms`` on the IN-MEMORY struct so the ``By label``
-    filter in the selection panel can resolve "frozen" to the
-    frozen-atom set via the standard ``ByRegion`` rule.
-
-    2026-06-12: split out of ``_load_structure`` because the
-    synthetic region would otherwise leak into ``/api/selection/
-    atoms``'s response (every frozen atom would carry a
-    ``"frozen_atoms"`` label tag in addition to the ``is_frozen``
-    flag, double-rendering in the panel).  Only ``/api/selection/
-    eval`` (the rule-resolution path) needs the synthetic — call
-    this just before ``evaluate``.
-
-    Mutates ``struct.regions`` in place.  ``frozen_atoms`` is
-    reserved as a sidecar key (the sidecar keeps it separate from
-    ``regions``), so a user-defined region with that name can't
-    exist — ``setdefault`` is enough.
-    """
-    frozen = list(getattr(struct, "frozen_atoms", []) or [])
-    if frozen:
-        regions = getattr(struct, "regions", None)
-        if regions is None:
-            struct.regions = {"frozen_atoms": frozen}
-        else:
-            regions.setdefault("frozen_atoms", frozen)
 
 
 # --------------------------------------------------------------------- #
@@ -294,7 +269,6 @@ def selection_atoms():
               "residue_name":  "LEL",       # optional
               "chain_id":      "L",         # optional
               "regions":       ["L-electrode"],  # may be empty
-              "is_frozen":     false
             },
             ...
           ]
@@ -363,8 +337,11 @@ def _struct_from_atoms(atoms: list) -> Structure:
         for label in (a.get("labels") or a.get("regions") or []):
             if isinstance(label, str) and label:
                 regions.setdefault(label, []).append(i)
+        # The browser still sends the reserved label as its own per-atom flag;
+        # it lands in the ONE label store like anything else (the wire's own
+        # fold is molview.md's phase D).
         if a.get("isFrozen") or a.get("is_frozen"):
-            frozen.append(i)
+            regions.setdefault(FROZEN_LABEL, []).append(i)
         residue_names.append(
             str(a.get("residueName") or a.get("residue_name") or "MOL"))
     n = len(elements)
@@ -372,7 +349,6 @@ def _struct_from_atoms(atoms: list) -> Structure:
         elements=elements,
         positions=[[0.0, 0.0, 0.0] for _ in range(n)],
         regions={k: sorted(set(v)) for k, v in regions.items()},
-        frozen_atoms=sorted(set(frozen)),
         residue_names=residue_names,
     )
 
@@ -398,7 +374,6 @@ def selection_eval():
             if not isinstance(path, str) or not path:
                 return _bad_request("missing 'atoms' or 'structure_path'")
             struct = _load_structure(path)
-        _expose_frozen_as_region(struct)
         rule = _load_rule_from_payload(payload)
         try:
             indices = evaluate(rule, struct)

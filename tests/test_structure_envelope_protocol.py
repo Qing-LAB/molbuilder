@@ -120,7 +120,9 @@ def test_the_metadata_a_coordinate_file_cannot_hold_arrives_with_the_atoms():
         title="a junction",
     ))
 
-    assert struct.regions == {"L-electrode": [0], "α-helix": [2]}
+    # The reserved label is IN the label store with the others -- one store --
+    # and the accessor is the way to ask which atoms carry it (§ 6.6).
+    assert struct.regions == {"L-electrode": [0], "α-helix": [2], "frozen": [1]}
     assert list(struct.frozen_atoms) == [1]
     assert struct.cell is not None
     assert list(struct.residue_names) == ["ALA", "ALA", "ALA"]
@@ -225,8 +227,15 @@ def test_export_returns_what_a_save_would_write(client, tmp_path):
 
     assert answer["xyz"] == target.read_text(encoding="utf-8")
     saved = molstruct.load(molstruct.sidecar_path_for(target))
-    for field in ("regions", "frozen_atoms", "cell", "axis_kind"):
+    for field in ("regions", "cell", "axis_kind"):
         assert answer["sidecar"][field] == saved[field], f"{field} differs"
+    # `regions` carries the reserved label, so there is no second key to compare
+    # -- and the designated read agrees with it on both sides.
+    assert molstruct.frozen_atoms(answer["sidecar"]) == [1]
+    assert molstruct.frozen_atoms(saved) == [1]
+    assert "frozen_atoms" not in answer["sidecar"], (
+        "a second key for a fact the label store already holds"
+    )
 
 
 def test_export_offers_no_sidecar_when_a_save_would_write_none(client):

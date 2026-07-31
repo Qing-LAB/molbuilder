@@ -17,9 +17,12 @@ def test_to_dict_v4_dual_writes_annotations_and_builtins():
          "annotations": annotations_to_json(
              {"charge": AtomChannel("value", {0: -1.0, 1: 0.5})})},
         n_atoms_total=5, structure_hash=_hash())
-    assert d["schema_version"] == 6   # current schema (kgrid dropped @ v5)
-    assert d["regions"] == {"L-electrode": [0, 1]}      # dual-write: built-ins kept
-    assert d["frozen_atoms"] == [4]
+    assert d["schema_version"] == 7   # v7: one label store (frozen folded in)
+    # ONE label store: the reserved label is in `regions` with the others, and
+    # there is no second key beside it (the input still accepts the old key --
+    # that is how a schema-6 payload keeps loading).
+    assert d["regions"] == {"L-electrode": [0, 1], "frozen_atoms": [4]}
+    assert "frozen_atoms" not in d
     assert d["annotations"]["charge"] == {
         "kind": "value", "data": {"0": -1.0, "1": 0.5}}  # int keys -> str in JSON
 
@@ -35,7 +38,7 @@ def test_save_load_apply_roundtrips_annotations(tmp_path):
          "annotations": annotations_to_json(s.annotations)},
         n_atoms_total=5, structure_hash=_hash()))
     loaded = molstruct.load(p)
-    assert loaded["schema_version"] == 6   # current schema (kgrid dropped @ v5)
+    assert loaded["schema_version"] == 7   # v7: one label store
     back = Structure(elements=["C"] * 5,
                      positions=np.arange(15, dtype=float).reshape(5, 3))
     molstruct.apply_to_structure(back, loaded)
@@ -85,7 +88,10 @@ def test_v3_sidecar_back_reads_with_empty_annotations(tmp_path):
                      positions=np.zeros((3, 3)))
     molstruct.apply_to_structure(back, loaded)
     assert back.annotations == {}                        # no channels from v3
-    assert back.regions == {"bridge": [1]} and back.frozen_atoms == [0]
+    # A v3 file kept the reserved label in its own key; it lands in the label
+    # store on read, which is where the rest of the application looks for it.
+    assert back.regions == {"bridge": [1], "frozen_atoms": [0]}
+    assert back.frozen_atoms == [0]
 
 
 def test_load_rejects_out_of_range_annotation(tmp_path):

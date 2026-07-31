@@ -254,8 +254,10 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
             "x": float, "y": float, "z": float,   # COORDS -- the atom carries its
                                                   # own geometry (workspace-contract
                                                   # §1.2.1); no string re-parse
-            "regions":       [str, ...],     # from struct.regions
-            "is_frozen":     bool,           # from struct.frozen_atoms
+            "regions":       [str, ...],     # EVERY label the atom carries,
+                                             # reserved ones (`frozen`) included --
+                                             # one representation, so the panel
+                                             # cannot render the same fact twice
             "atom_name":     "CA" | ...,     # optional, PDB-derived
             "residue_name":  "ALA" | ...,    # optional
             "chain_id":      "A"   | ...,    # optional
@@ -267,8 +269,6 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
     for label, idxs in regions.items():
         for idx in idxs:
             atom_to_regions.setdefault(idx, []).append(label)
-
-    frozen_set = set(getattr(struct, "frozen_atoms", []) or [])
 
     atom_names    = struct.atom_names    or []
     residue_names = struct.residue_names or []
@@ -287,7 +287,6 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
             "y":         float(pos[1]),
             "z":         float(pos[2]),
             "regions":   atom_to_regions.get(i, []),
-            "is_frozen": i in frozen_set,
         }
         if i < len(atom_names)    and atom_names[i]:
             row["atom_name"]    = atom_names[i]
@@ -1336,10 +1335,11 @@ def apply_labels_to_struct(struct, body):
                         raise ValueError(
                             f"``annotations[{name!r}]`` index {i!r} out of "
                             f"range [0, {n_atoms})")
-        # All validated; commit atomically.  Sorted/unique applied
-        # for frozen_atoms (matches the sidecar contract).
-        struct.frozen_atoms = sorted(set(frozen_in))
+        # All validated; commit atomically.  ORDER MATTERS: `regions` IS the
+        # label store and the `frozen_atoms` accessor writes into it, so the
+        # store goes down first or the reserved label is wiped by it.
         struct.regions      = {k: list(v) for k, v in regions_in.items()}
+        struct.frozen_atoms = sorted(set(frozen_in))
         struct.annotations  = annotations
     except (ValueError, TypeError) as exc:
         return (f"in-body labels could not be applied ({exc}); "

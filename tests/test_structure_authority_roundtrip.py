@@ -43,8 +43,10 @@ _META = {
 
 # The canonical field set the codec must preserve intact (annotations compared
 # via metadata_to_dict so channel serialisation is included).
+# `regions` is the whole label store -- the reserved labels are in it, so there
+# is no `frozen_atoms` field to preserve separately (molview.md § 6.6).
 _METADATA_FIELDS = ("cell", "cell_origin", "pbc", "axis_kind",
-                    "vacuum", "regions", "frozen_atoms")
+                    "vacuum", "regions")
 
 
 def _fully_populated_structure() -> Structure:

@@ -70,7 +70,9 @@ class Structure:
     # cell, cell_origin, pbc, axis_kind, vacuum → structure-periodicity.md
     #     (NB: kgrid is NOT a structure field — it is a SiestaConfig DFT
     #      sampling knob; see engines/siesta.md)
-    # regions, frozen_atoms, annotations        → structure-annotations.md
+    # regions (THE label store), annotations    → structure-annotations.md
+    #     (frozen_atoms is not a field: it is the reserved label's one
+    #      designated read, a cut of regions)
 ```
 
 **Invariants enforced by `__post_init__`** (the single validation site):
@@ -141,8 +143,10 @@ Structure.metadata_to_dict()      -> dict   # struct → JSON metadata dict (THE
 Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE reader, :533)
 ```
 
-- **Scope** = the dataclass's own metadata fields: `regions`, `frozen_atoms`,
-  `cell`, `cell_origin`, `pbc`, `axis_kind`, `vacuum`, `annotations`.
+- **Scope** = the dataclass's own metadata fields: `regions`, `cell`,
+  `cell_origin`, `pbc`, `axis_kind`, `vacuum`, `annotations`. (`regions` is the
+  whole label store; a reserved label such as `frozen_atoms` is in it, so there
+  is no field of its own to serialise — `structure-annotations.md` § 2.)
 - **Strict JSON** — the dict is lists/dicts/bools/floats. `annotations` are
   JSON channel dicts (via `annotations_to_json`), **never** live `AtomChannel`
   objects (those live only in-memory; see `structure-annotations.md`).
@@ -406,8 +410,9 @@ def _fully_populated_structure():
     s.apply_metadata_dict({
         "cell": [[10,0,0],[0,10,0],[0,0,10]], "cell_origin": [1.5,2.5,3.5],
         "pbc": [True,True,False], "axis_kind": ["periodic","periodic","isolated"],
-        "vacuum": [0.,0.,12.], "regions": {"electrode":[0], "channel":[1]},
-        "frozen_atoms": [0],
+        "vacuum": [0.,0.,12.],
+        # every label in one store, the reserved one included
+        "regions": {"electrode":[0], "channel":[1], "frozen_atoms":[0]},
         # a value channel: kind ∈ {tag,flag,value}; value data is a sparse
         # (string-keyed) idx→value map — see structure-annotations.md § 2
         "annotations": {"charge": {"kind":"value", "data":{"0":0.1, "1":-0.1}}},

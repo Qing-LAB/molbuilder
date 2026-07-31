@@ -41,7 +41,10 @@ from ._helpers import build_sidecar_result
 # still load (annotations absent -> empty).  v5 drops the ``kgrid`` field
 # (k-grid moved off the geometry onto SiestaConfig / TransportConfig);
 # a ``kgrid`` key in an older v3/v4 file loads fine -- it's ignored.
-_READABLE_SCHEMA_VERSIONS = (3, 4, 5, 6)
+# v7 moves the reserved ``frozen`` label into ``regions`` with every other
+# label and stops writing a top-level ``frozen_atoms`` key; v3-v6 files still
+# load, because ``apply_metadata_dict`` folds that key into the label store.
+_READABLE_SCHEMA_VERSIONS = (3, 4, 5, 6, 7)
 
 
 def _normalised_dict(
@@ -104,15 +107,13 @@ def _normalised_dict(
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
         "structure_hash":  structure_hash,
-        "regions":         fields["regions"],
-        "frozen_atoms":    fields["frozen_atoms"],
+        # SPREAD, not re-listed -- the same rule the write side follows, and for
+        # the same reason: a field added to (or removed from) the dataclass must
+        # ride onto both sides with no edit here.  This block used to name each
+        # field, which is why it had to be touched at all when the reserved
+        # label stopped being one.
+        **fields,
         "selection_rules": normed_rules,
-        "cell":            fields["cell"],
-        "cell_origin":     fields["cell_origin"],
-        "pbc":             fields["pbc"],
-        "axis_kind":       fields["axis_kind"],
-        "vacuum":          fields["vacuum"],
-        "annotations":     fields["annotations"],
         "created_by":      str(created_by),
         "created_at":      created_at,
     }

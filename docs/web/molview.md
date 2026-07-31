@@ -54,7 +54,7 @@ current code.
 >   file and carries what coordinates cannot: the labels, the cell, what the user
 >   said about the atoms. Written as `.molstruct.json`.
 > - **A label** — a name a user attaches to a set of atoms: `L-electrode`,
->   `frozen atoms`, or anything they type (§ 6.6). The atom **numbers** that the
+>   `frozen_atoms`, or anything they type (§ 6.6). The atom **numbers** that the
 >   `#` switch draws in the 3D window are a different thing entirely; this
 >   document always calls those **atom-number labels**, never just "labels".
 >   (The switch on screen is named "Show atom labels", which is where the
@@ -136,13 +136,13 @@ it:
   `∠H #5 – O #1 – H #6 = 104.5°`
 
 **Tagging atoms.** In an editable view the panel tags the selected atoms with a
-label — L-electrode, R-electrode, bridge, interface, frozen atoms, or a name you
-type. They show as chips you can remove. These are not decoration: they are
+label — `L-electrode`, `R-electrode`, `bridge`, `interface`, `frozen_atoms`, or
+a name you type. They show as chips you can remove. These are not decoration: they are
 written into the structure's sidecar file and into the generated input script, so
 the calculation and the results view both see what was set here.
 
 Some of those names are **reserved** — they are ordinary labels, but something
-downstream knows what they mean. Tagging atoms *frozen atoms* is how you say
+downstream knows what they mean. Tagging atoms `frozen_atoms` is how you say
 "hold these still", and the calculation is generated with those atoms
 constrained. You do not tick a separate box; the label is the mechanism (§ 6.6).
 
@@ -654,7 +654,7 @@ A label is just a name attached to a set of atoms. **Some names are reserved**:
 they are stored, filtered and displayed exactly like any other label, and the
 only difference is that something downstream knows what they mean.
 
-Today's set is `frozen atoms` and the transport vocabulary — `L-electrode`,
+Today's set is `frozen_atoms` and the transport vocabulary — `L-electrode`,
 `R-electrode`, `bridge`, `interface`. They are named here as examples, not as a
 list this document keeps: **the list lives with the labels themselves**, in
 [`model/structure-annotations.md`](?doc=model/structure-annotations.md), keyed by
@@ -663,7 +663,7 @@ that adding a reserved meaning touches that list and its translator and nothing
 else — not this document, and nothing in the viewer.
 
 **MolView does not interpret any of them.** It stores them, offers them in the
-label list, filters by them, and writes them out. What `frozen atoms` *means* —
+label list, filters by them, and writes them out. What `frozen_atoms` *means* —
 that those atoms are held still, which becomes a constraints block in a SIESTA
 input or a freeze list for a geometry optimiser — is decided by the code that
 generates the input, not here. The viewer's job ends at "these atoms carry this
@@ -677,7 +677,7 @@ reserved name, the viewer tells them: **this name is reserved, and here is what
 it does.**
 
 That turns the one real hazard into an informed choice. Somebody labelling a
-group `frozen atoms` as a note to themselves would otherwise have those atoms
+group `frozen_atoms` as a note to themselves would otherwise have those atoms
 silently constrained in the next calculation; now they are told before it
 happens, and can pick another name or go ahead deliberately.
 
@@ -685,30 +685,41 @@ happens, and can pick another name or go ahead deliberately.
 the names and the one-line description each carries — so it can name the conflict
 and explain it. It never
 *acts* on the meaning: no code here holds an atom still, and tagging atoms
-`frozen atoms` changes what is stored and nothing about what is drawn. Carrying a
+`frozen_atoms` changes what is stored and nothing about what is drawn. Carrying a
 description to show a user and implementing a behaviour are different things, and
 only the first is a viewer's business.
 
 **Why it is worth being strict about this.** A reserved meaning costs a **name**
-and a **translator at the point of use** — nothing else. The alternative, which
-this design rejects, is to give each special meaning its own storage: its own
-field on the structure, its own kind of thing to filter by, its own key in the
-saved file, its own control in the panel, and a translation between the name the
-user sees and the name the field has. That is five places to keep in step for
-something a label already expresses — and it is exactly the state `frozen atoms`
-is in today.
+and **one accessor** — nothing else. The alternative, which this design rejects,
+is to give each special meaning its own storage: its own field on the structure,
+its own kind of thing to filter by, its own key in the saved file, its own
+control in the panel, and a translation between the name the user sees and the
+name the field has. That is five places to keep in step for something a label
+already expresses.
 
-So adding a reserved meaning later is a name and one translator entry. It changes
-neither what a viewer holds nor anything in this document.
+**The accessor is the only way in.** Because something downstream acts on a
+reserved name, that name gets exactly one designated read — `getFrozen()` for
+`frozen_atoms`. It is a **cut of the label store, not a second home**: it reads
+the same list `getRegions()` reads, so it cannot go stale, and it exists so that
+"which atoms carry this name" is answered in one place rather than at every point
+of use. What the rule forbids is the other way of getting there — a caller
+reaching into the label store for the reserved name itself. Two callers spelling
+that name in two places is how two spellings become three, and it is the same
+defect as a separate field, arrived at from the other side.
 
-> **Where the code has not caught up.** `frozen atoms` is currently the odd one
-> out — the other four are plain labels, while frozen is stored as a separate
-> field and shown as a label, which costs an alias between the two spellings, a
-> special case when the label is written, and a test to keep the two names from
-> drifting. Folding it onto the same footing as the other four is a change to the
-> structure model, the saved file format and the input generators, so it belongs
-> to [`model/structure-annotations.md`](?doc=model/structure-annotations.md) —
-> this document states only MolView's end: one mechanism, no special case.
+So adding a reserved meaning later is a name and one accessor. It changes neither
+what a viewer holds nor anything in this document.
+
+> **Both ends hold this now** (2026-07-31). `frozen_atoms` used to be the odd one
+> out — stored as a field of its own and *shown* as a label — and it had already
+> cost what this section predicts. The server sent the fact twice, as a label and
+> as an `is_frozen` flag, so the selection panel would have rendered an atom's
+> frozen state twice; the workaround was to supply the label on
+> `/api/selection/eval` and withhold it on `/api/selection/atoms`, which left two
+> routes giving different answers about the same structure. MolView carried the
+> matching pair of translators, one at each boundary. All of it is gone with the
+> second store: see [`model/structure-annotations.md`](?doc=model/structure-annotations.md)
+> § 2 for the structure model's end, and § 4a there for the saved file.
 
 ### 6.7 What a viewer does not hold
 
@@ -1072,12 +1083,18 @@ happen to be split. **One need, one main way in.** Where several names serve one
 need, exactly one is the main one and the rest are narrower cuts of it; a cut may
 disappear, but it must never grow into a rival.
 
+**One exception, and it is a strengthening.** The cut for a **reserved** label
+(§ 6.6) is not optional for its callers. Anything that wants the atoms carrying a
+reserved name calls that cut — `getFrozen()` — and never re-derives it from the
+main way in. The cut is where the name is spelled, so a caller that looks the
+name up itself has put a second spelling of it in a second place.
+
 The last column is the read-only rule (§ 9.4), read straight off this table
 rather than maintained separately.
 
 | The need | The main way in | Narrower cuts of it | Changes the master copy |
 |---|---|---|:--:|
-| Get the whole structure | `getStructure` | `getAtoms`, `getElements`, `getCoordinates`, `getSource`; `getRegions` — the atoms grouped by the label they carry; `getFrozen` — the atoms carrying the reserved `frozen atoms` label (§ 6.6) | — |
+| Get the whole structure | `getStructure` | `getAtoms`, `getElements`, `getCoordinates`, `getSource`; `getRegions` — the atoms grouped by the label they carry; `getFrozen` — the atoms carrying the reserved `frozen_atoms` label (§ 6.6) | — |
 | Get the cell | `getUnitCellInfo` — the cell as it will actually be used, with the defaults filled in for whatever the structure left unsaid, so it always has an answer. Those filled-in values are **the server's own**: it sends them beside the raw ones, and this reads them rather than working anything out (§ 6.2 — MolView interprets none of it) | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` — **what the structure actually says**, `null` where it says nothing | — |
 | Get one frame's coordinates | `getFrameAllAtoms(i)` — **every** atom, original order, before isolate cuts anything down | | — |
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
@@ -1148,8 +1165,10 @@ answers, and a caller has to be able to tell them apart.
 
 > **Transition.** Today a `factsForRequest()` door does that shaping, and it is
 > what a tab calls. It reads the structure and regroups what it got — the labels
-> into name → atoms, the frozen atoms into a list of numbers — renames the fields
-> to the server's, and narrows the cell block. It adds no fact. Retiring it in
+> into name → atoms — renames the fields to the server's, and narrows the cell
+> block. It adds no fact. (It used to pull the frozen set out into a list of its
+> own on the way past; that split went with the server's second store, § 6.6.)
+> Retiring it in
 > favour of one read plus one translation is a change to
 > [`science/validation.md`](?doc=science/validation.md) (its § 4.1), which states the
 > obligation in terms of that name, and to the test that guards it — not to this
@@ -2376,7 +2395,7 @@ atom count and the per-atom facts disagree, nothing is produced at all (§ 9.3).
 
 Those are different things that share a name, and the difference is the whole of
 this rule. The **fields** are what the viewer knows: which atoms carry which
-label, which are frozen, the cell block. The **file** adds an envelope that only
+label — the reserved ones among them, in the same list — and the cell block. The **file** adds an envelope that only
 the writer can supply — the schema version the reader checks first, the content
 hash that pins the sidecar to the geometry it belongs to, and the provenance
 stamp. Those are the codec's, written when the bytes are written.
@@ -2489,8 +2508,8 @@ project** — with isolate switched on, because they had been looking at one reg
    `.json` carrying the labels, the cell and the residues (§ 11.3).
 4. It hands both to the projects module. MolView writes no file itself (§ 2).
 
-Later, an input script is generated from that pair, and the atoms tagged `frozen
-atoms` come out held still — because the label reached the file and the file
+Later, an input script is generated from that pair, and the atoms tagged
+`frozen_atoms` come out held still — because the label reached the file and the file
 reached the generator (§ 6.6). Had step 3 produced only the `.xyz`, everything
 would have looked right and the calculation would have been a different one.
 
@@ -2562,8 +2581,10 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.4 — master copy, then range, then frame, then notify | after a load that shortens a trajectory, no subscriber ever sees a range from the new structure beside a frame number from the old one; an out-of-range write is resolved against the range, not accepted |
 | § 6.5 — the drawn-to-original map holds | under isolate, atom-number labels carry original numbers and measurement resolves panel numbers against the master copy |
 | § 6.5 — the highlight is content, not styling | per-frame data carries no colour, radius or opacity |
-| § 6.6 — MolView interprets no reserved label | tagging atoms `frozen atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
+| § 6.6 — MolView interprets no reserved label | tagging atoms `frozen_atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
+| § 6.6 — a reserved label is stored, filtered and drawn like any other | it arrives in the same list, groups through the same walk, filters through the same rule and leaves in the same field; no atom carries the fact twice, and no boundary renames or moves it |
+| § 6.6 / § 9.3 — the accessor is the only way in | the designated read agrees with the label store because it is a cut of it, cannot be used to write, and is the one place the reserved name is spelled |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
 | § 8.2 — the panel is not measured, it is given the same extent | the panel's height and the window's square edge come from one value; no script reads one to set the other, and they bottom-align at every width |
@@ -2619,9 +2640,9 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — reopening returns to the point you were on | a reload comes back to the current point rather than to the anchor, and does not move the position |
 | § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds, whatever isolate is doing; a picture and an animation are renders and carry whatever the view was set to |
 | § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
-| § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so labels and frozen atoms survive into whatever is generated from it |
+| § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so every label — `frozen_atoms` among them — survives into whatever is generated from it |
 | § 11.7 — one blob, one read | an export and a cell edit send the same pair, assembled in one place; a request built after an edit carries that edit in every part of what it sends |
-| § 11.7 — the fields are MolView's, the envelope is not | what leaves the viewer carries the labels, the frozen set and the cell — and does **not** carry a schema version, a content hash or a provenance stamp, because a browser-written envelope is refused by the reader that checks it first |
+| § 11.7 — the fields are MolView's, the envelope is not | what leaves the viewer carries the labels (reserved ones included) and the cell — and does **not** carry a schema version, a content hash or a provenance stamp, because a browser-written envelope is refused by the reader that checks it first |
 | § 11.7 — a structure that survives a round trip | after an edit, the file on disk still holds what the file before it held: nothing the viewer does not model may be dropped by passing through it |
 | § 11.3 — save-to-project and download differ only in destination | both produce identical bytes, and neither has MolView writing a file |
 | § 11.4 — every export enters at MolView | no export decides anything below the model; a picture is rendered by the sealed layer on request, but what to export and where it goes is decided above |
