@@ -25,11 +25,15 @@ its tests **from `molview.md`**, run **only those**, move up.
 **The suite is never run whole until the module is finished.** There is no green baseline
 to protect — today's suite pins what is being deleted.
 
-**We break a large part of the package on purpose.** Every consumer that reaches inside,
-and every test written against the old shape, falls over. **Those failures are the work
-showing up, not bugs.** They get written down, not chased. Phase 7 works the list off.
+**Nothing outside this module is consulted, accommodated or repaired.** MolView is sealed
+(§ 4): it is imported by name, it reaches nothing else by name, and **it publishes nothing**.
+How anything else uses any code is not this plan's business and not a constraint on it. If
+sealing or rebuilding leaves something outside broken, it stays broken.
 
-**Each old test dies in the same commit that rebuilds the unit it pins.**
+**The tests are designed new from the contract.** § 13.3's rows are the plan; § 13.2's three
+levels are its shape. Files that exist today are not consulted while writing them, not
+adapted, and not repointed — § 13.1 rules out most of what they are. A rule with no row in
+§ 13.3 is a rule nothing guards; that is the only checklist.
 
 Tests come at § 13.2's three levels — behaviour in node, boundary behaviour with stand-ins,
 and § 1.1 end-to-end on the demo page, which stays live throughout as MolView's own
@@ -92,7 +96,7 @@ lib/molview/
 - **two stores, not one** — § 9.6 spends a section on why the switches and the drawing
   settings are different kinds of thing.
 - **`selection.js`** — panel strip, its DOM and click-to-select are one concern. The markup
-  only lived in a Flask template because the panel used to be a server partial.
+  only lives outside because the panel used to be built by the server.
 - **`measurement.js`** — § 11.6: *"measurement is its own layer."*
 - **`controls.js`** — every control MolView draws around the canvas, mounted together,
   writing into the stores like any other caller.
@@ -128,10 +132,8 @@ instead of being moved afterwards.
 | `static/molview/demo.js` | `demo.js` |
 | four stylesheets | `molview.css` |
 
-**Copied, not moved.** `lib/viewer/` stays on disk and untouched, so VibrationView keeps
-borrowing `window.molbuilder.viewer` exactly as it does today — MolView simply stops
-importing it. Its JS is then dead except for the CSS link five templates still carry.
-VibrationView taking its own copy is its own module's work, and it happens at Phase 7.
+**Copied, not moved.** MolView takes its own copy and stops importing anything outside
+`lib/molview/`. What happens to the original is not this plan's concern.
 
 **Nothing changes behaviour.** No carve, no rewrite, no rule from the document applied yet —
 imports repointed, files concatenated, names settled. The transitional globals keep
@@ -234,7 +236,7 @@ One phase, because they are the same operation from two ends: what comes out of 
 is what `mount.js`, `controls.js` and `menu.js` are built from.
 
 **Files** `_seal.js` carved · `mount.js` · `controls.js` · **new `menu.js`** ·
-`selection.js` (taking its markup in from `templates/_selection_panel.html`) ·
+`selection.js` (its markup moves in-module) ·
 `render-engine/{engine,embed-io}.js`.
 
 **The gap** The embed is a whole viewer. By its own section banners: card scaffold · knob
@@ -253,8 +255,7 @@ silently gone. Both are task **#39**, which closes here.
 | export menu · snapshot · GIF encoder | `menu.js`; the rendering is delegated back down as a command (§ 11.4), the decisions are not |
 | `molbuilder.projects` + `/api/files/*` · the test-affordance surface | **deleted** |
 
-Drawing, camera, styles, picking and the highlight stay. The panel's DOM stops being a
-Flask partial. The handle shrinks to lifecycle, playback and `data`.
+Drawing, camera, styles, picking and the highlight stay. The panel builds its own DOM. The handle shrinks to lifecycle, playback and `data`.
 **Audit first:** the four cost tiers (§ 10.5) against `_structSig` / `_prevArrowSig`, the
 rebuild queue (`_locked`, `_pendingTx`) against § 10.9's five arrival rules, and whether
 `embed-io.js` is already decision-free.
@@ -270,72 +271,53 @@ a saved structure keeps its metadata · measurement reads the truth in pick orde
 **Dies** `test_mol_viewer_embed_e2e.py` (5,037) · `test_mol_viewer_embed_js.py` (213) ·
 `test_mol_viewer_embed_handle_surface_js.py` (401) · `test_no_3dmol_data_reads.py` (70).
 
-### Phase 7 — Seal the entry, then reconnect
+### Phase 7 — Seal it
 
-**Files** `index.js` → two exports · every `window.molbuilder.*` publish deleted.
+**Files** `index.js` → two exports · every `window.molbuilder.*` publish deleted · every
+`runtime.register` deleted.
 
-**The gap** `index.js` re-exports **everything** (15 `export * from` lines), ~20 globals are
-published, and `runtime.register` is called from four files — so nothing about § 4 is true
-yet.
+**The gap** `index.js` re-exports **everything** (15 `export * from` lines), and the module
+publishes **44 names** on `window.molbuilder.*` plus four registry registrations — including
+`molbuilder.viewer` and seventeen members hung off it, which is the sealed layer itself, the
+one thing § 4 says no consumer may ever name. None of it is in the contract: *"That is the
+whole surface … every other file in the module is internal — a consumer that imports any of
+them directly has broken the module, not found a shortcut."*
 
-Outside MolView, and only now: `lib/vibrationview/` takes its own copy of the embed and
-`lib/viewer/` is deleted · `lib/workspace/{dispatcher,snapshot-io}.js` absorb canvas-state's
-session mirror · `molbuilder-runtime.js` drops the `viewer` / `style` / `fmt` entries · ten
-consumer files repoint to the one import (`modify/viewer.js`, `modify/periodicity.js`,
-`modify/selection-bootstrap.js`, `modify/structure/{file,page,save}.js`,
-`spectra/viewer.js`, `structure-optimization/viewer.js`, `lib/trajectory/core.js`,
-`lib/transport/core.js`, `lib/inspectors/structure.js`, `lib/projects/parser.js`) · six
-templates drop four CSS links for one and lose `_selection_panel.html`.
+The part that is not deletion: MolView's own internals currently find each other through
+those same globals **at runtime** — `mount.js` reads `mb.molview.data`, `.selection` and
+`.renderEngine`; the panel composition reads `selection.panel`; the click wiring reaches
+`molview.data.selection`; the model reads `root.molbuilder.workspace` instead of the one
+handed in at mount (§ 8). Those become imports and injection, which is what makes the module
+sealed rather than merely quiet.
 
-File by file from the diff, never a blind sweep, verified in a real browser. The breakage
-list from Phases 1–6 is worked off here.
+**Lands** the module is self-contained — nothing outside is importable but the entry point,
+and it mounts given only a host element and something that satisfies the workspace door · a
+viewer is owned.
 
-**Lands** the module is self-contained · a viewer is owned.
+### Phase 8 — Closeout
 
-### Phase 8 — The suite, and closeout
-
-The first whole-suite run of the program: the tests **outside** MolView that the rework
-knocked over. Then the residue — every **Transition** note in `molview.md` whose code has
-caught up deleted (the document should end with none); § 11.1's route sentence, which says
-three routes and omits the filter's two (`/api/selection/eval`, `/api/selection/atoms`);
-§ 15's file map rewritten to § 2's tree; `science/validation.md` § 4.1 if `factsForRequest`
-retired. Tasks: **#35** closed by the starting tree, **#39** by Phase 6, **#104** superseded
-by Phase 1's copy, **#22**'s MolView rows by Phase 7.
+The § 13.3 plan is complete, so the suite runs whole for the first time — MolView's own.
+What remains is the document: every **Transition** note in
+[`molview.md`](?doc=web/molview.md) whose code has caught up is deleted (it should end with
+none); § 11.1's route sentence, which says three routes and omits the filter's two
+(`/api/selection/eval`, `/api/selection/atoms`); § 15's file map rewritten to § 2's tree. Task
+**#39** closes at Phase 6.
 
 ---
 
-## 4. The breakage log
+## 4. What each landed phase found
 
-What the rework knocked over, recorded rather than chased (§ 1). Phase 7 works the consumer
-half off; each test dies with the unit it pins.
+Kept because a defect is worth remembering, not because anything outside is owed a list.
 
 ### Phase 1 — one directory *(landed 2026-07-30)*
 
-**One real bug, found and fixed.** The prior session's `engine/` → `render-engine/` rename
-changed what the module *publishes* (`molview.engine` → `molview.renderEngine`) but not
-`mount.js:251`, which still looked up `mvApi.engine.create`. The guard around it turns a
-missing factory into a no-op, so **every viewer mounted and then never drew** — no atoms,
+**One real bug.** The `engine/` → `render-engine/` rename changed what the module *publishes*
+but not `mount.js:251`, which still looked up `mvApi.engine.create`. The guard around it turns
+a missing factory into a no-op, so **every viewer mounted and then never drew** — no atoms,
 `frameCount()` stuck at 0, no frame bar. Invisible to node tests, which stub the engine;
-caught by the demo page in a real browser, which is the whole reason that check is in the
-phase. This is the failure mode a namespace rename always has, and the reason a runtime
-global lookup is worse than an import.
-
-**20 test files reference paths this phase moved.** None repointed. MolView's own —
-`test_atom_index_js` · `test_atom_channels_js` · `test_render_engine_process_js` ·
-`test_render_engine_orchestrator_js` · `test_selection_measurements_js` ·
-`test_selection_mount_panel_js` · `test_selection_store_js` · `test_measurement_overlay_js`
-· `test_mol_viewer_embed_js` · `test_mol_viewer_embed_handle_surface_js` ·
-`test_workspace_dispatcher_js` · `test_workspace_dispatcher_canvas_mount_js` — die with
-their units in Phases 2–7. Repo-wide guards that merely name a moved path —
-`test_xss_audit` (its allowlist points at `selection/mount-panel.js`, whose `innerHTML` is
-now in `mount.js`) · `test_css_no_hex_literals` · `test_engine_atom_index` ·
-`test_atom_list_render_paths` · `test_live_poll_invariants_audit` ·
-`test_no_legacy_store_consumers` · `test_results_blueprint` ·
-`test_ui_presence_data_independent_js` — these guard invariants worth keeping, so they get
-repointed at Phase 7 rather than deleted.
-
-**`lib/viewer/` is now dead but still on disk**, as planned: nothing imports its JS and
-nothing links its CSS. It stays until VibrationView takes its own copy (Phase 7).
+caught by the demo page in a real browser, which is why that check is in the phase. It is the
+failure mode a namespace rename always has, and the reason a runtime global lookup is worse
+than an import.
 
 ### Phase 2 — the pure bottom *(landed 2026-07-30)*
 
@@ -391,9 +373,8 @@ then they are green and mean nothing.
 
 ## 5. Open
 
-1. **Canvas-state's three-way split** (Phase 4) reaches `workspace/dispatcher.js` and
-   `snapshot-io.js` — not MolView's call alone.
+1. **Canvas-state** (Phase 4) is a third home for the structure (§ 6.3 allows two). The
+   structure fields belong in the model, per owner; the rest is not MolView's to hold.
 2. **`factsForRequest`** — retire in Phase 5, or leave until validation is next opened? It
    edits `science/validation.md` § 4.1 and the test that guards it.
 3. **§ 11.1's route sentence** — one line, your wording.
-4. **The in-flight set** — commit as it stands, or fold into Phase 1's commit?
