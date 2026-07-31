@@ -320,7 +320,6 @@ def _struct_from_atoms(atoms: list) -> Structure:
         raise ValueError("'atoms' must be a list")
     elements: list = []
     regions: Dict[str, list] = {}
-    frozen: list = []
     residue_names: list = []
     for i, a in enumerate(atoms):
         if not isinstance(a, dict):

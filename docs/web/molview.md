@@ -1875,8 +1875,11 @@ The operation name **is** the server route segment. The delete operation is
 `delete`, not `deleteAtoms`; the add operation is `add_atom`. Use these names
 exactly.
 
-**The three routes MolView calls** are: load a structure, perform one geometry
-edit, and resolve a cell. On the way in, the server's payload is normalised into
+**The four routes MolView calls** are: load a structure, perform one geometry
+edit, resolve a cell, and resolve a filter. The fourth is § 9.5's — "filtering is
+a question asked of the server, not a scan done here" — and it was missing from
+this list while the module made the call, which is the kind of gap that lets a
+fifth appear unnoticed. On the way in, the server's payload is normalised into
 the shapes of § 6.2 — the server's names become this module's names, in one
 place, so nothing downstream has to know both.
 
