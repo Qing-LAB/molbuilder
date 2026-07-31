@@ -122,21 +122,6 @@ def issues_to_json(issues, cfg=None):
 # --------------------------------------------------------------------- #
 
 
-def _structure_envelope(struct: Structure) -> Dict[str, Any]:
-    """A Structure as the wire envelope (web-api.md § 1).
-
-    It IS the structure's own canonical dict.  ``Structure.to_dict`` is the ONE
-    serialiser -- coordinates, per-atom identity columns and the whole metadata
-    block -- and its own rule is that nobody outside the class assembles or picks
-    apart a structure dict, because every hand-rolled repack is where a field
-    goes missing (``cell_origin`` did exactly that).
-
-    So this layer does not build a shape; it hands over the one that exists.  A
-    field added to the structure appears on the wire with no edit here.
-    """
-    return struct.to_dict()
-
-
 def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
     """The inverse, and the same rule: ``Structure.from_dict`` is the ONE
     deserialiser, and it validates through the same ``__post_init__`` a freshly
@@ -444,12 +429,17 @@ def structure_to_dict(
     # OWN concerns (render `atoms`, `issues`, `text`/`xyz`, `extra`).
     wire = struct.to_wire()
     return {
-        # THE ENVELOPE (web-api.md § 1) -- the shape every door is being brought
-        # to, in both directions. It sits BESIDE the keys below rather than
-        # replacing them: both views are derived from this one Structure, on this
-        # one line, so they cannot come to disagree. The legacy keys go when
-        # nothing reads them, which is a question the code can answer.
-        "structure":     _structure_envelope(struct),
+        # THE ENVELOPE (web-api.md § 1) is the structure's OWN canonical dict --
+        # not a wire shape assembled here. `to_dict` is the one serialiser the
+        # sidecar, the persistence layer and the CLI already round-trip through,
+        # and its rule is that nobody outside the class picks a structure apart,
+        # because that is where a field goes missing (`cell_origin` did). So a
+        # field added to the structure reaches the wire with no edit in this file.
+        #
+        # It sits BESIDE the keys below rather than replacing them, and both are
+        # derived from this one Structure, so they cannot come to disagree. The
+        # legacy keys go when nothing reads them -- a question the code can answer.
+        "structure":     struct.to_dict(),
         # Canonical keys (forward-compat with workspace dispatcher).
         "text":          base["text"],
         "source_format": base["source_format"],
