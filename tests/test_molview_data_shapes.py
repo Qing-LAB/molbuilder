@@ -25,6 +25,7 @@ import json
 from pathlib import Path
 
 from tests._node_esm import run_node
+from tests._molview_sources import module_code
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -106,17 +107,13 @@ def test_no_other_file_in_the_module_computes_its_own_shift():
     import re
 
     offenders = {}
-    for path in sorted(MODULE_DIR.glob("*.js")):
-        if path.name == "_atom.js":
+    for name, code in module_code().items():
+        if name == "_atom.js":
             continue                        # the single home
-        code = "\n".join(
-            line for line in path.read_text().splitlines()
-            if not line.lstrip().startswith(("*", "//", "/*"))
-        )
         # An index arithmetic literal: `something + 1` / `- 1` near an index name.
         hits = re.findall(r"\b(?:index|idx|atom|i|n)\s*[+\-]\s*1\b", code)
         if hits:
-            offenders[path.name] = hits
+            offenders[name] = hits
     assert offenders == {}, (
         f"a bare +/-1 on an atom number outside the one translation: {offenders}"
     )
@@ -235,17 +232,13 @@ def test_a_reserved_label_is_written_in_exactly_one_place():
     import re
 
     written = {}
-    for path in sorted(MODULE_DIR.glob("*.js")):
-        code = "\n".join(
-            line for line in path.read_text().splitlines()
-            if not line.lstrip().startswith(("*", "//", "/*"))
-        )
+    for name, code in module_code().items():
         # The NAME being written — a string literal — not a reference to the
         # constant that holds it. § 9.3's table has a `getFrozen` door, so more
         # than one place legitimately USES the name; what costs is spelling it.
         literals = re.findall(r"""["'][^"'\n]*frozen[^"'\n]*["']""", code, re.I)
         if literals:
-            written[path.name] = literals
+            written[name] = literals
     assert list(written) == ["model-jobs.js"], (
         "the reserved name must be SPELLED where the server's shape becomes this "
         f"module's, and nowhere else: {written}"

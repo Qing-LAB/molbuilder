@@ -28,6 +28,7 @@ import json
 from pathlib import Path
 
 from tests._node_esm import run_node
+from tests._molview_sources import module_code, module_files
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -444,7 +445,9 @@ def test_a_batch_paints_once_however_many_doors_it_touches():
 # ---------------------------------------------------------------------------
 
 def _module_sources():
-    return sorted(p for p in MODULE_DIR.iterdir() if p.suffix in {".js", ".css"})
+    """The module's layers, plus the stylesheet — which is not reachable by
+    import but is unmistakably the module's (§ 8.1–8.3 lean on it)."""
+    return sorted(list(module_files().values()) + [MODULE_DIR / "molview.css"])
 
 
 def test_the_graphics_library_is_named_in_exactly_one_file():
@@ -459,15 +462,7 @@ def test_the_graphics_library_is_named_in_exactly_one_file():
 
 
 def _module_code():
-    """Every module source with its comments stripped — comments explain what was
-    deleted and why, and a rule about what the code DOES must not fire on them."""
-    out = {}
-    for path in _module_sources():
-        out[path.name] = "\n".join(
-            line for line in path.read_text().splitlines()
-            if not line.lstrip().startswith(("*", "//", "/*"))
-        )
-    return out
+    return module_code()
 
 
 def test_the_module_owns_no_file_route():

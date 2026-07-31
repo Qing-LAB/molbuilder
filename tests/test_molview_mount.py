@@ -23,6 +23,7 @@ import json
 from pathlib import Path
 
 from tests._node_esm import run_node
+from tests._molview_sources import module_code, module_files
 
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
@@ -390,19 +391,37 @@ def test_the_module_writes_no_file_handling_of_its_own():
     was a viewer that knew how to put a file on a user's disk — a second place
     that knowledge lived, outside every rule that applies to the real one.
     """
+    # THE MODULE IS WHAT THE ENTRY POINT REACHES, not what the directory holds.
+    # The demo page is a CONSUMER — it supplies the door rather than living
+    # behind it — so it is not a layer and this rule is not its. That is
+    # structural, not a name on a list (§ 13.1).
     offenders = {}
-    for path in sorted(MODULE_DIR.glob("*.js")):
-        code = "\n".join(
-            line for line in path.read_text().splitlines()
-            if not line.lstrip().startswith(("*", "//", "/*"))
-        )
+    for name, code in module_code().items():
         hits = [t for t in ("createObjectURL", ".download =", "showSaveFilePicker",
                             "createWritable", "FileSystemHandle", "/api/files/")
                 if t in code]
         if hits:
-            offenders[path.name] = hits
+            offenders[name] = hits
     assert offenders == {}, (
         f"the module handles files itself instead of through the door: {offenders}"
+    )
+
+
+def test_the_demo_imports_nothing_but_the_entry_point():
+    """§ 13.4 / § 4: the demo is worth having precisely because it is held to the
+    single import like every other consumer. A demo with a private door proves
+    nothing.
+
+    The page it runs on loads the drawing library and this file and nothing else
+    — so if the module ever grows a hidden dependency on something the app
+    happens to have loaded, the demo is where it stops working.
+    """
+    import re
+
+    code = (MODULE_DIR / "demo.js").read_text()
+    imports = re.findall(r'from\s+"([^"]+)"', code)
+    assert imports == ["/static/lib/molview/index.js"], (
+        f"the demo reaches past the entry point: {imports}"
     )
 
 
@@ -581,4 +600,79 @@ def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow():
     )
     assert out["readonly"]["isolateOffered"] is True, (
         "isolate is NOT an edit (§ 9.4) — a read-only viewer isolates freely"
+    )
+
+
+def test_loading_a_structure_reaches_the_drawing():
+    """The first attempt's worst bug, guarded.
+
+    A rename left `mount` asking for a factory the module no longer published,
+    and the guard around it turned a missing factory into a no-op — so EVERY
+    VIEWER MOUNTED AND THEN NEVER DREW. It was invisible to every node test in
+    the suite, because they all stubbed the engine.
+
+    This is the cheapest check that the wiring is continuous: load a structure
+    through the public door and assert the frames arrived at the bottom. It does
+    not replace the browser (§ 13.2's third level) — nothing here proves anything
+    LOOKS right — but it does prove the chain is joined.
+    """
+    out = _run(
+        """
+        globalThis.__resetCalls();
+        const { viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const afterLoad = globalThis.__callNames().slice();
+
+        viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[5,0,0],[6,0,0]]]);
+        viewer.data.setCurrentFrame(1);
+
+        console.log(JSON.stringify({
+            drewOnLoad: afterLoad.includes("addModelsAsFrames"),
+            swapped: globalThis.__countCalls("setFrame") > 0,
+            painted: globalThis.__countCalls("render") > 0,
+            styled: globalThis.__countCalls("setStyle") > 0,
+            fitted: globalThis.__countCalls("zoomTo") > 0,
+        }));
+        """
+    )
+    assert out["drewOnLoad"] is True, (
+        "a structure was loaded and nothing reached the drawing — this is the "
+        "mount-but-never-draw failure, and it is what every stubbed test misses"
+    )
+    assert out["styled"] is True, "the structure was drawn with no style applied"
+    assert out["fitted"] is True, (
+        "the camera must be fitted to the structure on load (§ 9.6)"
+    )
+    assert out["swapped"] is True, "scrubbing did not reach the drawing"
+    assert out["painted"] is True, "nothing was ever painted"
+
+
+def test_every_layer_is_reachable_from_the_entry_point():
+    """The guard on every other source scan in the suite.
+
+    Those scans ask a question of "the module", and the module is computed as
+    what `index.js` reaches (``tests/_molview_sources.py``) rather than what the
+    directory holds. That definition is right — § 4 says the entry point is the
+    module — but it has one failure mode: if the walk resolved too little, every
+    scan would pass by finding nothing, and the suite would go quiet exactly when
+    it should shout.
+
+    So this pins the two ends. Every file the plan's tree calls a layer must be
+    reached, and the demo must NOT be — it is a consumer, and holding it to the
+    module's internal rules would be holding the wrong side of the boundary.
+    """
+    layers = set(module_files())
+    expected = {
+        "index.js", "_atom.js", "3dmol-embed.js", "render-engine.js",
+        "model.js", "model-jobs.js", "history.js", "stores.js",
+        "mount.js", "ui.js",
+    }
+    missing = expected - layers
+    assert missing == set(), (
+        f"these layers are not reachable from the entry point, so every source "
+        f"scan in the suite silently skips them: {sorted(missing)}"
+    )
+    assert "demo.js" not in layers, (
+        "the demo is a consumer — it imports the entry point rather than being "
+        "imported by it — so it is not a layer"
     )
