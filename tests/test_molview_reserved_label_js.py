@@ -176,7 +176,8 @@ def test_no_atom_carries_the_fact_twice():
 
 def test_what_leaves_carries_the_reserved_label_in_the_label_field():
     """The outbound half. There is no split at this boundary any more: the
-    server's shape IS the label store, so what leaves is what was held."""
+    server's shape IS the label store, so what leaves is what was held -- in
+    `metadata`, where the envelope keeps it (web-api.md § 1)."""
     out = _run(
         """
         const m = await labelled();
@@ -184,7 +185,7 @@ def test_what_leaves_carries_the_reserved_label_in_the_label_field():
         const sent = globalThis.__requests[globalThis.__requests.length - 1].body;
         console.log(JSON.stringify({
             keys:    Object.keys(sent.structure).sort(),
-            regions: sent.structure.regions,
+            regions: sent.structure.metadata.regions,
         }));
         """
     )
@@ -237,3 +238,70 @@ def test_the_module_knows_the_reserved_name_in_exactly_one_place():
         f"the reserved name is written as a literal {literal} times across the "
         f"module; it must come from the one constant"
     )
+
+
+# ---------------------------------------------------------------------------
+# The edit actually reaches the route (§ 11.1)
+# ---------------------------------------------------------------------------
+
+def test_an_op_sends_its_arguments_where_the_route_reads_them():
+    """§ 11.1: the table drives one generic piece of code. The route reads its
+    own arguments off the BODY ROOT — `dx`, `indices`, `anchors` — so nesting
+    them under a `params` object sends them where nothing looks. That shipped:
+    `translate` answered 200 and moved the structure by (0, 0, 0)."""
+    out = _run(
+        """
+        const m = await labelled();
+        await m.applyOp("translate", { dx: 1.5, dy: 0, dz: 0 });
+        const sent = globalThis.__requests[globalThis.__requests.length - 1];
+        console.log(JSON.stringify({ route: sent.route, keys: Object.keys(sent.body).sort(),
+                                     dx: sent.body.dx }));
+        """
+    )
+    assert out["route"] == "/api/modify/translate"
+    assert out["dx"] == 1.5, f"the op's arguments did not reach the body root: {out['keys']}"
+    assert "params" not in out["keys"], (
+        f"arguments nested where no route reads them: {out['keys']}"
+    )
+
+
+def test_the_selection_lands_under_the_key_its_operation_names():
+    """The column § 11.1's table never had: WHERE the resolved selection goes.
+    Knowing how many atoms an op needs and not where to put them is why the
+    rebuilt code could not build a body."""
+    out = _run(
+        """
+        const m = await labelled();
+        m.selection.adopt([1]);
+        await m.applyOp("delete");
+        const del = globalThis.__requests[globalThis.__requests.length - 1].body;
+        console.log(JSON.stringify({ indices: del.indices,
+                                     keys: Object.keys(del).sort() }));
+        """
+    )
+    assert out["indices"] == [1], f"the selection did not land: {out['keys']}"
+
+
+def test_a_second_edit_while_one_is_running_is_refused():
+    """One mutation in flight. Two responses applying over each other produce a
+    structure neither edit asked for, and a history state the user never saw."""
+    out = _run(
+        """
+        const m = await labelled();
+        let release;
+        const held = new Promise((r) => { release = r; });
+        const realFetch = globalThis.fetch;
+        globalThis.fetch = async (route, init) => { await held; return realFetch(route, init); };
+
+        const first  = m.applyOp("translate", { dx: 1, dy: 0, dz: 0 });
+        const second = await m.applyOp("translate", { dx: 9, dy: 0, dz: 0 });
+        release();
+        await first;
+        console.log(JSON.stringify({
+            secondRefused: second === null,
+            requests: globalThis.__requests.length,
+        }));
+        """
+    )
+    assert out["secondRefused"] is True, "a second edit interleaved with the first"
+    assert out["requests"] == 1, f"two edits reached the server: {out['requests']}"

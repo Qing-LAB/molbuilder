@@ -676,8 +676,8 @@ def test_the_facts_a_request_carries_all_came_from_one_read():
         const sent = globalThis.__requests[0].body.structure;
         console.log(JSON.stringify({
             positions: sent.positions,
-            regions: sent.regions,
-            cell: sent.periodicity.cell,
+            regions: sent.metadata.regions,
+            cell: sent.metadata.cell,
             elements: sent.elements,
         }));
         """

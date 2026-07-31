@@ -138,13 +138,39 @@ export function groupByLabel(annotations) {
  * and the server judged a structure that was not the one on screen.
  */
 export function structureForServer(structure, positions) {
-    if (!structure) return null;
-    const labels = groupByLabel(structure.annotations);
+    if (!structure || !positions) return null;
+
+    /* THE COUNT INVARIANT, checked before anything leaves. The coordinates and
+     * the per-atom facts are two lists that must index the same atoms; if they
+     * disagree this REFUSES rather than sending a structure whose labels point
+     * at atoms that are not there (§ 9.3). */
+    const count = structure.elements.length;
+    if (positions.length !== count || structure.annotations.length !== count) {
+        return null;
+    }
+
+    /* COPIED, not referenced: this is handed to a caller (§ 9.3), and a body
+     * holding the master copy's own arrays is a write into the structure
+     * disguised as a read. */
+    const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
+    const per = structure.periodicity || {};
     return {
-        elements:     structure.elements.slice(),
-        positions:    positions.map((p) => [p[0], p[1], p[2]]),
-        regions:      labels,
-        periodicity:  structure.periodicity,
+        elements:  structure.elements.slice(),
+        positions: positions.map((p) => [p[0], p[1], p[2]]),
+        /* METADATA IS NESTED, because that is where the envelope keeps it
+         * (web-api.md § 1 — the envelope IS the structure's canonical dict, and
+         * `Structure.from_dict` reads the block from here). These fields sat at
+         * the TOP level until 2026-07-31, where nothing read them: every
+         * geometry edit came back at HTTP 200 with its labels and its cell
+         * silently gone. The receiver refuses a stray top-level key now, so the
+         * same mistake cannot be quiet twice. */
+        metadata: {
+            regions:     groupByLabel(structure.annotations),
+            cell:        clone(per.cell),
+            cell_origin: clone(per.cell_origin),
+            axis_kind:   clone(per.axis_kind),
+            vacuum:      clone(per.vacuum),
+        },
     };
 }
 
@@ -313,15 +339,22 @@ export function structureAsData(structure, positions) {
  *                      the cell and clears the cell origin.
  */
 export const OPERATIONS = {
-    translate:             { emptySelection: "all",    needsExactly: null },
-    rotate:                { emptySelection: "all",    needsExactly: null },
-    orient:                { emptySelection: "refuse", needsExactly: 2 },
-    add_atom:              { emptySelection: "refuse", needsExactly: 1 },
-    electrode:             { emptySelection: "origin", needsExactly: null },
-    symmetric_electrodes:  { emptySelection: "origin", needsExactly: null },
-    delete:                { emptySelection: "refuse", needsExactly: null },
+    translate:             { emptySelection: "all",    needsExactly: null,
+                             group: null },
+    rotate:                { emptySelection: "all",    needsExactly: null,
+                             group: null },
+    orient:                { emptySelection: "refuse", needsExactly: 2,
+                             group: "anchors" },
+    add_atom:              { emptySelection: "refuse", needsExactly: 1,
+                             group: "anchor_index", scalar: true },
+    electrode:             { emptySelection: "origin", needsExactly: null,
+                             group: "center_indices" },
+    symmetric_electrodes:  { emptySelection: "origin", needsExactly: null,
+                             group: "center_indices" },
+    delete:                { emptySelection: "refuse", needsExactly: null,
+                             group: "indices" },
     calibrate:             { emptySelection: "all",    needsExactly: null,
-                             wholeStructure: true },
+                             wholeStructure: true, group: null },
 };
 
 /**
@@ -338,9 +371,17 @@ export const OPERATIONS = {
  * Handed: read the atoms, and apply the structure the server sends back (§ 7.3).
  */
 export function createEdits(handed) {
+    /* ONE MUTATION IN FLIGHT. A second edit started while one is running is
+     * REFUSED rather than interleaved: two responses applying over each other
+     * produce a structure neither edit asked for, and the history records a
+     * state the user never saw. The old registry had this rule; the rebuild
+     * dropped it. */
+    let running = false;
+
     return async function applyOp(name, params) {
         const spec = OPERATIONS[name];
         if (!spec) throw new Error("applyOp: unknown operation '" + name + "'");
+        if (running) return null;
 
         const structure = handed.readStructure();
         if (!structure) return null;
@@ -354,19 +395,34 @@ export function createEdits(handed) {
         if (!selection.length && spec.emptySelection === "refuse") return null;
 
         const positions = handed.readFrame(handed.currentFrame());
-        const body = {
+        /* THE BODY IS FLAT. The route reads its own arguments off the body root
+         * -- `dx`, `indices`, `anchors`, `element` -- so nesting them under
+         * `params` sends them where nothing looks. That is what shipped: every
+         * op's arguments were read by nobody, so `translate` answered 200 and
+         * moved the structure by (0, 0, 0).
+         *
+         * `group` is the column § 11.1's table never had: WHERE the resolved
+         * selection lands. Knowing how many atoms an op needs, and not where to
+         * put them, is why the rebuilt code could not build a body at all. It is
+         * OMITTED when the selection is empty, so the server applies its own
+         * centring rather than being handed an empty list. */
+        const body = Object.assign({}, params || {}, {
             structure: structureForServer(structure, positions),
-            selection: selection.slice(),
-            params:    params || {},
-        };
+        });
+        if (spec.group && selection.length) {
+            body[spec.group] = spec.scalar ? selection[0] : selection.slice();
+        }
 
         // The operation name IS the server route segment (§ 11.1): the delete
         // operation is `delete`, not `deleteAtoms`.
         let payload;
+        running = true;
         try {
             payload = await postJson("/api/modify/" + name, body);
         } catch (_) {
             return null;                        // nothing came back, nothing happened
+        } finally {
+            running = false;
         }
         const applied = structureFromServer(payload);
         if (!applied) return null;

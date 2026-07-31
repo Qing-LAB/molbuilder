@@ -274,3 +274,76 @@ def test_export_reports_what_the_server_did_to_the_structure(client):
     """
     answer = client.post("/api/structure/export", json=_envelope()).get_json()
     assert isinstance(answer["notices"], list)
+
+
+# --------------------------------------------------------------------- #
+#  A geometry edit keeps what it was given                              #
+# --------------------------------------------------------------------- #
+
+def test_an_edit_returns_the_structure_it_was_sent_labels_and_cell_included(client):
+    """The defect this closes, at the door where it bit.
+
+    `applyOp` shipped `regions` and `periodicity` at the TOP level of the
+    structure object. `Structure.from_dict` reads them from `metadata`, so they
+    were read by nothing: every geometry edit answered HTTP 200 with the labels
+    and the cell silently gone, and the browser adopted that answer as the new
+    master copy. A user who translated a labelled junction lost every label,
+    with no error anywhere.
+    """
+    body = {
+        "structure": {
+            "elements":  ["C", "O", "H"],
+            "positions": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            "metadata":  {
+                "regions": {"L-electrode": [0], "frozen_atoms": [1]},
+                "cell":    [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 8.0]],
+            },
+        },
+        # The op's own arguments ride on the BODY ROOT, which is where the
+        # route reads them (§ 11.1). They were nested under `params` and read by
+        # nothing: translate answered 200 and moved the structure by (0, 0, 0).
+        "dx": 1.0, "dy": 0.0, "dz": 0.0,
+    }
+    answer = client.post("/api/modify/translate", json=body).get_json()
+
+    assert answer["ok"] is True, answer
+    # Read through the ENVELOPE -- the canonical place these live (§ 1).
+    assert answer["structure"]["metadata"]["regions"] == {
+        "L-electrode": [0], "frozen_atoms": [1]
+    }, f"the edit dropped the labels it was given: {answer['structure']['metadata']}"
+    assert answer["periodicity"]["cell"] == [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 8.0]]
+    # and it really did the edit
+    assert answer["structure"]["positions"][0][0] == 1.0
+
+
+def test_a_structure_key_the_envelope_does_not_define_is_refused(client):
+    """Membership at the gate. A key outside the envelope is a fact the sender
+    believes it transmitted; accepting the request and ignoring it is how the
+    bug above stayed quiet. The error names the keys and where they belong."""
+    body = {
+        "structure": {
+            "elements":  ["C", "O"],
+            "positions": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            "regions":   {"L-electrode": [0]},      # belongs under `metadata`
+        },
+        "dx": 1.0, "dy": 0.0, "dz": 0.0,
+    }
+    answer = client.post("/api/modify/translate", json=body)
+
+    assert answer.status_code == 400
+    assert "regions" in answer.get_json()["error"]
+    assert "metadata" in answer.get_json()["error"]
+
+
+def test_the_envelope_defines_exactly_these_members(client):
+    """Pinned by membership, both directions: what a response emits is what a
+    request may carry (plus the caller's own `source_index`, and `document`
+    which travels outbound only)."""
+    answer = client.post("/api/build/load",
+                         json={"text": "2\n\nC 0 0 0\nO 1 0 0\n",
+                               "filename": "x.xyz"}).get_json()
+
+    assert set(answer["structure"]) == {
+        "title", "elements", "positions", "atom_names", "residue_ids",
+        "residue_names", "chain_ids", "metadata",
+    }, f"the envelope's members drifted: {sorted(answer['structure'])}"

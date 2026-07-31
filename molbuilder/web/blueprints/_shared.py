@@ -135,6 +135,20 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
     """
     if not isinstance(env, dict):
         raise ValueError("'structure' must be an object")
+    # WHAT THE ENVELOPE IS, checked by membership.  A key outside this set is a
+    # fact the sender believes it transmitted -- refused rather than dropped.
+    # `applyOp` shipped `regions` and `periodicity` at the TOP level for weeks;
+    # `from_dict` reads them from `metadata`, so every geometry edit came back
+    # with its labels and its cell silently gone, at HTTP 200.
+    known = {"title", "elements", "positions", "atom_names", "residue_ids",
+             "residue_names", "chain_ids", "metadata",
+             "source_index",      # the CALLER's map back onto a larger structure
+             "document"}          # outbound only; a request's is ignored
+    stray = sorted(k for k in env if k not in known)
+    if stray:
+        raise ValueError(
+            f"structure carries {stray!r}, which the envelope does not define "
+            f"(known: {sorted(known)!r}).  Metadata belongs under 'metadata'.")
     if not env.get("elements"):
         raise ValueError("structure.elements must be a non-empty list")
     if not isinstance(env.get("positions"), list):

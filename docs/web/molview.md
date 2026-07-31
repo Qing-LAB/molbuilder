@@ -1824,22 +1824,36 @@ do**: `applyOp(name)` posts to the matching server route and applies the
 structure that comes back, all at once. One small table declares each operation's
 shape, rather than each one being hand-coded:
 
-| Operation | The selection is | With nothing selected | Needs exactly | Effect on atom count |
-|---|---|---|:--:|---|
-| `translate` | the thing being moved | act on all atoms | — | unchanged |
-| `rotate` | the thing being rotated | act on all atoms | — | unchanged |
-| `orient` | a reference the move is defined against | refuse | 2 | unchanged |
-| `add_atom` | a reference the new atom attaches to | refuse | 1 | grows |
-| `electrode` | a reference | fall back to centring on the origin | — | grows |
-| `symmetric_electrodes` | a reference | fall back to centring on the origin | — | grows |
-| `delete` | the atoms to remove | refuse | — | shrinks |
-| `calibrate` | the thing being mapped | act on all atoms | — | unchanged, whole-structure only |
+| Operation | The selection is | Where it lands | With nothing selected | Needs exactly | Effect on atom count |
+|---|---|---|---|:--:|---|
+| `translate` | the thing being moved | — | act on all atoms | — | unchanged |
+| `rotate` | the thing being rotated | — | act on all atoms | — | unchanged |
+| `orient` | a reference the move is defined against | `anchors` | refuse | 2 | unchanged |
+| `add_atom` | a reference the new atom attaches to | `anchor_index` (one number) | refuse | 1 | grows |
+| `electrode` | a reference | `center_indices` | fall back to centring on the origin | — | grows |
+| `symmetric_electrodes` | a reference | `center_indices` | fall back to centring on the origin | — | grows |
+| `delete` | the atoms to remove | `indices` | refuse | — | shrinks |
+| `calibrate` | the thing being mapped | — | act on all atoms | — | unchanged, whole-structure only |
 
-Those columns drive one generic piece of code. The count requirement is checked
-**before** the request goes out — `orient` with one atom selected never reaches
-the network. `calibrate` always takes the whole-structure path even with a
-partial selection, because it rigidly maps every atom into the cell and clears
-the cell origin.
+Those columns drive one generic piece of code. **"Where it lands" is the body key
+the resolved selection is written to** — without it the table says how many atoms
+an operation needs and not where to put them, which is not enough to build a
+request. It is **omitted entirely when nothing is selected**, so the server
+applies its own centring rather than being handed an empty list.
+
+**The body is flat.** The structure travels under `structure`; the selection
+travels under the key above; the operation's own arguments — `dx`, `element`,
+`angle` — sit beside them at the top level, because that is where the route reads
+them. Nesting them under a `params` object sends them where nothing looks.
+
+The count requirement is checked **before** the request goes out — `orient` with
+one atom selected never reaches the network. `calibrate` always takes the
+whole-structure path even with a partial selection, because it rigidly maps every
+atom into the cell and clears the cell origin.
+
+**One mutation in flight.** A second edit started while one is still running is
+refused rather than interleaved. Two responses applying over each other produce a
+structure neither edit asked for, and a history state the user never saw.
 
 **If the edit does not come back, nothing happened.** A request the server refuses
 — or one that never arrives — leaves the structure exactly as it was: nothing is
@@ -2585,6 +2599,8 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.6 — a reserved label is stored, filtered and drawn like any other | it arrives in the same list, groups through the same walk, filters through the same rule and leaves in the same field; no atom carries the fact twice, and no boundary renames or moves it |
 | § 6.6 / § 9.3 — the accessor is the only way in | the designated read agrees with the label store because it is a cut of it, cannot be used to write, and is the one place the reserved name is spelled |
+| § 11.1 — an edit reaches the route it names | the operation's arguments arrive where the route reads them, and the selection lands under the key its row gives; a request the route cannot act on is refused, not answered `ok` |
+| § 11.1 — one mutation in flight | a second edit started while one is running is refused, and only one request leaves |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
 | § 8.2 — the panel is not measured, it is given the same extent | the panel's height and the window's square edge come from one value; no script reads one to set the other, and they bottom-align at every width |
