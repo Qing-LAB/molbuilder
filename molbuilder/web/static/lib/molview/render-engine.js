@@ -225,10 +225,16 @@ function isLattice(cell) {
  * two apart is also what makes a cell edit an overlay refresh rather than a
  * rebuild (§ 10.5): the atoms did not move.
  */
-export function sceneFor(cell) {
-    const lattice = (cell && isLattice(cell.lattice)) ? cell.lattice : null;
-    const origin = (cell && Array.isArray(cell.origin) && cell.origin.length === 3)
-        ? cell.origin : [0, 0, 0];
+export function sceneFor(periodicity) {
+    /* IN: the structure's periodicity block, under the server's names (§ 6.2).
+     * OUT: a box in the DRAWING's vocabulary, which calls the vectors a lattice
+     * and the corner an origin. That rename is this layer's job — the same
+     * translation it does for `style` → `rep` (§ 9.8) — and it is the only place
+     * in the module where the drawing's words are used. */
+    const per = periodicity || {};
+    const lattice = isLattice(per.cell) ? per.cell : null;
+    const origin = (Array.isArray(per.cell_origin) && per.cell_origin.length === 3)
+        ? per.cell_origin : [0, 0, 0];
 
     // Cell mode follows the lattice vectors and labels them a/b/c; with no cell
     // the triad is Cartesian, at the world origin, labelled x/y/z.
@@ -372,14 +378,14 @@ export function createRenderEngine(embed) {
          * the axes instead. Whatever arrows exist are handed down together. */
         const sw = switches();
         const s = structure();
-        const axes = sw.showAxis ? sceneFor(s ? s.cell : null).axes : [];
+        const axes = sw.showAxis ? sceneFor(s ? s.periodicity : null).axes : [];
         embed.setArrows((processed.arrows || []).concat(axes));
     }
 
     function applyScene() {
         const s = structure();
         const sw = switches();
-        const scene = sceneFor(s ? s.cell : null);
+        const scene = sceneFor(s ? s.periodicity : null);
         // Geometry travels unconditionally; the switch carries only a boolean
         // (§ 10.3). So the box is handed down whenever it changes and the
         // SWITCH decides whether it is drawn — which is why turning the cell on

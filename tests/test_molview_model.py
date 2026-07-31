@@ -100,7 +100,7 @@ def test_changing_what_a_read_returned_leaves_the_viewer_untouched():
         const s = m.getStructure();
         s.elements[0] = "XX";
         s.annotations[0].labels.push("smuggled");
-        s.cell = { lattice: [[9,0,0],[0,9,0],[0,0,9]] };
+        s.periodicity = { cell: [[9,0,0],[0,9,0],[0,0,9]] };
 
         const coords = m.getCoordinates();
         coords.frames[0][0][0] = 999;
@@ -112,7 +112,7 @@ def test_changing_what_a_read_returned_leaves_the_viewer_untouched():
         console.log(JSON.stringify({
             element: after.elements[0],
             labels: after.annotations[0].labels,
-            cell: after.cell,
+            cell: after.periodicity,
             x: m.getFrameAllAtoms(0)[0][0],
         }));
         """
@@ -149,7 +149,7 @@ def test_no_read_at_all_can_be_written_through():
                              vacuum: [0,0,12] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
-        if (!m.getUnitCellInfo().lattice) throw new Error("the fixture has no cell");
+        if (!m.getUnitCellInfo().cell) throw new Error("the fixture has no cell");
 
         const before = JSON.stringify({
             structure: m.getStructure(), coordinates: m.getCoordinates(),
@@ -250,11 +250,11 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
         console.log(JSON.stringify({
             elementsAgree: JSON.stringify(m.getElements()) === JSON.stringify(whole.elements),
             atomsAgree: m.getAtoms().map(a => a.element).join() === whole.elements.join(),
-            cellAgree: JSON.stringify(m.getUnitCell()) === JSON.stringify(whole.cell.lattice),
-            originAgree: JSON.stringify(m.getUnitCellOrigin()) === JSON.stringify(whole.cell.origin),
+            cellAgree: JSON.stringify(m.getUnitCell()) === JSON.stringify(whole.periodicity.cell),
+            originAgree: JSON.stringify(m.getUnitCellOrigin()) === JSON.stringify(whole.periodicity.cell_origin),
             regions: m.getRegions(),
             frozen: m.getFrozen(),
-            infoLattice: m.getUnitCellInfo().lattice,
+            infoCell: m.getUnitCellInfo().cell,
         }));
         """
     )
@@ -266,8 +266,10 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
     assert out["frozen"] == [1], (
         "the frozen cut reads the reserved label off the same one mechanism"
     )
-    assert out["infoLattice"] == [[4, 0, 0], [0, 4, 0], [0, 0, 4]], (
-        "the cell as it will be used must agree with the raw cell"
+    assert out["infoCell"] == [[4, 0, 0], [0, 4, 0], [0, 0, 4]], (
+        "the cell as it will be used must agree with the raw cell when the "
+        "structure states one — the resolved value only fills in what was left "
+        "unsaid (§ 9.3)"
     )
 
 
@@ -670,7 +672,7 @@ def test_the_facts_a_request_carries_all_came_from_one_read():
         console.log(JSON.stringify({
             positions: sent.positions,
             regions: sent.regions,
-            cell: sent.periodicity.lattice,
+            cell: sent.periodicity.cell,
             elements: sent.elements,
         }));
         """

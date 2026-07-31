@@ -71,7 +71,7 @@ flowchart TD
     D --> E
 ```
 
-### Phase A — the module's own vocabulary *(item 2, and item 5's rule)*
+### Phase A — the module's own vocabulary *(item 2, and item 5's rule)* — **LANDED**
 
 Nothing crosses the wire differently. The module stops inventing names for things
 the rest of the system has already named, and stops walking the same list four
@@ -84,6 +84,13 @@ times.
 
 **Proved by:** the node suite, unchanged in count. If anything outside MolView
 notices this phase, the phase is wrong.
+
+**Landed 2026-07-31.** 133 node tests and 15 browser tests green. One thing came
+free: the server sends the RESOLVED cell beside the raw one (`resolved_cell`,
+`resolved_cell_origin`, `resolved_vacuum`), and carrying the block verbatim means
+`getUnitCellInfo` can now return them — which is what § 9.3 has always said it
+returns ("the defaults filled in for whatever the structure left unsaid") and what
+the rename was dropping on the floor.
 
 ### Phase B — one generator, and the export route *(item 1, backend half)*
 
@@ -137,10 +144,10 @@ browser's coordinate writer is deleted rather than merely constrained.
 | # | Item | Phase | State |
 |---|---|---|---|
 | 1 | The save / load pair, and where the saved bytes come from | B, D | **agreed** |
-| 2 | The cell's private spelling | A | **agreed** |
+| 2 | The cell's private spelling | A | **done** |
 | 3 | The browser writes structure files at all | D, E | **agreed** |
 | 4 | `applyOp` sends a body the route does not read | D | **agreed** |
-| 5 | The label list is flipped in three places | A | **folded in** — a rule on how A is written, not separate work |
+| 5 | The label list is flipped in three places | A | **done** — one walk in `groupByLabel`, one split in `labelsForServer` |
 | 6 | What a load drops: identity columns and annotation channels | D | **folded in** — the envelope carries them |
 | 7 | The coordinates' in-memory shape | — | raised, not discussed |
 | 8 | The movie is rebuilt from one giant string | — | raised, not discussed |

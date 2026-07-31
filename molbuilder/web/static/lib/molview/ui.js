@@ -1040,12 +1040,15 @@ function mountPanel(doc, card, model) {
 
     function drawCell() {
         cellReadout.textContent = "";
+        // THE CELL AS IT WILL BE USED (§ 9.3's main way in), under the names the
+        // whole system uses for it.
         const cell = model.getUnitCellInfo();
+        const vector = (v) => (Array.isArray(v) ? v.map(Number).join(", ") : "—");
         for (const [label, value] of [
-            ["Lattice", cell.lattice ? "set" : "none"],
-            ["Origin",  cell.origin ? cell.origin.join(", ") : "—"],
-            ["Axes",    cell.axisKind || "—"],
-            ["Vacuum",  cell.vacuum == null ? "—" : String(cell.vacuum)],
+            ["Lattice", cell.cell ? "set" : "none"],
+            ["Origin",  vector(cell.cell_origin)],
+            ["Axes",    Array.isArray(cell.axis_kind) ? cell.axis_kind.join(" · ") : "—"],
+            ["Vacuum",  vector(cell.vacuum)],
         ]) {
             const term = doc.createElement("dt");
             term.className = "selection-mini-label";

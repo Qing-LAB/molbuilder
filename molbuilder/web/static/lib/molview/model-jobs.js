@@ -92,19 +92,18 @@ export function structureFromServer(payload) {
         structure: {
             elements:    elements,
             annotations: annotations,
-            // The cell block is CARRIED, not interpreted (§ 6.2) — but it is
-            // RENAMED here, because that is what this file is for (§ 11.1: "the
-            // server's names become this module's names, in one place, so
-            // nothing downstream has to know both").
-            //
-            // It read `periodicity.lattice` and `periodicity.origin` for a long
-            // time. The server has never sent either: the block is `cell` and
-            // `cell_origin`. So the cell was ALWAYS null — the box could not be
-            // drawn at any time, the axes always fell back to the Cartesian
-            // triad, and an exported sidecar carried no cell at all. Nothing
-            // failed; a missing key reads as "this structure is not periodic",
-            // which is a perfectly ordinary answer.
-            cell: cellFromServer(payload.periodicity),
+            /* THE PERIODICITY BLOCK, CARRIED VERBATIM (§ 6.2). Its field
+             * names are the server's — `cell`, `cell_origin`, `axis_kind`,
+             * `vacuum`, and the `resolved_*` answers beside them — and they stay
+             * the server's the whole way through this module.
+             *
+             * It used to be renamed here to `{lattice, origin, …}`, and the
+             * readers then asked a block that has never had a `lattice` key for
+             * one. So the cell was null for every structure ever loaded: the box
+             * could not be drawn, the axes always fell back to the Cartesian
+             * triad, and an export carried no cell. Nothing failed, because a
+             * missing key reads as "this structure is not periodic". */
+            periodicity: payload.periodicity || null,
         },
         coordinates: {
             frames: [atoms.map((a) => [Number(a.x) || 0,
@@ -115,41 +114,43 @@ export function structureFromServer(payload) {
     };
 }
 
-/* THE CELL, both directions.
+/* ══ The labels, walked once and split once ══════════════════════════════════
  *
- * MolView's own names for the block are the ones § 9.3's table uses —
- * `getUnitCell` is "the raw 3×3", `getUnitCellOrigin` the corner it is anchored
- * at — so `lattice` and `origin` are what every layer above reads. The server
- * calls the same two `cell` and `cell_origin`.
- *
- * Both directions live here, next to each other, so neither can be changed
- * without the other being in view. `resolved_*` is deliberately dropped: those
- * are the server's answer to "what will actually be used", which MolView neither
- * stores nor interprets (§ 6.2). */
-function cellFromServer(block) {
-    if (!block || typeof block !== "object") return null;
-    const cell = {
-        lattice:   block.cell || null,
-        origin:    block.cell_origin || null,
-        axis_kind: block.axis_kind || null,
-        vacuum:    block.vacuum || null,
-    };
-    // A block with nothing in it is not a cell. "There is no cell" and "here is
-    // an empty one" are different answers (§ 9.3's rule, one level down).
-    return cell.lattice || cell.origin || cell.axis_kind || cell.vacuum
-        ? cell : null;
+ * An atom carries a list of the names it is tagged with. Everything that needs
+ * the flipped form — `{"L-electrode": [0, 1]}` — gets it from here, and the walk
+ * exists once. It was written four times, and two of the copies differed from
+ * the other two in a way that was correct but invisible: a reader could not tell
+ * the deliberate variation from drift.
+ */
+export function groupByLabel(annotations) {
+    const out = {};
+    (annotations || []).forEach((facts, i) => {
+        for (const name of (facts.labels || [])) {
+            (out[name] = out[name] || []).push(i);
+        }
+    });
+    return out;
 }
 
-function cellForServer(cell) {
-    const c = cell || {};
-    const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
-    return {
-        cell:        clone(c.lattice),
-        cell_origin: clone(c.origin),
-        axis_kind:   clone(c.axis_kind),
-        vacuum:      clone(c.vacuum),
-    };
+/**
+ * The same grouping, in the shape the server takes.
+ *
+ * THE ONE RESERVED-LABEL SPLIT, and the only place it happens. § 6.6 says a
+ * frozen tag is an ORDINARY LABEL — "one mechanism, no special case" — so
+ * everything above this line treats it as one. The server has not caught up: it
+ * keeps `frozen_atoms` in a field of its own. That difference is a translation,
+ * and a translation belongs at the boundary, which is here.
+ */
+export function labelsForServer(regions) {
+    const out = {};
+    let frozen = [];
+    for (const name of Object.keys(regions || {})) {
+        if (name === FROZEN_LABEL) frozen = regions[name].slice();
+        else out[name] = regions[name].slice();
+    }
+    return { regions: out, frozen_atoms: frozen };
 }
+
 
 /**
  * The same facts, shaped for the wire — the outbound half.
@@ -164,20 +165,13 @@ function cellForServer(cell) {
  */
 export function structureForServer(structure, positions) {
     if (!structure) return null;
-    const labels = {};
-    const frozen = [];
-    structure.annotations.forEach((facts, i) => {
-        for (const name of (facts.labels || [])) {
-            if (name === FROZEN_LABEL) { frozen.push(i); continue; }
-            (labels[name] = labels[name] || []).push(i);
-        }
-    });
+    const split = labelsForServer(groupByLabel(structure.annotations));
     return {
         elements:     structure.elements.slice(),
         positions:    positions.map((p) => [p[0], p[1], p[2]]),
-        regions:      labels,
-        frozen_atoms: frozen,
-        periodicity:  structure.cell,
+        regions:      split.regions,
+        frozen_atoms: split.frozen_atoms,
+        periodicity:  structure.periodicity,
     };
 }
 
@@ -307,25 +301,26 @@ export function structureAsData(structure, positions) {
         lines.push(structure.elements[i] + " " + p[0] + " " + p[1] + " " + p[2]);
     }
 
-    const labels = {};
-    const frozen = [];
-    structure.annotations.forEach((facts, i) => {
-        for (const name of (facts.labels || [])) {
-            if (name === FROZEN_LABEL) { frozen.push(i); continue; }
-            (labels[name] = labels[name] || []).push(i);
-        }
-    });
+    const split = labelsForServer(groupByLabel(structure.annotations));
 
-    // COPIED, not referenced: this is handed to a caller (§ 9.3), and a blob
-    // holding the master copy's own arrays is a write into the structure
-    // disguised as a read.
+    /* COPIED, not referenced: this is handed to a caller (§ 9.3), and a blob
+     * holding the master copy's own arrays is a write into the structure
+     * disguised as a read. The cell fields keep the names the block already has
+     * — they are the sidecar's names too, which is not a coincidence: both are
+     * the codec's. */
+    const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
+    const per = structure.periodicity || {};
     return {
         xyz: lines.join("\n") + "\n",
-        sidecar: Object.assign({
+        sidecar: {
             n_atoms_total: count,
-            regions:       labels,
-            frozen_atoms:  frozen,
-        }, cellForServer(structure.cell)),
+            regions:       split.regions,
+            frozen_atoms:  split.frozen_atoms,
+            cell:          clone(per.cell),
+            cell_origin:   clone(per.cell_origin),
+            axis_kind:     clone(per.axis_kind),
+            vacuum:        clone(per.vacuum),
+        },
     };
 }
 
@@ -460,9 +455,17 @@ export function createCellEdit(handed) {
         // through the same translation everything else does.
         const returned = answer && answer.blob && answer.blob.sidecar;
         if (!answer || answer.ok === false || !returned) return null;
-        const cell = cellFromServer(returned);
-        handed.applyCell(cell);
-        return cell;
+        // The four fields come back under the names they went out under, so
+        // there is nothing to translate — only the block to pick out of a
+        // sidecar that also carries the labels.
+        const block = {
+            cell:        returned.cell || null,
+            cell_origin: returned.cell_origin || null,
+            axis_kind:   returned.axis_kind || null,
+            vacuum:      returned.vacuum || null,
+        };
+        handed.applyCell(block);
+        return block;
     };
 }
 

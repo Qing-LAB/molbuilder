@@ -437,11 +437,11 @@ def test_the_cell_door_speaks_the_route_it_posts_to(demo):
             // (§ 6.2).
             const answer = await v.data.commitPeriodicityOp(
                 "cell", [[8,0,0],[0,8,0],[0,0,8]]);
-            const info = v.data.getUnitCellInfo();
+            const info = v.data.getUnitCellInfo();   // the block's own names
             const sidecar = v.data.exportFile().sidecar;
             return {
                 answered: answer !== null,
-                lattice:  info.lattice,
+                cell:     info.cell,
                 exported: sidecar.cell,
             };
         }"""
@@ -449,10 +449,10 @@ def test_the_cell_door_speaks_the_route_it_posts_to(demo):
     assert got["answered"] is True, (
         "the cell door was refused by the route it posts to"
     )
-    assert got["lattice"] == [[8, 0, 0], [0, 8, 0], [0, 0, 8]], (
+    assert got["cell"] == [[8, 0, 0], [0, 8, 0], [0, 0, 8]], (
         f"the cell did not come back through the module's own read: {got}"
     )
-    assert got["exported"] == got["lattice"], (
+    assert got["exported"] == got["cell"], (
         "the cell reached the viewer but not the sidecar, so a saved structure "
         f"would lose it: {got}"
     )

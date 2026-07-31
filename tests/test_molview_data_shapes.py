@@ -535,7 +535,7 @@ def test_cell_geometry_arrives_even_while_the_cell_is_hidden():
     """
     out = _run(
         """
-        const cell = { lattice: [[4,0,0],[0,4,0],[0,0,4]], origin: [10, 10, 10] };
+        const cell = { cell: [[4,0,0],[0,4,0],[0,0,4]], cell_origin: [10, 10, 10] };
         // Every switch off — the cell is hidden.
         const scene = ENGINE.sceneFor(cell);
         console.log(JSON.stringify({

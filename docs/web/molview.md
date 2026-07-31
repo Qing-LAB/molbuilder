@@ -429,7 +429,7 @@ classDiagram
     class Structure {
       +string[] elements
       +AtomFacts[] annotations
-      +Cell cell
+      +Periodicity periodicity
     }
     class AtomFacts {
       +string[] labels
@@ -492,9 +492,22 @@ classDiagram
 |---|---|---|
 | `elements` | `string[]` | element per atom. **Shared by every frame.** |
 | `annotations` | per atom: the labels it carries, and its residue name if the source had one | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them, writes them and filters on them (§ 9.5); the drawing does not use them. Writing one is a change to the structure, gated like any other (§ 9.4). Some label names are **reserved** and mean something downstream (§ 6.6) |
-| `cell` | the a/b/c vectors, the corner the box is anchored at, how each axis is treated — repeating, isolated, or a transport lead — and how much empty space an isolated axis should have. `null` when there is no cell | **One fact that travels together**, which is why there is one door to change it (§ 9.3). The field names and the rules for resolving them belong to [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md); MolView carries the block, offers it, edits it through that one door, and interprets none of it |
+| `periodicity` | the a/b/c vectors, the corner the box is anchored at, how each axis is treated — repeating, isolated, or a transport lead — how much empty space an isolated axis should have, and beside each of those the **resolved** answer the server worked out. `null` when the structure has none | **One fact that travels together**, which is why there is one door to change it (§ 9.3). **Carried under the field names it arrives with** — `cell`, `cell_origin`, `axis_kind`, `vacuum` — which are the same names the sidecar on disk uses, because both are the codec's. MolView holds the block, offers it, edits it through that one door, and interprets none of it. Those names and the rules for resolving them belong to [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no labels |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
+
+> **A carried block keeps its own names.** MolView renames nothing it does not
+> interpret. The module once called this block `{lattice, origin, …}` and renamed
+> it at both edges, and then read `.lattice` from a block that has never had that
+> key — so the cell was `null` for every structure ever loaded, the box could not
+> be drawn, the axes always fell back to the Cartesian triad, and an export
+> carried no cell. Nothing failed, because a missing key reads as "this structure
+> is not periodic", which is an ordinary answer. A second name for a fact you do
+> not own buys nothing and costs exactly this.
+>
+> The one place the drawing's own words appear is the box handed down to it,
+> which calls the vectors a lattice — a translation into the drawing's vocabulary
+> at the layer that already does that for `style` → `rep` (§ 9.8).
 
 Atom **count**, `elements` and `annotations` are fixed when the structure loads
 and are identical for every frame. That *is* the same-atoms rule of § 10.8.
@@ -1065,7 +1078,7 @@ rather than maintained separately.
 | The need | The main way in | Narrower cuts of it | Changes the master copy |
 |---|---|---|:--:|
 | Get the whole structure | `getStructure` | `getAtoms`, `getElements`, `getCoordinates`, `getSource`; `getRegions` — the atoms grouped by the label they carry; `getFrozen` — the atoms carrying the reserved `frozen atoms` label (§ 6.6) | — |
-| Get the cell | `getUnitCellInfo` — the cell as it will actually be used, with the defaults filled in for whatever the structure left unsaid, so it always has an answer | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` | — |
+| Get the cell | `getUnitCellInfo` — the cell as it will actually be used, with the defaults filled in for whatever the structure left unsaid, so it always has an answer. Those filled-in values are **the server's own**: it sends them beside the raw ones, and this reads them rather than working anything out (§ 6.2 — MolView interprets none of it) | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` — **what the structure actually says**, `null` where it says nothing | — |
 | Get one frame's coordinates | `getFrameAllAtoms(i)` — **every** atom, original order, before isolate cuts anything down | | — |
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
 | Get the structure out as text | `exportFile()` | | — |

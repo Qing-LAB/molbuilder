@@ -18,7 +18,7 @@
 
 import {
     createLoad, createWriteOut, createEdits, createCellEdit, FROZEN_LABEL,
-    structureAsData, resolveFilter as askServerToFilter,
+    structureAsData, groupByLabel, resolveFilter as askServerToFilter,
 } from "./model-jobs.js";
 import { createSelectionStore, createViewStore } from "./stores.js";
 import { createHistory } from "./history.js";
@@ -345,8 +345,8 @@ export function createModel(opts) {
         readData: readData,
         // A cell edit does not move an atom, so the frame and its range are
         // untouched — this is why § 10.5 makes it an overlay refresh.
-        applyCell: (cell) => {
-            settle(() => { structure.cell = cell; }, { redraw: "cell" });
+        applyCell: (block) => {
+            settle(() => { structure.periodicity = block; }, { redraw: "cell" });
             history.edited();
         },
     });
@@ -383,24 +383,14 @@ export function createModel(opts) {
         // "Which atoms are the electrodes" is a real question, and this is a CUT
         // OF THE LABELS — not a second place where groups of atoms are stored.
         getRegions() {
-            if (!structure) return null;
-            const out = {};
-            structure.annotations.forEach((facts, i) => {
-                for (const name of (facts.labels || [])) {
-                    (out[name] = out[name] || []).push(i);
-                }
-            });
-            return out;
+            return structure ? groupByLabel(structure.annotations) : null;
         },
         // The atoms carrying the reserved frozen label. A cut of the same one
         // mechanism (§ 6.6), not a field of its own.
         getFrozen() {
             if (!structure) return null;
-            const out = [];
-            structure.annotations.forEach((facts, i) => {
-                if ((facts.labels || []).indexOf(FROZEN_LABEL) >= 0) out.push(i);
-            });
-            return out;
+            // A cut of the same grouping, not a second scan for the same fact.
+            return groupByLabel(structure.annotations)[FROZEN_LABEL] || [];
         },
 
         /* ══ Get the cell ════════════════════════════════════════════════
@@ -413,22 +403,31 @@ export function createModel(opts) {
          * carries the block and interprets none of it (§ 6.2).
          */
         getUnitCellInfo() {
-            const cell = structure ? structure.cell : null;
-            // COPIED, like every other read (§ 9.3). This one handed out live
-            // references into the master copy's cell while the four narrower
-            // cuts below all copied — so the MAIN way in was the one way in that
-            // could be written through, which is the opposite of the rule.
+            /* THE CELL AS IT WILL ACTUALLY BE USED — which the server already
+             * works out and sends beside the raw values (`resolved_cell`,
+             * `resolved_cell_origin`, `resolved_vacuum`). Reading those is what
+             * makes § 9.3's "with the defaults filled in for whatever the
+             * structure left unsaid, so it always has an answer" true; before,
+             * this returned the raw values under different names and the
+             * resolved ones were dropped at the boundary.
+             *
+             * COPIED, like every other read (§ 9.3) — the main way in was the one
+             * way in that could be written through, which is the opposite of the
+             * rule. */
+            const per = (structure && structure.periodicity) || {};
             return {
-                lattice:  copy(cell && cell.lattice)  || null,
-                origin:   copy(cell && cell.origin)   || null,
-                axisKind: copy(cell && cell.axis_kind) || null,
-                vacuum:   copy(cell && cell.vacuum)   || null,
+                cell:        copy(per.resolved_cell || per.cell) || null,
+                cell_origin: copy(per.resolved_cell_origin || per.cell_origin) || null,
+                axis_kind:   copy(per.axis_kind) || null,
+                vacuum:      copy(per.resolved_vacuum || per.vacuum) || null,
             };
         },
-        getUnitCell()       { return copy(structure && structure.cell && structure.cell.lattice) || null; },
-        getUnitCellOrigin() { return copy(structure && structure.cell && structure.cell.origin) || null; },
-        getAxisKind()       { return copy(structure && structure.cell && structure.cell.axis_kind) || null; },
-        getVacuum()         { return copy(structure && structure.cell && structure.cell.vacuum) || null; },
+        // The RAW values — what the structure actually says, `null` where it says
+        // nothing (§ 9.3: "the raw 3×3 or null").
+        getUnitCell()       { return copy(structure && structure.periodicity && structure.periodicity.cell) || null; },
+        getUnitCellOrigin() { return copy(structure && structure.periodicity && structure.periodicity.cell_origin) || null; },
+        getAxisKind()       { return copy(structure && structure.periodicity && structure.periodicity.axis_kind) || null; },
+        getVacuum()         { return copy(structure && structure.periodicity && structure.periodicity.vacuum) || null; },
 
         /* ══ Get one frame's coordinates ═════════════════════════════════
          *
