@@ -48,64 +48,40 @@ without it. Nothing is committed.
 
 ---
 
-## 2. The target tree
+## 2. The target tree — one file per layer, one per API
 
-**28 files → 20.** One directory, one import.
+Organised by § 7's levels and § 9's surfaces, because those are what is cleanly designed.
+**19 files → 10 and a stylesheet.**
 
-```
-lib/molview/
-├── index.js              the entry: mount + formula, nothing else        § 4, § 9.1
-├── _formula.js           Hill formula — needs no viewer                  § 4
-├── _atom.js              the numbering translation + the filter channels § 11.5, § 9.5
-│
-├── mount.js              the card, the handle, playback, the badge       § 8, § 9.2
-├── demo.js               the in-repo demo page                          § 13.4
-│
-├── data-model.js         THE MASTER COPY + the data API                 § 6, § 9.3
-├── _install.js           helper — put a loaded structure in             § 7.3
-├── _serialise.js         helper — write the structure out               § 7.3
-├── _history.js           helper — undo / redo + the write machine       § 7.3, § 11.2
-├── _operations.js        helper — the geometry edits                    § 7.3, § 11.1
-├── _selection-store.js   what is selected + the switches                § 9.5
-├── _view-store.js        style · radius · background · projection       § 9.6
-│
-├── selection.js          the panel: its DOM, its rows, click-to-select  § 9.5
-├── measurement.js        the readout + the distance / angle maths       § 11.6
-├── controls.js           the six switches · the View menu · the frame bar § 1.1, § 6.4
-├── menu.js               MolView's own menu surface — Export            § 11.4
-│
-├── render-engine/
-│   ├── engine.js         what to redraw, at what cost + the per-frame maths § 9.7, § 10
-│   └── embed-io.js       the drawing commands                           § 9.8
-│
-├── _seal.js              the ONE file that names 3Dmol                  § 4, § 9.9
-└── molview.css           one stylesheet, one link
-```
+| § | File | The API it is |
+|---|---|---|
+| 9.1 | `index.js` | `mount` + `formula`, and nothing else is importable |
+| 8 · 9.2 | `mount.js` | assembles the viewer; the handle — lifecycle, playback, `data` |
+| 9.3 | `model.js` | the master copy, the data API, the read-only gate |
+| 7.3 | `model-jobs.js` | the jobs the model hands out: load a structure in, write it out, the geometry edits |
+| 11.2 | `history.js` | the ordered sequence and the position on it — `save`/`load`/`undo`, `state_index`, `uncommitted`, the SETTLED/CHANGING/WRITING machine, the badge signal |
+| 9.5 · 9.6 | `stores.js` | `selection` (what is picked, the switches) and `view` (how it is drawn) |
+| 9.7 · 9.8 | `render-engine.js` | what to redraw and at what cost · the per-frame maths · the drawing commands |
+| 9.9 | `seal.js` | the only file that names 3Dmol |
+| 1.1 · 11.4 · 11.6 | `ui.js` | everything MolView draws: the panel, click-to-select, the frame bar, the switches, the View menu, the Export menu, the readout, the badge |
+| 13.4 | `demo.js` | the in-repo demo page |
+| — | `molview.css` | one stylesheet, one link |
 
-**Why each group is one file:**
+**Where today's files go.** `_formula.js` → `index.js` · `_atom.js` dissolves into the
+surfaces that use it (§ 11.5's rule is ONE home, and the model is a home; § 9.5's channels are
+the store's) · `data-model.js` → `model.js` · `_canvas-state-impl.js` **deleted**, a third home
+for the structure (§ 6.3 allows two) · `_install.js` + `_serialise.js` + `_operations.js` →
+`model-jobs.js` · `_history.js` → `history.js` · `_selection-store.js` → `stores.js`, which
+gains the `view` store that replaces the read-back passthrough · `engine.js` + `embed-io.js` →
+`render-engine.js` · `_seal.js` → `seal.js` · `selection.js` + `measurement.js` +
+`controls.js` → `ui.js`.
 
-- **`_seal.js`** — § 4 is explicit: *"the name `3Dmol` occurs in exactly one file."* Today
-  it occurs in four (`mol-viewer.js`, `mol-style.js`, `mol-axes.js`, `mol-viewer-embed.js`).
-  After this it is checkable by grep.
-- **`engine.js`** — § 9.7 splits the renderEngine in two: a maths half *"with no drawing
-  library anywhere near it"* and an I/O half. The I/O half is `embed-io.js`; deciding the
-  cost and deriving each frame is the maths half, so `process.js` folds in. Still
-  node-testable: `embed-io` takes an injected handle and imports nothing.
-- **the model's five helpers stay five** — § 7.3 *requires* the split and names exactly
-  these five jobs.
-- **two stores, not one** — § 9.6 spends a section on why the switches and the drawing
-  settings are different kinds of thing.
-- **`selection.js`** — panel strip, its DOM and click-to-select are one concern. The markup
-  only lives outside because the panel used to be built by the server.
-- **`measurement.js`** — § 11.6: *"measurement is its own layer."*
-- **`controls.js`** — every control MolView draws around the canvas, mounted together,
-  writing into the stores like any other caller.
-- **`menu.js` stays apart** — § 11.4's test is *what does the control decide?* Export
-  decides what leaves the viewer and from which copy; a style knob decides nothing.
-  Collapsing that distinction is how the export decision reached the bottom of the stack.
+**`history.js` stays out of `model-jobs.js` on purpose.** § 11.2's own claim — *"the mechanism
+does not know or care what is in it … nothing about saving constrains what may be saved"* —
+only holds while it is not sitting in the same file as the serialiser it is handed.
 
-`-impl` suffixes exist only to distinguish an implementation from the global shim in front
-of it, so they go with the globals. `mol-` prefixes were a `lib/viewer/`-era namespace.
+**Every file must serve MolView's logical design and nothing else.** A file that exists to
+publish an interface is not a file; it is a leak with a name.
 
 ---
 
