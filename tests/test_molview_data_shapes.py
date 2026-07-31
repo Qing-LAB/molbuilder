@@ -218,23 +218,79 @@ def test_a_reserved_label_is_an_ordinary_label():
     assert out["drawnSame"] is True
 
 
-def test_the_module_names_no_reserved_label():
-    """§ 6.6: "no code here acts on the name."
+def test_a_reserved_label_is_written_in_exactly_one_place():
+    """§ 6.6: "A reserved meaning costs a NAME and a TRANSLATOR AT THE POINT OF
+    USE — nothing else."
 
-    A file that mentions a reserved name is a file that could come to treat it
-    specially, which is the mechanism § 6.6 exists to prevent.
+    The server has not caught up: it sends the labels and a separate `is_frozen`
+    flag, so something must fold the flag into the labels for MolView's end to be
+    "one mechanism, no special case". That fold is the one translator, and it
+    lives at the inbound boundary.
+
+    What the rule forbids is the ALTERNATIVE § 6.6 rejects — "its own field on
+    the structure, its own kind of thing to filter by, its own key in the saved
+    file, its own control in the panel". Every one of those is a second place
+    naming it, so counting the places is the check.
     """
-    offenders = {}
+    import re
+
+    written = {}
     for path in sorted(MODULE_DIR.glob("*.js")):
         code = "\n".join(
             line for line in path.read_text().splitlines()
             if not line.lstrip().startswith(("*", "//", "/*"))
         )
-        if "frozen" in code.lower():
-            offenders[path.name] = [
-                line.strip() for line in code.splitlines() if "frozen" in line.lower()
-            ]
-    assert offenders == {}, f"a reserved label is named in code: {offenders}"
+        # The NAME being written — a string literal — not a reference to the
+        # constant that holds it. § 9.3's table has a `getFrozen` door, so more
+        # than one place legitimately USES the name; what costs is spelling it.
+        literals = re.findall(r"""["'][^"'\n]*frozen[^"'\n]*["']""", code, re.I)
+        if literals:
+            written[path.name] = literals
+    assert list(written) == ["model-jobs.js"], (
+        "the reserved name must be SPELLED where the server's shape becomes this "
+        f"module's, and nowhere else: {written}"
+    )
+    assert len(written["model-jobs.js"]) == 1, (
+        "one name, written once, as a constant — a value repeated at each use is "
+        f"how two spellings drift apart: {written['model-jobs.js']}"
+    )
+
+
+def test_no_code_acts_on_a_reserved_name():
+    """§ 6.6: "It never ACTS on the meaning: no code here holds an atom still,
+    and tagging atoms `frozen atoms` changes what is stored and nothing about
+    what is drawn."
+
+    Knowing a name is not interpreting it. What would be interpreting it is a
+    branch that changes behaviour because of the name — so the check is that the
+    per-frame calculation, which is the whole of what is drawn, cannot see it.
+    """
+    engine_code = "\n".join(
+        line for line in (MODULE_DIR / "render-engine.js").read_text().splitlines()
+        if not line.lstrip().startswith(("*", "//", "/*"))
+    )
+    assert "frozen" not in engine_code.lower(), (
+        "the drawing calculation branches on a reserved label"
+    )
+    # And behaviourally: the same atoms, tagged and untagged, draw identically.
+    out = _run(
+        """
+        function draw(annotations) {
+            return JSON.stringify(ENGINE.processFrame({
+                elements: ["C", "C"], positions: [[0,0,0],[1,0,0]],
+                annotations, selection: [],
+                switches: { isolate: false, showIndex: true, showForces: false, forceScale: 1 },
+            }));
+        }
+        console.log(JSON.stringify({
+            same: draw([{ labels: ["frozen_atoms"] }, { labels: [] }])
+               === draw([{ labels: [] }, { labels: [] }]),
+        }));
+        """
+    )
+    assert out["same"] is True, (
+        "tagging an atom with a reserved label changed what is drawn"
+    )
 
 
 # ---------------------------------------------------------------------------

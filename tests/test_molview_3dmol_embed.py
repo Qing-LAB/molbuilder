@@ -458,26 +458,54 @@ def test_the_graphics_library_is_named_in_exactly_one_file():
     )
 
 
-def test_the_module_reaches_no_file_endpoint():
-    """§ 6.7: the module reaches no file endpoint. A file route at the bottom of
-    the stack is what task #39 exists to remove; it must not come back with the
-    carried code.
-    """
-    offenders = {}
+def _module_code():
+    """Every module source with its comments stripped — comments explain what was
+    deleted and why, and a rule about what the code DOES must not fire on them."""
+    out = {}
     for path in _module_sources():
-        text = path.read_text()
-        # Comments explain what was deleted and why, so only look at code.
-        code = "\n".join(
-            line for line in text.splitlines()
+        out[path.name] = "\n".join(
+            line for line in path.read_text().splitlines()
             if not line.lstrip().startswith(("*", "//", "/*"))
         )
-        hits = [
-            token for token in ("fetch(", "XMLHttpRequest", "/api/", "EventSource")
-            if token in code
-        ]
+    return out
+
+
+def test_the_module_owns_no_file_route():
+    """§ 6.7: "MolView owns no file route" — files on disk are the projects
+    module's. `exportFile()` returns bytes and stops there (§ 11.3: "neither has
+    MolView writing a file").
+
+    Note what this does NOT ban: the network. § 11.1 says MolView calls three
+    routes, so a blanket ban on `fetch` would contradict the contract — see
+    ``test_the_module_calls_only_the_routes_named_in_the_contract``.
+    """
+    offenders = {}
+    for name, code in _module_code().items():
+        hits = [t for t in ("/api/files/", "showSaveFilePicker", "createWritable",
+                            "download", "FileSystemHandle") if t in code]
         if hits:
-            offenders[path.name] = hits
-    assert offenders == {}, f"the module reaches a file or network route: {offenders}"
+            offenders[name] = hits
+    assert offenders == {}, f"the module reaches a file route: {offenders}"
+
+
+def test_the_module_calls_only_the_routes_named_in_the_contract():
+    """§ 11.1: "The three routes MolView calls are: load a structure, perform one
+    geometry edit, and resolve a cell."
+
+    A fourth route appearing is a fact leaving the module by a path the contract
+    does not describe, which is how the file route got in last time.
+    """
+    import re
+
+    found = set()
+    for code in _module_code().values():
+        for hit in re.findall(r'"(/api/[^"]*)"', code):
+            found.add(hit.split("/api/")[1].split('" +')[0])
+    # `/api/modify/` is completed with the operation name, which IS the route
+    # segment (§ 11.1), so it appears as a prefix.
+    assert found == {"build/load", "modify/", "structure/periodicity"}, (
+        f"the module calls routes the contract does not name: {sorted(found)}"
+    )
 
 
 def test_the_module_neither_publishes_nor_reads_a_global():

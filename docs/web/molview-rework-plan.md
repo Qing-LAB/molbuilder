@@ -174,7 +174,21 @@ Findings worth keeping, not code.
 2. **`factsForRequest`** — § 9.3 retires it in favour of one read plus one translation. It is
    named in another document's contract, so retiring it is a decision there.
 3. **§ 11.1's route sentence** — one line, your wording.
-4. **Two filter channels the rebuilt `_atom.js` does not have**, both dropped by reading the
+4. **A read-only viewer cannot be given a structure** — a contradiction inside the contract,
+   found by building the gate. § 9.3's table marks `installMolecule` as *changes the master
+   copy*, so § 9.4's one question answers **yes** and the gate swallows it. But § 8 says a
+   viewer "mounts before it has a structure … once a structure … is **loaded into it**",
+   § 12.3 describes a read-only Results viewer showing a finished calculation, and § 9.3 says
+   `installMolecule` is "the only way a structure gets in". Today's code does what the table
+   says, and a test pins it so it cannot be lost. The two readings:
+   - **Installing is how a host says which structure this viewer shows**, and the gate is
+     about a *user* editing it — § 9.4's "the structure the calculation ran on" reads as
+     already present. Then `installMolecule` is not gated and § 9.3's row is what changes.
+     *This is the reading I'd pick: it is the only one that leaves the Results tab working
+     without adding a second way in, which is the thing § 9.3 exists to prevent.*
+   - **Installing really is a truth change**, and a read-only viewer is seeded some other way
+     at mount. Then § 8 or § 9.3's "only way in" is what changes.
+5. **Two filter channels the rebuilt `_atom.js` does not have**, both dropped by reading the
    contract rather than by oversight — worth your eye because one of them is visible to a
    user today.
    - `frozen` was a channel of its own because the old atom carried an `isFrozen` field.
