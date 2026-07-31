@@ -254,14 +254,15 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
                   vacuum=(2.5, 2.5, 2.5))
     s.cell = np.eye(3) * 7.0          # corrupted: no origin, atoms outside
     s.__post_init__()
-    blob = StructureCodec().scratch_blob(s)
+    # The save door takes the STRUCTURE, not a document the caller wrote
+    # (molview.md § 11.7) -- `to_dict` is the shape every door speaks.
     set_capabilities(Capabilities(runtime_config={},
                                   conda_binary="/usr/bin/conda"))
     try:
         from molbuilder.web.app import create_app
         client = create_app(config={}).test_client()
         r = client.post("/api/structure/save", json={
-            "path": str(sdir / "m.xyz"), "blob": blob})
+            "path": str(sdir / "m.xyz"), "structure": s.to_dict()})
         assert r.status_code == 200, r.get_json()
         side = _json.loads((sdir / "m.molstruct.json").read_text())
         assert side.get("cell_origin") is None
