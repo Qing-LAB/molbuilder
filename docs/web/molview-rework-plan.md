@@ -35,9 +35,13 @@ levels are its shape. Files that exist today are not consulted while writing the
 adapted, and not repointed — § 13.1 rules out most of what they are. A rule with no row in
 § 13.3 is a rule nothing guards; that is the only checklist.
 
-Tests come at § 13.2's three levels — behaviour in node, boundary behaviour with stand-ins,
-and § 1.1 end-to-end on the demo page, which stays live throughout as MolView's own
-consumer. Two rules from § 13.1: **a stand-in obeys the document, not the code**, and **no
+**A unit is verified by its own tests and nothing else.** Bottom-up means the browser does
+not enter until there is a module to put in it: § 13.2's first two levels — behaviour in
+node, and boundary behaviour with stand-ins — are what a data structure and an API contract
+are checked with. Its third level, § 1.1 end to end, is a FINISHED-module check and lands
+once the module is finished. A page-level test fails for anything on the page, so using one
+to judge a low-level change says nothing about the change and will throw away work that was
+correct. Two rules from § 13.1: **a stand-in obeys the document, not the code**, and **no
 pinned name lists** — the contract is what a surface must do and must refuse.
 
 **Starting tree.** The prior session's uncommitted work is kept: the
