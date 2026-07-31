@@ -16,11 +16,18 @@ The rebuilt module was reviewed against its contract, layer by layer, and agains
 the frozen tree it replaced. The review found defects the tests could not see —
 several of them features that were **complete, correct and connected to nothing**.
 
-This is the list, and the order it will be executed in. **One item is settled at a
-time**: what is wrong, what the evidence is, what the previous implementation did,
-and the agreed change to the code AND to the document. An item is not written here
-until it has been discussed and its shape agreed; an item written here is ready to
-execute without re-deciding anything.
+The document has two halves. **§ 2 is the plan** — five phases, each shipping and
+proved on its own, in the order they land. **§§ 4–7 are the reasoning**, one
+section per item: what is wrong, what the evidence is, what the previous
+implementation did, and the agreed change to the code and to the contract.
+
+Read § 2 to execute. Read the item sections to understand *why* a phase is shaped
+the way it is — or before changing one, because a phase whose reasoning is not read
+is a phase that gets re-litigated.
+
+**One item is settled at a time.** An item is not written here until it has been
+discussed and its shape agreed; an item written here is ready to execute without
+re-deciding anything.
 
 **Why a plan and not a task list.** Every item below is a *design* correction with a
 document half. Recording only "fix the sidecar" loses the reasoning that makes the
@@ -39,36 +46,110 @@ fix the right one, and the reasoning is the part that stops it being re-broken.
 
 ---
 
-## 2. Status
+## 2. The consolidated plan
 
-| # | Item | State |
-|---|---|---|
-| 1 | The save / load pair, and where the saved bytes come from | **agreed — ready to execute** |
-| 2 | The cell's private spelling | **agreed — ready to execute** |
-| 3 | The browser writes structure files at all — **prerequisite of item 1** | **agreed — ready to execute** |
-| 4 | `applyOp` sends a body the route does not read | **agreed — ready to execute** |
-| 5 | The label list is flipped in three places | raised, not discussed |
-| 6 | What a load drops: identity columns and annotation channels | raised, not discussed |
-| 7 | The coordinates' in-memory shape | raised, not discussed |
-| 8 | The movie is rebuilt from one giant string | raised, not discussed |
+Four items are agreed. They are **not** four pieces of work: three of them are one
+programme with a shape settled in
+[`web-api.md`](?doc=web/web-api.md) § 1 — *one envelope, both directions, every
+door, and the server is the only thing that turns a structure into a file*. The
+fourth is independent and small.
 
-Items 3–8 are recorded here so nothing is lost between sessions. Each gets its
-section below when it is settled, in the shape § 1 describes.
+This is the execution order. **Each phase ships on its own and is proved on its
+own**, and each carries its own document edits — the contract is updated with the
+code that makes it true, never after.
 
-> **What changed on 2026-07-31.** "The coordinate document is rewritten when the
-> server already sent one" was a separate item. It is not a separate problem: it is
-> a *symptom* of item 3, and carrying the server's text would have been a
-> workaround for a browser that should not be writing coordinate documents in the
-> first place. Folded in, and the numbering closed up.
->
-> Item 3 also turned out to be a **prerequisite of item 1**, not a follow-on. Item 1
-> makes the server author the `.json`; but its export route as first drafted still
-> took `{xyz, sidecar}` — so the browser was still writing the `.xyz` to send. One
-> path means neither file is written here.
+```mermaid
+flowchart TD
+    A["A · the module's own vocabulary<br/>no wire change"]
+    B["B · one generator + the export route<br/>backend only"]
+    C["C · the envelope, added not swapped<br/>backend only"]
+    D["D · MolView speaks the envelope<br/>the browser stops writing files"]
+    E["E · the doors take numbers<br/>the writer disappears"]
+    A --> D
+    B --> D
+    C --> D
+    D --> E
+```
+
+### Phase A — the module's own vocabulary *(item 2, and item 5's rule)*
+
+Nothing crosses the wire differently. The module stops inventing names for things
+the rest of the system has already named, and stops walking the same list four
+times.
+
+- carry `{cell, cell_origin, axis_kind, vacuum}`; delete both translation functions
+- one label grouping inside the model; every accessor is a cut of it; the reserved
+  `frozen_atoms` split happens once, at the wire boundary, where it belongs
+- **document:** § 6.2's field name
+
+**Proved by:** the node suite, unchanged in count. If anything outside MolView
+notices this phase, the phase is wrong.
+
+### Phase B — one generator, and the export route *(item 1, backend half)*
+
+- `write()` stops recomputing the pair and writes what `files()` produces, so save
+  and download cannot diverge
+- `POST /api/structure/export` returns that same pair instead of writing it
+
+**Proved by:** a Python test that the bytes `write()` puts on disk and the bytes the
+route returns are identical, for a structure with metadata and one without.
+
+### Phase C — the envelope, added not swapped *(the protocol)*
+
+- `struct_from_body` accepts `{structure: {geometry, metadata}}` beside today's
+  shapes
+- structure responses gain `structure` beside today's keys and the legacy aliases
+
+**Proved by:** the existing suite staying green. That is the whole point of
+"added, not swapped" — a phase that breaks a tab has broken its own rule.
+
+### Phase D — MolView speaks the envelope *(items 1, 3, 4, front half)*
+
+The browser stops writing files.
+
+- the model carries what the load returned — the server's document, the identity
+  columns, the annotation channels — beside the atoms
+- **one read** hands geometry and metadata over together, at the displayed frame
+- **one producer** turns that read into the envelope; every outbound door uses it
+- `applyOp` gains the column § 11.1 never had (where the selection lands), the two
+  paths, the declared-shape count invariant, and one-mutation-in-flight
+- the `files` door is removed; the sidebar saves, the host downloads
+- **document:** § 6.2 (the carried document, the identity columns), § 8 (the door
+  leaves), § 11.1 (the column, the invariant, the in-flight rule), § 11.3 (who
+  writes the file), § 13.3 (a row for each new rule)
+
+**Proved by:** the browser suite — a save round trip that reopens with its labels
+intact, and a geometry edit that actually happens. Both are things no node test can
+see.
+
+### Phase E — the doors take numbers *(item 3's open question)*
+
+With the envelope carrying `geometry`, the two remaining exceptions in § 11.7 — a
+scrubbed trajectory frame, and a partial transform — can send numbers too, and the
+browser's coordinate writer is deleted rather than merely constrained.
+
+**Proved by:** the writer is gone and the suite is green.
 
 ---
 
-## 3. Item 1 — the save / load pair, and where the saved bytes come from
+## 3. Status
+
+| # | Item | Phase | State |
+|---|---|---|---|
+| 1 | The save / load pair, and where the saved bytes come from | B, D | **agreed** |
+| 2 | The cell's private spelling | A | **agreed** |
+| 3 | The browser writes structure files at all | D, E | **agreed** |
+| 4 | `applyOp` sends a body the route does not read | D | **agreed** |
+| 5 | The label list is flipped in three places | A | **folded in** — a rule on how A is written, not separate work |
+| 6 | What a load drops: identity columns and annotation channels | D | **folded in** — the envelope carries them |
+| 7 | The coordinates' in-memory shape | — | raised, not discussed |
+| 8 | The movie is rebuilt from one giant string | — | raised, not discussed |
+
+Items 7 and 8 are about **performance inside the browser** and touch neither the
+wire nor the file formats. They are independent of everything above and are the
+right thing to look at once it lands.
+
+## 4. Item 1 — the save / load pair, and where the saved bytes come from
 
 **AGREED. Ready to execute.**
 
@@ -183,7 +264,7 @@ on a second path.
 
 ---
 
-## 4. Item 2 — the cell's private spelling
+## 5. Item 2 — the cell's private spelling
 
 **AGREED. Ready to execute.**
 
@@ -246,7 +327,7 @@ Nothing.
 
 ---
 
-## 5. Item 3 — the browser writes structure files at all
+## 6. Item 3 — the browser writes structure files at all
 
 **AGREED. Ready to execute.**
 
@@ -324,7 +405,7 @@ not required for the above.
 
 ---
 
-## 6. Item 4 — `applyOp` sends a body the route does not read
+## 7. Item 4 — `applyOp` sends a body the route does not read
 
 **AGREED. Ready to execute.**
 
@@ -444,9 +525,17 @@ Nothing.
 
 ---
 
-## 7. Items not yet settled
+## 8. Items not yet settled
 
-Recorded so they survive the session. Each becomes a section above when discussed.
+The two that remain are about **speed inside the browser**. Neither touches the
+wire, the file formats, or anything outside the module — which is why they sit
+outside the phases and can be taken whenever. Each becomes a section above when
+discussed.
+
+### Folded in, kept for their reasoning
+
+These two are no longer separate work — phase A carries the first, the envelope
+carries the second — but the reasoning is why those phases are shaped as they are.
 
 **5. The label list is flipped in three places.** Each atom carries a list of the
 names it is tagged with; three places walk every atom to build the flipped form
@@ -458,6 +547,9 @@ a separate field for it. So it is one walk with one deliberate difference, copie
 **6. What a load drops.** The server returns atom names, residue ids, chain ids and
 the annotation channels; the module keeps none. Invisible until an edit — a
 structure that round-trips comes home flattened.
+
+### Still open
+
 
 **7. The coordinates' in-memory shape.** Held as nested three-element arrays: one
 object per atom per frame, 800k objects for a 400-frame, 2000-atom run. A flat
