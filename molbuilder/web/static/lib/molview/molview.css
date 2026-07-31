@@ -1,23 +1,2032 @@
-/* MolView — one stylesheet, one link.
+/* MolView — the module's one stylesheet.
  *
- * Contract: docs/web/molview.md § 4 (a self-contained module) and § 1.1 (what a
- *           viewer looks like in use).
- * Owns:     the appearance of everything MolView draws — the card, the panel,
- *           the frame bar, the knob bar, the menus, the readout, the badge.
- * Called by: one <link> beside the module's one import. A host that embeds
- *           MolView adds a stylesheet and an import, and nothing else.
+ * Contract: docs/web/molview.md § 8.1–8.3 (what the card is made of, how it
+ *           sizes, how it folds) and § 4 (a self-contained module).
+ * Called by: one <link> beside the module's one import.
  *
- * NEVER:
- *   - style anything outside MolView's own card, or depend on a class the host
- *     page happens to have. § 5.4: a host needs to know nothing.
- *   - carry appearance that belongs in the drawing. Atom colours, radii and the
- *     highlight are the sealed layer's constants (§ 6.5) — CSS styles the DOM
- *     around the 3D window, never what is inside it.
+ * CARRIED, NOT REDESIGNED. This is the validated layout, brought across whole in
+ * step G of the rebuild. It is not decoration: § 8.2 leans on it for the SIZING
+ * CONTRACT — the square, the shared extent that bottom-aligns the panel with no
+ * script, and `--molview-min-width` as the floor mount.js keys its
+ * blank-card-with-error path to.
  *
- * THE CARD PANEL DESIGN IS CARRIED, NOT REDESIGNED. The old layout is validated
- * — it works — so step G brings these rules across from the frozen tree as the
- * controls that need them are written. What changes in this rebuild is what sits
- * behind each control, not what it looks like.
+ * The rules below were settled over a long time and several failures they now
+ * encode (the chevron that rotated its box, the nested scrollbars, the stack
+ * threshold that had to track the rail). Read § 8.1–8.3 before changing any of
+ * them; the document says WHY, this file says HOW.
  *
- * EMPTY BY DESIGN — plan step A.
+ * NEVER: style anything outside MolView's own card, or depend on a class the
+ * host page happens to have (§ 5.4). Atom colours, radii and the highlight are
+ * the sealed layer's constants (§ 6.5) — CSS styles the DOM around the 3D
+ * window, never what is inside it.
  */
+
+
+/* ==========================================================================
+   The fused card: viewer + panel + the fold (was fused-layout.css)
+   ========================================================================== */
+
+/* Fused molview card: the viewer (a fixed 1:1 SQUARE) + the selection/cell panel in ONE
+ * card, with a foldable panel (molview-module.md).
+ *
+ * The model (simple, container-query driven -- correct in any embed width):
+ *   - VIEWER: a 1:1 square, bounded [--viewer-min, --viewer-edge].  It never stretches to
+ *     fill the card ("won't occupy the full width"); leftover width goes to the panel.
+ *   - PANEL: takes the leftover width, with its OWN --panel-min.
+ *   - WIDE: viewer | handle | panel, side by side.
+ *   - STACK (viewer on top): the moment the card can't hold --viewer-min + --panel-min
+ *     side by side (the container query below), so the viewer never overflows the card.
+ *   - FOLD: show/hide the panel -- width-only when wide, height-only when stacked. */
+
+.molview-card {
+    container-type: inline-size;   /* enables the @container query below */
+
+    /* The view-toggle RAIL (mol-viewer-stage's left column) is added to the LEFT of the
+     * canvas.  Fold its width into the square's min + max so the CANVAS keeps its former
+     * size instead of shrinking -- i.e. the viewer grows by the rail, it doesn't lose view
+     * space.  ONE source of truth for the rail width. */
+    --rail-w: 30px;
+
+    /* ONE source of truth for the square's size + the stack threshold. */
+    --viewer-edge: min(60vh, calc(560px + var(--rail-w)));   /* max square edge + rail */
+    --viewer-min: calc(320px + var(--rail-w));               /* min square width + rail */
+    --panel-min:  320px;               /* min panel width */
+    --fold-w:     22px;                /* the fold-handle rail's width (row layout) */
+
+    /* THE SIZING CONTRACT (embedded-module).  min-width = what MolView ABSOLUTELY needs to render,
+     * DERIVED from the same vars (never a lone magic number).  It is the STACKED minimum
+     * (max(--viewer-min, --panel-min)), NOT the row sum: below the row's viewer+fold+panel width the
+     * card FLIPS to the vertical stacked layout (viewer over panel, the @container query below), so
+     * the card can legitimately be narrower than the row -- it just stacks.  The floor is the wider
+     * of the two stacked pieces; only a host narrower than THAT is a broken embed (mount.js renders a
+     * blank window + error).  There is NO module max-width: the card FILLS its host (width: 100%),
+     * and the PARENT decides how wide per use case, so header + panels always share one width. */
+    --molview-min-width: max(var(--viewer-min), var(--panel-min));
+    width: 100%;
+    min-width: var(--molview-min-width);
+}
+
+/* WIDE (row): viewer | handle | panel.  justify-content:flex-start so the viewer sits at the card's
+ * LEFT edge (aligned with the card header's title); the PANEL grows (flex:1 1 auto below) to absorb
+ * any width the host gives beyond the viewer square + fold, so the content FILLS the card end to end
+ * -- header and panels share one width, no centered indent, no lopsided right gap. */
+.molview-body {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: flex-start;
+    width: 100%;
+
+    /* The viewer square's ACTUAL edge -- ONE value the viewer AND the panel both key off,
+     * so the panel's height matches the viewer with no JS and no fixed magic number:
+     *   - capped at --viewer-edge (never fills the card),
+     *   - but shrinks so the panel (--panel-min) + handle (--fold-w) always fit beside it.
+     * 100cqw is the CARD's own content width (it is `container-type: inline-size`), so this
+     * is content-driven -- it resolves against the embed, not the viewport (contract §3).
+     * The @container query below flips to stacked before this could fall under --viewer-min,
+     * so the max() floor is only belt-and-braces. */
+    --viewer-extent: max(var(--viewer-min),
+                         min(var(--viewer-edge),
+                             calc(100cqw - var(--panel-min) - var(--fold-w))));
+}
+
+/* Viewer: a 1:1 square sized to --viewer-extent (== card leftover, capped at --viewer-edge).
+ * A DEFINITE square edge -- so the panel beside it can be told the SAME height and the two
+ * bottom-align at any width, declaratively (the trajectory-inspector `align-items: stretch`
+ * pattern, expressed here as a shared extent). */
+.molview-body > .molview-viewer {
+    flex: 0 0 auto;
+    width: var(--viewer-extent);
+    height: var(--viewer-extent);
+    position: relative;            /* anchors the measurement-chip overlay */
+}
+
+/* The viewer chain FILLS the square, end to end -- so the embedded drawing canvas is sized by
+ * the module's own square (--viewer-extent), never by the embed's standalone default height.
+ * This is the module OWNING its viewer sizing: a consumer drops the fused card into any host
+ * and the viewer fits, with zero per-tab CSS.  Each level fills its parent and clips, so a
+ * transient over-size during the drawing's init can't spill out of the square (into the panel / the
+ * page below).  The embed's ``.mol-viewer-canvas`` is ``flex: 1 1 auto`` (mol-viewer-embed.css),
+ * so it absorbs whatever height is left under the knob bar -- no fixed canvas height anywhere. */
+.molview-viewer > .viewer-wrap {
+    width: 100%;
+    height: 100%;
+    position: relative;            /* anchors the measurement-chip overlay to the canvas */
+    overflow: hidden;              /* clip the drawing canvas to the square */
+    /* Viewer chrome -- the module owns it (it BUILDS .viewer-wrap).  Moved here from
+     * form-components.css, dropping that sheet's parallel aspect-ratio / min-height /
+     * max-height:56vh sizing which duplicated (and drifted from -- 56vh vs the module's
+     * 60vh --viewer-edge) the square the module already sizes above. */
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: #ffffff;           /* exempt: matches the drawing canvas's own clear colour (vendor-fixed), not a theme surface; covered once the canvas paints */
+    box-shadow: var(--shadow-card);
+}
+.molview-viewer .viewer-wrap > .viewer {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    background: transparent;       /* inherit the card surface -- no white frame */
+}
+.molview-viewer .viewer-wrap > .viewer > .mol-viewer-card {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Panel: the leftover width, with its own min-width.  overflow-x hidden keeps the fold
+ * width-collapse clean; overflow-y auto scrolls a tall panel rather than forcing the card
+ * wider. */
+.molview-panel {
+    /* GROWS to absorb the width the host gives beyond the viewer square + fold (flex-grow:1), with
+     * --panel-min as its floor -- so the content fills the card (aligned with the header) instead of
+     * the pair centering.  Folding is still a clean width collapse to 0 (the .is-folded rule below
+     * overrides flex-basis/width).  Width tracks the CARD width, NOT the atom-list<->filter switch
+     * (that never changes the card width), so task #53's "no resize on tab switch" holds. */
+    flex: 1 1 auto;
+    min-width: var(--panel-min);
+    /* HEIGHT == the viewer square's extent -- the SAME value the viewer uses, so the two
+     * bottom-align at EVERY width with no JS and no fixed magic number.  The viewer's
+     * View/Export bar is an OVERLAY inside its square (adds no height), so the panel's
+     * bottom lines up with the viewer's.  Switching atom-list <-> filter (or Selection <->
+     * Cell) never resizes it; the inner list/filter is the scroll region.  A ``min-height``
+     * floor keeps it usable if the viewport (hence the extent) is very short. */
+    height: var(--viewer-extent);
+    min-height: 18rem;
+    /* ONE scroll, not nested: the panel is a flex column and never scrolls itself
+     * (overflow hidden); the ACTIVE page inside is the single scroll region (below).  This
+     * kills the redundant outer scrollbar the panel used to add on top of the atom list. */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.15s ease;
+}
+
+/* The panel's single scroll region = the active [Selection|Cell] page.  The tabs header
+ * stays put; the page body scrolls when it's taller than the panel; the panel itself and the
+ * inner atom-list no longer each add their own bar.  Scoped to .molview-panel so a
+ * stand-alone selection-panel (outside a fused card) is unaffected. */
+.molview-panel .selection-card {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+.molview-panel .selection-card > .card-header { flex: 0 0 auto; }
+/* :not([hidden]) is CRITICAL: `display: flex` would otherwise override the [hidden]
+ * attribute's display:none and show BOTH the Selection AND Cell pages at once (so the tab
+ * switch would appear to do nothing). */
+.molview-panel .selection-card > .panel-page:not([hidden]) {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;   /* the page itself doesn't scroll -- only the list body inside does */
+}
+/* PIN every page section (mode toggle, Clear/Invert, the assign block) EXCEPT the click/
+ * filter body, which flexes to fill the panel and holds the single scroll region. */
+/* The Cell page is ALL read-only info (no action buttons to keep on screen), so unlike the
+ * Selection page it may simply SCROLL as a whole when it's taller than the panel -- it sizes
+ * to its content (compact when short), then scrolls.  (ID selector wins over the .panel-page
+ * rule above, so `overflow: hidden` there doesn't clip it.) */
+.molview-panel .selection-card > #panel-page-cell:not([hidden]) {
+    flex: 0 1 auto;
+    overflow-y: auto;
+}
+
+.molview-panel .panel-page > * { flex: 0 0 auto; }
+/* The click/filter body FILLS the fixed-height panel (flex: 1 1 auto) so the panel
+ * frame is STABLE whichever view is shown -- the atom list and the (shorter) filter
+ * view both occupy the same frame, and the list/filter rows inside are the single
+ * scroll region.  The header + Clear/Invert + assign stay pinned above it. */
+.molview-panel .panel-page > #selection-click-section:not([hidden]),
+.molview-panel .panel-page > #selection-filter-section:not([hidden]) {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+/* The atom list / filter rows ARE the scroll region -- its fixed cap is replaced by the flex
+ * fill, so the list scrolls while the header + Clear/Invert + assign stay pinned. */
+.molview-panel .selection-list-wrap,
+.molview-panel .selection-filter-rows {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+}
+
+/* ---- Fold handle: a slim, full-height splitter rail (not a bordered box) ---- */
+.molview-fold-btn {
+    flex: 0 0 auto;
+    align-self: stretch;
+    width: var(--fold-w);   /* the SAME rail width the layout math reserves (one source of truth) */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    border: none;
+    /* A resting SHADE (not transparent) so the rail is visually identifiable as the
+     * fold/unfold affordance against the card background -- hover/active deepen it.
+     * Design tokens (tokens.css), with hex fallbacks for embeds that lack the sheet. */
+    background: var(--bg-input, #262b33);
+    color: var(--text-muted, #6c7280);
+    font-size: 0.85rem;
+    line-height: 1;
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+/* The chevron GLYPH rotates -- NOT the button box.  Rotating the box would swap its
+ * width/height in narrow (column) mode, turning a full-width bar into a tall rail that
+ * overlaps the viewer + panel.  Keeping rotation on the glyph leaves the button's layout
+ * box stable at every width.
+ *
+ * DIRECTION = where the panel will MOVE when clicked (the effect's direction).  WIDE, panel
+ * on the right: UNFOLDED points LEFT (`›` rotated 180° -> `‹`) = "collapse the panel away";
+ * FOLDED points RIGHT = "reveal the panel out to the right".  (Stacked flips to up/down in
+ * the @container block below.) */
+.molview-fold-chevron {
+    display: inline-block;
+    line-height: 1;
+    transform: rotate(180deg);   /* unfolded (wide): point LEFT -- clicking folds the panel away */
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.molview-fold-btn:hover {
+    background: var(--bg-input-focus, #2c323b);
+    color: var(--text-secondary, #a8aebb);
+}
+.molview-fold-btn:active { background: var(--border-strong, #3a3f48); }
+.molview-fold-btn:focus-visible {
+    outline: 2px solid var(--accent, #6ba6ff);
+    outline-offset: -2px;
+}
+
+/* Folded (wide): collapse the panel to zero width; the viewer stays put. */
+.molview-card.is-folded .molview-panel {
+    flex: 0 0 0;          /* kill the grow (the unfolded panel is flex:1 1 auto) so it truly collapses */
+    width: 0;
+    min-width: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+/* Folded: the panel is gone and the viewer no longer needs to be a square bottom-aligned with it,
+ * so give the viewer the freed width -- folding EXPANDS the view instead of leaving an empty gap.
+ * Height stays --viewer-extent (capped at --viewer-edge); the viewer becomes a wide rectangle. */
+.molview-card.is-folded .molview-viewer {
+    flex: 1 1 auto;
+    width: auto;
+}
+.molview-card.is-folded .molview-fold-chevron { transform: rotate(0deg); }  /* folded: point RIGHT -- clicking reveals the panel */
+
+/* ---- STACK only when the card is too NARROW to hold BOTH min-widths side by side:
+   the threshold is the DERIVED sum --viewer-min(320 + --rail-w 30 = 350) + --fold-w(22) +
+   --panel-min(320) = 692 (contract §7.1 -- the one named breakpoint).  It MUST track
+   --viewer-min: the rail added 30px to the viewer square, so the row needs 30px more before
+   both mins fit -- otherwise between 664 and 692 the row layout is on but --viewer-min +
+   --panel-min overflow the card.  (@container can't read var(), so this literal mirrors the
+   sum by hand.)  Above it, the row's shared --viewer-extent keeps the viewer + panel
+   bottom-aligned; below it we go VERTICAL: viewer on top (a centred square), panel below. */
+@container (max-width: 692px) {
+    /* ONE stacked square edge -- capped at --viewer-edge (which already carries the sole
+     * allowed 60vh, §7.1), else the CARD's own width (100cqw).  Reused by the viewer AND the
+     * panel so both columns share one width and align; no fresh viewport magic number. */
+    .molview-body {
+        flex-direction: column;
+        align-items: center;
+        --stack-extent: min(var(--viewer-edge), 100cqw);
+    }
+    .molview-body > .molview-viewer {
+        width: var(--stack-extent);              /* centred square */
+        height: var(--stack-extent);
+    }
+    .molview-panel {
+        /* Same width as the viewer square (columns align), and a height that MATCHES the
+         * square too -- a generous, stable frame (so the atom list is usable, not a sliver)
+         * that an atom-list <-> filter switch never resizes; the inner list scrolls, and the
+         * page scrolls if the stacked pair exceeds the viewport (the narrow case). */
+        width: var(--stack-extent);
+        height: var(--stack-extent);
+        min-height: 22rem;
+        transition: height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
+    }
+    .molview-fold-btn {
+        /* A COMPACT centred grip (hugs its chevron + a grab margin) -- NOT a full-width bar.
+         * A small centred handle cannot read as "wider than the panels" by construction, so
+         * the stacked layout needs no width-matching against the viewer canvas / panel inset. */
+        align-self: center;
+        width: auto;
+        padding: 0 2rem;
+        height: 22px;
+        border-radius: 999px;
+    }
+    /* Stacked (panel BELOW): direction = where the panel moves.  UNFOLDED points UP
+     * ("collapse up, away"); FOLDED points DOWN ("reveal the panel below"). */
+    .molview-fold-chevron { transform: rotate(-90deg); }
+    .molview-card.is-folded .molview-panel { height: 0; min-height: 0; }
+    .molview-card.is-folded .molview-fold-chevron { transform: rotate(90deg); }
+}
+
+/* Frame controls bar (§14.5) -- the trajectory playback UI molview renders in the controls
+ * area.  Hidden via the [hidden] attribute until a trajectory is loaded (frameCount > 1);
+ * :not([hidden]) is required so `display: flex` doesn't override that. */
+.molview-frame-controls:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-wrap: nowrap;            /* the bar's OWN controls stay on one line; the slider flexes */
+    /* Grow to fill the knob-bar row, but a ~15rem basis makes the bar WRAP to its own full-width
+       row (the knob bar is flex-wrap:wrap) once View/Export leave it less than that -- so a small
+       viewer stacks the bar instead of overflowing the canvas. */
+    flex: 1 1 15rem;
+    font: var(--text-2xs, 0.6875rem)/1.2 system-ui, sans-serif;
+    color: var(--text-secondary, #a8aebb);
+}
+/* Playback buttons -- ‹ prev, ▶/⏸ play-loop, › next (controls.js). */
+.mvf-play, .mvf-step {
+    padding: 0.1rem 0.45rem;
+    font-size: var(--text-2xs, 0.6875rem); line-height: 1.4;
+    cursor: pointer;
+    background: var(--bg-input, #262b33);
+    color: var(--text-secondary, #a8aebb);
+    border: 1px solid var(--border-soft, #2c313a);
+    border-radius: 4px;
+}
+.mvf-play:hover, .mvf-step:hover { background: var(--bg-input-focus, #2c323b); }
+.mvf-slider {
+    flex: 1 1 4rem; min-width: 3rem;
+    accent-color: var(--accent, #6ba6ff);
+    cursor: pointer;
+}
+.mvf-counter { font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
+
+/* Transport buttons ‹ ▶ › -- a tight segmented group (shared/collapsed borders). */
+.mvf-transport { display: inline-flex; }
+.mvf-transport > button { border-radius: 0; margin-left: -1px; }
+.mvf-transport > button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.mvf-transport > button:last-child  { border-radius: 0 4px 4px 0; }
+.mvf-transport > button:hover { position: relative; z-index: 1; }   /* keep the hovered border on top */
+
+/* "loop" checkbox -- small; play + ‹/› wrap at the ends when checked. */
+.mvf-loop {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: var(--text-2xs, 0.6875rem); cursor: pointer; user-select: none;
+}
+.mvf-loop input { margin: 0; cursor: pointer; }
+.mvf-speed {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: var(--text-2xs, 0.6875rem); user-select: none;
+}
+.mvf-speed-input {
+    /* Wide enough for the full value (up to 3000 = 4 digits); the number spinners
+     * are hidden so they don't eat the width -- the user types the value.  Paired
+     * with the compact loop glyph (⟳) that frees the row space. */
+    width: 4.2em; min-width: 4.2em; margin: 0; padding: 1px 3px;
+    font-size: var(--text-2xs, 0.6875rem);
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.mvf-speed-input::-webkit-outer-spin-button,
+.mvf-speed-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+
+/* ── VIEWER-OVERLAY FRAMEWORK ─────────────────────────────────────────────────────────────── //
+ * ONE shared class for every corner overlay the MolView module draws over the viewer square
+ * (persistence indicator, and -- migrating -- the measurement chip).  The concealed factory
+ * lib/molview/mount.js builds the element with these classes so EVERY overlay is
+ * positioned + styled identically, from TOKENS only, with no per-consumer tweaking.  Anchors to
+ * .viewer-wrap (position: relative already), so it tracks the viewer in every fold state. */
+.molview-overlay {
+    position: absolute;
+    z-index: 5;                       /* the module's viewer-overlay layer (matches the chip) */
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
+    max-width: calc(100% - 2 * var(--space-sm));
+    font-size: var(--text-2xs);
+    line-height: var(--line-snug);
+    color: var(--text-primary);
+    background: var(--bg-card-elev, var(--bg-card));
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-card);
+    pointer-events: none;             /* never intercept viewer drags; the text carries the meaning */
+}
+.molview-overlay[hidden] { display: none; }
+/* Corner placement modifiers (the factory picks one). */
+.molview-overlay--top-right    { top: var(--space-sm);    right: var(--space-sm); }
+.molview-overlay--top-left     { top: var(--space-sm);    left:  var(--space-sm); }
+.molview-overlay--bottom-right { bottom: var(--space-sm); right: var(--space-sm); }
+.molview-overlay--bottom-left  { bottom: var(--space-sm); left:  var(--space-sm); }
+/* Semantic tint modifiers (border + surface), consistent with the palette's severity tokens. */
+.molview-overlay--warn { border-color: var(--warn);   background: var(--warning-bg); }
+.molview-overlay--info { border-color: var(--accent); }
+
+/* SIZING-CONTRACT FAILURE (mount.js): the parent handed the card less than --molview-min-width.
+ * The module refuses to render broken/overflowing -- it shows a blank card with a centered message.
+ * The --unmountable modifier drops the min-width so the message itself fits the too-small host. */
+.molview-card--unmountable { min-width: 0; }
+.molview-embed-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--viewer-min);
+    padding: var(--space-lg);
+    text-align: center;
+    text-wrap: balance;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--line-normal);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+}
+
+/* ==========================================================================
+   The selection panel (was selection/selection-panel.css)
+   ========================================================================== */
+
+/* Selection panel -- compact single-column card.
+ *
+ * Used by /modify (and later /spectra) via the _selection_panel.html
+ * partial.  Designed to sit beside the 3D viewer, so the layout is a
+ * narrow vertical stack rather than a two-column body.
+ *
+ * Visual stack (top-to-bottom):
+ *   1. Header        -- title + live count.
+ *   2. Mode toggle   -- Click vs Filter (segmented control).
+ *   3. Mode body     -- exactly ONE of these is visible at a time:
+ *      * Click mode    -> scrollable atom list (max-height ~340px).
+ *      * Filter mode   -> combinator + filter rows + Apply filter.
+ *   4. Clear selection.
+ *   5. Assign block  -- Target + Assign / Add / Remove.
+ *   6. Inline error.
+ */
+
+.selection-card {
+    margin: 0;
+}
+
+.selection-card .card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.selection-status {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    font: 13px/1.4 system-ui, sans-serif;
+    color: var(--ps-fg-dim);
+}
+
+.selection-count {
+    color: var(--ps-fg);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.selection-loading {
+    color: var(--accent);
+    font-style: italic;
+}
+
+/* Measurement-chip styles live in lib/selection/measurement-chip.css
+ * — extracted 2026-06-08 (task #299) so the Results-tab trajectory
+ * inspector can share the same chip without inheriting unused
+ * panel-specific rules.  Page templates load both stylesheets
+ * independently. */
+
+/* ---------- Click-mode body -------------------------------------- */
+
+.selection-click-section {
+    margin-top: 0.5rem;
+}
+
+/* ---------- Mode toggle -------------------------------------------- */
+
+/* Compact segmented control.  Two pills side-by-side, single row,
+ * no descriptive hint text (the title attribute carries the
+ * tooltip for users who hover).
+ */
+.selection-mode {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    margin: 0 0 0.6rem;
+    padding: 2px;
+    background: var(--ps-bg-deep);
+    border: 1px solid var(--ps-border);
+    border-radius: 4px;
+}
+
+.selection-mode-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem 0.6rem;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+.selection-mode-option:hover {
+    background: var(--ps-hover);
+}
+.selection-mode-option:has(input:checked) {
+    background: var(--sp-accent-bg);
+    box-shadow: inset 0 0 0 1px var(--sp-accent);
+}
+.selection-mode-option input[type="radio"] {
+    /* The label text is enough; hide the radio dot.  ``:has()``
+       above is what styles the selected pill. */
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+.selection-mode-option > span {
+    color: var(--ps-fg-dim);
+    font: 600 12px/1.2 system-ui, sans-serif;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+.selection-mode-option:has(input:checked) > span {
+    color: var(--sp-accent-fg);
+}
+
+/* ---------- Filter rows ------------------------------------------- */
+
+.selection-filter-section {
+    margin-bottom: 0.6rem;
+    padding: 0.5rem;
+    background: var(--ps-bg-deep);
+    border: 1px solid var(--ps-hover);
+    border-radius: 4px;
+}
+
+.selection-combinator-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    /* No bottom margin: combinator + Apply filter are tightly
+     * grouped in a flex column .selection-filter-footer (2026-06-12).
+     * Each direct child gets default gap from the parent's gap rule
+     * — overriding margin here would double-space the footer. */
+    margin-bottom: 0;
+}
+
+/* 2026-06-12: Combine + Apply filter footer.  Vertical stack with
+ * a small gap so the two read as a single "combine ... and apply"
+ * unit attached to the bottom of the filter rows. */
+.selection-filter-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+}
+
+/* THE small-caps caption for the whole panel (§2.1 shared class -- ui-design-contract):
+ * Combine/Target mini-labels AND the Cell-page captions (readout dt + the unit-cell
+ * matrix label) all share this ONE block.  Do not re-declare it under a new selector. */
+.selection-mini-label,
+.cell-readout dt,
+.cell-matrix-label {
+    color: var(--ps-fg-dim);
+    font: 600 11px/1.2 system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.selection-combinator-select {
+    flex: 1;
+    background: var(--ps-bg-deep);
+    color: var(--ps-fg);
+    border: 1px solid var(--ps-border);
+    border-radius: 3px;
+    padding: 0.18rem 0.4rem;
+    font: 11px system-ui, sans-serif;
+}
+
+/* Filter-mode action row: + Add filter (left) + Apply filter
+ * (right, primary).  Apply filter is the EXPLICIT commit step
+ * that materialises the filter draft into state.selection.
+ */
+.selection-filter-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+/* 2026-06-12 v3 (revised): + Add filter is the panel's headline
+ * action — visible regardless of mode, full width across the
+ * panel, larger + accent-coloured so the user spots it
+ * immediately as "this is how I start a filter".  Compare with
+ * the muted ``.selection-add-btn`` used elsewhere. */
+.selection-add-filter-row {
+    margin: 0.5rem 0;
+}
+.selection-add-btn-primary {
+    display: inline-block;
+    padding: 0.18rem 0.5rem;
+    background: var(--sp-accent);
+    color: var(--ps-selected-fg);
+    border: 1px solid var(--sp-accent-strong);
+    border-radius: 3px;
+    font: 600 11px/1.15 system-ui, sans-serif;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, transform 0.08s;
+}
+.selection-add-btn-primary:hover {
+    background: var(--sp-accent-strong);
+    border-color: var(--sp-accent-light);
+}
+.selection-add-btn-primary:active {
+    transform: translateY(1px);
+}
+.selection-add-btn-primary:focus-visible {
+    outline: 2px solid var(--sp-accent-light);
+    outline-offset: 1px;
+}
+
+.selection-apply-filter-btn {
+    flex: 1;
+    padding: 0.18rem 0.5rem;
+    font: 600 11px/1.15 system-ui, sans-serif;
+    background: var(--sp-accent-bg-mid);
+    color: var(--sp-accent-fg);
+    border: 1px solid var(--sp-accent);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.selection-apply-filter-btn:hover {
+    background: var(--sp-accent-bg-mid);
+    border-color: var(--sp-accent-strong);
+    color: var(--ps-selected-fg);
+}
+
+.selection-filter-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.selection-filter-empty {
+    margin: 0;
+    color: var(--ps-fg-dim);
+    font: italic 11px/1.3 system-ui, sans-serif;
+}
+
+/* Grid layout so kind selector + text input + × align in a column
+ * across rows.  The text-input column flexes, the others are
+ * fixed-width. */
+.selection-filter-row {
+    display: grid;
+    grid-template-columns: minmax(0, 7em) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.35rem;
+    background: var(--ps-bg-tile);
+    border: 1px solid var(--ps-border);
+    border-radius: 3px;
+}
+
+.selection-filter-kind {
+    background: var(--ps-bg-deep);
+    color: var(--ps-fg);
+    border: 1px solid var(--ps-border);
+    border-radius: 3px;
+    padding: 0.18rem 0.4rem;
+    font: 11px system-ui, sans-serif;
+    min-width: 0;
+}
+
+.selection-filter-text {
+    background: var(--ps-bg-deep);
+    color: var(--ps-fg);
+    border: 1px solid var(--ps-border);
+    border-radius: 3px;
+    padding: 0.18rem 0.4rem;
+    font: 11px ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    min-width: 0;
+}
+
+.selection-filter-remove {
+    background: transparent;
+    color: var(--ps-fg-dim);
+    border: 1px solid var(--ps-border);
+    border-radius: 3px;
+    width: 1.8em;
+    height: 1.8em;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.selection-filter-remove:hover:not(:disabled) {
+    color: var(--sp-danger-fg);
+    border-color: var(--ps-danger);
+    background: var(--sp-exclude-bg);
+}
+
+/* ---------- Atom list --------------------------------------------- */
+
+.selection-list-wrap {
+    position: relative;
+    margin: 0;
+    border: 1px solid var(--ps-border);
+    border-radius: 4px;
+    background: var(--ps-bg-deep);
+    max-height: 340px;
+    overflow: auto;
+}
+
+.selection-atom-table {
+    width: 100%;
+    border-collapse: collapse;
+    font: 12px/1.3 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+.selection-atom-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--ps-bg-deep);
+    z-index: 1;
+    /* Subtle bottom border to separate header from rows on scroll. */
+    box-shadow: inset 0 -1px 0 var(--ps-border);
+}
+.selection-atom-table th {
+    text-align: left;
+    padding: 0.35rem 0.5rem;
+    font-weight: 600;
+    color: var(--ps-fg-dim);
+    font-family: system-ui, sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.selection-atom-table td {
+    padding: 0.25rem 0.5rem;
+    color: var(--ps-fg);
+    border-top: 1px solid var(--ps-bg-tile);
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.selection-atom-table tr.is-selected td {
+    background: var(--sp-accent-bg);
+    color: var(--sp-accent-fg);
+}
+.selection-atom-table tr:hover td {
+    background: var(--ps-bg-deep);
+}
+.selection-atom-table tr.is-selected:hover td {
+    background: var(--sp-accent-bg);
+}
+
+.selection-atom-table .col-check { width: 1.6em; }
+.selection-atom-table .col-idx   { width: 3em;   text-align: right; }
+.selection-atom-table .col-el    { width: 2.5em; font-weight: 600; }
+.selection-atom-table .col-name  { width: 4em; }
+.selection-atom-table .col-res   { width: 4em; color: var(--ps-fg-dim); }
+
+.selection-atom-table .col-labels {
+    color: var(--ps-fg-dim);
+}
+
+.selection-atom-table input[type="checkbox"] {
+    cursor: pointer;
+}
+.selection-atom-table input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.selection-list-empty {
+    margin: 0;
+    padding: 1rem;
+    color: var(--ps-fg-dim);
+    font: italic 13px/1.3 system-ui, sans-serif;
+    text-align: center;
+}
+
+/* Label tags inside the atom list.  Tag = pill containing the label
+ * text + a small × button to remove it.  Clicking × posts a save
+ * with the remaining members of that region (i.e. removes just this
+ * atom from this label).
+ */
+.selection-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25em;
+    padding: 0.05em 0.25em 0.05em 0.5em;
+    margin: 0 0.25em 0.15em 0;
+    font: 600 10px/1.4 system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 3px;
+}
+.tag-region {
+    background: var(--sp-include-bg);
+    color: var(--sp-include-fg);
+    border: 1px solid var(--sp-include-bg);
+}
+.tag-frozen {
+    background: var(--sp-exclude-bg);
+    color: var(--sp-exclude-fg);
+    border: 1px solid var(--sp-exclude-border);
+}
+
+.selection-tag-remove {
+    background: var(--sp-tag-remove-bg);
+    border: 1px solid var(--sp-tag-remove-border);
+    color: inherit;
+    opacity: 0.85;
+    padding: 0 0.35em;
+    margin-left: 0.15em;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: opacity 0.12s, background 0.12s, color 0.12s,
+                border-color 0.12s;
+}
+.selection-tag-remove:hover {
+    opacity: 1;
+    background: var(--sp-danger-bg-hover);
+    border-color: var(--sp-danger-border-hover);
+    color: var(--sp-exclude-fg);
+}
+
+/* ---------- Buttons + Assign block -------------------------------- */
+
+.selection-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}
+
+.selection-actions-row {
+    justify-content: space-between;   /* left group, isolate-toggle on right */
+    align-items: center;
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
+}
+.selection-actions-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+/* 2026-06-12: "Show selected only" toggle — hides non-selected
+ * atoms in the 3D viewer via opacity:0 overlays.  Aligned to the
+ * Clear button's baseline; the inline checkbox + label form a
+ * single click target. */
+/* (.selection-isolate-toggle removed -- the "Show selected only" toggle moved to the
+   viewer-controls bar; see the fused-card section below, .viewer-toggle.) */
+
+/* Shared base for every action button (Clear, Assign, Add, Remove,
+ * Add-filter).  The verb buttons in the 3-col Assign row sit on
+ * the same baseline, get the same font + padding; only the colour
+ * differs to encode replace/add/remove semantics. */
+.selection-add-btn,
+.selection-clear-btn,
+.selection-assign-btn,
+.selection-add-target-btn,
+.selection-remove-target-btn {
+    background: var(--ps-border);
+    color: var(--ps-fg);
+    border: 1px solid var(--ps-border-strong);
+    border-radius: 3px;
+    padding: 0.18rem 0.5rem;
+    font: 600 11px/1.15 system-ui, sans-serif;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    white-space: nowrap;
+}
+.selection-add-btn:hover,
+.selection-clear-btn:hover,
+.selection-assign-btn:hover,
+.selection-add-target-btn:hover,
+.selection-remove-target-btn:hover {
+    background: var(--ps-border-strong);
+    border-color: var(--ps-border-strong);
+    color: var(--ps-selected-fg);
+}
+
+/* Assign = REPLACE -- blue accent (the "primary" action). */
+.selection-assign-btn {
+    background: var(--sp-accent-bg-mid);
+    border-color: var(--sp-accent);
+    color: var(--sp-accent-fg);
+}
+.selection-assign-btn:hover {
+    background: var(--sp-accent-bg-mid);
+    border-color: var(--sp-accent-strong);
+    color: var(--ps-selected-fg);
+}
+
+/* + Add = UNION -- green accent. */
+.selection-add-target-btn {
+    background: var(--sp-include-bg);
+    border-color: var(--sp-include-bg);
+    color: var(--sp-include-fg);
+}
+.selection-add-target-btn:hover {
+    background: var(--sp-include-bg);
+    border-color: var(--sp-include-bg);
+    color: var(--sp-include-fg);
+}
+
+/* − Remove = DIFFERENCE -- red accent. */
+.selection-remove-target-btn {
+    background: var(--sp-exclude-bg);
+    border-color: var(--sp-exclude-border);
+    color: var(--sp-exclude-fg);
+}
+.selection-remove-target-btn:hover {
+    background: var(--sp-exclude-bg);
+    border-color: var(--sp-exclude-border);
+    color: var(--sp-exclude-fg);
+}
+
+/* Visual divider between SELECT-side controls (mode + filters) and
+ * ACT-side controls (clear + bulk label ops). */
+.selection-divider {
+    margin: 0.6rem 0 0.5rem;
+    border: 0;
+    border-top: 1px solid var(--ps-border);
+}
+
+/* The Assign block stacks its Target row and its three verb buttons
+ * vertically so the buttons don't compete for horizontal width with
+ * the dropdown. */
+.selection-assign {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+
+.selection-target-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.selection-verb-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.3rem;
+}
+
+/* (.selection-field-label removed 2026-07: zero producers.) */
+
+.selection-assign-select,
+.selection-new-label {
+    flex: 1;
+    background: var(--ps-bg-deep);
+    color: var(--ps-fg);
+    border: 1px solid var(--ps-border);
+    border-radius: 3px;
+    padding: 0.18rem 0.4rem;
+    font: 11px system-ui, sans-serif;
+    min-width: 0;
+}
+.selection-new-label {
+    font-family: var(--font-mono);
+}
+
+/* ====================================================================
+ * Region-label definitions popover (2026-06-18).
+ * Triggered by the ⓘ button next to Target:.  See
+ * lib/region-label-definitions.js + docs/model/structure-annotations.md.
+ * ==================================================================== */
+.selection-target-info-btn {
+    background: transparent;
+    color: var(--ps-fg-dim);
+    border: 1px solid var(--ps-border);
+    border-radius: 50%;
+    width: 1.6em;
+    height: 1.6em;
+    padding: 0;
+    font: 14px/1 system-ui, sans-serif;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.selection-target-info-btn:hover {
+    color: var(--ps-fg);
+    border-color: var(--ps-fg-dim);
+}
+.selection-target-info-btn[aria-expanded="true"] {
+    background: var(--ps-bg-deep);
+    color: var(--ps-fg);
+}
+.selection-target-info-panel {
+    margin-top: 0.4rem;
+    padding: 0.6rem 0.7rem;
+    background: var(--ps-bg-deep);
+    border: 1px solid var(--ps-border);
+    border-radius: 4px;
+    font: 12px system-ui, sans-serif;
+    color: var(--ps-fg);
+    max-height: 50vh;
+    overflow-y: auto;
+}
+.selection-target-info-panel[hidden] {
+    display: none;
+}
+.region-defs-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 13px;
+    color: var(--ps-fg);
+    border-bottom: 1px solid var(--ps-border);
+    padding-bottom: 0.3rem;
+}
+.region-defs-row {
+    margin-bottom: 0.5rem;
+}
+.region-defs-row > summary {
+    cursor: pointer;
+    padding: 0.2rem 0;
+    line-height: 1.5;
+    list-style: none;
+}
+.region-defs-row > summary::-webkit-details-marker {
+    display: none;
+}
+.region-defs-row > summary::before {
+    content: "▸ ";
+    color: var(--ps-fg-dim);
+}
+.region-defs-row[open] > summary::before {
+    content: "▾ ";
+}
+.region-defs-key {
+    font-family: var(--font-mono);
+    background: var(--ps-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--ps-fg);
+}
+.region-defs-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-left: 0.3em;
+}
+.region-defs-badge.in-use {
+    background: var(--success);
+    color: white;
+}
+.region-defs-badge.available {
+    background: var(--ps-border);
+    color: var(--ps-fg-dim);
+}
+.region-defs-short {
+    color: var(--ps-fg-dim);
+    margin-left: 0.4em;
+}
+.region-defs-body {
+    margin: 0.3rem 0 0.4rem 1.5rem;
+    font-size: 11.5px;
+    line-height: 1.45;
+}
+.region-defs-body > dt {
+    font-weight: 600;
+    color: var(--ps-fg);
+    margin-top: 0.3rem;
+}
+.region-defs-body > dd {
+    margin: 0.1rem 0 0 0;
+    color: var(--ps-fg-dim);
+}
+.region-defs-bias {
+    margin-top: 0.7rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--ps-border);
+    color: var(--ps-fg-dim);
+    line-height: 1.45;
+}
+.region-defs-bias > strong {
+    color: var(--ps-fg);
+}
+.region-defs-doc {
+    margin-top: 0.4rem;
+    color: var(--ps-fg-dim);
+    font-size: 11px;
+}
+.region-defs-doc > a {
+    color: var(--ps-fg);
+}
+
+.selection-error {
+    margin: 0.6rem 0 0 0;
+    color: var(--sp-danger-fg);
+    font: 13px system-ui, sans-serif;
+}
+
+/* Surfaced by selection-bootstrap.js when the panel partial can't
+ * be fetched -- the selection-panel CSS above never reaches the DOM
+ * in that case, so this banner has to stand on its own.  Same colour
+ * family as .selection-error for visual coherence. */
+.selection-bootstrap-error {
+    margin: 0.6rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--sp-danger-border-hover);
+    background: var(--sp-danger-bg-soft);
+    color: var(--sp-danger-fg);
+    font: 13px system-ui, sans-serif;
+    border-radius: 4px;
+}
+
+/* `.sr-only` (visually-hidden but screen-reader announced) lives in
+ * lib/page-shell.css — every page loads it from there. */
+
+/* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
+.selection-header-tabs { align-items: center; }
+/* The [Selection|Cell] switch is the panel's SECTION-level tab bar -- left-aligned
+ * underline tabs (title-like), deliberately NOT the boxed pill segmented-control used by the
+ * Atom-list/Filter mode toggle INSIDE the page, so the two read as different levels. */
+.panel-page-switch {
+    display: inline-flex;
+    justify-content: flex-start;
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+}
+.panel-page-option {
+    display: flex;
+    align-items: center;
+    padding: 0.05rem 0 0.25rem;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s;
+}
+.panel-page-option:has(input:checked) { border-bottom-color: var(--sp-accent); }
+.panel-page-option input[type="radio"] {
+    position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+}
+.panel-page-option > span {
+    color: var(--ps-fg-dim);
+    font: 700 13px/1.2 system-ui, sans-serif;
+    letter-spacing: 0.01em;
+}
+.panel-page-option:hover > span { color: var(--ps-fg); }
+.panel-page-option:has(input:checked) > span { color: var(--sp-accent-fg); }
+
+/* Cell readout -- read-only display of the resolved periodicity (stage 2). */
+.cell-readout {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.3rem 0.6rem;
+    margin: 0 0 0.6rem;
+}
+/* .cell-readout dt caption style comes from the shared .selection-mini-label rule (§2.1). */
+.cell-readout dd { margin: 0; }
+.cell-value {
+    color: var(--ps-fg);
+    font: 12px/1.4 ui-monospace, monospace;
+    word-break: break-word;
+}
+
+/* Unit-cell 3x3 matrix -- aligned, right-justified tabular numbers (§3b). */
+.cell-matrix-block { margin: 0 0 0.6rem; }
+/* caption style from the shared .selection-mini-label rule (§2.1); only the layout delta here. */
+.cell-matrix-label { margin-bottom: 0.25rem; }
+.cell-tag { text-transform: none; color: var(--ps-fg-dim); font-weight: 400; }
+.cell-matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px 0.5rem;
+    padding: 0.35rem 0.5rem;
+    background: var(--ps-bg-deep);
+    border: 1px solid var(--ps-border);
+    border-radius: 4px;
+}
+.cell-matrix-cell {
+    text-align: right;
+    color: var(--ps-fg);
+    font: 12px/1.5 ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   The measurement readout (was selection/measurement-chip.css)
+   ========================================================================== */
+
+/* Shared measurement chip — xyz / distance / angle readout that
+ * floats over the drawing canvas.  Used by the Molbuilder tab (a
+ * single chip on the Modify viewer) AND the Results-tab
+ * trajectory inspector (its Inspect tab uses the same class
+ * inside the panel body).  Centralised here so both consumers
+ * pick up future tweaks via one edit; pre-task-299 the rules
+ * lived in lib/selection-panel.css alongside the panel-specific
+ * styles, which made the /results trajectory inspector inherit
+ * "panel" semantics it didn't need.
+ *
+ * Two anchoring modes:
+ *
+ *   1. ``position: absolute`` mode (Molbuilder tab) — the host
+ *      page wraps #viewer in a position:relative .viewer-wrap so
+ *      this rule's top/right anchors the chip at the actual
+ *      canvas corner.  ``pointer-events: none`` lets clicks pass
+ *      through to the drawing.
+ *
+ *   2. ``position: static`` mode (trajectory Inspect panel) —
+ *      the chip sits inline in the panel's flow.  An override on
+ *      ``.ctab-panel > .selection-measurement-overlay`` rolls
+ *      back to static positioning + no pointer-events guard so
+ *      the readout is selectable text in the panel body.
+ *
+ * Monospace + tabular-nums so coords / distances / angles don't
+ * jitter as their decimals change.  Border-left + data-kind sets
+ * a subtle category colour: grey for xyz, blue for distance,
+ * orange for angle (matches the historical Watch-tab pick
+ * highlight). */
+
+.selection-measurement-overlay {
+    position: absolute;
+    bottom: 0.6rem;
+    right: 0.6rem;
+    z-index: 5;
+    max-width: calc(100% - 1.2rem);
+    padding: 0.35rem 0.6rem;
+    background: rgba(15, 17, 21, 0.78);
+    color: var(--text-primary);
+    border: 1px solid rgba(74, 158, 255, 0.45);
+    border-left-width: 3px;
+    border-radius: 4px;
+    font: 13px/1.4 ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    user-select: text;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+.selection-measurement-overlay[hidden] { display: none; }
+.selection-measurement-overlay[data-kind="xyz"]      { border-left-color: var(--text-secondary); }
+.selection-measurement-overlay[data-kind="distance"] { border-left-color: var(--accent); }
+.selection-measurement-overlay[data-kind="angle"]    { border-left-color: #fb923c; /* exempt: distinct orange for angle measurement */ }
+
+/* Trajectory-inspector Inspect panel: the chip lives inline in
+ * the panel body (no canvas to overlay), so static positioning
+ * with normal margin + a tighter border treatment reads as a
+ * regular panel readout.  Pointer-events back on so the text
+ * stays selectable without the floating-chip caveat. */
+.ctab-panel .selection-measurement-overlay {
+    position: static;
+    margin: 0.5rem 0 0;
+    box-shadow: none;
+    pointer-events: auto;
+}
+
+/* ==========================================================================
+   The 3D window's own chrome (was lib/viewer/mol-viewer-embed.css)
+   ========================================================================== */
+
+/* mol-viewer-embed.css — card chrome for the embedded MolViewer.
+ *
+ * Contract: docs/web/molview.md "Card structure".
+ * Theme through the standard tokens (tokens.css); per-tab overrides
+ * via opts.card.className from the embed call site.
+ */
+
+.mol-viewer-card {
+    /* 3D-scene constants for the WebGL draw (mol-viewer-embed.js).  the drawing library shapes can't be
+     * styled by CSS directly, so the draw code LOOKS THESE UP via getComputedStyle on THIS
+     * element -- named, discoverable, and CONCEALED to the MolView module (scoped here, not on
+     * global :root, so they never leak into the page's token namespace). */
+    --mol-cell-wireframe-color:  #888;   /* exempt: per-module 3D-scene token (unit-cell box line colour, read by getComputedStyle for the WebGL draw); no UI palette token matches this mid-gray */
+    --mol-cell-wireframe-radius: 0.04;   /* box line thickness, in ANGSTROM (3D world units, NOT px) */
+
+    /* Inherit base .card padding + radius from tokens.css; this
+       file only adds the per-component overrides. */
+    display:        flex;
+    flex-direction: column;
+    gap:            var(--space-xs, 0.4rem);
+    /* When the host fixes the card's height (e.g. /modify's
+       #viewer with aspect-ratio: 1/1 + max-width: 560px), the
+       flex column must respect that height instead of stretching
+       beyond it.  Combined with the canvas's flex: 1 below,
+       header + knob bar take natural size and the canvas fills
+       whatever space remains. */
+    height:         100%;
+    /* Realistic usability floor — below these sizes the 2-menu
+       bar wraps onto two rows and the canvas becomes a strip.
+       Consumers that need smaller (e.g. an icon-mode embed) can
+       override; the defaults guard against accidental tiny cards. */
+    min-width:      320px;
+    min-height:     280px;
+}
+
+.mol-viewer-card-header {
+    display:        flex;
+    align-items:    baseline;
+    justify-content: space-between;
+    gap:            var(--space-md, 0.8rem);
+    /* Header has a slim baseline so it doesn't bulk-up over the
+       viewer canvas; padding inherited from .card. */
+    padding-bottom: var(--space-xs, 0.4rem);
+    border-bottom:  1px solid var(--border-soft, #2c313a);
+}
+
+.mol-viewer-card-title {
+    margin:         0;
+    font-size:      var(--text-md, 1rem);
+    font-weight:    600;
+    color:          var(--text-primary, #e6e9ef);
+    /* Long titles wrap to a second line rather than push the
+       info-line off the right edge. */
+    flex:           1 1 auto;
+    min-width:      0;
+}
+
+.mol-viewer-info-line {
+    flex:           0 0 auto;
+    font-size:      var(--text-sm, 0.875rem);
+    color:          var(--text-muted, #6c7280);
+    font-variant-numeric: tabular-nums;
+    /* The info-line is steady-state secondary text -- right-aligned
+       so it doesn't compete with the title for primary attention. */
+    text-align:     right;
+}
+
+.mol-viewer-canvas {
+    /* Height is opt.card.height (default clamp(360px, 52vh, 500px)),
+       set as an inline style at mount time so tabs can override.
+       Width is 100% so the canvas fills the card's content area.
+       Hosts that fix the CARD's height (e.g. /modify aspect-ratio)
+       can pass card.height: "100%" so the canvas absorbs whatever
+       space the flex column gives it after the header + knob bar. */
+    position:       relative;
+    width:          100%;
+    flex:           1 1 auto;
+    min-height:     0;
+    background:     var(--bg-code, #fafafa);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
+    overflow:       hidden;
+}
+
+/* Busy scrim -- the ONE busy<->ready surface (handle.setBusy(msg|null)).  A gray
+ * scrim + centered message over the canvas while a HEAVY render / load is in flight,
+ * so a stale frame doesn't read as "done" and clicks can't hit a mid-rebuild scene.
+ * ``pointer-events: auto`` blocks canvas interaction while shown; ``[hidden]`` removes
+ * it.  Driven by the render controller (loading + big-system redraws) and by any
+ * consumer marking its own slow op busy. */
+.mol-viewer-busy {
+    position:       absolute;
+    inset:          0;
+    z-index:        4;                 /* above quickbar/overlays, below the export modal */
+    display:        flex;
+    align-items:    center;
+    justify-content: center;
+    background:     color-mix(in srgb, var(--bg-card, #1d2128) 60%, transparent);
+    pointer-events: auto;              /* eat clicks on the mid-render scene */
+    cursor:         progress;
+}
+.mol-viewer-busy[hidden] { display: none; }
+.mol-viewer-busy-msg {
+    padding:        0.35rem 0.8rem;
+    font:           var(--text-xs, 0.75rem)/1.3 system-ui, sans-serif;
+    color:          var(--text-primary, #e6e9ef);
+    background:     var(--bg-card-hover, #232831);
+    border:         1px solid var(--border-strong, #3a3f48);
+    border-radius:  var(--radius-md, 8px);
+    box-shadow:     0 4px 16px rgba(0,0,0,0.4);
+}
+
+/* Bare-mode CSS removed by #208 after all five consumer sites
+   migrated to the standard chrome (2026-06-03).  The deprecated
+   ``opts.card.bare`` opt is ignored by _buildCardScaffold; the
+   ``.mol-viewer-bare`` class is no longer emitted. */
+
+/* Frame-strip card chrome — appears above the canvas when
+   ``card.frameStrip`` is true AND animation is trajectory mode.
+   Hosts prev / play-pause / next buttons + frame counter +
+   slider.  Wired directly to the handle's
+   playAnimation / pauseAnimation / setAnimationFrame methods. */
+.mol-viewer-frame-strip {
+    display:        flex;
+    align-items:    center;
+    gap:            var(--space-xs, 0.4rem);
+    padding:        var(--space-xs, 0.4rem) 0;
+    font-size:      var(--text-sm, 0.875rem);
+    color:          var(--text-primary, #e6e9ef);
+}
+
+.mol-viewer-frame-strip button {
+    flex:           0 0 auto;
+    min-width:      2rem;
+    padding:        var(--space-xs, 0.3rem) var(--space-sm, 0.5rem);
+    background:     var(--bg-input, #fff);
+    border:         1px solid var(--border-strong, #3a3f48);
+    border-radius:  var(--radius-sm, 4px);
+    color:          var(--text-primary, #e6e9ef);
+    cursor:         pointer;
+    font-size:      var(--text-sm, 0.875rem);
+    font-variant-numeric: tabular-nums;
+}
+
+.mol-viewer-frame-strip button:hover {
+    background:     var(--bg-input-focus, #f4f4f4);
+    border-color:   var(--accent, #6ba6ff);
+}
+
+.mol-viewer-frame-strip .frame-counter {
+    flex:           0 0 auto;
+    min-width:      4rem;
+    text-align:     center;
+    font-variant-numeric: tabular-nums;
+    color:          var(--text-muted, #6c7280);
+}
+
+.mol-viewer-frame-strip .frame-slider {
+    flex:           1 1 auto;
+    min-width:      6rem;
+}
+
+/* ============================================================ */
+/*  Standard knob bar (§ 6.2)                                    */
+/* ============================================================ */
+
+/* Phase 6 chrome: 2-menu bar (View + Export) replaces the flat
+   7-knob row.  Each menu is a <details> with a <summary> trigger
+   and a structured popover body containing labelled <section>s. */
+
+.mol-viewer-knobs {
+    display:        flex;
+    align-items:    center;
+    /* WRAP so a WIDE viewer keeps View / Export / trajectory-bar on ONE line, but a SMALL
+       viewer lets the trajectory bar drop to its OWN full-width row below View/Export instead
+       of overflowing the canvas.  (A single structure has no bar, so the row never wraps.) */
+    flex-wrap:      wrap;
+    row-gap:        var(--space-xs, 0.35rem);
+    gap:            var(--space-sm, 0.5rem);
+    padding:        var(--space-sm, 0.5rem) var(--space-sm, 0.5rem);
+    background:     var(--bg-card, #1d2128);
+    border-bottom:  1px solid var(--border-soft, #2c313a);
+    /* Compact base: the View/Export triggers + every menu item inherit this, so the viewer
+       chrome sits at (or below) the scale of the surrounding controls (the ~12px toggles,
+       11px panel buttons) instead of overpowering them.  --text-2xs (11px) matches the small
+       buttons. */
+    font-size:      var(--text-2xs, 0.6875rem);
+    color:          var(--text-primary, #e6e9ef);
+}
+
+/* Top-level menu trigger ------------------------------------- */
+.mol-viewer-knobs > .mol-viewer-menu {
+    flex:           0 0 auto;
+    position:       relative;
+}
+.mol-viewer-menu > summary {
+    list-style:     none;
+    display:        inline-flex;
+    align-items:    center;
+    gap:            0.35em;
+    padding:        0.28rem 0.7rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid transparent;
+    border-radius:  var(--radius-sm, 4px);
+    font-weight:    500;
+    cursor:         pointer;
+    user-select:    none;
+    transition:     background 120ms ease, border-color 120ms ease;
+}
+.mol-viewer-menu > summary::-webkit-details-marker { display: none; }
+.mol-viewer-menu > summary::after {
+    content:        "";
+    width:          0; height: 0;
+    border:         3px solid transparent;
+    border-top:     4px solid currentColor;
+    margin-top:     2px;
+    opacity:        0.7;
+}
+.mol-viewer-menu > summary:hover,
+.mol-viewer-menu > summary:focus-visible {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, #3a3f48);
+    outline:        none;
+}
+.mol-viewer-menu[open] > summary {
+    background:     var(--accent, #6ba6ff);
+    color:          var(--accent-on, #14171c);
+    border-color:   var(--accent, #6ba6ff);
+}
+
+/* Menu body (popover) --------------------------------------- */
+/* Position is FIXED (not absolute) so the popover escapes any
+   clipping ancestor — e.g. Build's ``.viewer-wrap`` has
+   ``overflow: hidden`` to keep the drawing library's canvas inside its rounded
+   corners; an absolutely-positioned popover would get clipped by
+   that wrapper and become unusable.  Coordinates are set in JS
+   via ``_positionMenuBody`` against the summary's bounding rect
+   when the menu opens and on scroll / resize while it stays
+   open.  Initial top/left are no-op stubs so the popover is
+   off-screen until the JS positioning fires (avoids a one-frame
+   flash at 0,0). */
+.mol-viewer-menu-body {
+    position:       fixed;
+    z-index:        1000;
+    top:            -9999px;
+    left:           -9999px;
+    min-width:      11.5rem;
+    max-width:      min(20rem, calc(100vw - 2rem));
+    max-height:     min(28rem, calc(100vh - 8rem));
+    overflow:       auto;
+    padding:        0.3rem 0.4rem;
+    font-size:      var(--text-2xs, 0.6875rem);   /* compact menu: items inherit this */
+    background:     var(--bg-card-hover, #232831);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-strong, #3a3f48);
+    border-radius:  var(--radius-md, 8px);
+    box-shadow:     0 8px 24px rgba(0,0,0,0.45);
+}
+
+/* Sections inside a menu body ------------------------------- */
+.mol-viewer-menu-section {
+    padding:        0.28rem 0.15rem;
+    border-top:     1px solid var(--border-soft, #2c313a);
+}
+.mol-viewer-menu-section:first-child {
+    border-top:     none;
+}
+/* Untitled display-toggle group: the axes / labels / overlay / unit-cell buttons
+   (plus MolView's injected isolate checkbox) stacked with a small gap. */
+.mol-viewer-menu-heading {
+    margin:         0 0 0.2rem 0;
+    font-size:      var(--text-2xs, 0.6875rem);
+    font-weight:    600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color:          var(--text-muted, #6c7280);
+}
+
+/* Style rep button row --------------------------------------- */
+.mol-viewer-rep-row {
+    display:        flex;
+    flex-wrap:      wrap;
+    gap:            4px;
+}
+.mol-viewer-rep-btn {
+    flex:           1 1 calc(50% - 4px);
+    /* <button> does not inherit font by default -- take the compact menu-body
+       size (--text-2xs) so the style buttons match the other View-menu items
+       instead of the larger UA button default. */
+    font:           inherit;
+    line-height:    1.3;                 /* tight box: match the 11px menu text, not a chunky UA button */
+    padding:        0.12rem 0.45rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
+    cursor:         pointer;
+    text-align:     center;
+    transition:     background 120ms ease, border-color 120ms ease;
+}
+.mol-viewer-rep-btn:hover {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, #3a3f48);
+}
+.mol-viewer-rep-btn.is-active {
+    background:     var(--accent, #6ba6ff);
+    color:          var(--accent-on, #14171c);
+    border-color:   var(--accent, #6ba6ff);
+    font-weight:    500;
+}
+
+/* Radius / scale slider — sits below the rep button row.
+   Adjusts atom-sphere + stick thickness via setStyle({radiusScale}).
+   Pre-Phase-6 the /modify viewer had a bespoke #radius input;
+   Phase 6b puts it inside the embed contract so every consumer
+   gets the same control. */
+.mol-viewer-radius-row {
+    display:        flex;
+    align-items:    center;
+    gap:            0.5rem;
+    margin-top:     0.4rem;
+}
+.mol-viewer-radius-row > label {
+    font-size:      var(--text-2xs, 0.6875rem);   /* match the 11px menu, not 0.8rem */
+    color:          var(--text-muted, #6c7280);
+    flex:           0 0 auto;
+}
+.mol-viewer-radius-row > input[type="range"] {
+    flex:           1 1 auto;
+    min-width:      0;
+    accent-color:   var(--accent, #6ba6ff);
+}
+.mol-viewer-radius-row > output {
+    font-size:      var(--text-2xs, 0.6875rem);
+    color:          var(--text-primary, #e6e9ef);
+    font-variant-numeric: tabular-nums;
+    min-width:      2.2rem;
+    text-align:     right;
+}
+
+/* Toggle (Labels, Axes) ------------------------------------- */
+.mol-viewer-toggle {
+    width:          100%;
+    padding:        0.4rem 0.6rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
+    text-align:     left;
+    cursor:         pointer;
+    transition:     background 120ms ease, border-color 120ms ease;
+}
+.mol-viewer-toggle::before {
+    content:        "○";
+    display:        inline-block;
+    margin-right:   0.5em;
+    color:          var(--text-muted, #6c7280);
+}
+.mol-viewer-toggle[aria-pressed="true"]::before {
+    content:        "●";
+    color:          var(--accent, #6ba6ff);
+}
+.mol-viewer-toggle:hover {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, #3a3f48);
+}
+.mol-viewer-toggle[aria-pressed="true"] {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--accent, #6ba6ff);
+}
+
+/* Select dropdown (Projection) ------------------------------ */
+/* Visually matches .mol-viewer-toggle so the
+   View menu has consistent control sizing; the native <select>
+   carries its own caret + system menu UI on click. */
+.mol-viewer-select {
+    width:          100%;
+    line-height:    1.3;
+    padding:        0.15rem 0.45rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
+    font:           inherit;
+    cursor:         pointer;
+    transition:     background 120ms ease, border-color 120ms ease;
+}
+.mol-viewer-select:hover,
+.mol-viewer-select:focus {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, #3a3f48);
+    outline:        none;
+}
+
+/* (.mol-viewer-action removed 2026-07: no JS ever created it -- Reset lives on the
+   rail as a VIEW_TOGGLE (.mol-viewer-quick); the block was a dead byte-identical
+   copy of .mol-viewer-toggle.) */
+
+/* Background row (preset swatches + custom chip) ------------ */
+.mol-viewer-bg-row {
+    display:        flex;
+    flex-wrap:      wrap;
+    align-items:    center;
+    gap:            0.4rem;
+    padding:        3px; /* room for .is-active outline */
+}
+.mol-viewer-bg-swatch,
+.mol-viewer-bg-custom {
+    width:          1.8rem;
+    height:         1.8rem;
+    padding:        0;
+    border:         1px solid var(--border-strong, #3a3f48);
+    border-radius:  50%;
+    cursor:         pointer;
+    box-sizing:     border-box;
+    transition:     transform 100ms ease;
+}
+.mol-viewer-bg-swatch:hover,
+.mol-viewer-bg-custom:hover {
+    transform:      scale(1.08);
+}
+.mol-viewer-bg-swatch.is-transparent {
+    /* Decorative checkerboard pattern for the "transparent" swatch —
+     * the greys are visual structure, not theme colors. */
+    background:
+        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0 0/0.5rem 0.5rem, /* exempt: checkerboard */
+        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0.25rem 0.25rem/0.5rem 0.5rem; /* exempt: checkerboard */
+    color:          #ffffff; /* exempt: legible on checkerboard */
+    font-size:      0.7rem;
+    line-height:    1.6rem;
+    text-align:     center;
+}
+.mol-viewer-bg-swatch.is-active {
+    outline:        2px solid var(--accent, #6ba6ff);
+    outline-offset: 2px;
+}
+/* Styled custom-colour chip wraps the native <input type="color"> so
+   the OS picker still opens on click but the visible chip matches
+   the preset row.  The native input is sized to fill the chip and
+   the bg-clip trick lets the chosen colour show through.  No bare
+   browser widget is visible. */
+.mol-viewer-bg-custom {
+    position:       relative;
+    overflow:       hidden;
+    /* Rainbow ring so the chip is recognisable as "pick a colour".
+     * The 6 stops ARE the visual; tokenizing would defeat the
+     * rainbow. */
+    background:     conic-gradient(
+                        #ff5050, #ffd54a, #5fdc7a, #5fb6ff, /* exempt: rainbow */
+                        #b75fff, #ff5fb0, #ff5050);          /* exempt: rainbow */
+}
+.mol-viewer-bg-custom > input[type="color"] {
+    position:       absolute;
+    inset:          -25%;        /* hide the OS chrome around the chip */
+    width:          150%;
+    height:         150%;
+    padding:        0;
+    margin:         0;
+    border:         none;
+    background:     none;
+    opacity:        0;           /* the chip background carries the look */
+    cursor:         pointer;
+}
+
+/* Export rows ----------------------------------------------- */
+.mol-viewer-export-row {
+    display:        flex;
+    flex-wrap:      wrap;
+    gap:            4px;
+}
+.mol-viewer-export-btn {
+    flex:           0 0 auto;
+    padding:        0.3rem 0.65rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
+    font-variant-numeric: tabular-nums;
+    cursor:         pointer;
+    transition:     background 120ms ease, border-color 120ms ease;
+}
+.mol-viewer-export-btn:hover {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--accent, #6ba6ff);
+}
+
+/* Export menu sections (Phase 6e) ---------------------------
+   Group the data / snapshot / animation buttons so the user can
+   see they are three different export kinds at a glance, instead
+   of one undifferentiated row. */
+.mol-viewer-export-section {
+    display:        flex;
+    flex-direction: column;
+    gap:            4px;
+}
+.mol-viewer-export-section + .mol-viewer-export-section {
+    margin-top:     0.6rem;
+    padding-top:    0.5rem;
+    border-top:     1px solid var(--border-soft, #2c313a);
+}
+.mol-viewer-export-section-label {
+    font-size:      0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color:          var(--text-muted, #6c7280);
+    opacity:        0.85;
+}
+
+/* Export progress modal (Phase 6e) --------------------------- */
+.mol-viewer-export-modal {
+    position:       fixed;
+    inset:          0;
+    z-index:        99999;
+    display:        flex;
+    align-items:    center;
+    justify-content: center;
+    background:     rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    pointer-events: auto;
+    animation:      mol-viewer-export-modal-fade 100ms ease-out;
+}
+@keyframes mol-viewer-export-modal-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+/* Phase 6e third-review POLISH-1: respect user's reduced-motion
+   preference (WCAG 2.1 SC 2.3.3).  100ms is short but the rule
+   is the rule. */
+@media (prefers-reduced-motion: reduce) {
+    .mol-viewer-export-modal {
+        animation: none;
+    }
+}
+.mol-viewer-export-modal-card {
+    min-width:      320px;
+    max-width:      440px;
+    padding:        1.1rem 1.3rem 1.0rem;
+    background:     var(--bg-panel, #20242b);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-md, 8px);
+    box-shadow:     0 12px 32px rgba(0, 0, 0, 0.45);
+    display:        flex;
+    flex-direction: column;
+    gap:            0.7rem;
+    font-family:    var(--font-sans, system-ui, -apple-system, sans-serif);
+}
+.mol-viewer-export-modal-title {
+    font-size:      1rem;
+    font-weight:    600;
+}
+.mol-viewer-export-modal-phase {
+    font-size:      0.85rem;
+    color:          var(--text-muted, #6c7280);
+    font-variant-numeric: tabular-nums;
+}
+.mol-viewer-export-modal-bar {
+    width:          100%;
+    height:         8px;
+    background:     var(--bg-input, #262b33);
+    border-radius:  4px;
+    overflow:       hidden;
+}
+.mol-viewer-export-modal-bar-fill {
+    height:         100%;
+    width:          0%;
+    background:     var(--accent, #6ba6ff);
+    transition:     width 120ms ease;
+}
+.mol-viewer-export-modal-actions {
+    display:        flex;
+    justify-content: flex-end;
+    gap:            0.5rem;
+}
+.mol-viewer-export-modal-cancel {
+    padding:        0.35rem 0.85rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
+    cursor:         pointer;
+}
+.mol-viewer-export-modal-cancel:hover {
+    border-color:   var(--accent, #6ba6ff);
+}
+.mol-viewer-export-modal-cancel:disabled {
+    opacity:        0.5;
+    cursor:         not-allowed;
+}
+
+/* Export params dialog (Phase 6e) ----------------------------
+   Shown before the progress modal so the user can edit defaults
+   (filename, fps, duration, resolution, bitrate). */
+.mol-viewer-export-params-card {
+    min-width:      380px;
+    max-width:      520px;
+}
+.mol-viewer-export-params-form {
+    display:        flex;
+    flex-direction: column;
+    gap:            0.6rem;
+}
+.mol-viewer-export-params-row {
+    display:        grid;
+    grid-template-columns: 8rem 1fr;
+    grid-column-gap: 0.6rem;
+    grid-row-gap:   0.15rem;
+    align-items:    baseline;
+}
+.mol-viewer-export-params-label {
+    font-size:      0.85rem;
+    color:          var(--text-muted, #6c7280);
+}
+.mol-viewer-export-params-input {
+    padding:        0.3rem 0.5rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
+    font-variant-numeric: tabular-nums;
+    font:           inherit;
+    min-width:      0;
+    width:          100%;
+}
+.mol-viewer-export-params-input:focus {
+    outline:        none;
+    border-color:   var(--accent, #6ba6ff);
+}
+.mol-viewer-export-params-hint {
+    grid-column:    2;
+    font-size:      0.72rem;
+    color:          var(--text-muted, #6c7280);
+    opacity:        0.75;
+    line-height:    1.3;
+}
+/* Phase 6e fourth-review LANDMINE-6: inline filename validation
+   feedback.  Same column as the hint but error-toned. */
+.mol-viewer-export-params-error {
+    grid-column:    2;
+    font-size:      0.75rem;
+    color:          var(--error, #ff7a82);
+    line-height:    1.3;
+    margin-top:     0.15rem;
+}
+.mol-viewer-export-modal-confirm {
+    padding:        0.35rem 0.95rem;
+    background:     var(--accent, #6ba6ff);
+    color:          var(--bg-panel, #20242b);
+    border:         1px solid var(--accent, #6ba6ff);
+    border-radius:  var(--radius-sm, 4px);
+    cursor:         pointer;
+    font-weight:    600;
+}
+.mol-viewer-export-modal-confirm:hover {
+    filter:         brightness(1.08);
+}
+
+/* Narrow viewports ------------------------------------------ */
+@media (max-width: 480px) {
+    .mol-viewer-knobs {
+        gap:        0.3rem;
+        padding:    0.4rem;
+    }
+    .mol-viewer-menu > summary {
+        padding:    0.3rem 0.65rem;
+    }
+}
+
+/* ---- Left toggle RAIL + stage (§6.x) -------------------------------------
+ * The view toggles (Reset / axes / labels / overlay / unit cell, from the
+ * VIEW_TOGGLES registry; the molview layer injects an isolate button too) live
+ * in a vertical rail OUTSIDE the 3-D canvas -- always visible, never over the
+ * molecule, no dropdown needed.  The STAGE is a flex row: rail | canvas. */
+.mol-viewer-stage {
+    display:        flex;
+    align-items:    stretch;
+    gap:            6px;
+    flex:           1 1 auto;
+    min-height:     0;
+    min-width:      0;
+}
+.mol-viewer-stage > .mol-viewer-canvas {
+    flex:           1 1 auto;
+    min-width:      0;                   /* let the canvas shrink; the rail keeps its width */
+}
+.mol-viewer-quickbar {
+    flex:           0 0 auto;
+    align-self:     flex-start;          /* rail hugs the top-left, doesn't stretch tall */
+    display:        flex;
+    flex-direction: column;
+    gap:            4px;
+}
+.mol-viewer-quick {
+    width:          24px;
+    height:         24px;
+    display:        flex;
+    align-items:    center;
+    justify-content: center;
+    padding:        0;
+    font-size:      13px;
+    line-height:    1;
+    cursor:         pointer;
+    color:          var(--text-primary, #e6e9ef);
+    background:     color-mix(in srgb, var(--bg-card, #1d2128) 72%, transparent);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
+    transition:     background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.mol-viewer-quick:hover {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, #3a3f48);
+}
+.mol-viewer-quick[aria-pressed="true"] {
+    color:          var(--accent, #6ba6ff);
+    border-color:   var(--accent, #6ba6ff);
+    background:     var(--accent-bg, rgba(95, 182, 255, 0.14));
+}
+.mol-viewer-quick:focus-visible {
+    outline:        2px solid var(--accent, #6ba6ff);
+    outline-offset: 1px;
+}

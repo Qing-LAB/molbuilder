@@ -701,7 +701,7 @@ neither what a viewer holds nor anything in this document.
 | Not held | Whose it is | Why |
 |---|---|---|
 | parsed structure text | the **server** | MolView never parses. It posts bytes and adopts the structure that comes back (§ 11.1) |
-| files on disk | the **projects** module | `exportFile()` returns bytes; MolView owns no file route |
+| files on disk | the **projects** module | `exportFile()` returns bytes; MolView owns no file route **and writes no file-handling code of its own** — see below |
 | the saved session bytes | the **workspace** module | MolView decides when and how far; the workspace knows where (§ 11.2) |
 
 ---
@@ -822,6 +822,11 @@ and the bar appears once a structure with more than one frame is loaded into it.
 The **workspace** handed in is a door, not a module: anything that can store and
 return bytes satisfies it. That is what lets a viewer mount in a test page with a
 stand-in, and it is the whole of § 4's "nothing it needs comes from a global".
+
+**Anywhere bytes leave MolView, they leave through a door handed in the same
+way.** The session history writes through the workspace; an export writes through
+a **files** door. MolView produces the bytes and names the destination; it never
+reaches a file itself.
 
 **`owner` names the viewer, and therefore everything in it.** It is not a prefix
 on a settings key; it is the identity of an instance. The structure, the
@@ -1968,6 +1973,26 @@ A host that mounted a read-only viewer knows not to offer it, because it is the
 one that passed the flag. The gate (§ 9.4) is what makes the guarantee true even
 if it does.
 
+**No hand-rolled file handling, anywhere.** MolView does not build a download
+link, does not make an object URL, does not touch a filesystem API, and does not
+call a file endpoint. Every one of those is somebody else's job, reached through
+a door handed in at mount (§ 8) — the workspace for session state, the projects
+module for files.
+
+The rule is worth stating flatly because the alternative looks so reasonable in
+the moment: offering a download is four lines of DOM, and writing them is much
+quicker than threading a door through. It went that way once, and the result was
+a viewer that knew how to put a file on a user's disk — which is a second place
+that knowledge lived, drifting from the one the projects module already had, and
+outside every rule that applies to the real one (where files may go, what names
+are legal, what happens on a collision).
+
+**One byte-producing path, one destination argument.** Save-to-project and
+download differ *only* in where the bytes end up (§ 11.3), so they are not two
+mechanisms — they are one call that names a destination. A viewer that grew a
+separate download path would have two places to keep in step for something one
+already expressed.
+
 ### 11.3 Three different things that all look like saving
 
 Three kinds of thing, not variants of each other:
@@ -2422,6 +2447,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so labels and frozen atoms survive into whatever is generated from it |
 | § 11.3 — save-to-project and download differ only in destination | both produce identical bytes, and neither has MolView writing a file |
 | § 11.4 — every export enters at MolView | no export decides anything below the model; a picture is rendered by the sealed layer on request, but what to export and where it goes is decided above |
+| § 6.7 — no hand-rolled file handling | the module builds no download link, makes no object URL, names no filesystem API and calls no file endpoint; bytes leave through a door handed in at mount |
 | § 11.5 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
 | § 11.6 — measurement reads the truth, in pick order | the vertex of an angle is the atom picked second, not the middle one by number; the readout stays correct while a trajectory plays and under isolate, because it reads the master copy at the current frame |
 

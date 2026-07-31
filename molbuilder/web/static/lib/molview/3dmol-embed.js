@@ -593,10 +593,10 @@ export function create(hostEl, opts) {
         // message; false hides it.
         setBusy(message) {
             if (state.disposed || !state.hostEl) return;
-            const el = state.hostEl.querySelector(".molview-busy");
+            const el = state.hostEl.querySelector(".mol-viewer-busy");
             if (!el) return;
             if (message) {
-                const msg = el.querySelector(".molview-busy-msg");
+                const msg = el.querySelector(".mol-viewer-busy-msg");
                 if (msg) msg.textContent = String(message);
                 el.hidden = false;
             } else {

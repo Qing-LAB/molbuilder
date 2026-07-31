@@ -1,10 +1,11 @@
-/* MolView — what an atom IS to everything above it: how it is numbered, and what
- * it can be filtered by.
+/* MolView — the pure facts about atoms: how one is numbered, what one can be
+ * filtered by, and how a set of them reads as a formula.
  *
  * Contract: docs/web/molview.md § 11.5 (one atom-numbering translation, in one
  *           place) and § 9.5 / § 6.2 (the channels a filter row can match).
- * Owns:     the 0-based-in-code / 1-based-on-screen translation, and the
- *           enumeration of what kinds of thing an atom can be filtered by.
+ * Owns:     the 0-based-in-code / 1-based-on-screen translation, the enumeration
+ *           of what kinds of thing an atom can be filtered by, and the Hill
+ *           formula.
  * Called by: the model, the stores, the render engine and the UI — every level
  *           above reads it.
  *
@@ -181,4 +182,37 @@ export function channelKinds(elements, annotations) {
         out.push({ name: name, kind: KIND.TAG });
     }
     return out;
+}
+
+
+/* ══ The formula ═════════════════════════════════════════════════════════════
+ *
+ * § 4 makes this the module's second export, beside `mount`, because a caller
+ * can want it with no viewer at all — a list of elements is enough.
+ *
+ * It lives here rather than in a file of its own because it has exactly this
+ * file's shape: pure, dependency-free, and read by several layers above without
+ * reading any of them back.
+ */
+
+/**
+ * A list of element symbols as a Hill-ordered formula — `H2O`, `C6H12O6`.
+ *
+ * C and H first, then N, O, P, S in that order, then everything else
+ * alphabetically. That is the common organic-chemistry layout, and it is what a
+ * user reads in the info line; changing the order changes what they see.
+ */
+export function formula(elements) {
+    if (!elements || !elements.length) return "—";
+    const counts = {};
+    for (const element of elements) {
+        counts[element] = (counts[element] || 0) + 1;
+    }
+    const parts = [];
+    const write = (e) => parts.push(counts[e] > 1 ? e + counts[e] : e);
+    for (const e of ["C", "H", "N", "O", "P", "S"]) {
+        if (counts[e]) { write(e); delete counts[e]; }
+    }
+    for (const e of Object.keys(counts).sort()) write(e);
+    return parts.join("");
 }

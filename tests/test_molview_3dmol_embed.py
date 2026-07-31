@@ -481,8 +481,13 @@ def test_the_module_owns_no_file_route():
     """
     offenders = {}
     for name, code in _module_code().items():
+        # NOT banned: the anchor `download` attribute. § 11.3 names it
+        # explicitly — "save-to-project and download differ only in destination
+        # … and NEITHER has MolView writing a file". Handing the browser bytes
+        # the user asked for is the Export menu's whole job; what § 6.7 forbids
+        # is a file ROUTE and a filesystem handle.
         hits = [t for t in ("/api/files/", "showSaveFilePicker", "createWritable",
-                            "download", "FileSystemHandle") if t in code]
+                            "FileSystemHandle", "require(\"fs\")") if t in code]
         if hits:
             offenders[name] = hits
     assert offenders == {}, f"the module reaches a file route: {offenders}"
