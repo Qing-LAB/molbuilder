@@ -771,7 +771,6 @@ def render_script(struct: Structure,
     )
     _atom_metadata = _sc.emit_atom_metadata(
         regions=dict(getattr(struct, "regions", {}) or {}),
-        frozen_atoms=list(getattr(struct, "frozen_atoms", []) or []),
         annotations=dict(getattr(struct, "annotations", {}) or {}),
         n_atoms_total=int(struct.n_atoms),
         created_by="molbuilder render_script",

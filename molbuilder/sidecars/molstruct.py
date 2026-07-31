@@ -69,10 +69,14 @@ except ImportError:                  # pragma: no cover - Windows branch
     _HAVE_FLOCK = False
 
 
-SCHEMA_VERSION = 7
-#: 7 (2026-07-31) -- the reserved ``frozen`` label moved into ``regions`` with
-#: every other label; the top-level ``frozen_atoms`` key is no longer written.
-#: :func:`frozen_atoms` reads either, so a 6 keeps opening.
+SCHEMA_VERSION = 6
+
+#: The sidecar LAYER's own keys -- everything in a payload that is not a
+#: Structure metadata field.  Named so :func:`apply_to_structure` can hand the
+#: gate exactly the fields it owns and REFUSE anything that is neither, instead
+#: of passing the whole payload and letting unknown keys fall on the floor.
+ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "structure_hash",
+                 "selection_rules", "created_by", "created_at")
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
 _SIDECAR_SUFFIX = ".molstruct.json"
@@ -164,24 +168,18 @@ def frozen_atoms(payload: Optional[Dict[str, Any]]) -> List[int]:
     """The atoms carrying the reserved ``frozen`` label in a sidecar payload.
 
     THE way to ask a sidecar dict, the same way :attr:`Structure.frozen_atoms`
-    is the way to ask a Structure.  Callers that spell the key themselves are
-    callers that have to know which schema wrote the file; this knows, in one
-    place: schema 7 keeps it in ``regions`` with every other label, schema 6
-    and earlier kept it in a top-level ``frozen_atoms`` key.
+    is the way to ask a Structure -- one place spells the name, so no caller
+    has to.  It reads the label store, because that is the only place the fact
+    lives.
     """
     from molbuilder.structure import FROZEN_LABEL   # lazy: same reason as :152
     if not isinstance(payload, dict):
         return []
     regions = payload.get("regions")
-    found = set()
-    if isinstance(regions, dict):
-        found |= {int(i) for i in (regions.get(FROZEN_LABEL) or ())
-                  if isinstance(i, int) and not isinstance(i, bool)}
-    legacy = payload.get("frozen_atoms")          # schema <= 6
-    if isinstance(legacy, list):
-        found |= {int(i) for i in legacy
-                  if isinstance(i, int) and not isinstance(i, bool)}
-    return sorted(found)
+    if not isinstance(regions, dict):
+        return []
+    return sorted({int(i) for i in (regions.get(FROZEN_LABEL) or ())
+                   if isinstance(i, int) and not isinstance(i, bool)})
 
 
 def normalise_selection_rules(
@@ -206,9 +204,6 @@ def normalise_selection_rules(
             raise MolstructJsonError(
                 f"selection_rules: target label must be non-empty string; "
                 f"got {target!r}")
-        # A schema-6 rule targeting the reserved label needs no special case
-        # here: it spelled the target `frozen_atoms`, which IS the label's name,
-        # so it lands in `valid_regions` like any other target.
         if target not in valid_targets:
             raise MolstructJsonError(
                 f"selection_rules: target {target!r} doesn't match any label "
@@ -425,8 +420,9 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     count -- a mismatch usually means the XYZ was edited separately and the
     sidecar's indices no longer point at the right atoms.  The sidecar's
     ``structure_hash`` is NOT verified here (the caller compares it against the
-    on-disk XYZ's hash with a path it knows about).  A pre-v5 ``kgrid`` key is
-    ignored (k-grid is a sampling knob on the config, not a geometry field).
+    on-disk XYZ's hash with a path it knows about).  A key that is neither a
+    structure metadata field nor an envelope key is REFUSED here rather than
+    ignored -- a key nobody reads is metadata the writer thinks it saved.
     """
     sidecar_n = sidecar_data.get("n_atoms_total")
     struct_n = len(struct.elements)
@@ -437,8 +433,18 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"indices no longer point at the right atoms; re-export "
             f"the sidecar from /modify after structural edits."
         )
+    from molbuilder.structure import METADATA_FIELDS
+    stray = [k for k in sidecar_data
+             if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS]
+    if stray:
+        raise MolstructJsonError(
+            f"sidecar carries {sorted(stray)!r}, which is neither a structure "
+            f"metadata field {list(METADATA_FIELDS)!r} nor an envelope key "
+            f"{list(ENVELOPE_KEYS)!r}.  Refused rather than ignored: a key "
+            f"nobody reads is metadata the writer thinks it saved.")
     try:
-        struct.apply_metadata_dict(sidecar_data)
+        struct.apply_metadata_dict(
+            {k: v for k, v in sidecar_data.items() if k in METADATA_FIELDS})
     except (ValueError, TypeError) as exc:
         # Surface field-validation failures as the sidecar-layer error type,
         # preserving the clear per-field message from the dataclass invariants.

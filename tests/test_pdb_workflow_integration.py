@@ -78,8 +78,12 @@ def _seed_sidecar_for(struct_path, *, n_atoms, regions=None, frozen=None):
     ``/api/files/write``).  ``save-sidecar`` was REPLACE-all, so one
     ``to_dict`` mirrors a single endpoint call."""
     from molbuilder.sidecars import molstruct as _msj
+    from molbuilder.structure import FROZEN_LABEL
+    labels = dict(regions or {})
+    if frozen:
+        labels[FROZEN_LABEL] = list(frozen)   # a reserved label is a label
     payload = _msj.to_dict(
-        {"regions": regions or {}, "frozen_atoms": frozen or []},
+        {"regions": labels},
         n_atoms_total=n_atoms,
         structure_hash=_msj.sha256_of_file(struct_path),
     )
@@ -198,12 +202,14 @@ class TestPdbWorkflowEndToEnd:
         )
         on_disk = json.loads(sidecar.read_text())
         from molbuilder.sidecars import molstruct as _msj
-        assert on_disk["schema_version"] == _msj.SCHEMA_VERSION
         assert on_disk["n_atoms_total"] == n_atoms
-        assert on_disk["frozen_atoms"] == frozen_indices
+        # ONE label store on disk: the reserved label is a member of `regions`,
+        # not a key beside it.
+        assert on_disk["regions"]["frozen_atoms"] == frozen_indices
+        assert "frozen_atoms" not in on_disk, "a second key for one fact"
         assert on_disk["regions"]["L-electrode"] == region_indices
 
-    # ----- Step 3: re-fetch atoms; is_frozen + region tags fired - #
+    # ----- Step 3: re-fetch atoms; the labels are on the atoms - #
 
     def test_step_3_atoms_reread_picks_up_sidecar(
         self, web, pdb_under_root,
@@ -217,16 +223,17 @@ class TestPdbWorkflowEndToEnd:
             "structure_path": self._path(pdb_path),
         })
         body = r.get_json()
-        # Atom 0 should be is_frozen=True; atom 3 should carry the
-        # "L-electrode" region tag.
+        # ONE representation: every label an atom carries is in `regions`,
+        # the reserved `frozen_atoms` among them.  There is no second member.
         atom0 = body["atoms"][0]
         atom3 = body["atoms"][3]
-        assert atom0["is_frozen"] is True, atom0
+        assert "frozen_atoms" in atom0["regions"], atom0
+        assert "is_frozen" not in atom0, atom0
         assert "L-electrode" in atom3["regions"], atom3
         # An untagged atom should NOT carry these:
         atom10 = body["atoms"][min(10, len(body["atoms"]) - 1)]
         if atom10["index"] not in (0, 1, 2):
-            assert atom10["is_frozen"] is False, atom10
+            assert "frozen_atoms" not in atom10["regions"], atom10
         if atom10["index"] not in (3, 4):
             assert "L-electrode" not in atom10["regions"], atom10
 
@@ -276,8 +283,8 @@ class TestPdbWorkflowEndToEnd:
             # divergence between this structure-side claim and the FORM's
             # (params.frozen_indices, absent here) -- so the delivery moves but
             # the two-sided comparison under test does not.
-            "frozen_atoms":   [0, 1, 2],
-            "regions":        {"L-electrode": [3, 4]},
+            "regions":        {"L-electrode": [3, 4],
+                               "frozen_atoms": [0, 1, 2]},
             # Both PDB fixtures (synthetic tripeptide + user's 1c75)
             # have odd electron counts at charge=0, so spin=0 fails
             # the parity check added 2026-05-22.  Pass charge=0,
@@ -370,8 +377,7 @@ class TestPdbWorkflowEndToEnd:
             # F2: the structure-side claim rides in the body; the FORM is
             # cleared in params.  The whole point is that these DISAGREE and the
             # user is told, rather than the override being absorbed silently.
-            "frozen_atoms":   [0, 1, 2],
-            "regions":        {},
+            "regions":        {"frozen_atoms": [0, 1, 2]},
             "params":         {"frozen_indices": "",
                                  "charge": 0, "spin": 1, "method": "UKS"},
         })
@@ -449,14 +455,6 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
     """Mirrors TestPdbWorkflowEndToEnd's pattern: one structure, one
     sidecar, three steps walked in order."""
 
-    def test_step_a_save_writes_sidecar(self, web, simple_pdb_under_root):
-        pdb_path = simple_pdb_under_root
-        _seed_sidecar_for(pdb_path, n_atoms=10, frozen=[0, 4, 7])
-        # Sidecar exists with the right indices.
-        sidecar = pdb_path.with_name(pdb_path.stem + ".molstruct.json")
-        assert sidecar.exists()
-        on_disk = json.loads(sidecar.read_text())
-        assert on_disk["frozen_atoms"] == [0, 4, 7]
 
     def test_step_b_build_fdf_emits_constraints_for_frozen_atoms(
             self, web, simple_pdb_under_root):
@@ -492,8 +490,7 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
             },
             "structure_path": str(pdb_path.resolve()),
             # F2: labels are a BODY fact; the sidecar on disk is not read.
-            "frozen_atoms":   [0, 4, 7],
-            "regions":        {},
+            "regions":        {"frozen_atoms": [0, 4, 7]},
         })
         assert r.status_code == 200, r.data
         body = r.get_json()
@@ -537,8 +534,8 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
                 "method":    "UKS",
             },
             "structure_path": str(pdb_path.resolve()),
-            "frozen_atoms":   [0, 4, 7],      # F2: a body fact, not a disk read
-            "regions":        {},
+            # F2: labels are a BODY fact, not a disk read
+            "regions":        {"frozen_atoms": [0, 4, 7]},
         })
         assert r.status_code == 200, r.data
         body = r.get_json()

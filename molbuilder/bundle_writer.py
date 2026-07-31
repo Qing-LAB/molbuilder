@@ -121,10 +121,16 @@ def write_bundle_as_handoff(bundle: BundleResult,
     # written file so the invariant pin is what the next-stage
     # loader will check.
     structure_hash = _msj.sha256_of_file(xyz_path)
+    # The parsed bundle keeps its own `frozen_atoms` list (it is a RESULTS
+    # record of what a run held still, not the structure's label store), so it
+    # is written where a label belongs: into `regions`, with the rest.
+    from molbuilder.structure import FROZEN_LABEL
+    labels = dict(bundle.regions or {})
+    if bundle.frozen_atoms:
+        labels[FROZEN_LABEL] = list(bundle.frozen_atoms)
     sidecar_payload = _msj.to_dict(
         {
-            "regions":      bundle.regions or None,
-            "frozen_atoms": bundle.frozen_atoms or None,
+            "regions":      labels or None,
             "cell":         bundle.structure.cell,
             "pbc":          bundle.structure.pbc,
         },

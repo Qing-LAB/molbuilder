@@ -65,9 +65,22 @@ H  0.629 -0.629 -0.629
 """
 
 
+def _labels(body):
+    """The body carries ONE label store. `frozen_atoms=` is a test convenience
+    that lands in it, because the reserved label is an ordinary label and the
+    wire has no second key for it (molview.md § 6.6)."""
+    frozen = body.pop("frozen_atoms", None)
+    if frozen is not None:
+        regions = dict(body.get("regions") or {})
+        regions["frozen_atoms"] = frozen
+        body["regions"] = regions
+    return body
+
+
 def _post_fdf(web, **body) -> dict:
     """POST to /api/build/fdf with the test XYZ.  Returns the
     parsed JSON envelope.  Caller asserts on ``ok`` and ``fdf``."""
+    body = _labels(body)
     body.setdefault("xyz", _XYZ)
     body.setdefault("params", {})
     r = web.post("/api/build/fdf", json=body)
@@ -75,6 +88,7 @@ def _post_fdf(web, **body) -> dict:
 
 
 def _post_pyscf(web, **body) -> dict:
+    body = _labels(body)
     body.setdefault("xyz", _XYZ)
     body.setdefault("params", {})
     r = web.post("/api/build/pyscf", json=body)
@@ -90,9 +104,10 @@ class TestBuildFdfInBodyLabels:
     """PINS: docs/science/validation.md § 4.1 clause F2 — no server-side second
     source — on the SIESTA /api/build/fdf seam.
 
-    INVARIANT: ``frozen_atoms`` / ``regions`` in the request body ARE the labels;
-    an empty list / dict is the client's explicit "nothing to declare", and
-    omitting the keys declares no labels rather than triggering a disk read.
+    INVARIANT: ``regions`` in the request body IS the label store -- the
+    reserved ``frozen_atoms`` label included -- and those ARE the labels; an
+    empty dict is the client's explicit "nothing to declare", and omitting the
+    key declares no labels rather than triggering a disk read.
     Out-of-range or wrong-typed indices are refused instead of being coerced.
     """
 
@@ -283,9 +298,10 @@ class TestBuildPyscfInBodyLabels:
     """PINS: docs/science/validation.md § 4.1 clause F2 — no server-side second
     source — on the PySCF /api/build/pyscf seam.
 
-    INVARIANT: ``frozen_atoms`` / ``regions`` in the request body ARE the labels;
-    an empty list / dict is the client's explicit "nothing to declare", and
-    omitting the keys declares no labels rather than triggering a disk read.
+    INVARIANT: ``regions`` in the request body IS the label store -- the
+    reserved ``frozen_atoms`` label included -- and those ARE the labels; an
+    empty dict is the client's explicit "nothing to declare", and omitting the
+    key declares no labels rather than triggering a disk read.
     Out-of-range or wrong-typed indices are refused instead of being coerced.
     """
 

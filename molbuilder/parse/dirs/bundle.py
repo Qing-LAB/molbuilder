@@ -131,11 +131,11 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
                     }
                 else:
                     regions = {}
-                raw_frozen = atom_md.get("frozen_atoms")
-                if isinstance(raw_frozen, list):
-                    frozen = sorted({int(i) for i in raw_frozen})
-                else:
-                    frozen = []
+                # ONE designated read: v5 keeps the reserved label in
+                # `regions`, v3/v4 kept it in a top-level key, and this
+                # knows which without the caller spelling the name.
+                from molbuilder.sidecars import molstruct as _ms
+                frozen = _ms.frozen_atoms(atom_md)
         else:
             notes.append(
                 "atom-metadata block has no schema_version; ignored.")

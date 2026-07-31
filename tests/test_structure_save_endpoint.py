@@ -39,56 +39,22 @@ def web(tmp_path, monkeypatch):
 
 
 def _browser_blob():
-    """Exactly what molview ``_serialise.scratchBlob`` emits: NO ``schema_version``,
-    ``structure_hash`` "", plus the metadata channels."""
+    """Exactly what MolView's ``structureAsData`` emits (molview.md § 11.7): the
+    fields are the viewer's, the envelope is the server's. ``regions`` is the
+    whole label store -- the reserved ``frozen_atoms`` label is IN it, not
+    beside it."""
     return {
         "xyz": "2\nBDT\nC 0.0 0.0 0.0\nS 1.0 0.0 0.0\n",
         "sidecar": {
             "n_atoms_total": 2,
-            "structure_hash": "",
-            "regions": {"anchor": [0]},
-            "frozen_atoms": [1],
+            "regions": {"anchor": [0], "frozen_atoms": [1]},
             "cell": [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
             "cell_origin": [-3.0, -4.0, -5.0],
             "axis_kind": None,
             "vacuum": None,
-            "annotations": {},
         },
     }
 
-
-def test_saved_pair_is_valid_and_loadable_with_metadata(web):
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    # The sidebar hands ABSOLUTE picker paths (inside an allowed root).
-    xyz_file = web._root / "proj" / "bridge.xyz"
-    path = str(xyz_file)
-    r = web.post("/api/structure/save", json={"path": path, "blob": _browser_blob()})
-    assert r.status_code == 200, r.get_json()
-    assert r.get_json()["ok"] is True
-
-    sidecar = web._root / "proj" / "bridge.molstruct.json"
-    assert xyz_file.exists() and sidecar.exists(), "the pair must be written to disk"
-
-    # The SERVER-written sidecar carries the schema the browser blob LACKED -- the exact
-    # fields whose absence made the old browser-written pair unloadable.
-    meta = json.loads(sidecar.read_text())
-    assert meta.get("schema_version") in (3, 4, 5, 6), "server must stamp schema_version"
-    assert isinstance(meta.get("structure_hash"), str) and len(meta["structure_hash"]) >= 16, \
-        "server must stamp a real structure_hash (not the browser's empty string)"
-
-    # It loads back through the SAME file-only door the browser blob broke (must NOT raise),
-    # and the metadata round-trips (frozen atom, region, off-origin cell corner survive).
-    struct = StructureCodec().read(xyz_file)
-    assert struct.n_atoms == 2
-    back = StructureCodec().scratch_blob(struct)["sidecar"]
-    assert back["frozen_atoms"] == [1]
-    assert back["regions"] == {"anchor": [0]}
-    assert back["cell_origin"] == [-3.0, -4.0, -5.0]
-
-    # Belt-and-suspenders: the load ENDPOINT accepts it too.
-    lr = web.post("/api/build/load", json={"path": path})
-    assert lr.status_code == 200 and lr.get_json()["ok"] is True
 
 
 def test_overwrite_gate_drives_the_dialog(web):

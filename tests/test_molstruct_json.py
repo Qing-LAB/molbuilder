@@ -92,7 +92,7 @@ class TestToDict:
         """It goes through the same normalisation as `L-electrode` above,
         because it goes through the same store."""
         d = msj.to_dict(
-            {"frozen_atoms": [5, 1, 1, 0]},
+            {"regions": {"frozen_atoms": [5, 1, 1, 0]}},
             n_atoms_total=10, structure_hash="b" * 32,
         )
         assert d["regions"]["frozen_atoms"] == [0, 1, 5]
@@ -142,8 +142,7 @@ class TestSaveLoadRoundTrip:
         xyz = _write_xyz(tmp_path, n=6)
         payload = msj.to_dict(
             {"regions": {"L-electrode": [0, 1], "R-electrode": [4, 5],
-                         "bridge": [2, 3]},
-             "frozen_atoms": [0, 5]},
+                         "bridge": [2, 3], "frozen_atoms": [0, 5]}},
             n_atoms_total=6,
             structure_hash=msj.sha256_of_file(xyz),
         )
@@ -387,8 +386,8 @@ class TestApplyToStructure:
     def test_applies_labels_and_frozen(self, tmp_path):
         s = self._struct(n=4)
         data = msj.to_dict(
-            {"regions": {"L-electrode": [0, 1], "R-electrode": [3]},
-             "frozen_atoms": [0]},
+            {"regions": {"L-electrode": [0, 1], "R-electrode": [3],
+                         "frozen_atoms": [0]}},
             n_atoms_total=4, structure_hash="b" * 32,
         )
         msj.apply_to_structure(s, data)
@@ -447,7 +446,7 @@ class TestSchemaVersioning:
         the schema-6 top-level `frozen_atoms` key nor the older `fixed_atoms`
         one is written -- both were second homes for the same fact."""
         d = msj.to_dict(
-            {"regions": {"L-electrode": [0]}, "frozen_atoms": [1, 2]},
+            {"regions": {"L-electrode": [0], "frozen_atoms": [1, 2]}},
             n_atoms_total=3, structure_hash="b" * 32,
         )
         assert d["schema_version"] == msj.SCHEMA_VERSION
@@ -515,10 +514,12 @@ class TestSelectionRules:
                 selection_rules={"L-electrode": {"op": "not_a_real_op"}},
             )
 
-    def test_rule_for_frozen_atoms_is_allowed(self, tmp_path):
+    def test_rule_for_the_reserved_label_is_allowed(self, tmp_path):
+        """It needs no clause of its own: the rule targets a label, and the
+        reserved one is a label in the same store as the rest."""
         from molbuilder.selection import ByElement, to_json as rule_to_json
         d = msj.to_dict(
-            {"frozen_atoms": [0, 1]},
+            {"regions": {"frozen_atoms": [0, 1]}},
             n_atoms_total=6,
             structure_hash=self._hash(tmp_path),
             selection_rules={

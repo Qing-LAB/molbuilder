@@ -134,14 +134,13 @@ def test_emit_atom_metadata_returns_none_when_both_empty():
     """The contract's emission rule: absent block when no labels.
     Otherwise an empty in-body block would silently suppress a
     later .molstruct.json sidecar via the in-body-wins rule."""
-    assert sc.emit_atom_metadata({}, [], n_atoms_total=100) is None
-    assert sc.emit_atom_metadata(None, None, n_atoms_total=100) is None
+    assert sc.emit_atom_metadata({}, n_atoms_total=100) is None
+    assert sc.emit_atom_metadata(None, n_atoms_total=100) is None
 
 
 def test_emit_atom_metadata_with_regions_only():
     block = sc.emit_atom_metadata(
         regions={"L-electrode": [0, 1, 2], "R-electrode": [10, 11]},
-        frozen_atoms=[],
         n_atoms_total=20,
     )
     assert block is not None
@@ -176,15 +175,17 @@ def _atom_metadata_payload(block: str) -> dict:
     return json.loads("\n".join(body_lines))
 
 
-def test_emit_atom_metadata_with_frozen_only_sorts_and_dedupes():
+def test_emit_atom_metadata_with_the_reserved_label_only_sorts_and_dedupes():
+    """It is a label, so it normalises by the label rule and lands in the label
+    store -- there is no second key for it to land in (schema 5)."""
     block = sc.emit_atom_metadata(
-        regions={},
-        frozen_atoms=[5, 3, 1, 2, 1],  # unsorted + duplicate
+        regions={"frozen_atoms": [5, 3, 1, 2, 1]},   # unsorted + duplicate
         n_atoms_total=10,
     )
     assert block is not None
     payload = _atom_metadata_payload(block)
-    assert payload["frozen_atoms"] == [1, 2, 3, 5]
+    assert payload["regions"]["frozen_atoms"] == [1, 2, 3, 5]
+    assert "frozen_atoms" not in payload, "the fact is in the block twice"
 
 
 def test_emit_atom_metadata_uses_zero_based_indices():
@@ -193,15 +194,14 @@ def test_emit_atom_metadata_uses_zero_based_indices():
     Geometry.Constraints in engine body remains 1-based by SIESTA
     convention -- the two coexist deliberately."""
     block = sc.emit_atom_metadata(
-        regions={"single": [0]},  # 0-based
-        frozen_atoms=[0],
+        regions={"single": [0], "frozen_atoms": [0]},  # 0-based
         n_atoms_total=1,
     )
     payload = _atom_metadata_payload(block)
     # The JSON body must contain index 0 (would be 1 if anyone
     # accidentally added +1 shifting).
     assert payload["regions"]["single"] == [0]
-    assert payload["frozen_atoms"] == [0]
+    assert payload["regions"]["frozen_atoms"] == [0]
 
 
 def test_emit_atom_metadata_omits_structure_hash():
@@ -209,7 +209,7 @@ def test_emit_atom_metadata_omits_structure_hash():
     the metadata and coordinates are written by the same generator
     pass and cannot drift apart by construction."""
     block = sc.emit_atom_metadata(
-        regions={"r": [0]}, frozen_atoms=[], n_atoms_total=1,
+        regions={"r": [0]}, n_atoms_total=1,
     )
     assert "structure_hash" not in block
 
@@ -220,7 +220,6 @@ def test_emit_atom_metadata_honors_created_by_and_created_at():
     ``created_at`` timestamp.  Pin both."""
     block = sc.emit_atom_metadata(
         regions={"r": [0]},
-        frozen_atoms=[],
         n_atoms_total=1,
         created_by="molbuilder render_fdf",
         created_at="2026-06-16T17:00:00-07:00",
@@ -338,8 +337,8 @@ def test_merge_user_custom_from_target_rendered_lacks_placeholder(tmp_path):
 def test_extract_atom_metadata_dict_round_trips_through_emit_then_parse():
     """Emit + extract should round-trip the same data."""
     emitted = sc.emit_atom_metadata(
-        regions={"L-electrode": [0, 1, 2], "bridge": [3, 4]},
-        frozen_atoms=[0, 4],
+        regions={"L-electrode": [0, 1, 2], "bridge": [3, 4],
+                 "frozen_atoms": [0, 4]},
         n_atoms_total=5,
         created_by="molbuilder render_fdf",
         created_at="2026-06-16T17:00:00-07:00",
@@ -348,8 +347,9 @@ def test_extract_atom_metadata_dict_round_trips_through_emit_then_parse():
     text = "SystemLabel siesta\n\n" + emitted + "\n\nBlockSize 64\n"
     payload = sc.extract_atom_metadata_dict(text)
     assert payload is not None
-    assert payload["regions"] == {"L-electrode": [0, 1, 2], "bridge": [3, 4]}
-    assert payload["frozen_atoms"] == [0, 4]
+    assert payload["regions"] == {"L-electrode": [0, 1, 2], "bridge": [3, 4],
+                                  "frozen_atoms": [0, 4]}
+    assert "frozen_atoms" not in payload, "the same fact written twice"
     assert payload["created_by"] == "molbuilder render_fdf"
 
 
@@ -367,28 +367,31 @@ def test_extract_atom_metadata_dict_returns_none_on_malformed_json():
     assert sc.extract_atom_metadata_dict(text) is None
 
 
-class _StructLike:
-    """Duck-typed Structure for apply_inbody_atom_metadata tests."""
-    def __init__(self):
-        self.regions = {}
-        self.frozen_atoms = []
+def _blank_struct(n=20):
+    """A REAL Structure, not a duck-type: the reserved label's accessor is what
+    makes `struct.frozen_atoms` mean anything, and a stand-in that reimplements
+    it as a plain attribute would pass while the real thing broke (§ 13.1)."""
+    from molbuilder.structure import Structure
+    return Structure(elements=["C"] * n, positions=[[float(i), 0., 0.]
+                                                    for i in range(n)])
 
 
-def test_apply_inbody_atom_metadata_populates_regions_and_frozen():
-    struct = _StructLike()
+def test_apply_inbody_atom_metadata_populates_the_label_store():
+    struct = _blank_struct()
     emitted = sc.emit_atom_metadata(
-        regions={"R-electrode": [10, 11, 12]},
-        frozen_atoms=[10, 12],
+        regions={"R-electrode": [10, 11, 12], "frozen_atoms": [10, 12]},
         n_atoms_total=20,
     )
     text = "engine body\n" + emitted + "\nmore engine\n"
     assert sc.apply_inbody_atom_metadata(struct, text) is True
-    assert struct.regions == {"R-electrode": [10, 11, 12]}
+    assert struct.regions == {"R-electrode": [10, 11, 12],
+                              "frozen_atoms": [10, 12]}
     assert struct.frozen_atoms == [10, 12]
 
 
+
 def test_apply_inbody_atom_metadata_returns_false_when_no_block():
-    struct = _StructLike()
+    struct = _blank_struct()
     assert sc.apply_inbody_atom_metadata(struct, "SystemLabel siesta\n") is False
     assert struct.regions == {}
     assert struct.frozen_atoms == []
@@ -396,17 +399,16 @@ def test_apply_inbody_atom_metadata_returns_false_when_no_block():
 
 def test_apply_inbody_atom_metadata_normalises_indices():
     """Dedup + sort per region; coerce to int."""
-    struct = _StructLike()
+    struct = _blank_struct()
     text = (
         "# === molbuilder atom-metadata BEGIN ===\n"
-        "# format: molstruct-json/v3\n"
+        "# format: molstruct-json/v4\n"
         '# {"schema_version": 3, "n_atoms_total": 5,\n'
-        '#  "regions": {"r": [3, 1, 3, 2]},\n'
-        '#  "frozen_atoms": [2, 0, 2]}\n'
+        '#  "regions": {"r": [3, 1, 3, 2], "frozen_atoms": [2, 0, 2]}}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
     assert sc.apply_inbody_atom_metadata(struct, text) is True
-    assert struct.regions == {"r": [1, 2, 3]}
+    assert struct.regions == {"r": [1, 2, 3], "frozen_atoms": [0, 2]}
     assert struct.frozen_atoms == [0, 2]
 
 
@@ -525,8 +527,8 @@ def _composed_script(*, with_atom_md: bool = True,
         ))
     if with_atom_md:
         am = sc.emit_atom_metadata(
-            regions={"L-electrode": [1, 2], "R-electrode": [10, 11]},
-            frozen_atoms=[1, 11],
+            regions={"L-electrode": [1, 2], "R-electrode": [10, 11],
+                     "frozen_atoms": [1, 11]},
             n_atoms_total=12,
         )
         assert am is not None
@@ -540,8 +542,9 @@ def _composed_script(*, with_atom_md: bool = True,
 def test_extract_script_source_full_round_trip():
     text = _composed_script()
     src = sc.extract_script_source(text)
-    assert src["regions"] == {"L-electrode": [1, 2], "R-electrode": [10, 11]}
-    assert src["frozen_atoms"] == [1, 11]
+    assert src["regions"] == {"L-electrode": [1, 2], "R-electrode": [10, 11],
+                              "frozen_atoms": [1, 11]}
+    assert src["frozen_atoms"] == [1, 11]   # the designated read, off the store
     assert src["user_custom_lines"] is not None
     assert any("preserve" in line for line in src["user_custom_lines"])
     assert src["provenance"] is not None
@@ -575,20 +578,19 @@ def test_extract_script_source_returns_dataclass_with_notes_list():
 
 def test_extract_script_source_notes_on_future_schema_version():
     """A genuinely-future ``schema_version > 4`` loads + notes; doesn't fail.
-    (v4 is current-known now -- it added `annotations` additively; v5 is the
-    forward-compat case.)"""
+    (v4 is current-known; v6 is the forward-compat case.)"""
     text = (
         "# === molbuilder atom-metadata BEGIN ===\n"
-        "# format: molstruct-json/v5\n"
-        '# {"schema_version": 5, "n_atoms_total": 3,\n'
-        '#  "regions": {"r": [0]}, "frozen_atoms": [0]}\n'
+        "# format: molstruct-json/v6\n"
+        '# {"schema_version": 6, "n_atoms_total": 3,\n'
+        '#  "regions": {"r": [0], "frozen_atoms": [0]}}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
     src = sc.extract_script_source(text)
-    assert src["schema_version"] == 5
-    assert src["regions"] == {"r": [0]}
+    assert src["schema_version"] == 6
+    assert src["regions"] == {"r": [0], "frozen_atoms": [0]}
     assert src["frozen_atoms"] == [0]
-    assert any("schema_version 5" in n for n in src["notes"])
+    assert any("schema_version 6" in n for n in src["notes"])
 
 
 def test_extract_script_source_rejects_old_schema_version():
@@ -618,12 +620,12 @@ def test_extract_script_source_empty_blocks_present_but_empty():
     no-block case above where regions is ``None``."""
     text = (
         "# === molbuilder atom-metadata BEGIN ===\n"
-        "# format: molstruct-json/v3\n"
+        "# format: molstruct-json/v4\n"
         '# {"schema_version": 3, "n_atoms_total": 0,\n'
-        '#  "regions": {}, "frozen_atoms": []}\n'
+        '#  "regions": {}}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
     src = sc.extract_script_source(text)
     assert src["regions"] == {}        # present, empty
-    assert src["frozen_atoms"] == []   # present, empty
+    assert src["frozen_atoms"] == []   # nothing carries the label
     assert src["schema_version"] == 3

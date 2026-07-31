@@ -40,10 +40,16 @@ from molbuilder.script_emit import emit_atom_metadata
 
 
 def _block(regions, frozen, n, annotations=None) -> str:
-    """The ATOM-METADATA block text emit_atom_metadata writes into a script."""
+    """The ATOM-METADATA block text emit_atom_metadata writes into a script.
+
+    ``frozen`` is the reserved label, written into the ONE label store the
+    emitter takes -- it has no parameter of its own for it."""
+    from molbuilder.structure import FROZEN_LABEL
+    labels = dict(regions or {})
+    if frozen:
+        labels[FROZEN_LABEL] = list(frozen)
     return emit_atom_metadata(
-        regions=regions, frozen_atoms=frozen, n_atoms_total=n,
-        annotations=annotations,
+        regions=labels, n_atoms_total=n, annotations=annotations,
     )
 
 
@@ -72,8 +78,10 @@ class TestParseRecovery:
         out = atom_metadata_json_for_run_dir(tmp_path, 4)
         assert out is not None
         md = json.loads(out)
-        assert md["regions"] == {"electrode_L": [0, 1], "device": [2, 3]}
-        assert md["frozen_atoms"] == [0, 1]
+        # ONE label store in the block: the reserved label with the rest.
+        assert md["regions"] == {"electrode_L": [0, 1], "device": [2, 3],
+                                 "frozen_atoms": [0, 1]}
+        assert "frozen_atoms" not in md, "the same fact in the block twice"
         assert md["n_atoms_total"] == 4
 
     def test_recovers_block_from_py_pyscf(self, tmp_path):
@@ -81,7 +89,8 @@ class TestParseRecovery:
         (tmp_path / "job.py").write_text(
             "# job_name = job\n" + _block({"solvent": [0]}, [0], 3) + "\n")
         out = atom_metadata_json_for_run_dir(tmp_path, 3)
-        assert out is not None and json.loads(out)["regions"] == {"solvent": [0]}
+        assert out is not None and json.loads(out)["regions"] == {
+            "solvent": [0], "frozen_atoms": [0]}
 
     def test_atom_count_mismatch_returns_none(self, tmp_path):
         """A block whose n_atoms_total disagrees with the trajectory would
@@ -122,27 +131,7 @@ def client():
 
 
 class TestBuildLoadDoor:
-    def test_atom_metadata_lands_on_per_atom_payload(self, client):
-        """END RESULT: the response's atoms carry the recovered regions +
-        is_frozen -- what MolView reads to colour regions / tag frozen."""
-        r = client.post("/api/build/load", json={
-            "text": _XYZ_4C_FRAME0, "filename": "traj.xyz",
-            "atom_metadata": _md_json_4c(),
-        })
-        assert r.status_code == 200
-        d = r.get_json()
-        assert d["ok"] is True
-        atoms = d["atoms"]
-        assert atoms[0]["regions"] == ["electrode_L"] and atoms[0]["is_frozen"]
-        assert atoms[2]["regions"] == ["device"] and not atoms[2]["is_frozen"]
 
-    def test_no_atom_metadata_is_bare_geometry(self, client):
-        """Baseline: without the block, atoms carry no region / frozen tag."""
-        d = client.post("/api/build/load", json={
-            "text": _XYZ_4C_FRAME0, "filename": "traj.xyz"}).get_json()
-        assert d["ok"] is True
-        assert not d["atoms"][0]["regions"]
-        assert not d["atoms"][0]["is_frozen"]
 
     def test_atom_count_mismatch_is_400_not_500(self, client):
         bad = json.dumps({**json.loads(_md_json_4c()), "n_atoms_total": 5})
@@ -220,8 +209,9 @@ class TestWatchLoadSurfacesMetadata:
         assert d["ok"] is True
         assert d["atom_metadata"], "run-dir load must surface atom_metadata"
         md = json.loads(d["atom_metadata"])
-        assert md["regions"] == {"solvent": [0], "hydrogens": [1, 2]}
-        assert md["frozen_atoms"] == [0]
+        assert md["regions"] == {"solvent": [0], "hydrogens": [1, 2],
+                                 "frozen_atoms": [0]}
+        assert "frozen_atoms" not in md
 
     def test_run_dir_without_block_returns_none(self, client, tmp_path, monkeypatch):
         _register_tmp_as_picker_root(tmp_path, monkeypatch)

@@ -115,6 +115,15 @@ _CHANNEL_KINDS = ("tag", "flag", "value")
 #: and an alias between them at every boundary that touched both.
 FROZEN_LABEL = "frozen_atoms"
 
+#: THE metadata field set -- what :meth:`Structure.metadata_to_dict` writes and
+#: :meth:`Structure.apply_metadata_dict` accepts, named once so the two cannot
+#: enumerate different sets.  A dict carrying anything else is REFUSED rather
+#: than partly applied: a key this does not know is a fact the caller believes
+#: it stored, and silently dropping it is how a structure reaches a calculation
+#: missing labels nobody noticed were gone.
+METADATA_FIELDS = ("regions", "cell", "cell_origin", "pbc", "axis_kind",
+                   "vacuum", "annotations")
+
 #: Containment tolerance in FRACTIONAL units (§ 6.1): loose enough to forgive a
 #: round-tripped float, tight enough that "half the molecule outside the box"
 #: can never pass.  Shared with periodicity_gate, which delegates containment
@@ -710,15 +719,16 @@ class Structure:
         out-of-range index, ...), sourced from the same invariants a freshly
         constructed Structure enforces."""
         data = data or {}
+        unknown = [k for k in data if k not in METADATA_FIELDS]
+        if unknown:
+            raise ValueError(
+                f"Structure.apply_metadata_dict: unknown metadata "
+                f"{sorted(unknown)!r}; known fields are "
+                f"{list(METADATA_FIELDS)!r}.  A key this does not know is a "
+                f"fact you believe you stored -- it is refused rather than "
+                f"dropped.  (The reserved `frozen_atoms` label lives in "
+                f"`regions` with every other label.)")
         self.regions      = dict(data.get("regions") or {})
-        # SCHEMA 6 AND EARLIER kept the reserved label in its own top-level key.
-        # Read it into the label store where it belongs; a file written then
-        # opens now, and nothing writes that key again.  Union rather than
-        # overwrite: a schema-7 file has the label in `regions` already, and a
-        # hand-merged file could carry both.
-        if data.get("frozen_atoms"):
-            self.frozen_atoms = sorted(set(self.frozen_atoms)
-                                       | {int(i) for i in data["frozen_atoms"]})
         self.cell         = (np.asarray(data["cell"], dtype=float)
                              if data.get("cell") is not None else None)
         self.cell_origin  = (np.asarray(data["cell_origin"], dtype=float)
@@ -860,6 +870,10 @@ class Structure:
         separate preflight check at engine-load time -- the data
         model itself doesn't constrain it.
         """
+        if not isinstance(self.regions, dict):
+            raise ValueError(
+                f"Structure.regions must be a dict of label -> atom indices; "
+                f"got {type(self.regions).__name__}")
         if not self.regions:
             return
         normalised: Dict[str, List[int]] = {}
@@ -869,8 +883,22 @@ class Structure:
                     f"Structure.regions: region label must be a "
                     f"non-empty string; got {region_name!r}"
                 )
+            # A LIST of indices, checked to its depth.  A str is iterable and a
+            # dict iterates its keys, so both would "work" here and produce
+            # nonsense -- `{"x": "012"}` would become atoms 0, 1, 2.
+            if not isinstance(idxs, (list, tuple)):
+                raise ValueError(
+                    f"Structure.regions[{region_name!r}] must be a list of "
+                    f"atom indices; got {type(idxs).__name__}")
             unique: set = set()
             for raw in idxs:
+                # A REAL int.  `int(raw)` would accept "3" (a string index from
+                # a JSON round-trip that lost its typing), truncate 3.7 to 3
+                # without telling anyone, and take True as atom 1.
+                if isinstance(raw, bool) or not isinstance(raw, (int, np.integer)):
+                    raise ValueError(
+                        f"Structure.regions[{region_name!r}]: atom index must "
+                        f"be an int; got {type(raw).__name__} ({raw!r})")
                 idx = int(raw)
                 if not 0 <= idx < n:
                     raise ValueError(

@@ -1180,7 +1180,7 @@ def apply_periodicity_from_body(struct, body):
 
 
 def apply_labels_to_struct(struct, body):
-    """Apply ``frozen_atoms`` + ``regions`` from the request body.
+    """Apply ``regions`` -- the whole label store -- from the request body.
 
     THE inbound label seam (contract F2, science/validation.md § 4.1): the body
     is the only source.  A body that omits the keys declares NO labels; the
@@ -1196,20 +1196,20 @@ def apply_labels_to_struct(struct, body):
     re-read, no path-pointer indirection, no silent no-ops.
 
     Falls through to :func:`apply_sidecar_if_possible` only when the
-    body carries neither ``frozen_atoms`` NOR ``regions`` keys.
+    body carries neither ``regions`` NOR ``annotations`` keys.
     That branch covers older callers (e.g. /api/spectra/render
     pending its frontend migration to the in-body contract) and
     keeps the path-driven flow working for them.
 
     Why ``in`` instead of truthiness:
 
-      * ``body.get("frozen_atoms", [])`` -> ``[]`` looks identical
-        whether the client deliberately sent ``frozen_atoms: []``
-        (= "no frozen atoms in the viewer") or omitted the key
-        entirely.  Both reduce to falsy.
-      * ``"frozen_atoms" in body`` distinguishes them: present-but-
-        empty is the client's explicit "I have nothing to freeze."
-        Absent means "I'm an older caller; please consult disk."
+      * ``body.get("regions", {})`` -> ``{}`` looks identical whether
+        the client deliberately sent ``regions: {}`` (= "nothing is
+        labelled in the viewer") or omitted the key entirely.  Both
+        reduce to falsy.
+      * ``"regions" in body`` distinguishes them: present-but-empty is
+        the client's explicit "I have nothing labelled."  Absent means
+        "I'm an older caller; please consult disk."
 
     Returns
     -------
@@ -1221,8 +1221,7 @@ def apply_labels_to_struct(struct, body):
       (atom-count mismatch) OR when the sidecar fallback couldn't.
       Caller surfaces as a preflight warn-severity Issue.
     """
-    has_in_body = ("frozen_atoms" in body) or ("regions" in body) \
-        or ("annotations" in body)
+    has_in_body = ("regions" in body) or ("annotations" in body)
     if not has_in_body:
         # F2 (science/validation.md 4.1): NO second source.  The server does not
         # read the sidecar for an emitted structure -- a validated deck must
@@ -1243,34 +1242,16 @@ def apply_labels_to_struct(struct, body):
         return None
 
     # In-body branch: the client claims authority over the labels.
-    # 2026-06-14: Structure is a plain ``@dataclass`` -- assigning
-    # to ``.frozen_atoms`` / ``.regions`` does NOT trigger the
-    # ``__post_init__`` validators.  We MUST validate explicitly
-    # here, or a malicious / confused client sending
-    # ``{"frozen_atoms": [9999]}`` on a 5-atom struct sails through
-    # this code path and crashes deep inside the generator (or, worse,
-    # silently mis-emits a .fdf with a position line pointing at a
-    # non-existent atom).  Same threat model for ``regions``.
-    frozen_in = body.get("frozen_atoms") or []
+    # 2026-06-14: assigning to ``.regions`` does NOT trigger the
+    # ``__post_init__`` validators.  We MUST validate explicitly here, or a
+    # malicious / confused client sending ``{"regions": {"x": [9999]}}`` on a
+    # 5-atom struct sails through this code path and crashes deep inside the
+    # generator (or, worse, silently mis-emits a .fdf with a position line
+    # pointing at a non-existent atom).  Reserved labels are ordinary members
+    # of this one map and are validated by the same loop.
     regions_in = body.get("regions") or {}
     n_atoms = len(struct.elements)
     try:
-        if not isinstance(frozen_in, list):
-            raise ValueError(
-                f"``frozen_atoms`` must be a list; got "
-                f"{type(frozen_in).__name__}"
-            )
-        for idx in frozen_in:
-            if not isinstance(idx, int) or isinstance(idx, bool):
-                raise ValueError(
-                    f"``frozen_atoms`` indices must be int; got "
-                    f"{type(idx).__name__} ({idx!r})"
-                )
-            if idx < 0 or idx >= n_atoms:
-                raise ValueError(
-                    f"``frozen_atoms`` index {idx} out of range "
-                    f"[0, {n_atoms}); structure has {n_atoms} atoms"
-                )
         if not isinstance(regions_in, dict):
             raise ValueError(
                 f"``regions`` must be a dict; got "
@@ -1335,11 +1316,8 @@ def apply_labels_to_struct(struct, body):
                         raise ValueError(
                             f"``annotations[{name!r}]`` index {i!r} out of "
                             f"range [0, {n_atoms})")
-        # All validated; commit atomically.  ORDER MATTERS: `regions` IS the
-        # label store and the `frozen_atoms` accessor writes into it, so the
-        # store goes down first or the reserved label is wiped by it.
+        # All validated; commit atomically.
         struct.regions      = {k: list(v) for k, v in regions_in.items()}
-        struct.frozen_atoms = sorted(set(frozen_in))
         struct.annotations  = annotations
     except (ValueError, TypeError) as exc:
         return (f"in-body labels could not be applied ({exc}); "
@@ -1351,7 +1329,7 @@ def apply_labels_to_struct(struct, body):
 def apply_sidecar_if_possible(struct, structure_path):
     """Best-effort .molstruct.json sidecar application.
 
-    Sets ``struct.frozen_atoms`` + ``struct.regions`` from the
+    Sets ``struct.regions`` -- the whole label store -- from the
     sidecar next to ``structure_path`` so engine preflight + emitters
     see the real boundary-condition data.  Cross-blueprint helper:
     used by /api/build/fdf, /api/build/pyscf, and
@@ -1436,7 +1414,7 @@ def apply_companion_labels_if_present(struct, structure_path):
     Parameters
     ----------
     struct
-        Mutated in place: ``struct.regions`` / ``struct.frozen_atoms``
+        Mutated in place: ``struct.regions``
         are populated when the companion carries them.
     structure_path
         ``Path``-like.  Resolved already by the caller; this

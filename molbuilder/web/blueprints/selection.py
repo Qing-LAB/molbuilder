@@ -197,14 +197,6 @@ def _load_structure(structure_path: str) -> Structure:
                         if isinstance(i, int) and 0 <= i < struct_n]
                 if kept:
                     filtered_regions[name] = sorted(set(kept))
-            # A schema-6 sidecar kept the reserved label in its own key; fold
-            # it into the label store and filter it by the same rule as every
-            # other label, then commit ONCE.
-            legacy_frozen = [i for i in (data.get("frozen_atoms") or [])
-                             if isinstance(i, int) and 0 <= i < struct_n]
-            if legacy_frozen:
-                filtered_regions[FROZEN_LABEL] = sorted(
-                    set(filtered_regions.get(FROZEN_LABEL, ())) | set(legacy_frozen))
             struct.regions = filtered_regions
     return struct
 
@@ -337,11 +329,6 @@ def _struct_from_atoms(atoms: list) -> Structure:
         for label in (a.get("labels") or a.get("regions") or []):
             if isinstance(label, str) and label:
                 regions.setdefault(label, []).append(i)
-        # The browser still sends the reserved label as its own per-atom flag;
-        # it lands in the ONE label store like anything else (the wire's own
-        # fold is molview.md's phase D).
-        if a.get("isFrozen") or a.get("is_frozen"):
-            regions.setdefault(FROZEN_LABEL, []).append(i)
         residue_names.append(
             str(a.get("residueName") or a.get("residue_name") or "MOL"))
     n = len(elements)

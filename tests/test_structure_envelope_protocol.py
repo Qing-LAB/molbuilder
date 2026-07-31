@@ -28,12 +28,18 @@ from molbuilder.workingcopy_structure import StructureCodec
 
 
 def _envelope(**metadata):
+    """`frozen_atoms=` is accepted here as a convenience and written where it
+    belongs -- into `regions`. The metadata dict itself has no such key; the
+    gate refuses one rather than dropping it."""
     """An envelope is the structure's own canonical dict — `Structure.to_dict()`'s
     shape — so these tests build it the way the codec does, not a shape invented
     beside it."""
     columns = {k: metadata.pop(k) for k in
                ("atom_names", "residue_ids", "residue_names", "chain_ids", "title")
                if k in metadata}
+    frozen = metadata.pop("frozen_atoms", None)
+    if frozen:
+        metadata.setdefault("regions", {})["frozen_atoms"] = list(frozen)
     return {"structure": dict({
         "elements":  ["C", "O", "H"],
         "positions": [[0.0, 0.0, 0.0], [1.4, 0.0, 0.0], [0.0, 1.0, 0.0]],
@@ -122,7 +128,7 @@ def test_the_metadata_a_coordinate_file_cannot_hold_arrives_with_the_atoms():
 
     # The reserved label is IN the label store with the others -- one store --
     # and the accessor is the way to ask which atoms carry it (§ 6.6).
-    assert struct.regions == {"L-electrode": [0], "α-helix": [2], "frozen": [1]}
+    assert struct.regions == {"L-electrode": [0], "α-helix": [2], "frozen_atoms": [1]}
     assert list(struct.frozen_atoms) == [1]
     assert struct.cell is not None
     assert list(struct.residue_names) == ["ALA", "ALA", "ALA"]

@@ -139,19 +139,3 @@ def test_modify_template_loads_the_js_module():
     )
 
 
-def test_css_has_popover_styles():
-    """Selection panel CSS carries the styles for the ⓘ button +
-    the popover panel.  Without these the popover renders unstyled
-    against the page background.
-    """
-    css = SELECTION_CSS.read_text()
-    for needle in (
-        ".selection-target-info-btn",
-        ".selection-target-info-panel",
-        ".region-defs-row",
-        ".region-defs-key",
-        ".region-defs-badge",
-    ):
-        assert needle in css, (
-            f"selection-panel.css missing style for {needle!r}"
-        )

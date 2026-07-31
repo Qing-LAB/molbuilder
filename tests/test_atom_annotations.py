@@ -130,7 +130,7 @@ def test_atom_metadata_block_roundtrips_annotations():
     s.frozen_atoms = [4]
     s.set_channel("charge", AtomChannel("value", {0: -1.0, 2: 0.5}))
     block = sc.emit_atom_metadata(
-        regions=s.regions, frozen_atoms=s.frozen_atoms,
+        regions=s.regions,
         annotations=s.annotations, n_atoms_total=5)
     assert "molstruct-json/v4" in block and '"annotations"' in block
     back = _struct(5)
@@ -145,7 +145,7 @@ def test_atom_metadata_block_annotations_only():
     from molbuilder import script_emit as sc
     s = _struct(3)
     s.set_channel("tail", AtomChannel("tag", [2]))
-    block = sc.emit_atom_metadata(regions={}, frozen_atoms=[],
+    block = sc.emit_atom_metadata(regions={},
                                   annotations=s.annotations, n_atoms_total=3)
     assert block is not None
     back = _struct(3)
@@ -155,7 +155,7 @@ def test_atom_metadata_block_annotations_only():
 
 def test_atom_metadata_none_when_empty():
     from molbuilder import script_emit as sc
-    assert sc.emit_atom_metadata(regions={}, frozen_atoms=[],
+    assert sc.emit_atom_metadata(regions={},
                                  annotations={}, n_atoms_total=3) is None
 
 

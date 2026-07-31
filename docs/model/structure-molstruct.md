@@ -78,7 +78,7 @@ is refused with a clear error.
 | v1 / v2 | old `fixed_atoms` key — **not** readable; such a file must be re-opened + re-saved from the Molbuilder tab to upgrade |
 | v3 | `regions` + `frozen_atoms` (no annotations) |
 | v4 | **adds** the extensible annotation channels (`structure-annotations.md`) — additive, so v3 files still load (annotations absent → empty) |
-| v5 | **drops** `kgrid` (it is a `SiestaConfig` sampling knob, not geometry — see `structure-periodicity.md`); a stray `kgrid` in an older file loads fine, ignored |
+| v5 | **drops** `kgrid` (it is a `SiestaConfig` sampling knob, not geometry — see `structure-periodicity.md`). A payload still carrying one is refused by the metadata gate, not ignored: a key nobody reads is metadata the writer thinks it saved |
 | v6 | `frozen_atoms` still a top-level key of its own |
 | v7 | **current** — the reserved `frozen_atoms` label moves into `regions` with every other label and the top-level key is no longer written. One store, one key. v3–v6 files still load: `apply_metadata_dict` folds the old key into the label store on read. Code holding a raw payload asks `molstruct.frozen_atoms(payload)`, the one read that knows which schema put it where (`structure-annotations.md` § 2) |
 

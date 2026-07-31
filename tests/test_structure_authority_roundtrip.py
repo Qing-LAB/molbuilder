@@ -35,8 +35,8 @@ _META = {
     "pbc":          [True, True, False],
     "axis_kind":    ["periodic", "periodic", "isolated"],
     "vacuum":       [0.0, 0.0, 2.0],
-    "regions":      {"electrode": [0], "channel": [1]},
-    "frozen_atoms": [0],
+    # ONE label store: the reserved label is a member, not a field beside it.
+    "regions":      {"electrode": [0], "channel": [1], "frozen_atoms": [0]},
     "annotations":  {"charge": {"kind": "value",
                                 "data": {"0": 0.1, "1": -0.1}}},
 }

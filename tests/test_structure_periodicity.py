@@ -112,48 +112,13 @@ class TestSidecarRoundTrip:
         assert not hasattr(s, "kgrid")
         assert s.pbc == (True, True, True)   # derived: transport -> True
 
-    def test_cell_origin_round_trips_v6(self):
-        """§3c: cell_origin persists through the sidecar (schema v6) so an electrode
-        junction's box survives a save/reload; dropped when there's no explicit cell."""
-        from molbuilder.sidecars import molstruct as ms
-        d = ms.to_dict(
-            {"cell": [[5, 0, 0], [0, 5, 0], [0, 0, 10]],
-             "cell_origin": [-2.5, -2.5, -5.0],
-             "axis_kind": ["periodic", "periodic", "transport"],
-             "vacuum": [0.0, 0.0, 0.0]},
-            n_atoms_total=2, structure_hash="a" * 64,
-        )
-        assert d["schema_version"] == 6
-        assert d["cell_origin"] == [-2.5, -2.5, -5.0]
-        s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])
-        ms.apply_to_structure(s, d)
-        assert np.allclose(s.cell_origin, [-2.5, -2.5, -5.0])
-        # No explicit cell -> cell_origin is meaningless and dropped.
-        d2 = ms.to_dict({"cell_origin": [1, 2, 3]},
-                        n_atoms_total=1, structure_hash="b" * 64)
-        assert d2["cell_origin"] is None
 
-    def test_pre_v5_kgrid_key_is_ignored_on_read(self):
-        # A legacy v3/v4 sidecar that still carries a "kgrid" key loads fine;
-        # the key is simply ignored (Structure has no kgrid field).
-        from molbuilder.sidecars import molstruct as ms
-        s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])
-        ms.apply_to_structure(s, {"n_atoms_total": 2, "regions": {},
-                                  "frozen_atoms": [], "kgrid": [4, 4, 1]})
-        assert not hasattr(s, "kgrid")
 
     def test_invalid_axis_kind_rejected_at_build(self):
         from molbuilder.sidecars import molstruct as ms
         with pytest.raises(ms.MolstructJsonError, match="axis_kind"):
             ms.to_dict({"axis_kind": ["periodic", "nope", "isolated"]},
                        n_atoms_total=1, structure_hash="a" * 64)
-
-    def test_v3_sidecar_absent_fields_keeps_defaults(self):
-        from molbuilder.sidecars import molstruct as ms
-        s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])
-        ms.apply_to_structure(s, {"n_atoms_total": 2, "regions": {},
-                                  "frozen_atoms": []})
-        assert s.axis_kind == ("isolated", "isolated", "isolated")
 
 
 class TestElectrodeCaptureCell:

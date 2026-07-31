@@ -210,7 +210,6 @@ def emit_bench_marks(metadata: Dict[str, Any],
 
 
 def emit_atom_metadata(regions: Dict[str, List[int]],
-                       frozen_atoms: List[int],
                        n_atoms_total: int,
                        created_by: str = "molbuilder",
                        created_at: Optional[str] = None,
@@ -226,16 +225,20 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
     (frozen -> Geometry.Constraints etc. is a separate translation, § 4).
 
     Per the contract's emission rule, the block is emitted ONLY when at least
-    one of ``regions`` / ``frozen_atoms`` / ``annotations`` is non-empty.
-    Absence is the honest signal that this generation had no labels.
+    one of ``regions`` / ``annotations`` is non-empty.  Absence is the honest
+    signal that this generation had no labels.
+
+    ``regions`` is the whole label store, so a reserved label -- ``frozen_atoms``
+    -- is IN it rather than beside it.  The block is the sidecar's shape and
+    follows it (``structure-annotations.md`` § 2); a key of its own would put
+    the same fact in the generated script twice.
 
     Index convention: 0-based throughout the JSON payload, matching
     ``molstruct_json`` schema v4 and the in-Python ``Structure`` model.
-    ``annotations`` are the extensible channels (schema v4), serialised the
+    ``annotations`` are the extensible channels (schema v4+), serialised the
     same way the sidecar serialises them.
     """
     regions = regions or {}
-    frozen_atoms = frozen_atoms or []
     # Serialise extensible channels (AtomChannel -> JSON) exactly as the sidecar.
     normed_annotations: Dict[str, Any] = {}
     if annotations:
@@ -245,7 +248,7 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
                 normed_annotations[name] = ch.to_json()
             elif isinstance(ch, dict) and "kind" in ch:
                 normed_annotations[name] = _AtomChannel.from_json(ch).to_json()
-    if not regions and not frozen_atoms and not normed_annotations:
+    if not regions and not normed_annotations:
         return None
     payload: Dict[str, Any] = {
         "schema_version": 4,
@@ -256,8 +259,6 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
             k: sorted(set(int(i) for i in v))
             for k, v in regions.items()
         }
-    if frozen_atoms:
-        payload["frozen_atoms"] = sorted(set(int(i) for i in frozen_atoms))
     if selection_rules:
         payload["selection_rules"] = selection_rules
     if normed_annotations:
@@ -322,18 +323,16 @@ def apply_inbody_atom_metadata(struct: Any, text: str) -> bool:
     if payload is None:
         return False
     regions = payload.get("regions") or {}
-    frozen = payload.get("frozen_atoms") or []
     annotations = payload.get("annotations") or {}
-    if not regions and not frozen and not annotations:
+    if not regions and not annotations:
         return False
     if regions:
-        # Normalise: sort + dedupe per region; coerce to int.
+        # Normalise: sort + dedupe per label; coerce to int.  Reserved labels
+        # are in here with the rest -- there is no second key to read.
         struct.regions = {
             str(k): sorted({int(i) for i in v})
             for k, v in regions.items()
         }
-    if frozen:
-        struct.frozen_atoms = sorted({int(i) for i in frozen})
     if annotations:
         # Extensible channels (v4) -> struct.annotations, same round-trip as
         # the sidecar (§ 3 data-model persistence).

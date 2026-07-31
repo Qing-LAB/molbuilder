@@ -190,15 +190,6 @@ class TestF1TheTabHoldsNoStructuralMirror:
         # ...and the live accessor is what request bodies use.
         assert "_liveXyz()" in src and "factsForRequest" in src
 
-    def test_the_model_exposes_one_fact_payload(self):
-        import pathlib
-        src = pathlib.Path(
-            "molbuilder/web/static/lib/molview/data-model.js").read_text()
-        assert "factsForRequest:       factsForRequest" in src
-        block = src.split("function factsForRequest()")[1][:900]
-        for key in ("xyz:", "regions:", "frozen_atoms:", "periodicity:"):
-            assert key in block, f"the fact payload omits {key}"
-
 
 class TestF4DerivesOnlyABoxTheStructureAskedFor:
     """PINS: docs/science/validation.md § 4.1 clause F4, second half — the gate

@@ -38,13 +38,10 @@ from ._helpers import build_sidecar_result
 # must be re-exported from /modify.  v3 has no ``annotations`` (a v3
 # reader/consumer sees only regions + frozen); v4 adds the extensible
 # annotation channels (atom-annotations.md § 3) additively -- v3 files
-# still load (annotations absent -> empty).  v5 drops the ``kgrid`` field
-# (k-grid moved off the geometry onto SiestaConfig / TransportConfig);
-# a ``kgrid`` key in an older v3/v4 file loads fine -- it's ignored.
-# v7 moves the reserved ``frozen`` label into ``regions`` with every other
-# label and stops writing a top-level ``frozen_atoms`` key; v3-v6 files still
-# load, because ``apply_metadata_dict`` folds that key into the label store.
-_READABLE_SCHEMA_VERSIONS = (3, 4, 5, 6, 7)
+# still load (annotations absent -> empty).  v5 dropped the ``kgrid``
+# field (k-grid moved off the geometry onto SiestaConfig / TransportConfig);
+# a payload still carrying one is REFUSED by the metadata gate, not ignored.
+_READABLE_SCHEMA_VERSIONS = (3, 4, 5, 6)
 
 
 def _normalised_dict(
@@ -52,7 +49,6 @@ def _normalised_dict(
     n_atoms_total: int,
     structure_hash: str,
     regions: Optional[Dict[str, List[int]]] = None,
-    frozen_atoms: Optional[List[int]] = None,
     selection_rules: Optional[Dict[str, Any]] = None,
     cell: Optional[Any] = None,
     cell_origin: Optional[Any] = None,
@@ -92,7 +88,6 @@ def _normalised_dict(
     # validator too.
     fields = structure_fields_via_dataclass(n_atoms_total, {
         "regions":      regions,
-        "frozen_atoms": frozen_atoms,
         "cell":         cell,
         "cell_origin":  cell_origin,
         "pbc":          pbc,
@@ -187,7 +182,6 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
             n_atoms_total   = n,
             structure_hash  = sh,
             regions         = data.get("regions"),
-            frozen_atoms    = data.get("frozen_atoms"),
             selection_rules = data.get("selection_rules"),
             cell            = data.get("cell"),
             cell_origin     = data.get("cell_origin"),

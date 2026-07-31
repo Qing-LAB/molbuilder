@@ -80,8 +80,7 @@ def atom_metadata_json_for_run_dir(
         md = AtomMetadataTextParser.parse(text).atom_metadata
         if not md:
             continue
-        if not (md.get("regions") or md.get("frozen_atoms")
-                or md.get("annotations")):
+        if not (md.get("regions") or md.get("annotations")):
             continue                       # empty block -> try the next script
         if n_atoms is not None and md.get("n_atoms_total") != n_atoms:
             continue                       # indices no longer match -> skip

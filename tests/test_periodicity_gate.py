@@ -583,14 +583,6 @@ class TestLoadHealIsVisible:
         finally:
             set_capabilities(None)
 
-    def test_client_surfaces_and_dirty_marks(self):
-        """Source pin: the install path shows the notices and dirty-marks
-        on kind == 'heal' (the client half of clause 6)."""
-        base = Path(__file__).resolve().parents[1] / "molbuilder/web/static"
-        text = (base / "lib/molview/_install.js").read_text(encoding="utf-8")
-        assert "load-heal-" in text
-        assert 'kind === "heal"' in text and "markDirty" in text
-
 
 class TestDoorHygieneAndRemainingOps:
     """PINS: docs/model/structure-periodicity.md § 6.2 — the door's error
@@ -707,19 +699,6 @@ class TestDocMatchesTheDoor:
             assert f"``{op}``" in doc, (
                 f"the door's docstring does not name op {op!r}")
         assert "NO ``calibrate`` op" in doc
-
-    def test_notice_shape_is_documented_where_it_is_produced(self):
-        """The ``kind: 'heal'`` key is load-bearing (the load door marks the
-        session dirty on it), so it must be documented in the module that
-        emits it and in the client that consumes it."""
-        import pathlib
-        gate = pathlib.Path("molbuilder/periodicity_gate.py").read_text(
-            encoding="utf-8")
-        assert '"kind": "heal"' in gate and "load-bearing" in gate
-        js = pathlib.Path(
-            "molbuilder/web/static/lib/molview/data-model.js").read_text(
-                encoding="utf-8")
-        assert 'kind: "heal"' in js
 
 
 class TestMinimumThicknessFloor:

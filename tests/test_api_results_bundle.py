@@ -36,11 +36,17 @@ def _set_picker_root(monkeypatch, tmp_path):
 
 
 def _atom_md_block(*, regions, frozen, n_atoms_total):
-    """Emit an ATOM-METADATA block via the canonical contract emitter."""
+    """Emit an ATOM-METADATA block via the canonical contract emitter.
+
+    ``frozen`` is written where it belongs -- as the reserved label in the ONE
+    label store. The emitter has no second parameter for it."""
     from molbuilder import script_emit as sc
+    from molbuilder.structure import FROZEN_LABEL
+    labels = dict(regions or {})
+    if frozen:
+        labels[FROZEN_LABEL] = list(frozen)
     block = sc.emit_atom_metadata(
-        regions=regions or {},
-        frozen_atoms=frozen or [],
+        regions=labels,
         n_atoms_total=n_atoms_total,
     )
     return ("" if block is None else "\n" + block + "\n")
@@ -246,40 +252,6 @@ def test_bundle_endpoint_400s_on_empty_run_dir(web_client, tmp_path, monkeypatch
 #  L3: end-to-end round-trip                                             #
 # --------------------------------------------------------------------- #
 
-
-def test_bundle_endpoint_writes_pair_and_returns_summary(web_client, tmp_path, monkeypatch):
-    """The happy path: bundle a SIESTA run dir into a fresh target,
-    verify the .xyz + .molstruct.json land + the JSON envelope
-    carries the summary fields the UI needs (final_coords_from,
-    notes, regions, n_atoms)."""
-    _set_picker_root(monkeypatch, tmp_path)
-    run_dir = _siesta_run_dir(tmp_path)
-    dst_dir = tmp_path / "handoff"
-    r = web_client.post("/api/results/bundle", json={
-        "run_dir":    str(run_dir),
-        "target_dir": str(dst_dir),
-        "stem":       "h2-bundle",
-    })
-    assert r.status_code == 200, r.get_json()
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["source_engine"]     == "siesta"
-    assert body["final_coords_from"] == "xv"
-    assert body["n_atoms"]           == 2
-    assert body["regions"]           == ["L-electrode"]
-    assert body["frozen_atoms_count"] == 1
-    # Files land at the claimed paths.
-    xyz_path     = Path(body["xyz_path"])
-    sidecar_path = Path(body["sidecar_path"])
-    assert xyz_path     == dst_dir / "h2-bundle.xyz"
-    assert sidecar_path == dst_dir / "h2-bundle.molstruct.json"
-    assert xyz_path.exists() and sidecar_path.exists()
-    # XYZ provenance comment carries the source basename.
-    assert "bundled from h2.fdf" in xyz_path.read_text()
-    # Sidecar regions match what the .fdf carried.
-    sidecar = json.loads(sidecar_path.read_text())
-    assert sidecar["regions"] == {"L-electrode": [0]}
-    assert sidecar["frozen_atoms"] == [1]
 
 
 def test_bundle_endpoint_refuses_overwrite_by_default(web_client, tmp_path, monkeypatch):

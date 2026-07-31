@@ -36,8 +36,8 @@ def _with_metadata() -> Structure:
     s = Structure.from_xyz("3\n\nC 0 0 0\nO 1 0 0\nH 0 1 0\n")
     molstruct.apply_to_structure(s, {
         "n_atoms_total": 3,
-        "regions":       {"L-electrode": [0], "α-helix": [2]},
-        "frozen_atoms":  [1],
+        "regions":       {"L-electrode": [0], "α-helix": [2],
+                          "frozen_atoms": [1]},
         "cell":          [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 8.0]],
     })
     # THROUGH THE PERIODICITY GATE, as every structure that reaches a save has

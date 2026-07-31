@@ -76,9 +76,13 @@ def _seed_sidecar(root, *, n_atoms, regions=None, frozen=None,
     (the save is now the projects.parser door → ``/api/files/write``).  ``save-sidecar``
     was REPLACE-all, so a single ``to_dict`` mirrors one endpoint call."""
     from molbuilder.sidecars import molstruct as _msj
+    from molbuilder.structure import FROZEN_LABEL
     xyz = root / name
+    labels = dict(regions or {})
+    if frozen:
+        labels[FROZEN_LABEL] = list(frozen)   # a reserved label is a label
     payload = _msj.to_dict(
-        {"regions": regions or {}, "frozen_atoms": frozen or []},
+        {"regions": labels},
         n_atoms_total=n_atoms,
         structure_hash=_msj.sha256_of_file(xyz),
     )
@@ -363,8 +367,8 @@ class TestAtomsEndpoint:
             "schema_version": 3,
             "n_atoms_total":  11,
             "structure_hash": struct_hash,
-            "regions":        {"L-electrode": [0, 1, 2, 3]},
-            "frozen_atoms":   [10],
+            "regions":        {"L-electrode": [0, 1, 2, 3],
+                               "frozen_atoms": [10]},
             "selection_rules": {},
         }))
         r = web.post("/api/selection/atoms", json={
@@ -391,7 +395,6 @@ class TestAtomsEndpoint:
             "n_atoms_total":  11,
             "structure_hash": struct_hash,
             "regions":        {},
-            "frozen_atoms":   [],
             "cell":           cell,
             "selection_rules": {},
         }))
@@ -469,8 +472,8 @@ class TestAtomsEndpoint:
                 "bridge":      [5, 12],     # 12 orphaned
                 "L-electrode": [0, 1, 19],  # 19 orphaned
                 "ghosts":      [15, 19],    # all orphaned → drop region
+                "frozen_atoms": [0, 10, 18],  # 18 orphaned
             },
-            "frozen_atoms":   [0, 10, 18],  # 18 orphaned
             "selection_rules": {},
         }))
         r = web.post("/api/selection/atoms", json={
@@ -510,7 +513,6 @@ class TestAtomsEndpoint:
             "n_atoms_total":  20,
             "structure_hash": struct_hash,
             "regions":        {"ghost": [11, 12, 13]},
-            "frozen_atoms":   [15, 16],
             "selection_rules": {},
         }))
         r = web.post("/api/selection/atoms", json={

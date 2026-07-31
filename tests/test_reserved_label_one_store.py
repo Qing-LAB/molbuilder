@@ -228,7 +228,6 @@ def test_the_saved_file_keeps_one_key_for_labels(tmp_path):
 
     assert "frozen_atoms" not in saved, f"a second key: {sorted(saved)}"
     assert saved["regions"][FROZEN_LABEL] == [1, 2]
-    assert saved["schema_version"] == molstruct.SCHEMA_VERSION
 
 
 def test_a_saved_structure_comes_back_the_same(tmp_path):
@@ -241,35 +240,16 @@ def test_a_saved_structure_comes_back_the_same(tmp_path):
     assert back.frozen_atoms == [1, 2]
 
 
-def test_a_file_written_before_the_fold_still_opens(tmp_path):
-    """Schema 6 kept the reserved label in a top-level key. Those files are on
-    disk in real projects; they open, and what they held lands in the label
-    store where the rest of the application now looks for it."""
-    xyz = tmp_path / "old.xyz"
-    xyz.write_text("3\n\nC 0 0 0\nO 1 0 0\nH 0 1 0\n", encoding="utf-8")
-    molstruct.sidecar_path_for(xyz).write_text(json.dumps({
-        "schema_version":  6,
-        "n_atoms_total":   3,
-        "structure_hash":  "0" * 64,
-        "regions":         {"L-electrode": [0]},
-        "frozen_atoms":    [1, 2],          # where schema 6 put it
-        "created_by":      "molbuilder",
-        "created_at":      "2026-01-01T00:00:00Z",
-    }), encoding="utf-8")
 
-    back = StructureCodec().read(xyz)
-
-    assert back.frozen_atoms == [1, 2], "a schema-6 file lost its frozen atoms"
-    assert back.regions == {"L-electrode": [0], FROZEN_LABEL: [1, 2]}
-
-
-def test_the_designated_read_works_on_a_saved_payload_of_either_schema():
+def test_the_designated_read_works_on_a_saved_payload_too():
     """The same "one place spells the name" rule, one level down: code holding a
-    sidecar dict rather than a Structure asks `molstruct.frozen_atoms` and does
-    not need to know which schema wrote the file."""
+    sidecar dict rather than a Structure asks `molstruct.frozen_atoms` instead
+    of reaching into `regions` for the name."""
     assert molstruct.frozen_atoms({"regions": {FROZEN_LABEL: [1, 2]}}) == [1, 2]
-    assert molstruct.frozen_atoms({"frozen_atoms": [1, 2]}) == [1, 2]
     assert molstruct.frozen_atoms({"regions": {"L-electrode": [0]}}) == []
+    assert molstruct.frozen_atoms({"frozen_atoms": [1, 2]}) == [], (
+        "a top-level key is not a place the fact lives"
+    )
     assert molstruct.frozen_atoms(None) == []
 
 
@@ -355,3 +335,98 @@ def test_the_two_routes_cannot_disagree(served):
     }).get_json()["selected_indices"]
 
     assert from_rows == from_rule == [1, 2]
+
+
+# --------------------------------------------------------------------- #
+#  The gate: what crosses it, and what it refuses                       #
+# --------------------------------------------------------------------- #
+
+def test_the_metadata_dict_has_exactly_these_members():
+    """The shape at the gate, pinned by MEMBERSHIP. `metadata_to_dict` writes
+    this set and `apply_metadata_dict` accepts it; naming it in one place is
+    what stops a writer and a reader enumerating different sets, which is how
+    `cell_origin` was dropped on reload."""
+    from molbuilder.structure import METADATA_FIELDS
+
+    written = _labelled().metadata_to_dict()
+
+    assert set(written) == set(METADATA_FIELDS), (
+        f"the writer and the declared field set disagree: "
+        f"written={sorted(written)} declared={sorted(METADATA_FIELDS)}"
+    )
+    assert set(METADATA_FIELDS) == {"regions", "cell", "cell_origin", "pbc",
+                                    "axis_kind", "vacuum", "annotations"}
+    assert "frozen_atoms" not in METADATA_FIELDS, (
+        "the reserved label is a member of `regions`, not a field beside it"
+    )
+
+
+def test_the_gate_refuses_a_key_it_cannot_honour():
+    """A key the gate does not know is a fact the caller believes it stored.
+    Dropping it silently is how a structure reaches a calculation with labels
+    nobody noticed were gone -- which is exactly what `frozen_atoms` did for one
+    afternoon while it was still being sent."""
+    s = Structure.from_xyz("2\n\nC 0 0 0\nO 1 0 0\n")
+
+    with pytest.raises(ValueError, match=r"unknown metadata.*frozen_atoms"):
+        s.apply_metadata_dict({"regions": {}, "frozen_atoms": [0]})
+    with pytest.raises(ValueError, match=r"unknown metadata"):
+        s.apply_metadata_dict({"regoins": {"typo": [0]}})
+
+
+def test_the_gate_checks_the_label_store_to_its_depth():
+    """A dict is not validated by looking at its top level. Each of these is
+    accepted by a `for i in idxs: int(i)` walk and means something the caller
+    never asked for."""
+    def refused(regions):
+        with pytest.raises((ValueError, TypeError)):
+            Structure(elements=["C"] * 4, positions=[[0., 0., 0.]] * 4,
+                      regions=regions)
+
+    refused("not a dict")
+    refused({"": [0]})                  # empty label
+    refused({"x": "012"})               # a str iterates into atoms 0, 1, 2
+    refused({"x": {"a": 1}})            # a dict iterates its keys
+    refused({"x": ["2"]})               # a string index from a JSON round trip
+    refused({"x": [1.7]})               # would truncate to atom 1, silently
+    refused({"x": [True]})              # bool is an int; would mean atom 1
+    refused({"x": [9]})                 # out of range
+
+    ok = Structure(elements=["C"] * 4, positions=[[0., 0., 0.]] * 4,
+                   regions={"x": [2, 0, 0]})
+    assert ok.regions == {"x": [0, 2]}, "the one accepted form normalises"
+
+
+def test_the_sidecar_payload_has_exactly_these_members(tmp_path):
+    """The shape on disk, pinned by membership: the structure's fields plus the
+    envelope the sidecar layer owns, and nothing else. A stray key is refused on
+    read rather than ignored -- a key nobody reads is metadata the writer thinks
+    it saved."""
+    from molbuilder.structure import METADATA_FIELDS
+
+    target = tmp_path / "pinned.xyz"
+    StructureCodec().write(_labelled(), target)
+    saved = json.loads(molstruct.sidecar_path_for(target).read_text("utf-8"))
+
+    assert set(saved) == set(METADATA_FIELDS) | set(molstruct.ENVELOPE_KEYS), (
+        f"the sidecar's members drifted: {sorted(saved)}"
+    )
+    assert saved["regions"] == {"L-electrode": [0], FROZEN_LABEL: [1, 2]}
+
+    s = Structure.from_xyz("3\n\nC 0 0 0\nO 1 0 0\nH 0 1 0\n")
+    with pytest.raises(Exception, match=r"neither a structure metadata field"):
+        molstruct.apply_to_structure(s, dict(saved, frozen_atoms=[0]))
+
+
+def test_an_atom_on_the_wire_has_exactly_these_members(served):
+    """The shape the browser receives, pinned by membership. `regions` carries
+    every label the atom holds; there is no second member for any one of them."""
+    client, path = served
+    rows = client.post("/api/selection/atoms",
+                       json={"structure_path": path}).get_json()["atoms"]
+
+    assert set(rows[1]) == {"index", "element", "x", "y", "z", "regions",
+                            "atom_name", "residue_name", "chain_id"}, (
+        f"the atom row's members drifted: {sorted(rows[1])}"
+    )
+    assert rows[1]["regions"] == [FROZEN_LABEL]
