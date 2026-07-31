@@ -58,10 +58,10 @@ export function mountFrameControls(hostEl, api, store) {
         if (api.isPlaying()) { api.pause(); _syncPlay(); }
         var next = api.currentFrame() + delta;
         next = _loop() ? ((next % n) + n) % n : Math.max(0, Math.min(n - 1, next));
-        api.setFrame(next);
+        api.setCurrentFrame(next);
     }
 
-    slider.addEventListener("input", function (e) { api.setFrame(Number(e.target.value) || 0); });
+    slider.addEventListener("input", function (e) { api.setCurrentFrame(Number(e.target.value) || 0); });
     prevBtn.addEventListener("click", function () { _step(-1); });
     nextBtn.addEventListener("click", function () { _step(1); });
     if (loopCb) {

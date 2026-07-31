@@ -65,9 +65,12 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     page.wait_for_function(
         "() => window.__molview && typeof window.__molview.onChange === 'function'")
     keys = page.evaluate("() => Object.keys(window.__molview).sort()")
-    assert keys == ["currentFrame", "dispose", "exportFile", "frameCount", "getFrameAllAtoms",
-                    "getSelection", "getStructure", "installMolecule", "isPlaying", "ok",
-                    "onChange", "pause", "play", "setFrame", "undo"]
+    # NOT a pinned name list — molview.md § 13.1 rules those out ("a transcription, not a
+    # contract").  What the contract says is what a tab must be able to DO through the handle
+    # (§ 9.2): find out whether it got a viewer, tear it down, run the movie, reach the data.
+    for able_to in ["dispose", "play", "pause", "isPlaying", "currentFrame", "frameCount",
+                    "setCurrentFrame", "getFrameAllAtoms", "getStructure", "onChange"]:
+        assert able_to in keys, f"the handle cannot {able_to}"
 
     # THE FIX: the VIEWER shows the water sample loaded on mount (render reads store atoms).
     page.wait_for_function(_viewer_atoms_is(3), timeout=10000)
@@ -87,9 +90,9 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     assert not errors, f"console/page errors during mount + load: {errors}"
 
 
-def test_molview_demo_multiframe_setFrame_moves_the_drawn_atoms(page, flask_server):
+def test_molview_demo_multiframe_setCurrentFrame_moves_the_drawn_atoms(page, flask_server):
     """Multi-frame trajectory, exercised on /molview-demo ALONE (no other tab): load a 3-frame
-    trajectory where atom 0 slides x = 0 -> 1 -> 2, then handle.setFrame swaps the DRAWN atom's
+    trajectory where atom 0 slides x = 0 -> 1 -> 2, then handle.setCurrentFrame swaps the DRAWN atom's
     coordinates (the store coord-swap flows through to the render).  Pins the workspace §1.5 +
     molview §14.5 frame path end-to-end."""
     errors = []
@@ -103,7 +106,7 @@ def test_molview_demo_multiframe_setFrame_moves_the_drawn_atoms(page, flask_serv
 
     page.goto(f"{flask_server}/molview-demo")
     page.wait_for_function(
-        "() => window.__molview && typeof window.__molview.setFrame === 'function'",
+        "() => window.__molview && typeof window.__molview.setCurrentFrame === 'function'",
         timeout=20000)
 
     # Load the 3-frame trajectory.
@@ -117,17 +120,17 @@ def test_molview_demo_multiframe_setFrame_moves_the_drawn_atoms(page, flask_serv
 
     # Frame 0 -> atom 0 drawn at x = 0.
     page.wait_for_function(f"() => Math.abs(({drawn_x0})() - 0) < 1e-6", timeout=5000)
-    # setFrame(2) -> atom 0 drawn at x = 2 (the coord swap reached the viewer).
-    page.evaluate("() => window.__molview.setFrame(2)")
+    # setCurrentFrame(2) -> atom 0 drawn at x = 2 (the coord swap reached the viewer).
+    page.evaluate("() => window.__molview.setCurrentFrame(2)")
     page.wait_for_function(f"() => Math.abs(({drawn_x0})() - 2) < 1e-6", timeout=5000)
     assert page.evaluate("() => window.__molview.currentFrame()") == 2
-    # setFrame(0) -> back to x = 0.
-    page.evaluate("() => window.__molview.setFrame(0)")
+    # setCurrentFrame(0) -> back to x = 0.
+    page.evaluate("() => window.__molview.setCurrentFrame(0)")
     page.wait_for_function(f"() => Math.abs(({drawn_x0})() - 0) < 1e-6", timeout=5000)
 
     # Frame overlays (§14.5.1): force arrows + atom-index labels on the REAL embed -- turning
     # them on (and swapping frames with them on) must not error.  A frame with forces exists.
-    page.evaluate("() => window.__molview.setFrame(2)")
+    page.evaluate("() => window.__molview.setCurrentFrame(2)")
     page.wait_for_timeout(150)          # let the overlay redraw settle
 
     assert not errors, f"console/page errors during frame navigation + overlays: {errors}"
@@ -149,7 +152,7 @@ def test_molview_demo_frame_controls_bar_drives_the_trajectory(page, flask_serve
 
     page.goto(f"{flask_server}/molview-demo")
     page.wait_for_function(
-        "() => window.__molview && typeof window.__molview.setFrame === 'function'", timeout=20000)
+        "() => window.__molview && typeof window.__molview.setCurrentFrame === 'function'", timeout=20000)
 
     bar = "#molview-demo-host .molview-frame-controls"
     # A single structure on mount -> the frame bar is hidden (frames are a trajectory concept).

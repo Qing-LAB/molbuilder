@@ -51,9 +51,17 @@ function create(handle, opts) {
     if (!embedIo) throw new Error("engine.create: embedIo missing (no handle?)");
 
     // ---- state ------------------------------------------------------------------------ //
-    var _data = null;            // clean StructureData (§7.1) -- the source of truth we own.
+    // THE TRUTH IS NOT HERE (molview.md § 7, level 5: "It holds nothing of its own").  The
+    // master copy and the displayed frame live in the model; this level is HANDED them through
+    // an accessor the model injects at attach (§ 7.3's pattern -- a helper is given exactly the
+    // functions it may call).  Reading through the owner is not the same as keeping a copy:
+    // there is one home, and a stale second answer cannot exist because there is no second
+    // answer.  Until a source is attached this level has nothing to draw, which is correct.
+    var _source = null;                          // { data(), frame() } -- injected by the model
+    function _d() { return _source ? _source.data() : null; }
+    function _f() { return _source ? _source.frame() : 0; }
+    function _nFrames() { var d = _d(); return d ? d.frames.length : 0; }
     var _epoch = 0;              // bumped on every data change -> forces a structural regen.
-    var _frame = 0;              // current frame (the frame channel, §7.2) -- NOT a view flag.
     var _flags = _blankFlags();
     var _prevStructSig = null;   // last structural signature (the §8 tier decision).
     var _prevArrowSig = null;    // last force-overlay signature (in-place arrow re-bake tier).
@@ -98,14 +106,14 @@ function create(handle, opts) {
         // atoms). Annotations are NOT read here -- region/frozen halos were removed (§8.1); the
         // selection panel reads annotations straight from molview.data. Selection highlighting
         // rides flags.selection, not identity.
-        return { elements: _data.elements };
+        return { elements: _d().elements };
     }
     function _frameInput(f) {
-        return { coords: _data.frames[f],
-                 forces: _data.forcesPerFrame ? _data.forcesPerFrame[f] : null };
+        return { coords: _d().frames[f],
+                 forces: _d().forcesPerFrame ? _d().forcesPerFrame[f] : null };
     }
     function _processAll() {
-        return _data.frames.map(function (_, f) {
+        return _d().frames.map(function (_, f) {
             return processFrame(_frameInput(f), _identity(), _flags);
         });
     }
@@ -116,14 +124,14 @@ function create(handle, opts) {
     // the visibility toggle (the old bug: geometry gated behind visibility -> box at [0,0,0] when
     // toggled on after a hidden load).
     function _cellGeom() {
-        if (!_data || !_data.cell) return null;
-        return { lattice: _data.cell.lattice, origin: _data.cell.origin };
+        if (!_d() || !_d().cell) return null;
+        return { lattice: _d().cell.lattice, origin: _d().cell.origin };
     }
     // Re-apply the CURRENT frame's index-keyed overlays (labels + selection highlight) + the
     // scene cell/axis. Arrows are baked into the movie at load (structural), so a swap/overlay-
     // refresh does not re-hand them here.
     function _applyCurrentOverlays() {
-        var pf = processFrame(_frameInput(_frame), _identity(), _flags);
+        var pf = processFrame(_frameInput(_f()), _identity(), _flags);
         var overlay = {
             labels:      _flags.showIndex ? pf.labels : false,
             selection:   pf.selection,        // §8.1: WHICH atoms to glow (isolate off) -- embed owns HOW
@@ -133,13 +141,13 @@ function create(handle, opts) {
         // Multi-frame: arrows are BAKED into the movie (a swap shows them free), so they are
         // NOT re-handed here -- that would double the layer. Single static frame: no movie,
         // so its arrows ARE applied here.
-        if (frameCount() <= 1) overlay.arrows = pf.arrows;
+        if (_nFrames() <= 1) overlay.arrows = pf.arrows;
         embedIo.applyOverlays(overlay);
     }
     // Arrow refresh (§8): re-bake every frame's arrows in place -- the coordinate movie is
     // untouched (no reparse). Multi-frame only; a static frame's arrows ride _applyCurrentOverlays.
     function _arrowRefresh() {
-        var arrowsPerFrame = _data.frames.map(function (_, f) {
+        var arrowsPerFrame = _d().frames.map(function (_, f) {
             var pf = processFrame(_frameInput(f), _identity(), _flags);
             return pf.arrows || [];
         });
@@ -176,7 +184,7 @@ function create(handle, opts) {
     // The movie's own frame count -- what the viewer can actually SHOW. Falls back to our own
     // count when a stub embedIo has no such read (then the check below is a no-op).
     function _movieFrameCount() {
-        return (typeof embedIo.frameCount === "function") ? embedIo.frameCount() : frameCount();
+        return (typeof embedIo.frameCount === "function") ? embedIo._nFrames() : _nFrames();
     }
     function _cancelPendingRegen() {
         if (_regenRaf != null && typeof globalThis.cancelAnimationFrame === "function") globalThis.cancelAnimationFrame(_regenRaf);
@@ -254,7 +262,7 @@ function create(handle, opts) {
                 // load with the cell hidden; VISIBILITY rides the _applyCurrentOverlays pass below.
                 embedIo.loadFrames({ frames: processed, cellBox: _cellGeom() });
                 // loadFrames resets to frame 0; restore the shown frame if the user was elsewhere.
-                if (_frame > 0 && _frame < processed.length) embedIo.swapFrame(_frame);
+                if (_f() > 0 && _f() < processed.length) embedIo.swapFrame(_f());
                 _applyCurrentOverlays();
             } finally {
                 // ALWAYS release: end the batch (the single paint for the whole regen), then
@@ -278,41 +286,42 @@ function create(handle, opts) {
 
     // THE render entry (§5): read the flags, pick the minimal tier by what changed (§8).
     function render() {
-        if (!_data) return;                       // nothing loaded.
+        if (!_d()) return;                       // nothing loaded.
         if (_locked) { _renderQueued = true; return; }   // in flight -> replay after unlock.
         _flags = _readFlags();
         var sig = _structSig();
         if (sig !== _prevStructSig) { _structuralRegen(); return; }  // drawn set changed -> reload.
         // Force overlay/scale changed -> re-bake the per-frame arrows IN PLACE (no coord
         // reload) for a loaded movie. A static frame's arrows ride the overlay refresh below.
-        if (_arrowSig() !== _prevArrowSig && frameCount() > 1) { _arrowRefresh(); return; }
+        if (_arrowSig() !== _prevArrowSig && _nFrames() > 1) { _arrowRefresh(); return; }
         _applyCurrentOverlays();          // overlay refresh (labels/halos/cell/axis; + arrows if static).
         _prevArrowSig = _arrowSig();      // static-frame arrows were handled here; stay in sync.
     }
 
     // ---- public API (§9) ------------------------------------------------------------- //
-    // FULL LOAD (§6.1): replace everything, fix identity from frame 0, reset to frame 0.
-    function setData(data) {
-        // setData is authoritative data (a load) -- it SUPERSEDES a pending regen rather than
-        // being refused, so a 2-step load (installMolecule then reloadFrames) both land.
-        data = data || {};
-        var frames = Array.isArray(data.frames) ? data.frames : [];
-        if (!frames.length) throw new Error("engine.setData: needs at least one frame");
+    // WHERE THE DATA COMES FROM.  The model injects `{ data(), frame() }` at attach; this level
+    // reads through it and stores nothing (§ 7, level 5).  Injection is not a load: a source can
+    // be attached before anything is loaded, and `dataChanged()` is what says "draw it".
+    function setDataSource(source) {
+        _source = (source && typeof source.data === "function"
+                          && typeof source.frame === "function") ? source : null;
+    }
+    // FULL LOAD (§ 10.8): the master copy was replaced.  The MODEL has already updated it and
+    // already reset the displayed frame to 0 -- this is told, not asked, and rebuilds from what
+    // the source now returns.  It SUPERSEDES a pending regen rather than being refused (§ 10.9:
+    // "a full load is never itself refused: it is the more authoritative statement about what
+    // the structure is"), so a 2-step load lands whole.
+    function dataChanged() {
+        var d = _d();
+        if (!d || !Array.isArray(d.frames) || !d.frames.length) {
+            throw new Error("renderEngine.dataChanged: the source has no frames");
+        }
         // VOID the pending transactions: a full load replaces the atom set, so a queued
-        // showFrame/setForces/appendFrames references atoms (or a movie) that no longer exist.
+        // showFrame/forcesChanged/appendFrames references atoms (or a movie) that no longer exist.
         _pendingTx = [];
-        _data = {
-            frames:         frames,
-            elements:       Array.isArray(data.elements) ? data.elements : [],
-            annotations:    Array.isArray(data.annotations) ? data.annotations : [],
-            cell:           data.cell || null,
-            forcesPerFrame: Array.isArray(data.forcesPerFrame) ? data.forcesPerFrame : null,
-        };
         _epoch++;
-        _frame = 0;
         _flags = _readFlags();
         _structuralRegen();
-        _notifyFrame();
     }
     // PERIODICITY tier: the cell GEOMETRY changed without an atom change (a
     // Cell-page edit adopting the door's blob, or a heal arriving with a
@@ -321,13 +330,9 @@ function create(handle, opts) {
     // clear the animation; the wrong tool for a box move).  Rides the ONE
     // change channel: canvas change → data-model's single subscription →
     // this op (no consumer ever pushes geometry itself).
-    function setCell(geom) {
-        var next = (geom && geom.lattice)
-            ? { lattice: geom.lattice, origin: geom.origin || null }
-            : null;
-        if (!_data) return;                       // nothing loaded yet
-        if (_locked) { _queueTx("setCell", [next]); return; }
-        _data.cell = next;
+    function cellChanged() {
+        if (!_d()) return;                       // nothing loaded yet
+        if (_locked) { _queueTx("cellChanged", []); return; }
         embedIo.setCellGeometry(_cellGeom());
     }
 
@@ -335,47 +340,37 @@ function create(handle, opts) {
     // movie with the processed new frames, DON'T move the shown frame.
     function appendFrames(coordsList, appendOpts) {
         appendOpts = appendOpts || {};
-        if (!_data) throw new Error("engine.appendFrames: nothing loaded (no atom identity)");
+        if (!_d()) throw new Error("engine.appendFrames: nothing loaded (no atom identity)");
         if (_locked) {
             // An update is in flight -> queue the tail as a transaction (replayed after the
             // unlock; chunks accumulate). A live-poll tick landing in the busy window must not
             // lose its frames. The returned count is the pre-replay count -- the caller sees
-            // the appended frames via frameCount() once the queue drains.
+            // the appended frames via _nFrames() once the queue drains.
             _queueTx("appendFrames", [coordsList, appendOpts]);
-            return frameCount();
+            return;
         }
         var list = Array.isArray(coordsList) ? coordsList : [];
-        if (!list.length) return frameCount();
-        var n = _data.frames[0].length;
-        list.forEach(function (coords, i) {
-            if (!Array.isArray(coords) || coords.length !== n) {
-                throw new Error("engine.appendFrames: frame " + i + " has "
-                    + (Array.isArray(coords) ? coords.length : "?") + " atoms, expected " + n
-                    + " (same-atoms invariant, §6.2)");
-            }
-        });
-        var forces = Array.isArray(appendOpts.forces) ? appendOpts.forces : null;
-        var startF = _data.frames.length;
-        list.forEach(function (coords, i) {
-            _data.frames.push(coords);       // clean source of truth grows first.
-            if (_data.forcesPerFrame) _data.forcesPerFrame.push(forces ? forces[i] : null);
-        });
-        _epoch++;
+        if (!list.length) return;
+        // The MODEL grew the master copy before calling, and checked the same-atoms invariant
+        // there (§ 10.8: "each new frame is checked against that identity BEFORE anything
+        // reaches the drawing").  These frames are already in `_d().frames`; the tail is where
+        // they start, so the movie is extended by exactly the new ones.
+        var startF = _nFrames() - list.length;
         _prevStructSig = _structSig();   // epoch bumped, but appended (not reloaded) -> stay in sync.
         _prevArrowSig = _arrowSig();
         // If a structural regen is already scheduled (paint yield pending), the movie is about
-        // to be rebuilt from _data.frames -- which now includes these. Appending to the stale
+        // to be rebuilt from _d().frames -- which now includes these. Appending to the stale
         // (not-yet-rebuilt) movie could even mismatch its atom count (e.g. an isolate regen is
         // pending). So skip the incremental append; the pending regen picks them up.
         if (_regenRaf == null) {
             if (!_movieExists()) {
                 // There is no movie to extend. The embed's appendFrames AND setAnimationFrame
                 // are both documented no-ops without a trajectory animation, so an incremental
-                // append here would grow _data.frames -- and frameCount, and the frame bar --
+                // append here would grow _d().frames -- and frameCount, and the frame bar --
                 // while the screen kept showing frame 0 forever. That is bug #35: a correct
                 // frame count over a frozen structure, invisible because the only witness
                 // anyone asked was the counter we had just incremented ourselves.
-                // Promote to a STRUCTURAL REGEN, which rebuilds from _data.frames (now the
+                // Promote to a STRUCTURAL REGEN, which rebuilds from _d().frames (now the
                 // whole series) so setAnimation runs and a real movie exists.
                 _structuralRegen();
             } else {
@@ -387,11 +382,11 @@ function create(handle, opts) {
                 // frame, so a movie that fell behind means the frame bar is offering frames the
                 // viewer cannot render. Rebuild rather than leave the two disagreeing -- the
                 // divergence is the defect, not the append.
-                if (_movieFrameCount() !== frameCount()) _structuralRegen();
+                if (_movieFrameCount() !== _nFrames()) _structuralRegen();
             }
         }
         _notifyFrame();
-        return frameCount();
+        return _nFrames();
     }
     // FORCE DATA update (§8): swap the per-frame forces and re-bake the arrow overlay IN PLACE --
     // the coordinate movie is untouched, so a force-filter change (threshold / hide-frozen) is a
@@ -399,48 +394,36 @@ function create(handle, opts) {
     // atom order (one per-atom vector list per frame); a zero vector suppresses that atom's arrow
     // (process.js §2.4), and null clears the whole overlay. Multi-frame re-bakes every frame's
     // arrows; a static frame's arrows ride the overlay refresh.
-    function setForces(forcesPerFrame) {
-        if (!_data) return;
-        if (_locked) { _queueTx("setForces", [forcesPerFrame]); return; }   // latest-wins replay.
-        _data.forcesPerFrame = Array.isArray(forcesPerFrame) ? forcesPerFrame : null;
+    function forcesChanged() {
+        if (!_d()) return;
+        if (_locked) { _queueTx("forcesChanged", []); return; }   // latest-wins replay.
         _flags = _readFlags();
-        if (frameCount() > 1) _arrowRefresh();
+        if (_nFrames() > 1) _arrowRefresh();
         else _applyCurrentOverlays();
     }
     // NATIVE SWAP (§3): the frame channel. Set the shown frame + re-apply its overlays. No busy.
     function showFrame(i) {
-        if (!_data) return;
+        if (!_d()) return;
         if (_locked) { _queueTx("showFrame", [i]); return; }   // latest seek wins; range-checked
         var idx = Math.floor(Number(i));                       // at replay against the new movie.
-        if (!(idx >= 0 && idx < frameCount())) return;
-        _frame = idx;
+        if (!(idx >= 0 && idx < _nFrames())) return;
         embedIo.beginBatch();             // swap + overlay re-apply -> ONE render (§1/§5)
         try {
             embedIo.swapFrame(idx);
             _applyCurrentOverlays();      // labels/halos follow the shown frame.
         } finally { embedIo.endBatch(); }
-        _notifyFrame();
     }
     // Playback (the setInterval loop) lives ONE layer up, in mount.js (`_play`/`_stopPlay`),
     // which drives the frame-controls bar through `data.setFrame`.  The engine only exposes the
     // per-frame door (`showFrame`); it deliberately owns no timer, so there is a single playback
     // owner (§ single-loop) rather than a rival engine-side interval.
 
-    function frameCount() { return _data ? _data.frames.length : 0; }
-    function currentFrame() { return _frame; }
-    // THE frame-coordinate owner: every atom, in original 0-based order, before any selection
-    // or isolate filtering -- the name says so because that is the whole reason this exists.
-    // Measurement takes the panel selection (original indices) and reads those atoms here at the
-    // current frame; export/save serialise the shown frame from here. No drawn->original
-    // translation, no in-window picking (§7.3). Returns a defensive copy; null if out of range.
-    //
-    // Not readable from the 3Dmol movie: the movie is a RENDER of this data, and under isolate a
-    // render of only the drawn atoms, so reading it back would give a filtered, renumbered array.
-    function getFrameAllAtoms(i) {
-        var idx = (i === undefined) ? _frame : Math.floor(Number(i));
-        if (!_data || !(idx >= 0 && idx < _data.frames.length)) return null;
-        return _data.frames[idx].map(function (p) { return [p[0], p[1], p[2]]; });
-    }
+    // NO READS OF THE DATA OR THE FRAME LIVE HERE (§ 9.7: "None of them is a question, because
+    // the renderEngine is told what to draw and is never consulted about what the data is").
+    // `frameCount` / `currentFrame` / `getFrameAllAtoms` were on this object and are now the
+    // model's, answered from the master copy.  What remains are commands, plus the two
+    // self-checks this level asks the DRAWING about its own last instruction (§ 10.10).
+
     // The displayed index changed. Consumers do NOT subscribe here -- they subscribe to
     // molview.data.onFrameChange, which owns the single listener list; the data model injects
     // its notifier below at attach time. The channel stays separate from the view store because
@@ -466,16 +449,18 @@ function create(handle, opts) {
         _storeUnsub = store.subscribe(function () { render(); });
     }
 
+    // COMMANDS ONLY (§ 9.7).  Every entry is an instruction -- "the data changed", "add these
+    // frames", "the forces changed", "show this frame", "draw", "throw it away".  Not one of
+    // them is a question, because this level is told what to draw and is never consulted about
+    // what the data is.  The moment a read appears here, a responsibility has leaked (§ 7.2).
     return {
-        setData:       setData,
-        setCell:       setCell,
+        setDataSource: setDataSource,   // where to read the truth from -- injected once, at attach
+        dataChanged:   dataChanged,
+        cellChanged:   cellChanged,
         appendFrames:  appendFrames,
-        setForces:     setForces,
+        forcesChanged: forcesChanged,
         showFrame:     showFrame,
         render:        render,
-        frameCount:    frameCount,
-        currentFrame:  currentFrame,
-        getFrameAllAtoms:      getFrameAllAtoms,
         setFrameNotifier: setFrameNotifier,
         dispose:       dispose,
     };

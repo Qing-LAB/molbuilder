@@ -26,7 +26,7 @@
  *     save, load, state_index, uncommitted,
  *     // Frames (molview-module.md §14.5) — coords owned by the render engine's clean per-frame
  *     // data; getFrameAllAtoms = every atom, original order, pre-isolate
- *     reloadFrames, setForces, addFrame, addFrames, setFrame, getFrameAllAtoms, currentFrame, frameCount,
+ *     reloadFrames, setForces, addFrame, addFrames, setCurrentFrame, getFrameAllAtoms, currentFrame, frameCount,
  *     // Serialisation (the format is MolView's): project-file export + draft key + persist bracket
  *     exportFile, draftIdentity, suspendPersist, resumePersist,
  *     // Sub-namespaces
@@ -154,7 +154,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // need.  The 3Dmol native movie is a RENDER of that data -- and under isolate a render of
     // only the drawn subset -- so it cannot be the owner; the engine instead guarantees the
     // movie's frame count matches its own (engine.js §8 APPEND), because the movie is the thing
-    // that can actually show a frame.  The frame API below (reloadFrames / addFrame / setFrame /
+    // that can actually show a frame.  The frame API below (reloadFrames / addFrame / setCurrentFrame /
     // getFrameAllAtoms / …) is a thin coordinator over the engine: it validates the same-atoms
     // invariant
     // and forwards; it holds NO coordinate copy of its own.
@@ -186,6 +186,32 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // its atoms + periodicity and hands it to the engine; the engine reads view flags from the
     // store and draws. The data model never touches 3Dmol -- every draw goes engine -> embedIo.
     var _renderEngine = null;
+
+    // ─── THE MASTER COPY'S COORDINATES, AND THE ONE DISPLAYED-FRAME NUMBER ─────────────
+    // molview.md § 6.3: the master copy is every atom, every frame, in the original order --
+    // what a save, an export, a measurement and a server request all read.  § 6.4: the frame
+    // number and the range it lives in are ONE fact, kept in one place, because a frame number
+    // without its range cannot be used for anything.  Both live HERE, at level 3.
+    //
+    // They used to live in the renderEngine, which answered `currentFrame` / `frameCount` /
+    // `getFrameAllAtoms` while calling itself "the source of truth we own" -- the layer that is
+    // supposed to hold no truth at all (§ 7, level 5).  The range was then read back OUT of the
+    // renderer, so § 6.4's ordering rule had nothing to stand on.
+    var _frames = null;            // Vec3[][] -- frames[f][a], at least one frame once loaded
+    var _forcesPerFrame = null;    // Vec3[][] | null -- the same shape, when a run produced them
+    var _frameIndex = 0;           // which frame is MEANT: on screen, and in an export
+
+    // § 6.4, and there is only one order.  The master copy is updated FULLY first; the range is
+    // recomputed FROM IT (not from the drawing, and not from what the caller said it was
+    // adding); the frame number is checked against that range and moved if it no longer fits.
+    // Only then is anyone told -- so nobody ever sees a range from the new structure beside a
+    // frame number from the old one.  Callers pass the mutation; this owns the order.
+    function _settleFrames(mutate, opts) {
+        mutate();                                                   // 1. the master copy
+        var n = Array.isArray(_frames) ? _frames.length : 0;        // 2. the range, from it
+        var want = (opts && opts.resetFrame) ? 0 : _frameIndex;     // 3. the index, against it
+        _frameIndex = n ? Math.min(Math.max(0, Math.floor(want)), n - 1) : 0;
+    }
     // Register the engine and hand it THE frame notifier. The engine owns the displayed index
     // (it is the one that changes it); the data model owns the one subscriber list, and the
     // engine simply calls into it. Previously the engine kept its OWN listener list and this
@@ -199,6 +225,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         _renderEngine = renderEngine || null;
         if (_renderEngine && typeof _renderEngine.setFrameNotifier === "function") {
             _renderEngine.setFrameNotifier(_notifyFrame);
+        }
+        // § 7.3's pattern: hand the helper exactly the functions it may call.  The renderEngine
+        // is HANDED the master copy and the displayed frame and keeps neither (§ 7, level 5).
+        if (_renderEngine && typeof _renderEngine.setDataSource === "function") {
+            _renderEngine.setDataSource({
+                data:  _structureData,
+                frame: function () { return _frameIndex; },
+            });
         }
         // Backfill on attach: a session restore (or any load) runs at DOMContentLoaded, BEFORE
         // the embed's onReady attaches the engine -- so the _pushToEngine() at load time found
@@ -224,7 +258,13 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
     // Build StructureData (§7.1) for the given coordinate frames, taking atom IDENTITY
     // (elements + annotations) and the cell from the CURRENT store atoms / periodicity.
-    function _structureDataFor(frames, forces) {
+    function _structureData() {
+        // WITH NOTHING LOADED THIS ANSWERS NOTHING, not an empty structure (§ 9.3: "'there is
+        // nothing here' and 'here is a structure with no atoms' are different answers, and a
+        // caller has to be able to tell them apart").  The renderEngine's every guard reads
+        // `if (!data) return` -- an empty-but-present structure would walk straight past them.
+        if (!Array.isArray(_frames) || !_frames.length) return null;
+        var frames = _frames, forces = _forcesPerFrame;
         var s = _store() && _store().getState();
         var atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
         return {
@@ -240,14 +280,21 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
     // Push the CURRENT single structure (one frame, from the store atoms) to the engine.
     // Called after a load/edit adopts atoms -- the engine re-renders from this clean data.
+    // A structure with no trajectory is a master copy of exactly ONE frame -- § 10.2: "there is
+    // no single-structure path.  One frame is a set of length one, and it runs through exactly
+    // the same steps as four hundred."
     function _pushToEngine() {
-        if (!_renderEngine) return;
         var s = _store() && _store().getState();
         var atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
         if (!atoms.length) return;
-        var frame = atoms.map(function (a) { return [a.x, a.y, a.z]; });
-        _renderEngine.setData(_structureDataFor([frame], null));
+        _settleFrames(function () {
+            _frames = [atoms.map(function (a) { return [a.x, a.y, a.z]; })];
+            _forcesPerFrame = null;
+        }, { resetFrame: true });
+        if (!_renderEngine) return;                        // truth first; the drawing catches up
+        _renderEngine.dataChanged();
         _lastCellSig = JSON.stringify(_cellForEngine());   // geometry baseline
+        _notifyFrame();
     }
     // The periodicity tier's change detector (§6.2 v3): the canvas onChange
     // (the ONE channel) diffs the engine-facing cell geometry and hands a
@@ -255,12 +302,12 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // baseline is (re)set by every full push above.
     var _lastCellSig = null;
     function _syncEngineCell() {
-        if (!_renderEngine || typeof _renderEngine.setCell !== "function") return;
+        if (!_renderEngine || typeof _renderEngine.cellChanged !== "function") return;
         var geom = _cellForEngine();
         var sig = JSON.stringify(geom);
         if (sig === _lastCellSig) return;
         _lastCellSig = sig;
-        _renderEngine.setCell(geom);
+        _renderEngine.cellChanged();
     }
     function _runtime() {
         return (root.molbuilder && root.molbuilder.runtime)
@@ -1393,8 +1440,15 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // force arrows). The engine owns the movie; the data model no longer drives 3Dmol.
         // (Legacy opts.arrowsPerFrame -- pre-built arrows -- is superseded by opts.forces; a
         // consumer still on arrowsPerFrame gets no force overlay until it moves to forces.)
-        if (_renderEngine) _renderEngine.setData(_structureDataFor(frames, opts.forces));
+        // § 6.4's order: the master copy, then the range, then the index (a full load resets it
+        // to 0 -- § 10.8), then the drawing, then ONE notification.
+        _settleFrames(function () {
+            _frames = frames;
+            _forcesPerFrame = Array.isArray(opts.forces) ? opts.forces : null;
+        }, { resetFrame: true });
+        if (_renderEngine) _renderEngine.dataChanged();
         if (!_applying) _timeline.markUncommitted();   // frame DATA changed -> uncommitted (§19.5)
+        _notifyFrame();
         return frameCount();
     }
     // Force overlays are built by the ENGINE from the raw forces (process.js §2.4) -- the
@@ -1403,7 +1457,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // (threshold / hide-frozen) is cheap. forcesPerFrame is in ORIGINAL atom order; a zero
     // vector suppresses that atom's arrow; null clears the overlay.
     function setForces(forcesPerFrame) {
-        if (_renderEngine) _renderEngine.setForces(forcesPerFrame);
+        _forcesPerFrame = Array.isArray(forcesPerFrame) ? forcesPerFrame : null;
+        if (_renderEngine) _renderEngine.forcesChanged();
     }
     function addFrame(coords) { return addFrames([coords]); }
     // Append one OR MANY new frames (a live poll can bring several at once). Validates the
@@ -1412,36 +1467,59 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         opts = opts || {};
         const frames = Array.isArray(list) ? list : [];
         if (!frames.length) return frameCount();
+        // § 10.8: something must already be loaded, and each new frame is checked against the
+        // atom identity BEFORE anything reaches the drawing.  A mismatch is a hard error --
+        // never padded, never truncated, never guessed into fitting.
+        if (!Array.isArray(_frames) || !_frames.length) {
+            throw new Error("addFrames: nothing loaded (there is no atom identity to append to)");
+        }
         frames.forEach(function (coords) { _requireMatch(coords, "addFrames"); });
+        // § 6.4's order again -- and § 10.8 rule 5: the displayed frame does NOT move.  A user
+        // watching frame 12 keeps watching frame 12 while the run grows past it.
+        _settleFrames(function () {
+            frames.forEach(function (coords, i) {
+                _frames.push(coords);
+                if (_forcesPerFrame) {
+                    _forcesPerFrame.push(Array.isArray(opts.forces) ? opts.forces[i] : null);
+                }
+            });
+        });
         if (_renderEngine) _renderEngine.appendFrames(frames, { forces: opts.forces });
         if (!_applying) _timeline.markUncommitted();   // frame DATA changed -> uncommitted (§19.5)
+        _notifyFrame();                                // the RANGE grew: the bar's i/N must follow
         return frameCount();
     }
-    function setFrame(i) {
-        const n = frameCount();
-        const idx = Math.floor(Number(i));
-        if (!(idx >= 0 && idx < n)) {
-            throw new Error("setFrame(" + i + ") out of range [0.." + (n - 1) + "]");
-        }
-        // Native frame swap (§3): the engine swaps to the pre-parsed movie frame + re-applies
-        // the shown frame's overlays. It then calls THE frame notifier (onFrameChange above),
-        // which the frame bar + measurement subscribe to -- not the selection store.
-        if (_renderEngine) _renderEngine.showFrame(idx);
-        return currentFrame();
+    // THE write (§ 6.4).  Everyone moves the displayed frame through this -- the frame bar, a
+    // tab's own scrubber, playback, a session being restored.  There is no privileged writer and
+    // no back channel.  A number outside the range is RESOLVED against the range, never taken on
+    // trust and never thrown back: a tab following the end of a growing run should land on the
+    // last frame, not raise.
+    function setCurrentFrame(i) {
+        var before = _frameIndex;
+        var n = frameCount();
+        _frameIndex = n ? Math.min(Math.max(0, Math.floor(Number(i)) || 0), n - 1) : 0;
+        // The drawing follows the number, never the other way round: a native swap re-applies
+        // the shown frame's overlays (§ 10.5).
+        if (_renderEngine) _renderEngine.showFrame(_frameIndex);
+        if (_frameIndex !== before) _notifyFrame();
+        return _frameIndex;
     }
-    // Frame reads -- delegate to the render engine (the single coord + frame owner, §7.1/§9).
-    // The ONE frame-coordinate door out of MolView (forwards to the engine, the owner): every
-    // atom, original order, pre-isolate. The accessor measurement
-    // reads by the panel's original atom index.
+    // THE frame-coordinate door (§ 9.3): EVERY atom of frame `i`, in the original numbering,
+    // before isolate cuts anything down -- which is what its callers want.  Measurement resolves
+    // panel numbers against it and an export writes the frame from it.  There is no rival:
+    // reading coordinates back out of the drawing would give the isolated subset under its own
+    // renumbering, which is a different thing and one MolView does not offer (§ 6.3).
+    // Returns a COPY (§ 9.3), so changing what you were given cannot change the viewer.
     function getFrameAllAtoms(i) {
-        return _renderEngine ? _renderEngine.getFrameAllAtoms(i) : null;
+        var idx = (i === undefined) ? _frameIndex : Math.floor(Number(i));
+        if (!Array.isArray(_frames) || !(idx >= 0 && idx < _frames.length)) return null;
+        return _frames[idx].map(function (p) { return [p[0], p[1], p[2]]; });
     }
-    function currentFrame() {
-        return _renderEngine ? _renderEngine.currentFrame() : 0;
-    }
-    function frameCount() {
-        return _renderEngine ? _renderEngine.frameCount() : 0;
-    }
+    function currentFrame() { return _frameIndex; }
+    // § 10.10: the master copy's length is the ONLY count anyone is ever offered.  The drawing's
+    // own count is not reachable from outside the pipeline and exists only to catch a redraw
+    // that silently failed.
+    function frameCount() { return Array.isArray(_frames) ? _frames.length : 0; }
 
     // ─── Persistence (Phase 8) ─────────────────────────────────── //
 
@@ -1776,7 +1854,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         onFrameChange:         onFrameChange,
         addFrame:              addFrame,
         addFrames:             addFrames,
-        setFrame:              setFrame,
+        setCurrentFrame:       setCurrentFrame,
         getFrameAllAtoms:              getFrameAllAtoms,
         currentFrame:          currentFrame,
         frameCount:            frameCount,

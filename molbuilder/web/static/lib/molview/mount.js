@@ -10,7 +10,7 @@
  *
  *   molview.mount(hostEl, workspace, { mode, owner }) -> Promise<handle>
  *   handle = { installMolecule({text}), exportFile(), undo(),          // WRITE
- *              setFrame(i), getFrameAllAtoms(i),                        // FRAMES (§14.5)
+ *              setCurrentFrame(i), getFrameAllAtoms(i),                        // FRAMES (§14.5)
  *              frameCount(), currentFrame(),                            //   (all atoms, pre-isolate)
  *              play(opts), pause(), isPlaying(),                       //   navigation + playback
  *              getStructure(), getSelection(),                         // READ
@@ -391,8 +391,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // the frames a viewer can actually show drift apart (#35).  Navigation and the reads
         // belong to molview.data (the data owner); the playback TIMER is mount's own.
         const _frames = {
-            setFrame: function (i) {
-                return (typeof data.setFrame === "function") ? data.setFrame(i) : undefined;
+            setCurrentFrame: function (i) {
+                return (typeof data.setCurrentFrame === "function")
+                    ? data.setCurrentFrame(i) : undefined;
             },
             getFrameAllAtoms: function (i) {
                 return (typeof data.getFrameAllAtoms === "function") ? data.getFrameAllAtoms(i) : null;
@@ -488,9 +489,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 const n = data.frameCount();
                 if (n <= 1) { _stopPlay(); return; }
                 const next = data.currentFrame() + 1;
-                if (next < n) { data.setFrame(next); }
-                else if (_loop) { data.setFrame(0); }            // loop: wrap to the start
-                else { data.setFrame(n - 1); _stopPlay(); }      // no loop: stop at the last frame
+                if (next < n) { data.setCurrentFrame(next); }
+                else if (_loop) { data.setCurrentFrame(0); }            // loop: wrap to the start
+                else { data.setCurrentFrame(n - 1); _stopPlay(); }      // no loop: stop at the last frame
             }, 1000 / fps);
         }
         const _offs = [];   // onChange subscriptions, torn down on dispose
@@ -530,7 +531,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // navigation and the reads belong to molview.data (the data owner), the playback
             // timer to MolView.  A frame's coord swap notifies the store, so the render redraws
             // on its own.
-            setFrame:     _frames.setFrame,
+            setCurrentFrame: _frames.setCurrentFrame,
             getFrameAllAtoms:     _frames.getFrameAllAtoms,
             frameCount:   _frames.frameCount,
             currentFrame: _frames.currentFrame,
