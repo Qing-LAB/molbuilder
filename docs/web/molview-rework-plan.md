@@ -132,6 +132,12 @@ handle that is lifecycle, playback and `data` (§ 9.2). `ui.js` is every control
 draws, each a caller of the model. § 1.1 end to end lands here — the first browser check of
 the program.
 
+**The card panel layout and its stylesheet come across as they are.** That design is
+validated — it works — so it is carried from the frozen tree, not redesigned. What changes
+is what sits *behind* each control: every one becomes a caller of the model, through the
+same doors and the same read-only gate as anything else. This step is a rewiring, and it
+should be hard to see that it happened.
+
 ### H — Closeout
 `lib/molview-old/` deleted. Every **Transition** note in the contract whose code has caught up
 removed — it should end with none. § 11.1's route sentence, which says three routes and omits

@@ -14,6 +14,10 @@
  *     highlight are the sealed layer's constants (§ 6.5) — CSS styles the DOM
  *     around the 3D window, never what is inside it.
  *
- * EMPTY BY DESIGN — plan step A. Step G brings the rules across from the frozen
- * tree as the controls that need them are written.
+ * THE CARD PANEL DESIGN IS CARRIED, NOT REDESIGNED. The old layout is validated
+ * — it works — so step G brings these rules across from the frozen tree as the
+ * controls that need them are written. What changes in this rebuild is what sits
+ * behind each control, not what it looks like.
+ *
+ * EMPTY BY DESIGN — plan step A.
  */

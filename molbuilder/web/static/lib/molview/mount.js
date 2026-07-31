@@ -19,7 +19,10 @@
  *     that the model already answers is the specific move this rule forbids" —
  *     a mirrored read is a second surface over the same fact, and one of the two
  *     is the one somebody forgets to update;
- *   - expose the 3Dmol object, or the DOM inside the card;
+ *   - expose the drawing library's object, or the DOM inside the card. (§ 9.2
+ *     names the library here; this file does not, because § 5.3 says everything
+ *     above the sealed layer can be read end to end without learning which
+ *     library draws the molecule — a "never" that names it teaches it.);
  *   - accept a finished appearance. There is no "set the arrows", "set the
  *     atom-number labels", "show a busy state", "add a toggle": arrows, labels
  *     and the highlight are WORKED OUT FROM THE DATA by the renderEngine, never
