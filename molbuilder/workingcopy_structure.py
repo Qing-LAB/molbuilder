@@ -19,13 +19,24 @@ Layer: L2 — reuses `structure` (L1) + the `sidecars.molstruct` write/read stac
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from pathlib import Path
-from typing import Any, List, Tuple
+from typing import Any, List, NamedTuple, Tuple
 
 from .structure import Structure
 from .sidecars import molstruct
+
+
+class StructurePair(NamedTuple):
+    """What a Structure looks like outside memory: the coordinate document, the
+    sidecar payload beside it, and whether that payload is worth keeping.
+
+    ONE shape for every consumer -- disk, bytes, blob, wire -- so "what does this
+    structure look like when it leaves" has one answer instead of one per caller.
+    """
+    document: str
+    sidecar: dict
+    keep_sidecar: bool
 
 
 def _sha256_bytes(b: bytes) -> str:
@@ -88,14 +99,48 @@ class StructureCodec:
             notices_out.extend(notices)
         return struct
 
+    # ---- THE ONE GENERATOR: a Structure -> the pair --------------------- #
+    def pair(self, struct: Structure) -> "StructurePair":
+        """A Structure as the two things that represent it: the coordinate
+        document, and the sidecar payload beside it.
+
+        THE ONE PLACE either is produced.  :meth:`write` puts this on disk,
+        :meth:`files` hands it over as bytes, :meth:`scratch_blob` hands it over
+        as a round-trip blob, and the export route returns it -- so a structure
+        saved to a project and the same structure downloaded cannot differ.
+        They used to be three code paths computing the same three calls, agreeing
+        by coincidence rather than by construction; ``files`` even serialised the
+        JSON with different settings from ``save``, so a non-ASCII region label
+        came out escaped on one path and literal on the other.
+
+        ``keep_sidecar`` is False when the metadata is all default -- a plain
+        molecule with no cell, labels, frozen atoms or annotations.  Then the
+        pair is the document alone and a stale sidecar beside it is removed, so
+        "no .json" always means "no metadata" (:meth:`load` reads it that way).
+        The payload is still built, because a blob is a round trip rather than a
+        file and its reader expects one.
+        """
+        document = struct.to_xyz()
+        meta = struct.metadata_to_dict()
+        payload = molstruct.to_dict(
+            meta,
+            n_atoms_total  = struct.n_atoms,
+            structure_hash = _sha256_bytes(document.encode("utf-8")),
+        )
+        return StructurePair(document=document, sidecar=payload,
+                             keep_sidecar=not _metadata_is_default(meta))
+
     # ---- the durable files: <stem>.xyz + <stem>.molstruct.json ------- #
     def files(self, struct: Structure, target) -> List[Tuple[Path, bytes]]:
+        """The pair as bytes, with the paths they belong at -- what :meth:`write`
+        writes, without writing it."""
         target = Path(target)
-        xyz_bytes = struct.to_xyz().encode("utf-8")
-        sidecar_bytes = (json.dumps(self._sidecar_dict(struct, xyz_bytes),
-                                    indent=2) + "\n").encode("utf-8")
-        return [(target, xyz_bytes),
-                (molstruct.sidecar_path_for(target), sidecar_bytes)]
+        made = self.pair(struct)
+        out = [(target, made.document.encode("utf-8"))]
+        if made.keep_sidecar:
+            out.append((molstruct.sidecar_path_for(target),
+                        molstruct.dumps(made.sidecar).encode("utf-8")))
+        return out
 
     # ---- write the pair to disk, atomically -------------------------- #
     def write(self, struct: Structure, target, *, atomic: bool = True) -> Path:
@@ -113,10 +158,9 @@ class StructureCodec:
         disagree (``no .json == empty metadata``, matching :meth:`load`)."""
         target = Path(target)
         target.parent.mkdir(parents=True, exist_ok=True)
-        xyz_text = struct.to_xyz()
-        meta = struct.metadata_to_dict()
+        made = self.pair(struct)                 # the ONE generator
+        xyz_text = made.document
         sidecar_path = molstruct.sidecar_path_for(target)
-        want_sidecar = not _metadata_is_default(meta)
 
         if atomic:
             tmp = target.with_suffix(target.suffix + ".tmp")
@@ -129,13 +173,8 @@ class StructureCodec:
             with open(target, "w", encoding="utf-8") as fh:
                 fh.write(xyz_text)
 
-        if want_sidecar:
-            payload = molstruct.to_dict(
-                meta,
-                n_atoms_total  = struct.n_atoms,
-                structure_hash = _sha256_bytes(xyz_text.encode("utf-8")),
-            )
-            molstruct.save(sidecar_path, payload)   # tempfile + os.replace atomic
+        if made.keep_sidecar:
+            molstruct.save(sidecar_path, made.sidecar)  # tempfile + os.replace
         elif sidecar_path.exists():
             sidecar_path.unlink()
         return target
@@ -152,9 +191,8 @@ class StructureCodec:
 
     # ---- scratch round-trip ------------------------------------------ #
     def scratch_blob(self, struct: Structure) -> Any:
-        xyz_text = struct.to_xyz()
-        return {"xyz": xyz_text,
-                "sidecar": self._sidecar_dict(struct, xyz_text.encode("utf-8"))}
+        made = self.pair(struct)
+        return {"xyz": made.document, "sidecar": made.sidecar}
 
     def from_scratch(self, blob: Any, *,
                      notices_out: "list | None" = None) -> Structure:
@@ -171,16 +209,32 @@ class StructureCodec:
             notices_out.extend(notices)
         return struct
 
-    # ---- internal ---------------------------------------------------- #
-    def _sidecar_dict(self, struct: Structure, xyz_bytes: bytes) -> dict:
-        # structure_hash is the sha256 of the .xyz we are about to write, so the
-        # committed sidecar's hash matches the committed .xyz (the atom-identity
-        # invariant the generation gate relies on).
-        # ONE metadata authority: the struct serialises its own field set
-        # (metadata_to_dict), and to_dict layers the envelope on -- no field is
-        # hand-listed here, so this can't drift from the dataclass.
-        return molstruct.to_dict(
-            struct.metadata_to_dict(),
-            n_atoms_total  = struct.n_atoms,
-            structure_hash = _sha256_bytes(xyz_bytes),
-        )
+    # ---- read the pair from disk (alias of load, symmetric name) ----- #
+    def read(self, source_path, *,
+             notices_out: "list | None" = None) -> Structure:
+        """Symmetric read-side name for :meth:`load` -- parse the geometry +
+        apply its paired sidecar into a Structure (missing sidecar => empty
+        metadata, not an error).  ``notices_out`` collects the frame-contract
+        gate's heal notices (structure-periodicity.md 6.1) so the load door
+        can SURFACE a heal instead of silently rewriting the user's state."""
+        return self.load(source_path, notices_out=notices_out)
+
+    # ---- scratch round-trip ------------------------------------------ #
+    def scratch_blob(self, struct: Structure) -> Any:
+        made = self.pair(struct)
+        return {"xyz": made.document, "sidecar": made.sidecar}
+
+    def from_scratch(self, blob: Any, *,
+                     notices_out: "list | None" = None) -> Structure:
+        struct = Structure.from_xyz(blob["xyz"])
+        molstruct.apply_to_structure(struct, blob["sidecar"])
+        # The frame-contract gate (structure-periodicity.md § 6.1): ALL
+        # heal/validation of periodicity state happens at this seam.  A
+        # stored explicit cell that does not contain its atoms (the 2026-07
+        # hemeC corruption) is healed here -- origin to the expected corner
+        # -- and the notice surfaces when the caller passes notices_out.
+        from .periodicity_gate import validate_and_heal
+        struct, notices = validate_and_heal(struct)
+        if notices_out is not None:
+            notices_out.extend(notices)
+        return struct

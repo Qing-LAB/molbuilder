@@ -92,20 +92,34 @@ free: the server sends the RESOLVED cell beside the raw one (`resolved_cell`,
 returns ("the defaults filled in for whatever the structure left unsaid") and what
 the rename was dropping on the floor.
 
-### Phase B — one generator, and the export route *(item 1, backend half)*
+### Phase B — one generator *(item 1, backend half)* — **LANDED**
 
-- `write()` stops recomputing the pair and writes what `files()` produces, so save
-  and download cannot diverge
-- `POST /api/structure/export` returns that same pair instead of writing it
+- `StructureCodec.pair()` is the one place a Structure becomes the two things that
+  represent it outside memory; `write`, `files` and `scratch_blob` all use it
+- one sidecar serialiser, so the bytes cannot differ by which door produced them
 
-**Proved by:** a Python test that the bytes `write()` puts on disk and the bytes the
-route returns are identical, for a structure with metadata and one without.
+**Proved by:** a Python test that what `write()` puts on disk is exactly what
+`files()` hands over, for a structure with metadata and one without.
+
+> **Corrected 2026-07-31.** This phase originally also added
+> `POST /api/structure/export`. It was written before the protocol was designed,
+> and following it produced a **brand-new door speaking the legacy dialect**
+> (`{blob: {xyz, sidecar}}`) an hour after the contract said every door takes one
+> envelope. Compatibility is owed to *existing* callers; a new door has none, so
+> it is born in the target shape or not at all. The route moves to phase C, where
+> the envelope exists.
+>
+> The lesson is about the plan, not the route: a phase written before a decision
+> does not survive it automatically, and executing it anyway is how a design
+> becomes a patch.
 
 ### Phase C — the envelope, added not swapped *(the protocol)*
 
 - `struct_from_body` accepts `{structure: {geometry, metadata}}` beside today's
   shapes
 - structure responses gain `structure` beside today's keys and the legacy aliases
+- **`POST /api/structure/export`** — the pair returned rather than written, taking
+  the envelope, since a door with no existing callers is born in the target shape
 
 **Proved by:** the existing suite staying green. That is the whole point of
 "added, not swapped" — a phase that breaks a tab has broken its own rule.
@@ -143,7 +157,7 @@ browser's coordinate writer is deleted rather than merely constrained.
 
 | # | Item | Phase | State |
 |---|---|---|---|
-| 1 | The save / load pair, and where the saved bytes come from | B, D | **agreed** |
+| 1 | The save / load pair, and where the saved bytes come from | B ✔, C, D | **in progress** |
 | 2 | The cell's private spelling | A | **done** |
 | 3 | The browser writes structure files at all | D, E | **agreed** |
 | 4 | `applyOp` sends a body the route does not read | D | **agreed** |

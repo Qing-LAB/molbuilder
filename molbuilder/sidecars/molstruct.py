@@ -312,6 +312,20 @@ def with_lock(sidecar_path: Union[str, Path]) -> "Iterator[None]":
 # --------------------------------------------------------------------- #
 
 
+def dumps(payload: Dict[str, Any]) -> str:
+    """The canonical on-disk TEXT for a sidecar payload -- the ONE serialisation.
+
+    :func:`save` writes exactly this, and anything that needs the same bytes
+    without writing them (a download, a comparison, a preview) asks for it here.
+    Two serialisers is two answers to "what does this sidecar look like": the
+    settings below are not cosmetic -- ``ensure_ascii=False`` is what keeps a
+    non-ASCII region label ("α-helix") a literal instead of an escape, so a
+    second writer without it produces a different file for the same structure.
+    """
+    return _json.dumps(payload, indent=2, sort_keys=False,
+                       ensure_ascii=False, allow_nan=False) + "\n"
+
+
 def save(
     sidecar_path: Union[str, Path],
     payload: Dict[str, Any],
@@ -337,9 +351,7 @@ def save(
         # tokens (a divergent SCF could write one) — same safety net
         # as spectra + transport sidecars.
         with open(tmp, "w", encoding="utf-8") as fh:
-            _json.dump(payload, fh, indent=2, sort_keys=False,
-                       ensure_ascii=False, allow_nan=False)
-            fh.write("\n")
+            fh.write(dumps(payload))
             fh.flush()
             # fsync before os.replace so a crash between fclose() and
             # the rename can't leave the OS write buffer holding the
@@ -429,6 +441,7 @@ def load_text(text, *, source="<sidecar>"):
 
 __all__ = [
     "SCHEMA_VERSION",
+    "dumps",
     "MolstructJsonError",
     "apply_to_structure",
     "load",
