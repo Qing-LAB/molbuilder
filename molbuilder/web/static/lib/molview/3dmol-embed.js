@@ -76,7 +76,36 @@ const LABEL_STYLE = {
 
 const CELL_FALLBACK = { color: "#888", radius: 0.04 };
 
+/* THE 3D WINDOW'S GROUND — one colour, painted twice.
+ *
+ * WebGL cannot take a colour from CSS: the clear colour is an argument to the
+ * library, and the element behind it is painted by the stylesheet. Those are two
+ * paints of the SAME surface, so they are one declared value — the card's
+ * `--mol-scene-background` — read here the way the cell wireframe's colour
+ * already is. Written as two literals instead, they drift, and the drawing sits
+ * as a bright rectangle inside a dark card (which is exactly what shipped).
+ *
+ * The literal below is the last resort for a page with no stylesheet at all — a
+ * node test — not a second palette. */
+const SCENE_BACKGROUND = { name: "--mol-scene-background", fallback: "#0f1217" };
+
 const root = (typeof window !== "undefined") ? window : globalThis;
+
+
+/* Read a CSS custom property off an element. The scene constants are declared on
+ * the card and CONCEALED to the module (§ 5.4); this is how the drawing layer
+ * gets at values WebGL cannot be styled with. */
+function readCssVar(el, name, fallback) {
+    if (!el || typeof getComputedStyle !== "function") return fallback;
+    try {
+        const v = getComputedStyle(el).getPropertyValue(name).trim();
+        return v || fallback;
+    } catch (_) { return fallback; }
+}
+
+function sceneBackground(el) {
+    return readCssVar(el, SCENE_BACKGROUND.name, SCENE_BACKGROUND.fallback);
+}
 
 
 /* ── The style spec ──────────────────────────────────────────────────────────
@@ -123,7 +152,9 @@ export function create(hostEl, opts) {
     opts = opts || {};
 
     const viewer = $3Dmol.createViewer(hostEl, {
-        backgroundColor: (opts.view && opts.view.background) || "white",
+        // No colour of its own: the window's ground is the card's, so the very
+        // first painted frame already matches the surface it sits in.
+        backgroundColor: (opts.view && opts.view.background) || sceneBackground(hostEl),
         defaultcolors:   $3Dmol.elementColors.Jmol,
     });
 
@@ -134,7 +165,10 @@ export function create(hostEl, opts) {
         viewer:      viewer,
         hostEl:      hostEl,
         disposed:    false,
-        view:        Object.assign({ rep: "stick", radiusScale: 1, background: "white" },
+        // `background: null` means THE CARD'S OWN GROUND, resolved at paint time
+        // — not "no background". A concrete colour here would be a second home
+        // for a value the stylesheet already declares.
+        view:        Object.assign({ rep: "stick", radiusScale: 1, background: null },
                                    opts.view || {}),
         // Shape handles we own and must remove before redrawing.
         cellShapes:      [],
@@ -207,9 +241,11 @@ export function create(hostEl, opts) {
      */
     function applyStyle() {
         try { state.viewer.setStyle({ model: 0 }, styleSpec(state.view)); } catch (_) {}
-        if (state.view.background) {
-            try { state.viewer.setBackgroundColor(state.view.background); } catch (_) {}
-        }
+        // Unset means the card's ground (SCENE_BACKGROUND), never "leave it as
+        // it was": the library's own default is white, so a skipped call is how
+        // the window came to stay white inside a dark card.
+        const bg = state.view.background || sceneBackground(state.hostEl);
+        try { state.viewer.setBackgroundColor(bg); } catch (_) {}
     }
 
     /* ── Overlay redraws ───────────────────────────────────────────────────
@@ -371,11 +407,7 @@ export function create(hostEl, opts) {
     // concealed to the module — 3D-scene constants WebGL cannot style directly,
     // kept in one discoverable place instead of as magic numbers.
     function cssVar(name, fallback) {
-        if (!state.hostEl || typeof getComputedStyle !== "function") return fallback;
-        try {
-            const v = getComputedStyle(state.hostEl).getPropertyValue(name).trim();
-            return v || fallback;
-        } catch (_) { return fallback; }
+        return readCssVar(state.hostEl, name, fallback);
     }
 
     // Everything the overlays own, re-placed at whatever frame is now drawn.

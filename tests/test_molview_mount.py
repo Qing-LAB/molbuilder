@@ -377,6 +377,123 @@ def test_the_frame_bar_appears_only_once_there_is_more_than_one_frame():
     )
 
 
+def test_an_open_menu_is_placed_against_its_own_trigger():
+    """§ 8.5: MolView's menus are controls the module draws, and a control that
+    opens onto nothing is not one.
+
+    The popover is fixed to the viewport — it has to be, because it opens over
+    the 3D window and the window clips its own contents, so an in-flow popover is
+    cut off at the canvas edge. Fixed positioning has no anchor, so the module
+    measures: the panel hangs under its trigger, and is pulled back inside the
+    window rather than allowed off the edge.
+
+    Until this was wired the menu opened, took its open state, and showed
+    nothing: the stylesheet parks the panel off-screen until something places it,
+    so it was on screen the whole time at -9999px.
+    """
+    out = _run(
+        """
+        const { host } = await mounted();
+        const card = host.querySelector(".molview-card");
+        const menu = card.querySelector("DETAILS");
+        const summary = menu.querySelector("SUMMARY");
+        const body = menu.querySelector(".mol-viewer-menu-body");
+
+        const parked = { top: body.style.top || null, left: body.style.left || null };
+
+        // A trigger with room below it.
+        summary._rect = { top: 100, left: 40, width: 60, height: 20 };
+        body._rect = { width: 200, height: 150 };
+        menu.open = true;
+        const under = { top: body.style.top, left: body.style.left };
+
+        // The same menu, its trigger against the right edge (window: 1200).
+        summary._rect = { top: 100, left: 1150, width: 60, height: 20 };
+        menu.open = false;
+        menu.open = true;
+        const clamped = body.style.left;
+
+        // And with no room below it (window: 800 tall).
+        summary._rect = { top: 700, left: 40, width: 60, height: 20 };
+        menu.open = false;
+        menu.open = true;
+        const flipped = body.style.top;
+
+        console.log(JSON.stringify({ parked, under, clamped, flipped }));
+        """
+    )
+    assert out["parked"] == {"top": None, "left": None}, (
+        "the module placed the panel before it was opened — the stylesheet owns "
+        "where it rests"
+    )
+    # 100 + 20 + the 4px it hangs by; the trigger's own left edge.
+    assert out["under"] == {"top": "124px", "left": "40px"}, (
+        f"an open menu was not placed under its trigger: {out['under']}"
+    )
+    # 1200 - 8 of margin - 200 of panel: pulled back, not left hanging off.
+    assert out["clamped"] == "992px", (
+        f"a menu near the edge was left off the screen: {out['clamped']}"
+    )
+    # 700 - 4 - 150: it opens upwards rather than off the bottom.
+    assert out["flipped"] == "546px", (
+        f"a menu with no room below it did not open upwards: {out['flipped']}"
+    )
+
+
+def test_a_menu_closes_on_a_click_elsewhere_and_leaves_nothing_behind():
+    """§ 8.5 again, and § 8's teardown: "dispose still works".
+
+    An open popover is fixed to the VIEWPORT, so the module listens for the
+    things that move its trigger out from under it. Those listeners are on the
+    window and the document — outside the card — so nothing removes them when the
+    card goes. Disposing has to.
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        const card = host.querySelector(".molview-card");
+        const menus = card.querySelectorAll("DETAILS");
+        menus[0].open = true;
+
+        // Opening the second closes the first: one open at a time.
+        menus[1].open = true;
+        const exclusive = { first: menus[0].open, second: menus[1].open };
+
+        // A click anywhere else closes it.
+        document.dispatch("click", { target: document.body });
+        const afterOutsideClick = menus[1].open;
+
+        const listening = {
+            scroll: globalThis.listenerCount("scroll"),
+            resize: globalThis.listenerCount("resize"),
+            click:  document.listenerCount("click"),
+        };
+        viewer.dispose();
+        const afterDispose = {
+            scroll: globalThis.listenerCount("scroll"),
+            resize: globalThis.listenerCount("resize"),
+            click:  document.listenerCount("click"),
+        };
+        console.log(JSON.stringify({
+            exclusive, afterOutsideClick, listening, afterDispose,
+        }));
+        """
+    )
+    assert out["exclusive"] == {"first": False, "second": True}, (
+        "two menus were open at once"
+    )
+    assert out["afterOutsideClick"] is False, (
+        "a click outside left the menu open — the trigger is not the only way out"
+    )
+    assert out["listening"] == {"scroll": 1, "resize": 1, "click": 1}, (
+        f"the open menu is not being followed: {out['listening']}"
+    )
+    assert out["afterDispose"] == {"scroll": 0, "resize": 0, "click": 0}, (
+        f"disposing left listeners on the window and the document: "
+        f"{out['afterDispose']}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # § 6.7 — no hand-rolled file handling
 # ---------------------------------------------------------------------------
@@ -498,6 +615,83 @@ def test_switching_editors_redraws_the_panel_and_moves_no_selection():
     assert out["inClick"] == {"click": False, "filter": True, "selection": [0, 1]}
     assert out["inFilter"] == {"click": True, "filter": False, "selection": [0, 1]}, (
         f"switching editors moved the selection: {out['inFilter']}"
+    )
+
+
+def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
+    """§ 8.1: the panel has two pages and a tab bar that switches them — and the
+    carried stylesheet is what draws that bar, so the markup is as much its
+    contract as the class name is.
+
+    It draws the chosen tab from a checked input inside the option and its type
+    from a `span` inside it. Written as a plain button carrying its own text,
+    NEITHER rule can match: the switch renders as two words in the browser's
+    default font with nothing saying which page you are looking at. That is what
+    shipped, and it is invisible to any test that only asks whether the click
+    worked.
+
+    Two viewers on a page get two groups, because a radio group is named
+    document-wide (§ 5.6: a viewer owns everything in it).
+    """
+    out = _run(
+        """
+        const { host } = await mounted();
+        const card = host.querySelector(".molview-card");
+        const options = card.querySelector(".panel-page-switch").children;
+        const pages = card.querySelectorAll(".panel-page");
+
+        const shape = options.map((o) => ({
+            tag:    o.tagName,
+            inside: o.children.map((c) => c.tagName),
+            typed:  o.children[0].type,
+            text:   o.textContent,
+        }));
+        const atMount = {
+            checked: options.map((o) => !!o.children[0].checked),
+            shown:   pages.map((p) => !p.hidden),
+        };
+
+        options[1].click();                            // choose Cell, as a user does
+        const afterClick = {
+            checked: options.map((o) => !!o.children[0].checked),
+            shown:   pages.map((p) => !p.hidden),
+        };
+
+        // A second viewer on the same page: its tabs are its own.
+        const otherHost = globalThis.__makeHost();
+        await MV.mount(otherHost, workspace, { owner: "second-viewer" });
+        const otherOptions = otherHost.querySelector(".panel-page-switch").children;
+
+        console.log(JSON.stringify({
+            shape, atMount, afterClick,
+            groups: [options[0].children[0].name, otherOptions[0].children[0].name],
+        }));
+        """
+    )
+    assert [o["tag"] for o in out["shape"]] == ["LABEL", "LABEL"], (
+        f"a tab is not the option the stylesheet draws: {out['shape']}"
+    )
+    for option in out["shape"]:
+        assert option["inside"] == ["INPUT", "SPAN"], (
+            f"the stylesheet draws the tab's state from the input and its type "
+            f"from the span; this option has {option['inside']}"
+        )
+        assert option["typed"] == "radio", "two tabs, one choice: a radio group"
+    assert [o["text"] for o in out["shape"]] == ["Selection", "Cell"]
+    assert out["atMount"] == {"checked": [True, False], "shown": [True, False]}, (
+        f"nothing said which page the panel opened on: {out['atMount']}"
+    )
+    assert out["afterClick"] == {"checked": [False, True], "shown": [False, True]}, (
+        f"choosing the other tab did not move both the switch and the page: "
+        f"{out['afterClick']}"
+    )
+    assert out["groups"][0] == "molview-page-test", (
+        f"the radio group is not named after the viewer that owns it: "
+        f"{out['groups'][0]}"
+    )
+    assert out["groups"][0] != out["groups"][1], (
+        "two viewers on one page share a radio group, so choosing a page in one "
+        "un-chooses it in the other"
     )
 
 

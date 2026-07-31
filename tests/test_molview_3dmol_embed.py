@@ -440,6 +440,76 @@ def test_a_batch_paints_once_however_many_doors_it_touches():
     assert out["nestedOuter"] == 1
 
 
+def test_the_window_clears_to_the_cards_ground_and_a_redraw_keeps_it():
+    """§ 5.4: MolView brings its own surface and depends on nothing the host page
+    happens to have — and the 3D window is part of that surface.
+
+    The drawing library cannot be styled by CSS, so the colour behind the atoms
+    is an ARGUMENT, not a rule. It is the same colour the stylesheet paints
+    behind the canvas (`--mol-scene-background` on the card), read from there,
+    because the two are one surface: written as two literals they drift, and the
+    drawing sits as a bright rectangle inside a dark card.
+
+    A colour a user picks still wins — it is one of § 9.6's drawing settings. The
+    card's ground is what "unset" means, not a value that overrides them.
+    """
+    out = _run(
+        """
+        // The stylesheet, as far as this layer can see it: a value declared on
+        // the element it was given.
+        globalThis.getComputedStyle = (el) => ({
+            getPropertyValue: (name) => (el && el._props && el._props[name]) || "",
+        });
+        const host = globalThis.__makeHost();
+        host._props = { "--mol-scene-background": "#123456" };
+
+        globalThis.__resetCalls();
+        const e = MOD.create(host, {});
+        const created = globalThis.__lastCall("createViewer").args[0].backgroundColor;
+
+        e.setStyle({ rep: "sphere" });          // a drawing change must not lose it
+        const afterRestyle = globalThis.__lastCall("setBackgroundColor").args[0];
+
+        e.setStyle({ background: "#ff0000" });  // a chosen colour wins
+        const chosen = globalThis.__lastCall("setBackgroundColor").args[0];
+
+        console.log(JSON.stringify({ created, afterRestyle, chosen }));
+        """
+    )
+    assert out["created"] == "#123456", (
+        f"the window was created on a colour of its own, not the card's ground: "
+        f"{out['created']}"
+    )
+    assert out["afterRestyle"] == "#123456", (
+        "restyling repainted the window on some other ground"
+    )
+    assert out["chosen"] == "#ff0000", "a chosen background did not reach the drawing"
+
+
+def test_no_layer_names_a_colour_for_the_window():
+    """The ground has ONE home, and it is the stylesheet (§ 5.2 — a second copy
+    is the one somebody forgets). The layers above may pass a colour a USER
+    chose; none of them may carry a default of its own.
+
+    This is written as a source check because the defect is invisible at runtime:
+    two agreeing literals behave exactly like one value until one of them moves.
+    """
+    offenders = {}
+    for name, path in module_files().items():
+        if name == "3dmol-embed.js":
+            continue                      # the sealed layer holds the last resort
+        code = "\n".join(
+            line for line in path.read_text().splitlines()
+            if not line.lstrip().startswith(("*", "//", "/*"))
+        )
+        hits = [word for word in ('"white"', "'white'", "backgroundColor") if word in code]
+        if hits:
+            offenders[name] = hits
+    assert offenders == {}, (
+        f"a layer above the drawing names the window's own colour: {offenders}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # § 4, § 5.3, § 6.7 — what the module as a whole must not contain
 # ---------------------------------------------------------------------------

@@ -51,10 +51,15 @@ const SWITCH_DEFAULTS = {
     forceScale:  1,
 };
 
+/* `background: null` is not "no background" — it means THE 3D WINDOW'S OWN
+ * GROUND, which the stylesheet declares and the drawing layer resolves. The
+ * store carries what the USER chose, and until they choose one there is nothing
+ * to carry; naming a colour here would put a second copy of the module's
+ * surface above the one place that decides it (§ 5.2). */
 const VIEW_DEFAULTS = {
     style:        "stick",
     radius:       1,
-    background:   "white",
+    background:   null,
     orthographic: false,
 };
 

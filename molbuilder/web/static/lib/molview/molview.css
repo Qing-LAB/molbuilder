@@ -76,16 +76,29 @@
  * page with no card and no separation between the window and the panel.
  *
  * Depending on a class the host happens to have is what § 5.4 forbids and what
- * this file's header already promised not to do. So the three surfaces below
- * are declared here, in the module's own stylesheet, keyed to the module's own
+ * this file's header already promised not to do. So the surfaces below are
+ * declared here, in the module's own stylesheet, keyed to the module's own
  * classes.
  *
  * The values are the app's tokens FIRST, with the token's own value as the
  * fallback — so inside molbuilder the card is identical to every other card on
  * the page and re-themes with them, and outside it the module still looks like
  * itself. A fallback is not a second palette; it is the same palette written
- * where the module can reach it. */
-.molview-card,
+ * where the module can reach it.
+ *
+ * THERE ARE TWO CARDS AND ONE GROUND, and which is which is the whole of the
+ * visual organisation. The 3D window and the panel are the CARDS: raised, with
+ * the strong border and the card shadow. The module's own box is the GROUND they
+ * sit on — the page's colour, quietly bounded. Giving all three the same surface
+ * (which is what shipped first) draws three coincident rectangles and reads as
+ * one undivided slab with controls loose on it. */
+.molview-card {
+    background:    var(--bg-page, #14171c);
+    border:        1px solid var(--border-soft, #2c313a);
+    border-radius: var(--radius, 7px);
+    color:         var(--text-primary, #e6e9ef);
+}
+
 .molview-card .mol-viewer-card,
 .molview-card .selection-card {
     background:    var(--bg-card, #1d2128);
@@ -1399,6 +1412,13 @@
      * global :root, so they never leak into the page's token namespace). */
     --mol-cell-wireframe-color:  #888;   /* exempt: per-module 3D-scene token (unit-cell box line colour, read by getComputedStyle for the WebGL draw); no UI palette token matches this mid-gray */
     --mol-cell-wireframe-radius: 0.04;   /* box line thickness, in ANGSTROM (3D world units, NOT px) */
+    /* The 3D window's ground -- painted TWICE from this one value: by the
+     * stylesheet on .mol-viewer-canvas below, and by the drawing library as its
+     * clear colour (3dmol-embed.js reads it here, as it does the two above).
+     * WebGL cannot be styled by CSS, so a second literal in the script is the
+     * only alternative -- and two literals is how the drawing came to paint
+     * itself white inside a dark card. */
+    --mol-scene-background: var(--bg-code, #0f1217);
 
     /* Inherit base .card padding + radius from tokens.css; this
        file only adds the per-component overrides. */
@@ -1463,7 +1483,10 @@
     width:          100%;
     flex:           1 1 auto;
     min-height:     0;
-    background:     var(--bg-code, #fafafa);
+    /* The same value the drawing clears its scene to (--mol-scene-background on
+       .mol-viewer-card), so the element behind the canvas and the canvas itself
+       are one surface — no seam while the drawing starts, none if it fails. */
+    background:     var(--mol-scene-background, var(--bg-code, #0f1217));
     border:         1px solid var(--border-soft, #2c313a);
     border-radius:  var(--radius-sm, 4px);
     overflow:       hidden;
@@ -1573,6 +1596,28 @@
        buttons. */
     font-size:      var(--text-2xs, 0.6875rem);
     color:          var(--text-primary, #e6e9ef);
+}
+
+/* THE ROW RIDES OVER THE 3D WINDOW (§ 8.1), and that is a STACKING question, not
+ * just a position one. The drawing library's canvas inside the window is
+ * `position: absolute`, and a positioned element paints above in-flow content no
+ * matter what the source order says — so a knob bar left in normal flow is drawn
+ * UNDERNEATH THE DRAWING, and every click on it lands on the canvas instead.
+ *
+ * That is not hypothetical: the two menus survived only because each is
+ * `position: relative` (below), which lifts them into the positioned layer one
+ * by one. The frame bar, which is not, sat behind the scene — present, unhidden,
+ * correctly sized, and invisible. The ROW is what belongs over the window, so
+ * the row is what is positioned; anything put in it is then over the window too.
+ *
+ * Below the busy scrim's 4 ON PURPOSE: while a rebuild is in flight the scrim
+ * covers these controls, which is the whole reason it eats clicks. */
+.mol-viewer-canvas > .mol-viewer-knobs {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
 }
 
 /* Top-level menu trigger ------------------------------------- */

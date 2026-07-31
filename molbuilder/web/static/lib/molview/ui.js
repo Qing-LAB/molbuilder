@@ -166,9 +166,16 @@ function mountFrameBar(doc, card, model, handle) {
 /* ══ The View and Export menus (§ 8.5, § 11.4) ═══════════════════════════════
  *
  * MolView's own menu surface, over the window's corner. `<details>`/`<summary>`
- * gives open, close and keyboard access for free; only mutual exclusion is
- * wired, so opening one closes the other.
+ * gives open, close and keyboard access for free; mutual exclusion and PLACING
+ * THE POPOVER are what have to be wired.
  */
+
+/* Where an open popover sits, in pixels: hanging under its trigger, and how
+ * close to the window's edge it is allowed to come. Named because they are the
+ * two numbers `place` is made of, not because a value needs a label. */
+const MENU_GAP    = 4;
+const MENU_MARGIN = 8;
+
 function mountMenus(doc, card, model, files) {
     const bar = doc.createElement("div");
     bar.className = "mol-viewer-knobs";
@@ -183,19 +190,93 @@ function mountMenus(doc, card, model, files) {
     // the element; this is the only place that knows where the row is.
     if (card.frameBar) bar.appendChild(card.frameBar);
 
-    // One open at a time.
-    const menus = [view.root, exportMenu.root];
+    /* ── Placing an open popover ───────────────────────────────────────────
+     *
+     * The stylesheet gives the menu body `position: fixed` and parks it at
+     * -9999px until something measures where it goes. That is not decoration:
+     * these menus sit OVER the 3D window, and the window clips its own contents
+     * (`overflow: hidden`, so the drawing stays inside the card's rounded
+     * corners) — an absolutely positioned popover is cut off at the canvas edge,
+     * usually to nothing. Fixed escapes every clipping ancestor, and the price
+     * of escaping them is that it has no anchor left: the coordinates have to be
+     * measured against the trigger.
+     *
+     * Ship the stylesheet without this and the menu WORKS and shows nothing: it
+     * opens, the trigger takes its open state, and the panel is on screen the
+     * whole time at -9999px. */
+    const menus = [view, exportMenu];
+
+    function place(menu) {
+        const win = doc.defaultView;
+        if (!win || !menu.summary || !menu.body) return;
+        const anchor = menu.summary.getBoundingClientRect();
+        // Measured where it will be READ, not where it was parked: a popover at
+        // -9999px reports the same size, but only if it has been laid out at a
+        // sane place first do the clamps below have anything true to work with.
+        menu.body.style.top  = (anchor.bottom + MENU_GAP) + "px";
+        menu.body.style.left = anchor.left + "px";
+        const size = menu.body.getBoundingClientRect();
+        const page = doc.documentElement;
+        const vw = win.innerWidth  || (page && page.clientWidth)  || 0;
+        const vh = win.innerHeight || (page && page.clientHeight) || 0;
+
+        // It hangs from the trigger's left edge and is PULLED BACK inside the
+        // window rather than allowed to leave it — a menu half off the screen is
+        // a menu with items nobody can reach.
+        let left = anchor.left;
+        if (vw) left = Math.min(left, vw - MENU_MARGIN - size.width);
+        left = Math.max(left, MENU_MARGIN);
+        menu.body.style.left = left + "px";
+
+        // No room below: open upwards instead, but only if there is room there.
+        if (vh && anchor.bottom + MENU_GAP + size.height > vh - MENU_MARGIN) {
+            const above = anchor.top - MENU_GAP - size.height;
+            if (above >= MENU_MARGIN) menu.body.style.top = above + "px";
+        }
+    }
+
+    // One open at a time, and the one that opens is placed.
     for (const menu of menus) {
-        menu.addEventListener("toggle", () => {
-            if (!menu.open) return;
-            for (const other of menus) if (other !== menu) other.open = false;
+        menu.root.addEventListener("toggle", () => {
+            if (!menu.root.open) return;
+            for (const other of menus) if (other !== menu) other.root.open = false;
+            place(menu);
         });
+    }
+
+    /* An open popover is fixed to the VIEWPORT, so anything that moves its
+     * trigger relative to the viewport — a scroll, a resize — moves the window
+     * out from under it. It FOLLOWS rather than closing: shutting a menu the
+     * user did not shut is its own kind of wrong. Capture, because the scroll
+     * that matters is usually inside an ancestor, not on the window. */
+    const win = doc.defaultView;
+    const follow = () => {
+        for (const menu of menus) if (menu.root.open) place(menu);
+    };
+    // A click anywhere outside closes it. Without this the trigger is the only
+    // way out, which is a poor answer once the menu has drifted off-focus.
+    const dismiss = (event) => {
+        for (const menu of menus) {
+            if (menu.root.open && !menu.root.contains(event.target)) {
+                menu.root.open = false;
+            }
+        }
+    };
+    if (win) {
+        win.addEventListener("scroll", follow, { passive: true, capture: true });
+        win.addEventListener("resize", follow, { passive: true });
+        doc.addEventListener("click", dismiss, true);
     }
 
     card.canvas.appendChild(bar);
 
     return {
         dispose() {
+            if (win) {
+                win.removeEventListener("scroll", follow, { capture: true });
+                win.removeEventListener("resize", follow);
+                doc.removeEventListener("click", dismiss, true);
+            }
             view.dispose(); exportMenu.dispose();
             try { bar.remove(); } catch (_) {}
         },
@@ -310,8 +391,10 @@ function buildViewMenu(doc, model) {
                                 settings.orthographic ? "true" : "false");
     }));
 
+    // The trigger and the popover go back with the menu: whoever places it needs
+    // both, and handing back what was just built beats searching the DOM for it.
     return {
-        root,
+        root, summary, body,
         dispose() { for (const fn of offs) { try { fn(); } catch (_) {} } },
     };
 }
@@ -387,7 +470,10 @@ function buildExportMenu(doc, model, files) {
     item("Save to project", () => send("project"));
     item("Download",        () => send("download"));
 
-    return { root, dispose() { try { root.remove(); } catch (_) {} } };
+    return {
+        root, summary, body,
+        dispose() { try { root.remove(); } catch (_) {} },
+    };
 }
 
 /* A single-frame export out of a trajectory names the frame it came from, so the
@@ -518,18 +604,36 @@ function mountPanel(doc, card, model) {
 
     const root = el("div", "selection-card");
 
+    /* Every radio group in this panel is named after the OWNER (§ 5.6). The name
+     * is what browsers group radios by, and it is global to the document — so
+     * two viewers on one page with a fixed name are ONE group, and choosing a
+     * page or an editor in the second silently un-chooses it in the first. */
+    const owner = card.root.getAttribute("data-owner") || "molview";
+
     /* ── The two pages, and the tab bar that switches them (§ 8.1) ───────── */
     const header = el("div", "card-header");
     const tabs = el("div", "panel-page-switch selection-header-tabs");
     const pages = {};
-    const tabButtons = {};
+    const tabInputs = {};
     for (const [key, label] of [["selection", "Selection"], ["cell", "Cell"]]) {
-        const tab = el("button", "panel-page-option");
-        tab.type = "button";
-        tab.textContent = label;
-        tab.addEventListener("click", () => showPage(key));
+        /* A TAB IS A RADIO INSIDE A LABEL, not a button — the carried stylesheet
+         * draws the chosen tab from `:has(input:checked)` (accent text, accent
+         * underline) and its type from `.panel-page-option > span`. Built as a
+         * bare `<button>` with the text on it, NEITHER rule can match: the
+         * switch renders as two words in the browser's default button font with
+         * no indication of which page you are on. The markup is as much the
+         * stylesheet's contract as the class name is. */
+        const tab = el("label", "panel-page-option");
+        const radio = doc.createElement("input");
+        radio.type = "radio";
+        radio.name = "molview-page-" + owner;
+        radio.addEventListener("change", () => showPage(key));
+        const text = el("span");
+        text.textContent = label;
+        tab.appendChild(radio);
+        tab.appendChild(text);
         tabs.appendChild(tab);
-        tabButtons[key] = tab;
+        tabInputs[key] = radio;
 
         const page = el("div", "panel-page");
         /* THE ID IS PART OF THE MARKUP CONTRACT, exactly like the class (§ 8.1).
@@ -553,7 +657,10 @@ function mountPanel(doc, card, model) {
             // written `:not([hidden])` precisely so `display: flex` cannot
             // override it.
             pages[key].hidden = key !== which;
-            tabButtons[key].setAttribute("aria-selected", String(key === which));
+            // The tab is SET here rather than left to the click that opened the
+            // page, so a page shown from anywhere else — the first one, or a
+            // later caller — still lights the tab that goes with it.
+            tabInputs[key].checked = key === which;
         }
     }
     showPage("selection");
@@ -568,7 +675,7 @@ function mountPanel(doc, card, model) {
         const option = el("label", "selection-mode-option");
         const radio = doc.createElement("input");
         radio.type = "radio";
-        radio.name = "molview-mode";
+        radio.name = "molview-mode-" + owner;
         radio.addEventListener("change", () => model.selection.setEditor(key));
         const text = el("span");
         text.textContent = label;
