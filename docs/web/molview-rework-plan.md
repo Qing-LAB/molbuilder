@@ -240,6 +240,41 @@ Findings worth keeping, not code.
 
 ---
 
+## 4b. The trajectory blank — what is ruled out
+
+Frame 0 draws. Every later frame is blank. No error is raised, the counter is right, and
+the seal's own self-checks are healthy at every swap:
+
+```
+[SEAL] swap to 1 | hasMovie=true drawn=6 master=6
+[SEAL] swap to 3 | hasMovie=true drawn=6 master=6
+[SEAL] swap to 5 | hasMovie=true drawn=6 master=6
+```
+
+Ruled out **by direct test**, not by reasoning:
+
+| Suspect | Verdict |
+|---|---|
+| a short movie | no — the drawing reports six frames, and so does the master copy |
+| a rebuild race | no — a generation guard now makes a full load supersede the one in flight; it was a real bug, but not this one |
+| a missing render | no — `paint()` runs and the canvas is live at 1618×1618 |
+| `setFrame` being asynchronous | no — awaiting the swap changed nothing. The guard was kept anyway: overlays are placed from the drawn atoms, so placing them early puts them on the previous frame |
+| the style being lost on a swap | no — `applyStyle()` re-applied after every swap changed nothing. The frozen code's claim holds: the style survives a native frame swap. Reverted, because a restyle per swap is the very cost § 10.4's native movie exists to avoid |
+
+**What is left: the frames themselves.** Every check above assumes the movie holds six good
+frames *because it reports six* — nothing has yet looked at what is IN them. The next step is
+the multi-frame XYZ the seal builds: one string, easy to print, and easy to compare against
+the master copy's coordinates. Malformed frames would be parsed, counted, reported and drawn
+as nothing — which fits every symptom, **including the healthy self-check**.
+
+That is worth stating as a lesson rather than a task: a self-check that asks *how many* can
+only ever catch a wrong count. It was built to catch a short drawing (§ 10.10) and it does
+that correctly; it was never able to see a full drawing of bad data.
+
+The seal instrumentation stays in until this is settled.
+
+---
+
 ## 5. Open
 
 1. **Canvas-state** — a third home for the structure (§ 6.3 allows two). Its structure fields
