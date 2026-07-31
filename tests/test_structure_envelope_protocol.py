@@ -347,3 +347,131 @@ def test_the_envelope_defines_exactly_these_members(client):
         "title", "elements", "positions", "atom_names", "residue_ids",
         "residue_names", "chain_ids", "metadata",
     }, f"the envelope's members drifted: {sorted(answer['structure'])}"
+
+
+# --------------------------------------------------------------------- #
+#  What an edit is allowed to change                                    #
+# --------------------------------------------------------------------- #
+
+def _labelled_body(**args):
+    """A labelled, celled structure plus one op's arguments, flat."""
+    body = {
+        "structure": {
+            "elements":  ["C", "O", "H", "N"],
+            "positions": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+                          [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            "metadata":  {
+                "regions": {"L-electrode": [0, 1], "bridge": [2],
+                            "frozen_atoms": [3]},
+                "cell":    [[9.0, 0, 0], [0, 9.0, 0], [0, 0, 9.0]],
+            },
+        },
+    }
+    body.update(args)
+    return body
+
+
+COUNT_PRESERVING = [
+    ("translate", {"dx": 1.0, "dy": 0.0, "dz": 0.0}),
+    ("rotate",    {"axis": "z", "angle": 90.0, "center": "centroid"}),
+    ("orient",    {"anchors": [0, 1], "axis": "z", "center": "first"}),
+    ("calibrate", {}),
+]
+
+
+@pytest.mark.parametrize("op,args", COUNT_PRESERVING, ids=[o for o, _ in COUNT_PRESERVING])
+def test_an_op_that_keeps_the_atom_count_returns_every_label_unchanged(client, op, args):
+    """"applyOp should not lose labels, and the atom index order is invariable."
+
+    An operation that does not add or remove atoms MOVES them. The atom at index
+    i before is the atom at index i after, so every label — reserved ones
+    included — comes back naming exactly the atoms it named going in. Nothing
+    about a rotation can change which atom is frozen.
+    """
+    before = _labelled_body(**args)["structure"]["metadata"]["regions"]
+    answer = client.post(f"/api/modify/{op}", json=_labelled_body(**args)).get_json()
+
+    assert answer["ok"] is True, answer
+    after = answer["structure"]["metadata"]["regions"]
+    assert after == before, f"{op} changed the labels: {before} -> {after}"
+    assert answer["structure"]["elements"] == ["C", "O", "H", "N"], (
+        f"{op} reordered or replaced the atoms"
+    )
+
+
+@pytest.mark.parametrize("op,args", COUNT_PRESERVING, ids=[o for o, _ in COUNT_PRESERVING])
+def test_a_rigid_move_carries_the_box_with_the_atoms(client, op, args):
+    """The box goes WITH the atoms, it is not preserved verbatim. A rigid
+    rotation that left the lattice behind would describe a different crystal —
+    nothing moved relative to anything else, so the box must turn too. What is
+    invariant is the cell's SHAPE: same volume, same edge lengths."""
+    import numpy as np
+    answer = client.post(f"/api/modify/{op}", json=_labelled_body(**args)).get_json()
+
+    assert answer["ok"] is True, answer
+    cell = np.array(answer["periodicity"]["cell"], dtype=float)
+    assert cell is not None and cell.shape == (3, 3)
+    assert abs(abs(np.linalg.det(cell)) - 9.0 ** 3) < 1e-6, (
+        f"{op} changed the cell VOLUME: {cell.tolist()}"
+    )
+    np.testing.assert_allclose(sorted(np.linalg.norm(cell, axis=1)), [9.0] * 3,
+                               atol=1e-6, err_msg=f"{op} changed the cell's shape")
+
+
+def test_moving_part_of_a_structure_is_an_argument_not_a_smaller_request(client):
+    """§ 11.7: one path out — the whole structure goes, the whole structure comes
+    back. A partial move names its atoms; it does not ship a smaller structure.
+
+    And the box STAYS: those atoms moved relative to the ones that did not, so a
+    lattice that followed them would stop describing the atoms it was drawn
+    around. That is the difference from a rigid move, and it is why these are two
+    operations rather than one with a flag.
+    """
+    body = _labelled_body(dx=1.0, dy=0.0, dz=0.0, indices=[0, 1])
+    answer = client.post("/api/modify/translate", json=body).get_json()
+
+    assert answer["ok"] is True, answer
+    xs = [p[0] for p in answer["structure"]["positions"]]
+    assert xs == [1.0, 2.0, 0.0, 0.0], f"the wrong atoms moved: {xs}"
+    assert answer["periodicity"]["cell"] == [[9.0, 0, 0], [0, 9.0, 0], [0, 0, 9.0]], (
+        "a partial move dragged the box with it"
+    )
+    assert answer["structure"]["metadata"]["regions"] == {
+        "L-electrode": [0, 1], "bridge": [2], "frozen_atoms": [3],
+    }, "a partial move disturbed the labels"
+    assert len(answer["structure"]["elements"]) == 4, (
+        "the answer is not the whole structure"
+    )
+
+
+def test_delete_remaps_every_label_to_the_atoms_that_survived(client):
+    """A shrink is the one case where the numbers must move, and they must move
+    TOGETHER. Deleting atom 1 shifts 2 -> 1 and 3 -> 2: `bridge` and
+    `frozen_atoms` follow their atoms, and the deleted atom's membership goes
+    with it. A label left un-remapped points at whichever atom took the index —
+    for `frozen_atoms` that means the wrong atoms are held still in the next
+    calculation."""
+    answer = client.post("/api/modify/delete",
+                         json=_labelled_body(indices=[1])).get_json()
+
+    assert answer["ok"] is True, answer
+    assert answer["structure"]["elements"] == ["C", "H", "N"]
+    assert answer["structure"]["metadata"]["regions"] == {
+        "L-electrode": [0],      # atom 1 deleted, atom 0 kept its index
+        "bridge":      [1],      # was 2
+        "frozen_atoms": [2],     # was 3
+    }
+
+
+def test_add_atom_keeps_every_existing_label_and_labels_nothing_new(client):
+    """A grow appends: the existing indices are untouched, and the new atom
+    carries no label — the server does not guess that an atom attached to a
+    frozen anchor should itself be frozen."""
+    answer = client.post("/api/modify/add_atom", json=_labelled_body(
+        element="H", anchor_index=3, offset=[1.0, 0.0, 0.0])).get_json()
+
+    assert answer["ok"] is True, answer
+    assert len(answer["structure"]["elements"]) == 5
+    assert answer["structure"]["metadata"]["regions"] == {
+        "L-electrode": [0, 1], "bridge": [2], "frozen_atoms": [3],
+    }, "the appended atom disturbed the existing labels"

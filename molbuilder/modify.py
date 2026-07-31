@@ -264,6 +264,47 @@ def _rotation_matrix_from_a_to_b(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.eye(3) + vx + vx @ vx * ((1.0 - c) / (s * s))
 
 
+def _moved_subset(struct: Structure, R, t, indices: Sequence[int]) -> Structure:
+    """A copy of ``struct`` with ONLY ``indices`` mapped by ``x -> x @ Rᵀ + t``.
+
+    THE BOX IS NOT TOUCHED, and that is the whole difference from
+    :meth:`Structure.affine`.  Moving part of a structure moves those atoms
+    RELATIVE to the ones that stayed; a lattice that followed them would stop
+    describing the atoms it was drawn around.  A rigid whole-structure move is
+    the other operation -- the box goes with the atoms because nothing moved
+    relative to anything else.  Two operations, not one with a flag.
+
+    Labels and channels are index-keyed and the index space is UNCHANGED here
+    (no atom is added or removed), so they carry through untouched: the atom at
+    index i before is the atom at index i after.
+    """
+    keep = sorted({int(i) for i in indices})
+    n = struct.n_atoms
+    for i in keep:
+        if not 0 <= i < n:
+            raise ValueError(
+                f"atom index {i} out of range [0, {n}) for a {n}-atom structure")
+    out = struct.copy()
+    if keep:
+        pos = out.positions
+        pos[keep] = pos[keep] @ np.asarray(R, dtype=float).T + np.asarray(t, dtype=float)
+    return out
+
+
+def translate(struct: Structure, vec: Sequence[float], *,
+              indices: "Sequence[int] | None" = None) -> Structure:
+    """Translate ``struct`` by ``vec`` (Angstrom).
+
+    With ``indices``, ONLY those atoms move and the box stays where it is.
+    Without, the whole structure moves rigidly and the box's world-space corner
+    goes with it (``Structure.translated`` -> ``affine``).
+    """
+    vec = np.asarray(vec, dtype=float).reshape(3)
+    if indices is None:
+        return struct.translated(vec)
+    return _moved_subset(struct, np.eye(3), vec, indices)
+
+
 def orient_along_axis(
     struct: Structure,
     anchor_indices: Tuple[int, int],
@@ -371,6 +412,7 @@ def rotate_around_axis(
     angle: float = 0.0,
     *,
     center: str = "origin",
+    indices: "Sequence[int] | None" = None,
 ) -> Structure:
     """Rotate every atom by ``angle`` degrees around the named axis.
 
@@ -423,11 +465,24 @@ def rotate_around_axis(
                       [0.0, 1.0, 0.0],
                       [-s, 0.0,  c]])
     # Rotation about a pivot p is the affine ``x -> (x - p) @ Rᵀ + p`` = ``x @ Rᵀ + t``
-    # with ``t = p - p @ Rᵀ``.  Routed through ``Structure.affine`` so the WHOLE box --
-    # lattice VECTORS (cell) AND the world-space CORNER (cell_origin) -- rotates WITH the
-    # atoms (structure-periodicity.md § 3c); a rigid whole-structure rotation that left
-    # the box behind would stop it wrapping the rotated atoms.  (The Modify SUBSET path
-    # sends a cell-less sub-structure, so a selection-only rotate never touches the box.)
+    # with ``t = p - p @ Rᵀ``.
+    #
+    # WHOLE STRUCTURE: routed through ``Structure.affine`` so the whole box --
+    # lattice VECTORS (cell) AND the world-space CORNER (cell_origin) -- rotates
+    # WITH the atoms (structure-periodicity.md § 3c); nothing moved relative to
+    # anything else, and a box left behind would stop wrapping the atoms.
+    #
+    # A SUBSET: only those atoms turn, and the box stays.  The pivot is the
+    # SELECTION's centroid, because "spin this piece in place" is what a partial
+    # rotate means.  (Until 2026-07-31 the browser got this by shipping the
+    # selected atoms as their own cell-less document and mapping the answer back
+    # -- the second of § 11.7's two exceptions.  The route takes the atoms now,
+    # so the whole structure goes out and the whole structure comes back.)
+    if indices is not None:
+        subset = sorted({int(i) for i in indices})
+        pivot = (struct.positions[subset].mean(axis=0) if center == "centroid"
+                 else np.zeros(3))
+        return _moved_subset(struct, R, pivot - pivot @ R.T, subset)
     if center == "centroid":
         pivot = struct.positions.mean(axis=0)
         t = pivot - pivot @ R.T

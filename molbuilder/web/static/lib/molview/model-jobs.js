@@ -340,9 +340,9 @@ export function structureAsData(structure, positions) {
  */
 export const OPERATIONS = {
     translate:             { emptySelection: "all",    needsExactly: null,
-                             group: null },
+                             group: "indices" },
     rotate:                { emptySelection: "all",    needsExactly: null,
-                             group: null },
+                             group: "indices" },
     orient:                { emptySelection: "refuse", needsExactly: 2,
                              group: "anchors" },
     add_atom:              { emptySelection: "refuse", needsExactly: 1,

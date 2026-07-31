@@ -2356,19 +2356,32 @@ the sidecar it wrote was missing the version key that makes one loadable (§ 11.
 Three different things send the structure somewhere: an export, a cell edit, a
 geometry edit. They all send the same thing, and it is the row above.
 
-**Two exceptions, and they are the only two.** The rule says the server writes every
-file; there are two cases where it cannot, and both are worth naming so that a third
-is never added quietly:
+**A geometry edit sends the whole structure and gets the whole structure back.**
+There is no partial send. Moving part of a structure is an argument — the atoms
+to move, under the key § 11.1's table gives — not a different shape of request:
+the route moves those atoms and leaves the box where it is, because they moved
+relative to the atoms that stayed.
+
+> **This used to be an exception, and it is worth saying why it is gone.** The
+> edit routes had no "apply to these atoms only", so a partial move was done by
+> shipping the selected atoms as their own small cell-less document and mapping
+> the answer back — a second coordinate writer in the browser, and a request that
+> described a structure the user did not have. The routes take the atoms now
+> (2026-07-31), so the exception is closed rather than merely constrained. This
+> section named its own release condition — *"if the doors ever accept `elements`
+> + `positions`, both exceptions disappear with them"* — and the envelope met it.
+
+**One exception is left, and it is the only one.** The rule says the server writes
+every file; there is one case where it cannot, and it is named so that a second is
+never added quietly:
 
 | Exception | Why the server cannot answer | What the viewer does |
 |---|---|---|
 | **a frame the server has never seen** — a trajectory scrubbed away from the loaded geometry | those coordinates came from the tab's own run file; there is no server-written document for them | writes the coordinate document for that frame, **in the server's format** — same decimals, title kept — so it differs from a server-written one in nothing but provenance |
-| **moving part of a structure** — translate or rotate with a partial selection | the edit routes act on the whole structure they are given; there is no "apply to these atoms only" | sends the selected atoms as their own small document, and maps the returned coordinates back into the full structure |
 
-Both existed in the previous implementation for these reasons and both are still
-forced by the doors. Neither is a licence: a viewer that writes a coordinate
-document in any *other* circumstance has broken the rule, and if the doors ever
-accept `elements` + `positions`, both exceptions disappear with them.
+It is not a licence: a viewer that writes a coordinate document in any *other*
+circumstance has broken the rule. It closes when the export door takes numbers,
+and the browser's coordinate writer is deleted with it.
 
 **What the rule costs today, and where it is not yet true.** Every door that
 accepts a structure accepts the geometry as **text** — an `.xyz` document. So a
@@ -2601,6 +2614,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.6 / § 9.3 — the accessor is the only way in | the designated read agrees with the label store because it is a cut of it, cannot be used to write, and is the one place the reserved name is spelled |
 | § 11.1 — an edit reaches the route it names | the operation's arguments arrive where the route reads them, and the selection lands under the key its row gives; a request the route cannot act on is refused, not answered `ok` |
 | § 11.1 — one mutation in flight | a second edit started while one is running is refused, and only one request leaves |
+| § 11.7 — one path out, whole structure | every edit sends the whole structure and adopts the whole structure returned; moving part of it is an argument, never a smaller request |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
 | § 8.2 — the panel is not measured, it is given the same extent | the panel's height and the window's square edge come from one value; no script reads one to set the other, and they bottom-align at every width |

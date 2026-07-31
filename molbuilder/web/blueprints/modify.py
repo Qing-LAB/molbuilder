@@ -98,6 +98,7 @@ from molbuilder.modify import (
     delete_atoms as _delete_atoms,
     orient_along_axis as _orient_along_axis,
     rotate_around_axis as _rotate_around_axis,
+    translate as _translate,
 )
 
 
@@ -360,9 +361,14 @@ def api_modify_rotate():
             f"center must be 'origin' or 'centroid'; got {center!r}",
             400,
         )
+    # `indices` -> turn ONLY those atoms about their own centroid, box
+    # untouched.  Absent -> the whole structure turns and the box turns with it.
+    indices = body.get("indices")
+    if indices is not None and not isinstance(indices, list):
+        return _err("'indices' must be a list of atom indices", 400)
     try:
         new_struct = _rotate_around_axis(
-            struct, axis=axis, angle=angle_f, center=center,
+            struct, axis=axis, angle=angle_f, center=center, indices=indices,
         )
     except ValueError as exc:
         return _err(f"rotate_around_axis failed: {exc}", 400)
@@ -413,8 +419,15 @@ def api_modify_translate():
         dz = _finite_float("dz", body.get("dz", 0.0))
     except ValueError as exc:
         return _err(str(exc), 400)
+    # `indices` -> move ONLY those atoms, box untouched.  Absent -> the whole
+    # structure moves rigidly and the box goes with it.  The route takes the
+    # atoms so the caller sends the WHOLE structure either way (molview.md
+    # § 11.7: one path in, one path out).
+    indices = body.get("indices")
+    if indices is not None and not isinstance(indices, list):
+        return _err("'indices' must be a list of atom indices", 400)
     try:
-        new_struct = struct.translated((dx, dy, dz))
+        new_struct = _translate(struct, (dx, dy, dz), indices=indices)
     except ValueError as exc:
         return _err(f"translate failed: {exc}", 400)
     return _ok_response(new_struct)
