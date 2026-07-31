@@ -245,6 +245,18 @@ function buildCard(hostEl, opts) {
     const viewer = el("div", VIEWER);
     const wrap = el("div", "viewer-wrap");
     const inner = el("div", "viewer");
+    /* THE STYLESHEET'S SELECTORS ARE THE MARKUP CONTRACT. This chain is not free
+     * to rearrange: `.viewer > .mol-viewer-card` is what carries `height: 100%`,
+     * and the stage and canvas below it are `flex: 1 1 auto` — so they take
+     * their height from this flex column and from nothing else. Leave the card
+     * out and the stage collapses to its content, the canvas is 45px tall, and
+     * the drawing renders into a sliver with no error anywhere.
+     *
+     * It is also where the 3D-scene custom properties live (the cell wireframe's
+     * colour and thickness), which the sealed layer reads by computed style —
+     * they are declared here rather than on the page root so they stay concealed
+     * to the module. */
+    const frame = el("div", "mol-viewer-card");
     const stage = el("div", "mol-viewer-stage");
     const canvas = el("div", "mol-viewer-canvas");
 
@@ -256,7 +268,8 @@ function buildCard(hostEl, opts) {
     canvas.appendChild(busy);
 
     stage.appendChild(canvas);
-    inner.appendChild(stage);
+    frame.appendChild(stage);
+    inner.appendChild(frame);
     wrap.appendChild(inner);
     viewer.appendChild(wrap);
 
@@ -311,8 +324,12 @@ function minimumWidth(root) {
 function writeSizingError(card, available, floor, message) {
     try {
         card.body.textContent = "";
+        // The modifier drops the card's min-width, so the message fits a host
+        // too narrow to hold the viewer. Without it the blank card overflows the
+        // host it just refused to render in — which is the thing being avoided.
+        card.root.classList.add("molview-card--unmountable");
         const note = card.root.ownerDocument.createElement("p");
-        note.className = "molview-mount-error";
+        note.className = "molview-embed-error";
         note.textContent = message || (
             "This viewer needs at least " + floor + "px of width; it was given "
             + available + "px.");

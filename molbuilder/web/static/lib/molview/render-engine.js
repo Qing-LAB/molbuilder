@@ -456,13 +456,24 @@ export function createRenderEngine(embed) {
      * disabled buttons could stop. NOTHING THAT LANDS IN THAT WINDOW IS SILENTLY
      * DROPPED.
      */
+    // Each rebuild carries a generation. A full load that arrives while one is
+    // under way SUPERSEDES it (§ 10.9: "a full load is never itself refused: it
+    // is the more authoritative statement about what the structure is") — so the
+    // older one must not finish. Dropping what it HELD is not enough: its own
+    // pass is still pending, and if it lands after the newer one it redraws the
+    // structure that was just replaced. That is a movie of the previous load,
+    // silently, with a frame bar offering frames it does not have.
+    let generation = 0;
     async function rebuildGuarded() {
+        const mine = ++generation;
         phase = REBUILDING;
         embed.setBusy("Updating view…");
         try {
             await Promise.resolve();          // the window other work arrives in
+            if (mine !== generation) return;  // superseded: a newer load owns the drawing
             doRebuild();
         } finally {
+            if (mine !== generation) return;  // the newer one owns the cover too
             embed.setBusy(false);
             phase = IDLE;
             // Replayed IN ARRIVAL ORDER, then the viewer is idle again.

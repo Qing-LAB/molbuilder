@@ -203,8 +203,8 @@ def test_a_viewer_that_cannot_fit_draws_a_blank_card_with_the_error_in_it():
             hasCard: !!card,
             hasViewer: !!(card && card.querySelector(".molview-viewer")),
             hasPanel: !!(card && card.querySelector(".molview-panel")),
-            errorText: card && card.querySelector(".molview-mount-error")
-                ? card.querySelector(".molview-mount-error").textContent : null,
+            errorText: card && card.querySelector(".molview-embed-error")
+                ? card.querySelector(".molview-embed-error").textContent : null,
         }));
         """
     )
@@ -365,7 +365,7 @@ def test_the_frame_bar_appears_only_once_there_is_more_than_one_frame():
         const manyFrames = bar.hidden;
 
         viewer.data.setCurrentFrame(1);
-        const counter = bar.querySelector(".molview-frame-counter").textContent;
+        const counter = bar.querySelector(".mvf-counter").textContent;
         console.log(JSON.stringify({ atMount, oneFrame, manyFrames, counter }));
         """
     )
@@ -445,7 +445,7 @@ def test_bytes_leave_through_the_door_and_the_sidecar_goes_with_them():
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
 
         const card = host.querySelector(".molview-card");
-        const items = card.querySelectorAll(".mol-viewer-menu-item");
+        const items = card.querySelectorAll(".mol-viewer-export-btn");
         for (const item of items) item.click();
 
         console.log(JSON.stringify({
@@ -675,4 +675,45 @@ def test_every_layer_is_reachable_from_the_entry_point():
     assert "demo.js" not in layers, (
         "the demo is a consumer — it imports the entry point rather than being "
         "imported by it — so it is not a layer"
+    )
+
+
+# ---------------------------------------------------------------------------
+# § 8.1–8.3 — the stylesheet is the design system, not a suggestion
+# ---------------------------------------------------------------------------
+
+def test_every_class_the_module_writes_is_one_the_stylesheet_defines():
+    """The stylesheet IS MolView's design system (§ 8.1–8.3), so a class name the
+    module invents is a control with no design — it falls through to the
+    browser's defaults and looks like nothing else on the card.
+
+    That is not a cosmetic problem. It happened because writing `class="…"` is
+    the same four keystrokes whether the rule exists or not, so nothing pushes
+    back at the moment of writing. This is what pushes back: the vocabulary is
+    the stylesheet's, and the module may only use words it already has.
+
+    It also catches the reverse of a real bug — a control styled by a rule that
+    was renamed out from under it.
+    """
+    import re
+
+    css = (MODULE_DIR / "molview.css").read_text()
+    defined = set(re.findall(r"\.([a-zA-Z][\w-]*)", css))
+
+    invented = {}
+    for name, path in module_files().items():
+        code = path.read_text()
+        used = set()
+        for value in re.findall(r'el\((?:"[^"]*"|\w+),\s*"([^"]+)"\)', code):
+            used.update(value.split())
+        for value in re.findall(r'className\s*=\s*"([^"]+)"', code):
+            used.update(value.split())
+        for value in re.findall(r'classList\.(?:add|toggle)\("([^"]+)"', code):
+            used.update(value.split())
+        missing = sorted(c for c in used if c not in defined)
+        if missing:
+            invented[name] = missing
+    assert invented == {}, (
+        f"these controls are drawn with classes the stylesheet never defines, so "
+        f"they have no design at all: {invented}"
     )

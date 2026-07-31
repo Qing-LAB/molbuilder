@@ -76,32 +76,32 @@ function mountFrameBar(doc, card, model, handle) {
         return node;
     };
 
-    const prev = el("button", "molview-frame-btn");
+    const prev = el("button", "mvf-step");
     prev.type = "button"; prev.textContent = "‹";
     prev.setAttribute("aria-label", "Previous frame");
 
-    const playBtn = el("button", "molview-frame-btn molview-frame-play");
+    const playBtn = el("button", "mvf-play");
     playBtn.type = "button"; playBtn.textContent = "▶";
     playBtn.setAttribute("aria-label", "Play");
 
-    const next = el("button", "molview-frame-btn");
+    const next = el("button", "mvf-step");
     next.type = "button"; next.textContent = "›";
     next.setAttribute("aria-label", "Next frame");
 
-    const transport = el("div", "molview-frame-transport");
+    const transport = el("div", "mvf-transport");
     transport.appendChild(prev);
     transport.appendChild(playBtn);
     transport.appendChild(next);
 
-    const slider = el("input", "molview-frame-slider");
+    const slider = el("input", "mvf-slider");
     slider.type = "range";
     slider.min = "0";
     slider.step = "1";
     slider.setAttribute("aria-label", "Frame");
 
-    const counter = el("span", "molview-frame-counter");
+    const counter = el("span", "mvf-counter");
 
-    const loopWrap = el("label", "molview-frame-loop");
+    const loopWrap = el("label", "mvf-loop");
     const loopBox = doc.createElement("input");
     loopBox.type = "checkbox";
     loopBox.checked = handle.getLoop();
@@ -211,10 +211,15 @@ function mountMenus(doc, card, model, files) {
  */
 function buildViewMenu(doc, model) {
     const root = doc.createElement("details");
-    root.className = "mol-viewer-knob mol-viewer-menu mol-viewer-menu-view";
+    root.className = "mol-viewer-menu";
     const summary = doc.createElement("summary");
     summary.textContent = "View";
     root.appendChild(summary);
+
+    // The menu's contents live in a body, which is what the stylesheet lays out.
+    const body = doc.createElement("div");
+    body.className = "mol-viewer-menu-body";
+    root.appendChild(body);
 
     const section = (heading) => {
         const wrap = doc.createElement("div");
@@ -223,69 +228,83 @@ function buildViewMenu(doc, model) {
         label.className = "mol-viewer-menu-heading";
         label.textContent = heading;
         wrap.appendChild(label);
-        root.appendChild(wrap);
+        body.appendChild(wrap);
         return wrap;
     };
 
     const offs = [];
 
-    // ── The switches: they change WHAT IS IN a frame (§ 9.6) ──────────────
+    /* ── The switches: they change WHAT IS IN a frame (§ 9.6) ──────────────
+     *
+     * A switch is a TOGGLE BUTTON carrying `aria-pressed`, not a checkbox. That
+     * is the stylesheet's design and it is also the more honest markup: the
+     * indicator is drawn from the pressed state, so there is one source for what
+     * the control shows and what it means.
+     */
     const shown = section("Show");
     const SWITCHES = [
-        ["showIndex", "Atom numbers"],
+        ["showIndex",  "Atom numbers"],
         ["showForces", "Force arrows"],
-        ["showCell",  "Unit cell"],
-        ["showAxis",  "Axes"],
+        ["showCell",   "Unit cell"],
+        ["showAxis",   "Axes"],
     ];
-    const boxes = {};
+    const toggles = {};
     for (const [name, label] of SWITCHES) {
-        const row = doc.createElement("label");
-        row.className = "mol-viewer-menu-row";
-        const box = doc.createElement("input");
-        box.type = "checkbox";
-        box.addEventListener("change", (e) => {
-            model.selection.setSwitch(name, !!e.target.checked);
+        const button = doc.createElement("button");
+        button.type = "button";
+        button.className = "mol-viewer-toggle";
+        button.textContent = label;
+        button.setAttribute("aria-pressed", "false");
+        button.addEventListener("click", () => {
+            const on = button.getAttribute("aria-pressed") === "true";
+            model.selection.setSwitch(name, !on);
         });
-        row.appendChild(box);
-        row.appendChild(doc.createTextNode(" " + label));
-        shown.appendChild(row);
-        boxes[name] = box;
+        shown.appendChild(button);
+        toggles[name] = button;
     }
-    // The switches have one home, so the menu reflects them rather than
+    // The switches have one home, so the menu REFLECTS them rather than
     // remembering what it last set (§ 5.2).
     offs.push(model.selection.subscribe((state) => {
-        for (const [name] of SWITCHES) boxes[name].checked = !!state[name];
+        for (const [name] of SWITCHES) {
+            toggles[name].setAttribute("aria-pressed", state[name] ? "true" : "false");
+        }
     }));
 
-    // ── The drawing settings: they change HOW THE SAME FRAME IS PAINTED ───
+    /* ── The drawing settings: they change HOW THE SAME FRAME IS PAINTED ─── */
     const drawn = section("Draw as");
-    const style = doc.createElement("select");
-    style.className = "mol-viewer-menu-select";
-    for (const [value, label] of [["stick", "Sticks"],
-                                  ["ball-and-stick", "Ball & stick"],
-                                  ["sphere", "Spheres"],
-                                  ["line", "Lines"]]) {
-        const option = doc.createElement("option");
-        option.value = value; option.textContent = label;
-        style.appendChild(option);
+    const repRow = doc.createElement("div");
+    repRow.className = "mol-viewer-rep-row";
+    const REPS = [["stick", "Sticks"], ["ball-and-stick", "Ball & stick"],
+                  ["sphere", "Spheres"], ["line", "Lines"]];
+    const repButtons = {};
+    for (const [value, label] of REPS) {
+        const button = doc.createElement("button");
+        button.type = "button";
+        button.className = "mol-viewer-rep-btn";
+        button.textContent = label;
+        button.addEventListener("click", () => model.view.set("style", value));
+        repRow.appendChild(button);
+        repButtons[value] = button;
     }
-    style.addEventListener("change", (e) => model.view.set("style", e.target.value));
-    drawn.appendChild(style);
+    drawn.appendChild(repRow);
 
-    const projection = doc.createElement("label");
-    projection.className = "mol-viewer-menu-row";
-    const orthoBox = doc.createElement("input");
-    orthoBox.type = "checkbox";
-    orthoBox.addEventListener("change", (e) => {
-        model.view.set("orthographic", !!e.target.checked);
+    const projection = doc.createElement("button");
+    projection.type = "button";
+    projection.className = "mol-viewer-toggle";
+    projection.textContent = "Orthographic";
+    projection.setAttribute("aria-pressed", "false");
+    projection.addEventListener("click", () => {
+        const on = projection.getAttribute("aria-pressed") === "true";
+        model.view.set("orthographic", !on);
     });
-    projection.appendChild(orthoBox);
-    projection.appendChild(doc.createTextNode(" Orthographic"));
     drawn.appendChild(projection);
 
     offs.push(model.view.subscribe((settings) => {
-        style.value = settings.style;
-        orthoBox.checked = !!settings.orthographic;
+        for (const [value] of REPS) {
+            repButtons[value].classList.toggle("is-active", settings.style === value);
+        }
+        projection.setAttribute("aria-pressed",
+                                settings.orthographic ? "true" : "false");
     }));
 
     return {
@@ -310,18 +329,32 @@ function buildViewMenu(doc, model) {
  */
 function buildExportMenu(doc, model, files) {
     const root = doc.createElement("details");
-    root.className = "mol-viewer-knob mol-viewer-menu mol-viewer-menu-export";
+    root.className = "mol-viewer-menu";
     const summary = doc.createElement("summary");
     summary.textContent = "Export";
     root.appendChild(summary);
 
-    const item = (label, onClick) => {
+    const body = doc.createElement("div");
+    body.className = "mol-viewer-menu-body";
+    root.appendChild(body);
+    const section = doc.createElement("div");
+    section.className = "mol-viewer-export-section";
+    const label = doc.createElement("div");
+    label.className = "mol-viewer-export-section-label";
+    label.textContent = "Structure";
+    section.appendChild(label);
+    const row = doc.createElement("div");
+    row.className = "mol-viewer-export-row";
+    section.appendChild(row);
+    body.appendChild(section);
+
+    const item = (text, onClick) => {
         const button = doc.createElement("button");
         button.type = "button";
-        button.className = "mol-viewer-menu-item";
-        button.textContent = label;
+        button.className = "mol-viewer-export-btn";
+        button.textContent = text;
         button.addEventListener("click", onClick);
-        root.appendChild(button);
+        row.appendChild(button);
         return button;
     };
 
@@ -374,7 +407,7 @@ function defaultStem(model) {
  */
 function mountBadge(doc, card, model) {
     const badge = doc.createElement("div");
-    badge.className = "molview-overlay molview-overlay-badge molview-corner-tr";
+    badge.className = "molview-overlay molview-overlay--top-right molview-overlay--warn";
     badge.textContent = "Unsaved changes";
     badge.hidden = true;
     card.canvas.appendChild(badge);
@@ -401,7 +434,7 @@ function mountBadge(doc, card, model) {
  */
 function mountReadout(doc, card, model) {
     const readout = doc.createElement("div");
-    readout.className = "molview-overlay molview-overlay-readout molview-corner-bl";
+    readout.className = "molview-overlay molview-overlay--bottom-left molview-overlay--info";
     readout.hidden = true;
     card.canvas.appendChild(readout);
 
