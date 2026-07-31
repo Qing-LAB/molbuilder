@@ -633,11 +633,19 @@ function mountPanel(doc, card, model) {
     pages.selection.appendChild(filterSection);
 
     /* ── The click operations, and the label block ───────────────────────── */
+    // A visual divider between the SELECT-side controls above and the ACT-side
+    // controls below — the stylesheet's own separation of the two jobs.
+    pages.selection.appendChild(el("div", "selection-divider"));
+
+    // Every action button takes one of the five classes the stylesheet's shared
+    // base is written over. A sixth name would get no base at all: no padding,
+    // no font, no baseline — which is exactly how one button ends up a different
+    // size from the two beside it.
     const actionsRow = el("div", "selection-actions-row");
     for (const [label, className, run] of [
-        ["Clear",  "selection-clear-btn",  () => model.selection.clear()],
-        ["Invert", "selection-invert-btn", () => model.selection.invert(atomCount())],
-        ["All",    "selection-add-btn",    () => model.selection.all(atomCount())],
+        ["Clear",  "selection-clear-btn", () => model.selection.clear()],
+        ["Invert", "selection-add-btn",   () => model.selection.invert(atomCount())],
+        ["All",    "selection-add-btn",   () => model.selection.all(atomCount())],
     ]) {
         const button = el("button", className);
         button.type = "button";
@@ -652,20 +660,39 @@ function mountPanel(doc, card, model) {
     // hides the controls the gate would swallow, because a button that silently
     // does nothing is a bad answer for a user — the gate is the contract, the
     // hiding is courtesy.
+    //
+    // The block stacks a TARGET row over a VERB row, so the buttons do not
+    // compete for width with the input. The three verbs are one action with
+    // three set operations, and THE COLOUR ENCODES WHICH: blue replaces, green
+    // unions, red subtracts. That is the stylesheet's semantics, not a palette
+    // choice — a verb wearing the wrong one would say the wrong thing.
     const assign = el("div", "selection-assign");
+
+    const targetRow = el("div", "selection-target-row");
     const target = el("input", "selection-new-label");
     target.type = "text";
     target.placeholder = "Label name";
-    const assignBtn = el("button", "selection-assign-btn");
-    assignBtn.type = "button";
-    assignBtn.textContent = "Assign";
-    assignBtn.addEventListener("click", () => {
-        const name = String(target.value || "").trim();
-        if (!name) return;
-        model.selection.writeLabel(name);
-    });
-    assign.appendChild(target);
-    assign.appendChild(assignBtn);
+    targetRow.appendChild(target);
+    assign.appendChild(targetRow);
+
+    const verbRow = el("div", "selection-verb-row");
+    const named = () => String(target.value || "").trim();
+    for (const [label, className, verb] of [
+        ["Assign",   "selection-assign-btn",        "replace"],
+        ["+ Add",    "selection-add-target-btn",    "add"],
+        ["− Remove", "selection-remove-target-btn", "remove"],
+    ]) {
+        const button = el("button", className);
+        button.type = "button";
+        button.textContent = label;
+        button.addEventListener("click", () => {
+            const name = named();
+            if (!name) return;
+            model.selection.writeLabel(name, verb);
+        });
+        verbRow.appendChild(button);
+    }
+    assign.appendChild(verbRow);
     pages.selection.appendChild(assign);
 
     /* ── The Cell page: read-only (§ 8.1) ────────────────────────────────── */

@@ -243,8 +243,12 @@ export function createSelectionStore(handed) {
         // change to the STRUCTURE, so it goes back through the model where the
         // gate can see it. A change the gate cannot see is a change the gate
         // does not stop. Applying a label REPLACES its previous set of atoms.
-        writeLabel(name) {
-            return handed.writeLabel(name, selected.slice());
+        // The verb is WHICH SET OPERATION this is — replace, add or remove. It
+        // travels with the call because all three are the same truth change on
+        // the same atoms, and splitting them into three doors would give the
+        // gate three things to stand in front of instead of one (§ 9.4).
+        writeLabel(name, verb) {
+            return handed.writeLabel(name, selected.slice(), verb || "replace");
         },
     };
 }

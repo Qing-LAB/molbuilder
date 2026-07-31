@@ -409,6 +409,15 @@ export function createRenderEngine(embed) {
 
     function doSwap() {
         const at = frameNow();
+        // TEMPORARY INSTRUMENTATION — the seal's two self-check questions at the
+        // exact moment of the swap (§ 9.9, § 10.10). Removed once the trajectory
+        // blank is understood.
+        try {
+            console.warn("[SEAL] swap to " + at
+                + " | hasMovie=" + embed.hasMovie()
+                + " drawn=" + embed.drawnFrameCount()
+                + " master=" + masterCount());
+        } catch (_) {}
         embed.beginBatch();
         embed.showFrame(at);
         const processed = processAll();

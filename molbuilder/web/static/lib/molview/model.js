@@ -81,7 +81,7 @@ export function createModel(opts) {
      */
     const selection = createSelectionStore({
         resolveFilter: (rule) => resolveFilter(structure, rule),
-        writeLabel:    (name, atoms) => writeLabel(name, atoms),
+        writeLabel:    (name, atoms, verb) => writeLabel(name, atoms, verb),
     });
     const view = createViewStore();
 
@@ -196,13 +196,22 @@ export function createModel(opts) {
      *
      * Applying a label REPLACES that label's previous set of atoms.
      */
-    const writeLabel = gated(function (name, atoms) {
+    const writeLabel = gated(function (name, atoms, verb) {
         if (!structure || !name) return false;
         const wanted = new Set(atoms);
         settle(() => {
             structure.annotations.forEach((facts, i) => {
+                const had = (facts.labels || []).indexOf(name) >= 0;
+                const picked = wanted.has(i);
+                // One expression for all three verbs, so they cannot drift:
+                //   replace — the label's set BECOMES the selection (§ 9.5)
+                //   add     — union
+                //   remove  — difference
+                const keep = verb === "add"    ? (had || picked)
+                           : verb === "remove" ? (had && !picked)
+                           : picked;
                 const labels = (facts.labels || []).filter((l) => l !== name);
-                if (wanted.has(i)) labels.push(name);
+                if (keep) labels.push(name);
                 facts.labels = labels;
             });
         });

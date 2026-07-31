@@ -492,9 +492,25 @@ export function create(hostEl, opts) {
         // would be the second home that drifts.
         showFrame(i) {
             if (state.disposed) return;
-            try { state.viewer.setFrame(i); } catch (_) {}
-            replaceOverlays();
-            paint();
+            /* CARRIED KNOWLEDGE (4 of 4). setFrame is ASYNCHRONOUS — it returns
+             * a promise, and the frame's geometry is not in place until that
+             * settles. Painting straight after it paints the swap that has not
+             * happened yet, and the window goes EMPTY: frame 0 keeps showing
+             * whatever the load left, and every later frame draws nothing at
+             * all, with no error and with the movie reporting its full length.
+             *
+             * The overlays have to wait too — they are placed from the drawn
+             * atoms (§ 10.6), so re-placing them early puts them on the
+             * previous frame's positions. */
+            let swap;
+            try { swap = state.viewer.setFrame(i); } catch (_) { return; }
+            const settled = () => {
+                if (state.disposed) return;
+                replaceOverlays();
+                paint();
+            };
+            if (swap && typeof swap.then === "function") swap.then(settled, settled);
+            else settled();
         },
 
         /* ── The things drawn beside the molecule ──────────────────────── */
