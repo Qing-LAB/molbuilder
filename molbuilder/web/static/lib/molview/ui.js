@@ -47,6 +47,9 @@ export function mountControls(card, model, handle, files) {
     const readout = mountReadout(doc, card, model);
     off.push(readout.dispose);
 
+    const panel = mountPanel(doc, card, model);
+    off.push(panel.dispose);
+
     return {
         dispose() {
             for (const fn of off.reverse()) { try { fn(); } catch (_) {} }
@@ -453,4 +456,322 @@ function angle(a, vertex, c) {
               * Math.sqrt(w[0] ** 2 + w[1] ** 2 + w[2] ** 2);
     if (!mag) return 0;
     return Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180 / Math.PI;
+}
+
+
+/* ══ The selection panel (§ 8.4, § 9.5) ══════════════════════════════════════
+ *
+ * A READER of the selection store. It is handed one settled snapshot and draws
+ * from that — never from a dozen separate reads, and never from a copy of its
+ * own (§ 8.4). What it writes goes back through the store, so a change made here
+ * meets the same rules as one made anywhere else (§ 9.4).
+ *
+ * Two pages, switched by a tab bar: Selection and Cell. Switching pages never
+ * resizes the card (§ 8.1) — the stylesheet gives the panel the viewer's extent,
+ * so its height does not depend on what is inside it.
+ *
+ * The class names are the carried stylesheet's, so this function does not get to
+ * choose them.
+ */
+function mountPanel(doc, card, model) {
+    const el = (tag, className) => {
+        const node = doc.createElement(tag);
+        if (className) node.className = className;
+        return node;
+    };
+
+    const root = el("div", "selection-card");
+
+    /* ── The two pages, and the tab bar that switches them (§ 8.1) ───────── */
+    const header = el("div", "card-header");
+    const tabs = el("div", "panel-page-switch selection-header-tabs");
+    const pages = {};
+    const tabButtons = {};
+    for (const [key, label] of [["selection", "Selection"], ["cell", "Cell"]]) {
+        const tab = el("button", "panel-page-option");
+        tab.type = "button";
+        tab.textContent = label;
+        tab.addEventListener("click", () => showPage(key));
+        tabs.appendChild(tab);
+        tabButtons[key] = tab;
+
+        const page = el("div", "panel-page");
+        page.hidden = key !== "selection";
+        pages[key] = page;
+    }
+    header.appendChild(tabs);
+    root.appendChild(header);
+    root.appendChild(pages.selection);
+    root.appendChild(pages.cell);
+
+    function showPage(which) {
+        for (const key of Object.keys(pages)) {
+            // The [hidden] attribute, not a class: the stylesheet's rules are
+            // written `:not([hidden])` precisely so `display: flex` cannot
+            // override it.
+            pages[key].hidden = key !== which;
+            tabButtons[key].setAttribute("aria-selected", String(key === which));
+        }
+    }
+    showPage("selection");
+
+    /* ── Which editor: click, or filter (§ 9.5) ──────────────────────────── */
+    //
+    // Two editors of ONE selection. Switching between them does not touch what
+    // is selected — the panel redraws, the truth does not move.
+    const mode = el("div", "selection-mode");
+    const modeInputs = {};
+    for (const [key, label] of [["click", "Click"], ["filter", "Filter"]]) {
+        const option = el("label", "selection-mode-option");
+        const radio = doc.createElement("input");
+        radio.type = "radio";
+        radio.name = "molview-mode";
+        radio.addEventListener("change", () => model.selection.setEditor(key));
+        const text = el("span");
+        text.textContent = label;
+        option.appendChild(radio);
+        option.appendChild(text);
+        mode.appendChild(option);
+        modeInputs[key] = radio;
+    }
+    pages.selection.appendChild(mode);
+
+    /* ── Show selected only — isolate (§ 9.4: not an edit) ───────────────── */
+    //
+    // It hides atoms from the DRAWING; the master copy still has all of them,
+    // which is why the whole structure comes back when it goes off. A read-only
+    // viewer isolates freely.
+    const isolateRow = el("label", "selection-mode-option");
+    const isolateBox = doc.createElement("input");
+    isolateBox.type = "checkbox";
+    isolateBox.addEventListener("change", (e) => {
+        model.selection.setIsolate(!!e.target.checked);
+    });
+    const isolateText = el("span");
+    isolateText.textContent = "Show selected only";
+    isolateRow.appendChild(isolateBox);
+    isolateRow.appendChild(isolateText);
+    pages.selection.appendChild(isolateRow);
+
+    /* ── The click page: the atom list ──────────────────────────────────── */
+    const clickSection = el("div", "selection-click-section");
+    const count = el("div", "selection-count");
+    const listWrap = el("div", "selection-list-wrap");
+    const list = el("table", "selection-atom-table");
+    listWrap.appendChild(list);
+    clickSection.appendChild(count);
+    clickSection.appendChild(listWrap);
+    pages.selection.appendChild(clickSection);
+
+    /* ── The filter page: rows, edited one at a time (§ 8.4) ─────────────── */
+    const filterSection = el("div", "selection-filter-section");
+    const rows = el("div", "selection-filter-rows");
+    filterSection.appendChild(rows);
+
+    const actions = el("div", "selection-filter-actions");
+    const addRow = el("button", "selection-add-filter-row");
+    addRow.type = "button";
+    addRow.textContent = "+ Add filter";
+    addRow.addEventListener("click", () => model.selection.addFilter());
+    actions.appendChild(addRow);
+    filterSection.appendChild(actions);
+
+    const footer = el("div", "selection-filter-footer");
+    const combineRow = el("div", "selection-combinator-row");
+    const combine = el("select", "selection-combinator-select");
+    for (const [value, label] of [["and", "Match all"], ["or", "Match any"]]) {
+        const option = doc.createElement("option");
+        option.value = value; option.textContent = label;
+        combine.appendChild(option);
+    }
+    combine.addEventListener("change", (e) => {
+        model.selection.setCombinator(e.target.value);
+    });
+    combineRow.appendChild(combine);
+    const apply = el("button", "selection-apply-filter-btn");
+    apply.type = "button";
+    apply.textContent = "Apply filter";
+    // Filter mode composes a query the user EXPLICITLY applies, and applying it
+    // REPLACES the selection (§ 9.5). Nothing happens while they type.
+    apply.addEventListener("click", () => model.selection.applyFilter());
+    footer.appendChild(combineRow);
+    footer.appendChild(apply);
+    filterSection.appendChild(footer);
+    pages.selection.appendChild(filterSection);
+
+    /* ── The click operations, and the label block ───────────────────────── */
+    const actionsRow = el("div", "selection-actions-row");
+    for (const [label, className, run] of [
+        ["Clear",  "selection-clear-btn",  () => model.selection.clear()],
+        ["Invert", "selection-invert-btn", () => model.selection.invert(atomCount())],
+        ["All",    "selection-add-btn",    () => model.selection.all(atomCount())],
+    ]) {
+        const button = el("button", className);
+        button.type = "button";
+        button.textContent = label;
+        button.addEventListener("click", run);
+        actionsRow.appendChild(button);
+    }
+    pages.selection.appendChild(actionsRow);
+
+    // Tagging is an EDIT (§ 9.4): a label becomes part of what an atom is and
+    // travels to the calculation, so it is frozen along with the rest. MolView
+    // hides the controls the gate would swallow, because a button that silently
+    // does nothing is a bad answer for a user — the gate is the contract, the
+    // hiding is courtesy.
+    const assign = el("div", "selection-assign");
+    const target = el("input", "selection-new-label");
+    target.type = "text";
+    target.placeholder = "Label name";
+    const assignBtn = el("button", "selection-assign-btn");
+    assignBtn.type = "button";
+    assignBtn.textContent = "Assign";
+    assignBtn.addEventListener("click", () => {
+        const name = String(target.value || "").trim();
+        if (!name) return;
+        model.selection.writeLabel(name);
+    });
+    assign.appendChild(target);
+    assign.appendChild(assignBtn);
+    pages.selection.appendChild(assign);
+
+    /* ── The Cell page: read-only (§ 8.1) ────────────────────────────────── */
+    const cellReadout = el("dl", "cell-readout");
+    pages.cell.appendChild(cellReadout);
+
+    function atomCount() {
+        const atoms = model.getAtoms();
+        return atoms ? atoms.length : 0;
+    }
+
+    /* ── Drawing, from ONE snapshot (§ 8.4) ──────────────────────────────── */
+    function draw(state) {
+        // The editor decides which body shows; the selection is untouched by it.
+        clickSection.hidden = state.mode !== "click";
+        filterSection.hidden = state.mode !== "filter";
+        for (const key of Object.keys(modeInputs)) {
+            modeInputs[key].checked = state.mode === key;
+        }
+        isolateBox.checked = !!state.isolate;
+        combine.value = state.combinator;
+
+        drawList(state);
+        drawRows(state);
+        // A read-only viewer does not show the controls the gate would swallow.
+        assign.hidden = model.mode === "readonly";
+    }
+
+    function drawList(state) {
+        const atoms = model.getAtoms();
+        count.textContent = atoms
+            ? state.selection.length + " of " + atoms.length + " selected"
+            : "";
+        list.textContent = "";
+        if (!atoms) return;
+        const picked = new Set(state.selection);
+        for (const atom of atoms) {
+            const row = doc.createElement("tr");
+            if (picked.has(atom.index)) row.className = "is-selected";
+            const number = doc.createElement("td");
+            // 1-based on screen, through the one translation (§ 11.5).
+            number.textContent = String(toDisplay(atom.index));
+            const element = doc.createElement("td");
+            element.textContent = atom.element;
+            const labels = doc.createElement("td");
+            for (const name of atom.labels) {
+                const tag = el("span", "selection-tag tag-region");
+                tag.textContent = name;
+                labels.appendChild(tag);
+            }
+            row.appendChild(number);
+            row.appendChild(element);
+            row.appendChild(labels);
+            row.addEventListener("click", () => model.selection.toggle(atom.index));
+            list.appendChild(row);
+        }
+    }
+
+    function drawRows(state) {
+        rows.textContent = "";
+        if (!state.filters.length) {
+            const empty = el("div", "selection-filter-empty");
+            empty.textContent = "No filters yet.";
+            rows.appendChild(empty);
+            return;
+        }
+        state.filters.forEach((filter, at) => {
+            const row = el("div", "selection-filter-row");
+
+            const kind = el("select", "selection-filter-kind");
+            // Which rows are worth offering is read from the structure, not
+            // hard-coded (§ 9.5) — but WHICH RULES EXIST is the server's
+            // vocabulary, and these are its names.
+            for (const [value, label] of [["by_element", "By element"],
+                                          ["by_index",   "By atom index"],
+                                          ["by_residue", "By residue"],
+                                          ["by_label",   "By label"]]) {
+                const option = doc.createElement("option");
+                option.value = value; option.textContent = label;
+                kind.appendChild(option);
+            }
+            kind.value = filter.kind;
+            kind.addEventListener("change", (e) => {
+                model.selection.updateFilter(at, { kind: e.target.value });
+            });
+
+            const value = el("input", "selection-filter-text");
+            value.type = "text";
+            value.value = filter.value;
+            value.addEventListener("input", (e) => {
+                model.selection.updateFilter(at, { value: e.target.value });
+            });
+
+            const remove = el("button", "selection-filter-remove");
+            remove.type = "button";
+            remove.textContent = "×";
+            remove.setAttribute("aria-label", "Remove this filter");
+            remove.addEventListener("click", () => model.selection.removeFilter(at));
+
+            row.appendChild(kind);
+            row.appendChild(value);
+            row.appendChild(remove);
+            rows.appendChild(row);
+        });
+    }
+
+    function drawCell() {
+        cellReadout.textContent = "";
+        const cell = model.getUnitCellInfo();
+        for (const [label, value] of [
+            ["Lattice", cell.lattice ? "set" : "none"],
+            ["Origin",  cell.origin ? cell.origin.join(", ") : "—"],
+            ["Axes",    cell.axisKind || "—"],
+            ["Vacuum",  cell.vacuum == null ? "—" : String(cell.vacuum)],
+        ]) {
+            const term = doc.createElement("dt");
+            term.className = "selection-mini-label";
+            term.textContent = label;
+            const detail = doc.createElement("dd");
+            detail.className = "cell-value";
+            detail.textContent = value;
+            cellReadout.appendChild(term);
+            cellReadout.appendChild(detail);
+        }
+    }
+
+    const offSelection = model.selection.subscribe(draw);
+    const offData = model.subscribe(() => {
+        draw(model.selection.getState());
+        drawCell();
+    });
+    drawCell();
+
+    card.panel.appendChild(root);
+
+    return {
+        dispose() {
+            offSelection(); offData();
+            try { root.remove(); } catch (_) {}
+        },
+    };
 }

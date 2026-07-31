@@ -472,6 +472,13 @@ export function createModel(opts) {
             settle(() => { forcesPerFrame = perFrame || null; });
         }, undefined),
 
+        /* What this viewer IS, which is not the same as what it holds. § 9.4
+         * says a read-only viewer "does not show the controls the gate would
+         * swallow" — so MolView has to be able to ask which kind it is. This is
+         * configuration, not data; the gate is still the thing that makes the
+         * guarantee true, and hiding a control is courtesy on top of it. */
+        get mode() { return readOnly ? "readonly" : "editable"; },
+
         /* ══ Reach the selection / the drawing settings (§ 9.3) ═══════════
          *
          * Doors rather than values: reaching one is how you ASK for a change,

@@ -1987,6 +1987,13 @@ that knowledge lived, drifting from the one the projects module already had, and
 outside every rule that applies to the real one (where files may go, what names
 are legal, what happens on a collision).
 
+**The door is also what keeps the export concealed.** MolView names a
+destination and hands over bytes; it learns nothing about how files are stored,
+and nothing outside learns how MolView exports. A viewer that called the projects
+module directly would couple the two in both directions — MolView would know the
+file module's surface, and the file module's shape would show through MolView's
+menu. The door is the seal, not a formality.
+
 **One byte-producing path, one destination argument.** Save-to-project and
 download differ *only* in where the bytes end up (§ 11.3), so they are not two
 mechanisms — they are one call that names a destination. A viewer that grew a

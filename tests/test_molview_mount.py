@@ -445,3 +445,140 @@ def test_bytes_leave_through_the_door_and_the_sidecar_goes_with_them():
         f"the sidecar must go with the geometry, both times: {out['names']}"
     )
     assert all(s["length"] > 0 for s in out["saved"])
+
+
+# ---------------------------------------------------------------------------
+# § 8.4 / § 9.5 — the panel
+# ---------------------------------------------------------------------------
+
+def test_switching_editors_redraws_the_panel_and_moves_no_selection():
+    """§ 9.5: "the selection is the truth; click and filter are two EDITORS of
+    it. Switching between them does not touch what is selected."
+
+    § 13.3: "moving between click and filter mode leaves the selection exactly as
+    it was."
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        viewer.data.selection.add([0, 1]);
+
+        const card = host.querySelector(".molview-card");
+        const clickBody = card.querySelector(".selection-click-section");
+        const filterBody = card.querySelector(".selection-filter-section");
+
+        const inClick = { click: clickBody.hidden, filter: filterBody.hidden,
+                          selection: viewer.data.selection.get() };
+        viewer.data.selection.setEditor("filter");
+        const inFilter = { click: clickBody.hidden, filter: filterBody.hidden,
+                           selection: viewer.data.selection.get() };
+        console.log(JSON.stringify({ inClick, inFilter }));
+        """
+    )
+    assert out["inClick"] == {"click": False, "filter": True, "selection": [0, 1]}
+    assert out["inFilter"] == {"click": True, "filter": False, "selection": [0, 1]}, (
+        f"switching editors moved the selection: {out['inFilter']}"
+    )
+
+
+def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store():
+    """§ 11.5: the first atom reads as #1 everywhere even though the code sees 0.
+
+    And the panel holds nothing: a click asks the STORE to change, and the list
+    redraws from the snapshot that comes back (§ 8.4).
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const card = host.querySelector(".molview-card");
+        const rows = card.querySelectorAll(".selection-atom-table")[0].children;
+
+        const numbers = Array.from(rows).map(r => r.children[0].textContent);
+        rows[1].click();                       // the SECOND atom, which reads #2
+        console.log(JSON.stringify({
+            numbers,
+            selection: viewer.data.selection.get(),
+            count: card.querySelector(".selection-count").textContent,
+        }));
+        """
+    )
+    assert out["numbers"] == ["1", "2"], (
+        f"the atom list must read 1-based: {out['numbers']}"
+    )
+    assert out["selection"] == [1], (
+        "clicking the row that reads #2 must select the atom the code calls 1"
+    )
+    assert "1 of 2 selected" in out["count"]
+
+
+def test_a_filter_row_is_added_typed_and_removed_from_the_panel():
+    """§ 8.4: "a user adds a row, types in it, changes its kind, removes it" —
+    each its own change, because that is what the controls are.
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        viewer.data.selection.setEditor("filter");
+        const card = host.querySelector(".molview-card");
+
+        const empty = card.querySelector(".selection-filter-empty") !== null;
+        card.querySelector(".selection-add-filter-row").click();
+        const afterAdd = viewer.data.selection.getState().filters;
+
+        const text = card.querySelector(".selection-filter-text");
+        text.value = "Au";
+        text.dispatch("input", { target: text });
+        const afterType = viewer.data.selection.getState().filters;
+
+        card.querySelector(".selection-filter-remove").click();
+        console.log(JSON.stringify({
+            empty, afterAdd, afterType,
+            afterRemove: viewer.data.selection.getState().filters,
+        }));
+        """
+    )
+    assert out["empty"] is True, "no rows yet means the panel says so"
+    assert out["afterAdd"] == [{"kind": "by_element", "value": ""}]
+    assert out["afterType"] == [{"kind": "by_element", "value": "Au"}], (
+        f"typing must reach the store a row at a time: {out['afterType']}"
+    )
+    assert out["afterRemove"] == []
+
+
+def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow():
+    """§ 9.4: "A control that would do nothing should not be offered … MolView
+    hides the ones it draws — the label box, the edit operations."
+
+    "The gate is the contract; the hiding is courtesy, and it may never be the
+    only thing standing between a read-only viewer and a changed structure" — so
+    this test checks the hiding, and the model tests check the gate.
+    """
+    out = _run(
+        """
+        async function panelFor(mode) {
+            const host = globalThis.__makeHost();
+            const viewer = await MV.mount(host, workspace, { owner: "x", mode });
+            await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+            const card = host.querySelector(".molview-card");
+            return {
+                assignHidden: card.querySelector(".selection-assign").hidden,
+                isolateOffered: card.querySelector(".selection-mode-option") !== null,
+            };
+        }
+        console.log(JSON.stringify({
+            editable: await panelFor(undefined),
+            readonly: await panelFor("readonly"),
+        }));
+        """
+    )
+    assert out["editable"]["assignHidden"] is False
+    assert out["readonly"]["assignHidden"] is True, (
+        "a read-only viewer must not offer the label box — the gate would "
+        "swallow it, and a button that silently does nothing is a bad answer"
+    )
+    assert out["readonly"]["isolateOffered"] is True, (
+        "isolate is NOT an edit (§ 9.4) — a read-only viewer isolates freely"
+    )
