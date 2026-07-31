@@ -419,8 +419,16 @@ export function createRenderEngine(embed) {
         // movie?" question exists to catch.
         if (!embed.hasMovie()) { doRebuild(); return; }
 
-        const processed = processAll();
-        const fresh = processed.slice(from);
+        // ONLY THE NEW FRAMES (§ 10.5: "process the new frames only, extend the
+        // movie"). Working out all four hundred and keeping the tail made an
+        // append cost what a rebuild costs, which is the distinction the whole
+        // cost table exists to draw.
+        const fresh = [];
+        const total = masterCount();
+        for (let f = Math.max(0, from); f < total; f++) {
+            const one = processOne(f);
+            if (one) fresh.push(one);
+        }
         if (!fresh.length) return;
         embed.beginBatch();
         embed.appendFrames(fresh.map((p) => p.positions));

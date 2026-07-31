@@ -160,11 +160,26 @@ export function createLoad(handed) {
         const loaded = structureFromServer(payload);
         if (!loaded) return null;
         // Replace the whole model at once, then anchor a fresh history on it.
-        handed.put(loaded.structure, loaded.coordinates);
+        handed.put(loaded.structure, loaded.coordinates, stemOf(input));
         handed.recordFirstState();
         handed.announce();
         return loaded.structure;
     };
+}
+
+/* The name a structure came in under, without its extension — what an export
+ * defaults to (§ 11.4: `wire_frame50.xyz`, not `structure_frame50.xyz`). It is
+ * the one thing about the SOURCE that a viewer keeps, and it is kept because
+ * there is a caller: the file a user gets back should say what it came from.
+ *
+ * A pasted structure has no name and that is a real answer, not a missing one —
+ * the export falls back to a generic stem rather than inventing provenance. */
+function stemOf(input) {
+    const named = (input && (input.filename || input.path)) || "";
+    const base = String(named).split(/[\\/]/).pop();
+    const dot = base.lastIndexOf(".");
+    const stem = dot > 0 ? base.slice(0, dot) : base;
+    return stem || null;
 }
 
 function requestBodyFor(input) {
@@ -200,6 +215,7 @@ export function createWriteOut(handed) {
         if (!structure) return null;
         const positions = handed.readFrame(handed.currentFrame());
         if (!positions) return null;
+        const source = handed.readSource ? handed.readSource() : null;
 
         // "It REFUSES to produce anything when the geometry and the per-atom
         // labels disagree about how many atoms there are, returning nothing
@@ -215,9 +231,53 @@ export function createWriteOut(handed) {
             lines.push(structure.elements[i] + " " + p[0] + " " + p[1] + " " + p[2]);
         }
         return {
+            name:    source,
             text:    lines.join("\n") + "\n",
-            sidecar: structureForServer(structure, positions),
+            sidecar: sidecarFor(structure, positions.length),
         };
+    };
+}
+
+/**
+ * The metadata that travels beside the geometry (§ 11.3) — the sidecar's
+ * FIELDS, in the shape the rest of the application already speaks.
+ *
+ * WHAT THIS IS NOT: the request payload. This used to hand back
+ * `structureForServer()` — elements, positions and a `periodicity` block — which
+ * is what a server ROUTE wants and is not a sidecar at all. Written to disk it
+ * pairs a good `.xyz` with a `.json` the codec cannot read, and the labels it
+ * was carrying are lost at the next open. The two shapes look similar enough
+ * that nothing complained.
+ *
+ * WHO FINISHES IT: the server. `model/structure-molstruct.md` § 1's envelope —
+ * `schema_version`, `n_atoms_total` re-checked, and the `structure_hash` that
+ * pins the pair — is stamped by `StructureCodec.write` when the bytes are
+ * written, deliberately: a browser-authored envelope once shipped without
+ * `schema_version` and the load door refused the pair on the next open. So this
+ * carries the FACTS and no bookkeeping.
+ *
+ * The cell is spread into the sidecar's own field names — `cell`, `cell_origin`,
+ * `axis_kind`, `vacuum` — which is a rename and not an interpretation: MolView
+ * still reads none of it (§ 6.2).
+ */
+export function sidecarFor(structure, atomCount) {
+    const labels = {};
+    const frozen = [];
+    structure.annotations.forEach((facts, i) => {
+        for (const name of (facts.labels || [])) {
+            if (name === FROZEN_LABEL) { frozen.push(i); continue; }
+            (labels[name] = labels[name] || []).push(i);
+        }
+    });
+    const cell = structure.cell || {};
+    return {
+        n_atoms_total: atomCount,
+        regions:       labels,
+        frozen_atoms:  frozen,
+        cell:          cell.lattice || null,
+        cell_origin:   cell.origin || null,
+        axis_kind:     cell.axis_kind || null,
+        vacuum:        cell.vacuum || null,
     };
 }
 

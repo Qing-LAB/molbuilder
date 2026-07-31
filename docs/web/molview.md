@@ -850,10 +850,16 @@ card with the error written in it, rather than a half-built viewer.
 ### 8.1 What the card is made of
 
 One card holds two things side by side: the **3D window**, and the **panel** you
-select in. Between them sits the **fold handle**. Under the window, when there is
-more than one frame, the **frame bar**. Over the window's corners, the
-**overlays** — the busy cover, the unsaved badge, the measurement readout — and
-its own **menu surface**, View and Export (§ 11.4).
+select in. Between them sits the **fold handle**.
+
+Down the window's left edge, **outside it**, the **rail** — the six toolbar
+switches of § 1.1. It is beside the window and not on top of it, which is why the
+card's own width includes it rather than the drawing losing space to it (§ 8.2).
+
+Along the window's top edge, MolView's own **chrome row**: the **View** and
+**Export** menus (§ 11.4), and the **frame bar** beside them once a structure has
+more than one frame. Over the window's remaining corners, the **overlays** — the
+busy cover, the unsaved badge, the measurement readout.
 
 That is the whole of what MolView draws. A host hands over an empty element and
 gets all of it; there is no per-host stylesheet and no arrangement to opt into.
@@ -953,7 +959,8 @@ a fact of its own, and none reaches the drawing directly.
 | The control | Reads | Writes |
 |---|---|---|
 | **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4) | the displayed frame, through the one write everyone uses; play, pause and loop, through the handle (§ 9.2) |
-| **the View menu** — style, atom numbers, cell, axes, background, projection, Reset | both stores | *style, background, projection* to `view`; *atom numbers, cell, axes* to `selection` — because the first three change how a frame is painted and the last three change what is in it (§ 9.6) |
+| **the rail** — atom numbers, forces, cell, axes, isolate, Reset (§ 1.1) | `selection`, for the lit state of each switch | the five switches to `selection`; **Reset** writes nothing — it re-fits the camera through the handle, the one thing on this card that is neither data nor a switch (§ 9.6) |
+| **the View menu** — style, radius, background, projection | `view` | all four to `view` |
 | **the panel** | one snapshot of `selection` (§ 8.4) | the selection, the switches, the filter rows, and labels |
 | **the measurement readout** | which atoms are picked **and in what order**, from `selection`; their coordinates from the **master copy** at the current frame | nothing |
 | **the Export menu** | what to export and where it goes (§ 11.4) | nothing in the viewer |
@@ -964,21 +971,32 @@ reads each from where it lives rather than from whichever object is nearest. A
 bar that read the frame from the handle would be reading a mirror — and § 9.2
 retires exactly those forwarded reads.
 
-**The View menu writes to two different stores, and § 9.6's question is what
-sorts them.** *Does working out what a frame contains require reading this?*
-Atom-number labels, the cell and the axes: yes, so they are switches. Style,
-background and projection: no, so they go straight to the drawing. The menu is
-one piece of UI; that does not make its contents one kind of thing.
+**The rail and the View menu hold two different kinds of thing, and § 9.6's
+question is what sorts them.** *Does working out what a frame contains require
+reading this?* Atom-number labels, force arrows, the cell, the axes and isolate:
+yes, so they are switches and they live in `selection`. Style, radius, background
+and projection: no, so they go straight to the drawing and live in `view`.
+
+That is why they are two controls and not one menu with two halves. A switch
+changes **what is in the picture** and a user reaches for it while looking at the
+molecule — so it is one press on the rail, always visible. A drawing setting
+changes **how the same picture is painted**, is set once and left, and can afford
+to be a menu away.
+
+Neither is a second home for anything: both write into the store that owns the
+fact, exactly as the panel does (§ 11.4 — where a control sits and where a fact
+lives are different questions).
 
 **The measurement readout never touches the drawing.** It takes atom numbers from
 the panel's selection and coordinates from the master copy, which is exactly why
 it stays correct while a trajectory plays and under isolate, where the drawn
 numbering no longer matches the real one (§ 11.6).
 
-> **Open.** § 9.6 says the camera is fitted to the structure on load **and on
-> Reset**, but does not say whose door Reset is. It is not a switch and not a
-> drawing setting — it is an action on the window. Naming its owner is a decision
-> still to be made.
+**Reset is the handle's**, and it is the one control here that writes to neither
+store. § 9.6 keeps the camera out of every layer above the drawing, so there is
+no setting for Reset to change and nothing to read back: it is an **action on the
+window**, like playback, and it sits where playback sits. Any other owner would
+have had to hold something about the camera in order to offer it.
 
 ---
 

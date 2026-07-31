@@ -24,6 +24,32 @@ import { createSelectionStore, createViewStore } from "./stores.js";
 import { createHistory } from "./history.js";
 
 
+/* ══ What changed, in the renderEngine's own words (§ 9.7, § 10.5) ═══════════
+ *
+ * § 9.7's surface is commands — "here is the data", "add these frames", "the
+ * forces changed", "here is the cell" — and § 10.5 says the ENGINE chooses what
+ * each costs, from what changed, in one place. That only works if it is told
+ * WHICH change this was.
+ *
+ * Saying "the data changed" for every write, which is what this did, collapses
+ * four costs into one: a streamed append reloaded the whole movie instead of
+ * extending it, a cell edit reloaded it, and tagging an atom — which moves
+ * nothing and draws nothing — reloaded it too. The cost table was correct and
+ * unreachable.
+ *
+ * `none` is not an omission. A label is a fact about an atom, not a thing on
+ * screen (§ 6.6): the panel redraws because the structure changed, and the
+ * drawing has nothing to do.
+ */
+const REDRAW = {
+    data:   (engine)       => engine.dataChanged(),
+    append: (engine, from) => engine.appendFrames(from),
+    forces: (engine)       => engine.forcesChanged(),
+    cell:   (engine)       => engine.cellChanged(),
+    none:   ()             => {},
+};
+
+
 /**
  * One model, for one owner.
  *
@@ -67,6 +93,12 @@ export function createModel(opts) {
      * slider comes to offer a frame that nothing can draw.
      */
     let frameIndex = 0;
+
+    /* The name the structure came in under, kept for one caller: the default
+     * filename of an export (§ 11.4). It is not structure data — no calculation
+     * reads it, and it never travels to the server — which is why it sits here
+     * beside the frame rather than inside § 6.2's Structure. */
+    let sourceName = null;
 
     const structureListeners = [];
     const frameListeners = [];
@@ -156,16 +188,17 @@ export function createModel(opts) {
      *   4. only then is anyone told, and what they see is a matching pair
      */
     function settle(change, options) {
+        const opts = options || {};
         change();                                             // 1
         const count = Array.isArray(frames) ? frames.length : 0;   // 2
-        const wanted = (options && options.resetFrame) ? 0 : frameIndex;
+        const wanted = opts.resetFrame ? 0 : frameIndex;
         const resolved = count                                      // 3
             ? Math.min(Math.max(0, Math.floor(wanted)), count - 1)
             : 0;
         const frameMoved = resolved !== frameIndex;
         frameIndex = resolved;
 
-        if (renderer) renderer.dataChanged();
+        if (renderer) (REDRAW[opts.redraw] || REDRAW.data)(renderer, opts.from);
         announceStructure();                                        // 4
         if (frameMoved) announceFrame();
     }
@@ -224,6 +257,9 @@ export function createModel(opts) {
     const writeLabel = gated(function (name, atoms, verb) {
         if (!structure || !name) return false;
         const wanted = new Set(atoms);
+        // A label changes what an atom IS, not what is drawn (§ 6.6): the panel
+        // redraws because the structure changed, and the drawing has nothing to
+        // do. This used to reload the whole movie.
         settle(() => {
             structure.annotations.forEach((facts, i) => {
                 const had = (facts.labels || []).indexOf(name) >= 0;
@@ -239,22 +275,25 @@ export function createModel(opts) {
                 if (keep) labels.push(name);
                 facts.labels = labels;
             });
-        });
+        }, { redraw: "none" });
         history.edited();
         return true;
     }, false);
 
-    function put(nextStructure, nextCoordinates) {
+    function put(nextStructure, nextCoordinates, name) {
         structure = nextStructure;
         frames = nextCoordinates.frames;
         forcesPerFrame = nextCoordinates.forcesPerFrame || null;
+        // Only a LOAD names a structure. An edit replaces the atoms of the one
+        // already open, so it keeps the name it came in under.
+        if (name !== undefined) sourceName = name;
     }
 
     /* ══ The helpers, each handed exactly what it may call (§ 7.3) ════════ */
 
     const installMolecule = createLoad({
-        put: (s, c) => {
-            settle(() => put(s, c), { resetFrame: true });
+        put: (s, c, name) => {
+            settle(() => put(s, c, name), { resetFrame: true });
             seeded = true;
         },
         announce: () => {},                 // settle already told everyone
@@ -273,6 +312,7 @@ export function createModel(opts) {
         readStructure: () => structure,
         readFrame:     (i) => (frames ? frames[i] : null),
         currentFrame:  () => frameIndex,
+        readSource:    () => sourceName,
     });
 
     const applyOp = createEdits({
@@ -302,7 +342,7 @@ export function createModel(opts) {
         // A cell edit does not move an atom, so the frame and its range are
         // untouched — this is why § 10.5 makes it an overlay refresh.
         applyCell: (cell) => {
-            settle(() => { structure.cell = cell; });
+            settle(() => { structure.cell = cell; }, { redraw: "cell" });
             history.edited();
         },
     });
@@ -474,6 +514,10 @@ export function createModel(opts) {
         }, undefined),
 
         addFrame: gated(function (frame, forces) {
+            // Where the new frames start is read BEFORE the change: it is what
+            // the engine needs to extend the movie instead of reloading it, and
+            // after the write it would be indistinguishable from the end.
+            const from = Array.isArray(frames) ? frames.length : 0;
             settle(() => {
                 if (!frames) frames = [];
                 frames.push(frame.map((p) => [p[0], p[1], p[2]]));
@@ -485,10 +529,11 @@ export function createModel(opts) {
                     if (!forcesPerFrame) forcesPerFrame = frames.map(() => null);
                     forcesPerFrame[frames.length - 1] = forces || null;
                 }
-            });
+            }, { redraw: "append", from: from });
         }, undefined),
 
         addFrames: gated(function (moreFrames, moreForces) {
+            const from = Array.isArray(frames) ? frames.length : 0;
             settle(() => {
                 if (!frames) frames = [];
                 moreFrames.forEach((f, k) => {
@@ -499,11 +544,12 @@ export function createModel(opts) {
                             (moreForces && moreForces[k]) || null;
                     }
                 });
-            });
+            }, { redraw: "append", from: from });
         }, undefined),
 
         setForces: gated(function (perFrame) {
-            settle(() => { forcesPerFrame = perFrame || null; });
+            settle(() => { forcesPerFrame = perFrame || null; },
+                   { redraw: "forces" });
         }, undefined),
 
         /* What this viewer IS, which is not the same as what it holds. § 9.4

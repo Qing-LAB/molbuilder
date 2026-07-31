@@ -172,22 +172,32 @@ export function createSelectionStore(handed) {
                 set(selected.concat([atom]), pickOrder.concat([atom]));
             }
         },
-        add(atoms)    { set(Array.from(new Set(selected.concat(atoms))).sort((a, b) => a - b)); },
+        /* THE BULK OPERATIONS CARRY NO PICK TRAIL, and say so by handing over an
+         * empty one. `pickOrder` is the order atoms were CLICKED — a chemist's
+         * "from → to", and the reason the vertex of an angle is the atom picked
+         * second (§ 11.6). All, Invert, an applied filter and a restored session
+         * are not clicks; there is no such order to report.
+         *
+         * Reporting the sorted selection instead, which is what these did, is
+         * § 8.4's failure from the other side: the readout cannot tell a real
+         * trail from a fabricated one, so it treats "the middle atom by number"
+         * as the vertex the user chose. It looks implemented and is wrong. */
+        add(atoms)    { set(Array.from(new Set(selected.concat(atoms))).sort((a, b) => a - b), []); },
         remove(atoms) {
             const drop = new Set(atoms);
             set(selected.filter((i) => !drop.has(i)),
                 pickOrder.filter((i) => !drop.has(i)));
         },
-        all(count)    { set(Array.from({ length: count }, (_, i) => i)); },
+        all(count)    { set(Array.from({ length: count }, (_, i) => i), []); },
         invert(count) {
             const has = new Set(selected);
-            set(Array.from({ length: count }, (_, i) => i).filter((i) => !has.has(i)));
+            set(Array.from({ length: count }, (_, i) => i).filter((i) => !has.has(i)), []);
         },
         clear()       { set([]); },
 
         // A restored session's selection: intent the user expressed, so it is
         // part of what was saved (§ 11.2) and comes back with the structure.
-        adopt(atoms)  { set(Array.isArray(atoms) ? atoms.slice() : []); },
+        adopt(atoms)  { set(Array.isArray(atoms) ? atoms.slice() : [], []); },
 
         /* ── The switches (§ 9.5) ────────────────────────────────────────── */
         //
@@ -246,7 +256,7 @@ export function createSelectionStore(handed) {
             if (!rule) return selected.slice();       // no rows means no filter at all
             const atoms = await handed.resolveFilter(rule);
             if (!Array.isArray(atoms)) return selected.slice();
-            set(atoms.slice());
+            set(atoms.slice(), []);
             return atoms.slice();
         },
 

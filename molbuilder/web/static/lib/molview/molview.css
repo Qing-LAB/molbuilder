@@ -23,6 +23,108 @@
 
 
 /* ==========================================================================
+   THE MODULE'S OWN TOKENS — the one place a value is decided (§ 4, § 5.4)
+   ==========================================================================
+
+   Every colour, distance and stacking order this file uses has ONE name, and
+   that name is declared here. A rule below says `var(--mv-surface)`; it never
+   says `#1d2128`, never says `var(--bg-card, #1d2128)`, and never says `24px`
+   where a named metric already exists.
+
+   WHY A BLOCK AND NOT A LITERAL PER RULE. The app's palette entered this file
+   two hundred times as `var(--token, #literal)` pairs — which is two hundred
+   places a fallback can drift from the token it stands in for, and two hundred
+   edits to re-theme. Mapping the palette ONCE, here, means:
+
+     - the module reads as its own design system: the vocabulary below is
+       MolView's, and a rule that wants a surface asks for a surface;
+     - a host that themes the app themes MolView, because the mapping reads the
+       app's tokens;
+     - a host with no stylesheet at all still gets the real design, because the
+       fallback beside each mapping is the app's own value — one copy of it;
+     - nothing leaks. These are declared on the CARD, not on `:root`, so they
+       are invisible to the page and two viewers could in principle carry
+       different ones (§ 5.6). Concealment is the same rule the 3D-scene
+       constants already follow.
+
+   READ FROM SCRIPT, DELIBERATELY. Three of these are read back by JS with
+   `getComputedStyle`, because they are layout facts the stylesheet owns and the
+   script must agree with rather than restate:
+
+     --molview-min-width   mount.js, to decide whether a host is wide enough
+     --mv-menu-gap         ui.js, to place an open menu under its trigger
+     --mv-menu-margin      ui.js, to keep that menu inside the window
+     --mol-scene-*         3dmol-embed.js, for what WebGL cannot be styled with
+
+   A number that both a rule and a script need lives here and nowhere else. */
+.molview-card {
+    /* ── Surfaces ─────────────────────────────────────────────────────────
+     * Three grounds, and which is which is the whole of the card's visual
+     * organisation (§ 8.1): the module's own box is the GROUND, the 3D window
+     * and the panel are the SURFACES raised on it, and the drawing has a ground
+     * of its own — darker, because it is a window and not a card. */
+    --mv-ground:        var(--bg-page,   #14171c);
+    --mv-surface:       var(--bg-card,   #1d2128);
+    --mv-surface-raised: var(--bg-card-hover, #232831);
+    --mv-scene:         var(--bg-code,   #0f1217);
+    --mv-control:       var(--bg-input,  #262b33);
+    --mv-control-hover: var(--bg-input-focus, #2c323b);
+
+    --mv-edge:          var(--border-strong, #3a3f48);
+    --mv-edge-soft:     var(--border-soft,   #2c313a);
+
+    --mv-text:          var(--text-primary,   #e6e9ef);
+    --mv-text-dim:      var(--text-secondary, #a8aebb);
+    --mv-text-faint:    var(--text-muted,     #6c7280);
+    --mv-accent:        var(--accent,     #6ba6ff);
+    --mv-accent-on:     var(--bg-page,    #14171c);
+    --mv-accent-wash:   var(--accent-bg,  rgba(107, 166, 255, 0.10));
+
+    --mv-radius:        var(--radius,    7px);
+    --mv-radius-sm:     var(--radius-sm, 4px);
+    --mv-radius-md:     var(--radius-md, 8px);
+    --mv-shadow:        var(--shadow-card, 0 1px 0 rgba(255,255,255,0.02) inset,
+                                           0 4px 12px rgba(0,0,0,0.30));
+    --mv-shadow-pop:    0 8px 24px rgba(0, 0, 0, 0.45);
+
+    /* ── Metrics ──────────────────────────────────────────────────────────
+     * The rail's width is DERIVED from what is in it, not asserted beside it.
+     * A button and the gap that separates it from the window are the two facts;
+     * `--rail-w` is their sum, and the square's arithmetic (§ 8.2) reads that
+     * sum. Written as a third number it was right by coincidence, and the next
+     * person to widen a button would have made the canvas overlap the rail. */
+    --mv-rail-button:   24px;
+    --mv-rail-gap:      6px;
+    --mv-space-xs:      var(--space-xs, 0.4rem);
+    --mv-space-sm:      var(--space-sm, 0.6rem);
+
+    /* ── The stack over the 3D window ─────────────────────────────────────
+     * One scale, in the order the pieces sit in front of each other, so a new
+     * piece picks a band instead of guessing a number.
+     *
+     * THE LINE THAT MATTERS IS THE COVER'S: everything with a BUTTON in it goes
+     * UNDER the rebuild cover, because eating those clicks is the whole reason
+     * the cover exists (§ 10.9). Everything that only reads — the badge, the
+     * measurement — goes over it, so a rebuild does not blank the numbers a user
+     * is reading. The popover clears the lot, including whatever the HOST has
+     * stacked nearby. */
+    --mv-layer-chrome:  3;      /* the View/Export row and the frame bar */
+    --mv-layer-busy:    4;      /* the "Updating view…" cover — eats clicks */
+    --mv-layer-overlay: 5;      /* the badge, the measurement readout */
+    --mv-layer-menu:    1000;   /* an open menu, fixed to the viewport */
+
+    /* ── Where an open menu sits (read by ui.js) ──────────────────────────
+     * The popover is `position: fixed` — it must be, because it opens over the
+     * 3D window and the window clips its own contents — so a script has to
+     * measure it against its trigger. These two numbers are that placement, and
+     * they live here with every other distance rather than as literals in the
+     * script that applies them. */
+    --mv-menu-gap:      4px;
+    --mv-menu-margin:   8px;
+}
+
+
+/* ==========================================================================
    The fused card: viewer + panel + the fold (was fused-layout.css)
    ========================================================================== */
 
@@ -41,11 +143,13 @@
 .molview-card {
     container-type: inline-size;   /* enables the @container query below */
 
-    /* The view-toggle RAIL (mol-viewer-stage's left column) is added to the LEFT of the
-     * canvas.  Fold its width into the square's min + max so the CANVAS keeps its former
+    /* The view-toggle RAIL (mol-viewer-stage's left column, § 1.1) is added to the LEFT of
+     * the canvas.  Fold its width into the square's min + max so the CANVAS keeps its former
      * size instead of shrinking -- i.e. the viewer grows by the rail, it doesn't lose view
-     * space.  ONE source of truth for the rail width. */
-    --rail-w: 30px;
+     * space.  ONE source of truth for the rail width -- and it is the SUM OF WHAT IS IN IT
+     * (a button, and the gap to the window), so widening a button cannot leave the square's
+     * arithmetic behind. */
+    --rail-w: calc(var(--mv-rail-button) + var(--mv-rail-gap));
 
     /* ONE source of truth for the square's size + the stack threshold. */
     --viewer-edge: min(60vh, calc(560px + var(--rail-w)));   /* max square edge + rail */
@@ -93,19 +197,19 @@
  * (which is what shipped first) draws three coincident rectangles and reads as
  * one undivided slab with controls loose on it. */
 .molview-card {
-    background:    var(--bg-page, #14171c);
-    border:        1px solid var(--border-soft, #2c313a);
-    border-radius: var(--radius, 7px);
-    color:         var(--text-primary, #e6e9ef);
+    background:    var(--mv-ground);
+    border:        var(--card-border) solid var(--mv-edge-soft);
+    border-radius: var(--mv-radius);
+    color:         var(--mv-text);
 }
 
 .molview-card .mol-viewer-card,
 .molview-card .selection-card {
-    background:    var(--bg-card, #1d2128);
-    border:        1px solid var(--border-strong, #3a3f48);
-    border-radius: var(--radius, 7px);
-    box-shadow:    var(--shadow-card, 0 1px 0 rgba(255, 255, 255, 0.02) inset);
-    color:         var(--text-primary, #e6e9ef);
+    background:    var(--mv-surface);
+    border:        var(--card-border) solid var(--mv-edge);
+    border-radius: var(--mv-radius);
+    box-shadow:    var(--mv-shadow);
+    color:         var(--mv-text);
 }
 
 /* A surface costs WIDTH, and the sizing contract above is arithmetic that has to
@@ -137,7 +241,7 @@
 }
 
 .molview-card {
-    --card-pad:    var(--space-sm, 0.6rem);
+    --card-pad:    var(--mv-space-sm);
     --card-border: 1px;
     padding: var(--card-pad);
 
@@ -207,10 +311,15 @@
      * form-components.css, dropping that sheet's parallel aspect-ratio / min-height /
      * max-height:56vh sizing which duplicated (and drifted from -- 56vh vs the module's
      * 60vh --viewer-edge) the square the module already sizes above. */
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: #ffffff;           /* exempt: matches the drawing canvas's own clear colour (vendor-fixed), not a theme surface; covered once the canvas paints */
-    box-shadow: var(--shadow-card);
+    border: 1px solid var(--mv-edge);
+    border-radius: var(--mv-radius-sm);
+    /* THE SAME GROUND THE DRAWING CLEARS TO. It was `#ffffff`, justified as
+     * "matches the drawing canvas's own clear colour" — which stopped being true
+     * the moment the scene took the card's ground, and was invisible only
+     * because the inner card covers it. A colour nothing can see is still a
+     * colour that will be seen the day the layer above it moves. */
+    background: var(--mv-scene);
+    box-shadow: var(--mv-shadow);
 }
 .molview-viewer .viewer-wrap > .viewer {
     width: 100%;
@@ -281,9 +390,16 @@
  * filter body, which flexes to fill the panel and holds the single scroll region. */
 /* The Cell page is ALL read-only info (no action buttons to keep on screen), so unlike the
  * Selection page it may simply SCROLL as a whole when it's taller than the panel -- it sizes
- * to its content (compact when short), then scrolls.  (ID selector wins over the .panel-page
- * rule above, so `overflow: hidden` there doesn't clip it.) */
-.molview-panel .selection-card > #panel-page-cell:not([hidden]) {
+ * to its content (compact when short), then scrolls.
+ *
+ * KEYED BY ROLE, NOT BY IDENTITY.  This was `#panel-page-cell`, which is a document-global
+ * name -- and § 5.6 puts TWO viewers on one page, so the id was duplicated the moment a
+ * second one mounted.  `[data-page]` says what the element IS rather than which one it is,
+ * and it is unique to nothing, which is the point.  The extra attribute also carries the
+ * specificity the id used to: this selector must out-rank the `.panel-page` rule above (whose
+ * `overflow: hidden` would clip the scroll), and 0-5-0 over 0-4-0 does that by construction
+ * rather than by source order. */
+.molview-panel .selection-card > .panel-page[data-page="cell"]:not([hidden]) {
     flex: 0 1 auto;
     overflow-y: auto;
 }
@@ -293,8 +409,10 @@
  * frame is STABLE whichever view is shown -- the atom list and the (shorter) filter
  * view both occupy the same frame, and the list/filter rows inside are the single
  * scroll region.  The header + Clear/Invert + assign stay pinned above it. */
-.molview-panel .panel-page > #selection-click-section:not([hidden]),
-.molview-panel .panel-page > #selection-filter-section:not([hidden]) {
+/* `[data-fill]` marks the ONE section of a page that takes the leftover height and holds the
+ * single scroll region -- the atom list in click mode, the filter rows in filter mode.  It
+ * was two ids for the two of them; it is one role, and the page may only ever have one. */
+.molview-panel .panel-page > [data-fill]:not([hidden]) {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -435,22 +553,22 @@
        viewer stacks the bar instead of overflowing the canvas. */
     flex: 1 1 15rem;
     font: var(--text-2xs, 0.6875rem)/1.2 system-ui, sans-serif;
-    color: var(--text-secondary, #a8aebb);
+    color: var(--mv-text-dim);
 }
 /* Playback buttons -- ‹ prev, ▶/⏸ play-loop, › next (controls.js). */
 .mvf-play, .mvf-step {
     padding: 0.1rem 0.45rem;
     font-size: var(--text-2xs, 0.6875rem); line-height: 1.4;
     cursor: pointer;
-    background: var(--bg-input, #262b33);
-    color: var(--text-secondary, #a8aebb);
-    border: 1px solid var(--border-soft, #2c313a);
+    background: var(--mv-control);
+    color: var(--mv-text-dim);
+    border: 1px solid var(--mv-edge-soft);
     border-radius: 4px;
 }
-.mvf-play:hover, .mvf-step:hover { background: var(--bg-input-focus, #2c323b); }
+.mvf-play:hover, .mvf-step:hover { background: var(--mv-control-hover); }
 .mvf-slider {
     flex: 1 1 4rem; min-width: 3rem;
-    accent-color: var(--accent, #6ba6ff);
+    accent-color: var(--mv-accent);
     cursor: pointer;
 }
 .mvf-counter { font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
@@ -496,7 +614,7 @@
  * .viewer-wrap (position: relative already), so it tracks the viewer in every fold state. */
 .molview-overlay {
     position: absolute;
-    z-index: 5;                       /* the module's viewer-overlay layer (matches the chip) */
+    z-index: var(--mv-layer-overlay);  /* over the drawing AND over the rebuild cover: it only reads */
     display: inline-flex;
     align-items: center;
     gap: var(--space-xs);
@@ -1417,14 +1535,18 @@
      * clear colour (3dmol-embed.js reads it here, as it does the two above).
      * WebGL cannot be styled by CSS, so a second literal in the script is the
      * only alternative -- and two literals is how the drawing came to paint
-     * itself white inside a dark card. */
-    --mol-scene-background: var(--bg-code, #0f1217);
+     * itself white inside a dark card.
+     *
+     * It is the module's own scene token (`--mv-scene`) under the name the
+     * SEALED LAYER reads, so the drawing's ground and the card's palette are one
+     * decision made in one place. */
+    --mol-scene-background: var(--mv-scene);
 
     /* Inherit base .card padding + radius from tokens.css; this
        file only adds the per-component overrides. */
     display:        flex;
     flex-direction: column;
-    gap:            var(--space-xs, 0.4rem);
+    gap:            var(--mv-space-xs);
     /* When the host fixes the card's height (e.g. /modify's
        #viewer with aspect-ratio: 1/1 + max-width: 560px), the
        flex column must respect that height instead of stretching
@@ -1447,15 +1569,15 @@
     gap:            var(--space-md, 0.8rem);
     /* Header has a slim baseline so it doesn't bulk-up over the
        viewer canvas; padding inherited from .card. */
-    padding-bottom: var(--space-xs, 0.4rem);
-    border-bottom:  1px solid var(--border-soft, #2c313a);
+    padding-bottom: var(--mv-space-xs);
+    border-bottom:  1px solid var(--mv-edge-soft);
 }
 
 .mol-viewer-card-title {
     margin:         0;
     font-size:      var(--text-md, 1rem);
     font-weight:    600;
-    color:          var(--text-primary, #e6e9ef);
+    color:          var(--mv-text);
     /* Long titles wrap to a second line rather than push the
        info-line off the right edge. */
     flex:           1 1 auto;
@@ -1465,7 +1587,7 @@
 .mol-viewer-info-line {
     flex:           0 0 auto;
     font-size:      var(--text-sm, 0.875rem);
-    color:          var(--text-muted, #6c7280);
+    color:          var(--mv-text-faint);
     font-variant-numeric: tabular-nums;
     /* The info-line is steady-state secondary text -- right-aligned
        so it doesn't compete with the title for primary attention. */
@@ -1483,12 +1605,12 @@
     width:          100%;
     flex:           1 1 auto;
     min-height:     0;
-    /* The same value the drawing clears its scene to (--mol-scene-background on
-       .mol-viewer-card), so the element behind the canvas and the canvas itself
-       are one surface — no seam while the drawing starts, none if it fails. */
-    background:     var(--mol-scene-background, var(--bg-code, #0f1217));
-    border:         1px solid var(--border-soft, #2c313a);
-    border-radius:  var(--radius-sm, 4px);
+    /* The same value the drawing clears its scene to, so the element behind the
+       canvas and the canvas itself are one surface — no seam while the drawing
+       starts, none if it fails. */
+    background:     var(--mv-scene);
+    border:         1px solid var(--mv-edge-soft);
+    border-radius:  var(--mv-radius-sm);
     overflow:       hidden;
 }
 
@@ -1501,7 +1623,7 @@
 .mol-viewer-busy {
     position:       absolute;
     inset:          0;
-    z-index:        4;                 /* above quickbar/overlays, below the export modal */
+    z-index:        var(--mv-layer-busy);   /* over everything with a button in it, under what only reads */
     display:        flex;
     align-items:    center;
     justify-content: center;
@@ -1513,9 +1635,9 @@
 .mol-viewer-busy-msg {
     padding:        0.35rem 0.8rem;
     font:           var(--text-xs, 0.75rem)/1.3 system-ui, sans-serif;
-    color:          var(--text-primary, #e6e9ef);
+    color:          var(--mv-text);
     background:     var(--bg-card-hover, #232831);
-    border:         1px solid var(--border-strong, #3a3f48);
+    border:         1px solid var(--mv-edge);
     border-radius:  var(--radius-md, 8px);
     box-shadow:     0 4px 16px rgba(0,0,0,0.4);
 }
@@ -1533,10 +1655,10 @@
 .mol-viewer-frame-strip {
     display:        flex;
     align-items:    center;
-    gap:            var(--space-xs, 0.4rem);
-    padding:        var(--space-xs, 0.4rem) 0;
+    gap:            var(--mv-space-xs);
+    padding:        var(--mv-space-xs) 0;
     font-size:      var(--text-sm, 0.875rem);
-    color:          var(--text-primary, #e6e9ef);
+    color:          var(--mv-text);
 }
 
 .mol-viewer-frame-strip button {
@@ -1544,9 +1666,9 @@
     min-width:      2rem;
     padding:        var(--space-xs, 0.3rem) var(--space-sm, 0.5rem);
     background:     var(--bg-input, #fff);
-    border:         1px solid var(--border-strong, #3a3f48);
+    border:         1px solid var(--mv-edge);
     border-radius:  var(--radius-sm, 4px);
-    color:          var(--text-primary, #e6e9ef);
+    color:          var(--mv-text);
     cursor:         pointer;
     font-size:      var(--text-sm, 0.875rem);
     font-variant-numeric: tabular-nums;
@@ -1554,7 +1676,7 @@
 
 .mol-viewer-frame-strip button:hover {
     background:     var(--bg-input-focus, #f4f4f4);
-    border-color:   var(--accent, #6ba6ff);
+    border-color:   var(--mv-accent);
 }
 
 .mol-viewer-frame-strip .frame-counter {
@@ -1562,7 +1684,7 @@
     min-width:      4rem;
     text-align:     center;
     font-variant-numeric: tabular-nums;
-    color:          var(--text-muted, #6c7280);
+    color:          var(--mv-text-faint);
 }
 
 .mol-viewer-frame-strip .frame-slider {
@@ -1586,16 +1708,16 @@
        of overflowing the canvas.  (A single structure has no bar, so the row never wraps.) */
     flex-wrap:      wrap;
     row-gap:        var(--space-xs, 0.35rem);
-    gap:            var(--space-sm, 0.5rem);
-    padding:        var(--space-sm, 0.5rem) var(--space-sm, 0.5rem);
-    background:     var(--bg-card, #1d2128);
-    border-bottom:  1px solid var(--border-soft, #2c313a);
+    gap:            var(--mv-space-sm);
+    padding:        var(--mv-space-sm) var(--mv-space-sm);
+    background:     var(--mv-surface);
+    border-bottom:  1px solid var(--mv-edge-soft);
     /* Compact base: the View/Export triggers + every menu item inherit this, so the viewer
        chrome sits at (or below) the scale of the surrounding controls (the ~12px toggles,
        11px panel buttons) instead of overpowering them.  --text-2xs (11px) matches the small
        buttons. */
     font-size:      var(--text-2xs, 0.6875rem);
-    color:          var(--text-primary, #e6e9ef);
+    color:          var(--mv-text);
 }
 
 /* THE ROW RIDES OVER THE 3D WINDOW (§ 8.1), and that is a STACKING question, not
@@ -1617,7 +1739,7 @@
     top: 0;
     left: 0;
     right: 0;
-    z-index: 3;
+    z-index: var(--mv-layer-chrome);
 }
 
 /* Top-level menu trigger ------------------------------------- */
@@ -1631,10 +1753,10 @@
     align-items:    center;
     gap:            0.35em;
     padding:        0.28rem 0.7rem;
-    background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ef);
+    background:     var(--mv-control);
+    color:          var(--mv-text);
     border:         1px solid transparent;
-    border-radius:  var(--radius-sm, 4px);
+    border-radius:  var(--mv-radius-sm);
     font-weight:    500;
     cursor:         pointer;
     user-select:    none;
@@ -1651,14 +1773,14 @@
 }
 .mol-viewer-menu > summary:hover,
 .mol-viewer-menu > summary:focus-visible {
-    background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--border-strong, #3a3f48);
+    background:     var(--mv-control-hover);
+    border-color:   var(--mv-edge);
     outline:        none;
 }
 .mol-viewer-menu[open] > summary {
-    background:     var(--accent, #6ba6ff);
-    color:          var(--accent-on, #14171c);
-    border-color:   var(--accent, #6ba6ff);
+    background:     var(--mv-accent);
+    color:          var(--mv-accent-on);
+    border-color:   var(--mv-accent);
 }
 
 /* Menu body (popover) --------------------------------------- */
@@ -1674,7 +1796,7 @@
    flash at 0,0). */
 .mol-viewer-menu-body {
     position:       fixed;
-    z-index:        1000;
+    z-index:        var(--mv-layer-menu);
     top:            -9999px;
     left:           -9999px;
     min-width:      11.5rem;
@@ -1683,17 +1805,17 @@
     overflow:       auto;
     padding:        0.3rem 0.4rem;
     font-size:      var(--text-2xs, 0.6875rem);   /* compact menu: items inherit this */
-    background:     var(--bg-card-hover, #232831);
-    color:          var(--text-primary, #e6e9ef);
-    border:         1px solid var(--border-strong, #3a3f48);
-    border-radius:  var(--radius-md, 8px);
-    box-shadow:     0 8px 24px rgba(0,0,0,0.45);
+    background:     var(--mv-surface-raised);
+    color:          var(--mv-text);
+    border:         1px solid var(--mv-edge);
+    border-radius:  var(--mv-radius-md);
+    box-shadow:     var(--mv-shadow-pop);
 }
 
 /* Sections inside a menu body ------------------------------- */
 .mol-viewer-menu-section {
     padding:        0.28rem 0.15rem;
-    border-top:     1px solid var(--border-soft, #2c313a);
+    border-top:     1px solid var(--mv-edge-soft);
 }
 .mol-viewer-menu-section:first-child {
     border-top:     none;
@@ -1706,7 +1828,7 @@
     font-weight:    600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color:          var(--text-muted, #6c7280);
+    color:          var(--mv-text-faint);
 }
 
 /* Style rep button row --------------------------------------- */
@@ -1723,22 +1845,22 @@
     font:           inherit;
     line-height:    1.3;                 /* tight box: match the 11px menu text, not a chunky UA button */
     padding:        0.12rem 0.45rem;
-    background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ef);
-    border:         1px solid var(--border-soft, #2c313a);
-    border-radius:  var(--radius-sm, 4px);
+    background:     var(--mv-control);
+    color:          var(--mv-text);
+    border:         1px solid var(--mv-edge-soft);
+    border-radius:  var(--mv-radius-sm);
     cursor:         pointer;
     text-align:     center;
     transition:     background 120ms ease, border-color 120ms ease;
 }
 .mol-viewer-rep-btn:hover {
-    background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--border-strong, #3a3f48);
+    background:     var(--mv-control-hover);
+    border-color:   var(--mv-edge);
 }
 .mol-viewer-rep-btn.is-active {
-    background:     var(--accent, #6ba6ff);
-    color:          var(--accent-on, #14171c);
-    border-color:   var(--accent, #6ba6ff);
+    background:     var(--mv-accent);
+    color:          var(--mv-accent-on);
+    border-color:   var(--mv-accent);
     font-weight:    500;
 }
 
@@ -1755,17 +1877,17 @@
 }
 .mol-viewer-radius-row > label {
     font-size:      var(--text-2xs, 0.6875rem);   /* match the 11px menu, not 0.8rem */
-    color:          var(--text-muted, #6c7280);
+    color:          var(--mv-text-faint);
     flex:           0 0 auto;
 }
 .mol-viewer-radius-row > input[type="range"] {
     flex:           1 1 auto;
     min-width:      0;
-    accent-color:   var(--accent, #6ba6ff);
+    accent-color:   var(--mv-accent);
 }
 .mol-viewer-radius-row > output {
     font-size:      var(--text-2xs, 0.6875rem);
-    color:          var(--text-primary, #e6e9ef);
+    color:          var(--mv-text);
     font-variant-numeric: tabular-nums;
     min-width:      2.2rem;
     text-align:     right;
@@ -1775,10 +1897,10 @@
 .mol-viewer-toggle {
     width:          100%;
     padding:        0.4rem 0.6rem;
-    background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ef);
-    border:         1px solid var(--border-soft, #2c313a);
-    border-radius:  var(--radius-sm, 4px);
+    background:     var(--mv-control);
+    color:          var(--mv-text);
+    border:         1px solid var(--mv-edge-soft);
+    border-radius:  var(--mv-radius-sm);
     text-align:     left;
     cursor:         pointer;
     transition:     background 120ms ease, border-color 120ms ease;
@@ -1787,19 +1909,19 @@
     content:        "○";
     display:        inline-block;
     margin-right:   0.5em;
-    color:          var(--text-muted, #6c7280);
+    color:          var(--mv-text-faint);
 }
 .mol-viewer-toggle[aria-pressed="true"]::before {
     content:        "●";
-    color:          var(--accent, #6ba6ff);
+    color:          var(--mv-accent);
 }
 .mol-viewer-toggle:hover {
-    background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--border-strong, #3a3f48);
+    background:     var(--mv-control-hover);
+    border-color:   var(--mv-edge);
 }
 .mol-viewer-toggle[aria-pressed="true"] {
-    background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--accent, #6ba6ff);
+    background:     var(--mv-control-hover);
+    border-color:   var(--mv-accent);
 }
 
 /* Select dropdown (Projection) ------------------------------ */
@@ -1810,18 +1932,18 @@
     width:          100%;
     line-height:    1.3;
     padding:        0.15rem 0.45rem;
-    background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ef);
-    border:         1px solid var(--border-soft, #2c313a);
-    border-radius:  var(--radius-sm, 4px);
+    background:     var(--mv-control);
+    color:          var(--mv-text);
+    border:         1px solid var(--mv-edge-soft);
+    border-radius:  var(--mv-radius-sm);
     font:           inherit;
     cursor:         pointer;
     transition:     background 120ms ease, border-color 120ms ease;
 }
 .mol-viewer-select:hover,
 .mol-viewer-select:focus {
-    background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--border-strong, #3a3f48);
+    background:     var(--mv-control-hover);
+    border-color:   var(--mv-edge);
     outline:        none;
 }
 
@@ -1842,7 +1964,7 @@
     width:          1.8rem;
     height:         1.8rem;
     padding:        0;
-    border:         1px solid var(--border-strong, #3a3f48);
+    border:         1px solid var(--mv-edge);
     border-radius:  50%;
     cursor:         pointer;
     box-sizing:     border-box;
@@ -1864,7 +1986,7 @@
     text-align:     center;
 }
 .mol-viewer-bg-swatch.is-active {
-    outline:        2px solid var(--accent, #6ba6ff);
+    outline:        2px solid var(--mv-accent);
     outline-offset: 2px;
 }
 /* Styled custom-colour chip wraps the native <input type="color"> so
@@ -1904,17 +2026,17 @@
 .mol-viewer-export-btn {
     flex:           0 0 auto;
     padding:        0.3rem 0.65rem;
-    background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ef);
-    border:         1px solid var(--border-soft, #2c313a);
-    border-radius:  var(--radius-sm, 4px);
+    background:     var(--mv-control);
+    color:          var(--mv-text);
+    border:         1px solid var(--mv-edge-soft);
+    border-radius:  var(--mv-radius-sm);
     font-variant-numeric: tabular-nums;
     cursor:         pointer;
     transition:     background 120ms ease, border-color 120ms ease;
 }
 .mol-viewer-export-btn:hover {
-    background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--accent, #6ba6ff);
+    background:     var(--mv-control-hover);
+    border-color:   var(--mv-accent);
 }
 
 /* Export menu sections (Phase 6e) ---------------------------
@@ -1929,13 +2051,13 @@
 .mol-viewer-export-section + .mol-viewer-export-section {
     margin-top:     0.6rem;
     padding-top:    0.5rem;
-    border-top:     1px solid var(--border-soft, #2c313a);
+    border-top:     1px solid var(--mv-edge-soft);
 }
 .mol-viewer-export-section-label {
     font-size:      0.7rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color:          var(--text-muted, #6c7280);
+    color:          var(--mv-text-faint);
     opacity:        0.85;
 }
 
@@ -1969,9 +2091,9 @@
     max-width:      440px;
     padding:        1.1rem 1.3rem 1.0rem;
     background:     var(--bg-panel, #20242b);
-    color:          var(--text-primary, #e6e9ef);
-    border:         1px solid var(--border-soft, #2c313a);
-    border-radius:  var(--radius-md, 8px);
+    color:          var(--mv-text);
+    border:         1px solid var(--mv-edge-soft);
+    border-radius:  var(--mv-radius-md);
     box-shadow:     0 12px 32px rgba(0, 0, 0, 0.45);
     display:        flex;
     flex-direction: column;
@@ -1984,20 +2106,20 @@
 }
 .mol-viewer-export-modal-phase {
     font-size:      0.85rem;
-    color:          var(--text-muted, #6c7280);
+    color:          var(--mv-text-faint);
     font-variant-numeric: tabular-nums;
 }
 .mol-viewer-export-modal-bar {
     width:          100%;
     height:         8px;
-    background:     var(--bg-input, #262b33);
+    background:     var(--mv-control);
     border-radius:  4px;
     overflow:       hidden;
 }
 .mol-viewer-export-modal-bar-fill {
     height:         100%;
     width:          0%;
-    background:     var(--accent, #6ba6ff);
+    background:     var(--mv-accent);
     transition:     width 120ms ease;
 }
 .mol-viewer-export-modal-actions {
@@ -2007,14 +2129,14 @@
 }
 .mol-viewer-export-modal-cancel {
     padding:        0.35rem 0.85rem;
-    background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ef);
-    border:         1px solid var(--border-soft, #2c313a);
-    border-radius:  var(--radius-sm, 4px);
+    background:     var(--mv-control);
+    color:          var(--mv-text);
+    border:         1px solid var(--mv-edge-soft);
+    border-radius:  var(--mv-radius-sm);
     cursor:         pointer;
 }
 .mol-viewer-export-modal-cancel:hover {
-    border-color:   var(--accent, #6ba6ff);
+    border-color:   var(--mv-accent);
 }
 .mol-viewer-export-modal-cancel:disabled {
     opacity:        0.5;
@@ -2042,14 +2164,14 @@
 }
 .mol-viewer-export-params-label {
     font-size:      0.85rem;
-    color:          var(--text-muted, #6c7280);
+    color:          var(--mv-text-faint);
 }
 .mol-viewer-export-params-input {
     padding:        0.3rem 0.5rem;
-    background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ef);
-    border:         1px solid var(--border-soft, #2c313a);
-    border-radius:  var(--radius-sm, 4px);
+    background:     var(--mv-control);
+    color:          var(--mv-text);
+    border:         1px solid var(--mv-edge-soft);
+    border-radius:  var(--mv-radius-sm);
     font-variant-numeric: tabular-nums;
     font:           inherit;
     min-width:      0;
@@ -2057,12 +2179,12 @@
 }
 .mol-viewer-export-params-input:focus {
     outline:        none;
-    border-color:   var(--accent, #6ba6ff);
+    border-color:   var(--mv-accent);
 }
 .mol-viewer-export-params-hint {
     grid-column:    2;
     font-size:      0.72rem;
-    color:          var(--text-muted, #6c7280);
+    color:          var(--mv-text-faint);
     opacity:        0.75;
     line-height:    1.3;
 }
@@ -2077,10 +2199,10 @@
 }
 .mol-viewer-export-modal-confirm {
     padding:        0.35rem 0.95rem;
-    background:     var(--accent, #6ba6ff);
+    background:     var(--mv-accent);
     color:          var(--bg-panel, #20242b);
-    border:         1px solid var(--accent, #6ba6ff);
-    border-radius:  var(--radius-sm, 4px);
+    border:         1px solid var(--mv-accent);
+    border-radius:  var(--mv-radius-sm);
     cursor:         pointer;
     font-weight:    600;
 }
@@ -2107,7 +2229,9 @@
 .mol-viewer-stage {
     display:        flex;
     align-items:    stretch;
-    gap:            6px;
+    /* The SAME gap the rail's width is derived from (--rail-w = button + gap),
+       so the square's arithmetic and what is actually on screen cannot drift. */
+    gap:            var(--mv-rail-gap);
     flex:           1 1 auto;
     min-height:     0;
     min-width:      0;
@@ -2121,11 +2245,11 @@
     align-self:     flex-start;          /* rail hugs the top-left, doesn't stretch tall */
     display:        flex;
     flex-direction: column;
-    gap:            4px;
+    gap:            var(--mv-menu-gap);  /* the same small step the popover hangs by */
 }
 .mol-viewer-quick {
-    width:          24px;
-    height:         24px;
+    width:          var(--mv-rail-button);
+    height:         var(--mv-rail-button);
     display:        flex;
     align-items:    center;
     justify-content: center;
@@ -2133,22 +2257,22 @@
     font-size:      13px;
     line-height:    1;
     cursor:         pointer;
-    color:          var(--text-primary, #e6e9ef);
-    background:     color-mix(in srgb, var(--bg-card, #1d2128) 72%, transparent);
-    border:         1px solid var(--border-soft, #2c313a);
-    border-radius:  var(--radius-sm, 4px);
+    color:          var(--mv-text);
+    background:     color-mix(in srgb, var(--mv-surface) 72%, transparent);
+    border:         1px solid var(--mv-edge-soft);
+    border-radius:  var(--mv-radius-sm);
     transition:     background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 .mol-viewer-quick:hover {
-    background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--border-strong, #3a3f48);
+    background:     var(--mv-control-hover);
+    border-color:   var(--mv-edge);
 }
 .mol-viewer-quick[aria-pressed="true"] {
-    color:          var(--accent, #6ba6ff);
-    border-color:   var(--accent, #6ba6ff);
-    background:     var(--accent-bg, rgba(95, 182, 255, 0.14));
+    color:          var(--mv-accent);
+    border-color:   var(--mv-accent);
+    background:     var(--mv-accent-wash);
 }
 .mol-viewer-quick:focus-visible {
-    outline:        2px solid var(--accent, #6ba6ff);
+    outline:        2px solid var(--mv-accent);
     outline-offset: 1px;
 }

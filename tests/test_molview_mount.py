@@ -617,6 +617,205 @@ def test_a_menu_closes_on_a_click_elsewhere_and_leaves_nothing_behind():
     )
 
 
+def test_each_write_costs_what_the_cost_table_says_it_costs():
+    """§ 10.5: the pipeline "does the least work that still produces the correct
+    result", and the cost is chosen by WHAT CHANGED — a frame swap, an overlay
+    refresh, an append, or a rebuild.
+
+    That decision is the engine's, but it can only make it if the model says
+    which change this was. Saying "the data changed" for every write, which is
+    what the model did, collapses the four into one: a streamed append reloaded
+    the whole movie, a cell edit reloaded it, and tagging an atom — which moves
+    nothing and draws nothing — reloaded it too. The table was correct and
+    unreachable, and no test noticed because every test that knew about costs
+    drove the engine directly.
+
+    So this drives the MODEL's own doors and counts what the drawing was asked
+    to do. `addModelsAsFrames` is a movie reload; nothing else is.
+    """
+    out = _run(
+        """
+        const { viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[0,1,0],[1,1,0]]]);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const reloads = () => globalThis.__countCalls("addModelsAsFrames");
+        const counted = {};
+
+        globalThis.__resetCalls();
+        viewer.data.addFrames([[[0,2,0],[1,2,0]]]);
+        await new Promise((r) => setTimeout(r, 0));
+        counted.append = reloads();
+
+        globalThis.__resetCalls();
+        viewer.data.selection.toggle(0);
+        viewer.data.selection.writeLabel("L-electrode");
+        await new Promise((r) => setTimeout(r, 0));
+        counted.tag = reloads();
+
+        globalThis.__resetCalls();
+        viewer.data.setForces([[[0,0,1],[0,0,1]], [[0,0,1],[0,0,1]],
+                               [[0,0,1],[0,0,1]]]);
+        await new Promise((r) => setTimeout(r, 0));
+        counted.forces = reloads();
+
+        globalThis.__resetCalls();
+        viewer.data.setCurrentFrame(1);
+        await new Promise((r) => setTimeout(r, 0));
+        counted.seek = reloads();
+
+        // And the one that IS a rebuild, so the counter is not simply dead.
+        globalThis.__resetCalls();
+        viewer.data.reloadFrames([[[9,0,0],[9,1,0]]]);
+        await new Promise((r) => setTimeout(r, 0));
+        counted.load = reloads();
+
+        console.log(JSON.stringify(counted));
+        """
+    )
+    assert out["append"] == 0, "a streamed append reloaded the movie"
+    assert out["tag"] == 0, (
+        "tagging an atom reloaded the movie — a label moves nothing and draws "
+        "nothing (§ 6.6)"
+    )
+    assert out["forces"] == 0, "new forces reloaded the movie"
+    assert out["seek"] == 0, "moving the displayed frame reloaded the movie"
+    assert out["load"] == 1, (
+        "a full load must rebuild — if this is 0 the test is counting nothing"
+    )
+
+
+def test_the_readout_measures_from_the_truth_in_pick_order():
+    """§ 11.6: the readout's atoms come from the selection IN PICK ORDER — "which
+    is why the vertex of a three-atom angle is the atom picked second, not the
+    middle one by number" — and its coordinates from the master copy at the
+    current frame, never from the drawing.
+
+    § 13.3 asks a test to show both, and there was none: the store's pick order
+    was guarded, and the only thing that reads it was not. That is § 8.4's
+    failure with the halves swapped.
+
+    The fallback is here too, because a selection can arrive with no pick order
+    at all — All, Invert, a filter — and inventing one out of the sorted
+    selection is what makes a wrong vertex look like the user's own choice.
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        // A bent three-atom frame: 1 is the geometric middle, 0 is not.
+        viewer.data.reloadFrames([
+            [[-1, 0, 0], [0, 0, 0], [0, 1, 0]],
+            [[-2, 0, 0], [0, 0, 0], [0, 2, 0]],
+        ]);
+        const card = host.querySelector(".molview-card");
+        const readout = card.querySelector(".molview-overlay--info");
+
+        // One atom: where it is.
+        viewer.data.selection.toggle(1);
+        const one = readout.textContent;
+
+        // Two: the distance between them.
+        viewer.data.selection.toggle(2);
+        const two = readout.textContent;
+
+        // Three, picked 2nd-1st-3rd, so the VERTEX IS ATOM 0 — the one picked
+        // second — even though atom 1 is the middle by number and by geometry.
+        viewer.data.selection.clear();
+        viewer.data.selection.toggle(1);
+        viewer.data.selection.toggle(0);
+        viewer.data.selection.toggle(2);
+        const picked = readout.textContent;
+
+        // The same three with no pick trail at all: geometry decides, and the
+        // vertex is the atom between the other two.
+        viewer.data.selection.clear();
+        viewer.data.selection.all(3);
+        const bulk = readout.textContent;
+
+        // It follows the frame, because it re-reads the master copy.
+        viewer.data.setCurrentFrame(1);
+        const laterFrame = readout.textContent;
+
+        // And it is not the drawing's numbering: under isolate the drawn set is
+        // cut down and renumbered, and the answer must not move.
+        viewer.data.selection.setSwitch("isolate", true);
+        const isolated = readout.textContent;
+
+        console.log(JSON.stringify({ one, two, picked, bulk, laterFrame, isolated }));
+        """
+    )
+    assert out["one"].startswith("#2"), (
+        f"one atom reads its own 1-based number and position: {out['one']}"
+    )
+    assert out["two"] == "1.000 Å", f"two atoms read their distance: {out['two']}"
+    # Picked 1→0→2, so the vertex is atom 0 — off to the side, giving 45°. By
+    # number or by geometry the vertex would be atom 1, giving 90°: the two
+    # answers differ, which is what makes this test able to tell them apart.
+    assert out["picked"] == "45.0°", (
+        f"the vertex must be the atom picked SECOND, not the middle one by "
+        f"number or by geometry: {out['picked']}"
+    )
+    # With no trail, geometry: atom 1 sits between the other two, giving 90°.
+    assert out["bulk"] == "90.0°", (
+        f"with no pick trail the vertex comes from geometry: {out['bulk']}"
+    )
+    assert out["laterFrame"] == "90.0°" and out["laterFrame"] == out["bulk"], (
+        "the readout did not re-read the master copy at the new frame"
+    )
+    assert out["isolated"] == out["laterFrame"], (
+        "isolate changed the measurement — it is reading the drawing's numbering "
+        "instead of the master copy (§ 6.5)"
+    )
+
+
+def test_two_viewers_on_one_page_share_no_name():
+    """§ 5.6 and § 12.6: two mounts are two viewers that share nothing — and a
+    NAME is something they can share by accident, because ids and radio-group
+    names are global to the document, not to the card.
+
+    Both halves are guarded here because only one of them was fixed the first
+    time: the radio groups were made owner-specific while the panel's structural
+    hooks stayed ids, so a second viewer still duplicated `panel-page-cell` and
+    the two sections beneath it.
+    """
+    out = _run(
+        """
+        const first = globalThis.__makeHost();
+        const second = globalThis.__makeHost();
+        await MV.mount(first, workspace, { owner: "left" });
+        await MV.mount(second, workspace, { owner: "right" });
+
+        const ids = [];
+        (function walk(node) {
+            const id = node.getAttribute && node.getAttribute("id");
+            if (id) ids.push(id);
+            for (const child of node.children || []) walk(child);
+        })(globalThis.document.body);
+
+        const groups = [first, second].map((host) =>
+            host.querySelector(".panel-page-switch").children[0].children[0].name);
+
+        console.log(JSON.stringify({
+            ids, duplicates: ids.filter((id, at) => ids.indexOf(id) !== at),
+            groups, groupsDiffer: groups[0] !== groups[1],
+        }));
+        """
+    )
+    assert out["duplicates"] == [], (
+        f"two viewers wrote the same id twice: {out['duplicates']}"
+    )
+    assert out["ids"] == [], (
+        f"MolView wrote ids at all — an id is a document-global name, and a "
+        f"module that mounts twice may not claim one: {out['ids']}"
+    )
+    assert out["groupsDiffer"] is True, (
+        "both viewers' page tabs are in one radio group, so choosing a page in "
+        "one un-chooses it in the other"
+    )
+
+
 # ---------------------------------------------------------------------------
 # § 6.7 — no hand-rolled file handling
 # ---------------------------------------------------------------------------
@@ -680,18 +879,24 @@ def test_bytes_leave_through_the_door_and_the_sidecar_goes_with_them():
         const viewer = await MV.mount(host, workspace, {
             owner: "x",
             files: { save: (destination, filename, contents) =>
-                        saved.push({ destination, filename, length: contents.length }) },
+                        saved.push({ destination, filename, contents }) },
         });
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+
+        // A label, so the sidecar has something to lose.
+        viewer.data.selection.toggle(0);
+        viewer.data.selection.writeLabel("L-electrode");
 
         const card = host.querySelector(".molview-card");
         const items = card.querySelectorAll(".mol-viewer-export-btn");
         for (const item of items) item.click();
 
+        const sidecars = saved.filter(s => /\\.molstruct\\.json$/.test(s.filename));
         console.log(JSON.stringify({
-            saved,
             destinations: saved.map(s => s.destination),
             names: saved.map(s => s.filename),
+            sidecar: JSON.parse(sidecars[0].contents),
+            identical: sidecars[0].contents === sidecars[1].contents,
         }));
         """
     )
@@ -699,11 +904,33 @@ def test_bytes_leave_through_the_door_and_the_sidecar_goes_with_them():
         "both destinations must go through the same door, differing only in the "
         f"destination they name: {out['destinations']}"
     )
-    assert out["names"] == ["structure.xyz", "structure.molstruct.json",
-                            "structure.xyz", "structure.molstruct.json"], (
-        f"the sidecar must go with the geometry, both times: {out['names']}"
+    assert out["names"] == ["x.xyz", "x.molstruct.json",
+                            "x.xyz", "x.molstruct.json"], (
+        f"the sidecar must go with the geometry, both times, under the name the "
+        f"structure came in under (§ 11.4): {out['names']}"
     )
-    assert all(s["length"] > 0 for s in out["saved"])
+    assert out["identical"] is True, "the two destinations produced different bytes"
+
+    # WHAT IS IN IT, not merely that something is. Asserting only that bytes went
+    # out is what let this ship as a server-request payload — `elements`,
+    # `positions`, a `periodicity` block — which pairs a good .xyz with a .json
+    # the codec cannot read, and loses every label at the next open.
+    sidecar = out["sidecar"]
+    assert sidecar["regions"] == {"L-electrode": [0]}, (
+        f"the labels did not survive into the sidecar: {sidecar}"
+    )
+    assert sidecar["frozen_atoms"] == []
+    assert sidecar["n_atoms_total"] == 2
+    assert set(sidecar) == {"n_atoms_total", "regions", "frozen_atoms",
+                            "cell", "cell_origin", "axis_kind", "vacuum"}, (
+        f"the sidecar carries fields the codec does not know, or is missing ones "
+        f"it does: {sorted(sidecar)}"
+    )
+    for absent in ("elements", "positions", "periodicity"):
+        assert absent not in sidecar, (
+            f"'{absent}' is request-payload shape — a sidecar carries metadata, "
+            f"not geometry"
+        )
 
 
 # ---------------------------------------------------------------------------

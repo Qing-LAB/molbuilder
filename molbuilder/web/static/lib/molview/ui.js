@@ -250,11 +250,30 @@ function mountFrameBar(doc, card, model, handle) {
  * THE POPOVER are what have to be wired.
  */
 
-/* Where an open popover sits, in pixels: hanging under its trigger, and how
- * close to the window's edge it is allowed to come. Named because they are the
- * two numbers `place` is made of, not because a value needs a label. */
-const MENU_GAP    = 4;
-const MENU_MARGIN = 8;
+/* Where an open popover sits: how far under its trigger it hangs, and how close
+ * to the window's edge it may come. BOTH LIVE IN THE STYLESHEET — `--mv-menu-gap`
+ * and `--mv-menu-margin` — with every other distance the module uses, and this
+ * asks for them rather than restating them. It is the same rule mount.js follows
+ * for the sizing floor and the sealed layer follows for the scene constants: a
+ * number a rule AND a script both need has one home, and it is the stylesheet.
+ *
+ * The pair below is the last resort for a page with no stylesheet at all (a node
+ * test), not a second opinion about the design. */
+const MENU_PLACEMENT = { gap: 4, margin: 8 };
+
+function placementFor(el) {
+    const view = el && el.ownerDocument && el.ownerDocument.defaultView;
+    if (!view || typeof view.getComputedStyle !== "function") return MENU_PLACEMENT;
+    const style = view.getComputedStyle(el);
+    const read = (name, fallback) => {
+        const px = parseFloat(style.getPropertyValue(name));
+        return Number.isFinite(px) ? px : fallback;
+    };
+    return {
+        gap:    read("--mv-menu-gap",    MENU_PLACEMENT.gap),
+        margin: read("--mv-menu-margin", MENU_PLACEMENT.margin),
+    };
+}
 
 function mountMenus(doc, card, model, files) {
     const bar = doc.createElement("div");
@@ -289,11 +308,15 @@ function mountMenus(doc, card, model, files) {
     function place(menu) {
         const win = doc.defaultView;
         if (!win || !menu.summary || !menu.body) return;
+        // Read when the menu opens — the moment the placement is decided — and
+        // reused while it stays open, so following a scroll costs no style
+        // recalculation per frame.
+        const step = menu.placement || (menu.placement = placementFor(card.root));
         const anchor = menu.summary.getBoundingClientRect();
         // Measured where it will be READ, not where it was parked: a popover at
         // -9999px reports the same size, but only if it has been laid out at a
         // sane place first do the clamps below have anything true to work with.
-        menu.body.style.top  = (anchor.bottom + MENU_GAP) + "px";
+        menu.body.style.top  = (anchor.bottom + step.gap) + "px";
         menu.body.style.left = anchor.left + "px";
         const size = menu.body.getBoundingClientRect();
         const page = doc.documentElement;
@@ -304,14 +327,14 @@ function mountMenus(doc, card, model, files) {
         // window rather than allowed to leave it — a menu half off the screen is
         // a menu with items nobody can reach.
         let left = anchor.left;
-        if (vw) left = Math.min(left, vw - MENU_MARGIN - size.width);
-        left = Math.max(left, MENU_MARGIN);
+        if (vw) left = Math.min(left, vw - step.margin - size.width);
+        left = Math.max(left, step.margin);
         menu.body.style.left = left + "px";
 
         // No room below: open upwards instead, but only if there is room there.
-        if (vh && anchor.bottom + MENU_GAP + size.height > vh - MENU_MARGIN) {
-            const above = anchor.top - MENU_GAP - size.height;
-            if (above >= MENU_MARGIN) menu.body.style.top = above + "px";
+        if (vh && anchor.bottom + step.gap + size.height > vh - step.margin) {
+            const above = anchor.top - step.gap - size.height;
+            if (above >= step.margin) menu.body.style.top = above + "px";
         }
     }
 
@@ -505,6 +528,7 @@ function buildExportMenu(doc, model, files) {
         // refusal is not something to paper over with an empty file.
         if (!file) return null;
         return {
+            name:     file.name,
             geometry: file.text,
             sidecar:  JSON.stringify(file.sidecar, null, 2),
         };
@@ -513,7 +537,7 @@ function buildExportMenu(doc, model, files) {
     function send(destination) {
         const out = bytes();
         if (!out || !files || typeof files.save !== "function") return;
-        const stem = defaultStem(model);
+        const stem = defaultStem(model, out.name);
         // The .json goes WITH the .xyz, so labels and frozen atoms survive into
         // whatever is generated from it (§ 11.3).
         files.save(destination, stem + ".xyz", out.geometry);
@@ -529,11 +553,17 @@ function buildExportMenu(doc, model, files) {
     };
 }
 
-/* A single-frame export out of a trajectory names the frame it came from, so the
- * file says which frame it is without anyone having to remember (§ 11.4). A
- * static structure gets no suffix — there is nothing to disambiguate. */
-function defaultStem(model) {
-    const base = "structure";
+/* THE DEFAULT NAME (§ 11.4's `wire_frame50.xyz`), which is two facts joined:
+ * WHAT it came from, and WHICH FRAME. The first is the structure's — the model
+ * kept it from the load — and the second is this menu's, because the menu is
+ * what knows the export is one frame out of many.
+ *
+ * A single-frame export out of a trajectory names its frame so the file says
+ * which one it is without anyone having to remember; a static structure gets no
+ * suffix, there being nothing to disambiguate. A structure that arrived with no
+ * name — pasted text — falls back to a generic stem rather than borrowing one. */
+function defaultStem(model, source) {
+    const base = source || "structure";
     return model.frameCount() > 1
         ? base + "_frame" + toDisplay(model.currentFrame())
         : base;
@@ -549,7 +579,12 @@ function defaultStem(model) {
  */
 function mountBadge(doc, card, model) {
     const badge = doc.createElement("div");
-    badge.className = "molview-overlay molview-overlay--top-right molview-overlay--warn";
+    /* BOTTOM-right, not top: the top band of the window is the chrome row (View,
+     * Export, the frame bar), and an overlay sitting on it covers controls. The
+     * two corner overlays take the bottom — the measurement on the left, this on
+     * the right — so the two bands never contend. § 11.2 asks for "the corner of
+     * the 3D window" and does not say which. */
+    badge.className = "molview-overlay molview-overlay--bottom-right molview-overlay--warn";
     badge.textContent = "Unsaved changes";
     badge.hidden = true;
     card.canvas.appendChild(badge);
@@ -581,8 +616,9 @@ function mountReadout(doc, card, model) {
     card.canvas.appendChild(readout);
 
     function show() {
-        const picked = model.selection.getState().pickOrder;
+        const state = model.selection.getState();
         const frame = model.getFrameAllAtoms(model.currentFrame());
+        const picked = orderedForMeasurement(state, frame);
         if (!frame || !picked.length || picked.length > 3) {
             readout.hidden = true;
             return;
@@ -616,6 +652,37 @@ function mountReadout(doc, card, model) {
             try { readout.remove(); } catch (_) {}
         },
     };
+}
+
+/* WHICH ATOMS, IN WHICH ORDER (§ 11.6).
+ *
+ * The vertex of an angle is THE ATOM PICKED SECOND — a chemist's convention that
+ * only the pick order can carry (§ 8.4). But a selection can arrive with no pick
+ * order at all: All, Invert, an applied filter and a restored session are not
+ * clicks, and the store now says so by handing over an empty trail instead of
+ * inventing one out of the sorted selection.
+ *
+ * With no trail, the vertex comes from GEOMETRY — the atom closest to the other
+ * two, which for a bonded triple is the middle one. That is a guess and it is
+ * labelled as one here; what it replaces was also a guess, made silently, and
+ * dressed up as the user's own choice.
+ */
+function orderedForMeasurement(state, frame) {
+    const picked = state.selection;
+    const trail = state.pickOrder;
+    if (trail.length === picked.length) return trail;      // a real click trail
+    if (picked.length !== 3 || !frame) return picked;      // no vertex to find
+    return byGeometry(picked, frame);
+}
+
+function byGeometry(atoms, frame) {
+    if (atoms.some((i) => !frame[i])) return atoms;
+    const spread = (i) => atoms.reduce(
+        (total, other) => total + (other === i ? 0 : distance(frame[i], frame[other])), 0);
+    let vertex = atoms[0];
+    for (const atom of atoms) if (spread(atom) < spread(vertex)) vertex = atom;
+    const ends = atoms.filter((i) => i !== vertex);
+    return [ends[0], vertex, ends[1]];
 }
 
 function distance(a, b) {
@@ -689,13 +756,17 @@ function mountPanel(doc, card, model) {
         tabInputs[key] = radio;
 
         const page = el("div", "panel-page");
-        /* THE ID IS PART OF THE MARKUP CONTRACT, exactly like the class (§ 8.1).
-         * The stylesheet singles this page out by id — the Cell page is all
-         * read-only text, so it sizes to its content and then scrolls, while
+        /* THE ROLE IS PART OF THE MARKUP CONTRACT, exactly like the class
+         * (§ 8.1). The stylesheet singles the Cell page out by it — that page is
+         * all read-only text, so it sizes to its content and then scrolls, while
          * the Selection page holds action buttons that must stay on screen and
-         * so fills instead. Ship the page without its id and it silently takes
-         * the other page's behaviour. */
-        page.id = "panel-page-" + key;
+         * so fills instead. Ship the page without it and it silently takes the
+         * other page's behaviour.
+         *
+         * An ATTRIBUTE and not an id: § 5.6 puts two viewers on one page, and an
+         * id is document-global, so the second mount would duplicate it. What
+         * the stylesheet needs is what this element IS, never which one it is. */
+        page.setAttribute("data-page", key);
         page.hidden = key !== "selection";
         pages[key] = page;
     }
@@ -739,32 +810,23 @@ function mountPanel(doc, card, model) {
     }
     pages.selection.appendChild(mode);
 
-    /* ── Show selected only — isolate (§ 9.4: not an edit) ───────────────── */
-    //
-    // It hides atoms from the DRAWING; the master copy still has all of them,
-    // which is why the whole structure comes back when it goes off. A read-only
-    // viewer isolates freely.
-    const isolateRow = el("label", "selection-mode-option");
-    const isolateBox = doc.createElement("input");
-    isolateBox.type = "checkbox";
-    isolateBox.addEventListener("change", (e) => {
-        model.selection.setIsolate(!!e.target.checked);
-    });
-    const isolateText = el("span");
-    isolateText.textContent = "Show selected only";
-    isolateRow.appendChild(isolateBox);
-    isolateRow.appendChild(isolateText);
-    pages.selection.appendChild(isolateRow);
+    /* ISOLATE IS NOT HERE. "Show selected only" is the rail's `◉` (§ 1.1) — one
+     * switch, one control. The panel carried a checkbox for it as well, so the
+     * same switch had two places to learn and two things to keep looking alike;
+     * the old design removed the panel's copy for exactly that reason when the
+     * switch moved to the rail, and this follows it. The switch itself is
+     * unchanged: it hides atoms from the DRAWING, the master copy still has all
+     * of them, and a read-only viewer isolates freely (§ 9.4).
+     */
 
     /* ── The click page: the atom list ──────────────────────────────────── */
     const clickSection = el("div", "selection-click-section");
-    /* The id, again as contract: `#selection-click-section:not([hidden])` is the
-     * rule that makes this section FILL the panel and hold the single scroll
-     * region, so the atom list grows to the panel's bottom and the buttons
-     * beneath it line up with the bottom of the 3D window (§ 8.2's shared
-     * extent). Without the id the section sizes to its content and the whole
-     * page collapses upward. */
-    clickSection.id = "selection-click-section";
+    /* `data-fill` is the role that makes a section TAKE THE LEFTOVER HEIGHT and
+     * hold the page's single scroll region, so the atom list grows to the
+     * panel's bottom and the buttons beneath it line up with the bottom of the
+     * 3D window (§ 8.2's shared extent). Without it the section sizes to its
+     * content and the page collapses upward. A page has exactly one. */
+    clickSection.setAttribute("data-fill", "");
     const count = el("div", "selection-count");
     const listWrap = el("div", "selection-list-wrap");
     const list = el("table", "selection-atom-table");
@@ -775,7 +837,7 @@ function mountPanel(doc, card, model) {
 
     /* ── The filter page: rows, edited one at a time (§ 8.4) ─────────────── */
     const filterSection = el("div", "selection-filter-section");
-    filterSection.id = "selection-filter-section";
+    filterSection.setAttribute("data-fill", "");
     const rows = el("div", "selection-filter-rows");
     filterSection.appendChild(rows);
 
@@ -890,7 +952,6 @@ function mountPanel(doc, card, model) {
         for (const key of Object.keys(modeInputs)) {
             modeInputs[key].checked = state.mode === key;
         }
-        isolateBox.checked = !!state.isolate;
         combine.value = state.combinator;
 
         drawList(state);
