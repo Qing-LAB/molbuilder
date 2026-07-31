@@ -1477,14 +1477,21 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // § 6.4's order again -- and § 10.8 rule 5: the displayed frame does NOT move.  A user
         // watching frame 12 keeps watching frame 12 while the run grows past it.
         _settleFrames(function () {
+            var arriving = Array.isArray(opts.forces) ? opts.forces : null;
+            // § 6.2: forcesPerFrame is "the same shape" as frames.  A run whose FIRST load
+            // carried no forces still gets them the moment a poll brings some -- so the list
+            // starts existing here, back-filled with null for the frames that had none.  It
+            // used to be appended to only when it already existed, which silently dropped
+            // every force of a run caught at its first geometry (§ 12.2's worked example).
+            if (arriving && !_forcesPerFrame) {
+                _forcesPerFrame = _frames.map(function () { return null; });
+            }
             frames.forEach(function (coords, i) {
                 _frames.push(coords);
-                if (_forcesPerFrame) {
-                    _forcesPerFrame.push(Array.isArray(opts.forces) ? opts.forces[i] : null);
-                }
+                if (_forcesPerFrame) _forcesPerFrame.push(arriving ? arriving[i] : null);
             });
         });
-        if (_renderEngine) _renderEngine.appendFrames(frames, { forces: opts.forces });
+        if (_renderEngine) _renderEngine.appendFrames(frames);
         if (!_applying) _timeline.markUncommitted();   // frame DATA changed -> uncommitted (§19.5)
         _notifyFrame();                                // the RANGE grew: the bar's i/N must follow
         return frameCount();

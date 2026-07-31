@@ -224,10 +224,14 @@ function create(handle, opts) {
         _pendingTx = [];
         for (var i = 0; i < tx.length; i++) {
             try {
-                if (tx[i].op === "setForces")         setForces(tx[i].args[0]);
+                // These names must match what _queueTx pushed, or a held op is silently
+                // dropped -- which is the one thing § 10.9 says must not happen ("nothing that
+                // lands in that window is silently dropped").
+                if (tx[i].op === "forcesChanged")     forcesChanged();
                 else if (tx[i].op === "showFrame")    showFrame(tx[i].args[0]);
-                else if (tx[i].op === "setCell")      setCell(tx[i].args[0]);
-                else if (tx[i].op === "appendFrames") appendFrames(tx[i].args[0], tx[i].args[1]);
+                else if (tx[i].op === "cellChanged")  cellChanged();
+                else if (tx[i].op === "appendFrames") appendFrames(tx[i].args[0]);
+                else throw new Error("no replay for a held '" + tx[i].op + "'");
             } catch (e) {
                 // A replayed op has no synchronous caller left to throw to; report and keep
                 // draining -- one bad transaction must not void the rest.
@@ -338,15 +342,14 @@ function create(handle, opts) {
 
     // STREAM APPEND (§6.2): validate same atom count (hard error, never coerce), extend the
     // movie with the processed new frames, DON'T move the shown frame.
-    function appendFrames(coordsList, appendOpts) {
-        appendOpts = appendOpts || {};
-        if (!_d()) throw new Error("engine.appendFrames: nothing loaded (no atom identity)");
+    function appendFrames(coordsList) {
+        if (!_d()) throw new Error("renderEngine.appendFrames: nothing loaded (no atom identity)");
         if (_locked) {
             // An update is in flight -> queue the tail as a transaction (replayed after the
             // unlock; chunks accumulate). A live-poll tick landing in the busy window must not
             // lose its frames. The returned count is the pre-replay count -- the caller sees
             // the appended frames via _nFrames() once the queue drains.
-            _queueTx("appendFrames", [coordsList, appendOpts]);
+            _queueTx("appendFrames", [coordsList]);
             return;
         }
         var list = Array.isArray(coordsList) ? coordsList : [];

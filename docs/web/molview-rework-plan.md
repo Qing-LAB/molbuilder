@@ -357,6 +357,36 @@ programme. Both come from a field the atom really carries, which is the rule § 
 by arithmetic coincidence. The test moves the shared translation and asserts the labels moved
 with it — reuse follows, re-derivation does not.
 
+### Review of Phases 0–3 *(2026-07-30)*
+
+Read back against the document. **Three defects, one of them mine and serious.**
+
+1. **A held cell edit or force update was dropped on the floor** — `engine.js`'s replay
+   dispatched on `setForces` / `setCell`, the names Phase 3 renamed away, while the queue
+   pushed `forcesChanged` / `cellChanged`. So an op arriving during a rebuild was held exactly
+   as § 10.9 requires and then matched nothing on the way out. § 10.9's whole sentence is
+   *"nothing that lands in that window is silently dropped"*. No test caught it: node tests
+   stub the engine, and the browser oracle has no rebuild-with-pending-forces case. The replay
+   now throws on an unknown op rather than falling through. **Its § 13.3 guard is Phase 5's
+   row** (*nothing is lost during a rebuild*) and is owed there.
+2. **Forces arriving on an append were dropped when the load carried none** — the list was
+   extended only when it already existed, so a run caught at its first geometry (§ 12.2's
+   worked example, and the case Phase 0's `_movieExists()` fix exists for) never grew arrows.
+   Pre-existing; Phase 3 carried it faithfully into the model, which is where it is now fixed:
+   the list starts existing the moment forces first arrive, back-filled with `null`.
+3. **`appendFrames` took an options bag it no longer read** — residue from the truth moving.
+
+**Not defects, recorded:** `data-model.js` names `3Dmol` in seven comments, most of them
+saying it does *not* touch it. § 4's "occurs in exactly one file" is about code, and a test
+written from it needs to say so. The one that is a real pointer — *"View sub-namespace:
+passthrough to the 3Dmol embed"* — documents the § 9.6 read-back door, which is Phase 4's.
+
+**The residue that matters most:** `test_mol_viewer_embed_js.py` **passes 12/12 against
+`lib/viewer/mol-viewer-embed.js`, which nothing imports any more.** A green test guarding a
+file that is not shipped is worse than a red one, because it reads as coverage. Same for
+`test_mol_viewer_embed_handle_surface_js.py`. Both die at Phase 5 with the copy they pin; until
+then they are green and mean nothing.
+
 ---
 
 ## 5. Open
