@@ -515,7 +515,7 @@ def test_scrubbing_and_exporting_are_not_gated():
 
         console.log(JSON.stringify({
             exported: !!file,
-            wroteDisplayedFrame: file.text.indexOf("9 0 0") >= 0,
+            wroteDisplayedFrame: file.structure.positions[0][0] === 9,
             scrubbed: m.currentFrame(),
             roThrew: threw,
         }));
@@ -617,9 +617,13 @@ def test_a_read_only_seed_anchors_no_history():
 # § 9.3 / § 11.3 — writing the structure out
 # ---------------------------------------------------------------------------
 
-def test_export_writes_the_displayed_frame():
+def test_export_hands_over_the_displayed_frame():
     """§ 13.3: "exporting data yields THE DISPLAYED FRAME's coordinates … scrub
     to frame 40 and frame 40 is what the file holds."
+
+    It hands over the STRUCTURE, not bytes — a coordinate document is a format
+    the server owns (§ 11.7) — so the frame is checked where it now lives: in
+    the positions that leave.
     """
     out = _run(
         """
@@ -627,11 +631,17 @@ def test_export_writes_the_displayed_frame():
         m.reloadFrames([[[0,0,0],[1,0,0]], [[40,0,0],[41,0,0]]]);
         m.setCurrentFrame(1);
         const file = m.exportFile();
-        console.log(JSON.stringify({ text: file.text }));
+        console.log(JSON.stringify({
+            positions: file.structure.positions,
+            keys: Object.keys(file.structure).sort(),
+        }));
         """
     )
-    assert "40 0 0" in out["text"], (
-        f"export wrote a frame the user was not looking at: {out['text']!r}"
+    assert out["positions"][0] == [40, 0, 0], (
+        f"export handed over a frame the user was not looking at: {out['positions']}"
+    )
+    assert "metadata" in out["keys"], (
+        f"the facts did not leave with the atoms: {out['keys']}"
     )
 
 

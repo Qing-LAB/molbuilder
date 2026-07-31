@@ -848,10 +848,13 @@ The **workspace** handed in is a door, not a module: anything that can store and
 return bytes satisfies it. That is what lets a viewer mount in a test page with a
 stand-in, and it is the whole of § 4's "nothing it needs comes from a global".
 
-**Anywhere bytes leave MolView, they leave through a door handed in the same
-way.** The session history writes through the workspace; an export writes through
-a **files** door. MolView produces the bytes and names the destination; it never
-reaches a file itself.
+**Anywhere a structure leaves MolView, it leaves through a door handed in the
+same way.** The session history writes through the workspace; an export goes
+through a **files** door. MolView hands over the **structure** and names the
+destination — it produces no bytes and reaches no file. Turning a structure into
+a coordinate document and its sidecar is the server's one generator, which the
+door asks; that is what makes "a project save and a download are the same bytes"
+a consequence rather than a promise (§ 11.7).
 
 **`owner` names the viewer, and therefore everything in it.** It is not a prefix
 on a settings key; it is the identity of an instance. The structure, the
@@ -2380,8 +2383,10 @@ never added quietly:
 | **a frame the server has never seen** — a trajectory scrubbed away from the loaded geometry | those coordinates came from the tab's own run file; there is no server-written document for them | writes the coordinate document for that frame, **in the server's format** — same decimals, title kept — so it differs from a server-written one in nothing but provenance |
 
 It is not a licence: a viewer that writes a coordinate document in any *other*
-circumstance has broken the rule. It closes when the export door takes numbers,
-and the browser's coordinate writer is deleted with it.
+circumstance has broken the rule, and nothing in the module does — the writer is
+gone (2026-07-31), not merely constrained. `exportFile()` returns the structure
+as data and stops; the bytes come from the server's one generator, which is why
+a project save and a download cannot differ.
 
 **What the rule costs today, and where it is not yet true.** Every door that
 accepts a structure accepts the geometry as **text** — an `.xyz` document. So a
@@ -2615,6 +2620,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.1 — an edit reaches the route it names | the operation's arguments arrive where the route reads them, and the selection lands under the key its row gives; a request the route cannot act on is refused, not answered `ok` |
 | § 11.1 — one mutation in flight | a second edit started while one is running is refused, and only one request leaves |
 | § 11.7 — one path out, whole structure | every edit sends the whole structure and adopts the whole structure returned; moving part of it is an argument, never a smaller request |
+| § 11.7 — the browser writes no coordinate document | the module contains no coordinate or sidecar writer at all; what leaves the export door is the structure, and the bytes are the server's |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
 | § 8.2 — the panel is not measured, it is given the same extent | the panel's height and the window's square edge come from one value; no script reads one to set the other, and they bottom-align at every width |

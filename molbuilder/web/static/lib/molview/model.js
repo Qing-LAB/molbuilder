@@ -18,7 +18,7 @@
 
 import {
     createLoad, createWriteOut, createEdits, createCellEdit, FROZEN_LABEL,
-    structureAsData, groupByLabel, resolveFilter as askServerToFilter,
+    structureForServer, groupByLabel, resolveFilter as askServerToFilter,
 } from "./model-jobs.js";
 import { createSelectionStore, createViewStore } from "./stores.js";
 import { createHistory } from "./history.js";
@@ -308,13 +308,17 @@ export function createModel(opts) {
         recordFirstState: () => (readOnly ? null : history.anchor()),
     });
 
-    /* THE STRUCTURE AS DATA, read in one place and handed to everything that
-     * sends or writes it (§ 9.3: "the facts that leave together were read
-     * together"). The coordinates come from the DISPLAYED frame — § 5.1's
-     * promise at the point it matters — and the metadata from the same read, so
-     * the two can never be one edit apart. */
-    const readData = () => structureAsData(structure,
-                                           frames ? frames[frameIndex] : null);
+    /* THE STRUCTURE AS DATA — ONE producer, read in one place and handed to
+     * everything that sends or writes it (§ 9.3: "the facts that leave together
+     * were read together"). The coordinates come from the DISPLAYED frame —
+     * § 5.1's promise at the point it matters — and the metadata from the same
+     * read, so the two can never be one edit apart.
+     *
+     * The SAME producer an edit uses. There were two, and two producers of one
+     * fact is how an export came to write a server-request payload into a
+     * `.molstruct.json`. */
+    const readData = () => structureForServer(structure,
+                                              frames ? frames[frameIndex] : null);
 
     const exportFile = createWriteOut({
         readData:   readData,

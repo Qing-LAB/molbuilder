@@ -520,28 +520,23 @@ function buildExportMenu(doc, model, files) {
         return button;
     };
 
-    // One place produces the bytes, so the geometry and its sidecar can never
-    // come from different reads — which is how the sidecar came to be dropped.
-    function bytes() {
-        const file = model.exportFile();
-        // It REFUSES rather than writing a corrupt structure (§ 9.3), and a
-        // refusal is not something to paper over with an empty file.
-        if (!file) return null;
-        return {
-            name:     file.name,
-            geometry: file.text,
-            sidecar:  JSON.stringify(file.sidecar, null, 2),
-        };
-    }
-
+    /* WHAT LEAVES, AND WHERE IT GOES — and nothing about how it becomes bytes.
+     * MolView hands over the STRUCTURE and names a destination; the door turns
+     * it into the pair, through the server's one generator, so a project save
+     * and a download cannot produce different bytes (§ 11.3, § 11.7).
+     *
+     * This used to assemble the bytes here: a hand-written `.xyz` and a
+     * `JSON.stringify` of the sidecar. That is a second writer in the browser,
+     * and both halves had already drifted from Python's -- the coordinate
+     * document in its decimals, the sidecar in the version key that makes one
+     * loadable at all. */
     function send(destination) {
-        const out = bytes();
-        if (!out || !files || typeof files.save !== "function") return;
-        const stem = defaultStem(model, out.name);
-        // The .json goes WITH the .xyz, so labels and frozen atoms survive into
-        // whatever is generated from it (§ 11.3).
-        files.save(destination, stem + ".xyz", out.geometry);
-        files.save(destination, stem + ".molstruct.json", out.sidecar);
+        const file = model.exportFile();
+        // It REFUSES rather than exporting a structure it cannot vouch for
+        // (§ 9.3), and a refusal is not something to paper over with an empty
+        // file.
+        if (!file || !files || typeof files.save !== "function") return;
+        files.save(destination, defaultStem(model, file.name), file.structure);
     }
 
     item("Save to project", () => send("project"));

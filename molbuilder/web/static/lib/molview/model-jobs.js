@@ -241,84 +241,28 @@ function requestBodyFor(input) {
 /**
  * `exportFile` — the exact inverse of installMolecule.
  *
- * Handed read-only access to the atoms, the cell and the displayed frame
- * (§ 7.3). Writes from THE FRAME CURRENTLY DISPLAYED (§ 6.4, § 11.3): scrub to
- * frame 40 and frame 40 is what the file holds, whatever isolate is doing.
+ * IT RETURNS THE STRUCTURE AS DATA AND STOPS. It is a read: the atoms, their
+ * positions at THE FRAME CURRENTLY DISPLAYED (§ 6.4, § 11.3 — scrub to frame 40
+ * and frame 40 is what leaves), and the facts about them. It assembles no bytes,
+ * because a coordinate document is a format the server owns and a second writer
+ * in the browser is a second answer to "what does this structure look like on
+ * disk" (§ 11.7). The two already differed.
+ *
+ * It stays SYNCHRONOUS. The round trip that turns this into bytes belongs to
+ * whoever is putting them somewhere. Making this async would buy a new "the
+ * server was unreachable" failure at the moment a user expects a file, and a gap
+ * between sending and answering in which the structure could change underneath.
  *
  * It is not a disk write and not the session save.
  */
 export function createWriteOut(handed) {
     return function exportFile() {
-        const blob = handed.readData();
-        if (!blob) return null;
+        const structure = handed.readData();
+        if (!structure) return null;
         return {
-            name:    handed.readSource ? handed.readSource() : null,
-            text:    blob.xyz,
-            sidecar: blob.sidecar,
+            name:      handed.readSource ? handed.readSource() : null,
+            structure: structure,
         };
-    };
-}
-
-
-/**
- * THE STRUCTURE AS DATA — one blob, coordinates and metadata together.
- *
- * `{xyz, sidecar}`, and every outbound use of the structure is this one read:
- * the Data export's two files, and the cell door's payload. That is not tidiness
- * — it is § 9.3's "the facts that leave together were read together" made
- * structural. Three call sites each shaping their own payload is how one of them
- * comes to carry current labels with stale positions, and it is how the export
- * came to write a server-request payload into a `.molstruct.json`.
- *
- * The old module drew the same line and put it in the same place: ONE
- * serialisation for the durable save AND the transient draft AND the cell edit,
- * with this file's atom-count guard in front of it.
- *
- * WHAT THE SIDECAR IS: the metadata FIELDS the server's codec reads
- * (`model/structure-molstruct.md` § 1). The ENVELOPE — `schema_version`, the
- * `structure_hash` that pins the pair — is stamped server-side when the bytes are
- * written, deliberately: a browser-authored envelope shipped without
- * `schema_version` once and the load door refused the pair on the next open.
- */
-export function structureAsData(structure, positions) {
-    if (!structure || !positions) return null;
-
-    /* THE ONE INVARIANT, CHECKED HERE AND NOWHERE ELSE. The coordinates and the
-     * per-atom facts are two lists that must index the same atoms; if they ever
-     * disagree, this REFUSES rather than producing a pair whose labels point at
-     * atoms that are not there (§ 9.3). The old module put the same guard in the
-     * same place, with the same reasoning: a mismatched .xyz/.json pair must
-     * never reach disk. */
-    const count = structure.elements.length;
-    if (positions.length !== count || structure.annotations.length !== count) {
-        return null;
-    }
-
-    const lines = [String(count), ""];
-    for (let i = 0; i < count; i++) {
-        const p = positions[i];
-        lines.push(structure.elements[i] + " " + p[0] + " " + p[1] + " " + p[2]);
-    }
-
-    const labels = groupByLabel(structure.annotations);
-
-    /* COPIED, not referenced: this is handed to a caller (§ 9.3), and a blob
-     * holding the master copy's own arrays is a write into the structure
-     * disguised as a read. The cell fields keep the names the block already has
-     * — they are the sidecar's names too, which is not a coincidence: both are
-     * the codec's. */
-    const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
-    const per = structure.periodicity || {};
-    return {
-        xyz: lines.join("\n") + "\n",
-        sidecar: {
-            n_atoms_total: count,
-            regions:       labels,
-            cell:          clone(per.cell),
-            cell_origin:   clone(per.cell_origin),
-            axis_kind:     clone(per.axis_kind),
-            vacuum:        clone(per.vacuum),
-        },
     };
 }
 

@@ -864,13 +864,18 @@ def test_the_demo_imports_nothing_but_the_entry_point():
     )
 
 
-def test_bytes_leave_through_the_door_and_the_sidecar_goes_with_them():
-    """§ 11.3: "the `.json` goes with the `.xyz`, so labels and frozen atoms
-    survive into whatever is generated from it", and "save-to-project and
-    download differ ONLY in destination — both produce identical bytes."
+def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
+    """§ 11.7: what leaves is "what the viewer holds — the atoms, their positions,
+    and the facts about them". NOT bytes: a coordinate document is a format the
+    server owns, and a second writer in the browser is a second answer to what a
+    saved structure looks like on disk. Both halves had already drifted — the
+    document in its decimals, the sidecar in the version key that makes one
+    loadable at all.
 
     One call with a destination argument, not two paths to keep in step: a
-    separate download path is how the sidecar came to be dropped from one of them.
+    separate download path is how the sidecar came to be dropped from one of
+    them. Whether a sidecar is written at all is the codec's rule now, applied
+    server-side on the one generator both destinations go through.
     """
     out = _run(
         """
@@ -878,12 +883,12 @@ def test_bytes_leave_through_the_door_and_the_sidecar_goes_with_them():
         const host = globalThis.__makeHost();
         const viewer = await MV.mount(host, workspace, {
             owner: "x",
-            files: { save: (destination, filename, contents) =>
-                        saved.push({ destination, filename, contents }) },
+            files: { save: (destination, stem, structure) =>
+                        saved.push({ destination, stem, structure }) },
         });
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
 
-        // A label, so the sidecar has something to lose.
+        // A label, so there is something for the export to lose.
         viewer.data.selection.toggle(0);
         viewer.data.selection.writeLabel("L-electrode");
 
@@ -891,46 +896,69 @@ def test_bytes_leave_through_the_door_and_the_sidecar_goes_with_them():
         const items = card.querySelectorAll(".mol-viewer-export-btn");
         for (const item of items) item.click();
 
-        const sidecars = saved.filter(s => /\\.molstruct\\.json$/.test(s.filename));
         console.log(JSON.stringify({
             destinations: saved.map(s => s.destination),
-            names: saved.map(s => s.filename),
-            sidecar: JSON.parse(sidecars[0].contents),
-            identical: sidecars[0].contents === sidecars[1].contents,
+            stems:        saved.map(s => s.stem),
+            keys:         Object.keys(saved[0].structure).sort(),
+            regions:      saved[0].structure.metadata.regions,
+            identical:    JSON.stringify(saved[0].structure)
+                          === JSON.stringify(saved[1].structure),
         }));
         """
     )
-    assert out["destinations"] == ["project", "project", "download", "download"], (
+    assert out["destinations"] == ["project", "download"], (
         "both destinations must go through the same door, differing only in the "
         f"destination they name: {out['destinations']}"
     )
-    assert out["names"] == ["x.xyz", "x.molstruct.json",
-                            "x.xyz", "x.molstruct.json"], (
-        f"the sidecar must go with the geometry, both times, under the name the "
-        f"structure came in under (§ 11.4): {out['names']}"
+    assert out["stems"] == ["x", "x"], (
+        f"the stem is the name the structure came in under (§ 11.4): {out['stems']}"
     )
-    assert out["identical"] is True, "the two destinations produced different bytes"
+    assert out["identical"] is True, (
+        "the two destinations handed over different structures"
+    )
 
-    # WHAT IS IN IT, not merely that something is. Asserting only that bytes went
-    # out is what let this ship as a server-request payload — `elements`,
-    # `positions`, a `periodicity` block — which pairs a good .xyz with a .json
-    # the codec cannot read, and loses every label at the next open.
-    sidecar = out["sidecar"]
-    assert sidecar["regions"] == {"L-electrode": [0]}, (
-        f"the labels did not survive into the sidecar: {sidecar}"
+    # WHAT LEAVES, not merely that something did. Asserting only that bytes went
+    # out is what let this ship a server-request payload into a `.molstruct.json`
+    # — a good .xyz paired with a .json the codec cannot read, losing every label
+    # at the next open.
+    assert out["keys"] == ["elements", "metadata", "positions"], (
+        f"what leaves is not the structure the envelope defines: {out['keys']}"
     )
-    assert sidecar["n_atoms_total"] == 2
-    # ONE key for labels. A `frozen_atoms` key beside `regions` was the second
-    # store, and it is what the codec no longer writes or expects (§ 6.6).
-    assert set(sidecar) == {"n_atoms_total", "regions",
-                            "cell", "cell_origin", "axis_kind", "vacuum"}, (
-        f"the sidecar carries fields the codec does not know, or is missing ones "
-        f"it does: {sorted(sidecar)}"
+    assert out["regions"] == {"L-electrode": [0]}, (
+        f"the labels did not leave with the atoms: {out['regions']}"
     )
-    for absent in ("elements", "positions", "periodicity"):
-        assert absent not in sidecar, (
-            f"'{absent}' is request-payload shape — a sidecar carries metadata, "
-            f"not geometry"
+
+
+def test_the_browser_writes_no_coordinate_document():
+    """§ 11.7's rule, checked at the source rather than at one call site: the
+    module contains no coordinate writer at all. One exception survives — a
+    trajectory frame the server has never seen — and it is named there; a writer
+    that reappears anywhere else has broken the rule quietly.
+
+    Checked against the CODE, comments stripped: naming a format in prose is how
+    the rule gets explained, and using it is how the rule gets broken.
+    """
+    import re as _re
+
+    def code_of(text):
+        text = _re.sub(r"/\*[\s\S]*?\*/", "", text)     # block comments
+        return _re.sub(r"(?m)^\s*//.*$", "", text)      # line comments
+
+    for path in sorted(MODULE_DIR.glob("*.js")):
+        # `demo.js` is a HOST, not the module -- it reaches MolView only through
+        # the entry point (pinned above), and turning a structure into bytes is
+        # exactly a host's job. It asks the server for them.
+        if path.name == "demo.js":
+            continue
+        body = code_of(path.read_text(encoding="utf-8"))
+        assert ".molstruct.json" not in body, (
+            f"{path.name} writes the sidecar filename -- the server owns that format"
+        )
+        assert ".xyz" not in body, (
+            f"{path.name} writes a coordinate filename"
+        )
+        assert not _re.search(r"lines\.push\(.*elements\[", body), (
+            f"{path.name} assembles a coordinate document"
         )
 
 

@@ -69,20 +69,47 @@ function memoryWorkspace() {
  * happens to them is the HOST's business, and this page is the host. That
  * division is why MolView contains no file-handling code of its own — and why
  * this demo can offer a real download without the module knowing how. */
+/* A HOST-SIDE SAVE. MolView hands over the structure and a destination; turning
+ * it into bytes is this side's job, and it does it by ASKING THE SERVER -- the
+ * same generator a project save uses, so the two cannot differ. The browser
+ * writes no coordinate document (molview.md § 11.7). */
 function demoFiles(say) {
     return {
-        save(destination, filename, contents) {
+        async save(destination, stem, structure) {
+            let pair;
+            try {
+                const r = await fetch("/api/structure/export", {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body:    JSON.stringify({ structure: structure }),
+                });
+                pair = await r.json();
+                if (!pair || pair.ok !== true) throw new Error(pair && pair.error);
+            } catch (err) {
+                say("export failed: " + (err && err.message ? err.message : err));
+                return;
+            }
+            // The .json goes WITH the .xyz, so labels survive into whatever is
+            // generated from it (§ 11.3). No sidecar means no metadata worth
+            // keeping -- the codec's own rule, not a second one here.
+            const files = [[stem + ".xyz", pair.xyz]];
+            if (pair.sidecar) {
+                files.push([stem + ".molstruct.json",
+                            JSON.stringify(pair.sidecar, null, 2) + "\n"]);
+            }
             if (destination === "download") {
-                const url = URL.createObjectURL(new Blob([contents]));
-                const link = document.createElement("a");
-                link.href = url;
-                link.download = filename;
-                link.click();
-                URL.revokeObjectURL(url);
-                say("downloaded " + filename + " (" + contents.length + " bytes)");
+                for (const [name, contents] of files) {
+                    const url = URL.createObjectURL(new Blob([contents]));
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = name;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                }
+                say("downloaded " + files.map(([n]) => n).join(" + "));
             } else {
-                say("would save " + filename + " to the project ("
-                    + contents.length + " bytes)");
+                say("would save " + files.map(([n]) => n).join(" + ")
+                    + " to the project");
             }
         },
     };
