@@ -127,7 +127,15 @@
           "path": "web/tabs.md"
         },
         {
-          "path": "web/molview.md"
+          "path": "web/molview.md",
+          "children": [
+            {
+              "path": "web/molview-corrections-plan.md"
+            },
+            {
+              "path": "web/molview-rework-plan.md"
+            }
+          ]
         },
         {
           "path": "web/vibrationview.md"

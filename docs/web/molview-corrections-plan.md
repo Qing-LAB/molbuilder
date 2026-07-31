@@ -46,7 +46,7 @@ fix the right one, and the reasoning is the part that stops it being re-broken.
 | 1 | The save / load pair, and where the saved bytes come from | **agreed — ready to execute** |
 | 2 | The cell's private spelling | **agreed — ready to execute** |
 | 3 | The browser writes structure files at all — **prerequisite of item 1** | **agreed — ready to execute** |
-| 4 | `applyOp` sends a body the route does not read | raised, not discussed |
+| 4 | `applyOp` sends a body the route does not read | **agreed — ready to execute** |
 | 5 | The label list is flipped in three places | raised, not discussed |
 | 6 | What a load drops: identity columns and annotation channels | raised, not discussed |
 | 7 | The coordinates' in-memory shape | raised, not discussed |
@@ -324,14 +324,123 @@ not required for the above.
 
 ---
 
-## 6. Items not yet settled
+## 6. Item 4 — `applyOp` sends a body the route does not read
+
+**AGREED. Ready to execute.**
+
+### Symptom
+
+**Every geometry edit fails, silently.** Delete, rotate, translate, orient, both
+electrode ops. The request is refused with a 400, the refusal is caught and turned
+into `null`, and the structure is left exactly as it was — which is what § 11.1
+promises for a *failed* edit, so nothing looks broken. The edit simply never
+happens.
+
+### Evidence
+
+The module sends `{structure: {elements, positions, regions, frozen_atoms,
+periodicity}, selection, params}`.
+
+Every route reads one canonical body — `{xyz, …metadata…, <its own arguments>}` —
+through the shared `struct_from_body`, which raises on a missing `xyz` before
+anything else runs. So the geometry never arrives, and neither does the selection:
+each route names its own field for it.
+
+| route | its own arguments |
+|---|---|
+| `delete` | `indices` |
+| `add_atom` | `element, anchor_index, offset` |
+| `orient` | `anchors`, and optionally `axis, angle, center` |
+| `rotate` | `axis, angle` |
+| `translate` | `{recenter: true}` **or** `{dx, dy, dz}` |
+| `electrode` | `element, plane, size`, optionally `center_indices` and more |
+| `symmetric_electrodes` | `element, plane, size`, optionally `gap`, `center_indices` |
+| `calibrate` | *(whole structure — no group)* |
+
+### The old code — the registry, and what § 11.1 kept from it
+
+The frozen tree drove all eight from one table, and § 11.1's table is that table
+**minus one column**:
+
+| registry field | § 11.1's column |
+|---|---|
+| `role` — subject or anchor | "The selection is" — the thing being moved, or a reference |
+| `empty` — all / reject / canonical | "With nothing selected" |
+| `arity` | "Needs exactly" |
+| `shape` — transform / grow / shrink | "Effect on atom count" |
+| `wholeOnly` | whole-structure only (`calibrate`) |
+| **`groupField`, and `scalar`** | **absent** |
+
+`groupField` is the body key the resolved group is written to; `scalar` says it
+takes a single number rather than a list. **That missing column is why the rebuilt
+code cannot build a body**: it knows how many atoms an op needs and what to do when
+none are selected, and not where to put them.
+
+Around the table ran a fixed sequence, every step of which earned its place:
+
+1. **The group is the explicit indices if given, else the current selection** — so a
+   caller can act on a set without disturbing what the user picked.
+2. **The empty policy, then the arity, BEFORE the request.** Already true in the
+   rebuilt code, and § 11.1 already says it.
+3. **One mutation in flight.** A second `applyOp` while one is running is refused
+   rather than interleaved: two responses applying over each other produce a
+   structure neither edit asked for.
+4. **The path is chosen by shape and role.** A *transform* on a *subject* that is a
+   partial selection takes the subset path (§ 11.7's second exception); everything
+   else — nothing selected, all selected, `calibrate`, every grow and every shrink —
+   goes whole-structure.
+5. **The count invariant is checked against the DECLARED shape.** A transform that
+   changed the count, a grow that added nothing, a shrink that removed nothing: each
+   throws instead of applying. The server said one thing and did another.
+6. **One atomic apply**, clearing the selection for a grow or a shrink and keeping
+   it for a transform — after atoms are added or removed, the old numbers point at
+   different atoms.
+
+One field was declared and never used: `mapGroup`, a per-op ordering hook. It does
+not carry across.
+
+### Code
+
+1. **The operations table gains the missing column** — where the selection lands:
+   `delete → indices`, `orient → anchors`, `add_atom → anchor_index` (a single
+   number), `electrode` and `symmetric_electrodes → center_indices`, **omitted
+   entirely when the selection is empty** so the server applies its own centring;
+   `translate`, `rotate` and `calibrate` take no group at all.
+2. **The body is the one read** (item 3) — the coordinate document and the metadata
+   beside it — plus the group under its key, plus the caller's arguments.
+3. **The two paths**, chosen exactly as above.
+4. **The count invariant from the declared shape.** The rebuilt code compares counts
+   only to decide whether to clear the selection; the declared shape also catches a
+   response the operation could not have produced.
+5. **One mutation in flight.**
+
+### Document
+
+6. **§ 11.1's table gains the column.** With it the table drives the code, which is
+   what its own sentence already claims — *"those columns drive one generic piece of
+   code"* — and cannot today.
+7. **§ 11.1** gains the count invariant and the one-in-flight rule. Both are
+   promises about what a failed or racing edit leaves behind, and § 11.1 already
+   makes the first half: *"if the edit does not come back, nothing happened"*.
+8. **§ 13.3** gains a row for each: an edit whose result contradicts its declared
+   effect is refused, and a second edit during one in flight is refused.
+
+### Open
+
+Nothing.
+
+---
+
+## 7. Items not yet settled
 
 Recorded so they survive the session. Each becomes a section above when discussed.
 
-**4. `applyOp` sends a body the route does not read.** It sends
-`{structure, selection, params}`; `/api/modify/*` reads `{xyz, …metadata…}` plus a
-per-op field, so **every geometry edit is refused with a 400 today**. The per-op
-field names exist in the frozen tree's registry and are absent from § 11.1's table.
+**5. The label list is flipped in three places.** Each atom carries a list of the
+names it is tagged with; three places walk every atom to build the flipped form
+(`{"L-electrode": [0, 1]}`) — once for callers, twice for payloads. Two of the
+three pull the frozen set out into its own list and one does not, and **both are
+correct**: the design says a frozen tag is an ordinary label, while the server has
+a separate field for it. So it is one walk with one deliberate difference, copied.
 
 **6. What a load drops.** The server returns atom names, residue ids, chain ids and
 the annotation channels; the module keeps none. Invisible until an edit — a
