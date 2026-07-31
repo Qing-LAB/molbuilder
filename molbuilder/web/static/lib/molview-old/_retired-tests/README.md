@@ -1,8 +1,19 @@
 # Retired — MolView's old tests
 
-These nineteen files tested the module in `../`, the frozen tree. They are here,
-outside `testpaths = ["tests"]`, so pytest does not collect them: **retired, not
-adapted and not repointed.**
+These twenty-one files tested the module in `../`, the frozen tree. They are
+here, outside `testpaths = ["tests"]`, so pytest does not collect them:
+**retired, not adapted and not repointed.**
+
+Nineteen came across at the start of the rebuild, when their subject moved. Two
+more followed at step G (`test_workspace_dispatcher_js.py`,
+`test_workspace_dispatcher_canvas_mount_js.py`): both name themselves tests of
+the workspace dispatcher, and both are in fact tests of the OLD MolView data
+model — they load `lib/molview/data-model.js`, `_canvas-state-impl.js` and
+`_selection-store-impl.js`, none of which the rebuilt module has. 62 of their 63
+tests were failing against files that no longer exist. What the dispatcher's own
+contract needs is a test of `lib/workspace/`, written from
+[`workspace.md`](../../../../../../docs/web/workspace.md) — not this file
+repointed, for exactly the reason below.
 
 They are kept for the same reason the frozen code is — as reference while the
 module is rebuilt — and they are deleted with it at closeout (plan step H).
