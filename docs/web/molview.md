@@ -2310,6 +2310,20 @@ the sidecar it wrote was missing the version key that makes one loadable (§ 11.
 Three different things send the structure somewhere: an export, a cell edit, a
 geometry edit. They all send the same thing, and it is the row above.
 
+**Two exceptions, and they are the only two.** The rule says the server writes every
+file; there are two cases where it cannot, and both are worth naming so that a third
+is never added quietly:
+
+| Exception | Why the server cannot answer | What the viewer does |
+|---|---|---|
+| **a frame the server has never seen** — a trajectory scrubbed away from the loaded geometry | those coordinates came from the tab's own run file; there is no server-written document for them | writes the coordinate document for that frame, **in the server's format** — same decimals, title kept — so it differs from a server-written one in nothing but provenance |
+| **moving part of a structure** — translate or rotate with a partial selection | the edit routes act on the whole structure they are given; there is no "apply to these atoms only" | sends the selected atoms as their own small document, and maps the returned coordinates back into the full structure |
+
+Both existed in the previous implementation for these reasons and both are still
+forced by the doors. Neither is a licence: a viewer that writes a coordinate
+document in any *other* circumstance has broken the rule, and if the doors ever
+accept `elements` + `positions`, both exceptions disappear with them.
+
 **What the rule costs today, and where it is not yet true.** Every door that
 accepts a structure accepts the geometry as **text** — an `.xyz` document. So a
 viewer that holds coordinates as numbers has to write one in order to ask any

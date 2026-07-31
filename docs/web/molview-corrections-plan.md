@@ -45,7 +45,7 @@ fix the right one, and the reasoning is the part that stops it being re-broken.
 |---|---|---|
 | 1 | The save / load pair, and where the saved bytes come from | **agreed — ready to execute** |
 | 2 | The cell's private spelling | **agreed — ready to execute** |
-| 3 | The browser writes structure files at all — **prerequisite of item 1** | **agreed in principle — shape to settle** |
+| 3 | The browser writes structure files at all — **prerequisite of item 1** | **agreed — ready to execute** |
 | 4 | `applyOp` sends a body the route does not read | raised, not discussed |
 | 5 | The label list is flipped in three places | raised, not discussed |
 | 6 | What a load drops: identity columns and annotation channels | raised, not discussed |
@@ -246,32 +246,87 @@ Nothing.
 
 ---
 
-## 5. Items not yet settled
+## 5. Item 3 — the browser writes structure files at all
+
+**AGREED. Ready to execute.**
+
+### The rule
+
+§ 11.7: a structure enters and leaves through **one path**, and the **server writes
+every file**. The viewer holds a structure, not a file, and does not make one.
+
+### Symptom
+
+Export a file you have not edited and you get different bytes from the file on
+disk: no title line, and raw precision where `to_xyz` writes six decimals. Two
+writers, two answers to "what does this structure look like".
+
+### Evidence
+
+Every structure door takes the geometry as `.xyz` **text**, so a viewer holding
+numbers must write a document to ask any question — the numbers become text, the
+server parses them straight back into numbers, and numbers come back. That round
+trip is the only reason a file writer exists in the browser at all.
+
+### The old code — and this is the design to restore
+
+`getStructure()` was **one read that returned text, atoms, periodicity and
+annotations together**, with the displayed frame's coordinates overlaid so that,
+in its own comment, *"text, atoms, and a save all agree"*. The text it carried was
+**the server's own**, kept from the load. Everything outbound was built from that
+one read.
+
+Above the accessors it stated the rule the new module should inherit verbatim:
+*"the ONLY way consumers read the model … No consumer hand-crafts extraction (no
+`state.xyz.split`, no `atoms[i].labels` scan) — they call these."*
+
+It wrote a coordinate document in exactly **two** places, and both are now named in
+§ 11.7 as the rule's only exceptions: a trajectory frame the server has never seen,
+and the small document a partial translate/rotate sends. Both are forced by the
+doors, and its writer matched the server's formatting — six decimals, title kept —
+so the two agreed byte for byte wherever they overlapped.
+
+**Where the old code was NOT unified, so this does not carry across:** outbound had
+**three** shapes — `_scratchBlob` for save/draft/cell, `_structureBody` for the
+modify ops, `factsForRequest` for validation. § 9.3 already retires the third as
+"the same facts renamed and regrouped". One read, three shapings.
+
+**What the new module already does better:** the structure lives in **one** holder.
+The old one split it across two stores and needed an atom-count desync guard
+because they could disagree. That class of bug is gone and must not come back.
+
+### Code
+
+1. **The model carries what the load returned** — the server's coordinate document,
+   the source format, the title, and the annotation channels — beside the atoms it
+   already keeps.
+2. **One read hands them over together**, with the displayed frame's coordinates
+   overlaid, so text, atoms and metadata cannot describe different states.
+3. **The writer runs only for § 11.7's two exceptions**, and matches the server's
+   format when it does: six decimals, title preserved.
+4. **Item 1's export route then takes what the viewer holds.** With the carried
+   text present, the common case sends the server's own document straight back; only
+   a scrubbed frame sends one the browser wrote.
+
+### Document
+
+5. **§ 11.7** — the rule, and its two exceptions with the reason each is forced.
+   *(Landed.)*
+6. **§ 6.2** — the structure carries the document it arrived as, alongside the
+   atoms. Today the shapes table has no room for it, which is why the rebuild
+   dropped it.
+
+### Open
+
+Whether the doors should accept `elements` + `positions`, which would remove both
+exceptions and the browser's writer entirely. A backend change, recorded in § 11.7,
+not required for the above.
+
+---
+
+## 6. Items not yet settled
 
 Recorded so they survive the session. Each becomes a section above when discussed.
-
-**3. The browser writes structure files at all.** THE ONE-PATH RULE (§ 11.7): a
-structure enters and leaves through one path, and the server writes every file.
-Today every structure door takes the geometry as `.xyz` **text**, so a viewer
-holding numbers must write a coordinate document to ask any question — the numbers
-become text, the server parses them straight back into numbers, and numbers come
-back. That round trip is the only reason a file writer exists in the browser, and
-it is why the browser's `.xyz` differs from Python's: no title line, raw precision
-where `to_xyz` writes six decimals. So exporting a file you have not edited gives
-different bytes from the file on disk.
-
-The frozen tree mitigated this rather than fixing it — it carried the server's text
-and rebuilt one only for a scrubbed trajectory frame, matching the six-decimal
-formatting (`_text = _fc ? _atomsToXyz(title) : canvas.text`). That is the best
-available answer while the doors take text, and it is not the answer we want.
-
-**The fix**: the doors accept `elements` + `positions`, so the browser hands over
-what it holds. Then `Structure.to_xyz` is the only `.xyz` writer in the system and
-item 1's export route takes numbers rather than a document the browser had to
-write. A backend change, and the shape of it is the next thing to settle.
-
-**5. The label list is flipped in three places** — once for callers, twice for
-payloads, with one deliberate difference (whether the frozen set is split out).
 
 **4. `applyOp` sends a body the route does not read.** It sends
 `{structure, selection, params}`; `/api/modify/*` reads `{xyz, …metadata…}` plus a
