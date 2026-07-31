@@ -2282,26 +2282,50 @@ wrong: while a trajectory plays, because it re-reads the current frame; and unde
 isolate, because the drawn numbering no longer matches the real one and it never
 looked at the drawn numbering (§ 6.5).
 
-### 11.7 The structure on the wire — one blob, and who writes what
+### 11.7 The structure on the wire — one path in, one path out
+
+**A structure enters and leaves MolView through one path, and the SERVER WRITES
+EVERY FILE.** That is the rule this section exists for; everything below is what it
+means in practice.
+
+MolView holds a structure. It does not hold a *file*, and it does not make one. A
+coordinate document and its metadata sidecar are formats the server owns — one
+writer, one field set, one place where "what a saved structure looks like" is
+decided. The viewer's job is to hand over what it has and to say where the result
+should go.
+
+| | what crosses | who makes the file |
+|---|---|---|
+| **in** | a path, or raw text a user pasted | the server reads or parses it, and answers with a structure |
+| **out** | what the viewer holds — the atoms, their positions, and the facts about them | the server, from that |
+
+**Why this is a rule and not a preference.** A second writer in the browser is a
+second answer to "what does this structure look like on disk", and the two drift
+the moment either changes: a title line here, a decimal place there, a metadata
+field only the newer one knows about. Which bytes a user gets then depends on
+*which half of the application wrote them* — and that has already happened in both
+directions: the browser's coordinate document differs from Python's (below), and
+the sidecar it wrote was missing the version key that makes one loadable (§ 11.3).
 
 Three different things send the structure somewhere: an export, a cell edit, a
-geometry edit. This says what they send, and it is the same thing in all three
-cases.
+geometry edit. They all send the same thing, and it is the row above.
 
-**A structure crosses as a coordinate document plus the facts beside it.** Every
-door that accepts a structure accepts the geometry as **text** — an `.xyz`
-document — and the per-atom facts as ordinary fields next to it. That is the
-server's shape and not a choice made here, and it has one consequence worth
-naming: a viewer that holds coordinates as numbers has to **write a coordinate
-document** to ask any question about them. The numbers become text, the server
-parses them straight back into numbers, and numbers come back.
+**What the rule costs today, and where it is not yet true.** Every door that
+accepts a structure accepts the geometry as **text** — an `.xyz` document. So a
+viewer that holds coordinates as numbers has to write one in order to ask any
+question at all: the numbers become text, the server parses them straight back
+into numbers, and numbers come back. That round trip is the only reason MolView
+contains code that writes a file format, and it is how the browser's `.xyz` came
+to differ from Python's — no title line, and raw precision where `to_xyz` writes
+six decimals.
 
-> **Open.** That round trip is the only reason MolView contains code that writes
-> a file format at all, and it is why the format has drifted from the one Python
-> writes (§ 11.3's note below). A door that accepted `elements` + `positions`
-> would remove the writer from the browser entirely and leave `Structure.to_xyz`
-> as the only place in the system that writes an `.xyz`. That is a change to the
-> server's doors, so it is recorded here rather than decided here.
+> **Where the code has not caught up.** The doors must accept `elements` +
+> `positions`, so the browser can hand over what it holds. Then
+> `Structure.to_xyz` is the only place in the system that writes an `.xyz`, the
+> sidecar's field set has one home, and the rule above is true by construction
+> rather than by everyone remembering it. Until then the browser writes a
+> coordinate document it should not be writing, and the two writers have to be
+> kept in step by hand.
 
 **One blob, and every outbound use is that same one read.** The pair — the
 coordinate document and the metadata beside it — is produced in **one place**,

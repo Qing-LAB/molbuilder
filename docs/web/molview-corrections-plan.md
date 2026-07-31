@@ -45,16 +45,26 @@ fix the right one, and the reasoning is the part that stops it being re-broken.
 |---|---|---|
 | 1 | The save / load pair, and where the saved bytes come from | **agreed — ready to execute** |
 | 2 | The cell's private spelling | **agreed — ready to execute** |
-| 3 | The coordinate document is rewritten when the server already sent one | raised, not discussed |
-| 4 | The browser writes a file format at all | raised, not discussed |
+| 3 | The browser writes structure files at all — **prerequisite of item 1** | **agreed in principle — shape to settle** |
+| 4 | `applyOp` sends a body the route does not read | raised, not discussed |
 | 5 | The label list is flipped in three places | raised, not discussed |
-| 6 | `applyOp` sends a body the route does not read | raised, not discussed |
-| 7 | What a load drops: identity columns and annotation channels | raised, not discussed |
-| 8 | The coordinates' in-memory shape | raised, not discussed |
-| 9 | The movie is rebuilt from one giant string | raised, not discussed |
+| 6 | What a load drops: identity columns and annotation channels | raised, not discussed |
+| 7 | The coordinates' in-memory shape | raised, not discussed |
+| 8 | The movie is rebuilt from one giant string | raised, not discussed |
 
-Items 2–9 are recorded here so nothing is lost between sessions. Each gets its
+Items 3–8 are recorded here so nothing is lost between sessions. Each gets its
 section below when it is settled, in the shape § 1 describes.
+
+> **What changed on 2026-07-31.** "The coordinate document is rewritten when the
+> server already sent one" was a separate item. It is not a separate problem: it is
+> a *symptom* of item 3, and carrying the server's text would have been a
+> workaround for a browser that should not be writing coordinate documents in the
+> first place. Folded in, and the numbering closed up.
+>
+> Item 3 also turned out to be a **prerequisite of item 1**, not a follow-on. Item 1
+> makes the server author the `.json`; but its export route as first drafted still
+> took `{xyz, sidecar}` — so the browser was still writing the `.xyz` to send. One
+> path means neither file is written here.
 
 ---
 
@@ -126,9 +136,14 @@ forces MolView to author a format it cannot author.
    `files()` produces. `files()` carries the existing rule that a structure with no
    metadata worth keeping gets *no* sidecar, and a stale one is deleted — so that
    behaviour stays in one place rather than being duplicated into a second.
-2. **`POST /api/structure/export {blob}` → `{ok, xyz, sidecar}`.** The same pair
-   `write()` would put on disk, returned instead of written. This is what makes
-   "save and download produce identical bytes" true by construction.
+2. **`POST /api/structure/export` → `{ok, xyz, sidecar}`.** The same pair `write()`
+   would put on disk, returned instead of written. This is what makes "save and
+   download produce identical bytes" true by construction.
+
+   **It takes what the viewer holds, not a document the viewer wrote** — see item 3,
+   which is a prerequisite rather than a follow-on. A route that took `{xyz,
+   sidecar}` would leave the browser writing the `.xyz` half, and the one-path rule
+   (§ 11.7) would still be false.
 
 **Then MolView.**
 
@@ -235,35 +250,44 @@ Nothing.
 
 Recorded so they survive the session. Each becomes a section above when discussed.
 
-**3. The coordinate document is rewritten when the server already sent one.** A load
-returns the canonical text; the module ignores it and writes its own — no title
-line, raw float formatting — so exporting an unedited file gives different bytes
-from the file on disk. The old code carried the server's text and rebuilt it only
-for a scrubbed trajectory frame, with matching six-decimal formatting.
+**3. The browser writes structure files at all.** THE ONE-PATH RULE (§ 11.7): a
+structure enters and leaves through one path, and the server writes every file.
+Today every structure door takes the geometry as `.xyz` **text**, so a viewer
+holding numbers must write a coordinate document to ask any question — the numbers
+become text, the server parses them straight back into numbers, and numbers come
+back. That round trip is the only reason a file writer exists in the browser, and
+it is why the browser's `.xyz` differs from Python's: no title line, raw precision
+where `to_xyz` writes six decimals. So exporting a file you have not edited gives
+different bytes from the file on disk.
 
-**4. The browser writes a file format at all.** Every structure door takes geometry
-as `.xyz` text, so a viewer holding numbers must write a document to ask any
-question about them. A door accepting `elements` + `positions` would remove the
-writer from the browser entirely. Backend change; recorded as Open in § 11.7.
+The frozen tree mitigated this rather than fixing it — it carried the server's text
+and rebuilt one only for a scrubbed trajectory frame, matching the six-decimal
+formatting (`_text = _fc ? _atomsToXyz(title) : canvas.text`). That is the best
+available answer while the doors take text, and it is not the answer we want.
+
+**The fix**: the doors accept `elements` + `positions`, so the browser hands over
+what it holds. Then `Structure.to_xyz` is the only `.xyz` writer in the system and
+item 1's export route takes numbers rather than a document the browser had to
+write. A backend change, and the shape of it is the next thing to settle.
 
 **5. The label list is flipped in three places** — once for callers, twice for
 payloads, with one deliberate difference (whether the frozen set is split out).
 
-**6. `applyOp` sends a body the route does not read.** It sends
+**4. `applyOp` sends a body the route does not read.** It sends
 `{structure, selection, params}`; `/api/modify/*` reads `{xyz, …metadata…}` plus a
 per-op field, so **every geometry edit is refused with a 400 today**. The per-op
 field names exist in the frozen tree's registry and are absent from § 11.1's table.
 
-**7. What a load drops.** The server returns atom names, residue ids, chain ids and
+**6. What a load drops.** The server returns atom names, residue ids, chain ids and
 the annotation channels; the module keeps none. Invisible until an edit — a
 structure that round-trips comes home flattened.
 
-**8. The coordinates' in-memory shape.** Held as nested three-element arrays: one
+**7. The coordinates' in-memory shape.** Held as nested three-element arrays: one
 object per atom per frame, 800k objects for a 400-frame, 2000-atom run. A flat
 typed array indexed `[frame][atom][xyz]` is the alternative, and it is a change to
 what § 6.2 says the coordinates are.
 
-**9. The movie is rebuilt from one giant string.** Every rebuild concatenates the
+**8. The movie is rebuilt from one giant string.** Every rebuild concatenates the
 whole trajectory into one XYZ document for the drawing library. The library also
 accepts frames as atom objects — the append path already uses that — so a movie
 could be built from numbers. Needs measuring before claiming, in the one file the
