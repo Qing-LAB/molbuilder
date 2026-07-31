@@ -28,11 +28,17 @@ from molbuilder.workingcopy_structure import StructureCodec
 
 
 def _envelope(**metadata):
-    return {"structure": {
-        "geometry": {"elements": ["C", "O", "H"],
-                     "positions": [[0.0, 0.0, 0.0], [1.4, 0.0, 0.0], [0.0, 1.0, 0.0]]},
-        "metadata": metadata,
-    }}
+    """An envelope is the structure's own canonical dict — `Structure.to_dict()`'s
+    shape — so these tests build it the way the codec does, not a shape invented
+    beside it."""
+    columns = {k: metadata.pop(k) for k in
+               ("atom_names", "residue_ids", "residue_names", "chain_ids", "title")
+               if k in metadata}
+    return {"structure": dict({
+        "elements":  ["C", "O", "H"],
+        "positions": [[0.0, 0.0, 0.0], [1.4, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        "metadata":  metadata,
+    }, **columns)}
 
 
 @pytest.fixture
@@ -88,11 +94,11 @@ def test_an_envelope_that_cannot_be_read_says_so_rather_than_guessing():
     alternative — filling in what is missing — is how a half-built structure
     reaches a calculation."""
     for broken, why in [
-        ({"structure": {}}, "no geometry"),
-        ({"structure": {"geometry": {}}}, "no elements"),
-        ({"structure": {"geometry": {"elements": [], "positions": []}}}, "empty"),
-        ({"structure": {"geometry": {"elements": ["C"], "positions": []}}}, "count mismatch"),
-        ({"structure": {"geometry": {"elements": ["C"], "positions": [[0, 0]]}}}, "not a point"),
+        ({"structure": {}}, "no atoms at all"),
+        ({"structure": {"elements": [], "positions": []}}, "empty"),
+        ({"structure": {"elements": ["C"]}}, "no positions"),
+        ({"structure": {"elements": ["C"], "positions": []}}, "count mismatch"),
+        ({"structure": {"elements": ["C"], "positions": [[0, 0]]}}, "not a point"),
     ]:
         with pytest.raises(ValueError):
             struct_from_body(broken)
@@ -124,14 +130,15 @@ def test_the_metadata_a_coordinate_file_cannot_hold_arrives_with_the_atoms():
 def test_an_identity_column_is_honoured_only_at_full_length():
     """"A metadata column is sent only when every atom has one, otherwise `[]`."
 
-    A short column is not partially applied: the server does `max(residue_ids)`
-    and a hole poisons the comparison — a bug this project has already shipped.
+    A short column is REFUSED rather than partially applied. The legacy body
+    ignores a malformed column and keeps the default — a defensive choice for
+    callers that were already sending them — but an envelope is new, and a
+    caller sending three atoms and one residue name has a bug worth being told
+    about. The server also does `max(residue_ids)`, where a hole poisons the
+    comparison; this project has shipped that once.
     """
-    short = struct_from_body(_envelope(residue_names=["ALA"]))          # 1 of 3
-    assert list(short.residue_names) != ["ALA"], (
-        "a short column was applied, leaving the rest undefined"
-    )
-    assert len(short.residue_names) == 3
+    with pytest.raises(ValueError):
+        struct_from_body(_envelope(residue_names=["ALA"]))              # 1 of 3
 
 
 def test_a_subset_envelope_is_accepted_and_its_map_back_is_the_callers():
@@ -142,7 +149,7 @@ def test_a_subset_envelope_is_accepted_and_its_map_back_is_the_callers():
     So the receiver must not choke on it — and must not try to use it.
     """
     body = _envelope()
-    body["structure"]["geometry"]["source_index"] = [4, 7, 9]
+    body["structure"]["source_index"] = [4, 7, 9]
 
     struct = struct_from_body(body)
 
@@ -167,12 +174,11 @@ def test_a_response_carries_the_envelope_beside_todays_keys(client):
         assert legacy in answer, f"the legacy key '{legacy}' stopped being sent"
 
     envelope = answer["structure"]
-    assert sorted(envelope) == ["geometry", "metadata"], (
-        "a structure response carries the atoms and their facts — a coordinate "
-        "document is the export door's answer, not a per-response cost"
+    assert "document" not in envelope, (
+        "a coordinate document is the export door's answer, not a per-response cost"
     )
-    assert envelope["geometry"]["elements"] == answer["elements"]
-    assert envelope["geometry"]["positions"] == [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
+    assert envelope["elements"] == answer["elements"]
+    assert envelope["positions"] == [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
 
 
 def test_the_two_views_cannot_disagree_because_they_come_from_one_structure(client):
@@ -183,12 +189,10 @@ def test_the_two_views_cannot_disagree_because_they_come_from_one_structure(clie
                                "filename": "x.xyz"}).get_json()
     envelope = answer["structure"]
 
-    assert envelope["geometry"]["elements"] == answer["elements"]
-    assert envelope["metadata"]["regions"] == answer["annotations"].get("regions", {}) \
-        or envelope["metadata"]["regions"] == {}
+    assert envelope["elements"] == answer["elements"]
     assert envelope["metadata"]["cell"] == answer["periodicity"]["cell"]
     assert envelope["metadata"]["cell_origin"] == answer["periodicity"]["cell_origin"]
-    assert len(envelope["geometry"]["positions"]) == answer["n_atoms"]
+    assert len(envelope["positions"]) == answer["n_atoms"]
 
 
 def test_a_document_in_a_REQUEST_is_ignored(client):

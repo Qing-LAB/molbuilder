@@ -82,31 +82,48 @@ Two things follow, and both have cost real defects:
 > door — and the server is the only thing that turns it into a file.** The browser
 > sends what it holds; it never sends a document it wrote.
 
-**The envelope.**
+**The envelope is the structure's own canonical dict** — `Structure.to_dict()`,
+whose inverse is `Structure.from_dict()`:
 
 ```json
 {
   "structure": {
-    "geometry": { "elements": ["C", "O"],
-                  "positions": [[0.0, 0.0, 0.0], [1.4, 0.0, 0.0]] },
+    "title": "",
+    "elements":  ["C", "O"],
+    "positions": [[0.0, 0.0, 0.0], [1.4, 0.0, 0.0]],
+    "atom_names": [], "residue_ids": [], "residue_names": [], "chain_ids": [],
     "metadata": { "regions": {"L-electrode": [0]}, "frozen_atoms": [1],
-                  "cell": null, "cell_origin": null,
+                  "cell": null, "cell_origin": null, "pbc": [false,false,false],
                   "axis_kind": ["isolated","isolated","isolated"],
-                  "vacuum": [0.0, 0.0, 0.0],
-                  "annotations": {},
-                  "atom_names": [], "residue_ids": [],
-                  "residue_names": [], "chain_ids": [], "title": "" },
-    "document": "2\nBuilt by molbuilder\nC  0.000000 …"
+                  "vacuum": [0.0, 0.0, 0.0], "annotations": {} }
   },
   "…": "the call's own arguments — indices, anchors, op, path, …"
 }
 ```
 
-| part | what it is | direction |
-|---|---|---|
-| `geometry` | the atoms as **numbers**, never text | both |
-| `metadata` | everything a coordinate file cannot hold, under the names the codec already uses (`Structure.metadata_to_dict`) plus the per-atom identity columns | both |
-| `document` | the canonical coordinate text **the server would write** | **the export door's answer only** |
+**That it is not a new shape is the whole point.** `to_dict` is the ONE
+serialiser the persistence, sidecar and CLI layers already round-trip through,
+and its own rule is that **nobody outside the class assembles or picks apart a
+structure dict** — every hand-rolled repack is where a field goes missing, which
+`cell_origin` has already done. A wire shape invented beside it would need a web-
+layer edit every time the structure gains a field, and would silently omit it
+until someone noticed.
+
+So a field added to the structure appears on the wire for free, and the
+serialiser is the same one the file on disk goes through.
+
+| part | what it is |
+|---|---|
+| `elements` + `positions` | the atoms as **numbers**, never text |
+| the identity columns | per-atom facts a coordinate file cannot hold — full-length or `[]` |
+| `metadata` | the block the codec owns: regions, frozen atoms, the periodicity fields, annotation channels |
+
+The **coordinate document** is not here. It is what the **export** door answers
+with — that door's whole job — and it is absent everywhere else for a reason that
+is easy to get wrong: a caller sends the envelope back, never a document, so
+nothing needs the text until somebody asks for a file. Putting it on every
+response would pay a full serialisation and a content hash per load and per edit
+to carry something no request will ever contain.
 
 `document` is not part of a structure response. It is what the **export** door
 answers with — that door's whole job — and it is absent everywhere else for a
@@ -172,9 +189,9 @@ cases the current designs need, and the answer for each is part of the contract:
 
 | Case | How the envelope carries it |
 |---|---|
-| **metadata the receiver does not understand** | `metadata` is **carried, not filtered**. A field a door does not recognise rides through untouched and comes back unchanged — that is what lets annotation channels and per-atom identity columns survive an edit instead of being flattened by the round trip |
-| **part of a structure** — a partial translate or rotate, where the edit routes act on the whole structure they are given | an envelope may describe a **subset**, with `geometry.source_index` giving each atom's number in the structure it came from. The receiver answers about the subset; the caller maps the coordinates back. Without this the caller sends a bare document and re-checks element-by-element that nothing was reordered, which is what the previous implementation had to do |
-| **one frame, or many** | `geometry.positions` is **one frame** — the one the user is looking at (§ 5.1). A trajectory is not a wire concern: its frames come from a run file the tab owns, and what leaves a viewer is the frame that was chosen. A door that ever needs many is a new door, not a wider envelope |
+| **a new kind of per-atom fact** | added to the **structure**, in the one place its codec lives (`to_dict` + the two metadata methods) — and it is then on the wire, in the sidecar and through every edit, with no door touched. What the envelope does *not* do is carry a field the structure does not model: `apply_metadata_dict` reads the set it knows, so an unrecognised key is dropped rather than smuggled through. That is deliberate — a fact worth surviving a round trip is a fact worth the structure knowing about |
+| **part of a structure** — a partial translate or rotate, where the edit routes act on the whole structure they are given | an envelope may describe a **subset**, with `source_index` giving each atom's number in the structure it came from. The receiver answers about the subset; the caller maps the coordinates back. Without this the caller sends a bare document and re-checks element-by-element that nothing was reordered, which is what the previous implementation had to do |
+| **one frame, or many** | `positions` is **one frame** — the one the user is looking at (§ 5.1). A trajectory is not a wire concern: its frames come from a run file the tab owns, and what leaves a viewer is the frame that was chosen. A door that ever needs many is a new door, not a wider envelope |
 | **where a structure lives** | **not in the envelope.** A path is an argument to the call — `save` takes one, `load` takes one — because the envelope describes a *structure*, never a location. A structure that carries its own path is one that can be saved to the wrong place by being copied |
 | **what the server wants to say** | `notices` beside `ok` — the heals and warnings a door produces (a cell corrected to contain its atoms, a vacuum too thin). They belong to the *call*, not to the structure, so they never ride inside it |
 
