@@ -136,10 +136,50 @@ which is a bug this project has already shipped once.
 | `export` | the envelope | the files as bytes, from the one generator the save uses |
 | `selection/eval` | the envelope + `rule` | `{selected_indices}` |
 
-**Compatibility.** The envelope is **added, not swapped**. Responses keep today's
-keys — `text`, `atoms`, `periodicity`, `annotations` and the legacy root aliases —
-beside `structure`, and requests accept both shapes, until every consumer has
-moved. Nothing in the tabs has to change on the day this lands.
+### How the two shapes coexist
+
+The envelope is **added, not swapped**, and that has to be mechanical rather than
+aspirational or the transition is a second protocol in disguise.
+
+**Which shape a request is.** A body carrying a `structure` key is an envelope; a
+body without one is read the old way. That is the whole test — one key, present or
+absent.
+
+**If a body carries both**, the envelope wins and the legacy fields are ignored
+entirely. Not merged: a caller that sends both is a caller mid-migration, and
+merging would let a stale field silently override a fresh one. Nothing is
+inferred from the pair.
+
+**Responses always carry both**, for as long as the legacy keys exist. A response
+is `structure` **plus** today's `text` / `atoms` / `periodicity` / `annotations`
+and the root aliases, derived from the same Structure, so the two can never
+disagree — they are two views of one object, not two objects.
+
+**What ends the legacy.** Not a date: the condition is *no reader left*. A key
+goes when nothing reads it, which is a question the code can answer — and until
+then a browser tab that was loaded before a deploy keeps working, which is the
+actual risk this rule exists for.
+
+### What the envelope must be able to carry
+
+A protocol is judged by what it can express without being amended. These are the
+cases the current designs need, and the answer for each is part of the contract:
+
+| Case | How the envelope carries it |
+|---|---|
+| **metadata the receiver does not understand** | `metadata` is **carried, not filtered**. A field a door does not recognise rides through untouched and comes back unchanged — that is what lets annotation channels and per-atom identity columns survive an edit instead of being flattened by the round trip |
+| **part of a structure** — a partial translate or rotate, where the edit routes act on the whole structure they are given | an envelope may describe a **subset**, with `geometry.source_index` giving each atom's number in the structure it came from. The receiver answers about the subset; the caller maps the coordinates back. Without this the caller sends a bare document and re-checks element-by-element that nothing was reordered, which is what the previous implementation had to do |
+| **one frame, or many** | `geometry.positions` is **one frame** — the one the user is looking at (§ 5.1). A trajectory is not a wire concern: its frames come from a run file the tab owns, and what leaves a viewer is the frame that was chosen. A door that ever needs many is a new door, not a wider envelope |
+| **where a structure lives** | **not in the envelope.** A path is an argument to the call — `save` takes one, `load` takes one — because the envelope describes a *structure*, never a location. A structure that carries its own path is one that can be saved to the wrong place by being copied |
+| **what the server wants to say** | `notices` beside `ok` — the heals and warnings a door produces (a cell corrected to contain its atoms, a vacuum too thin). They belong to the *call*, not to the structure, so they never ride inside it |
+
+**The envelope is not versioned, and that is a decision.** The sidecar on disk
+carries `schema_version` because a file outlives the program that wrote it. The
+wire does not: client and server ship together, and the one case where they differ
+— a tab loaded before a deploy — is exactly what "added, not swapped" already
+covers, because the old shape keeps working. A version number would give a false
+sense that mismatches are handled when the additive rule is what actually handles
+them.
 
 > **Status: agreed, not implemented.** This is the protocol the front end and the
 > back end are being brought to; today's four shapes are what ships. The

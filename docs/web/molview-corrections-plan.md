@@ -121,6 +121,14 @@ the rename was dropping on the floor.
 - **`POST /api/structure/export`** — the pair returned rather than written, taking
   the envelope, since a door with no existing callers is born in the target shape
 
+The mechanics are fixed in [`web-api.md`](?doc=web/web-api.md) § 1 and are what
+this phase implements, not what it decides: a body carrying a `structure` key is
+an envelope and one without is read the old way; both present means the envelope
+wins and the legacy fields are ignored; responses carry both, derived from one
+Structure so they cannot disagree; unknown `metadata` rides through untouched;
+and a subset travels as an envelope with `geometry.source_index` rather than as a
+bare document.
+
 **Proved by:** the existing suite staying green. That is the whole point of
 "added, not swapped" — a phase that breaks a tab has broken its own rule.
 
