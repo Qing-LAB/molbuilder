@@ -410,11 +410,15 @@ export function createModel(opts) {
          */
         getUnitCellInfo() {
             const cell = structure ? structure.cell : null;
+            // COPIED, like every other read (§ 9.3). This one handed out live
+            // references into the master copy's cell while the four narrower
+            // cuts below all copied — so the MAIN way in was the one way in that
+            // could be written through, which is the opposite of the rule.
             return {
-                lattice:  (cell && cell.lattice)  || null,
-                origin:   (cell && cell.origin)   || null,
-                axisKind: (cell && cell.axis_kind) || null,
-                vacuum:   (cell && cell.vacuum)   || null,
+                lattice:  copy(cell && cell.lattice)  || null,
+                origin:   copy(cell && cell.origin)   || null,
+                axisKind: copy(cell && cell.axis_kind) || null,
+                vacuum:   copy(cell && cell.vacuum)   || null,
             };
         },
         getUnitCell()       { return copy(structure && structure.cell && structure.cell.lattice) || null; },

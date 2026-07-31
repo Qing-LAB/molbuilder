@@ -116,6 +116,85 @@ def test_changing_what_a_read_returned_leaves_the_viewer_untouched():
     assert out["x"] == 0, "a read handed out the model's own coordinates"
 
 
+def test_no_read_at_all_can_be_written_through():
+    """The same rule as above, asked of EVERY read rather than of three.
+
+    § 13.1 forbids a pinned list of names — "a transcription, not a contract" —
+    so the reads are enumerated from the surface at run time and each one's
+    result is mutated as destructively as its shape allows. What is asserted is
+    the RULE: after all of that, the structure and the coordinates are what they
+    were.
+
+    Written because the three-read version passed while `getUnitCellInfo` — the
+    MAIN way in for the cell (§ 9.3's table) — handed out live references into
+    the master copy. The four narrower cuts beside it all copied, so the one
+    read a caller is told to use was the one that could be written through.
+    """
+    out = _run(
+        """
+        // A structure WITH A CELL, because the cell reads are the ones this was
+        // written for — and with nothing to hand out, they hand out nothing and
+        // the test proves nothing.
+        globalThis.__nextPayload = globalThis.__payload(
+            [atomRow(0, "C", 0), atomRow(1, "O", 1)],
+            { periodicity: { lattice: [[8,0,0],[0,8,0],[0,0,8]], origin: [1,1,1],
+                             axis_kind: ["periodic","periodic","isolated"],
+                             vacuum: [0,0,12] } });
+        const m = createModel({});
+        await m.installMolecule({ text: "x", filename: "x.xyz" });
+        if (!m.getUnitCellInfo().lattice) throw new Error("the fixture has no cell");
+
+        const before = JSON.stringify({
+            structure: m.getStructure(), coordinates: m.getCoordinates(),
+        });
+
+        // Mutate anything reachable: arrays get an extra entry and a changed
+        // first element, objects get every value overwritten, recursively.
+        function vandalise(value, depth) {
+            if (depth > 4 || value == null) return;
+            if (Array.isArray(value)) {
+                value.push("smuggled");
+                if (value.length > 1) {
+                    if (typeof value[0] === "number") value[0] = -999;
+                    else if (typeof value[0] === "string") value[0] = "XX";
+                    else vandalise(value[0], depth + 1);
+                }
+                return;
+            }
+            if (typeof value === "object") {
+                for (const key of Object.keys(value)) {
+                    const held = value[key];
+                    if (held && typeof held === "object") vandalise(held, depth + 1);
+                    else value[key] = (typeof held === "number") ? -999 : "XX";
+                }
+            }
+        }
+
+        const reads = Object.keys(m).filter((name) =>
+            typeof m[name] === "function"
+            && (name.startsWith("get") || name === "exportFile"));
+        for (const name of reads) {
+            let got;
+            try { got = m[name](0); } catch (_) { continue; }
+            vandalise(got, 0);
+        }
+
+        const after = JSON.stringify({
+            structure: m.getStructure(), coordinates: m.getCoordinates(),
+        });
+        console.log(JSON.stringify({ reads, unchanged: before === after }));
+        """
+    )
+    assert len(out["reads"]) >= 10, (
+        f"the enumeration found almost nothing — it is not exercising the "
+        f"surface: {out['reads']}"
+    )
+    assert out["unchanged"] is True, (
+        "one of the model's reads handed out something that writes through to "
+        f"the master copy; the reads tried were {out['reads']}"
+    )
+
+
 def test_with_nothing_loaded_a_read_returns_nothing_not_an_empty_structure():
     """§ 9.3: "there is nothing here" and "here is a structure with no atoms" are
     different answers, and a caller has to be able to tell them apart.

@@ -269,15 +269,21 @@ export function sidecarFor(structure, atomCount) {
             (labels[name] = labels[name] || []).push(i);
         }
     });
+    // COPIED, not referenced: this is handed to a caller (§ 9.3 — "changing what
+    // you were given can never change the viewer"), and a sidecar holding the
+    // master copy's own cell arrays is a write into the structure disguised as
+    // an export. `labels` and `frozen` are built fresh above; only the cell was
+    // reached into.
     const cell = structure.cell || {};
+    const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
     return {
         n_atoms_total: atomCount,
         regions:       labels,
         frozen_atoms:  frozen,
-        cell:          cell.lattice || null,
-        cell_origin:   cell.origin || null,
-        axis_kind:     cell.axis_kind || null,
-        vacuum:        cell.vacuum || null,
+        cell:          clone(cell.lattice),
+        cell_origin:   clone(cell.origin),
+        axis_kind:     clone(cell.axis_kind),
+        vacuum:        clone(cell.vacuum),
     };
 }
 
