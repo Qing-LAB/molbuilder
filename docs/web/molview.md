@@ -842,6 +842,103 @@ card with the error written in it, rather than a half-built viewer.
 > host laid out, instead of building its own. That path exists for the Modify
 > tab's template and is being removed; new hosts hand over an empty element.
 
+### 8.1 What the card is made of
+
+One card holds two things side by side: the **3D window**, and the **panel** you
+select in. Between them sits the **fold handle**. Under the window, when there is
+more than one frame, the **frame bar**. Over the window's corners, the
+**overlays** — the busy cover, the unsaved badge, the measurement readout — and
+its own **menu surface**, View and Export (§ 11.4).
+
+That is the whole of what MolView draws. A host hands over an empty element and
+gets all of it; there is no per-host stylesheet and no arrangement to opt into.
+
+**The panel has two pages**, switched by a tab bar at its top: **Selection** —
+the mode toggle, the filter rows or the atom list, and the label controls — and
+**Cell**, a read-only readout of the resolved periodicity. Switching pages never
+resizes the card.
+
+### 8.2 How it sizes, and the one number a host must respect
+
+**The 3D window is a square**, and it never grows to fill the card. Whatever
+width is left over goes to the panel. That is the whole layout rule, and every
+number below is derived from it rather than chosen.
+
+| | |
+|---|---|
+| the window | a **1:1 square**, bounded below by a minimum and above by a maximum edge |
+| the panel | **the leftover width**, with a minimum of its own |
+| **the panel's height** | **the square's edge — the same value the window uses** |
+
+That last row is the one worth reading twice. The panel is not measured and it is
+not told a height by script: it is given *the same* extent the square is, so the
+two bottom-align at every width **with no JavaScript and no fixed number
+anywhere**. A layout that computed the panel's height from the window's would be
+a second place the same fact lives, and it would be wrong for one frame after
+every resize.
+
+**The card's minimum width is the wider of the two pieces, not their sum.** Below
+the sum, the card does not break — it **stacks**, window above panel, and both
+are still usable. So the floor a host has to respect is the *stacked* minimum,
+and only a host narrower than that is the broken embed § 8 describes, the one
+that gets a blank card with the error written in it.
+
+Getting that backwards — treating the side-by-side sum as the floor — makes
+MolView refuse to mount in hosts where it would have worked perfectly well by
+stacking.
+
+**Everything resolves against the card, not the viewport.** The card measures
+itself, so the same module dropped into a wide tab, a narrow inspector or a test
+page lays itself out correctly with no per-host CSS. One consequence is a rule:
+the *only* place a viewport-relative measure is allowed is the square's maximum
+edge, which exists to stop the window swallowing a tall screen.
+
+### 8.3 The fold
+
+The panel folds away, and what "away" means depends on which layout is showing:
+**width** collapses to nothing when the two sit side by side, **height** does when
+they are stacked. The window does not move either way — folding gives space to
+the page, not to the window.
+
+**The handle's arrow points where the panel will go**, not at where it is. Side by
+side with the panel on the right: unfolded it points left, *"collapse this away"*;
+folded it points right, *"bring it back out"*. Stacked, the same rule reads up and
+down.
+
+**The arrow rotates; the handle does not.** Rotating the handle itself would swap
+its width and height, which in the stacked layout turns a small grip into a tall
+rail lying across the window. Only the glyph turns.
+
+### 8.4 The panel reads one state, and it reads it whole
+
+The panel is a **reader of the selection store** (§ 9.5), and the shape of that
+relationship is as much a part of the design as the store's contents.
+
+**One state, handed over whole.** The panel does not assemble what it draws from
+a dozen separate reads; it is given a single settled snapshot — what is selected
+and *in what order*, which editor is showing, the filter rows and how they
+combine, and every switch. It is handed one on subscribing, so the first paint
+needs no separate fetch, and another after every change.
+
+That is not a style preference. It is the fix for a real failure: the pick order
+was maintained correctly inside the store for months and simply **left out of the
+snapshot**, so the panel read nothing, silently fell back to guessing an angle's
+vertex from geometry, and the chemist's-pick rule of § 11.6 was dead end to end
+while looking implemented. **A fact the store keeps but does not hand over does
+not exist.** One snapshot with everything in it is what makes that failure
+impossible rather than merely unlikely.
+
+**The filter is edited a row at a time.** A user adds a row, types in it, changes
+its kind, removes it, and chooses how the rows combine — each of those is its own
+small change, because that is what the controls are. A surface that only accepted
+the whole set of rows at once would make the panel rebuild and re-send state it
+was in the middle of editing.
+
+**The rules the rows become are the server's, not MolView's** (§ 9.5, § 11.1).
+The panel names its rows in the same vocabulary the server evaluates, so there is
+no translation table in between to drift — with the single exception of atom
+numbering, which crosses at exactly one point (§ 11.5).
+
 ---
 
 ## 9. The APIs, and who each one serves
@@ -2228,6 +2325,11 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.7 — no file route | the module reaches no file endpoint |
 | § 8 — mount always resolves | a mount that cannot fit still returns `ok === false` **and** a working `dispose`; nothing rejects, nothing returns nothing |
+| § 8.2 — the panel is not measured, it is given the same extent | the panel's height and the window's square edge come from one value; no script reads one to set the other, and they bottom-align at every width |
+| § 8.2 — the floor is the stacked minimum, not the row sum | a host narrower than the side-by-side sum still mounts, and stacks; only one narrower than the wider single piece gets the blank card and the error |
+| § 8.3 — the arrow turns, the handle does not | folding rotates the glyph only, so the handle's box keeps its shape in both layouts |
+| § 8.4 — the panel is handed one settled state, whole | every fact the panel draws arrives in one snapshot, including the pick order; a fact the store keeps but omits from it is the failure this guards |
+| § 8.4 — a filter row is edited one at a time | adding, retyping, re-kinding and removing a row are each their own change; nothing requires re-sending the whole set |
 | § 9.2 — the handle refuses appearance | there is no way through the handle to push arrows, labels, a busy state or a toggle — arrows come from the forces in the data or are not drawn at all |
 | § 9.3 — a read cannot be used to write | changing what a read returned leaves the viewer untouched |
 | § 9.3 — one need, one main way in | a narrower cut returns exactly what the main way in holds for that field — the two cannot disagree |
@@ -2309,6 +2411,8 @@ what they already said, and § 15 is a map for reading the code.
 | § 6.6 reserved labels | **5.2, 5.5** | a special meaning costs a name and a translator, not a second mechanism — and it is the user's intent travelling to the calculation |
 | § 7 the layers | **5.2, 5.3** | the "never" column is how one-home-per-fact and an invisible library get enforced instead of remembered |
 | § 8 making a viewer | **5.4, 5.6** | embedding is one call, and `owner` is what makes it a viewer of its own |
+| § 8.1–8.3 the card, its sizing, its fold | **5.4** | a host hands over an empty element and gets a working viewer — so what it must respect is one number, and everything else derives from the square |
+| § 8.4 the panel reads one state | **5.2** | a fact the store keeps but does not hand over does not exist, and one snapshot is what makes that impossible rather than unlikely |
 | § 9 the APIs | 5.2, 5.4 | each surface named with who it serves, so nothing grows a second way to the same fact |
 | § 9.4 read-only | 5.1, 5.2 | one rule instead of a list of disabled buttons that drifts |
 | § 9.6 the camera is not held | **5.2** | the one fact MolView cannot own without owning something that goes stale — so it owns none of it |

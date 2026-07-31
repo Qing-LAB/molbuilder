@@ -830,16 +830,16 @@ def test_writing_a_label_raises_the_badge_and_is_frozen_read_only():
         """
         const m = await loaded();
         m.selection.add([0]);
-        m.selection.applyLabel("anchor");
+        m.selection.writeLabel("anchor");
         const first = m.getRegions();
         const badge = m.uncommitted;
 
         m.selection.clear();
         m.selection.add([1]);
-        m.selection.applyLabel("anchor");     // replaces the previous set
+        m.selection.writeLabel("anchor");     // replaces the previous set
 
         const ro = createModel({ mode: "readonly" });
-        const roWrote = ro.selection.applyLabel("anchor");
+        const roWrote = ro.selection.writeLabel("anchor");
 
         console.log(JSON.stringify({
             first, badge, replaced: m.getRegions(), roWrote,

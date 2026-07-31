@@ -104,19 +104,50 @@ export function createSelectionStore(handed) {
     const set = (next, order) => {
         selected = next;
         pickOrder = order != null ? order : next.slice();
-        changed.fire();
+        changed.fire(snapshot());
     };
+
+    /* ONE SETTLED STATE, HANDED OVER WHOLE (§ 8.4).
+     *
+     * The panel does not assemble what it draws from a dozen separate reads. It
+     * is given one snapshot — what is selected and IN WHAT ORDER, which editor
+     * is showing, the rows and how they combine, and every switch.
+     *
+     * This is the fix for a real failure, not a style preference: the pick order
+     * was maintained correctly in the store for months and simply LEFT OUT of
+     * the snapshot, so the panel read nothing, fell back to guessing an angle's
+     * vertex from geometry, and § 11.6's rule was dead end to end while looking
+     * implemented. A fact the store keeps but does not hand over does not exist.
+     */
+    function snapshot() {
+        return {
+            selection:  selected.slice(),
+            pickOrder:  pickOrder.slice(),
+            mode:       mode,
+            filters:    rows.map((r) => Object.assign({}, r)),
+            combinator: combine,
+            isolate:    switches.isolate,
+            showIndex:  switches.showIndex,
+            showForces: switches.showForces,
+            showCell:   switches.showCell,
+            showAxis:   switches.showAxis,
+            forceScale: switches.forceScale,
+        };
+    }
 
     return {
         /* ── Reading ─────────────────────────────────────────────────────── */
+        getState()     { return snapshot(); },
         get()          { return selected.slice(); },
-        // § 11.6: the vertex of an angle is the atom picked SECOND, not the
-        // middle one by number — so the order has to survive, separately.
-        order()        { return pickOrder.slice(); },
         switches()     { return Object.assign({}, switches); },
-        editor()       { return mode; },
-        filterRows()   { return rows.map((r) => Object.assign({}, r)); },
-        subscribe(fn)  { return changed.add(fn); },
+
+        // Handed one on subscribing, so the first paint needs no separate fetch
+        // (§ 8.4) — and another after every change.
+        subscribe(fn)  {
+            const off = changed.add(fn);
+            try { fn(snapshot()); } catch (_) {}
+            return off;
+        },
 
         /* ── The click operations (§ 9.5) ────────────────────────────────── */
         toggle(atom) {
@@ -153,31 +184,49 @@ export function createSelectionStore(handed) {
             if (!(name in SWITCH_DEFAULTS)) return;
             if (switches[name] === value) return;
             switches[name] = value;
-            changed.fire();
+            changed.fire(snapshot());
         },
+        // Isolate is the one switch with a control of its own ("Show selected
+        // only"), so it has a name at this surface. It is the SAME switch — one
+        // home, reached two ways, never two values.
+        setIsolate(on) { this.setSwitch("isolate", !!on); },
 
-        /* ── The filter (§ 9.5) ──────────────────────────────────────────── */
+        /* ── The filter, edited a row at a time (§ 8.4) ───────────────────── */
         //
-        // Click mode edits atom by atom, entirely in the browser. Filter mode
-        // composes a query the user explicitly APPLIES, and applying it REPLACES
-        // the selection. Switching editors touches neither.
+        // A user adds a row, types in it, changes its kind, removes it, and
+        // chooses how the rows combine — each its own small change, because that
+        // is what the controls are. A surface that only took the whole set at
+        // once would make the panel re-send rows it was in the middle of editing.
         setEditor(next) {
             if (next !== "click" && next !== "filter") return;
             mode = next;
-            changed.fire();                 // the panel redraws; the selection does not move
+            changed.fire(snapshot());   // the panel redraws; the selection does not move
         },
-        setRows(nextRows, nextCombine) {
-            rows = (nextRows || []).map((r) => Object.assign({}, r));
-            if (nextCombine) combine = nextCombine;
-            changed.fire();
+        addFilter(row) {
+            rows.push(Object.assign({ kind: "by_element", value: "" }, row || {}));
+            changed.fire(snapshot());
+        },
+        updateFilter(at, patch) {
+            if (!rows[at]) return;
+            Object.assign(rows[at], patch || {});
+            changed.fire(snapshot());
+        },
+        removeFilter(at) {
+            if (at < 0 || at >= rows.length) return;
+            rows.splice(at, 1);
+            changed.fire(snapshot());
+        },
+        setCombinator(next) {
+            combine = next === "or" ? "or" : "and";
+            changed.fire(snapshot());
         },
 
         /**
          * Apply the rows as one rule.
          *
          * "Filtering is a question asked of the server, not a scan done here.
-         * MolView holds no matching logic" (§ 9.5) — which is the same boundary
-         * as § 2's: one place decides what a structure means.
+         * MolView holds no matching logic" (§ 9.5) — the same boundary as § 2's:
+         * one place decides what a structure means.
          */
         async applyFilter() {
             const rule = buildRule(rows, combine);
@@ -191,13 +240,10 @@ export function createSelectionStore(handed) {
         /* ── Writing a label (§ 9.5, § 9.4) ──────────────────────────────── */
         //
         // "The one thing reached from here that is not like the others." It is a
-        // change to the STRUCTURE — the label becomes part of what the atom is,
-        // goes into the sidecar and reaches the calculation — so it goes back
-        // through the model, where the gate can see it. A change the gate cannot
-        // see is a change the gate does not stop.
-        //
-        // Applying a label REPLACES that label's previous set of atoms.
-        applyLabel(name) {
+        // change to the STRUCTURE, so it goes back through the model where the
+        // gate can see it. A change the gate cannot see is a change the gate
+        // does not stop. Applying a label REPLACES its previous set of atoms.
+        writeLabel(name) {
             return handed.writeLabel(name, selected.slice());
         },
     };
@@ -233,17 +279,17 @@ function rowToRule(row) {
     const list = () => raw.split(",").map((s) => s.trim()).filter(Boolean);
 
     switch (row.kind) {
-        case "element": {
+        case "by_element": {
             const elements = list();
             return elements.length ? { op: "by_element", elements: elements } : null;
         }
-        case "residue": {
+        case "by_residue": {
             const names = list();
             return names.length ? { op: "by_residue_name", names: names } : null;
         }
-        case "label":
+        case "by_label":
             return { op: "by_region", name: raw };
-        case "index":
+        case "by_index":
             // THE ONE ROW THAT CROSSES THE NUMBERING BOUNDARY (§ 9.5). The user
             // types 1-based, matching what is on screen; the rule sent is
             // 0-based; and the shift happens exactly once, here, at the point

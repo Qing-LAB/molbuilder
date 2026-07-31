@@ -110,12 +110,12 @@ def test_a_half_typed_row_constrains_nothing():
     """
     out = _run(
         """
-        const one = S.buildRule([{ kind: "element", value: "Au" }], "and");
+        const one = S.buildRule([{ kind: "by_element", value: "Au" }], "and");
         const withBlank = S.buildRule([
-            { kind: "element", value: "Au" },
-            { kind: "residue", value: "   " },
+            { kind: "by_element", value: "Au" },
+            { kind: "by_residue", value: "   " },
         ], "and");
-        const allBlank = S.buildRule([{ kind: "element", value: "" }], "and");
+        const allBlank = S.buildRule([{ kind: "by_element", value: "" }], "and");
         const none = S.buildRule([], "and");
         console.log(JSON.stringify({
             one, withBlank, allBlank, none,
@@ -138,12 +138,12 @@ def test_by_atom_index_crosses_the_numbering_boundary_exactly_once():
     """
     out = _run(
         """
-        const rule = S.buildRule([{ kind: "index", value: "1-4, 6" }], "and");
+        const rule = S.buildRule([{ kind: "by_index", value: "1-4, 6" }], "and");
         const two = S.buildRule([
-            { kind: "index", value: "1-4" },
-            { kind: "index", value: "10-11" },
+            { kind: "by_index", value: "1-4" },
+            { kind: "by_index", value: "10-11" },
         ], "or");
-        const named = S.buildRule([{ kind: "element", value: "Au" }], "and");
+        const named = S.buildRule([{ kind: "by_element", value: "Au" }], "and");
         console.log(JSON.stringify({ rule, two, named }));
         """
     )
@@ -169,15 +169,15 @@ def test_the_rule_vocabulary_is_the_servers():
     out = _run(
         """
         console.log(JSON.stringify({
-            element: S.buildRule([{ kind: "element", value: "Au, C" }], "and"),
-            residue: S.buildRule([{ kind: "residue", value: "ALA,DA" }], "and"),
-            label:   S.buildRule([{ kind: "label", value: "L-electrode" }], "and"),
-            index:   S.buildRule([{ kind: "index", value: "1-4" }], "and"),
+            element: S.buildRule([{ kind: "by_element", value: "Au, C" }], "and"),
+            residue: S.buildRule([{ kind: "by_residue", value: "ALA,DA" }], "and"),
+            label:   S.buildRule([{ kind: "by_label", value: "L-electrode" }], "and"),
+            index:   S.buildRule([{ kind: "by_index", value: "1-4" }], "and"),
             both:    S.buildRule([
-                { kind: "element", value: "Au" },
-                { kind: "label", value: "bridge" },
+                { kind: "by_element", value: "Au" },
+                { kind: "by_label", value: "bridge" },
             ], "or"),
-            unknown: S.buildRule([{ kind: "charge", value: "0.3" }], "and"),
+            unknown: S.buildRule([{ kind: "by_charge", value: "0.3" }], "and"),
         }));
         """
     )
@@ -211,7 +211,7 @@ def test_a_label_is_written_through_the_model_not_the_store():
             writeLabel: (name, atoms) => { wrote.push({ name, atoms }); return true; },
         });
         sel.add([2, 5]);
-        sel.applyLabel("anchor");
+        sel.writeLabel("anchor");
         console.log(JSON.stringify({ wrote }));
         """
     )
@@ -220,20 +220,102 @@ def test_a_label_is_written_through_the_model_not_the_store():
     )
 
 
-def test_the_pick_order_survives_separately_from_the_selection():
-    """§ 11.6: "the vertex of an angle is the atom picked SECOND, not the middle
-    one by number." So the order has to be kept, and kept apart from the set.
+def test_the_panel_is_handed_one_settled_state_whole():
+    """§ 8.4: the panel is given ONE snapshot — what is selected and in what
+    order, which editor is showing, the rows and how they combine, and every
+    switch — handed over on subscribing and again after every change.
+
+    This is the fix for a real failure, not a style preference: the pick order
+    was maintained correctly in the store for months and simply LEFT OUT of the
+    snapshot, so the panel read nothing, fell back to guessing an angle's vertex
+    from geometry, and § 11.6's chemist's-pick rule was dead end to end while
+    looking implemented.
+
+    A FACT THE STORE KEEPS BUT DOES NOT HAND OVER DOES NOT EXIST. So the check is
+    not "does the store track the pick order" — it is "does the snapshot carry
+    it", which is the thing that was actually missing.
     """
     out = _run(
         """
         const sel = S.createSelectionStore({});
+        // Handed one on subscribing, so the first paint needs no separate fetch.
+        const seen = [];
+        sel.subscribe((state) => seen.push(state));
+        const onSubscribe = seen.length;
+
         sel.toggle(7); sel.toggle(2); sel.toggle(5);
-        console.log(JSON.stringify({ set: sel.get(), order: sel.order() }));
+        sel.setIsolate(true);
+        sel.addFilter({ kind: "by_element", value: "Au" });
+        sel.setCombinator("or");
+        const latest = seen[seen.length - 1];
+
+        console.log(JSON.stringify({
+            onSubscribe,
+            keys: Object.keys(latest).sort(),
+            pickOrder: latest.pickOrder,
+            selection: latest.selection,
+            isolate: latest.isolate,
+            filters: latest.filters,
+            combinator: latest.combinator,
+            everyChangeDelivered: seen.length,
+        }));
         """
     )
-    assert out["order"] == [7, 2, 5], (
-        f"the order atoms were picked in was lost: {out['order']}"
+    assert out["onSubscribe"] == 1, (
+        "subscribing must hand over a state immediately, or the first paint "
+        "needs a separate fetch"
     )
+    assert out["pickOrder"] == [7, 2, 5], (
+        "the snapshot must carry the ORDER atoms were picked in — the vertex of "
+        f"an angle is the atom picked second, not the middle by number: {out['pickOrder']}"
+    )
+    assert out["selection"] == [7, 2, 5]
+    assert out["isolate"] is True
+    assert out["filters"] == [{"kind": "by_element", "value": "Au"}]
+    assert out["combinator"] == "or"
+    # Everything the panel draws, in one object.
+    assert out["keys"] == ["combinator", "filters", "forceScale", "isolate", "mode",
+                           "pickOrder", "selection", "showAxis", "showCell",
+                           "showForces", "showIndex"], (
+        f"the snapshot must be everything the panel draws: {out['keys']}"
+    )
+
+
+def test_a_filter_row_is_edited_one_at_a_time():
+    """§ 8.4: "a user adds a row, types in it, changes its kind, removes it, and
+    chooses how the rows combine — each of those is its own small change, because
+    that is what the controls are."
+
+    A surface that only accepted the whole set at once would make the panel
+    rebuild and re-send state it was in the middle of editing.
+    """
+    out = _run(
+        """
+        const sel = S.createSelectionStore({});
+        const states = [];
+        sel.subscribe((s) => states.push(s.filters));
+
+        sel.addFilter();                                  // "+ Add filter"
+        const blankRow = states[states.length - 1];
+        sel.updateFilter(0, { value: "Au" });              // typing
+        sel.addFilter({ kind: "by_label", value: "" });
+        sel.updateFilter(1, { kind: "by_residue" });       // re-kinding
+        const two = states[states.length - 1];
+        sel.removeFilter(0);                              // the row's ×
+        console.log(JSON.stringify({
+            blankRow, two, afterRemove: states[states.length - 1],
+        }));
+        """
+    )
+    assert out["blankRow"] == [{"kind": "by_element", "value": ""}], (
+        "adding a row must give a blank row of a sensible default kind, not "
+        f"require the caller to supply one: {out['blankRow']}"
+    )
+    assert out["two"] == [{"kind": "by_element", "value": "Au"},
+                          {"kind": "by_residue", "value": ""}], (
+        f"each edit must touch only its own row: {out['two']}"
+    )
+    assert out["afterRemove"] == [{"kind": "by_residue", "value": ""}]
 
 
 def test_filtering_asks_the_server_and_holds_no_matching_logic():
@@ -248,7 +330,7 @@ def test_filtering_asks_the_server_and_holds_no_matching_logic():
             resolveFilter: async (rule) => { asked.push(rule); return [4, 9]; },
         });
         sel.add([1]);
-        sel.setRows([{ kind: "element", value: "Au" }], "and");
+        sel.addFilter({ kind: "by_element", value: "Au" });
         const result = await sel.applyFilter();
         console.log(JSON.stringify({ asked, result, selection: sel.get() }));
         """
