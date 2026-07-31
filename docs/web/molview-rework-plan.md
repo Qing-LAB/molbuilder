@@ -84,7 +84,8 @@ or care what is in it"* only holds while it is not sitting beside the serialiser
 
 ## 3. The order
 
-**Layers first, then the embed, then the data structures, then up.**
+**Layers first, then the embed, then the data structures, then up — and the UI seam pinned
+before anything is built to fit it (F½).**
 
 ### A — The layer skeleton
 Every file of § 2 created with nothing in it but its contract header: what it owns, who calls
@@ -125,6 +126,61 @@ spends unsaved work first, the badge, and SETTLED / CHANGING / WRITING.
 `render-engine.js`: § 10.5's four costs chosen by what changed and never by atom count,
 § 10.9's rebuild window where nothing that arrives is dropped, § 10.10's self-checks. Handed
 the master copy; holds nothing.
+
+### F½ — Pin the UI seam, before anything is built to fit it
+
+**Why this step exists.** The rebuild was written from `molview.md` as if it were the only
+source of truth. It is one of three, and it says so about one of them:
+
+| Source | Governs | Status |
+|---|---|---|
+| [`molview.md`](?doc=web/molview.md) | the layers, the data shapes, the rules, what may not happen | written, settled |
+| the server — `molbuilder/selection.py`, `web/blueprints/` | the wire vocabulary and payload shapes | exists; the contract **defers to `web-api.md`** for these |
+| **the old UI + its stylesheet** | **the user operation contract, and every shape crossing the UI seam** | **exists, validated — and the contract deliberately does not define it** |
+
+At both edges the contract does not reach, shapes were invented and layers built on them. The
+server edge was caught by reading `selection.py`: every filter rule the panel built would have
+been rejected. **The UI edge has not been caught, because nothing in the new tree can
+contradict it until G** — at which point either the validated UI bends to the invention, or
+the layers under it are rewritten.
+
+Two findings already, both live:
+
+- **The panel and the store disagree on a filter row.** The old panel produces
+  `{kind: "by_element", value}`; `stores.js` accepts `{kind: "element", …}`.
+- **The panel edits rows one at a time.** It calls `addFilter` / `updateFilter` /
+  `removeFilter` / `setCombinator` — because "+ Add filter" adds one row. `stores.js` offers
+  a bulk `setRows(...)`. Same for `setIsolate` / `setViewFlag` / `setMode` / `getState`
+  against `setSwitch` / `setEditor` and separate getters. **The store's surface was designed
+  without its only caller in view.**
+
+**What the stylesheet turns out to carry.** It is not decoration; it holds the module's
+**sizing contract**, which § 8 leans on. A handful of custom properties are the single source
+of truth for the whole layout — `--rail-w`, `--viewer-edge`, `--viewer-min`, `--panel-min`,
+`--fold-w`, and `--viewer-extent` derived from them — and:
+
+- the viewer is a **1:1 square** that never fills the card; leftover width goes to the panel;
+- the panel's **height is `--viewer-extent`, the same value the viewer uses**, so the two
+  bottom-align at every width **with no JS and no magic number**;
+- `--molview-min-width` is `max(--viewer-min, --panel-min)` — the **stacked** minimum, not the
+  row sum, because the card legitimately narrows by flipping to stacked. Only a host narrower
+  than *that* is the broken embed § 8 describes, and **that is the threshold `mount.js` must
+  key its blank-card-with-error path to**;
+- the fold is width-only when wide, height-only when stacked, and the **chevron glyph** rotates,
+  never the button box — rotating the box swaps its width and height in column mode and turns a
+  bar into a rail across the viewer;
+- one scroll region, the active page — not the panel and the atom list each adding their own;
+- `:not([hidden])` is load-bearing: `display: flex` would otherwise beat `[hidden]`. Two tests
+  in the suite already enforce this class of rule.
+
+**The step.** Read the frozen panel, knob bar, frame strip, menus, readout and stylesheet, and
+write down every shape and every load-bearing layout decision that crosses MolView's UI
+boundary — each verified against the frozen source the way the server's rules were. Then
+reconcile the already-built layers to it, `stores.js` first.
+
+It is cheap: reading, and one round of edits while only `stores.js` and `model.js` exist to
+change. It turns G from a discovery exercise into a mechanical one, and it is what stops the
+folding, sizing and panel design being rediscovered badly.
 
 ### G — Mount, the handle, the UI
 `mount.js` assembles the card, the panel, the controls and MolView's own menu, and returns a
