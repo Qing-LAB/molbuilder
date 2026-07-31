@@ -31,6 +31,17 @@ checked with. **Run only those.** § 13.2's third level, § 1.1 end to end, is a
 finished-module check: a page-level test fails for anything on the page, so using one to
 judge a low-level change says nothing about the change and throws away work that was correct.
 
+**That is the verification before every commit:** the concentrated tests written from the
+contract for the unit that just landed. Not the demo, not the package.
+
+**The old tests are retired, not repointed.** All nineteen whose subject was MolView moved
+to `lib/molview-old/_retired-tests/`, outside `testpaths`, and are deleted with the frozen
+code at closeout. Repointing them would measure the new code against the old code's shape:
+§ 13.1 rules out exactly that — a pinned list of names "passes for a surface that has
+drifted away from this document, and fails for a rename that changed nothing". Tests
+belonging to *other* modules that reach into MolView were left where they are; they break,
+and that is not repaired from here.
+
 **`window.molbuilder` is never typed.** MolView publishes nothing and reads nothing from the
 app's global namespace — § 4 in both directions: *"it is imported by name, it reaches nothing
 else by name, and nothing in the app can reach inside it … Nothing it needs comes from a
