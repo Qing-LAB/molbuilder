@@ -106,12 +106,17 @@ Two things follow, and both have cost real defects:
 |---|---|---|
 | `geometry` | the atoms as **numbers**, never text | both |
 | `metadata` | everything a coordinate file cannot hold, under the names the codec already uses (`Structure.metadata_to_dict`) plus the per-atom identity columns | both |
-| `document` | the canonical coordinate text **the server would write** | **response only** |
+| `document` | the canonical coordinate text **the server would write** | **the export door's answer only** |
 
-`document` travels one way on purpose. The server writes it; the browser *carries*
-it, so a later save can send back exactly what the server produced rather than a
-re-rendering of it. A request that contains a `document` is a request from
-something that wrote a file it should not have.
+`document` is not part of a structure response. It is what the **export** door
+answers with — that door's whole job — and it is absent everywhere else for a
+reason that is easy to get wrong: a caller sends `geometry` and `metadata` back,
+never a document, so nothing needs the text until somebody asks for a file.
+Putting it on every response would pay a full serialisation and a content hash
+per load and per edit to carry something no request will ever contain.
+
+A request that does contain a `document` is a request from something that wrote a
+file it should not have; the reader ignores it.
 
 A **metadata column is sent only when every atom has one**, otherwise `[]` —
 never a list with holes. The server takes `[]` as "absent" and applies its own

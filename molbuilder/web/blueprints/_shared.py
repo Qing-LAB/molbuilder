@@ -26,6 +26,7 @@ import typing
 from dataclasses import fields
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 from flask import jsonify
 
 from molbuilder.structure import (
@@ -121,6 +122,97 @@ def issues_to_json(issues, cfg=None):
 # --------------------------------------------------------------------- #
 
 
+# The metadata fields a Structure models -- the set its own codec owns
+# (``metadata_to_dict`` / ``apply_metadata_dict``), listed nowhere else.
+_ENVELOPE_IDENTITY = ("atom_names", "residue_ids", "residue_names", "chain_ids")
+
+
+def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
+    """The envelope's ``{geometry, metadata}`` as a Structure.
+
+    Geometry is numbers, so nothing is parsed: the atoms arrive as elements and
+    positions and go straight into the dataclass, whose ``__post_init__`` is the
+    one validator.  Metadata is applied through the codec's own door
+    (``apply_metadata_dict``), so the field set has one home.
+
+    ``geometry.source_index`` -- present when the envelope describes a SUBSET of
+    a larger structure -- is accepted and ignored here.  It is the CALLER's
+    bookkeeping for mapping an answer back onto the structure the subset came
+    from; the receiver answers about the atoms it was given and has no use for it.
+    """
+    geometry = env.get("geometry")
+    if not isinstance(geometry, dict):
+        raise ValueError("structure.geometry must be an object")
+    elements = geometry.get("elements")
+    positions = geometry.get("positions")
+    if not isinstance(elements, list) or not elements:
+        raise ValueError("structure.geometry.elements must be a non-empty list")
+    if not isinstance(positions, list) or len(positions) != len(elements):
+        raise ValueError(
+            f"structure.geometry.positions must have one entry per element "
+            f"({len(elements)}); got "
+            f"{len(positions) if isinstance(positions, list) else type(positions).__name__}")
+    for row in positions:
+        if not isinstance(row, (list, tuple)) or len(row) != 3:
+            raise ValueError("structure.geometry.positions rows must be [x, y, z]")
+
+    meta = env.get("metadata") if isinstance(env.get("metadata"), dict) else {}
+    n = len(elements)
+
+    def _column(name):
+        # An all-or-nothing column: honoured only at full length, exactly as the
+        # legacy path does, so a short or holed list cannot corrupt the result.
+        v = meta.get(name)
+        return list(v) if isinstance(v, list) and len(v) == n else None
+
+    struct = Structure(
+        elements      = [str(e) for e in elements],
+        positions     = np.asarray(positions, dtype=float),
+        atom_names    = _column("atom_names"),
+        residue_ids   = _column("residue_ids"),
+        residue_names = _column("residue_names"),
+        chain_ids     = _column("chain_ids"),
+        title         = meta.get("title") or None,
+    )
+    # The metadata block through the ONE applier, which re-runs the dataclass's
+    # own reconciliation afterwards. Identity columns are constructor arguments,
+    # not metadata, so they are excluded here rather than applied twice.
+    struct.apply_metadata_dict({k: v for k, v in meta.items()
+                               if k not in _ENVELOPE_IDENTITY and k != "title"})
+    return struct
+
+
+def _structure_envelope(struct: Structure, wire: Dict[str, Any]) -> Dict[str, Any]:
+    """A Structure as the envelope (web-api.md § 1): the atoms as numbers, and
+    the facts beside them.
+
+    NO ``document`` HERE, deliberately.  A coordinate document is what the EXPORT
+    door produces -- that is its entire job -- and building one costs a full
+    serialisation plus a hash over it.  Paying that on every load and every edit
+    would buy nothing: a caller sends geometry and metadata back, never a
+    document, so nothing downstream ever needs the text until somebody asks for
+    a file.
+    """
+    metadata = dict(struct.metadata_to_dict())
+    # The per-atom identity a coordinate file cannot hold, beside the rest --
+    # sent as full-length columns or not at all, since a list with holes poisons
+    # comparisons like max(residue_ids) on the way back in.
+    for name in _ENVELOPE_IDENTITY:
+        column = wire.get(name)
+        if isinstance(column, list) and len(column) == struct.n_atoms:
+            metadata[name] = list(column)
+    if struct.title:
+        metadata["title"] = struct.title
+
+    return {
+        "geometry": {
+            "elements":  list(wire["elements"]),
+            "positions": struct.positions.tolist(),
+        },
+        "metadata": metadata,
+    }
+
+
 def struct_from_body(body: Dict[str, Any]) -> Structure:
     """Reconstruct a Structure from the canonical body shape::
 
@@ -146,7 +238,25 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
     invariants in ``Structure.__post_init__`` (parallel-array length
     checks, dtype coercion of positions) fire on the final shape --
     NOT via post-construction ``setattr`` that bypasses the contract.
+
+    OR THE ENVELOPE (web-api.md § 1, "The request envelope")::
+
+        {"structure": {"geometry": {"elements": [...], "positions": [[x,y,z]…]},
+                       "metadata": {...}}}
+
+    which is the shape every door is being brought to: the atoms as NUMBERS, and
+    the facts beside them, so a caller holding coordinates never has to write a
+    coordinate document to ask a question about them.
+
+    **Which shape a body is: it carries a ``structure`` key, or it does not.**
+    That is the whole test.  A body carrying BOTH is a caller mid-migration --
+    the envelope wins and the legacy fields are ignored entirely, never merged,
+    because merging lets a stale field silently override a fresh one.
     """
+    envelope = body.get("structure")
+    if isinstance(envelope, dict):
+        return _struct_from_envelope(envelope)
+
     xyz = body.get("xyz") or ""
     if not isinstance(xyz, str) or not xyz.strip():
         raise ValueError("missing or empty 'xyz'")
@@ -390,6 +500,12 @@ def structure_to_dict(
     # OWN concerns (render `atoms`, `issues`, `text`/`xyz`, `extra`).
     wire = struct.to_wire()
     return {
+        # THE ENVELOPE (web-api.md § 1) -- the shape every door is being brought
+        # to, in both directions. It sits BESIDE the keys below rather than
+        # replacing them: both views are derived from this one Structure, on this
+        # one line, so they cannot come to disagree. The legacy keys go when
+        # nothing reads them, which is a question the code can answer.
+        "structure":     _structure_envelope(struct, wire),
         # Canonical keys (forward-compat with workspace dispatcher).
         "text":          base["text"],
         "source_format": base["source_format"],

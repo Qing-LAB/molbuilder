@@ -113,7 +113,7 @@ the rename was dropping on the floor.
 > does not survive it automatically, and executing it anyway is how a design
 > becomes a patch.
 
-### Phase C — the envelope, added not swapped *(the protocol)*
+### Phase C — the envelope, added not swapped *(the protocol)* — **LANDED**
 
 - `struct_from_body` accepts `{structure: {geometry, metadata}}` beside today's
   shapes
@@ -131,6 +131,17 @@ bare document.
 
 **Proved by:** the existing suite staying green. That is the whole point of
 "added, not swapped" — a phase that breaks a tab has broken its own rule.
+
+**Landed 2026-07-31.** The change is purely additive — the legacy path in
+`struct_from_body` is untouched, and the envelope branch fires only on a
+`structure` key. 295 existing tests pass; the two that fail were failing before
+it and 13 new ones pin the mechanics.
+
+One correction made while writing it: the first version put `document` on **every**
+structure response, costing a full serialisation and a content hash per load and
+per edit. It buys nothing — a caller sends geometry and metadata back, never a
+document — so it belongs on the export door's answer, which is the door whose job
+it is. The contract now says so.
 
 ### Phase D — MolView speaks the envelope *(items 1, 3, 4, front half)*
 

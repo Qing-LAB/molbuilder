@@ -67,6 +67,7 @@ from ._shared import (
     dataclass_to_form_schema as _dataclass_to_form_schema,
     issues_to_json as _issues_to_json,
     ok_structure_response,
+    struct_from_body as _struct_from_body,
 )
 
 from molbuilder import (
@@ -753,6 +754,51 @@ def api_structure_save():
     except Exception as exc:  # noqa: BLE001 -- disk / permission -> 500
         return jsonify({"ok": False, "error": f"could not save {path}: {exc}"}), 500
     return jsonify({"ok": True, "path": path})
+
+
+@bp.route("/api/structure/export", methods=["POST"])
+def api_structure_export():
+    """The pair a save would write, RETURNED instead of written.
+
+    Same generator, different destination: :func:`api_structure_save` puts
+    ``StructureCodec.pair`` on disk and this hands it back, so a structure saved
+    into a project and the same structure downloaded are byte-identical by
+    construction rather than by two code paths agreeing.
+
+    That division exists because the browser cannot produce the pair itself. The
+    sidecar's envelope -- ``schema_version``, and the ``structure_hash`` pinning
+    it to its geometry -- is the codec's, and a browser-authored one shipped
+    without the version key once: the load door then refused the pair on the next
+    open and every label in it was silently dropped.
+
+    Body: the ENVELOPE (web-api.md § 1) --
+    ``{"structure": {"geometry": {...}, "metadata": {...}}}``. This door is new,
+    so it has no callers owed compatibility and is born in that shape rather than
+    in the ``{xyz, sidecar}`` blob its neighbours still accept.
+
+    Returns ``{ok: true, xyz: "<document>", sidecar: {...} | null}``. A ``null``
+    sidecar is not an error: it means the structure carries no metadata worth
+    keeping, which is exactly when a save writes no ``.json`` either (``no .json
+    == empty metadata``)."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("structure"), dict):
+        return jsonify({"ok": False,
+                        "error": "missing or invalid 'structure' envelope "
+                                 "(need {geometry: {elements, positions}, metadata})"}), 400
+    try:
+        struct = _struct_from_body(body)
+    except (ValueError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    # The same gate every other structure door runs, so what leaves is what a
+    # save would have written -- healed identically, not merely similarly.
+    from molbuilder.periodicity_gate import validate_and_heal
+    struct, notices = validate_and_heal(struct)
+    made = StructureCodec().pair(struct)
+    return jsonify({"ok": True,
+                    "xyz": made.document,
+                    "sidecar": made.sidecar if made.keep_sidecar else None,
+                    "notices": notices})
 
 
 @bp.route("/api/build/load", methods=["POST"])
