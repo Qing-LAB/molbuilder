@@ -2065,7 +2065,7 @@ flowchart LR
 | | Produces | Reads from | Which frames | Undoable |
 |---|---|---|---|:--:|
 | **Save state** (and Retract) | one point in an ordered, persistent sequence — undo that survives a reload | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
-| **Export → Data** | two files: the coordinates as `.xyz`, and the metadata that travels with them as `.json` | **the truth** — the master copy | the displayed one, only | no |
+| **Export → Data** | the structure as data — a coordinate document and the metadata beside it (§ 11.7), written out as the `.xyz` and its `.json` | **the truth** — the master copy | the displayed one, only | no |
 | **Export → Snapshot** | a `.png` of the molecule as it is drawn right now | **the drawing** | the displayed one, only | no |
 | **Export → Animation** | a `.webm` or `.gif` of the whole trajectory | **the drawing** | every frame | no |
 
@@ -2095,9 +2095,17 @@ the other is a structure that has lost what the user said about it.
 
 **What the second file carries** is everything about the structure that a
 coordinate file cannot hold: the labels each atom carries, reserved names included
-(§ 6.6); the unit cell and the corner it is anchored at; residue names where the
-source had them. That is the sidecar, and its field-by-field shape belongs to
+(§ 6.6); the unit cell, the corner it is anchored at, how each axis is treated and
+how much empty space an isolated one gets; and the extensible annotation channels.
+That is the sidecar, and its field-by-field shape belongs to
 [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md), not here.
+Residue names are **not** among them — they ride in the geometry document for the
+formats that hold them, which is why they survive a save without the sidecar
+carrying a copy.
+
+**MolView produces those fields; it does not produce the file** (§ 11.7). The
+envelope that makes a `.molstruct.json` loadable — the schema version, the hash
+pinning it to its geometry — is stamped by the codec that writes the bytes.
 What it does **not** carry is anything about looking — no camera, no switches, no
 displayed frame — nor the selection, which is working state rather than a fact
 about the molecule. That is § 11.2's line drawn a second time, at the file. (One
@@ -2273,6 +2281,73 @@ That is what makes it correct in the two places a drawing-derived readout would 
 wrong: while a trajectory plays, because it re-reads the current frame; and under
 isolate, because the drawn numbering no longer matches the real one and it never
 looked at the drawn numbering (§ 6.5).
+
+### 11.7 The structure on the wire — one blob, and who writes what
+
+Three different things send the structure somewhere: an export, a cell edit, a
+geometry edit. This says what they send, and it is the same thing in all three
+cases.
+
+**A structure crosses as a coordinate document plus the facts beside it.** Every
+door that accepts a structure accepts the geometry as **text** — an `.xyz`
+document — and the per-atom facts as ordinary fields next to it. That is the
+server's shape and not a choice made here, and it has one consequence worth
+naming: a viewer that holds coordinates as numbers has to **write a coordinate
+document** to ask any question about them. The numbers become text, the server
+parses them straight back into numbers, and numbers come back.
+
+> **Open.** That round trip is the only reason MolView contains code that writes
+> a file format at all, and it is why the format has drifted from the one Python
+> writes (§ 11.3's note below). A door that accepted `elements` + `positions`
+> would remove the writer from the browser entirely and leave `Structure.to_xyz`
+> as the only place in the system that writes an `.xyz`. That is a change to the
+> server's doors, so it is recorded here rather than decided here.
+
+**One blob, and every outbound use is that same one read.** The pair — the
+coordinate document and the metadata beside it — is produced in **one place**,
+from **one read** of the structure, and handed to whichever door is being asked.
+That is § 9.3's "the facts that leave together were read together" turned into a
+mechanism instead of a promise: three call sites each assembling their own
+payload is exactly how one of them comes to carry current labels with stale
+positions.
+
+**The coordinates in it are the displayed frame** (§ 5.1, § 11.3). **It refuses**
+rather than producing a pair whose metadata does not fit its geometry — if the
+atom count and the per-atom facts disagree, nothing is produced at all (§ 9.3).
+
+**MolView writes the metadata FIELDS. It does not write the sidecar FILE.**
+
+Those are different things that share a name, and the difference is the whole of
+this rule. The **fields** are what the viewer knows: which atoms carry which
+label, which are frozen, the cell block. The **file** adds an envelope that only
+the writer can supply — the schema version the reader checks first, the content
+hash that pins the sidecar to the geometry it belongs to, and the provenance
+stamp. Those are the codec's, written when the bytes are written.
+
+> This is not a preference. A browser-authored envelope shipped once **without a
+> schema version**, and the load door refused the pair on the next open — so the
+> file was there, the labels were in it, and every one of them was silently
+> dropped on reload. The fix was to stop authoring the envelope in the browser,
+> not to add the missing key.
+
+So an export names a **destination** and hands over the blob; what a valid
+`.molstruct.json` looks like belongs to
+[`model/structure-molstruct.md`](?doc=model/structure-molstruct.md), and putting
+the bytes on disk in that shape is the server's job.
+
+**What a load brings back.** The server answers with more than the viewer models:
+the atoms and their facts, the cell block, the coordinate document it would
+write, and per-atom identity columns a coordinate file cannot hold — atom names,
+residue ids, chain ids — plus the extensible annotation channels.
+
+> **Open.** MolView keeps the first three and drops the rest. That is invisible
+> until an edit: a structure that goes to the server and comes back has been
+> rebuilt from what was sent, so anything the viewer did not carry is **gone from
+> the file afterwards** — atom names flattened to elements, chains dropped,
+> annotation channels cleared. Carrying them opaquely (never read, never
+> interpreted, sent back exactly as they arrived) is what the previous
+> implementation did and what § 6.2 would have to say for an edit to be
+> non-destructive on a structure that came from a PDB.
 
 ---
 
@@ -2488,6 +2563,9 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds, whatever isolate is doing; a picture and an animation are renders and carry whatever the view was set to |
 | § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so labels and frozen atoms survive into whatever is generated from it |
+| § 11.7 — one blob, one read | an export and a cell edit send the same pair, assembled in one place; a request built after an edit carries that edit in every part of what it sends |
+| § 11.7 — the fields are MolView's, the envelope is not | what leaves the viewer carries the labels, the frozen set and the cell — and does **not** carry a schema version, a content hash or a provenance stamp, because a browser-written envelope is refused by the reader that checks it first |
+| § 11.7 — a structure that survives a round trip | after an edit, the file on disk still holds what the file before it held: nothing the viewer does not model may be dropped by passing through it |
 | § 11.3 — save-to-project and download differ only in destination | both produce identical bytes, and neither has MolView writing a file |
 | § 11.4 — every export enters at MolView | no export decides anything below the model; a picture is rendered by the sealed layer on request, but what to export and where it goes is decided above |
 | § 6.7 — no hand-rolled file handling | the module builds no download link, makes no object URL, names no filesystem API and calls no file endpoint; bytes leave through a door handed in at mount |
@@ -2532,6 +2610,7 @@ what they already said, and § 15 is a map for reading the code.
 | § 10 the render pipeline | **5.1, 5.2, 5.3** | the one path from the master copy to the picture: what each switch produces, in what order, at what cost |
 | § 11 the other connections | 5.2, 5.5 | the server, the workspace, the three kinds of saving, and the one atom-numbering translation |
 | § 11.3–11.4 saving, and who decides it | **5.1, 5.2, 5.5** | three things wear the same word; separating them is what makes "the truth" and "a view of it" mean something at the point a user acts |
+| § 11.7 the structure on the wire | **5.2, 5.5** | one blob assembled once is how the facts that leave together stay together — and the line between the fields a viewer knows and the envelope only a writer can supply is what keeps a saved file loadable |
 | § 12 worked examples | — | the concepts above, in the order they actually happen |
 | § 13 the tests | all six | a test derived from the source cannot defend an idea |
 | § 15 the file map | — | for when you open the code |
