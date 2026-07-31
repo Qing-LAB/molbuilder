@@ -518,9 +518,10 @@ starts from it rather than from whatever is currently on screen. That is what
 lets the whole structure come back the moment isolate is turned off.
 
 **The drawing copy — what the graphics library was handed.** Under isolate the
-unselected atoms are gone from it entirely, the survivors are renumbered, and
-force arrows are baked in. It can answer exactly one question: what is currently
-painted on screen.
+unselected atoms are gone from it entirely and the survivors are renumbered. The
+movie itself is coordinates; what is drawn beside the atoms sits over it as
+free-standing shapes (§ 10.6). It can answer exactly one question: what is
+currently painted on screen.
 
 **There is no third copy, and adding one is a design error.** A tab may hold its
 own parsed run file — but that file carries *different* facts (energies, forces
@@ -1441,7 +1442,7 @@ frame is a set of length one, and it runs through exactly the same steps as four
 hundred. The only thing that changes is that the frame bar does not appear.
 
 **The output is fully-ready data.** What reaches 3Dmol is finished — every frame
-already cut down, with its arrows baked in. The pipeline does not micro-manage
+already cut down to the atoms that are drawn. The pipeline does not micro-manage
 the library frame by frame; it hands over the complete set and 3Dmol then uses
 its own GPU acceleration to display and animate it. (Atom-number labels and the
 highlight are the exception, and § 10.6 explains why: they are free-standing
@@ -1591,17 +1592,27 @@ The movie the library holds contains **coordinates only**. Overlays attach to it
 in two different ways, and that difference is what decides which change costs
 what.
 
-**Force arrows are baked into the movie, per frame, at load.** Frame `i` carries
-frame `i`'s arrows, so a frame swap shows the right arrows for free — no
-recompute. That is why changing the forces switch or the arrow scale re-derives
-arrows for every frame and **re-bakes them in place**, without touching the
-coordinates: an overlay refresh, not a rebuild.
+**Everything drawn beside the atoms is a free-standing object, and they divide by
+what decides their content.**
 
-**Atom-number labels and the highlight are re-placed for the shown frame on each swap.**
-They are free-standing objects sitting at atom coordinates.
-A frame swap moves the atoms but not those objects, so each swap must repaint
-them at the new positions. That is a handful of shapes — one frame's worth — not
-a movie rebuild, and critically it **never restyles the molecule's geometry**.
+**Atom-number labels and the highlight are keyed to ATOMS.** Which atom a label
+belongs to does not change when the frame does — only where that atom is. So the
+drawing re-places them itself on every swap, from the atoms it has just moved to,
+and nothing above needs to re-send them.
+
+**Force arrows are keyed to the FRAME.** An arrow's length and direction come
+from *that frame's* forces, which the drawing does not hold and cannot work out —
+so the pipeline sends the shown frame's arrows with each swap. One frame's worth
+of shapes, derived from one frame's forces.
+
+That difference is why the drawing can re-place four of the five kinds on its own
+and not the fifth: the first four are *positions of things it already knows
+about*, and the fifth is *new content*. It is also why changing the forces switch
+or the arrow scale costs an overlay refresh and not a rebuild — the coordinates
+are untouched either way.
+
+Both are a handful of shapes, and critically neither **restyles the molecule's
+geometry**.
 
 A rebuild is the only cost that reparses coordinates: it rebuilds the movie, and
 also re-bakes the arrows and re-applies the shown frame's atom-number labels and highlight.
@@ -1611,6 +1622,13 @@ It is the only one that raises the cover.
 > and visibly drift off the atoms as a trajectory plays. That is the failure this
 > mechanism exists to prevent, and it is what a test of it must actually check —
 > that the shapes move with the frames, not merely that they exist.
+>
+> The arrows are the half a test is most likely to miss, because they are correct
+> for a different reason than the labels: the drawing keeps the labels honest by
+> itself, while the arrows stay honest only for as long as the pipeline keeps
+> sending them. An optimisation that skipped re-sending "unchanged" overlays on a
+> swap would freeze the arrows on the previous frame and leave the labels
+> perfect.
 
 ### 10.7 Why the highlight is a shape and not a restyle
 

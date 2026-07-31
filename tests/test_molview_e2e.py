@@ -401,6 +401,63 @@ def test_the_card_brings_its_own_surfaces(demo):
         assert "255, 255, 255" not in value, f"the {name} is white: {value}"
 
 
+def test_the_cell_door_speaks_the_route_it_posts_to(demo):
+    """§ 6.2: the cell is "one fact that travels together, which is why there is
+    one door to change it" — and a door the server refuses is not one.
+
+    This runs against the REAL route, deliberately. Both halves of this had been
+    wrong for as long as they existed and no stand-in could have caught either,
+    because a stand-in written beside the code agrees with the code:
+
+      - the door posted `{op, params, structure}`; the route reads
+        `{data: {xyz, sidecar}, op, payload}` and answers 400 without it;
+      - the block that comes back is `{cell, cell_origin, …}` and the module read
+        `lattice` and `origin`, so the cell was null however the round trip went.
+
+    § 13.1's rule about stand-ins is exactly this failure: one that "copies how
+    the code happens to work" confirms behaviour that cannot happen.
+    """
+    got = demo.evaluate(
+        """async () => {
+            const { mount } = await import("/static/lib/molview/index.js");
+            const host = document.createElement("div");
+            host.style.width = "900px";
+            document.body.appendChild(host);
+            const ws = { read: async () => null, write: async () => {} };
+            const v = await mount(host, ws, { owner: "cell-door" });
+
+            await v.data.installMolecule({
+                text: "2\\n\\nAu 0 0 0\\nAu 2 2 0\\n", filename: "au.xyz" });
+
+            // Give it a cell through the one door, then read it back through
+            // the one read (§ 9.3's main way in).
+            // The payload IS the value for that op — the route's four ops are
+            // vacuum / axis_kind / cell / cell_origin, each taking its own field
+            // directly. MolView carries it through and interprets none of it
+            // (§ 6.2).
+            const answer = await v.data.commitPeriodicityOp(
+                "cell", [[8,0,0],[0,8,0],[0,0,8]]);
+            const info = v.data.getUnitCellInfo();
+            const sidecar = v.data.exportFile().sidecar;
+            return {
+                answered: answer !== null,
+                lattice:  info.lattice,
+                exported: sidecar.cell,
+            };
+        }"""
+    )
+    assert got["answered"] is True, (
+        "the cell door was refused by the route it posts to"
+    )
+    assert got["lattice"] == [[8, 0, 0], [0, 8, 0], [0, 0, 8]], (
+        f"the cell did not come back through the module's own read: {got}"
+    )
+    assert got["exported"] == got["lattice"], (
+        "the cell reached the viewer but not the sidecar, so a saved structure "
+        f"would lose it: {got}"
+    )
+
+
 def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):
     """§ 5.6 and § 12.6: two mounts are two viewers that share nothing — and the
     things they can collide over in a real document are NAMES: element ids, and

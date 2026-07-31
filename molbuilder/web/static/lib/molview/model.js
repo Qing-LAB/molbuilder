@@ -18,7 +18,7 @@
 
 import {
     createLoad, createWriteOut, createEdits, createCellEdit, FROZEN_LABEL,
-    resolveFilter as askServerToFilter,
+    structureAsData, resolveFilter as askServerToFilter,
 } from "./model-jobs.js";
 import { createSelectionStore, createViewStore } from "./stores.js";
 import { createHistory } from "./history.js";
@@ -308,11 +308,17 @@ export function createModel(opts) {
         recordFirstState: () => (readOnly ? null : history.anchor()),
     });
 
+    /* THE STRUCTURE AS DATA, read in one place and handed to everything that
+     * sends or writes it (§ 9.3: "the facts that leave together were read
+     * together"). The coordinates come from the DISPLAYED frame — § 5.1's
+     * promise at the point it matters — and the metadata from the same read, so
+     * the two can never be one edit apart. */
+    const readData = () => structureAsData(structure,
+                                           frames ? frames[frameIndex] : null);
+
     const exportFile = createWriteOut({
-        readStructure: () => structure,
-        readFrame:     (i) => (frames ? frames[i] : null),
-        currentFrame:  () => frameIndex,
-        readSource:    () => sourceName,
+        readData:   readData,
+        readSource: () => sourceName,
     });
 
     const applyOp = createEdits({
@@ -336,9 +342,7 @@ export function createModel(opts) {
     });
 
     const commitPeriodicityOp = createCellEdit({
-        readStructure: () => structure,
-        readFrame:     (i) => (frames ? frames[i] : null),
-        currentFrame:  () => frameIndex,
+        readData: readData,
         // A cell edit does not move an atom, so the frame and its range are
         // untouched — this is why § 10.5 makes it an overlay refresh.
         applyCell: (cell) => {

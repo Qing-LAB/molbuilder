@@ -48,6 +48,13 @@ globalThis.__payload = function (atoms, extra) {
     return Object.assign({ atoms }, extra || {});
 };
 
+/* THE STAND-IN SPEAKS THE SERVER'S NAMES, not the module's (§ 13.1: a stand-in
+ * "must obey THAT LEVEL's rules"). Its periodicity block is `{cell, cell_origin,
+ * axis_kind, vacuum}` — what /api/build/load actually sends. It used to carry
+ * `{lattice, origin}`, which is what the MODULE calls them, so the module's
+ * inbound translation was tested against its own output and the cell was silently
+ * null against the real server for every structure ever loaded. */
+
 globalThis.fetch = async function (route, init) {
     const body = JSON.parse(init.body);
     globalThis.__requests.push({ route, body });
@@ -137,7 +144,7 @@ def test_no_read_at_all_can_be_written_through():
         // the test proves nothing.
         globalThis.__nextPayload = globalThis.__payload(
             [atomRow(0, "C", 0), atomRow(1, "O", 1)],
-            { periodicity: { lattice: [[8,0,0],[0,8,0],[0,0,8]], origin: [1,1,1],
+            { periodicity: { cell: [[8,0,0],[0,8,0],[0,0,8]], cell_origin: [1,1,1],
                              axis_kind: ["periodic","periodic","isolated"],
                              vacuum: [0,0,12] } });
         const m = createModel({});
@@ -235,7 +242,7 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
         globalThis.__nextPayload = globalThis.__payload([
             globalThis.__atomRow(0, "C", 0, { regions: ["anchor"] }),
             globalThis.__atomRow(1, "O", 1, { is_frozen: true, residue_name: "ALA" }),
-        ], { periodicity: { lattice: [[4,0,0],[0,4,0],[0,0,4]], origin: [1,1,1] } });
+        ], { periodicity: { cell: [[4,0,0],[0,4,0],[0,0,4]], cell_origin: [1,1,1] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
 
@@ -653,7 +660,7 @@ def test_the_facts_a_request_carries_all_came_from_one_read():
         """
         globalThis.__nextPayload = globalThis.__payload([
             globalThis.__atomRow(0, "C", 5, { regions: ["edited"] }),
-        ], { periodicity: { lattice: [[7,0,0],[0,7,0],[0,0,7]] } });
+        ], { periodicity: { cell: [[7,0,0],[0,7,0],[0,0,7]] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
 

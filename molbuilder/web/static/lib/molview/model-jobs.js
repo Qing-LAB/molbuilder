@@ -92,10 +92,19 @@ export function structureFromServer(payload) {
         structure: {
             elements:    elements,
             annotations: annotations,
-            // The cell block is CARRIED, not interpreted (§ 6.2). Its field names
-            // and the rules for resolving them belong to
-            // model/structure-periodicity.md.
-            cell: payload.periodicity || null,
+            // The cell block is CARRIED, not interpreted (§ 6.2) — but it is
+            // RENAMED here, because that is what this file is for (§ 11.1: "the
+            // server's names become this module's names, in one place, so
+            // nothing downstream has to know both").
+            //
+            // It read `periodicity.lattice` and `periodicity.origin` for a long
+            // time. The server has never sent either: the block is `cell` and
+            // `cell_origin`. So the cell was ALWAYS null — the box could not be
+            // drawn at any time, the axes always fell back to the Cartesian
+            // triad, and an exported sidecar carried no cell at all. Nothing
+            // failed; a missing key reads as "this structure is not periodic",
+            // which is a perfectly ordinary answer.
+            cell: cellFromServer(payload.periodicity),
         },
         coordinates: {
             frames: [atoms.map((a) => [Number(a.x) || 0,
@@ -103,6 +112,42 @@ export function structureFromServer(payload) {
                                        Number(a.z) || 0])],
             forcesPerFrame: null,
         },
+    };
+}
+
+/* THE CELL, both directions.
+ *
+ * MolView's own names for the block are the ones § 9.3's table uses —
+ * `getUnitCell` is "the raw 3×3", `getUnitCellOrigin` the corner it is anchored
+ * at — so `lattice` and `origin` are what every layer above reads. The server
+ * calls the same two `cell` and `cell_origin`.
+ *
+ * Both directions live here, next to each other, so neither can be changed
+ * without the other being in view. `resolved_*` is deliberately dropped: those
+ * are the server's answer to "what will actually be used", which MolView neither
+ * stores nor interprets (§ 6.2). */
+function cellFromServer(block) {
+    if (!block || typeof block !== "object") return null;
+    const cell = {
+        lattice:   block.cell || null,
+        origin:    block.cell_origin || null,
+        axis_kind: block.axis_kind || null,
+        vacuum:    block.vacuum || null,
+    };
+    // A block with nothing in it is not a cell. "There is no cell" and "here is
+    // an empty one" are different answers (§ 9.3's rule, one level down).
+    return cell.lattice || cell.origin || cell.axis_kind || cell.vacuum
+        ? cell : null;
+}
+
+function cellForServer(cell) {
+    const c = cell || {};
+    const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
+    return {
+        cell:        clone(c.lattice),
+        cell_origin: clone(c.origin),
+        axis_kind:   clone(c.axis_kind),
+        vacuum:      clone(c.vacuum),
     };
 }
 
@@ -211,56 +256,57 @@ function requestBodyFor(input) {
  */
 export function createWriteOut(handed) {
     return function exportFile() {
-        const structure = handed.readStructure();
-        if (!structure) return null;
-        const positions = handed.readFrame(handed.currentFrame());
-        if (!positions) return null;
-        const source = handed.readSource ? handed.readSource() : null;
-
-        // "It REFUSES to produce anything when the geometry and the per-atom
-        // labels disagree about how many atoms there are, returning nothing
-        // rather than writing a corrupt structure" (§ 9.3).
-        if (positions.length !== structure.elements.length
-            || structure.annotations.length !== structure.elements.length) {
-            return null;
-        }
-
-        const lines = [String(structure.elements.length), ""];
-        for (let i = 0; i < structure.elements.length; i++) {
-            const p = positions[i];
-            lines.push(structure.elements[i] + " " + p[0] + " " + p[1] + " " + p[2]);
-        }
+        const blob = handed.readData();
+        if (!blob) return null;
         return {
-            name:    source,
-            text:    lines.join("\n") + "\n",
-            sidecar: sidecarFor(structure, positions.length),
+            name:    handed.readSource ? handed.readSource() : null,
+            text:    blob.xyz,
+            sidecar: blob.sidecar,
         };
     };
 }
 
+
 /**
- * The metadata that travels beside the geometry (§ 11.3) — the sidecar's
- * FIELDS, in the shape the rest of the application already speaks.
+ * THE STRUCTURE AS DATA — one blob, coordinates and metadata together.
  *
- * WHAT THIS IS NOT: the request payload. This used to hand back
- * `structureForServer()` — elements, positions and a `periodicity` block — which
- * is what a server ROUTE wants and is not a sidecar at all. Written to disk it
- * pairs a good `.xyz` with a `.json` the codec cannot read, and the labels it
- * was carrying are lost at the next open. The two shapes look similar enough
- * that nothing complained.
+ * `{xyz, sidecar}`, and every outbound use of the structure is this one read:
+ * the Data export's two files, and the cell door's payload. That is not tidiness
+ * — it is § 9.3's "the facts that leave together were read together" made
+ * structural. Three call sites each shaping their own payload is how one of them
+ * comes to carry current labels with stale positions, and it is how the export
+ * came to write a server-request payload into a `.molstruct.json`.
  *
- * WHO FINISHES IT: the server. `model/structure-molstruct.md` § 1's envelope —
- * `schema_version`, `n_atoms_total` re-checked, and the `structure_hash` that
- * pins the pair — is stamped by `StructureCodec.write` when the bytes are
- * written, deliberately: a browser-authored envelope once shipped without
- * `schema_version` and the load door refused the pair on the next open. So this
- * carries the FACTS and no bookkeeping.
+ * The old module drew the same line and put it in the same place: ONE
+ * serialisation for the durable save AND the transient draft AND the cell edit,
+ * with this file's atom-count guard in front of it.
  *
- * The cell is spread into the sidecar's own field names — `cell`, `cell_origin`,
- * `axis_kind`, `vacuum` — which is a rename and not an interpretation: MolView
- * still reads none of it (§ 6.2).
+ * WHAT THE SIDECAR IS: the metadata FIELDS the server's codec reads
+ * (`model/structure-molstruct.md` § 1). The ENVELOPE — `schema_version`, the
+ * `structure_hash` that pins the pair — is stamped server-side when the bytes are
+ * written, deliberately: a browser-authored envelope shipped without
+ * `schema_version` once and the load door refused the pair on the next open.
  */
-export function sidecarFor(structure, atomCount) {
+export function structureAsData(structure, positions) {
+    if (!structure || !positions) return null;
+
+    /* THE ONE INVARIANT, CHECKED HERE AND NOWHERE ELSE. The coordinates and the
+     * per-atom facts are two lists that must index the same atoms; if they ever
+     * disagree, this REFUSES rather than producing a pair whose labels point at
+     * atoms that are not there (§ 9.3). The old module put the same guard in the
+     * same place, with the same reasoning: a mismatched .xyz/.json pair must
+     * never reach disk. */
+    const count = structure.elements.length;
+    if (positions.length !== count || structure.annotations.length !== count) {
+        return null;
+    }
+
+    const lines = [String(count), ""];
+    for (let i = 0; i < count; i++) {
+        const p = positions[i];
+        lines.push(structure.elements[i] + " " + p[0] + " " + p[1] + " " + p[2]);
+    }
+
     const labels = {};
     const frozen = [];
     structure.annotations.forEach((facts, i) => {
@@ -269,21 +315,17 @@ export function sidecarFor(structure, atomCount) {
             (labels[name] = labels[name] || []).push(i);
         }
     });
-    // COPIED, not referenced: this is handed to a caller (§ 9.3 — "changing what
-    // you were given can never change the viewer"), and a sidecar holding the
-    // master copy's own cell arrays is a write into the structure disguised as
-    // an export. `labels` and `frozen` are built fresh above; only the cell was
-    // reached into.
-    const cell = structure.cell || {};
-    const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
+
+    // COPIED, not referenced: this is handed to a caller (§ 9.3), and a blob
+    // holding the master copy's own arrays is a write into the structure
+    // disguised as a read.
     return {
-        n_atoms_total: atomCount,
-        regions:       labels,
-        frozen_atoms:  frozen,
-        cell:          clone(cell.lattice),
-        cell_origin:   clone(cell.origin),
-        axis_kind:     clone(cell.axis_kind),
-        vacuum:        clone(cell.vacuum),
+        xyz: lines.join("\n") + "\n",
+        sidecar: Object.assign({
+            n_atoms_total: count,
+            regions:       labels,
+            frozen_atoms:  frozen,
+        }, cellForServer(structure.cell)),
     };
 }
 
@@ -387,23 +429,40 @@ function countChanged(before, after) {
  * MolView interprets none of it: it sends the block and stores what comes back.
  */
 export function createCellEdit(handed) {
-    return async function commitPeriodicityOp(op, params) {
-        const structure = handed.readStructure();
-        if (!structure) return null;
-        const positions = handed.readFrame(handed.currentFrame());
-        let payload;
+    return async function commitPeriodicityOp(op, payload) {
+        /* THE SAME BLOB THE EXPORT PRODUCES. A cell edit is the server deciding
+         * what the box becomes, and it decides that FROM THE WHOLE STRUCTURE —
+         * the atoms it has to wrap included. So it is handed the structure as
+         * data, exactly as a save is, rather than a payload shaped for this one
+         * call.
+         *
+         * This used to send `{op, params, structure}`, which the route does not
+         * read: it wants `{data: {xyz, sidecar}, op, payload}` and answers 400
+         * without it. The error was caught and turned into null, so the ONE door
+         * § 6.2 gives the cell has never once succeeded. Every layer above was
+         * right; the body was handcrafted at the call site instead of coming
+         * from the one place that knows what a structure looks like on the wire.
+         */
+        const data = handed.readData();
+        if (!data) return null;
+        let answer;
         try {
-            payload = await postJson("/api/structure/periodicity", {
-                op:        op,
-                params:    params || {},
-                structure: structureForServer(structure, positions),
+            answer = await postJson("/api/structure/periodicity", {
+                data:    data,
+                op:      op,
+                payload: payload === undefined ? null : payload,
             });
         } catch (_) {
             return null;
         }
-        if (!payload || !payload.periodicity) return null;
-        handed.applyCell(payload.periodicity);
-        return payload.periodicity;
+        // The server answers with the whole structure again; what changed is the
+        // cell, and it comes back under the SERVER's names — so it goes home
+        // through the same translation everything else does.
+        const returned = answer && answer.blob && answer.blob.sidecar;
+        if (!answer || answer.ok === false || !returned) return null;
+        const cell = cellFromServer(returned);
+        handed.applyCell(cell);
+        return cell;
     };
 }
 
