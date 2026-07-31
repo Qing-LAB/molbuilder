@@ -2333,13 +2333,19 @@ contains code that writes a file format, and it is how the browser's `.xyz` came
 to differ from Python's — no title line, and raw precision where `to_xyz` writes
 six decimals.
 
-> **Where the code has not caught up.** The doors must accept `elements` +
-> `positions`, so the browser can hand over what it holds. Then
+> **Where the code has not caught up.** The doors must accept the atoms as
+> **numbers**, so the browser can hand over what it holds. Then
 > `Structure.to_xyz` is the only place in the system that writes an `.xyz`, the
 > sidecar's field set has one home, and the rule above is true by construction
 > rather than by everyone remembering it. Until then the browser writes a
 > coordinate document it should not be writing, and the two writers have to be
 > kept in step by hand.
+>
+> The shape that fixes it is agreed and drafted — one envelope, both directions,
+> every door — and it lives with the other wire shapes in
+> [`web-api.md`](?doc=web/web-api.md) § 1, not here. This document says *that* a
+> structure crosses whole and who may write a file; that one says what the JSON
+> looks like.
 
 **One blob, and every outbound use is that same one read.** The pair — the
 coordinate document and the metadata beside it — is produced in **one place**,

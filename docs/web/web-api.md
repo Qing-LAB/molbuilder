@@ -53,6 +53,99 @@ the Modify tab's older `applyStructure(r)` reads. The inverse, rebuilding a
 `Structure` from a request body, is `struct_from_body()`; metadata arrays are
 honored only when their length matches the atom count.
 
+### The request envelope — four shapes today, one by design
+
+The paragraph above is true of **responses**. It is not true of requests: a
+structure goes *out* of the browser in four different shapes, one per door
+family.
+
+| door | how the structure is sent today |
+|---|---|
+| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format, sidecar}` |
+| `/api/modify/*` | `{xyz, atom_names, residue_ids, residue_names, chain_ids, regions, frozen_atoms, periodicity, annotations, title, …the op's own arguments}` — flattened columns |
+| `/api/structure/periodicity`, `/api/structure/save` | `{xyz, sidecar}` — a coordinate document plus the sidecar's metadata fields |
+| `/api/selection/eval` | `{atoms: [{element, labels, residueName}], rule}` — a cut-down atom list |
+
+Two things follow, and both have cost real defects:
+
+- **A caller must know four shapes** to use four doors, and nothing makes them
+  agree. A field added to one is absent from the others until somebody notices.
+- **Two of the four require the caller to write a coordinate document.** The
+  browser holds coordinates as numbers, so it serialises them to text, the server
+  parses that straight back into numbers, and numbers come back. That round trip
+  is the only reason a `.xyz` writer exists in the browser at all — and the
+  browser's writer has already drifted from `Structure.to_xyz` (no title line, raw
+  precision where Python writes six decimals), so the same structure saved from
+  two halves of the application produces two different files.
+
+> **The rule.** **A structure crosses in one envelope, in both directions, at every
+> door — and the server is the only thing that turns it into a file.** The browser
+> sends what it holds; it never sends a document it wrote.
+
+**The envelope.**
+
+```json
+{
+  "structure": {
+    "geometry": { "elements": ["C", "O"],
+                  "positions": [[0.0, 0.0, 0.0], [1.4, 0.0, 0.0]] },
+    "metadata": { "regions": {"L-electrode": [0]}, "frozen_atoms": [1],
+                  "cell": null, "cell_origin": null,
+                  "axis_kind": ["isolated","isolated","isolated"],
+                  "vacuum": [0.0, 0.0, 0.0],
+                  "annotations": {},
+                  "atom_names": [], "residue_ids": [],
+                  "residue_names": [], "chain_ids": [], "title": "" },
+    "document": "2\nBuilt by molbuilder\nC  0.000000 …"
+  },
+  "…": "the call's own arguments — indices, anchors, op, path, …"
+}
+```
+
+| part | what it is | direction |
+|---|---|---|
+| `geometry` | the atoms as **numbers**, never text | both |
+| `metadata` | everything a coordinate file cannot hold, under the names the codec already uses (`Structure.metadata_to_dict`) plus the per-atom identity columns | both |
+| `document` | the canonical coordinate text **the server would write** | **response only** |
+
+`document` travels one way on purpose. The server writes it; the browser *carries*
+it, so a later save can send back exactly what the server produced rather than a
+re-rendering of it. A request that contains a `document` is a request from
+something that wrote a file it should not have.
+
+A **metadata column is sent only when every atom has one**, otherwise `[]` —
+never a list with holes. The server takes `[]` as "absent" and applies its own
+default; a list containing `null` poisons comparisons like `max(residue_ids)`,
+which is a bug this project has already shipped once.
+
+**Responses** are the same envelope plus whatever the call has to say:
+
+```json
+{ "ok": true, "structure": { "geometry": …, "metadata": …, "document": … },
+  "notices": [ "…heals and warnings…" ] }
+```
+
+**What this replaces, door by door.**
+
+| door | request | response |
+|---|---|---|
+| `load` | `{path}` **or** `{document, filename, format}` for a paste — the only place raw text is legitimate, because a user supplied it | the envelope |
+| `modify/<op>` | the envelope + the op's arguments | the envelope |
+| `periodicity/<op>` | the envelope + `op`, `payload` | the envelope |
+| `save` | the envelope + `path`, `overwrite` | `{ok, path}` |
+| `export` | the envelope | the files as bytes, from the one generator the save uses |
+| `selection/eval` | the envelope + `rule` | `{selected_indices}` |
+
+**Compatibility.** The envelope is **added, not swapped**. Responses keep today's
+keys — `text`, `atoms`, `periodicity`, `annotations` and the legacy root aliases —
+beside `structure`, and requests accept both shapes, until every consumer has
+moved. Nothing in the tabs has to change on the day this lands.
+
+> **Status: agreed, not implemented.** This is the protocol the front end and the
+> back end are being brought to; today's four shapes are what ships. The
+> conversion is tracked in
+> [`molview-corrections-plan.md`](?doc=web/molview-corrections-plan.md).
+
 ### The client mirror
 
 The browser never wraps these calls in `try/catch`. `projects/api.js`'s

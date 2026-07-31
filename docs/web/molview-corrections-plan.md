@@ -425,6 +425,19 @@ not carry across.
 8. **§ 13.3** gains a row for each: an edit whose result contradicts its declared
    effect is refused, and a second edit during one in flight is refused.
 
+### The protocol this belongs to
+
+`applyOp`'s body is one door's half of a larger question, and the answer is now
+drafted: **one envelope, both directions, at every door**, with the server the only
+thing that turns a structure into a file. It is in
+[`web-api.md`](?doc=web/web-api.md) § 1 — "The request envelope" — because that
+document owns the wire shapes and this one does not.
+
+Two things there govern the work above: the envelope carries the atoms as
+**numbers**, so the browser stops writing coordinate documents (item 3); and it is
+**added, not swapped** — responses keep today's keys beside it and requests accept
+both shapes — so no tab has to change on the day it lands.
+
 ### Open
 
 Nothing.
