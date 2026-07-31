@@ -32,11 +32,23 @@ const SAMPLES = {
     gold: "4\nAu fcc\nAu 0 0 0\nAu 2.04 2.04 0\nAu 2.04 0 2.04\nAu 0 2.04 2.04\n",
 };
 
-// A trajectory: the oxygen slides along +x while the hydrogens stay put, so it
-// is obvious at a glance whether the frames are actually moving on screen —
-// which is the failure a stand-in test cannot see (§ 13.2).
+/* A trajectory: the WHOLE MOLECULE slides along +x, its internal geometry
+ * unchanged, so it is obvious at a glance whether the frames are moving on
+ * screen — the failure a stand-in test cannot see (§ 13.2).
+ *
+ * It moves as a rigid body ON PURPOSE. The first version of this fixture slid
+ * the oxygen away and left the hydrogens behind, which pulls the water apart:
+ * by frame 2 the O–H distances are past bonding range, the drawing library
+ * assigns NO BONDS, and the default `stick` representation — which draws bonds
+ * and nothing else — renders an empty window. Every layer was correct, the
+ * frame count was right, and both of the seal's self-checks reported healthy
+ * (§ 10.10 asks HOW MANY frames, so a full drawing of unbondable atoms is
+ * exactly what it cannot see). It read as a broken viewer for a long time.
+ *
+ * A demo fixture has to fail VISIBLY when the code is wrong and not otherwise;
+ * one that dissociates cannot tell the two apart. */
 const FRAMES = [0, 0.4, 0.8, 1.2, 1.6, 2.0].map((dx) => ([
-    [dx, 0, 0], [0.757, 0.586, 0], [-0.757, 0.586, 0],
+    [dx, 0, 0], [0.757 + dx, 0.586, 0], [-0.757 + dx, 0.586, 0],
 ]));
 const FORCES = FRAMES.map((_, f) => ([
     [2.0 - f * 0.4, 0, 0], [0.1, 0, 0], [0.1, 0, 0],

@@ -529,6 +529,24 @@ export function createRenderEngine(embed) {
             doOverlay();
         },
 
+        // "Draw it this way." A drawing setting DERIVES NOTHING (§ 10.1): no
+        // frame is re-processed, the movie is untouched, and the same frame is
+        // simply painted differently. Never a rebuild, whatever the atom count.
+        //
+        // This is also level 6's translation (§ 9.8) — the store keeps the
+        // vocabulary the UI speaks (`style`, `radius`), the seal keeps the one
+        // the drawing library speaks (`rep`, `radiusScale`), and neither has to
+        // learn the other's. It is the only place the two names meet.
+        drawingChanged(settings) {
+            const s = settings || {};
+            embed.setStyle({
+                rep:         s.style,
+                radiusScale: s.radius,
+                background:  s.background,
+            });
+            embed.setProjection(s.orthographic ? "orthographic" : "perspective");
+        },
+
         // "Here is the cell." An overlay refresh, NOT a rebuild — the atoms did
         // not move; only the box and the axes changed (§ 10.5).
         cellChanged() {

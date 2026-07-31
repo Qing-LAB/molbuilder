@@ -179,6 +179,9 @@ function mountMenus(doc, card, model, files) {
     const exportMenu = buildExportMenu(doc, model, files);
     bar.appendChild(view.root);
     bar.appendChild(exportMenu.root);
+    // The playback bar is the third thing in this row (§ 8.5). The scaffold owns
+    // the element; this is the only place that knows where the row is.
+    if (card.frameBar) bar.appendChild(card.frameBar);
 
     // One open at a time.
     const menus = [view.root, exportMenu.root];
@@ -529,6 +532,13 @@ function mountPanel(doc, card, model) {
         tabButtons[key] = tab;
 
         const page = el("div", "panel-page");
+        /* THE ID IS PART OF THE MARKUP CONTRACT, exactly like the class (§ 8.1).
+         * The stylesheet singles this page out by id — the Cell page is all
+         * read-only text, so it sizes to its content and then scrolls, while
+         * the Selection page holds action buttons that must stay on screen and
+         * so fills instead. Ship the page without its id and it silently takes
+         * the other page's behaviour. */
+        page.id = "panel-page-" + key;
         page.hidden = key !== "selection";
         pages[key] = page;
     }
@@ -588,6 +598,13 @@ function mountPanel(doc, card, model) {
 
     /* ── The click page: the atom list ──────────────────────────────────── */
     const clickSection = el("div", "selection-click-section");
+    /* The id, again as contract: `#selection-click-section:not([hidden])` is the
+     * rule that makes this section FILL the panel and hold the single scroll
+     * region, so the atom list grows to the panel's bottom and the buttons
+     * beneath it line up with the bottom of the 3D window (§ 8.2's shared
+     * extent). Without the id the section sizes to its content and the whole
+     * page collapses upward. */
+    clickSection.id = "selection-click-section";
     const count = el("div", "selection-count");
     const listWrap = el("div", "selection-list-wrap");
     const list = el("table", "selection-atom-table");
@@ -598,6 +615,7 @@ function mountPanel(doc, card, model) {
 
     /* ── The filter page: rows, edited one at a time (§ 8.4) ─────────────── */
     const filterSection = el("div", "selection-filter-section");
+    filterSection.id = "selection-filter-section";
     const rows = el("div", "selection-filter-rows");
     filterSection.appendChild(rows);
 

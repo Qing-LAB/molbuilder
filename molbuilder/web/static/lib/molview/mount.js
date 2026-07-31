@@ -129,6 +129,18 @@ export async function mount(hostEl, workspace, opts) {
     const engine = createRenderEngine(embed);
     model._attachRenderer(engine);
 
+    /* The drawing settings reach the drawing (§ 10.1). Until this line existed
+     * the View menu changed a store NOBODY READ: the buttons took their pressed
+     * state, the store fired, its only subscriber was the menu updating itself,
+     * and the picture never changed. A door the module owns but never opens is
+     * indistinguishable from a broken one.
+     *
+     * Seeded once with the store's current value so the drawing starts on the
+     * store's defaults rather than the seal's own — two sets of defaults that
+     * merely happen to agree is the second home § 7 forbids. */
+    engine.drawingChanged(model.view.get());
+    parts.push(model.view.subscribe((settings) => engine.drawingChanged(settings)));
+
     // A click in the window arrives at the bottom and is the selection's
     // business, not the drawing's (§ 9.5). Under isolate the drawn numbering no
     // longer matches the real one, so in-window clicking is off (§ 6.5) — the
@@ -296,12 +308,21 @@ function buildCard(hostEl, opts) {
     body.appendChild(panel);
     root.appendChild(body);
 
-    // The frame bar sits under the window. It is the one piece not decided at
-    // mount: a viewer mounts before it has a structure, and the bar appears once
-    // a structure with more than one frame is loaded into it (§ 8).
+    /* The frame bar rides the KNOB BAR, beside View and Export — created here
+     * because it is part of the scaffold, but PLACED by whoever builds that bar
+     * (ui.js), which is the only piece that knows where the row is.
+     *
+     * It belongs in that row and not under the card: the stylesheet sizes it
+     * `flex: 1 1 15rem` precisely so it shares the row with the two menus and
+     * WRAPS to its own full-width line when they leave it less than that. Hung
+     * below the card instead, it spans the window AND the panel, is governed by
+     * neither, and reads as a page control rather than this viewer's.
+     *
+     * It is the one piece not decided at mount: a viewer mounts before it has a
+     * structure, and the bar appears once one with more than one frame is
+     * loaded into it (§ 8). */
     const frameBar = el("div", "molview-frame-controls");
     frameBar.hidden = true;
-    root.appendChild(frameBar);
 
     hostEl.appendChild(root);
     return { root, body, viewer, canvas, panel, frameBar, fold };

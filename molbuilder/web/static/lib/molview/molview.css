@@ -66,6 +66,83 @@
     min-width: var(--molview-min-width);
 }
 
+/* ── THE CARD SURFACE (§ 4, § 5.4) ──────────────────────────────────────────
+ *
+ * MolView BRINGS ITS OWN. Until this block existed the surface — background,
+ * border, radius, padding — came from the host page's shared `.card` class,
+ * which the old markup carried alongside `.mol-viewer-card`. That worked on
+ * every page that happened to load the app stylesheet and NOWHERE else: mounted
+ * standalone (the demo, § 13.4) the module rendered as loose controls on a bare
+ * page with no card and no separation between the window and the panel.
+ *
+ * Depending on a class the host happens to have is what § 5.4 forbids and what
+ * this file's header already promised not to do. So the three surfaces below
+ * are declared here, in the module's own stylesheet, keyed to the module's own
+ * classes.
+ *
+ * The values are the app's tokens FIRST, with the token's own value as the
+ * fallback — so inside molbuilder the card is identical to every other card on
+ * the page and re-themes with them, and outside it the module still looks like
+ * itself. A fallback is not a second palette; it is the same palette written
+ * where the module can reach it. */
+.molview-card,
+.molview-card .mol-viewer-card,
+.molview-card .selection-card {
+    background:    var(--bg-card, #1d2128);
+    border:        1px solid var(--border-strong, #3a3f48);
+    border-radius: var(--radius, 7px);
+    box-shadow:    var(--shadow-card, 0 1px 0 rgba(255, 255, 255, 0.02) inset);
+    color:         var(--text-primary, #e6e9ef);
+}
+
+/* A surface costs WIDTH, and the sizing contract above is arithmetic that has to
+ * account for every pixel of it (§ 8.2). Two rules keep that true:
+ *
+ * 1. BORDER-BOX, declared here for MolView's own subtree rather than inherited
+ *    from whatever reset the host page happens to apply (§ 5.4 again — the
+ *    module cannot be at the mercy of a host rule for its own arithmetic).
+ *    Under it `height: 100%` on the inner card still FILLS the square and the
+ *    padding insets the canvas within it, which is the layout the surface is
+ *    for; under content-box the same padding would push the canvas OUT of the
+ *    square and into the panel.
+ *
+ * 2. `--card-pad` is a NAMED part of the derivation, not a value sprinkled on
+ *    three rules. The outer card's padding and border sit OUTSIDE the content
+ *    box that `100cqw` measures, so `--viewer-extent` is unaffected — but they
+ *    are inside `min-width`, so the floor has to grow by exactly them or a host
+ *    that honours the floor still delivers a card too narrow to hold the row.
+ *
+ * There is NO gutter rule here. The gap between the window and the panel is the
+ * fold handle's own rail, `--fold-w`, which the extent already subtracts (§ 8.3);
+ * adding a `gap` would spend width the arithmetic has not been told about and
+ * overflow the row by exactly that much. */
+.molview-card,
+.molview-card *,
+.molview-card *::before,
+.molview-card *::after {
+    box-sizing: border-box;
+}
+
+.molview-card {
+    --card-pad:    var(--space-sm, 0.6rem);
+    --card-border: 1px;
+    padding: var(--card-pad);
+
+    /* The floor GROWS BY THE SURFACE — and it is the same variable, not a second
+     * `min-width` beside it. `--molview-min-width` is read back by mount.js to
+     * decide whether the host is wide enough (§ 8.2); a floor written only into
+     * the CSS property would leave the script checking a number the card no
+     * longer honours, and the check would pass on a card too narrow to draw. One
+     * name, one value, both readers. */
+    --molview-min-width: calc(max(var(--viewer-min), var(--panel-min))
+                              + 2 * (var(--card-pad) + var(--card-border)));
+}
+
+.molview-card .mol-viewer-card,
+.molview-card .selection-card {
+    padding: var(--card-pad);
+}
+
 /* WIDE (row): viewer | handle | panel.  justify-content:flex-start so the viewer sits at the card's
  * LEFT edge (aligned with the card header's title); the PANEL grows (flex:1 1 auto below) to absorb
  * any width the host gives beyond the viewer square + fold, so the content FILLS the card end to end
