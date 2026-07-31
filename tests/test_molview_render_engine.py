@@ -564,3 +564,46 @@ def test_the_engine_never_names_the_drawing_library():
     doors; it does not know what is behind them.
     """
     assert "3Dmol" not in ENGINE.read_text()
+
+
+def test_one_menu_two_owners():
+    """§ 8.5: the View menu writes to two different stores, and § 9.6's question
+    is what sorts them — does working out what a frame contains require reading
+    this?
+
+    § 13.3: "turning on atom numbers re-derives frames; changing the style does
+    not — both from the same menu."
+
+    The menu is one piece of UI. That does not make its contents one kind of
+    thing, and the cost is where the difference shows.
+    """
+    out = _run(
+        """
+        const { engine, src } = wired(4, 3);
+        await engine.dataChanged();
+        engine.__resetCosts();
+
+        // A SWITCH: atom-number labels change what is IN a frame.
+        src.switches.showIndex = true;
+        engine.switchesChanged();
+        const afterSwitch = engine.__costs().slice();
+
+        // A DRAWING SETTING smuggled in beside them: style, background and
+        // projection change how the same frame is PAINTED, so the pipeline must
+        // not see them at all (§ 10.5's table has no row for one).
+        Object.assign(src.switches, {
+            style: "sphere", background: "black", orthographic: true, radius: 9,
+        });
+        engine.switchesChanged();
+        const afterSetting = engine.__costs().slice();
+
+        console.log(JSON.stringify({ afterSwitch, afterSetting }));
+        """
+    )
+    assert out["afterSwitch"] == ["overlay"], (
+        f"turning on atom numbers must re-derive the overlays: {out['afterSwitch']}"
+    )
+    assert out["afterSetting"] == ["overlay", "overlay"], (
+        "a drawing setting must not change the COST of anything — the second "
+        f"call cost the same as the first: {out['afterSetting']}"
+    )

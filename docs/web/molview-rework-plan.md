@@ -173,14 +173,31 @@ of truth for the whole layout — `--rail-w`, `--viewer-edge`, `--viewer-min`, `
 - `:not([hidden])` is load-bearing: `display: flex` would otherwise beat `[hidden]`. Two tests
   in the suite already enforce this class of rule.
 
-**The step.** Read the frozen panel, knob bar, frame strip, menus, readout and stylesheet, and
-write down every shape and every load-bearing layout decision that crosses MolView's UI
-boundary — each verified against the frozen source the way the server's rules were. Then
-reconcile the already-built layers to it, `stores.js` first.
+**DONE.** The seam and the layout are now in the **contract**, not here — § 8.1–8.5, placed
+under "making a viewer" so nothing renumbered — with rows in § 13.3 and entries in § 14. That
+placement is the point: this plan is deleted at closeout, so anything recorded only here
+drifts again the moment it goes.
 
-It is cheap: reading, and one round of edits while only `stores.js` and `model.js` exist to
-change. It turns G from a discovery exercise into a mechanical one, and it is what stops the
-folding, sizing and panel design being rediscovered badly.
+What the pass found and fixed:
+
+- **The panel and the store disagreed on a filter row** (`by_element` vs `element`), and the
+  store took rows in bulk where the panel edits them one at a time. `stores.js` reconciled:
+  `getState`/`subscribe` hand over one snapshot, `addFilter`/`updateFilter`/`removeFilter`/
+  `setCombinator` edit a row at a time, `setIsolate` and `writeLabel` match the panel.
+- **The pick order taught the rule.** It was maintained correctly in the store for months and
+  simply left out of the snapshot, so the panel guessed an angle's vertex from geometry and
+  § 11.6 was dead end to end while looking implemented. *A fact the store keeps but does not
+  hand over does not exist* — now § 8.4, and the test asserts the snapshot carries it rather
+  than that the store tracks it.
+- **The stylesheet carries the sizing contract** § 8 leans on: the square, the shared extent
+  that bottom-aligns the panel with no script, and the **stacked** minimum as the floor a host
+  must respect — which is the number `mount.js` keys its blank-card-error path to. Now § 8.2.
+- **The frame bar is one control with two owners** — the frame from the model, playback from
+  the handle — and today it reads both from the handle, which § 9.2 retires. Now § 8.5.
+- **The View menu writes to two stores**, sorted by § 9.6's question. Now § 8.5, with a test.
+
+**Left open by the pass:** § 9.6 says the camera is fitted on load *and on Reset* but never
+says whose door Reset is. Recorded in § 8.5 as an open note.
 
 ### G — Mount, the handle, the UI
 `mount.js` assembles the card, the panel, the controls and MolView's own menu, and returns a

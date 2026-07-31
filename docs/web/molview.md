@@ -939,6 +939,42 @@ The panel names its rows in the same vocabulary the server evaluates, so there i
 no translation table in between to drift — with the single exception of atom
 numbering, which crosses at exactly one point (§ 11.5).
 
+### 8.5 The controls, and what each one reads
+
+Every control MolView draws is a **caller of the model** — the same doors a tab
+would use, meeting the same rules and the same read-only gate. None of them holds
+a fact of its own, and none reaches the drawing directly.
+
+| The control | Reads | Writes |
+|---|---|---|
+| **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4) | the displayed frame, through the one write everyone uses; play, pause and loop, through the handle (§ 9.2) |
+| **the View menu** — style, atom numbers, cell, axes, background, projection, Reset | both stores | *style, background, projection* to `view`; *atom numbers, cell, axes* to `selection` — because the first three change how a frame is painted and the last three change what is in it (§ 9.6) |
+| **the panel** | one snapshot of `selection` (§ 8.4) | the selection, the switches, the filter rows, and labels |
+| **the measurement readout** | which atoms are picked **and in what order**, from `selection`; their coordinates from the **master copy** at the current frame | nothing |
+| **the Export menu** | what to export and where it goes (§ 11.4) | nothing in the viewer |
+
+**The frame bar is the clearest case of "one control, two owners."** The frame
+number is the model's (§ 6.4) and playback is the handle's (§ 9.2), so the bar
+reads each from where it lives rather than from whichever object is nearest. A
+bar that read the frame from the handle would be reading a mirror — and § 9.2
+retires exactly those forwarded reads.
+
+**The View menu writes to two different stores, and § 9.6's question is what
+sorts them.** *Does working out what a frame contains require reading this?*
+Atom-number labels, the cell and the axes: yes, so they are switches. Style,
+background and projection: no, so they go straight to the drawing. The menu is
+one piece of UI; that does not make its contents one kind of thing.
+
+**The measurement readout never touches the drawing.** It takes atom numbers from
+the panel's selection and coordinates from the master copy, which is exactly why
+it stays correct while a trajectory plays and under isolate, where the drawn
+numbering no longer matches the real one (§ 11.6).
+
+> **Open.** § 9.6 says the camera is fitted to the structure on load **and on
+> Reset**, but does not say whose door Reset is. It is not a switch and not a
+> drawing setting — it is an action on the window. Naming its owner is a decision
+> still to be made.
+
 ---
 
 ## 9. The APIs, and who each one serves
@@ -2125,6 +2161,11 @@ That is not an academic distinction — it is exactly where this went wrong:
 > renamed to something unambiguous is worth deciding while § 11.4's move happens
 > — task #39.)
 
+**A single-frame export out of a trajectory names the frame it came from.** The
+default filename carries it — `wire_frame50.xyz` — so the file says which frame
+it is without anyone having to remember. A static structure and an animation get
+no suffix, because for them there is nothing to disambiguate.
+
 ### 11.5 One atom-numbering translation, in one place
 
 Atom numbers are **0-based in code** and **1-based on screen**, and MolView never
@@ -2330,6 +2371,8 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 8.3 — the arrow turns, the handle does not | folding rotates the glyph only, so the handle's box keeps its shape in both layouts |
 | § 8.4 — the panel is handed one settled state, whole | every fact the panel draws arrives in one snapshot, including the pick order; a fact the store keeps but omits from it is the failure this guards |
 | § 8.4 — a filter row is edited one at a time | adding, retyping, re-kinding and removing a row are each their own change; nothing requires re-sending the whole set |
+| § 8.5 — a control reads a fact from where it lives | the frame bar takes the frame and the count from the model and playback from the handle; no control reads a forwarded mirror of either |
+| § 8.5 — one menu, two owners | turning on atom numbers re-derives frames; changing the style does not — both from the same menu |
 | § 9.2 — the handle refuses appearance | there is no way through the handle to push arrows, labels, a busy state or a toggle — arrows come from the forces in the data or are not drawn at all |
 | § 9.3 — a read cannot be used to write | changing what a read returned leaves the viewer untouched |
 | § 9.3 — one need, one main way in | a narrower cut returns exactly what the main way in holds for that field — the two cannot disagree |
@@ -2413,6 +2456,7 @@ what they already said, and § 15 is a map for reading the code.
 | § 8 making a viewer | **5.4, 5.6** | embedding is one call, and `owner` is what makes it a viewer of its own |
 | § 8.1–8.3 the card, its sizing, its fold | **5.4** | a host hands over an empty element and gets a working viewer — so what it must respect is one number, and everything else derives from the square |
 | § 8.4 the panel reads one state | **5.2** | a fact the store keeps but does not hand over does not exist, and one snapshot is what makes that impossible rather than unlikely |
+| § 8.5 the controls and what each reads | **5.1, 5.2** | every control is a caller of the model, so one set of controls behaves the same everywhere and none of them keeps a second answer |
 | § 9 the APIs | 5.2, 5.4 | each surface named with who it serves, so nothing grows a second way to the same fact |
 | § 9.4 read-only | 5.1, 5.2 | one rule instead of a list of disabled buttons that drifts |
 | § 9.6 the camera is not held | **5.2** | the one fact MolView cannot own without owning something that goes stale — so it owns none of it |
