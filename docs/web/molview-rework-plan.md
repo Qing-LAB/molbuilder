@@ -174,3 +174,15 @@ Findings worth keeping, not code.
 2. **`factsForRequest`** — § 9.3 retires it in favour of one read plus one translation. It is
    named in another document's contract, so retiring it is a decision there.
 3. **§ 11.1's route sentence** — one line, your wording.
+4. **Two filter channels the rebuilt `_atom.js` does not have**, both dropped by reading the
+   contract rather than by oversight — worth your eye because one of them is visible to a
+   user today.
+   - `frozen` was a channel of its own because the old atom carried an `isFrozen` field.
+     § 6.6 settles it the other way: `frozen atoms` is an ordinary label, so it arrives as a
+     tag with no case of its own. Nothing is lost — the row still appears, by the general
+     mechanism. **This one is decided; it is what § 6.6 says.**
+   - `values` — per-atom scalars (charge, spin) — **is a row that disappears.** § 6.2's
+     carried facts are element, labels and residue, and the rule is that the enumerated list
+     and the carried list move together, so a value channel cannot be offered while the
+     structure does not carry one. That is task **#24**'s programme, which extends both lists
+     in one step. Ship without it, or pull #24 forward — your call.
