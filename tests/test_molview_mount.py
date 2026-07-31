@@ -377,6 +377,129 @@ def test_the_frame_bar_appears_only_once_there_is_more_than_one_frame():
     )
 
 
+def test_a_switch_and_a_selection_reach_the_drawing():
+    """§ 9.5: the switches live in the selection store, and the renderEngine
+    reads them "when working out a processed frame" (§ 9.6's table). § 10.5: a
+    switch flip costs an overlay refresh; a change to the set of drawn atoms
+    costs a rebuild.
+
+    This is the test the suite did not have, and its absence cost six features at
+    once. The renderEngine was correct and was tested against a stand-in data
+    source that offered `switches()` and `selection()`; the MODEL handed it four
+    doors and neither of those, so every frame was worked out from no switches
+    and an empty selection. Atom-number labels, force arrows, the cell, the axes,
+    the highlight and isolate were dead together, and every layer passed its own
+    tests.
+
+    So this one asserts across the seam — a switch set through the model's own
+    door, and what arrives at the drawing.
+    """
+    out = _run(
+        """
+        const { viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+
+        globalThis.__resetCalls();
+        viewer.data.selection.setSwitch("showIndex", true);
+        const labelled = globalThis.__countCalls("addLabel");
+
+        globalThis.__resetCalls();
+        viewer.data.selection.toggle(1);
+        const highlighted = globalThis.__countCalls("addSphere");
+
+        // Isolate changes WHICH atoms are drawn, so the movie is reloaded and
+        // carries only the selected one (§ 10.5's rebuild).
+        globalThis.__resetCalls();
+        viewer.data.selection.setSwitch("isolate", true);
+        await new Promise((r) => setTimeout(r, 0));
+        const reloads = globalThis.__countCalls("addModelsAsFrames");
+        const drawn = globalThis.__lastCall("setStyle") ? true : false;
+
+        console.log(JSON.stringify({
+            labelled, highlighted, reloads, drawn,
+            frames: globalThis.__lastCall("addModelsAsFrames") ? 1 : 0,
+        }));
+        """
+    )
+    assert out["labelled"] > 0, (
+        "turning on atom numbers drew no labels — the switch reached nothing"
+    )
+    assert out["highlighted"] > 0, (
+        "selecting an atom drew no highlight — the selection reached nothing"
+    )
+    assert out["reloads"] == 1, (
+        f"isolate did not rebuild the movie: {out['reloads']} reloads"
+    )
+
+
+def test_the_switches_are_a_rail_of_buttons_outside_the_window():
+    """§ 1.1: "Six icon buttons sit down the left edge, always outside the
+    canvas, never on top of the molecule" — Reset view, axes, atom labels, force
+    vectors, unit cell, show-selected-only, in that order.
+
+    Two things are asserted and both are the design rather than decoration: that
+    they are one-press controls a user can see without opening anything, and that
+    they are OUTSIDE the window — the card's own arithmetic pays for the column
+    (`--rail-w`) precisely so the controls never cover the molecule.
+
+    Each reads its lit state from the store (§ 5.2), so a switch flipped
+    somewhere else lights the right button with nothing kept in step.
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        const card = host.querySelector(".molview-card");
+        const rail = card.querySelector(".mol-viewer-quickbar");
+        const buttons = rail.children;
+
+        const shape = {
+            glyphs: buttons.map((b) => b.textContent),
+            names:  buttons.map((b) => b.getAttribute("aria-label")),
+            // Reset is an action, so it is the one with no lit state.
+            pressed: buttons.map((b) => b.getAttribute("aria-pressed")),
+            insideCanvas: !!card.querySelector(".mol-viewer-canvas")
+                              .querySelector(".mol-viewer-quickbar"),
+        };
+
+        // A press writes the store...
+        buttons[4].click();                       // the unit cell
+        const afterPress = viewer.data.selection.getState().showCell;
+        // ...and a switch set anywhere else lights the button.
+        viewer.data.selection.setSwitch("showAxis", true);
+        const litFromStore = buttons[1].getAttribute("aria-pressed");
+
+        globalThis.__resetCalls();
+        buttons[0].click();                       // Reset view
+        const refit = globalThis.__countCalls("zoomTo");
+
+        console.log(JSON.stringify({ shape, afterPress, litFromStore, refit }));
+        """
+    )
+    assert out["shape"]["glyphs"] == ["⟲", "✚", "#", "➤", "▦", "◉"], (
+        f"the rail is not § 1.1's six buttons in order: {out['shape']['glyphs']}"
+    )
+    assert out["shape"]["names"] == [
+        "Reset view", "Show axes", "Show atom labels",
+        "Show force vectors", "Show unit cell", "Show selected only",
+    ]
+    assert out["shape"]["pressed"][0] is None, (
+        "Reset view carries a pressed state; it is an action, not a switch"
+    )
+    assert all(p == "false" for p in out["shape"]["pressed"][1:]), (
+        "every switch starts off (§ 9.5)"
+    )
+    assert out["shape"]["insideCanvas"] is False, (
+        "the rail is inside the 3D window — § 1.1 puts it outside, so it can "
+        "never cover the molecule"
+    )
+    assert out["afterPress"] is True, "pressing a rail button set no switch"
+    assert out["litFromStore"] == "true", (
+        "a switch set elsewhere did not light its button — the rail is "
+        "remembering its own state instead of reading the store"
+    )
+    assert out["refit"] == 1, "Reset view did not re-fit the camera"
+
+
 def test_an_open_menu_is_placed_against_its_own_trigger():
     """§ 8.5: MolView's menus are controls the module draws, and a control that
     opens onto nothing is not one.

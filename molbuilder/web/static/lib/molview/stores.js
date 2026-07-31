@@ -109,6 +109,14 @@ export function createSelectionStore(handed) {
     const set = (next, order) => {
         selected = next;
         pickOrder = order != null ? order : next.slice();
+        /* ISOLATE TURNS ITSELF OFF WHEN THE SELECTION EMPTIES (§ 1.1) — "since
+         * there would be nothing left to show". It is a SELECTION-STATE RULE,
+         * so it lives here beside the fact it depends on rather than in the
+         * control that happened to empty the selection; Clear, Remove, a filter
+         * that matches nothing and a restored empty session all go through this
+         * one line. It is settled BEFORE the snapshot fires, so no reader ever
+         * sees isolate on with nothing selected. */
+        if (switches.isolate && !selected.length) switches.isolate = false;
         changed.fire(snapshot());
     };
 

@@ -85,6 +85,31 @@ export function createModel(opts) {
     });
     const view = createViewStore();
 
+    /* ── The switches and the selection reach the drawing (§ 10.5) ─────────
+     *
+     * Without this the store was complete, the renderEngine was correct, and
+     * NOTHING ARRIVED: every frame was worked out from `{}` switches and an
+     * empty selection, so atom-number labels, force arrows, the cell box, the
+     * axes, the highlight and isolate were dead at once — six features, one
+     * missing wire. It is the model that has to make this call, because the
+     * renderEngine is called only by the model (§ 7 level 5) and a store may not
+     * reach past it.
+     *
+     * WHAT IS COMPARED is exactly what the frame calculation reads (§ 6.5). The
+     * snapshot also carries which editor is showing and the filter rows being
+     * typed; those change no pixel, and re-deriving on every keystroke in a
+     * filter box would be work with an identical answer. */
+    let drawnFrom = null;
+    selection.subscribe((state) => {
+        const reads = JSON.stringify([
+            state.selection, state.isolate, state.showIndex, state.showForces,
+            state.showCell, state.showAxis, state.forceScale,
+        ]);
+        if (reads === drawnFrom) return;
+        drawnFrom = reads;
+        if (renderer) renderer.switchesChanged();
+    });
+
     /* ── The history (§ 11.2) ──────────────────────────────────────────────
      *
      * Handed a way to record a state and a way to put one back, and nothing
@@ -534,11 +559,19 @@ export function createModel(opts) {
         _attachRenderer(engine) {
             renderer = engine;
             if (engine) {
+                /* Everything the frame calculation is a function of (§ 10.2):
+                 * the data, AND what the user has set. Handing over only the
+                 * first four is how the switches came to reach nothing — the
+                 * renderEngine read `switches()` and `selection()` off this
+                 * object, found neither, and drew from empty defaults without
+                 * anything failing anywhere. */
                 engine.setDataSource({
                     structure: () => structure,
                     frames:    () => frames,
                     forces:    () => forcesPerFrame,
                     frame:     () => frameIndex,
+                    switches:  () => selection.switches(),
+                    selection: () => selection.get(),
                 });
             }
         },

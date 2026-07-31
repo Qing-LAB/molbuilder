@@ -186,6 +186,60 @@ def test_each_change_costs_what_the_table_says():
     )
 
 
+def test_the_axes_and_the_force_arrows_are_drawn_together():
+    """§ 10.3 lists the overlays as independent things a switch adds, and § 10.11
+    says the scene is "a fixed stack of independent layers … no switch can
+    corrupt another".
+
+    The axis triad rides the ordinary arrow door carrying its own colours, and
+    the drawing has ONE such door — so the two must be composed into a single
+    set, not written one after the other. Written in sequence, whichever went
+    last erased the other: with both switches on the force arrows disappeared,
+    and a frame swap (which re-places the overlays but not the scene) erased the
+    axes instead.
+
+    Counting is enough here and is the honest assertion: the question is whether
+    both sets survived the same write, not what an arrow looks like.
+    """
+    out = _run(
+        """
+        const { engine, src } = wired(3, 2);
+        src.forces = [
+            [[1,0,0],[0,1,0],[0,0,1]],
+            [[1,0,0],[0,1,0],[0,0,1]],
+        ];
+        await engine.dataChanged();
+
+        // Forces alone: one arrow per atom.
+        src.switches.showForces = true;   await engine.switchesChanged();
+        const forcesOnly = calls("setArrows").pop().args[0];
+
+        // Both: the three axes ride along with them.
+        src.switches.showAxis = true;     await engine.switchesChanged();
+        const both = calls("setArrows").pop().args[0];
+
+        // A swap re-places the overlays — and must not drop the axes doing it.
+        src.frame = 1;                    engine.showFrame();
+        const afterSwap = calls("setArrows").pop().args[0];
+
+        // Axes alone, with the forces switched back off.
+        src.switches.showForces = false;  await engine.switchesChanged();
+        const axesOnly = calls("setArrows").pop().args[0];
+
+        console.log(JSON.stringify({ forcesOnly, both, afterSwap, axesOnly }));
+        """
+    )
+    assert out["forcesOnly"] == 3, "one force arrow per atom"
+    assert out["axesOnly"] == 3, "three axes"
+    assert out["both"] == 6, (
+        f"with both switches on the drawing got {out['both']} arrows, not both "
+        f"sets — one write erased the other"
+    )
+    assert out["afterSwap"] == 6, (
+        f"a frame swap dropped one of the two sets: {out['afterSwap']} arrows"
+    )
+
+
 def test_the_cost_never_consults_the_atom_count():
     """§ 10.5: "THE COST IS CHOSEN BY WHAT CHANGED, NEVER BY HOW BIG THE SYSTEM
     IS. There is no atom-count threshold and no magic number anywhere in this

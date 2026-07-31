@@ -209,6 +209,16 @@ export async function mount(hostEl, workspace, opts) {
         // Hear that something changed, rather than polling for it.
         onChange(fn) { return model.subscribe(fn); },
 
+        /* Re-fit the camera on the structure (§ 9.6, § 1.1's `⟲`).
+         *
+         * It sits HERE rather than on the model because it is not data: § 9.6
+         * keeps the camera out of every layer above the drawing, so there is no
+         * setting to write and nothing to read back — it is an action on the
+         * window, like playback, which is the other thing this handle owns.
+         * (§ 8.5 leaves Reset's owner open; this is the answer that adds no
+         * second home for anything.) */
+        resetView() { engine.resetView(); },
+
         dispose() {
             for (const p of parts.slice().reverse()) {
                 try { p(); } catch (_) {}
@@ -279,6 +289,16 @@ function buildCard(hostEl, opts) {
     busy.appendChild(el("div", "mol-viewer-busy-msg"));
     canvas.appendChild(busy);
 
+    /* THE RAIL OF SWITCHES IS THE STAGE'S LEFT COLUMN (§ 1.1): "six icon buttons
+     * sit down the left edge, ALWAYS OUTSIDE THE CANVAS, NEVER ON TOP OF THE
+     * MOLECULE". That is why it is a sibling of the window and not an overlay
+     * over it, and why the square's arithmetic pays for its width up in
+     * `--rail-w` rather than taking it out of the drawing.
+     *
+     * Built here and FILLED by ui.js, the same division as the frame bar: the
+     * scaffold owns where things sit, the controls own what they do. */
+    const rail = el("div", "mol-viewer-quickbar");
+    stage.appendChild(rail);
     stage.appendChild(canvas);
     frame.appendChild(stage);
     inner.appendChild(frame);
@@ -325,7 +345,7 @@ function buildCard(hostEl, opts) {
     frameBar.hidden = true;
 
     hostEl.appendChild(root);
-    return { root, body, viewer, canvas, panel, frameBar, fold };
+    return { root, body, viewer, rail, canvas, panel, frameBar, fold };
 }
 
 /* The floor a host must respect, read from the stylesheet rather than written

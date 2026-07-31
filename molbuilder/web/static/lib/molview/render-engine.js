@@ -331,6 +331,25 @@ export function createRenderEngine(embed) {
         });
     }
 
+    /* ONE frame, for the two costs that only ever touch one (§ 10.5).
+     *
+     * A swap and an overlay refresh both need the overlays OF THE SHOWN FRAME
+     * and nothing else. Working out all four hundred to use one is the redraw
+     * § 10.4 says playing does not do — invisible, because the answer is right;
+     * it is the cost that is wrong, and it grows with the trajectory. */
+    function processOne(at) {
+        const all = frames() || [];
+        if (!all[at]) return null;
+        const perFrame = forces();
+        return processFrame({
+            elements:  structure() ? structure().elements : [],
+            positions: all[at],
+            forces:    perFrame ? perFrame[at] : null,
+            selection: selection(),
+            switches:  switches(),
+        });
+    }
+
     /* ── Handing a processed frame down (§ 9.8) ───────────────────────────
      *
      * Level 6's translation: finished data into the drawing's doors. No
@@ -345,7 +364,16 @@ export function createRenderEngine(embed) {
             halos:     [],
             highlight: processed.selection || [],
         });
-        embed.setArrows(processed.arrows || []);
+        /* ONE ARROW SET, COMPOSED HERE. The axis triad rides the ordinary arrow
+         * door carrying its own colours (§ 10.3), and the drawing has one such
+         * door — so writing the forces and then the axes made the second erase
+         * the first: with both switches on the force arrows vanished, and a
+         * frame swap (which re-places the overlays and not the scene) erased
+         * the axes instead. Whatever arrows exist are handed down together. */
+        const sw = switches();
+        const s = structure();
+        const axes = sw.showAxis ? sceneFor(s ? s.cell : null).axes : [];
+        embed.setArrows((processed.arrows || []).concat(axes));
     }
 
     function applyScene() {
@@ -358,10 +386,6 @@ export function createRenderEngine(embed) {
         // after a hidden load draws it at the structure's corner and not at the
         // world origin.
         embed.setCell(sw.showCell ? scene.cellBox : null);
-        if (sw.showAxis) {
-            // The triad rides the ordinary arrow door, carrying its own colours.
-            embed.setArrows((embed.__axes = scene.axes));
-        }
     }
 
     /* ── The four costs ───────────────────────────────────────────────────── */
@@ -409,28 +433,19 @@ export function createRenderEngine(embed) {
 
     function doSwap() {
         const at = frameNow();
-        // TEMPORARY INSTRUMENTATION — the seal's two self-check questions at the
-        // exact moment of the swap (§ 9.9, § 10.10). Removed once the trajectory
-        // blank is understood.
-        try {
-            console.warn("[SEAL] swap to " + at
-                + " | hasMovie=" + embed.hasMovie()
-                + " drawn=" + embed.drawnFrameCount()
-                + " master=" + masterCount());
-        } catch (_) {}
         embed.beginBatch();
         embed.showFrame(at);
-        const processed = processAll();
-        if (processed[at]) applyOverlaysFor(processed[at]);
+        const processed = processOne(at);
+        if (processed) applyOverlaysFor(processed);
         embed.endBatch();
         costLog.push(SWAP);
     }
 
     function doOverlay() {
         const at = frameNow();
-        const processed = processAll();
+        const processed = processOne(at);
         embed.beginBatch();
-        if (processed[at]) applyOverlaysFor(processed[at]);
+        if (processed) applyOverlaysFor(processed);
         applyScene();
         embed.endBatch();
         costLog.push(OVERLAY);
@@ -577,6 +592,13 @@ export function createRenderEngine(embed) {
 
         // "Draw."
         render() { doOverlay(); },
+
+        /* "Point the camera at it again." An instruction like the rest, and the
+         * only one about the window rather than the data: § 9.6 says the camera
+         * is fitted to the structure on load AND ON RESET, and § 9.9 keeps it
+         * down in the seal where nothing above can read it. Nothing is derived
+         * and no frame moves. */
+        resetView() { embed.fitCamera(); },
 
         // "Throw it away."
         dispose() {

@@ -35,6 +35,9 @@ export function mountControls(card, model, handle, files) {
     const doc = card.root.ownerDocument;
     const off = [];
 
+    const rail = mountRail(doc, card, model, handle);
+    off.push(rail.dispose);
+
     const frameBar = mountFrameBar(doc, card, model, handle);
     off.push(frameBar.dispose);
 
@@ -54,6 +57,83 @@ export function mountControls(card, model, handle, files) {
         dispose() {
             for (const fn of off.reverse()) { try { fn(); } catch (_) {} }
         },
+    };
+}
+
+
+/* ══ The rail of switches (§ 1.1) ════════════════════════════════════════════
+ *
+ * "Six icon buttons sit down the left edge, always outside the canvas, never on
+ * top of the molecule." Those are the toolbar switches, and the last clause is
+ * the design rather than a detail: they are what a user reaches for WHILE
+ * looking at the molecule, so they may not cover it. The card pays for the
+ * column in its own arithmetic (`--rail-w`) instead of taking it out of the
+ * drawing.
+ *
+ * Five switches and one action, in one list because they are one surface. Each
+ * reads its lit state FROM THE STORE and never from what it last did (§ 5.2) —
+ * `aria-pressed` is what the stylesheet draws it from, so a switch flipped
+ * anywhere else lights the right button here with nothing to keep in step.
+ *
+ * The glyphs, the order and the wording are § 1.1's own.
+ */
+const RAIL = [
+    { glyph: "⟲", name: "Reset view",
+      title: "Re-fit the camera on the structure." },
+    { glyph: "✚", name: "Show axes",          flag: "showAxis",
+      title: "Show / hide axes" },
+    { glyph: "#", name: "Show atom labels",   flag: "showIndex",
+      title: "Show / hide atom labels" },
+    { glyph: "➤", name: "Show force vectors", flag: "showForces",
+      title: "Show / hide force vectors" },
+    { glyph: "▦", name: "Show unit cell",     flag: "showCell",
+      title: "Show / hide unit cell" },
+    { glyph: "◉", name: "Show selected only", flag: "isolate",
+      title: "Hide unselected atoms so the current selection stands out." },
+];
+
+function mountRail(doc, card, model, handle) {
+    const rail = card.rail;
+    const lit = {};
+
+    for (const spec of RAIL) {
+        const button = doc.createElement("button");
+        button.type = "button";
+        button.className = "mol-viewer-quick";
+        button.textContent = spec.glyph;
+        button.title = spec.title;
+        // The glyph is decoration; the name is what the button IS, and it is
+        // the only thing a screen reader has to go on.
+        button.setAttribute("aria-label", spec.name);
+
+        if (spec.flag) {
+            button.setAttribute("aria-pressed", "false");
+            button.addEventListener("click", () => {
+                // Read the switch back from its one home rather than tracking
+                // it here — a button that remembered its own state would be the
+                // second answer that goes stale the moment anything else set it
+                // (isolate, for one, turns itself off when the selection empties).
+                const on = model.selection.getState()[spec.flag];
+                model.selection.setSwitch(spec.flag, !on);
+            });
+            lit[spec.flag] = button;
+        } else {
+            // Reset is an action on the WINDOW, not a switch: there is no state
+            // to light, which is why it carries no pressed attribute (§ 9.6 —
+            // the camera is not held anywhere above the drawing).
+            button.addEventListener("click", () => handle.resetView());
+        }
+        rail.appendChild(button);
+    }
+
+    const off = model.selection.subscribe((state) => {
+        for (const flag of Object.keys(lit)) {
+            lit[flag].setAttribute("aria-pressed", state[flag] ? "true" : "false");
+        }
+    });
+
+    return {
+        dispose() { off(); try { rail.textContent = ""; } catch (_) {} },
     };
 }
 
@@ -318,43 +398,16 @@ function buildViewMenu(doc, model) {
 
     const offs = [];
 
-    /* ── The switches: they change WHAT IS IN a frame (§ 9.6) ──────────────
+    /* THE SWITCHES ARE NOT IN HERE. They are the rail (§ 1.1) — six icon buttons
+     * down the left edge, one press each, visible without opening anything.
+     * Repeating them in this menu would put one switch behind two controls: not
+     * two homes for the FACT (both would write the one store), but two places a
+     * user has to learn, and two things to keep looking the same. The rail is
+     * the validated design; the menu keeps what the rail has no room for.
      *
-     * A switch is a TOGGLE BUTTON carrying `aria-pressed`, not a checkbox. That
-     * is the stylesheet's design and it is also the more honest markup: the
-     * indicator is drawn from the pressed state, so there is one source for what
-     * the control shows and what it means.
+     * What is left here is § 9.6's other column — the settings that change HOW
+     * THE SAME FRAME IS PAINTED and that the frame calculation never reads.
      */
-    const shown = section("Show");
-    const SWITCHES = [
-        ["showIndex",  "Atom numbers"],
-        ["showForces", "Force arrows"],
-        ["showCell",   "Unit cell"],
-        ["showAxis",   "Axes"],
-    ];
-    const toggles = {};
-    for (const [name, label] of SWITCHES) {
-        const button = doc.createElement("button");
-        button.type = "button";
-        button.className = "mol-viewer-toggle";
-        button.textContent = label;
-        button.setAttribute("aria-pressed", "false");
-        button.addEventListener("click", () => {
-            const on = button.getAttribute("aria-pressed") === "true";
-            model.selection.setSwitch(name, !on);
-        });
-        shown.appendChild(button);
-        toggles[name] = button;
-    }
-    // The switches have one home, so the menu REFLECTS them rather than
-    // remembering what it last set (§ 5.2).
-    offs.push(model.selection.subscribe((state) => {
-        for (const [name] of SWITCHES) {
-            toggles[name].setAttribute("aria-pressed", state[name] ? "true" : "false");
-        }
-    }));
-
-    /* ── The drawing settings: they change HOW THE SAME FRAME IS PAINTED ─── */
     const drawn = section("Draw as");
     const repRow = doc.createElement("div");
     repRow.className = "mol-viewer-rep-row";

@@ -378,6 +378,53 @@ def test_no_store_holds_a_camera():
         )
 
 
+def test_isolate_turns_itself_off_when_the_selection_empties():
+    """§ 1.1: "Isolate turns itself off when the selection becomes empty, since
+    there would be nothing left to show."
+
+    It belongs to the STORE and not to the control that emptied the selection:
+    Clear, Remove, an inverted selection that lands on nothing, a filter that
+    matches nothing and a restored empty session all reach the same line. Put in
+    a button's handler instead, it would be right for that button and wrong for
+    the other four.
+
+    It settles before the snapshot goes out, so no reader ever sees isolate on
+    with nothing selected (§ 8.4 — one settled state).
+    """
+    out = _run(
+        """
+        const sel = S.createSelectionStore({});
+        sel.add([0, 1]);
+        sel.setSwitch("isolate", true);
+        const isolating = sel.getState().isolate;
+
+        const seen = [];
+        sel.subscribe((s) => seen.push({ isolate: s.isolate, selection: s.selection }));
+        sel.clear();
+        const atClear = seen[seen.length - 1];   // the snapshot the clear sent
+
+        // And it does not switch itself back on when atoms are picked again:
+        // it is a switch the user sets.
+        sel.add([2]);
+        console.log(JSON.stringify({
+            isolating,
+            afterClear:   sel.getState().isolate,
+            snapshotSaw:  atClear,
+            afterPicking: sel.getState().isolate,
+        }));
+        """
+    )
+    assert out["isolating"] is True
+    assert out["afterClear"] is False, (
+        "isolate stayed on with nothing selected — the viewer is hiding every "
+        "atom it has to show"
+    )
+    assert out["snapshotSaw"] == {"isolate": False, "selection": []}, (
+        f"a reader saw isolate on beside an empty selection: {out['snapshotSaw']}"
+    )
+    assert out["afterPicking"] is False, "isolate switched itself back on"
+
+
 def test_a_drawing_setting_is_not_a_switch():
     """§ 9.6's test, which is checkable rather than a convention: "does working
     out what a frame contains require reading it?"
