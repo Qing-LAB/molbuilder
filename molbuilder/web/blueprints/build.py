@@ -717,25 +717,30 @@ def api_periodicity():
 def api_structure_save():
     """FILE-ONLY save through the ONE authority (structure-authority.md § 3.3), the
     symmetric inverse of the file-only load below.  The browser hands the SETTLED model
-    as a scratch blob ``{xyz, sidecar}``; the SERVER reconstructs the Structure
-    (``StructureCodec.from_scratch``) and writes the ``<stem>.xyz`` + ``<stem>.molstruct.json``
+    as the structure envelope (web-api.md § 1); the SERVER writes the ``<stem>.xyz`` + ``<stem>.molstruct.json``
     pair via ``StructureCodec.write``.  Python owns the pairing, the write order/atomicity,
     AND the sidecar schema -- ``write`` stamps ``schema_version`` + a real ``structure_hash``
     (``molstruct.to_dict``), so the pair the load door reads back is VALID.  The browser
     never authors the sidecar envelope (the drift that made a browser-written sidecar
-    unloadable).  Body: ``{"path": "<project-relative .xyz>", "blob": {xyz, sidecar},
+    unloadable).  Body: ``{"path": "<project-relative .xyz>", "structure": {...},
     "overwrite": bool}``.  Returns ``{ok:true, path}`` | ``{ok:false, needsOverwrite:true}``
     (409, drives the tab's overwrite dialog) | ``{ok:false, error}``."""
     from molbuilder.web.blueprints.files import _resolve_within_roots, _PickerError
     from molbuilder.workingcopy_structure import StructureCodec
     body = request.get_json(silent=True) or {}
     path = body.get("path")
-    blob = body.get("blob")
     overwrite = bool(body.get("overwrite"))
     if not isinstance(path, str) or not path:
         return jsonify({"ok": False, "error": "missing or invalid 'path'"}), 400
-    if not isinstance(blob, dict) or not blob.get("xyz"):
-        return jsonify({"ok": False, "error": "missing or invalid 'blob' (need {xyz, sidecar})"}), 400
+    # THE STRUCTURE, not a document the browser wrote.  A `{xyz, sidecar}` blob
+    # was the old shape, and taking it is what left the browser writing the
+    # `.xyz` half -- the one-path rule (molview.md § 11.7) cannot be true while a
+    # door accepts bytes.  The structure arrives as the envelope every other door
+    # takes (web-api.md § 1), and the SERVER writes both files from it.
+    try:
+        struct = _struct_from_body(body)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     try:
         resolved = _resolve_within_roots(path)   # save-as target need not exist yet
     except _PickerError as exc:
@@ -745,10 +750,6 @@ def api_structure_save():
     if resolved.exists() and not overwrite:
         return jsonify({"ok": False, "needsOverwrite": True,
                         "error": f"file already exists: {path}"}), 409
-    try:
-        struct = StructureCodec().from_scratch(blob)
-    except Exception as exc:  # noqa: BLE001 -- malformed blob -> 400
-        return jsonify({"ok": False, "error": f"could not serialise structure: {exc}"}), 400
     try:
         StructureCodec().write(struct, resolved)
     except Exception as exc:  # noqa: BLE001 -- disk / permission -> 500

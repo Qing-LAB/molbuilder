@@ -497,3 +497,81 @@ def test_bundle_endpoint_carries_xv_unreadable_warn_note(web_client, tmp_path, m
     assert body["final_coords_from"] == "fdf-initial"
     combined = "\n".join(body["notes"])
     assert "NOT converged geometry" in combined
+
+
+# --------------------------------------------------------------------- #
+#  One paired-file writer                                               #
+# --------------------------------------------------------------------- #
+
+def test_a_bundled_structure_keeps_every_metadata_field(tmp_path):
+    """THE defect this closes. The bundle path used to write the pair itself and
+    passed only `regions` / `cell` / `pbc` into the payload, so every bundled
+    result silently lost its `cell_origin`, `axis_kind`, `vacuum` and every
+    annotation channel — absent keys reset to defaults at the metadata gate.
+
+    It goes through `StructureCodec.write` now: the one paired-file door, whose
+    own docstring says no caller may re-derive the sidecar path or re-implement
+    the write order. This asserts the consequence — nothing is dropped — rather
+    than the call.
+    """
+    from molbuilder.bundle_writer import write_bundle_as_handoff
+    from molbuilder.parse.types import BundleResult
+    from molbuilder.sidecars import molstruct
+    from molbuilder.structure import AtomChannel, Structure
+
+    struct = Structure.from_xyz("2\n\nC 0 0 0\nO 1 0 0\n")
+    struct.cell = [[9.0, 0, 0], [0, 9.0, 0], [0, 0, 9.0]]
+    struct.cell_origin = [-1.0, -2.0, -3.0]
+    struct.axis_kind = ("periodic", "periodic", "isolated")
+    struct.vacuum = (0.0, 0.0, 12.0)
+    struct.set_channel("charge", AtomChannel("value", {0: -0.5}))
+    struct.__post_init__()
+
+    bundle = BundleResult(
+        schema_version=1, parsed_at="2026-01-01T00:00:00Z", parser_name="t",
+        source="run", result_kind="bundle", structure=struct,
+        cell=struct.cell, regions={"L-electrode": [0]}, frozen_atoms=[1],
+        notes=[], block_schema_versions={}, source_engine="siesta",
+        final_coords_from="xv", source_script="h2.fdf",
+    )
+    xyz_path, sidecar_path = write_bundle_as_handoff(
+        bundle, tmp_path, stem="handoff")
+
+    saved = molstruct.load(sidecar_path)
+    assert saved["cell_origin"] == [-1.0, -2.0, -3.0], "the origin was dropped"
+    assert saved["axis_kind"] == ["periodic", "periodic", "isolated"], (
+        "the axis kinds were dropped"
+    )
+    assert saved["vacuum"] == [0.0, 0.0, 12.0], "the vacuum was dropped"
+    assert saved["annotations"]["charge"]["kind"] == "value", (
+        "the annotation channels were dropped"
+    )
+    # The labels the RUN recorded land in the one label store, reserved ones too.
+    assert saved["regions"] == {"L-electrode": [0], "frozen_atoms": [1]}
+    # The provenance line still reaches the .xyz, carried by the structure's
+    # own title rather than by a second writer's comment argument.
+    assert "bundled from h2.fdf" in xyz_path.read_text(encoding="utf-8")
+
+
+def test_a_bundled_structure_with_nothing_to_keep_gets_no_sidecar(tmp_path):
+    """The codec's rule — "no `.json` means no metadata" — now applies here too.
+    The bundle path used to write a sidecar unconditionally, so a plain molecule
+    got a file saying nothing, which the load door then read as "this structure
+    definitely has no labels" rather than "nobody said"."""
+    from molbuilder.bundle_writer import write_bundle_as_handoff
+    from molbuilder.parse.types import BundleResult
+    from molbuilder.structure import Structure
+
+    bundle = BundleResult(
+        schema_version=1, parsed_at="2026-01-01T00:00:00Z", parser_name="t",
+        source="run", result_kind="bundle",
+        structure=Structure.from_xyz("2\n\nC 0 0 0\nO 1 0 0\n"),
+        cell=None, regions={}, frozen_atoms=[], notes=[],
+        block_schema_versions={}, source_engine="pyscf",
+        final_coords_from="log", source_script="opt.py",
+    )
+    xyz_path, sidecar_path = write_bundle_as_handoff(
+        bundle, tmp_path, stem="plain")
+
+    assert xyz_path.exists()
+    assert sidecar_path is None, "a sidecar was written for a plain structure"

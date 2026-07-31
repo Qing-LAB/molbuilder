@@ -7,8 +7,8 @@
  *
  *   * openMolecule(path) -> model.installMolecule({path}) -> POST /api/build/load
  *     (the server reads the .xyz + paired .molstruct.json via StructureCodec.read), and
- *   * saveMolecule(path) -> POST /api/structure/save with the model's {xyz, sidecar}
- *     blob (the server reconstructs the Structure + writes the pair via
+ *   * saveMolecule(path) -> POST /api/structure/save with the model's structure
+ *     structure (the server writes the pair via
  *     StructureCodec.write, stamping schema_version + a real structure_hash).
  *
  * The browser therefore moves NO structure bytes and NEVER authors the sidecar schema
@@ -94,8 +94,8 @@ export async function openMolecule(path, opts) {
 /**
  * saveMolecule(path, { overwrite? }) -- THE save door (contract §2).
  *
- * FILE-ONLY save (structure-authority.md § 3.3): serialise the SETTLED model
- * (`molview.data.exportFile` -> `{xyz, sidecar}`) and hand that blob to the SERVER
+ * FILE-ONLY save (structure-authority.md § 3.3): read the SETTLED model
+ * (`molview.data.exportFile` -> the structure) and hand it to the SERVER
  * (`POST /api/structure/save`), which reconstructs the Structure and writes the
  * `.xyz` + paired `.molstruct.json` via `StructureCodec.write` -- Python owns the pairing,
  * the write order/atomicity, AND the sidecar schema (schema_version + a real hash).  The
@@ -115,21 +115,24 @@ export async function saveMolecule(path, opts) {
   if (!model || typeof model.exportFile !== "function") {
     return { ok: false, error: "projects.parser.saveMolecule: molview.data.exportFile unavailable" };
   }
-  const blob = model.exportFile();   // model -> {xyz, sidecar}; null = empty OR desync
-  if (!blob) {
+  const file = model.exportFile();   // model -> {name, structure}; null = empty OR desync
+  if (!file) {
     return { ok: false, error: (model.isEmpty && model.isEmpty())
       ? "save: workspace has no data"
       : "save: workspace state is inconsistent (atom-count desync); reload before saving." };
   }
-  // Hand the whole {xyz, sidecar} blob to the server save door; the SERVER writes the pair
-  // through StructureCodec.write (schema owned server-side).  Its "exists" gate (409 ->
+  // Hand the STRUCTURE to the server save door; the SERVER writes the pair through
+  // StructureCodec.write -- the one paired-file writer, which owns the pairing rule,
+  // the write order and the schema.  The browser assembles no bytes at all (the blob
+  // it used to send was the last place it did).  Its "exists" gate (409 ->
   // needsOverwrite) drives the tab's overwrite dialog.
   let env;
   try {
     const resp = await window.fetch("/api/structure/save", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ path: path, blob: blob, overwrite: !!opts.overwrite }),
+      body:    JSON.stringify({ path: path, structure: file.structure,
+                               overwrite: !!opts.overwrite }),
     });
     env = await resp.json().catch(function () {
       return { ok: false, error: "save: malformed server response" };

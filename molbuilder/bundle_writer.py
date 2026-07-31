@@ -33,6 +33,8 @@ from typing import Tuple
 
 from molbuilder.parse.types import BundleResult
 from molbuilder.sidecars import molstruct as _msj
+from molbuilder.structure import FROZEN_LABEL
+from molbuilder.workingcopy_structure import StructureCodec
 
 
 class BundleWriteError(Exception):
@@ -45,7 +47,7 @@ def write_bundle_as_handoff(bundle: BundleResult,
                             *,
                             stem: str,
                             overwrite: bool = False
-                            ) -> Tuple[Path, Path]:
+                            ) -> Tuple[Path, "Path | None"]:
     """Materialize ``bundle`` as ``<target_dir>/<stem>.xyz`` +
     ``<target_dir>/<stem>.molstruct.json``.
 
@@ -66,7 +68,9 @@ def write_bundle_as_handoff(bundle: BundleResult,
     Returns
     -------
     (xyz_path, sidecar_path)
-        Both as resolved :class:`Path` objects.
+        The geometry path, and the sidecar path when one was written --
+        ``None`` when the structure carried no metadata worth keeping, which
+        is the codec's own rule (``no .json == no metadata``).
 
     Raises
     ------
@@ -100,6 +104,9 @@ def write_bundle_as_handoff(bundle: BundleResult,
     # Prefer the source-script basename (h2.fdf, opt.py) when the
     # parser surfaced it; fall back to the run-dir name on older
     # BundleResults that pre-date the source_script field.
+    # THE PROVENANCE LINE rides on the structure's own TITLE, which the codec
+    # already carries into the `.xyz` comment.  It used to be handed to a second
+    # `to_xyz` call here -- see below for why there is no longer one.
     if bundle.source_script:
         src_label = Path(bundle.source_script).name
     elif bundle.source:
@@ -113,33 +120,35 @@ def write_bundle_as_handoff(bundle: BundleResult,
         )
     else:
         comment = f"bundled from {src_label}"
-    xyz_text = bundle.structure.to_xyz(comment=comment)
-    _atomic_write_text(xyz_path, xyz_text)
 
-    # structure_hash is the SHA-256 of the XYZ file BYTES (per
-    # sidecars.molstruct.sha256_of_file); compute from the freshly-
-    # written file so the invariant pin is what the next-stage
-    # loader will check.
-    structure_hash = _msj.sha256_of_file(xyz_path)
-    # The parsed bundle keeps its own `frozen_atoms` list (it is a RESULTS
-    # record of what a run held still, not the structure's label store), so it
-    # is written where a label belongs: into `regions`, with the rest.
-    from molbuilder.structure import FROZEN_LABEL
+    # ONE PAIRED-FILE WRITER.  This used to write both halves itself -- its own
+    # `to_xyz`, its own atomic write, its own `molstruct.to_dict`, its own
+    # `molstruct.save`, its own hash -- which is exactly what
+    # `StructureCodec.write`'s docstring says no caller may re-implement, and the
+    # two had already diverged: this path passed only `regions` / `cell` / `pbc`
+    # into the payload, so every bundled result lost its `cell_origin`,
+    # `axis_kind`, `vacuum` and every annotation channel (absent keys reset to
+    # defaults at the metadata gate).  It also always wrote a sidecar, where the
+    # codec's rule is that a structure with no metadata gets none.
+    #
+    # The parsed bundle keeps its own `regions` / `frozen_atoms` (a RESULTS
+    # record of what a run held still), so they are applied onto the structure
+    # here -- the reserved label into the label store like any other -- and the
+    # codec writes the pair from the structure alone.
+    struct = bundle.structure.copy()
+    struct.title = comment
     labels = dict(bundle.regions or {})
     if bundle.frozen_atoms:
         labels[FROZEN_LABEL] = list(bundle.frozen_atoms)
-    sidecar_payload = _msj.to_dict(
-        {
-            "regions":      labels or None,
-            "cell":         bundle.structure.cell,
-            "pbc":          bundle.structure.pbc,
-        },
-        n_atoms_total=len(bundle.structure.elements),
-        structure_hash=structure_hash,
-        created_by="molbuilder bundle_writer",
-    )
-    _msj.save(sidecar_path, sidecar_payload)
-    return (xyz_path, sidecar_path)
+    if labels:
+        struct.regions = labels
+        struct.__post_init__()          # the ONE validator, as any write does
+
+    StructureCodec().write(struct, xyz_path)
+    # "No `.json` means no metadata" is the codec's rule, so the sidecar exists
+    # only when there was something to keep.  The caller reports the path it was
+    # given either way; a missing one is the honest answer to "what was written".
+    return (xyz_path, sidecar_path if sidecar_path.exists() else None)
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
