@@ -183,7 +183,7 @@ export function createModel(opts) {
 
     // The selection store's two doors back into the truth.
     function resolveFilter(current, rule) {
-        return askServerToFilter(current, frames ? frames[frameIndex] : [], rule);
+        return askServerToFilter(current, rule);
     }
 
     /**

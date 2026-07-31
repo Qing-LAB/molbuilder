@@ -349,14 +349,24 @@ export function createCellEdit(handed) {
  * holds no matching logic" — the same boundary as § 2's: one place decides what
  * a structure means.
  */
-export async function resolveFilter(structure, positions, rule) {
+export async function resolveFilter(structure, rule) {
     if (!structure) return null;
+    // Evaluated against the atoms THIS VIEWER HOLDS, not a disk read — so a
+    // filter sees unsaved labels and edits. Coordinates are not sent: no rule
+    // matches on position (§ 9.5), and the one that looks like it does — by atom
+    // index — matches on where an atom SITS, which is its place in this list.
+    const atoms = structure.elements.map((element, i) => {
+        const facts = structure.annotations[i] || {};
+        return {
+            element:     element,
+            labels:      (facts.labels || []).slice(),
+            residueName: facts.residue || null,
+        };
+    });
     try {
-        const payload = await postJson("/api/selection/eval", {
-            structure: structureForServer(structure, positions),
-            rule:      rule,
-        });
-        return Array.isArray(payload && payload.atoms) ? payload.atoms : null;
+        const payload = await postJson("/api/selection/eval", { atoms, rule });
+        return Array.isArray(payload && payload.selected_indices)
+            ? payload.selected_indices : null;
     } catch (_) {
         return null;
     }

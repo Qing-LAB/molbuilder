@@ -147,14 +147,52 @@ def test_by_atom_index_crosses_the_numbering_boundary_exactly_once():
         console.log(JSON.stringify({ rule, two, named }));
         """
     )
-    assert out["rule"]["value"] == "0-3, 5", (
-        f"the typed range must shift once: {out['rule']}"
+    assert out["rule"] == {"op": "by_index_range", "expression": "0-3, 5"}, (
+        f"the typed range must shift once, into the server's rule: {out['rule']}"
     )
-    assert [t["value"] for t in out["two"]["terms"]] == ["0-3", "9-10"], (
+    assert [r["expression"] for r in out["two"]["operands"]] == ["0-3", "9-10"], (
         "each index row shifts, and shifts once"
     )
-    assert out["named"]["value"] == "Au", (
-        "a row that compares names to names must never touch a number"
+    assert out["named"] == {"op": "by_element", "elements": ["Au"]}, (
+        f"a row that compares names to names must never touch a number: {out['named']}"
+    )
+
+
+def test_the_rule_vocabulary_is_the_servers():
+    """§ 11.1: the field-level JSON of these payloads belongs to web-api.md, and
+    the rule names are ``molbuilder/selection.py``'s own.
+
+    § 9.5 describes four kinds of row in prose. Inventing a shape for them here
+    would give a panel that builds rules nothing can evaluate — which no unit
+    test of the panel alone would ever notice.
+    """
+    out = _run(
+        """
+        console.log(JSON.stringify({
+            element: S.buildRule([{ kind: "element", value: "Au, C" }], "and"),
+            residue: S.buildRule([{ kind: "residue", value: "ALA,DA" }], "and"),
+            label:   S.buildRule([{ kind: "label", value: "L-electrode" }], "and"),
+            index:   S.buildRule([{ kind: "index", value: "1-4" }], "and"),
+            both:    S.buildRule([
+                { kind: "element", value: "Au" },
+                { kind: "label", value: "bridge" },
+            ], "or"),
+            unknown: S.buildRule([{ kind: "charge", value: "0.3" }], "and"),
+        }));
+        """
+    )
+    assert out["element"] == {"op": "by_element", "elements": ["Au", "C"]}
+    assert out["residue"] == {"op": "by_residue_name", "names": ["ALA", "DA"]}
+    assert out["label"] == {"op": "by_region", "name": "L-electrode"}
+    assert out["index"] == {"op": "by_index_range", "expression": "0-3"}
+    assert out["both"] == {
+        "op": "or",
+        "operands": [{"op": "by_element", "elements": ["Au"]},
+                     {"op": "by_region", "name": "bridge"}],
+    }, f"rows compose under one combinator over operands: {out['both']}"
+    assert out["unknown"] is None, (
+        "a row kind the server has no rule for must build nothing, rather than "
+        "a rule that will be rejected at the far end"
     )
 
 
@@ -215,7 +253,7 @@ def test_filtering_asks_the_server_and_holds_no_matching_logic():
         console.log(JSON.stringify({ asked, result, selection: sel.get() }));
         """
     )
-    assert out["asked"] == [{"kind": "element", "value": "Au"}]
+    assert out["asked"] == [{"op": "by_element", "elements": ["Au"]}]
     assert out["selection"] == [4, 9], (
         "applying a filter REPLACES the selection (§ 9.5)"
     )

@@ -206,6 +206,13 @@ export function createSelectionStore(handed) {
 /**
  * The rows, as one rule the server can evaluate.
  *
+ * THE RULE VOCABULARY IS THE SERVER'S, NOT THIS MODULE'S. § 9.5 describes four
+ * kinds of row in prose and § 11.1 says the field-level JSON belongs to
+ * web-api.md — so the names below are `molbuilder/selection.py`'s own
+ * (`by_element`, `by_index_range`, `by_residue_name`, `by_region`, composed with
+ * `and`/`or` over `operands`). Inventing a shape here would give a panel that
+ * builds rules nothing can evaluate.
+ *
  * A HALF-TYPED ROW CONSTRAINS NOTHING — it does not match nothing. An empty row
  * is dropped BEFORE the rule is built, so a row the user has not finished
  * filling in cannot silently empty the result under `and`. "You have not told me
@@ -213,25 +220,42 @@ export function createSelectionStore(handed) {
  * treating it as "match nothing" would make the panel feel broken mid-typing.
  */
 export function buildRule(rows, combine) {
-    const live = (rows || []).filter(
-        (r) => r && r.kind && typeof r.value === "string" && r.value.trim() !== "");
-    if (!live.length) return null;
+    const operands = (rows || []).map(rowToRule).filter((r) => r !== null);
+    if (!operands.length) return null;              // no rows means no filter
+    if (operands.length === 1) return operands[0];  // one row is the rule itself
+    return { op: combine === "or" ? "or" : "and", operands: operands };
+}
 
-    const terms = live.map((row) => {
-        if (row.kind === "index") {
+function rowToRule(row) {
+    if (!row || !row.kind || typeof row.value !== "string") return null;
+    const raw = row.value.trim();
+    if (raw === "") return null;                    // the half-typed row
+    const list = () => raw.split(",").map((s) => s.trim()).filter(Boolean);
+
+    switch (row.kind) {
+        case "element": {
+            const elements = list();
+            return elements.length ? { op: "by_element", elements: elements } : null;
+        }
+        case "residue": {
+            const names = list();
+            return names.length ? { op: "by_residue_name", names: names } : null;
+        }
+        case "label":
+            return { op: "by_region", name: raw };
+        case "index":
             // THE ONE ROW THAT CROSSES THE NUMBERING BOUNDARY (§ 9.5). The user
             // types 1-based, matching what is on screen; the rule sent is
             // 0-based; and the shift happens exactly once, here, at the point
             // the row becomes a rule — through the one translation that owns it
-            // (§ 11.5). Every other row compares names to names.
-            return { kind: "index", value: expressionToCode(row.value.trim()) };
-        }
-        return { kind: row.kind, value: row.value.trim() };
-    });
-
-    // One row is the rule by itself.
-    return terms.length === 1 ? terms[0]
-        : { kind: combine === "or" ? "or" : "and", terms: terms };
+            // (§ 11.5). No caller writes the shift itself.
+            //
+            // Every other row above compares names to names and never touches a
+            // number, which is why this is the only case that calls it.
+            return { op: "by_index_range", expression: expressionToCode(raw) };
+        default:
+            return null;
+    }
 }
 
 
