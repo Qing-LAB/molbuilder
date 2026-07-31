@@ -488,12 +488,19 @@ def test_the_module_owns_no_file_route():
     assert offenders == {}, f"the module reaches a file route: {offenders}"
 
 
-def test_the_module_calls_only_the_routes_named_in_the_contract():
-    """§ 11.1: "The three routes MolView calls are: load a structure, perform one
-    geometry edit, and resolve a cell."
+def test_the_module_calls_only_the_routes_the_contract_describes():
+    """Every route the module reaches must be one the contract describes, so that
+    a fact leaving by an undescribed path is visible — which is how the file
+    route got in last time.
 
-    A fourth route appearing is a fact leaving the module by a path the contract
-    does not describe, which is how the file route got in last time.
+    § 11.1's sentence says THREE: load a structure, perform one geometry edit,
+    resolve a cell. § 9.5 describes a fourth in prose — "filtering is a question
+    asked of the server, not a scan done here" — which that sentence omits. The
+    plan records the wording as an open item; this test counts what the module
+    actually reaches, so the gap is stated rather than papered over.
+
+    If a fifth appears, either the contract gained a route or the module grew
+    one it should not have. Both are worth stopping for.
     """
     import re
 
@@ -503,9 +510,12 @@ def test_the_module_calls_only_the_routes_named_in_the_contract():
             found.add(hit.split("/api/")[1].split('" +')[0])
     # `/api/modify/` is completed with the operation name, which IS the route
     # segment (§ 11.1), so it appears as a prefix.
-    assert found == {"build/load", "modify/", "structure/periodicity"}, (
-        f"the module calls routes the contract does not name: {sorted(found)}"
-    )
+    assert found == {
+        "build/load",                # § 11.1 — load a structure
+        "modify/",                   # § 11.1 — one geometry edit
+        "structure/periodicity",     # § 11.1 — resolve a cell
+        "selection/eval",            # § 9.5  — the filter, omitted by § 11.1's count
+    }, f"the module reaches a route the contract does not describe: {sorted(found)}"
 
 
 def test_the_module_neither_publishes_nor_reads_a_global():

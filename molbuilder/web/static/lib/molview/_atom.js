@@ -105,6 +105,19 @@ export function shiftExpression(expression, delta) {
  * matched against positions and the one that crosses the numbering boundary.
  */
 
+/**
+ * A by-index expression as the user typed it (1-based), turned into the 0-based
+ * one the server's rule expects.
+ *
+ * The named direction lives here rather than at the call site so that no caller
+ * writes the shift itself — a caller passing a delta would be a caller that
+ * knows which way it goes, and that knowledge is exactly what § 11.5 keeps in
+ * one place.
+ */
+export function expressionToCode(expression) {
+    return shiftExpression(expression, -1);
+}
+
 export const KIND = {
     CATEGORY: "category",   // one value per atom (element, residue) — matches on equality
     TAG:      "tag",        // a named membership set (labels)       — matches on membership

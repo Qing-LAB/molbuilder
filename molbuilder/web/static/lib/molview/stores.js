@@ -11,16 +11,267 @@
  *
  * NEVER (§ 7 level 4):
  *   - draw anything;
- *   - hold the displayed frame — that is not a switch (§ 6.4). It belongs to the
- *     model, with the range it is checked against;
+ *   - hold the displayed frame — that is not a switch (§ 6.4);
  *   - be kept by anything outside the viewer once it has been reached.
  *
  * AND NEVER (§ 9.6): hold the camera. Not here, not in the model, not in the
- * handle — the camera is held nowhere above the drawing. `view` is the four
- * drawing settings and no more; the camera lives in the sealed layer because a
- * window must have a point of view, and § 9.9 explains why that is not a third
- * kind of question.
- *
- * EMPTY BY DESIGN — plan step A. Step E writes the body.
+ * handle — it is held nowhere above the drawing.
  */
 "use strict";
+
+import { expressionToCode } from "./_atom.js";
+
+
+/* ══ Which store does a thing belong in? (§ 9.6) ═════════════════════════════
+ *
+ * The test is one question: DOES WORKING OUT WHAT A FRAME CONTAINS REQUIRE
+ * READING IT?
+ *
+ *   yes -> `selection`. It changes WHAT IS IN a frame — which atoms, and what is
+ *          drawn beside them. If one changed and nothing was recomputed, the
+ *          picture would be WRONG.
+ *   no  -> `view`. It changes HOW THE SAME FRAME IS PAINTED. If one changed and
+ *          nothing was recomputed, the picture would be CORRECT, painted
+ *          differently.
+ *
+ * That line is checkable rather than a convention to remember: a switch the
+ * frame calculation has to read belongs to `selection`; a setting the sealed
+ * layer applies without that calculation ever seeing it belongs to `view`.
+ *
+ * The camera is in neither column, because it is in neither place.
+ */
+
+// Every one off by default, and the arrow scale at its default (§ 9.5).
+const SWITCH_DEFAULTS = {
+    isolate:     false,
+    showIndex:   false,
+    showForces:  false,
+    showCell:    false,
+    showAxis:    false,
+    forceScale:  1,
+};
+
+const VIEW_DEFAULTS = {
+    style:        "stick",
+    radius:       1,
+    background:   "white",
+    orthographic: false,
+};
+
+
+function subscribable() {
+    const listeners = [];
+    return {
+        add(fn) {
+            listeners.push(fn);
+            return () => {
+                const at = listeners.indexOf(fn);
+                if (at >= 0) listeners.splice(at, 1);
+            };
+        },
+        fire(...args) {
+            for (const fn of listeners.slice()) {
+                try { fn(...args); } catch (_) {}
+            }
+        },
+    };
+}
+
+
+/* ══ `selection` — what is picked out, and what is drawn beside it (§ 9.5) ════
+ *
+ * "The panel, the highlight and the measurements are all READERS of it; none of
+ * them keeps its own answer."
+ *
+ * @param handed  what the model allows this store to call (§ 7.3):
+ *                `resolveFilter(rule)` — ask the server which atoms match
+ *                `writeLabel(name, atoms)` — a change to the STRUCTURE, so it
+ *                goes back through the model where the gate can see it (§ 9.4)
+ */
+export function createSelectionStore(handed) {
+    handed = handed || {};
+
+    // THE SELECTION IS THE TRUTH; click and filter are two EDITORS of it.
+    // Switching between them does not touch what is selected.
+    let selected = [];
+    let pickOrder = [];          // the order atoms were picked, for measurement
+    let mode = "click";          // which editor is showing — not what is selected
+    let rows = [];               // the filter rows being built
+    let combine = "and";
+    let switches = Object.assign({}, SWITCH_DEFAULTS);
+
+    const changed = subscribable();
+    const set = (next, order) => {
+        selected = next;
+        pickOrder = order != null ? order : next.slice();
+        changed.fire();
+    };
+
+    return {
+        /* ── Reading ─────────────────────────────────────────────────────── */
+        get()          { return selected.slice(); },
+        // § 11.6: the vertex of an angle is the atom picked SECOND, not the
+        // middle one by number — so the order has to survive, separately.
+        order()        { return pickOrder.slice(); },
+        switches()     { return Object.assign({}, switches); },
+        editor()       { return mode; },
+        filterRows()   { return rows.map((r) => Object.assign({}, r)); },
+        subscribe(fn)  { return changed.add(fn); },
+
+        /* ── The click operations (§ 9.5) ────────────────────────────────── */
+        toggle(atom) {
+            const at = selected.indexOf(atom);
+            if (at >= 0) {
+                set(selected.filter((i) => i !== atom),
+                    pickOrder.filter((i) => i !== atom));
+            } else {
+                set(selected.concat([atom]), pickOrder.concat([atom]));
+            }
+        },
+        add(atoms)    { set(Array.from(new Set(selected.concat(atoms))).sort((a, b) => a - b)); },
+        remove(atoms) {
+            const drop = new Set(atoms);
+            set(selected.filter((i) => !drop.has(i)),
+                pickOrder.filter((i) => !drop.has(i)));
+        },
+        all(count)    { set(Array.from({ length: count }, (_, i) => i)); },
+        invert(count) {
+            const has = new Set(selected);
+            set(Array.from({ length: count }, (_, i) => i).filter((i) => !has.has(i)));
+        },
+        clear()       { set([]); },
+
+        // A restored session's selection: intent the user expressed, so it is
+        // part of what was saved (§ 11.2) and comes back with the structure.
+        adopt(atoms)  { set(Array.isArray(atoms) ? atoms.slice() : []); },
+
+        /* ── The switches (§ 9.5) ────────────────────────────────────────── */
+        //
+        // These live HERE — "not in the renderEngine and not in the panel" — so
+        // a switch has one home and every reader of it agrees.
+        setSwitch(name, value) {
+            if (!(name in SWITCH_DEFAULTS)) return;
+            if (switches[name] === value) return;
+            switches[name] = value;
+            changed.fire();
+        },
+
+        /* ── The filter (§ 9.5) ──────────────────────────────────────────── */
+        //
+        // Click mode edits atom by atom, entirely in the browser. Filter mode
+        // composes a query the user explicitly APPLIES, and applying it REPLACES
+        // the selection. Switching editors touches neither.
+        setEditor(next) {
+            if (next !== "click" && next !== "filter") return;
+            mode = next;
+            changed.fire();                 // the panel redraws; the selection does not move
+        },
+        setRows(nextRows, nextCombine) {
+            rows = (nextRows || []).map((r) => Object.assign({}, r));
+            if (nextCombine) combine = nextCombine;
+            changed.fire();
+        },
+
+        /**
+         * Apply the rows as one rule.
+         *
+         * "Filtering is a question asked of the server, not a scan done here.
+         * MolView holds no matching logic" (§ 9.5) — which is the same boundary
+         * as § 2's: one place decides what a structure means.
+         */
+        async applyFilter() {
+            const rule = buildRule(rows, combine);
+            if (!rule) return selected.slice();       // no rows means no filter at all
+            const atoms = await handed.resolveFilter(rule);
+            if (!Array.isArray(atoms)) return selected.slice();
+            set(atoms.slice());
+            return atoms.slice();
+        },
+
+        /* ── Writing a label (§ 9.5, § 9.4) ──────────────────────────────── */
+        //
+        // "The one thing reached from here that is not like the others." It is a
+        // change to the STRUCTURE — the label becomes part of what the atom is,
+        // goes into the sidecar and reaches the calculation — so it goes back
+        // through the model, where the gate can see it. A change the gate cannot
+        // see is a change the gate does not stop.
+        //
+        // Applying a label REPLACES that label's previous set of atoms.
+        applyLabel(name) {
+            return handed.writeLabel(name, selected.slice());
+        },
+    };
+}
+
+/**
+ * The rows, as one rule the server can evaluate.
+ *
+ * A HALF-TYPED ROW CONSTRAINS NOTHING — it does not match nothing. An empty row
+ * is dropped BEFORE the rule is built, so a row the user has not finished
+ * filling in cannot silently empty the result under `and`. "You have not told me
+ * anything to intersect with yet" is the correct reading of a blank row, and
+ * treating it as "match nothing" would make the panel feel broken mid-typing.
+ */
+export function buildRule(rows, combine) {
+    const live = (rows || []).filter(
+        (r) => r && r.kind && typeof r.value === "string" && r.value.trim() !== "");
+    if (!live.length) return null;
+
+    const terms = live.map((row) => {
+        if (row.kind === "index") {
+            // THE ONE ROW THAT CROSSES THE NUMBERING BOUNDARY (§ 9.5). The user
+            // types 1-based, matching what is on screen; the rule sent is
+            // 0-based; and the shift happens exactly once, here, at the point
+            // the row becomes a rule — through the one translation that owns it
+            // (§ 11.5). Every other row compares names to names.
+            return { kind: "index", value: expressionToCode(row.value.trim()) };
+        }
+        return { kind: row.kind, value: row.value.trim() };
+    });
+
+    // One row is the rule by itself.
+    return terms.length === 1 ? terms[0]
+        : { kind: combine === "or" ? "or" : "and", terms: terms };
+}
+
+
+/* ══ `view` — how the molecule is drawn (§ 9.6) ══════════════════════════════
+ *
+ * Four settings the user chose, written here by whatever control they touched,
+ * wherever that control happens to sit (§ 11.4). "Nothing has to be read back to
+ * know which style is active: the answer is whatever was last set."
+ *
+ * THE CAMERA IS NOT HERE, and that is the whole point of § 9.6. It is the one
+ * thing a user changes without telling MolView — a drag rotates it directly in
+ * the window — and MolView never records where it ended up, never reads it back
+ * and never saves it. On load and on Reset it is FITTED TO THE STRUCTURE, the
+ * only orientation guaranteed to show the molecule.
+ *
+ * What that costs is one sentence. What it buys is the removal of an entire
+ * mechanism: nothing ever asks the sealed layer a question, there is no separate
+ * trigger for saving a view-only change, and no persisted slot that has to be
+ * patched independently of the structure it belongs to.
+ */
+export function createViewStore() {
+    let settings = Object.assign({}, VIEW_DEFAULTS);
+    const changed = subscribable();
+
+    return {
+        get()         { return Object.assign({}, settings); },
+        subscribe(fn) { return changed.add(fn); },
+
+        set(name, value) {
+            if (!(name in VIEW_DEFAULTS)) return;
+            if (settings[name] === value) return;
+            settings[name] = value;
+            changed.fire(this.get());
+        },
+
+        // Reopening a session puts the drawing back at its defaults, because
+        // none of it was ever part of what you were working on (§ 11.2).
+        reset() {
+            settings = Object.assign({}, VIEW_DEFAULTS);
+            changed.fire(this.get());
+        },
+    };
+}

@@ -342,11 +342,34 @@ export function createCellEdit(handed) {
 }
 
 
+/**
+ * Ask the server which atoms match a filter rule (§ 9.5).
+ *
+ * "Filtering is a question asked of the server, not a scan done here. MolView
+ * holds no matching logic" — the same boundary as § 2's: one place decides what
+ * a structure means.
+ */
+export async function resolveFilter(structure, positions, rule) {
+    if (!structure) return null;
+    try {
+        const payload = await postJson("/api/selection/eval", {
+            structure: structureForServer(structure, positions),
+            rule:      rule,
+        });
+        return Array.isArray(payload && payload.atoms) ? payload.atoms : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+
 /* ══ The one way this module talks to the server ═════════════════════════════
  *
- * Three routes (§ 11.1): load a structure, perform one geometry edit, resolve a
- * cell. The field-level JSON of those payloads belongs to web-api.md; this
- * module names the routes and the direction data flows.
+ * § 11.1 names THREE routes: load a structure, perform one geometry edit,
+ * resolve a cell. The filter of § 9.5 is a fourth — "a question asked of the
+ * server" — which that sentence omits; the plan records it as an open item, and
+ * the route test counts what is actually here rather than what the sentence
+ * says. The field-level JSON of these payloads belongs to web-api.md.
  */
 async function postJson(route, body) {
     const response = await fetch(route, {

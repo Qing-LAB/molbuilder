@@ -18,7 +18,10 @@
 
 import {
     createLoad, createWriteOut, createEdits, createCellEdit, FROZEN_LABEL,
+    resolveFilter as askServerToFilter,
 } from "./model-jobs.js";
+import { createSelectionStore, createViewStore } from "./stores.js";
+import { createHistory } from "./history.js";
 
 
 /**
@@ -53,6 +56,50 @@ export function createModel(opts) {
     const structureListeners = [];
     const frameListeners = [];
     let renderer = null;
+
+    /* ── The stores, assembled here and reached only through here (§ 9.3) ──
+     *
+     * § 7 level 4: "a change asked for through a store meets the same rules as
+     * one asked for anywhere else". That is true because the model builds them
+     * and hands each exactly what it may call — the label door goes back through
+     * the gate below, and nothing else in the selection store touches the truth.
+     */
+    const selection = createSelectionStore({
+        resolveFilter: (rule) => resolveFilter(structure, rule),
+        writeLabel:    (name, atoms) => writeLabel(name, atoms),
+    });
+    const view = createViewStore();
+
+    /* ── The history (§ 11.2) ──────────────────────────────────────────────
+     *
+     * Handed a way to record a state and a way to put one back, and nothing
+     * else — it never looks inside either. What a state HOLDS is decided here,
+     * by § 11.2's one rule: state is the truth, and what you are looking at is
+     * not. So the structure, its frames and the selection go in; the camera, the
+     * displayed frame, the switches and the drawing settings do not.
+     */
+    const history = createHistory({
+        recordState: () => ({
+            structure:   copy(structure),
+            coordinates: copy({ frames, forcesPerFrame }),
+            selection:   selection.get(),
+        }),
+        restoreState: (state) => {
+            if (!state) return;
+            settle(() => {
+                structure = state.structure;
+                frames = state.coordinates ? state.coordinates.frames : null;
+                forcesPerFrame = state.coordinates ? state.coordinates.forcesPerFrame : null;
+            }, { resetFrame: true });
+            // It opens at the first frame, fitted, with the switches off and the
+            // drawing back at its defaults — because none of that was ever part
+            // of what you were working on (§ 11.2).
+            selection.adopt(state.selection || []);
+            view.reset();
+        },
+        store: opts.workspace || { read: async () => null, write: async () => {} },
+        onBadge: () => announceStructure(),
+    });
 
     /* ── § 6.4's ordering, in one place ────────────────────────────────────
      *
@@ -119,6 +166,35 @@ export function createModel(opts) {
     // (§ 9.3). Structures are plain data, so this is the whole of it.
     const copy = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 
+    // The selection store's two doors back into the truth.
+    function resolveFilter(current, rule) {
+        return askServerToFilter(current, frames ? frames[frameIndex] : [], rule);
+    }
+
+    /**
+     * Write a label onto a set of atoms (§ 9.5).
+     *
+     * GATED, because it is a change to the structure: the label becomes part of
+     * what the atom is, goes into the sidecar and reaches the calculation. It is
+     * reached from the selection door only because the atoms it applies to are
+     * the selection, and that is convenience, not a drawing concern.
+     *
+     * Applying a label REPLACES that label's previous set of atoms.
+     */
+    const writeLabel = gated(function (name, atoms) {
+        if (!structure || !name) return false;
+        const wanted = new Set(atoms);
+        settle(() => {
+            structure.annotations.forEach((facts, i) => {
+                const labels = (facts.labels || []).filter((l) => l !== name);
+                if (wanted.has(i)) labels.push(name);
+                facts.labels = labels;
+            });
+        });
+        history.edited();
+        return true;
+    }, false);
+
     function put(nextStructure, nextCoordinates) {
         structure = nextStructure;
         frames = nextCoordinates.frames;
@@ -130,7 +206,10 @@ export function createModel(opts) {
     const installMolecule = createLoad({
         put: (s, c) => settle(() => put(s, c), { resetFrame: true }),
         announce: () => {},                 // settle already told everyone
-        recordFirstState: () => { /* the history helper lands in step E */ },
+        // Point 0 — "the one point nobody asks for", the floor the sequence
+        // stands on so a Retract from the first edit has somewhere to land. It
+        // also clears anything held for the structure just replaced (§ 11.2).
+        recordFirstState: () => history.anchor(),
     });
 
     const exportFile = createWriteOut({
@@ -143,8 +222,20 @@ export function createModel(opts) {
         readStructure: () => structure,
         readFrame:     (i) => (frames ? frames[i] : null),
         currentFrame:  () => frameIndex,
-        readSelection: () => [],            // the selection store lands in step E
-        apply: (s, c) => settle(() => put(s, c), { resetFrame: true }),
+        readSelection: () => selection.get(),
+        apply: (s, c, countChanged) => {
+            settle(() => put(s, c), { resetFrame: true });
+            // The badge is raised HERE, inside the gate and after the change has
+            // landed — which makes two of the contract's rules fall out rather
+            // than needing cases of their own: a read-only viewer never reaches
+            // this line, so its badge never appears (§ 9.4), and a failed edit
+            // never reaches it either, so nothing is recorded (§ 11.1).
+            history.edited();
+            // An operation that grows or shrinks the structure clears the
+            // selection: a kept one could point at an atom that is no longer the
+            // one it meant. A count-preserving transform leaves it alone.
+            if (countChanged) selection.clear();
+        },
     });
 
     const commitPeriodicityOp = createCellEdit({
@@ -153,7 +244,10 @@ export function createModel(opts) {
         currentFrame:  () => frameIndex,
         // A cell edit does not move an atom, so the frame and its range are
         // untouched — this is why § 10.5 makes it an overlay refresh.
-        applyCell: (cell) => settle(() => { structure.cell = cell; }),
+        applyCell: (cell) => {
+            settle(() => { structure.cell = cell; });
+            history.edited();
+        },
     });
 
     return {
@@ -350,6 +444,42 @@ export function createModel(opts) {
         setForces: gated(function (perFrame) {
             settle(() => { forcesPerFrame = perFrame || null; });
         }, undefined),
+
+        /* ══ Reach the selection / the drawing settings (§ 9.3) ═══════════
+         *
+         * Doors rather than values: reaching one is how you ASK for a change,
+         * and every change asked for through one meets the same rules as one
+         * asked for here (§ 9.4). Nothing outside holds on to a door after it
+         * has used it.
+         */
+        selection: selection,
+        view:      view,
+
+        /* ══ Save a point, and move through the sequence (§ 11.2) ═════════
+         *
+         * "A read-only viewer has no history." Saving does not itself change the
+         * master copy — it records it — but a history exists to get back to a
+         * state you left, and in a read-only viewer nothing can leave one. There
+         * is nothing to record and nowhere to go back to, so these are no-ops
+         * too, and the badge never appears.
+         */
+        save: gated((step) => history.save(step), Promise.resolve(false)),
+        load: gated((step) => history.load(step), Promise.resolve(null)),
+        undo: gated(() => history.undo(), Promise.resolve(null)),
+
+        /* ══ Know where you are in the history (§ 9.3) ════════════════════
+         *
+         * A read, not a write — which is why it is its own row. Sitting it
+         * beside the writes that move it made the "does this change the master
+         * copy?" column unanswerable.
+         */
+        get state_index() { return history.state_index; },
+        get uncommitted() { return readOnly ? false : history.uncommitted; },
+
+        // A multi-step change: writes asked for inside are held and one lands at
+        // the end, carrying the settled state (§ 11.2).
+        beginChange() { history.beginChange(); },
+        endChange()   { return history.endChange(); },
 
         /* ══ Internal wiring ═════════════════════════════════════════════
          *

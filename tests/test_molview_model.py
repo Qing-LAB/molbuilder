@@ -701,3 +701,134 @@ def test_the_model_never_names_the_drawing_library():
     for name in ("model.js", "model-jobs.js"):
         text = (MODULE_DIR / name).read_text()
         assert "3Dmol" not in text, f"{name} names the drawing library"
+
+
+# ---------------------------------------------------------------------------
+# § 11.2 / § 9.4 — the badge, raised inside the gate
+# ---------------------------------------------------------------------------
+
+def test_an_edit_raises_the_badge_and_a_failed_one_does_not():
+    """§ 11.2: the unsaved-changes flag is "not bookkeeping" — it says there is
+    work here that is not on the sequence yet.
+
+    § 11.1: when the server refuses, "no history state is recorded". Raising the
+    badge inside the gate and AFTER the change lands is what makes that fall out
+    rather than needing a case of its own: a refused edit never reaches the line.
+    """
+    out = _run(
+        """
+        const m = await loaded();
+        const fresh = m.uncommitted;
+
+        await m.applyOp("translate");
+        const afterEdit = m.uncommitted;
+
+        globalThis.__serverFails = true;
+        const before = m.uncommitted;
+        await m.applyOp("translate");
+        console.log(JSON.stringify({
+            fresh, afterEdit, afterFailure: m.uncommitted, before,
+        }));
+        """
+    )
+    assert out["fresh"] is False, "a freshly opened structure has no unsaved work"
+    assert out["afterEdit"] is True, "an edit must raise the badge"
+    assert out["afterFailure"] is True, (
+        "a failed edit must leave the badge exactly as it was — it recorded "
+        "nothing and changed nothing"
+    )
+
+
+def test_a_read_only_viewer_has_no_history_and_no_badge():
+    """§ 9.4: "`save`, `load` and `undo` are no-ops here too, and the
+    unsaved-changes badge (§ 11.2) never appears."
+
+    Saving does not itself change the master copy — it records it — but a history
+    exists to get back to a state you left, and in a read-only viewer nothing can
+    leave one.
+    """
+    out = _run(
+        """
+        const m = createModel({ mode: "readonly" });
+        const threw = [];
+        for (const [name, fn] of [
+            ["save", () => m.save(1)], ["load", () => m.load(-1)], ["undo", () => m.undo()],
+        ]) {
+            try { await fn(); } catch (e) { threw.push(name); }
+        }
+        await m.applyOp("translate");
+        console.log(JSON.stringify({
+            threw, badge: m.uncommitted, at: m.state_index,
+        }));
+        """
+    )
+    assert out["threw"] == [], f"a read-only history door threw: {out['threw']}"
+    assert out["badge"] is False, (
+        "a read-only viewer raised the unsaved-changes badge"
+    )
+    assert out["at"] == 0
+
+
+def test_writing_a_label_raises_the_badge_and_is_frozen_read_only():
+    """§ 9.4: "Tagging is an edit. A label becomes part of what an atom IS and
+    travels to the calculation, so writing one is frozen along with the rest."
+
+    § 9.5: applying a label REPLACES that label's previous set of atoms.
+    """
+    out = _run(
+        """
+        const m = await loaded();
+        m.selection.add([0]);
+        m.selection.applyLabel("anchor");
+        const first = m.getRegions();
+        const badge = m.uncommitted;
+
+        m.selection.clear();
+        m.selection.add([1]);
+        m.selection.applyLabel("anchor");     // replaces the previous set
+
+        const ro = createModel({ mode: "readonly" });
+        const roWrote = ro.selection.applyLabel("anchor");
+
+        console.log(JSON.stringify({
+            first, badge, replaced: m.getRegions(), roWrote,
+        }));
+        """
+    )
+    assert out["first"] == {"anchor": [0]}
+    assert out["badge"] is True, "tagging is an edit, so it raises the badge"
+    assert out["replaced"] == {"anchor": [1]}, (
+        f"applying a label must replace that label's previous set: {out['replaced']}"
+    )
+    assert out["roWrote"] is False, "a read-only viewer must not write a label"
+
+
+def test_a_count_changing_edit_clears_the_selection():
+    """A kept selection could point at an atom that is no longer the one it
+    meant. A count-preserving transform leaves it alone — the two cases are
+    genuinely different, which is why the operation table carries the effect on
+    atom count (§ 11.1).
+    """
+    out = _run(
+        """
+        const m = await loaded();
+        m.selection.add([0, 1]);
+
+        // Same count back: the selection survives.
+        await m.applyOp("translate");
+        const afterTransform = m.selection.get();
+
+        // One atom back where there were two: the count changed.
+        m.selection.add([0, 1]);
+        globalThis.__nextPayload = globalThis.__payload([globalThis.__atomRow(0, "C", 0)]);
+        await m.applyOp("delete");
+        console.log(JSON.stringify({ afterTransform, afterShrink: m.selection.get() }));
+        """
+    )
+    assert out["afterTransform"] == [0, 1], (
+        "a count-preserving transform must leave the selection alone"
+    )
+    assert out["afterShrink"] == [], (
+        f"an edit that changed the atom count must clear the selection: "
+        f"{out['afterShrink']}"
+    )
