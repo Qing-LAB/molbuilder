@@ -44,6 +44,21 @@ export function createModel(opts) {
     let frames = null;                // Vec3[][]
     let forcesPerFrame = null;
 
+    /* Has a structure ever been put in?
+     *
+     * § 9.4 freezes THE MASTER COPY — and a viewer with nothing in it has no
+     * master copy to freeze. So the FIRST install is how a host says which
+     * structure this viewer shows, and it is allowed in any mode; every one
+     * after it meets the gate like anything else.
+     *
+     * That keeps § 9.3's "the only way a structure gets in" true — there is no
+     * second door — while making § 8's "a viewer mounts before it has a
+     * structure" and § 12.3's read-only Results viewer both possible. What a
+     * read-only viewer still cannot do is exactly what § 9.4 promises: change
+     * the structure the calculation ran on.
+     */
+    let seeded = false;
+
     /* ── The displayed frame and the range it lives in (§ 6.4) ─────────────
      *
      * ONE FACT, KEPT IN ONE PLACE. "A frame number without the range it is valid
@@ -204,12 +219,20 @@ export function createModel(opts) {
     /* ══ The helpers, each handed exactly what it may call (§ 7.3) ════════ */
 
     const installMolecule = createLoad({
-        put: (s, c) => settle(() => put(s, c), { resetFrame: true }),
+        put: (s, c) => {
+            settle(() => put(s, c), { resetFrame: true });
+            seeded = true;
+        },
         announce: () => {},                 // settle already told everyone
         // Point 0 — "the one point nobody asks for", the floor the sequence
         // stands on so a Retract from the first edit has somewhere to land. It
         // also clears anything held for the structure just replaced (§ 11.2).
-        recordFirstState: () => history.anchor(),
+        //
+        // A READ-ONLY VIEWER ANCHORS NOTHING. § 9.4: it has no history, because
+        // a history exists to get back to a state you left and nothing here can
+        // leave one. Anchoring would also write point 0 to the workspace, which
+        // is a persist a read-only viewer has no business doing.
+        recordFirstState: () => (readOnly ? null : history.anchor()),
     });
 
     const exportFile = createWriteOut({
@@ -399,7 +422,11 @@ export function createModel(opts) {
          * Each one wrapped in the gate, and each returns a value that says "no"
          * without throwing.
          */
-        installMolecule:      gated(installMolecule, Promise.resolve(null)),
+        // Seeding is allowed in any mode; REPLACING what was seeded is not.
+        installMolecule(input) {
+            if (readOnly && seeded) return Promise.resolve(null);
+            return installMolecule(input);
+        },
         applyOp:              gated(applyOp, Promise.resolve(null)),
         commitPeriodicityOp:  gated(commitPeriodicityOp, Promise.resolve(null)),
 

@@ -174,20 +174,20 @@ Findings worth keeping, not code.
 2. **`factsForRequest`** — § 9.3 retires it in favour of one read plus one translation. It is
    named in another document's contract, so retiring it is a decision there.
 3. **§ 11.1's route sentence** — one line, your wording.
-4. **A read-only viewer cannot be given a structure** — a contradiction inside the contract,
-   found by building the gate. § 9.3's table marks `installMolecule` as *changes the master
-   copy*, so § 9.4's one question answers **yes** and the gate swallows it. But § 8 says a
-   viewer "mounts before it has a structure … once a structure … is **loaded into it**",
-   § 12.3 describes a read-only Results viewer showing a finished calculation, and § 9.3 says
-   `installMolecule` is "the only way a structure gets in". Today's code does what the table
-   says, and a test pins it so it cannot be lost. The two readings:
-   - **Installing is how a host says which structure this viewer shows**, and the gate is
-     about a *user* editing it — § 9.4's "the structure the calculation ran on" reads as
-     already present. Then `installMolecule` is not gated and § 9.3's row is what changes.
-     *This is the reading I'd pick: it is the only one that leaves the Results tab working
-     without adding a second way in, which is the thing § 9.3 exists to prevent.*
-   - **Installing really is a truth change**, and a read-only viewer is seeded some other way
-     at mount. Then § 8 or § 9.3's "only way in" is what changes.
+4. ~~**A read-only viewer cannot be given a structure.**~~ **DECIDED (you, 2026-07-30):** a
+   viewer carries an **initialised** flag. With nothing loaded there is no master copy to
+   freeze, so the FIRST `installMolecule` is allowed in any mode — it is how a host says
+   which structure this viewer shows. Every one after it meets the gate.
+
+   That keeps § 9.3's "the only way a structure gets in" intact (no second door) while making
+   § 8's "a viewer mounts before it has a structure" and § 12.3's read-only Results viewer
+   both work. § 9.4's promise stays literally true: what a read-only viewer cannot do is
+   change *the structure the calculation ran on*. One consequence followed: a read-only seed
+   anchors **no** history, since § 9.4 says such a viewer has none and anchoring would write
+   point 0 to the workspace.
+
+   **Still to do:** `molview.md` records the old answer. Proposed wording is in the session
+   notes and awaits your approval — the code and its test are already on the new rule.
 5. **Two filter channels the rebuilt `_atom.js` does not have**, both dropped by reading the
    contract rather than by oversight — worth your eye because one of them is visible to a
    user today.
@@ -195,8 +195,10 @@ Findings worth keeping, not code.
      § 6.6 settles it the other way: `frozen atoms` is an ordinary label, so it arrives as a
      tag with no case of its own. Nothing is lost — the row still appears, by the general
      mechanism. **This one is decided; it is what § 6.6 says.**
-   - `values` — per-atom scalars (charge, spin) — **is a row that disappears.** § 6.2's
-     carried facts are element, labels and residue, and the rule is that the enumerated list
-     and the carried list move together, so a value channel cannot be offered while the
-     structure does not carry one. That is task **#24**'s programme, which extends both lists
-     in one step. Ship without it, or pull #24 forward — your call.
+   - `values` — per-atom scalars, meaning a NUMBER on each atom (a Mulliken charge, a spin
+     moment) rather than a name, matched by a numeric predicate instead of by equality.
+     **Nothing is lost: it never carried data.** Verified 2026-07-30 — the server has never
+     sent a `values` field and nothing in the frozen frontend ever populated one, and since
+     the panel offers only channels it finds on real atoms, the row could never appear. It
+     was scaffolding for task **#24**, unfinished at the far end. § 6.2's move-together rule
+     is what keeps it out until #24 makes the structure carry one.

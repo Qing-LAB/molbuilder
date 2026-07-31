@@ -357,10 +357,16 @@ def test_every_truth_change_is_a_no_op_and_does_not_throw():
     """
     out = _run(
         """
-        globalThis.__nextPayload = globalThis.__payload([
-            globalThis.__atomRow(0, "C", 0), globalThis.__atomRow(1, "O", 1),
-        ]);
         const m = createModel({ mode: "readonly" });
+        // Seed it first: the gate is about REPLACING the structure the
+        // calculation ran on, and a viewer with nothing in it has no master copy
+        // to freeze. Everything below is asked of a viewer that HAS one.
+        await m.installMolecule({ text: "x", filename: "x.xyz" });
+        const seeded = JSON.stringify(m.getStructure());
+        globalThis.__requests = [];
+        globalThis.__nextPayload = globalThis.__payload([
+            globalThis.__atomRow(0, "XX", 9),
+        ]);
         const threw = [];
         async function tryIt(name, fn) {
             try { await fn(); } catch (e) { threw.push(name); }
@@ -374,14 +380,14 @@ def test_every_truth_change_is_a_no_op_and_does_not_throw():
         await tryIt("setForces",       () => m.setForces([[[1,0,0]]]));
         console.log(JSON.stringify({
             threw,
-            structure: m.getStructure(),
+            unchanged: JSON.stringify(m.getStructure()) === seeded,
             requests: globalThis.__requests.length,
         }));
         """
     )
     assert out["threw"] == [], f"a read-only no-op threw: {out['threw']}"
-    assert out["structure"] is None, (
-        "a read-only viewer's master copy changed"
+    assert out["unchanged"] is True, (
+        "a read-only viewer's master copy changed after it was seeded"
     )
     assert out["requests"] == 0, (
         "a read-only viewer sent a request — the gate must stop it before the "
@@ -428,45 +434,90 @@ def test_scrubbing_and_exporting_are_not_gated():
     assert out["roThrew"] is False
 
 
-def test_a_read_only_viewer_cannot_be_given_a_structure_today():
-    """OPEN — a contradiction in the contract, pinned here so it cannot be lost.
+def test_a_read_only_viewer_is_seeded_once_and_then_frozen():
+    """§ 9.4 freezes THE MASTER COPY — and a viewer with nothing loaded has no
+    master copy to freeze.
 
-    § 9.3's table marks `installMolecule` as changing the master copy, so § 9.4's
-    one question answers "yes" and the gate swallows it. But § 8 says "a viewer
-    mounts before it has a structure … the bar appears once a structure with more
-    than one frame is LOADED INTO IT", and § 12.3 describes a read-only Results
-    viewer showing a finished calculation. § 9.3 also says installMolecule is
-    "the only way a structure gets in".
+    So the first `installMolecule` is how a host says which structure this viewer
+    shows, and it is allowed in any mode; every one after it meets the gate. That
+    keeps § 9.3's "the only way a structure gets in" intact — no second door —
+    while making § 8's "a viewer mounts before it has a structure" and § 12.3's
+    read-only Results viewer both possible.
 
-    So today a read-only viewer can never receive one. This test asserts the
-    contract AS WRITTEN; when the question is decided, it changes with it.
-
-    The two readings, for whoever decides:
-      - installing is how a HOST says which structure this viewer shows, and the
-        gate is about a USER editing it — § 9.4's "the structure the calculation
-        ran on" reads as already present. Then installMolecule is not gated, and
-        § 9.3's table row is what changes.
-      - installing really is a truth change, and a read-only viewer is seeded by
-        some other means at mount. Then § 8 or § 9.3's "only way in" is what
-        changes.
+    What a read-only viewer still cannot do is exactly what § 9.4 promises:
+    change the structure the calculation ran on.
     """
     out = _run(
         """
         const m = createModel({ mode: "readonly" });
-        const result = await m.installMolecule({ text: "x", filename: "x.xyz" });
+        const seed = await m.installMolecule({ text: "x", filename: "first.xyz" });
+        const afterSeed = m.getAtoms().map(a => a.element);
+
+        // A second load would REPLACE the structure the calculation ran on.
+        globalThis.__nextPayload = globalThis.__payload([
+            globalThis.__atomRow(0, "XX", 9),
+        ]);
+        globalThis.__requests = [];
+        const replaced = await m.installMolecule({ text: "y", filename: "second.xyz" });
+
         console.log(JSON.stringify({
-            result,
-            structure: m.getStructure(),
-            requests: globalThis.__requests.length,
+            seeded: seed !== null,
+            afterSeed,
+            replaced,
+            stillFirst: m.getAtoms().map(a => a.element),
+            secondRequests: globalThis.__requests.length,
         }));
         """
     )
-    assert out["result"] is None
-    assert out["structure"] is None, (
-        "the gate swallowed the only door a structure can arrive through — this "
-        "is § 9.3's table applied as written, and is the open question above"
+    assert out["seeded"] is True, (
+        "a read-only viewer could not be given a structure at all, so the "
+        "Results tab would have nothing to show"
     )
-    assert out["requests"] == 0
+    assert out["afterSeed"] == ["C", "O"]
+    assert out["replaced"] is None, "the second load must be a no-op"
+    assert out["stillFirst"] == ["C", "O"], (
+        "a read-only viewer's structure was replaced after it was seeded"
+    )
+    assert out["secondRequests"] == 0, (
+        "the gate must stop the replacement before the network, not after"
+    )
+
+
+def test_a_read_only_seed_anchors_no_history():
+    """§ 9.4: "A read-only viewer has no history … `save`, `load` and `undo` are
+    no-ops here too, and the unsaved-changes badge never appears."
+
+    Anchoring point 0 would also write it to the workspace, which is a persist a
+    read-only viewer has no business doing (§ 11.2: storage is touched by opening
+    a structure, an explicit save, and a load).
+    """
+    out = _run(
+        """
+        const writes = [];
+        const workspace = {
+            read: async () => null,
+            write: async (step, bytes) => { writes.push(step); },
+        };
+        const ro = createModel({ mode: "readonly", workspace });
+        await ro.installMolecule({ text: "x", filename: "x.xyz" });
+
+        const editable = createModel({ workspace: {
+            read: async () => null,
+            write: async (step) => { writes.push("editable:" + step); },
+        } });
+        await editable.installMolecule({ text: "x", filename: "x.xyz" });
+
+        console.log(JSON.stringify({
+            writes, badge: ro.uncommitted, at: ro.state_index,
+        }));
+        """
+    )
+    assert out["writes"] == ["editable:0"], (
+        "a read-only seed wrote a history point to the workspace — only the "
+        f"editable viewer should have anchored: {out['writes']}"
+    )
+    assert out["badge"] is False
+    assert out["at"] == 0
 
 
 # ---------------------------------------------------------------------------
