@@ -44,7 +44,7 @@ fix the right one, and the reasoning is the part that stops it being re-broken.
 | # | Item | State |
 |---|---|---|
 | 1 | The save / load pair, and where the saved bytes come from | **agreed — ready to execute** |
-| 2 | The cell's private spelling | discussed, awaiting agreement |
+| 2 | The cell's private spelling | **agreed — ready to execute** |
 | 3 | The coordinate document is rewritten when the server already sent one | raised, not discussed |
 | 4 | The browser writes a file format at all | raised, not discussed |
 | 5 | The label list is flipped in three places | raised, not discussed |
@@ -139,8 +139,16 @@ forces MolView to author a format it cannot author.
    disk. MolView still decides *what* leaves and *where it goes* (§ 11.4); it stops
    assembling bytes it gets wrong.
 
-**Two consequences to expect:** `exportFile()`'s download path becomes a round trip,
-and the demo page's stand-in `files` door is replaced by a small host-side save.
+**`exportFile()` stays synchronous.** It reads the module's own memory and stops;
+the round trip belongs to whoever is putting bytes somewhere — the sidebar for a
+project save, the host for a download. Making it async would have bought a new
+"the server was unreachable" failure at the moment a user expects a file, and a
+gap between sending and answering in which the structure could change underneath
+(the race § 11.2 built the CHANGING state for). Neither is worth taking on, and
+neither is necessary.
+
+**One consequence to expect:** the demo page's stand-in `files` door is replaced by
+a small host-side save.
 
 ### Document
 
@@ -160,16 +168,72 @@ on a second path.
 
 ---
 
-## 4. Items not yet settled
+## 4. Item 2 — the cell's private spelling
+
+**AGREED. Ready to execute.**
+
+### Symptom
+
+The unit-cell button drew nothing, for any structure, ever. The axes always fell
+back to the Cartesian x/y/z triad instead of following the cell vectors. An
+exported sidecar carried no cell. Nothing failed and nothing was logged, because
+every one of those is the correct behaviour for a structure that is not periodic —
+which is what the module believed about all of them.
+
+### Evidence
+
+The server sends the block as `{cell, cell_origin, axis_kind, vacuum}`. The module
+renamed it on the way in to `{lattice, origin, axis_kind, vacuum}` and back on the
+way out. The reading code then asked for `.lattice` — a key that has never existed
+on the wire — and got nothing.
+
+**`{cell, cell_origin, axis_kind, vacuum}` is the format everything else already
+speaks**: the load payload, the `.molstruct.json` on disk, the modify routes'
+`periodicity` block, and the frozen tree's `_setPeriodicity`, `factsForRequest` and
+`scratchBlob`. The rebuilt module is the only thing in the system that ever called
+it something else.
+
+The name `lattice` does appear elsewhere in the front end, and neither instance is
+this block: `mol-viewer-embed.js`'s `cellBox.lattice` is **the drawing's parameter
+for a box to render**, and `trajectory/core.js`'s `state.data.lattice` is the
+trajectory module's own parsed run-file data.
+
+### The old code
+
+It never renamed. The server's four names went in and came out unchanged, and every
+reader used them.
+
+### Code
+
+1. The structure carries `periodicity: {cell, cell_origin, axis_kind, vacuum}` —
+   the backend's names, unchanged. `cellFromServer` and `cellForServer` are deleted:
+   with nothing to translate there is nothing to keep in step.
+2. `getUnitCell()` returns `periodicity.cell`, `getUnitCellOrigin()` returns
+   `periodicity.cell_origin`, and so on — the narrower cuts of § 9.3's table keep
+   their names, because those are MolView's read surface and are unaffected.
+3. **`lattice` survives in exactly one place, legitimately**: the box handed to the
+   drawing. `sceneFor()` maps `periodicity.cell` onto the `{lattice, origin}` shape
+   the drawing takes — a translation into the drawing's vocabulary, at the layer
+   that already does that for `style` → `rep` and `radius` → `radiusScale` (§ 9.8).
+
+### Document
+
+4. **§ 6.2** — the structure's field is `periodicity`, and it carries the server's
+   four names. The row already says MolView "carries the block and interprets none
+   of it"; renaming is interpretation's first step, and this makes the row literally
+   true.
+5. **§ 11.1** — the inbound translation's job shrinks: the server's *atom* names
+   still become the module's, and the cell block is now carried verbatim.
+
+### Open
+
+Nothing.
+
+---
+
+## 5. Items not yet settled
 
 Recorded so they survive the session. Each becomes a section above when discussed.
-
-**2. The cell's private spelling.** The server sends `{cell, cell_origin,
-axis_kind, vacuum}`; the module renamed them to `{lattice, origin, …}` and back.
-That rename made the cell null for the whole life of the rebuild — the box could
-never be drawn, the axes always fell back to x/y/z, an export carried no cell. Fixed
-at the translation seam (commit `bff3803`); what is left to decide is whether the
-private spelling goes away entirely, which touches § 6.2's field name.
 
 **3. The coordinate document is rewritten when the server already sent one.** A load
 returns the canonical text; the module ignores it and writes its own — no title
