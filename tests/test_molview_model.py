@@ -420,6 +420,128 @@ def test_what_the_viewer_is_has_one_answer_and_a_replacement_can_be_enforced():
     )
 
 
+def test_every_door_answers_what_the_read_only_table_says_and_none_of_them_throws():
+    """§ 9.4's per-door table, pinned as values rather than as prose.
+
+    "It returns without effect AND WITHOUT THROWING" is the rule, not a
+    courtesy: a viewer that threw would make every caller wrap its writes, which
+    is the list of special cases § 9.4 exists to avoid. So each swallowed door is
+    checked for BOTH — that nothing happened, and that the caller got an answer
+    it can test rather than an exception.
+
+    The answers differ by door (`null`, `false`, `undefined`) because they are
+    each that call's own "no", not one invented for the gate.
+    """
+    out = _run(
+        """
+        const store = { read: async () => null, write: async () => {} };
+        const m = createModel({ mode: "readonly", workspace: store });
+        await m.installMolecule({ text: "x", filename: "x.xyz" });   // leaves EMPTY
+        await new Promise((r) => setTimeout(r, 0));
+        m.addFrames([[[0,0,1],[1,0,1]]]);        // delivery: runs
+        m.selection.adopt([0]);
+
+        const before = JSON.stringify({
+            structure: m.getStructure(), frames: m.frameCount(),
+        });
+        const threw = [];
+        const answered = {};
+        async function door(name, fn) {
+            // `undefined` does not survive JSON, and it is one of the answers
+            // the table names — so it is spelled out rather than dropped.
+            try {
+                const got = await fn();
+                answered[name] = (got === undefined) ? "undefined" : got;
+            } catch (e) { threw.push(name + ": " + e.message); }
+        }
+
+        await door("installOver",  () => m.installMolecule({ text: "y", filename: "y.xyz" }));
+        await door("applyOp",      () => m.applyOp("translate", { dx: 1 }));
+        await door("cell",         () => m.commitPeriodicityOp("cell", [[9,0,0],[0,9,0],[0,0,9]]));
+        await door("writeLabel",   () => m.selection.writeLabel("smuggled", "replace"));
+        await door("reloadFrames", () => m.reloadFrames([[[5,0,0],[6,0,0]]]));
+        await door("save",         () => m.save(1));
+        await door("load",         () => m.load(0));
+        await door("undo",         () => m.undo());
+        // The count guard sits INSIDE the door, so a misshapen reload that the
+        // gate already answered must not raise either.
+        await door("reloadMisshapen", () => m.reloadFrames([[[9,9,9]]]));
+
+        console.log(JSON.stringify({
+            threw, answered, mode: m.mode,
+            unchanged: before === JSON.stringify({
+                structure: m.getStructure(), frames: m.frameCount() }),
+        }));
+        """
+    )
+    assert out["threw"] == [], (
+        f"a read-only no-op threw instead of answering: {out['threw']}"
+    )
+    assert out["unchanged"] is True, "a swallowed door changed something anyway"
+    assert out["mode"] == "readonly"
+    # Each door's own "no" — the values § 9.4's table names.
+    assert out["answered"] == {
+        "installOver":     None,
+        "applyOp":         None,
+        "cell":            None,
+        "writeLabel":      False,
+        "reloadFrames":    "undefined",
+        "save":            False,
+        "load":            None,
+        "undo":            None,
+        "reloadMisshapen": "undefined",
+    }, f"a door answered something other than § 9.4's table says: {out['answered']}"
+
+
+def test_the_reads_answer_nothing_when_nothing_is_loaded_except_the_counts():
+    """§ 9.3's surface table, at the one moment it is easiest to get wrong.
+
+    "With nothing loaded, a read returns NOTHING rather than an empty structure"
+    — but three entries are deliberately not `null`, and a caller has to be able
+    to rely on that: the two counts are counts, and `mode` is what the viewer IS
+    rather than what it holds. `getUnitCellInfo` is the fourth: it is "the cell
+    as it will actually be used... so it ALWAYS has an answer", which means an
+    object with empty fields, not nothing.
+    """
+    out = _run(
+        """
+        const m = createModel({});
+        const reads = {};
+        for (const name of ["getStructure", "getAtoms", "getElements",
+                            "getCoordinates", "getRegions", "getFrozen",
+                            "exportFile", "getUnitCell", "getUnitCellOrigin",
+                            "getAxisKind", "getVacuum"]) {
+            reads[name] = m[name]();
+        }
+        m.setCurrentFrame(5);      // not gated, and there is nothing to move to
+        console.log(JSON.stringify({
+            reads,
+            frame: m.getFrameAllAtoms(0),
+            cellInfo: m.getUnitCellInfo(),
+            counts: [m.frameCount(), m.currentFrame()],
+            history: [m.state_index, m.uncommitted],
+            mode: m.mode,
+        }));
+        """
+    )
+    for name, value in out["reads"].items():
+        assert value is None, (
+            f"{name} answered with an empty structure instead of nothing: {value}"
+        )
+    assert out["frame"] is None
+    assert out["cellInfo"] == {"cell": None, "cell_origin": None,
+                               "axis_kind": None, "vacuum": None}, (
+        "the cell as it will be used must ALWAYS have an answer — an object with "
+        f"empty fields, never nothing: {out['cellInfo']}"
+    )
+    assert out["counts"] == [0, 0], (
+        f"the counts are counts, not nothing, and a seek finds nowhere to go: "
+        f"{out['counts']}"
+    )
+    assert out["history"] == [0, False]
+    assert out["mode"] == "editable", "mode is what the viewer IS, not what it holds"
+
+
 def test_appending_is_the_same_in_both_modes_but_replacing_is_not():
     """The line is REWRITE versus APPEND, not "coordinates versus everything
     else".

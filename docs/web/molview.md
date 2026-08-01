@@ -1138,6 +1138,41 @@ sitting in the same row as the writes that move it, which made the last column
 unanswerable — a row has to be one kind of thing or the question "does this change
 the master copy?" has no single answer.
 
+#### The surface, with its parameters
+
+The table above is the *needs*. This is the same surface written out as calls, so
+a caller does not have to infer an argument. **With nothing loaded every data
+read answers `null`** — "there is nothing here", which is a different answer from
+"a structure with no atoms" — and the three below that do not are marked.
+
+| Call | Parameters | Answers |
+|---|---|---|
+| `getStructure()` | — | the master copy whole: `{elements, annotations, periodicity, frames, forcesPerFrame}` |
+| `getAtoms()` | — | `[{index, element, labels, residue}]` |
+| `getElements()` · `getCoordinates()` | — | the elements; `{frames, forcesPerFrame}` |
+| `getRegions()` | — | `{label: [atom…]}` |
+| `getFrozen()` | — | the atoms carrying `frozen_atoms` (§ 6.6) |
+| `getFrameAllAtoms(i)` | `i` — frame index, 0-based | every atom of that frame, original order |
+| `getUnitCellInfo()` | — | the cell **as it will be used** — `{cell, cell_origin, axis_kind, vacuum}`, each `null` where there is nothing. **Never `null` itself** |
+| `getUnitCell()` · `getUnitCellOrigin()` · `getAxisKind()` · `getVacuum()` | — | what the structure itself states, `null` where it states nothing |
+| `currentFrame()` · `frameCount()` | — | **`0` with nothing loaded**, not `null` — they are counts |
+| `setCurrentFrame(i)` | `i` — resolved against the range, never taken on trust | — |
+| `onFrameChange(fn)` · `subscribe(fn)` | `fn` | an unsubscribe function |
+| `exportFile()` | — | `{name, structure}`, or `null` if the geometry and the per-atom facts disagree |
+| `mode` | — | **`"editable"` or `"readonly"`**, never `null` |
+| `state_index` · `uncommitted` | — | the position; whether there is unsaved work |
+| `installMolecule(input)` | `{path}` **or** `{text, filename, format?, sidecar?}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure, or `null` |
+| `applyOp(name, args)` | `name` — a row of § 11.1's table, and the route segment. `args` — that operation's own arguments, flat | the structure, or `null` |
+| `commitPeriodicityOp(op, payload)` | `op` — `vacuum` · `axis_kind` · `cell` · `cell_origin`. `payload` — that op's value; `null` clears | the cell block, or `null` |
+| `reloadFrames(frames, opts)` | `opts` — `{forces?, enforce?}` | — |
+| `addFrame(frame, opts)` · `addFrames(frames, opts)` | `opts` — `{forces?}` | — |
+| `setForces(perFrame)` | one entry per frame; `null` clears | — |
+| `save(step)` | `1` — a new point, dropping everything above. `0` — rewrite this one | did it land |
+| `load(step)` | `-1` back · `+1` forward · `0` **restore, not a move** | the point, or `null` |
+| `undo()` | — | exactly `load(-1)` |
+| `beginChange()` · `endChange()` | — | the bracket (§ 11.2) |
+| `selection.writeLabel(name, verb, atoms?)` | `verb` — `replace` · `add` · `remove`. `atoms` defaults to the selection | did it apply |
+
 **`getFrameAllAtoms(i)` is named for exactly what it promises:** every atom of
 frame `i`, in the original numbering, before isolate cuts anything down.
 That is what its callers want — measurement resolves panel numbers against it,
@@ -1272,6 +1307,40 @@ to protect.
 > (§ 12.3), because the only frame it could ever hold was the one it was seeded
 > with. The question is whether something **changes** the structure the
 > calculation ran on — and its own output does not.
+
+#### Every door, in a read-only viewer
+
+The one question of § 9.4 asked of each, with what it answers when the gate
+swallows it. **Nothing here throws** — that is the rule, not a courtesy, because
+a viewer that threw would make every caller wrap its writes.
+
+| Door | Rewrites what is held? | Read-only | Answers |
+|---|:--:|---|---|
+| `installMolecule` — into an **EMPTY** viewer | — | **runs** | the structure |
+| `installMolecule` — over a structure already held | yes | **no-op**, unless `{enforce: true}` | `null` |
+| `applyOp(name, args)` | yes | **no-op** | `null` |
+| `commitPeriodicityOp(op, payload)` | yes | **no-op** | `null` |
+| `selection.writeLabel(name, verb, atoms?)` | yes | **no-op** | `false` |
+| `reloadFrames(frames, opts)` | **yes** — replaces every coordinate, can shorten the run | **no-op**, unless `{enforce: true}` | `undefined` |
+| `addFrame` · `addFrames` · `setForces` | no — extend only | **runs** | `undefined` |
+| `save(step)` | records | **no-op** | `false` |
+| `load(step)` · `undo()` | restores | **no-op** | `null` |
+| `setCurrentFrame(i)` · every read · `selection` · `view` | no | **runs** | as always |
+
+**The gate comes before the guards, and that is visible.** § 10.8's atom-count
+check is inside the door; the gate is in front of it. So a `reloadFrames` whose
+frames do not fit **throws in an editable viewer and returns quietly in a
+read-only one** — the door never opened, so there was nothing to check. The
+append doors are never gated, so their count check speaks in both modes.
+
+| Called with frames that do not fit | editable | read-only |
+|---|---|---|
+| `addFrames` | throws | throws |
+| `reloadFrames` | throws | silent no-op — the gate answered first |
+
+**`mode` says which kind of viewer this is**, and it is how MolView hides the
+controls the gate would swallow (§ 9.4's courtesy half). It is configuration, not
+data: the gate is still the thing that makes the guarantee true.
 
 Looking at the picture is what a read-only viewer is *for*. Somebody studying a
 finished calculation can still select atoms, isolate them, measure them, scrub
