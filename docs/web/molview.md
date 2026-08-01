@@ -999,26 +999,19 @@ a fact of its own, and none reaches the drawing directly.
 
 | The control | Reads | Writes |
 |---|---|---|
-| **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4); loop, from the handle | the displayed frame, through the one write everyone uses; play, pause and loop, through the handle (§ 9.2) |
+| **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4); loop and speed, from the handle | the displayed frame, through the one write everyone uses; play, pause, loop and speed, through the handle (§ 9.2) |
 
-> **Speed is the one fact on this card that still has no home but its control**,
-> and this table used to name it without saying where it lived. It is held in
-> the speed box's `value`, converted to frames per second at the one place the
-> two vocabularies meet, and read from the box each time playback starts.
+> **Speed was the one fact on this card with no home but its control**, and this
+> table used to name it without saying where it lived. Fixed 2026-08-01: it is
+> the handle's, in milliseconds per frame, and the box sets it and then shows
+> what was taken — so typing 5000 settles the box to 3000, because that is what
+> playback is actually doing.
 >
-> That cost something real, found 2026-08-01: the box displayed § 1.1's default
-> of 150 ms while `mount.js` started its timer at `DEFAULT_FPS = 12` — 83 ms.
-> One fact, two homes, two values. The box was simply wrong until the first
-> press of play (which passes the box's own figure), and `handle.play()` with no
-> options — the door a tab uses (§ 9.2) — ran at a speed nothing on screen ever
-> showed. The default is now derived from the box's, so the two agree, and
-> `test_the_speed_the_box_shows_is_the_speed_playback_starts_at` holds them
-> there.
->
-> **The remaining gap is deliberate and open**: giving speed the shape loop
-> already has — `setFps` / `getFps` beside `setLoop` / `getLoop`, read back in
-> the bar's `reflect()` — adds to the handle, which is a § 9.2 surface change
-> and wants its own decision rather than riding along with a defect fix.
+> Two homes had already cost something. The box displayed § 1.1's default of
+> 150 ms while `mount.js` started its timer at `DEFAULT_FPS = 12` — 83 ms — so
+> the box was simply wrong until the first press of play, and `handle.play()`
+> ran at a speed nothing on screen ever showed. Held there now by
+> `test_the_speed_box_sets_playback_and_shows_what_playback_took`.
 | **the rail** — atom numbers, forces, cell, axes, isolate, Reset (§ 1.1) | `selection`, for the lit state of each switch | the five switches to `selection`; **Reset** writes nothing — it re-fits the camera through the handle, the one thing on this card that is neither data nor a switch (§ 9.6) |
 
 > **Isolate has one control, on the rail.** This section used to add that it
@@ -1105,10 +1098,26 @@ In the examples below that one route is written `viewer.data` — the handle is 
 viewer, and `viewer.data` is that viewer's model. There is no other way to it,
 and no other viewer's model is reachable from it.
 
-**This is true of the code today.** The handle carries eleven names and not one
+**This is true of the code today.** The handle carries thirteen names and not one
 of them mirrors the model: `ok` and `error`, `dispose`, `data`, `play` / `pause`
-/ `isPlaying` / `setLoop` / `getLoop`, `onChange`, and `resetView`. There is no
-forwarded read left to retire.
+/ `isPlaying` / `setLoop` / `getLoop` / `setSpeed` / `getSpeed`, `onChange`, and
+`resetView`. There is no forwarded read left to retire.
+
+**Playback's settings are set and read; playback itself is just done.** `play`
+takes **no arguments**. It used to accept `{fps}`, and that is the shape this
+section exists to forbid: frames per second is `setInterval`'s vocabulary, not
+MolView's, so `play({fps})` published an internal knob through the handle and
+let a caller run playback at a speed the frame bar never showed. Speed is now
+`setSpeed(msPerFrame)` / `getSpeed()` — the unit § 1.1 fixes, beside `setLoop` /
+`getLoop`, because they are the same kind of thing.
+
+**The clamp belongs to the handle, not the box.** § 1.1's 20–3000 ms holds for
+every caller rather than only for the one with an `<input min max>` in front of
+it, and nonsense leaves the speed alone instead of stopping the timer. Carrying
+milliseconds also fixed a defect the old unit had hidden: the guard against a
+zero rate, `Math.max(1, fps)`, capped the **slow** end at 1 fps, so the
+contract's slowest setting of 3000 ms actually played at 1000 ms — three times
+too fast, with nothing on screen to say so.
 
 ### 9.3 The model — the one place the structure lives
 

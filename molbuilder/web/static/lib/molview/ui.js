@@ -54,17 +54,16 @@ const RESERVED_TONES = [
  *                  know.
  */
 /* The playback-speed bounds the contract fixes (§ 1.1): milliseconds per frame,
- * 20 to 3000, defaulting to 150. Named here rather than inline because the
- * floor is load-bearing — `fps = 1000 / ms` divides by it.
+ * 20 to 3000, defaulting to 150.
  *
- * THE DEFAULT IS EXPORTED because mount.js starts its timer at the same speed,
- * and it used to start it at a DIFFERENT one: `DEFAULT_FPS = 12` there, 83 ms
- * per frame, against the 150 this box displayed. One fact, two homes, two
- * values — so the box was simply wrong until the user pressed play (which
- * passes the box's figure) and any tab calling `handle.play()` with no options
- * ran at a speed the UI never showed. */
-const SPEED_MIN_MS = 20;
-const SPEED_MAX_MS = 3000;
+ * EXPORTED, and the direction of that import is deliberate. These are § 1.1's
+ * numbers for a CONTROL, so they belong in the file that builds § 1.1's
+ * controls; mount.js imports them so the handle enforces exactly the range the
+ * box offers. One definition, checked at both ends — rather than the box
+ * offering 20–3000 while playback quietly allowed something else, which is the
+ * shape the speed bug already took once. */
+export const SPEED_MIN_MS = 20;
+export const SPEED_MAX_MS = 3000;
 export const SPEED_DEFAULT_MS = 150;
 
 
@@ -249,7 +248,9 @@ function mountFrameBar(doc, card, model, handle) {
     speedBox.min = String(SPEED_MIN_MS);
     speedBox.max = String(SPEED_MAX_MS);
     speedBox.step = "20";
-    speedBox.value = String(SPEED_DEFAULT_MS);
+    // Opens on what playback is set to, not on a number written here. They were
+    // two copies and they disagreed: 150 in the box, 83 in the timer.
+    speedBox.value = String(handle.getSpeed());
     speedBox.setAttribute("aria-label", "Playback speed, milliseconds per frame");
     speedWrap.appendChild(speedBox);
     speedWrap.appendChild(doc.createTextNode(" ms"));
@@ -272,28 +273,23 @@ function mountFrameBar(doc, card, model, handle) {
     slider.addEventListener("input", (e) => {
         model.setCurrentFrame(Number(e.target.value) || 0);
     });
-    // ms per frame -> frames per second, clamped. A blank or zero box must not
-    // become an infinite rate (see the control's comment above).
-    const framesPerSecond = () => {
-        const ms = parseInt(speedBox.value, 10) || SPEED_DEFAULT_MS;
-        return 1000 / Math.min(SPEED_MAX_MS, Math.max(SPEED_MIN_MS, ms));
-    };
-
     playBtn.addEventListener("click", () => {
         if (handle.isPlaying()) handle.pause();
-        else handle.play({ fps: framesPerSecond() });
+        else handle.play();
         reflect();
     });
     loopBox.addEventListener("change", (e) => handle.setLoop(!!e.target.checked));
-    /* CHANGING THE SPEED WHILE IT PLAYS TAKES EFFECT NOW, by restarting the
-     * timer at the new rate. Waiting for the next press would make the box look
-     * broken on the one occasion a user is most likely to touch it — watching a
-     * trajectory go past too fast is exactly when you reach for it. */
+    /* THE BOX DOES NOT HOLD THE SPEED — it sets it and then shows what was
+     * taken. The handle owns it (§ 9.2, like loop), clamps it to § 1.1's range,
+     * and restarts a running timer itself, so "changing the speed while it plays
+     * takes effect now" is playback's rule rather than a sequence this control
+     * has to remember to perform.
+     *
+     * Reading straight back is what makes the clamp honest: type 5000 and the
+     * box settles to 3000, because that is what playback is actually doing. */
     speedBox.addEventListener("change", () => {
-        if (!handle.isPlaying()) return;
-        handle.pause();
-        handle.play({ fps: framesPerSecond() });
-        reflect();
+        handle.setSpeed(parseInt(speedBox.value, 10));
+        speedBox.value = String(handle.getSpeed());
     });
 
     /* Read everything back from where it lives. Nothing here is cached: the bar

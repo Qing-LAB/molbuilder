@@ -31,7 +31,8 @@
 import { createModel } from "./model.js";
 import { createRenderEngine } from "./render-engine.js";
 import { create as createEmbed } from "./3dmol-embed.js";
-import { mountControls, SPEED_DEFAULT_MS } from "./ui.js";
+import { mountControls, SPEED_MIN_MS, SPEED_MAX_MS, SPEED_DEFAULT_MS }
+    from "./ui.js";
 
 
 /* The card's own class names. They are the carried stylesheet's (§ 8.1–8.3), so
@@ -43,13 +44,6 @@ const VIEWER = "molview-viewer";
 const PANEL  = "molview-panel";
 const FOLD   = "molview-fold-btn";
 
-/* The playback default, in frames per second. A user changes it from the frame
- * bar; this is only where it starts — so it must START where the bar says it
- * does. DERIVED, not restated: this was `12` (83 ms per frame) while the speed
- * box displayed the contract's 150 ms, which is one fact kept in two places at
- * two values. The box was wrong until the first press of play, and
- * `handle.play()` with no options ran at a speed nothing on screen showed. */
-const DEFAULT_FPS = 1000 / SPEED_DEFAULT_MS;
 
 
 /**
@@ -168,16 +162,29 @@ export async function mount(hostEl, workspace, opts) {
      */
     let timer = null;
     let loop = true;
-    let fps = DEFAULT_FPS;
+    /* Playback speed, in MILLISECONDS PER FRAME — the module's vocabulary
+     * (§ 1.1 fixes the range and the default), not the timer library's.
+     *
+     * It used to be frames per second, and that cost twice. Every call site had
+     * to convert; and the guard against a zero rate, `Math.max(1, fps)`, CAPPED
+     * THE SLOW END — 3000 ms is 0.33 fps, so the contract's slowest setting
+     * played at 1000 ms, three times too fast, with nothing to say so. An
+     * interval is what `setInterval` wants and an interval is what this is, so
+     * now nothing divides and there is no floor to trip over. */
+    let speedMs = SPEED_DEFAULT_MS;
 
     function stop() {
         if (timer !== null) { clearInterval(timer); timer = null; }
     }
     parts.push(stop);
 
-    function play(options) {
+    /* PLAY TAKES NO ARGUMENTS. It used to accept `{fps}`, which published the
+     * timer's own parameter through the handle and let a caller run playback at
+     * a speed the frame bar did not show. Speed is SET (below) and then played
+     * at — § 9.2's rule that the handle exposes what a viewer DOES, never the
+     * knobs it does it with. */
+    function play() {
         stop();
-        if (options && options.fps) fps = options.fps;
         const count = model.frameCount();
         if (count < 2) return;
         timer = setInterval(() => {
@@ -189,7 +196,7 @@ export async function mount(hostEl, workspace, opts) {
                 return;
             }
             model.setCurrentFrame(next);
-        }, Math.max(1, Math.round(1000 / Math.max(1, fps))));
+        }, speedMs);
     }
 
     /* ── The handle (§ 9.2) ────────────────────────────────────────────────
@@ -213,6 +220,24 @@ export async function mount(hostEl, workspace, opts) {
         isPlaying() { return timer !== null; },
         setLoop(on) { loop = !!on; },
         getLoop()   { return loop; },
+
+        /* HOW FAST IT PLAYS, in milliseconds per frame — set and read like
+         * loop, because it is the same kind of thing: a setting of playback,
+         * and playback is the handle's (§ 9.2).
+         *
+         * The clamp is HERE rather than in the control, so the range § 1.1
+         * promises holds for every caller and not only for the one that happens
+         * to have an `<input min max>` in front of it. Nonsense — a blank box,
+         * text, NaN — leaves the speed alone rather than stopping the timer
+         * dead. A running timer is restarted at the new speed, so "takes effect
+         * now" is playback's rule and not a sequence each caller repeats. */
+        setSpeed(ms) {
+            const n = Math.round(Number(ms));
+            if (!Number.isFinite(n)) return;
+            speedMs = Math.min(SPEED_MAX_MS, Math.max(SPEED_MIN_MS, n));
+            if (timer !== null) play();
+        },
+        getSpeed() { return speedMs; },
 
         // Hear that something changed, rather than polling for it.
         onChange(fn) { return model.subscribe(fn); },

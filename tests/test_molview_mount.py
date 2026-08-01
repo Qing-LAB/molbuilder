@@ -312,8 +312,10 @@ def test_playback_moves_the_frame_through_the_same_write_everyone_uses():
         viewer.data.setCurrentFrame(1);
         const byHand = heard.slice();
         viewer.data.setCurrentFrame(0);
-        viewer.play({ fps: 1000 });
-        await new Promise(r => setTimeout(r, 20));
+        // Speed is SET and then played at — `play` takes no knobs (§ 9.2).
+        viewer.setSpeed(20);
+        viewer.play();
+        await new Promise(r => setTimeout(r, 150));
         viewer.pause();
 
         console.log(JSON.stringify({
@@ -1689,64 +1691,109 @@ def test_the_projection_toggle_reads_the_store_not_its_own_attribute():
     )
 
 
-def test_the_speed_the_box_shows_is_the_speed_playback_starts_at():
-    """§ 8.5: "None of them holds a fact of its own", and § 1.1 fixes the
-    playback default at 150 ms per frame.
+def test_the_speed_box_sets_playback_and_shows_what_playback_took():
+    """§ 8.5: "None of them holds a fact of its own." § 9.2: the handle exposes
+    what a viewer DOES, not the knobs it does it with.
 
-    One fact had two homes with two different values: `ui.js` displayed the
-    contract's 150 ms while `mount.js` started its timer at `DEFAULT_FPS = 12`
-    — 83 ms. The box was simply wrong until the first press of play (which
-    passes the box's own figure), and `handle.play()` with no options — the
-    door a tab uses, § 9.2 — ran at a speed nothing on screen ever showed.
+    Speed used to live in the `<input>` and nowhere else, with `mount.js`
+    keeping a private `fps` it would accept through `play({fps})`. Two partial
+    homes, neither authoritative — and they disagreed: the box displayed
+    § 1.1's 150 ms while the timer started at `DEFAULT_FPS = 12`, 83 ms.
 
-    Pinned as an UPPER BOUND on how many frames playback gets through, which is
-    the one direction timing is safe in: `setInterval` cannot fire EARLIER than
-    it was asked to, so a slow or loaded machine can only push the count down,
-    never up. Overshooting the bound therefore means the interval really is
-    shorter than the box claims — it cannot mean the machine hiccuped.
-
-    A first attempt used a 420 ms window and a 1.6× allowance, and it PASSED
-    with the bug put back: 83 ms gives 5 frames there against a threshold of
-    5.4. A regression test that does not fail on the regression pins nothing,
-    so the window is long enough to separate the two rates properly — at
-    1200 ms it is 8 frames against 14.
+    Now the handle owns it in the module's own unit, and the box is a control
+    over it like any other: it sets, then shows what was taken.
     """
     out = _run(
         """
         const { host, viewer } = await mounted();
-        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
-        viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]]]);
         const card = host.querySelector(".molview-card");
         const box = card.querySelector(".molviewer-frames-speed-input");
+        const type = (v) => { box.value = String(v); box.dispatch("change", { target: box }); };
 
-        // What the user is told, and the bounds it is told within (§ 1.1).
-        const shown = { value: box.value, min: box.min, max: box.max };
+        const opened = { shown: box.value, held: viewer.getSpeed(),
+                         min: box.min, max: box.max };
 
-        // What playback actually does when nobody passes a speed.
-        const stamps = [];
-        viewer.data.onFrameChange(() => stamps.push(Date.now()));
-        const started = Date.now();
+        type(500);
+        const afterTyping = { shown: box.value, held: viewer.getSpeed() };
+
+        // The clamp is the HANDLE's, so it holds for every caller — and the box
+        // settles to what playback actually took, not to what was typed.
+        type(99999);
+        const clampedHigh = { shown: box.value, held: viewer.getSpeed() };
+        type(1);
+        const clampedLow = { shown: box.value, held: viewer.getSpeed() };
+
+        // Nonsense leaves the speed alone rather than stopping the timer dead.
+        viewer.setSpeed("not a number");
+        const afterNonsense = viewer.getSpeed();
+
+        // The knob is gone: play() takes no arguments.
+        const playArity = viewer.play.length;
+
+        console.log(JSON.stringify({
+            opened, afterTyping, clampedHigh, clampedLow, afterNonsense, playArity,
+        }));
+        """
+    )
+    assert out["opened"] == {"shown": "150", "held": 150, "min": "20", "max": "3000"}, (
+        "the box must open on what playback is set to, within § 1.1's range — "
+        f"not on a number written into the control: {out['opened']}"
+    )
+    assert out["afterTyping"] == {"shown": "500", "held": 500}, (
+        f"typing a speed must reach the handle: {out['afterTyping']}"
+    )
+    assert out["clampedHigh"] == {"shown": "3000", "held": 3000}, (
+        "§ 1.1 caps the speed at 3000 ms and the HANDLE must enforce it, then "
+        f"the box must show what was actually taken: {out['clampedHigh']}"
+    )
+    assert out["clampedLow"] == {"shown": "20", "held": 20}, (
+        f"§ 1.1 floors the speed at 20 ms: {out['clampedLow']}"
+    )
+    assert out["afterNonsense"] == 20, (
+        f"nonsense must leave the speed alone, not zero the timer: {out['afterNonsense']}"
+    )
+    assert out["playArity"] == 0, (
+        "`play` must take no arguments — `play({fps})` published the timer's own "
+        f"parameter and let a caller run at a speed the bar never showed: {out['playArity']}"
+    )
+
+
+def test_the_slowest_setting_really_is_the_slowest_setting():
+    """§ 1.1 offers 20–3000 ms per frame. The top of that range did not work.
+
+    Speed was carried as frames per second, and the guard against a zero rate
+    — `Math.max(1, fps)` — also capped the SLOW end at 1 fps. 3000 ms is
+    0.33 fps, so the contract's slowest setting played at 1000 ms: three times
+    too fast, with nothing on screen to say so. Carrying milliseconds instead
+    removes the division and the floor together.
+
+    1500 ms over a 1200 ms window separates the two cleanly and without a
+    stopwatch's flakiness: correctly, the interval has not elapsed even once,
+    so the frame CANNOT have moved. Under the old cap it fires at 1000 ms and
+    moves once. `setInterval` never fires early, so a loaded machine can only
+    make the count lower — and it is already zero.
+    """
+    out = _run(
+        """
+        const { viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]]]);
+
+        let moved = 0;
+        viewer.data.onFrameChange(() => { moved += 1; });
+        viewer.setSpeed(1500);
         viewer.play();
         await new Promise(r => setTimeout(r, 1200));
         viewer.pause();
 
-        console.log(JSON.stringify({
-            shown,
-            advanced: stamps.length,
-            elapsed: Date.now() - started,
-        }));
+        console.log(JSON.stringify({ moved, held: viewer.getSpeed() }));
         """
     )
-    assert out["shown"] == {"value": "150", "min": "20", "max": "3000"}, (
-        f"§ 1.1 fixes the speed box at 20–3000 ms, default 150: {out['shown']}"
-    )
-    shown_ms = int(out["shown"]["value"])
-    expected = out["elapsed"] / shown_ms
-    assert out["advanced"] <= expected * 1.35 + 1, (
-        f"playback advanced {out['advanced']} frames in {out['elapsed']} ms, "
-        f"but the box says {shown_ms} ms per frame — about {expected:.1f}. It is "
-        "running at a speed the UI never showed, which is the two-defaults bug: "
-        "the frame bar and the mount layer each kept their own copy"
+    assert out["held"] == 1500, f"1500 ms is inside § 1.1's range: {out['held']}"
+    assert out["moved"] == 0, (
+        f"the frame moved {out['moved']} time(s) in 1200 ms at a setting of "
+        "1500 ms per frame — it cannot have, unless playback is running faster "
+        "than it was told. That is the fps floor capping the slow end at 1000 ms"
     )
 
 
