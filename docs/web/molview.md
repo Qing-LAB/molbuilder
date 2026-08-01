@@ -895,7 +895,12 @@ card's own width includes it rather than the drawing losing space to it (§ 8.2)
 Along the window's top edge, MolView's own **chrome row**: the **View** and
 **Export** menus (§ 11.4), and the **frame bar** beside them once a structure has
 more than one frame. Over the window's remaining corners, the **overlays** — the
-busy cover, the unsaved badge, the measurement readout.
+unsaved badge and the measurement readout.
+
+**The busy cover is not one of those**, and grouping it with them is a mistake
+worth avoiding: the badge and the readout sit in a corner and *report*, while the
+cover spans the whole window and **takes the interaction away** while a rebuild
+runs (§ 10.9). One informs, the other prevents.
 
 That is the whole of what MolView draws. A host hands over an empty element and
 gets all of it; there is no per-host stylesheet and no arrangement to opt into.
@@ -1956,6 +1961,34 @@ and locks the viewer while it works. That leaves a window in which other things
 arrive anyway — a user click, or a timer-driven poll delivering new frames that no
 amount of disabled buttons could stop. **Nothing that lands in that window is
 silently dropped.**
+
+**The cover is the lock, not a label on it.** That is the part worth saying
+plainly, because "cover" sounds like decoration and this one does three jobs at
+once:
+
+| It | How |
+|---|---|
+| **says** what is happening | the message *"Updating view…"*, and `aria-live="polite"` so it is announced rather than only seen |
+| **blocks** the interaction | it lies over the whole 3D window and **eats the clicks** (`pointer-events: auto`, sitting above everything with a button in it). A click on a half-drawn scene would pick an atom by a number that is about to mean something else |
+| **bounds** the window § 10.9 is about | it is up for exactly the span in which arrivals are held, so "what the user cannot do" and "what the viewer holds" are the same interval rather than two that have to be kept in step |
+
+Disabling the controls would not have been enough, and that is why it is a cover
+rather than a set of `disabled` attributes. A poll does not press a button, and
+neither does a drag already under way on the canvas — there is nothing to
+disable. One element over the window catches every kind of arrival, including
+the kinds that were never controls.
+
+> **Open: the cover has to be painted before the work starts.** Showing it and
+> then immediately doing the blocking render on the same task means the browser
+> never gets a frame in which to draw it — the cover goes up and comes down
+> inside one freeze, and a user sees a locked page with no explanation for it.
+> Avoiding that needs a yield that reaches a **paint** (`requestAnimationFrame`),
+> not merely the next microtask; `await Promise.resolve()` is a microtask and
+> runs before any paint. The rebuild path yields that way today
+> (`render-engine.js`), so this is written down as a thing to check on real
+> hardware with a large structure rather than asserted as broken. The previous
+> implementation had found this and left the rule in a comment; it is here now so
+> the next rewrite inherits the finding instead of the bug.
 
 This is the same shape as the write race of § 11.2 — something is in flight, and
 work keeps arriving — so it is worth stating the same way, as states and what
