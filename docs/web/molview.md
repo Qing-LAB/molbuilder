@@ -1962,15 +1962,21 @@ arrive anyway — a user click, or a timer-driven poll delivering new frames tha
 amount of disabled buttons could stop. **Nothing that lands in that window is
 silently dropped.**
 
-**The cover is the lock, not a label on it.** That is the part worth saying
-plainly, because "cover" sounds like decoration and this one does three jobs at
-once:
+**The cover is an operation guard, not a message.** That is the part worth
+saying plainly, because "cover" sounds like decoration. What it is *for* is
+this: while the core data is being replaced, the user must not be able to pick
+an atom or move the camera. A rebuild regenerates everything handed to the
+drawing library, so a click landing part-way through resolves against atom
+numbers that are about to mean something else, and a camera drag fights a scene
+being rebuilt underneath it. The message is the courtesy; the block is the job.
+
+It does three things, in that order of importance:
 
 | It | How |
 |---|---|
-| **says** what is happening | the message *"Updating view…"*, and `aria-live="polite"` so it is announced rather than only seen |
-| **blocks** the interaction | it lies over the whole 3D window and **eats the clicks** (`pointer-events: auto`, sitting above everything with a button in it). A click on a half-drawn scene would pick an atom by a number that is about to mean something else |
-| **bounds** the window § 10.9 is about | it is up for exactly the span in which arrivals are held, so "what the user cannot do" and "what the viewer holds" are the same interval rather than two that have to be kept in step |
+| **blocks** the operations | it lies over the whole 3D window at `pointer-events: auto`, above everything with a button in it, so hit-testing stops at it. Verified on a real page: at the canvas centre, `elementFromPoint` returns the canvas before, the cover while it is up, and the canvas again after |
+| **outlives** the work | a frozen page does not discard the clicks made during the freeze — it **queues** them and delivers them the instant it is free. Dropping the cover as the work ends would let that backlog flush onto the canvas against the new data: the very operations the guard exists to stop, arriving late. It is held a beat longer so the queue drains into it |
+| **says** what is happening | the message *"Updating view…"*, and `aria-live="polite"` so it is announced rather than only seen. This is the courtesy, not the purpose |
 
 Disabling the controls would not have been enough, and that is why it is a cover
 rather than a set of `disabled` attributes. A poll does not press a button, and
@@ -1978,32 +1984,23 @@ neither does a drag already under way on the canvas — there is nothing to
 disable. One element over the window catches every kind of arrival, including
 the kinds that were never controls.
 
-> **Open — and the section above describes the intent, not a verified
-> behaviour.** What is confirmed is only that the parts exist and are connected:
-> the element and its CSS (`mount.js`, `molview.css`), and a renderEngine that
-> calls `setBusy("Updating view…")` on a rebuild and `setBusy(false)` after.
+> **What was wrong, fixed 2026-08-01.** The rebuild raised the cover and then did
+> the work **in the same turn of the event loop**, so the browser never got
+> between them: measured on a real page, raised and lowered 8.8 ms apart with no
+> task boundary in between. Two consequences, and the second is the serious one —
+> the cover was never drawn, *and* it came down the instant the work ended, so
+> the clicks and drags the freeze had queued flushed straight onto the canvas
+> against the newly-rebuilt data.
 >
-> **Nothing checks that a user ever sees it or is stopped by it.** The one test —
-> `test_only_a_rebuild_raises_the_cover` — drives a **stand-in** embed whose
-> `setBusy` records the call and does nothing else. No DOM, no stylesheet, no
-> paint, no click. It proves the call is made and cannot prove the cover appears,
-> covers anything, or blocks a pointer. That is API-presence, not the end result
-> (§ 13.2's levels: this needs level 3, a real browser).
+> The fix is two ordinary lines: give the work its own turn (`setTimeout`, not
+> `requestAnimationFrame` — rAF does not fire in a background tab and the rebuild
+> would hang there), and keep the cover up briefly after the work so the queued
+> input drains into it rather than past it.
 >
-> **And there is a specific reason to doubt it.** Showing the cover and then doing
-> the blocking render on the same task gives the browser no frame in which to draw
-> it: the cover would go up and come down inside one freeze, and a user would see
-> a locked page with no explanation. Avoiding that needs a yield that reaches a
-> **paint** (`requestAnimationFrame`); `await Promise.resolve()` is a microtask and
-> runs *before* any paint, and that is what the rebuild path uses today.
->
-> The previous implementation had found exactly this and left the rule in a
-> comment (`molview-old/_seal.js`: *"must yield a paint … or the scrim won't
-> appear until after the freeze"*). The rebuild kept the element and lost the
-> reason — which is the shape of this whole area's problem, and why it is written
-> here rather than left in a comment again.
->
-> **Until a real-browser test exists, treat the lock as unproven.**
+> **The test had to change with it.** `test_only_a_rebuild_raises_the_cover`
+> asserts `setBusy` is *called* correctly, and stayed green throughout the defect
+> — a call is not a block. Its companion now asserts *where the turn boundary
+> falls*: after the cover is raised and before the work begins.
 
 This is the same shape as the write race of § 11.2 — something is in flight, and
 work keeps arriving — so it is worth stating the same way, as states and what

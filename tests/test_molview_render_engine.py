@@ -873,3 +873,52 @@ def test_one_menu_two_owners():
         "a drawing setting must not change the COST of anything — the second "
         f"call cost the same as the first: {out['afterSetting']}"
     )
+
+
+def test_the_cover_reaches_the_screen_before_the_work_starts():
+    """§ 10.9: the cover is the lock, so it has to be VISIBLE while the lock is on.
+
+    THE DEFECT THIS CLOSES, measured on a real page before the fix: the cover was
+    raised and lowered 8.8 ms apart with NO task boundary between them. A browser
+    only redraws BETWEEN pieces of work, so raising the cover, drawing the
+    molecule and lowering it as one piece meant the first chance to redraw came
+    after it was already hidden. The sign went up and came down while the door
+    was shut.
+
+    WHAT THIS HAD TO ASSERT, and did not on the first attempt. The old test
+    checked `setBusy` was CALLED with the right arguments -- true throughout the
+    bug, because a call is not a pixel. My replacement checked that a task
+    boundary fell somewhere inside the cover's window, which the
+    minimum-on-screen wait satisfies ON ITS OWN; it passed with the bug
+    deliberately restored. The condition that actually separates them is WHERE
+    the boundary falls: between raising the cover and STARTING THE WORK.
+    `loadFrames` is the work.
+    """
+    out = _run(
+        """
+        const { engine } = wired(4, 3);
+        // A macrotask can only run BETWEEN pieces of work. Scheduled BEFORE the
+        // rebuild starts, so it takes the first boundary that opens up.
+        let atBoundary = null;
+        setTimeout(() => { atBoundary = {
+            covers: calls("setBusy").length,
+            workStarted: calls("loadFrames").length,
+        }; }, 0);
+        await engine.dataChanged();
+        console.log(JSON.stringify({
+            atBoundary,
+            sequence: calls("setBusy").map(c => c.args[0]),
+        }));
+        """
+    )
+    assert out["sequence"] == ["Updating view…", False], (
+        f"the cover must still be raised then lowered: {out['sequence']}")
+    assert out["atBoundary"] is not None, (
+        "no task boundary ran during the rebuild at all -- the whole thing is "
+        "one piece of work and the browser never gets to draw the cover")
+    assert out["atBoundary"]["covers"] == 1, (
+        "the boundary fell before the cover was even raised")
+    assert out["atBoundary"]["workStarted"] == 0, (
+        "the browser's first chance to draw came only AFTER the rebuild work had "
+        "started, so the cover cannot have been painted -- raise it, yield to a "
+        "real task boundary, THEN work")

@@ -592,17 +592,60 @@ export function createRenderEngine(embed) {
     // pass is still pending, and if it lands after the newer one it redraws the
     // structure that was just replaced. That is a movie of the previous load,
     // silently, with a frame bar offering frames it does not have.
+    /* THE COVER IS AN OPERATION GUARD, NOT A MESSAGE.
+     *
+     * What it is for: while the core data is being replaced, the user must not
+     * be able to pick an atom or move the camera. The rebuild regenerates
+     * everything fed to the drawing library, so a click landing mid-way resolves
+     * against atom numbers that are about to mean something else, and a camera
+     * drag fights a scene being rebuilt underneath it. The "Updating view…"
+     * message is the courtesy; the BLOCK is the job.
+     *
+     * How it blocks: the element spans the window at `pointer-events: auto`
+     * above the canvas, so hit-testing stops at it. Measured on a real page --
+     * at the canvas centre, `elementFromPoint` returns the canvas before, the
+     * cover's own subtree while it is up, and the canvas again after.
+     *
+     * WHY THE WORK GETS ITS OWN TURN (PAINT_YIELD). The rebuild is synchronous
+     * and freezes the page while it runs. Raising the cover and doing the work
+     * in the SAME turn means the browser never gets between them: the cover is
+     * never drawn, so a user is blocked with no explanation for it. Measured
+     * before this: raised and lowered 8.8 ms apart with no task boundary in
+     * between. `setTimeout` ends the turn, which is deliberately NOT
+     * `requestAnimationFrame` -- rAF does not fire in a background tab, so a
+     * rebuild there would wait for a frame that never comes and hang.
+     *
+     * WHY THE COVER OUTLIVES THE WORK (MINIMUM_ON_SCREEN). This is the part that
+     * matters most and is easiest to miss. A frozen page does not discard the
+     * clicks and drags made during the freeze -- it QUEUES them, and delivers
+     * them the moment it is free. Lowering the cover as the work ends would let
+     * that queue flush straight onto the canvas, against the new data: exactly
+     * the operations the guard exists to stop, only later. Holding the cover a
+     * beat longer means the queue drains into it instead. The message being
+     * legible is a side benefit; catching the backlog is the reason.
+     */
+    const PAINT_YIELD = () => new Promise((r) => setTimeout(r, 0));
+    // A clock that does not care what the wall says -- only elapsed time matters
+    // here, and a user changing their timezone mid-load should not extend a cover.
+    const now = () => (typeof performance !== "undefined" && performance.now)
+        ? performance.now() : Date.now();
+    const MINIMUM_ON_SCREEN = 200;   // ms
+
     let generation = 0;
     async function rebuildGuarded(fit) {
         const mine = ++generation;
         phase = REBUILDING;
         embed.setBusy("Updating view…");
+        const shownAt = now();
         try {
-            await Promise.resolve();          // the window other work arrives in
+            await PAINT_YIELD();              // the cover reaches the screen here
             if (mine !== generation) return;  // superseded: a newer load owns the drawing
             doRebuild(fit);
         } finally {
             if (mine !== generation) return;  // the newer one owns the cover too
+            const left = MINIMUM_ON_SCREEN - (now() - shownAt);
+            if (left > 0) await new Promise((r) => setTimeout(r, left));
+            if (mine !== generation) return;  // and again: the wait is a window too
             embed.setBusy(false);
             phase = IDLE;
             // Replayed IN ARRIVAL ORDER, then the viewer is idle again.
