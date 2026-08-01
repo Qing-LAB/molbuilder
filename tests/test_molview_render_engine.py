@@ -60,7 +60,10 @@ globalThis.makeEmbed = function () {
         setStyle(v)       { rec("setStyle", [v]); },
         setProjection(p)  { rec("setProjection", [p]); },
         setCell(c)        { rec("setCell", [c]); },
-        setArrows(a)      { rec("setArrows", [(a || []).length]); },
+        // The COUNT first, which is what most tests ask; the arrows themselves
+        // beside it, for the one that has to compare their geometry between
+        // frames (§ 10.3 — worked out once, not per frame).
+        setArrows(a)      { rec("setArrows", [(a || []).length, a || []]); },
         setOverlays(o)    { rec("setOverlays", [o]); },
         setBusy(m)        { rec("setBusy", [m]); },
         beginBatch()      { rec("beginBatch", []); },
@@ -556,6 +559,138 @@ def test_a_drawing_found_short_of_the_master_copy_is_rebuilt():
 # ---------------------------------------------------------------------------
 # § 9.7 — the renderEngine answers nothing
 # ---------------------------------------------------------------------------
+
+def test_the_camera_is_fitted_on_load_and_on_reset_and_at_no_other_moment():
+    """§ 9.6: "On load, and on Reset, the camera is fitted to the structure."
+    Those two moments, and no other.
+
+    Isolate is a REBUILD (§ 10.5), and fitting on every rebuild threw the user's
+    angle away the moment they pressed the isolate switch. Nothing above the
+    drawing keeps the camera (§ 9.6), so a fit that should not have happened
+    cannot be undone afterwards — it has to be withheld.
+    """
+    out = _run(
+        """
+        const { engine, src } = wired(4, 3);
+
+        const fits = () => calls("fitCamera").length;
+        globalThis.__embedCalls = [];
+
+        await engine.dataChanged();                 // a load
+        const onLoad = fits();
+
+        globalThis.__embedCalls = [];
+        src.selection = [0, 1];
+        src.switches.isolate = true;
+        await engine.switchesChanged();             // isolate — a rebuild
+        const onIsolate = fits();
+
+        globalThis.__embedCalls = [];
+        src.switches.isolate = false;
+        await engine.switchesChanged();             // and back off — a rebuild
+        const offIsolate = fits();
+
+        globalThis.__embedCalls = [];
+        src.switches.showIndex = true;
+        engine.switchesChanged();                   // an overlay refresh
+        engine.showFrame();                         // a frame swap
+        const onOverlayAndSwap = fits();
+
+        globalThis.__embedCalls = [];
+        engine.resetView();                         // the other sanctioned moment
+        const onReset = fits();
+
+        console.log(JSON.stringify({
+            onLoad, onIsolate, offIsolate, onOverlayAndSwap, onReset }));
+        """
+    )
+    assert out["onLoad"] == 1, "a load must fit the camera on the structure"
+    assert out["onReset"] == 1, "Reset must re-fit the camera"
+    assert out["onIsolate"] == 0 and out["offIsolate"] == 0, (
+        "isolating re-fitted the camera, so the angle the user set was thrown "
+        "away by a switch that only changes which atoms are drawn"
+    )
+    assert out["onOverlayAndSwap"] == 0, (
+        "an overlay refresh or a frame swap moved the camera"
+    )
+
+
+def test_the_scene_is_worked_out_once_and_follows_the_cell_when_it_changes():
+    """§ 6.5 / § 10.3: the cell box and the axes "are the same for every frame
+    unless the cell itself changes, so they are worked out once as scene-level
+    data and are not recomputed per frame."
+
+    **What this test can and cannot see.** Deriving the scene once versus four
+    hundred times produces the *same* answer, so the saving is a cost and not an
+    output — there is nothing at this boundary that tells them apart, and a test
+    claiming otherwise would be asserting its own fixture. What IS observable, and
+    what holding the scene between frames could break, is the other half of the
+    same sentence: *unless the cell itself changes*. A scene held too long is a
+    box drawn at the previous structure's corner, which is § 10.3's own failure
+    written from the other side.
+
+    So: it stays put across a played trajectory, and it moves for each of the two
+    things allowed to move it — a cell edit, and a new structure.
+    """
+    out = _run(
+        """
+        const axesOf = (c) => JSON.stringify((c.args[1] || []).slice(-3));
+        const lastAxes = () => {
+            const c = calls("setArrows");
+            return c.length ? axesOf(c[c.length - 1]) : null;
+        };
+
+        const { engine, src } = wired(4, 400);
+        src.switches.showAxis = true;
+        src.structure.periodicity = { cell: [[8,0,0],[0,8,0],[0,0,8]],
+                                      cell_origin: [1,1,1] };
+        await engine.dataChanged();
+
+        // Play the whole trajectory: the axes ride every swap (they share the
+        // one arrow door with the frame's force arrows, § 10.6) and none of the
+        // four hundred may differ from the first.
+        globalThis.__embedCalls = [];
+        for (let f = 0; f < 400; f++) { src.frame = f; engine.showFrame(); }
+        const perSwap = calls("setArrows").length;
+        const distinctWhilePlaying = new Set(
+            calls("setArrows").map(axesOf)).size;
+        const whilePlaying = lastAxes();
+
+        // A CELL EDIT must move them.
+        globalThis.__embedCalls = [];
+        src.structure.periodicity = { cell: [[20,0,0],[0,20,0],[0,0,20]],
+                                      cell_origin: [5,5,5] };
+        engine.cellChanged();
+        const afterCellEdit = lastAxes();
+
+        // A NEW STRUCTURE must move them too.
+        globalThis.__embedCalls = [];
+        src.structure = { elements: ["C","C","C","C"],
+                          periodicity: { cell: [[3,0,0],[0,3,0],[0,0,3]],
+                                         cell_origin: [0,0,0] } };
+        await engine.dataChanged();
+        const afterNewStructure = lastAxes();
+
+        console.log(JSON.stringify({
+            perSwap, distinctWhilePlaying,
+            whilePlaying, afterCellEdit, afterNewStructure }));
+        """
+    )
+    assert out["perSwap"] == 400, (
+        "the axes must still be re-sent on each swap — they share the one arrow "
+        "door with the frame's force arrows (§ 10.6)"
+    )
+    assert out["distinctWhilePlaying"] == 1, (
+        "the axis geometry changed while only the frame moved"
+    )
+    assert out["afterCellEdit"] and out["afterCellEdit"] != out["whilePlaying"], (
+        "a cell edit left the axes at the old cell — the scene is being held "
+        "past the one thing allowed to change it (§ 10.3)"
+    )
+    assert out["afterNewStructure"] and out["afterNewStructure"] != out["afterCellEdit"], (
+        "a new structure left the axes at the previous structure's cell"
+    )
+
 
 def test_the_engine_offers_no_read_of_the_data_or_the_frame():
     """§ 13.3: "it offers no read of the data and no read of the displayed

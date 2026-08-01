@@ -448,6 +448,91 @@ function buildViewMenu(doc, model) {
     }
     drawn.appendChild(repRow);
 
+    /* THE RADIUS SLIDER (§ 1.1: "a radius slider from 0.2 to 2.5 that scales
+     * stick thickness / sphere size / line width"). It sits with the reps
+     * because it scales whichever one is showing, which is what the carried
+     * stylesheet lays out — `.mol-viewer-radius-row` was styled all along and
+     * had nothing to style.
+     *
+     * The label WRAPS the input rather than pairing with it through `for`/`id`.
+     * § 5.6 puts two viewers on one page and an id is document-global, so the
+     * second mount would duplicate it and both labels would point at the first
+     * viewer's slider. */
+    const radiusRow = doc.createElement("div");
+    radiusRow.className = "mol-viewer-radius-row";
+    const radiusLabel = doc.createElement("label");
+    radiusLabel.textContent = "Radius";
+    /* NO class on the input or the output. The stylesheet reaches them by
+     * ELEMENT inside the row — `.mol-viewer-radius-row > input[type="range"]`
+     * and `> output` — so a class here would be one the design never defines.
+     * The old code set `mol-viewer-radius` and `mol-viewer-radius-out` and the
+     * stylesheet used neither. */
+    const radius = doc.createElement("input");
+    radius.type = "range";
+    radius.min = "0.2";
+    radius.max = "2.5";
+    radius.step = "0.05";
+    radius.setAttribute("aria-label", "Atom radius scale");
+    const radiusOut = doc.createElement("output");
+    radius.addEventListener("input", (e) => {
+        model.view.set("radius", Number(e.target.value));
+    });
+    radiusRow.appendChild(radiusLabel);
+    radiusRow.appendChild(radius);
+    radiusRow.appendChild(radiusOut);
+    drawn.appendChild(radiusRow);
+
+    /* THE BACKGROUND (§ 1.1: "a background colour with preset swatches plus a
+     * picker. One preset is transparent — choose it before exporting a picture
+     * to drop onto a slide.").
+     *
+     * The presets are the ones the old design shipped: the card's own dark, a
+     * white for print, and transparent. `transparent` is a value like any other
+     * here — what it MEANS to the drawing is the sealed layer's business (§ 9.8),
+     * and this control neither knows nor needs to. */
+    const BACKGROUNDS = [
+        ["#1d2128",     "Dark"],
+        ["#ffffff",     "White"],
+        ["transparent", "Transparent"],
+    ];
+    const background = section("Background");
+    const bgRow = doc.createElement("div");
+    bgRow.className = "mol-viewer-bg-row";
+    const swatches = {};
+    for (const [value, name] of BACKGROUNDS) {
+        const swatch = doc.createElement("button");
+        swatch.type = "button";
+        swatch.className = "mol-viewer-bg-swatch";
+        swatch.setAttribute("aria-label", name + " background");
+        swatch.title = name;
+        if (value === "transparent") {
+            // The stylesheet draws the checkerboard from this class; a colour
+            // set inline would paint over it.
+            swatch.classList.add("is-transparent");
+        } else {
+            swatch.style.background = value;
+        }
+        swatch.addEventListener("click", () => model.view.set("background", value));
+        bgRow.appendChild(swatch);
+        swatches[value] = swatch;
+    }
+
+    /* The picker. A styled label wraps the native colour input so the OS picker
+     * still opens on click while the visible chip matches the preset row — the
+     * stylesheet sizes the input to fill it, so the whole chip is the target. */
+    const custom = doc.createElement("label");
+    custom.className = "mol-viewer-bg-custom";
+    custom.setAttribute("aria-label", "Custom background colour");
+    custom.title = "Custom colour";
+    const picker = doc.createElement("input");
+    picker.type = "color";
+    picker.addEventListener("input", (e) => {
+        model.view.set("background", e.target.value);
+    });
+    custom.appendChild(picker);
+    bgRow.appendChild(custom);
+    background.appendChild(bgRow);
+
     const projection = doc.createElement("button");
     projection.type = "button";
     projection.className = "mol-viewer-toggle";
@@ -459,13 +544,34 @@ function buildViewMenu(doc, model) {
     });
     drawn.appendChild(projection);
 
+    /* EVERY CONTROL READS ITS STATE BACK FROM `view` (§ 8.5), never from what it
+     * last did — so a setting changed anywhere else lights the right control
+     * here with nothing to keep in step. */
     offs.push(model.view.subscribe((settings) => {
         for (const [value] of REPS) {
             repButtons[value].classList.toggle("is-active", settings.style === value);
         }
+        radius.value = String(settings.radius);
+        radiusOut.textContent = Number(settings.radius).toFixed(2);
+        for (const [value] of BACKGROUNDS) {
+            swatches[value].classList.toggle("is-active",
+                                             settings.background === value);
+        }
+        // `background: null` is not a colour — it is "the window's own ground",
+        // which the drawing resolves (§ 9.6). No swatch is lit until the user
+        // has chosen one, and the picker only shows a colour once it IS one.
+        if (typeof settings.background === "string"
+            && settings.background !== "transparent") {
+            picker.value = settings.background;
+        }
         projection.setAttribute("aria-pressed",
                                 settings.orthographic ? "true" : "false");
     }));
+
+    // The store hands nothing over on subscribing (§ 9.6 is a plain
+    // change-and-subscribe), so the first paint is taken here.
+    radius.value = String(model.view.get().radius);
+    radiusOut.textContent = Number(model.view.get().radius).toFixed(2);
 
     // The trigger and the popover go back with the menu: whoever places it needs
     // both, and handing back what was just built beats searching the DOM for it.

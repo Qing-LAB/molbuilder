@@ -298,12 +298,10 @@ miss are the server routes it calls and the workspace it saves through — and
 both of those are reached through named routes and an injected accessor, not by
 importing anything.
 
-> **Transition.** The module currently also publishes some
-> `window.molbuilder.molview.*` values. They are live seams — node-test entry
-> points and readiness signals used by the browser tests (§ 13.4) — plus one
-> shared model left from before viewers were owned (§ 9.2). None of them are part
-> of this contract, and retiring them is [`roadmap.md`](?doc=roadmap.md)'s
-> business.
+**This is true of the code today.** The module publishes nothing to
+`window.molbuilder` — no shared model, no node-test entry point, no readiness
+signal. A consumer written against those globals reads `undefined`, and the
+answer is to take the handle `mount` returned, which is the only way in (§ 5.6).
 
 ---
 
@@ -396,8 +394,14 @@ all of it.
 ### 6.1 The five things it holds
 
 **The structure — the same for every frame.** Per atom: its element, the labels
-it carries, and a residue name when the source had one. Plus, for the structure
-as a whole, an optional unit cell.
+it carries, and its residue name. Plus, for the structure as a whole, an optional
+unit cell.
+
+A residue name is always there. A format that carries residues — a PDB — supplies
+real ones; a format that does not gives every atom the placeholder `MOL`, which is
+the structure model's own default and not something MolView invents or fills in
+(see [`model/structure.md`](?doc=model/structure.md)). The viewer stores whichever
+it is handed and reads nothing into either.
 A frame never carries any of these; they are fixed when the structure loads and
 are identical for frame 0 and frame 400. That is exactly what makes a trajectory
 *one molecule moving* instead of a sequence of different molecules.
@@ -491,7 +495,7 @@ classDiagram
 | Field | Shape | What it is |
 |---|---|---|
 | `elements` | `string[]` | element per atom. **Shared by every frame.** |
-| `annotations` | per atom: the labels it carries, and its residue name if the source had one | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them, writes them and filters on them (§ 9.5); the drawing does not use them. Writing one is a change to the structure, gated like any other (§ 9.4). Some label names are **reserved** and mean something downstream (§ 6.6) |
+| `annotations` | per atom: the labels it carries, and its residue name — a real one from a format that has them, or the model's `MOL` placeholder from one that does not (§ 6.1) | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them, writes them and filters on them (§ 9.5); the drawing does not use them. Writing one is a change to the structure, gated like any other (§ 9.4). Some label names are **reserved** and mean something downstream (§ 6.6) |
 | `periodicity` | the a/b/c vectors, the corner the box is anchored at, how each axis is treated — repeating, isolated, or a transport lead — how much empty space an isolated axis should have, and beside each of those the **resolved** answer the server worked out. `null` when the structure has none | **One fact that travels together**, which is why there is one door to change it (§ 9.3). **Carried under the field names it arrives with** — `cell`, `cell_origin`, `axis_kind`, `vacuum` — which are the same names the sidecar on disk uses, because both are the codec's. MolView holds the block, offers it, edits it through that one door, and interprets none of it. Those names and the rules for resolving them belong to [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no labels |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
@@ -1066,12 +1070,10 @@ In the examples below that one route is written `viewer.data` — the handle is 
 viewer, and `viewer.data` is that viewer's model. There is no other way to it,
 and no other viewer's model is reachable from it.
 
-> **Transition.** Today's handle carries fifteen names: lifecycle and playback,
-> plus eight reads and writes forwarded from the model. Those eight are what the
-> rule above retires — they are how a tab reached a viewer back when there was
-> only one to reach. Also today, the module publishes a single shared model as a
-> global; while it exists the old rule applies to it — look it up at the moment
-> you read, never hold on to it, because its contents change underneath you.
+**This is true of the code today.** The handle carries eleven names and not one
+of them mirrors the model: `ok` and `error`, `dispose`, `data`, `play` / `pause`
+/ `isPlaying` / `setLoop` / `getLoop`, `onChange`, and `resetView`. There is no
+forwarded read left to retire.
 
 ### 9.3 The model — the one place the structure lives
 
@@ -1097,11 +1099,11 @@ rather than maintained separately.
 
 | The need | The main way in | Narrower cuts of it | Changes the master copy |
 |---|---|---|:--:|
-| Get the whole structure | `getStructure` | `getAtoms`, `getElements`, `getCoordinates`, `getSource`; `getRegions` — the atoms grouped by the label they carry; `getFrozen` — the atoms carrying the reserved `frozen_atoms` label (§ 6.6) | — |
+| Get the whole structure | `getStructure` — the master copy entire: the elements, the per-atom facts, the cell block, **every frame** and its forces (§ 6.3) | `getAtoms`, `getElements`, `getCoordinates`; `getRegions` — the atoms grouped by the label they carry; `getFrozen` — the atoms carrying the reserved `frozen_atoms` label (§ 6.6) | — |
 | Get the cell | `getUnitCellInfo` — the cell as it will actually be used, with the defaults filled in for whatever the structure left unsaid, so it always has an answer. Those filled-in values are **the server's own**: it sends them beside the raw ones, and this reads them rather than working anything out (§ 6.2 — MolView interprets none of it) | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` — **what the structure actually says**, `null` where it says nothing | — |
 | Get one frame's coordinates | `getFrameAllAtoms(i)` — **every** atom, original order, before isolate cuts anything down | | — |
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
-| Get the structure out as text | `exportFile()` | | — |
+| Get the structure out, to hand to a door | `exportFile()` — the structure at the displayed frame, plus the name it came in under (§ 11.7) | | — |
 | Hear that the structure changed | `subscribe(fn)` — the structure only; the frame has its own channel | | — |
 | Reach the selection / the drawing settings | `selection` (§ 9.5) · `view` (§ 9.6) | | — |
 | Put a structure in | `installMolecule(input)` | | **yes** |
@@ -1111,15 +1113,20 @@ rather than maintained separately.
 | Tag the selected atoms | the label door on `selection` (§ 9.5) — the atoms it applies to are the selection, but what it writes is the structure | | **yes** |
 | Save a point, and move through the sequence | `save(step)` · `load(step)` (§ 11.2) | `undo`, which is exactly `load(-1)`. `load(0)` is not a move — it puts back the point you were on | **yes** |
 | Know where you are in the history | `state_index` · `uncommitted` | | — |
+| Make several changes land as one | `beginChange` · `endChange` — the bracket of § 11.2: writes asked for inside are held, and one lands at the end carrying the settled state | | — |
+| Ask which kind of viewer this is | `mode` — so MolView can hide the controls the gate would swallow (§ 9.4). Configuration, not data: the gate is still what makes the guarantee true | | — |
 
-Fourteen needs. That count is the honest measure of the surface; everything else
+Sixteen needs. That count is the honest measure of the surface; everything else
 is a narrower cut, and a cut earns its place only by being what a caller actually
 asks for.
 
-**A cut with no stated caller is a cut on its way out.** `getSource` is the one on
-this table that nothing in this document asks for. By the rule above it has not
-earned its place, and the design's answer is to remove it rather than to invent a
-justification for it. (`getRegions` earns its place by name: "which atoms are the
+**A cut has to be a cut, not a rival.** Each one returns exactly what the main
+way in holds for that field, which is only checkable because the main way in
+holds it: `getCoordinates` was listed here as a cut of `getStructure` while
+`getStructure` did not carry the coordinates at all, so the two could not be
+compared and every caller building a request had to make a second read. That is
+the mismatched set this section exists to prevent, arrived at through the door
+meant to stop it. (`getRegions` earns its place by name: "which atoms are the
 electrodes" is a real question, and it is a *cut of the labels* — not a second
 place where groups of atoms are stored, § 6.6.)
 
@@ -1166,16 +1173,16 @@ With nothing loaded, a read returns **nothing** rather than an empty structure.
 "There is nothing here" and "here is a structure with no atoms" are different
 answers, and a caller has to be able to tell them apart.
 
-> **Transition.** Today a `factsForRequest()` door does that shaping, and it is
-> what a tab calls. It reads the structure and regroups what it got — the labels
-> into name → atoms — renames the fields to the server's, and narrows the cell
-> block. It adds no fact. (It used to pull the frozen set out into a list of its
-> own on the way past; that split went with the server's second store, § 6.6.)
-> Retiring it in
-> favour of one read plus one translation is a change to
-> [`science/validation.md`](?doc=science/validation.md) (its § 4.1), which states the
-> obligation in terms of that name, and to the test that guards it — not to this
-> module alone.
+**This is true of the code today**, and it was the last thing about this section
+that was not. There is no second door: `getStructure()` returns the whole master
+copy and the outbound shaping happens in the one place translations happen
+(§ 11.1). Note that the guarantee lives in the *shape of the read*, not in a
+caller's discipline — a read that returned three of the five fields would put the
+second read back, whatever the rule said.
+
+> [`science/validation.md`](?doc=science/validation.md) § 4.1 still states this
+> obligation in terms of a `factsForRequest()` door that no longer exists. That
+> is a change to that document, not to this one.
 
 **The two structure primitives.**
 
@@ -1185,15 +1192,17 @@ answers, and a caller has to be able to tell them apart.
   upstream converges here — whatever built or fetched the text, it arrives this
   way. One entrance means one place the rules are checked and one place the
   history is anchored.
-- **`exportFile()`** — its exact inverse. Returns the structure text plus its
-  sidecar, written from **the frame currently displayed** (§ 6.4). It **refuses**
-  to produce anything when the geometry and the per-atom labels disagree about how
-  many atoms there are, returning nothing rather than writing a corrupt
+- **`exportFile()`** — its exact inverse. Returns **the structure as data** —
+  read at **the frame currently displayed** (§ 6.4), with the name it came in
+  under — and stops there (§ 11.7). It writes no text and assembles no sidecar,
+  because a coordinate document is a format the server owns. It **refuses** to
+  produce anything when the geometry and the per-atom labels disagree about how
+  many atoms there are, returning nothing rather than handing on a corrupt
   structure. It is not a disk write and not the session save.
 
-> **Transition.** Cell writes that predate `commitPeriodicityOp` still exist on
-> the object. They go around the gate, which is exactly why there is one way in.
-> Do not call them; removing them is a cleanup, not a design question.
+**This is true of the code today.** No cell write survives except
+`commitPeriodicityOp`; there is nothing left on the object that goes around the
+gate.
 
 **The encapsulation rule.** Consumers go through these. They never parse
 structure text, and never reach past this surface into a store or into the
@@ -1240,8 +1249,8 @@ unsaved-changes badge (§ 11.2) never appears.
 **A control that would do nothing should not be offered.** The rule above is what
 the *API* does; a button that silently does nothing is a bad answer for a *user*.
 So a read-only viewer does not show the controls the gate would swallow. MolView
-hides the ones it draws — the label box, the edit operations. The ones a host
-placed itself, Save state and Retract among them (§ 11.2), the host leaves out,
+hides the one it draws — the label box. The ones a host placed itself, the edit
+operations and Save state and Retract among them (§ 11.2), the host leaves out,
 and it knows to because it is the one that asked for a read-only viewer.
 
 The two are not in tension: the gate is what makes the guarantee true even if a
@@ -1369,10 +1378,17 @@ column, because it is in neither place.
 
 ### 9.7 The renderEngine — commands only
 
-"Here is the data", "here is the cell", "add these frames", "the forces changed",
-"show this frame", "draw", "throw it away". Every one of them is an instruction.
-None of them is a question, because the renderEngine is told what to draw and is
-never consulted about what the data is.
+"Here is the data", "here is where to read it from", "a switch changed", "draw it
+this way", "here is the cell", "add these frames", "the forces changed", "show
+this frame", "draw", "point the camera at it again", "throw it away". Every one
+of them is an instruction. None of them is a question, because the renderEngine
+is told what to draw and is never consulted about what the data is.
+
+Three of those are worth naming, because each is the seam a rule elsewhere needs:
+*a switch changed* is what makes § 10.5's cost decision reachable at all; *draw
+it this way* is § 10.1's one interaction that derives nothing; and *point the
+camera at it again* is § 9.6's Reset, an action on the window rather than on any
+fact.
 
 Inside, it is split in two: a **maths half** that works out what to draw with no
 drawing library anywhere near it, and an **I/O half** that is the only code
@@ -1384,10 +1400,18 @@ no browser at all (§ 13.2).
 
 Load frames, swap to a frame, append frames, apply the overlays, set this frame's
 arrows, set the cell geometry, show or hide the "Updating view…" cover, batch a
-group of changes so the screen updates once — and **produce a picture of what is
-currently drawn**, since only the bottom can do that (§ 11.4). Each one translates finished data
-into something the layer below can act on. None of them decides anything — which
-operation to use is the renderEngine's call, made one level up.
+group of changes so the screen updates once, apply the drawing settings (the
+style and the projection of § 9.6, which reach the drawing without the frame
+calculation ever seeing them), fit the camera, report a clicked atom upward, tear
+it all down — and **produce a picture of what is currently drawn**, since only the
+bottom can do that (§ 11.4). Each one translates finished data into something the
+layer below can act on. None of them decides anything — which operation to use is
+the renderEngine's call, made one level up.
+
+Reporting a click is the one that looks like it faces the wrong way and does not:
+it carries **input arriving from the user**, not an answer about the drawing. The
+layer holds no notion of what is selected and says only "this atom was clicked";
+what that means is decided in `selection`, several levels up (§ 9.5).
 
 Plus **two questions, asked only by the renderEngine, only about the drawing
 itself**: *is there a movie loaded at all?* and *how many frames does it have?*
@@ -1829,8 +1853,8 @@ shape, rather than each one being hand-coded:
 
 | Operation | The selection is | Where it lands | With nothing selected | Needs exactly | Effect on atom count |
 |---|---|---|---|:--:|---|
-| `translate` | the thing being moved | — | act on all atoms | — | unchanged |
-| `rotate` | the thing being rotated | — | act on all atoms | — | unchanged |
+| `translate` | the thing being moved | `indices` | act on all atoms | — | unchanged |
+| `rotate` | the thing being rotated | `indices` | act on all atoms | — | unchanged |
 | `orient` | a reference the move is defined against | `anchors` | refuse | 2 | unchanged |
 | `add_atom` | a reference the new atom attaches to | `anchor_index` (one number) | refuse | 1 | grows |
 | `electrode` | a reference | `center_indices` | fall back to centring on the origin | — | grows |
@@ -1972,16 +1996,10 @@ Which is why this section lists no exclusions of its own. Nothing is left out by
 the saving machinery. Things are left out because they are not the truth, and
 that is one rule rather than a list to maintain.
 
-> **Transition.** Today's serialiser writes a structure with one set of
-> coordinates, so a session saved while a trajectory was loaded comes back as a
-> single structure. Frames *are* the truth and belong in a saved state; the
-> serialiser is simply behind, and that is where it is fixed.
-
-> **Transition.** The code also still has a page-hide flush that writes the
-> camera and the switches into the saved session. The table above and § 9.6
-> retire it: the camera is not read back at all, and none of that is state. It
-> is left from when reopening a session meant restoring what you had been
-> looking at.
+**This is true of the code today.** A saved state carries the structure with
+every frame it had and the selection, and nothing about looking: there is no
+page-hide flush, and neither the camera nor the switches nor the displayed frame
+is written anywhere.
 
 **Nothing is written on a timer, and nothing is written because something
 changed.** Storage is touched by exactly three things: opening a structure (which
@@ -2391,25 +2409,18 @@ gone (2026-07-31), not merely constrained. `exportFile()` returns the structure
 as data and stops; the bytes come from the server's one generator, which is why
 a project save and a download cannot differ.
 
-**What the rule costs today, and where it is not yet true.** Every door that
-accepts a structure accepts the geometry as **text** — an `.xyz` document. So a
-viewer that holds coordinates as numbers has to write one in order to ask any
-question at all: the numbers become text, the server parses them straight back
-into numbers, and numbers come back. That round trip is the only reason MolView
-contains code that writes a file format, and it is how the browser's `.xyz` came
-to differ from Python's — no title line, and raw precision where `to_xyz` writes
-six decimals.
+**Every door takes the atoms as numbers, so the rule holds by construction.** A
+viewer that holds coordinates as numbers hands them over as numbers: load, the
+geometry edits, the cell edit and the export all take the same envelope, and
+`Structure.to_xyz` is the only place in the system that writes an `.xyz`. There
+is no round trip through text and no second writer to keep in step by hand.
 
-> **Where the code has not caught up.** The doors must accept the atoms as
-> **numbers**, so the browser can hand over what it holds. Then
-> `Structure.to_xyz` is the only place in the system that writes an `.xyz`, the
-> sidecar's field set has one home, and the rule above is true by construction
-> rather than by everyone remembering it. Until then the browser writes a
-> coordinate document it should not be writing, and the two writers have to be
-> kept in step by hand.
->
-> The shape that fixes it is agreed and drafted — one envelope, both directions,
-> every door — and it lives with the other wire shapes in
+That was not always so, and the last door to hold out was the cell's: it took a
+`{xyz, sidecar}` blob the browser could not produce, so the one door § 6.2 gives
+the cell answered 400 to every request ever made of it, silently, for as long as
+it existed. A door whose shape only one side can speak is a door that is shut.
+
+> The envelope's field-level JSON lives with the other wire shapes in
 > [`web-api.md`](?doc=web/web-api.md) § 1, not here. This document says *that* a
 > structure crosses whole and who may write a file; that one says what the JSON
 > looks like.
@@ -2632,11 +2643,13 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 8.4 — the panel is handed one settled state, whole | every fact the panel draws arrives in one snapshot, including the pick order; a fact the store keeps but omits from it is the failure this guards |
 | § 8.4 — a filter row is edited one at a time | adding, retyping, re-kinding and removing a row are each their own change; nothing requires re-sending the whole set |
 | § 8.5 — a control reads a fact from where it lives | the frame bar takes the frame and the count from the model and playback from the handle; no control reads a forwarded mirror of either |
-| § 8.5 — one menu, two owners | turning on atom numbers re-derives frames; changing the style does not — both from the same menu |
+| § 8.5 — a switch and a drawing setting cost different things | turning on atom numbers re-derives frames; changing the style does not — the rail writes the first, the View menu the second, and § 9.6's question is what sorts them |
 | § 9.2 — the handle refuses appearance | there is no way through the handle to push arrows, labels, a busy state or a toggle — arrows come from the forces in the data or are not drawn at all |
 | § 9.3 — a read cannot be used to write | changing what a read returned leaves the viewer untouched |
 | § 9.3 — one need, one main way in | a narrower cut returns exactly what the main way in holds for that field — the two cannot disagree |
 | § 9.3 — the facts a request carries are read together | after an edit, a request built from the viewer carries that edit in **every** part of what it sends — no piece can be older than another, because it all came from one read of the structure; with nothing loaded that read returns nothing rather than an empty structure |
+| § 9.3 — one read holds everything a request needs | asked of the read itself, not of the body that leaves: `getStructure()` alone carries the coordinates, the labels, the atoms held still and the cell, so no caller can be made to take a second read — the shape of the read is the guarantee, not the caller's discipline |
+| § 10.8 — the append doors refuse what they cannot honour | appending with nothing loaded, and a frame whose atom count differs from the structure's, are each a hard error at the door; nothing is applied, and a batch is checked before any of it lands |
 | § 9.3 — a structure that cannot be written out is not written out | when the geometry and the per-atom labels disagree about how many atoms there are, the export door returns nothing rather than a corrupt structure |
 | § 9.4 — read-only freezes the master copy and nothing else | every change to the master copy is a no-op **and does not throw**, while select, isolate, scrub, camera and export all work normally |
 | § 9.4 — a read-only viewer has no history | `save`, `load` and `undo` do nothing, and the unsaved-changes badge never appears |
@@ -2646,6 +2659,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 9.5 — a label is a change to the truth | applying a label replaces that label's previous set of atoms, and in a read-only viewer it does nothing at all |
 | § 9.5 — one selection per owner | a read-only viewer's selection changes leave an editable viewer's selection untouched |
 | § 9.6 — the camera is not kept, saved or read back | nothing above the drawing reports where the camera is pointing, and a reload fits it to the structure rather than restoring an angle |
+| § 9.6 — the camera is fitted on load and on Reset, and at no other moment | isolating rebuilds the drawing and leaves the camera exactly where the user put it; since nothing above the drawing keeps the angle, a fit that should not have happened cannot be undone |
 | § 9.7 — the renderEngine answers nothing | it offers no read of the data and no read of the displayed frame |
 | § 9.8 — the drawing commands answer nothing upward | they offer the renderEngine its two self-check questions and nothing else — no coordinates, no frame read-back |
 | § 9.9 — the sealed layer faces downward only | the only questions it answers are the two self-checks of § 10.10; coordinates, the shown frame and the camera cannot be read out of it |
@@ -2693,8 +2707,13 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 
 The per-frame calculation and the selection store both run with no browser,
 because neither touches the drawing library. There is an in-repo demo page that
-exercises a multi-frame structure end to end. The browser tests use readiness
-signals the module publishes for that purpose.
+exercises a multi-frame structure end to end.
+
+**The browser tests reach the module the same way a host does** — they `import`
+it and drive the handle. There is no readiness signal and no test seam published
+anywhere, because a seam a test can reach is a seam anything can reach, and § 4
+says nothing leaks out. A test that needed one would be testing something the
+contract does not offer.
 
 ---
 
@@ -2747,14 +2766,15 @@ below lives under `lib/molview/`.
 | File / directory | Owns |
 |---|---|
 | `index.js` | the entry point — `mount`, `formula` (§ 4) |
-| `mount.js` | assembling a viewer, the handle, the playback timer (§ 8) |
-| `data-model.js` | the model — the master copy and the data API (§ 6, § 9.3) |
-| `render-engine/` | the renderEngine: what to redraw, the per-frame maths, the drawing commands (§ 9.7–9.8) |
-| `selection/` | the panel, the click-to-select wiring, the distance/angle maths (§ 9.5) |
-| `frame-controls.js` · `measurement-overlay.js` | the frame bar (§ 6.4) and the measurement readout (§ 11.6) |
-| `_atom-index.js` | the one atom-numbering translation (§ 11.5) |
-| `_atom-channels.js` | what kinds of thing an atom can be filtered by, and in what order (§ 9.5) |
-| `_viewer-overlay.js` | one consistent way to put a small badge in a corner of the 3D window |
+| `mount.js` | assembling the card, the handle, the playback timer (§ 8, § 9.2) |
+| `model.js` | the model — the master copy and the data API (§ 6, § 9.3) |
+| `model-jobs.js` | the model's helpers (§ 7.3) — load in, write out, the geometry edits, the cell edit — and the one place the server's names become this module's (§ 11.1) |
+| `stores.js` | `selection` and `view` (§ 9.5, § 9.6) |
+| `history.js` | the saved-state sequence and the write machine (§ 11.2) |
+| `render-engine.js` | the renderEngine and the drawing commands beneath it — what to redraw, the per-frame maths (§ 9.7–9.8) |
+| `ui.js` | every control MolView draws: the rail, the frame bar, the View and Export menus, the selection panel, the measurement readout, the badge (§ 8.5) |
+| `_atom.js` | the one atom-numbering translation (§ 11.5), the channels an atom can be filtered by (§ 9.5), and the Hill formula |
+| `molview.css` | the carried stylesheet — the card, its sizing and its fold (§ 8.1–8.3) |
 | `demo.js` | the in-repo multi-frame demo page (§ 13.4) |
 
 **Deliberately not listed:** the sealed layer. No consumer names its file and
@@ -2766,20 +2786,17 @@ neither does this document (§ 4).
 > control over exactly which parts of a drawing need refreshing, live in
 > [`roadmap.md`](?doc=roadmap.md).
 
-> **Where the code has not caught up.** Being owned (§ 5.6) and its consequences
-> — one model per viewer instead of one shared model, the handle as the way in
-> rather than a mirror of the model (§ 9.2), read-only as a rule about the master
-> copy (§ 9.4) — describe where the module is going.
+> **What is described here is what ships.** Being owned (§ 5.6) and its
+> consequences — one model per viewer, the handle as the way in rather than a
+> mirror of the model (§ 9.2), read-only as a rule about the master copy (§ 9.4)
+> — are all in the code, and so is the direction of the frame reads: the model
+> holds the displayed frame and answers `frameCount()` from the master copy's own
+> length. It does not ask the renderEngine anything, which is what lets § 6.4's
+> ordering rule stand on something.
 >
-> One of those is worth naming exactly, because it is an inversion and not just
-> an absence: today the model answers **which frame** and **how many frames** by
-> asking the renderEngine, which answers from the data it was handed. The number
-> that comes back is right, but the direction is upside down — the layer that
-> holds the master copy is deferring to a layer that is supposed to hold no truth
-> at all (§ 7, level 5). It also means the range is read back out of the renderer
-> rather than recomputed from the master copy, so the ordering rule of § 6.4 has
-> nothing to stand on. Every *caller* is already correct; only the model's own
-> implementation of those two reads is inverted. The places marked
-> **Transition** say what the code does today. The design was settled first, so
-> the change has something to be measured against; everything not marked
-> Transition describes what ships.
+> **Where the code has not caught up** is now a short list, and every item is a
+> control that was never drawn rather than a rule that is broken: the Export
+> menu's *Snapshot* and *Animation* rows (§ 11.3), the frame bar's speed box
+> (§ 1.1), the notice a reserved name earns (§ 6.6), and the by-label list read
+> from the structure (§ 9.5). The machinery each of them calls is built and
+> tested; only the control is missing.

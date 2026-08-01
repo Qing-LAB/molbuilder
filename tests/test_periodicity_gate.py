@@ -278,9 +278,15 @@ class TestPeriodicityDoor:
     ``POST /api/structure/periodicity``.
 
     INVARIANT: Python owns every metadata change and the client only calls.  The
-    door returns the TRUTH blob the gate accepted plus the § 3 resolved views,
-    and the client adopts that blob verbatim; an unknown op is a 400, never a
-    silent no-op.
+    door takes THE ENVELOPE every other structure door takes (web-api.md § 1) and
+    returns the cell block the gate accepted -- raw values and the § 3 resolved
+    views together, in the shape ``/api/build/load`` sends -- which the client
+    adopts verbatim; an unknown op is a 400, never a silent no-op.
+
+    It took a ``{"data": {xyz, sidecar}}`` blob until 2026-07-31, which its one
+    caller could not produce: MolView writes no coordinate document (molview.md
+    § 11.7), so the one door the cell changes through answered 400 to every
+    request ever made of it.
     """
 
     @pytest.fixture
@@ -289,28 +295,55 @@ class TestPeriodicityDoor:
         from molbuilder.web.app import create_app
         return create_app(config={}).test_client()
 
-    def _blob(self, struct):
-        from molbuilder.workingcopy_structure import StructureCodec
-        return StructureCodec().scratch_blob(struct)
+    def _envelope(self, struct):
+        """What MolView hands over: the atoms as NUMBERS and the facts beside
+        them -- ``structureForServer``'s output shape."""
+        return struct.to_dict()
 
-    def test_vacuum_op_round_trips_the_truth_blob(self, client):
+    def test_vacuum_op_round_trips_the_truth(self, client):
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0                    # manual state...
         s.__post_init__()
         r = client.post("/api/structure/periodicity", json={
-            "data": self._blob(s), "op": "vacuum",
+            "structure": self._envelope(s), "op": "vacuum",
             "payload": [3.0, 3.0, 3.0]})
-        assert r.status_code == 200
+        assert r.status_code == 200, r.get_json()
         j = r.get_json()
         assert j["ok"] is True
-        assert j["blob"]["sidecar"]["cell"] is None  # ...reset to derived
-        assert j["blob"]["sidecar"]["vacuum"] == [3.0, 3.0, 3.0]
-        assert j["resolved_cell"] is not None        # the view, recomputed
+        per = j["periodicity"]
+        assert per["cell"] is None                   # ...reset to derived
+        assert per["vacuum"] == [3.0, 3.0, 3.0]
+        # The RESOLVED views ride in the same block, so the client cannot be
+        # handed a cell block whose "as it will actually be used" half is
+        # missing (molview.md § 9.3).
+        assert per["resolved_cell"] is not None
+        assert "resolved_cell_origin" in per and "resolved_vacuum" in per
         assert any(n["level"] == "warn" for n in j["notices"])
+
+    def test_the_door_takes_the_envelope_molview_can_actually_produce(self, client):
+        """molview.md § 11.7: the browser hands over the structure and writes no
+        coordinate document, so the door must accept the atoms as numbers."""
+        s = _mol()
+        env = self._envelope(s)
+        assert "elements" in env and "positions" in env, (
+            "the envelope is the atoms as numbers")
+        assert "xyz" not in env, "the browser writes no coordinate document"
+        r = client.post("/api/structure/periodicity", json={
+            "structure": env, "op": "cell",
+            "payload": [[9, 0, 0], [0, 9, 0], [0, 0, 9]]})
+        assert r.status_code == 200, r.get_json()
+        assert r.get_json()["periodicity"]["cell"] == [[9, 0, 0], [0, 9, 0],
+                                                       [0, 0, 9]]
+
+    def test_a_missing_envelope_is_a_400(self, client):
+        r = client.post("/api/structure/periodicity",
+                        json={"op": "vacuum", "payload": [1, 1, 1]})
+        assert r.status_code == 400
+        assert "structure" in r.get_json()["error"]
 
     def test_unknown_op_is_a_400(self, client):
         r = client.post("/api/structure/periodicity", json={
-            "data": self._blob(_mol()), "op": "calibrate"})
+            "structure": self._envelope(_mol()), "op": "calibrate"})
         assert r.status_code == 400
 
 
@@ -603,21 +636,24 @@ class TestDoorHygieneAndRemainingOps:
         from molbuilder.web.app import create_app
         return create_app(config={}).test_client()
 
-    def _blob(self, struct):
-        from molbuilder.workingcopy_structure import StructureCodec
-        return StructureCodec().scratch_blob(struct)
+    def _envelope(self, struct):
+        return struct.to_dict()
 
-    def test_malformed_blob_is_a_clean_400(self, client):
-        for bad in (5, {"xyz": 3}, {"xyz": "x"}, {"sidecar": {}}):
+    def test_malformed_envelope_is_a_clean_400(self, client):
+        for bad in (5, "x", [], {"positions": []}, {"elements": ["C"]},
+                    {"elements": ["C"], "positions": [[0, 0, 0]],
+                     "regions": {}}):     # metadata at the top level
             r = client.post("/api/structure/periodicity",
-                            json={"data": bad, "op": "vacuum",
+                            json={"structure": bad, "op": "vacuum",
                                   "payload": [1, 1, 1]})
-            assert r.status_code == 400
-            assert "malformed 'data' blob" in r.get_json()["error"]
+            assert r.status_code == 400, (bad, r.get_json())
+            assert r.get_json()["ok"] is False
+            assert r.get_json().get("error"), bad
 
     def test_bad_cell_shape_is_a_clean_400(self, client):
         r = client.post("/api/structure/periodicity", json={
-            "data": self._blob(_mol()), "op": "cell", "payload": [1, 2, 3]})
+            "structure": self._envelope(_mol()), "op": "cell",
+            "payload": [1, 2, 3]})
         assert r.status_code == 400
         assert "3×3 matrix" in r.get_json()["error"]
 
@@ -627,29 +663,30 @@ class TestDoorHygieneAndRemainingOps:
         s.axis_kind = ("isolated", "isolated", "periodic")
         s.__post_init__()
         r = client.post("/api/structure/periodicity", json={
-            "data": self._blob(s), "op": "vacuum", "payload": [3, 3, 3]})
+            "structure": self._envelope(s), "op": "vacuum",
+            "payload": [3, 3, 3]})
         assert r.status_code == 400
         assert "periodic" in r.get_json()["error"]
 
     def test_cell_op_anchors_origin_through_the_door(self, client):
         r = client.post("/api/structure/periodicity", json={
-            "data": self._blob(_mol()), "op": "cell",
+            "structure": self._envelope(_mol()), "op": "cell",
             "payload": (np.eye(3) * 8.0).tolist()})
-        assert r.status_code == 200
-        j = r.get_json()
+        assert r.status_code == 200, r.get_json()
+        per = r.get_json()["periodicity"]
         # Truth carries no invented origin; the view carries the corner.
-        assert j["blob"]["sidecar"].get("cell_origin") is None
-        assert np.allclose(j["resolved_cell_origin"], [7.5, 7.5, 7.5])
+        assert per.get("cell_origin") is None
+        assert np.allclose(per["resolved_cell_origin"], [7.5, 7.5, 7.5])
 
     def test_axis_kind_op_resets_to_derived_through_the_door(self, client):
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0
         s.__post_init__()
         r = client.post("/api/structure/periodicity", json={
-            "data": self._blob(s), "op": "axis_kind",
+            "structure": self._envelope(s), "op": "axis_kind",
             "payload": ["isolated"] * 3})
-        assert r.status_code == 200
-        assert r.get_json()["blob"]["sidecar"]["cell"] is None
+        assert r.status_code == 200, r.get_json()
+        assert r.get_json()["periodicity"]["cell"] is None
 
     def test_origin_reset_null_payload_through_the_door(self, client):
         s = _mol(off=(1.0, 1.0, 1.0))
@@ -657,9 +694,10 @@ class TestDoorHygieneAndRemainingOps:
         s.cell_origin = np.array([0.5, 0.5, 0.5])
         s.__post_init__()
         r = client.post("/api/structure/periodicity", json={
-            "data": self._blob(s), "op": "cell_origin", "payload": None})
-        assert r.status_code == 200
-        assert r.get_json()["blob"]["sidecar"]["cell_origin"] is None
+            "structure": self._envelope(s), "op": "cell_origin",
+            "payload": None})
+        assert r.status_code == 200, r.get_json()
+        assert r.get_json()["periodicity"]["cell_origin"] is None
 
 
 class TestDocMatchesTheDoor:

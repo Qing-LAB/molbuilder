@@ -31,10 +31,12 @@ REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
 ATOM = MODULE_DIR / "_atom.js"
 ENGINE = MODULE_DIR / "render-engine.js"
+JOBS = MODULE_DIR / "model-jobs.js"
 
 PRELUDE = f"""
 const ATOM = await import({json.dumps(ATOM.resolve().as_uri())});
 const ENGINE = await import({json.dumps(ENGINE.resolve().as_uri())});
+const JOBS = await import({json.dumps(JOBS.resolve().as_uri())});
 
 // Eight atoms in a line, so a coordinate names its own atom.
 const ELEMENTS = ["C", "O", "N", "H", "C", "O", "N", "H"];
@@ -45,6 +47,51 @@ const OFF = {{ isolate: false, showIndex: false, showForces: false, forceScale: 
 
 def _run(snippet: str):
     return run_node([], PRELUDE + snippet)
+
+
+# ---------------------------------------------------------------------------
+# § 9.3 / § 11.7 — a structure that cannot be written out is not written out
+# ---------------------------------------------------------------------------
+
+def test_the_one_producer_refuses_a_structure_that_disagrees_with_itself():
+    """§ 9.3: ``exportFile`` "REFUSES to produce anything when the geometry and
+    the per-atom labels disagree about how many atoms there are, returning
+    nothing rather than writing a corrupt structure." § 11.7 says the same of the
+    one blob every outbound use is read from.
+
+    Asked of the PRODUCER, because § 10.8's guards now make that disagreement
+    unreachable through the model's frame doors. The belt still has to hold: this
+    one read feeds the export, the cell edit and every geometry edit, and it is
+    the last thing standing between a mismatched pair and the wire.
+    """
+    out = _run(
+        """
+        const two = { elements: ["C", "O"],
+                      annotations: [{ labels: [] }, { labels: [] }],
+                      periodicity: null };
+        console.log(JSON.stringify({
+            // Geometry shorter than the elements.
+            shortGeometry: JOBS.structureForServer(two, [[0,0,0]]),
+            // Geometry longer.
+            longGeometry:  JOBS.structureForServer(two, [[0,0,0],[1,0,0],[2,0,0]]),
+            // Per-atom facts disagreeing with both.
+            shortFacts:    JOBS.structureForServer(
+                { elements: ["C","O"], annotations: [{ labels: [] }],
+                  periodicity: null }, [[0,0,0],[1,0,0]]),
+            // The agreeing case still produces.
+            agreeing: JOBS.structureForServer(two, [[0,0,0],[1,0,0]]) !== null,
+        }));
+        """
+    )
+    assert out["shortGeometry"] is None, "a short frame was written out"
+    assert out["longGeometry"] is None, "a long frame was written out"
+    assert out["shortFacts"] is None, (
+        "the per-atom facts disagreed with the geometry and it was written "
+        "anyway — the labels would point at atoms that are not there"
+    )
+    assert out["agreeing"] is True, (
+        "the refusal is firing on a structure that agrees with itself"
+    )
 
 
 # ---------------------------------------------------------------------------

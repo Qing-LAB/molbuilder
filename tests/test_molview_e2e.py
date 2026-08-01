@@ -438,11 +438,14 @@ def test_the_cell_door_speaks_the_route_it_posts_to(demo):
             const answer = await v.data.commitPeriodicityOp(
                 "cell", [[8,0,0],[0,8,0],[0,0,8]]);
             const info = v.data.getUnitCellInfo();   // the block's own names
-            const sidecar = v.data.exportFile().sidecar;
+            // What LEAVES the viewer is the structure, not a file (§ 11.7):
+            // `exportFile()` "returns the structure as data and stops", and the
+            // cell rides in its metadata under the names it arrived with (§ 6.2).
+            const leaving = v.data.exportFile().structure;
             return {
                 answered: answer !== null,
                 cell:     info.cell,
-                exported: sidecar.cell,
+                exported: leaving.metadata.cell,
             };
         }"""
     )

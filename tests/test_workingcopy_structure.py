@@ -34,17 +34,29 @@ def _write(files):
 
 
 def test_codec_writes_xyz_and_sidecar(project):
+    """ONE label store, in the file too (structure-annotations.md § 4a, and
+    molview.md § 6.6): the reserved label is an ordinary member of ``regions``
+    and is written with the rest, not beside them in a field of its own.
+
+    Note the ORDER below.  ``regions`` is the whole store, so assigning it
+    replaces everything in it -- including a reserved label written earlier.
+    That is the point of there being one store, and this test used to write the
+    two the other way round and assert a key the file no longer has."""
     s = CODEC.load(project / "mol.xyz")
     assert s.n_atoms == 5
-    s.frozen_atoms = [1]
     s.regions = {"bridge": [2, 3]}
+    s.frozen_atoms = [1]
     s.set_channel("charge", AtomChannel("value", {0: -1.0}))
     assert not (project / "mol.molstruct.json").exists()   # not written yet
     _write(CODEC.files(s, project / "mol.xyz"))
     sidecar = json.loads((project / "mol.molstruct.json").read_text())
-    assert sidecar["frozen_atoms"] == [1]
-    assert sidecar["regions"] == {"bridge": [2, 3]}
+    assert sidecar["regions"] == {"bridge": [2, 3], "frozen_atoms": [1]}
+    assert "frozen_atoms" not in sidecar, "the same fact in the file twice"
     assert sidecar["annotations"]["charge"]["kind"] == "value"
+    # And the designated read gets it back out of that one store -- the only
+    # place the reserved name is spelled (molview.md § 6.6).
+    from molbuilder.sidecars import molstruct as _molstruct
+    assert _molstruct.frozen_atoms(sidecar) == [1]
 
 
 def test_labels_roundtrip_through_load(project):

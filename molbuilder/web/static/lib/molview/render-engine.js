@@ -300,6 +300,27 @@ export function createRenderEngine(embed) {
     let drawnKey = null;        // which atoms were drawn last time
     let costLog = [];           // what each change actually cost, for § 13.2
 
+    /* THE SCENE, WORKED OUT ONCE (§ 6.5, § 10.3). "They are the same for every
+     * frame unless the cell itself changes, so they are worked out once as
+     * scene-level data and are NOT RECOMPUTED PER FRAME. Recomputing them per
+     * frame would be work that produces an identical answer four hundred times."
+     *
+     * It was derived inside the per-frame overlay path, so a frame swap re-ran
+     * it — four hundred identical derivations across a played trajectory, which
+     * is exactly the rule's own example of what not to do.
+     *
+     * Held until the cell changes, and the only two things that can change it
+     * say so: a new structure, and a cell edit. */
+    let scene = null;
+    const sceneNow = () => {
+        if (!scene) {
+            const s = structure();
+            scene = sceneFor(s ? s.periodicity : null);
+        }
+        return scene;
+    };
+    const forgetScene = () => { scene = null; };
+
     const structure = () => (source && source.structure()) || null;
     const frames    = () => (source && source.frames()) || null;
     const forces    = () => (source && source.forces()) || null;
@@ -377,15 +398,13 @@ export function createRenderEngine(embed) {
          * frame swap (which re-places the overlays and not the scene) erased
          * the axes instead. Whatever arrows exist are handed down together. */
         const sw = switches();
-        const s = structure();
-        const axes = sw.showAxis ? sceneFor(s ? s.periodicity : null).axes : [];
+        const axes = sw.showAxis ? sceneNow().axes : [];
         embed.setArrows((processed.arrows || []).concat(axes));
     }
 
     function applyScene() {
-        const s = structure();
         const sw = switches();
-        const scene = sceneFor(s ? s.periodicity : null);
+        const scene = sceneNow();
         // Geometry travels unconditionally; the switch carries only a boolean
         // (§ 10.3). So the box is handed down whenever it changes and the
         // SWITCH decides whether it is drawn — which is why turning the cell on
@@ -396,7 +415,18 @@ export function createRenderEngine(embed) {
 
     /* ── The four costs ───────────────────────────────────────────────────── */
 
-    function doRebuild() {
+    /* @param fit  whether to re-fit the camera on the structure.
+     *
+     * § 9.6: "On load, AND ON RESET, the camera is fitted to the structure" —
+     * those two moments, and no other. A rebuild is not one of them: isolate is
+     * a rebuild (§ 10.5), so fitting on every rebuild threw away the angle the
+     * user had set the moment they pressed the isolate switch. Nothing above the
+     * drawing keeps the camera, so there is nothing to restore afterwards —
+     * which is exactly why the fit has to be withheld rather than undone.
+     *
+     * A heal (§ 10.10) does not fit either: it repairs a drawing that came back
+     * short, and the user did not ask for anything. */
+    function doRebuild(fit) {
         const processed = processAll();
         const s = structure();
         if (!s || !processed.length) {
@@ -411,7 +441,7 @@ export function createRenderEngine(embed) {
         embed.showFrame(at);
         applyOverlaysFor(processed[at]);
         applyScene();
-        embed.fitCamera();
+        if (fit) embed.fitCamera();
         embed.endBatch();
         costLog.push(REBUILD);
         healIfShort();
@@ -423,7 +453,10 @@ export function createRenderEngine(embed) {
         // first geometry has none — and appending to a movie that does not
         // exist quietly does nothing at all. This is the case the "is there a
         // movie?" question exists to catch.
-        if (!embed.hasMovie()) { doRebuild(); return; }
+        //
+        // It FITS, because this is the first geometry of the run reaching the
+        // drawing — the load § 9.6 means, arriving as an append.
+        if (!embed.hasMovie()) { doRebuild(true); return; }
 
         // ONLY THE NEW FRAMES (§ 10.5: "process the new frames only, extend the
         // movie"). Working out all four hundred and keeping the tail made an
@@ -483,7 +516,7 @@ export function createRenderEngine(embed) {
         if (healing || !masterCount()) return;
         if (embed.drawnFrameCount() >= masterCount()) return;
         healing = true;
-        try { doRebuild(); } finally { healing = false; }
+        try { doRebuild(false); } finally { healing = false; }
     }
 
     /* ── The rebuild window (§ 10.9) ──────────────────────────────────────
@@ -502,14 +535,14 @@ export function createRenderEngine(embed) {
     // structure that was just replaced. That is a movie of the previous load,
     // silently, with a frame bar offering frames it does not have.
     let generation = 0;
-    async function rebuildGuarded() {
+    async function rebuildGuarded(fit) {
         const mine = ++generation;
         phase = REBUILDING;
         embed.setBusy("Updating view…");
         try {
             await Promise.resolve();          // the window other work arrives in
             if (mine !== generation) return;  // superseded: a newer load owns the drawing
-            doRebuild();
+            doRebuild(fit);
         } finally {
             if (mine !== generation) return;  // the newer one owns the cover too
             embed.setBusy(false);
@@ -545,7 +578,10 @@ export function createRenderEngine(embed) {
         // statement about what the structure is (§ 10.9).
         dataChanged() {
             held = [];
-            return rebuildGuarded();
+            // A new structure: the scene is worked out again (§ 10.3), and this
+            // is one of § 9.6's two moments, so the camera is fitted.
+            forgetScene();
+            return rebuildGuarded(true);
         },
 
         // A switch changed. The set of drawn atoms changed only if isolate is
@@ -554,7 +590,9 @@ export function createRenderEngine(embed) {
         switchesChanged() {
             if (phase === REBUILDING) return;   // nothing is held: the rebuild
                                                 // reads the switches when it RUNS
-            if (currentDrawnKey() !== drawnKey) return rebuildGuarded();
+            // Isolate changed the drawn set — a rebuild, but NOT a load, so the
+            // camera stays where the user put it (§ 9.6).
+            if (currentDrawnKey() !== drawnKey) return rebuildGuarded(false);
             doOverlay();
         },
 
@@ -579,6 +617,9 @@ export function createRenderEngine(embed) {
         // "Here is the cell." An overlay refresh, NOT a rebuild — the atoms did
         // not move; only the box and the axes changed (§ 10.5).
         cellChanged() {
+            // The one thing besides a new structure that changes the scene, so
+            // it is the one other place the scene is worked out again (§ 10.3).
+            forgetScene();
             if (phase === REBUILDING) { hold("cell", () => doOverlay()); return; }
             doOverlay();
         },

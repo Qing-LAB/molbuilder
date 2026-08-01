@@ -39,7 +39,18 @@ function makeElement(doc, tag) {
             add(c)    { node._classes.add(c); },
             remove(c) { node._classes.delete(c); },
             contains(c) { return node._classes.has(c); },
-            toggle(c) {
+            /* `force` is honoured, as the real DOM does: `toggle(c, cond)` SETS
+             * the class to `cond` rather than flipping it. Without it, the very
+             * common "light exactly the chosen one" loop —
+             * `for (x of all) x.classList.toggle("is-active", x === chosen)` —
+             * turned every class on, so a stand-in test could not tell "one lit"
+             * from "all lit". That is a stand-in describing something the DOM
+             * does not do (§ 13.1). */
+            toggle(c, force) {
+                if (force !== undefined) {
+                    if (force) node._classes.add(c); else node._classes.delete(c);
+                    return !!force;
+                }
                 if (node._classes.has(c)) { node._classes.delete(c); return false; }
                 node._classes.add(c); return true;
             },
@@ -149,20 +160,35 @@ function makeElement(doc, tag) {
     return node;
 }
 
-function matches(node, selector) {
-    if (selector.startsWith(".")) return node._classes.has(selector.slice(1));
-    return node.tagName === selector.toUpperCase();
+/* ONE step of a selector: a tag, a class, or a compound of the two —
+ * `div`, `.is-active`, `input`, `.mol-viewer-bg-swatch.is-transparent`. */
+function matches(node, step) {
+    const parts = String(step).split(".");
+    const tag = parts.shift();
+    if (tag && node.tagName !== tag.toUpperCase()) return false;
+    for (const cls of parts) if (!node._classes.has(cls)) return false;
+    return true;
 }
 
+/* Descendant chains too — `.mol-viewer-radius-row input`. A stand-in that only
+ * understood one step made a test asking a real question ("is the slider inside
+ * the row the stylesheet styles?") fail as though the control were missing,
+ * which is the stand-in describing something the DOM does not (§ 13.1). */
 function findAll(root, selector) {
-    const out = [];
-    (function walk(n) {
-        for (const c of n.children) {
-            if (matches(c, selector)) out.push(c);
-            walk(c);
+    let current = [root];
+    for (const step of String(selector).trim().split(/\s+/)) {
+        const next = [];
+        for (const from of current) {
+            (function walk(n) {
+                for (const c of n.children) {
+                    if (matches(c, step) && next.indexOf(c) < 0) next.push(c);
+                    walk(c);
+                }
+            })(from);
         }
-    })(root);
-    return out;
+        current = next;
+    }
+    return current;
 }
 
 function find(root, selector) {

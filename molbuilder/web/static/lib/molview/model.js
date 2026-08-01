@@ -280,6 +280,68 @@ export function createModel(opts) {
         return true;
     }, false);
 
+    /* ── The same-atoms rule, at the doors that could break it (§ 10.8) ────
+     *
+     * "A full load replaces everything. It establishes the atoms' identity —
+     * count, elements, order — from frame 0." An APPEND adds to that identity
+     * and may never change it, and § 10.8 states three rules for it:
+     *
+     *   1. SOMETHING MUST ALREADY BE LOADED. "Appending with nothing loaded is
+     *      a hard error — there is no atom identity to append to."
+     *   2. EACH NEW FRAME IS CHECKED AGAINST THAT IDENTITY before anything
+     *      reaches the drawing. Same atom count. Elements are not re-sent,
+     *      because a streamed frame carries coordinates only.
+     *   3. A MISMATCH IS A HARD ERROR. "Never padded, never truncated, never
+     *      guessed into fitting."
+     *
+     * None of it was here, and both halves failed silently: appending with
+     * nothing loaded INVENTED an identity (`if (!frames) frames = []`), and a
+     * frame of the wrong length was pushed straight into the master copy — so a
+     * structure could hold two elements and a frame with one position. That
+     * breaks the same-atoms rule of § 6.2 that everything downstream reads
+     * against: the per-frame maths, measurement, and export all index the
+     * coordinates by the element list.
+     *
+     * THEY THROW rather than returning false. A caller that appends a frame of
+     * the wrong shape has a bug, and a frame dropped quietly leaves a hole in
+     * the middle of a run that nothing downstream can see.
+     */
+    function atomCount() {
+        return (structure && Array.isArray(structure.elements))
+            ? structure.elements.length : 0;
+    }
+
+    function requireMatch(coords, label) {
+        const n = atomCount();
+        if (!n) {
+            throw new Error(label + ": nothing loaded — there is no atom "
+                            + "identity to append to (§ 10.8)");
+        }
+        const got = Array.isArray(coords) ? coords.length : 0;
+        if (got !== n) {
+            throw new Error(label + ": a frame of " + got + " atoms cannot join "
+                            + "a structure of " + n + " (§ 10.8)");
+        }
+    }
+
+    // The same rule across a frame SET: every frame carries the same atoms.
+    // Checked before any of them lands, so a bad frame halfway through a batch
+    // does not leave the first half applied.
+    function requireSameAtoms(list, label) {
+        if (!Array.isArray(list) || !list.length) {
+            throw new Error(label + ": needs at least one frame");
+        }
+        const n0 = Array.isArray(list[0]) ? list[0].length : 0;
+        list.forEach((frame, i) => {
+            const got = Array.isArray(frame) ? frame.length : 0;
+            if (got !== n0) {
+                throw new Error(label + ": frame " + i + " has " + got
+                                + " atoms, expected " + n0 + " (§ 10.8)");
+            }
+        });
+        return n0;
+    }
+
     function put(nextStructure, nextCoordinates, name) {
         structure = nextStructure;
         frames = nextCoordinates.frames;
@@ -358,19 +420,41 @@ export function createModel(opts) {
     return {
         /* ══ Get the whole structure ═════════════════════════════════════
          *
-         * With nothing loaded a read returns NOTHING rather than an empty
-         * structure (§ 9.3): "there is nothing here" and "here is a structure
-         * with no atoms" are different answers, and a caller has to be able to
-         * tell them apart.
+         * THE MASTER COPY, WHOLE — every atom, every frame, in the original
+         * order (§ 6.3). Every field § 6.2 lists is in here: the elements, the
+         * per-atom facts, the cell block, the frames and their forces.
          *
-         * One read holds everything a request needs, which is why there is no
-         * separate door for the facts a request carries — and it is what makes
-         * "the facts that leave together were read together" true.
+         * ONE READ HOLDS EVERYTHING A REQUEST NEEDS, which is why there is no
+         * separate door for the facts a request carries (§ 9.3), and it is what
+         * makes "the facts that leave together were read together" a property of
+         * this surface rather than a promise about how callers behave.
+         *
+         * This returned three of the five and left THE COORDINATES OUT, so the
+         * one thing § 9.3 exists to prevent was what every caller had to do:
+         * read the labels here and the positions somewhere else, and send a set
+         * assembled from two moments. That is the failure § 9.3 tells the story
+         * of — current labels with stale positions, and a server judging a
+         * structure that was not the one on screen.
+         *
+         * With nothing loaded it returns NOTHING rather than an empty structure
+         * (§ 9.3): "there is nothing here" and "here is a structure with no
+         * atoms" are different answers, and a caller has to be able to tell them
+         * apart.
          */
-        getStructure() { return copy(structure); },
+        getStructure() {
+            if (!structure) return null;
+            return copy({
+                elements:       structure.elements,
+                annotations:    structure.annotations,
+                periodicity:    structure.periodicity,
+                frames:         frames,
+                forcesPerFrame: forcesPerFrame,
+            });
+        },
 
-        // Narrower cuts of that one need. A cut may disappear; it must never
-        // grow into a rival (§ 9.3).
+        // Narrower cuts of that one need. A cut returns exactly what the main
+        // way in holds for that field, so the two cannot disagree (§ 13.3). A
+        // cut may disappear; it must never grow into a rival (§ 9.3).
         getElements()   { return structure ? structure.elements.slice() : null; },
         getCoordinates() {
             return frames ? copy({ frames, forcesPerFrame }) : null;
@@ -518,6 +602,10 @@ export function createModel(opts) {
         // Load or extend the frames. The range is recomputed from the master
         // copy — never from what the caller said it was adding (§ 6.4 step 2).
         reloadFrames: gated(function (nextFrames, nextForces) {
+            // Checked BEFORE anything lands (§ 10.8): every frame carries the
+            // same atoms, and those atoms are the loaded structure's.
+            requireSameAtoms(nextFrames, "reloadFrames");
+            requireMatch(nextFrames[0], "reloadFrames");
             settle(() => {
                 frames = nextFrames.map((f) => f.map((p) => [p[0], p[1], p[2]]));
                 forcesPerFrame = nextForces || null;
@@ -525,6 +613,7 @@ export function createModel(opts) {
         }, undefined),
 
         addFrame: gated(function (frame, forces) {
+            requireMatch(frame, "addFrame");
             // Where the new frames start is read BEFORE the change: it is what
             // the engine needs to extend the movie instead of reloading it, and
             // after the write it would be indistinguishable from the end.
@@ -544,6 +633,11 @@ export function createModel(opts) {
         }, undefined),
 
         addFrames: gated(function (moreFrames, moreForces) {
+            // Every arriving frame is checked against the loaded identity
+            // BEFORE any of them lands, so a bad frame halfway through a poll's
+            // batch does not leave the first half applied (§ 10.8).
+            requireSameAtoms(moreFrames, "addFrames");
+            moreFrames.forEach((f) => requireMatch(f, "addFrames"));
             const from = Array.isArray(frames) ? frames.length : 0;
             settle(() => {
                 if (!frames) frames = [];

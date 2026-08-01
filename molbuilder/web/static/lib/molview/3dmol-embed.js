@@ -245,7 +245,17 @@ export function create(hostEl, opts) {
         // it was": the library's own default is white, so a skipped call is how
         // the window came to stay white inside a dark card.
         const bg = state.view.background || sceneBackground(state.hostEl);
-        try { state.viewer.setBackgroundColor(bg); } catch (_) {}
+        try {
+            /* "transparent" is THIS MODULE's word for the background § 1.1
+             * offers before you export a picture. The library has no such
+             * colour — it takes a colour AND an alpha — so the translation into
+             * its vocabulary happens here, the one place allowed to know what it
+             * wants (§ 9.8). Handed the bare word, as it was, the library
+             * resolved it to black and the preset silently painted the window
+             * dark instead of clear. */
+            if (bg === "transparent") state.viewer.setBackgroundColor(0x000000, 0);
+            else state.viewer.setBackgroundColor(bg);
+        } catch (_) {}
     }
 
     /* ── Overlay redraws ───────────────────────────────────────────────────

@@ -249,12 +249,23 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
 
+        m.addFrames([[[0,0,1],[1,0,1]]]);
+
         const whole = m.getStructure();
         console.log(JSON.stringify({
             elementsAgree: JSON.stringify(m.getElements()) === JSON.stringify(whole.elements),
             atomsAgree: m.getAtoms().map(a => a.element).join() === whole.elements.join(),
             cellAgree: JSON.stringify(m.getUnitCell()) === JSON.stringify(whole.periodicity.cell),
             originAgree: JSON.stringify(m.getUnitCellOrigin()) === JSON.stringify(whole.periodicity.cell_origin),
+            // The coordinate cuts, against the same one read. `getCoordinates`
+            // is listed as a cut of `getStructure` (§ 9.3), so the whole has to
+            // hold what it returns — it did not, and that was the hole.
+            framesAgree: JSON.stringify(m.getCoordinates().frames)
+                         === JSON.stringify(whole.frames),
+            forcesAgree: JSON.stringify(m.getCoordinates().forcesPerFrame)
+                         === JSON.stringify(whole.forcesPerFrame),
+            oneFrameAgrees: JSON.stringify(m.getFrameAllAtoms(1))
+                            === JSON.stringify(whole.frames[1]),
             regions: m.getRegions(),
             frozen: m.getFrozen(),
             infoCell: m.getUnitCellInfo().cell,
@@ -265,6 +276,14 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
         "a cut of the structure disagreed with the whole"
     )
     assert out["cellAgree"] and out["originAgree"]
+    assert out["framesAgree"] and out["forcesAgree"], (
+        "getCoordinates is a cut of getStructure (§ 9.3), so the whole must hold "
+        "what it returns — a cut that answers something the main way in does not "
+        "have is a rival, not a cut"
+    )
+    assert out["oneFrameAgrees"], (
+        "getFrameAllAtoms(i) disagreed with the same frame in the whole read"
+    )
     assert out["regions"]["anchor"] == [0], "labels group into name -> atoms"
     assert out["frozen"] == [1], (
         "the frozen cut reads the reserved label off the same one mechanism"
@@ -323,7 +342,10 @@ def test_no_subscriber_sees_a_new_range_beside_an_old_frame_number():
     out = _run(
         """
         const m = await loaded();
-        m.reloadFrames([[[0,0,0]], [[1,0,0]], [[2,0,0]], [[3,0,0]], [[4,0,0]]]);
+        // Two atoms per frame, because the structure was opened with two and
+        // § 10.8 fixes that identity for every frame after it.
+        m.reloadFrames([[[0,0,0],[1,0,0]], [[1,0,0],[2,0,0]], [[2,0,0],[3,0,0]],
+                        [[3,0,0],[4,0,0]], [[4,0,0],[5,0,0]]]);
         m.setCurrentFrame(4);
 
         // Watch what every notification shows.
@@ -331,7 +353,7 @@ def test_no_subscriber_sees_a_new_range_beside_an_old_frame_number():
         m.subscribe(() => seen.push({ at: m.currentFrame(), of: m.frameCount() }));
         m.onFrameChange(() => seen.push({ at: m.currentFrame(), of: m.frameCount() }));
 
-        m.reloadFrames([[[0,0,0]], [[1,0,0]]]);       // the trajectory shortens
+        m.reloadFrames([[[0,0,0],[1,0,0]], [[1,0,0],[2,0,0]]]);   // it shortens
         console.log(JSON.stringify({
             seen,
             bad: seen.filter(s => s.at >= s.of),
@@ -354,7 +376,7 @@ def test_an_out_of_range_write_is_resolved_against_the_range():
     out = _run(
         """
         const m = await loaded();
-        m.reloadFrames([[[0,0,0]], [[1,0,0]], [[2,0,0]]]);
+        m.reloadFrames([[[0,0,0],[1,0,0]], [[1,0,0],[2,0,0]], [[2,0,0],[3,0,0]]]);
         const seen = [];
         m.setCurrentFrame(99);   seen.push(m.currentFrame());
         m.setCurrentFrame(-5);   seen.push(m.currentFrame());
@@ -376,7 +398,7 @@ def test_one_write_reaches_every_subscriber_whatever_moved_it():
     out = _run(
         """
         const m = await loaded();
-        m.reloadFrames([[[0,0,0]], [[1,0,0]], [[2,0,0]]]);
+        m.reloadFrames([[[0,0,0],[1,0,0]], [[1,0,0],[2,0,0]], [[2,0,0],[3,0,0]]]);
         let a = 0, b = 0;
         m.onFrameChange(() => a++);
         m.onFrameChange(() => b++);
@@ -401,11 +423,11 @@ def test_appending_frames_recomputes_the_range_from_the_master_copy():
     out = _run(
         """
         const m = await loaded();
-        m.reloadFrames([[[0,0,0]]]);
+        m.reloadFrames([[[0,0,0],[1,0,0]]]);
         const start = m.frameCount();
-        m.addFrames([[[1,0,0]], [[2,0,0]]]);
+        m.addFrames([[[1,0,0],[2,0,0]], [[2,0,0],[3,0,0]]]);
         const grown = m.frameCount();
-        m.addFrame([[3,0,0]]);
+        m.addFrame([[3,0,0],[4,0,0]]);
         console.log(JSON.stringify({ start, grown, final: m.frameCount() }));
         """
     )
@@ -422,8 +444,8 @@ def test_forces_arriving_after_a_frameless_load_land_on_their_own_frame():
     out = _run(
         """
         const m = await loaded();
-        m.reloadFrames([[[0,0,0]], [[1,0,0]]]);      // two frames, no forces
-        m.addFrame([[2,0,0]], [[7,0,0]]);            // the third carries forces
+        m.reloadFrames([[[0,0,0],[1,0,0]], [[1,0,0],[2,0,0]]]);  // no forces
+        m.addFrame([[2,0,0],[3,0,0]], [[7,0,0],[7,0,0]]);        // this one has them
         const c = m.getCoordinates();
         console.log(JSON.stringify({
             frames: c.frames.length,
@@ -432,7 +454,7 @@ def test_forces_arriving_after_a_frameless_load_land_on_their_own_frame():
         """
     )
     assert out["frames"] == 3
-    assert out["forces"] == [None, None, [[7, 0, 0]]], (
+    assert out["forces"] == [None, None, [[7, 0, 0], [7, 0, 0]]], (
         "the first forces to arrive must land on the frame that carried them, "
         f"not on frame 0: {out['forces']}"
     )
@@ -645,23 +667,122 @@ def test_export_hands_over_the_displayed_frame():
     )
 
 
-def test_a_structure_that_cannot_be_written_out_is_not_written_out():
-    """§ 9.3: "when the geometry and the per-atom labels disagree about how many
-    atoms there are, the export door returns nothing rather than a corrupt
-    structure."
+def test_the_frame_doors_refuse_to_create_a_structure_that_disagrees_with_itself():
+    """§ 10.8 rules 1–3, at the three doors that could break the same-atoms rule.
+
+    "Something must already be loaded. Appending with nothing loaded is a hard
+    error — there is no atom identity to append to." "Each new frame is checked
+    against that identity before anything reaches the drawing. Same atom count."
+    "A mismatch is a hard error. Never padded, never truncated, never guessed
+    into fitting."
+
+    None of it was enforced, and the master copy would take a structure of two
+    elements holding a frame with one position — the shape everything downstream
+    indexes against (§ 6.2). This is the belt § 9.3's export refusal was standing
+    in for: the disagreement is now unreachable through the public surface rather
+    than merely refused on the way out.
     """
     out = _run(
         """
-        const m = await loaded();
-        // A frame with the wrong number of atoms — the disagreement § 9.3 names.
-        m.reloadFrames([[[0,0,0]]]);
-        console.log(JSON.stringify({ exported: m.exportFile() }));
+        function refused(fn) {
+            try { fn(); return null; } catch (e) { return e.message; }
+        }
+        const empty = createModel({});
+        const nothingLoaded = refused(() => empty.addFrames([[[0,0,0],[1,0,0]]]));
+
+        const m = await loaded();          // two atoms — C and O
+        const shortAppend  = refused(() => m.addFrames([[[0,0,0]]]));
+        const shortOne     = refused(() => m.addFrame([[0,0,0]]));
+        const shortReload  = refused(() => m.reloadFrames([[[0,0,0]]]));
+        // A batch whose frames disagree with EACH OTHER, checked before any of
+        // them lands so the first half is not left applied.
+        const ragged = refused(() => m.addFrames([[[0,0,0],[1,0,0]], [[2,0,0]]]));
+
+        console.log(JSON.stringify({
+            nothingLoaded, shortAppend, shortOne, shortReload, ragged,
+            // Nothing was applied by any of the refusals.
+            frames: m.frameCount(),
+            stillWhole: m.getFrameAllAtoms(0).length,
+        }));
         """
     )
-    assert out["exported"] is None, (
-        "a structure whose geometry and labels disagree about the atom count "
-        "must produce nothing, not a corrupt file"
+    assert out["nothingLoaded"] and "nothing loaded" in out["nothingLoaded"], (
+        "appending with nothing loaded invented an atom identity instead of "
+        f"refusing: {out['nothingLoaded']}"
     )
+    for door in ("shortAppend", "shortOne", "shortReload", "ragged"):
+        assert out[door], (
+            f"{door} accepted a frame that does not carry the structure's atoms "
+            "— § 10.8 calls that a hard error, never coerced"
+        )
+    assert out["frames"] == 1 and out["stillWhole"] == 2, (
+        "a refused frame left something behind in the master copy"
+    )
+
+
+def test_one_read_of_the_structure_holds_everything_a_request_needs():
+    """§ 9.3: "A request ... carries the coordinates, the labels, which atoms are
+    held still, and the cell. EVERY ONE OF THOSE IS PART OF THE STRUCTURE, so one
+    read of the structure already holds them. There is nothing a request needs
+    that ``getStructure()`` does not have."
+
+    Asked of the READ ITSELF, not of the body that leaves. The outbound body was
+    already correct — one producer, one read — while ``getStructure()`` returned
+    three of the five fields and left THE COORDINATES OUT, so any caller building
+    a request off this surface had to take the positions from a second call. Two
+    calls are two moments, and a set assembled from two moments is exactly the
+    failure the section tells the story of.
+
+    § 6.3 fixes the extent: the master copy is "every atom, EVERY FRAME, in the
+    original order" — so a trajectory's whole movie is in this one answer, not
+    just the frame on screen.
+    """
+    out = _run(
+        """
+        globalThis.__nextPayload = globalThis.__payload([
+            globalThis.__atomRow(0, "C", 0, { regions: ["anchor", "frozen_atoms"] }),
+            globalThis.__atomRow(1, "O", 1, { regions: [] }),
+        ], { periodicity: { cell: [[6,0,0],[0,6,0],[0,0,6]], cell_origin: [1,1,1],
+                            axis_kind: ["periodic","periodic","isolated"],
+                            vacuum: [0,0,10] } });
+        const m = createModel({});
+        await m.installMolecule({ text: "x", filename: "x.xyz" });
+        m.addFrames([[[0,0,1],[1,0,1]]], [[[0,0,-1],[0,0,-2]]]);
+
+        // ONE call. Nothing else on the surface is touched.
+        const whole = m.getStructure();
+
+        console.log(JSON.stringify({
+            keys:      Object.keys(whole).sort(),
+            elements:  whole.elements,
+            frames:    whole.frames,
+            forces:    whole.forcesPerFrame,
+            labels:    whole.annotations.map((a) => a.labels),
+            cell:      whole.periodicity && whole.periodicity.cell,
+            origin:    whole.periodicity && whole.periodicity.cell_origin,
+        }));
+        """
+    )
+    assert out["keys"] == ["annotations", "elements", "forcesPerFrame",
+                           "frames", "periodicity"], (
+        f"the one read does not carry § 6.2's five fields: {out['keys']}"
+    )
+    # The four facts § 9.3 names, each read off that single answer.
+    assert out["frames"] == [[[0, 0, 0], [1, 0, 0]], [[0, 0, 1], [1, 0, 1]]], (
+        "the coordinates are missing from the read, or it handed back only the "
+        "displayed frame instead of every frame (§ 6.3)"
+    )
+    assert out["forces"] == [None, [[0, 0, -1], [0, 0, -2]]]
+    assert out["labels"] == [["anchor", "frozen_atoms"], []], (
+        "the labels are missing from the read"
+    )
+    assert "frozen_atoms" in out["labels"][0], (
+        "which atoms are held still is a label like any other (§ 6.6), so it "
+        "rides in the same one read"
+    )
+    assert out["cell"] == [[6, 0, 0], [0, 6, 0], [0, 0, 6]], "the cell is missing"
+    assert out["origin"] == [1, 1, 1]
+    assert out["elements"] == ["C", "O"]
 
 
 def test_the_facts_a_request_carries_all_came_from_one_read():

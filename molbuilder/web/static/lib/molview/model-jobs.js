@@ -397,45 +397,43 @@ function countChanged(before, after) {
  */
 export function createCellEdit(handed) {
     return async function commitPeriodicityOp(op, payload) {
-        /* THE SAME BLOB THE EXPORT PRODUCES. A cell edit is the server deciding
-         * what the box becomes, and it decides that FROM THE WHOLE STRUCTURE —
-         * the atoms it has to wrap included. So it is handed the structure as
-         * data, exactly as a save is, rather than a payload shaped for this one
-         * call.
+        /* THE SAME STRUCTURE THE EXPORT PRODUCES, under the key every other
+         * door takes. A cell edit is the server deciding what the box becomes,
+         * and it decides that FROM THE WHOLE STRUCTURE — the atoms it has to
+         * wrap included. So it is handed the structure as data, exactly as a
+         * save is, rather than a payload shaped for this one call.
          *
-         * This used to send `{op, params, structure}`, which the route does not
-         * read: it wants `{data: {xyz, sidecar}, op, payload}` and answers 400
-         * without it. The error was caught and turned into null, so the ONE door
-         * § 6.2 gives the cell has never once succeeded. Every layer above was
-         * right; the body was handcrafted at the call site instead of coming
-         * from the one place that knows what a structure looks like on the wire.
+         * TWO WRONG SHAPES PRECEDED THIS ONE, and both failed the same silent
+         * way — a 400 caught and turned into null — so the ONE door § 6.2 gives
+         * the cell had never once succeeded. First `{op, params, structure}`,
+         * which nothing read; then this same structure under `data`, which the
+         * route rejected because it wanted a `{xyz, sidecar}` blob. The browser
+         * cannot produce that blob: it writes no coordinate document (§ 11.7).
+         * So the door takes the envelope, like every other one.
          */
-        const data = handed.readData();
-        if (!data) return null;
+        const structure = handed.readData();
+        if (!structure) return null;
         let answer;
         try {
             answer = await postJson("/api/structure/periodicity", {
-                data:    data,
-                op:      op,
-                payload: payload === undefined ? null : payload,
+                structure: structure,
+                op:        op,
+                payload:   payload === undefined ? null : payload,
             });
         } catch (_) {
             return null;
         }
-        // The server answers with the whole structure again; what changed is the
-        // cell, and it comes back under the SERVER's names — so it goes home
-        // through the same translation everything else does.
-        const returned = answer && answer.blob && answer.blob.sidecar;
-        if (!answer || answer.ok === false || !returned) return null;
-        // The four fields come back under the names they went out under, so
-        // there is nothing to translate — only the block to pick out of a
-        // sidecar that also carries the labels.
-        const block = {
-            cell:        returned.cell || null,
-            cell_origin: returned.cell_origin || null,
-            axis_kind:   returned.axis_kind || null,
-            vacuum:      returned.vacuum || null,
-        };
+        /* ADOPTED VERBATIM. The block comes back in the shape § 6.2 carries —
+         * the server's own field names, with the `resolved_*` answers beside the
+         * raw ones — which is the same shape `/api/build/load` sends, so there
+         * is nothing to translate and nothing to pick out.
+         *
+         * It used to be rebuilt here from four named fields, which dropped the
+         * resolved half: `getUnitCellInfo` reads `resolved_cell` first (§ 9.3's
+         * "the cell as it will actually be used"), so after an edit the main way
+         * in would quietly have answered with the raw value instead. */
+        const block = answer && answer.periodicity;
+        if (!answer || answer.ok === false || !block) return null;
         handed.applyCell(block);
         return block;
     };

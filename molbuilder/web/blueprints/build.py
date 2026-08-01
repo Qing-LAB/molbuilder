@@ -646,41 +646,41 @@ def api_periodicity():
     (``/api/modify/calibrate``), and emission translates to the engine frame
     implicitly.
 
-    Body: ``{"data": <scratch blob>, "op": <one of OPS>, "payload": ...}``.
-    ``payload`` is required (may be ``null``) for ``cell`` / ``cell_origin``,
-    where ``null`` means "clear it" — omitting the key is an error rather than
-    a silent clear.
+    Body: ``{"structure": <envelope>, "op": <one of OPS>, "payload": ...}`` --
+    THE ENVELOPE every other structure door takes (web-api.md § 1), so a caller
+    holding coordinates as numbers never writes a coordinate document to ask a
+    question about them (molview.md § 11.7).  ``payload`` is required (may be
+    ``null``) for ``cell`` / ``cell_origin``, where ``null`` means "clear it" --
+    omitting the key is an error rather than a silent clear.
 
-    Response: ``{ok, blob, resolved_cell, resolved_cell_origin, notices}``
-    — ``blob`` is the TRUTH pair as the gate accepted it (the client adopts it
-    verbatim; it never computes truth itself), the resolved values are the § 3
-    views (a derived corner is a view and is never written into ``blob``), and
-    ``notices`` is a list of ``{level, message}`` for the Cell page + the app
-    notify bar, where an entry that reports state the gate MODIFIED also
-    carries ``kind: "heal"``.
+    This door used to take a ``{"data": {xyz, sidecar}}`` blob, which the one
+    caller that exists -- MolView's ``commitPeriodicityOp``, the ONE door the
+    cell changes through (molview.md § 6.2) -- could not produce, because the
+    browser writes no coordinate document.  So it answered 400 to every request
+    ever made of it and the cell door had never once succeeded.
+
+    Response: ``{ok, periodicity, notices}`` -- ``periodicity`` is the cell block
+    exactly as ``/api/build/load`` sends it (``cell`` / ``cell_origin`` /
+    ``axis_kind`` / ``vacuum`` plus the ``resolved_*`` views beside them), so the
+    client adopts it verbatim through the same path a load takes and there is one
+    shape for the block rather than two.  ``notices`` is a list of
+    ``{level, message}`` for the Cell page + the app notify bar, where an entry
+    that reports state the gate MODIFIED also carries ``kind: "heal"``.
 
     400 on: an unknown op, a missing payload for ``cell`` / ``cell_origin``, a
-    malformed blob, and every contract violation the gate raises (a
+    malformed envelope, and every contract violation the gate raises (a
     left-handed cell, a cell no origin could make fit, a degenerate derived
     box, a periodic axis with no explicit cell)."""
-    from molbuilder.workingcopy_structure import StructureCodec
-    from molbuilder.periodicity_gate import apply_edit, OPS
+    from molbuilder.periodicity_gate import apply_edit, OPS, validate_and_heal
     body = request.get_json(silent=True) or {}
-    blob = body.get("data")
     op = body.get("op")
-    if blob is None:
-        return jsonify({"ok": False, "error": "missing 'data'"}), 400
     if op not in OPS:
         return jsonify({"ok": False,
                         "error": f"'op' must be one of {list(OPS)}"}), 400
-    if (not isinstance(blob, dict)
-            or not isinstance(blob.get("xyz"), str)
-            or not isinstance(blob.get("sidecar"), dict)):
-        # A malformed blob is the CALLER's error -- answer with the shape,
-        # never a raw KeyError/AttributeError repr (review finding).
+    if not isinstance(body.get("structure"), dict):
         return jsonify({"ok": False,
-                        "error": "malformed 'data' blob: expected "
-                                 "{xyz: <string>, sidecar: <object>}"}), 400
+                        "error": "missing or invalid 'structure' envelope "
+                                 "(need {elements, positions, metadata})"}), 400
     if op in ("cell", "cell_origin") and "payload" not in body:
         # For these ops a null payload is a DESTRUCTIVE action (clear /
         # reset) -- a dropped key must not be indistinguishable from an
@@ -689,26 +689,22 @@ def api_periodicity():
                         "error": f"op '{op}' requires an explicit "
                                  f"'payload' (use null to clear/reset)"}), 400
     try:
-        codec = StructureCodec()
-        notices: list = []
-        struct = codec.from_scratch(blob, notices_out=notices)
+        struct = _struct_from_body(body)
+        # The frame-contract gate every other structure door runs, so what the
+        # edit is applied to is what a load would have produced.
+        struct, notices = validate_and_heal(struct)
         new_struct, edit_notices = apply_edit(struct, op, body.get("payload"))
-        notices.extend(edit_notices)
-        out_blob = codec.scratch_blob(new_struct)
-        try:
-            rc = new_struct.resolve_cell()
-            ro = new_struct.resolve_cell_origin()
-        except ValueError:
-            rc = ro = None          # degrade the VIEW like to_wire does
+        notices = list(notices) + list(edit_notices)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    except Exception as exc:  # noqa: BLE001 -- malformed blob -> 400
+    except Exception as exc:  # noqa: BLE001 -- malformed envelope -> 400
         return jsonify({"ok": False, "error": str(exc)}), 400
+    # The block the structure itself assembles -- raw values and the resolved
+    # views together -- so a field added to it reaches this door with no edit
+    # here, and the client cannot be handed a block missing the resolved half.
     return jsonify({
         "ok": True,
-        "blob": out_blob,
-        "resolved_cell": rc.tolist() if rc is not None else None,
-        "resolved_cell_origin": ro.tolist() if ro is not None else None,
+        "periodicity": new_struct.to_wire()["periodicity"],
         "notices": notices,
     })
 

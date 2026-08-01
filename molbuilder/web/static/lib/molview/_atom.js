@@ -116,7 +116,12 @@ export function shiftExpression(expression, delta) {
  * one place.
  */
 export function expressionToCode(expression) {
-    return shiftExpression(expression, -1);
+    // THROUGH `fromDisplay`, not through a delta written here. § 11.5 says this
+    // file is the single home of the translation and that "MolView never writes
+    // a bare +1 of its own anywhere" — and this function contained the bare -1,
+    // reaching past the named reverse direction sitting beside it. One number,
+    // one place, including inside the file that owns it.
+    return shiftExpression(expression, fromDisplay(0));
 }
 
 export const KIND = {

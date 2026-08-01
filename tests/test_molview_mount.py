@@ -36,12 +36,18 @@ GLOBALS = (SUPPORT / "molview_3dmol_standin.js").read_text() + """
 // The DOM, loaded after so its richer host element is the one in play.
 """ + (SUPPORT / "molview_dom_standin.js").read_text() + """
 globalThis.__requests = [];
+/* The atom identity the stand-in server hands back. A test that needs a
+ * different one sets it BEFORE installing — because § 10.8 fixes the atoms at
+ * load and every frame after that has to match, so a test cannot reach a
+ * three-atom trajectory by loading two atoms and reloading three frames. */
+globalThis.__nextAtoms = null;
 globalThis.fetch = async function (route, init) {
     globalThis.__requests.push({ route, body: JSON.parse(init.body) });
-    return { ok: true, status: 200, json: async () => ({ atoms: [
+    const atoms = globalThis.__nextAtoms || [
         { index: 0, element: "C", x: 0, y: 0, z: 0, regions: [] },
         { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
-    ] }) };
+    ];
+    return { ok: true, status: 200, json: async () => ({ atoms }) };
 };
 globalThis.setInterval = globalThis.setInterval;
 """
@@ -703,6 +709,13 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
     out = _run(
         """
         const { host, viewer } = await mounted();
+        // THREE atoms, fixed at load (§ 10.8) — the frames below must match the
+        // identity the structure was opened with.
+        globalThis.__nextAtoms = [
+            { index: 0, element: "C", x: -1, y: 0, z: 0, regions: [] },
+            { index: 1, element: "C", x:  0, y: 0, z: 0, regions: [] },
+            { index: 2, element: "C", x:  0, y: 1, z: 0, regions: [] },
+        ];
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         // A bent three-atom frame: 1 is the geometric middle, 0 is not.
         viewer.data.reloadFrames([
@@ -1138,6 +1151,94 @@ def test_a_filter_row_is_added_typed_and_removed_from_the_panel():
         f"typing must reach the store a row at a time: {out['afterType']}"
     )
     assert out["afterRemove"] == []
+
+
+def test_the_view_menu_holds_all_four_drawing_settings():
+    """§ 1.1: "The View menu holds style (stick, ball & stick, sphere, line), a
+    radius slider from 0.2 to 2.5 that scales stick thickness / sphere size /
+    line width, and a background colour with preset swatches plus a picker. One
+    preset is transparent — choose it before exporting a picture to drop onto a
+    slide." Plus Perspective / Orthographic.
+
+    All four are § 9.6's `view` — settings that change how the same frame is
+    PAINTED — so each control writes there and reads its state back from there
+    (§ 8.5), never from what it last did.
+
+    The radius and the background lived in the store with no control that could
+    write them: two of the four settings the menu promises were unreachable, and
+    the stylesheet had been carrying their design the whole time.
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        const card = host.querySelector(".molview-card");
+        const view = viewer.data.view;
+
+        // § 1.1's range, read off the control itself.
+        const slider = card.querySelector(".mol-viewer-radius-row input");
+        const spec = { min: slider.min, max: slider.max, step: slider.step };
+        const startedAt = slider.value;
+
+        // Drive it the way a user does.
+        slider.value = "2.5";
+        slider.dispatch("input", { target: slider });
+        const afterDrag = view.get().radius;
+        const shownAfterDrag = card.querySelector(".mol-viewer-radius-row output")
+                                   .textContent;
+
+        // Set it from ELSEWHERE: the control must follow the store, not itself.
+        view.set("radius", 0.5);
+        const followed = { value: slider.value,
+                           shown: card.querySelector(
+                               ".mol-viewer-radius-row output").textContent };
+
+        // The background presets, and the one that is transparent.
+        const swatches = card.querySelectorAll(".mol-viewer-bg-swatch");
+        const transparent = card.querySelectorAll(
+            ".mol-viewer-bg-swatch.is-transparent");
+        const picker = card.querySelectorAll(".mol-viewer-bg-custom input");
+
+        // Nothing is lit until the user chooses: `background: null` is "the
+        // window's own ground", not a colour (§ 9.6).
+        const litAtStart = card.querySelectorAll(
+            ".mol-viewer-bg-swatch.is-active").length;
+
+        transparent[0].click();
+        const afterSwatch = view.get().background;
+        const litAfter = card.querySelectorAll(
+            ".mol-viewer-bg-swatch.is-active").length;
+
+        console.log(JSON.stringify({
+            spec, startedAt, afterDrag, shownAfterDrag, followed,
+            swatches: swatches.length, transparent: transparent.length,
+            picker: picker.length, litAtStart, afterSwatch, litAfter,
+        }));
+        """
+    )
+    assert out["spec"] == {"min": "0.2", "max": "2.5", "step": "0.05"}, (
+        f"§ 1.1 fixes the radius range at 0.2 to 2.5: {out['spec']}"
+    )
+    assert out["startedAt"] == "1", "the slider must open on the store's default"
+    assert out["afterDrag"] == 2.5, (
+        f"dragging the slider did not reach `view`: {out['afterDrag']}"
+    )
+    assert out["shownAfterDrag"] == "2.50"
+    assert out["followed"] == {"value": "0.5", "shown": "0.50"}, (
+        "the slider did not follow a radius set from elsewhere — it is holding "
+        f"its own answer rather than reading the store (§ 8.5): {out['followed']}"
+    )
+    assert out["swatches"] == 3 and out["transparent"] == 1, (
+        f"§ 1.1 asks for preset swatches, one of them transparent: {out}"
+    )
+    assert out["picker"] == 1, "§ 1.1 asks for a picker beside the presets"
+    assert out["litAtStart"] == 0, (
+        "a swatch was lit before the user chose one — `background: null` means "
+        "the window's own ground, which is not one of the presets (§ 9.6)"
+    )
+    assert out["afterSwatch"] == "transparent", (
+        f"clicking a swatch did not reach `view`: {out['afterSwatch']}"
+    )
+    assert out["litAfter"] == 1, "the chosen swatch must light, and only it"
 
 
 def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow():
