@@ -61,6 +61,10 @@ export const FROZEN_LABEL = "frozen_atoms";
  * nothing here" and "here is a structure with no atoms" are different answers.
  */
 export function structureFromServer(payload) {
+    /* An answer with no atoms is a structure with no atoms, and that is the
+     * caller's business. The module does not second-guess what was loaded — it
+     * carries what it is given (§ 6.2). A viewer holding one is not stuck
+     * either: an install can be enforced (§ 9.4). */
     if (!payload || !Array.isArray(payload.atoms)) return null;
     const atoms = payload.atoms;
 

@@ -355,6 +355,71 @@ def test_the_cell_page_and_the_drawing_cannot_describe_different_structures():
     )
 
 
+def test_what_the_viewer_is_has_one_answer_and_a_replacement_can_be_enforced():
+    """§ 5.2, applied to the viewer's own lifecycle.
+
+    "Has this viewer got its core data?" is ONE question and was answered two
+    ways — a `seeded` flag at the install door, and "is the atom count zero?" at
+    the frame doors — which could disagree. It is one state now, checked and set
+    in one place, so coming back to the install door never finds the initial
+    state a second time.
+
+    And no state is a dead end. A read-only viewer refuses to have its structure
+    swapped out from under it, but the HOST can say it means to: deciding which
+    structure a viewer shows is the host's business, and the host is the one that
+    asked for read-only. What read-only protects is the core data from being
+    EDITED (§ 9.4) — `applyOp`, the cell, the labels — and those stay shut
+    whatever is passed here.
+
+    The viewer does not judge what it was handed: a structure with no atoms is a
+    structure with no atoms, and carrying it is the module's job (§ 6.2).
+    """
+    out = _run(
+        """
+        const m = createModel({ mode: "readonly" });
+        await m.installMolecule({ text: "x", filename: "x.xyz" });   // leaves EMPTY
+        const held = m.getAtoms().length;
+
+        // A second install is refused: not a dead end, a default.
+        globalThis.__nextPayload = globalThis.__payload([
+            globalThis.__atomRow(0, "N", 5)]);
+        const casual = await m.installMolecule({ text: "y", filename: "y.xyz" });
+        const afterCasual = m.getAtoms().length;
+
+        // Said deliberately, it lands.
+        const enforced = await m.installMolecule({
+            text: "y", filename: "y.xyz", enforce: true });
+        const afterEnforced = m.getAtoms().map((a) => a.element);
+
+        // And editing is still shut, enforce or not.
+        globalThis.__requests = [];
+        await m.applyOp("translate", { dx: 1 });
+        m.selection.adopt([0]);
+        await m.selection.writeLabel("smuggled", "replace");
+
+        console.log(JSON.stringify({
+            held, casual, afterCasual,
+            enforced: enforced !== null, afterEnforced,
+            labels: m.getAtoms()[0].labels,
+            requests: globalThis.__requests.length,
+        }));
+        """
+    )
+    assert out["held"] == 2, "the first install is allowed in any mode"
+    assert out["casual"] is None and out["afterCasual"] == 2, (
+        "a read-only viewer let its structure be swapped without being asked"
+    )
+    assert out["enforced"] is True and out["afterEnforced"] == ["N"], (
+        f"an enforced install did not land: {out}"
+    )
+    assert out["labels"] == [], (
+        "editing reached the core data in a read-only viewer"
+    )
+    assert out["requests"] == 0, (
+        "an edit left for the network in a read-only viewer"
+    )
+
+
 def test_a_trajectory_arrives_whole_in_one_install():
     """§ 9.3: `installMolecule` is "the ONLY way a structure gets in", and it
     "replaces the whole model at once and resets the session history". § 6.4: the

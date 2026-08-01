@@ -1239,10 +1239,23 @@ throwing. If no, it behaves exactly as it does anywhere else.
 
 **One write is allowed into an empty viewer.** A viewer with nothing in it has no
 core data to freeze, so the first `installMolecule` is how a host says which
-structure this viewer shows, whatever its mode. Every one after it meets the gate
-like anything else. That keeps § 9.3's "the only way a structure gets in" true —
-there is no second door — while letting a viewer mount before it has a structure
-(§ 8).
+structure this viewer shows, whatever its mode. That keeps § 9.3's "the only way
+a structure gets in" true — there is no second door — while letting a viewer
+mount before it has a structure (§ 8).
+
+**A replacement is refused by default and can be enforced.** In a read-only
+viewer a later install does nothing, so a structure cannot be swapped out from
+under somebody studying it by a stray call. A host that means it says so —
+`installMolecule({…, enforce: true})` — because deciding *which* structure a
+viewer shows is the host's business, and the host is the one that asked for
+read-only. What read-only protects is the core data from being **edited**; a
+deliberate swap is not an edit of it, and `applyOp`, the cell door and the label
+door stay shut either way.
+
+That is also why no state is a dead end: whatever a viewer ends up holding —
+including a structure with no atoms, which is a perfectly ordinary thing to
+load — the next install can always be enforced. The viewer does not judge what it
+was handed; it carries what it is given (§ 6.2).
 
 **Delivering coordinates is not changing the core data.** `reloadFrames`,
 `addFrame`, `addFrames` and `setForces` carry the frames of the structure already
@@ -2714,6 +2727,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 9.3 — a structure that cannot be written out is not written out | when the geometry and the per-atom labels disagree about how many atoms there are, the export door returns nothing rather than a corrupt structure |
 | § 9.4 — read-only freezes the core data and nothing else | every change to the structure or its metadata is a no-op **and does not throw**, while select, isolate, scrub, camera and export all work normally |
 | § 9.4 — one write into an empty viewer, and delivery stays open | a read-only viewer takes its structure once, then refuses a second; and it still receives that structure's frames and forces, so it can follow a running optimization and scrub a finished one |
+| § 9.4 — a replacement is refused by default, never impossible | a read-only viewer ignores a casual second install and takes an enforced one, so no state it can reach is a dead end — while `applyOp`, the cell door and the label door stay shut either way |
 | § 9.4 — a read-only viewer has no history | `save`, `load` and `undo` do nothing, and the unsaved-changes badge never appears |
 | § 9.5 — the selection survives an editor switch | moving between click and filter mode leaves the selection exactly as it was |
 | § 9.5 — a half-typed row constrains nothing | a blank row combined under *and* leaves the other rows' result intact rather than emptying it |

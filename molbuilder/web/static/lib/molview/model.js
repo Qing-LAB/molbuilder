@@ -71,20 +71,33 @@ export function createModel(opts) {
     let frames = null;                // Vec3[][]
     let forcesPerFrame = null;
 
-    /* Has a structure ever been put in?
+    /* ── WHAT THIS VIEWER IS, in one place (§ 5.2) ─────────────────────────
      *
-     * § 9.4 freezes THE MASTER COPY — and a viewer with nothing in it has no
-     * master copy to freeze. So the FIRST install is how a host says which
-     * structure this viewer shows, and it is allowed in any mode; every one
-     * after it meets the gate like anything else.
+     *   EMPTY    nothing has been put in yet.
+     *   HOLDING  a structure is installed.
+     *
+     * § 9.4 freezes THE CORE DATA — and a viewer with nothing in it has none to
+     * freeze. So the write that takes it out of EMPTY is allowed in any mode:
+     * that is how a host says which structure this viewer shows. It is CHECKED
+     * AND SET in one place, so coming back to the install door never finds EMPTY
+     * a second time, and every install after the first meets the gate like any
+     * other change.
      *
      * That keeps § 9.3's "the only way a structure gets in" true — there is no
      * second door — while making § 8's "a viewer mounts before it has a
-     * structure" and § 12.3's read-only Results viewer both possible. What a
-     * read-only viewer still cannot do is exactly what § 9.4 promises: change
-     * the structure the calculation ran on.
+     * structure" and § 12.3's read-only Results viewer both possible.
+     *
+     * IT REPLACES TWO ANSWERS TO ONE QUESTION. "Has this viewer got its core
+     * data?" was asked as `seeded` at the install door and as "is the atom count
+     * zero?" at the frame doors, and the two could disagree: a payload carrying
+     * an empty atom list left `seeded` true while the count said nothing was
+     * loaded, so one door refused a second install and the other refused to
+     * append to it. § 5.2 is exactly this — two copies of a fact are two things
+     * that must be kept in step.
      */
-    let seeded = false;
+    const EMPTY = "empty";
+    const HOLDING = "holding";
+    let unit = EMPTY;
 
     /* ── The displayed frame and the range it lives in (§ 6.4) ─────────────
      *
@@ -317,8 +330,7 @@ export function createModel(opts) {
     // the identity being checked against is the one still being installed.
     function requireCount(coords, n, label) {
         if (!n) {
-            throw new Error(label + ": nothing loaded — there is no atom "
-                            + "identity to append to (§ 10.8)");
+            throw new Error(label + ": no atoms to check against (§ 10.8)");
         }
         const got = Array.isArray(coords) ? coords.length : 0;
         if (got !== n) {
@@ -327,7 +339,13 @@ export function createModel(opts) {
         }
     }
 
+    // A frame joining the structure ALREADY held. "Something must already be
+    // loaded" is the viewer's own state, asked where it lives (§ 10.8 rule 1).
     function requireMatch(coords, label) {
+        if (unit === EMPTY) {
+            throw new Error(label + ": nothing loaded — there is no atom "
+                            + "identity to append to (§ 10.8)");
+        }
         requireCount(coords, atomCount(), label);
     }
 
@@ -363,7 +381,7 @@ export function createModel(opts) {
     const installMolecule = createLoad({
         put: (s, c, name) => {
             settle(() => put(s, c, name), { resetFrame: true });
-            seeded = true;
+            unit = HOLDING;
         },
         announce: () => {},                 // settle already told everyone
         // Point 0 — "the one point nobody asks for", the floor the sequence
@@ -601,9 +619,24 @@ export function createModel(opts) {
          * Each one wrapped in the gate, and each returns a value that says "no"
          * without throwing.
          */
-        // Seeding is allowed in any mode; REPLACING what was seeded is not.
+        /* Leaving EMPTY is allowed in any mode: there is no core data to freeze
+         * yet, so the first install is how a host says which structure this
+         * viewer shows.
+         *
+         * REPLACING what is held is refused in a read-only viewer — unless the
+         * caller says it means to, with `enforce`. Deciding which structure a
+         * viewer shows is the HOST's business, and the host is the one that
+         * asked for read-only; what read-only protects is the core data from
+         * being EDITED (§ 9.4), and swapping the structure outright is not an
+         * edit of it. Saying so explicitly is the whole of the flag's job: it
+         * costs one word at the call site and leaves no state a viewer can get
+         * stuck in.
+         */
         installMolecule(input) {
-            if (readOnly && seeded) return Promise.resolve(null);
+            const enforced = !!(input && input.enforce);
+            if (readOnly && unit !== EMPTY && !enforced) {
+                return Promise.resolve(null);
+            }
             return installMolecule(input);
         },
         applyOp:              gated(applyOp, Promise.resolve(null)),
