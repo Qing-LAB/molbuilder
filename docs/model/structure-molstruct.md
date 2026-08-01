@@ -67,27 +67,75 @@ is `structure.md § 2.2`.
 
 ---
 
-## 2. Schema versioning
+## 2. Schema versioning — one version, strictly
 
-Current schema: **v6** (`SCHEMA_VERSION`). The reader accepts
-**v3–v6** (`_READABLE_SCHEMA_VERSIONS = (3, 4, 5, 6)`); an out-of-range version
-is refused with a clear error.
+**Current schema: v7. The reader accepts v7 and nothing else.**
 
-| Version | Change |
+```python
+SCHEMA_VERSION            = 7          # sidecars/molstruct.py
+_READABLE_SCHEMA_VERSIONS = (SCHEMA_VERSION,)
+```
+
+A payload at any other version — older *or* newer — is refused with an error
+naming what changed and what to do. It is never partially read.
+
+**This is deliberate, and it is not a transitional state.** molbuilder is a new
+product with no installed base to protect. Accepting several schemas costs more
+than it saves:
+
+- every reader, every test and every debugging session has to hold two shapes in
+  mind, and the second one is always the one nobody remembers;
+- a tolerant reader hands back a payload that **looks complete and quietly is
+  not** — which is exactly what happened. v3–v6 were in the readable list while
+  the reader had stopped looking at v3's top-level `frozen_atoms` key, so a real
+  junction loaded with its fifty frozen electrode atoms silently gone, and the
+  generated SIESTA input carried no `Geometry.Constraints` block. The run
+  converged on a structure nobody asked for;
+- the data is cheap to regenerate. The confusion is not.
+
+**A version gate that admits a version the code cannot honour is worse than no
+gate**, because it converts a loud failure into a quiet one.
+
+### What "refused" means at each surface
+
+| Surface | On a non-v7 payload |
 |---|---|
-| v1 / v2 | old `fixed_atoms` key — **not** readable; such a file must be re-opened + re-saved from the Molbuilder tab to upgrade |
-| v3 | `regions` + `frozen_atoms` (no annotations) |
-| v4 | **adds** the extensible annotation channels (`structure-annotations.md`) — additive, so v3 files still load (annotations absent → empty) |
-| v5 | **drops** `kgrid` (it is a `SiestaConfig` sampling knob, not geometry — see `structure-periodicity.md`). A payload still carrying one is refused by the metadata gate, not ignored: a key nobody reads is metadata the writer thinks it saved |
-| v6 | `frozen_atoms` still a top-level key of its own |
-| v7 | **current** — the reserved `frozen_atoms` label moves into `regions` with every other label and the top-level key is no longer written. One store, one key. v3–v6 files still load: `apply_metadata_dict` folds the old key into the label store on read. Code holding a raw payload asks `molstruct.frozen_atoms(payload)`, the one read that knows which schema put it where (`structure-annotations.md` § 2) |
+| `molstruct.load` / `load_text` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
+| `parse.dirs.bundle` (the in-script `ATOM-METADATA` block) | the block is **not** read: `regions` and `frozen_atoms` come back `None`, with a note saying why |
 
-**The tolerance rules** make old files keep working: on read, an **unknown key
-is ignored** and an **absent key falls back to its default** (`apply_metadata_dict`
-is full-replace — see `structure.md § 2.2`). So a field added in a later
-version never breaks an older reader, and an older file never breaks a newer
-one. Adding a metadata field means bumping `SCHEMA_VERSION` and adding the new
-number to `_READABLE_SCHEMA_VERSIONS`.
+Both messages name the specific difference (before v7 the frozen atoms sat in a
+top-level key rather than in `regions`) and say what to do: re-save the structure,
+or re-generate the script.
+
+### Unknown keys are refused, not ignored
+
+A key that is neither a structure metadata field nor an envelope key is an
+**error**, at the point the payload is still whole. *A key nobody reads is
+metadata the writer thinks it saved.*
+
+That guard existed before and never fired, because the layer above it had already
+dropped the key silently — the check has to happen where the payload arrives, not
+downstream of a normaliser.
+
+### Version history
+
+Kept as a record of what the numbers meant. **None of v1–v6 is readable**; a file
+at any of them is refused, not upgraded.
+
+| Version | What it was |
+|---|---|
+| v1 / v2 | an older `fixed_atoms` key |
+| v3 | `regions` + a top-level `frozen_atoms`, no annotations |
+| v4 | adds the extensible annotation channels (`structure-annotations.md`) |
+| v5 | drops `kgrid` — a `SiestaConfig` sampling knob, not geometry |
+| v6 | `cell_origin` persisted |
+| **v7** | **current** — the reserved `frozen_atoms` label moves **into** `regions` with every other label, and the top-level key is no longer written. One store, one designated accessor (`molstruct.frozen_atoms(payload)`), interpreted where it means something |
+
+### Changing the schema
+
+Bump `SCHEMA_VERSION`. There is no readable-versions list to extend — it is
+derived from the constant — so a bump automatically refuses everything older.
+Then regenerate the data: re-save structures, re-generate scripts.
 
 ---
 

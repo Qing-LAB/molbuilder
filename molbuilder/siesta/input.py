@@ -1393,15 +1393,24 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     )
     _engine_body = "\n".join(out)
     _user_custom = _sc.emit_user_custom_placeholder()
-    _top_blocks = [_provenance, _bench_marks]
-    if _atom_metadata is not None:
-        _top_blocks.append(_atom_metadata)
+    # THE PHYSICS FIRST.  The record molbuilder keeps for itself -- provenance,
+    # the bench anchors, the per-atom labels -- used to sit at the TOP, so a
+    # scientist opening a generated input scrolled past ~95 lines of it (a real
+    # 212-atom junction: nearer 300) before reaching a single SIESTA keyword.
+    # It is data about the file rather than part of the calculation, so it goes
+    # after the calculation, behind a banner saying not to hand-edit it.
+    #
+    # USER-CUSTOM stays on the science side of that line: it is the one block a
+    # user is MEANT to edit.
+    _record = [b for b in (_provenance, _bench_marks, _atom_metadata) if b]
     return (
-        "\n\n".join(_top_blocks)
-        + "\n\n"
-        + _engine_body
+        _engine_body
         + "\n\n"
         + _user_custom
+        + "\n\n"
+        + _sc.machine_record_banner()
+        + "\n\n"
+        + "\n\n".join(_record)
         + "\n"
     )
 

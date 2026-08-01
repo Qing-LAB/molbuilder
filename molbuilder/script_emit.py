@@ -283,11 +283,70 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
         payload["created_at"] = created_at
     out: List[str] = [begin_marker(BLOCK_ATOM_METADATA)]
     out.append(f"# format: molstruct-json/v{_SCHEMA_VERSION}")
-    body = json.dumps(payload, indent=2, ensure_ascii=False)
-    for line in body.splitlines():
-        out.append(f"# {line}")
+    out.extend(f"# {line}" for line in _compact_json_lines(payload))
     out.append(end_marker(BLOCK_ATOM_METADATA))
     return "\n".join(out)
+
+
+def _compact_json_lines(payload: Dict[str, Any]) -> List[str]:
+    """The payload as JSON, ONE LINE PER TOP-LEVEL KEY.
+
+    WHY NOT ``indent=2``.  Indented JSON puts every array element on its own
+    line, and these arrays are ATOM INDEX LISTS.  A junction with 100 atoms in
+    each electrode and 50 frozen produced a ~280-line comment block, and the
+    whole of it sat between the reader and the physics.  A generated input is
+    read by scientists checking the science; the machine record should not be
+    the first three screens of it.
+
+    WHY NOT ONE LONG LINE EITHER.  Fully compact JSON is one unbroken ~1500
+    character line: small, and unreadable and undiffable.  Per top-level key is
+    the middle -- eight or nine lines, each naming what it holds, and a changed
+    region shows up as a one-line diff instead of a moved block.
+
+    WHY IT WRAPS ONLY AT KEYS.  The reader rejoins these lines and parses the
+    result, so a break may never fall inside a string literal -- wrapping at a
+    fixed column could split a hash and produce JSON that cannot be read back.
+    Breaking only between top-level keys cannot: a key boundary is always
+    outside a string.
+    """
+    keys = list(payload)
+    lines: List[str] = ["{"]
+    for i, key in enumerate(keys):
+        value = json.dumps(payload[key], separators=(",", ":"),
+                           ensure_ascii=False)
+        comma = "," if i < len(keys) - 1 else ""
+        lines.append(f'  {json.dumps(key, ensure_ascii=False)}:{value}{comma}')
+    lines.append("}")
+    return lines
+
+
+def machine_record_banner() -> str:
+    """The line between the science and molbuilder's own record.
+
+    Everything above it is the calculation: a scientist reads it, edits it, and
+    it is the reason the file exists.  Everything below is how molbuilder reads
+    the file BACK -- provenance, the benchmarking anchors, and the per-atom
+    labels that reconstruct the structure (parse/scripts).  Those are data, not
+    settings, and hand-editing them does not change the calculation; it makes
+    the file unreadable to the tool that wrote it.
+
+    So it is marked, loudly, and placed at the END: a generated input opens on
+    the physics now instead of on three screens of index lists.
+    """
+    rule = "# " + "=" * 70
+    return "\n".join([
+        rule,
+        "#  MOLBUILDER RECORD -- everything below this line is written and read",
+        "#  by molbuilder, and is NOT part of the calculation.",
+        "#",
+        "#  Do not hand-edit it.  Each section is fenced by its own",
+        "#  '=== molbuilder <name> BEGIN/END ===' markers; edits inside those",
+        "#  fences are either overwritten on the next generation or make the",
+        "#  file unreadable, and neither is announced.",
+        "#",
+        "#  To change what is here, change the structure and generate again.",
+        rule,
+    ])
 
 
 def emit_user_custom_placeholder() -> str:

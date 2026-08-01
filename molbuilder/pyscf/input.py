@@ -778,15 +778,19 @@ def render_script(struct: Structure,
     )
     _engine_body = "\n".join(out)
     _user_custom = _sc.emit_user_custom_placeholder()
-    _top_blocks = [_provenance]
-    if _atom_metadata is not None:
-        _top_blocks.append(_atom_metadata)
+    # THE SCIENCE FIRST -- same rule as the .fdf writer, and for the same
+    # reason: the record is about the file, not part of the calculation, so it
+    # sits after it behind a do-not-edit banner. USER-CUSTOM stays above the
+    # line, being the one block a user is meant to touch.
+    _record = [b for b in (_provenance, _atom_metadata) if b]
     return (
-        "\n\n".join(_top_blocks)
-        + "\n\n"
-        + _engine_body
+        _engine_body
         + "\n\n"
         + _user_custom
+        + "\n\n"
+        + _sc.machine_record_banner()
+        + "\n\n"
+        + "\n\n".join(_record)
         + "\n"
     )
 

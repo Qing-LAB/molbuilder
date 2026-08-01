@@ -112,13 +112,31 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
         sv = atom_md.get("schema_version")
         if isinstance(sv, int):
             schema_version = sv
-            if sv < 3:
-                # Backward-incompatible; the assembler raises
-                # BundleError on this state.  The extractor stays
-                # pure: note + leave regions/frozen as None.
+            if sv != _CURRENT_SCHEMA:
+                # REFUSED, NOT READ (2026-08-01, by decision).  This build
+                # writes v{_CURRENT_SCHEMA} and reads that alone.
+                #
+                # It used to READ an older block and attach a warning, on the
+                # reasoning that a finished run cannot be re-exported the way a
+                # sidecar can.  That reasoning is wrong for a product still
+                # being built: an older block stores the same facts in different
+                # places, so "read it and warn" hands back a payload that LOOKS
+                # complete and quietly is not -- which is how a junction's fifty
+                # frozen atoms came back as an empty list.  Supporting both
+                # shapes also doubles what every reader, test and debugging
+                # session has to hold in its head, for data that will be
+                # regenerated anyway.
+                #
+                # The scripts get regenerated.  That is cheaper than a format
+                # nobody can reason about.
                 notes.append(
-                    f"atom-metadata schema_version {sv} is older "
-                    f"than v3; re-render the source script."
+                    f"atom-metadata schema_version {sv}, but this molbuilder "
+                    f"writes and reads v{_CURRENT_SCHEMA} only. The block was "
+                    f"NOT read -- an older one keeps the same facts in "
+                    f"different places (before v7 the frozen atoms sat in a "
+                    f"top-level key rather than in `regions`), so reading it "
+                    f"would silently drop what it cannot map. Re-generate the "
+                    f"script from the structure."
                 )
             else:
                 # A BLOCK AT ANY OTHER VERSION IS READ, AND SAID SO ABOUT.
@@ -137,16 +155,6 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
                 # junction's fifty pinned electrode atoms read back as an empty
                 # list. The note says which fact is at risk now, instead of
                 # reporting a number.
-                if sv != _CURRENT_SCHEMA:
-                    notes.append(
-                        f"atom-metadata schema_version {sv}, but this "
-                        f"molbuilder writes v{_CURRENT_SCHEMA}. Labels are read "
-                        f"from the block as-is; a block older than "
-                        f"v{_CURRENT_SCHEMA} kept frozen atoms in a separate "
-                        f"top-level key, so the frozen set may come back EMPTY "
-                        f"even though the run had one. Re-render the script to "
-                        f"refresh it."
-                    )
                 raw_regions = atom_md.get("regions")
                 if isinstance(raw_regions, dict):
                     regions = {

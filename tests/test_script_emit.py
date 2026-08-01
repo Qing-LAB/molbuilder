@@ -406,7 +406,7 @@ def test_apply_inbody_atom_metadata_normalises_indices():
     text = (
         "# === molbuilder atom-metadata BEGIN ===\n"
         "# format: molstruct-json/v4\n"
-        '# {"schema_version": 3, "n_atoms_total": 5,\n'
+        '# {"schema_version": 7, "n_atoms_total": 5,\n'
         '#  "regions": {"r": [3, 1, 3, 2], "frozen_atoms": [2, 0, 2]}}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
@@ -580,39 +580,33 @@ def test_extract_script_source_returns_dataclass_with_notes_list():
     assert src["schema_version"] is None
 
 
-def test_extract_script_source_notes_on_future_schema_version():
-    """A genuinely-future ``schema_version > 4`` loads + notes; doesn't fail.
-    (v4 is current-known; v6 is the forward-compat case.)"""
-    text = (
-        "# === molbuilder atom-metadata BEGIN ===\n"
-        "# format: molstruct-json/v6\n"
-        '# {"schema_version": 6, "n_atoms_total": 3,\n'
-        '#  "regions": {"r": [0], "frozen_atoms": [0]}}\n'
-        "# === molbuilder atom-metadata END ===\n"
-    )
-    src = sc.extract_script_source(text)
-    assert src["schema_version"] == 6
-    assert src["regions"] == {"r": [0], "frozen_atoms": [0]}
-    assert src["frozen_atoms"] == [0]
-    assert any("schema_version 6" in n for n in src["notes"])
+def test_a_block_at_any_other_schema_version_is_not_read():
+    """One version, strictly (structure-molstruct.md § 2).
 
+    RETIRED the pair this replaces -- `..._notes_on_future_schema_version` and
+    `..._rejects_old_schema_version` -- which described a reader that LOADED an
+    older or newer block and attached a note. That tolerance is gone, and it is
+    what let a real junction's fifty frozen atoms come back as an empty list: a
+    payload that looks complete and quietly is not.
 
-def test_extract_script_source_rejects_old_schema_version():
-    """``schema_version < 3`` -> regions/frozen None + diagnostic note.
-    Bundle layer raises BundleError on this state; the extractor
-    itself is pure and only surfaces the note."""
-    text = (
-        "# === molbuilder atom-metadata BEGIN ===\n"
-        "# format: molstruct-json/v2\n"
-        '# {"schema_version": 2, "n_atoms_total": 3}\n'
-        "# === molbuilder atom-metadata END ===\n"
-    )
-    src = sc.extract_script_source(text)
-    assert src["schema_version"] == 2
-    assert src["regions"] is None
-    assert src["frozen_atoms"] is None
-    assert any("older than v3" in n for n in src["notes"])
-
+    Older and newer are one case now, so they are one test. The block is not
+    read; `regions` and `frozen_atoms` come back None with a note saying why.
+    """
+    for version in (2, 3, 4, 6, 99):
+        text = (
+            "# === molbuilder atom-metadata BEGIN ===\n"
+            f'# {{"schema_version": {version}, "n_atoms_total": 3,\n'
+            '#  "regions": {"r": [0]}}\n'
+            "# === molbuilder atom-metadata END ===\n"
+        )
+        src = sc.extract_script_source(text)
+        assert src["schema_version"] == version, "the version is still reported"
+        assert src["regions"] is None, (
+            f"v{version} was READ -- an older or newer block keeps the same "
+            f"facts in different places, so reading it drops what it cannot map")
+        assert src["frozen_atoms"] is None
+        assert any("schema_version" in n for n in src["notes"]), (
+            f"v{version} was refused without saying so")
 
 def test_extract_script_source_empty_blocks_present_but_empty():
     """Present-but-empty regions distinct from missing.
@@ -624,12 +618,13 @@ def test_extract_script_source_empty_blocks_present_but_empty():
     no-block case above where regions is ``None``."""
     text = (
         "# === molbuilder atom-metadata BEGIN ===\n"
-        "# format: molstruct-json/v4\n"
-        '# {"schema_version": 3, "n_atoms_total": 0,\n'
+        "# format: molstruct-json/v7\n"
+        '# {"schema_version": 7, "n_atoms_total": 0,\n'
         '#  "regions": {}}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
     src = sc.extract_script_source(text)
     assert src["regions"] == {}        # present, empty
     assert src["frozen_atoms"] == []   # nothing carries the label
-    assert src["schema_version"] == 3
+    from molbuilder.sidecars.molstruct import SCHEMA_VERSION as _SV
+    assert src["schema_version"] == _SV

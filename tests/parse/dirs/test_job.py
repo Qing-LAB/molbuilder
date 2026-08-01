@@ -216,16 +216,27 @@ def test_source_files_index_has_fdf_and_out():
 
 
 def test_geometry_carries_xyz_and_cell():
-    """TJ-BDT-Au111 has a .XV — geometry reads from it and carries
-    xyz + cell + regions + frozen_atoms."""
+    """TJ-BDT-Au111 has a .XV — geometry reads from it and carries xyz + cell.
+
+    THE LABELS ARE NO LONGER ASSERTED HERE, and that is the strict-version
+    policy showing up rather than a regression. This directory's `.fdf` was
+    generated before v7, so its ATOM-METADATA block is refused rather than read
+    (structure-molstruct.md § 2): an older block keeps the same facts in
+    different places, and reading it hands back labels that look complete and
+    are missing the frozen set.
+
+    The emit/parse contract for labels is covered where it belongs, against a
+    run directory BUILT from a known structure rather than a captured one:
+    `tests/parse/dirs/test_bundle.py` and `tests/test_fdf_generator_roundtrip.py`.
+    This test keeps what a captured directory can still honestly prove -- that
+    a real `.XV` is found and read.
+    """
     decoded = decode_run_dir(_need_dir(TJ_DIR))
     geom = decoded.geometry
     assert geom["n_atoms"] == 444
     assert len(geom["xyz"]) == 444
     assert geom["cell"] is not None
     assert isinstance(geom["regions"], dict)
-    assert len(geom["regions"]) >= 3
-    assert "L-electrode" in geom["regions"]
     assert geom["coords_state"] in ("converged", "initial")
 
 
