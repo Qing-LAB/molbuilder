@@ -248,12 +248,17 @@ this is the plan tail.
   finding needs RE-verification against the new implementation ((2)'s
   module is deleted — likely moot), then a GC/signal fix for whichever
   survive.
-- **CLI through `StructureCodec`** — route the CLI's structure load/save
-  through the L2 `StructureCodec` so a CLI save emits the `.xyz` +
-  `.molstruct.json` pair like the web save does. Today `cli.py` writes
-  geometry only (`struct.to_xyz`), bypassing the sidecar (contract:
-  `model/structure.md` § 2; task #73). Pin: a CLI round-trip preserves
-  region/annotation metadata.
+- **CLI through `StructureCodec`** — the last surface not obeying the codec
+  rule (`model/structure.md` § 2.4: *every structure↔bytes translation goes
+  through the codec, and every adapter has exactly one door*). The web side
+  closed 2026-07-31 — `write` → save, `files` → export, `read` → load, and the
+  blob adapter deleted. The CLI still writes geometry directly
+  (`struct.to_xyz` at `cli.py:263, 267, 274, 1321, 1563, 1565`) and reads
+  without looking for a sidecar (`siesta/input.py:1455`,
+  `pyscf/input.py:1286`), so `molbuilder modify` silently drops regions and
+  frozen atoms, and the CLI's `fdf` path cannot emit `Geometry.Constraints`
+  from an `.xyz` + sidecar pair. Route both directions through the codec
+  (task #73). Pin: a CLI round-trip preserves region/annotation metadata.
 
 **Atom annotations (the `value` channel).**
 

@@ -761,12 +761,13 @@ def api_structure_save():
 
 @bp.route("/api/structure/export", methods=["POST"])
 def api_structure_export():
-    """The pair a save would write, RETURNED instead of written.
+    """The pair a save would write -- NAMED, and returned instead of written.
 
     Same generator, different destination: :func:`api_structure_save` puts
-    ``StructureCodec.pair`` on disk and this hands it back, so a structure saved
-    into a project and the same structure downloaded are byte-identical by
-    construction rather than by two code paths agreeing.
+    ``StructureCodec.pair`` on disk and this hands it back through
+    ``StructureCodec.files``, so a structure saved into a project and the same
+    structure downloaded are byte-identical BY CONSTRUCTION rather than by two
+    code paths agreeing.
 
     That division exists because the browser cannot produce the pair itself. The
     sidecar's envelope -- ``schema_version``, and the ``structure_hash`` pinning
@@ -774,15 +775,25 @@ def api_structure_export():
     without the version key once: the load door then refused the pair on the next
     open and every label in it was silently dropped.
 
-    Body: the ENVELOPE (web-api.md § 1) --
-    ``{"structure": {"geometry": {...}, "metadata": {...}}}``. This door is new,
-    so it has no callers owed compatibility and is born in that shape rather than
-    in the ``{xyz, sidecar}`` blob its neighbours still accept.
+    Body: the ENVELOPE (web-api.md § 1) plus two optional keys --
+    ``{"structure": {...}, "name": "<stem>", "frames": [...]}``.
 
-    Returns ``{ok: true, xyz: "<document>", sidecar: {...} | null}``. A ``null``
-    sidecar is not an error: it means the structure carries no metadata worth
-    keeping, which is exactly when a save writes no ``.json`` either (``no .json
-    == empty metadata``)."""
+    WHO NAMES WHAT.  ``name`` is a STEM and nothing else (``wire_frame40-120``,
+    no extension), because only the caller knows what an export IS: which
+    structure, which frames, chosen at which moment.  The SUFFIX is the server's,
+    because it follows from the format and the format follows from the frame
+    count, which ``pair()`` already decided -- a caller that appends its own is
+    answering a question that has an answer.  The caller that did appended
+    ``.xyz`` to a multi-frame export, so a download arrived named ``.xyz`` with
+    extended-XYZ ``Lattice=`` lines inside it, at the extension every trajectory
+    reader dispatches on.  A missing / empty / path-shaped ``name`` falls back to
+    ``structure``; only the last path component is ever used, and nothing here
+    touches the filesystem.
+
+    Returns ``{ok, files: [{name, text}], frames, notices}`` -- each entry is a
+    file as it would exist on disk, under the name it would exist as.  One entry
+    means the structure carries no metadata worth keeping, which is exactly when
+    a save writes no ``.json`` either (``no .json == empty metadata``)."""
     from molbuilder.workingcopy_structure import StructureCodec
     body = request.get_json(silent=True) or {}
     if not isinstance(body.get("structure"), dict):
@@ -806,13 +817,22 @@ def api_structure_export():
     if frames is not None and not isinstance(frames, list):
         return jsonify({"ok": False,
                         "error": "'frames' must be a list of coordinate lists"}), 400
+    # THE STEM, reduced to its last component.  This never reaches the
+    # filesystem -- ``files()`` builds names in memory -- but it does reach the
+    # browser as a download name, so a path-shaped one is flattened rather than
+    # passed on.
+    raw_name = str(body.get("name") or "").replace("\\", "/")
+    stem = raw_name.rsplit("/", 1)[-1].strip()
+    if not stem or stem in (".", ".."):
+        stem = "structure"
     try:
-        made = StructureCodec().pair(struct, frames=frames)
+        made = StructureCodec().files(struct, stem, frames=frames)
     except ValueError as exc:          # a frame that does not carry these atoms
         return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True,
-                    "xyz": made.document,
-                    "sidecar": made.sidecar if made.keep_sidecar else None,
+                    "files": [{"name": path.name,
+                               "text": blob.decode("utf-8")}
+                              for path, blob in made],
                     "frames": len(frames) if frames else 1,
                     "notices": notices})
 

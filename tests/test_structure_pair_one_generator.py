@@ -2,11 +2,9 @@
 
 `StructureCodec.pair` is the single place a Structure becomes the two things
 that represent it outside memory — the coordinate document and the sidecar
-payload. `write` puts that on disk, `files` hands it over as bytes, and `scratch_blob`
-hands it over as a round trip. The door that RETURNS it for a download is not
-here yet: a new door should be born speaking the one envelope
-(`web-api.md` § 1), and that envelope does not exist server-side until the phase
-after this one.
+payload. One generator, and one adapter per destination: `write` puts it on
+disk (`/api/structure/save`), `files` hands it over as bytes WITH THEIR NAMES
+(`/api/structure/export`), and `read` brings it back (`/api/build/load`).
 
 Before they shared it there were three code paths computing the same three
 calls, agreeing by coincidence: `write` recomputed the payload inline, and
@@ -42,11 +40,13 @@ def _with_metadata() -> Structure:
     })
     # THROUGH THE PERIODICITY GATE, as every structure that reaches a save has
     # been: a cell whose axes still say "isolated" is inconsistent, and the gate
-    # heals it. Both the save route and the export route rebuild through
-    # `from_scratch`, so both heal the same way — but a fixture that skips it is
-    # a structure the application could not have produced, and comparing it
-    # against a healed one measures the gate rather than the generator.
-    return StructureCodec().from_scratch(StructureCodec().scratch_blob(s))
+    # heals it. The save route and the export route both run the gate, so both
+    # heal the same way — but a fixture that skips it is a structure the
+    # application could not have produced, and comparing it against a healed one
+    # measures the gate rather than the generator.
+    from molbuilder.periodicity_gate import validate_and_heal
+    healed, _ = validate_and_heal(s)
+    return healed
 
 
 def _plain() -> Structure:
@@ -132,14 +132,58 @@ def test_a_stale_sidecar_is_removed_rather_than_left_disagreeing(tmp_path):
     )
 
 
-def test_the_pair_round_trips_through_the_blob():
-    """`scratch_blob` and `from_scratch` are inverses, and the pair is what sits
-    between them — so a structure that goes out and comes back is the same
-    structure, labels and cell included."""
-    struct = _with_metadata()
-    back = StructureCodec().from_scratch(StructureCodec().scratch_blob(struct))
+# --------------------------------------------------------------------- #
+#  The names, which the caller must not be left to derive                #
+# --------------------------------------------------------------------- #
 
-    assert back.regions == struct.regions
-    assert list(back.frozen_atoms) == list(struct.frozen_atoms)
-    assert back.cell is not None
-    assert StructureCodec().pair(back).document == StructureCodec().pair(struct).document
+def test_a_range_is_named_for_the_format_it_actually_contains():
+    """The defect this closes, and it was live.
+
+    A range produces extended XYZ. The caller appended `.xyz` because that is
+    what a structure file is usually called, so a multi-frame download arrived
+    named `wire.xyz` with `Lattice=` lines inside it — at the extension every
+    trajectory reader dispatches on. The format is decided by the frame count
+    inside `pair()`, so the NAME is decided there too and the caller is handed
+    both.
+    """
+    struct = _with_metadata()
+    frames = [struct.positions, struct.positions + 0.1]
+
+    one = [p.name for p, _ in StructureCodec().files(struct, "wire")]
+    many = [p.name for p, _ in StructureCodec().files(struct, "wire",
+                                                      frames=frames)]
+
+    assert one[0] == "wire.xyz", f"a single frame is a plain .xyz: {one}"
+    assert many[0] == "wire.extxyz", (
+        f"a range must not be named after the format it is not: {many}")
+    # ONE sidecar either way, named off the document beside it.
+    assert one[1:] == ["wire.molstruct.json"]
+    assert many[1:] == ["wire.molstruct.json"]
+
+
+def test_a_stem_that_already_carries_a_suffix_is_corrected_not_appended_to():
+    """Both callers exist: the export door hands a bare stem, and a comparison
+    against `write()` hands a full path. Neither may end up with two suffixes,
+    and a stem carrying a suffix that is NOT a geometry one keeps it — `run.v2`
+    is a name, not a mistake, and `with_suffix` would eat the `.v2`.
+    """
+    struct = _with_metadata()
+    frames = [struct.positions, struct.positions + 0.1]
+    name = lambda target, **kw: StructureCodec().files(  # noqa: E731
+        struct, target, **kw)[0][0].name
+
+    assert name("wire.xyz") == "wire.xyz"
+    assert name("wire.xyz", frames=frames) == "wire.extxyz", (
+        "a .xyz target holding a range must be corrected, not left lying")
+    assert name("wire.extxyz") == "wire.xyz"
+    assert name("run.v2") == "run.v2.xyz", "the .v2 was eaten"
+    assert name("run.v2", frames=frames) == "run.v2.extxyz"
+
+
+def test_the_suffix_travels_with_the_pair_rather_than_being_re_derived():
+    """`pair()` decides the format; carrying the suffix beside the document is
+    what stops anything downstream deciding it a second time and disagreeing."""
+    struct = _with_metadata()
+    assert StructureCodec().pair(struct).suffix == ".xyz"
+    assert StructureCodec().pair(
+        struct, frames=[struct.positions, struct.positions]).suffix == ".extxyz"

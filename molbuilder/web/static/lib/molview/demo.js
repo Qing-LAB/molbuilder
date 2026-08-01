@@ -69,47 +69,54 @@ function memoryWorkspace() {
  * happens to them is the HOST's business, and this page is the host. That
  * division is why MolView contains no file-handling code of its own — and why
  * this demo can offer a real download without the module knowing how. */
-/* A HOST-SIDE SAVE. MolView hands over the structure and a destination; turning
- * it into bytes is this side's job, and it does it by ASKING THE SERVER -- the
- * same generator a project save uses, so the two cannot differ. The browser
- * writes no coordinate document (molview.md § 11.7). */
+/* A HOST-SIDE SAVE. MolView hands over the structure, a destination and a STEM;
+ * turning that into files is this side's job, and it does it by ASKING THE
+ * SERVER -- the same generator a project save uses, so the two cannot differ.
+ * The browser writes no coordinate document (molview.md § 11.7). */
 function demoFiles(say) {
     return {
         async save(destination, stem, structure) {
-            let pair;
+            let answer;
             try {
                 const r = await fetch("/api/structure/export", {
                     method:  "POST",
                     headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify({ structure: structure }),
+                    /* THE STEM GOES WITH IT. MolView knows what this export is
+                     * -- which structure, which frames; the server knows what
+                     * the files are CALLED, because the extension follows the
+                     * format and the format follows the frame count. */
+                    body:    JSON.stringify({ structure: structure, name: stem }),
                 });
-                pair = await r.json();
-                if (!pair || pair.ok !== true) throw new Error(pair && pair.error);
+                answer = await r.json();
+                if (!answer || answer.ok !== true) {
+                    throw new Error(answer && answer.error);
+                }
             } catch (err) {
                 say("export failed: " + (err && err.message ? err.message : err));
                 return;
             }
-            // The .json goes WITH the .xyz, so labels survive into whatever is
-            // generated from it (§ 11.3). No sidecar means no metadata worth
-            // keeping -- the codec's own rule, not a second one here.
-            const files = [[stem + ".xyz", pair.xyz]];
-            if (pair.sidecar) {
-                files.push([stem + ".molstruct.json",
-                            JSON.stringify(pair.sidecar, null, 2) + "\n"]);
-            }
+            /* THE FILES COME BACK NAMED, and that is the whole of what this
+             * page does with them. It appends no extension and serialises no
+             * JSON: doing either would be a second answer to a question the
+             * codec has already answered -- and when this page did append one,
+             * a multi-frame download went out named ".xyz" with extended-XYZ
+             * inside it. The .json rides along when there is metadata worth
+             * keeping (§ 11.3); when there is none the server sends one file,
+             * which is exactly when a save writes one. */
+            const files = answer.files || [];
+            const names = files.map((f) => f.name).join(" + ");
             if (destination === "download") {
-                for (const [name, contents] of files) {
-                    const url = URL.createObjectURL(new Blob([contents]));
+                for (const file of files) {
+                    const url = URL.createObjectURL(new Blob([file.text]));
                     const link = document.createElement("a");
                     link.href = url;
-                    link.download = name;
+                    link.download = file.name;
                     link.click();
                     URL.revokeObjectURL(url);
                 }
-                say("downloaded " + files.map(([n]) => n).join(" + "));
+                say("downloaded " + names);
             } else {
-                say("would save " + files.map(([n]) => n).join(" + ")
-                    + " to the project");
+                say("would save " + names + " to the project");
             }
         },
     };

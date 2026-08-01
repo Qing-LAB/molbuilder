@@ -95,7 +95,7 @@ the rename was dropping on the floor.
 ### Phase B — one generator *(item 1, backend half)* — **LANDED**
 
 - `StructureCodec.pair()` is the one place a Structure becomes the two things that
-  represent it outside memory; `write`, `files` and `scratch_blob` all use it
+  represent it outside memory; every outbound adapter goes through it
 - one sidecar serialiser, so the bytes cannot differ by which door produced them
 
 **Proved by:** a Python test that what `write()` puts on disk is exactly what
@@ -112,6 +112,23 @@ the rename was dropping on the floor.
 > The lesson is about the plan, not the route: a phase written before a decision
 > does not survive it automatically, and executing it anyway is how a design
 > becomes a patch.
+
+> **Completed 2026-07-31 — the adapters, not just the generator.** The phase put
+> one generator underneath three adapters and stopped there, which left the
+> question it should have asked: *does each adapter have a door?* Answered by
+> counting: `write` had one, `files` had **none**, and `scratch_blob` /
+> `from_scratch` had one until `/api/structure/periodicity` took the envelope and
+> then had none. So `files()` was wired (the export door answers with named
+> files) and the blob pair was deleted with the shape that was its only reason to
+> exist. Recorded in [`model/structure.md`](?doc=model/structure.md) § 2.4 as a
+> rule rather than a state: *every structure↔bytes translation goes through the
+> codec, and every adapter has exactly one door.*
+>
+> Two defects fell out of the wiring, both in the four lines that had been
+> assembling files browser-side: a multi-frame download was named `.xyz` while
+> holding extended XYZ, and the sidecar was re-serialised by a second
+> serialiser. The `.xyz` misnaming is the one worth remembering — it is what
+> "harmless duplication" looks like the day it stops being harmless.
 
 ### Phase C — the envelope, added not swapped *(the protocol)* — **LANDED**
 
@@ -223,7 +240,7 @@ load":
 | | route | what Python does |
 |---|---|---|
 | load | `POST /api/build/load {path}` | `StructureCodec.read` — reads the `.xyz` **and** its paired sidecar, applies the metadata |
-| save | `POST /api/structure/save {path, blob}` | `from_scratch` + `write` — writes **both**, stamping the version and a real content hash |
+| save | `POST /api/structure/save {path, structure}` | `struct_from_body` + `StructureCodec.write` — writes **both**, stamping the version and a real content hash |
 
 **The projects sidebar already has the matching front door**: `openMolecule(path)`
 and `saveMolecule(path, {overwrite})`, and it calls *into* MolView. That direction
@@ -236,6 +253,13 @@ is*.
 by coincidence, not by construction — so save and download would be two generators
 before MolView is involved at all. `files()`, which returns both files as bytes and
 is exactly what a download needs, **has no callers**.
+
+> **Both halves closed (2026-07-31).** `pair()` became the one generator in phase
+> B; `files()` got its door in the completion note above, and the blob pair was
+> deleted. The sentence that aged best is the last one: a method that is "exactly
+> what a download needs" and has no callers was **unbuilt, not dead** — and the
+> difference matters, because a call count cannot tell the two apart and deleting
+> the wrong one throws away the answer.
 
 ### The old code
 
@@ -257,9 +281,15 @@ forces MolView to author a format it cannot author.
    `files()` produces. `files()` carries the existing rule that a structure with no
    metadata worth keeping gets *no* sidecar, and a stale one is deleted — so that
    behaviour stays in one place rather than being duplicated into a second.
-2. **`POST /api/structure/export` → `{ok, xyz, sidecar}`.** The same pair `write()`
-   would put on disk, returned instead of written. This is what makes "save and
-   download produce identical bytes" true by construction.
+2. **`POST /api/structure/export` → `{ok, files: [{name, text}], frames, notices}`.**
+   The same pair `write()` would put on disk, returned instead of written — and
+   **named**, because the caller that has to name them cannot: the extension
+   follows from the format, and the format was decided by the frame count inside
+   `pair()`. This is what makes "save and download produce identical bytes" true
+   by construction, and it extends that to the filenames.
+
+   *(Shipped 2026-07-31 as `{ok, xyz, sidecar}` and corrected to named files the
+   same day, once wiring `files()` showed what the caller was left deriving.)*
 
    **It takes what the viewer holds, not a document the viewer wrote** — see item 3,
    which is a prerequisite rather than a follow-on. A route that took `{xyz,
@@ -269,7 +299,14 @@ forces MolView to author a format it cannot author.
 **Then MolView.**
 
 3. `exportFile()` returns the structure as data and stops. It is a read.
-4. The `files` door is removed from `mount`.
+4. ~~The `files` door is removed from `mount`.~~ **Superseded by the contract.**
+   The door stays: `molview.md` § 11.2a says bytes leave through a door handed in
+   at mount, and that is what keeps MolView from holding a file route. What was
+   wrong was its old *shape* — `save(destination, filename, contents)` asked
+   MolView for **bytes and a filename**, which is what forced it to author a
+   format it cannot author. The door now takes `save(destination, stem,
+   structure)`: a destination, an identity, and the structure. No bytes, no
+   filename.
 5. Save to project → the sidebar's `saveMolecule` → the save route.
 6. Download → the host asks the export route and puts the two files on the user's
    disk. MolView still decides *what* leaves and *where it goes* (§ 11.4); it stops

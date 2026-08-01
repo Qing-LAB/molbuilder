@@ -2638,11 +2638,16 @@ That is not an academic distinction — it is exactly where this went wrong:
 > it produces and leaves *snapshot* free; this document calls the history one a
 > **saved state** throughout.
 
-**An export out of a trajectory names the frames it came from.** The default
-filename carries them — `wire_frame50.xyz` for one, `wire_frame40-120.extxyz` for
-a range — so the file says what is in it without anyone having to remember. A
-structure with one frame gets no suffix, and neither does a range that covers the
-whole run: in both cases there is nothing to disambiguate it from.
+**An export out of a trajectory names the frames it came from.** The stem
+carries them — `wire_frame50` for one, `wire_frame40-120` for a range — so the
+file says what is in it without anyone having to remember. A structure with one
+frame gets no suffix, and neither does a range that covers the whole run: in both
+cases there is nothing to disambiguate it from.
+
+MolView supplies that stem and stops there. The extension completing it —
+`.xyz` or `.extxyz`, and the `.molstruct.json` beside it — is the server's, for
+the reason § 11.7 gives: the format was decided by the frame count, so the
+extension is not a second decision to make here.
 
 ### 11.5 One atom-numbering translation, in one place
 
@@ -2788,6 +2793,31 @@ So an export names a **destination** and hands over the blob; what a valid
 `.molstruct.json` looks like belongs to
 [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md), and putting
 the bytes on disk in that shape is the server's job.
+
+**What comes back is the files, named.** The export door does not answer with a
+document and a payload for the caller to assemble — it answers with the parts as
+they would exist on disk, each one a **name and its text**. Nothing is left for
+the caller to work out, and that is the point of the shape.
+
+| Who decides | What |
+|---|---|
+| **MolView** | the **stem** — what this export *is*: the structure's name, and the frames it came from (§ 11.4) |
+| **the server** | the **file names** — the extension the format implies, and what the sidecar beside it is called |
+
+Those look like one decision and are two. A stem is the export's *identity*, and
+only the viewer knows it: which structure, which frames, chosen at which moment.
+An extension is a *consequence of the format*, and the format was already decided
+by the frame count, in the one place that counts them (§ 11.3). A caller that
+appends an extension is guessing at an answer that exists.
+
+> **And it guessed wrong.** The one page that implements the door appended
+> `.xyz` unconditionally, and built the sidecar's name by hand from the same
+> stem. A range exports extended XYZ, so a multi-frame download arrived as
+> `wire_frame40-120.xyz` holding `Lattice=` lines — a file whose name says one
+> format and whose bytes are another, at the extension every trajectory reader
+> dispatches on. The same four lines re-serialised the sidecar's JSON, a second
+> answer to a question `molstruct.dumps` already answers. Both are gone: the
+> names and the bytes come out of the codec together.
 
 **What a load brings back.** The server answers with more than the viewer models:
 the atoms and their facts, the cell block, the coordinate document it would

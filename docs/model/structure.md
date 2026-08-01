@@ -42,7 +42,7 @@ flowchart LR
     JS["molview.data<br/>(browser model)"]
     PY -- "to_wire() / to_dict()" --> JSON
     JSON -- "installMolecule()" --> JS
-    JS -- "exportFile() → {xyz, sidecar}" --> JSON
+    JS -- "exportFile(range) → the structure" --> JSON
     JSON -- "from_dict() / StructureCodec" --> PY
 ```
 
@@ -212,24 +212,75 @@ extension → `ValueError` with explicit instruction.
 
 The `.xyz` and its optional `.molstruct.json` are **always** read/written
 together. That pairing + atomicity is owned by one L2 object,
-`StructureCodec` (`molbuilder/workingcopy_structure.py`):
+`StructureCodec` (`molbuilder/workingcopy_structure.py`).
+
+**What it owns.** Four things, and nothing else in the system holds a second
+copy of any of them:
+
+1. **the pairing rule** — `<stem>.xyz` ↔ `<stem>.molstruct.json`, including how
+   the sidecar's name is derived (`molstruct.sidecar_path_for`);
+2. **the format choice** — a plain `.xyz` for one frame, extended XYZ for many,
+   decided by the count and never asked as a separate question;
+3. **the sidecar envelope** — `schema_version`, the `structure_hash` pinning it
+   to its geometry, and the one serialisation (`molstruct.dumps`);
+4. **the invariants** — `no .json == empty metadata` in both directions,
+   both-or-neither atomicity on write, and the periodicity gate on read.
+
+**How it is shaped: one generator, and an adapter per destination.**
 
 ```python
 class StructureCodec:                       # L2 (may use the L2 sidecar codec)
-    def read(self, source_path) -> Structure:        # :134
-        """Parse geometry (.pdb by extension, else .xyz) AND its paired
-        sidecar (sidecar_path_for), applying metadata via
-        molstruct.apply_to_structure. Missing sidecar = empty metadata
-        (NOT an error). Owns the pairing rule + read order."""
-    def write(self, struct, target, *, atomic=True) -> Path:   # :91
-        """Write the pair as one unit: geometry to `target`, and (when there
+    def pair(self, struct, *, frames=None) -> StructurePair:
+        """THE GENERATOR. A Structure as the two things that represent it
+        outside memory: the coordinate document, the sidecar payload, whether
+        that payload is worth keeping, and the suffix the format implies.
+        Every outbound path below goes through this one call."""
+
+    def files(self, struct, target, *, frames=None) -> list[tuple[Path, bytes]]:
+        """TO THE WIRE. The pair as bytes WITH THE NAMES THEY BELONG UNDER --
+        `target`'s suffix corrected to the one `pair` chose. What `write`
+        writes, without writing it."""
+
+    def write(self, struct, target, *, atomic=True, frames=None) -> Path:
+        """TO DISK. The pair as one unit: geometry to `target`, and (when there
         is non-default metadata) the sidecar to sidecar_path_for(target).
         Atomic: each half staged to a temp sibling + os.replace'd; geometry
         swapped FIRST, then sidecar, so a reader never sees new geometry with
         a stale sidecar's atom indices. No-metadata + stale sidecar => sidecar
-        removed (no .json == empty metadata). Owns both-or-neither."""
-    def from_scratch(self, blob) -> Structure:       # :146 — rebuild from {xyz, sidecar}
+        removed. Owns both-or-neither."""
+
+    def read(self, source_path, *, notices_out=None) -> Structure:
+        """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND its
+        paired sidecar, applying metadata via molstruct.apply_to_structure.
+        Missing sidecar = empty metadata (NOT an error). Runs the periodicity
+        gate and reports what it healed through `notices_out`.
+        `load` is the same call under its read-side name."""
 ```
+
+> **The rule this shape exists to make checkable:** *every structure↔bytes
+> translation goes through the codec, and every adapter has exactly one door.*
+> An adapter with no door is either retired or unbuilt, and those have opposite
+> fixes — so the question gets asked rather than answered by call count.
+>
+> **`write` names the file; `files` does not.** The difference is who chose the
+> name. A project save was given an exact path through a picker, with an
+> overwrite gate on it, so `write` puts the bytes exactly there. An export was
+> given a *stem* and nothing else, so `files` completes it with the suffix the
+> format implies. Different questions, and conflating them is what let a
+> multi-frame download go out named `.xyz` with extended-XYZ inside it
+> (`web/molview.md` § 11.7).
+>
+> **Known consequence, left alone deliberately:** saving a frame *range* to a
+> path the user chose as `foo.xyz` puts extended-XYZ bytes under an `.xyz` name.
+> Correcting it would mean `write` writing somewhere other than where the
+> overwrite gate checked, which is a worse defect than the misleading suffix.
+> The place to fix it is the caller that offers the path.
+>
+> **Retired 2026-07-31:** `scratch_blob` / `from_scratch`, which round-tripped a
+> structure through an in-memory `{xyz, sidecar}` **text** blob. Their last
+> caller was `/api/structure/periodicity` before it took the envelope; a blob
+> means a coordinate document is written to ask a question about coordinates,
+> which is the thing `web/molview.md` § 11.7 forbids.
 
 > **Why the file door is L2, not a method on L1 `Structure`.** The layering
 > invariant (`tests/test_layering.py`) forbids an L1 module importing an L2
@@ -248,10 +299,17 @@ molbuilder dna ATGC | molbuilder fdf - out.fdf     # Structure over stdin/stdout
 molbuilder peptide ASEQ                            # → XYZ on stdout
 ```
 
-The CLI currently reads/writes geometry directly (`struct.to_xyz()` /
-`from_xyz`), **not** through `StructureCodec` — so a CLI save does not yet
-emit the sidecar pair. Routing CLI load/save through `StructureCodec` is open
-work (`roadmap.md` → front-end/model finalization; task #73), not shipped.
+**The CLI does not yet obey the rule above.** It reads and writes geometry
+directly (`struct.to_xyz()` / `from_xyz`, at `cli.py:263, 267, 274, 1321, 1563,
+1565`), so a CLI save emits the `.xyz` and nothing beside it. The consequence is
+not cosmetic: `molbuilder modify` silently drops regions and frozen atoms, and
+the CLI's `fdf` path cannot emit `Geometry.Constraints` from an `.xyz` + sidecar
+pair, because its reader (`siesta/input.py:1455`, `pyscf/input.py:1286`) never
+looks for the sidecar. The web surface has gone through the codec since the save
+door was built, so the two surfaces disagree about what saving a structure means.
+
+Routing CLI load/save through `StructureCodec` is open work (`roadmap.md` →
+front-end/model finalization; task #73), not shipped.
 
 ---
 
@@ -264,35 +322,37 @@ definition.
 
 ### 3.1 The doors — `projects.parser.openMolecule` / `saveMolecule`
 
-Both are **FILE-ONLY**: the door hands a `path` (and, on save, the model's
-`{xyz, sidecar}` blob) to the **server**, which owns file access, the
+Both are **FILE-ONLY**: the door hands a `path` (and, on save, the structure
+itself as the wire envelope) to the **server**, which owns file access, the
 `.xyz`↔`.molstruct.json` pairing, and the sidecar schema. The browser reads
-no bytes, derives no sidecar path, and **never authors the sidecar schema**
-(a browser-written sidecar had no `schema_version`, so the load door rejected
-the pair — the save→reload breaker, task #75).
+no bytes, derives no sidecar path, writes no coordinate document, and **never
+authors the sidecar schema** (a browser-written sidecar had no
+`schema_version`, so the load door rejected the pair — the save→reload breaker,
+task #75).
 
 | Door | Does | Server seam |
 |---|---|---|
-| `openMolecule(path, {confirmDiscard?})` | dirty-gate → `molview.data.installMolecule({path})` | `POST /api/build/load` (`build.py:677`) → `StructureCodec.read` |
-| `saveMolecule(path, {overwrite?})` | `exportFile()` → `{xyz,sidecar}` (refuses a geometry↔labels desync) → POST | `POST /api/structure/save` (`build.py:634`) → `StructureCodec.from_scratch` + `.write` (stamps `schema_version` + real `structure_hash`) |
+| `openMolecule(path, {confirmDiscard?})` | dirty-gate → `molview.data.installMolecule({path})` | `POST /api/build/load` (`build.py:841`) → `StructureCodec.read` |
+| `saveMolecule(path, {overwrite?, range?})` | `exportFile(range)` → `{name, structure, frames?}` (refuses a geometry↔labels desync) → POST | `POST /api/structure/save` (`build.py:713`) → `struct_from_body` + `StructureCodec.write` (stamps `schema_version` + real `structure_hash`) |
 
 `openMolecule` is **only** for a project-file path. Generated text
 (smiles/dna/…) has no file, so generators call
 `molview.data.installMolecule({text})` directly — the model primitive, not the
-door. **`saveMolecule` writes only `.xyz`** (`exportFile` produces `{xyz,
-sidecar}`; there is no PDB serializer); a save to a `.pdb` path would receive
-XYZ bytes (the shipped caller forces `.xyz`). Asymmetry: `openMolecule` *loads*
-a `.pdb` (the parse seam sniffs PDB), but `saveMolecule` can only *save* `.xyz`.
+door. **`saveMolecule` writes XYZ only** — the codec's generator emits a plain
+`.xyz` or an extended one and there is no PDB serializer, so a save to a `.pdb`
+path would receive XYZ bytes (the shipped caller forces `.xyz`). Asymmetry:
+`openMolecule` *loads* a `.pdb` (the parse seam sniffs PDB), but `saveMolecule`
+cannot save one.
 A 409 "exists" envelope → `{ok:false, needsOverwrite:true}` so the tab confirms
 and retries with `{overwrite:true}` (the dialog is UI policy, injected — the
 door + model layers stay DOM-free).
 
 ### 3.2 The model primitives + the JS key-namer
 
-`molview.data` (`lib/molview/data-model.js`) is the browser model:
-`installMolecule({path} | {text[,sidecar,…]})`, `exportFile() → {xyz,
-sidecar}`, `markSaved(path)`. Named-key reads of the wire dict happen in
-**one** place — the `data-model.js` accessors (`getUnitCell`,
+`molview.data` (`lib/molview/model.js`) is the browser model:
+`installMolecule({path} | {text[,sidecar,…]})`, `exportFile(range) → {name,
+structure, frames?}`, `markSaved(path)`. Named-key reads of the wire dict happen
+in **one** place — the model's accessors (`getUnitCell`,
 `getUnitCellOrigin`, `getVacuum`, `getAxisKind`, …), the JS analogue of
 Structure's codec. Everywhere else the browser carries `periodicity` /
 `annotations` / `atoms` as **opaque blobs** (verbatim deep-clone, no field
@@ -371,7 +431,7 @@ flowchart TB
     end
     subgraph MV["molview.data — MODEL primitives (DOM-free)"]
         IM["installMolecule({text,sidecar})"]
-        EF["exportFile() → {xyz, sidecar}"]
+        EF["exportFile(range) → the structure"]
     end
     SRV[("server: /api/files/*  ·  /api/build/load  ·  /api/structure/save")]
     B --> DOORS
@@ -439,13 +499,22 @@ language.
 ## 6. Status
 
 **Shipped (2026-07):** the L1 codec (`to_dict`/`from_dict`/`to_wire`) + the L2
-`StructureCodec` (read/write/from_scratch); the server seams
-(`/api/build/load`, `/api/structure/save`); the JS doors (`parser.js`) with
-every consumer above repointed; the JS periodicity field-whitelist replaced by
-verbatim deep-clone; the old `molview.data` file stack + `/api/workingcopy/*`
-door path removed. `_shared.structure_to_dict` retained as the web composer
-(`workspace_payload` + `to_wire` + legacy aliases), not deleted.
+`StructureCodec` (`pair` / `files` / `write` / `read`); the server seams
+(`/api/build/load`, `/api/structure/save`, `/api/structure/export`); the JS doors
+(`parser.js`) with every consumer above repointed; the JS periodicity
+field-whitelist replaced by verbatim deep-clone; the old `molview.data` file
+stack + `/api/workingcopy/*` door path removed. `_shared.structure_to_dict`
+retained as the web composer (`workspace_payload` + `to_wire` + legacy aliases),
+not deleted.
+
+**Consolidated 2026-07-31.** Every adapter now has exactly one door: `write` →
+`/api/structure/save`, `files` → `/api/structure/export`, `read` →
+`/api/build/load`. The export door answers with the files **named**, so no caller
+derives a filename or re-serialises a sidecar; `scratch_blob` / `from_scratch`
+were retired with the `{xyz, sidecar}` blob shape that was their only reason to
+exist (§ 2.4).
 
 **Open work** (tracked in `roadmap.md`): route the **CLI** load/save through
 `StructureCodec` so a CLI save emits the `.xyz` + `.molstruct.json` pair like
-the web save does (task #73) — today the CLI writes geometry only.
+the web save does (task #73) — today the CLI writes geometry only, which is the
+last surface not obeying the rule in § 2.4.

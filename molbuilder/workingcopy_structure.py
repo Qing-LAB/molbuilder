@@ -1,18 +1,40 @@
 """Structure + sidecar codec (``StructureCodec``).
 
-MODULE: a standalone L2 codec for the ``<stem>.xyz`` (coordinates) +
-``<stem>.molstruct.json`` (labels/annotations) file pair.  ``load`` parses the
-``.xyz``/``.pdb`` source and applies the companion sidecar into a
-:class:`~molbuilder.structure.Structure`; ``files`` serialises one back to the
-pair; ``scratch_blob`` / ``from_scratch`` round-trip it through an in-memory
-``{xyz, sidecar}`` blob.  It never learns what an atom means beyond structure +
-sidecar.
+MODULE: the standalone L2 codec for the ``<stem>.xyz`` (coordinates) +
+``<stem>.molstruct.json`` (labels/annotations) file pair.  It owns FOUR things
+nothing else in the system may hold a second copy of:
 
-USED BY: ``/api/structure/periodicity`` + ``/api/structure/save`` +
-``/api/build/load`` (web/blueprints/build.py) — the gated pair/blob seams.
-(This codec also *used* to back the ``molbuilder.workingcopy`` working-copy core +
-the ``/api/workingcopy/*`` structure-editor door; both were retired — the codec is
-the survivor.)
+  1. the PAIRING RULE -- how the sidecar's name follows the geometry's;
+  2. the FORMAT CHOICE -- a plain ``.xyz`` for one frame, extended XYZ for many,
+     decided by the count and never asked as a separate question;
+  3. the SIDECAR ENVELOPE -- ``schema_version``, the ``structure_hash`` pinning
+     it to its geometry, and the one serialisation (``molstruct.dumps``);
+  4. the INVARIANTS -- ``no .json == empty metadata`` in both directions,
+     both-or-neither atomicity on write, the periodicity gate on read.
+
+SHAPE: one generator, and one adapter per destination.  :meth:`StructureCodec.pair`
+is the generator; :meth:`~StructureCodec.write` puts it on disk,
+:meth:`~StructureCodec.files` hands it over as bytes WITH THE NAMES THEY BELONG
+UNDER, and :meth:`~StructureCodec.read` brings it back.
+
+THE RULE (model/structure.md § 2.4): *every structure-to-bytes translation goes
+through this codec, and every adapter has exactly one door.*  An adapter with no
+door is either RETIRED or UNBUILT, and those have opposite fixes -- which is why
+the question gets asked rather than answered by counting callers.
+
+USED BY: ``/api/structure/save`` -> ``write`` · ``/api/structure/export`` ->
+``files`` · ``/api/build/load`` -> ``read`` (web/blueprints/build.py) · and
+``bundle_writer.write_bundle_as_handoff`` -> ``write``.  NOT yet by the CLI,
+which still writes geometry alone -- the last surface not obeying the rule
+(task #73).
+
+RETIRED 2026-07-31: ``scratch_blob`` / ``from_scratch``, which round-tripped a
+structure through an in-memory ``{xyz, sidecar}`` TEXT blob.  Their last caller
+was ``/api/structure/periodicity`` before it took the envelope; a blob means a
+coordinate document is written in order to ask a question about coordinates,
+which is what web/molview.md § 11.7 forbids.  (This codec also used to back the
+retired ``molbuilder.workingcopy`` core + the ``/api/workingcopy/*`` door; it is
+the survivor of both.)
 
 Layer: L2 — reuses `structure` (L1) + the `sidecars.molstruct` write/read stack.
 """
@@ -21,7 +43,7 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
-from typing import Any, List, NamedTuple, Tuple
+from typing import List, NamedTuple, Tuple
 
 from .structure import Structure
 from .sidecars import molstruct
@@ -29,14 +51,23 @@ from .sidecars import molstruct
 
 class StructurePair(NamedTuple):
     """What a Structure looks like outside memory: the coordinate document, the
-    sidecar payload beside it, and whether that payload is worth keeping.
+    sidecar payload beside it, whether that payload is worth keeping, and the
+    file suffix the format implies.
 
-    ONE shape for every consumer -- disk, bytes, blob, wire -- so "what does this
+    ONE shape for every consumer -- disk, bytes, wire -- so "what does this
     structure look like when it leaves" has one answer instead of one per caller.
+
+    ``suffix`` is CARRIED rather than re-derived, because the format decision is
+    made once, from the frame count, in :meth:`StructureCodec.pair`.  A caller
+    that appends an extension of its own is answering a question that already has
+    an answer -- and the caller that did appended ``.xyz`` to a multi-frame
+    export, producing a file whose name said one format and whose bytes were
+    another, at the extension every trajectory reader dispatches on.
     """
     document: str
     sidecar: dict
     keep_sidecar: bool
+    suffix: str
 
 
 def _sha256_bytes(b: bytes) -> str:
@@ -65,8 +96,14 @@ def _metadata_is_default(meta: dict) -> bool:
 
 
 class StructureCodec:
-    """``.xyz`` + ``.molstruct.json`` ⇄ :class:`~molbuilder.structure.Structure`
-    (+ in-memory scratch round-trip)."""
+    """``.xyz`` + ``.molstruct.json`` ⇄ :class:`~molbuilder.structure.Structure`."""
+
+    #: The suffixes this codec writes a geometry document under.  A target
+    #: already carrying one of them is CORRECTED to the format actually
+    #: produced; a target carrying anything else keeps its whole name and the
+    #: suffix is appended -- so ``run.v2`` becomes ``run.v2.xyz`` instead of
+    #: losing the ``.v2`` that a bare ``with_suffix`` would have eaten.
+    _GEOMETRY_SUFFIXES = (".xyz", ".extxyz")
 
     # ---- load durable -> working Structure --------------------------- #
     def load(self, source_path, *,
@@ -106,21 +143,19 @@ class StructureCodec:
         """A Structure as the two things that represent it: the coordinate
         document, and the sidecar payload beside it.
 
-        THE ONE PLACE either is produced.  :meth:`write` puts this on disk,
-        :meth:`files` hands it over as bytes, :meth:`scratch_blob` hands it over
-        as a round-trip blob, and the export route returns it -- so a structure
-        saved to a project and the same structure downloaded cannot differ.
-        They used to be three code paths computing the same three calls, agreeing
-        by coincidence rather than by construction; ``files`` even serialised the
-        JSON with different settings from ``save``, so a non-ASCII region label
-        came out escaped on one path and literal on the other.
+        THE ONE PLACE either is produced.  :meth:`write` puts this on disk and
+        :meth:`files` hands it over as named bytes (which is what the export
+        route returns) -- so a structure saved to a project and the same
+        structure downloaded cannot differ.  They used to be three code paths
+        computing the same three calls, agreeing by coincidence rather than by
+        construction; ``files`` even serialised the JSON with different settings
+        from ``save``, so a non-ASCII region label came out escaped on one path
+        and literal on the other.
 
         ``keep_sidecar`` is False when the metadata is all default -- a plain
         molecule with no cell, labels, frozen atoms or annotations.  Then the
         pair is the document alone and a stale sidecar beside it is removed, so
         "no .json" always means "no metadata" (:meth:`load` reads it that way).
-        The payload is still built, because a blob is a round trip rather than a
-        file and its reader expects one.
         """
         # ONE FRAME OR MANY, decided by what was handed over and by nothing
         # else.  A trajectory needs extended XYZ, because a plain .xyz has
@@ -129,12 +164,18 @@ class StructureCodec:
         # WHICH frames (molview.md § 11.3's range); the format follows from how
         # many there are, and is never a second question.
         #
+        # THE SUFFIX IS DECIDED HERE, WITH THE FORMAT, and travels with the
+        # pair.  Deriving it anywhere else is deriving it a second time, and a
+        # second derivation is a chance to disagree with the bytes.
+        #
         # THE SIDECAR IS BUILT ONCE EITHER WAY.  The labels and the cell are the
         # structure's shared identity -- the same for frame 0 and frame 400 --
         # so there is one .json beside a trajectory, not one per frame.  Its
         # hash pins it to the document actually written, whichever that is.
-        document = (struct.to_extxyz(frames=frames) if frames
-                    else struct.to_xyz())
+        if frames:
+            document, suffix = struct.to_extxyz(frames=frames), ".extxyz"
+        else:
+            document, suffix = struct.to_xyz(), ".xyz"
         meta = struct.metadata_to_dict()
         payload = molstruct.to_dict(
             meta,
@@ -142,15 +183,35 @@ class StructureCodec:
             structure_hash = _sha256_bytes(document.encode("utf-8")),
         )
         return StructurePair(document=document, sidecar=payload,
-                             keep_sidecar=not _metadata_is_default(meta))
+                             keep_sidecar=not _metadata_is_default(meta),
+                             suffix=suffix)
 
-    # ---- the durable files: <stem>.xyz + <stem>.molstruct.json ------- #
+    # ---- the pair as NAMED bytes: <stem>.xyz + <stem>.molstruct.json -- #
     def files(self, struct: Structure, target, *,
               frames: "Sequence | None" = None) -> List[Tuple[Path, bytes]]:
-        """The pair as bytes, with the paths they belong at -- what :meth:`write`
-        writes, without writing it."""
+        """The pair as bytes, WITH THE NAMES THEY BELONG UNDER -- what
+        :meth:`write` writes, without writing it, and what the export door
+        answers with.
+
+        THE SUFFIX IS THE ONE :meth:`pair` CHOSE, not the one the caller
+        guessed.  A range produces extended XYZ, so a caller appending ``.xyz``
+        names a file after a format it does not contain -- at the extension
+        every trajectory reader dispatches on.  Hand this a bare stem and it
+        comes back named correctly; hand it a full ``<stem>.xyz`` and the suffix
+        is corrected in place, which is why comparing this against :meth:`write`
+        still compares the same paths.
+
+        Contrast :meth:`write`, which does NOT correct the name: a project save
+        was given an exact path through a picker with an overwrite gate on it,
+        so the bytes go exactly there.  An export was given a stem and nothing
+        else.  Different questions (model/structure.md § 2.4).
+        """
         target = Path(target)
         made = self.pair(struct, frames=frames)
+        if target.suffix.lower() in self._GEOMETRY_SUFFIXES:
+            target = target.with_suffix(made.suffix)
+        else:
+            target = target.with_name(target.name + made.suffix)
         out = [(target, made.document.encode("utf-8"))]
         if made.keep_sidecar:
             out.append((molstruct.sidecar_path_for(target),
@@ -165,6 +226,14 @@ class StructureCodec:
         (structure-authority.md § 3.3): owns the pairing rule + the
         both-or-neither atomicity so no caller re-derives the sidecar path or
         re-implements the write order.
+
+        The target is written VERBATIM -- unlike :meth:`files`, this does not
+        correct the suffix, because the caller did not guess it: a save names an
+        exact path, chosen through a picker and cleared by an overwrite gate,
+        and silently writing somewhere else would make that gate a lie.  (Known
+        consequence: saving a frame RANGE to a ``.xyz`` path puts extended-XYZ
+        bytes under an ``.xyz`` name.  Naming that file is the caller's job and
+        the export door is where the codec does it.)
 
         Atomicity: each half is staged to a temp sibling and ``os.replace``-d
         (per-file atomic).  The geometry is swapped first, then the sidecar, so
@@ -204,53 +273,3 @@ class StructureCodec:
         gate's heal notices (structure-periodicity.md 6.1) so the load door
         can SURFACE a heal instead of silently rewriting the user's state."""
         return self.load(source_path, notices_out=notices_out)
-
-    # ---- scratch round-trip ------------------------------------------ #
-    def scratch_blob(self, struct: Structure) -> Any:
-        made = self.pair(struct)
-        return {"xyz": made.document, "sidecar": made.sidecar}
-
-    def from_scratch(self, blob: Any, *,
-                     notices_out: "list | None" = None) -> Structure:
-        struct = Structure.from_xyz(blob["xyz"])
-        molstruct.apply_to_structure(struct, blob["sidecar"])
-        # The frame-contract gate (structure-periodicity.md § 6.1): ALL
-        # heal/validation of periodicity state happens at this seam.  A
-        # stored explicit cell that does not contain its atoms (the 2026-07
-        # hemeC corruption) is healed here -- origin to the expected corner
-        # -- and the notice surfaces when the caller passes notices_out.
-        from .periodicity_gate import validate_and_heal
-        struct, notices = validate_and_heal(struct)
-        if notices_out is not None:
-            notices_out.extend(notices)
-        return struct
-
-    # ---- read the pair from disk (alias of load, symmetric name) ----- #
-    def read(self, source_path, *,
-             notices_out: "list | None" = None) -> Structure:
-        """Symmetric read-side name for :meth:`load` -- parse the geometry +
-        apply its paired sidecar into a Structure (missing sidecar => empty
-        metadata, not an error).  ``notices_out`` collects the frame-contract
-        gate's heal notices (structure-periodicity.md 6.1) so the load door
-        can SURFACE a heal instead of silently rewriting the user's state."""
-        return self.load(source_path, notices_out=notices_out)
-
-    # ---- scratch round-trip ------------------------------------------ #
-    def scratch_blob(self, struct: Structure) -> Any:
-        made = self.pair(struct)
-        return {"xyz": made.document, "sidecar": made.sidecar}
-
-    def from_scratch(self, blob: Any, *,
-                     notices_out: "list | None" = None) -> Structure:
-        struct = Structure.from_xyz(blob["xyz"])
-        molstruct.apply_to_structure(struct, blob["sidecar"])
-        # The frame-contract gate (structure-periodicity.md § 6.1): ALL
-        # heal/validation of periodicity state happens at this seam.  A
-        # stored explicit cell that does not contain its atoms (the 2026-07
-        # hemeC corruption) is healed here -- origin to the expected corner
-        # -- and the notice surfaces when the caller passes notices_out.
-        from .periodicity_gate import validate_and_heal
-        struct, notices = validate_and_heal(struct)
-        if notices_out is not None:
-            notices_out.extend(notices)
-        return struct

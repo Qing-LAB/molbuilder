@@ -1,11 +1,14 @@
-"""Structure + sidecar codec (``StructureCodec``) — load, edit, write, scratch
-round-trip of the ``.xyz`` + ``.molstruct.json`` pair.
+"""Structure + sidecar codec (``StructureCodec``) — load, edit, write, read of
+the ``.xyz`` + ``.molstruct.json`` pair.
 
-The codec is the LIVE remnant of the retired working-copy stack: it is used by
-``/api/structure/periodicity`` (build.py) to rebuild a Structure from a scratch
-blob.  These tests exercise its public surface directly (``load`` / ``files`` /
-``scratch_blob`` / ``from_scratch``) — no ``WorkingCopy`` wrapper (that class +
-the ``/api/workingcopy/*`` door were removed).
+The codec is the LIVE remnant of the retired working-copy stack, and now the one
+place a Structure becomes bytes for every surface that writes one: ``write``
+backs ``/api/structure/save``, ``files`` backs ``/api/structure/export``, and
+``read`` backs ``/api/build/load``.  These tests exercise that surface directly
+(``load`` / ``pair`` / ``files`` / ``write`` / ``read``) — no ``WorkingCopy``
+wrapper (that class + the ``/api/workingcopy/*`` door were removed), and no
+``scratch_blob`` / ``from_scratch`` (the ``{xyz, sidecar}`` text blob was retired
+2026-07-31 with the door shape that was its only caller).
 """
 import json
 from pathlib import Path
@@ -69,14 +72,15 @@ def test_labels_roundtrip_through_load(project):
     assert s2.regions == {"L-electrode": [0, 1]}
 
 
-def test_scratch_blob_roundtrip(project):
-    """``scratch_blob`` -> ``from_scratch`` restores structure + labels +
-    annotations (the exact round-trip the periodicity door relies on)."""
+def test_write_then_read_restores_structure_labels_and_annotations(project):
+    """The round trip that replaced the retired ``scratch_blob`` -> ``from_scratch``
+    pair: out through the file door and back, with everything the sidecar carries
+    still attached.  Same property, through the seam that actually exists."""
     s = CODEC.load(project / "mol.xyz")
     s.frozen_atoms = [4]
     s.set_channel("spin", AtomChannel("value", {2: 0.5}))
-    blob = CODEC.scratch_blob(s)
-    s2 = CODEC.from_scratch(blob)
+    CODEC.write(s, project / "mol.xyz")
+    s2 = CODEC.read(project / "mol.xyz")
     assert s2.n_atoms == 5
     assert s2.frozen_atoms == [4]
     assert s2.get_channel("spin").data == {2: 0.5}

@@ -219,9 +219,17 @@ def test_a_document_in_a_REQUEST_is_ignored(client):
 
 def test_export_returns_what_a_save_would_write(client, tmp_path):
     """Save-to-project and download differ only in destination — a promise about
-    BYTES, which holds because both come from `StructureCodec.pair`."""
+    BYTES, which holds because both come from `StructureCodec.pair`.
+
+    Since 2026-07-31 it is a promise about NAMES too. The door answers with the
+    files named, so the two paths agree on *which files exist* and *what each is
+    called*, not merely on their contents — the gap that let a download go out
+    under a name a save would never have written.
+    """
+    import json as _json
     body = _envelope(regions={"L-electrode": [0]}, frozen_atoms=[1],
                      cell=[[8.0, 0, 0], [0, 8.0, 0], [0, 0, 8.0]])
+    body["name"] = "same"
     answer = client.post("/api/structure/export", json=body).get_json()
     assert answer["ok"] is True
 
@@ -231,25 +239,62 @@ def test_export_returns_what_a_save_would_write(client, tmp_path):
     target = tmp_path / "same.xyz"
     StructureCodec().write(struct, target)
 
-    assert answer["xyz"] == target.read_text(encoding="utf-8")
-    saved = molstruct.load(molstruct.sidecar_path_for(target))
-    for field in ("regions", "cell", "axis_kind"):
-        assert answer["sidecar"][field] == saved[field], f"{field} differs"
+    handed = {f["name"]: f["text"] for f in answer["files"]}
+    on_disk = {p.name: p.read_text(encoding="utf-8")
+               for p in tmp_path.iterdir() if p.is_file()}
+    assert set(handed) == set(on_disk), (
+        f"the download and the save disagree about WHICH files exist: "
+        f"{sorted(handed)} vs {sorted(on_disk)}")
+    for name, text in handed.items():
+        assert text == on_disk[name], (
+            f"{name}: the bytes handed over differ from the bytes written")
+
     # `regions` carries the reserved label, so there is no second key to compare
     # -- and the designated read agrees with it on both sides.
-    assert molstruct.frozen_atoms(answer["sidecar"]) == [1]
+    handed_sidecar = _json.loads(handed["same.molstruct.json"])
+    saved = molstruct.load(molstruct.sidecar_path_for(target))
+    assert molstruct.frozen_atoms(handed_sidecar) == [1]
     assert molstruct.frozen_atoms(saved) == [1]
-    assert "frozen_atoms" not in answer["sidecar"], (
+    assert "frozen_atoms" not in handed_sidecar, (
         "a second key for a fact the label store already holds"
     )
 
 
 def test_export_offers_no_sidecar_when_a_save_would_write_none(client):
     """"No `.json` means no metadata" is how the load door reads a pair, so a
-    plain structure must come back with `null` rather than an empty envelope."""
+    plain structure must come back as ONE file — exactly what a save writes."""
     answer = client.post("/api/structure/export", json=_envelope()).get_json()
     assert answer["ok"] is True
-    assert answer["sidecar"] is None
+    assert [f["name"] for f in answer["files"]] == ["structure.xyz"], (
+        f"a plain structure got a sidecar it would not have been saved with, "
+        f"or a name nobody asked for: {answer['files']}")
+
+
+def test_export_names_the_files_so_no_caller_has_to(client):
+    """The caller supplies a STEM and the server supplies the rest, because the
+    extension follows the format and the format follows the frame count
+    (molview.md § 11.7). A path-shaped or missing stem is flattened rather than
+    passed on — it reaches the browser as a download name."""
+    frames = [[[0.0, 0, 0], [1.4, 0, 0], [0, 1.0, 0]],
+              [[0.1, 0, 0], [1.5, 0, 0], [0, 1.1, 0]]]
+
+    one = client.post("/api/structure/export",
+                      json=dict(_envelope(), name="wire")).get_json()
+    assert [f["name"] for f in one["files"]] == ["wire.xyz"]
+
+    many = client.post("/api/structure/export",
+                       json=dict(_envelope(), name="wire",
+                                 frames=frames)).get_json()
+    assert [f["name"] for f in many["files"]] == ["wire.extxyz"], (
+        "a range was named after the format it does not contain")
+    assert many["frames"] == 2
+
+    for hostile in ("../../etc/passwd", "", "  ", ".."):
+        answer = client.post("/api/structure/export",
+                             json=dict(_envelope(), name=hostile)).get_json()
+        assert "/" not in answer["files"][0]["name"], answer["files"]
+        assert answer["files"][0]["name"] in ("passwd.xyz", "structure.xyz"), (
+            f"{hostile!r} produced {answer['files'][0]['name']!r}")
 
 
 def test_export_is_born_in_the_envelope_and_takes_nothing_else(client):

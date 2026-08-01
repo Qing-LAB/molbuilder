@@ -5,11 +5,11 @@ REGRESSION (task #75, the save->reload breaker): the browser used to write the
 ``structure_hash`` -- which the strict file-only load door (``StructureCodec.read`` ->
 ``molstruct.load_text``) then REJECTED, so every save produced a pair the app could no
 longer open.  The fix routes the save through the SERVER, which reconstructs the Structure
-(``StructureCodec.from_scratch``) and writes the pair via ``StructureCodec.write`` -- Python
-owns the pairing AND stamps the sidecar schema.
+from the wire envelope (``_shared.struct_from_body``) and writes the pair via
+``StructureCodec.write`` -- Python owns the pairing AND stamps the sidecar schema.
 
 These tests pin:
-  1. a BROWSER-shaped scratch blob (no schema_version, empty hash) saved through the
+  1. a BROWSER-shaped payload (no schema_version, empty hash) saved through the
      endpoint lands on disk as a VALID pair the load door reads back without error, with
      the metadata (frozen / regions / off-origin cell) preserved;
   2. the overwrite gate (409 -> needsOverwrite);
@@ -112,14 +112,16 @@ def test_saving_a_range_and_downloading_it_produce_identical_bytes(web):
     """
     path = str(web._root / "run.extxyz")
     downloaded = web.post("/api/structure/export",
-                          json={"structure": _ENV, "frames": _FRAMES}).get_json()
+                          json={"structure": _ENV, "frames": _FRAMES,
+                                "name": "run"}).get_json()
     saved = web.post("/api/structure/save",
                      json={"structure": _ENV, "frames": _FRAMES,
                            "path": path}).get_json()
     assert saved["ok"] is True, saved
 
     on_disk = (web._root / "run.extxyz").read_text(encoding="utf-8")
-    assert on_disk == downloaded["xyz"], (
+    handed = {f["name"]: f["text"] for f in downloaded["files"]}
+    assert on_disk == handed["run.extxyz"], (
         "the project save and the download produced different bytes")
     assert on_disk.count("Lattice=") == 3, "one block per frame, each with the cell"
     assert downloaded["frames"] == 3
@@ -127,6 +129,11 @@ def test_saving_a_range_and_downloading_it_produce_identical_bytes(web):
     written = sorted(p.name for p in web._root.iterdir())
     assert written == ["run.extxyz", "run.molstruct.json"], (
         f"a range must write ONE sidecar beside the one document: {written}")
+    # The NAMES agree too, not just the bytes -- given the same stem, the two
+    # destinations produce the same pair of filenames.
+    assert sorted(handed) == written, (
+        f"the download and the save named the pair differently: "
+        f"{sorted(handed)} vs {written}")
     assert json.loads((web._root / "run.molstruct.json").read_text()
                       )["regions"] == {"bridge": [0]}
 

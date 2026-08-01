@@ -64,8 +64,8 @@ caller holds.
 |---|---|
 | `/api/modify/*` | `{structure: <envelope>, …the op's own arguments, and the selection under its own key}` |
 | `/api/structure/periodicity` | `{structure: <envelope>, op, payload}` |
-| `/api/structure/save` | `{structure: <envelope>, path, overwrite}` |
-| `/api/structure/export` | `{structure: <envelope>}` |
+| `/api/structure/save` | `{structure: <envelope>, path, overwrite, frames?}` |
+| `/api/structure/export` | `{structure: <envelope>, name?, frames?}` |
 | `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format?, sidecar?}`. **Not the envelope, and right not to be:** nothing is being sent back, a file or a paste is being *parsed*, and raw text is what a user supplied |
 | `/api/selection/eval` | `{atoms: [{element, labels, residueName}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs |
 
@@ -129,13 +129,6 @@ serialiser is the same one the file on disk goes through.
 | the identity columns | per-atom facts a coordinate file cannot hold — full-length or `[]` |
 | `metadata` | the block the codec owns: regions, frozen atoms, the periodicity fields, annotation channels |
 
-The **coordinate document** is not here. It is what the **export** door answers
-with — that door's whole job — and it is absent everywhere else for a reason that
-is easy to get wrong: a caller sends the envelope back, never a document, so
-nothing needs the text until somebody asks for a file. Putting it on every
-response would pay a full serialisation and a content hash per load and per edit
-to carry something no request will ever contain.
-
 `document` is not part of a structure response. It is what the **export** door
 answers with — that door's whole job — and it is absent everywhere else for a
 reason that is easy to get wrong: a caller sends `geometry` and `metadata` back,
@@ -165,9 +158,24 @@ which is a bug this project has already shipped once.
 | `load` | `{path}` **or** `{document, filename, format}` for a paste — the only place raw text is legitimate, because a user supplied it | the envelope |
 | `modify/<op>` | the envelope + the op's arguments | the envelope |
 | `periodicity/<op>` | the envelope + `op`, `payload` | the envelope |
-| `save` | the envelope + `path`, `overwrite` | `{ok, path}` |
-| `export` | the envelope | the files as bytes, from the one generator the save uses |
+| `save` | the envelope + `path`, `overwrite`, `frames?` | `{ok, path}` |
+| `export` | the envelope + `name?` (the stem), `frames?` | `{ok, files: [{name, text}], frames, notices}` — the same generator the save uses, **named** |
 | `selection/eval` | the envelope + `rule` | `{selected_indices}` |
+
+**The export door answers with named files, and that is not cosmetic.** Each
+entry is `{name, text}` — the file as it would exist on disk, under the name it
+would exist as. The caller supplies `name` as a **stem** (`wire_frame40-120`,
+no extension) because only the caller knows what the export *is*; the server
+completes it, because the extension follows from the format and the format
+follows from the frame count, which `StructureCodec.pair` already decided.
+
+A caller that appends its own extension is answering a question that has an
+answer. The one that did got it wrong: it appended `.xyz` to a multi-frame
+export, producing a file named `.xyz` with extended-XYZ `Lattice=` lines inside
+it, at the extension trajectory readers dispatch on. It also re-serialised the
+sidecar's JSON, a second answer to a question `molstruct.dumps` owns. Both now
+come out of the codec together — see [`molview.md`](?doc=web/molview.md) § 11.7
+and [`model/structure.md`](?doc=model/structure.md) § 2.4.
 
 ### How the two shapes coexist
 
@@ -299,6 +307,8 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/modify/{delete,add_atom,orient,rotate,translate,calibrate,electrode,symmetric_electrodes}` | The eight structure edits |
 | POST `/api/selection/atoms` | Per-atom payload for a structure |
 | POST `/api/selection/eval` | Evaluate a selection expression |
+| POST `/api/structure/periodicity` | The four Cell-page edits, through the frame-contract gate |
+| POST `/api/structure/export` | The pair a save would write, **named and returned** instead of written |
 
 **Files + projects** — owned by [`projects.md`](?doc=web/projects.md):
 

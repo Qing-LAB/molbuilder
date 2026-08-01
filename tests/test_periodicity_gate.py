@@ -356,21 +356,24 @@ class TestLoaderGate:
     """PINS: docs/model/structure-periodicity.md § 6.1 clause 2 — ONE gate,
     on both seams of the .xyz/.molstruct.json pair.
 
-    The gate must sit on BOTH pair seams.  from_scratch alone left
+    The gate must sit on BOTH pair seams.  Gating the in-memory seam alone left
     /api/build/load serving corrupted pairs unhealed — MolView drew the
     box from the world origin while the Cell page showed healed values
     (observed live on projects/hemeC-dithiol, 2026-07-29)."""
 
     def _write_corrupted_pair(self, dirpath):
+        """The pair written BY HAND, not through ``write()`` — the point is to
+        put a corrupted pair on disk, so it must not pass through the door whose
+        healing is under test."""
         import json as _json
         from molbuilder.workingcopy_structure import StructureCodec
         s = _mol()                          # atoms near (10,10,10), vac 2.5
         s.cell = np.eye(3) * 7.0            # explicit cell, no origin,
         s.__post_init__()                   # atoms far outside [0, cell)
-        blob = StructureCodec().scratch_blob(s)
-        (dirpath / "m.xyz").write_text(blob["xyz"], encoding="utf-8")
+        made = StructureCodec().pair(s)
+        (dirpath / "m.xyz").write_text(made.document, encoding="utf-8")
         (dirpath / "m.molstruct.json").write_text(
-            _json.dumps(blob["sidecar"]), encoding="utf-8")
+            _json.dumps(made.sidecar), encoding="utf-8")
         return dirpath / "m.xyz"
 
     def test_codec_read_heals_a_corrupted_pair(self, tmp_path):
@@ -591,10 +594,10 @@ class TestLoadHealIsVisible:
         s = _mol()
         s.cell = np.eye(3) * 7.0        # the hemeC-class corrupted pair
         s.__post_init__()
-        blob = StructureCodec().scratch_blob(s)
-        (sdir / "m.xyz").write_text(blob["xyz"], encoding="utf-8")
+        made = StructureCodec().pair(s)
+        (sdir / "m.xyz").write_text(made.document, encoding="utf-8")
         (sdir / "m.molstruct.json").write_text(
-            _json.dumps(blob["sidecar"]), encoding="utf-8")
+            _json.dumps(made.sidecar), encoding="utf-8")
         set_capabilities(Capabilities(runtime_config={},
                                       conda_binary="/usr/bin/conda"))
         try:
