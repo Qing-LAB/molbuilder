@@ -1126,7 +1126,7 @@ def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store():
         const rows = card.querySelectorAll(".selection-atom-table")[0].children;
 
         const numbers = Array.from(rows).map(
-            r => r.querySelectorAll(".col-idx")[0].textContent);
+            r => r.querySelectorAll(".molviewer-atoms-column-idx")[0].textContent);
         rows[1].click();                       // the SECOND atom, which reads #2
         console.log(JSON.stringify({
             numbers,
@@ -1177,29 +1177,29 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
 
         const first = rows()[0];
         const columns = {
-            index:   first.querySelectorAll(".col-idx")[0].textContent,
-            element: first.querySelectorAll(".col-el")[0].textContent,
-            residue: first.querySelectorAll(".col-res")[0].textContent,
-            labels:  first.querySelectorAll(".col-labels .selection-tag")
+            index:   first.querySelectorAll(".molviewer-atoms-column-idx")[0].textContent,
+            element: first.querySelectorAll(".molviewer-atoms-column-el")[0].textContent,
+            residue: first.querySelectorAll(".molviewer-atoms-column-res")[0].textContent,
+            labels:  first.querySelectorAll(".molviewer-atoms-column-labels .selection-tag")
                           .map(t => t.children[0].textContent),
         };
 
         // THE TICK. Driven as a change on the box itself, not a row click.
-        const box = first.querySelectorAll(".col-check input")[0];
+        const box = first.querySelectorAll(".molviewer-atoms-column-check input")[0];
         const tickedBefore = box.checked;
         box.dispatch("change", { target: box });
         const afterTick = viewer.data.selection.get();
 
         // Set from elsewhere: the box follows the store (§ 8.4).
         viewer.data.selection.clear();
-        const afterClear = rows()[0].querySelectorAll(".col-check input")[0].checked;
+        const afterClear = rows()[0].querySelectorAll(".molviewer-atoms-column-check input")[0].checked;
 
         // THE ×, on an atom nothing has selected — and on the RESERVED label,
         // because § 6.6 says it comes off exactly like any other.
         const selectionBefore = viewer.data.selection.get();
-        rows()[0].querySelectorAll(".col-labels .selection-tag-remove")[1]
+        rows()[0].querySelectorAll(".molviewer-atoms-column-labels .selection-tag-remove")[1]
                  .dispatch("click", {});
-        const left = rows()[0].querySelectorAll(".col-labels .selection-tag")
+        const left = rows()[0].querySelectorAll(".molviewer-atoms-column-labels .selection-tag")
                               .map(t => t.children[0].textContent);
 
         console.log(JSON.stringify({
@@ -1262,7 +1262,7 @@ def test_a_reserved_label_reads_differently_and_so_does_each_of_them():
               regions: ["frozen_atoms", "L-electrode", "my-notes"] },
             { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
         ];
-        const chips = (card) => card.querySelectorAll(".col-labels .selection-tag")
+        const chips = (card) => card.querySelectorAll(".molviewer-atoms-column-labels .selection-tag")
             .map(t => ({ name: t.children[0].textContent,
                          classes: Array.from(t._classes).sort().join(" "),
                          title: t.title || null }));
@@ -1289,14 +1289,14 @@ def test_a_reserved_label_reads_differently_and_so_does_each_of_them():
     assert set(told) == {"frozen_atoms", "L-electrode", "my-notes"}, (
         "every label the atom carries must show, reserved or not (§ 6.6)"
     )
-    assert "tag-region" in told["my-notes"]["classes"], (
+    assert "molviewer-label-region" in told["my-notes"]["classes"], (
         "a label nobody reserved must read as an ordinary one"
     )
     for name in ("frozen_atoms", "L-electrode"):
-        assert "tag-reserved" in told[name]["classes"], (
+        assert "molviewer-label-reserved" in told[name]["classes"], (
             f"{name} is reserved and must not read as an ordinary label"
         )
-        assert "tag-region" not in told[name]["classes"]
+        assert "molviewer-label-region" not in told[name]["classes"]
     assert told["frozen_atoms"]["classes"] != told["L-electrode"]["classes"], (
         "the two reserved labels read identically, so the chip says only that "
         "they are both special — and they do very different things"
@@ -1307,7 +1307,7 @@ def test_a_reserved_label_reads_differently_and_so_does_each_of_them():
     )
     # And with no list handed in, the viewer does not pretend to know.
     untold = {c["name"]: c for c in out["withoutList"]}
-    assert all("tag-region" in c["classes"] for c in untold.values()), (
+    assert all("molviewer-label-region" in c["classes"] for c in untold.values()), (
         "the viewer marked a label reserved without being told which are — it "
         f"is holding a list of its own (§ 6.6): {out['withoutList']}"
     )

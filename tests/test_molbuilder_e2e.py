@@ -1658,7 +1658,7 @@ def test_save_as_propagates_labels_to_new_sidecar(
     page.wait_for_function(
         '() => {'
         '  const r = document.querySelector('
-        '    \'#selection-atom-list tr[data-atom-index="0"] .col-labels\');'
+        '    \'#selection-atom-list tr[data-atom-index="0"] .molviewer-atoms-column-labels\');'
         '  return r && r.textContent.includes("L-electrode");'
         '}'
     )
@@ -1758,7 +1758,7 @@ def test_save_as_reanchors_selection_store_sourceFile(
     page.wait_for_function(
         '() => {'
         '  const r = document.querySelector('
-        '    \'#selection-atom-list tr[data-atom-index="0"] .col-labels\');'
+        '    \'#selection-atom-list tr[data-atom-index="0"] .molviewer-atoms-column-labels\');'
         '  return r && r.textContent.includes("L-electrode");'
         '}'
     )
@@ -1836,7 +1836,7 @@ def test_modify_open_edit_save_preserves_annotations(
     page.locator("#selection-assign-btn").click()
     page.wait_for_function(
         '() => { const r = document.querySelector('
-        '  \'#selection-atom-list tr[data-atom-index="0"] .col-labels\');'
+        '  \'#selection-atom-list tr[data-atom-index="0"] .molviewer-atoms-column-labels\');'
         '  return r && r.textContent.includes("L-electrode"); }'
     )
     # Save (overwrite water.xyz).
@@ -1894,7 +1894,7 @@ def test_filter_by_label_reads_in_memory_without_saving(
     page.locator("#selection-assign-btn").click()
     page.wait_for_function(
         '() => { const r = document.querySelector('
-        '  \'#selection-atom-list tr[data-atom-index="0"] .col-labels\');'
+        '  \'#selection-atom-list tr[data-atom-index="0"] .molviewer-atoms-column-labels\');'
         '  return r && r.textContent.includes("L-electrode"); }')
     # The real sidecar is NOT written until Save — prove the label is in-memory only.
     assert not (project_dir / "water.molstruct.json").exists(), (
@@ -3212,7 +3212,7 @@ def test_panel_assign_works_on_dirty_workspace_after_electrode(
     page.wait_for_function(
         '() => {'
         '  const row = document.querySelector('
-        '    \'#selection-atom-list tr[data-atom-index="5"] .col-labels\');'
+        '    \'#selection-atom-list tr[data-atom-index="5"] .molviewer-atoms-column-labels\');'
         '  return row && row.textContent.includes("L-electrode");'
         '}',
         timeout=5000,
@@ -3256,8 +3256,8 @@ def test_panel_assign_writes_label_to_atoms(
         '  const rows = document.querySelectorAll('
         '    \'#selection-atom-list tr[data-atom-index]\');'
         '  if (rows.length !== 3) return false;'
-        '  const r0 = rows[0].querySelector(".col-labels");'
-        '  const r1 = rows[1].querySelector(".col-labels");'
+        '  const r0 = rows[0].querySelector(".molviewer-atoms-column-labels");'
+        '  const r1 = rows[1].querySelector(".molviewer-atoms-column-labels");'
         '  return r0 && r1'
         '         && r0.textContent.includes("L-electrode")'
         '         && r1.textContent.includes("L-electrode");'
@@ -3268,7 +3268,7 @@ def test_panel_assign_writes_label_to_atoms(
     # the unselected atom shouldn't have suddenly gained the tag).
     third_text = page.evaluate(
         '() => document.querySelector('
-        '  \'#selection-atom-list tr[data-atom-index="2"] .col-labels\''
+        '  \'#selection-atom-list tr[data-atom-index="2"] .molviewer-atoms-column-labels\''
         ').textContent'
     )
     assert "L-electrode" not in third_text, (
@@ -6313,9 +6313,9 @@ def test_atom_index_display_is_1_based(page, flask_server, water_xyz_file):
     # Atom-list index column shows 1-based: internal atom 0 -> "1".
     page.wait_for_function(
         "() => { const e = document.querySelector("
-        "\"tr[data-atom-index='0'] .col-idx\"); return e && e.textContent === '1'; }")
-    assert page.locator("tr[data-atom-index='0'] .col-idx").text_content() == "1"
-    assert page.locator("tr[data-atom-index='2'] .col-idx").text_content() == "3"
+        "\"tr[data-atom-index='0'] .molviewer-atoms-column-idx\"); return e && e.textContent === '1'; }")
+    assert page.locator("tr[data-atom-index='0'] .molviewer-atoms-column-idx").text_content() == "1"
+    assert page.locator("tr[data-atom-index='2'] .molviewer-atoms-column-idx").text_content() == "3"
     # Internal wiring stays 0-based (data-atom-index attribute).
     assert page.locator("tr[data-atom-index='0']").count() == 1
     # "By atom index" filter input is 1-based: "1-2" -> internal [0, 1].

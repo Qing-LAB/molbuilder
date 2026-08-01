@@ -53,7 +53,7 @@ def test_each_definition_has_atoms_and_citation():
         assert canonical in keys, (
             f"definition for {canonical!r} does not have the full "
             f"(key, short, atoms, practice, citation) shape; "
-            f"region-defs-body would render blanks"
+            f"molviewer-regions-body would render blanks"
         )
 
 

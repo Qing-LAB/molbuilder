@@ -37,8 +37,8 @@ import { toDisplay } from "./_atom.js";
  * at all. The stylesheet owns what each one looks like; this owns only how many
  * there are. */
 const RESERVED_TONES = [
-    "tag-reserved--1", "tag-reserved--2", "tag-reserved--3",
-    "tag-reserved--4", "tag-reserved--5",
+    "molviewer-label-reserved--1", "molviewer-label-reserved--2", "molviewer-label-reserved--3",
+    "molviewer-label-reserved--4", "molviewer-label-reserved--5",
 ];
 
 /**
@@ -1258,8 +1258,8 @@ function mountPanel(doc, card, model, reserved) {
          * it CARRIES what the list says and acts on none of it. */
         const tone = reservedTone.get(name);
         const tag = el("span", tone
-            ? "selection-tag tag-reserved " + tone
-            : "selection-tag tag-region");
+            ? "selection-tag molviewer-label-reserved " + tone
+            : "selection-tag molviewer-label-region");
         const note = reservedNote.get(name);
         if (note) tag.title = name + " — reserved: " + note;
         const text = el("span");
@@ -1293,7 +1293,7 @@ function mountPanel(doc, card, model, reserved) {
             const row = doc.createElement("tr");
             if (picked.has(atom.index)) row.className = "is-selected";
 
-            const checkCell = el("td", "col-check");
+            const checkCell = el("td", "molviewer-atoms-column-check");
             const check = doc.createElement("input");
             check.type = "checkbox";
             check.checked = picked.has(atom.index);
@@ -1308,11 +1308,11 @@ function mountPanel(doc, card, model, reserved) {
             row.appendChild(checkCell);
 
             // 1-based on screen, through the one translation (§ 11.5).
-            row.appendChild(cell("col-idx", String(toDisplay(atom.index))));
-            row.appendChild(cell("col-el", atom.element || ""));
-            row.appendChild(cell("col-res", atom.residue || ""));
+            row.appendChild(cell("molviewer-atoms-column-idx", String(toDisplay(atom.index))));
+            row.appendChild(cell("molviewer-atoms-column-el", atom.element || ""));
+            row.appendChild(cell("molviewer-atoms-column-res", atom.residue || ""));
 
-            const labels = el("td", "col-labels");
+            const labels = el("td", "molviewer-atoms-column-labels");
             for (const name of atom.labels) {
                 labels.appendChild(labelTag(name, atom.index));
             }

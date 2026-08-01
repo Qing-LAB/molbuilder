@@ -1003,12 +1003,12 @@
     background: var(--sp-accent-bg);
 }
 
-.selection-atom-table .col-check { width: 1.6em; }
-.selection-atom-table .col-idx   { width: 3em;   text-align: right; }
-.selection-atom-table .col-el    { width: 2.5em; font-weight: 600; }
-.selection-atom-table .col-res   { width: 4em; color: var(--ps-fg-dim); }
+.selection-atom-table .molviewer-atoms-column-check { width: 1.6em; }
+.selection-atom-table .molviewer-atoms-column-idx   { width: 3em;   text-align: right; }
+.selection-atom-table .molviewer-atoms-column-el    { width: 2.5em; font-weight: 600; }
+.selection-atom-table .molviewer-atoms-column-res   { width: 4em; color: var(--ps-fg-dim); }
 
-.selection-atom-table .col-labels {
+.selection-atom-table .molviewer-atoms-column-labels {
     color: var(--ps-fg-dim);
 }
 
@@ -1035,7 +1035,7 @@
     text-transform: uppercase;
     border-radius: 3px;
 }
-.tag-region {
+.molviewer-label-region {
     background: var(--sp-include-bg);
     color: var(--sp-include-fg);
     border: 1px solid var(--sp-include-bg);
@@ -1057,34 +1057,34 @@
  * what a reserved chip LOOKS like, in numbered tone slots, so adding a
  * reserved meaning is an entry in that list and nothing else.
  *
- * The tones are deliberately unlike `.tag-region`'s neutral fill: a
+ * The tones are deliberately unlike `.molviewer-label-region`'s neutral fill: a
  * chip a user must think about should not be the same weight as one
  * they invented.
  * ==================================================================== */
-.tag-reserved {
+.molviewer-label-reserved {
     font-weight: 700;
 }
-.tag-reserved--1 {                        /* amber */
+.molviewer-label-reserved--1 {                        /* amber */
     background: #4a3410; /* exempt: reserved-label tone */
     color:      #ffc247; /* exempt: reserved-label tone */
     border:     1px solid #8a6316; /* exempt: reserved-label tone */
 }
-.tag-reserved--2 {                        /* violet */
+.molviewer-label-reserved--2 {                        /* violet */
     background: #38215c; /* exempt: reserved-label tone */
     color:      #d3a6ff; /* exempt: reserved-label tone */
     border:     1px solid #6a3fa8; /* exempt: reserved-label tone */
 }
-.tag-reserved--3 {                        /* teal */
+.molviewer-label-reserved--3 {                        /* teal */
     background: #10403f; /* exempt: reserved-label tone */
     color:      #55e0dd; /* exempt: reserved-label tone */
     border:     1px solid #1d7370; /* exempt: reserved-label tone */
 }
-.tag-reserved--4 {                        /* rose */
+.molviewer-label-reserved--4 {                        /* rose */
     background: #4d1730; /* exempt: reserved-label tone */
     color:      #ff9ec0; /* exempt: reserved-label tone */
     border:     1px solid #93304f; /* exempt: reserved-label tone */
 }
-.tag-reserved--5 {                        /* moss */
+.molviewer-label-reserved--5 {                        /* moss */
     background: #23401a; /* exempt: reserved-label tone */
     color:      #a6e08a; /* exempt: reserved-label tone */
     border:     1px solid #4a7a37; /* exempt: reserved-label tone */
@@ -1284,40 +1284,40 @@
 .selection-target-info-panel[hidden] {
     display: none;
 }
-.region-defs-title {
+.molviewer-regions-title {
     margin: 0 0 0.5rem 0;
     font-size: 13px;
     color: var(--ps-fg);
     border-bottom: 1px solid var(--ps-border);
     padding-bottom: 0.3rem;
 }
-.region-defs-row {
+.molviewer-regions-row {
     margin-bottom: 0.5rem;
 }
-.region-defs-row > summary {
+.molviewer-regions-row > summary {
     cursor: pointer;
     padding: 0.2rem 0;
     line-height: 1.5;
     list-style: none;
 }
-.region-defs-row > summary::-webkit-details-marker {
+.molviewer-regions-row > summary::-webkit-details-marker {
     display: none;
 }
-.region-defs-row > summary::before {
+.molviewer-regions-row > summary::before {
     content: "▸ ";
     color: var(--ps-fg-dim);
 }
-.region-defs-row[open] > summary::before {
+.molviewer-regions-row[open] > summary::before {
     content: "▾ ";
 }
-.region-defs-key {
+.molviewer-regions-key {
     font-family: var(--font-mono);
     background: var(--ps-bg);
     padding: 1px 5px;
     border-radius: 3px;
     color: var(--ps-fg);
 }
-.region-defs-badge {
+.molviewer-regions-badge {
     font-size: 10px;
     padding: 1px 5px;
     border-radius: 3px;
@@ -1325,48 +1325,48 @@
     letter-spacing: 0.04em;
     margin-left: 0.3em;
 }
-.region-defs-badge.in-use {
+.molviewer-regions-badge.in-use {
     background: var(--success);
     color: white;
 }
-.region-defs-badge.available {
+.molviewer-regions-badge.available {
     background: var(--ps-border);
     color: var(--ps-fg-dim);
 }
-.region-defs-short {
+.molviewer-regions-short {
     color: var(--ps-fg-dim);
     margin-left: 0.4em;
 }
-.region-defs-body {
+.molviewer-regions-body {
     margin: 0.3rem 0 0.4rem 1.5rem;
     font-size: 11.5px;
     line-height: 1.45;
 }
-.region-defs-body > dt {
+.molviewer-regions-body > dt {
     font-weight: 600;
     color: var(--ps-fg);
     margin-top: 0.3rem;
 }
-.region-defs-body > dd {
+.molviewer-regions-body > dd {
     margin: 0.1rem 0 0 0;
     color: var(--ps-fg-dim);
 }
-.region-defs-bias {
+.molviewer-regions-bias {
     margin-top: 0.7rem;
     padding-top: 0.6rem;
     border-top: 1px solid var(--ps-border);
     color: var(--ps-fg-dim);
     line-height: 1.45;
 }
-.region-defs-bias > strong {
+.molviewer-regions-bias > strong {
     color: var(--ps-fg);
 }
-.region-defs-doc {
+.molviewer-regions-doc {
     margin-top: 0.4rem;
     color: var(--ps-fg-dim);
     font-size: 11px;
 }
-.region-defs-doc > a {
+.molviewer-regions-doc > a {
     color: var(--ps-fg);
 }
 
