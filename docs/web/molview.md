@@ -1978,17 +1978,32 @@ neither does a drag already under way on the canvas — there is nothing to
 disable. One element over the window catches every kind of arrival, including
 the kinds that were never controls.
 
-> **Open: the cover has to be painted before the work starts.** Showing it and
-> then immediately doing the blocking render on the same task means the browser
-> never gets a frame in which to draw it — the cover goes up and comes down
-> inside one freeze, and a user sees a locked page with no explanation for it.
-> Avoiding that needs a yield that reaches a **paint** (`requestAnimationFrame`),
-> not merely the next microtask; `await Promise.resolve()` is a microtask and
-> runs before any paint. The rebuild path yields that way today
-> (`render-engine.js`), so this is written down as a thing to check on real
-> hardware with a large structure rather than asserted as broken. The previous
-> implementation had found this and left the rule in a comment; it is here now so
-> the next rewrite inherits the finding instead of the bug.
+> **Open — and the section above describes the intent, not a verified
+> behaviour.** What is confirmed is only that the parts exist and are connected:
+> the element and its CSS (`mount.js`, `molview.css`), and a renderEngine that
+> calls `setBusy("Updating view…")` on a rebuild and `setBusy(false)` after.
+>
+> **Nothing checks that a user ever sees it or is stopped by it.** The one test —
+> `test_only_a_rebuild_raises_the_cover` — drives a **stand-in** embed whose
+> `setBusy` records the call and does nothing else. No DOM, no stylesheet, no
+> paint, no click. It proves the call is made and cannot prove the cover appears,
+> covers anything, or blocks a pointer. That is API-presence, not the end result
+> (§ 13.2's levels: this needs level 3, a real browser).
+>
+> **And there is a specific reason to doubt it.** Showing the cover and then doing
+> the blocking render on the same task gives the browser no frame in which to draw
+> it: the cover would go up and come down inside one freeze, and a user would see
+> a locked page with no explanation. Avoiding that needs a yield that reaches a
+> **paint** (`requestAnimationFrame`); `await Promise.resolve()` is a microtask and
+> runs *before* any paint, and that is what the rebuild path uses today.
+>
+> The previous implementation had found exactly this and left the rule in a
+> comment (`molview-old/_seal.js`: *"must yield a paint … or the scrim won't
+> appear until after the freeze"*). The rebuild kept the element and lost the
+> reason — which is the shape of this whole area's problem, and why it is written
+> here rather than left in a comment again.
+>
+> **Until a real-browser test exists, treat the lock as unproven.**
 
 This is the same shape as the write race of § 11.2 — something is in flight, and
 work keeps arriving — so it is worth stating the same way, as states and what
