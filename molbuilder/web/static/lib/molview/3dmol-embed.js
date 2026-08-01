@@ -343,12 +343,27 @@ export function create(hostEl, opts) {
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    /* CARRIED KNOWLEDGE (2 of 3). Every arrow is batched into ONE GLShape:
-     * addArrow returns a shape, and every subsequent arrow appends to that same
-     * shape via shape.addArrow, per-arrow colour preserved as vertex colour. A
-     * whole overlay becomes one scene object and one geometry instead of N —
-     * measured ~7x faster per frame (81 arrows: ~70ms -> ~10ms). A stand-in
-     * whose addArrow return lacks .addArrow falls back to one shape per arrow.
+    /* CARRIED KNOWLEDGE (2 of 3), CORRECTED. Arrows are batched — a whole
+     * overlay becomes a few scene objects instead of N, measured ~7x faster per
+     * frame (81 arrows: ~70ms -> ~10ms) — but ONE SHAPE PER COLOUR, not one
+     * shape for everything.
+     *
+     * The claim this replaces was that a GLShape preserves per-arrow colour as
+     * vertex colour. It does not, and the library says so when asked: after
+     * appending a green arrow to a shape created from a red one, `shape.color`
+     * is still red and every vertex colour is 0,0,0. A GLShape carries a SINGLE
+     * colour, and `addArrow` only adds geometry to it.
+     *
+     * So batching everything into one shape painted every arrow the colour of
+     * whichever arrow happened to be first. Both things that use this door lost
+     * their meaning: the two axis triads came out monochrome — which is the
+     * whole of what tells the world frame from the cell's (§ 10.3) — and a force
+     * set whose largest arrow was not first lost the gold that marks it (§ 1.1).
+     * Neither could fail a node test: a stand-in records the call, and the
+     * colour is only wrong once something renders it.
+     *
+     * A stand-in whose addArrow return lacks .addArrow falls back to one shape
+     * per arrow, which is correct, just slower.
      */
     function redrawArrows() {
         state.arrowShapes = clear(state.arrowShapes);
@@ -364,7 +379,8 @@ export function create(hostEl, opts) {
             if (m > maxMag) { maxMag = m; maxAt = i; }
         }
 
-        let batch = null;
+        // colour -> the shape every arrow of that colour is appended to.
+        const batches = new Map();
         for (let i = 0; i < arrows.length; i++) {
             const a = arrows[i];
             if (!a || !a.start || !a.end) continue;
@@ -386,22 +402,31 @@ export function create(hostEl, opts) {
                 color:       color,
             };
             try {
+                const batch = batches.get(color);
                 if (batch && typeof batch.addArrow === "function") {
                     batch.addArrow(spec);
                 } else {
                     const shape = state.viewer.addArrow(spec);
                     state.arrowShapes.push(shape);
-                    if (shape && typeof shape.addArrow === "function") batch = shape;
+                    if (shape && typeof shape.addArrow === "function") {
+                        batches.set(color, shape);
+                    }
                 }
             } catch (_) { continue; }
             if (a.label) {
+                /* WHERE THE CALLER SAYS, when it says. `labelEnd` is the point
+                 * just past the tip, worked out from the arrow's own base — and
+                 * it was computed and never read, so this scaled `end` by 1.05
+                 * FROM THE WORLD ORIGIN instead. For a triad based at the origin
+                 * the two agree, which is why it looked right; for the cell's
+                 * triad, based at the box's corner, the label drifts off toward
+                 * the origin by a fraction of the whole vector. */
+                const at = (Array.isArray(a.labelEnd) && a.labelEnd.length === 3)
+                    ? a.labelEnd
+                    : [a.end[0] * 1.05, a.end[1] * 1.05, a.end[2] * 1.05];
                 try {
                     state.arrowLabels.push(state.viewer.addLabel(String(a.label), {
-                        position: {
-                            x: a.end[0] * 1.05,
-                            y: a.end[1] * 1.05,
-                            z: a.end[2] * 1.05,
-                        },
+                        position: { x: at[0], y: at[1], z: at[2] },
                         ...LABEL_STYLE,
                     }));
                 } catch (_) {}
@@ -409,8 +434,22 @@ export function create(hostEl, opts) {
         }
     }
 
-    function rampColor(t) {   // t in [0,1]: dim-red -> orange-red
-        return "rgb(" + Math.floor(170 + 85 * t) + "," + Math.floor(40 + 60 * t) + ",32)";
+    /* t in [0,1]: dim-red -> orange-red, IN BANDS.
+     *
+     * Quantised because the arrows are batched per colour above, and a
+     * continuous ramp would give a distinct colour to nearly every arrow —
+     * one shape each, which is the cost the batching exists to avoid. Bands put
+     * a ceiling on the shape count that does not grow with the atom count.
+     *
+     * Nothing is lost by it: § 1.1's signal is that "converging forces visibly
+     * shrink" — the LENGTH carries the magnitude, and the shade is a second cue
+     * on a thin arrow, where the eye separates far fewer than this many steps
+     * anyway. */
+    const RAMP_BANDS = 8;
+    function rampColor(t) {
+        const band = Math.round(t * (RAMP_BANDS - 1)) / (RAMP_BANDS - 1);
+        return "rgb(" + Math.floor(170 + 85 * band) + ","
+                      + Math.floor(40 + 60 * band) + ",32)";
     }
 
     // Read a CSS custom property off the card, where these are declared and
