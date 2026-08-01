@@ -2049,6 +2049,22 @@ fifth appear unnoticed. On the way in, the server's payload is normalised into
 the shapes of § 6.2 — the server's names become this module's names, in one
 place, so nothing downstream has to know both.
 
+**What is on the other side of each.** The routes are the server's, and so is
+their behaviour — what a body must contain, what comes back, and which status a
+refusal carries. That is [`web-api.md`](?doc=web/web-api.md)'s, and the four
+MolView calls are listed there with their bodies and answers:
+
+| MolView's call | Route | Sends | Answers |
+|---|---|---|---|
+| `installMolecule` | `/api/build/load` | `{path}`, or `{text, filename, format?, sidecar?}` | the structure payload this module normalises (§ 6.2) |
+| `applyOp(name, args)` | `/api/modify/<name>` | the envelope + the op's arguments + the selection under § 11.1's key | the structure |
+| `commitPeriodicityOp(op, payload)` | `/api/structure/periodicity` | the envelope + `op`, `payload` | `{ok, periodicity, notices}` — the cell block in the same shape a load sends it |
+| the filter (§ 9.5) | `/api/selection/eval` | `{atoms, rule}` — no coordinates, because no rule matches on position | `{selected_indices}` |
+
+The **export** door is not in that list because MolView does not call it: it
+hands the structure to the `files` door, and turning it into bytes is that door's
+business (§ 6.7, § 11.7).
+
 > The **field-level** JSON of those payloads — the structure envelope, the atom
 > row, the error envelope — belongs to [`web-api.md`](?doc=web/web-api.md). This
 > document names the routes and the direction data flows; copying the schemas

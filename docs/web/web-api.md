@@ -53,30 +53,41 @@ the Modify tab's older `applyStructure(r)` reads. The inverse, rebuilding a
 `Structure` from a request body, is `struct_from_body()`; metadata arrays are
 honored only when their length matches the atom count.
 
-### The request envelope — four shapes today, one by design
+### The request envelope — one shape at every door that carries a structure
 
-The paragraph above is true of **responses**. It is not true of requests: a
-structure goes *out* of the browser in four different shapes, one per door
-family.
+**Every door that takes a structure now takes the envelope**, and the browser
+writes no coordinate document to reach any of them (`molview.md` § 11.7). Two
+doors deliberately take something else, and neither is carrying a structure the
+caller holds.
 
-| door | how the structure is sent today |
+| door | how the structure is sent |
 |---|---|
-| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format, sidecar}` |
-| `/api/modify/*` | `{xyz, atom_names, residue_ids, residue_names, chain_ids, regions, periodicity, annotations, title, …the op's own arguments}` — flattened columns (`regions` is the whole label store, reserved labels included) |
-| `/api/structure/periodicity`, `/api/structure/save` | `{xyz, sidecar}` — a coordinate document plus the sidecar's metadata fields |
-| `/api/selection/eval` | `{atoms: [{element, labels, residueName}], rule}` — a cut-down atom list |
+| `/api/modify/*` | `{structure: <envelope>, …the op's own arguments, and the selection under its own key}` |
+| `/api/structure/periodicity` | `{structure: <envelope>, op, payload}` |
+| `/api/structure/save` | `{structure: <envelope>, path, overwrite}` |
+| `/api/structure/export` | `{structure: <envelope>}` |
+| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format?, sidecar?}`. **Not the envelope, and right not to be:** nothing is being sent back, a file or a paste is being *parsed*, and raw text is what a user supplied |
+| `/api/selection/eval` | `{atoms: [{element, labels, residueName}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs |
 
-Two things follow, and both have cost real defects:
+> **The old shapes are gone, not deprecated.** `/api/structure/periodicity` used
+> to take `{data: {xyz, sidecar}}`; it now answers 400 to that, which is how the
+> defect was found — the one caller that exists could not produce a coordinate
+> document, so the door had never once opened. `/api/modify/*` still accepts its
+> old flattened `{xyz, atom_names, …}` columns for callers that have not moved;
+> a body carrying both keys takes the envelope and ignores the rest, never merges
+> (`_shared.py::struct_from_body`).
 
-- **A caller must know four shapes** to use four doors, and nothing makes them
-  agree. A field added to one is absent from the others until somebody notices.
-- **Two of the four require the caller to write a coordinate document.** The
-  browser holds coordinates as numbers, so it serialises them to text, the server
-  parses that straight back into numbers, and numbers come back. That round trip
-  is the only reason a `.xyz` writer exists in the browser at all — and the
-  browser's writer has already drifted from `Structure.to_xyz` (no title line, raw
-  precision where Python writes six decimals), so the same structure saved from
-  two halves of the application produces two different files.
+Both of the defects that drove this are worth keeping, because each was silent:
+
+- **A caller had to know four shapes** to use four doors, and nothing made them
+  agree. A field added to one was absent from the others until somebody noticed.
+- **Two of the four required the caller to write a coordinate document.** The
+  browser holds coordinates as numbers, so it serialised them to text, the server
+  parsed that straight back into numbers, and numbers came back. That round trip
+  was the only reason a `.xyz` writer existed in the browser at all — and that
+  writer had drifted from `Structure.to_xyz` (no title line, raw precision where
+  Python writes six decimals), so the same structure saved from two halves of the
+  application produced two different files. The writer is gone.
 
 > **The rule.** **A structure crosses in one envelope, in both directions, at every
 > door — and the server is the only thing that turns it into a file.** The browser
@@ -341,7 +352,7 @@ auth routes.
 | POST `/api/build/pyscf` | `{ structure, config }` → the generated PySCF `.py` text |
 | POST `/api/build/preflight` | `{ structure, config, engine }` → the pre-run validation report (pseudos + config gates) |
 | POST `/api/structure/analyze` | `{ structure }` → the geometry/chemistry report + summary |
-| POST `/api/structure/periodicity` | the unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): one op per Cell-page edit (vacuum / axis_kind / cell / cell_origin / calibrate) through the frame-contract gate — returns the corrected truth blob + resolved views + heal notices |
+| POST `/api/structure/periodicity` | `{structure, op, payload}` → `{ok, periodicity, notices}`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `cell_origin` — through the frame-contract gate. There is deliberately **no** `calibrate`: moving atoms is not a periodicity edit and lives at `/api/modify/calibrate`. The answer is the cell block in the same shape `/api/build/load` sends it — raw values with the `resolved_*` views beside them — so a client adopts it verbatim through the path a load already takes, and `notices` carries `{level, message}` with `kind: "heal"` on anything the gate modified |
 | POST `/api/run/install-wrapper` | install the run-wrapper script into a run dir (optional `continue_retries` 1–5 bakes the SIESTA warm-retry budget — `?doc=execution/running-a-job.md` § 3.5) |
 | POST `/api/siesta/install-pseudos` | install SIESTA pseudopotentials |
 
