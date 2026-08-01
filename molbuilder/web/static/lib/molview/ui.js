@@ -186,32 +186,32 @@ function mountFrameBar(doc, card, model, handle) {
         return node;
     };
 
-    const prev = el("button", "mvf-step");
+    const prev = el("button", "molviewer-frames-step");
     prev.type = "button"; prev.textContent = "‹";
     prev.setAttribute("aria-label", "Previous frame");
 
-    const playBtn = el("button", "mvf-play");
+    const playBtn = el("button", "molviewer-frames-play");
     playBtn.type = "button"; playBtn.textContent = "▶";
     playBtn.setAttribute("aria-label", "Play");
 
-    const next = el("button", "mvf-step");
+    const next = el("button", "molviewer-frames-step");
     next.type = "button"; next.textContent = "›";
     next.setAttribute("aria-label", "Next frame");
 
-    const transport = el("div", "mvf-transport");
+    const transport = el("div", "molviewer-frames-transport");
     transport.appendChild(prev);
     transport.appendChild(playBtn);
     transport.appendChild(next);
 
-    const slider = el("input", "mvf-slider");
+    const slider = el("input", "molviewer-frames-slider");
     slider.type = "range";
     slider.min = "0";
     slider.step = "1";
     slider.setAttribute("aria-label", "Frame");
 
-    const counter = el("span", "mvf-counter");
+    const counter = el("span", "molviewer-frames-counter");
 
-    const loopWrap = el("label", "mvf-loop");
+    const loopWrap = el("label", "molviewer-frames-loop");
     const loopBox = doc.createElement("input");
     loopBox.type = "checkbox";
     loopBox.checked = handle.getLoop();
@@ -231,13 +231,13 @@ function mountFrameBar(doc, card, model, handle) {
      * implementation had found that and clamped for it; the clamp is kept, and
      * so is the reason.
      */
-    const speedWrap = el("label", "mvf-speed");
+    const speedWrap = el("label", "molviewer-frames-speed");
     speedWrap.title = "Playback speed (ms per frame)";
-    // THE CLASS MATTERS: molview.css styles `.mvf-speed-input` (its width, and
+    // THE CLASS MATTERS: molview.css styles `.molviewer-frames-speed-input` (its width, and
     // the spinner-arrow removal). Built without it, the control appears and is
     // simply unstyled -- which is the same trap as the panel's controls, and I
     // walked into it once here before the browser check caught it.
-    const speedBox = el("input", "mvf-speed-input");
+    const speedBox = el("input", "molviewer-frames-speed-input");
     speedBox.type = "number";
     speedBox.min = String(SPEED_MIN_MS);
     speedBox.max = String(SPEED_MAX_MS);
@@ -915,7 +915,7 @@ function mountPanel(doc, card, model, reserved) {
         return node;
     };
 
-    const root = el("div", "selection-card");
+    const root = el("div", "molviewer-selection-card");
 
     /* Every radio group in this panel is named after the OWNER (§ 5.6). The name
      * is what browsers group radios by, and it is global to the document — so
@@ -925,18 +925,18 @@ function mountPanel(doc, card, model, reserved) {
 
     /* ── The two pages, and the tab bar that switches them (§ 8.1) ───────── */
     const header = el("div", "card-header");
-    const tabs = el("div", "panel-page-switch selection-header-tabs");
+    const tabs = el("div", "molviewer-panel-tab-switch molviewer-selection-header-tabs");
     const pages = {};
     const tabInputs = {};
     for (const [key, label] of [["selection", "Selection"], ["cell", "Cell"]]) {
         /* A TAB IS A RADIO INSIDE A LABEL, not a button — the carried stylesheet
          * draws the chosen tab from `:has(input:checked)` (accent text, accent
-         * underline) and its type from `.panel-page-option > span`. Built as a
+         * underline) and its type from `.molviewer-panel-tab-option > span`. Built as a
          * bare `<button>` with the text on it, NEITHER rule can match: the
          * switch renders as two words in the browser's default button font with
          * no indication of which page you are on. The markup is as much the
          * stylesheet's contract as the class name is. */
-        const tab = el("label", "panel-page-option");
+        const tab = el("label", "molviewer-panel-tab-option");
         const radio = doc.createElement("input");
         radio.type = "radio";
         radio.name = "molview-page-" + owner;
@@ -948,7 +948,7 @@ function mountPanel(doc, card, model, reserved) {
         tabs.appendChild(tab);
         tabInputs[key] = radio;
 
-        const page = el("div", "panel-page");
+        const page = el("div", "molviewer-panel-tab");
         /* THE ROLE IS PART OF THE MARKUP CONTRACT, exactly like the class
          * (§ 8.1). The stylesheet singles the Cell page out by it — that page is
          * all read-only text, so it sizes to its content and then scrolls, while
@@ -986,10 +986,10 @@ function mountPanel(doc, card, model, reserved) {
     //
     // Two editors of ONE selection. Switching between them does not touch what
     // is selected — the panel redraws, the truth does not move.
-    const mode = el("div", "selection-mode");
+    const mode = el("div", "molviewer-selection-mode");
     const modeInputs = {};
     for (const [key, label] of [["click", "Click"], ["filter", "Filter"]]) {
-        const option = el("label", "selection-mode-option");
+        const option = el("label", "molviewer-selection-mode-option");
         const radio = doc.createElement("input");
         radio.type = "radio";
         radio.name = "molview-mode-" + owner;
@@ -1013,38 +1013,38 @@ function mountPanel(doc, card, model, reserved) {
      */
 
     /* ── The click page: the atom list ──────────────────────────────────── */
-    const clickSection = el("div", "selection-click-section");
+    const clickSection = el("div", "molviewer-selection-click-section");
     /* `data-fill` is the role that makes a section TAKE THE LEFTOVER HEIGHT and
      * hold the page's single scroll region, so the atom list grows to the
      * panel's bottom and the buttons beneath it line up with the bottom of the
      * 3D window (§ 8.2's shared extent). Without it the section sizes to its
      * content and the page collapses upward. A page has exactly one. */
     clickSection.setAttribute("data-fill", "");
-    const count = el("div", "selection-count");
-    const listWrap = el("div", "selection-list-wrap");
-    const list = el("table", "selection-atom-table");
+    const count = el("div", "molviewer-selection-count");
+    const listWrap = el("div", "molviewer-selection-list-wrap");
+    const list = el("table", "molviewer-selection-atom-table");
     listWrap.appendChild(list);
     clickSection.appendChild(count);
     clickSection.appendChild(listWrap);
     pages.selection.appendChild(clickSection);
 
     /* ── The filter page: rows, edited one at a time (§ 8.4) ─────────────── */
-    const filterSection = el("div", "selection-filter-section");
+    const filterSection = el("div", "molviewer-filter-section");
     filterSection.setAttribute("data-fill", "");
-    const rows = el("div", "selection-filter-rows");
+    const rows = el("div", "molviewer-filter-rows");
     filterSection.appendChild(rows);
 
-    const actions = el("div", "selection-filter-actions");
-    const addRow = el("button", "selection-add-filter-row");
+    const actions = el("div", "molviewer-filter-actions");
+    const addRow = el("button", "molviewer-selection-add-filter-row");
     addRow.type = "button";
     addRow.textContent = "+ Add filter";
     addRow.addEventListener("click", () => model.selection.addFilter());
     actions.appendChild(addRow);
     filterSection.appendChild(actions);
 
-    const footer = el("div", "selection-filter-footer");
-    const combineRow = el("div", "selection-combinator-row");
-    const combine = el("select", "selection-combinator-select");
+    const footer = el("div", "molviewer-filter-footer");
+    const combineRow = el("div", "molviewer-selection-combinator-row");
+    const combine = el("select", "molviewer-selection-combinator-select");
     for (const [value, label] of [["and", "Match all"], ["or", "Match any"]]) {
         const option = doc.createElement("option");
         option.value = value; option.textContent = label;
@@ -1054,7 +1054,7 @@ function mountPanel(doc, card, model, reserved) {
         model.selection.setCombinator(e.target.value);
     });
     combineRow.appendChild(combine);
-    const apply = el("button", "selection-apply-filter-btn");
+    const apply = el("button", "molviewer-selection-apply-filter-btn");
     apply.type = "button";
     apply.textContent = "Apply filter";
     // Filter mode composes a query the user EXPLICITLY applies, and applying it
@@ -1068,17 +1068,17 @@ function mountPanel(doc, card, model, reserved) {
     /* ── The click operations, and the label block ───────────────────────── */
     // A visual divider between the SELECT-side controls above and the ACT-side
     // controls below — the stylesheet's own separation of the two jobs.
-    pages.selection.appendChild(el("div", "selection-divider"));
+    pages.selection.appendChild(el("div", "molviewer-selection-divider"));
 
     // Every action button takes one of the five classes the stylesheet's shared
     // base is written over. A sixth name would get no base at all: no padding,
     // no font, no baseline — which is exactly how one button ends up a different
     // size from the two beside it.
-    const actionsRow = el("div", "selection-actions-row");
+    const actionsRow = el("div", "molviewer-selection-actions-row");
     for (const [label, className, run] of [
-        ["Clear",  "selection-clear-btn", () => model.selection.clear()],
-        ["Invert", "selection-add-btn",   () => model.selection.invert(atomCount())],
-        ["All",    "selection-add-btn",   () => model.selection.all(atomCount())],
+        ["Clear",  "molviewer-selection-clear-btn", () => model.selection.clear()],
+        ["Invert", "molviewer-selection-add-btn",   () => model.selection.invert(atomCount())],
+        ["All",    "molviewer-selection-add-btn",   () => model.selection.all(atomCount())],
     ]) {
         const button = el("button", className);
         button.type = "button";
@@ -1099,7 +1099,7 @@ function mountPanel(doc, card, model, reserved) {
     // three set operations, and THE COLOUR ENCODES WHICH: blue replaces, green
     // unions, red subtracts. That is the stylesheet's semantics, not a palette
     // choice — a verb wearing the wrong one would say the wrong thing.
-    const assign = el("div", "selection-assign");
+    const assign = el("div", "molviewer-selection-assign");
 
     /* THE TARGET: pick a label the structure already has, or type a new one.
      *
@@ -1115,10 +1115,10 @@ function mountPanel(doc, card, model, reserved) {
      * its own, with nothing to keep in step.
      */
     const NEW_LABEL = " new";      // not a name any label could have
-    const targetRow = el("div", "selection-target-row");
-    const chooser = el("select", "selection-assign-select");
+    const targetRow = el("div", "molviewer-selection-target-row");
+    const chooser = el("select", "molviewer-selection-assign-select");
     chooser.setAttribute("aria-label", "Label to apply");
-    const target = el("input", "selection-new-label");
+    const target = el("input", "molviewer-selection-new-label");
     target.type = "text";
     target.placeholder = "New label name";
     targetRow.appendChild(chooser);
@@ -1170,15 +1170,15 @@ function mountPanel(doc, card, model, reserved) {
         showNewBox();
     }
 
-    const verbRow = el("div", "selection-verb-row");
+    const verbRow = el("div", "molviewer-selection-verb-row");
     // What the three verbs act on: the chosen label, or the typed one.
     const named = () => (chooser.value === NEW_LABEL
         ? String(target.value || "").trim()
         : chooser.value);
     for (const [label, className, verb] of [
-        ["Assign",   "selection-assign-btn",        "replace"],
-        ["+ Add",    "selection-add-target-btn",    "add"],
-        ["− Remove", "selection-remove-target-btn", "remove"],
+        ["Assign",   "molviewer-selection-assign-btn",        "replace"],
+        ["+ Add",    "molviewer-selection-add-target-btn",    "add"],
+        ["− Remove", "molviewer-selection-remove-target-btn", "remove"],
     ]) {
         const button = el("button", className);
         button.type = "button";
@@ -1258,15 +1258,15 @@ function mountPanel(doc, card, model, reserved) {
          * it CARRIES what the list says and acts on none of it. */
         const tone = reservedTone.get(name);
         const tag = el("span", tone
-            ? "selection-tag molviewer-label-reserved " + tone
-            : "selection-tag molviewer-label-region");
+            ? "molviewer-selection-tag molviewer-label-reserved " + tone
+            : "molviewer-selection-tag molviewer-label-region");
         const note = reservedNote.get(name);
         if (note) tag.title = name + " — reserved: " + note;
         const text = el("span");
         text.textContent = name;
         tag.appendChild(text);
         if (model.mode === "readonly") return tag;
-        const strip = el("button", "selection-tag-remove");
+        const strip = el("button", "molviewer-selection-tag-remove");
         strip.type = "button";
         strip.textContent = "×";
         // 1-based on screen, through the one translation (§ 11.5).
@@ -1348,15 +1348,15 @@ function mountPanel(doc, card, model, reserved) {
         renderedRows = state.filters.length;
         rows.textContent = "";
         if (!state.filters.length) {
-            const empty = el("div", "selection-filter-empty");
+            const empty = el("div", "molviewer-filter-empty");
             empty.textContent = "No filters yet.";
             rows.appendChild(empty);
             return;
         }
         state.filters.forEach((filter, at) => {
-            const row = el("div", "selection-filter-row");
+            const row = el("div", "molviewer-filter-row");
 
-            const kind = el("select", "selection-filter-kind");
+            const kind = el("select", "molviewer-filter-kind");
             // Which rows are worth offering is read from the structure, not
             // hard-coded (§ 9.5) — but WHICH RULES EXIST is the server's
             // vocabulary, and these are its names.
@@ -1373,14 +1373,14 @@ function mountPanel(doc, card, model, reserved) {
                 model.selection.updateFilter(at, { kind: e.target.value });
             });
 
-            const value = el("input", "selection-filter-text");
+            const value = el("input", "molviewer-filter-text");
             value.type = "text";
             value.value = filter.value;
             value.addEventListener("input", (e) => {
                 model.selection.updateFilter(at, { value: e.target.value });
             });
 
-            const remove = el("button", "selection-filter-remove");
+            const remove = el("button", "molviewer-filter-remove");
             remove.type = "button";
             remove.textContent = "×";
             remove.setAttribute("aria-label", "Remove this filter");
@@ -1450,7 +1450,7 @@ function mountPanel(doc, card, model, reserved) {
             ["Vacuum",  vector(cell.vacuum), allZero(rawVacuum)],
         ]) {
             const term = doc.createElement("dt");
-            term.className = "selection-mini-label";
+            term.className = "molviewer-selection-mini-label";
             term.textContent = label;
             const detail = doc.createElement("dd");
             detail.className = "molviewer-cell-value";

@@ -81,7 +81,7 @@ def test_electrode_convention_helper_is_consistent_with_python():
 #
 # The ⓘ region-label popover's markup lived in `templates/_selection_panel.html`,
 # which is gone -- and with it the feature.  The rebuilt MolView never
-# reimplemented it: `lib/molview/ui.js` creates no `selection-target-info-btn`,
+# reimplemented it: `lib/molview/ui.js` creates no `molviewer-selection-target-info-btn`,
 # no `-panel`, no `region-defs-*`.  The JS below still ships on six pages via
 # `_molview_scripts.html` and now populates nothing.
 #

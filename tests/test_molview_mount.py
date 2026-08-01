@@ -389,7 +389,7 @@ def test_the_frame_bar_appears_only_once_there_is_more_than_one_frame():
         const manyFrames = bar.hidden;
 
         viewer.data.setCurrentFrame(1);
-        const counter = bar.querySelector(".mvf-counter").textContent;
+        const counter = bar.querySelector(".molviewer-frames-counter").textContent;
         console.log(JSON.stringify({ atMount, oneFrame, manyFrames, counter }));
         """
     )
@@ -833,7 +833,7 @@ def test_two_viewers_on_one_page_share_no_name():
         })(globalThis.document.body);
 
         const groups = [first, second].map((host) =>
-            host.querySelector(".panel-page-switch").children[0].children[0].name);
+            host.querySelector(".molviewer-panel-tab-switch").children[0].children[0].name);
 
         console.log(JSON.stringify({
             ids, duplicates: ids.filter((id, at) => ids.indexOf(id) !== at),
@@ -1018,8 +1018,8 @@ def test_switching_editors_redraws_the_panel_and_moves_no_selection():
         viewer.data.selection.add([0, 1]);
 
         const card = host.querySelector(".molview-card");
-        const clickBody = card.querySelector(".selection-click-section");
-        const filterBody = card.querySelector(".selection-filter-section");
+        const clickBody = card.querySelector(".molviewer-selection-click-section");
+        const filterBody = card.querySelector(".molviewer-filter-section");
 
         const inClick = { click: clickBody.hidden, filter: filterBody.hidden,
                           selection: viewer.data.selection.get() };
@@ -1054,8 +1054,8 @@ def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
         """
         const { host } = await mounted();
         const card = host.querySelector(".molview-card");
-        const options = card.querySelector(".panel-page-switch").children;
-        const pages = card.querySelectorAll(".panel-page");
+        const options = card.querySelector(".molviewer-panel-tab-switch").children;
+        const pages = card.querySelectorAll(".molviewer-panel-tab");
 
         const shape = options.map((o) => ({
             tag:    o.tagName,
@@ -1077,7 +1077,7 @@ def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
         // A second viewer on the same page: its tabs are its own.
         const otherHost = globalThis.__makeHost();
         await MV.mount(otherHost, workspace, { owner: "second-viewer" });
-        const otherOptions = otherHost.querySelector(".panel-page-switch").children;
+        const otherOptions = otherHost.querySelector(".molviewer-panel-tab-switch").children;
 
         console.log(JSON.stringify({
             shape, atMount, afterClick,
@@ -1123,7 +1123,7 @@ def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store():
         const { host, viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         const card = host.querySelector(".molview-card");
-        const rows = card.querySelectorAll(".selection-atom-table")[0].children;
+        const rows = card.querySelectorAll(".molviewer-selection-atom-table")[0].children;
 
         const numbers = Array.from(rows).map(
             r => r.querySelectorAll(".molviewer-atoms-column-idx")[0].textContent);
@@ -1131,7 +1131,7 @@ def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store():
         console.log(JSON.stringify({
             numbers,
             selection: viewer.data.selection.get(),
-            count: card.querySelector(".selection-count").textContent,
+            count: card.querySelector(".molviewer-selection-count").textContent,
         }));
         """
     )
@@ -1173,14 +1173,14 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
         const { host, viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         const card = host.querySelector(".molview-card");
-        const rows = () => card.querySelectorAll(".selection-atom-table")[0].children;
+        const rows = () => card.querySelectorAll(".molviewer-selection-atom-table")[0].children;
 
         const first = rows()[0];
         const columns = {
             index:   first.querySelectorAll(".molviewer-atoms-column-idx")[0].textContent,
             element: first.querySelectorAll(".molviewer-atoms-column-el")[0].textContent,
             residue: first.querySelectorAll(".molviewer-atoms-column-res")[0].textContent,
-            labels:  first.querySelectorAll(".molviewer-atoms-column-labels .selection-tag")
+            labels:  first.querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag")
                           .map(t => t.children[0].textContent),
         };
 
@@ -1197,9 +1197,9 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
         // THE ×, on an atom nothing has selected — and on the RESERVED label,
         // because § 6.6 says it comes off exactly like any other.
         const selectionBefore = viewer.data.selection.get();
-        rows()[0].querySelectorAll(".molviewer-atoms-column-labels .selection-tag-remove")[1]
+        rows()[0].querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag-remove")[1]
                  .dispatch("click", {});
-        const left = rows()[0].querySelectorAll(".molviewer-atoms-column-labels .selection-tag")
+        const left = rows()[0].querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag")
                               .map(t => t.children[0].textContent);
 
         console.log(JSON.stringify({
@@ -1262,7 +1262,7 @@ def test_a_reserved_label_reads_differently_and_so_does_each_of_them():
               regions: ["frozen_atoms", "L-electrode", "my-notes"] },
             { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
         ];
-        const chips = (card) => card.querySelectorAll(".molviewer-atoms-column-labels .selection-tag")
+        const chips = (card) => card.querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag")
             .map(t => ({ name: t.children[0].textContent,
                          classes: Array.from(t._classes).sort().join(" "),
                          title: t.title || null }));
@@ -1333,8 +1333,8 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
         const { host, viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         const card = host.querySelector(".molview-card");
-        const chooser = card.querySelector(".selection-assign-select");
-        const box = card.querySelector(".selection-new-label");
+        const chooser = card.querySelector(".molviewer-selection-assign-select");
+        const box = card.querySelector(".molviewer-selection-new-label");
         const options = () => chooser.children.map(o => o.value);
 
         const offered = options();
@@ -1345,7 +1345,7 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
 
         // Applying uses the CHOSEN name, with nothing typed anywhere.
         viewer.data.selection.adopt([1]);
-        card.querySelectorAll(".selection-assign-btn")[0].click();
+        card.querySelectorAll(".molviewer-selection-assign-btn")[0].click();
         const afterAssign = viewer.data.getRegions();
 
         // A brand-new name still needs the box, so choosing "+ new" shows it.
@@ -1354,7 +1354,7 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
         const boxShownForNew = !box.hidden;
         box.value = "interface";
         viewer.data.selection.adopt([0]);
-        card.querySelectorAll(".selection-assign-btn")[0].click();
+        card.querySelectorAll(".molviewer-selection-assign-btn")[0].click();
 
         console.log(JSON.stringify({
             offered, boxHiddenForExisting, boxShownForNew,
@@ -1412,32 +1412,32 @@ def test_typing_in_a_filter_row_does_not_replace_the_control_being_typed_in():
         viewer.data.selection.addFilter();
         const card = host.querySelector(".molview-card");
 
-        const typedInto = card.querySelector(".selection-filter-text");
-        const kindSelect = card.querySelector(".selection-filter-kind");
+        const typedInto = card.querySelector(".molviewer-filter-text");
+        const kindSelect = card.querySelector(".molviewer-filter-kind");
 
         // Type, one character at a time, the way a user does.
         const survived = [];
         for (const text of ["A", "Au", "Au,"]) {
             typedInto.value = text;
             typedInto.dispatch("input", { target: typedInto });
-            survived.push(card.querySelector(".selection-filter-text") === typedInto);
+            survived.push(card.querySelector(".molviewer-filter-text") === typedInto);
         }
 
         // Changing the kind is also a change to a row, not to the set.
         kindSelect.value = "by_element";
         kindSelect.dispatch("change", { target: kindSelect });
         const survivedKind =
-            card.querySelector(".selection-filter-text") === typedInto;
+            card.querySelector(".molviewer-filter-text") === typedInto;
 
         // Selecting an atom redraws the panel from the same snapshot — and must
         // not take the row out from under the typing either.
         viewer.data.selection.toggle(0);
         const survivedSelection =
-            card.querySelector(".selection-filter-text") === typedInto;
+            card.querySelector(".molviewer-filter-text") === typedInto;
 
         // But ADDING a row is a change to the SET, so the rows are rebuilt.
         viewer.data.selection.addFilter();
-        const rowsNow = card.querySelectorAll(".selection-filter-row").length;
+        const rowsNow = card.querySelectorAll(".molviewer-filter-row").length;
 
         console.log(JSON.stringify({
             survived, survivedKind, survivedSelection, rowsNow,
@@ -1475,16 +1475,16 @@ def test_a_filter_row_is_added_typed_and_removed_from_the_panel():
         viewer.data.selection.setEditor("filter");
         const card = host.querySelector(".molview-card");
 
-        const empty = card.querySelector(".selection-filter-empty") !== null;
-        card.querySelector(".selection-add-filter-row").click();
+        const empty = card.querySelector(".molviewer-filter-empty") !== null;
+        card.querySelector(".molviewer-selection-add-filter-row").click();
         const afterAdd = viewer.data.selection.getState().filters;
 
-        const text = card.querySelector(".selection-filter-text");
+        const text = card.querySelector(".molviewer-filter-text");
         text.value = "Au";
         text.dispatch("input", { target: text });
         const afterType = viewer.data.selection.getState().filters;
 
-        card.querySelector(".selection-filter-remove").click();
+        card.querySelector(".molviewer-filter-remove").click();
         console.log(JSON.stringify({
             empty, afterAdd, afterType,
             afterRemove: viewer.data.selection.getState().filters,
@@ -1603,8 +1603,8 @@ def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow():
             await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
             const card = host.querySelector(".molview-card");
             return {
-                assignHidden: card.querySelector(".selection-assign").hidden,
-                isolateOffered: card.querySelector(".selection-mode-option") !== null,
+                assignHidden: card.querySelector(".molviewer-selection-assign").hidden,
+                isolateOffered: card.querySelector(".molviewer-selection-mode-option") !== null,
             };
         }
         console.log(JSON.stringify({

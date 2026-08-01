@@ -123,7 +123,7 @@ def _run_node(snippet: str) -> object:
                 const dp = n._attrs && n._attrs.get && n._attrs.get("data-path");
                 return dp === mData[2];
             }}
-            // ``#id`` form (used by selection-status query)
+            // ``#id`` form (used by molviewer-selection-status query)
             const mId = sel.match(/^#([a-zA-Z0-9_-]+)$/);
             if (mId) return n._attrs && n._attrs.get("id") === mId[1];
             // ``#parent .child`` two-level descendant for actions

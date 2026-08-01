@@ -153,13 +153,13 @@ class TestTrajectoryInspectorPageshowRefresh:
             page, flask_server, project_with_trajectory)
         # Wait for the trajectory inspector to land + the initial
         # /api/watch/load to complete.  MolView's frame bar (task #34)
-        # renders a .mvf-counter element showing "<i+1> / <total>" —
+        # renders a .molviewer-frames-counter element showing "<i+1> / <total>" —
         # i.e. the second number > 0 once reloadFrames has populated the
         # frame series and MolView shows the bar (frameCount > 1).
         page.wait_for_selector("#viewer-host", timeout=5000)
         page.wait_for_function(
             """() => {
-                const el = document.querySelector('.mvf-counter');
+                const el = document.querySelector('.molviewer-frames-counter');
                 if (!el) return false;
                 const ix = el.textContent.indexOf('/');
                 if (ix < 0) return false;
@@ -206,7 +206,7 @@ class TestTrajectoryInspectorPageshowRefresh:
         # See pageshow test for the .frame-counter rationale.
         page.wait_for_function(
             """() => {
-                const el = document.querySelector('.mvf-counter');
+                const el = document.querySelector('.molviewer-frames-counter');
                 if (!el) return false;
                 const ix = el.textContent.indexOf('/');
                 if (ix < 0) return false;

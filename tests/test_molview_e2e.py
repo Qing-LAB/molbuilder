@@ -64,7 +64,7 @@ def demo(page, molview_server):
     page.wait_for_selector(".molview-card .mol-viewer-quickbar button")
     page.click("#demo-benzene")
     page.wait_for_function(
-        "() => document.querySelectorAll('.selection-atom-table tr').length === 12"
+        "() => document.querySelectorAll('.molviewer-selection-atom-table tr').length === 12"
     )
     _settle(page)
     return page
@@ -189,10 +189,10 @@ def test_selecting_an_atom_draws_a_highlight(demo):
     hit detection rather than MolView's.
     """
     before = _canvas_pixels(demo)
-    demo.locator(".selection-atom-table tr").first.click()
+    demo.locator(".molviewer-selection-atom-table tr").first.click()
     _settle(demo)
 
-    assert demo.locator(".selection-count").inner_text().startswith("1 of 12")
+    assert demo.locator(".molviewer-selection-count").inner_text().startswith("1 of 12")
     assert _canvas_pixels(demo) != before, (
         "an atom was selected and the drawing did not change — the highlight "
         "never reached the window"
@@ -206,7 +206,7 @@ def test_isolate_hides_the_rest_and_gives_them_back(demo):
 
     § 1.1: isolate turns itself off when the selection empties.
     """
-    demo.locator(".selection-atom-table tr").first.click()
+    demo.locator(".molviewer-selection-atom-table tr").first.click()
     _settle(demo)
     whole = _canvas_pixels(demo)
 
@@ -223,7 +223,7 @@ def test_isolate_hides_the_rest_and_gives_them_back(demo):
     # Clearing the selection with isolate on turns it off rather than leaving a
     # viewer that hides everything it has.
     isolate.click()
-    demo.locator(".selection-clear-btn").click()
+    demo.locator(".molviewer-selection-clear-btn").click()
     _settle(demo)
     assert isolate.get_attribute("aria-pressed") == "false", (
         "isolate stayed on with nothing selected"
@@ -241,7 +241,7 @@ def test_measuring_reads_one_two_and_three_atoms(demo):
     Benzene's ring carbons are 1.396 Å from the centre and 120° apart, so the
     numbers are checkable rather than merely present.
     """
-    rows = demo.locator(".selection-atom-table tr")
+    rows = demo.locator(".molviewer-selection-atom-table tr")
     readout = demo.locator(".molview-overlay--info")
 
     rows.nth(0).click()
@@ -290,7 +290,7 @@ def test_the_view_menu_opens_onto_something(demo):
     assert box["y"] >= trigger["y"], "the menu is not below its own trigger"
 
     # A click elsewhere closes it.
-    demo.locator(".selection-count").click()
+    demo.locator(".molviewer-selection-count").click()
     _settle(demo)
     assert not body.is_visible()
 
@@ -300,9 +300,9 @@ def test_the_panel_switches_pages_without_resizing_the_card(demo):
     window's extent, so its height cannot depend on what is inside it (§ 8.2).
     """
     before = demo.locator(".molview-card").bounding_box()
-    pages = demo.locator(".panel-page")
+    pages = demo.locator(".molviewer-panel-tab")
 
-    demo.locator(".panel-page-option").nth(1).click()      # Cell
+    demo.locator(".molviewer-panel-tab-option").nth(1).click()      # Cell
     _settle(demo)
     assert pages.nth(1).is_visible() and not pages.nth(0).is_visible()
 
@@ -311,7 +311,7 @@ def test_the_panel_switches_pages_without_resizing_the_card(demo):
         f"switching pages resized the card: {before} -> {after}"
     )
 
-    demo.locator(".panel-page-option").nth(0).click()      # Selection
+    demo.locator(".molviewer-panel-tab-option").nth(0).click()      # Selection
     _settle(demo)
     assert pages.nth(0).is_visible()
 
@@ -347,18 +347,18 @@ def test_a_trajectory_gets_a_frame_bar_that_scrubs(demo):
 
     demo.click("#demo-trajectory")
     demo.wait_for_function(
-        "() => document.querySelector('.mvf-counter')"
-        " && document.querySelector('.mvf-counter').textContent.includes('/')"
+        "() => document.querySelector('.molviewer-frames-counter')"
+        " && document.querySelector('.molviewer-frames-counter').textContent.includes('/')"
     )
     _settle(demo)
 
     assert bar.is_visible()
-    assert demo.locator(".mvf-counter").inner_text() == "1 / 6"
+    assert demo.locator(".molviewer-frames-counter").inner_text() == "1 / 6"
 
     painted = _canvas_pixels(demo)
-    demo.locator(".mvf-step").nth(1).click()               # ›
+    demo.locator(".molviewer-frames-step").nth(1).click()               # ›
     _settle(demo)
-    assert demo.locator(".mvf-counter").inner_text() == "2 / 6"
+    assert demo.locator(".molviewer-frames-counter").inner_text() == "2 / 6"
     assert _canvas_pixels(demo) != painted, "the frame moved and the picture did not"
 
 
@@ -368,19 +368,19 @@ def test_playing_runs_the_movie_and_pauses(demo):
     """
     demo.click("#demo-trajectory")
     demo.wait_for_function(
-        "() => document.querySelector('.mvf-counter')"
-        " && document.querySelector('.mvf-counter').textContent.includes('/')"
+        "() => document.querySelector('.molviewer-frames-counter')"
+        " && document.querySelector('.molviewer-frames-counter').textContent.includes('/')"
     )
-    play = demo.locator(".mvf-play")
+    play = demo.locator(".molviewer-frames-play")
     play.click()
     demo.wait_for_function(
-        "() => document.querySelector('.mvf-counter').textContent !== '1 / 6'"
+        "() => document.querySelector('.molviewer-frames-counter').textContent !== '1 / 6'"
     )
     play.click()                                            # pause
     _settle(demo)
-    stopped = demo.locator(".mvf-counter").inner_text()
+    stopped = demo.locator(".molviewer-frames-counter").inner_text()
     demo.wait_for_timeout(400)
-    assert demo.locator(".mvf-counter").inner_text() == stopped, (
+    assert demo.locator(".molviewer-frames-counter").inner_text() == stopped, (
         "pausing did not stop the movie"
     )
 
@@ -402,7 +402,7 @@ def test_the_card_brings_its_own_surfaces(demo):
     )
     ground = colour(".molview-card")
     window_card = colour(".molview-card .mol-viewer-card")
-    panel_card = colour(".molview-card .selection-card")
+    panel_card = colour(".molview-card .molviewer-selection-card")
     scene = colour(".mol-viewer-canvas")
 
     assert window_card == panel_card, "the two cards are not one surface"
@@ -502,7 +502,7 @@ def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):
             const ids = [...document.querySelectorAll(".molview-card [id]")]
                 .filter(el => el.tagName !== "CANVAS")
                 .map(el => el.tagName + "." + String(el.className) + "#" + el.id);
-            const groups = [...document.querySelectorAll(".panel-page-switch")]
+            const groups = [...document.querySelectorAll(".molviewer-panel-tab-switch")]
                 .map(sw => sw.querySelector("input").name);
             return { ids, groups, unique: new Set(groups).size };
         }"""
@@ -515,9 +515,9 @@ def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):
     )
 
     # And they are genuinely separate: choosing in one leaves the other alone.
-    demo.locator(".molview-card").nth(1).locator(".panel-page-option").nth(1).click()
+    demo.locator(".molview-card").nth(1).locator(".molviewer-panel-tab-option").nth(1).click()
     _settle(demo)
-    first_pages = demo.locator(".molview-card").nth(0).locator(".panel-page")
+    first_pages = demo.locator(".molview-card").nth(0).locator(".molviewer-panel-tab")
     assert first_pages.nth(0).is_visible(), (
         "choosing a page in the second viewer moved the first viewer's"
     )

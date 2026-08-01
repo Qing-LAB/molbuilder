@@ -311,7 +311,7 @@ def _set_selection_mode(page, mode):
     the underlying radio input.
 
     The radios at ``#selection-mode-click`` / ``#selection-mode-filter``
-    are CSS-hidden behind ``<label class="selection-mode-option">``
+    are CSS-hidden behind ``<label class="molviewer-selection-mode-option">``
     (``opacity: 0; width: 0; height: 0; pointer-events: none``) -- a
     standard "click the label, not the input" pattern.  Playwright's
     ``click(force=True)`` and ``check(force=True)`` both fail with
@@ -1654,7 +1654,7 @@ def test_save_as_propagates_labels_to_new_sidecar(
     # in-memory labels to propagate.
     _set_selection(page, [0, 1])
     page.locator("#selection-assign-target").select_option("L-electrode")
-    page.locator("#selection-assign-btn").click()
+    page.locator("#molviewer-selection-assign-btn").click()
     page.wait_for_function(
         '() => {'
         '  const r = document.querySelector('
@@ -1753,7 +1753,7 @@ def test_save_as_reanchors_selection_store_sourceFile(
     # the next Save.
     _set_selection(page, [0])
     page.locator("#selection-assign-target").select_option("L-electrode")
-    page.locator("#selection-assign-btn").click()
+    page.locator("#molviewer-selection-assign-btn").click()
     # Wait for the label tag to render (confirms the in-memory write took).
     page.wait_for_function(
         '() => {'
@@ -1833,7 +1833,7 @@ def test_modify_open_edit_save_preserves_annotations(
     # In-memory edit: assign a label (marks dirty, atom count unchanged).
     _set_selection(page, [0])
     page.locator("#selection-assign-target").select_option("L-electrode")
-    page.locator("#selection-assign-btn").click()
+    page.locator("#molviewer-selection-assign-btn").click()
     page.wait_for_function(
         '() => { const r = document.querySelector('
         '  \'#selection-atom-list tr[data-atom-index="0"] .molviewer-atoms-column-labels\');'
@@ -1891,7 +1891,7 @@ def test_filter_by_label_reads_in_memory_without_saving(
     # Assign L-electrode to atom 0 — IN MEMORY (no Save).
     _set_selection(page, [0])
     page.locator("#selection-assign-target").select_option("L-electrode")
-    page.locator("#selection-assign-btn").click()
+    page.locator("#molviewer-selection-assign-btn").click()
     page.wait_for_function(
         '() => { const r = document.querySelector('
         '  \'#selection-atom-list tr[data-atom-index="0"] .molviewer-atoms-column-labels\');'
@@ -1930,14 +1930,14 @@ def test_modify_op_preserves_frozen_and_labels(
     # Freeze atom 2 (assign the special "frozen_atoms" target).
     _set_selection(page, [2])
     page.locator("#selection-assign-target").select_option("frozen_atoms")
-    page.locator("#selection-assign-btn").click()
+    page.locator("#molviewer-selection-assign-btn").click()
     page.wait_for_function(
         '() => window.molbuilder.molview.data.selection.getState()'
         '        .atoms[2].isFrozen === true')
     # Label atom 0 L-electrode.
     _set_selection(page, [0])
     page.locator("#selection-assign-target").select_option("L-electrode")
-    page.locator("#selection-assign-btn").click()
+    page.locator("#molviewer-selection-assign-btn").click()
     page.wait_for_function(
         '() => (window.molbuilder.molview.data.selection.getState()'
         '        .atoms[0].labels || []).includes("L-electrode")')
@@ -2174,7 +2174,7 @@ def test_modify_fused_card_layout(page, flask_server, tmp_path, monkeypatch):
     # The panel still works inside the fused card: assign a label.
     _set_selection(page, [0])
     page.locator("#selection-assign-target").select_option("L-electrode")
-    page.locator("#selection-assign-btn").click()
+    page.locator("#molviewer-selection-assign-btn").click()
     page.wait_for_function(
         '() => (window.molbuilder.molview.data.selection.getState()'
         '        .atoms[0].labels || []).includes("L-electrode")')
@@ -2336,7 +2336,7 @@ def test_modify_cell_tab_vacuum_editor(
         }""", arg=base, timeout=5000)
     # The MolView Cell display (read-only) reflects it: switch to the Cell page + check
     # the top-left matrix cell equals the grown value.
-    page.locator(".panel-page-option:has(#panel-page-radio-cell)").click()
+    page.locator(".molviewer-panel-tab-option:has(#panel-page-radio-cell)").click()
     page.wait_for_function(
         "() => !document.getElementById('panel-page-cell').hidden")
     page.wait_for_function(
@@ -2389,7 +2389,7 @@ def test_cell_page_displays_periodicity(
     # Selection page shown by default; Cell page hidden.
     assert page.locator("#panel-page-cell").is_hidden()
     # Switch to the Cell page (click the label -- the radio is CSS-hidden).
-    page.locator(".panel-page-option:has(#panel-page-radio-cell)").click()
+    page.locator(".molviewer-panel-tab-option:has(#panel-page-radio-cell)").click()
     page.wait_for_function(
         "() => !document.getElementById('panel-page-cell').hidden")
     # A fresh molecule: everything is (default); vacuum 0/0/0, cell = resolved bbox.
@@ -2642,10 +2642,10 @@ def test_panel_partial_mounts_under_modify(
     # ones that other tests depend on.
     for required in (
         "selection-mode-click", "selection-mode-filter",
-        "selection-click-section", "selection-filter-section",
+        "molviewer-selection-click-section", "molviewer-filter-section",
         "selection-apply-filter", "selection-select-all",
         "selection-assign-target", "selection-assign-new-label",
-        "selection-count",
+        "molviewer-selection-count",
     ):
         assert page.locator("#" + required).count() == 1, (
             f"selection panel missing required id #{required}"
@@ -2657,7 +2657,7 @@ def test_panel_partial_mounts_under_modify(
     _load_water(page, water_xyz_file)
     _set_selection(page, [1])
     page.wait_for_function(
-        '() => document.getElementById("selection-count")'
+        '() => document.getElementById("molviewer-selection-count")'
         '      .textContent.trim() === "1 / 3 atoms"'
     )
 
@@ -2681,7 +2681,7 @@ def test_panel_mode_swap_preserves_selection(
     # must persist in the store.
     _set_selection_mode(page, "filter")
     page.wait_for_function(
-        "() => document.getElementById('selection-filter-section')"
+        "() => document.getElementById('molviewer-filter-section')"
         "      .hidden === false"
     )
     assert _get_selection(page) == [0, 2], (
@@ -2689,7 +2689,7 @@ def test_panel_mode_swap_preserves_selection(
     )
     _set_selection_mode(page, "click")
     page.wait_for_function(
-        "() => document.getElementById('selection-click-section')"
+        "() => document.getElementById('molviewer-selection-click-section')"
         "      .hidden === false"
     )
     assert _get_selection(page) == [0, 2], (
@@ -2797,7 +2797,7 @@ def test_panel_filter_mode_layout_v3(
         prominent (accent-coloured, full-width) headline action.
       * Filter rows appear BELOW the Add-filter button.
       * The footer pairs ``Combine: <select>`` ABOVE ``Apply filter``
-        in a single tight group (selection-filter-footer) so the
+        in a single tight group (molviewer-filter-footer) so the
         relation reads top-to-bottom as
         ``Add filter ... rows ... Combine [op] Apply filter``.
 
@@ -2811,16 +2811,16 @@ def test_panel_filter_mode_layout_v3(
     # from this mode.
     assert page.locator("#selection-mode-click").is_checked()
     assert not page.locator("#selection-add-filter").is_visible()
-    assert not page.locator("#selection-filter-section").is_visible()
+    assert not page.locator("#molviewer-filter-section").is_visible()
     # Pivot to filter mode via the mode pill.  The radio is styled-
     # hidden inside its wrapping <label class="selection-mode-
     # option">; click the label that contains "Filter".
-    page.locator(".selection-mode-option", has_text="Filter").click()
+    page.locator(".molviewer-selection-mode-option", has_text="Filter").click()
     page.wait_for_function(
         "() => document.getElementById('selection-mode-filter').checked"
     )
     # Filter section + Add filter visible.
-    assert page.locator("#selection-filter-section").is_visible()
+    assert page.locator("#molviewer-filter-section").is_visible()
     assert page.locator("#selection-add-filter").is_visible()
     # Primary-modifier styling pinned.
     klass = page.evaluate(
@@ -2830,17 +2830,17 @@ def test_panel_filter_mode_layout_v3(
         f"Add filter must carry the -primary modifier; got class={klass!r}"
     )
     # DOM order inside the filter section:
-    #   1. selection-add-filter-row
-    #   2. selection-filter-rows
-    #   3. selection-filter-footer
+    #   1. molviewer-selection-add-filter-row
+    #   2. molviewer-filter-rows
+    #   3. molviewer-filter-footer
     order = page.evaluate(
         "() => {"
-        "  const sec = document.getElementById('selection-filter-section');"
+        "  const sec = document.getElementById('molviewer-filter-section');"
         "  const kids = Array.from(sec.children);"
         "  return {"
-        "    add:    kids.findIndex(k => k.classList.contains('selection-add-filter-row')),"
-        "    rows:   kids.findIndex(k => k.id === 'selection-filter-rows'),"
-        "    footer: kids.findIndex(k => k.classList.contains('selection-filter-footer')),"
+        "    add:    kids.findIndex(k => k.classList.contains('molviewer-selection-add-filter-row')),"
+        "    rows:   kids.findIndex(k => k.id === 'molviewer-filter-rows'),"
+        "    footer: kids.findIndex(k => k.classList.contains('molviewer-filter-footer')),"
         "  };"
         "}"
     )
@@ -2851,10 +2851,10 @@ def test_panel_filter_mode_layout_v3(
     # Combine sits BEFORE Apply filter inside the footer.
     footer_order = page.evaluate(
         "() => {"
-        "  const footer = document.querySelector('.selection-filter-footer');"
+        "  const footer = document.querySelector('.molviewer-filter-footer');"
         "  const kids = Array.from(footer.children);"
         "  return {"
-        "    comb:  kids.findIndex(k => k.classList.contains('selection-combinator-row')),"
+        "    comb:  kids.findIndex(k => k.classList.contains('molviewer-selection-combinator-row')),"
         "    apply: kids.findIndex(k => k.id === 'selection-apply-filter'),"
         "  };"
         "}"
@@ -2866,7 +2866,7 @@ def test_panel_filter_mode_layout_v3(
     # Add filter click adds a row.
     page.locator("#selection-add-filter").click()
     page.wait_for_function(
-        "() => document.querySelectorAll('.selection-filter-row').length === 1"
+        "() => document.querySelectorAll('.molviewer-filter-row').length === 1"
     )
 
 
@@ -3208,7 +3208,7 @@ def test_panel_assign_works_on_dirty_workspace_after_electrode(
     )
     _set_selection(page, [5, 6])
     page.locator("#selection-assign-target").select_option("L-electrode")
-    page.locator("#selection-assign-btn").click()
+    page.locator("#molviewer-selection-assign-btn").click()
     page.wait_for_function(
         '() => {'
         '  const row = document.querySelector('
@@ -3247,7 +3247,7 @@ def test_panel_assign_writes_label_to_atoms(
     # The dropdown is seeded with BUILTIN_TARGETS at mount; pick
     # the canonical L-electrode region.
     page.locator("#selection-assign-target").select_option("L-electrode")
-    page.locator("#selection-assign-btn").click()
+    page.locator("#molviewer-selection-assign-btn").click()
     # writeLabel re-fetches atoms on success (store.js).  The
     # atom-list rows will re-render with the new label tag; wait
     # for that DOM signal so we don't read mid-render.
@@ -5539,24 +5539,24 @@ def test_frame_slider_scrubs(page, flask_server, watch_log_file_multi_step):
     """
     _load_watch_log(page, flask_server, watch_log_file_multi_step)
     page.wait_for_selector(
-        ".molview-frame-controls .mvf-slider", timeout=8000
+        ".molview-frame-controls .molviewer-frames-slider", timeout=8000
     )
     # The 10-frame fixture pins slider max = 9.
     page.wait_for_function(
-        "() => document.querySelector('.mvf-slider').max === '9'"
+        "() => document.querySelector('.molviewer-frames-slider').max === '9'"
     )
 
     # (a) Programmatic input event.
     page.evaluate(
         "() => {"
-        "  const s = document.querySelector('.mvf-slider');"
+        "  const s = document.querySelector('.molviewer-frames-slider');"
         "  s.value = '5';"
         "  s.dispatchEvent(new Event('input', {bubbles: true}));"
         "}"
     )
     page.wait_for_timeout(150)
     counter_after_prog = page.evaluate(
-        "() => document.querySelector('.mvf-counter').textContent"
+        "() => document.querySelector('.molviewer-frames-counter').textContent"
     )
     assert "6 / 10" in counter_after_prog, (
         f"programmatic input to value=5 should show frame 6/10 "
@@ -5564,7 +5564,7 @@ def test_frame_slider_scrubs(page, flask_server, watch_log_file_multi_step):
     )
 
     # (b) Real mouse drag from one end to the other.
-    rect = page.locator(".mvf-slider").bounding_box()
+    rect = page.locator(".molviewer-frames-slider").bounding_box()
     start_x = rect["x"] + 4
     end_x = rect["x"] + rect["width"] - 4
     y = rect["y"] + rect["height"] / 2
@@ -5576,14 +5576,14 @@ def test_frame_slider_scrubs(page, flask_server, watch_log_file_multi_step):
     page.mouse.up()
     page.wait_for_timeout(200)
     counter_after_drag = page.evaluate(
-        "() => document.querySelector('.mvf-counter').textContent"
+        "() => document.querySelector('.molviewer-frames-counter').textContent"
     )
     # End-of-track drag should land at the last frame (or near it).
     assert "/ 10" in counter_after_drag, (
         f"drag should land at a frame; got {counter_after_drag!r}"
     )
     last_val = page.evaluate(
-        "() => parseInt(document.querySelector('.mvf-slider').value, 10)"
+        "() => parseInt(document.querySelector('.molviewer-frames-slider').value, 10)"
     )
     assert last_val >= 7, (
         f"end-of-track drag should land near frame 9; got value={last_val}"
@@ -6375,10 +6375,10 @@ def test_selection_panel_height_is_stable_across_atomlist_filter_switch(
             "() => document.querySelector('.molview-panel').offsetHeight")
 
     _set_mode("click")
-    page.wait_for_selector("#selection-click-section:not([hidden])")
+    page.wait_for_selector("#molviewer-selection-click-section:not([hidden])")
     h_list = _panel_h()
     _set_mode("filter")
-    page.wait_for_selector("#selection-filter-section:not([hidden])")
+    page.wait_for_selector("#molviewer-filter-section:not([hidden])")
     h_filter = _panel_h()
 
     assert h_list == h_filter, (

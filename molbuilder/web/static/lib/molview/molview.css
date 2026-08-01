@@ -223,7 +223,7 @@
 }
 
 .molview-card .mol-viewer-card,
-.molview-card .selection-card {
+.molview-card .molviewer-selection-card {
     background:    var(--mv-surface);
     border:        var(--card-border) solid var(--mv-edge);
     border-radius: var(--mv-radius);
@@ -275,7 +275,7 @@
 }
 
 .molview-card .mol-viewer-card,
-.molview-card .selection-card {
+.molview-card .molviewer-selection-card {
     padding: var(--card-pad);
 }
 
@@ -387,18 +387,18 @@
  * stays put; the page body scrolls when it's taller than the panel; the panel itself and the
  * inner atom-list no longer each add their own bar.  Scoped to .molview-panel so a
  * stand-alone selection-panel (outside a fused card) is unaffected. */
-.molview-panel .selection-card {
+.molview-panel .molviewer-selection-card {
     flex: 1 1 auto;
     min-height: 0;
     max-height: 100%;
     display: flex;
     flex-direction: column;
 }
-.molview-panel .selection-card > .card-header { flex: 0 0 auto; }
+.molview-panel .molviewer-selection-card > .card-header { flex: 0 0 auto; }
 /* :not([hidden]) is CRITICAL: `display: flex` would otherwise override the [hidden]
  * attribute's display:none and show BOTH the Selection AND Cell pages at once (so the tab
  * switch would appear to do nothing). */
-.molview-panel .selection-card > .panel-page:not([hidden]) {
+.molview-panel .molviewer-selection-card > .molviewer-panel-tab:not([hidden]) {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -415,15 +415,15 @@
  * name -- and § 5.6 puts TWO viewers on one page, so the id was duplicated the moment a
  * second one mounted.  `[data-page]` says what the element IS rather than which one it is,
  * and it is unique to nothing, which is the point.  The extra attribute also carries the
- * specificity the id used to: this selector must out-rank the `.panel-page` rule above (whose
+ * specificity the id used to: this selector must out-rank the `.molviewer-panel-tab` rule above (whose
  * `overflow: hidden` would clip the scroll), and 0-5-0 over 0-4-0 does that by construction
  * rather than by source order. */
-.molview-panel .selection-card > .panel-page[data-page="cell"]:not([hidden]) {
+.molview-panel .molviewer-selection-card > .molviewer-panel-tab[data-page="cell"]:not([hidden]) {
     flex: 0 1 auto;
     overflow-y: auto;
 }
 
-.molview-panel .panel-page > * { flex: 0 0 auto; }
+.molview-panel .molviewer-panel-tab > * { flex: 0 0 auto; }
 /* The click/filter body FILLS the fixed-height panel (flex: 1 1 auto) so the panel
  * frame is STABLE whichever view is shown -- the atom list and the (shorter) filter
  * view both occupy the same frame, and the list/filter rows inside are the single
@@ -431,7 +431,7 @@
 /* `[data-fill]` marks the ONE section of a page that takes the leftover height and holds the
  * single scroll region -- the atom list in click mode, the filter rows in filter mode.  It
  * was two ids for the two of them; it is one role, and the page may only ever have one. */
-.molview-panel .panel-page > [data-fill]:not([hidden]) {
+.molview-panel .molviewer-panel-tab > [data-fill]:not([hidden]) {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -439,8 +439,8 @@
 }
 /* The atom list / filter rows ARE the scroll region -- its fixed cap is replaced by the flex
  * fill, so the list scrolls while the header + Clear/Invert + assign stay pinned. */
-.molview-panel .selection-list-wrap,
-.molview-panel .selection-filter-rows {
+.molview-panel .molviewer-selection-list-wrap,
+.molview-panel .molviewer-filter-rows {
     flex: 1 1 auto;
     min-height: 0;
     max-height: none;
@@ -575,7 +575,7 @@
     color: var(--mv-text-dim);
 }
 /* Playback buttons -- ‹ prev, ▶/⏸ play-loop, › next (controls.js). */
-.mvf-play, .mvf-step {
+.molviewer-frames-play, .molviewer-frames-step {
     padding: 0.1rem 0.45rem;
     font-size: var(--text-2xs, 0.6875rem); line-height: 1.4;
     cursor: pointer;
@@ -584,32 +584,32 @@
     border: 1px solid var(--mv-edge-soft);
     border-radius: 4px;
 }
-.mvf-play:hover, .mvf-step:hover { background: var(--mv-control-hover); }
-.mvf-slider {
+.molviewer-frames-play:hover, .molviewer-frames-step:hover { background: var(--mv-control-hover); }
+.molviewer-frames-slider {
     flex: 1 1 4rem; min-width: 3rem;
     accent-color: var(--mv-accent);
     cursor: pointer;
 }
-.mvf-counter { font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
+.molviewer-frames-counter { font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
 
 /* Transport buttons ‹ ▶ › -- a tight segmented group (shared/collapsed borders). */
-.mvf-transport { display: inline-flex; }
-.mvf-transport > button { border-radius: 0; margin-left: -1px; }
-.mvf-transport > button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
-.mvf-transport > button:last-child  { border-radius: 0 4px 4px 0; }
-.mvf-transport > button:hover { position: relative; z-index: 1; }   /* keep the hovered border on top */
+.molviewer-frames-transport { display: inline-flex; }
+.molviewer-frames-transport > button { border-radius: 0; margin-left: -1px; }
+.molviewer-frames-transport > button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.molviewer-frames-transport > button:last-child  { border-radius: 0 4px 4px 0; }
+.molviewer-frames-transport > button:hover { position: relative; z-index: 1; }   /* keep the hovered border on top */
 
 /* "loop" checkbox -- small; play + ‹/› wrap at the ends when checked. */
-.mvf-loop {
+.molviewer-frames-loop {
     display: inline-flex; align-items: center; gap: 0.2rem;
     font-size: var(--text-2xs, 0.6875rem); cursor: pointer; user-select: none;
 }
-.mvf-loop input { margin: 0; cursor: pointer; }
-.mvf-speed {
+.molviewer-frames-loop input { margin: 0; cursor: pointer; }
+.molviewer-frames-speed {
     display: inline-flex; align-items: center; gap: 0.2rem;
     font-size: var(--text-2xs, 0.6875rem); user-select: none;
 }
-.mvf-speed-input {
+.molviewer-frames-speed-input {
     /* Wide enough for the full value (up to 3000 = 4 digits); the number spinners
      * are hidden so they don't eat the width -- the user types the value.  Paired
      * with the compact loop glyph (⟳) that frees the row space. */
@@ -618,8 +618,8 @@
     -moz-appearance: textfield;
     appearance: textfield;
 }
-.mvf-speed-input::-webkit-outer-spin-button,
-.mvf-speed-input::-webkit-inner-spin-button {
+.molviewer-frames-speed-input::-webkit-outer-spin-button,
+.molviewer-frames-speed-input::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
@@ -699,11 +699,11 @@
  *   6. Inline error.
  */
 
-.selection-card {
+.molviewer-selection-card {
     margin: 0;
 }
 
-.selection-card .card-header {
+.molviewer-selection-card .card-header {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -711,7 +711,7 @@
     gap: 0.6rem;
 }
 
-.selection-status {
+.molviewer-selection-status {
     display: inline-flex;
     align-items: baseline;
     gap: 0.8rem;
@@ -719,13 +719,13 @@
     color: var(--ps-fg-dim);
 }
 
-.selection-count {
+.molviewer-selection-count {
     color: var(--ps-fg);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
 
-.selection-loading {
+.molviewer-selection-loading {
     color: var(--accent);
     font-style: italic;
 }
@@ -738,7 +738,7 @@
 
 /* ---------- Click-mode body -------------------------------------- */
 
-.selection-click-section {
+.molviewer-selection-click-section {
     margin-top: 0.5rem;
 }
 
@@ -748,7 +748,7 @@
  * no descriptive hint text (the title attribute carries the
  * tooltip for users who hover).
  */
-.selection-mode {
+.molviewer-selection-mode {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0;
@@ -759,7 +759,7 @@
     border-radius: 4px;
 }
 
-.selection-mode-option {
+.molviewer-selection-mode-option {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -768,14 +768,14 @@
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
 }
-.selection-mode-option:hover {
+.molviewer-selection-mode-option:hover {
     background: var(--ps-hover);
 }
-.selection-mode-option:has(input:checked) {
+.molviewer-selection-mode-option:has(input:checked) {
     background: var(--sp-accent-bg);
     box-shadow: inset 0 0 0 1px var(--sp-accent);
 }
-.selection-mode-option input[type="radio"] {
+.molviewer-selection-mode-option input[type="radio"] {
     /* The label text is enough; hide the radio dot.  ``:has()``
        above is what styles the selected pill. */
     position: absolute;
@@ -784,19 +784,19 @@
     height: 0;
     pointer-events: none;
 }
-.selection-mode-option > span {
+.molviewer-selection-mode-option > span {
     color: var(--ps-fg-dim);
     font: 600 12px/1.2 system-ui, sans-serif;
     letter-spacing: 0.03em;
     text-transform: uppercase;
 }
-.selection-mode-option:has(input:checked) > span {
+.molviewer-selection-mode-option:has(input:checked) > span {
     color: var(--sp-accent-fg);
 }
 
 /* ---------- Filter rows ------------------------------------------- */
 
-.selection-filter-section {
+.molviewer-filter-section {
     margin-bottom: 0.6rem;
     padding: 0.5rem;
     background: var(--ps-bg-deep);
@@ -804,12 +804,12 @@
     border-radius: 4px;
 }
 
-.selection-combinator-row {
+.molviewer-selection-combinator-row {
     display: flex;
     align-items: center;
     gap: 0.4rem;
     /* No bottom margin: combinator + Apply filter are tightly
-     * grouped in a flex column .selection-filter-footer (2026-06-12).
+     * grouped in a flex column .molviewer-filter-footer (2026-06-12).
      * Each direct child gets default gap from the parent's gap rule
      * — overriding margin here would double-space the footer. */
     margin-bottom: 0;
@@ -818,7 +818,7 @@
 /* 2026-06-12: Combine + Apply filter footer.  Vertical stack with
  * a small gap so the two read as a single "combine ... and apply"
  * unit attached to the bottom of the filter rows. */
-.selection-filter-footer {
+.molviewer-filter-footer {
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
@@ -828,7 +828,7 @@
 /* THE small-caps caption for the whole panel (§2.1 shared class -- ui-design-contract):
  * Combine/Target mini-labels AND the Cell-page captions (readout dt + the unit-cell
  * matrix label) all share this ONE block.  Do not re-declare it under a new selector. */
-.selection-mini-label,
+.molviewer-selection-mini-label,
 .molviewer-cell-readout dt {
     color: var(--ps-fg-dim);
     font: 600 11px/1.2 system-ui, sans-serif;
@@ -837,7 +837,7 @@
     white-space: nowrap;
 }
 
-.selection-combinator-select {
+.molviewer-selection-combinator-select {
     flex: 1;
     background: var(--ps-bg-deep);
     color: var(--ps-fg);
@@ -851,7 +851,7 @@
  * (right, primary).  Apply filter is the EXPLICIT commit step
  * that materialises the filter draft into state.selection.
  */
-.selection-filter-actions {
+.molviewer-filter-actions {
     display: flex;
     gap: 0.4rem;
     margin-top: 0.4rem;
@@ -861,11 +861,11 @@
  * action — visible regardless of mode, full width across the
  * panel, larger + accent-coloured so the user spots it
  * immediately as "this is how I start a filter".  Compare with
- * the muted ``.selection-add-btn`` used elsewhere. */
-.selection-add-filter-row {
+ * the muted ``.molviewer-selection-add-btn`` used elsewhere. */
+.molviewer-selection-add-filter-row {
     margin: 0.5rem 0;
 }
-.selection-apply-filter-btn {
+.molviewer-selection-apply-filter-btn {
     flex: 1;
     padding: 0.18rem 0.5rem;
     font: 600 11px/1.15 system-ui, sans-serif;
@@ -876,19 +876,19 @@
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.selection-apply-filter-btn:hover {
+.molviewer-selection-apply-filter-btn:hover {
     background: var(--sp-accent-bg-mid);
     border-color: var(--sp-accent-strong);
     color: var(--ps-selected-fg);
 }
 
-.selection-filter-rows {
+.molviewer-filter-rows {
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
 }
 
-.selection-filter-empty {
+.molviewer-filter-empty {
     margin: 0;
     color: var(--ps-fg-dim);
     font: italic 11px/1.3 system-ui, sans-serif;
@@ -897,7 +897,7 @@
 /* Grid layout so kind selector + text input + × align in a column
  * across rows.  The text-input column flexes, the others are
  * fixed-width. */
-.selection-filter-row {
+.molviewer-filter-row {
     display: grid;
     grid-template-columns: minmax(0, 7em) minmax(0, 1fr) auto;
     align-items: center;
@@ -908,7 +908,7 @@
     border-radius: 3px;
 }
 
-.selection-filter-kind {
+.molviewer-filter-kind {
     background: var(--ps-bg-deep);
     color: var(--ps-fg);
     border: 1px solid var(--ps-border);
@@ -918,7 +918,7 @@
     min-width: 0;
 }
 
-.selection-filter-text {
+.molviewer-filter-text {
     background: var(--ps-bg-deep);
     color: var(--ps-fg);
     border: 1px solid var(--ps-border);
@@ -928,7 +928,7 @@
     min-width: 0;
 }
 
-.selection-filter-remove {
+.molviewer-filter-remove {
     background: transparent;
     color: var(--ps-fg-dim);
     border: 1px solid var(--ps-border);
@@ -941,7 +941,7 @@
     cursor: pointer;
     transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
-.selection-filter-remove:hover:not(:disabled) {
+.molviewer-filter-remove:hover:not(:disabled) {
     color: var(--sp-danger-fg);
     border-color: var(--ps-danger);
     background: var(--sp-exclude-bg);
@@ -949,7 +949,7 @@
 
 /* ---------- Atom list --------------------------------------------- */
 
-.selection-list-wrap {
+.molviewer-selection-list-wrap {
     position: relative;
     margin: 0;
     border: 1px solid var(--ps-border);
@@ -959,13 +959,13 @@
     overflow: auto;
 }
 
-.selection-atom-table {
+.molviewer-selection-atom-table {
     width: 100%;
     border-collapse: collapse;
     font: 12px/1.3 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
 }
 
-.selection-atom-table thead {
+.molviewer-selection-atom-table thead {
     position: sticky;
     top: 0;
     background: var(--ps-bg-deep);
@@ -973,7 +973,7 @@
     /* Subtle bottom border to separate header from rows on scroll. */
     box-shadow: inset 0 -1px 0 var(--ps-border);
 }
-.selection-atom-table th {
+.molviewer-selection-atom-table th {
     text-align: left;
     padding: 0.35rem 0.5rem;
     font-weight: 600;
@@ -984,7 +984,7 @@
     text-transform: uppercase;
 }
 
-.selection-atom-table td {
+.molviewer-selection-atom-table td {
     padding: 0.25rem 0.5rem;
     color: var(--ps-fg);
     border-top: 1px solid var(--ps-bg-tile);
@@ -992,30 +992,30 @@
     white-space: nowrap;
 }
 
-.selection-atom-table tr.is-selected td {
+.molviewer-selection-atom-table tr.is-selected td {
     background: var(--sp-accent-bg);
     color: var(--sp-accent-fg);
 }
-.selection-atom-table tr:hover td {
+.molviewer-selection-atom-table tr:hover td {
     background: var(--ps-bg-deep);
 }
-.selection-atom-table tr.is-selected:hover td {
+.molviewer-selection-atom-table tr.is-selected:hover td {
     background: var(--sp-accent-bg);
 }
 
-.selection-atom-table .molviewer-atoms-column-check { width: 1.6em; }
-.selection-atom-table .molviewer-atoms-column-idx   { width: 3em;   text-align: right; }
-.selection-atom-table .molviewer-atoms-column-el    { width: 2.5em; font-weight: 600; }
-.selection-atom-table .molviewer-atoms-column-res   { width: 4em; color: var(--ps-fg-dim); }
+.molviewer-selection-atom-table .molviewer-atoms-column-check { width: 1.6em; }
+.molviewer-selection-atom-table .molviewer-atoms-column-idx   { width: 3em;   text-align: right; }
+.molviewer-selection-atom-table .molviewer-atoms-column-el    { width: 2.5em; font-weight: 600; }
+.molviewer-selection-atom-table .molviewer-atoms-column-res   { width: 4em; color: var(--ps-fg-dim); }
 
-.selection-atom-table .molviewer-atoms-column-labels {
+.molviewer-selection-atom-table .molviewer-atoms-column-labels {
     color: var(--ps-fg-dim);
 }
 
-.selection-atom-table input[type="checkbox"] {
+.molviewer-selection-atom-table input[type="checkbox"] {
     cursor: pointer;
 }
-.selection-atom-table input[type="checkbox"]:disabled {
+.molviewer-selection-atom-table input[type="checkbox"]:disabled {
     cursor: not-allowed;
     opacity: 0.55;
 }
@@ -1024,7 +1024,7 @@
  * with the remaining members of that region (i.e. removes just this
  * atom from this label).
  */
-.selection-tag {
+.molviewer-selection-tag {
     display: inline-flex;
     align-items: center;
     gap: 0.25em;
@@ -1090,7 +1090,7 @@
     border:     1px solid #4a7a37; /* exempt: reserved-label tone */
 }
 
-.selection-tag-remove {
+.molviewer-selection-tag-remove {
     background: var(--sp-tag-remove-bg);
     border: 1px solid var(--sp-tag-remove-border);
     color: inherit;
@@ -1104,7 +1104,7 @@
     transition: opacity 0.12s, background 0.12s, color 0.12s,
                 border-color 0.12s;
 }
-.selection-tag-remove:hover {
+.molviewer-selection-tag-remove:hover {
     opacity: 1;
     background: var(--sp-danger-bg-hover);
     border-color: var(--sp-danger-border-hover);
@@ -1113,13 +1113,13 @@
 
 /* ---------- Buttons + Assign block -------------------------------- */
 
-.selection-actions {
+.molviewer-selection-actions {
     display: flex;
     gap: 0.5rem;
     margin-top: 0.4rem;
 }
 
-.selection-actions-row {
+.molviewer-selection-actions-row {
     justify-content: space-between;   /* left group, isolate-toggle on right */
     align-items: center;
     flex-wrap: wrap;
@@ -1136,11 +1136,11 @@
  * Add-filter).  The verb buttons in the 3-col Assign row sit on
  * the same baseline, get the same font + padding; only the colour
  * differs to encode replace/add/remove semantics. */
-.selection-add-btn,
-.selection-clear-btn,
-.selection-assign-btn,
-.selection-add-target-btn,
-.selection-remove-target-btn {
+.molviewer-selection-add-btn,
+.molviewer-selection-clear-btn,
+.molviewer-selection-assign-btn,
+.molviewer-selection-add-target-btn,
+.molviewer-selection-remove-target-btn {
     background: var(--ps-border);
     color: var(--ps-fg);
     border: 1px solid var(--ps-border-strong);
@@ -1152,47 +1152,47 @@
     transition: background 0.12s, border-color 0.12s, color 0.12s;
     white-space: nowrap;
 }
-.selection-add-btn:hover,
-.selection-clear-btn:hover,
-.selection-assign-btn:hover,
-.selection-add-target-btn:hover,
-.selection-remove-target-btn:hover {
+.molviewer-selection-add-btn:hover,
+.molviewer-selection-clear-btn:hover,
+.molviewer-selection-assign-btn:hover,
+.molviewer-selection-add-target-btn:hover,
+.molviewer-selection-remove-target-btn:hover {
     background: var(--ps-border-strong);
     border-color: var(--ps-border-strong);
     color: var(--ps-selected-fg);
 }
 
 /* Assign = REPLACE -- blue accent (the "primary" action). */
-.selection-assign-btn {
+.molviewer-selection-assign-btn {
     background: var(--sp-accent-bg-mid);
     border-color: var(--sp-accent);
     color: var(--sp-accent-fg);
 }
-.selection-assign-btn:hover {
+.molviewer-selection-assign-btn:hover {
     background: var(--sp-accent-bg-mid);
     border-color: var(--sp-accent-strong);
     color: var(--ps-selected-fg);
 }
 
 /* + Add = UNION -- green accent. */
-.selection-add-target-btn {
+.molviewer-selection-add-target-btn {
     background: var(--sp-include-bg);
     border-color: var(--sp-include-bg);
     color: var(--sp-include-fg);
 }
-.selection-add-target-btn:hover {
+.molviewer-selection-add-target-btn:hover {
     background: var(--sp-include-bg);
     border-color: var(--sp-include-bg);
     color: var(--sp-include-fg);
 }
 
 /* − Remove = DIFFERENCE -- red accent. */
-.selection-remove-target-btn {
+.molviewer-selection-remove-target-btn {
     background: var(--sp-exclude-bg);
     border-color: var(--sp-exclude-border);
     color: var(--sp-exclude-fg);
 }
-.selection-remove-target-btn:hover {
+.molviewer-selection-remove-target-btn:hover {
     background: var(--sp-exclude-bg);
     border-color: var(--sp-exclude-border);
     color: var(--sp-exclude-fg);
@@ -1200,7 +1200,7 @@
 
 /* Visual divider between SELECT-side controls (mode + filters) and
  * ACT-side controls (clear + bulk label ops). */
-.selection-divider {
+.molviewer-selection-divider {
     margin: 0.6rem 0 0.5rem;
     border: 0;
     border-top: 1px solid var(--ps-border);
@@ -1209,20 +1209,20 @@
 /* The Assign block stacks its Target row and its three verb buttons
  * vertically so the buttons don't compete for horizontal width with
  * the dropdown. */
-.selection-assign {
+.molviewer-selection-assign {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
     margin-top: 0.5rem;
 }
 
-.selection-target-row {
+.molviewer-selection-target-row {
     display: flex;
     align-items: center;
     gap: 0.4rem;
 }
 
-.selection-verb-row {
+.molviewer-selection-verb-row {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 0.3rem;
@@ -1230,8 +1230,8 @@
 
 /* (.selection-field-label removed 2026-07: zero producers.) */
 
-.selection-assign-select,
-.selection-new-label {
+.molviewer-selection-assign-select,
+.molviewer-selection-new-label {
     flex: 1;
     background: var(--ps-bg-deep);
     color: var(--ps-fg);
@@ -1241,7 +1241,7 @@
     font: 11px system-ui, sans-serif;
     min-width: 0;
 }
-.selection-new-label {
+.molviewer-selection-new-label {
     font-family: var(--font-mono);
 }
 
@@ -1250,7 +1250,7 @@
  * Triggered by the ⓘ button next to Target:.  See
  * lib/region-label-definitions.js + docs/model/structure-annotations.md.
  * ==================================================================== */
-.selection-target-info-btn {
+.molviewer-selection-target-info-btn {
     background: transparent;
     color: var(--ps-fg-dim);
     border: 1px solid var(--ps-border);
@@ -1262,15 +1262,15 @@
     cursor: pointer;
     flex-shrink: 0;
 }
-.selection-target-info-btn:hover {
+.molviewer-selection-target-info-btn:hover {
     color: var(--ps-fg);
     border-color: var(--ps-fg-dim);
 }
-.selection-target-info-btn[aria-expanded="true"] {
+.molviewer-selection-target-info-btn[aria-expanded="true"] {
     background: var(--ps-bg-deep);
     color: var(--ps-fg);
 }
-.selection-target-info-panel {
+.molviewer-selection-target-info-panel {
     margin-top: 0.4rem;
     padding: 0.6rem 0.7rem;
     background: var(--ps-bg-deep);
@@ -1281,7 +1281,7 @@
     max-height: 50vh;
     overflow-y: auto;
 }
-.selection-target-info-panel[hidden] {
+.molviewer-selection-target-info-panel[hidden] {
     display: none;
 }
 .molviewer-regions-title {
@@ -1370,7 +1370,7 @@
     color: var(--ps-fg);
 }
 
-.selection-error {
+.molviewer-selection-error {
     margin: 0.6rem 0 0 0;
     color: var(--sp-danger-fg);
     font: 13px system-ui, sans-serif;
@@ -1379,8 +1379,8 @@
 /* Surfaced by selection-bootstrap.js when the panel partial can't
  * be fetched -- the selection-panel CSS above never reaches the DOM
  * in that case, so this banner has to stand on its own.  Same colour
- * family as .selection-error for visual coherence. */
-.selection-bootstrap-error {
+ * family as .molviewer-selection-error for visual coherence. */
+.molviewer-selection-bootstrap-error {
     margin: 0.6rem;
     padding: 0.6rem 0.8rem;
     border: 1px solid var(--sp-danger-border-hover);
@@ -1394,11 +1394,11 @@
  * lib/page-shell.css — every page loads it from there. */
 
 /* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
-.selection-header-tabs { align-items: center; }
+.molviewer-selection-header-tabs { align-items: center; }
 /* The [Selection|Cell] switch is the panel's SECTION-level tab bar -- left-aligned
  * underline tabs (title-like), deliberately NOT the boxed pill segmented-control used by the
  * Atom-list/Filter mode toggle INSIDE the page, so the two read as different levels. */
-.panel-page-switch {
+.molviewer-panel-tab-switch {
     display: inline-flex;
     justify-content: flex-start;
     gap: 1rem;
@@ -1407,7 +1407,7 @@
     background: none;
     border: 0;
 }
-.panel-page-option {
+.molviewer-panel-tab-option {
     display: flex;
     align-items: center;
     padding: 0.05rem 0 0.25rem;
@@ -1415,17 +1415,17 @@
     cursor: pointer;
     transition: color 0.12s, border-color 0.12s;
 }
-.panel-page-option:has(input:checked) { border-bottom-color: var(--sp-accent); }
-.panel-page-option input[type="radio"] {
+.molviewer-panel-tab-option:has(input:checked) { border-bottom-color: var(--sp-accent); }
+.molviewer-panel-tab-option input[type="radio"] {
     position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
 }
-.panel-page-option > span {
+.molviewer-panel-tab-option > span {
     color: var(--ps-fg-dim);
     font: 700 13px/1.2 system-ui, sans-serif;
     letter-spacing: 0.01em;
 }
-.panel-page-option:hover > span { color: var(--ps-fg); }
-.panel-page-option:has(input:checked) > span { color: var(--sp-accent-fg); }
+.molviewer-panel-tab-option:hover > span { color: var(--ps-fg); }
+.molviewer-panel-tab-option:has(input:checked) > span { color: var(--sp-accent-fg); }
 
 /* Cell readout -- read-only display of the resolved periodicity (stage 2). */
 .molviewer-cell-readout {
@@ -1434,7 +1434,7 @@
     gap: 0.3rem 0.6rem;
     margin: 0 0 0.6rem;
 }
-/* .molviewer-cell-readout dt caption style comes from the shared .selection-mini-label rule (§2.1). */
+/* .molviewer-cell-readout dt caption style comes from the shared .molviewer-selection-mini-label rule (§2.1). */
 .molviewer-cell-readout dd { margin: 0; }
 .molviewer-cell-value {
     color: var(--ps-fg);
@@ -1452,7 +1452,7 @@
     white-space: nowrap;
 }
 
-/* caption style from the shared .selection-mini-label rule (§2.1); only the layout delta here. */
+/* caption style from the shared .molviewer-selection-mini-label rule (§2.1); only the layout delta here. */
 
 /* ==========================================================================
    The measurement readout (was selection/measurement-chip.css)
