@@ -319,7 +319,7 @@
  * This is the module OWNING its viewer sizing: a consumer drops the fused card into any host
  * and the viewer fits, with zero per-tab CSS.  Each level fills its parent and clips, so a
  * transient over-size during the drawing's init can't spill out of the square (into the panel / the
- * page below).  The embed's ``.molviewer-window-canvas`` is ``flex: 1 1 auto`` (mol-viewer-embed.css),
+ * page below).  ``.molviewer-window-canvas`` is ``flex: 1 1 auto`` (this file),
  * so it absorbs whatever height is left under the knob bar -- no fixed canvas height anywhere. */
 .molview-viewer > .viewer-wrap {
     width: 100%;
@@ -1493,10 +1493,15 @@
  * regular panel readout.  Pointer-events back on so the text
  * stays selectable without the floating-chip caveat. */
 /* ==========================================================================
-   The 3D window's own chrome (was lib/viewer/mol-viewer-embed.css)
+   The 3D window's own chrome
    ========================================================================== */
 
-/* mol-viewer-embed.css — card chrome for the embedded MolViewer.
+/* Card chrome for the 3D window MolView mounts itself.
+ *
+ * These rules were inherited from lib/viewer/mol-viewer-embed.css, which is
+ * RETIRED -- loaded by no page, imported by no module.  The elements are built
+ * by lib/molview/3dmol-embed.js and mount.js, so the rules are MolView's, and
+ * as of 2026-08-01 so are the class names.
  *
  * Contract: docs/web/molview.md "Card structure".
  * Theme through the standard tokens (tokens.css); per-tab overrides
@@ -1504,7 +1509,7 @@
  */
 
 .molviewer-window-frame {
-    /* 3D-scene constants for the WebGL draw (mol-viewer-embed.js).  the drawing library shapes can't be
+    /* 3D-scene constants for the WebGL draw (lib/molview/3dmol-embed.js).  the drawing library shapes can't be
      * styled by CSS directly, so the draw code LOOKS THESE UP via getComputedStyle on THIS
      * element -- named, discoverable, and CONCEALED to the MolView module (scoped here, not on
      * global :root, so they never leak into the page's token namespace). */
