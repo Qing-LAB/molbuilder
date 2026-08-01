@@ -330,7 +330,7 @@ class TestPeptideBuild:
         # The full fused card + 3Dmol canvas mount into the host.
         page.wait_for_function(
             "() => { const h = document.getElementById('viewer-host');"
-            "  return !!h && !!h.querySelector('.molview-card')"
+            "  return !!h && !!h.querySelector('.molviewer-card')"
             "         && !!h.querySelector('canvas'); }",
             timeout=15_000,
         )

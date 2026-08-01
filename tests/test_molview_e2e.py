@@ -61,7 +61,7 @@ def molview_server():
 def demo(page, molview_server):
     """The demo page with a structure loaded and the drawing settled."""
     page.goto(f"{molview_server}/molview-demo")
-    page.wait_for_selector(".molview-card .molviewer-rail button")
+    page.wait_for_selector(".molviewer-card .molviewer-rail button")
     page.click("#demo-benzene")
     page.wait_for_function(
         "() => document.querySelectorAll('.molviewer-atoms-table tr').length === 12"
@@ -170,7 +170,7 @@ def test_showing_the_unit_cell_draws_the_box_the_structure_uses(demo):
         "pressing 'Show unit cell' changed nothing on screen — the box the "
         "structure actually uses was not drawn"
     )
-    assert demo.locator(".molview-card").is_visible(), "the switch broke the card"
+    assert demo.locator(".molviewer-card").is_visible(), "the switch broke the card"
 
     # And off again: a boolean both ways, with the geometry untouched underneath.
     button.click()
@@ -242,7 +242,7 @@ def test_measuring_reads_one_two_and_three_atoms(demo):
     numbers are checkable rather than merely present.
     """
     rows = demo.locator(".molviewer-atoms-table tr")
-    readout = demo.locator(".molview-overlay--info")
+    readout = demo.locator(".molviewer-overlay--info")
 
     rows.nth(0).click()
     _settle(demo)
@@ -299,14 +299,14 @@ def test_the_panel_switches_pages_without_resizing_the_card(demo):
     """§ 8.1: "Switching pages never resizes the card." The panel is given the
     window's extent, so its height cannot depend on what is inside it (§ 8.2).
     """
-    before = demo.locator(".molview-card").bounding_box()
+    before = demo.locator(".molviewer-card").bounding_box()
     pages = demo.locator(".molviewer-panel-tab")
 
     demo.locator(".molviewer-panel-tab-option").nth(1).click()      # Cell
     _settle(demo)
     assert pages.nth(1).is_visible() and not pages.nth(0).is_visible()
 
-    after = demo.locator(".molview-card").bounding_box()
+    after = demo.locator(".molviewer-card").bounding_box()
     assert (before["width"], before["height"]) == (after["width"], after["height"]), (
         f"switching pages resized the card: {before} -> {after}"
     )
@@ -324,8 +324,8 @@ def test_the_panel_bottom_aligns_with_the_window(demo):
     A layout that computed one from the other would be a second place the same
     fact lives, and it would be wrong for one frame after every resize.
     """
-    window = demo.locator(".molview-viewer").bounding_box()
-    panel = demo.locator(".molview-panel").bounding_box()
+    window = demo.locator(".molviewer-window").bounding_box()
+    panel = demo.locator(".molviewer-panel").bounding_box()
     assert abs((window["y"] + window["height"]) - (panel["y"] + panel["height"])) <= 1, (
         f"window ends at {window['y'] + window['height']}, "
         f"panel at {panel['y'] + panel['height']}"
@@ -342,7 +342,7 @@ def test_a_trajectory_gets_a_frame_bar_that_scrubs(demo):
     § 6.4: every control reads the frame from the model, so the counter follows
     whatever moved it.
     """
-    bar = demo.locator(".molview-frame-controls")
+    bar = demo.locator(".molviewer-frames-bar")
     assert not bar.is_visible(), "a single structure showed a playback bar"
 
     demo.click("#demo-trajectory")
@@ -400,9 +400,9 @@ def test_the_card_brings_its_own_surfaces(demo):
     colour = lambda sel: demo.eval_on_selector(
         sel, "el => getComputedStyle(el).backgroundColor"
     )
-    ground = colour(".molview-card")
-    window_card = colour(".molview-card .molviewer-window-frame")
-    panel_card = colour(".molview-card .molviewer-selection-card")
+    ground = colour(".molviewer-card")
+    window_card = colour(".molviewer-card .molviewer-window-frame")
+    panel_card = colour(".molviewer-card .molviewer-selection-card")
     scene = colour(".molviewer-window-canvas")
 
     assert window_card == panel_card, "the two cards are not one surface"
@@ -492,14 +492,14 @@ def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):
             window.__second = await mount(host, ws, { owner: "second-viewer" });
         }"""
     )
-    demo.wait_for_function("() => document.querySelectorAll('.molview-card').length === 2")
+    demo.wait_for_function("() => document.querySelectorAll('.molviewer-card').length === 2")
 
     report = demo.evaluate(
         """() => {
             // MolView's OWN markup. The drawing library builds its canvas
             // inside the window and names it as it likes — that DOM is its
             // business, and § 5.3 keeps it invisible from up here.
-            const ids = [...document.querySelectorAll(".molview-card [id]")]
+            const ids = [...document.querySelectorAll(".molviewer-card [id]")]
                 .filter(el => el.tagName !== "CANVAS")
                 .map(el => el.tagName + "." + String(el.className) + "#" + el.id);
             const groups = [...document.querySelectorAll(".molviewer-panel-tab-switch")]
@@ -515,9 +515,9 @@ def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):
     )
 
     # And they are genuinely separate: choosing in one leaves the other alone.
-    demo.locator(".molview-card").nth(1).locator(".molviewer-panel-tab-option").nth(1).click()
+    demo.locator(".molviewer-card").nth(1).locator(".molviewer-panel-tab-option").nth(1).click()
     _settle(demo)
-    first_pages = demo.locator(".molview-card").nth(0).locator(".molviewer-panel-tab")
+    first_pages = demo.locator(".molviewer-card").nth(0).locator(".molviewer-panel-tab")
     assert first_pages.nth(0).is_visible(), (
         "choosing a page in the second viewer moved the first viewer's"
     )

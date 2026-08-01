@@ -38,11 +38,11 @@ import { mountControls, SPEED_MIN_MS, SPEED_MAX_MS, SPEED_DEFAULT_MS }
 /* The card's own class names. They are the carried stylesheet's (§ 8.1–8.3), so
  * this file does not get to choose them — the design and the markup it styles
  * arrived together and are changed together. */
-const CARD   = "molview-card";
-const BODY   = "molview-body";
-const VIEWER = "molview-viewer";
-const PANEL  = "molview-panel";
-const FOLD   = "molview-fold-btn";
+const CARD   = "molviewer-card";
+const BODY   = "molviewer-card-body";
+const VIEWER = "molviewer-window";
+const PANEL  = "molviewer-panel";
+const FOLD   = "molviewer-panel-fold-btn";
 
 
 
@@ -289,8 +289,8 @@ function buildCard(hostEl, opts) {
     // it fills that square end to end, so the drawing is sized by the module's
     // own square and never by the library's standalone default.
     const viewer = el("div", VIEWER);
-    const wrap = el("div", "viewer-wrap");
-    const inner = el("div", "viewer");
+    const wrap = el("div", "molviewer-window-wrap");
+    const inner = el("div", "molviewer-window-inner");
     /* THE STYLESHEET'S SELECTORS ARE THE MARKUP CONTRACT. This chain is not free
      * to rearrange: `.viewer > .molviewer-window-frame` is what carries `height: 100%`,
      * and the stage and canvas below it are `flex: 1 1 auto` — so they take
@@ -337,11 +337,11 @@ function buildCard(hostEl, opts) {
     fold.type = "button";
     fold.setAttribute("aria-label", "Fold the panel");
     fold.setAttribute("aria-expanded", "true");
-    const chevron = el("span", "molview-fold-chevron");
+    const chevron = el("span", "molviewer-panel-fold-chevron");
     chevron.textContent = "›";
     fold.appendChild(chevron);
     fold.addEventListener("click", () => {
-        const folded = root.classList.toggle("is-folded");
+        const folded = root.classList.toggle("molviewer-is-folded");
         fold.setAttribute("aria-expanded", folded ? "false" : "true");
     });
 
@@ -365,7 +365,7 @@ function buildCard(hostEl, opts) {
      * It is the one piece not decided at mount: a viewer mounts before it has a
      * structure, and the bar appears once one with more than one frame is
      * loaded into it (§ 8). */
-    const frameBar = el("div", "molview-frame-controls");
+    const frameBar = el("div", "molviewer-frames-bar");
     frameBar.hidden = true;
 
     hostEl.appendChild(root);
@@ -392,9 +392,9 @@ function writeSizingError(card, available, floor, message) {
         // The modifier drops the card's min-width, so the message fits a host
         // too narrow to hold the viewer. Without it the blank card overflows the
         // host it just refused to render in — which is the thing being avoided.
-        card.root.classList.add("molview-card--unmountable");
+        card.root.classList.add("molviewer-card--unmountable");
         const note = card.root.ownerDocument.createElement("p");
-        note.className = "molview-embed-error";
+        note.className = "molviewer-embed-error";
         note.textContent = message || (
             "This viewer needs at least " + floor + "px of width; it was given "
             + available + "px.");

@@ -74,6 +74,22 @@ AREAS = {
     # Left alone, the columns read `molviewer-atoms-column-*` while the table
     # they sit in read `molviewer-selection-atom-table`.
     "atomstable": ("molviewer-selection-atom-table", "molviewer-atoms-table"),
+    # phase 4 -- the molview-* names and the globals. The globals (viewer,
+    # is-*, card-header ...) are used by OTHER modules too, so those areas carry
+    # a SCOPE: only MolView's own files are rewritten. A blanket pass would
+    # rename projects-sidebar's .is-selected and modify.html's .card-header.
+    "cardheader": ("card-header",   "molviewer-card-header",   None, ("lib/molview/", "molview_demo.html", "test_molview_", "molview_dom_standin")),
+    "windowwrap": ("viewer-wrap",   "molviewer-window-wrap",   None, ("lib/molview/", "molview_demo.html", "test_molview_", "molview_dom_standin")),
+    "windowinner":("viewer",        "molviewer-window-inner",  ("viewer",), ("lib/molview/", "molview_demo.html", "test_molview_", "molview_dom_standin")),
+    "states":     ("is-",           "molviewer-is-",           None, ("lib/molview/", "molview_demo.html", "test_molview_", "molview_dom_standin")),
+    "inuse":      ("in-use",        "molviewer-is-in-use",     None, ("lib/molview/", "molview_demo.html", "test_molview_", "molview_dom_standin")),
+    "availableq": ("available",     "molviewer-is-available",  None, ("lib/molview/", "molview_demo.html", "test_molview_", "molview_dom_standin")),
+    "framebar":   ("molview-frame-controls", "molviewer-frames-bar"),
+    "foldbtn":    ("molview-fold-btn",       "molviewer-panel-fold-btn"),
+    "foldchev":   ("molview-fold-chevron",   "molviewer-panel-fold-chevron"),
+    "cardbody":   ("molview-body",           "molviewer-card-body"),
+    "windowarea": ("molview-viewer",         "molviewer-window"),
+    "molviewrest":("molview-",               "molviewer-"),
     "knobs":      ("mol-viewer-knobs",   "molviewer-menu-bar"),
     "toggle":     ("mol-viewer-toggle",  "molviewer-rail-toggle"),
     "stage":      ("mol-viewer-stage",   "molviewer-window-stage"),
@@ -109,7 +125,8 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     old, new, *rest = AREAS[args.area]
-    only = set(rest[0]) if rest else None
+    only = set(rest[0]) if rest and rest[0] else None
+    scope = rest[1] if len(rest) > 1 else None
 
     before = _classes(CSS.read_text())
     # THE EXACT NAMES, taken from the stylesheet with comments masked -- never a
@@ -132,6 +149,8 @@ def main() -> int:
     sub = lambda m: new + m.group(1)[len(old):]
     touched, total = [], 0
     for path in _files():
+        if scope and not any(k in path.as_posix() for k in scope):
+            continue
         text = path.read_text(errors="replace")
         hits = len(pattern.findall(text))
         if not hits:

@@ -172,7 +172,7 @@ def test_spectrum_commit_mounts_readonly_molview(
     # The read-only fused card + 3Dmol canvas mount into the host.
     page.wait_for_function(
         "() => { const h = document.getElementById('spectra-molview-host');"
-        "  return !!h && !!h.querySelector('.molview-card')"
+        "  return !!h && !!h.querySelector('.molviewer-card')"
         "         && !!h.querySelector('canvas'); }",
         timeout=15_000,
     )

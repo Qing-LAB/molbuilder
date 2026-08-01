@@ -585,7 +585,7 @@ function buildViewMenu(doc, model) {
         if (value === "transparent") {
             // The stylesheet draws the checkerboard from this class; a colour
             // set inline would paint over it.
-            swatch.classList.add("is-transparent");
+            swatch.classList.add("molviewer-is-transparent");
         } else {
             swatch.style.background = value;
         }
@@ -634,12 +634,12 @@ function buildViewMenu(doc, model) {
      * here with nothing to keep in step. */
     const paint = (settings) => {
         for (const [value] of REPS) {
-            repButtons[value].classList.toggle("is-active", settings.style === value);
+            repButtons[value].classList.toggle("molviewer-is-active", settings.style === value);
         }
         radius.value = String(settings.radius);
         radiusOut.textContent = Number(settings.radius).toFixed(2);
         for (const [value] of BACKGROUNDS) {
-            swatches[value].classList.toggle("is-active",
+            swatches[value].classList.toggle("molviewer-is-active",
                                              settings.background === value);
         }
         // `background: null` is not a colour — it is "the window's own ground",
@@ -775,7 +775,7 @@ function mountBadge(doc, card, model) {
      * two corner overlays take the bottom — the measurement on the left, this on
      * the right — so the two bands never contend. § 11.2 asks for "the corner of
      * the 3D window" and does not say which. */
-    badge.className = "molview-overlay molview-overlay--bottom-right molview-overlay--warn";
+    badge.className = "molviewer-overlay molviewer-overlay--bottom-right molviewer-overlay--warn";
     badge.textContent = "Unsaved changes";
     badge.hidden = true;
     card.canvas.appendChild(badge);
@@ -802,7 +802,7 @@ function mountBadge(doc, card, model) {
  */
 function mountReadout(doc, card, model) {
     const readout = doc.createElement("div");
-    readout.className = "molview-overlay molview-overlay--bottom-left molview-overlay--info";
+    readout.className = "molviewer-overlay molviewer-overlay--bottom-left molviewer-overlay--info";
     readout.hidden = true;
     card.canvas.appendChild(readout);
 
@@ -936,7 +936,7 @@ function mountPanel(doc, card, model, reserved) {
     const owner = card.root.getAttribute("data-owner") || "molview";
 
     /* ── The two pages, and the tab bar that switches them (§ 8.1) ───────── */
-    const header = el("div", "card-header");
+    const header = el("div", "molviewer-card-header");
     const tabs = el("div", "molviewer-panel-tab-switch molviewer-selection-header-tabs");
     const pages = {};
     const tabInputs = {};
@@ -1327,7 +1327,7 @@ function mountPanel(doc, card, model, reserved) {
         const picked = new Set(state.selection);
         for (const atom of atoms) {
             const row = doc.createElement("tr");
-            if (picked.has(atom.index)) row.className = "is-selected";
+            if (picked.has(atom.index)) row.className = "molviewer-is-selected";
 
             const checkCell = el("td", "molviewer-atoms-column-check");
             const check = doc.createElement("input");

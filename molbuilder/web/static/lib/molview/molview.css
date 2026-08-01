@@ -57,7 +57,7 @@
      --mol-scene-*         3dmol-embed.js, for what WebGL cannot be styled with
 
    A number that both a rule and a script need lives here and nowhere else. */
-.molview-card {
+.molviewer-card {
     /* ── Surfaces ─────────────────────────────────────────────────────────
      * Three grounds, and which is which is the whole of the card's visual
      * organisation (§ 8.1): the module's own box is the GROUND, the 3D window
@@ -159,7 +159,7 @@
  *     side by side (the container query below), so the viewer never overflows the card.
  *   - FOLD: show/hide the panel -- width-only when wide, height-only when stacked. */
 
-.molview-card {
+.molviewer-card {
     container-type: inline-size;   /* enables the @container query below */
 
     /* The view-toggle RAIL (molviewer-window-stage's left column, § 1.1) is added to the LEFT of
@@ -215,15 +215,15 @@
  * sit on — the page's colour, quietly bounded. Giving all three the same surface
  * (which is what shipped first) draws three coincident rectangles and reads as
  * one undivided slab with controls loose on it. */
-.molview-card {
+.molviewer-card {
     background:    var(--mv-ground);
     border:        var(--card-border) solid var(--mv-edge-soft);
     border-radius: var(--mv-radius);
     color:         var(--mv-text);
 }
 
-.molview-card .molviewer-window-frame,
-.molview-card .molviewer-selection-card {
+.molviewer-card .molviewer-window-frame,
+.molviewer-card .molviewer-selection-card {
     background:    var(--mv-surface);
     border:        var(--card-border) solid var(--mv-edge);
     border-radius: var(--mv-radius);
@@ -252,14 +252,14 @@
  * fold handle's own rail, `--fold-w`, which the extent already subtracts (§ 8.3);
  * adding a `gap` would spend width the arithmetic has not been told about and
  * overflow the row by exactly that much. */
-.molview-card,
-.molview-card *,
-.molview-card *::before,
-.molview-card *::after {
+.molviewer-card,
+.molviewer-card *,
+.molviewer-card *::before,
+.molviewer-card *::after {
     box-sizing: border-box;
 }
 
-.molview-card {
+.molviewer-card {
     --card-pad:    var(--mv-space-sm);
     --card-border: 1px;
     padding: var(--card-pad);
@@ -274,8 +274,8 @@
                               + 2 * (var(--card-pad) + var(--card-border)));
 }
 
-.molview-card .molviewer-window-frame,
-.molview-card .molviewer-selection-card {
+.molviewer-card .molviewer-window-frame,
+.molviewer-card .molviewer-selection-card {
     padding: var(--card-pad);
 }
 
@@ -283,7 +283,7 @@
  * LEFT edge (aligned with the card header's title); the PANEL grows (flex:1 1 auto below) to absorb
  * any width the host gives beyond the viewer square + fold, so the content FILLS the card end to end
  * -- header and panels share one width, no centered indent, no lopsided right gap. */
-.molview-body {
+.molviewer-card-body {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
@@ -307,7 +307,7 @@
  * A DEFINITE square edge -- so the panel beside it can be told the SAME height and the two
  * bottom-align at any width, declaratively (the trajectory-inspector `align-items: stretch`
  * pattern, expressed here as a shared extent). */
-.molview-body > .molview-viewer {
+.molviewer-card-body > .molviewer-window {
     flex: 0 0 auto;
     width: var(--viewer-extent);
     height: var(--viewer-extent);
@@ -321,12 +321,12 @@
  * transient over-size during the drawing's init can't spill out of the square (into the panel / the
  * page below).  ``.molviewer-window-canvas`` is ``flex: 1 1 auto`` (this file),
  * so it absorbs whatever height is left under the knob bar -- no fixed canvas height anywhere. */
-.molview-viewer > .viewer-wrap {
+.molviewer-window > .molviewer-window-wrap {
     width: 100%;
     height: 100%;
     position: relative;            /* anchors the measurement-chip overlay to the canvas */
     overflow: hidden;              /* clip the drawing canvas to the square */
-    /* Viewer chrome -- the module owns it (it BUILDS .viewer-wrap).  Moved here from
+    /* Viewer chrome -- the module owns it (it BUILDS .molviewer-window-wrap).  Moved here from
      * form-components.css, dropping that sheet's parallel aspect-ratio / min-height /
      * max-height:56vh sizing which duplicated (and drifted from -- 56vh vs the module's
      * 60vh --viewer-edge) the square the module already sizes above. */
@@ -340,14 +340,14 @@
     background: var(--mv-scene);
     box-shadow: var(--mv-shadow);
 }
-.molview-viewer .viewer-wrap > .viewer {
+.molviewer-window .molviewer-window-wrap > .molviewer-window-inner {
     width: 100%;
     height: 100%;
     position: relative;
     overflow: hidden;
     background: transparent;       /* inherit the card surface -- no white frame */
 }
-.molview-viewer .viewer-wrap > .viewer > .molviewer-window-frame {
+.molviewer-window .molviewer-window-wrap > .molviewer-window-inner > .molviewer-window-frame {
     height: 100%;
     max-height: 100%;
     min-height: 0;
@@ -357,10 +357,10 @@
 /* Panel: the leftover width, with its own min-width.  overflow-x hidden keeps the fold
  * width-collapse clean; overflow-y auto scrolls a tall panel rather than forcing the card
  * wider. */
-.molview-panel {
+.molviewer-panel {
     /* GROWS to absorb the width the host gives beyond the viewer square + fold (flex-grow:1), with
      * --panel-min as its floor -- so the content fills the card (aligned with the header) instead of
-     * the pair centering.  Folding is still a clean width collapse to 0 (the .is-folded rule below
+     * the pair centering.  Folding is still a clean width collapse to 0 (the .molviewer-is-folded rule below
      * overrides flex-basis/width).  Width tracks the CARD width, NOT the atom-list<->filter switch
      * (that never changes the card width), so task #53's "no resize on tab switch" holds. */
     flex: 1 1 auto;
@@ -385,20 +385,20 @@
 
 /* The panel's single scroll region = the active [Selection|Cell] page.  The tabs header
  * stays put; the page body scrolls when it's taller than the panel; the panel itself and the
- * inner atom-list no longer each add their own bar.  Scoped to .molview-panel so a
+ * inner atom-list no longer each add their own bar.  Scoped to .molviewer-panel so a
  * stand-alone selection-panel (outside a fused card) is unaffected. */
-.molview-panel .molviewer-selection-card {
+.molviewer-panel .molviewer-selection-card {
     flex: 1 1 auto;
     min-height: 0;
     max-height: 100%;
     display: flex;
     flex-direction: column;
 }
-.molview-panel .molviewer-selection-card > .card-header { flex: 0 0 auto; }
+.molviewer-panel .molviewer-selection-card > .molviewer-card-header { flex: 0 0 auto; }
 /* :not([hidden]) is CRITICAL: `display: flex` would otherwise override the [hidden]
  * attribute's display:none and show BOTH the Selection AND Cell pages at once (so the tab
  * switch would appear to do nothing). */
-.molview-panel .molviewer-selection-card > .molviewer-panel-tab:not([hidden]) {
+.molviewer-panel .molviewer-selection-card > .molviewer-panel-tab:not([hidden]) {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -418,12 +418,12 @@
  * specificity the id used to: this selector must out-rank the `.molviewer-panel-tab` rule above (whose
  * `overflow: hidden` would clip the scroll), and 0-5-0 over 0-4-0 does that by construction
  * rather than by source order. */
-.molview-panel .molviewer-selection-card > .molviewer-panel-tab[data-page="cell"]:not([hidden]) {
+.molviewer-panel .molviewer-selection-card > .molviewer-panel-tab[data-page="cell"]:not([hidden]) {
     flex: 0 1 auto;
     overflow-y: auto;
 }
 
-.molview-panel .molviewer-panel-tab > * { flex: 0 0 auto; }
+.molviewer-panel .molviewer-panel-tab > * { flex: 0 0 auto; }
 /* The click/filter body FILLS the fixed-height panel (flex: 1 1 auto) so the panel
  * frame is STABLE whichever view is shown -- the atom list and the (shorter) filter
  * view both occupy the same frame, and the list/filter rows inside are the single
@@ -431,7 +431,7 @@
 /* `[data-fill]` marks the ONE section of a page that takes the leftover height and holds the
  * single scroll region -- the atom list in click mode, the filter rows in filter mode.  It
  * was two ids for the two of them; it is one role, and the page may only ever have one. */
-.molview-panel .molviewer-panel-tab > [data-fill]:not([hidden]) {
+.molviewer-panel .molviewer-panel-tab > [data-fill]:not([hidden]) {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -439,8 +439,8 @@
 }
 /* The atom list / filter rows ARE the scroll region -- its fixed cap is replaced by the flex
  * fill, so the list scrolls while the header + Clear/Invert + assign stay pinned. */
-.molview-panel .molviewer-selection-list-wrap,
-.molview-panel .molviewer-filter-rows {
+.molviewer-panel .molviewer-selection-list-wrap,
+.molviewer-panel .molviewer-filter-rows {
     flex: 1 1 auto;
     min-height: 0;
     max-height: none;
@@ -448,7 +448,7 @@
 }
 
 /* ---- Fold handle: a slim, full-height splitter rail (not a bordered box) ---- */
-.molview-fold-btn {
+.molviewer-panel-fold-btn {
     flex: 0 0 auto;
     align-self: stretch;
     width: var(--fold-w);   /* the SAME rail width the layout math reserves (one source of truth) */
@@ -478,24 +478,24 @@
  * on the right: UNFOLDED points LEFT (`›` rotated 180° -> `‹`) = "collapse the panel away";
  * FOLDED points RIGHT = "reveal the panel out to the right".  (Stacked flips to up/down in
  * the @container block below.) */
-.molview-fold-chevron {
+.molviewer-panel-fold-chevron {
     display: inline-block;
     line-height: 1;
     transform: rotate(180deg);   /* unfolded (wide): point LEFT -- clicking folds the panel away */
     transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.molview-fold-btn:hover {
+.molviewer-panel-fold-btn:hover {
     background: var(--bg-input-focus, #2c323b);
     color: var(--text-secondary, #a8aebb);
 }
-.molview-fold-btn:active { background: var(--border-strong, #3a3f48); }
-.molview-fold-btn:focus-visible {
+.molviewer-panel-fold-btn:active { background: var(--border-strong, #3a3f48); }
+.molviewer-panel-fold-btn:focus-visible {
     outline: 2px solid var(--accent, #6ba6ff);
     outline-offset: -2px;
 }
 
 /* Folded (wide): collapse the panel to zero width; the viewer stays put. */
-.molview-card.is-folded .molview-panel {
+.molviewer-card.molviewer-is-folded .molviewer-panel {
     flex: 0 0 0;          /* kill the grow (the unfolded panel is flex:1 1 auto) so it truly collapses */
     width: 0;
     min-width: 0;
@@ -505,11 +505,11 @@
 /* Folded: the panel is gone and the viewer no longer needs to be a square bottom-aligned with it,
  * so give the viewer the freed width -- folding EXPANDS the view instead of leaving an empty gap.
  * Height stays --viewer-extent (capped at --viewer-edge); the viewer becomes a wide rectangle. */
-.molview-card.is-folded .molview-viewer {
+.molviewer-card.molviewer-is-folded .molviewer-window {
     flex: 1 1 auto;
     width: auto;
 }
-.molview-card.is-folded .molview-fold-chevron { transform: rotate(0deg); }  /* folded: point RIGHT -- clicking reveals the panel */
+.molviewer-card.molviewer-is-folded .molviewer-panel-fold-chevron { transform: rotate(0deg); }  /* folded: point RIGHT -- clicking reveals the panel */
 
 /* ---- STACK only when the card is too NARROW to hold BOTH min-widths side by side:
    the threshold is the DERIVED sum --viewer-min(320 + --rail-w 30 = 350) + --fold-w(22) +
@@ -523,16 +523,16 @@
     /* ONE stacked square edge -- capped at --viewer-edge (which already carries the sole
      * allowed 60vh, §7.1), else the CARD's own width (100cqw).  Reused by the viewer AND the
      * panel so both columns share one width and align; no fresh viewport magic number. */
-    .molview-body {
+    .molviewer-card-body {
         flex-direction: column;
         align-items: center;
         --stack-extent: min(var(--viewer-edge), 100cqw);
     }
-    .molview-body > .molview-viewer {
+    .molviewer-card-body > .molviewer-window {
         width: var(--stack-extent);              /* centred square */
         height: var(--stack-extent);
     }
-    .molview-panel {
+    .molviewer-panel {
         /* Same width as the viewer square (columns align), and a height that MATCHES the
          * square too -- a generous, stable frame (so the atom list is usable, not a sliver)
          * that an atom-list <-> filter switch never resizes; the inner list scrolls, and the
@@ -542,7 +542,7 @@
         min-height: 22rem;
         transition: height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
     }
-    .molview-fold-btn {
+    .molviewer-panel-fold-btn {
         /* A COMPACT centred grip (hugs its chevron + a grab margin) -- NOT a full-width bar.
          * A small centred handle cannot read as "wider than the panels" by construction, so
          * the stacked layout needs no width-matching against the viewer canvas / panel inset. */
@@ -554,15 +554,15 @@
     }
     /* Stacked (panel BELOW): direction = where the panel moves.  UNFOLDED points UP
      * ("collapse up, away"); FOLDED points DOWN ("reveal the panel below"). */
-    .molview-fold-chevron { transform: rotate(-90deg); }
-    .molview-card.is-folded .molview-panel { height: 0; min-height: 0; }
-    .molview-card.is-folded .molview-fold-chevron { transform: rotate(90deg); }
+    .molviewer-panel-fold-chevron { transform: rotate(-90deg); }
+    .molviewer-card.molviewer-is-folded .molviewer-panel { height: 0; min-height: 0; }
+    .molviewer-card.molviewer-is-folded .molviewer-panel-fold-chevron { transform: rotate(90deg); }
 }
 
 /* Frame controls bar (§14.5) -- the trajectory playback UI molview renders in the controls
  * area.  Hidden via the [hidden] attribute until a trajectory is loaded (frameCount > 1);
  * :not([hidden]) is required so `display: flex` doesn't override that. */
-.molview-frame-controls:not([hidden]) {
+.molviewer-frames-bar:not([hidden]) {
     display: flex;
     align-items: center;
     gap: 0.3rem;
@@ -630,8 +630,8 @@
  * (persistence indicator, and -- migrating -- the measurement chip).  The concealed factory
  * lib/molview/mount.js builds the element with these classes so EVERY overlay is
  * positioned + styled identically, from TOKENS only, with no per-consumer tweaking.  Anchors to
- * .viewer-wrap (position: relative already), so it tracks the viewer in every fold state. */
-.molview-overlay {
+ * .molviewer-window-wrap (position: relative already), so it tracks the viewer in every fold state. */
+.molviewer-overlay {
     position: absolute;
     z-index: var(--mv-layer-overlay);  /* over the drawing AND over the rebuild cover: it only reads */
     display: inline-flex;
@@ -648,19 +648,19 @@
     box-shadow: var(--shadow-card);
     pointer-events: none;             /* never intercept viewer drags; the text carries the meaning */
 }
-.molview-overlay[hidden] { display: none; }
+.molviewer-overlay[hidden] { display: none; }
 /* Corner placement modifiers (the factory picks one). */
-.molview-overlay--bottom-right { bottom: var(--space-sm); right: var(--space-sm); }
-.molview-overlay--bottom-left  { bottom: var(--space-sm); left:  var(--space-sm); }
+.molviewer-overlay--bottom-right { bottom: var(--space-sm); right: var(--space-sm); }
+.molviewer-overlay--bottom-left  { bottom: var(--space-sm); left:  var(--space-sm); }
 /* Semantic tint modifiers (border + surface), consistent with the palette's severity tokens. */
-.molview-overlay--warn { border-color: var(--warn);   background: var(--warning-bg); }
-.molview-overlay--info { border-color: var(--accent); }
+.molviewer-overlay--warn { border-color: var(--warn);   background: var(--warning-bg); }
+.molviewer-overlay--info { border-color: var(--accent); }
 
 /* SIZING-CONTRACT FAILURE (mount.js): the parent handed the card less than --molview-min-width.
  * The module refuses to render broken/overflowing -- it shows a blank card with a centered message.
  * The --unmountable modifier drops the min-width so the message itself fits the too-small host. */
-.molview-card--unmountable { min-width: 0; }
-.molview-embed-error {
+.molviewer-card--unmountable { min-width: 0; }
+.molviewer-embed-error {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -703,7 +703,7 @@
     margin: 0;
 }
 
-.molviewer-selection-card .card-header {
+.molviewer-selection-card .molviewer-card-header {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -992,14 +992,14 @@
     white-space: nowrap;
 }
 
-.molviewer-atoms-table tr.is-selected td {
+.molviewer-atoms-table tr.molviewer-is-selected td {
     background: var(--sp-accent-bg);
     color: var(--sp-accent-fg);
 }
 .molviewer-atoms-table tr:hover td {
     background: var(--ps-bg-deep);
 }
-.molviewer-atoms-table tr.is-selected:hover td {
+.molviewer-atoms-table tr.molviewer-is-selected:hover td {
     background: var(--sp-accent-bg);
 }
 
@@ -1325,14 +1325,14 @@
     letter-spacing: 0.04em;
     margin-left: 0.3em;
 }
-.molviewer-regions-badge.in-use {
+.molviewer-regions-badge.molviewer-is-in-use {
     background: var(--success);
     color: white;
 }
-.molviewer-regions-badge.available {
-    background: var(--ps-border);
-    color: var(--ps-fg-dim);
-}
+/* (.available removed 2026-08-01: the badge's "not in use yet" tone. Nothing
+   ever applied the class -- only .molviewer-is-in-use is ever set -- so this
+   was an orphan of the phase-1c kind, found by phase 4 because it was the last
+   name in the file without the prefix.) */
 .molviewer-regions-short {
     color: var(--ps-fg-dim);
     margin-left: 0.4em;
@@ -1471,7 +1471,7 @@
  * Two anchoring modes:
  *
  *   1. ``position: absolute`` mode (Molbuilder tab) — the host
- *      page wraps #viewer in a position:relative .viewer-wrap so
+ *      page wraps #viewer in a position:relative .molviewer-window-wrap so
  *      this rule's top/right anchors the chip at the actual
  *      canvas corner.  ``pointer-events: none`` lets clicks pass
  *      through to the drawing.
@@ -1702,7 +1702,7 @@
 
 /* Menu body (popover) --------------------------------------- */
 /* Position is FIXED (not absolute) so the popover escapes any
-   clipping ancestor — e.g. Build's ``.viewer-wrap`` has
+   clipping ancestor — e.g. Build's ``.molviewer-window-wrap`` has
    ``overflow: hidden`` to keep the drawing library's canvas inside its rounded
    corners; an absolutely-positioned popover would get clipped by
    that wrapper and become unusable.  Coordinates are set in JS
@@ -1774,7 +1774,7 @@
     background:     var(--mv-control-hover);
     border-color:   var(--mv-edge);
 }
-.molviewer-menu-style-btn.is-active {
+.molviewer-menu-style-btn.molviewer-is-active {
     background:     var(--mv-accent);
     color:          var(--mv-accent-on);
     border-color:   var(--mv-accent);
@@ -1856,7 +1856,7 @@
     flex-wrap:      wrap;
     align-items:    center;
     gap:            0.4rem;
-    padding:        3px; /* room for .is-active outline */
+    padding:        3px; /* room for .molviewer-is-active outline */
 }
 .molviewer-menu-background-swatch,
 .molviewer-menu-background-custom {
@@ -1873,7 +1873,7 @@
 .molviewer-menu-background-custom:hover {
     transform:      scale(1.08);
 }
-.molviewer-menu-background-swatch.is-transparent {
+.molviewer-menu-background-swatch.molviewer-is-transparent {
     /* Decorative checkerboard pattern for the "transparent" swatch —
      * the greys are visual structure, not theme colors. */
     background:
@@ -1884,7 +1884,7 @@
     line-height:    1.6rem;
     text-align:     center;
 }
-.molviewer-menu-background-swatch.is-active {
+.molviewer-menu-background-swatch.molviewer-is-active {
     outline:        2px solid var(--mv-accent);
     outline-offset: 2px;
 }
@@ -2046,10 +2046,10 @@
  * Scoped to the panel deliberately: the rail and the 3D window's chrome have
  * their own sizing, and a global control rule would reach them too.
  */
-.molview-panel button,
-.molview-panel input,
-.molview-panel select,
-.molview-panel textarea {
+.molviewer-panel button,
+.molviewer-panel input,
+.molviewer-panel select,
+.molviewer-panel textarea {
     font-family: var(--mv-control-family);
     font-size:   var(--mv-control-font);
     line-height: var(--mv-control-line);
@@ -2057,10 +2057,10 @@
 
 /* The three that share a row have to share a height, or they step. The select
    was 2.4px taller than the buttons beside it for want of this one line. */
-.molview-panel input[type="text"],
-.molview-panel input:not([type]),
-.molview-panel select,
-.molview-panel button {
+.molviewer-panel input[type="text"],
+.molviewer-panel input:not([type]),
+.molviewer-panel select,
+.molviewer-panel button {
     box-sizing:  border-box;
     min-height:  var(--mv-control-height);
     padding:     var(--mv-control-pad-y) var(--mv-control-pad-x);
@@ -2068,8 +2068,8 @@
 
 /* Checkboxes size to the text they label rather than to the UA default, so the
    atom list's rows line up with their own labels. */
-.molview-panel input[type="checkbox"],
-.molview-panel input[type="radio"] {
+.molviewer-panel input[type="checkbox"],
+.molviewer-panel input[type="radio"] {
     box-sizing: border-box;
     width:      var(--mv-control-box);
     height:     var(--mv-control-box);

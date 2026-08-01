@@ -21,7 +21,7 @@
  * The inspector still owns its OWN card chrome (title + the "Open in
  * Molbuilder" link the user expects on /results + the status note); the
  * MolView fused card mounts inside that card, in an empty host div (the
- * host is NOT a .molview-card, so molview.mount takes its empty-host build
+ * host is NOT a .molviewer-card, so molview.mount takes its empty-host build
  * path and owns the whole assembly).
  */
 import { mount } from "/static/lib/molview/index.js";
@@ -109,7 +109,7 @@ function _mvdata() {
             card.appendChild(status);
 
             // -- Empty host the MolView module mounts into --------- //
-            // A plain div (NOT a .molview-card): molview.mount takes its
+            // A plain div (NOT a .molviewer-card): molview.mount takes its
             // empty-host build path and BUILDS the fused card (viewer +
             // panel + fold + view-controls + measurement) inside.
             const molviewHost = document.createElement("div");

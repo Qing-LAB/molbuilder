@@ -292,9 +292,9 @@
   {#- 2+3. Structure & selection — the FUSED molview card: the viewer and the
       selection panel share ONE card with a foldable panel (fused-layout.css,
       molview-module.md).  Same composition as the Results structure inspector
-      (lib/inspectors/structure.js): molview-card > molview-body >
-      (molview-viewer | molview-fold-btn | molview-panel). -#}
-  {#- NOT a .card: molview.mount BUILDS its own .molview-card into the bare host below
+      (lib/inspectors/structure.js): molviewer-card > molviewer-card-body >
+      (molviewer-window | molviewer-panel-fold-btn | molviewer-panel). -#}
+  {#- NOT a .card: molview.mount BUILDS its own .molviewer-card into the bare host below
       (exactly like the demo's bare #molview-demo-host).  Wrapping it in an outer .card
       would double-nest card chrome and break the module card's fold/responsive layout. -#}
   <section class="viewer-section">

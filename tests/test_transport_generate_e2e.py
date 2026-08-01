@@ -167,7 +167,7 @@ def test_transport_commit_mounts_molview(
     page.wait_for_function(
         "() => {"
         "  const h = document.getElementById('transport-molview-host');"
-        "  return !!h && !!h.querySelector('.molview-card')"
+        "  return !!h && !!h.querySelector('.molviewer-card')"
         "         && !!h.querySelector('canvas');"
         "}",
         timeout=15_000,

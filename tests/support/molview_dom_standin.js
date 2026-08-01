@@ -42,7 +42,7 @@ function makeElement(doc, tag) {
             /* `force` is honoured, as the real DOM does: `toggle(c, cond)` SETS
              * the class to `cond` rather than flipping it. Without it, the very
              * common "light exactly the chosen one" loop —
-             * `for (x of all) x.classList.toggle("is-active", x === chosen)` —
+             * `for (x of all) x.classList.toggle("molviewer-is-active", x === chosen)` —
              * turned every class on, so a stand-in test could not tell "one lit"
              * from "all lit". That is a stand-in describing something the DOM
              * does not do (§ 13.1). */
@@ -166,7 +166,7 @@ function makeElement(doc, tag) {
 }
 
 /* ONE step of a selector: a tag, a class, or a compound of the two —
- * `div`, `.is-active`, `input`, `.molviewer-menu-background-swatch.is-transparent`. */
+ * `div`, `.molviewer-is-active`, `input`, `.molviewer-menu-background-swatch.molviewer-is-transparent`. */
 function matches(node, step) {
     const parts = String(step).split(".");
     const tag = parts.shift();

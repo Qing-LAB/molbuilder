@@ -221,14 +221,14 @@ def test_a_viewer_that_cannot_fit_draws_a_blank_card_with_the_error_in_it():
         """
         const host = globalThis.__makeHost(200, 350);
         const viewer = await MV.mount(host, workspace, { owner: "x" });
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         console.log(JSON.stringify({
             ok: viewer.ok,
             hasCard: !!card,
-            hasViewer: !!(card && card.querySelector(".molview-viewer")),
-            hasPanel: !!(card && card.querySelector(".molview-panel")),
-            errorText: card && card.querySelector(".molview-embed-error")
-                ? card.querySelector(".molview-embed-error").textContent : null,
+            hasViewer: !!(card && card.querySelector(".molviewer-window")),
+            hasPanel: !!(card && card.querySelector(".molviewer-panel")),
+            errorText: card && card.querySelector(".molviewer-embed-error")
+                ? card.querySelector(".molviewer-embed-error").textContent : null,
         }));
         """
     )
@@ -346,15 +346,15 @@ def test_the_arrow_turns_and_the_handle_does_not():
     out = _run(
         """
         const { host } = await mounted();
-        const card = host.querySelector(".molview-card");
-        const fold = card.querySelector(".molview-fold-btn");
-        const chevron = card.querySelector(".molview-fold-chevron");
+        const card = host.querySelector(".molviewer-card");
+        const fold = card.querySelector(".molviewer-panel-fold-btn");
+        const chevron = card.querySelector(".molviewer-panel-fold-chevron");
 
-        const before = { folded: card.classList.contains("is-folded"),
+        const before = { folded: card.classList.contains("molviewer-is-folded"),
                          expanded: fold.getAttribute("aria-expanded"),
                          btnStyle: JSON.stringify(fold.style) };
         fold.click();
-        const after = { folded: card.classList.contains("is-folded"),
+        const after = { folded: card.classList.contains("molviewer-is-folded"),
                         expanded: fold.getAttribute("aria-expanded"),
                         btnStyle: JSON.stringify(fold.style) };
         console.log(JSON.stringify({ before, after, hasChevron: !!chevron }));
@@ -381,7 +381,7 @@ def test_the_frame_bar_appears_only_once_there_is_more_than_one_frame():
     out = _run(
         """
         const { host, viewer } = await mounted();
-        const bar = host.querySelector(".molview-frame-controls");
+        const bar = host.querySelector(".molviewer-frames-bar");
         const atMount = bar.hidden;
 
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
@@ -481,7 +481,7 @@ def test_the_switches_are_a_rail_of_buttons_outside_the_window():
     out = _run(
         """
         const { host, viewer } = await mounted();
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const rail = card.querySelector(".molviewer-rail");
         const buttons = rail.children;
 
@@ -550,7 +550,7 @@ def test_an_open_menu_is_placed_against_its_own_trigger():
     out = _run(
         """
         const { host } = await mounted();
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const menu = card.querySelector("DETAILS");
         const summary = menu.querySelector("SUMMARY");
         const body = menu.querySelector(".molviewer-menu-body");
@@ -607,7 +607,7 @@ def test_a_menu_closes_on_a_click_elsewhere_and_leaves_nothing_behind():
     out = _run(
         """
         const { host, viewer } = await mounted();
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const menus = card.querySelectorAll("DETAILS");
         menus[0].open = true;
 
@@ -749,8 +749,8 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
             [[-1, 0, 0], [0, 0, 0], [0, 1, 0]],
             [[-2, 0, 0], [0, 0, 0], [0, 2, 0]],
         ]);
-        const card = host.querySelector(".molview-card");
-        const readout = card.querySelector(".molview-overlay--info");
+        const card = host.querySelector(".molviewer-card");
+        const readout = card.querySelector(".molviewer-overlay--info");
 
         // One atom: where it is.
         viewer.data.selection.toggle(1);
@@ -932,7 +932,7 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
         viewer.data.selection.toggle(0);
         viewer.data.selection.writeLabel("L-electrode");
 
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const items = card.querySelectorAll(".molviewer-export-btn");
         for (const item of items) item.click();
 
@@ -1019,7 +1019,7 @@ def test_switching_editors_redraws_the_panel_and_moves_no_selection():
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         viewer.data.selection.add([0, 1]);
 
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const clickBody = card.querySelector(".molviewer-selection-click-section");
         const filterBody = card.querySelector(".molviewer-filter-section");
 
@@ -1055,7 +1055,7 @@ def test_the_page_tabs_are_the_switch_the_stylesheet_draws():
     out = _run(
         """
         const { host } = await mounted();
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const options = card.querySelector(".molviewer-panel-tab-switch").children;
         const pages = card.querySelectorAll(".molviewer-panel-tab");
 
@@ -1124,7 +1124,7 @@ def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store():
         """
         const { host, viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const rows = card.querySelectorAll(".molviewer-atoms-table")[0].children;
 
         const numbers = Array.from(rows).map(
@@ -1174,7 +1174,7 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
         ];
         const { host, viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const rows = () => card.querySelectorAll(".molviewer-atoms-table")[0].children;
 
         const first = rows()[0];
@@ -1276,13 +1276,13 @@ def test_a_reserved_label_reads_differently_and_so_does_each_of_them():
             { name: "L-electrode",  description: "the left lead" },
         ] } });
         await told.viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
-        const withList = chips(told.host.querySelector(".molview-card"));
+        const withList = chips(told.host.querySelector(".molviewer-card"));
 
         // TOLD NOTHING: every label is an ordinary one.
         globalThis.__nextAtoms = atoms;
         const untold = await mounted();
         await untold.viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
-        const withoutList = chips(untold.host.querySelector(".molview-card"));
+        const withoutList = chips(untold.host.querySelector(".molviewer-card"));
 
         console.log(JSON.stringify({ withList, withoutList }));
         """
@@ -1334,7 +1334,7 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
         ];
         const { host, viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const chooser = card.querySelector(".molviewer-selection-assign-select");
         const box = card.querySelector(".molviewer-selection-new-label");
         const options = () => chooser.children.map(o => o.value);
@@ -1412,7 +1412,7 @@ def test_typing_in_a_filter_row_does_not_replace_the_control_being_typed_in():
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         viewer.data.selection.setEditor("filter");
         viewer.data.selection.addFilter();
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
 
         const typedInto = card.querySelector(".molviewer-filter-text");
         const kindSelect = card.querySelector(".molviewer-filter-kind");
@@ -1475,7 +1475,7 @@ def test_a_filter_row_is_added_typed_and_removed_from_the_panel():
         const { host, viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         viewer.data.selection.setEditor("filter");
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
 
         const empty = card.querySelector(".molviewer-filter-empty") !== null;
         card.querySelector(".molviewer-selection-add-filter-row").click();
@@ -1519,7 +1519,7 @@ def test_the_view_menu_holds_all_four_drawing_settings():
     out = _run(
         """
         const { host, viewer } = await mounted();
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const view = viewer.data.view;
 
         // § 1.1's range, read off the control itself.
@@ -1543,18 +1543,18 @@ def test_the_view_menu_holds_all_four_drawing_settings():
         // The background presets, and the one that is transparent.
         const swatches = card.querySelectorAll(".molviewer-menu-background-swatch");
         const transparent = card.querySelectorAll(
-            ".molviewer-menu-background-swatch.is-transparent");
+            ".molviewer-menu-background-swatch.molviewer-is-transparent");
         const picker = card.querySelectorAll(".molviewer-menu-background-custom input");
 
         // Nothing is lit until the user chooses: `background: null` is "the
         // window's own ground", not a colour (§ 9.6).
         const litAtStart = card.querySelectorAll(
-            ".molviewer-menu-background-swatch.is-active").length;
+            ".molviewer-menu-background-swatch.molviewer-is-active").length;
 
         transparent[0].click();
         const afterSwatch = view.get().background;
         const litAfter = card.querySelectorAll(
-            ".molviewer-menu-background-swatch.is-active").length;
+            ".molviewer-menu-background-swatch.molviewer-is-active").length;
 
         console.log(JSON.stringify({
             spec, startedAt, afterDrag, shownAfterDrag, followed,
@@ -1606,8 +1606,8 @@ def test_the_view_menu_opens_showing_what_the_store_already_says():
     out = _run(
         """
         const { host, viewer } = await mounted();
-        const card = host.querySelector(".molview-card");
-        const lit = card.querySelectorAll(".molviewer-menu-style-btn.is-active");
+        const card = host.querySelector(".molviewer-card");
+        const lit = card.querySelectorAll(".molviewer-menu-style-btn.molviewer-is-active");
 
         console.log(JSON.stringify({
             style:       viewer.data.view.get().style,
@@ -1653,7 +1653,7 @@ def test_the_projection_toggle_reads_the_store_not_its_own_attribute():
     out = _run(
         """
         const { host, viewer } = await mounted();
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const view = viewer.data.view;
         const toggle = card.querySelector(".molviewer-rail-toggle");
         const readBack = () => toggle.getAttribute("aria-pressed");
@@ -1706,7 +1706,7 @@ def test_the_speed_box_sets_playback_and_shows_what_playback_took():
     out = _run(
         """
         const { host, viewer } = await mounted();
-        const card = host.querySelector(".molview-card");
+        const card = host.querySelector(".molviewer-card");
         const box = card.querySelector(".molviewer-frames-speed-input");
         const type = (v) => { box.value = String(v); box.dispatch("change", { target: box }); };
 
@@ -1811,7 +1811,7 @@ def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow():
             const host = globalThis.__makeHost();
             const viewer = await MV.mount(host, workspace, { owner: "x", mode });
             await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
-            const card = host.querySelector(".molview-card");
+            const card = host.querySelector(".molviewer-card");
             return {
                 assignHidden: card.querySelector(".molviewer-selection-assign").hidden,
                 isolateOffered: card.querySelector(".molviewer-selection-mode-option") !== null,

@@ -401,7 +401,7 @@ def test_runtime_listPending_is_empty_on_modify(page, flask_server):
     # consumer has run, so listPending is meaningful.
     page.wait_for_function(
         "() => window.molbuilder && window.molbuilder.runtime "
-        "      && !!document.querySelector('.molview-card .viewer')",
+        "      && !!document.querySelector('.molviewer-card .viewer')",
         timeout=10000,
     )
     pending = page.evaluate(
@@ -2142,7 +2142,7 @@ def test_modify_view_controls_bar(page, flask_server, tmp_path, monkeypatch):
 
 
 def test_modify_fused_card_layout(page, flask_server, tmp_path, monkeypatch):
-    """Track B: the Modify viewer + selection panel share ONE molview-card
+    """Track B: the Modify viewer + selection panel share ONE molviewer-card
     (fused-layout.css), body = viewer | fold-handle | panel, the fold handle works,
     the panel still mounts + functions, and there's no horizontal overflow."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
@@ -2154,23 +2154,23 @@ def test_modify_fused_card_layout(page, flask_server, tmp_path, monkeypatch):
     # ONE fused card: body holds the viewer, the fold handle, and the panel host.
     # molview.mount BUILDS these as CLASSES (not the old template ids) -- Track B.
     shape = page.evaluate("""() => {
-        const card = document.querySelector('.molview-card');
-        const body = card && card.querySelector('.molview-body');
+        const card = document.querySelector('.molviewer-card');
+        const body = card && card.querySelector('.molviewer-card-body');
         return {
             card: !!card,
-            viewer: !!(body && body.querySelector('.molview-viewer .viewer')),
-            fold:   !!(body && body.querySelector('.molview-fold-btn')),
-            panel:  !!(body && body.querySelector('.molview-panel')),
+            viewer: !!(body && body.querySelector('.molviewer-window .viewer')),
+            fold:   !!(body && body.querySelector('.molviewer-panel-fold-btn')),
+            panel:  !!(body && body.querySelector('.molviewer-panel')),
         };
     }""")
     assert shape == {"card": True, "viewer": True, "fold": True, "panel": True}, shape
     # Fold handle toggles the collapsed state.
-    page.locator(".molview-fold-btn").click()
+    page.locator(".molviewer-panel-fold-btn").click()
     page.wait_for_function(
-        "() => document.querySelector('.molview-card').classList.contains('is-folded')")
-    page.locator(".molview-fold-btn").click()
+        "() => document.querySelector('.molviewer-card').classList.contains('is-folded')")
+    page.locator(".molviewer-panel-fold-btn").click()
     page.wait_for_function(
-        "() => !document.querySelector('.molview-card').classList.contains('is-folded')")
+        "() => !document.querySelector('.molviewer-card').classList.contains('is-folded')")
     # The panel still works inside the fused card: assign a label.
     _set_selection(page, [0])
     page.locator("#selection-assign-target").select_option("L-electrode")
@@ -2197,18 +2197,18 @@ def test_fused_card_height_stable_across_fold(
     _open_modify(page, flask_server)
     _load_file(page, str(water_xyz), expected_atoms=3)
     _wait_panel_ready(page)
-    body = page.locator(".molview-body")
-    panel = page.locator(".molview-panel")
+    body = page.locator(".molviewer-card-body")
+    panel = page.locator(".molviewer-panel")
     # Precondition: a wide card -> side-by-side with a visible panel beside the viewer.
     assert panel.bounding_box()["width"] > 200, (
         "expected side-by-side layout with a visible panel")
     h_before = body.bounding_box()["height"]
     # Fold the panel; it collapses to zero width (width-only), height unchanged.
-    page.locator(".molview-fold-btn").click()
+    page.locator(".molviewer-panel-fold-btn").click()
     page.wait_for_function(
-        "() => document.querySelector('.molview-card').classList.contains('is-folded')")
+        "() => document.querySelector('.molviewer-card').classList.contains('is-folded')")
     page.wait_for_function(
-        "() => document.querySelector('.molview-panel')"
+        "() => document.querySelector('.molviewer-panel')"
         ".getBoundingClientRect().width < 20", timeout=3000)
     h_after = body.bounding_box()["height"]
     assert abs(h_after - h_before) < 12, (
@@ -2230,9 +2230,9 @@ def test_fused_no_overflow_when_squeezed(
         page.set_viewport_size({"width": w, "height": 900})
         page.wait_for_timeout(150)   # let the container-query reflow settle
         ovf = page.evaluate("""() => {
-            const card = document.querySelector('.molview-card').getBoundingClientRect();
-            const vw = document.querySelector('.molview-viewer').getBoundingClientRect();
-            const pn = document.querySelector('.molview-panel').getBoundingClientRect();
+            const card = document.querySelector('.molviewer-card').getBoundingClientRect();
+            const vw = document.querySelector('.molviewer-window').getBoundingClientRect();
+            const pn = document.querySelector('.molviewer-panel').getBoundingClientRect();
             const R = Math.round;
             return R(vw.right) > R(card.right) + 1 || R(pn.right) > R(card.right) + 1
                 || R(vw.left) < R(card.left) - 1;
@@ -2255,7 +2255,7 @@ def test_workspace_cards_never_overlap(
         page.set_viewport_size({"width": w, "height": 900})
         page.wait_for_timeout(150)   # let the flex reflow settle
         bad = page.evaluate("""() => {
-            const mv = document.querySelector('.molview-card').getBoundingClientRect();
+            const mv = document.querySelector('.molviewer-card').getBoundingClientRect();
             const md = document.querySelector('.modify-section').getBoundingClientRect();
             const R = Math.round;
             // Only an overlap ON THE SAME ROW counts -- once wrapped they're stacked.
@@ -2281,9 +2281,9 @@ def test_fused_fold_no_overlap_when_narrow(
     _load_file(page, str(water_xyz), expected_atoms=3)
     _wait_panel_ready(page)
     geom = page.evaluate("""() => {
-        const body = document.querySelector('.molview-body');
-        const fold = document.querySelector('.molview-fold-btn');
-        const panel = document.querySelector('.molview-panel');
+        const body = document.querySelector('.molviewer-card-body');
+        const fold = document.querySelector('.molviewer-panel-fold-btn');
+        const panel = document.querySelector('.molviewer-panel');
         const fr = fold.getBoundingClientRect();
         const pr = panel.getBoundingClientRect();
         return {
@@ -5539,7 +5539,7 @@ def test_frame_slider_scrubs(page, flask_server, watch_log_file_multi_step):
     """
     _load_watch_log(page, flask_server, watch_log_file_multi_step)
     page.wait_for_selector(
-        ".molview-frame-controls .molviewer-frames-slider", timeout=8000
+        ".molviewer-frames-bar .molviewer-frames-slider", timeout=8000
     )
     # The 10-frame fixture pins slider max = 9.
     page.wait_for_function(
@@ -6361,7 +6361,7 @@ def test_selection_panel_height_is_stable_across_atomlist_filter_switch(
         "(t) => window.molbuilder.molview.data.installMolecule("
         "  { text: t, filename: 'benzene.xyz' })", _BENZENE_XYZ)
     page.wait_for_function(
-        "() => { const p = document.querySelector('.molview-panel');"
+        "() => { const p = document.querySelector('.molviewer-panel');"
         "        return p && p.offsetHeight > 0; }")
 
     def _set_mode(mode):
@@ -6372,7 +6372,7 @@ def test_selection_panel_height_is_stable_across_atomlist_filter_switch(
 
     def _panel_h():
         return page.evaluate(
-            "() => document.querySelector('.molview-panel').offsetHeight")
+            "() => document.querySelector('.molviewer-panel').offsetHeight")
 
     _set_mode("click")
     page.wait_for_selector("#molviewer-selection-click-section:not([hidden])")
