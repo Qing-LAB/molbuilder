@@ -1337,17 +1337,61 @@ function mountPanel(doc, card, model, reserved) {
         });
     }
 
+    /* ── The Cell page (§ 8.1): the resolved periodicity, and what is DERIVED ──
+     *
+     * WHY EACH ROW SAYS WHETHER IT IS A DEFAULT.  The four values are shown as
+     * they will actually be used (§ 9.3's main way in), and three of the four
+     * can be values MolView never received: a structure with no explicit cell is
+     * shown the box resolved from its vacuum, an unset origin is shown the
+     * corner the box is drawn from, and neither came from the user. Showing a
+     * lattice with no way to tell it apart from one the user set is how somebody
+     * comes to believe they fixed a cell they never fixed -- and then wonders why
+     * widening the vacuum moved it.
+     *
+     * THE DEFAULT RULE IS DIFFERENT FOR EACH ROW, which is why this cannot be
+     * one test against null:
+     *
+     *   Lattice   default when there is no explicit `cell` -- the box shown is
+     *             then bbox + 2*vacuum on each isolated axis, resolved server
+     *             side (model/structure-periodicity.md § 3a).
+     *   Origin    default when there is no explicit `cell_origin`.
+     *   Axes      default when unset OR every axis is `isolated` -- a fresh
+     *             molecule loads all-isolated, and that is still the default
+     *             configuration rather than a choice somebody made.
+     *   Vacuum    default when it is 0 on every axis, because vacuum ALWAYS has
+     *             a value; "unset" is not a state it has.
+     *
+     * The last two are value-based on purpose: they report that the DISPLAYED
+     * value is the default, not that nobody ever typed it. Provenance is not
+     * what a reader of this page needs -- "is this box mine?" is.
+     */
     function drawCell() {
         cellReadout.textContent = "";
         // THE CELL AS IT WILL BE USED (§ 9.3's main way in), under the names the
-        // whole system uses for it.
+        // whole system uses for it -- beside the RAW values, which is how each
+        // row knows whether what it shows was given or derived.
         const cell = model.getUnitCellInfo();
-        const vector = (v) => (Array.isArray(v) ? v.map(Number).join(", ") : "—");
-        for (const [label, value] of [
-            ["Lattice", cell.cell ? "set" : "none"],
-            ["Origin",  vector(cell.cell_origin)],
-            ["Axes",    Array.isArray(cell.axis_kind) ? cell.axis_kind.join(" · ") : "—"],
-            ["Vacuum",  vector(cell.vacuum)],
+        const rawCell = model.getUnitCell();
+        const rawOrigin = model.getUnitCellOrigin();
+        const rawAxes = model.getAxisKind();
+        const rawVacuum = model.getVacuum();
+
+        const vector = (v) => (Array.isArray(v)
+            ? v.map((n) => Number(n).toFixed(3)).join(", ") : "—");
+        const isolatedEverywhere = (a) => Array.isArray(a)
+            && a.length && a.every((k) => k === "isolated");
+        const allZero = (v) => Array.isArray(v) && v.every((n) => Number(n) === 0);
+
+        for (const [label, value, isDefault] of [
+            // THE LATTICE IS SHOWN, not summarised. It read "set" / "none",
+            // which tells a user their structure has a box and refuses to say
+            // what it is -- on the page whose whole job is reporting it.
+            ["Lattice", matrixText(cell.cell), !rawCell],
+            ["Origin",  vector(cell.cell_origin), !rawOrigin],
+            ["Axes",    Array.isArray(cell.axis_kind)
+                            ? cell.axis_kind.join(" · ") : "—",
+                        !rawAxes || isolatedEverywhere(rawAxes)],
+            ["Vacuum",  vector(cell.vacuum), allZero(rawVacuum)],
         ]) {
             const term = doc.createElement("dt");
             term.className = "selection-mini-label";
@@ -1355,9 +1399,24 @@ function mountPanel(doc, card, model, reserved) {
             const detail = doc.createElement("dd");
             detail.className = "cell-value";
             detail.textContent = value;
+            if (isDefault) {
+                const tag = el("span", "cell-default-tag");
+                tag.textContent = " (default)";
+                tag.title = "derived, not set on this structure";
+                detail.appendChild(tag);
+            }
             cellReadout.appendChild(term);
             cellReadout.appendChild(detail);
         }
+    }
+
+    /* The 3x3 as three rows of three, at a fixed precision so the columns line
+     * up and a small change is visible between redraws. `—` when the structure
+     * has no box at all, which is a real answer and not a missing one. */
+    function matrixText(m) {
+        if (!Array.isArray(m) || m.length !== 3) return "—";
+        return m.map((row) => (Array.isArray(row) ? row : [])
+            .map((n) => Number(n).toFixed(3)).join("  ")).join("\n");
     }
 
     const offSelection = model.selection.subscribe(draw);

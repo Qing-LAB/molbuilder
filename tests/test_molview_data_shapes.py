@@ -790,3 +790,84 @@ def test_the_calculation_reads_no_drawing_setting():
         "a drawing setting changed the frame calculation — style, radius, "
         "background and projection go straight to the drawing (§ 9.6)"
     )
+
+
+# --------------------------------------------------------------------- #
+#  § 9.3 — the cell, the axes and the vacuum: given vs derived           #
+# --------------------------------------------------------------------- #
+
+def test_the_effective_cell_prefers_the_resolved_answer_over_the_raw_one():
+    """§ 9.3: the main way in is "the cell as it will actually be used, with the
+    defaults filled in for whatever the structure left unsaid, so it ALWAYS has
+    an answer" -- and those filled-in values are the SERVER'S, read rather than
+    re-derived here (§ 6.2: MolView interprets none of it).
+
+    The failure this closes was live: the Cell page read the resolved values and
+    said a structure had a cell while the drawing read the RAW ones and found
+    none, so "Show unit cell" drew nothing for every plain `.xyz`.
+    """
+    out = _run(
+        """
+        const raw = {
+            cell: null, cell_origin: null,
+            axis_kind: ["isolated", "isolated", "isolated"], vacuum: [5, 5, 5],
+            resolved_cell: [[9,0,0],[0,9,0],[0,0,9]],
+            resolved_cell_origin: [-4.5, -4.5, -4.5],
+            resolved_vacuum: [5, 5, 5],
+        };
+        console.log(JSON.stringify({
+            derived: JOBS.effectiveCell(raw),
+            nothing: JOBS.effectiveCell(null),
+        }));
+        """
+    )
+    assert out["derived"]["cell"] == [[9, 0, 0], [0, 9, 0], [0, 0, 9]], (
+        "the resolved box must win over a null raw cell")
+    assert out["derived"]["cell_origin"] == [-4.5, -4.5, -4.5]
+    # NEVER null ITSELF, whatever it is handed -- § 9.3 says so explicitly, and
+    # a caller that has to null-check the main way in has two shapes to handle.
+    assert out["nothing"] is not None
+    assert set(out["nothing"]) == {"cell", "cell_origin", "axis_kind", "vacuum"}
+    assert all(v is None for v in out["nothing"].values())
+
+
+def test_an_explicit_cell_is_carried_when_the_server_resolved_nothing():
+    """`resolved_* || raw` -- an imported crystal whose atoms already sit inside
+    the box gets no resolved origin from the server, and the stored one is then
+    the answer rather than a hole."""
+    out = _run(
+        """
+        console.log(JSON.stringify(JOBS.effectiveCell({
+            cell: [[4,0,0],[0,4,0],[0,0,4]], cell_origin: [1, 1, 1],
+            axis_kind: ["periodic", "periodic", "periodic"], vacuum: [0, 0, 0],
+        })));
+        """
+    )
+    assert out["cell"] == [[4, 0, 0], [0, 4, 0], [0, 0, 4]]
+    assert out["cell_origin"] == [1, 1, 1]
+    assert out["axis_kind"] == ["periodic", "periodic", "periodic"]
+
+
+def test_the_axis_kinds_are_carried_verbatim_and_never_guessed():
+    """§ 9.3: `axis_kind` is the ONE field MolView will not default.
+
+    periodic / isolated / transport is a SCIENTIFIC choice -- guessing
+    `periodic` would silently generate a wrong PBC or transport boundary -- so
+    an unset value stays unset and the three kinds pass through untouched. The
+    rules that turn each kind into a box (isolated -> bbox + 2*vacuum;
+    transport -> bbox, vacuum ignored; periodic -> an error, never a bounding
+    box) belong to the server, and MolView applies none of them.
+    """
+    out = _run(
+        """
+        console.log(JSON.stringify({
+            unset:     JOBS.effectiveCell({ cell: null }).axis_kind,
+            transport: JOBS.effectiveCell({
+                axis_kind: ["periodic", "periodic", "transport"] }).axis_kind,
+        }));
+        """
+    )
+    assert out["unset"] is None, "an unset axis kind must not be invented"
+    assert out["transport"] == ["periodic", "periodic", "transport"], (
+        "the three kinds must pass through verbatim -- a transport axis read as "
+        "periodic is a different calculation")

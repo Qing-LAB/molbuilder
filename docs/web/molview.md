@@ -1176,6 +1176,55 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `beginChange()` · `endChange()` | — | the bracket (§ 11.2) |
 | `selection.writeLabel(name, verb, atoms?)` | `verb` — `replace` · `add` · `remove`. `atoms` defaults to the selection | did it apply |
 
+#### The cell, the axes and the vacuum — what is given and what is derived
+
+Three of the four cell values can be shown to a user **without ever having been
+set by one**, and telling those apart is the whole job of the Cell page. This is
+the rule, reconciled against the behaviour the previous implementation arrived at
+over a long time and verified against the server's resolver
+([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 3).
+
+| Row | Shown | Counts as a **default** when |
+|---|---|---|
+| **Lattice** | the box as it will be used | there is no explicit `cell` |
+| **Origin** | the corner the box is drawn from | there is no explicit `cell_origin` |
+| **Axes** | `periodic` · `isolated` · `transport`, per axis | unset **or** every axis is `isolated` |
+| **Vacuum** | the per-side gap, per axis | it is `0` on every axis |
+
+**The last two are value-based on purpose, and that is not sloppiness.** A fresh
+molecule loads with every axis `isolated` and a vacuum of zero — those *are* the
+defaults, whether or not somebody typed them. The tag reports that **the value
+being displayed is the default one**, not that nobody ever chose it. Provenance
+is a different question and not the one a reader of this page has; theirs is *"is
+this box mine?"*
+
+**Where a derived box comes from.** With no explicit `cell`, the server resolves
+one per axis kind — and the kinds are not interchangeable:
+
+- **`isolated`** → `bbox + 2 × vacuum`. Vacuum is the gap on **each face**, so
+  the molecule sits centred with that clearance on both sides. Widening the
+  vacuum widens the box.
+- **`transport`** → `bbox`, and **vacuum is ignored** — the device length is
+  matched to the structure, because padding a transport axis would insert vacuum
+  into the lead.
+- **`periodic`** → **an error, never a bounding box.** A repeating axis needs a
+  commensurate lattice that came from construction or import; deriving one from
+  where the atoms happen to sit would invent a periodicity the crystal does not
+  have.
+
+That third rule is why **`axis_kind` is the one field MolView will not default**.
+`getAxisKind()` returns what the structure says and `null` when it says nothing,
+because periodic / isolated / transport is a *scientific choice*: guessing
+`periodic` would silently generate a wrong boundary for a transport cell. Vacuum
+defaults safely to zero; the axis kinds do not default at all.
+
+> **What the reconciliation caught.** The rebuilt Cell page showed
+> `Lattice: set | none` and no default markers — so a user could not see the cell
+> vectors at all, and could not tell a box they had fixed from one resolved out
+> of their vacuum. The four rules above had been worked out once and were lost in
+> the rebuild; they are written here now rather than living only in the code that
+> implements them.
+
 **`getFrameAllAtoms(i)` is named for exactly what it promises:** every atom of
 frame `i`, in the original numbering, before isolate cuts anything down.
 That is what its callers want — measurement resolves panel numbers against it,

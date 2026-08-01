@@ -1470,6 +1470,16 @@
     color: var(--ps-fg);
     font: 12px/1.4 ui-monospace, monospace;
     word-break: break-word;
+    white-space: pre;                    /* the 3x3 keeps its rows (§3b) */
+    font-variant-numeric: tabular-nums;  /* columns line up between redraws */
+}
+/* The derived-value marker (§ 8.1): a lattice nobody set looks exactly like one
+   they did, so the page says which -- quietly, as a qualifier on the value
+   rather than a warning about it. */
+.cell-default-tag {
+    opacity:     0.6;
+    font-style:  italic;
+    white-space: nowrap;
 }
 
 /* Unit-cell 3x3 matrix -- aligned, right-justified tabular numbers (§3b). */
