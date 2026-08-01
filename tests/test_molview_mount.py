@@ -1289,6 +1289,82 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
     )
 
 
+def test_typing_in_a_filter_row_does_not_replace_the_control_being_typed_in():
+    """§ 8.4: the filter "is edited a row at a time... A surface that only
+    accepted the whole set of rows at once would make the panel rebuild and
+    re-send state it was in the middle of editing."
+
+    The store took one row at a time exactly as that says — and the panel
+    redrew the whole set on every snapshot anyway, so each keystroke emptied the
+    container and built fresh rows. The input the user was typing in was
+    destroyed and replaced between characters, taking the caret with it: typing
+    a two-letter element meant clicking back into the box in between.
+
+    ELEMENT IDENTITY is the assertion. Focus lives in the browser, but "is the
+    thing I was typing in still the thing that is there" is the same question and
+    it is answerable here. What must survive is the node; what must change is
+    only the store.
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        viewer.data.selection.setEditor("filter");
+        viewer.data.selection.addFilter();
+        const card = host.querySelector(".molview-card");
+
+        const typedInto = card.querySelector(".selection-filter-text");
+        const kindSelect = card.querySelector(".selection-filter-kind");
+
+        // Type, one character at a time, the way a user does.
+        const survived = [];
+        for (const text of ["A", "Au", "Au,"]) {
+            typedInto.value = text;
+            typedInto.dispatch("input", { target: typedInto });
+            survived.push(card.querySelector(".selection-filter-text") === typedInto);
+        }
+
+        // Changing the kind is also a change to a row, not to the set.
+        kindSelect.value = "by_element";
+        kindSelect.dispatch("change", { target: kindSelect });
+        const survivedKind =
+            card.querySelector(".selection-filter-text") === typedInto;
+
+        // Selecting an atom redraws the panel from the same snapshot — and must
+        // not take the row out from under the typing either.
+        viewer.data.selection.toggle(0);
+        const survivedSelection =
+            card.querySelector(".selection-filter-text") === typedInto;
+
+        // But ADDING a row is a change to the SET, so the rows are rebuilt.
+        viewer.data.selection.addFilter();
+        const rowsNow = card.querySelectorAll(".selection-filter-row").length;
+
+        console.log(JSON.stringify({
+            survived, survivedKind, survivedSelection, rowsNow,
+            stored: viewer.data.selection.getState().filters[0],
+        }));
+        """
+    )
+    assert out["survived"] == [True, True, True], (
+        "the input was replaced between keystrokes, so the caret and the focus "
+        f"went with it: {out['survived']}"
+    )
+    assert out["survivedKind"] is True, (
+        "changing a row's kind rebuilt the row being typed in"
+    )
+    assert out["survivedSelection"] is True, (
+        "clicking an atom rebuilt the filter row being typed in — the panel is "
+        "redrawing the whole set because something unrelated changed"
+    )
+    assert out["stored"] == {"kind": "by_element", "value": "Au,"}, (
+        f"what was typed did not reach the store: {out['stored']}"
+    )
+    assert out["rowsNow"] == 2, (
+        "adding a row IS a change to the set and must rebuild them"
+    )
+
+
 def test_a_filter_row_is_added_typed_and_removed_from_the_panel():
     """§ 8.4: "a user adds a row, types in it, changes its kind, removes it" —
     each its own change, because that is what the controls are.

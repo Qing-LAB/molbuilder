@@ -1037,9 +1037,20 @@ function mountPanel(doc, card, model) {
     const showNewBox = () => { target.hidden = chooser.value !== NEW_LABEL; };
     chooser.addEventListener("change", showNewBox);
 
+    /* WHICH NAMES ARE ON OFFER, so the list is rebuilt only when it changes.
+     *
+     * This is drawn from the same snapshot the atom list is, which arrives on
+     * every click — and rebuilding a `<select>` under a user who has it open
+     * shuts it. Same rule as the filter rows below: rebuild when the SET
+     * changes, never because something else did. */
+    let renderedTargets = null;
+
     function drawTargets() {
         const regions = model.getRegions() || {};
         const names = Object.keys(regions).sort();
+        const signature = names.join(" ");
+        if (signature === renderedTargets) return;
+        renderedTargets = signature;
         const chosen = chooser.value;
         chooser.textContent = "";
         for (const name of names) {
@@ -1209,7 +1220,25 @@ function mountPanel(doc, card, model) {
         }
     }
 
+    /* HOW MANY ROWS ARE ON SCREEN, so a change to what is IN one does not
+     * rebuild them all.
+     *
+     * Typing was the failure: every keystroke reached `updateFilter`, the store
+     * handed back a snapshot, and this function emptied the container and built
+     * fresh rows — destroying the very input the user was typing in. The caret
+     * went with it, so each character had to be preceded by a click. § 8.4 has
+     * the store take a filter A ROW AT A TIME exactly so this cannot happen, and
+     * the panel undid that by redrawing the whole set anyway.
+     *
+     * The rows are rebuilt only when the SET of them changes — added, removed,
+     * or the panel is drawing them for the first time. A change to a row's
+     * contents needs no rebuild: the control the user typed into already holds
+     * what they typed, and writing it back would move the caret to the end. */
+    let renderedRows = null;
+
     function drawRows(state) {
+        if (renderedRows === state.filters.length) return;
+        renderedRows = state.filters.length;
         rows.textContent = "";
         if (!state.filters.length) {
             const empty = el("div", "selection-filter-empty");
