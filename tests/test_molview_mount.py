@@ -57,6 +57,24 @@ const MV = await import({json.dumps(INDEX.resolve().as_uri())});
 
 const workspace = {{ read: async () => null, write: async () => {{}} }};
 
+/* The drawing lands a TURN after the model does.
+ *
+ * `installMolecule` resolves when the MODEL has the structure; the rebuild that
+ * puts it on screen yields a turn first, deliberately -- that turn is what lets
+ * the busy cover be painted and lets it catch the input a freeze queues up
+ * (molview.md § 10.9). So a test that reads the drawing's call log straight
+ * after the await reads it too early, and these two did.
+ *
+ * Waits for the CONDITION rather than a fixed delay: a sleep long enough to be
+ * safe is long enough to be slow, and one that is neither is a flake. */
+async function waitForDrawing(check, why) {{
+    for (let i = 0; i < 200; i++) {{
+        if (check()) return true;
+        await new Promise((r) => setTimeout(r, 5));
+    }}
+    throw new Error("the drawing never received it: " + why);
+}}
+
 async function mounted(opts) {{
     const host = globalThis.__makeHost(opts && opts.width, opts && opts.minWidth);
     const viewer = await MV.mount(host, workspace,
@@ -404,6 +422,13 @@ def test_a_switch_and_a_selection_reach_the_drawing():
         """
         const { viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        // The load's own rebuild has to FINISH first. While it is in flight the
+        // engine is in its rebuild window, where a switch is deliberately not
+        // held and not drawn -- "the rebuild reads the switches when it runs"
+        // (§ 10.9). Exercising switches before then tests the window, not the
+        // wiring this test is about.
+        await waitForDrawing(() => globalThis.__callNames().includes("addModelsAsFrames"),
+                    "the load's rebuild to finish");
 
         globalThis.__resetCalls();
         viewer.data.selection.setSwitch("showIndex", true);
@@ -1616,6 +1641,8 @@ def test_loading_a_structure_reaches_the_drawing():
         globalThis.__resetCalls();
         const { viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        await waitForDrawing(() => globalThis.__callNames().includes("addModelsAsFrames"),
+                    "addModelsAsFrames after a load");
         const afterLoad = globalThis.__callNames().slice();
 
         viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[5,0,0],[6,0,0]]]);

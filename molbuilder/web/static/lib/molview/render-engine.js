@@ -643,15 +643,32 @@ export function createRenderEngine(embed) {
             doRebuild(fit);
         } finally {
             if (mine !== generation) return;  // the newer one owns the cover too
-            const left = MINIMUM_ON_SCREEN - (now() - shownAt);
-            if (left > 0) await new Promise((r) => setTimeout(r, left));
-            if (mine !== generation) return;  // and again: the wait is a window too
-            embed.setBusy(false);
+
+            /* THE ENGINE IS IDLE THE MOMENT THE WORK IS DONE -- before the cover
+             * comes down, and that ordering matters.
+             *
+             * These are two different jobs and I had them as one: `phase` holds
+             * DATA arrivals (§ 10.9), the cover blocks POINTER input. Leaving
+             * the phase REBUILDING until the cover dropped meant a switch
+             * toggled in that window was DISCARDED -- § 10.9 says a switch is
+             * not held, because "the rebuild reads the switches when it runs",
+             * which is only true while a rebuild is actually running. Held over
+             * a cosmetic wait it silently drops the user's input instead. */
             phase = IDLE;
             // Replayed IN ARRIVAL ORDER, then the viewer is idle again.
             const queued = held;
             held = [];
             for (const item of queued) item();
+
+            /* The cover outlives the work on purpose: a frozen page delivers the
+             * clicks and drags it queued the instant it is free, and they must
+             * land on the cover rather than on a canvas whose atoms have just
+             * been renumbered. Nothing is gated on this wait -- the engine is
+             * already idle and accepting work. */
+            const left = MINIMUM_ON_SCREEN - (now() - shownAt);
+            if (left > 0) await new Promise((r) => setTimeout(r, left));
+            if (mine !== generation) return;  // a newer load owns the cover now
+            embed.setBusy(false);
         }
     }
 
