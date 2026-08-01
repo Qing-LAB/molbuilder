@@ -149,6 +149,25 @@ exactly the work phase 3 does and nothing else.
 The rest of `molview-old/` stays until the MolView-users pass is done with it as
 a reference. The file is in git history either way.
 
+**Phase 1b — one size for the panel's controls.** ✅ **Landed 2026-08-01**, out
+of order because it is a defect rather than a rename and needed no namespace to
+fix.
+
+Measured on the live panel: **three type sizes (11 / 13.33 / 16 px), three font
+families (system-ui / Arial / -apple-system) and four control heights (13 / 20.4 /
+22.8 / 34)** — inside one card. The cause is one fact about browsers: `button`,
+`input`, `select` and `textarea` do **not** inherit the page font. The buttons had
+been styled explicitly; the "New label name" box and the atom-list checkboxes
+never had, so they were showing UA defaults, which is why a 16 px text box sat
+beside 11 px buttons.
+
+Fixed with control tokens (`--mv-control-font`, `--mv-control-height`, …) and one
+rule scoped to `.molview-panel` — scoped deliberately, since the rail and the
+window's chrome have their own sizing and a global control rule would reach them.
+After: **one size, one family, one row height (22 px)**. The point is not the
+tidy-up but that the next control added to the panel is consistent *by default*
+instead of by somebody remembering.
+
 **Phase 2 — the areas nobody else touches**, in this order, one commit each:
 `cell` → `regions` → `label` → `atoms` → `filter`. None of their names appear in
 another stylesheet, so a mistake shows up only inside MolView, and each is small

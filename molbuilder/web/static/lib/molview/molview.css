@@ -83,6 +83,25 @@
     --mv-radius:        var(--radius,    7px);
     --mv-radius-sm:     var(--radius-sm, 4px);
     --mv-radius-md:     var(--radius-md, 8px);
+
+    /* ── One size for every control in the panel ────────────────────────────
+     *
+     * Browsers do NOT inherit the page font into `button`, `input`, `select` or
+     * `textarea` — each falls back to its own UA default. So a panel that styles
+     * its buttons and leaves its text box alone ends up showing three type sizes
+     * and three families side by side, which is exactly what it did: measured on
+     * the live page, 11px system-ui buttons next to a 16px -apple-system text
+     * box next to 13.33px Arial checkboxes, at heights 20.4 / 34 / 13.
+     *
+     * These are the one answer, so a new control inherits the size instead of
+     * picking its own. */
+    --mv-control-font:   11px;
+    --mv-control-family: system-ui, sans-serif;
+    --mv-control-line:   1.15;
+    --mv-control-height: 22px;      /* the row height buttons/selects/inputs share */
+    --mv-control-pad-y:  0.18rem;
+    --mv-control-pad-x:  0.5rem;
+    --mv-control-box:    13px;      /* checkbox / radio, matched to the text */
     --mv-shadow:        var(--shadow-card, 0 1px 0 rgba(255,255,255,0.02) inset,
                                            0 4px 12px rgba(0,0,0,0.30));
     --mv-shadow-pop:    0 8px 24px rgba(0, 0, 0, 0.45);
@@ -2315,4 +2334,50 @@
 .mol-viewer-quick:focus-visible {
     outline:        2px solid var(--mv-accent);
     outline-offset: 1px;
+}
+
+
+/* ═══ Control sizing — one type size and one height across the panel ═══════
+ *
+ * WHY THIS EXISTS as a sweeping rule rather than per-control fixes: a form
+ * control that nobody styled does not look unstyled, it looks like a DIFFERENT
+ * control. The "New label name" box sat at 16px/34px beside 11px/20.4px
+ * buttons purely because no rule had ever named it, and the atom-list
+ * checkboxes were browser defaults for the same reason. Naming the family here,
+ * once, means the next control added to the panel is consistent by default
+ * instead of by remembering.
+ *
+ * Scoped to the panel deliberately: the rail and the 3D window's chrome have
+ * their own sizing, and a global control rule would reach them too.
+ */
+.molview-panel button,
+.molview-panel input,
+.molview-panel select,
+.molview-panel textarea {
+    font-family: var(--mv-control-family);
+    font-size:   var(--mv-control-font);
+    line-height: var(--mv-control-line);
+}
+
+/* The three that share a row have to share a height, or they step. The select
+   was 2.4px taller than the buttons beside it for want of this one line. */
+.molview-panel input[type="text"],
+.molview-panel input:not([type]),
+.molview-panel select,
+.molview-panel button {
+    box-sizing:  border-box;
+    min-height:  var(--mv-control-height);
+    padding:     var(--mv-control-pad-y) var(--mv-control-pad-x);
+}
+
+/* Checkboxes size to the text they label rather than to the UA default, so the
+   atom list's rows line up with their own labels. */
+.molview-panel input[type="checkbox"],
+.molview-panel input[type="radio"] {
+    box-sizing: border-box;
+    width:      var(--mv-control-box);
+    height:     var(--mv-control-box);
+    min-height: 0;                 /* not a row control -- exempt from the above */
+    padding:    0;
+    margin:     0;
 }
