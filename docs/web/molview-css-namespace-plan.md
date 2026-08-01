@@ -35,10 +35,15 @@ The rest of the overlap is worse for being ordinary: `.card` is defined in
 three each, `.sr-only` in two. These are names any page might use, sitting in a
 module that claims to be sealed.
 
-> There is a live symptom already. `tests/test_css_no_duplicate_selectors.py`
-> fails on `.cell-matrix-block`, defined in both `lib/molview/molview.css` and
-> the frozen `lib/molview-old/molview.css` — and **nothing outside
-> `molview-old/` references that file**. Dead residue, still colliding.
+> There is a live symptom already: `tests/test_css_no_duplicate_selectors.py`
+> **fails**, and has been failing on this.
+>
+> After phase 1 removed the frozen sheet's noise, what it reports is exact:
+> **82 duplicate selectors, every one of them between `lib/molview/molview.css`
+> and `lib/viewer/mol-viewer-embed.css`.** A single pairing, no other file
+> involved. That guard is therefore not a chore to satisfy at the end — **it is
+> phase 3's acceptance criterion**, and it goes green when the embed-shared
+> names are gone.
 
 ## 2. The naming scheme
 
@@ -130,11 +135,19 @@ rename is invisible to unit tests — every stub keeps passing while the UI is
 broken, because nothing in a DOM stand-in has a computed style. So the safety has
 to come from ordering and from the browser, not from the suite.
 
-**Phase 1 — retire the dead sheet.** Delete `lib/molview-old/molview.css`, or the
-whole frozen tree if the MolView-users pass has finished with it. Nothing outside
-it references the file. This clears the one *currently failing* guard test and
-removes 100+ phantom collisions before any real work starts. It is separable and
-reversible.
+**Phase 1 — retire the dead sheet.** ✅ **Landed 2026-08-01.** Deleted
+`lib/molview-old/molview.css` (2020 lines), referenced by nothing — not by a
+template, not by the frozen tree's own JS, which points at `fused-layout.css`
+instead.
+
+It did **not** turn the guard green, and expecting it to was wrong: the guard was
+already failing on the embed collisions underneath. What it did is worth more —
+it left the report unambiguous. Before, the noise from a dead file sat on top of
+the real problem; now the failure reads *82 selectors, one file pair*, which is
+exactly the work phase 3 does and nothing else.
+
+The rest of `molview-old/` stays until the MolView-users pass is done with it as
+a reference. The file is in git history either way.
 
 **Phase 2 — the areas nobody else touches**, in this order, one commit each:
 `cell` → `regions` → `label` → `atoms` → `filter`. None of their names appear in
@@ -150,9 +163,10 @@ rules. Take one area per commit and screenshot before and after.
 diff, largest blast radius: another page may be relying on MolView's copy of
 `.card` or `.is-active` winning. Do it last, when everything else is settled.
 
-**Phase 5 — the guard.** A test asserting every selector in
-`lib/molview/molview.css` starts with `molviewer-`, so the next one cannot drift
-back in. Add it only at the end; added earlier it just fails for four phases.
+**Phase 5 — the guard.** `test_css_no_duplicate_selectors` already goes green at
+the end of phase 3; this adds the stronger one — every selector in
+`lib/molview/molview.css` starts with `molviewer-`, so the next stray name cannot
+drift back in. It lands last because added earlier it just fails for four phases.
 
 ### Per-phase method
 
@@ -161,19 +175,33 @@ back in. Add it only at the end; added earlier it just fails for four phases.
    selectors. **Fix every hit before running anything**, so a half-renamed state
    is never committed.
 2. Run the JS suites and `tests/test_css_no_duplicate_selectors.py`.
-3. **Open the page.** The suite cannot see a style regression; a person can. Load
-   a structure, fold the panel, open both menus, switch to the Cell page, play a
-   trajectory.
+3. **Open the page and look.** The suite cannot see a style regression; a
+   browser can. Drive it with Claude in Chrome against a running
+   `molbuilder serve`, and check the same circuit every time so the phases are
+   comparable:
+
+   | Step | What a regression looks like |
+   |---|---|
+   | load a structure | the card does not size, or the window is not square |
+   | fold the panel, unfold it | the handle's arrow points the wrong way, or the panel does not collapse |
+   | open the View menu | swatches unstyled, the active style not lit |
+   | open the Export menu | rows unstyled or the dialog unpositioned |
+   | switch to the Cell page and back | the tab does not light, the matrix loses its rows |
+   | play a trajectory | the frame bar loses its slider or counter |
+   | select atoms, add a label | chips lose their tone, the × is unplaced |
+
+   Take a screenshot at the same point before and after each phase, and read the
+   console: an unstyled element is silent, so the eye is the instrument here.
 4. Commit that area alone, with the old and new names in the message so a later
    bisect can read what moved.
 
 ### What each phase is worth
 
-| Phase | Names moved | Collisions removed |
+| Phase | Names moved | Duplicate selectors left |
 |---|--:|--:|
-| 1 — retire the dead sheet | 0 | the failing guard, + phantom overlap |
-| 2 — the private areas | 41 | 1 |
-| 3 — the embed-shared areas | ~60 | 46 |
-| 4 — the global names | 8 | 11 |
+| 1 — retire the dead sheet ✅ | 0 | 82 (was: 82 + the frozen sheet's noise) |
+| 2 — the private areas | 41 | 82 — none of these collide |
+| 3 — the embed-shared areas | ~60 | **0** ← the guard goes green here |
+| 4 — the global names | 8 | 0, and `.card` / `.is-active` stop being shared with nine and five other sheets |
 
 Phase 3 is the one that matters. Phases 2 and 4 are cheap either side of it.
