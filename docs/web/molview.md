@@ -734,7 +734,7 @@ what a viewer holds nor anything in this document.
 | Not held | Whose it is | Why |
 |---|---|---|
 | parsed structure text | the **server** | MolView never parses. It posts bytes and adopts the structure that comes back (§ 11.1) |
-| files on disk | the **projects** module | `exportFile()` returns bytes; MolView owns no file route **and writes no file-handling code of its own** — see below |
+| files on disk | the **projects** module | `exportFile(range)` returns the structure **as data, not bytes** (§ 11.7); MolView owns no file route **and writes no file-handling code of its own** — see below |
 | the saved session bytes | the **workspace** module | MolView decides when and how far; the workspace knows where (§ 11.2) |
 
 ---
@@ -812,7 +812,7 @@ flowchart TB
 | Helper | Its job | What it is handed |
 |---|---|---|
 | load | put a loaded structure into the model | where to put it; how to announce a change; a way to record the first state |
-| write out | turn the structure into text, for export and for saved states | read-only access to the atoms, cell, selection and history position |
+| write out | read the structure out, for export and for saved states — as data, never as text (§ 11.7) | read-only access to the atoms, cell, selection and history position |
 | history | undo / redo (§ 11.2) | "record the current state" + "put a state back"; where the bytes go |
 | edits | the geometry operations (§ 11.1) | read the atoms; apply the structure the server sends back |
 | selection | what is selected + the switches (§ 9.5) | *(an optional starting selection)* |
@@ -999,7 +999,7 @@ a fact of its own, and none reaches the drawing directly.
 | **the View menu** — style, radius, background, projection | `view` | all four to `view` |
 | **the panel** | one snapshot of `selection` (§ 8.4) | the selection, the switches, the filter rows, and labels |
 | **the measurement readout** | which atoms are picked **and in what order**, from `selection`; their coordinates from the **master copy** at the current frame | nothing |
-| **the Export menu** | what to export and where it goes (§ 11.4) | nothing in the viewer |
+| **the Export menu** | what to export, over which frames, and where it goes (§ 11.4); the frame range's default from the model (§ 6.4) | nothing in the viewer |
 
 **The frame bar is the clearest case of "one control, two owners."** The frame
 number is the model's (§ 6.4) and playback is the handle's (§ 9.2), so the bar
@@ -1107,7 +1107,7 @@ rather than maintained separately.
 | Get the cell | `getUnitCellInfo` — the cell as it will actually be used, with the defaults filled in for whatever the structure left unsaid, so it always has an answer. Those filled-in values are **the server's own**: it sends them beside the raw ones, and this reads them rather than working anything out (§ 6.2 — MolView interprets none of it) | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` — **what the structure actually says**, `null` where it says nothing | — |
 | Get one frame's coordinates | `getFrameAllAtoms(i)` — **every** atom, original order, before isolate cuts anything down | | — |
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
-| Get the structure out, to hand to a door | `exportFile()` — the structure at the displayed frame, plus the name it came in under (§ 11.7) | | — |
+| Get the structure out, to hand to a door | `exportFile(range)` — the structure over a range of frames, plus the name it came in under (§ 11.7). The range defaults to the displayed frame | | — |
 | Hear that the structure changed | `subscribe(fn)` — the structure only; the frame has its own channel | | — |
 | Reach the selection / the drawing settings | `selection` (§ 9.5) · `view` (§ 9.6) | | — |
 | Put a structure in | `installMolecule(input)` | | **yes** |
@@ -1161,7 +1161,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `currentFrame()` · `frameCount()` | — | **`0` with nothing loaded**, not `null` — they are counts |
 | `setCurrentFrame(i)` | `i` — resolved against the range, never taken on trust | — |
 | `onFrameChange(fn)` · `subscribe(fn)` | `fn` | an unsubscribe function |
-| `exportFile()` | — | `{name, structure}`, or `null` if the geometry and the per-atom facts disagree |
+| `exportFile(range)` | `range` — `{from, to}`, inclusive, 0-based, clamped to what exists. Omitted means the displayed frame alone | `{name, structure}` — the structure carrying **the frames in the range** — or `null` if the geometry and the per-atom facts disagree |
 | `mode` | — | **`"editable"` or `"readonly"`**, never `null` |
 | `state_index` · `uncommitted` | — | the position; whether there is unsaved work |
 | `installMolecule(input)` | `{path}` **or** `{text, filename, format?, sidecar?}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure, or `null` |
@@ -1244,13 +1244,17 @@ second read back, whatever the rule said.
   another door; a subscriber sees a one-frame structure that never existed
   (§ 6.4); and point 0 is anchored on that one frame, so **a Retract to the
   anchor throws the trajectory away** (§ 11.2).
-- **`exportFile()`** — its exact inverse. Returns **the structure as data** —
-  read at **the frame currently displayed** (§ 6.4), with the name it came in
-  under — and stops there (§ 11.7). It writes no text and assembles no sidecar,
-  because a coordinate document is a format the server owns. It **refuses** to
-  produce anything when the geometry and the per-atom labels disagree about how
-  many atoms there are, returning nothing rather than handing on a corrupt
-  structure. It is not a disk write and not the session save.
+- **`exportFile(range)`** — its exact inverse. Returns **the structure as
+  data** — the frames in the range, with the name it came in under — and stops
+  there (§ 11.7). The range defaults to **the frame currently displayed** (§ 6.4),
+  which is what makes § 5.1 true at the point a user acts; asking for more is how
+  a trajectory leaves. It writes no text and assembles no sidecar, because a
+  coordinate document is a format the server owns, and **which** document — one
+  frame's `.xyz` or a range's `.extxyz` — is decided by the count, downstream
+  (§ 11.3). It **refuses** to produce anything when the geometry and the per-atom
+  labels disagree about how many atoms there are, returning nothing rather than
+  handing on a corrupt structure. It is not a disk write and not the session
+  save.
 
 **This is true of the code today.** No cell write survives except
 `commitPeriodicityOp`; there is nothing left on the object that goes around the
@@ -2512,12 +2516,13 @@ piece of code writes both this and a saved state, which is why § 7.3 hands it m
 than an export needs; what each *writes* is decided per job, not by what it can
 reach.)
 
-It exports the **displayed frame**, and that is the point of it rather than a
-limit on it. Scrubbing a trajectory is how a user *chooses* a geometry: look
-through the optimization, stop on the one worth taking forward, export that. The
-frame bar and this export are one workflow, not two features that happen to meet
-— and § 5.1 is the promise holding it together, that the frame you stopped on is
-the frame you get.
+**It opens on the displayed frame**, and that is the point of the default
+rather than a limit on the export. Scrubbing a trajectory is how a user *chooses*
+a geometry: look through the optimization, stop on the one worth taking forward,
+export that. The frame bar and this export are one workflow, not two features
+that happen to meet — and § 5.1 is the promise holding it together, that the
+frame you stopped on is the frame you get. Widening the range is the other
+workflow, and it is the same one act: keep the part of the run that converged.
 
 **A picture has to be the view.** A `.png` is for a slide, so what you want is
 exactly what was on screen — the camera angle, the style, the transparent
@@ -2525,10 +2530,11 @@ background you picked, the atoms you isolated to make the point. From the truth
 it would be useless. MolView does not draw it either: the drawing library already
 has the image, so it is asked for it.
 
-**An animation is the same thing, every frame.** The whole trajectory is rendered
-frame by frame, each with the **current** view settings — so the isolate, the
-labels, the arrows and the camera in the file are the ones on screen when it was
-made. It is the only export that spans frames, and it is still entirely a render.
+**A movie is the same thing, every frame in the range.** Each is rendered with
+the **current** view settings — so the isolate, the labels, the arrows and the
+camera in the file are the ones on screen when it was made. Spanning frames does
+not make it any less a render, which is the whole reason it is Image's range and
+not a third menu item.
 
 Notice those are two independent axes, and that neither predicts the other —
 which is why both have to be asked. What sorts them is that only one of the two
@@ -2608,25 +2614,23 @@ decide what an export *is* would not be.
 
 That is not an academic distinction — it is exactly where this went wrong:
 
-> **Where the code has not caught up — and this one loses data.** The Export menu
-> currently belongs to the 3D window. Its Data rows write **coordinates only**:
-> save-to-project and download each offer `.xyz` or `.pdb`, and neither emits the
-> `.json`. The model's export door builds the sidecar correctly and the Modify
-> tab's save dialog writes both files — the Export menu never goes through it.
+> **What this fixed, and what is left.** The Export menu used to belong to the 3D
+> window, and its Data rows wrote **coordinates only** — `.xyz` or `.pdb`, never
+> the `.json`. A structure saved to the project that way reached script
+> generation with its labels silently gone, frozen atoms and electrodes and all,
+> and the calculation that resulted looked right and was not. The root cause was
+> the layering rather than a missing line: an export needing the model's truth
+> had been built at the bottom, so it serialised the coordinates it happened to
+> have. The menu is MolView's now and hands the whole structure to the door, so
+> the pair is written by the one generator and cannot come apart.
 >
-> The consequence is not cosmetic. A structure saved to the project this way
-> reaches script generation with its labels **silently gone** — frozen atoms,
-> electrodes and all — and the calculation that results looks right and is not.
-> It matters most for
-> **save-to-project**: a lossy download is the user's problem, a lossy project
-> file is the next calculation's.
+> **Left:** the Image row, and Data's frame range. Both are controls that were
+> never drawn rather than rules that are broken — the sealed layer can already
+> produce a picture (§ 9.8) and the model already reads any frame (§ 9.3).
 >
-> The root cause is the layering, not a missing line. An export that needs the
-> model's truth was built at the bottom, so it serialised the coordinates
-> it happened to have. Adding a `.json` write down there would paper over that.
-> Tracked as **task #39**, along with a question the menu does not currently ask:
-> `.pdb` cannot carry this metadata at all, so a format that cannot hold the
-> truth probably belongs on the download row and not on save-to-project.
+> One question this menu still does not ask: `.pdb` cannot carry this metadata at
+> all, so a format that cannot hold the truth probably belongs on the download row
+> and not on save-to-project.
 
 > **A word that used to mean two things.** The picture export was called
 > *Snapshot*, and the saving machinery uses *snapshot* for a point in history —
@@ -2634,10 +2638,11 @@ That is not an academic distinction — it is exactly where this went wrong:
 > it produces and leaves *snapshot* free; this document calls the history one a
 > **saved state** throughout.
 
-**A single-frame export out of a trajectory names the frame it came from.** The
-default filename carries it — `wire_frame50.xyz` — so the file says which frame
-it is without anyone having to remember. A static structure and an animation get
-no suffix, because for them there is nothing to disambiguate.
+**An export out of a trajectory names the frames it came from.** The default
+filename carries them — `wire_frame50.xyz` for one, `wire_frame40-120.extxyz` for
+a range — so the file says what is in it without anyone having to remember. A
+structure with one frame gets no suffix, and neither does a range that covers the
+whole run: in both cases there is nothing to disambiguate it from.
 
 ### 11.5 One atom-numbering translation, in one place
 
@@ -2732,7 +2737,7 @@ never added quietly:
 
 It is not a licence: a viewer that writes a coordinate document in any *other*
 circumstance has broken the rule, and nothing in the module does — the writer is
-gone (2026-07-31), not merely constrained. `exportFile()` returns the structure
+gone (2026-07-31), not merely constrained. `exportFile(range)` returns the structure
 as data and stops; the bytes come from the server's one generator, which is why
 a project save and a download cannot differ.
 
@@ -2850,7 +2855,7 @@ decide whether a rebuild is needed, and it never asks the drawing anything.
 
 Mounted with `mode: "readonly"` (§ 9.4). The user selects two atoms, gets a bond
 length, turns on isolate to see them alone, turns on force arrows, scrubs to the
-last frame, spins the camera, and exports the structure as text — every one of
+last frame, spins the camera, and exports the structure as data — every one of
 which works normally.
 
 They then try an edit. Nothing happens: no error, no exception, no change. The
@@ -2874,11 +2879,15 @@ is the geometry worth taking forward, and choose **Export → Data → Save to
 project** — with isolate switched on, because they had been looking at one region.
 
 1. The menu is MolView's (§ 11.4), so MolView decides what this means: **the
-   truth, at the displayed frame**.
+   truth, over the frames asked for**. The range opens on frame 40 — the one they
+   stopped on — and they accept it, so this is a one-frame export.
 2. It asks the model for frame 40's coordinates — *every* atom, in the original
    numbering, whatever isolate is doing to the picture (§ 6.3).
-3. It produces **two** files: the coordinates as `.xyz`, and the sidecar as
-   `.json` carrying the labels, the cell and the residues (§ 11.3).
+3. One frame, so the pair is an `.xyz` and its `.json` — the sidecar carrying the
+   labels, the cell and the residues (§ 11.3). Had they widened the range to
+   40–120 instead, the same act would have produced an `.extxyz` and **the same
+   one** `.json`: the format follows the count, and nothing else about the export
+   changes.
 4. It hands both to the projects module. MolView writes no file itself (§ 2).
 
 Later, an input script is generated from that pair, and the atoms tagged
