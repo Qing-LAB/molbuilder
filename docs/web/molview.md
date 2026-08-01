@@ -2151,8 +2151,20 @@ stateDiagram-v2
 | In this state | A load | Frames / forces | An edit | A save |
 |---|---|---|---|---|
 | **EMPTY** | takes the structure, in either mode | hard error — there is no atom identity yet (§ 10.8) | nothing to edit | nothing to record |
-| **HOLDING**, editable | replaces it, and re-anchors the sequence | delivered | applied | records a point |
-| **HOLDING**, read-only | refused unless `enforce` | **delivered** — a run's own output is not a change (§ 9.4) | no-op | no-op |
+| **HOLDING**, editable | replaces it, and re-anchors the sequence | **delivered** | applied | records a point |
+| **HOLDING**, read-only | refused unless `enforce` | **delivered** | no-op | no-op |
+
+**Frames arrive the same way in both modes.** The four delivery doors are not a
+read-only concession and not an editable privilege — an editable viewer follows a
+running job exactly as a read-only one does. What differs between the modes is
+only what the third and fourth columns say: whether the structure can be
+**edited**, and whether a point can be recorded.
+
+**Arriving frames do not raise the unsaved badge**, in either mode. The badge
+means "there is work here that is not on the sequence yet" (§ 11.2), and a run's
+own output is not the user's work — it is reproducible from the run, and a poll
+arriving every few seconds would otherwise flicker the badge continuously. Only
+an edit raises it.
 
 **The calls involved, and what each does in each mode.** A no-op returns the
 value in the last column — it never throws, so no caller has to wrap it (§ 9.4).

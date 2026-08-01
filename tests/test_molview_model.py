@@ -420,6 +420,68 @@ def test_what_the_viewer_is_has_one_answer_and_a_replacement_can_be_enforced():
     )
 
 
+def test_frames_arrive_the_same_way_in_both_modes_and_raise_no_badge():
+    """The four delivery doors are not a read-only concession and not an editable
+    privilege: an editable viewer follows a running job exactly as a read-only
+    one does. What the mode decides is whether the structure can be EDITED and
+    whether a point can be recorded — neither of which is what these do.
+
+    And none of them raises the unsaved badge. It means "there is work here that
+    is not on the sequence yet" (§ 11.2), and a run's own output is not the
+    user's work: it is reproducible from the run, and a poll arriving every few
+    seconds would otherwise flicker the badge continuously. Only an edit raises
+    it.
+    """
+    out = _run(
+        """
+        const store = { read: async () => null, write: async () => {} };
+        const answer = {};
+        for (const mode of ["editable", "readonly"]) {
+            const m = createModel(mode === "readonly"
+                ? { mode: "readonly", workspace: store } : { workspace: store });
+            await m.installMolecule({ text: "x", filename: "x.xyz" });
+            await new Promise((r) => setTimeout(r, 0));
+
+            m.addFrames([[[0,0,1],[1,0,1]], [[0,0,2],[1,0,2]]],
+                        { forces: [[[0,0,1],[0,0,1]], null] });
+            m.addFrame([[0,0,3],[1,0,3]]);
+            m.reloadFrames([[[0,0,0],[1,0,0]], [[0,0,9],[1,0,9]]]);
+            m.setForces([null, [[0,0,4],[0,0,4]]]);
+
+            answer[mode] = {
+                frames: m.frameCount(),
+                forces: m.getCoordinates().forcesPerFrame,
+                badgeAfterDelivery: m.uncommitted,
+            };
+        }
+
+        // An EDIT does raise it, so the badge is not simply dead.
+        const e = createModel({ workspace: store });
+        await e.installMolecule({ text: "x", filename: "x.xyz" });
+        await new Promise((r) => setTimeout(r, 0));
+        e.selection.adopt([0]);
+        e.selection.writeLabel("bridge", "replace");
+        answer.badgeAfterAnEdit = e.uncommitted;
+
+        console.log(JSON.stringify(answer));
+        """
+    )
+    assert out["editable"] == out["readonly"], (
+        f"delivery differs between the modes: {out['editable']} vs {out['readonly']}"
+    )
+    assert out["editable"]["frames"] == 2, (
+        f"the delivery doors did not do their job: {out['editable']}"
+    )
+    assert out["editable"]["forces"] == [None, [[0, 0, 4], [0, 0, 4]]]
+    assert out["editable"]["badgeAfterDelivery"] is False, (
+        "arriving frames raised the unsaved badge — a polling run would flicker "
+        "it continuously, and the job's output is not the user's unsaved work"
+    )
+    assert out["badgeAfterAnEdit"] is True, (
+        "an edit must still raise the badge, or the badge is simply dead"
+    )
+
+
 def test_a_trajectory_arrives_whole_in_one_install():
     """§ 9.3: `installMolecule` is "the ONLY way a structure gets in", and it
     "replaces the whole model at once and resets the session history". § 6.4: the

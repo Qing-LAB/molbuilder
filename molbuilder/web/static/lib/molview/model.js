@@ -649,6 +649,17 @@ export function createModel(opts) {
          * deliver coordinates for the structure already installed: a running
          * job's own output arriving, poll after poll.
          *
+         * THE SAME IN BOTH MODES. Not a read-only concession and not an editable
+         * privilege — an editable viewer follows a running job exactly as a
+         * read-only one does. What the mode decides is whether the structure can
+         * be EDITED and whether a point can be recorded, and neither of those is
+         * what happens here.
+         *
+         * None of them raises the unsaved badge either, and for the same reason:
+         * the badge means "there is work here that is not on the sequence yet"
+         * (§ 11.2), and a run's own output is not the user's work. A poll
+         * arriving every few seconds would otherwise flicker it continuously.
+         *
          * "What they cannot do is change the structure the calculation ran on"
          * — and frames from that calculation do not; they ARE it. § 10.8's
          * guards are what make that a fact rather than a reading: these doors
