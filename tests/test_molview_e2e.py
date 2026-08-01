@@ -61,7 +61,7 @@ def molview_server():
 def demo(page, molview_server):
     """The demo page with a structure loaded and the drawing settled."""
     page.goto(f"{molview_server}/molview-demo")
-    page.wait_for_selector(".molview-card .mol-viewer-quickbar button")
+    page.wait_for_selector(".molview-card .molviewer-rail button")
     page.click("#demo-benzene")
     page.wait_for_function(
         "() => document.querySelectorAll('.molviewer-selection-atom-table tr').length === 12"
@@ -84,7 +84,7 @@ def _canvas_pixels(page):
     """
     return page.evaluate(
         """() => {
-            const canvas = document.querySelector(".mol-viewer-canvas canvas");
+            const canvas = document.querySelector(".molviewer-window-canvas canvas");
             return canvas ? canvas.toDataURL().length : 0;
         }"""
     )
@@ -101,14 +101,14 @@ def test_the_rail_is_six_buttons_beside_the_window_not_over_it(demo):
     Both halves are the design: one press each, visible without opening
     anything, and never covering what the user is looking at.
     """
-    buttons = demo.locator(".mol-viewer-quickbar button")
+    buttons = demo.locator(".molviewer-rail button")
     assert buttons.count() == 6
 
     glyphs = [buttons.nth(i).inner_text() for i in range(6)]
     assert glyphs == ["⟲", "✚", "#", "➤", "▦", "◉"], glyphs
 
-    rail = demo.locator(".mol-viewer-quickbar").bounding_box()
-    canvas = demo.locator(".mol-viewer-canvas").bounding_box()
+    rail = demo.locator(".molviewer-rail").bounding_box()
+    canvas = demo.locator(".molviewer-window-canvas").bounding_box()
     assert rail["x"] + rail["width"] <= canvas["x"] + 1, (
         f"the rail overlaps the 3D window: rail ends at "
         f"{rail['x'] + rail['width']}, canvas starts at {canvas['x']}"
@@ -132,7 +132,7 @@ def test_a_switch_changes_the_picture(demo, index, name):
     before = _canvas_pixels(demo)
     assert before > 0, "nothing is painted at all"
 
-    button = demo.locator(".mol-viewer-quickbar button").nth(index)
+    button = demo.locator(".molviewer-rail button").nth(index)
     assert button.get_attribute("aria-pressed") == "false"
     button.click()
     _settle(demo)
@@ -161,7 +161,7 @@ def test_showing_the_unit_cell_draws_the_box_the_structure_uses(demo):
     nothing said so.
     """
     before = _canvas_pixels(demo)
-    button = demo.locator(".mol-viewer-quickbar button").nth(4)
+    button = demo.locator(".molviewer-rail button").nth(4)
     button.click()
     _settle(demo)
 
@@ -210,7 +210,7 @@ def test_isolate_hides_the_rest_and_gives_them_back(demo):
     _settle(demo)
     whole = _canvas_pixels(demo)
 
-    isolate = demo.locator(".mol-viewer-quickbar button").nth(5)
+    isolate = demo.locator(".molviewer-rail button").nth(5)
     isolate.click()
     _settle(demo)
     isolated = _canvas_pixels(demo)
@@ -273,10 +273,10 @@ def test_the_view_menu_opens_onto_something(demo):
     placement was missing the menu opened, took its open state, and sat at
     -9999px. Nothing in node could see it, and this is what does.
     """
-    body = demo.locator(".mol-viewer-menu-body").first
+    body = demo.locator(".molviewer-menu-body").first
     assert not body.is_visible()
 
-    demo.locator(".mol-viewer-menu summary").first.click()
+    demo.locator(".molviewer-menu summary").first.click()
     _settle(demo)
 
     assert body.is_visible()
@@ -286,7 +286,7 @@ def test_the_view_menu_opens_onto_something(demo):
     assert box["x"] + box["width"] <= viewport["width"], f"clipped right: {box}"
     assert box["height"] > 0 and box["width"] > 0
 
-    trigger = demo.locator(".mol-viewer-menu summary").first.bounding_box()
+    trigger = demo.locator(".molviewer-menu summary").first.bounding_box()
     assert box["y"] >= trigger["y"], "the menu is not below its own trigger"
 
     # A click elsewhere closes it.
@@ -401,9 +401,9 @@ def test_the_card_brings_its_own_surfaces(demo):
         sel, "el => getComputedStyle(el).backgroundColor"
     )
     ground = colour(".molview-card")
-    window_card = colour(".molview-card .mol-viewer-card")
+    window_card = colour(".molview-card .molviewer-window-frame")
     panel_card = colour(".molview-card .molviewer-selection-card")
-    scene = colour(".mol-viewer-canvas")
+    scene = colour(".molviewer-window-canvas")
 
     assert window_card == panel_card, "the two cards are not one surface"
     assert ground != window_card, (

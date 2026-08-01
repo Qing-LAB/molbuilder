@@ -34,13 +34,20 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CSS = ROOT / "molbuilder/web/static/lib/molview/molview.css"
-SEARCH = [ROOT / "molbuilder/web/static/lib/molview",
+SEARCH = [ROOT / "molbuilder/web/static",
           ROOT / "molbuilder/web/templates",
           ROOT / "tests"]
-SKIP = ("molview-old", "node_modules", ".test-progress")
+#: lib/viewer is the RETIRED 3Dmol embed -- loaded by no template and imported by
+#: no module (measured 2026-08-01, phase 3). It still defines the same class names,
+#: so a rename must not follow them in there: that directory is not live code.
+SKIP = ("molview-old", "lib/viewer/", "node_modules", ".test-progress")
 
-#: area -> (old prefix, new prefix). One entry per phase-2 pass.
+#: area -> (old prefix, new prefix[, exact names to restrict to]).
+#: The optional third element exists for phase 3, where one prefix covers both
+#: live classes and orphans awaiting a ship-or-drop call -- renaming an orphan
+#: would dress up a rule that styles nothing.
 AREAS = {
+    # phase 2 -- MolView's own names, no other definer
     "cell":      ("cell-",           "molviewer-cell-"),
     "regions":   ("region-defs-",    "molviewer-regions-"),
     "label":     ("tag-",            "molviewer-label-"),
@@ -49,6 +56,29 @@ AREAS = {
     "panel":     ("panel-page",      "molviewer-panel-tab"),
     "frames":    ("mvf-",            "molviewer-frames-"),
     "selection": ("selection-",      "molviewer-selection-"),
+    # phase 3 -- the mol-viewer-* names, created by lib/molview/3dmol-embed.js
+    # and ui.js.  They were believed shared with a live embed; they are not.
+    "background": ("mol-viewer-bg-",     "molviewer-menu-background-"),
+    "busy":       ("mol-viewer-busy",    "molviewer-window-busy"),
+    "menu":       ("mol-viewer-menu",    "molviewer-menu"),
+    "style":      ("mol-viewer-rep-",    "molviewer-menu-style-"),
+    "radius":     ("mol-viewer-radius-", "molviewer-menu-radius-"),
+    "rail":       ("mol-viewer-quickbar", "molviewer-rail"),
+    "railbutton": ("mol-viewer-quick",   "molviewer-rail-button"),
+    "export":     ("mol-viewer-export-", "molviewer-export-",
+                   ("mol-viewer-export-btn", "mol-viewer-export-row",
+                    "mol-viewer-export-section", "mol-viewer-export-section-label")),
+    "knobs":      ("mol-viewer-knobs",   "molviewer-menu-bar"),
+    "toggle":     ("mol-viewer-toggle",  "molviewer-rail-toggle"),
+    "stage":      ("mol-viewer-stage",   "molviewer-window-stage"),
+    "canvas":     ("mol-viewer-canvas",  "molviewer-window-canvas"),
+    # NOT `molviewer-card`: the plan's §3 mapped it there, but `.mol-viewer-card`
+    # is NESTED inside `.molview-card` (mount.js:286, and the live selector
+    # `.molview-card .mol-viewer-card`) -- they are the outer card and the 3D
+    # window's frame, not two spellings of one thing. Collapsing them would have
+    # merged two elements. mount.js already calls this one `frame`.
+    "frame":      ("mol-viewer-card",    "molviewer-window-frame",
+                   ("mol-viewer-card",)),
 }
 
 
@@ -72,13 +102,21 @@ def main() -> int:
     ap.add_argument("--area", required=True, choices=sorted(AREAS))
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
-    old, new = AREAS[args.area]
+    old, new, *rest = AREAS[args.area]
+    only = set(rest[0]) if rest else None
 
     before = _classes(CSS.read_text())
     # THE EXACT NAMES, taken from the stylesheet with comments masked -- never a
     # bare prefix. `\b` is not enough either: it would let `cell-value` match
     # inside `cell-value-extra`, so the trailing guard is explicit.
-    names = sorted((n for n in before if n.startswith(old)), key=len, reverse=True)
+    names = sorted((n for n in before if n.startswith(old)
+                    and (only is None or n in only)), key=len, reverse=True)
+    if only:
+        missing = only - set(names)
+        if missing:
+            print(f"!! restricted to names the stylesheet does not define: "
+                  f"{', '.join(sorted(missing))}")
+            return 1
     if not names:
         print(f"no classes named {old!r}* in the stylesheet -- nothing to do")
         return 0

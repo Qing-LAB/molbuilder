@@ -129,7 +129,7 @@ function mountRail(doc, card, model, handle) {
     for (const spec of RAIL) {
         const button = doc.createElement("button");
         button.type = "button";
-        button.className = "mol-viewer-quick";
+        button.className = "molviewer-rail-button";
         button.textContent = spec.glyph;
         button.title = spec.title;
         // The glyph is decoration; the name is what the button IS, and it is
@@ -355,7 +355,7 @@ function placementFor(el) {
 
 function mountMenus(doc, card, model, files) {
     const bar = doc.createElement("div");
-    bar.className = "mol-viewer-knobs";
+    bar.className = "molviewer-menu-bar";
     bar.setAttribute("role", "toolbar");
     bar.setAttribute("aria-label", "Viewer controls");
 
@@ -476,21 +476,21 @@ function mountMenus(doc, card, model, files) {
  */
 function buildViewMenu(doc, model) {
     const root = doc.createElement("details");
-    root.className = "mol-viewer-menu";
+    root.className = "molviewer-menu";
     const summary = doc.createElement("summary");
     summary.textContent = "View";
     root.appendChild(summary);
 
     // The menu's contents live in a body, which is what the stylesheet lays out.
     const body = doc.createElement("div");
-    body.className = "mol-viewer-menu-body";
+    body.className = "molviewer-menu-body";
     root.appendChild(body);
 
     const section = (heading) => {
         const wrap = doc.createElement("div");
-        wrap.className = "mol-viewer-menu-section";
+        wrap.className = "molviewer-menu-section";
         const label = doc.createElement("div");
-        label.className = "mol-viewer-menu-heading";
+        label.className = "molviewer-menu-heading";
         label.textContent = heading;
         wrap.appendChild(label);
         body.appendChild(wrap);
@@ -511,14 +511,14 @@ function buildViewMenu(doc, model) {
      */
     const drawn = section("Draw as");
     const repRow = doc.createElement("div");
-    repRow.className = "mol-viewer-rep-row";
+    repRow.className = "molviewer-menu-style-row";
     const REPS = [["stick", "Sticks"], ["ball-and-stick", "Ball & stick"],
                   ["sphere", "Spheres"], ["line", "Lines"]];
     const repButtons = {};
     for (const [value, label] of REPS) {
         const button = doc.createElement("button");
         button.type = "button";
-        button.className = "mol-viewer-rep-btn";
+        button.className = "molviewer-menu-style-btn";
         button.textContent = label;
         button.addEventListener("click", () => model.view.set("style", value));
         repRow.appendChild(button);
@@ -529,7 +529,7 @@ function buildViewMenu(doc, model) {
     /* THE RADIUS SLIDER (§ 1.1: "a radius slider from 0.2 to 2.5 that scales
      * stick thickness / sphere size / line width"). It sits with the reps
      * because it scales whichever one is showing, which is what the carried
-     * stylesheet lays out — `.mol-viewer-radius-row` was styled all along and
+     * stylesheet lays out — `.molviewer-menu-radius-row` was styled all along and
      * had nothing to style.
      *
      * The label WRAPS the input rather than pairing with it through `for`/`id`.
@@ -537,11 +537,11 @@ function buildViewMenu(doc, model) {
      * second mount would duplicate it and both labels would point at the first
      * viewer's slider. */
     const radiusRow = doc.createElement("div");
-    radiusRow.className = "mol-viewer-radius-row";
+    radiusRow.className = "molviewer-menu-radius-row";
     const radiusLabel = doc.createElement("label");
     radiusLabel.textContent = "Radius";
     /* NO class on the input or the output. The stylesheet reaches them by
-     * ELEMENT inside the row — `.mol-viewer-radius-row > input[type="range"]`
+     * ELEMENT inside the row — `.molviewer-menu-radius-row > input[type="range"]`
      * and `> output` — so a class here would be one the design never defines.
      * The old code set `mol-viewer-radius` and `mol-viewer-radius-out` and the
      * stylesheet used neither. */
@@ -575,12 +575,12 @@ function buildViewMenu(doc, model) {
     ];
     const background = section("Background");
     const bgRow = doc.createElement("div");
-    bgRow.className = "mol-viewer-bg-row";
+    bgRow.className = "molviewer-menu-background-row";
     const swatches = {};
     for (const [value, name] of BACKGROUNDS) {
         const swatch = doc.createElement("button");
         swatch.type = "button";
-        swatch.className = "mol-viewer-bg-swatch";
+        swatch.className = "molviewer-menu-background-swatch";
         swatch.setAttribute("aria-label", name + " background");
         swatch.title = name;
         if (value === "transparent") {
@@ -599,7 +599,7 @@ function buildViewMenu(doc, model) {
      * still opens on click while the visible chip matches the preset row — the
      * stylesheet sizes the input to fill it, so the whole chip is the target. */
     const custom = doc.createElement("label");
-    custom.className = "mol-viewer-bg-custom";
+    custom.className = "molviewer-menu-background-custom";
     custom.setAttribute("aria-label", "Custom background colour");
     custom.title = "Custom colour";
     const picker = doc.createElement("input");
@@ -613,7 +613,7 @@ function buildViewMenu(doc, model) {
 
     const projection = doc.createElement("button");
     projection.type = "button";
-    projection.className = "mol-viewer-toggle";
+    projection.className = "molviewer-rail-toggle";
     projection.textContent = "Orthographic";
     projection.setAttribute("aria-pressed", "false");
     projection.addEventListener("click", () => {
@@ -675,29 +675,29 @@ function buildViewMenu(doc, model) {
  */
 function buildExportMenu(doc, model, files) {
     const root = doc.createElement("details");
-    root.className = "mol-viewer-menu";
+    root.className = "molviewer-menu";
     const summary = doc.createElement("summary");
     summary.textContent = "Export";
     root.appendChild(summary);
 
     const body = doc.createElement("div");
-    body.className = "mol-viewer-menu-body";
+    body.className = "molviewer-menu-body";
     root.appendChild(body);
     const section = doc.createElement("div");
-    section.className = "mol-viewer-export-section";
+    section.className = "molviewer-export-section";
     const label = doc.createElement("div");
-    label.className = "mol-viewer-export-section-label";
+    label.className = "molviewer-export-section-label";
     label.textContent = "Structure";
     section.appendChild(label);
     const row = doc.createElement("div");
-    row.className = "mol-viewer-export-row";
+    row.className = "molviewer-export-row";
     section.appendChild(row);
     body.appendChild(section);
 
     const item = (text, onClick) => {
         const button = doc.createElement("button");
         button.type = "button";
-        button.className = "mol-viewer-export-btn";
+        button.className = "molviewer-export-btn";
         button.textContent = text;
         button.addEventListener("click", onClick);
         row.appendChild(button);

@@ -109,7 +109,7 @@ header .tagline {
  * chain, and the card's own content-width cap -- lives in the module (lib/molview/fused-
  * layout.css), driven by the module's own --viewer-* vars.  This tab says NOTHING about the
  * viewer's size; the concealed MolView card sizes itself in any host.  (The old
- * .viewer-wrap / .viewer / .mol-viewer-card sizing rules that used to live here -- with copied
+ * .viewer-wrap / .viewer / .molviewer-window-frame sizing rules that used to live here -- with copied
  * 560 / 320 / 342 magic mirroring fused-layout.css -- were the module's job leaking into the
  * tab; they moved into fused-layout.css so every consumer fits identically.) */
 .viewer-section {

@@ -210,7 +210,7 @@ def test_sidecar_cell_reaches_viewer(
     slot = ".structure-viewer-slot"
 
     # the shared view-control (isolate toggle) renders on THIS card's left rail.
-    assert page.locator(f"{slot} .mol-viewer-quick[data-quick=isolate]").count() == 1
+    assert page.locator(f"{slot} .molviewer-rail-button[data-quick=isolate]").count() == 1
 
     # the cell reached the viewer (box can draw)
     lat = page.evaluate(f"() => {_VH}.getLattice()")
@@ -245,9 +245,9 @@ def test_sidecar_cell_origin_reaches_viewer(
 
 def test_results_view_controls_bar_drives_store(
         page, flask_server, tmp_path, monkeypatch):
-    """The isolate view toggle (.mol-viewer-quick[data-quick=isolate]) drives the
+    """The isolate view toggle (.molviewer-rail-button[data-quick=isolate]) drives the
     module's selection store on Results too -- not just Modify.  The toggle lives on
-    the viewer's always-visible left rail (.mol-viewer-quickbar), so no menu to open.
+    the viewer's always-visible left rail (.molviewer-rail), so no menu to open.
     Clicking isolate flips the isolate flag; the click reaches the store."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     xyz = _write_xyz_with_cell_sidecar(
@@ -262,7 +262,7 @@ def test_results_view_controls_bar_drives_store(
     assert page.evaluate(_count) == 2
     # isolate: select an atom, then CLICK the rail isolate toggle -> store.isolate flips.
     page.evaluate(f"() => {_SEL}.set([0])")
-    page.locator(f"{slot} .mol-viewer-quick[data-quick=isolate]").click()
+    page.locator(f"{slot} .molviewer-rail-button[data-quick=isolate]").click()
     page.wait_for_function(
         f"() => {_SEL}.getState().isolate === true")
 

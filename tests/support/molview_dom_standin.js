@@ -166,7 +166,7 @@ function makeElement(doc, tag) {
 }
 
 /* ONE step of a selector: a tag, a class, or a compound of the two —
- * `div`, `.is-active`, `input`, `.mol-viewer-bg-swatch.is-transparent`. */
+ * `div`, `.is-active`, `input`, `.molviewer-menu-background-swatch.is-transparent`. */
 function matches(node, step) {
     const parts = String(step).split(".");
     const tag = parts.shift();
@@ -175,7 +175,7 @@ function matches(node, step) {
     return true;
 }
 
-/* Descendant chains too — `.mol-viewer-radius-row input`. A stand-in that only
+/* Descendant chains too — `.molviewer-menu-radius-row input`. A stand-in that only
  * understood one step made a test asking a real question ("is the slider inside
  * the row the stylesheet styles?") fail as though the control were missing,
  * which is the stand-in describing something the DOM does not (§ 13.1). */

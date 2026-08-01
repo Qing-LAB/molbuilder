@@ -273,7 +273,7 @@ function buildCard(hostEl, opts) {
     const wrap = el("div", "viewer-wrap");
     const inner = el("div", "viewer");
     /* THE STYLESHEET'S SELECTORS ARE THE MARKUP CONTRACT. This chain is not free
-     * to rearrange: `.viewer > .mol-viewer-card` is what carries `height: 100%`,
+     * to rearrange: `.viewer > .molviewer-window-frame` is what carries `height: 100%`,
      * and the stage and canvas below it are `flex: 1 1 auto` — so they take
      * their height from this flex column and from nothing else. Leave the card
      * out and the stage collapses to its content, the canvas is 45px tall, and
@@ -283,15 +283,15 @@ function buildCard(hostEl, opts) {
      * colour and thickness), which the sealed layer reads by computed style —
      * they are declared here rather than on the page root so they stay concealed
      * to the module. */
-    const frame = el("div", "mol-viewer-card");
-    const stage = el("div", "mol-viewer-stage");
-    const canvas = el("div", "mol-viewer-canvas");
+    const frame = el("div", "molviewer-window-frame");
+    const stage = el("div", "molviewer-window-stage");
+    const canvas = el("div", "molviewer-window-canvas");
 
     // The busy cover — "Updating view…" — which only a rebuild raises (§ 10.5).
-    const busy = el("div", "mol-viewer-busy");
+    const busy = el("div", "molviewer-window-busy");
     busy.hidden = true;
     busy.setAttribute("aria-live", "polite");
-    busy.appendChild(el("div", "mol-viewer-busy-msg"));
+    busy.appendChild(el("div", "molviewer-window-busy-msg"));
     canvas.appendChild(busy);
 
     /* THE RAIL OF SWITCHES IS THE STAGE'S LEFT COLUMN (§ 1.1): "six icon buttons
@@ -302,7 +302,7 @@ function buildCard(hostEl, opts) {
      *
      * Built here and FILLED by ui.js, the same division as the frame bar: the
      * scaffold owns where things sit, the controls own what they do. */
-    const rail = el("div", "mol-viewer-quickbar");
+    const rail = el("div", "molviewer-rail");
     stage.appendChild(rail);
     stage.appendChild(canvas);
     frame.appendChild(stage);

@@ -480,7 +480,7 @@ def test_the_switches_are_a_rail_of_buttons_outside_the_window():
         """
         const { host, viewer } = await mounted();
         const card = host.querySelector(".molview-card");
-        const rail = card.querySelector(".mol-viewer-quickbar");
+        const rail = card.querySelector(".molviewer-rail");
         const buttons = rail.children;
 
         const shape = {
@@ -488,8 +488,8 @@ def test_the_switches_are_a_rail_of_buttons_outside_the_window():
             names:  buttons.map((b) => b.getAttribute("aria-label")),
             // Reset is an action, so it is the one with no lit state.
             pressed: buttons.map((b) => b.getAttribute("aria-pressed")),
-            insideCanvas: !!card.querySelector(".mol-viewer-canvas")
-                              .querySelector(".mol-viewer-quickbar"),
+            insideCanvas: !!card.querySelector(".molviewer-window-canvas")
+                              .querySelector(".molviewer-rail"),
         };
 
         // A press writes the store...
@@ -551,7 +551,7 @@ def test_an_open_menu_is_placed_against_its_own_trigger():
         const card = host.querySelector(".molview-card");
         const menu = card.querySelector("DETAILS");
         const summary = menu.querySelector("SUMMARY");
-        const body = menu.querySelector(".mol-viewer-menu-body");
+        const body = menu.querySelector(".molviewer-menu-body");
 
         const parked = { top: body.style.top || null, left: body.style.left || null };
 
@@ -931,7 +931,7 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
         viewer.data.selection.writeLabel("L-electrode");
 
         const card = host.querySelector(".molview-card");
-        const items = card.querySelectorAll(".mol-viewer-export-btn");
+        const items = card.querySelectorAll(".molviewer-export-btn");
         for (const item of items) item.click();
 
         console.log(JSON.stringify({
@@ -1521,7 +1521,7 @@ def test_the_view_menu_holds_all_four_drawing_settings():
         const view = viewer.data.view;
 
         // § 1.1's range, read off the control itself.
-        const slider = card.querySelector(".mol-viewer-radius-row input");
+        const slider = card.querySelector(".molviewer-menu-radius-row input");
         const spec = { min: slider.min, max: slider.max, step: slider.step };
         const startedAt = slider.value;
 
@@ -1529,30 +1529,30 @@ def test_the_view_menu_holds_all_four_drawing_settings():
         slider.value = "2.5";
         slider.dispatch("input", { target: slider });
         const afterDrag = view.get().radius;
-        const shownAfterDrag = card.querySelector(".mol-viewer-radius-row output")
+        const shownAfterDrag = card.querySelector(".molviewer-menu-radius-row output")
                                    .textContent;
 
         // Set it from ELSEWHERE: the control must follow the store, not itself.
         view.set("radius", 0.5);
         const followed = { value: slider.value,
                            shown: card.querySelector(
-                               ".mol-viewer-radius-row output").textContent };
+                               ".molviewer-menu-radius-row output").textContent };
 
         // The background presets, and the one that is transparent.
-        const swatches = card.querySelectorAll(".mol-viewer-bg-swatch");
+        const swatches = card.querySelectorAll(".molviewer-menu-background-swatch");
         const transparent = card.querySelectorAll(
-            ".mol-viewer-bg-swatch.is-transparent");
-        const picker = card.querySelectorAll(".mol-viewer-bg-custom input");
+            ".molviewer-menu-background-swatch.is-transparent");
+        const picker = card.querySelectorAll(".molviewer-menu-background-custom input");
 
         // Nothing is lit until the user chooses: `background: null` is "the
         // window's own ground", not a colour (§ 9.6).
         const litAtStart = card.querySelectorAll(
-            ".mol-viewer-bg-swatch.is-active").length;
+            ".molviewer-menu-background-swatch.is-active").length;
 
         transparent[0].click();
         const afterSwatch = view.get().background;
         const litAfter = card.querySelectorAll(
-            ".mol-viewer-bg-swatch.is-active").length;
+            ".molviewer-menu-background-swatch.is-active").length;
 
         console.log(JSON.stringify({
             spec, startedAt, afterDrag, shownAfterDrag, followed,

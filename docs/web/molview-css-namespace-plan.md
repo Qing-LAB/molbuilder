@@ -30,6 +30,12 @@ independent of, and which task #104 exists to separate it from. So MolView's
 card, menus, export dialog and busy cover are all styled by a sheet belonging to
 somebody else, and a change over there silently restyles this.
 
+> ⚠ **That last paragraph is wrong, and phase 3 is where it was caught.** The
+> embed's stylesheet is loaded by no page at all, so it never restyles anything.
+> The counts above are still the right *file*-level measurement, but "shared with
+> a live module" was an assumption, never a measurement. See
+> [§ 5, phase 3](#5-the-plan).
+
 The rest of the overlap is worse for being ordinary: `.card` is defined in
 **nine** other stylesheets, `.is-active` in five, `.viewer` and `.viewer-wrap` in
 three each, `.sr-only` in two. These are names any page might use, sitting in a
@@ -220,10 +226,95 @@ references them, so a mistake stays inside MolView. In order: `cell` →
 `regions` → `label` → `atoms` → `filter` → `panel` → `frames` → `selection`.
 One commit each.
 
-**Phase 3 — the 72 shared names.** Where the win is (46 stop being shared with
-the 3Dmol embed) and where the risk is, because today's appearance may *depend*
-on the embed's rules. One area per commit, screenshot before and after. **The
-duplicate-selector guard going green is this phase's acceptance criterion.**
+**Phase 3 — the `mol-viewer-*` names.** ✅ **The live ones landed 2026-08-01.**
+
+**The premise in § 1 was wrong, and measuring it first is what saved the phase.**
+These names were called "shared with the 3Dmol embed", which made this the
+dangerous phase — a rename here would desync MolView from a module it does not
+own. Before renaming anything, ownership was traced to who *creates* each
+element. The answer:
+
+> **`lib/viewer/` is loaded by nothing.** No template links
+> `mol-viewer-embed.css`; no `<script>` loads `mol-viewer-embed.js`; no ES module
+> imports it; the embed JS injects no stylesheet. MolView reads its own
+> `lib/molview/3dmol-embed.js`, and VibrationView imports only its own files plus
+> `xyz-io`. Every remaining mention of `lib/viewer` is a **comment**.
+
+So the 82 duplicate selectors were duplicates against **dead code**, and the
+"shared ownership" that made this phase risky does not exist. The three things
+that follow from it:
+
+1. **The 25 live names are MolView's own** — created by `lib/molview/*.js` — and
+   renaming them is as safe as phase 2 was. Done: 13 areas, class-list diff clean
+   on every one, 177 molview + CSS tests green.
+2. **19 are orphans** — styled here, created by nothing but the retired embed.
+   They are what keeps the guard red (31 duplicates left, all of them these).
+   Split into [§ 6](#6-the-19-orphans-two-different-decisions).
+3. **`lib/viewer/` itself is a deletion decision**, not a rename one — see § 6.
+
+Had the rename run on the plan as written, all 44 names would have been renamed,
+19 of them dead rules dressed up in the new scheme, and the guard would have gone
+green while ~350 KB of unreferenced code sat behind it looking maintained.
+
+**One mapping in § 3 was also wrong.** It listed `mol-viewer-card*` →
+`molviewer-card*`, and § 3's "five concepts spelled more than one way" counted
+`card` / `mol-viewer-card` / `molview-card` as one concept. They are not:
+`.mol-viewer-card` is **nested inside** `.molview-card` (`mount.js:286`, and the
+live selector `.molview-card .mol-viewer-card`). One is the outer card, the other
+is the 3D window's frame. Collapsing them would have merged two elements into one
+name. It went to **`molviewer-window-frame`** — the name `mount.js` already uses
+for the variable.
+
+| Old | New | |
+|---|---|--:|
+| `mol-viewer-bg-*` | `molviewer-menu-background-*` | 3 |
+| `mol-viewer-busy*` | `molviewer-window-busy*` | 2 |
+| `mol-viewer-menu*` | `molviewer-menu*` | 4 |
+| `mol-viewer-rep-*` | `molviewer-menu-style-*` | 2 |
+| `mol-viewer-radius-row` | `molviewer-menu-radius-row` | 1 |
+| `mol-viewer-knobs` | `molviewer-menu-bar` | 1 |
+| `mol-viewer-quickbar` | `molviewer-rail` | 1 |
+| `mol-viewer-quick` | `molviewer-rail-button` | 1 |
+| `mol-viewer-toggle` | `molviewer-rail-toggle` | 1 |
+| `mol-viewer-export-*` (live only) | `molviewer-export-*` | 4 |
+| `mol-viewer-stage` / `-canvas` | `molviewer-window-stage` / `-canvas` | 2 |
+| `mol-viewer-card` | `molviewer-window-frame` | 1 |
+
+Two ordering traps, both caught by dry-running first: `mol-viewer-quick` is a
+prefix of `mol-viewer-quickbar` (so `rail` runs before `rail-button`, the same
+shape as phase 2's filter-before-selection), and `mol-viewer-export-` covers both
+live classes and 15 orphans — which is why `css_rename.py` grew an **exact-name
+restriction** alongside the prefix.
+
+## 6. The 19 orphans — two different decisions
+
+The guard cannot go green until these are resolved, and they are not one
+question:
+
+**(a) Four are stale — nothing designs them any more.** `mol-viewer-card-header`,
+`mol-viewer-card-title`, `mol-viewer-info-line`, `mol-viewer-select`. MolView
+builds no card header, title or info line at all today (grep across
+`lib/molview/*.js` returns nothing). Same category as phase 1c's nine: delete.
+
+**(b) Fifteen are an unbuilt export dialog.** `mol-viewer-export-modal-*` (9) and
+`mol-viewer-export-params-*` (6) describe a progress dialog with a bar, a phase
+line, a params form and confirm/cancel — a *designed* feature with no code, and
+one that [task #39](?doc=web/molview.md) is queued to build ("give MolView its own
+menu surface; Export moves there"). Deleting this CSS deletes a design that is
+still on the list; keeping it keeps the guard red. **This is a ship-or-drop call,
+not a cleanup.**
+
+**(c) `lib/viewer/` — six files, ~350 KB — is unreferenced.** Deleting it is the
+honest fix for the duplicate guard, and it makes phase 5's rule enforceable. Two
+things ride along: **four tests read that dead file's source text and assert on
+it** (`test_ui_presence_data_independent_js.py`,
+`test_live_poll_invariants_audit.py`, plus `test_css_no_hex_literals.py` and
+`test_xss_audit.py` naming it in budgets/lists) — they pass today while pinning
+nothing that runs; and `test_results_folder_dispatch_e2e.py` identifies the
+trajectory inspector by `.mol-viewer-frame-strip`, a class no live code emits.
+This overlaps task #104 (MolView/VibrationView separation), most of which
+**already happened** — MolView took its own copy as `lib/molview/3dmol-embed.js`
+and VibrationView never followed.
 
 **Phase 4 — the global names** (`card`, `is-*`, `viewer*`, `sr-only`). Smallest
 diff, largest blast radius: another page may rely on MolView's `.card` winning.
@@ -290,8 +381,12 @@ without one for an hour and the control appeared unstyled.
 | Phase | Names moved | Duplicate selectors left |
 |---|--:|--:|
 | 1 — retire the dead sheet ✅ | 0 | 82 (was: 82 + the frozen sheet's noise) |
-| 2 — the private areas | 41 | 82 — none of these collide |
-| 3 — the embed-shared areas | ~60 | **0** ← the guard goes green here |
-| 4 — the global names | 8 | 0, and `.card` / `.is-active` stop being shared with nine and five other sheets |
+| 2 — the private areas ✅ | 77 | 82 — none of these collide |
+| 3 — the `mol-viewer-*` areas ✅ | 25 | **31**, all of them the § 6 orphans |
+| § 6 — the orphan decisions | 19 | **0** ← the guard goes green here |
+| 4 — the global names | 7 | 0, and `.card` / `.is-active` stop being shared with nine and five other sheets |
 
-Phase 3 is the one that matters. Phases 2 and 4 are cheap either side of it.
+Phase 3 was expected to be the one that mattered. It turned out the risk was
+imaginary and the *measurement* was the work: the guard now points at nineteen
+dead rules and one unreferenced directory, which is a much more useful thing for
+it to be pointing at than a naming convention.

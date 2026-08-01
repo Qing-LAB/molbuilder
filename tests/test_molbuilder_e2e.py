@@ -203,10 +203,10 @@ def _click_view_toggle(page, kind):
     """Toggle a molview view-control (kind = "isolate").
 
     Every view toggle (reset / axes / labels / overlay / cell / isolate) is the
-    SAME ``.mol-viewer-quick[data-quick=...]`` button on the embed's always-
-    visible left RAIL (``.mol-viewer-quickbar``).  No menu to open -- click the
+    SAME ``.molviewer-rail-button[data-quick=...]`` button on the embed's always-
+    visible left RAIL (``.molviewer-rail``).  No menu to open -- click the
     rail button for ``kind`` directly."""
-    page.locator(f'.mol-viewer-quick[data-quick={kind}]').click()
+    page.locator(f'.molviewer-rail-button[data-quick={kind}]').click()
 
 
 def _load_file(page, xyz_path, expected_atoms):
@@ -2133,7 +2133,7 @@ def test_modify_view_controls_bar(page, flask_server, tmp_path, monkeypatch):
     _load_file(page, str(water_xyz), expected_atoms=3)
     _wait_panel_ready(page)
     # The module rendered the isolate toggle onto the always-visible left RAIL.
-    assert page.locator(".mol-viewer-quick[data-quick=isolate]").count() == 1
+    assert page.locator(".molviewer-rail-button[data-quick=isolate]").count() == 1
     # Select an atom, then isolate via the rail -> the STORE's isolate flag flips.
     page.evaluate("() => window.molbuilder.molview.data.selection.toggle(0)")
     _click_view_toggle(page, "isolate")
@@ -3362,7 +3362,7 @@ def test_clickable_survives_repeated_apply_style(
     # the popover-open animation.
     for rep in ("ball-and-stick", "sphere", "stick"):
         page.locator(
-            f'.mol-viewer-rep-btn[data-rep="{rep}"]'
+            f'.molviewer-menu-style-btn[data-rep="{rep}"]'
         ).dispatch_event("click")
         page.wait_for_timeout(50)
     # 3dmol-ok: asserts a RENDER fact (atom clickability persists across rep
@@ -3645,7 +3645,7 @@ def test_axes_have_fixed_length_at_origin(
     # Post-rail: axes toggle lives on the always-visible left RAIL as
     # a button with data-quick="axes".
     axes_btn = page.locator(
-        '.mol-viewer-quick[data-quick="axes"]')
+        '.molviewer-rail-button[data-quick="axes"]')
     # 2026-06-13 cross-tab consistency: axes default OFF on every
     # tab (modify, structure-opt, trajectory, spectra).  Click to
     # turn axes ON before probing arrow geometry.
@@ -3836,7 +3836,7 @@ def test_reset_view_recentres_camera(
         v.render();
     }""")
     # Click "Reset view" on the always-visible left RAIL (data-quick="reset" -> handle.refit).
-    page.locator('.mol-viewer-quick[data-quick="reset"]').click()
+    page.locator('.molviewer-rail-button[data-quick="reset"]').click()
     after = page.evaluate(
         "() => window.__molbuilder_modify_test.getViewer().getView()"
     )
@@ -3851,7 +3851,7 @@ def test_reset_view_no_op_without_structure(page, flask_server):
     """Clicking Reset view (left rail) with no structure loaded must not raise a JS error
     (the module's refit no-ops on an empty viewer)."""
     errors = _open_modify(page, flask_server)
-    page.locator('.mol-viewer-quick[data-quick="reset"]').click()
+    page.locator('.molviewer-rail-button[data-quick="reset"]').click()
     page.wait_for_timeout(100)
     assert errors == [], f"JS error on Reset-view no-op: {errors}"
 
