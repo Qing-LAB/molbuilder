@@ -1,0 +1,179 @@
+# MolView — the stylesheet namespace plan
+
+**Role:** plan
+**Domain:** web
+**Started:** 2026-08-01
+**Companions:** [`molview.md`](?doc=web/molview.md) — the contract this serves, in
+particular § 4 (a self-contained module) and § 8.1 (what the card is made of).
+Retired when the last phase lands.
+
+---
+
+## 1. Why this exists
+
+MolView's whole doctrine is concealment: one entry point, 3Dmol named in exactly
+one file, nothing on `window`. The stylesheet obeys none of it. It publishes
+**167 class names under 9 different prefixes** into a global stylesheet shared
+with every other page in the application.
+
+That is not a tidiness complaint. Measured:
+
+| | |
+|---|---|
+| class names MolView defines | **167** |
+| also defined *outside* MolView | **58 (35%)** |
+| of those, shared with `lib/viewer/mol-viewer-embed.css` | **46** |
+
+**Whichever stylesheet loads last wins.** Forty-six of MolView's names are
+currently shared with the 3Dmol embed — the module MolView is supposed to be
+independent of, and which task #104 exists to separate it from. So MolView's
+card, menus, export dialog and busy cover are all styled by a sheet belonging to
+somebody else, and a change over there silently restyles this.
+
+The rest of the overlap is worse for being ordinary: `.card` is defined in
+**nine** other stylesheets, `.is-active` in five, `.viewer` and `.viewer-wrap` in
+three each, `.sr-only` in two. These are names any page might use, sitting in a
+module that claims to be sealed.
+
+> There is a live symptom already. `tests/test_css_no_duplicate_selectors.py`
+> fails on `.cell-matrix-block`, defined in both `lib/molview/molview.css` and
+> the frozen `lib/molview-old/molview.css` — and **nothing outside
+> `molview-old/` references that file**. Dead residue, still colliding.
+
+## 2. The naming scheme
+
+**One prefix, spelled out: `molviewer-`.** Not `mv-`, not `mvf-`. A prefix that
+has to be decoded is a prefix people guess at, and guessing is how `mol-viewer-`,
+`molview-` and `viewer-` came to be three spellings of one owner.
+
+The shape is **`molviewer-<area>-<part>`**, where the area names a place on the
+card that § 8.1 already names, so a reader can find it without a legend:
+
+| Area | What it covers |
+|---|---|
+| `card` | the card shell, its header, the stacked/broken states |
+| `window` | the 3D window — stage, canvas, busy cover, info line |
+| `rail` | the left-edge switch rail (§ 1.1's six toggles) |
+| `menu` | the View menu — style, radius, background, projection |
+| `export` | the Export menu and its dialog |
+| `frames` | the frame bar — slider, transport, counter, speed, loop |
+| `panel` | the panel container, its fold, and the page tabs |
+| `selection` | the Selection page — modes, actions, status |
+| `filter` | the filter rows |
+| `atoms` | the atom table and its columns |
+| `label` | the label chips (reserved tones included) |
+| `regions` | the region-definitions help block |
+| `cell` | the Cell page |
+| `overlay` | badge, measurement readout, corner placements |
+| `is` | state flags, namespaced — `molviewer-is-active` |
+
+## 3. The mapping
+
+Every current prefix, where it goes, and how many names move:
+
+| Today | → | Count | Note |
+|---|---|--:|---|
+| `selection-filter-*` | `molviewer-filter-*` | 11 | the filter rows earn their own area |
+| `selection-*` (rest) | `molviewer-selection-*` | 36 | |
+| `selection-atom-table` | `molviewer-atoms-table` | 1 | |
+| `selection-measurement-overlay` | `molviewer-overlay-measurement` | 1 | **collides with `results/style.css`** |
+| `selection-header-tabs` | `molviewer-panel-tabs` | 1 | it is the panel's tab bar, not the selection's |
+| `mol-viewer-export-*` | `molviewer-export-*` | 17 | **all collide with the embed** |
+| `mol-viewer-menu*` | `molviewer-menu*` | 4 | **collide** |
+| `mol-viewer-bg-*` | `molviewer-menu-background-*` | 3 | **collide** |
+| `mol-viewer-rep-*` | `molviewer-menu-style-*` | 2 | `rep` is 3Dmol's word, not ours |
+| `mol-viewer-radius-row` | `molviewer-menu-radius-row` | 1 | **collides** |
+| `mol-viewer-quickbar` / `-quick` | `molviewer-rail` / `-rail-button` | 2 | "quick" named nothing |
+| `mol-viewer-busy*` | `molviewer-window-busy*` | 2 | **collide** |
+| `mol-viewer-canvas` / `-stage` | `molviewer-window-canvas` / `-stage` | 2 | **collide** |
+| `mol-viewer-card*` | `molviewer-card*` | 3 | **collide** |
+| `mol-viewer-*` (rest) | per area above | 9 | **collide** |
+| `molview-card*` | `molviewer-card*` | 2 | |
+| `molview-overlay*` | `molviewer-overlay*` | 7 | |
+| `molview-fold-*` | `molviewer-panel-fold-*` | 2 | |
+| `molview-*` (rest) | per area | 5 | |
+| `mvf-*` | `molviewer-frames-*` | 8 | `mvf` is unreadable |
+| `frame-counter` / `frame-slider` | `molviewer-frames-*` | 2 | **collide with the embed** |
+| `cell-*` | `molviewer-cell-*` | 8 | |
+| `region-defs-*` | `molviewer-regions-*` | 8 | |
+| `tag-*` | `molviewer-label-*` | 8 | `tag` is ambiguous with HTML tags |
+| `col-*` | `molviewer-atoms-column-*` | 6 | `col` could be anything |
+| `panel-page*` | `molviewer-panel-tab*` | 3 | |
+| `ctab-panel` | `molviewer-panel-page` | 1 | one orphan from an older scheme |
+| `is-*` | `molviewer-is-*` | 4 | **`.is-active` collides with five sheets** |
+| `viewer` / `viewer-wrap` / `viewer-toggle` | `molviewer-window` / `-window-wrap` / `-rail-toggle` | 3 | **collide** |
+| `card` / `card-header` | `molviewer-card` / `-card-header` | 2 | **`.card` collides with NINE sheets** |
+| `in-use` | `molviewer-is-in-use` | 1 | |
+| `sr-only` | `molviewer-screen-reader-only` | 1 | **collides**; also unabbreviated |
+
+### What the rename surfaces
+
+Mapping the names revealed **five concepts spelled more than one way**, which is
+the real cost of nine prefixes and worth fixing in the same pass:
+
+| Concept | Spelled today as |
+|---|---|
+| the card | `card`, `mol-viewer-card`, `molview-card` |
+| the 3D window | `viewer`, `molview-viewer` |
+| the rail toggle | `viewer-toggle`, `mol-viewer-toggle` |
+| the frame counter | `frame-counter`, `mvf-counter` |
+| the frame slider | `frame-slider`, `mvf-slider` |
+
+Each collapses to one name. That is a **behaviour change, not a rename** — two
+selectors becoming one can change which rule wins — so each of the five gets
+checked in the browser individually rather than as part of a bulk pass.
+
+## 4. The plan
+
+**The rule that shapes it: never blind-sed a namespace rename.** A stylesheet
+rename is invisible to unit tests — every stub keeps passing while the UI is
+broken, because nothing in a DOM stand-in has a computed style. So the safety has
+to come from ordering and from the browser, not from the suite.
+
+**Phase 1 — retire the dead sheet.** Delete `lib/molview-old/molview.css`, or the
+whole frozen tree if the MolView-users pass has finished with it. Nothing outside
+it references the file. This clears the one *currently failing* guard test and
+removes 100+ phantom collisions before any real work starts. It is separable and
+reversible.
+
+**Phase 2 — the areas nobody else touches**, in this order, one commit each:
+`cell` → `regions` → `label` → `atoms` → `filter`. None of their names appear in
+another stylesheet, so a mistake shows up only inside MolView, and each is small
+enough to read the whole diff.
+
+**Phase 3 — the areas that collide with the embed**: `export`, `menu`, `window`,
+`rail`, `frames`, `card`. This is where the win is — 46 names stop being shared —
+and where the risk is, because today's appearance may *depend* on the embed's
+rules. Take one area per commit and screenshot before and after.
+
+**Phase 4 — the global names**: `is-*`, `card`, `viewer*`, `sr-only`. Smallest
+diff, largest blast radius: another page may be relying on MolView's copy of
+`.card` or `.is-active` winning. Do it last, when everything else is settled.
+
+**Phase 5 — the guard.** A test asserting every selector in
+`lib/molview/molview.css` starts with `molviewer-`, so the next one cannot drift
+back in. Add it only at the end; added earlier it just fails for four phases.
+
+### Per-phase method
+
+1. `git grep` the old name across `.css`, `.js`, `.py` and `.html` — class names
+   appear in `el("div", "…")` calls, in `classList` toggles, and in test
+   selectors. **Fix every hit before running anything**, so a half-renamed state
+   is never committed.
+2. Run the JS suites and `tests/test_css_no_duplicate_selectors.py`.
+3. **Open the page.** The suite cannot see a style regression; a person can. Load
+   a structure, fold the panel, open both menus, switch to the Cell page, play a
+   trajectory.
+4. Commit that area alone, with the old and new names in the message so a later
+   bisect can read what moved.
+
+### What each phase is worth
+
+| Phase | Names moved | Collisions removed |
+|---|--:|--:|
+| 1 — retire the dead sheet | 0 | the failing guard, + phantom overlap |
+| 2 — the private areas | 41 | 1 |
+| 3 — the embed-shared areas | ~60 | 46 |
+| 4 — the global names | 8 | 11 |
+
+Phase 3 is the one that matters. Phases 2 and 4 are cheap either side of it.
