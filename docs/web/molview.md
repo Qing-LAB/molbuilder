@@ -162,27 +162,26 @@ itself belongs to the page rather than to the viewer — in the Modify tab it si
 with the editing (§ 11.2). This is not a file and nothing appears in your project
 (§ 11.3).
 
-**Getting things out.** The Export menu offers four things, each with a *Save*
+**Getting things out.** The Export menu offers two things, each with a *Save*
 (into the project) and a *Download* row:
 
-- **Data** — the current frame's coordinates as `.xyz`, plus the metadata that
-  goes with them as `.json`.
-- **Trajectory** — *every* frame as one **extended-XYZ** document, plus the same
-  metadata `.json` beside it. It appears only when there is more than one frame.
-  Extended XYZ because a plain `.xyz` has nowhere to put the cell, and a
-  trajectory that loses its cell is not the thing that was computed.
-- **Snapshot** — a `.png` of the molecule exactly as it is drawn right now,
-  transparent if you chose that background.
-- **Animation** — the whole trajectory as `.webm` or `.gif`, rendered frame by
-  frame with the view you have set. It appears only when there is more than one
-  frame.
+- **Data** — the structure itself: coordinates plus the metadata that goes with
+  them as `.json`.
+- **Image** — a picture of the molecule exactly as it is drawn, transparent if
+  you chose that background.
 
-Two things are worth knowing about that menu, both in § 11.3: **Data** and
-**Trajectory** come from the structure while **Snapshot** and **Animation** come
-from what is on screen — and *Save* versus *Download* is only a choice of
-destination, since MolView produces no bytes and never writes a file itself. The
-four are a 2×2 of those two questions, which is § 11.3's grid. Who the menu
-belongs to is § 11.4.
+**Each asks which frames**, as a range, and opens on the one you are looking at —
+so exporting what is on screen is the default and costs nothing extra. Widen it
+and the format follows: one frame of Data is an `.xyz`, a range is an
+**extended-XYZ**; one frame of Image is a `.png`, a range is a `.webm` or `.gif`
+rendered frame by frame with the view you have set. A structure with one frame
+never asks, there being nothing to choose.
+
+Two things are worth knowing about that menu, both in § 11.3: **Data** comes
+from the structure while **Image** comes from what is on screen — and *Save*
+versus *Download* is only a choice of destination, since MolView produces no
+bytes and never writes a file itself. Why it is two items and a range rather
+than four items is § 11.3's; who the menu belongs to is § 11.4.
 
 **The unit cell.** When a structure is periodic, the panel shows its cell too, and
 in an editable view it can be changed there. A cell edit goes through one door and
@@ -2101,7 +2100,7 @@ Both `save` and `load` take a **step**, and the step is what tells them apart:
 different verb. The three things this surface does are *step back*, *step forward*,
 and *restore where I was* — and the third is what a session restore needs.
 
-(None of this is the Export menu's *Snapshot*, which is a picture — § 11.3.)
+(None of this is the Export menu's *Image*, which is a picture — § 11.3.)
 
 **Saving a state is something the user does.** An edit — a delete, a rotate, a
 new electrode — changes the structure and does **not** record a state; the user
@@ -2399,40 +2398,67 @@ flowchart LR
     T["THE TRUTH<br/>the master copy"]
     V["WHAT IS DRAWN<br/>the drawing copy"]
     S["Save state<br/>every frame · undoable<br/>never leaves the viewer"]
-    D["Export → Data<br/>the displayed frame<br/>.xyz + .json"]
-    J["Export → Trajectory<br/>every frame<br/>.extxyz + .json"]
-    P["Export → Snapshot<br/>the displayed frame<br/>.png"]
-    A["Export → Animation<br/>every frame<br/>.webm / .gif"]
+    D["Export → Data<br/>a frame range<br/>.xyz / .extxyz + .json"]
+    P["Export → Image<br/>a frame range<br/>.png / .webm / .gif"]
     T --> S
     T --> D
-    T --> J
     V --> P
-    V --> A
 ```
 
 | | Produces | Reads from | Which frames | Undoable |
 |---|---|---|---|:--:|
 | **Save state** (and Retract) | one point in an ordered, persistent sequence — undo that survives a reload | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
-| **Export → Data** | the structure as data — a coordinate document and the metadata beside it (§ 11.7), written out as the `.xyz` and its `.json` | **the truth** — the master copy | the displayed one, only | no |
-| **Export → Trajectory** | the same, for every frame — one **extended-XYZ** document plus the one `.json` | **the truth** — the master copy | every frame | no |
-| **Export → Snapshot** | a `.png` of the molecule as it is drawn right now | **the drawing** | the displayed one, only | no |
-| **Export → Animation** | a `.webm` or `.gif` of the whole trajectory | **the drawing** | every frame | no |
+| **Export → Data** | the structure as data — a coordinate document and the metadata beside it (§ 11.7). One frame writes an `.xyz`; a range writes one **extended-XYZ**. The `.json` is written once either way | **the truth** — the master copy | **the range asked for**, defaulting to the displayed frame | no |
+| **Export → Image** | a picture of the molecule as it is drawn. One frame is a `.png`; a range is a `.webm` or `.gif`, rendered frame by frame with the view as it is set | **the drawing** | **the range asked for**, defaulting to the displayed frame | no |
 
-**The four exports are a 2×2, and that is how to remember them.** One axis is the
-one this section is about — *the truth, or a view of it*. The other is *this
-frame, or all of them*. Every cell is filled:
+**The exports are a 2×2 — and only one of its axes is a menu.**
 
 | | the displayed frame | every frame |
 |---|---|---|
-| **the truth** | **Data** — `.xyz` + `.json` | **Trajectory** — `.extxyz` + `.json` |
-| **a view of it** | **Snapshot** — `.png` | **Animation** — `.webm` / `.gif` |
+| **the truth** | `.xyz` + `.json` | `.extxyz` + `.json` |
+| **a view of it** | `.png` | `.webm` / `.gif` |
 
-That grid is worth drawing because the missing cell is how the gap survived: for
-a long time this section listed three exports and called Snapshot and Animation
-"one kind in two sizes", which describes the bottom row perfectly and quietly
-implies the top row has only one. It does not. **A user who wants the whole
-optimization as data — not as a movie of it — had nowhere to go**, and the answer
-"export each frame one at a time" is not one.
+Drawing it is what shows the gap: this section listed three exports for a long
+time and called Snapshot and Animation "one kind in two sizes", which describes
+the bottom row exactly and quietly implies the top row has only one member. It
+does not. **A user who wanted the whole optimization as data — not as a movie of
+it — had nowhere to go.**
+
+But the fix is not a fourth menu item, because **the two axes are not the same
+kind of question.**
+
+- *Truth or view* changes **what the thing is**. A structure and a picture are
+  not the same object, are read from different copies (§ 6.3), and are wanted at
+  different moments. That is a choice, so it is a menu.
+- *Which frames* changes **how much of it**. That is a quantity, and a menu can
+  only ever offer a quantity two values — this one, or all of them.
+
+So the menu offers **two** things, and each asks **which frames** as a range:
+
+| The menu item | Reads from | Asks | Produces |
+|---|---|---|---|
+| **Data** | the master copy | a frame range | one frame → `.xyz` + `.json`; more → `.extxyz` + `.json` |
+| **Image** | the drawing | a frame range | one frame → `.png`; more → `.webm` / `.gif` |
+
+**A range is strictly more than the grid could say.** Frames 40–120 of a
+400-frame optimization is an ordinary thing to want — the converged tail without
+the noisy start — and four menu items can express it only by exporting all 400
+and throwing most away. The grid's four cells are the two corners of this range
+at each menu item; they are what the range *degenerates to*, not what it can do.
+
+**The format follows from the count, and is not a third question.** One frame is
+a `.xyz` or a `.png`; more than one is an `.extxyz` or a movie. Nobody is asked,
+because there is nothing to decide: the count already determined it.
+
+**The range defaults to the displayed frame**, which is what keeps § 5.1 true at
+the point a user acts — "scroll to frame 40, export it, and frame 40 is what the
+file holds". The dialog opens on the frame you are looking at, so accepting it
+unchanged is the common case and costs one keystroke; widening it is what the
+dialog is *for*. A dialog that opened on the whole range would quietly make the
+easy action the wrong one.
+
+**A one-frame structure never asks.** With nothing to choose between, the range
+is the whole of it and the dialog would be a question with one answer.
 
 **Why extended XYZ for the trajectory.** A plain `.xyz` has one comment line per
 frame and nowhere to put a cell, so a periodic trajectory written that way loses
@@ -2453,12 +2479,11 @@ modification. Nothing appears in the project, nothing is named, and it is the
 only one you can step backwards through — an export produces something and is
 finished.
 
-**Of the four Export menu items, Data and Trajectory are about the truth.**
-Snapshot and Animation are renders and nothing else. (A saved state is the truth
-too — it is just not an export, which is the distinction the numbered list above
-makes.) That division is the one worth remembering, because the rest follows from
-it — and everything said below about Data holds of Trajectory as well, for every
-frame rather than one.
+**Of the two Export menu items, only Data is about the truth.** Image is a
+render and nothing else. (A saved state is the truth too — it is just not an
+export, which is the distinction the numbered list above makes.) That division is
+the one worth remembering, because the rest follows from it, and it is the reason
+these two are a menu at all while the frame range is not.
 
 **Data has to be the truth.** You export a structure to run a calculation on it.
 Taken from the drawing it would be missing every atom isolate had hidden, with
@@ -2505,12 +2530,10 @@ frame by frame, each with the **current** view settings — so the isolate, the
 labels, the arrows and the camera in the file are the ones on screen when it was
 made. It is the only export that spans frames, and it is still entirely a render.
 
-Notice those are two independent axes. Data is **one frame of the truth**; an
-animation is **every frame of the view**. Neither "which frames" nor "truth or
-view" predicts the other, which is exactly why these are four menu items and not
-one with options — and why there are four rather than three: two independent
-two-valued axes make a 2×2, and a menu offering three of its cells has a hole in
-it whether or not anybody has noticed yet.
+Notice those are two independent axes, and that neither predicts the other —
+which is why both have to be asked. What sorts them is that only one of the two
+changes *what the thing is*: a structure and a picture are different objects, and
+a frame range is an amount of either.
 
 **Save-to-project and Download produce identical bytes — and mean different
 things.** MolView writes neither: it produces the bytes and stops there, the
@@ -2605,13 +2628,11 @@ That is not an academic distinction — it is exactly where this went wrong:
 > `.pdb` cannot carry this metadata at all, so a format that cannot hold the
 > truth probably belongs on the download row and not on save-to-project.
 
-> **A word that means two things.** The Export menu's **Snapshot** is a picture —
-> that is its label on screen. The saving machinery also uses *snapshot* for a
-> point in history, which is a completely different thing. This document avoids
-> the collision by calling the second one a **saved state** everywhere, and
-> leaving *snapshot* to mean the picture. (Whether the menu item should be
-> renamed to something unambiguous is worth deciding while § 11.4's move happens
-> — task #39.)
+> **A word that used to mean two things.** The picture export was called
+> *Snapshot*, and the saving machinery uses *snapshot* for a point in history —
+> a completely different thing. The menu item is **Image** now, which says what
+> it produces and leaves *snapshot* free; this document calls the history one a
+> **saved state** throughout.
 
 **A single-frame export out of a trajectory names the frame it came from.** The
 default filename carries it — `wire_frame50.xyz` — so the file says which frame
@@ -3000,8 +3021,9 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — a Retract spends unsaved work first | from a saved point with edits on top, one Retract lands **on** that point with the edits discarded; a second lands on the point before it |
 | § 11.2 — Save state drops what was above it | after retracting past two points and saving, stepping forward is no longer possible — the abandoned points are gone |
 | § 11.2 — `load(0)` puts back the point you are on | it restores the current point rather than the anchor, and does not move the position. Coming back to a sequence in a viewer that did not write it has no path yet — § 11.2a |
-| § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds, whatever isolate is doing; a picture and an animation are renders and carry whatever the view was set to |
-| § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
+| § 11.3 — only the data export is the truth, at the frames the user chose | exporting data yields **the asked-for range's** coordinates and its metadata, from the master copy — scrub to frame 40, accept the default range, and frame 40 is what the file holds, whatever isolate is doing; an image is a render and carries whatever the view was set to |
+| § 11.3 — the range decides the format, and nobody is asked twice | one frame of Data is an `.xyz` and a range is an `.extxyz`; one frame of Image is a `.png` and a range is a movie — the file has exactly as many frames as the range, and the format is never a separate question |
+| § 11.3 — the range opens on the displayed frame | accepting the dialog unchanged exports what is on screen (§ 5.1), and a one-frame structure is never asked at all |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so every label — `frozen_atoms` among them — survives into whatever is generated from it |
 | § 11.7 — one blob, one read | an export and a cell edit send the same pair, assembled in one place; a request built after an edit carries that edit in every part of what it sends |
 | § 11.7 — the fields are MolView's, the envelope is not | what leaves the viewer carries the labels (reserved ones included) and the cell — and does **not** carry a schema version, a content hash or a provenance stamp, because a browser-written envelope is refused by the reader that checks it first |
@@ -3105,7 +3127,7 @@ neither does this document (§ 4).
 >
 > **Where the code has not caught up** is now a short list, and every item is a
 > control that was never drawn rather than a rule that is broken: the Export
-> menu's *Snapshot* and *Animation* rows (§ 11.3), the frame bar's speed box
+> menu's *Image* row and Data's frame range (§ 11.3), the frame bar's speed box
 > (§ 1.1), the notice a reserved name earns (§ 6.6), and the by-label list read
 > from the structure (§ 9.5). The machinery each of them calls is built and
 > tested; only the control is missing.
