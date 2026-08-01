@@ -138,7 +138,7 @@ another module's JS), and who else **defines** it (another stylesheet):
 |---|--:|---|
 | **MolView's own** | **72** | created only by `ui.js` / `mount.js`, styled only here — rename freely |
 | **shared** with templates or other JS | **72** | the risky half: all the `mol-viewer-*` names the 3Dmol embed also uses, plus the global ones |
-| **orphaned** — styled, created by nobody | **17** | dead rules, and some of them are more interesting than that |
+| **orphaned** — styled, created by nobody | **15** | dead rules, and some of them are more interesting than that (was 17 — the speed box has since been built) |
 | collides but is ours | 1 | `mol-viewer-toggle` |
 
 **The phase-2 "private areas" label was unreliable and is now replaced by this
@@ -159,7 +159,7 @@ ever written. These are contract claims with nothing behind them:
 
 | Orphan | What the contract promises |
 |---|---|
-| `mvf-speed`, `mvf-speed-input` | § 1.1: *"speed box in milliseconds per frame (20–3000, default 150)"*, and § 8.5 lists **speed** as part of the frame bar. Playback itself is real (`mount.js:179` `setInterval`) — there is simply **no control to set it** |
+| ~~`mvf-speed`, `mvf-speed-input`~~ | ✅ **Built 2026-08-01** (`ac41377`). § 1.1 had specified it exactly — *"speed box in milliseconds per frame (20–3000, default 150)"* — and the CSS was already waiting. No longer an orphan; it moves with the `frames` area in phase 2 |
 | `selection-isolate-toggle` | § 8.5: isolate *"is the one switch with a control of its own ('Show selected only')"*. Only the rail switch exists; the panel control does not |
 | `selection-loading`, `selection-error` | loading and error states for the panel, never rendered |
 
@@ -211,6 +211,33 @@ diff, largest blast radius: another page may rely on MolView's `.card` winning.
 
 **Phase 5 — the guard.** Every selector in `lib/molview/molview.css` starts with
 `molviewer-`. Last, because added earlier it just fails for four phases.
+
+### What must survive the rename
+
+Two pieces of work landed **after** the mapping table in § 3 was generated, so
+they are not in it. Renaming without carrying them is how a fix gets silently
+undone by a later phase — the failure this whole plan exists to avoid.
+
+**The control-sizing tokens and their rule (phase 1b).** These are what make the
+panel's type sizes and heights consistent, and they are scoped by a class that
+phase 2 renames:
+
+| Today | → | Moves in |
+|---|---|---|
+| `--mv-control-font` / `-family` / `-line` / `-height` / `-pad-y` / `-pad-x` / `-box` | `--molviewer-control-*` | phase 2, with the `panel` area |
+| `.molview-panel button, input, select, textarea` | `.molviewer-panel …` | phase 2 |
+| `.molview-panel input[type="checkbox"] / [type="radio"]` | `.molviewer-panel …` | phase 2 |
+
+The scoping selector is the fragile part: rename `.molview-panel` and forget
+these three rules, and every control in the panel silently reverts to browser
+defaults — three type sizes and four heights again, with nothing failing. **The
+check after phase 2 is therefore not "does it still look right" but the
+measurement that found it**: one font size, one family, one row height.
+
+**The speed control's classes.** `mvf-speed` / `mvf-speed-input` are now live and
+carry real styling (width, spinner removal). They rename with the rest of `mvf-*`
+→ `molviewer-frames-*`, and the input's class is load-bearing — it was built
+without one for an hour and the control appeared unstyled.
 
 ### Per-phase method
 
