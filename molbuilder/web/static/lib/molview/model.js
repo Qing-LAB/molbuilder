@@ -312,8 +312,10 @@ export function createModel(opts) {
             ? structure.elements.length : 0;
     }
 
-    function requireMatch(coords, label) {
-        const n = atomCount();
+    // Against a count named by the caller, so the same check serves a frame
+    // joining the loaded structure AND the frames arriving WITH a load, where
+    // the identity being checked against is the one still being installed.
+    function requireCount(coords, n, label) {
         if (!n) {
             throw new Error(label + ": nothing loaded — there is no atom "
                             + "identity to append to (§ 10.8)");
@@ -323,6 +325,10 @@ export function createModel(opts) {
             throw new Error(label + ": a frame of " + got + " atoms cannot join "
                             + "a structure of " + n + " (§ 10.8)");
         }
+    }
+
+    function requireMatch(coords, label) {
+        requireCount(coords, atomCount(), label);
     }
 
     // The same rule across a frame SET: every frame carries the same atoms.
@@ -369,6 +375,12 @@ export function createModel(opts) {
         // leave one. Anchoring would also write point 0 to the workspace, which
         // is a persist a read-only viewer has no business doing.
         recordFirstState: () => (readOnly ? null : history.anchor()),
+        /* The same-atoms rule (§ 10.8) applied to frames arriving WITH the load,
+         * where the identity to check against is the one being installed. */
+        checkFrames: (list, n) => {
+            requireSameAtoms(list, "installMolecule");
+            requireCount(list[0], n, "installMolecule");
+        },
     });
 
     /* THE STRUCTURE AS DATA — ONE producer, read in one place and handed to
@@ -597,9 +609,30 @@ export function createModel(opts) {
         applyOp:              gated(applyOp, Promise.resolve(null)),
         commitPeriodicityOp:  gated(commitPeriodicityOp, Promise.resolve(null)),
 
-        // Load or extend the frames. The range is recomputed from the master
-        // copy — never from what the caller said it was adding (§ 6.4 step 2).
-        reloadFrames: gated(function (nextFrames, nextForces) {
+        /* ══ Load or extend the frames — NOT gated (§ 9.4) ════════════════
+         *
+         * The gate is on the doors that CHANGE THE CORE DATA — the structure and
+         * the metadata that travels with it. These four are not those. They
+         * deliver coordinates for the structure already installed: a running
+         * job's own output arriving, poll after poll.
+         *
+         * "What they cannot do is change the structure the calculation ran on"
+         * — and frames from that calculation do not; they ARE it. § 10.8's
+         * guards are what make that a fact rather than a reading: these doors
+         * cannot alter the atom count, the elements, the labels or the cell.
+         * They can only add positions for atoms whose identity was fixed at
+         * load, so there is nothing here for the gate to protect.
+         *
+         * Gating them was reading § 9.3's "does this change the master copy?"
+         * literally, and it cost the two things a read-only viewer is FOR: a
+         * Results tab could not follow a running optimization (§ 12.2), and
+         * § 12.3's read-only viewer could not "scrub to the last frame" because
+         * the only frame it could ever hold was the one it was seeded with.
+         *
+         * The range is recomputed from the master copy — never from what the
+         * caller said it was adding (§ 6.4 step 2).
+         */
+        reloadFrames: (function (nextFrames, nextForces) {
             // Checked BEFORE anything lands (§ 10.8): every frame carries the
             // same atoms, and those atoms are the loaded structure's.
             requireSameAtoms(nextFrames, "reloadFrames");
@@ -608,9 +641,14 @@ export function createModel(opts) {
                 frames = nextFrames.map((f) => f.map((p) => [p[0], p[1], p[2]]));
                 forcesPerFrame = nextForces || null;
             }, { resetFrame: true });
-        }, undefined),
+        }),
 
-        addFrame: gated(function (frame, forces) {
+        // `{forces}` — an OPTIONS object, which is the shape § 12.2's worked
+        // example uses (`addFrames(newFrames, {forces})`). It took a bare array,
+        // so the call the document shows handed an object where a list was
+        // indexed and every force silently became null.
+        addFrame: (function (frame, options) {
+            const forces = (options && options.forces) || null;
             requireMatch(frame, "addFrame");
             // Where the new frames start is read BEFORE the change: it is what
             // the engine needs to extend the movie instead of reloading it, and
@@ -628,9 +666,10 @@ export function createModel(opts) {
                     forcesPerFrame[frames.length - 1] = forces || null;
                 }
             }, { redraw: "append", from: from });
-        }, undefined),
+        }),
 
-        addFrames: gated(function (moreFrames, moreForces) {
+        addFrames: (function (moreFrames, options) {
+            const moreForces = (options && options.forces) || null;
             // Every arriving frame is checked against the loaded identity
             // BEFORE any of them lands, so a bad frame halfway through a poll's
             // batch does not leave the first half applied (§ 10.8).
@@ -648,12 +687,12 @@ export function createModel(opts) {
                     }
                 });
             }, { redraw: "append", from: from });
-        }, undefined),
+        }),
 
-        setForces: gated(function (perFrame) {
+        setForces: (function (perFrame) {
             settle(() => { forcesPerFrame = perFrame || null; },
                    { redraw: "forces" });
-        }, undefined),
+        }),
 
         /* What this viewer IS, which is not the same as what it holds. § 9.4
          * says a read-only viewer "does not show the controls the gate would

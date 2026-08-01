@@ -355,6 +355,79 @@ def test_the_cell_page_and_the_drawing_cannot_describe_different_structures():
     )
 
 
+def test_a_trajectory_arrives_whole_in_one_install():
+    """§ 9.3: `installMolecule` is "the ONLY way a structure gets in", and it
+    "replaces the whole model at once and resets the session history". § 6.4: the
+    master copy is updated "first, and COMPLETELY... No one ever observes a
+    half-updated state."
+
+    The server answers with ONE geometry, because it parses a file and a file has
+    one. The frames of a run come from the tab's own parsed run file (§ 6.3), so
+    a caller opening a trajectory hands them over WITH the load.
+
+    Doing it in a second call broke three rules at once, and the third loses
+    data: § 9.3's one entrance was not one, because the frames came through
+    another door; subscribers saw a one-frame structure that never existed; and
+    § 11.2's point 0 was anchored on that one frame, so RETRACTING TO THE ANCHOR
+    threw the trajectory away.
+    """
+    out = _run(
+        """
+        const slots = new Map();
+        const m = createModel({ workspace: {
+            read:  async (k) => (slots.has(k) ? slots.get(k) : null),
+            write: async (k, v) => { slots.set(k, v); },
+        } });
+        const seen = [];
+        m.subscribe(() => seen.push(m.frameCount()));
+
+        await m.installMolecule({
+            text: "x", filename: "run.xyz",
+            frames: [[[0,0,0],[1,0,0]], [[0,0,1],[1,0,1]], [[0,0,2],[1,0,2]]],
+            forces: [null, null, [[0,0,9],[0,0,9]]],
+        });
+        const installed = { frames: m.frameCount(), at: m.currentFrame(),
+                            forces: m.getCoordinates().forcesPerFrame };
+
+        // Let the anchor's write land, then go back to it.
+        await new Promise((r) => setTimeout(r, 0));
+        await m.load(0);
+
+        // A frame that does not carry the loaded atoms is refused at the load,
+        // exactly as it is at an append (§ 10.8).
+        let refused = null;
+        try {
+            await m.installMolecule({ text: "x", filename: "b.xyz",
+                                      frames: [[[0,0,0]]] });
+        } catch (e) { refused = e.message; }
+
+        console.log(JSON.stringify({
+            installed, seen, afterRetract: m.frameCount(), refused,
+        }));
+        """
+    )
+    assert out["installed"]["frames"] == 3, (
+        f"the trajectory did not arrive with the load: {out['installed']}"
+    )
+    assert out["installed"]["at"] == 0, "a full load resets to frame 0 (§ 10.8)"
+    assert out["installed"]["forces"] == [None, None, [[0, 0, 9], [0, 0, 9]]]
+    # § 6.4 is about WHAT a subscriber sees, not how often it is told: every
+    # notification must show a settled structure. More than one is fine — the
+    # anchor's badge is a second — but a `1` among them is the half-updated
+    # state the rule forbids, and that is exactly what the two-call load gave.
+    assert out["seen"] and all(n == 3 for n in out["seen"]), (
+        "a subscriber saw the structure part-way in — the frames landed in a "
+        f"second settle after the atoms: {out['seen']}"
+    )
+    assert out["afterRetract"] == 3, (
+        "retracting to the anchor lost the trajectory, because point 0 was laid "
+        "down before the frames arrived (§ 11.2)"
+    )
+    assert out["refused"] and "§ 10.8" in out["refused"], (
+        f"a frame that does not fit the loaded atoms was accepted: {out['refused']}"
+    )
+
+
 def test_an_atom_carries_a_label_once_however_often_it_is_applied():
     """§ 6.2: an atom's facts are "the labels it carries" — a set of names.
     Carrying the same name twice is not a state the model may hold.
@@ -568,7 +641,7 @@ def test_forces_arriving_after_a_frameless_load_land_on_their_own_frame():
         """
         const m = await loaded();
         m.reloadFrames([[[0,0,0],[1,0,0]], [[1,0,0],[2,0,0]]]);  // no forces
-        m.addFrame([[2,0,0],[3,0,0]], [[7,0,0],[7,0,0]]);        // this one has them
+        m.addFrame([[2,0,0],[3,0,0]], { forces: [[7,0,0],[7,0,0]] });  // it has them
         const c = m.getCoordinates();
         console.log(JSON.stringify({
             frames: c.frames.length,
@@ -587,49 +660,83 @@ def test_forces_arriving_after_a_frameless_load_land_on_their_own_frame():
 # § 9.4 — read-only freezes the master copy and nothing else
 # ---------------------------------------------------------------------------
 
-def test_every_truth_change_is_a_no_op_and_does_not_throw():
-    """§ 9.4: "it returns without effect AND WITHOUT THROWING."
+def test_read_only_freezes_the_core_data_and_gates_nothing_else():
+    """§ 9.4, and the line the gate is actually drawn on: it protects THE CORE
+    DATA — the structure and the metadata that travels with it — from being
+    CHANGED. One write is allowed into an empty viewer, because a viewer with
+    nothing in it has no core data to freeze.
 
-    A read-only viewer that threw would make every caller wrap its writes, which
-    is the list of special cases this rule exists to avoid.
+    What it does NOT gate is delivery. Frames and forces arriving for the
+    structure already installed are a running job's own output, not a user
+    editing the structure the calculation ran on — and § 10.8's guards make that
+    a fact rather than a reading, since those doors cannot alter the atom count,
+    the elements, the labels or the cell.
+
+    Gating them was reading "does this change the master copy?" literally, and it
+    cost a read-only viewer the two things it exists for: following a running
+    optimization (§ 12.2), and scrubbing a finished one (§ 12.3) — the only frame
+    it could ever hold was the one it was seeded with.
+
+    "It returns without effect AND WITHOUT THROWING": a read-only viewer that
+    threw would make every caller wrap its writes, which is the list of special
+    cases this rule exists to avoid.
     """
     out = _run(
         """
         const m = createModel({ mode: "readonly" });
-        // Seed it first: the gate is about REPLACING the structure the
-        // calculation ran on, and a viewer with nothing in it has no master copy
-        // to freeze. Everything below is asked of a viewer that HAS one.
+        // The one write into an empty viewer.
         await m.installMolecule({ text: "x", filename: "x.xyz" });
         const seeded = JSON.stringify(m.getStructure());
+
+        // DELIVERY is open: the run's own frames and forces arrive.
+        m.addFrames([[[0,0,1],[1,0,1]], [[0,0,2],[1,0,2]]]);
+        m.setForces([null, null, [[0,0,9],[0,0,9]]]);
+        m.setCurrentFrame(2);
+        const delivered = { frames: m.frameCount(), at: m.currentFrame() };
+        const coreAfterDelivery = JSON.stringify({
+            elements: m.getStructure().elements,
+            annotations: m.getStructure().annotations,
+            periodicity: m.getStructure().periodicity,
+        });
+
+        // CHANGING the core data is not, and none of it throws.
         globalThis.__requests = [];
         globalThis.__nextPayload = globalThis.__payload([
-            globalThis.__atomRow(0, "XX", 9),
+            globalThis.__atomRow(0, "XX", 9, { regions: ["smuggled"] }),
         ]);
         const threw = [];
         async function tryIt(name, fn) {
             try { await fn(); } catch (e) { threw.push(name); }
         }
-        await tryIt("installMolecule", () => m.installMolecule({ text: "x", filename: "x.xyz" }));
+        await tryIt("installMolecule", () => m.installMolecule({ text: "y", filename: "y.xyz" }));
         await tryIt("applyOp",         () => m.applyOp("delete"));
-        await tryIt("commitPeriodicityOp", () => m.commitPeriodicityOp("set_cell", {}));
-        await tryIt("reloadFrames",    () => m.reloadFrames([[[0,0,0]]]));
-        await tryIt("addFrame",        () => m.addFrame([[1,0,0]]));
-        await tryIt("addFrames",       () => m.addFrames([[[1,0,0]]]));
-        await tryIt("setForces",       () => m.setForces([[[1,0,0]]]));
+        await tryIt("commitPeriodicityOp", () => m.commitPeriodicityOp("cell", [[9,0,0],[0,9,0],[0,0,9]]));
+        m.selection.adopt([0]);
+        await tryIt("writeLabel",      () => m.selection.writeLabel("smuggled", "replace"));
+
         console.log(JSON.stringify({
-            threw,
-            unchanged: JSON.stringify(m.getStructure()) === seeded,
+            threw, delivered, seeded: seeded !== null,
+            coreUnchanged: coreAfterDelivery === JSON.stringify({
+                elements: m.getStructure().elements,
+                annotations: m.getStructure().annotations,
+                periodicity: m.getStructure().periodicity,
+            }),
             requests: globalThis.__requests.length,
         }));
         """
     )
     assert out["threw"] == [], f"a read-only no-op threw: {out['threw']}"
-    assert out["unchanged"] is True, (
-        "a read-only viewer's master copy changed after it was seeded"
+    assert out["delivered"] == {"frames": 3, "at": 2}, (
+        "a read-only viewer could not receive the run's own frames, so it can "
+        f"neither follow a running job nor scrub a finished one: {out['delivered']}"
+    )
+    assert out["coreUnchanged"] is True, (
+        "the core data — the atoms, their labels, the cell — changed in a "
+        "read-only viewer"
     )
     assert out["requests"] == 0, (
-        "a read-only viewer sent a request — the gate must stop it before the "
-        f"network, not after: {out['requests']}"
+        "a read-only viewer sent a request — the gate must stop a change before "
+        f"the network, not after: {out['requests']}"
     )
 
 
@@ -642,8 +749,9 @@ def test_scrubbing_and_exporting_are_not_gated():
     against the gate itself: neither door is wrapped, so neither can be swallowed
     in a read-only viewer.
 
-    (How a read-only viewer RECEIVES its structure is an open question — see
-    ``test_a_read_only_viewer_cannot_be_given_a_structure_today``.)
+    (How a read-only viewer receives its structure is settled: one write into an
+    empty viewer, and delivery of that structure's frames stays open —
+    ``test_read_only_freezes_the_core_data_and_gates_nothing_else``.)
     """
     out = _run(
         """
@@ -870,7 +978,7 @@ def test_one_read_of_the_structure_holds_everything_a_request_needs():
                             vacuum: [0,0,10] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
-        m.addFrames([[[0,0,1],[1,0,1]]], [[[0,0,-1],[0,0,-2]]]);
+        m.addFrames([[[0,0,1],[1,0,1]]], { forces: [[[0,0,-1],[0,0,-2]]] });
 
         // ONE call. Nothing else on the surface is touched.
         const whole = m.getStructure();

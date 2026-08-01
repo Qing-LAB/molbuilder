@@ -1110,7 +1110,7 @@ rather than maintained separately.
 | Put a structure in | `installMolecule(input)` | | **yes** |
 | Edit the geometry | `applyOp(name)` (§ 11.1) | | **yes** |
 | Edit the cell | `commitPeriodicityOp` — the one way the cell changes | | **yes** |
-| Load or extend the frames | `reloadFrames` · `addFrame` · `addFrames` · `setForces` | | **yes** |
+| Load or extend the frames | `reloadFrames` · `addFrame` · `addFrames` · `setForces` | | — *(delivery, not a change — § 9.4)* |
 | Tag the selected atoms | the label door on `selection` (§ 9.5) — the atoms it applies to are the selection, but what it writes is the structure | | **yes** |
 | Save a point, and move through the sequence | `save(step)` · `load(step)` (§ 11.2) | `undo`, which is exactly `load(-1)`. `load(0)` is not a move — it puts back the point you were on | **yes** |
 | Know where you are in the history | `state_index` · `uncommitted` | | — |
@@ -1193,6 +1193,19 @@ second read back, whatever the rule said.
   upstream converges here — whatever built or fetched the text, it arrives this
   way. One entrance means one place the rules are checked and one place the
   history is anchored.
+
+  **A trajectory arrives with it, not after it.** The server answers with one
+  geometry, because it parses a file and a file has one; the frames of a run come
+  from the tab's own parsed run file (§ 6.3). So a caller opening a trajectory
+  hands the frames over *in the same call*, and every one of them lands in a
+  single settle. Each is checked against the atoms being installed, exactly as an
+  append is (§ 10.8).
+
+  Loading the frames in a second call breaks three rules at once, and the third
+  loses data: the one entrance is no longer one, because the frames came through
+  another door; a subscriber sees a one-frame structure that never existed
+  (§ 6.4); and point 0 is anchored on that one frame, so **a Retract to the
+  anchor throws the trajectory away** (§ 11.2).
 - **`exportFile()`** — its exact inverse. Returns **the structure as data** —
   read at **the frame currently displayed** (§ 6.4), with the name it came in
   under — and stops there (§ 11.7). It writes no text and assembles no sidecar,
@@ -1211,22 +1224,49 @@ drawing. That is what lets the model stay the single source of truth.
 
 ### 9.4 Read-only — one rule, not a list of disabled buttons
 
-**A read-only viewer freezes the master copy. Nothing else changes.**
+**A read-only viewer freezes the core data. Nothing else changes.**
 
-That is the whole rule, and it is one sentence on purpose: every previous attempt
-to describe read-only turned into a list of disabled controls that had to be
+The **core data** is the structure and the metadata that travels with it: the
+atoms and their identity, the labels they carry, the cell. That is the thing a
+calculation ran on, and freezing it is the whole of what read-only promises.
+
+That is the rule, and it is one sentence on purpose: every previous attempt to
+describe read-only turned into a list of disabled controls that had to be
 maintained by hand and drifted. There is no list. There is one question asked of
-every entry in § 9.3's table: *does this change the master copy?* If yes, it is a
-**no-op** in a read-only viewer — it returns without effect and without throwing.
-If no, it behaves exactly as it does anywhere else.
+every entry in § 9.3's table: *does this **change** the core data?* If yes, it is
+a **no-op** in a read-only viewer — it returns without effect and without
+throwing. If no, it behaves exactly as it does anywhere else.
 
-The line falls exactly where the two copies do. Read-only is a statement about
-**the master copy**; the drawing copy is the picture, and looking at the picture
-is what a read-only viewer is *for*. Somebody studying a finished calculation can
-still select atoms, isolate them, measure them, scrub the trajectory, turn on
-force arrows, spin the camera, and export — the structure itself or a picture of
-it — none of which touches the structure. What they cannot do is change the
-structure the calculation ran on.
+**One write is allowed into an empty viewer.** A viewer with nothing in it has no
+core data to freeze, so the first `installMolecule` is how a host says which
+structure this viewer shows, whatever its mode. Every one after it meets the gate
+like anything else. That keeps § 9.3's "the only way a structure gets in" true —
+there is no second door — while letting a viewer mount before it has a structure
+(§ 8).
+
+**Delivering coordinates is not changing the core data.** `reloadFrames`,
+`addFrame`, `addFrames` and `setForces` carry the frames of the structure already
+installed: a running job's own output, poll after poll. They are **not** gated,
+and § 10.8 is what makes that a fact rather than a reading — those doors cannot
+alter the atom count, the elements, the labels or the cell, only add positions
+for atoms whose identity was fixed at load. There is nothing there for the gate
+to protect.
+
+> Asking instead "does this touch the master copy?" reads the same table and
+> gives the wrong answer, because appending a frame literally does. Gated on that
+> reading, a read-only viewer lost the two things it exists for: it could not
+> follow a running optimization (§ 12.2), and it could not scrub a finished one
+> (§ 12.3), because the only frame it could ever hold was the one it was seeded
+> with. The question is whether something **changes** the structure the
+> calculation ran on — and its own output does not.
+
+Looking at the picture is what a read-only viewer is *for*. Somebody studying a
+finished calculation can still select atoms, isolate them, measure them, scrub
+the trajectory, turn on force arrows, spin the camera, and export — the structure
+itself or a picture of it — none of which changes what the calculation ran on.
+And they can watch one that is still running, because the frames it produces
+arrive through doors the gate does not stand in front of. What they cannot do is
+**change** the structure the calculation ran on.
 
 Three consequences that are easy to get backwards:
 
@@ -2669,9 +2709,11 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 9.3 — one need, one main way in | a narrower cut returns exactly what the main way in holds for that field — the two cannot disagree |
 | § 9.3 — the facts a request carries are read together | after an edit, a request built from the viewer carries that edit in **every** part of what it sends — no piece can be older than another, because it all came from one read of the structure; with nothing loaded that read returns nothing rather than an empty structure |
 | § 9.3 — one read holds everything a request needs | asked of the read itself, not of the body that leaves: `getStructure()` alone carries the coordinates, the labels, the atoms held still and the cell, so no caller can be made to take a second read — the shape of the read is the guarantee, not the caller's discipline |
+| § 9.3 — a trajectory arrives whole, in one install | every frame lands in one settle: no subscriber sees a one-frame structure on the way, and point 0 holds the whole trajectory, so a Retract to the anchor does not throw it away |
 | § 10.8 — the append doors refuse what they cannot honour | appending with nothing loaded, and a frame whose atom count differs from the structure's, are each a hard error at the door; nothing is applied, and a batch is checked before any of it lands |
 | § 9.3 — a structure that cannot be written out is not written out | when the geometry and the per-atom labels disagree about how many atoms there are, the export door returns nothing rather than a corrupt structure |
-| § 9.4 — read-only freezes the master copy and nothing else | every change to the master copy is a no-op **and does not throw**, while select, isolate, scrub, camera and export all work normally |
+| § 9.4 — read-only freezes the core data and nothing else | every change to the structure or its metadata is a no-op **and does not throw**, while select, isolate, scrub, camera and export all work normally |
+| § 9.4 — one write into an empty viewer, and delivery stays open | a read-only viewer takes its structure once, then refuses a second; and it still receives that structure's frames and forces, so it can follow a running optimization and scrub a finished one |
 | § 9.4 — a read-only viewer has no history | `save`, `load` and `undo` do nothing, and the unsaved-changes badge never appears |
 | § 9.5 — the selection survives an editor switch | moving between click and filter mode leaves the selection exactly as it was |
 | § 9.5 — a half-typed row constrains nothing | a blank row combined under *and* leaves the other rows' result intact rather than emptying it |

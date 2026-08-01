@@ -241,6 +241,32 @@ export function createLoad(handed) {
         const payload = await postJson("/api/build/load", body);
         const loaded = structureFromServer(payload);
         if (!loaded) return null;
+
+        /* A TRAJECTORY ARRIVES WITH THE LOAD, not after it.
+         *
+         * The server answers with ONE geometry — it parses a file, and a file
+         * has one. The frames of a run come from somewhere else: the tab's own
+         * parsed run file (§ 6.3). So a caller opening a trajectory hands them
+         * over HERE, and the whole structure — every frame — lands in one go.
+         *
+         * Doing it in a second call was three broken rules at once. § 9.3 says
+         * this is "the only way a structure gets in" and it was not: the frames
+         * came through another door. § 6.4 says the master copy is updated
+         * "first, and COMPLETELY... No one ever observes a half-updated state",
+         * and subscribers saw a one-frame structure that never existed. And
+         * worst, § 11.2's point 0 was anchored on that one frame — so retracting
+         * to the anchor threw the trajectory away.
+         */
+        if (Array.isArray(input.frames) && input.frames.length) {
+            if (handed.checkFrames) {
+                handed.checkFrames(input.frames, loaded.structure.elements.length);
+            }
+            loaded.coordinates = {
+                frames: input.frames.map((f) => f.map((p) => [p[0], p[1], p[2]])),
+                forcesPerFrame: Array.isArray(input.forces) ? input.forces : null,
+            };
+        }
+
         // Replace the whole model at once, then anchor a fresh history on it.
         handed.put(loaded.structure, loaded.coordinates, stemOf(input));
         handed.recordFirstState();
