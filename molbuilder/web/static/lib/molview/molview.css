@@ -684,8 +684,7 @@
 
 /* Selection panel -- compact single-column card.
  *
- * Used by /modify (and later /spectra) via the _selection_panel.html
- * partial.  Designed to sit beside the 3D viewer, so the layout is a
+ * Built by ui.js and placed beside the 3D window, so the layout is a
  * narrow vertical stack rather than a two-column body.
  *
  * Visual stack (top-to-bottom):
@@ -729,12 +728,6 @@
     color: var(--accent);
     font-style: italic;
 }
-
-/* Measurement-chip styles live in lib/selection/measurement-chip.css
- * — extracted 2026-06-08 (task #299) so the Results-tab trajectory
- * inspector can share the same chip without inheriting unused
- * panel-specific rules.  Page templates load both stylesheets
- * independently. */
 
 /* ---------- Click-mode body -------------------------------------- */
 
@@ -1246,9 +1239,11 @@
 }
 
 /* ====================================================================
- * Region-label definitions popover (2026-06-18).
- * Triggered by the ⓘ button next to Target:.  See
- * lib/region-label-definitions.js + docs/model/structure-annotations.md.
+ * Region-label definitions popover.
+ *
+ * NOT BUILT BY THIS MODULE: no ui.js literal names `target-info`. These rules
+ * style markup written elsewhere, which is the one thing this stylesheet is
+ * not for. Kept only until the ownership is settled.
  * ==================================================================== */
 .molviewer-selection-target-info-btn {
     background: transparent;
@@ -1390,9 +1385,6 @@
     border-radius: 4px;
 }
 
-/* `.sr-only` (visually-hidden but screen-reader announced) lives in
- * lib/page-shell.css — every page loads it from there. */
-
 /* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
 .molviewer-selection-header-tabs { align-items: center; }
 /* The [Selection|Cell] switch is the panel's SECTION-level tab bar -- left-aligned
@@ -1458,23 +1450,12 @@
    The measurement readout (was selection/measurement-chip.css)
    ========================================================================== */
 
-/* Shared measurement chip — xyz / distance / angle readout that
- * floats over the drawing canvas.  Used by the Molbuilder tab (a
- * single chip on the Modify viewer) AND the Results-tab
- * trajectory inspector (its Inspect tab uses the same class
- * inside the panel body).  Centralised here so both consumers
- * pick up future tweaks via one edit; pre-task-299 the rules
- * lived in lib/selection-panel.css alongside the panel-specific
- * styles, which made the /results trajectory inspector inherit
- * "panel" semantics it didn't need.
+/* The measurement readout — xyz / distance / angle, floating over the drawing
+ * canvas.  Built by `mountReadout` in ui.js (§ 8.5).
  *
- * Two anchoring modes:
- *
- *   1. ``position: absolute`` mode (Molbuilder tab) — the host
- *      page wraps #viewer in a position:relative .molviewer-window-wrap so
- *      this rule's top/right anchors the chip at the actual
- *      canvas corner.  ``pointer-events: none`` lets clicks pass
- *      through to the drawing.
+ * It is anchored ``position: absolute`` inside `.molviewer-window-wrap`, which
+ * mount.js builds as position:relative, so top/right land on the actual canvas
+ * corner.  ``pointer-events: none`` lets clicks pass through to the drawing.
  *
  *   2. ``position: static`` mode (trajectory Inspect panel) —
  *      the chip sits inline in the panel's flow.  An override on
@@ -1498,14 +1479,11 @@
 
 /* Card chrome for the 3D window MolView mounts itself.
  *
- * These rules were inherited from lib/viewer/mol-viewer-embed.css, which is
- * RETIRED -- loaded by no page, imported by no module.  The elements are built
- * by lib/molview/3dmol-embed.js and mount.js, so the rules are MolView's, and
- * as of 2026-08-01 so are the class names.
+ * The elements are built by this module's own embed and mount layers, so the
+ * rules and the class names are MolView's.
  *
- * Contract: docs/web/molview.md "Card structure".
- * Theme through the standard tokens (tokens.css); per-tab overrides
- * via opts.card.className from the embed call site.
+ * Contract: docs/web/molview.md "Card structure".  Themed through the standard
+ * tokens.
  */
 
 .molviewer-window-frame {
@@ -1532,12 +1510,10 @@
     display:        flex;
     flex-direction: column;
     gap:            var(--mv-space-xs);
-    /* When the host fixes the card's height (e.g. /modify's
-       #viewer with aspect-ratio: 1/1 + max-width: 560px), the
-       flex column must respect that height instead of stretching
-       beyond it.  Combined with the canvas's flex: 1 below,
-       header + knob bar take natural size and the canvas fills
-       whatever space remains. */
+    /* When the host gives the card a fixed height, the flex column must
+       respect it instead of stretching beyond it.  With the canvas's flex: 1
+       below, the menu bar takes its natural size and the canvas fills what
+       remains. */
     height:         100%;
     /* Realistic usability floor — below these sizes the 2-menu
        bar wraps onto two rows and the canvas becomes a strip.
@@ -1548,17 +1524,12 @@
 }
 
 /* (.mol-viewer-card-header / -card-title / -info-line removed 2026-08-01: the
-   retired lib/viewer embed drew that card chrome, MolView never did, and no
-   section of molview.md asks for it. Unlike the Projection select below, there
-   is nothing here waiting to be built.) */
+   card chrome came from an embed this module no longer uses, MolView never
+   drew it, and no section of molview.md asks for it.) */
 
 .molviewer-window-canvas {
-    /* Height is opt.card.height (default clamp(360px, 52vh, 500px)),
-       set as an inline style at mount time so tabs can override.
-       Width is 100% so the canvas fills the card's content area.
-       Hosts that fix the CARD's height (e.g. /modify aspect-ratio)
-       can pass card.height: "100%" so the canvas absorbs whatever
-       space the flex column gives it after the header + knob bar. */
+    /* Width is 100% so the canvas fills the card's content area, and flex: 1
+       makes it absorb whatever height the column has left after the menu bar. */
     position:       relative;
     width:          100%;
     flex:           1 1 auto;
@@ -1600,13 +1571,8 @@
     box-shadow:     0 4px 16px rgba(0,0,0,0.4);
 }
 
-/* Bare-mode CSS removed by #208 after all five consumer sites
-   migrated to the standard chrome (2026-06-03).  The deprecated
-   ``opts.card.bare`` opt is ignored by _buildCardScaffold; the
-   ``.mol-viewer-bare`` class is no longer emitted. */
-
 /* (The .mol-viewer-frame-strip block -- 5 rules -- removed 2026-08-01. That
-   was the retired lib/viewer embed's transport bar. MolView builds its own:
+   was a transport bar this module no longer uses. MolView builds its own:
    .molviewer-frames-* (ui.js), which is the one with the speed box.) */
 
 /* ============================================================ */
@@ -1781,11 +1747,8 @@
     font-weight:    500;
 }
 
-/* Radius / scale slider — sits below the rep button row.
-   Adjusts atom-sphere + stick thickness via setStyle({radiusScale}).
-   Pre-Phase-6 the /modify viewer had a bespoke #radius input;
-   Phase 6b puts it inside the embed contract so every consumer
-   gets the same control. */
+/* Radius / scale slider — sits below the style button row and scales
+   atom-sphere + stick thickness via setStyle({radiusScale}). */
 .molviewer-menu-radius-row {
     display:        flex;
     align-items:    center;
@@ -1961,8 +1924,8 @@
 }
 
 /* (The export progress modal + params form -- 15 classes, a keyframes and a
-   reduced-motion rule -- removed 2026-08-01. They were the retired
-   lib/viewer embed's dialog: designed, styled, and built by no code here.
+   reduced-motion rule -- removed 2026-08-01. They were the dialog of an embed
+   this module no longer uses: designed, styled, and built by no code here.
    Task #39 reworks Export and designs its dialog fresh.) */
 
 /* Narrow viewports ------------------------------------------ */
