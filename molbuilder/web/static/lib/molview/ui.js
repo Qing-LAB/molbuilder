@@ -55,10 +55,17 @@ const RESERVED_TONES = [
  */
 /* The playback-speed bounds the contract fixes (§ 1.1): milliseconds per frame,
  * 20 to 3000, defaulting to 150. Named here rather than inline because the
- * floor is load-bearing — `fps = 1000 / ms` divides by it. */
+ * floor is load-bearing — `fps = 1000 / ms` divides by it.
+ *
+ * THE DEFAULT IS EXPORTED because mount.js starts its timer at the same speed,
+ * and it used to start it at a DIFFERENT one: `DEFAULT_FPS = 12` there, 83 ms
+ * per frame, against the 150 this box displayed. One fact, two homes, two
+ * values — so the box was simply wrong until the user pressed play (which
+ * passes the box's figure) and any tab calling `handle.play()` with no options
+ * ran at a speed the UI never showed. */
 const SPEED_MIN_MS = 20;
 const SPEED_MAX_MS = 3000;
-const SPEED_DEFAULT_MS = 150;
+export const SPEED_DEFAULT_MS = 150;
 
 
 export function mountControls(card, model, handle, files, reserved) {
@@ -306,6 +313,11 @@ function mountFrameBar(doc, card, model, handle) {
         const playing = handle.isPlaying();
         playBtn.textContent = playing ? "⏸" : "▶";
         playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
+        // Loop lives on the handle, so it is read back like everything else
+        // here. It was taken once at build and never again — which held only
+        // because this box is loop's sole writer. "Nothing here is cached"
+        // above should be true of the whole bar, not most of it.
+        loopBox.checked = handle.getLoop();
     }
 
     const offFrame = model.onFrameChange(reflect);
@@ -615,17 +627,25 @@ function buildViewMenu(doc, model) {
     projection.type = "button";
     projection.className = "molviewer-rail-toggle";
     projection.textContent = "Orthographic";
-    projection.setAttribute("aria-pressed", "false");
+    /* NO initial `aria-pressed` here, and the next value is NOT read back off
+     * the attribute. Both were the same mistake: treating what was last PAINTED
+     * as where the setting lives. `paint()` below sets the attribute from the
+     * store, on the first pass like every other one.
+     *
+     * Reading it back was the dangerous half, because `view.set` DEDUPES
+     * (stores.js: `if (settings[name] === value) return`). Let the attribute
+     * drift from the store once and every click computes the same stale value,
+     * sets what the store already holds, fires nothing, and repaints nothing —
+     * the control is dead for good, silently. */
     projection.addEventListener("click", () => {
-        const on = projection.getAttribute("aria-pressed") === "true";
-        model.view.set("orthographic", !on);
+        model.view.set("orthographic", !model.view.get().orthographic);
     });
     drawn.appendChild(projection);
 
     /* EVERY CONTROL READS ITS STATE BACK FROM `view` (§ 8.5), never from what it
      * last did — so a setting changed anywhere else lights the right control
      * here with nothing to keep in step. */
-    offs.push(model.view.subscribe((settings) => {
+    const paint = (settings) => {
         for (const [value] of REPS) {
             repButtons[value].classList.toggle("is-active", settings.style === value);
         }
@@ -644,12 +664,17 @@ function buildViewMenu(doc, model) {
         }
         projection.setAttribute("aria-pressed",
                                 settings.orthographic ? "true" : "false");
-    }));
+    };
+    offs.push(model.view.subscribe(paint));
 
-    // The store hands nothing over on subscribing (§ 9.6 is a plain
-    // change-and-subscribe), so the first paint is taken here.
-    radius.value = String(model.view.get().radius);
-    radiusOut.textContent = Number(model.view.get().radius).toFixed(2);
+    /* THE FIRST PAINT IS THE SAME PAINT. `view.subscribe` hands nothing over
+     * (§ 9.6 is a plain change-and-subscribe), unlike `selection.subscribe`
+     * which fires immediately — so a view subscriber has to take its own first
+     * pass, and this one used to take it for the RADIUS ALONE. Style, background
+     * and projection were left showing hand-written initial markup instead: a
+     * second place the control's state was decided, which is the one thing
+     * § 8.5 says a control must not have. Calling the painter is all it takes. */
+    paint(model.view.get());
 
     // The trigger and the popover go back with the menu: whoever places it needs
     // both, and handing back what was just built beats searching the DOM for it.

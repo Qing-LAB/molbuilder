@@ -999,7 +999,26 @@ a fact of its own, and none reaches the drawing directly.
 
 | The control | Reads | Writes |
 |---|---|---|
-| **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4) | the displayed frame, through the one write everyone uses; play, pause and loop, through the handle (§ 9.2) |
+| **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4); loop, from the handle | the displayed frame, through the one write everyone uses; play, pause and loop, through the handle (§ 9.2) |
+
+> **Speed is the one fact on this card that still has no home but its control**,
+> and this table used to name it without saying where it lived. It is held in
+> the speed box's `value`, converted to frames per second at the one place the
+> two vocabularies meet, and read from the box each time playback starts.
+>
+> That cost something real, found 2026-08-01: the box displayed § 1.1's default
+> of 150 ms while `mount.js` started its timer at `DEFAULT_FPS = 12` — 83 ms.
+> One fact, two homes, two values. The box was simply wrong until the first
+> press of play (which passes the box's own figure), and `handle.play()` with no
+> options — the door a tab uses (§ 9.2) — ran at a speed nothing on screen ever
+> showed. The default is now derived from the box's, so the two agree, and
+> `test_the_speed_the_box_shows_is_the_speed_playback_starts_at` holds them
+> there.
+>
+> **The remaining gap is deliberate and open**: giving speed the shape loop
+> already has — `setFps` / `getFps` beside `setLoop` / `getLoop`, read back in
+> the bar's `reflect()` — adds to the handle, which is a § 9.2 surface change
+> and wants its own decision rather than riding along with a defect fix.
 | **the rail** — atom numbers, forces, cell, axes, isolate, Reset (§ 1.1) | `selection`, for the lit state of each switch | the five switches to `selection`; **Reset** writes nothing — it re-fits the camera through the handle, the one thing on this card that is neither data nor a switch (§ 9.6) |
 
 > **Isolate has one control, on the rail.** This section used to add that it

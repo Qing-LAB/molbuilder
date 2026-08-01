@@ -1587,6 +1587,169 @@ def test_the_view_menu_holds_all_four_drawing_settings():
     assert out["litAfter"] == 1, "the chosen swatch must light, and only it"
 
 
+def test_the_view_menu_opens_showing_what_the_store_already_says():
+    """§ 8.5: "None of them holds a fact of its own."
+
+    `view.subscribe` hands nothing over when you subscribe — unlike
+    `selection.subscribe`, which fires immediately — so a view subscriber has to
+    take its own first pass. The menu used to take it for the RADIUS ALONE, and
+    style, background and projection opened showing hand-written initial markup
+    instead of the store.
+
+    That was visible, not theoretical: the store says `style: "stick"` from the
+    first moment, and NO style button was lit until the user changed something.
+    The menu opened claiming nothing was selected while the drawing was already
+    drawing sticks.
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        const card = host.querySelector(".molview-card");
+        const lit = card.querySelectorAll(".molviewer-menu-style-btn.is-active");
+
+        console.log(JSON.stringify({
+            style:       viewer.data.view.get().style,
+            litCount:    lit.length,
+            litLabel:    lit.length === 1 ? lit[0].textContent : null,
+            radiusShown: card.querySelector(".molviewer-menu-radius-row input").value,
+            projection:  card.querySelector(".molviewer-rail-toggle")
+                             .getAttribute("aria-pressed"),
+        }));
+        """
+    )
+    assert out["litCount"] == 1, (
+        "the View menu opened with "
+        f"{out['litCount']} style buttons lit. The store already says "
+        f"style={out['style']!r} — a control that shows nothing until the user "
+        "touches it is holding its own answer instead of reading `view` (§ 8.5)"
+    )
+    assert out["litLabel"] == "Sticks", (
+        f"the lit style must be the store's, not the first in the list: {out}"
+    )
+    assert out["radiusShown"] == "1", "the slider must open on the store's radius"
+    assert out["projection"] == "false", (
+        "the projection toggle must open showing the store's `orthographic`, "
+        f"not a hand-written attribute: {out['projection']}"
+    )
+
+
+def test_the_projection_toggle_reads_the_store_not_its_own_attribute():
+    """§ 8.5: every control reads its state back from `view`, "never from what
+    it last did".
+
+    The toggle used to compute its next value from its own `aria-pressed`, and
+    that is worse than untidy because `view.set` DEDUPES — `if (settings[name]
+    === value) return`. Let the attribute drift from the store once and every
+    click computes the same stale value, sets what the store already holds,
+    fires nothing and repaints nothing. The control is dead for good, and
+    silently: no error, no visible change, just a button that stops working.
+
+    The drift is forced here rather than waited for. Writing the attribute IS
+    the test — if the DOM were where the setting lived, that write would matter,
+    and it must not.
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        const card = host.querySelector(".molview-card");
+        const view = viewer.data.view;
+        const toggle = card.querySelector(".molviewer-rail-toggle");
+        const readBack = () => toggle.getAttribute("aria-pressed");
+
+        toggle.click();
+        const afterOne = { store: view.get().orthographic, shown: readBack() };
+
+        // Set from ELSEWHERE: the control must follow the store.
+        view.set("orthographic", false);
+        const followed = readBack();
+
+        // Now make the ATTRIBUTE lie, and click. The store says false; the
+        // attribute claims true. A control that reads itself would set false,
+        // hit the dedupe, fire nothing, and stick here forever.
+        view.set("orthographic", true);
+        toggle.setAttribute("aria-pressed", "false");
+        toggle.click();
+        const afterLie = { store: view.get().orthographic, shown: readBack() };
+
+        console.log(JSON.stringify({ afterOne, followed, afterLie }));
+        """
+    )
+    assert out["afterOne"] == {"store": True, "shown": "true"}, (
+        f"one click must set `orthographic` and light the button: {out['afterOne']}"
+    )
+    assert out["followed"] == "false", (
+        "the toggle did not follow a projection set from elsewhere — it is "
+        f"holding its own answer rather than reading `view` (§ 8.5): {out['followed']}"
+    )
+    assert out["afterLie"] == {"store": False, "shown": "false"}, (
+        "with the store at `true` and the attribute lying `false`, the click "
+        "must still flip the STORE to false. It did not, which means the next "
+        "value was computed from the DOM: `view.set` then deduped the write, "
+        f"nothing fired, and the toggle is now stuck: {out['afterLie']}"
+    )
+
+
+def test_the_speed_the_box_shows_is_the_speed_playback_starts_at():
+    """§ 8.5: "None of them holds a fact of its own", and § 1.1 fixes the
+    playback default at 150 ms per frame.
+
+    One fact had two homes with two different values: `ui.js` displayed the
+    contract's 150 ms while `mount.js` started its timer at `DEFAULT_FPS = 12`
+    — 83 ms. The box was simply wrong until the first press of play (which
+    passes the box's own figure), and `handle.play()` with no options — the
+    door a tab uses, § 9.2 — ran at a speed nothing on screen ever showed.
+
+    Pinned as an UPPER BOUND on how many frames playback gets through, which is
+    the one direction timing is safe in: `setInterval` cannot fire EARLIER than
+    it was asked to, so a slow or loaded machine can only push the count down,
+    never up. Overshooting the bound therefore means the interval really is
+    shorter than the box claims — it cannot mean the machine hiccuped.
+
+    A first attempt used a 420 ms window and a 1.6× allowance, and it PASSED
+    with the bug put back: 83 ms gives 5 frames there against a threshold of
+    5.4. A regression test that does not fail on the regression pins nothing,
+    so the window is long enough to separate the two rates properly — at
+    1200 ms it is 8 frames against 14.
+    """
+    out = _run(
+        """
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        viewer.data.reloadFrames([[[0,0,0],[1,0,0]], [[2,0,0],[3,0,0]]]);
+        const card = host.querySelector(".molview-card");
+        const box = card.querySelector(".molviewer-frames-speed-input");
+
+        // What the user is told, and the bounds it is told within (§ 1.1).
+        const shown = { value: box.value, min: box.min, max: box.max };
+
+        // What playback actually does when nobody passes a speed.
+        const stamps = [];
+        viewer.data.onFrameChange(() => stamps.push(Date.now()));
+        const started = Date.now();
+        viewer.play();
+        await new Promise(r => setTimeout(r, 1200));
+        viewer.pause();
+
+        console.log(JSON.stringify({
+            shown,
+            advanced: stamps.length,
+            elapsed: Date.now() - started,
+        }));
+        """
+    )
+    assert out["shown"] == {"value": "150", "min": "20", "max": "3000"}, (
+        f"§ 1.1 fixes the speed box at 20–3000 ms, default 150: {out['shown']}"
+    )
+    shown_ms = int(out["shown"]["value"])
+    expected = out["elapsed"] / shown_ms
+    assert out["advanced"] <= expected * 1.35 + 1, (
+        f"playback advanced {out['advanced']} frames in {out['elapsed']} ms, "
+        f"but the box says {shown_ms} ms per frame — about {expected:.1f}. It is "
+        "running at a speed the UI never showed, which is the two-defaults bug: "
+        "the frame bar and the mount layer each kept their own copy"
+    )
+
+
 def test_a_read_only_viewer_hides_the_control_the_gate_would_swallow():
     """§ 9.4: "A control that would do nothing should not be offered … MolView
     hides the ones it draws — the label box, the edit operations."

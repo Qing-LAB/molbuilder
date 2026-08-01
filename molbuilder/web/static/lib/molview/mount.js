@@ -31,7 +31,7 @@
 import { createModel } from "./model.js";
 import { createRenderEngine } from "./render-engine.js";
 import { create as createEmbed } from "./3dmol-embed.js";
-import { mountControls } from "./ui.js";
+import { mountControls, SPEED_DEFAULT_MS } from "./ui.js";
 
 
 /* The card's own class names. They are the carried stylesheet's (§ 8.1–8.3), so
@@ -43,9 +43,13 @@ const VIEWER = "molview-viewer";
 const PANEL  = "molview-panel";
 const FOLD   = "molview-fold-btn";
 
-// The playback default, in frames per second. A user changes it from the frame
-// bar; this is only where it starts.
-const DEFAULT_FPS = 12;
+/* The playback default, in frames per second. A user changes it from the frame
+ * bar; this is only where it starts — so it must START where the bar says it
+ * does. DERIVED, not restated: this was `12` (83 ms per frame) while the speed
+ * box displayed the contract's 150 ms, which is one fact kept in two places at
+ * two values. The box was wrong until the first press of play, and
+ * `handle.play()` with no options ran at a speed nothing on screen showed. */
+const DEFAULT_FPS = 1000 / SPEED_DEFAULT_MS;
 
 
 /**
