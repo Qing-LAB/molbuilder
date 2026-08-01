@@ -829,7 +829,7 @@
  * Combine/Target mini-labels AND the Cell-page captions (readout dt + the unit-cell
  * matrix label) all share this ONE block.  Do not re-declare it under a new selector. */
 .selection-mini-label,
-.cell-readout dt {
+.molviewer-cell-readout dt {
     color: var(--ps-fg-dim);
     font: 600 11px/1.2 system-ui, sans-serif;
     letter-spacing: 0.04em;
@@ -1428,15 +1428,15 @@
 .panel-page-option:has(input:checked) > span { color: var(--sp-accent-fg); }
 
 /* Cell readout -- read-only display of the resolved periodicity (stage 2). */
-.cell-readout {
+.molviewer-cell-readout {
     display: grid;
     grid-template-columns: max-content 1fr;
     gap: 0.3rem 0.6rem;
     margin: 0 0 0.6rem;
 }
-/* .cell-readout dt caption style comes from the shared .selection-mini-label rule (§2.1). */
-.cell-readout dd { margin: 0; }
-.cell-value {
+/* .molviewer-cell-readout dt caption style comes from the shared .selection-mini-label rule (§2.1). */
+.molviewer-cell-readout dd { margin: 0; }
+.molviewer-cell-value {
     color: var(--ps-fg);
     font: 12px/1.4 ui-monospace, monospace;
     word-break: break-word;
@@ -1446,7 +1446,7 @@
 /* The derived-value marker (§ 8.1): a lattice nobody set looks exactly like one
    they did, so the page says which -- quietly, as a qualifier on the value
    rather than a warning about it. */
-.cell-default-tag {
+.molviewer-cell-default-tag {
     opacity:     0.6;
     font-style:  italic;
     white-space: nowrap;

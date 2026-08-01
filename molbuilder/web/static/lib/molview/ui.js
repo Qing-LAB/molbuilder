@@ -1194,7 +1194,7 @@ function mountPanel(doc, card, model, reserved) {
     pages.selection.appendChild(assign);
 
     /* ── The Cell page: read-only (§ 8.1) ────────────────────────────────── */
-    const cellReadout = el("dl", "cell-readout");
+    const cellReadout = el("dl", "molviewer-cell-readout");
     pages.cell.appendChild(cellReadout);
 
     function atomCount() {
@@ -1453,10 +1453,10 @@ function mountPanel(doc, card, model, reserved) {
             term.className = "selection-mini-label";
             term.textContent = label;
             const detail = doc.createElement("dd");
-            detail.className = "cell-value";
+            detail.className = "molviewer-cell-value";
             detail.textContent = value;
             if (isDefault) {
-                const tag = el("span", "cell-default-tag");
+                const tag = el("span", "molviewer-cell-default-tag");
                 tag.textContent = " (default)";
                 tag.title = "derived, not set on this structure";
                 detail.appendChild(tag);
