@@ -2132,6 +2132,101 @@ rather than sent.
 The mechanism is blind to the file format: the model hands it a way to record a
 state and a way to put one back, and nothing else.
 
+### 11.2a Loading and saving, start to restart
+
+The two machines above — the viewer's own state and the write machine — meet at
+one place: what happens when a structure is put in. This is that meeting, in both
+modes, so starting and restarting are not left to be inferred.
+
+**The viewer is in one of two states**, and only a load moves it:
+
+```mermaid
+stateDiagram-v2
+    [*] --> EMPTY: mount
+    EMPTY --> HOLDING: installMolecule — allowed in ANY mode
+    HOLDING --> HOLDING: installMolecule (editable) · installMolecule({enforce}) (read-only)
+    HOLDING --> HOLDING: a casual install in read-only — refused, nothing moves
+```
+
+| In this state | A load | Frames / forces | An edit | A save |
+|---|---|---|---|---|
+| **EMPTY** | takes the structure, in either mode | hard error — there is no atom identity yet (§ 10.8) | nothing to edit | nothing to record |
+| **HOLDING**, editable | replaces it, and re-anchors the sequence | delivered | applied | records a point |
+| **HOLDING**, read-only | refused unless `enforce` | **delivered** — a run's own output is not a change (§ 9.4) | no-op | no-op |
+
+**The calls involved, and what each does in each mode.** A no-op returns the
+value in the last column — it never throws, so no caller has to wrap it (§ 9.4).
+
+| Call | What it does | Editable | Read-only |
+|---|---|---|---|
+| `mount(host, workspace, opts)` | builds the viewer, in **EMPTY**. `opts.mode: "readonly"` is what makes it one; `workspace` is the door the states go through | — | — |
+| `installMolecule(input)` | the **only** way a structure gets in. One settle, every frame (§ 9.3), then the sequence is anchored | always | from EMPTY: **yes**. From HOLDING: **no-op → `null`**, unless `input.enforce` |
+| `reloadFrames(frames, forces)` | replace the coordinates of the structure held | yes | **yes** — delivery, not a change |
+| `addFrame(frame, {forces})` | extend by one | yes | **yes** |
+| `addFrames(frames, {forces})` | extend by several | yes | **yes** |
+| `setForces(perFrame)` | swap the forces, coordinates untouched | yes | **yes** |
+| `applyOp(name, args)` | a geometry edit (§ 11.1) | yes | no-op → `null` |
+| `commitPeriodicityOp(op, payload)` | the one cell door (§ 6.2) | yes | no-op → `null` |
+| `selection.writeLabel(name, verb, atoms?)` | tag atoms (§ 9.5) | yes | no-op → `false` |
+| `save(1)` | write a new point one on, dropping everything above | → landed? | no-op → `false` |
+| `save(0)` | re-write the point you are on, without moving | → landed? | no-op → `false` |
+| `load(-1)` · `undo()` | step back — spends unsaved work first (§ 11.2) | → the point, or `null` | no-op → `null` |
+| `load(+1)` | step forward into a point a Retract left | → the point, or `null` | no-op → `null` |
+| `load(0)` | **not a move** — put back the point you are on | → the point, or `null` | no-op → `null` |
+| `state_index` | where you are on the sequence | reads it | always `0` |
+| `uncommitted` | is there work not on the sequence yet | reads it | always `false` |
+| `beginChange()` · `endChange()` | the bracket: writes asked for inside land once, at the end, carrying the settled state | holds them | nothing to hold |
+
+**The workspace door** is `{read(step), write(step, bytes)}` and nothing else — it
+is handed in at mount and MolView never learns anything about where the bytes go
+(§ 11.2). **Exactly three things touch it:** anchoring a structure, an explicit
+`save`, and a `load`. Nothing is written on a timer and nothing is written
+because something changed.
+
+**Starting, in an editable viewer.** `mount` → EMPTY → `installMolecule(input)`
+→ the whole structure lands in one settle (§ 6.4) → **point 0 is laid down**, and
+that is the only point nobody asks for. From there: edits raise the badge and
+record nothing, `save(1)` writes a point and drops everything above it, `load(-1)`
+steps back, `load(0)` puts back the point you are on.
+
+**Starting, in a read-only viewer.** `mount` → EMPTY → `installMolecule(input)`
+→ HOLDING, and **no point 0 is laid down at all**: a read-only viewer has no
+history (§ 9.4), so nothing is written to storage, the badge never appears, and
+`save` / `load` / `undo` are no-ops. Its frames keep arriving, so it follows a
+running job and scrubs a finished one. That is the whole of its lifecycle: one
+load, then delivery, for as long as it lives.
+
+**A load lays down a fresh point 0, and that is right.** Opening a molecule is
+opening a molecule: the state you started from is the state *this* molecule was
+opened at, and the sequence above it belonged to whatever was there before.
+§ 11.2 says so directly — "opening a new structure prunes the old sequence".
+Point 0 being overwritten is not a loss; it is the floor moving to where the work
+is now standing.
+
+So the two ways back are both within an open structure, and both work:
+`load(0)` puts back the point you are on, and `load(-1)` steps to the one before.
+
+> **What has no path today: coming back to a session without re-opening the
+> file.** § 11.2 calls `load(0)` "how a reopened page returns to where it was",
+> and a reopened page builds a fresh viewer. That viewer has no sequence yet —
+> only an install anchors one — so:
+>
+> ```
+> session 1: install, edit, save(1)   -> storage holds points 0 and 1
+> session 2: fresh viewer, load(0)    -> null; the structure is still null
+> ```
+>
+> Its only way to become useful is to install, which correctly starts a fresh
+> sequence. So the stored points are reachable only by the viewer that wrote
+> them, and "reopen where I left off" and "open this file again" are the same
+> gesture.
+>
+> Whether that is a gap depends on what a reopened page is *meant* to do — take
+> the file again, or take back the work — and that is a decision, not an
+> oversight. What is missing if it is the second is a way for a viewer to adopt a
+> sequence that already exists, which today's `load` cannot do because it refuses
+> before there is an anchor.
+
 **MolView owns the whole mechanism and the policy** — what a save records, what
 to prune, how far back a step goes, and the rule that nothing is recorded on its
 own. The **workspace** module owns only what sits underneath: where the bytes
@@ -2766,7 +2861,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — the history is offered as calls, not as a control | a mounted viewer draws no save-state or retract button of its own, and the calls work all the same when a host wires its own |
 | § 11.2 — a Retract spends unsaved work first | from a saved point with edits on top, one Retract lands **on** that point with the edits discarded; a second lands on the point before it |
 | § 11.2 — Save state drops what was above it | after retracting past two points and saving, stepping forward is no longer possible — the abandoned points are gone |
-| § 11.2 — reopening returns to the point you were on | a reload comes back to the current point rather than to the anchor, and does not move the position |
+| § 11.2 — `load(0)` puts back the point you are on | it restores the current point rather than the anchor, and does not move the position. Coming back to a sequence in a viewer that did not write it has no path yet — § 11.2a |
 | § 11.3 — only the data export is the truth, at the frame the user chose | exporting data yields **the displayed frame's** coordinates and its metadata, from the master copy — scrub to frame 40 and frame 40 is what the file holds, whatever isolate is doing; a picture and an animation are renders and carry whatever the view was set to |
 | § 11.3 — an animation covers every frame | the file has as many frames as the structure, not just the one on screen |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so every label — `frozen_atoms` among them — survives into whatever is generated from it |

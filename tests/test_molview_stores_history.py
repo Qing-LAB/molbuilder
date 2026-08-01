@@ -601,11 +601,17 @@ def test_stepping_forward_lasts_until_you_save():
     assert out["forward"] == 2, "a Retract must be reversible until a save"
 
 
-def test_reopening_returns_to_the_point_you_were_on():
-    """§ 13.3: "a reload comes back to the current point rather than to the
-    anchor, and does not move the position."
+def test_load_zero_puts_back_the_point_you_are_on_without_moving():
+    """§ 11.2: `load(0)` is not "move by nothing" — it is a different verb. The
+    three things this surface does are *step back*, *step forward*, and *restore
+    where I was*, and this is the third.
 
-    § 11.2: `load(0)` is not "move by nothing" — it is a different verb.
+    WHAT THIS DOES NOT SHOW, named rather than left as a silent hole: that a
+    REOPENED PAGE comes back to where it was. That needs a second history over
+    the same store — a fresh viewer, as a reload builds — and such a viewer has
+    no sequence to load from until something anchors one (§ 11.2a). This test
+    carried that promise in its name while exercising a single instance, so the
+    § 13.3 row above it was guarded by a test of something else.
     """
     out = _run(
         """
