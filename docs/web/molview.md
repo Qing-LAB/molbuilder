@@ -1161,7 +1161,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `currentFrame()` · `frameCount()` | — | **`0` with nothing loaded**, not `null` — they are counts |
 | `setCurrentFrame(i)` | `i` — resolved against the range, never taken on trust | — |
 | `onFrameChange(fn)` · `subscribe(fn)` | `fn` | an unsubscribe function |
-| `exportFile(range)` | `range` — `{from, to}`, inclusive, 0-based, clamped to what exists. Omitted means the displayed frame alone | `{name, structure}` — the structure carrying **the frames in the range** — or `null` if the geometry and the per-atom facts disagree |
+| `exportFile(range)` | `range` — `{from, to}`, inclusive, 0-based, clamped to what exists. Omitted means the displayed frame alone | `{name, structure}` for one frame; `{name, structure, frames}` when the range covers more — `frames` is **additive**, so a caller that knows nothing about ranges keeps working. `null` if the geometry and the per-atom facts disagree |
 | `mode` | — | **`"editable"` or `"readonly"`**, never `null` |
 | `state_index` · `uncommitted` | — | the position; whether there is unsaved work |
 | `installMolecule(input)` | `{path}` **or** `{text, filename, format?, sidecar?}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure, or `null` |

@@ -449,11 +449,12 @@ export function createEdits(handed) {
          * op's arguments were read by nobody, so `translate` answered 200 and
          * moved the structure by (0, 0, 0).
          *
-         * `group` is the column § 11.1's table never had: WHERE the resolved
-         * selection lands. Knowing how many atoms an op needs, and not where to
-         * put them, is why the rebuilt code could not build a body at all. It is
-         * OMITTED when the selection is empty, so the server applies its own
-         * centring rather than being handed an empty list. */
+         * `group` is § 11.1's "Where it lands" column: WHERE the resolved
+         * selection goes in the body. The table did not have it once, and
+         * knowing how many atoms an op needs without knowing where to put them
+         * is why the rebuilt code could not build a body at all. It is OMITTED
+         * when the selection is empty, so the server applies its own centring
+         * rather than being handed an empty list. */
         const body = Object.assign({}, params || {}, {
             structure: structureForServer(structure, positions),
         });
@@ -577,11 +578,12 @@ export async function resolveFilter(structure, rule) {
 
 /* ══ The one way this module talks to the server ═════════════════════════════
  *
- * § 11.1 names THREE routes: load a structure, perform one geometry edit,
- * resolve a cell. The filter of § 9.5 is a fourth — "a question asked of the
- * server" — which that sentence omits; the plan records it as an open item, and
- * the route test counts what is actually here rather than what the sentence
- * says. The field-level JSON of these payloads belongs to web-api.md.
+ * § 11.1 names FOUR routes, and this file calls exactly those four: load a
+ * structure, perform one geometry edit, resolve a cell, resolve a filter. The
+ * fourth used to be missing from that list while this module made the call —
+ * "the kind of gap that lets a fifth appear unnoticed", as § 11.1 now puts it —
+ * and the list was corrected rather than the call. The field-level JSON of these
+ * payloads belongs to web-api.md.
  */
 async function postJson(route, body) {
     const response = await fetch(route, {

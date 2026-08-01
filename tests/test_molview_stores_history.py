@@ -100,6 +100,62 @@ def test_the_selection_survives_an_editor_switch():
     assert out["back"] == [1, 3, 7]
 
 
+def test_invert_takes_the_complement_and_reports_no_pick_trail():
+    """`invert` was the one door on the selection store with NO test at all.
+
+    Two things about it are easy to get wrong, and both matter downstream.
+    It is the COMPLEMENT against the atom count it is handed -- not against
+    whatever happens to be drawn -- and, like All and an applied filter, it is
+    NOT a click, so it carries no pick order (§ 9.5, § 11.6).
+
+    That second half is the one worth a test: the measurement readout takes an
+    angle's vertex from the atom picked SECOND, so a bulk operation reporting a
+    fabricated trail would let the readout treat "the middle atom by number" as
+    the atom a chemist chose. It looks implemented and is wrong.
+    """
+    out = _run(
+        """
+        const sel = S.createSelectionStore({});
+        sel.add([1, 3]);
+        sel.invert(5);
+        const state = sel.getState();
+        console.log(JSON.stringify({
+            selection: state.selection,
+            pickOrder: state.pickOrder,
+        }));
+        """
+    )
+    assert out["selection"] == [0, 2, 4], (
+        f"invert is the complement against the count it was handed: {out['selection']}")
+    assert out["pickOrder"] == [], (
+        "invert is not a click, so it must report no pick trail -- a fabricated "
+        "one is indistinguishable from a real one to the measurement readout")
+
+
+def test_isolate_turns_itself_off_when_invert_empties_the_selection():
+    """§ 1.1: isolate turns itself off when the selection empties, "since there
+    would be nothing left to show". It is a SELECTION-STATE rule, so it holds
+    whichever operation did the emptying -- including this one, which no test
+    reached before."""
+    out = _run(
+        """
+        const sel = S.createSelectionStore({});
+        sel.add([0, 1, 2]);
+        sel.setIsolate(true);
+        const on = sel.getState().isolate;
+        sel.invert(3);                      // everything was selected -> none is
+        const state = sel.getState();
+        console.log(JSON.stringify({
+            on, after: state.isolate, selection: state.selection,
+        }));
+        """
+    )
+    assert out["on"] is True
+    assert out["selection"] == []
+    assert out["after"] is False, (
+        "isolate stayed on with nothing selected -- the window would be empty")
+
+
 def test_a_half_typed_row_constrains_nothing():
     """§ 13.3: "a blank row combined under AND leaves the other rows' result
     intact rather than emptying it."
