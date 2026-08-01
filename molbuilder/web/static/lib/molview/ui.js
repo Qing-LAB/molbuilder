@@ -31,7 +31,29 @@ import { toDisplay } from "./_atom.js";
  * @param files   the door bytes leave through (§ 6.7, § 8) — `save(destination,
  *                filename, contents)`. MolView never reaches a file itself.
  */
-export function mountControls(card, model, handle, files) {
+/* THE TONES A RESERVED LABEL CAN WEAR. Written out rather than composed, so the
+ * class an element gets is a string that appears in this file — which is what
+ * lets "every class the module writes is one the stylesheet defines" be checked
+ * at all. The stylesheet owns what each one looks like; this owns only how many
+ * there are. */
+const RESERVED_TONES = [
+    "tag-reserved--1", "tag-reserved--2", "tag-reserved--3",
+    "tag-reserved--4", "tag-reserved--5",
+];
+
+/**
+ * Draw and wire every control, and return one teardown for all of them.
+ *
+ * @param reserved  the reserved-label list (§ 6.6), handed in like every other
+ *                  door: `[{name, description, tone?}]`. MolView holds no such
+ *                  list of its own — "adding a reserved meaning touches that
+ *                  list and its translator and nothing else, and nothing in the
+ *                  viewer" — and KNOWING a name is reserved is not interpreting
+ *                  it. With no list handed in, every label is an ordinary one,
+ *                  which is the honest answer: the viewer genuinely does not
+ *                  know.
+ */
+export function mountControls(card, model, handle, files, reserved) {
     const doc = card.root.ownerDocument;
     const off = [];
 
@@ -50,7 +72,7 @@ export function mountControls(card, model, handle, files) {
     const readout = mountReadout(doc, card, model);
     off.push(readout.dispose);
 
-    const panel = mountPanel(doc, card, model);
+    const panel = mountPanel(doc, card, model, reserved);
     off.push(panel.dispose);
 
     return {
@@ -816,7 +838,21 @@ function angle(a, vertex, c) {
  * The class names are the carried stylesheet's, so this function does not get to
  * choose them.
  */
-function mountPanel(doc, card, model) {
+function mountPanel(doc, card, model, reserved) {
+    /* WHICH NAMES ARE RESERVED, and what each one wears. Read once from the list
+     * handed in; the viewer keeps no list of its own (§ 6.6). A tone the entry
+     * does not name falls to its place in the list, so a caller supplying only
+     * names still gets each of them looking different from the others. */
+    const reservedTone = new Map();
+    const reservedNote = new Map();
+    (Array.isArray(reserved) ? reserved : []).forEach((entry, at) => {
+        if (!entry || !entry.name) return;
+        const tone = RESERVED_TONES.indexOf(entry.tone) >= 0
+            ? entry.tone : RESERVED_TONES[at % RESERVED_TONES.length];
+        reservedTone.set(entry.name, tone);
+        if (entry.description) reservedNote.set(entry.name, entry.description);
+    });
+
     const el = (tag, className) => {
         const node = doc.createElement(tag);
         if (className) node.className = className;
@@ -1154,7 +1190,22 @@ function mountPanel(doc, card, model) {
      * (§ 9.4). The chip itself stays — reading the labels is not an edit.
      */
     function labelTag(name, atomIndex) {
-        const tag = el("span", "selection-tag tag-region");
+        /* A RESERVED LABEL READS DIFFERENTLY, and each one differently from the
+         * others (§ 6.6). It is stored, filtered and applied exactly like any
+         * other label — the chip is the only thing that changes — because
+         * something downstream knows what it means and a user is owed that
+         * before they tag atoms with one by accident. `frozen_atoms` and
+         * `L-electrode` do very different things to a calculation, so one shared
+         * "reserved" colour would say only that they are both special.
+         *
+         * The description rides on the chip, which is as far as the viewer goes:
+         * it CARRIES what the list says and acts on none of it. */
+        const tone = reservedTone.get(name);
+        const tag = el("span", tone
+            ? "selection-tag tag-reserved " + tone
+            : "selection-tag tag-region");
+        const note = reservedNote.get(name);
+        if (note) tag.title = name + " — reserved: " + note;
         const text = el("span");
         text.textContent = name;
         tag.appendChild(text);

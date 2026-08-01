@@ -560,6 +560,81 @@ def test_a_drawing_found_short_of_the_master_copy_is_rebuilt():
 # § 9.7 — the renderEngine answers nothing
 # ---------------------------------------------------------------------------
 
+def test_the_world_triad_and_the_cell_triad_are_on_screen_together():
+    """The two triads answer different questions and a user needs both at once:
+    x/y/z is the frame every coordinate in the file is written in, a/b/c is the
+    way the box repeats. On a skewed or rotated cell those are different
+    directions, and the angle between them is the thing worth looking at.
+
+    `sceneFor` used to return ONE of them — a/b/c if the structure had a cell,
+    x/y/z if it did not — so the world frame vanished the moment a cell appeared
+    and there was nothing to compare the cell against.
+
+    Each rides its own switch, so each switch means one thing: "Show axes" is the
+    world triad; the cell's own directions belong to the cell and come and go
+    with the box they describe.
+    """
+    out = _run(
+        """
+        const { engine, src } = wired(4, 1);
+        src.structure.periodicity = { cell: [[8,0,0],[0,8,0],[0,0,8]],
+                                      cell_origin: [1,1,1] };
+        await engine.dataChanged();
+
+        // Whatever reaches the drawing, by label — the arrows door carries the
+        // force arrows and both triads together (§ 10.6).
+        const shown = () => {
+            const c = calls("setArrows");
+            const last = c.length ? c[c.length - 1].args[1] : [];
+            return last.map(a => a.label).filter(Boolean);
+        };
+        const seen = {};
+
+        globalThis.__embedCalls = [];
+        engine.switchesChanged();                     // both switches off
+        seen.neither = shown();
+
+        globalThis.__embedCalls = [];
+        src.switches.showAxis = true;
+        engine.switchesChanged();
+        seen.axesOnly = shown();
+
+        globalThis.__embedCalls = [];
+        src.switches.showCell = true;
+        engine.switchesChanged();
+        seen.both = shown();
+
+        globalThis.__embedCalls = [];
+        src.switches.showAxis = false;
+        engine.switchesChanged();
+        seen.cellOnly = shown();
+
+        // And with no cell at all there is no cell triad to show, however the
+        // cell switch is set — whether there IS one is the structure's business.
+        globalThis.__embedCalls = [];
+        src.structure.periodicity = null;
+        engine.cellChanged();
+        seen.noCell = shown();
+
+        console.log(JSON.stringify(seen));
+        """
+    )
+    assert out["neither"] == [], "a triad was drawn with both switches off"
+    assert out["axesOnly"] == ["x", "y", "z"], (
+        f"'Show axes' must draw the world triad: {out['axesOnly']}"
+    )
+    assert out["both"] == ["x", "y", "z", "a", "b", "c"], (
+        "the two triads must be on screen TOGETHER — one did not replace the "
+        f"other: {out['both']}"
+    )
+    assert out["cellOnly"] == ["a", "b", "c"], (
+        f"the cell's triad rides the cell switch, on its own: {out['cellOnly']}"
+    )
+    assert out["noCell"] == [], (
+        f"a cell triad was drawn for a structure with no cell: {out['noCell']}"
+    )
+
+
 def test_the_camera_is_fitted_on_load_and_on_reset_and_at_no_other_moment():
     """§ 9.6: "On load, and on Reset, the camera is fitted to the structure."
     Those two moments, and no other.
@@ -641,7 +716,9 @@ def test_the_scene_is_worked_out_once_and_follows_the_cell_when_it_changes():
         };
 
         const { engine, src } = wired(4, 400);
-        src.switches.showAxis = true;
+        // The CELL's triad, which is the one that moves when the cell does; it
+        // rides the cell switch beside the box it describes.
+        src.switches.showCell = true;
         src.structure.periodicity = { cell: [[8,0,0],[0,8,0],[0,0,8]],
                                       cell_origin: [1,1,1] };
         await engine.dataChanged();

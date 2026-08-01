@@ -471,6 +471,7 @@ classDiagram
     class Scene {
       +CellBox cellBox
       +Axes axes
+      +Axes cellAxes
     }
     class ViewSettings {
       +string style
@@ -1555,6 +1556,25 @@ The **unit cell box** and the **axes** are scene-level: they are worked out once
 from the cell and the origin, and are the same for every frame unless the cell
 itself changes (§ 6.5). Recomputing them per frame would be work that produces an
 identical answer four hundred times.
+
+> **There are two triads, and they are on screen together.** The **world triad**
+> — x/y/z at the world origin — is the frame every coordinate in the file is
+> written in. The **cell triad** — a/b/c from the corner the box is anchored at —
+> is the way the box repeats. On a skewed or rotated cell those are not the same
+> directions, and the angle between them is exactly what a user is looking at.
+>
+> So each rides its own switch, and each switch means one thing: the world triad
+> is what **Show axes** shows; the cell's own directions belong to the cell and
+> come and go with **Show unit cell**, beside the box they describe. They also
+> carry **different colours** — x/y/z red/green/blue, a/b/c amber/violet/teal —
+> because two triads in one palette are one triad as far as a reader is
+> concerned, and a structure whose cell failed to load then looks exactly like
+> one that never had a cell.
+>
+> Drawing only one of them, chosen by whether a cell exists, is the shape this
+> replaced: the world frame vanished the moment a cell appeared, leaving nothing
+> to compare the cell against and a single letter at each tip as the only sign of
+> which you were looking at.
 
 **Measurement is deliberately not in this list.** The position / distance / angle
 readout is the result of a user *interacting* with the view, not part of

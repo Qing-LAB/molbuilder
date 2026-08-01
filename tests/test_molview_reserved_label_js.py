@@ -227,8 +227,18 @@ def test_the_module_knows_the_reserved_name_in_exactly_one_place():
     """"A reserved meaning costs a NAME" — one. The module holds it as a single
     constant, so the name the panel offers as a filter row is by construction the
     name the server matches. Offering a name the server cannot match would give a
-    row that always answers nothing."""
-    sources = [p.read_text(encoding="utf-8") for p in MODULE_DIR.glob("*.js")]
+    row that always answers nothing.
+
+    `demo.js` is not counted, and that is the rule rather than an exemption. It
+    is the HOST on the demo page, and § 6.6 puts the reserved list outside the
+    viewer — "adding a reserved meaning touches that list and its translator and
+    nothing else, and nothing in the viewer". A host naming the labels it hands
+    in is that list; the module reading it back is not a second spelling. What
+    the rule forbids is the VIEWER knowing which names are special, and every
+    file below is viewer.
+    """
+    sources = [p.read_text(encoding="utf-8") for p in MODULE_DIR.glob("*.js")
+               if p.name != "demo.js"]
     literal = sum(
         # the declaration itself excepted -- that IS the one place
         text.count('"%s"' % FROZEN) + text.count("'%s'" % FROZEN)

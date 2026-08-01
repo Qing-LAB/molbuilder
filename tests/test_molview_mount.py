@@ -1214,6 +1214,80 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
     )
 
 
+def test_a_reserved_label_reads_differently_and_so_does_each_of_them():
+    """§ 6.6: a reserved label is "stored, filtered and displayed exactly like
+    any other label", and the only difference is that something downstream knows
+    what it means — which a user is owed before they tag atoms with one by
+    accident. "Knowing a name is reserved is not interpreting it."
+
+    So the chip reads differently from an ordinary label, and each reserved one
+    reads differently from the others: `frozen_atoms` and `L-electrode` do very
+    different things to a calculation, and one shared "reserved" colour would say
+    only that they are both special.
+
+    WHICH names are reserved is not the viewer's (§ 6.6: "nothing in the
+    viewer"), so the list is handed in at mount like the workspace and the files
+    door. With no list, every label is ordinary — the honest answer, because the
+    viewer genuinely does not know.
+    """
+    out = _run(
+        """
+        const atoms = [
+            { index: 0, element: "C", x: 0, y: 0, z: 0,
+              regions: ["frozen_atoms", "L-electrode", "my-notes"] },
+            { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
+        ];
+        const chips = (card) => card.querySelectorAll(".col-labels .selection-tag")
+            .map(t => ({ name: t.children[0].textContent,
+                         classes: Array.from(t._classes).sort().join(" "),
+                         title: t.title || null }));
+
+        // TOLD which names are reserved.
+        globalThis.__nextAtoms = atoms;
+        const told = await mounted({ mount: { reservedLabels: [
+            { name: "frozen_atoms", description: "held still by the calculation" },
+            { name: "L-electrode",  description: "the left lead" },
+        ] } });
+        await told.viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const withList = chips(told.host.querySelector(".molview-card"));
+
+        // TOLD NOTHING: every label is an ordinary one.
+        globalThis.__nextAtoms = atoms;
+        const untold = await mounted();
+        await untold.viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const withoutList = chips(untold.host.querySelector(".molview-card"));
+
+        console.log(JSON.stringify({ withList, withoutList }));
+        """
+    )
+    told = {c["name"]: c for c in out["withList"]}
+    assert set(told) == {"frozen_atoms", "L-electrode", "my-notes"}, (
+        "every label the atom carries must show, reserved or not (§ 6.6)"
+    )
+    assert "tag-region" in told["my-notes"]["classes"], (
+        "a label nobody reserved must read as an ordinary one"
+    )
+    for name in ("frozen_atoms", "L-electrode"):
+        assert "tag-reserved" in told[name]["classes"], (
+            f"{name} is reserved and must not read as an ordinary label"
+        )
+        assert "tag-region" not in told[name]["classes"]
+    assert told["frozen_atoms"]["classes"] != told["L-electrode"]["classes"], (
+        "the two reserved labels read identically, so the chip says only that "
+        "they are both special — and they do very different things"
+    )
+    assert "held still" in (told["frozen_atoms"]["title"] or ""), (
+        "the chip must carry what the list says the name does, so a user can "
+        "find out without leaving the panel"
+    )
+    # And with no list handed in, the viewer does not pretend to know.
+    untold = {c["name"]: c for c in out["withoutList"]}
+    assert all("tag-region" in c["classes"] for c in untold.values()), (
+        "the viewer marked a label reserved without being told which are — it "
+        f"is holding a list of its own (§ 6.6): {out['withoutList']}"
+    )
+
+
 def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
     """A label already on the structure is something the structure can be asked
     for, so it is offered rather than retyped — and a typo while retyping makes a

@@ -594,8 +594,10 @@ def test_cell_geometry_arrives_even_while_the_cell_is_hidden():
         const scene = ENGINE.sceneFor(cell);
         console.log(JSON.stringify({
             box: scene.cellBox,
-            axisStarts: scene.axes.map(a => a.start),
-            axisLabels: scene.axes.map(a => a.label),
+            cellAxisStarts: scene.cellAxes.map(a => a.start),
+            cellAxisLabels: scene.cellAxes.map(a => a.label),
+            worldAxisStarts: scene.axes.map(a => a.start),
+            worldAxisLabels: scene.axes.map(a => a.label),
         }));
         """
     )
@@ -606,12 +608,16 @@ def test_cell_geometry_arrives_even_while_the_cell_is_hidden():
     assert out["box"]["origin"] == [10, 10, 10], (
         "the anchor corner must be the structure's, not the world origin"
     )
-    assert all(s == [10, 10, 10] for s in out["axisStarts"]), (
-        f"the axes must be anchored to the cell's corner: {out['axisStarts']}"
+    assert all(s == [10, 10, 10] for s in out["cellAxisStarts"]), (
+        f"the cell's axes must start at its corner: {out['cellAxisStarts']}"
     )
-    assert out["axisLabels"] == ["a", "b", "c"], (
-        "with a cell the triad follows the lattice vectors and is labelled a/b/c"
+    assert out["cellAxisLabels"] == ["a", "b", "c"]
+    # And the world triad is still there beside it, at the world origin: the two
+    # answer different questions and a cell appearing does not retire one.
+    assert all(s == [0, 0, 0] for s in out["worldAxisStarts"]), (
+        f"the world triad must stay at the world origin: {out['worldAxisStarts']}"
     )
+    assert out["worldAxisLabels"] == ["x", "y", "z"]
 
 
 def test_the_box_drawn_is_the_cell_the_structure_actually_uses():
@@ -645,8 +651,8 @@ def test_the_box_drawn_is_the_cell_the_structure_actually_uses():
         const scene = ENGINE.sceneFor(fromServer);
         console.log(JSON.stringify({
             box:        scene.cellBox,
-            axisStarts: scene.axes.map(a => a.start),
-            axisLabels: scene.axes.map(a => a.label),
+            axisStarts: scene.cellAxes.map(a => a.start),
+            axisLabels: scene.cellAxes.map(a => a.label),
         }));
         """
     )
@@ -681,15 +687,16 @@ def test_the_two_triads_are_told_apart_by_colour_as_well_as_by_label():
     """
     out = _run(
         """
-        const withCell = ENGINE.sceneFor({
+        // ONE structure with a cell, so both triads are in play at once — which
+        // is the situation the colours exist for.
+        const scene = ENGINE.sceneFor({
             resolved_cell: [[5,0,0],[0,5,0],[0,0,5]],
-            resolved_cell_origin: [0,0,0] });
-        const without = ENGINE.sceneFor(null);
+            resolved_cell_origin: [1,1,1] });
         console.log(JSON.stringify({
-            abc: withCell.axes.map(a => a.color),
-            xyz: without.axes.map(a => a.color),
-            abcLabels: withCell.axes.map(a => a.label),
-            xyzLabels: without.axes.map(a => a.label),
+            abc: scene.cellAxes.map(a => a.color),
+            xyz: scene.axes.map(a => a.color),
+            abcLabels: scene.cellAxes.map(a => a.label),
+            xyzLabels: scene.axes.map(a => a.label),
         }));
         """
     )

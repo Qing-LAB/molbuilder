@@ -1064,6 +1064,56 @@
     border: 1px solid var(--sp-exclude-border);
 }
 
+/* ====================================================================
+ * RESERVED LABELS.
+ *
+ * A reserved label is stored, filtered and applied exactly like any
+ * other (molview.md § 6.6) — the ONLY difference is that something
+ * downstream knows what it means, and a user is owed that warning
+ * before they tag atoms with one by accident.  So it reads differently
+ * from an ordinary label, and each one reads differently from the
+ * others: `frozen_atoms` and `L-electrode` do very different things to
+ * a calculation, and a single "reserved" colour would say only that
+ * they are both special.
+ *
+ * WHICH names are reserved is NOT decided here and not in the module
+ * (§ 6.6) — the viewer is handed the list.  This stylesheet owns only
+ * what a reserved chip LOOKS like, in numbered tone slots, so adding a
+ * reserved meaning is an entry in that list and nothing else.
+ *
+ * The tones are deliberately unlike `.tag-region`'s neutral fill: a
+ * chip a user must think about should not be the same weight as one
+ * they invented.
+ * ==================================================================== */
+.tag-reserved {
+    font-weight: 700;
+}
+.tag-reserved--1 {                        /* amber */
+    background: #4a3410; /* exempt: reserved-label tone */
+    color:      #ffc247; /* exempt: reserved-label tone */
+    border:     1px solid #8a6316; /* exempt: reserved-label tone */
+}
+.tag-reserved--2 {                        /* violet */
+    background: #38215c; /* exempt: reserved-label tone */
+    color:      #d3a6ff; /* exempt: reserved-label tone */
+    border:     1px solid #6a3fa8; /* exempt: reserved-label tone */
+}
+.tag-reserved--3 {                        /* teal */
+    background: #10403f; /* exempt: reserved-label tone */
+    color:      #55e0dd; /* exempt: reserved-label tone */
+    border:     1px solid #1d7370; /* exempt: reserved-label tone */
+}
+.tag-reserved--4 {                        /* rose */
+    background: #4d1730; /* exempt: reserved-label tone */
+    color:      #ff9ec0; /* exempt: reserved-label tone */
+    border:     1px solid #93304f; /* exempt: reserved-label tone */
+}
+.tag-reserved--5 {                        /* moss */
+    background: #23401a; /* exempt: reserved-label tone */
+    color:      #a6e08a; /* exempt: reserved-label tone */
+    border:     1px solid #4a7a37; /* exempt: reserved-label tone */
+}
+
 .selection-tag-remove {
     background: var(--sp-tag-remove-bg);
     border: 1px solid var(--sp-tag-remove-border);

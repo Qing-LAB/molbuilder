@@ -123,6 +123,24 @@ async function start() {
     const viewer = await mount(host, memoryWorkspace(), {
         owner: "molview-demo",
         files: demoFiles(say),
+        /* THE RESERVED LABELS (§ 6.6), handed in like every other door. The
+         * viewer keeps no such list: it is told which names carry a meaning
+         * downstream so it can show them differently and say what they do, and
+         * it acts on none of it. The names and the descriptions belong with the
+         * labels themselves — model/structure-annotations.md — so adding one is
+         * an entry there and nothing in the module. */
+        reservedLabels: [
+            { name: "frozen_atoms",
+              description: "these atoms are held still by the calculation" },
+            { name: "L-electrode",
+              description: "the left semi-infinite lead" },
+            { name: "R-electrode",
+              description: "the right semi-infinite lead" },
+            { name: "bridge",
+              description: "the scattering region between the leads" },
+            { name: "interface",
+              description: "contact atoms inside the bridge" },
+        ],
     });
 
     // Mount always resolves (§ 8): on failure `ok` is false, `error` says why,

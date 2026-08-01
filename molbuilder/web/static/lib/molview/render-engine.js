@@ -267,20 +267,44 @@ export function sceneFor(periodicity) {
     const origin = (Array.isArray(used.cell_origin) && used.cell_origin.length === 3)
         ? used.cell_origin : [0, 0, 0];
 
-    // Cell mode follows the lattice vectors and labels them a/b/c; with no cell
-    // the triad is Cartesian, at the world origin, labelled x/y/z.
-    const vectors = lattice
-        ? lattice.map((v) => [v[0], v[1], v[2]])
-        : [[CARTESIAN_AXIS_LENGTH, 0, 0],
-           [0, CARTESIAN_AXIS_LENGTH, 0],
-           [0, 0, CARTESIAN_AXIS_LENGTH]];
-    const names = lattice ? ["a", "b", "c"] : ["x", "y", "z"];
-    const base = lattice ? origin : [0, 0, 0];
-    // The colours follow the same choice the names do, so the two say the same
-    // thing and cannot come apart.
-    const colors = lattice ? LATTICE_AXIS_COLORS : CARTESIAN_AXIS_COLORS;
+    /* TWO TRIADS, AND THEY CO-EXIST.
+     *
+     * They answer different questions and a user needs both at once: the world
+     * triad says WHICH WAY IS WHICH in the room — the frame every coordinate in
+     * the file is written in — and the cell triad says WHICH WAY THE BOX
+     * REPEATS, from the corner it is anchored at. On a skewed or rotated cell
+     * those are not the same directions, and seeing the angle between them IS
+     * the thing worth looking at.
+     *
+     * This used to return ONE of them — a/b/c if the structure had a cell, x/y/z
+     * if it did not — so the world frame vanished the moment a cell appeared,
+     * and nothing on screen said which of the two you were looking at except a
+     * single letter at each tip. They are separate now, they carry separate
+     * colours (above), and each rides its own switch: the world triad is what
+     * "Show axes" means, and the cell triad belongs to the cell, so it comes and
+     * goes with "Show unit cell" alongside the box it describes.
+     */
+    const axes = triad(
+        [[CARTESIAN_AXIS_LENGTH, 0, 0],
+         [0, CARTESIAN_AXIS_LENGTH, 0],
+         [0, 0, CARTESIAN_AXIS_LENGTH]],
+        [0, 0, 0], ["x", "y", "z"], CARTESIAN_AXIS_COLORS);
 
-    const axes = vectors.map((v, i) => ({
+    const cellAxes = lattice
+        ? triad(lattice, origin, ["a", "b", "c"], LATTICE_AXIS_COLORS)
+        : null;
+
+    return {
+        cellBox:  lattice ? { lattice: lattice, origin: origin } : null,
+        axes:     axes,
+        cellAxes: cellAxes,
+    };
+}
+
+/* Three arrows from one corner. The colours and the names arrive together so a
+ * triad cannot end up labelled one thing and coloured another. */
+function triad(vectors, base, names, colors) {
+    return vectors.map((v, i) => ({
         start:    [base[0], base[1], base[2]],
         end:      [base[0] + v[0], base[1] + v[1], base[2] + v[2]],
         color:    colors[i],
@@ -289,11 +313,6 @@ export function sceneFor(periodicity) {
                    base[1] + v[1] * LABEL_PAST_TIP,
                    base[2] + v[2] * LABEL_PAST_TIP],
     }));
-
-    return {
-        cellBox: lattice ? { lattice: lattice, origin: origin } : null,
-        axes:    axes,
-    };
 }
 
 
@@ -432,8 +451,13 @@ export function createRenderEngine(embed) {
          * frame swap (which re-places the overlays and not the scene) erased
          * the axes instead. Whatever arrows exist are handed down together. */
         const sw = switches();
-        const axes = sw.showAxis ? sceneNow().axes : [];
-        embed.setArrows((processed.arrows || []).concat(axes));
+        const scene = sceneNow();
+        // Each triad on its own switch: the world frame is what "Show axes"
+        // means, and the cell's own directions belong to the cell, so they come
+        // and go with the box they describe. Both can be up at once.
+        const world = sw.showAxis ? scene.axes : [];
+        const cell = (sw.showCell && scene.cellAxes) ? scene.cellAxes : [];
+        embed.setArrows((processed.arrows || []).concat(world, cell));
     }
 
     function applyScene() {

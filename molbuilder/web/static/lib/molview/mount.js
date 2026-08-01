@@ -65,7 +65,11 @@ const DEFAULT_FPS = 12;
  *                   therefore everything in it (§ 5.6); `mode: "readonly"`
  *                   freezes the master copy (§ 9.4); `files` is the door bytes
  *                   leave through (§ 6.7), handed in the same way the workspace
- *                   is, because MolView never reaches a file itself.
+ *                   is, because MolView never reaches a file itself;
+ *                   `reservedLabels` is the list of § 6.6's reserved names
+ *                   — `[{name, description, tone?}]` — handed in the same
+ *                   way, because the viewer holds no such list of its own
+ *                   and knowing a name is reserved is not interpreting it.
  */
 export async function mount(hostEl, workspace, opts) {
     opts = opts || {};
@@ -232,7 +236,8 @@ export async function mount(hostEl, workspace, opts) {
      * for the frame and its range, the handle for playback — because those are
      * two different owners and it reads each from where it lives.
      */
-    const controls = mountControls(card, model, handle, opts.files);
+    const controls = mountControls(card, model, handle, opts.files,
+                                   opts.reservedLabels);
     parts.push(() => controls.dispose());
 
     return handle;
