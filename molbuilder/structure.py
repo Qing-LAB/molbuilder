@@ -1326,6 +1326,97 @@ class Structure:
         return text
 
     # ------------------------------------------------------------------ #
+    #  Output: extended XYZ (one frame, or a whole trajectory)            #
+    # ------------------------------------------------------------------ #
+
+    def to_extxyz(
+        self,
+        path: Optional[str] = None,
+        *,
+        frames: Optional[Sequence[Any]] = None,
+        comment: str = "",
+    ) -> str:
+        """Return extended-XYZ text for this structure, or for *frames* of it.
+
+        Extended XYZ is plain XYZ with the per-frame comment line carrying
+        key=value metadata -- the convention ASE reads and writes, and what
+        every trajectory tool expects.  Two keys go out:
+
+        ``Lattice``
+            The cell **as it will actually be used** (:meth:`resolve_cell`),
+            row-major, in Angstrom.  This is the same box MolView draws and the
+            Cell page reports, so a file and the viewer it came from cannot
+            describe different systems.
+        ``pbc``
+            Which axes are periodic (``T``/``F``), from :attr:`pbc`.  It is what
+            keeps the Lattice honest: an isolated molecule still HAS a resolved
+            box -- its bounding box plus vacuum -- and writing that without
+            ``pbc="F F F"`` would tell the reader the system repeats when it
+            does not.
+
+        WHY THIS EXISTS BESIDE ``to_xyz`` AND NOT INSTEAD OF IT.  A plain
+        ``.xyz`` has nowhere to put a cell, so a periodic structure written that
+        way loses its box -- and a *trajectory* written that way loses it on
+        every frame.  ``to_xyz`` stays for the single-frame, cell-less case that
+        every code reads; this is for the cases it cannot carry.
+
+        Parameters
+        ----------
+        frames
+            Optional sequence of coordinate arrays, each shaped like
+            :attr:`positions` -- one block is written per frame, **in order**.
+            Every frame must carry this structure's atom count: the elements and
+            the cell are written from ``self`` and are the same for all of them,
+            which is what makes it one trajectory rather than a pile of
+            structures (the same-atoms rule the frame model rests on).  Omitted,
+            one block is written from :attr:`positions`.
+        """
+        blocks = [self.positions] if frames is None else list(frames)
+        if not blocks:
+            raise ValueError("to_extxyz: needs at least one frame")
+
+        n = self.n_atoms
+        for i, frame in enumerate(blocks):
+            got = len(frame)
+            if got != n:
+                raise ValueError(
+                    f"to_extxyz: frame {i} has {got} atoms, but the structure "
+                    f"has {n}; every frame of a trajectory carries the same "
+                    f"atoms")
+
+        # The box every frame shares.  ``resolve_cell`` can refuse on a
+        # structure whose state is contradictory -- the same degradation
+        # ``to_wire`` performs, rather than failing the write.
+        try:
+            cell = self.resolve_cell()
+        except ValueError:
+            cell = None
+        lattice = ""
+        if cell is not None:
+            flat = " ".join(f"{v:.6f}" for row in np.asarray(cell) for v in row)
+            lattice = f'Lattice="{flat}" '
+        flags = " ".join("T" if p else "F" for p in self.pbc)
+        head = (f'{lattice}Properties=species:S:1:pos:R:3 pbc="{flags}"')
+        title = (comment or self.title or "Built by molbuilder").strip()
+
+        buf = StringIO()
+        for frame in blocks:
+            buf.write(f"{n}\n")
+            # The title rides in front of the key=value pairs, where a reader
+            # that only wants the metadata still finds it and a human still
+            # sees which structure this is.
+            buf.write(f"{title} {head}\n" if title else f"{head}\n")
+            for el, (x, y, z) in zip(self.elements, frame):
+                buf.write(f"{el:<3s} {x: 12.6f} {y: 12.6f} {z: 12.6f}\n")
+        text = buf.getvalue()
+        if path:
+            # Same rule as ``to_xyz``: explicit utf-8, never the platform
+            # locale, or a non-ASCII title is silently corrupted on cp1252.
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(text)
+        return text
+
+    # ------------------------------------------------------------------ #
     #  Output: PDB                                                        #
     # ------------------------------------------------------------------ #
 
