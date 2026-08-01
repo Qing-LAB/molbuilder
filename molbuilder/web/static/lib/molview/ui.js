@@ -53,6 +53,14 @@ const RESERVED_TONES = [
  *                  which is the honest answer: the viewer genuinely does not
  *                  know.
  */
+/* The playback-speed bounds the contract fixes (§ 1.1): milliseconds per frame,
+ * 20 to 3000, defaulting to 150. Named here rather than inline because the
+ * floor is load-bearing — `fps = 1000 / ms` divides by it. */
+const SPEED_MIN_MS = 20;
+const SPEED_MAX_MS = 3000;
+const SPEED_DEFAULT_MS = 150;
+
+
 export function mountControls(card, model, handle, files, reserved) {
     const doc = card.root.ownerDocument;
     const off = [];
@@ -210,10 +218,40 @@ function mountFrameBar(doc, card, model, handle) {
     loopWrap.appendChild(loopBox);
     loopWrap.appendChild(doc.createTextNode(" loop"));
 
+    /* HOW FAST THE MOVIE PLAYS (§ 1.1, § 8.5).
+     *
+     * In MILLISECONDS PER FRAME, not frames per second, because that is the
+     * question a user actually has of a relaxation: "how long do I get to look
+     * at each step?" The handle takes fps, so the conversion happens here —
+     * once, at the one place the two vocabularies meet.
+     *
+     * The bounds are the contract's (§ 1.1: 20–3000 ms, default 150). The floor
+     * is not cosmetic: `fps = 1000 / ms` divides by this, so a blank or zero box
+     * would produce an infinite rate and a runaway timer. The old
+     * implementation had found that and clamped for it; the clamp is kept, and
+     * so is the reason.
+     */
+    const speedWrap = el("label", "mvf-speed");
+    speedWrap.title = "Playback speed (ms per frame)";
+    // THE CLASS MATTERS: molview.css styles `.mvf-speed-input` (its width, and
+    // the spinner-arrow removal). Built without it, the control appears and is
+    // simply unstyled -- which is the same trap as the panel's controls, and I
+    // walked into it once here before the browser check caught it.
+    const speedBox = el("input", "mvf-speed-input");
+    speedBox.type = "number";
+    speedBox.min = String(SPEED_MIN_MS);
+    speedBox.max = String(SPEED_MAX_MS);
+    speedBox.step = "20";
+    speedBox.value = String(SPEED_DEFAULT_MS);
+    speedBox.setAttribute("aria-label", "Playback speed, milliseconds per frame");
+    speedWrap.appendChild(speedBox);
+    speedWrap.appendChild(doc.createTextNode(" ms"));
+
     bar.appendChild(transport);
     bar.appendChild(slider);
     bar.appendChild(counter);
     bar.appendChild(loopWrap);
+    bar.appendChild(speedWrap);
 
     // Every move goes through the model's one write, whatever pressed it — so
     // the slider, the arrows and playback are indistinguishable downstream.
@@ -227,11 +265,29 @@ function mountFrameBar(doc, card, model, handle) {
     slider.addEventListener("input", (e) => {
         model.setCurrentFrame(Number(e.target.value) || 0);
     });
+    // ms per frame -> frames per second, clamped. A blank or zero box must not
+    // become an infinite rate (see the control's comment above).
+    const framesPerSecond = () => {
+        const ms = parseInt(speedBox.value, 10) || SPEED_DEFAULT_MS;
+        return 1000 / Math.min(SPEED_MAX_MS, Math.max(SPEED_MIN_MS, ms));
+    };
+
     playBtn.addEventListener("click", () => {
-        if (handle.isPlaying()) handle.pause(); else handle.play();
+        if (handle.isPlaying()) handle.pause();
+        else handle.play({ fps: framesPerSecond() });
         reflect();
     });
     loopBox.addEventListener("change", (e) => handle.setLoop(!!e.target.checked));
+    /* CHANGING THE SPEED WHILE IT PLAYS TAKES EFFECT NOW, by restarting the
+     * timer at the new rate. Waiting for the next press would make the box look
+     * broken on the one occasion a user is most likely to touch it — watching a
+     * trajectory go past too fast is exactly when you reach for it. */
+    speedBox.addEventListener("change", () => {
+        if (!handle.isPlaying()) return;
+        handle.pause();
+        handle.play({ fps: framesPerSecond() });
+        reflect();
+    });
 
     /* Read everything back from where it lives. Nothing here is cached: the bar
      * is a view of the model, and a remembered count is how a slider comes to
