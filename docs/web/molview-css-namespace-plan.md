@@ -286,35 +286,59 @@ shape as phase 2's filter-before-selection), and `mol-viewer-export-` covers bot
 live classes and 15 orphans — which is why `css_rename.py` grew an **exact-name
 restriction** alongside the prefix.
 
-## 6. The 19 orphans — two different decisions
+## 6. The orphans — resolved 2026-08-01
 
-The guard cannot go green until these are resolved, and they are not one
-question:
+✅ **Every `mol-viewer-*` name is now gone from `molview.css`, and
+`test_css_no_duplicate_selectors` is GREEN: 82 → 0.** MolView shares no class
+name with the retired embed, which is the decoupling the module's doctrine asked
+for and the plan only ever framed as a rename.
 
-**(a) Four are stale — nothing designs them any more.** `mol-viewer-card-header`,
-`mol-viewer-card-title`, `mol-viewer-info-line`, `mol-viewer-select`. MolView
-builds no card header, title or info line at all today (grep across
-`lib/molview/*.js` returns nothing). Same category as phase 1c's nine: delete.
+**(a) Stale chrome — deleted.** `mol-viewer-card-header`, `-card-title`,
+`-info-line`: the retired embed drew that card chrome, MolView builds none of it,
+and `molview.md` asks for none of it.
 
-**(b) Fifteen are an unbuilt export dialog.** `mol-viewer-export-modal-*` (9) and
-`mol-viewer-export-params-*` (6) describe a progress dialog with a bar, a phase
-line, a params form and confirm/cancel — a *designed* feature with no code, and
-one that [task #39](?doc=web/molview.md) is queued to build ("give MolView its own
-menu surface; Export moves there"). Deleting this CSS deletes a design that is
-still on the list; keeping it keeps the guard red. **This is a ship-or-drop call,
-not a cleanup.**
+**(b) The unbuilt export dialog — deleted** (user call, 2026-08-01).
+`mol-viewer-export-modal-*` (9) + `mol-viewer-export-params-*` (6), plus a
+keyframes and a reduced-motion rule. It was the retired embed's dialog.
+[Task #39](?doc=web/molview.md) reworks Export and designs its dialog fresh
+rather than inheriting markup from a module MolView is separating from.
 
-**(c) `lib/viewer/` — six files, ~350 KB — is unreferenced.** Deleting it is the
-honest fix for the duplicate guard, and it makes phase 5's rule enforceable. Two
-things ride along: **four tests read that dead file's source text and assert on
-it** (`test_ui_presence_data_independent_js.py`,
+**(c) The retired frame strip — deleted.** `.mol-viewer-frame-strip` and its four
+child rules. MolView builds its own transport bar (`molviewer-frames-*`, the one
+with the speed box). This removed `frame-counter` and `frame-slider` as a
+side-effect — **two of phase 4's global names, gone without a rename**, because
+they were only ever used inside the strip.
+
+**(d) `mol-viewer-select` — deleted, and it was NOT what it looked like.** It
+styled a Projection *dropdown*. Reading `stores.js:63` → `render-engine.js:732` →
+`3dmol-embed.js:608` and finding no control in `ui.js`, this was written up as a
+fourth unbuilt UI item. **That was wrong, and the user caught it: the control
+ships as a toggle button** — `ui.js:614` builds it with `.molviewer-rail-toggle`,
+labelled "Orthographic", `aria-pressed` synced at `:645`. The orphan was the
+*old* dropdown, superseded. One control, not two.
+
+> **Why the search missed it: `ui.js` contains NUL bytes**, so `grep` classifies
+> it as binary and reports **nothing at all** — no match, no error, exit 1. They
+> are deliberate sentinels (`const NEW_LABEL = "\0new"`, `names.join("\0")`)
+> written as literal NULs instead of escapes, and they have been there since
+> before this work. It is the only such file in the repo. Every `grep` over
+> `ui.js` this session was a silent false negative; the ownership scans in § 4
+> and phase 3 used Python and are unaffected. **Searching `ui.js` requires Python
+> or `grep -a` until the two literals become ` ` escapes** — a
+> behaviour-preserving change worth making, since the file is the module's whole
+> UI layer and is effectively unsearchable.
+
+**(e) `lib/viewer/` itself stays for now** (user call): its removal belongs to the
+VibrationView separation, [task #104](?doc=roadmap.md), not to a CSS phase. What
+this phase owed it was **decoupling, and that is done** — MolView no longer
+defines, emits or depends on a single one of its class names. Left for #104:
+delete the six files, and repoint the **four tests that read that dead file's
+source text and assert on it** (`test_ui_presence_data_independent_js.py`,
 `test_live_poll_invariants_audit.py`, plus `test_css_no_hex_literals.py` and
 `test_xss_audit.py` naming it in budgets/lists) — they pass today while pinning
-nothing that runs; and `test_results_folder_dispatch_e2e.py` identifies the
-trajectory inspector by `.mol-viewer-frame-strip`, a class no live code emits.
-This overlaps task #104 (MolView/VibrationView separation), most of which
-**already happened** — MolView took its own copy as `lib/molview/3dmol-embed.js`
-and VibrationView never followed.
+nothing that runs. One more: `test_results_folder_dispatch_e2e.py:34` still
+identifies the trajectory inspector by `.mol-viewer-frame-strip` in a comment,
+now a class nothing emits.
 
 **Phase 4 — the global names** (`card`, `is-*`, `viewer*`, `sr-only`). Smallest
 diff, largest blast radius: another page may rely on MolView's `.card` winning.
@@ -382,9 +406,9 @@ without one for an hour and the control appeared unstyled.
 |---|--:|--:|
 | 1 — retire the dead sheet ✅ | 0 | 82 (was: 82 + the frozen sheet's noise) |
 | 2 — the private areas ✅ | 77 | 82 — none of these collide |
-| 3 — the `mol-viewer-*` areas ✅ | 25 | **31**, all of them the § 6 orphans |
-| § 6 — the orphan decisions | 19 | **0** ← the guard goes green here |
-| 4 — the global names | 7 | 0, and `.card` / `.is-active` stop being shared with nine and five other sheets |
+| 3 — the `mol-viewer-*` areas ✅ | 25 | 31, all of them the § 6 orphans |
+| § 6 — the orphans, deleted ✅ | 19 | **0** ← the guard went green here |
+| 4 — the global names | 5 | 0, and `.card` / `.is-active` stop being shared with nine and five other sheets |
 
 Phase 3 was expected to be the one that mattered. It turned out the risk was
 imaginary and the *measurement* was the work: the guard now points at nineteen
