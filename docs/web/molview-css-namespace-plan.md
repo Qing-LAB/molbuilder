@@ -138,7 +138,7 @@ another module's JS), and who else **defines** it (another stylesheet):
 |---|--:|---|
 | **MolView's own** | **72** | created only by `ui.js` / `mount.js`, styled only here — rename freely |
 | **shared** with templates or other JS | **72** | the risky half: all the `mol-viewer-*` names the 3Dmol embed also uses, plus the global ones |
-| **orphaned** — styled, created by nobody | **15** | dead rules, and some of them are more interesting than that (was 17 — the speed box has since been built) |
+| **orphaned** — styled, created by nobody | **9** | ✅ cleared 2026-08-01. Was reported as 17; two were the speed box (since built) and **four were phantoms** — names that appear only inside comments recording their own earlier removal, which the first sweep counted as CSS |
 | collides but is ours | 1 | `mol-viewer-toggle` |
 
 **The phase-2 "private areas" label was unreliable and is now replaced by this
@@ -187,8 +187,27 @@ report unambiguous: 82 duplicates, one file pair.
 sizes, three font families and four control heights inside one card, because
 browsers do not inherit fonts into `button` / `input` / `select`. Now one of each.
 
-**Phase 1c — clear the orphans.** *Next, and it is the cheapest thing here.*
-Delete the eleven stale rules outright. For the three **unbuilt** ones, the CSS
+**Phase 1c — clear the orphans.** ✅ **Landed 2026-08-01.** Nine real rules
+deleted (79 lines).
+
+TWO THINGS THIS TAUGHT, both about measuring CSS with regexes:
+
+1. **Four of the seventeen were phantoms.** `mol-viewer-action`,
+   `mol-viewer-bare`, `selection-field-label` and `selection-isolate-toggle`
+   appear in the file only inside comments that record their own earlier
+   deletion. A sweep that does not strip comments first counts those as live
+   rules. (Usefully, the `selection-isolate-toggle` comment says the control
+   "moved to the viewer-controls bar" — so the rail switch IS the isolate
+   control, and § 8.5's claim of a second one in the panel was already stale.)
+2. **A deletion pass must strip comments before matching selectors.** The first
+   attempt did not, so a rule preceded by a comment naming an orphan was deleted
+   with it — `.mol-viewer-bg-row` (the View menu's background row) and
+   `.selection-assign-select` (the label dropdown) both went. Caught by diffing
+   the class list before and after, reverted, redone with offset-preserving
+   comment masking: nine deleted, **zero collateral**.
+
+The check that mattered was not the test suite — it stayed green through the
+damage — but the before/after class diff and the browser. For the three **unbuilt** ones, the CSS
 does not get deleted quietly — each is a decision: build the control, or drop it
 from the contract too. The speed box is the one worth building; the contract even
 specifies its range.

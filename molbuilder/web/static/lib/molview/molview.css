@@ -650,8 +650,6 @@
 }
 .molview-overlay[hidden] { display: none; }
 /* Corner placement modifiers (the factory picks one). */
-.molview-overlay--top-right    { top: var(--space-sm);    right: var(--space-sm); }
-.molview-overlay--top-left     { top: var(--space-sm);    left:  var(--space-sm); }
 .molview-overlay--bottom-right { bottom: var(--space-sm); right: var(--space-sm); }
 .molview-overlay--bottom-left  { bottom: var(--space-sm); left:  var(--space-sm); }
 /* Semantic tint modifiers (border + surface), consistent with the palette's severity tokens. */
@@ -867,30 +865,6 @@
 .selection-add-filter-row {
     margin: 0.5rem 0;
 }
-.selection-add-btn-primary {
-    display: inline-block;
-    padding: 0.18rem 0.5rem;
-    background: var(--sp-accent);
-    color: var(--ps-selected-fg);
-    border: 1px solid var(--sp-accent-strong);
-    border-radius: 3px;
-    font: 600 11px/1.15 system-ui, sans-serif;
-    letter-spacing: 0.02em;
-    cursor: pointer;
-    transition: background 0.12s, border-color 0.12s, transform 0.08s;
-}
-.selection-add-btn-primary:hover {
-    background: var(--sp-accent-strong);
-    border-color: var(--sp-accent-light);
-}
-.selection-add-btn-primary:active {
-    transform: translateY(1px);
-}
-.selection-add-btn-primary:focus-visible {
-    outline: 2px solid var(--sp-accent-light);
-    outline-offset: 1px;
-}
-
 .selection-apply-filter-btn {
     flex: 1;
     padding: 0.18rem 0.5rem;
@@ -1032,7 +1006,6 @@
 .selection-atom-table .col-check { width: 1.6em; }
 .selection-atom-table .col-idx   { width: 3em;   text-align: right; }
 .selection-atom-table .col-el    { width: 2.5em; font-weight: 600; }
-.selection-atom-table .col-name  { width: 4em; }
 .selection-atom-table .col-res   { width: 4em; color: var(--ps-fg-dim); }
 
 .selection-atom-table .col-labels {
@@ -1046,15 +1019,6 @@
     cursor: not-allowed;
     opacity: 0.55;
 }
-
-.selection-list-empty {
-    margin: 0;
-    padding: 1rem;
-    color: var(--ps-fg-dim);
-    font: italic 13px/1.3 system-ui, sans-serif;
-    text-align: center;
-}
-
 /* Label tags inside the atom list.  Tag = pill containing the label
  * text + a small × button to remove it.  Clicking × posts a save
  * with the remaining members of that region (i.e. removes just this
@@ -1076,12 +1040,6 @@
     color: var(--sp-include-fg);
     border: 1px solid var(--sp-include-bg);
 }
-.tag-frozen {
-    background: var(--sp-exclude-bg);
-    color: var(--sp-exclude-fg);
-    border: 1px solid var(--sp-exclude-border);
-}
-
 /* ====================================================================
  * RESERVED LABELS.
  *
@@ -1167,12 +1125,6 @@
     flex-wrap: wrap;
     row-gap: 0.4rem;
 }
-.selection-actions-left {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-}
-
 /* 2026-06-12: "Show selected only" toggle — hides non-selected
  * atoms in the 3D viewer via opacity:0 overlays.  Aligned to the
  * Clear button's baseline; the inline checkbox + label form a
@@ -1535,42 +1487,11 @@
  * a subtle category colour: grey for xyz, blue for distance,
  * orange for angle (matches the historical Watch-tab pick
  * highlight). */
-
-.selection-measurement-overlay {
-    position: absolute;
-    bottom: 0.6rem;
-    right: 0.6rem;
-    z-index: 5;
-    max-width: calc(100% - 1.2rem);
-    padding: 0.35rem 0.6rem;
-    background: rgba(15, 17, 21, 0.78);
-    color: var(--text-primary);
-    border: 1px solid rgba(74, 158, 255, 0.45);
-    border-left-width: 3px;
-    border-radius: 4px;
-    font: 13px/1.4 ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-    font-variant-numeric: tabular-nums;
-    pointer-events: none;
-    user-select: text;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-}
-.selection-measurement-overlay[hidden] { display: none; }
-.selection-measurement-overlay[data-kind="xyz"]      { border-left-color: var(--text-secondary); }
-.selection-measurement-overlay[data-kind="distance"] { border-left-color: var(--accent); }
-.selection-measurement-overlay[data-kind="angle"]    { border-left-color: #fb923c; /* exempt: distinct orange for angle measurement */ }
-
 /* Trajectory-inspector Inspect panel: the chip lives inline in
  * the panel body (no canvas to overlay), so static positioning
  * with normal margin + a tighter border treatment reads as a
  * regular panel readout.  Pointer-events back on so the text
  * stays selectable without the floating-chip caveat. */
-.ctab-panel .selection-measurement-overlay {
-    position: static;
-    margin: 0.5rem 0 0;
-    box-shadow: none;
-    pointer-events: auto;
-}
-
 /* ==========================================================================
    The 3D window's own chrome (was lib/viewer/mol-viewer-embed.css)
    ========================================================================== */

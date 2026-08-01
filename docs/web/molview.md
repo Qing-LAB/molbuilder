@@ -1001,6 +1001,13 @@ a fact of its own, and none reaches the drawing directly.
 |---|---|---|
 | **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4) | the displayed frame, through the one write everyone uses; play, pause and loop, through the handle (§ 9.2) |
 | **the rail** — atom numbers, forces, cell, axes, isolate, Reset (§ 1.1) | `selection`, for the lit state of each switch | the five switches to `selection`; **Reset** writes nothing — it re-fits the camera through the handle, the one thing on this card that is neither data nor a switch (§ 9.6) |
+
+> **Isolate has one control, on the rail.** This section used to add that it
+> *"is the one switch with a control of its own ('Show selected only')"* in the
+> panel. There is no such control and has not been for some time — the
+> stylesheet still carried a rule for it, whose own comment records it moving to
+> the rail. A second control for one switch is what § 5.2 forbids anyway; the
+> claim is dropped rather than the rule rebuilt.
 | **the View menu** — style, radius, background, projection | `view` | all four to `view` |
 | **the panel** | one snapshot of `selection` (§ 8.4) | the selection, the switches, the filter rows, and labels |
 | **the measurement readout** | which atoms are picked **and in what order**, from `selection`; their coordinates from the **master copy** at the current frame | nothing |
