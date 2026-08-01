@@ -80,3 +80,76 @@ def test_bad_inputs_are_400_not_500(web):
     rt = web.post("/api/structure/save",
                   json={"path": "../secret.xyz", "structure": _browser_blob()})
     assert rt.status_code == 400
+
+
+# --------------------------------------------------------------------- #
+#  A range of frames -- one read, both destinations                      #
+# --------------------------------------------------------------------- #
+
+_ENV = {
+    "elements": ["Au", "Au"],
+    "positions": [[0, 0, 0], [2, 2, 0]],
+    "metadata": {"regions": {"bridge": [0]},
+                 "cell": [[8, 0, 0], [0, 8, 0], [0, 0, 8]],
+                 "cell_origin": None, "axis_kind": None, "vacuum": None},
+}
+_FRAMES = [[[0, 0, 0], [2, 2, 0]],
+           [[1, 0, 0], [3, 2, 0]],
+           [[2, 0, 0], [4, 2, 0]]]
+
+
+def test_saving_a_range_and_downloading_it_produce_identical_bytes(web):
+    """molview.md § 11.3: "Save-to-project and Download produce identical bytes."
+
+    That is a claim about CONSTRUCTION, not a promise two code paths keep: both
+    go through ``StructureCodec.pair``, so the only way they could differ is if
+    one of them stopped doing so. This checks the bytes rather than the wiring.
+
+    § 11.3 also fixes what a range produces: one extended-XYZ document with a
+    block per frame, and **one** sidecar -- the labels and the cell are the
+    structure's shared identity, so writing them per frame would be N chances to
+    disagree.
+    """
+    path = str(web._root / "run.extxyz")
+    downloaded = web.post("/api/structure/export",
+                          json={"structure": _ENV, "frames": _FRAMES}).get_json()
+    saved = web.post("/api/structure/save",
+                     json={"structure": _ENV, "frames": _FRAMES,
+                           "path": path}).get_json()
+    assert saved["ok"] is True, saved
+
+    on_disk = (web._root / "run.extxyz").read_text(encoding="utf-8")
+    assert on_disk == downloaded["xyz"], (
+        "the project save and the download produced different bytes")
+    assert on_disk.count("Lattice=") == 3, "one block per frame, each with the cell"
+    assert downloaded["frames"] == 3
+
+    written = sorted(p.name for p in web._root.iterdir())
+    assert written == ["run.extxyz", "run.molstruct.json"], (
+        f"a range must write ONE sidecar beside the one document: {written}")
+    assert json.loads((web._root / "run.molstruct.json").read_text()
+                      )["regions"] == {"bridge": [0]}
+
+
+def test_a_frame_that_does_not_carry_these_atoms_is_refused_at_both_doors(web):
+    """The same-atoms rule reaches the wire: a frame of the wrong length is a
+    400 at each door rather than a half-written file or a torn document."""
+    for route, extra in (("/api/structure/export", {}),
+                         ("/api/structure/save",
+                          {"path": str(web._root / "x.extxyz")})):
+        r = web.post(route, json={"structure": _ENV,
+                                  "frames": [[[0, 0, 0]]], **extra})
+        assert r.status_code == 400, (route, r.get_json())
+        assert "atoms" in r.get_json()["error"]
+    assert not list(web._root.iterdir()), "a refused save left a file behind"
+
+
+def test_one_frame_is_the_request_it_always_was(web):
+    """`frames` is ADDITIVE. Omitted, the door writes the plain `.xyz` it always
+    wrote -- so a caller that knows nothing about ranges keeps working."""
+    path = str(web._root / "one.xyz")
+    assert web.post("/api/structure/save",
+                    json={"structure": _ENV, "path": path}).get_json()["ok"]
+    text = (web._root / "one.xyz").read_text(encoding="utf-8")
+    assert text.count("Lattice=") == 0, "a single frame stays a plain .xyz"
+    assert text.splitlines()[0].strip() == "2"

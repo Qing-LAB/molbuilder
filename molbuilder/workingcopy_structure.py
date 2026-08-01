@@ -101,7 +101,8 @@ class StructureCodec:
         return struct
 
     # ---- THE ONE GENERATOR: a Structure -> the pair --------------------- #
-    def pair(self, struct: Structure) -> "StructurePair":
+    def pair(self, struct: Structure, *,
+             frames: "Sequence | None" = None) -> "StructurePair":
         """A Structure as the two things that represent it: the coordinate
         document, and the sidecar payload beside it.
 
@@ -121,7 +122,19 @@ class StructureCodec:
         The payload is still built, because a blob is a round trip rather than a
         file and its reader expects one.
         """
-        document = struct.to_xyz()
+        # ONE FRAME OR MANY, decided by what was handed over and by nothing
+        # else.  A trajectory needs extended XYZ, because a plain .xyz has
+        # nowhere to put a cell and would lose the box on every frame; a single
+        # structure keeps the plain .xyz every code reads.  The caller says
+        # WHICH frames (molview.md § 11.3's range); the format follows from how
+        # many there are, and is never a second question.
+        #
+        # THE SIDECAR IS BUILT ONCE EITHER WAY.  The labels and the cell are the
+        # structure's shared identity -- the same for frame 0 and frame 400 --
+        # so there is one .json beside a trajectory, not one per frame.  Its
+        # hash pins it to the document actually written, whichever that is.
+        document = (struct.to_extxyz(frames=frames) if frames
+                    else struct.to_xyz())
         meta = struct.metadata_to_dict()
         payload = molstruct.to_dict(
             meta,
@@ -132,11 +145,12 @@ class StructureCodec:
                              keep_sidecar=not _metadata_is_default(meta))
 
     # ---- the durable files: <stem>.xyz + <stem>.molstruct.json ------- #
-    def files(self, struct: Structure, target) -> List[Tuple[Path, bytes]]:
+    def files(self, struct: Structure, target, *,
+              frames: "Sequence | None" = None) -> List[Tuple[Path, bytes]]:
         """The pair as bytes, with the paths they belong at -- what :meth:`write`
         writes, without writing it."""
         target = Path(target)
-        made = self.pair(struct)
+        made = self.pair(struct, frames=frames)
         out = [(target, made.document.encode("utf-8"))]
         if made.keep_sidecar:
             out.append((molstruct.sidecar_path_for(target),
@@ -144,7 +158,8 @@ class StructureCodec:
         return out
 
     # ---- write the pair to disk, atomically -------------------------- #
-    def write(self, struct: Structure, target, *, atomic: bool = True) -> Path:
+    def write(self, struct: Structure, target, *, atomic: bool = True,
+              frames: "Sequence | None" = None) -> Path:
         """Write ``struct`` to the ``<stem>.xyz`` + ``<stem>.molstruct.json``
         pair on disk and return the geometry path.  THE paired-file door
         (structure-authority.md § 3.3): owns the pairing rule + the
@@ -159,7 +174,7 @@ class StructureCodec:
         disagree (``no .json == empty metadata``, matching :meth:`load`)."""
         target = Path(target)
         target.parent.mkdir(parents=True, exist_ok=True)
-        made = self.pair(struct)                 # the ONE generator
+        made = self.pair(struct, frames=frames)  # the ONE generator
         xyz_text = made.document
         sidecar_path = molstruct.sidecar_path_for(target)
 

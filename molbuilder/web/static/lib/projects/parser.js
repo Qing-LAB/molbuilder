@@ -115,7 +115,15 @@ export async function saveMolecule(path, opts) {
   if (!model || typeof model.exportFile !== "function") {
     return { ok: false, error: "projects.parser.saveMolecule: molview.data.exportFile unavailable" };
   }
-  const file = model.exportFile();   // model -> {name, structure}; null = empty OR desync
+  /* THE RANGE GOES STRAIGHT THROUGH (molview.md § 11.3). `saveMolecule` does
+   * not decide which frames leave -- the caller does, the model resolves it
+   * against what exists, and this hands the answer on. Omitted, the model falls
+   * back to the displayed frame, which is what this door has always saved.
+   *
+   * That is the whole benefit of the range living on `exportFile`: saving a
+   * trajectory into the project and downloading one are the SAME read, so the
+   * two destinations cannot come to disagree about what "the trajectory" was. */
+  const file = model.exportFile(opts.range);  // {name, structure, frames?}; null = empty OR desync
   if (!file) {
     return { ok: false, error: (model.isEmpty && model.isEmpty())
       ? "save: workspace has no data"
@@ -131,8 +139,12 @@ export async function saveMolecule(path, opts) {
     const resp = await window.fetch("/api/structure/save", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ path: path, structure: file.structure,
-                               overwrite: !!opts.overwrite }),
+      // `frames` rides BESIDE the envelope, present only for a range -- so a
+      // one-frame save is byte-for-byte the request it always was.
+      body:    JSON.stringify(Object.assign(
+                 { path: path, structure: file.structure,
+                   overwrite: !!opts.overwrite },
+                 file.frames ? { frames: file.frames } : {})),
     });
     env = await resp.json().catch(function () {
       return { ok: false, error: "save: malformed server response" };

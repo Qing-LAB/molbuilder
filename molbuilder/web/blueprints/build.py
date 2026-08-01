@@ -746,8 +746,14 @@ def api_structure_save():
     if resolved.exists() and not overwrite:
         return jsonify({"ok": False, "needsOverwrite": True,
                         "error": f"file already exists: {path}"}), 409
+    frames = body.get("frames")
+    if frames is not None and not isinstance(frames, list):
+        return jsonify({"ok": False,
+                        "error": "'frames' must be a list of coordinate lists"}), 400
     try:
-        StructureCodec().write(struct, resolved)
+        StructureCodec().write(struct, resolved, frames=frames)
+    except ValueError as exc:          # a frame that does not carry these atoms
+        return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- disk / permission -> 500
         return jsonify({"ok": False, "error": f"could not save {path}: {exc}"}), 500
     return jsonify({"ok": True, "path": path})
@@ -791,10 +797,23 @@ def api_structure_export():
     # save would have written -- healed identically, not merely similarly.
     from molbuilder.periodicity_gate import validate_and_heal
     struct, notices = validate_and_heal(struct)
-    made = StructureCodec().pair(struct)
+    # THE FRAMES, when a range was asked for (molview.md § 11.3).  They ride
+    # BESIDE the envelope rather than inside it -- the same shape
+    # ``/api/build/load`` takes on the way in: one structure carrying the
+    # identity and the metadata, plus the coordinates of the frames wanted.
+    # Absent, this is the single-frame export it always was.
+    frames = body.get("frames")
+    if frames is not None and not isinstance(frames, list):
+        return jsonify({"ok": False,
+                        "error": "'frames' must be a list of coordinate lists"}), 400
+    try:
+        made = StructureCodec().pair(struct, frames=frames)
+    except ValueError as exc:          # a frame that does not carry these atoms
+        return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True,
                     "xyz": made.document,
                     "sidecar": made.sidecar if made.keep_sidecar else None,
+                    "frames": len(frames) if frames else 1,
                     "notices": notices})
 
 

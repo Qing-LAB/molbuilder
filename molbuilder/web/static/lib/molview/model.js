@@ -410,12 +410,21 @@ export function createModel(opts) {
      * The SAME producer an edit uses. There were two, and two producers of one
      * fact is how an export came to write a server-request payload into a
      * `.molstruct.json`. */
-    const readData = () => structureForServer(structure,
-                                              frames ? frames[frameIndex] : null);
+    const readData = (at) => structureForServer(
+        structure, frames ? frames[at != null ? at : frameIndex] : null);
 
     const exportFile = createWriteOut({
-        readData:   readData,
-        readSource: () => sourceName,
+        readData:     readData,
+        readSource:   () => sourceName,
+        // What the range is resolved against, read from where each lives
+        // (§ 6.4) rather than passed around.
+        frameCount:   () => (Array.isArray(frames) ? frames.length : 0),
+        currentFrame: () => frameIndex,
+        // COPIED, like every read (§ 9.3): these are handed to a caller, and a
+        // payload holding the master copy's own arrays is a write disguised as
+        // a read.
+        readFrames:   (from, to) => frames.slice(from, to + 1)
+            .map((f) => f.map((p) => [p[0], p[1], p[2]])),
     });
 
     const applyOp = createEdits({

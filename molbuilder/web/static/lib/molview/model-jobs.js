@@ -330,13 +330,43 @@ function requestBodyFor(input) {
  * It is not a disk write and not the session save.
  */
 export function createWriteOut(handed) {
-    return function exportFile() {
-        const structure = handed.readData();
+    /**
+     * @param {object} [range]  `{from, to}` — inclusive, 0-based. Omitted, or
+     *   with either end missing, it falls back to THE DISPLAYED FRAME, which is
+     *   what makes § 5.1 true where a user acts: scrub to frame 40, export, and
+     *   frame 40 is what leaves. Out-of-range ends are resolved against what
+     *   exists rather than taken on trust (§ 6.4's rule for the frame, applied
+     *   to both ends of a range), and a reversed range is read the way it was
+     *   plainly meant rather than refused.
+     *
+     * @returns {object|null} `{name, structure}` for one frame; `{name,
+     *   structure, frames}` when the range covers more. `frames` is ADDITIVE —
+     *   a one-frame export is byte-for-byte the request it always was, and a
+     *   consumer that does not know about ranges keeps working.
+     */
+    return function exportFile(range) {
+        const count = handed.frameCount();
+        if (!count) return null;
+
+        const clamp = (v) => Math.min(Math.max(0, Math.floor(v)), count - 1);
+        const asked = range || {};
+        const first = clamp(asked.from != null ? asked.from : handed.currentFrame());
+        const last  = clamp(asked.to   != null ? asked.to   : first);
+        const lo = Math.min(first, last);
+        const hi = Math.max(first, last);
+
+        /* THE STRUCTURE IS THE RANGE'S FIRST FRAME, always. So the envelope is
+         * the same shape at every door whatever the range, and the extra frames
+         * ride BESIDE it — the same shape `installMolecule` takes on the way in
+         * (§ 9.3), which is what makes one door serve both directions. */
+        const structure = handed.readData(lo);
         if (!structure) return null;
-        return {
+        const out = {
             name:      handed.readSource ? handed.readSource() : null,
             structure: structure,
         };
+        if (hi > lo) out.frames = handed.readFrames(lo, hi);
+        return out;
     };
 }
 
