@@ -355,6 +355,69 @@ def test_the_cell_page_and_the_drawing_cannot_describe_different_structures():
     )
 
 
+def test_an_atom_carries_a_label_once_however_often_it_is_applied():
+    """§ 6.2: an atom's facts are "the labels it carries" — a set of names.
+    Carrying the same name twice is not a state the model may hold.
+
+    Two halves, because they fail differently:
+
+    **Applying cannot create one.** Assigning a label an atom already has, twice
+    over, leaves one — the write strips every occurrence of the name before
+    adding one back, so it is impossible by construction rather than by a check
+    that could be forgotten at a fourth call site.
+
+    **An arriving one is dropped.** The count TRAVELS: `groupByLabel` turns a
+    name an atom carries twice into that atom's index listed twice, and that goes
+    out in `regions`, into the sidecar, and into the generated input — where
+    `frozen_atoms: [0, 0]` is the same atom held still twice. The writing side
+    cannot produce it, so the only way in is a payload that already had it.
+    """
+    out = _run(
+        """
+        const clean = await loaded();
+        clean.selection.adopt([0]);
+        clean.selection.writeLabel("bridge", "replace");
+        clean.selection.writeLabel("bridge", "add");      // it already has it
+        clean.selection.writeLabel("bridge", "add");      // and again
+        clean.selection.writeLabel("bridge", "replace");  // and replace with itself
+        const afterRepeats = {
+            labels:  clean.getAtoms()[0].labels,
+            regions: clean.getRegions(),
+        };
+
+        // A payload that arrives already carrying the name twice.
+        globalThis.__nextPayload = globalThis.__payload([
+            globalThis.__atomRow(0, "C", 0, { regions: ["bridge", "bridge"] }),
+            globalThis.__atomRow(1, "O", 1, { regions: [] }),
+        ]);
+        const m = createModel({});
+        await m.installMolecule({ text: "x", filename: "x.xyz" });
+
+        console.log(JSON.stringify({
+            afterRepeats,
+            arrived: m.getAtoms()[0].labels,
+            grouped: m.getRegions(),
+            leaving: m.exportFile().structure.metadata.regions,
+        }));
+        """
+    )
+    assert out["afterRepeats"]["labels"] == ["bridge"], (
+        "applying a label an atom already carries added it again: "
+        f"{out['afterRepeats']['labels']}"
+    )
+    assert out["afterRepeats"]["regions"] == {"bridge": [0]}
+    assert out["arrived"] == ["bridge"], (
+        f"a repeated name survived the way in: {out['arrived']}"
+    )
+    assert out["grouped"] == {"bridge": [0]}, (
+        f"one atom was listed twice under one label: {out['grouped']}"
+    )
+    assert out["leaving"] == {"bridge": [0]}, (
+        "the duplicate reached the wire, so it would reach the sidecar and the "
+        f"generated input: {out['leaving']}"
+    )
+
+
 def test_the_reserved_label_needs_no_boundary_translation():
     """§ 6.6: MolView's end is "one mechanism, no special case".
 

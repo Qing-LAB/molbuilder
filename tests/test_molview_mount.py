@@ -1214,6 +1214,81 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
     )
 
 
+def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
+    """A label already on the structure is something the structure can be asked
+    for, so it is offered rather than retyped — and a typo while retyping makes a
+    SECOND label that looks like the first, which is a whole extra region as far
+    as anything downstream is concerned.
+
+    The list is read from `getRegions` — the same one walk everything else reads
+    (§ 6.6) — and never kept (§ 5.2), so it follows the structure with nothing to
+    keep in step.
+    """
+    out = _run(
+        """
+        globalThis.__nextAtoms = [
+            { index: 0, element: "C", x: 0, y: 0, z: 0,
+              regions: ["bridge", "frozen_atoms"] },
+            { index: 1, element: "O", x: 1, y: 0, z: 0, regions: ["bridge"] },
+        ];
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const card = host.querySelector(".molview-card");
+        const chooser = card.querySelector(".selection-assign-select");
+        const box = card.querySelector(".selection-new-label");
+        const options = () => chooser.children.map(o => o.value);
+
+        const offered = options();
+        // Choosing an existing one hides the typing box; it is not needed.
+        chooser.value = "bridge";
+        chooser.dispatch("change", { target: chooser });
+        const boxHiddenForExisting = box.hidden;
+
+        // Applying uses the CHOSEN name, with nothing typed anywhere.
+        viewer.data.selection.adopt([1]);
+        card.querySelectorAll(".selection-assign-btn")[0].click();
+        const afterAssign = viewer.data.getRegions();
+
+        // A brand-new name still needs the box, so choosing "+ new" shows it.
+        chooser.value = chooser.children[chooser.children.length - 1].value;
+        chooser.dispatch("change", { target: chooser });
+        const boxShownForNew = !box.hidden;
+        box.value = "interface";
+        viewer.data.selection.adopt([0]);
+        card.querySelectorAll(".selection-assign-btn")[0].click();
+
+        console.log(JSON.stringify({
+            offered, boxHiddenForExisting, boxShownForNew,
+            afterAssign,
+            nowOffered: options(),
+            regions: viewer.data.getRegions(),
+        }));
+        """
+    )
+    assert out["offered"][:2] == ["bridge", "frozen_atoms"], (
+        "every label the structure carries must be offered, the reserved one "
+        f"among them — it is an ordinary label (§ 6.6): {out['offered']}"
+    )
+    assert len(out["offered"]) == 3, (
+        f"the labels in play, plus a way to name a new one: {out['offered']}"
+    )
+    assert out["boxHiddenForExisting"] is True, (
+        "the typing box is in the way once an existing label is chosen"
+    )
+    assert out["afterAssign"]["bridge"] == [1], (
+        "applying used the chosen label with nothing typed — and replace means "
+        f"the label's set BECOMES the selection (§ 9.5): {out['afterAssign']}"
+    )
+    assert out["boxShownForNew"] is True, "a new name still needs somewhere to type"
+    assert out["regions"]["interface"] == [0], (
+        f"the typed name was not applied: {out['regions']}"
+    )
+    assert "interface" in out["nowOffered"], (
+        "a label just created is not offered next time, so it would have to be "
+        f"retyped after all: {out['nowOffered']}"
+    )
+
+
 def test_a_filter_row_is_added_typed_and_removed_from_the_panel():
     """§ 8.4: "a user adds a row, types in it, changes its kind, removes it" —
     each its own change, because that is what the controls are.

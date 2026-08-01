@@ -1009,15 +1009,69 @@ function mountPanel(doc, card, model) {
     // choice — a verb wearing the wrong one would say the wrong thing.
     const assign = el("div", "selection-assign");
 
+    /* THE TARGET: pick a label the structure already has, or type a new one.
+     *
+     * Typing a name that already exists is retyping something the structure can
+     * simply be asked for — and a typo makes a SECOND label that looks like the
+     * first, which is a whole extra region as far as anything downstream is
+     * concerned. So the labels in play are offered, and the free-text box is
+     * what you reach for only when none of them is what you meant.
+     *
+     * The list is read from the structure, never kept (§ 5.2): it is the names
+     * `getRegions` groups by, which is the same one walk everything else reads
+     * (§ 6.6). A label that stops being carried by any atom leaves the list on
+     * its own, with nothing to keep in step.
+     */
+    const NEW_LABEL = " new";      // not a name any label could have
     const targetRow = el("div", "selection-target-row");
+    const chooser = el("select", "selection-assign-select");
+    chooser.setAttribute("aria-label", "Label to apply");
     const target = el("input", "selection-new-label");
     target.type = "text";
-    target.placeholder = "Label name";
+    target.placeholder = "New label name";
+    targetRow.appendChild(chooser);
     targetRow.appendChild(target);
     assign.appendChild(targetRow);
 
+    // The free-text box is only in the way when an existing label is chosen.
+    const showNewBox = () => { target.hidden = chooser.value !== NEW_LABEL; };
+    chooser.addEventListener("change", showNewBox);
+
+    function drawTargets() {
+        const regions = model.getRegions() || {};
+        const names = Object.keys(regions).sort();
+        const chosen = chooser.value;
+        chooser.textContent = "";
+        for (const name of names) {
+            const option = doc.createElement("option");
+            option.value = name;
+            option.textContent = name;
+            chooser.appendChild(option);
+        }
+        const fresh = doc.createElement("option");
+        fresh.value = NEW_LABEL;
+        fresh.textContent = "+ new label…";
+        chooser.appendChild(fresh);
+
+        /* KEEP WHAT WAS CHOSEN. If it is gone — the last atom carrying it just
+         * had it taken off — fall back to the new-label box WITH THE NAME IN IT,
+         * rather than silently landing on whichever label happens to sort first.
+         * Quietly retargeting the next Assign is how a user labels the wrong
+         * atoms and is never told. */
+        if (chosen && chosen !== NEW_LABEL && names.indexOf(chosen) < 0) {
+            chooser.value = NEW_LABEL;
+            if (!target.value) target.value = chosen;
+        } else {
+            chooser.value = chosen || (names.length ? names[0] : NEW_LABEL);
+        }
+        showNewBox();
+    }
+
     const verbRow = el("div", "selection-verb-row");
-    const named = () => String(target.value || "").trim();
+    // What the three verbs act on: the chosen label, or the typed one.
+    const named = () => (chooser.value === NEW_LABEL
+        ? String(target.value || "").trim()
+        : chooser.value);
     for (const [label, className, verb] of [
         ["Assign",   "selection-assign-btn",        "replace"],
         ["+ Add",    "selection-add-target-btn",    "add"],
@@ -1057,6 +1111,7 @@ function mountPanel(doc, card, model) {
 
         drawList(state);
         drawRows(state);
+        drawTargets();
         // A read-only viewer does not show the controls the gate would swallow.
         assign.hidden = model.mode === "readonly";
     }

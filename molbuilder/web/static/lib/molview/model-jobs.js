@@ -73,7 +73,20 @@ export function structureFromServer(payload) {
 
     const elements = atoms.map((a) => a.element);
     const annotations = atoms.map((a, i) => {
-        const labels = Array.isArray(a.regions) ? a.regions.slice() : [];
+        /* THE LABELS AN ATOM CARRIES ARE A SET (§ 6.2). Carrying the same name
+         * twice is not a state the model may hold, so the duplicate is dropped
+         * HERE — at the one place the server's payload becomes this module's
+         * shape (§ 11.1) — rather than left for every reader to cope with.
+         *
+         * It matters because the count travels: `groupByLabel` turns a label an
+         * atom carries twice into that atom's index listed twice, which goes
+         * out in `regions`, into the sidecar, and into the generated input. A
+         * `frozen_atoms: [0, 0]` reaching a constraints block is the same atom
+         * held still twice. The writing side cannot produce this — it strips
+         * every occurrence before adding one back — so the only way in is a
+         * payload that already had it. */
+        const labels = Array.isArray(a.regions)
+            ? Array.from(new Set(a.regions)) : [];
         const residue = a.residue_name != null
             ? a.residue_name
             : (residueNames ? residueNames[i] : null);
@@ -145,7 +158,12 @@ export function effectiveCell(periodicity) {
 export function groupByLabel(annotations) {
     const out = {};
     (annotations || []).forEach((facts, i) => {
-        for (const name of (facts.labels || [])) {
+        // An atom appears at most once under a label, whatever its own list
+        // says. The inbound translation already drops a repeated name, and this
+        // is the belt on the other side: every outbound `regions` and every
+        // answer `getRegions` gives is read from this one walk, so a count that
+        // could not be right has nowhere to enter.
+        for (const name of new Set(facts.labels || [])) {
             (out[name] = out[name] || []).push(i);
         }
     });
