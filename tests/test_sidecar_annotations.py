@@ -74,14 +74,19 @@ def test_cell_origin_dropped_without_a_cell():
     assert d["cell_origin"] is None
 
 
-def test_v3_sidecar_back_reads_with_empty_annotations(tmp_path):
-    """`annotations` is an OPTIONAL key -- a file that carries no extensible
-    channels loads with an empty set, labels intact. (This used to be phrased as
-    "a v3 file still loads"; there is one readable schema now, so what it
-    actually pins is that the key is optional, not that an old file is coerced.)"""
+def test_the_annotations_key_is_optional(tmp_path):
+    """A sidecar carrying no extensible channels loads with an empty set, its
+    labels intact.
+
+    RETIRED WHAT THIS USED TO BE (2026-07-31): it was
+    `test_v3_sidecar_back_reads_with_empty_annotations`, and it existed to prove
+    an OLD file still loaded. It does not -- there is one readable schema and
+    anything else is refused. The property underneath was never about v3
+    though: `annotations` is simply an optional key, and that is what is pinned
+    here."""
     p = tmp_path / "old.molstruct.json"
     p.write_text(json.dumps({
-        "schema_version": 3, "n_atoms_total": 3, "structure_hash": _hash(),
+        "schema_version": 7, "n_atoms_total": 3, "structure_hash": _hash(),
         "regions": {"bridge": [1], "frozen_atoms": [0]},
         "created_by": "old", "created_at": "2026-01-01T00:00:00Z",
     }))
@@ -90,8 +95,7 @@ def test_v3_sidecar_back_reads_with_empty_annotations(tmp_path):
                      positions=np.zeros((3, 3)))
     molstruct.apply_to_structure(back, loaded)
     assert back.annotations == {}                        # key absent -> empty
-    # A v3 file kept the reserved label in its own key; it lands in the label
-    # store on read, which is where the rest of the application looks for it.
+    # The reserved label sits in the one store with the others.
     assert back.regions == {"bridge": [1], "frozen_atoms": [0]}
     assert back.frozen_atoms == [0]
 
@@ -100,7 +104,7 @@ def test_load_rejects_out_of_range_annotation(tmp_path):
     import pytest
     p = tmp_path / "bad.molstruct.json"
     p.write_text(json.dumps({
-        "schema_version": 3, "n_atoms_total": 2, "structure_hash": _hash(),
+        "schema_version": 7, "n_atoms_total": 2, "structure_hash": _hash(),
         "annotations": {"x": {"kind": "tag", "data": [5]}},   # idx 5 >= 2
     }))
     # Annotation indices are validated against n_atoms_total AT LOAD

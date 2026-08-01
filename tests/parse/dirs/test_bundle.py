@@ -59,28 +59,76 @@ def test_bundle_can_parse_rejects_empty_dir(tmp_path: Path):
     assert not BundleDirParser.can_parse(tmp_path)
 
 
-# Real-fixture parse ------------------------------------------------ #
+# Constructed round trip --------------------------------------------- #
+#
+# NO EXTERNAL FIXTURE.  This used to parse projects/BDT/optimization/
+# TJ-BDT-Au111 -- a real run directory -- and assert against numbers captured
+# from whatever the code produced the day it was written.  That is an
+# unversioned assumption dressed as a test: nothing re-checks the directory,
+# and when the metadata format moved it went stale.  It then failed for a
+# reason ("your fixture predates the label store") that looks exactly like the
+# reason it must not be used for ("your parser is broken"), and telling those
+# apart cost a bisect.
+#
+# So the run directory is BUILT: render the real generator's output for a
+# junction defined in source, and read it back through the real parser.  What
+# it proves is stronger than the old test's numbers -- that the emit and parse
+# halves of the bundle API agree TODAY.
 
 
-def test_parse_tj_bdt_au111_returns_bundleresult():
-    """End-to-end: a project dir with script-contract atom-metadata
-    + a .XV yields a complete BundleResult."""
-    result = BundleDirParser.parse(_need(TJ_DIR))
+def _run_dir(tmp_path: Path) -> Path:
+    """A SIESTA run directory, generated the way the application generates one."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.input import render_fdf
+    from support.junction import build_junction
+
+    run = tmp_path / "junction-run"
+    run.mkdir()
+    (run / "junction.fdf").write_text(
+        render_fdf(build_junction(), SiestaConfig(system_label="junction")),
+        encoding="utf-8")
+    return run
+
+
+def test_parse_returns_a_bundleresult_carrying_what_the_generator_wrote(tmp_path):
+    """End-to-end over the emit/parse seam: a generated script yields a
+    complete BundleResult, with the label store intact."""
+    from support.junction import N_ATOMS, frozen, regions
+
+    result = BundleDirParser.parse(_run_dir(tmp_path))
+
     assert isinstance(result, BundleResult)
     assert result.result_kind == "bundle"
     assert result.parser_name == "bundle-dir"
-    # Structure populated from the .XV (Phase E coords-parser
-    # work; legacy assembler uses the same code path).
     assert result.structure is not None
-    assert len(result.structure.elements) == 444    # known fixture size
-    # Regions + frozen_atoms came from the in-fdf ATOM-METADATA.
-    assert "L-electrode" in result.regions
-    assert "R-electrode" in result.regions
-    assert len(result.frozen_atoms) > 0
-    # Notes — non-fatal diagnostics from the assembler.
-    assert isinstance(result.notes, list)
-    # Source path resolved absolute, matching envelope convention.
+    assert len(result.structure.elements) == N_ATOMS
+    assert set(result.regions) == set(regions())
     assert Path(result.source).is_absolute()
+    assert isinstance(result.notes, list)
+
+
+def test_the_frozen_set_survives_the_generator_and_comes_back(tmp_path):
+    """THE REGRESSION THIS FILE EXISTS FOR.
+
+    The bundle path is how a FINISHED RUN is read back into a structure. When
+    the atom-metadata block claimed a version it was not written in, this came
+    back as an empty list while every label beside it survived -- so a junction
+    reopened with its pinned electrodes forgotten, and nothing said a word.
+    """
+    from support.junction import frozen
+
+    result = BundleDirParser.parse(_run_dir(tmp_path))
+
+    assert list(result.frozen_atoms) == frozen(), (
+        f"the frozen set did not survive the round trip: {result.frozen_atoms}")
+    # No METADATA diagnostic: a freshly generated block states the version it
+    # is written in, so the reader has nothing to warn about. (A note about the
+    # absent `.XV` is expected and correct -- this run has no converged
+    # geometry, and saying so is the parser doing its job.)
+    assert not [n for n in result.notes if "schema_version" in n], (
+        f"a freshly generated script raised a metadata diagnostic: "
+        f"{result.notes}")
+
 
 
 def test_parse_bdt_withaujunction_no_atom_metadata():

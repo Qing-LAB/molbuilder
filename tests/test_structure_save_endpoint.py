@@ -110,7 +110,7 @@ def test_saving_a_range_and_downloading_it_produce_identical_bytes(web):
     structure's shared identity, so writing them per frame would be N chances to
     disagree.
     """
-    path = str(web._root / "run.extxyz")
+    path = str(web._root / "run.xyz")
     downloaded = web.post("/api/structure/export",
                           json={"structure": _ENV, "frames": _FRAMES,
                                 "name": "run"}).get_json()
@@ -119,21 +119,29 @@ def test_saving_a_range_and_downloading_it_produce_identical_bytes(web):
                            "path": path}).get_json()
     assert saved["ok"] is True, saved
 
-    on_disk = (web._root / "run.extxyz").read_text(encoding="utf-8")
+    on_disk = (web._root / "run.xyz").read_text(encoding="utf-8")
     handed = {f["name"]: f["text"] for f in downloaded["files"]}
-    assert on_disk == handed["run.extxyz"], (
+    assert on_disk == handed["run.xyz"], (
         "the project save and the download produced different bytes")
     assert on_disk.count("Lattice=") == 3, "one block per frame, each with the cell"
     assert downloaded["frames"] == 3
 
     written = sorted(p.name for p in web._root.iterdir())
-    assert written == ["run.extxyz", "run.molstruct.json"], (
+    assert written == ["run.molstruct.json", "run.xyz"], (
         f"a range must write ONE sidecar beside the one document: {written}")
     # The NAMES agree too, not just the bytes -- given the same stem, the two
     # destinations produce the same pair of filenames.
     assert sorted(handed) == written, (
         f"the download and the save named the pair differently: "
         f"{sorted(handed)} vs {written}")
+    # The SIDECAR compared as content, not as text: `created_at` is provenance
+    # stamped per call, so two separate requests differ there by construction
+    # and a text comparison only passed while both landed in the same second.
+    saved_side = json.loads((web._root / "run.molstruct.json").read_text())
+    handed_side = json.loads(handed["run.molstruct.json"])
+    assert {k: v for k, v in handed_side.items() if k != "created_at"} == \
+           {k: v for k, v in saved_side.items() if k != "created_at"}, (
+        "the download and the save produced different sidecar content")
     assert json.loads((web._root / "run.molstruct.json").read_text()
                       )["regions"] == {"bridge": [0]}
 
@@ -143,7 +151,7 @@ def test_a_frame_that_does_not_carry_these_atoms_is_refused_at_both_doors(web):
     400 at each door rather than a half-written file or a torn document."""
     for route, extra in (("/api/structure/export", {}),
                          ("/api/structure/save",
-                          {"path": str(web._root / "x.extxyz")})):
+                          {"path": str(web._root / "x.xyz")})):
         r = web.post(route, json={"structure": _ENV,
                                   "frames": [[[0, 0, 0]]], **extra})
         assert r.status_code == 400, (route, r.get_json())

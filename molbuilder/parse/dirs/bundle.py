@@ -80,6 +80,12 @@ def _iso_z() -> str:
 # --------------------------------------------------------------------- #
 
 
+#: The atom-metadata schema this build WRITES (script_emit stamps it from the
+#: same constant). Compared against rather than a literal: a version written
+#: down in two places is how the block came to claim v4 while carrying v7.
+from molbuilder.sidecars.molstruct import SCHEMA_VERSION as _CURRENT_SCHEMA
+
+
 def _extract_script_source(text: str) -> Dict[str, Any]:
     """Single-pass extract over a generated-script body for the bundle
     layer.  Returns a dict with:
@@ -92,8 +98,10 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
       * ``notes``             list[str]
 
     ``None`` distinguishes "block absent" from "block present but
-    empty" (``{}`` / ``[]``) per bundle-contract.md § 5.1.  Schema
-    drift (v != 3) is surfaced as a diagnostic note.
+    empty" (``{}`` / ``[]``) per bundle-contract.md § 5.1.  A block whose
+    version is not the one this build writes is READ (a finished run must stay
+    readable) and surfaced as a diagnostic note naming what may be missing --
+    see the comment at the check itself.
     """
     notes: List[str] = []
     atom_md = _extract_atom_metadata_dict(text)
@@ -113,15 +121,31 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
                     f"than v3; re-render the source script."
                 )
             else:
-                if sv > 4:
-                    # Forward-compat: load with the current handler
-                    # since v3+ promises additive keys.  Note the
-                    # drift so an audit can spot the mismatch.  (v3 + v4
-                    # are both current-known: v4 added `annotations`
-                    # additively -- atom-annotations.md § 3.)
+                # A BLOCK AT ANY OTHER VERSION IS READ, AND SAID SO ABOUT.
+                #
+                # This is a FINISHED RUN on disk, so refusing it outright would
+                # make a user's existing results unreadable -- unlike the
+                # sidecar, which is refused because it is still being worked on
+                # and can be re-exported. But the note has to be accurate, and
+                # this one was not: it said "molbuilder expects 4 — loading with
+                # current handler", which reads as a formality.
+                #
+                # It is not. Before the label store was unified, the reserved
+                # `frozen_atoms` list sat in a top-level key; this reader takes
+                # the whole store from `regions`, so on an older block the
+                # LABELS COME BACK AND THE FROZEN SET DOES NOT. That is how a
+                # junction's fifty pinned electrode atoms read back as an empty
+                # list. The note says which fact is at risk now, instead of
+                # reporting a number.
+                if sv != _CURRENT_SCHEMA:
                     notes.append(
-                        f"atom-metadata schema_version {sv}; molbuilder "
-                        f"expects 4 — loading with current handler."
+                        f"atom-metadata schema_version {sv}, but this "
+                        f"molbuilder writes v{_CURRENT_SCHEMA}. Labels are read "
+                        f"from the block as-is; a block older than "
+                        f"v{_CURRENT_SCHEMA} kept frozen atoms in a separate "
+                        f"top-level key, so the frozen set may come back EMPTY "
+                        f"even though the run had one. Re-render the script to "
+                        f"refresh it."
                     )
                 raw_regions = atom_md.get("regions")
                 if isinstance(raw_regions, dict):

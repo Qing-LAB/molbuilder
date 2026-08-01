@@ -208,6 +208,33 @@ truncate to first char), or crashing on a TER between ATOM blocks.
 (`molbuilder/__init__.py:56`) reads `.xyz` or `.pdb` by extension; unknown
 extension → `ValueError` with explicit instruction.
 
+> **ASE owns the XYZ parse (2026-07-31).** `Structure.from_xyz` calls
+> `ase.io.read(..., format="extxyz")` rather than splitting lines itself. ASE is
+> a declared dependency **for this** — `pyproject.toml` names it *"XYZ I/O +
+> atomic-number table"* — and its extended-XYZ reader is a superset reader: it
+> takes the plain xmol layout and the `Lattice="…" pbc="…"` comment line alike,
+> canonicalises an external tool's `FE`/`ZN` to `Fe`/`Zn`, and reads **every**
+> frame of a multi-frame document.
+>
+> The hand-rolled parser it replaced read the atoms of the first block and
+> nothing else, so a file this class had itself written with `to_extxyz` came
+> back with **no cell, no pbc and one frame**. The project already knew: a
+> second reader existed at `siesta/input.py`, whose comment said ASE *"gives us
+> the lattice when present, which our hand-rolled parser doesn't"* — a correct
+> diagnosis fixed at one call site by adding a reader beside the lossy one,
+> while every other caller kept the lossy one. That second reader is now gone.
+>
+> Two things stay ours, and both are deliberate. The **title** is read from the
+> comment line directly, because ASE's reader parses that line as `key=value`
+> pairs and a human comment (`water molecule`) would come back as
+> `{'water': True, 'molecule': True}`. And a `Lattice=` is adopted as an
+> *explicit* cell only when some axis is periodic — our own writer emits the
+> **resolved** box for isolated systems too, and adopting that would promote a
+> derived value into a stored one (§ 2.2's raw-vs-resolved line).
+>
+> `from_pdb` is still ours: PDB carries residue, chain and atom-name columns
+> this model owns, and no comparable second reader exists.
+
 ### 2.4 The paired-file door — `StructureCodec` (L2)
 
 The `.xyz` and its optional `.molstruct.json` are **always** read/written
@@ -220,7 +247,10 @@ copy of any of them:
 1. **the pairing rule** — `<stem>.xyz` ↔ `<stem>.molstruct.json`, including how
    the sidecar's name is derived (`molstruct.sidecar_path_for`);
 2. **the format choice** — a plain `.xyz` for one frame, extended XYZ for many,
-   decided by the count and never asked as a separate question;
+   decided by the count and never asked as a separate question. **Both are
+   `.xyz`**: extended XYZ is a strict superset of plain XYZ (the cell rides in
+   the comment line, which a plain reader skips), so one extension covers both
+   — the ordinary convention, and the only one `read` accepts;
 3. **the sidecar envelope** — `schema_version`, the `structure_hash` pinning it
    to its geometry, and the one serialisation (`molstruct.dumps`);
 4. **the invariants** — `no .json == empty metadata` in both directions,
@@ -265,16 +295,17 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
 > **`write` names the file; `files` does not.** The difference is who chose the
 > name. A project save was given an exact path through a picker, with an
 > overwrite gate on it, so `write` puts the bytes exactly there. An export was
-> given a *stem* and nothing else, so `files` completes it with the suffix the
-> format implies. Different questions, and conflating them is what let a
-> multi-frame download go out named `.xyz` with extended-XYZ inside it
-> (`web/molview.md` § 11.7).
+> given a *stem* and nothing else, so `files` completes it. Different questions,
+> and conflating them is how the pairing rule came to have a second
+> implementation in the browser (`web/molview.md` § 11.7).
 >
-> **Known consequence, left alone deliberately:** saving a frame *range* to a
-> path the user chose as `foo.xyz` puts extended-XYZ bytes under an `.xyz` name.
-> Correcting it would mean `write` writing somewhere other than where the
-> overwrite gate checked, which is a worse defect than the misleading suffix.
-> The place to fix it is the caller that offers the path.
+> **Corrected 2026-07-31.** `pair` briefly named a range `.extxyz`, on the
+> reasoning that a name should say which format it holds. It should not, and it
+> could not: `read` dispatches on the extension and takes `.xyz` / `.pdb` only,
+> so a saved trajectory **could not be reopened** — the project record was
+> write-only for ranges, and no test noticed because the save test never read
+> its file back. Extended XYZ under `.xyz` is both the convention and the thing
+> that works.
 >
 > **Retired 2026-07-31:** `scratch_blob` / `from_scratch`, which round-tripped a
 > structure through an in-memory `{xyz, sidecar}` **text** blob. Their last

@@ -1473,18 +1473,17 @@ def _struct_from_file(path: str) -> Tuple[Structure, Optional[np.ndarray]]:
     if ext == ".pdb":
         return Structure.from_pdb(p), None
     if ext in (".xyz", ""):
-        # Use ASE for XYZ -- it understands extended-XYZ headers and
-        # gives us the lattice when present, which our hand-rolled
-        # parser doesn't.
-        atoms = _ase_read(path)
-        elements = [a.symbol for a in atoms]
-        positions = atoms.get_positions()
-        cell = atoms.cell.array if hasattr(atoms.cell, "array") else atoms.cell
-        cell = np.asarray(cell, dtype=float)
-        return (
-            Structure(elements=elements, positions=positions, title=p.stem),
-            cell if cell.any() else None,
-        )
+        # THROUGH THE ONE READER.  This used to call ``ase.io.read`` here,
+        # with a comment explaining that ASE "understands extended-XYZ headers
+        # and gives us the lattice when present, which our hand-rolled parser
+        # doesn't" -- a correct diagnosis fixed in the wrong place, by adding a
+        # SECOND reader beside the lossy one instead of fixing it.  Every other
+        # caller kept the lossy one.  ``Structure.from_xyz`` is ASE now, so the
+        # lattice arrives on the structure and there is one reader again.
+        struct = Structure.from_xyz(p, title=p.stem)
+        cell = struct.cell
+        return struct, (np.asarray(cell, dtype=float)
+                        if cell is not None else None)
     raise ValueError(
         f"unsupported input extension {ext!r}; expected .xyz or .pdb"
     )

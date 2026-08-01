@@ -1250,7 +1250,7 @@ second read back, whatever the rule said.
   which is what makes § 5.1 true at the point a user acts; asking for more is how
   a trajectory leaves. It writes no text and assembles no sidecar, because a
   coordinate document is a format the server owns, and **which** document — one
-  frame's `.xyz` or a range's `.extxyz` — is decided by the count, downstream
+  frame's plain `.xyz` or a range's extended one — is decided by the count, downstream
   (§ 11.3). It **refuses** to produce anything when the geometry and the per-atom
   labels disagree about how many atoms there are, returning nothing rather than
   handing on a corrupt structure. It is not a disk write and not the session
@@ -2402,7 +2402,7 @@ flowchart LR
     T["THE TRUTH<br/>the master copy"]
     V["WHAT IS DRAWN<br/>the drawing copy"]
     S["Save state<br/>every frame · undoable<br/>never leaves the viewer"]
-    D["Export → Data<br/>a frame range<br/>.xyz / .extxyz + .json"]
+    D["Export → Data<br/>a frame range<br/>.xyz + .json"]
     P["Export → Image<br/>a frame range<br/>.png / .webm / .gif"]
     T --> S
     T --> D
@@ -2419,7 +2419,7 @@ flowchart LR
 
 | | the displayed frame | every frame |
 |---|---|---|
-| **the truth** | `.xyz` + `.json` | `.extxyz` + `.json` |
+| **the truth** | plain `.xyz` + `.json` | extended `.xyz` + `.json` |
 | **a view of it** | `.png` | `.webm` / `.gif` |
 
 Drawing it is what shows the gap: this section listed three exports for a long
@@ -2441,7 +2441,7 @@ So the menu offers **two** things, and each asks **which frames** as a range:
 
 | The menu item | Reads from | Asks | Produces |
 |---|---|---|---|
-| **Data** | the master copy | a frame range | one frame → `.xyz` + `.json`; more → `.extxyz` + `.json` |
+| **Data** | the master copy | a frame range | one frame → a plain `.xyz` + `.json`; more → an extended `.xyz` + `.json` |
 | **Image** | the drawing | a frame range | one frame → `.png`; more → `.webm` / `.gif` |
 
 **A range is strictly more than the grid could say.** Frames 40–120 of a
@@ -2451,7 +2451,7 @@ and throwing most away. The grid's four cells are the two corners of this range
 at each menu item; they are what the range *degenerates to*, not what it can do.
 
 **The format follows from the count, and is not a third question.** One frame is
-a `.xyz` or a `.png`; more than one is an `.extxyz` or a movie. Nobody is asked,
+a plain `.xyz` or a `.png`; more than one is an extended `.xyz` or a movie. Nobody is asked,
 because there is nothing to decide: the count already determined it.
 
 **The range defaults to the displayed frame**, which is what keeps § 5.1 true at
@@ -2541,10 +2541,18 @@ which is why both have to be asked. What sorts them is that only one of the two
 changes *what the thing is*: a structure and a picture are different objects, and
 a frame range is an amount of either.
 
-**Save-to-project and Download produce identical bytes — and mean different
+**Save-to-project and Download produce the same file — and mean different
 things.** MolView writes neither: it produces the bytes and stops there, the
 project is the projects module's job (§ 2) and a download is the browser's. It
 holds no file route at all.
+
+> **Same file, to one exception worth naming.** The coordinate document is
+> byte-identical; the sidecar is identical in **content**, and differs in its
+> `created_at` stamp, which records when each file was written and is provenance
+> rather than a fact about the molecule. Two separate requests happen at two
+> instants, so they cannot share one. This is stated because it was once
+> asserted as strict byte-identity and the tests only passed while both writes
+> landed inside the same second.
 
 But where those bytes land decides what happens next.
 
@@ -2645,7 +2653,7 @@ frame gets no suffix, and neither does a range that covers the whole run: in bot
 cases there is nothing to disambiguate it from.
 
 MolView supplies that stem and stops there. The extension completing it —
-`.xyz` or `.extxyz`, and the `.molstruct.json` beside it — is the server's, for
+`.xyz`, and the `.molstruct.json` beside it — is the server's, for
 the reason § 11.7 gives: the format was decided by the frame count, so the
 extension is not a second decision to make here.
 
@@ -2806,18 +2814,32 @@ the caller to work out, and that is the point of the shape.
 
 Those look like one decision and are two. A stem is the export's *identity*, and
 only the viewer knows it: which structure, which frames, chosen at which moment.
-An extension is a *consequence of the format*, and the format was already decided
-by the frame count, in the one place that counts them (§ 11.3). A caller that
-appends an extension is guessing at an answer that exists.
+The rest of the name — the geometry extension, and what the sidecar beside it is
+called — is the **pairing rule**, which is the codec's and has exactly one home
+(`model/structure.md` § 2.4). A caller that builds either is keeping a second
+copy of a rule it does not own.
 
-> **And it guessed wrong.** The one page that implements the door appended
-> `.xyz` unconditionally, and built the sidecar's name by hand from the same
-> stem. A range exports extended XYZ, so a multi-frame download arrived as
-> `wire_frame40-120.xyz` holding `Lattice=` lines — a file whose name says one
-> format and whose bytes are another, at the extension every trajectory reader
-> dispatches on. The same four lines re-serialised the sidecar's JSON, a second
-> answer to a question `molstruct.dumps` already answers. Both are gone: the
-> names and the bytes come out of the codec together.
+**Both files are `.xyz`, whether it holds one frame or four hundred.** Extended
+XYZ is a strict **superset** of plain XYZ — the cell and the per-axis flags ride
+in the comment line, which a plain reader skips — so the same extension covers
+both and every tool that reads one reads the other. That is the ordinary
+convention (ASE, where the format's modern use comes from, writes extended XYZ
+to `.xyz` by default), and it is why the format can follow the frame count
+without the *name* becoming a second question.
+
+> **What went wrong here, corrected 2026-07-31.** This section briefly claimed
+> the opposite — that a range should be named `.extxyz`, and that a `.xyz`
+> holding `Lattice=` lines was a file "whose name says one format and whose
+> bytes are another". That was wrong on the facts: nothing dispatches on the
+> extension, because it does not have to.
+>
+> The defect underneath it was real and worse, and pointed the other way. The
+> codec named a range `.extxyz` while **its own load door accepts only `.xyz`
+> and `.pdb`** — so a trajectory saved into a project could never be opened
+> again. The scientific record (§ 11.3) was write-only for ranges, and no test
+> caught it because the save test never read its file back. The lesson is not
+> about extensions: a naming rule that lives in two places gets *argued* about,
+> and the argument hid a round trip that did not close.
 
 **What a load brings back.** The server answers with more than the viewer models:
 the atoms and their facts, the cell block, the coordinate document it would
@@ -2915,7 +2937,7 @@ project** — with isolate switched on, because they had been looking at one reg
    numbering, whatever isolate is doing to the picture (§ 6.3).
 3. One frame, so the pair is an `.xyz` and its `.json` — the sidecar carrying the
    labels, the cell and the residues (§ 11.3). Had they widened the range to
-   40–120 instead, the same act would have produced an `.extxyz` and **the same
+   40–120 instead, the same act would have produced an extended `.xyz` and **the same
    one** `.json`: the format follows the count, and nothing else about the export
    changes.
 4. It hands both to the projects module. MolView writes no file itself (§ 2).
@@ -3061,7 +3083,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — Save state drops what was above it | after retracting past two points and saving, stepping forward is no longer possible — the abandoned points are gone |
 | § 11.2 — `load(0)` puts back the point you are on | it restores the current point rather than the anchor, and does not move the position. Coming back to a sequence in a viewer that did not write it has no path yet — § 11.2a |
 | § 11.3 — only the data export is the truth, at the frames the user chose | exporting data yields **the asked-for range's** coordinates and its metadata, from the master copy — scrub to frame 40, accept the default range, and frame 40 is what the file holds, whatever isolate is doing; an image is a render and carries whatever the view was set to |
-| § 11.3 — the range decides the format, and nobody is asked twice | one frame of Data is an `.xyz` and a range is an `.extxyz`; one frame of Image is a `.png` and a range is a movie — the file has exactly as many frames as the range, and the format is never a separate question |
+| § 11.3 — the range decides the format, and nobody is asked twice | one frame of Data is a plain `.xyz` and a range is an extended one under the same extension; one frame of Image is a `.png` and a range is a movie — the file has exactly as many frames as the range, and the format is never a separate question |
 | § 11.3 — the range opens on the displayed frame | accepting the dialog unchanged exports what is on screen (§ 5.1), and a one-frame structure is never asked at all |
 | § 11.3 — a structure saved to the project keeps its metadata | the `.json` goes with the `.xyz`, so every label — `frozen_atoms` among them — survives into whatever is generated from it |
 | § 11.7 — one blob, one read | an export and a cell edit send the same pair, assembled in one place; a request built after an edit carries that edit in every part of what it sends |

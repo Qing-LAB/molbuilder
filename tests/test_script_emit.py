@@ -153,7 +153,10 @@ def test_emit_atom_metadata_with_regions_only():
     # Find the JSON body (skip the marker + format header).
     json_text = "\n".join(line for line in json_lines if line.startswith(("{", " ", "}", '"')))
     payload = json.loads(json_text)
-    assert payload["schema_version"] == 4
+    from molbuilder.sidecars.molstruct import SCHEMA_VERSION
+    assert payload["schema_version"] == SCHEMA_VERSION, (
+        "the block must stamp the sidecar's version from the one constant -- "
+        "a literal here was how it came to claim v4 while carrying v7 content")
     assert payload["regions"] == {"L-electrode": [0, 1, 2], "R-electrode": [10, 11]}
     assert "frozen_atoms" not in payload  # was empty
 
@@ -549,7 +552,8 @@ def test_extract_script_source_full_round_trip():
     assert any("preserve" in line for line in src["user_custom_lines"])
     assert src["provenance"] is not None
     assert src["provenance"]["generator-version"] == "molbuilder git test"
-    assert src["schema_version"] == 4
+    from molbuilder.sidecars.molstruct import SCHEMA_VERSION as _SV
+    assert src["schema_version"] == _SV
     assert src["notes"] == []
 
 

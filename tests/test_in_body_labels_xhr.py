@@ -182,7 +182,7 @@ class TestBuildFdfInBodyLabels:
         # A sidecar that WOULD have frozen atom 0 under the old behaviour.
         import hashlib, json as _json
         (tmp_path / "probe.molstruct.json").write_text(_json.dumps({
-            "schema_version": 3,
+            "schema_version": 7,
             "n_atoms_total": len([l for l in _XYZ.strip().splitlines()[2:] if l.strip()]),
             "structure_hash": hashlib.sha256(xyz_file.read_bytes()).hexdigest(),
             "regions": {}, "frozen_atoms": [0], "selection_rules": {},

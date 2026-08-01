@@ -250,8 +250,23 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
                 normed_annotations[name] = _AtomChannel.from_json(ch).to_json()
     if not regions and not normed_annotations:
         return None
+    # THE VERSION THE SIDECAR STAMPS, from the one constant -- never a literal.
+    #
+    # This said 4 while the block was written in the CURRENT shape (the rule
+    # above: `regions` is the whole label store, reserved names included). A
+    # block that claims a version it is not written in is worse than one with no
+    # version at all, because a reader cannot refuse what it cannot recognise:
+    # a script generated before the label store was unified and one generated
+    # after it BOTH said 4 while holding different shapes, so nothing could tell
+    # them apart -- and a real run's fifty frozen electrode atoms came back as an
+    # empty list with the file looking perfectly fine.
+    #
+    # It is the sidecar's constant because it is the sidecar's shape ("the same
+    # shape as the .molstruct.json sidecar", above); two numbers for one format
+    # is the drift this whole block exists to avoid.
+    from molbuilder.sidecars.molstruct import SCHEMA_VERSION as _SCHEMA_VERSION
     payload: Dict[str, Any] = {
-        "schema_version": 4,
+        "schema_version": _SCHEMA_VERSION,
         "n_atoms_total":  int(n_atoms_total),
     }
     if regions:
@@ -267,7 +282,7 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
     if created_at:
         payload["created_at"] = created_at
     out: List[str] = [begin_marker(BLOCK_ATOM_METADATA)]
-    out.append("# format: molstruct-json/v4")
+    out.append(f"# format: molstruct-json/v{_SCHEMA_VERSION}")
     body = json.dumps(payload, indent=2, ensure_ascii=False)
     for line in body.splitlines():
         out.append(f"# {line}")

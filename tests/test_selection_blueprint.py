@@ -364,7 +364,7 @@ class TestAtomsEndpoint:
         sidecar = selection_root / "junction.molstruct.json"
         import json as _json
         sidecar.write_text(_json.dumps({
-            "schema_version": 3,
+            "schema_version": 7,
             "n_atoms_total":  11,
             "structure_hash": struct_hash,
             "regions":        {"L-electrode": [0, 1, 2, 3],
@@ -391,7 +391,7 @@ class TestAtomsEndpoint:
         struct_hash = hashlib.sha256(xyz_bytes).hexdigest()
         cell = [[10.0, 0.0, 0.0], [0.0, 11.0, 0.0], [0.0, 0.0, 22.0]]
         (selection_root / "junction.molstruct.json").write_text(_json.dumps({
-            "schema_version": 3,
+            "schema_version": 7,
             "n_atoms_total":  11,
             "structure_hash": struct_hash,
             "regions":        {},
@@ -408,18 +408,24 @@ class TestAtomsEndpoint:
         """structure-periodicity.md: /api/selection/atoms returns the full
         `periodicity` {cell, axis_kind, vacuum} so the Modify path-based load
         restores a reopened structure's periodicity (the .json sits next to the
-        .xyz on the server).  A legacy `kgrid` key in the sidecar is ignored --
-        k-grid is a sampling knob on SiestaConfig, not geometry."""
+        .xyz on the server).
+
+        RETIRED (2026-07-31) the clause "a legacy `kgrid` key in the sidecar is
+        IGNORED".  Quietly ignoring a key the reader does not understand is the
+        exact behaviour that lost a junction's frozen atoms: a v3 sidecar's
+        top-level `frozen_atoms` was dropped the same way, the file loaded
+        clean, and `Geometry.Constraints` vanished from the generated input.  A
+        retired key is REFUSED now, which is its own test below."""
         import hashlib
         import json as _json
         xyz_bytes = (selection_root / "junction.xyz").read_bytes()
         struct_hash = hashlib.sha256(xyz_bytes).hexdigest()
         cell = [[10.0, 0.0, 0.0], [0.0, 11.0, 0.0], [0.0, 0.0, 22.0]]
         (selection_root / "junction.molstruct.json").write_text(_json.dumps({
-            "schema_version": 4, "n_atoms_total": 11,
-            "structure_hash": struct_hash, "regions": {}, "frozen_atoms": [],
+            "schema_version": 7, "n_atoms_total": 11,
+            "structure_hash": struct_hash, "regions": {},
             "cell": cell, "axis_kind": ["periodic", "periodic", "transport"],
-            "kgrid": [4, 4, 1], "selection_rules": {},   # legacy key -> ignored
+            "selection_rules": {},
         }))
         per = web.post("/api/selection/atoms", json={
             "structure_path": _path(selection_root),
@@ -465,7 +471,7 @@ class TestAtomsEndpoint:
         # Sidecar claims 20 atoms but the on-disk XYZ has 11.
         # Index 5 + 10 are in-range, 12 + 19 are orphaned.
         sidecar.write_text(_json.dumps({
-            "schema_version": 3,
+            "schema_version": 7,
             "n_atoms_total":  20,
             "structure_hash": struct_hash,
             "regions": {
@@ -509,7 +515,7 @@ class TestAtomsEndpoint:
         struct_hash = hashlib.sha256(xyz_bytes).hexdigest()
         sidecar = selection_root / "junction.molstruct.json"
         sidecar.write_text(_json.dumps({
-            "schema_version": 3,
+            "schema_version": 7,
             "n_atoms_total":  20,
             "structure_hash": struct_hash,
             "regions":        {"ghost": [11, 12, 13]},

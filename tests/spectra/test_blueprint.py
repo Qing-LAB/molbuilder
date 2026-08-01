@@ -1054,12 +1054,16 @@ class TestSchemaEndpointFrozenSeed:
         sha = hashlib.sha256(xyz_path.read_bytes()).hexdigest()
         sidecar = xyz_path.with_name(xyz_path.stem + ".molstruct.json")
         sidecar.write_text(json.dumps({
-            "schema_version":  3,
+            "schema_version":  7,
             "n_atoms_total":   n_atoms_total if n_atoms_total is not None
                                 else xyz_path.read_text().split()[0].__int__(),
             "structure_hash":  sha,
-            "regions":         {},
-            "frozen_atoms":    list(frozen_atoms),
+            # THE ONE STORE (v7): the reserved label sits in `regions` with every
+            # other label. What makes it reserved is the interpretation applied
+            # where it means something -- Geometry.Constraints -- and the one
+            # accessor that pulls the group out, not a field of its own.
+            "regions":         {"frozen_atoms": list(frozen_atoms)}
+                               if frozen_atoms else {},
             "selection_rules": {},
         }))
         return sidecar
@@ -1385,11 +1389,13 @@ class TestRenderHonorsSidecar:
         sha = hashlib.sha256(xyz.read_bytes()).hexdigest()
         sidecar = xyz.with_name(xyz.stem + ".molstruct.json")
         sidecar.write_text(json.dumps({
-            "schema_version":  3,
+            "schema_version":  7,
             "n_atoms_total":   3,
             "structure_hash":  sha,
-            "regions":         regions or {},
-            "frozen_atoms":    list(frozen_atoms),
+            # THE ONE STORE (v7): the reserved label goes in with the rest.
+            "regions":         dict(regions or {},
+                                    **({"frozen_atoms": list(frozen_atoms)}
+                                       if frozen_atoms else {})),
             "selection_rules": {},
         }))
         return xyz
@@ -1411,8 +1417,9 @@ class TestRenderHonorsSidecar:
             "/api/spectra/render",
             data=json.dumps({
                 "structure_text": _WATER_XYZ,
-                "frozen_atoms":   [0],
-                "regions":        {},
+                # The reserved label rides in the ONE store, like every other
+                # label -- retired 2026-07-31: it used to be sent beside it.
+                "regions":        {"frozen_atoms": [0]},
                 "params":         {},  # empty form -> no frozen_indices
             }),
             content_type="application/json",
@@ -1437,7 +1444,6 @@ class TestRenderHonorsSidecar:
             "/api/spectra/render",
             data=json.dumps({
                 "structure_text": _WATER_XYZ,
-                "frozen_atoms":   [],
                 "regions":        {"L-electrode": [0], "bridge": [1, 2]},
                 "params":         {},
             }),
@@ -1527,7 +1533,6 @@ class TestRenderHonorsSidecar:
             data=json.dumps({
                 "structure_text": _WATER_XYZ,
                 "structure_path": str(xyz),
-                "frozen_atoms":   [],
                 "regions":        {},
                 "params":         {},
             }),

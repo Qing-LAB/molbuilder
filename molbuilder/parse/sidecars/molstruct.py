@@ -26,6 +26,7 @@ from molbuilder.parse.types import SidecarResult
 # read and write surfaces stay in lock-step.
 from molbuilder.sidecars.molstruct import (
     SCHEMA_VERSION,
+    ENVELOPE_KEYS,
     MolstructJsonError,
     normalise_selection_rules,
     structure_fields_via_dataclass,
@@ -34,14 +35,24 @@ from molbuilder.sidecars.molstruct import (
 from ._helpers import build_sidecar_result
 
 
-# Readable schema versions.  v1/v2 sidecars (older ``fixed_atoms`` key)
-# must be re-exported from /modify.  v3 has no ``annotations`` (a v3
-# reader/consumer sees only regions + frozen); v4 adds the extensible
-# annotation channels (atom-annotations.md § 3) additively -- v3 files
-# still load (annotations absent -> empty).  v5 dropped the ``kgrid``
-# field (k-grid moved off the geometry onto SiestaConfig / TransportConfig);
-# a payload still carrying one is REFUSED by the metadata gate, not ignored.
-_READABLE_SCHEMA_VERSIONS = (3, 4, 5, 6)
+# READABLE SCHEMA VERSIONS: the current one, and nothing else.
+#
+# This list used to run (3, 4, 5, 6), on the reasoning that each bump was
+# additive and an older file would simply come back with the newer fields
+# empty.  That reasoning stopped being true at 7, and the way it stopped is
+# worth keeping: 7 moved ``frozen_atoms`` out of its own top-level key and into
+# ``regions``.  A v3 file passed this gate, and then ``load_text`` -- which
+# reads the keys it NAMES -- never named the old one.  The atoms did not fail
+# to load; they were never looked for.  A junction came back with its 50 frozen
+# electrode atoms gone, ``Geometry.Constraints`` vanished from the generated
+# SIESTA input, and the run converged on a structure nobody asked for.
+#
+# So the gate is STRICT (2026-07-31, by decision): one version, and a file at
+# any other is refused with instructions rather than read into something it is
+# not.  An additive bump can widen this again -- but only when a reader has been
+# run against a file at each version it claims, which is the check that was
+# missing rather than the tuple.
+_READABLE_SCHEMA_VERSIONS = (SCHEMA_VERSION,)
 
 
 def _normalised_dict(
@@ -145,11 +156,24 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
         )
 
     sv = data.get("schema_version")
-    if sv not in _READABLE_SCHEMA_VERSIONS:
+    if sv != SCHEMA_VERSION:
+        # REFUSED, NOT READ PARTIALLY.  An older sidecar does not store the same
+        # facts in the same places, so reading it here would not recover them --
+        # it would return a payload that LOOKS complete and quietly is not.  The
+        # v3 case is why this is strict: its frozen atoms live under a top-level
+        # key this reader does not name, so the file loaded, the atoms did not,
+        # and the omission first became visible as a missing
+        # ``Geometry.Constraints`` block in a generated SIESTA input.
         raise MolstructJsonError(
-            f"sidecar {source}: schema_version is {sv!r}; "
-            f"this molbuilder build reads versions "
-            f"{list(_READABLE_SCHEMA_VERSIONS)!r}"
+            f"sidecar {source}: schema_version is {sv!r}, but this molbuilder "
+            f"build reads version {SCHEMA_VERSION} only.\n"
+            f"Older sidecars are NOT read: they store the same facts in "
+            f"different places (before v{SCHEMA_VERSION}, frozen atoms sat in a "
+            f"top-level 'frozen_atoms' key rather than in 'regions'), so reading "
+            f"one would silently drop what it cannot map.\n"
+            f"Re-export it: open the structure in Modify and save it, which "
+            f"writes a v{SCHEMA_VERSION} pair. Check the labels afterwards -- "
+            f"anything the old format kept elsewhere has to be applied again."
         )
 
     for key in ("n_atoms_total", "structure_hash"):
@@ -170,6 +194,25 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
         raise MolstructJsonError(
             f"sidecar {source}: structure_hash must be a hex "
             f"string of >= 16 chars; got {sh!r}"
+        )
+
+    # A KEY NOBODY READS IS METADATA THE WRITER THINKS IT SAVED.
+    #
+    # ``apply_to_structure`` already refuses stray keys with exactly that
+    # reasoning -- but it never got the chance, because this function reads the
+    # keys it NAMES and drops the rest on the floor one layer earlier.  That is
+    # the hole the v3 frozen-atom loss went through: the guard was real, correct,
+    # and downstream of the leak.  It is checked HERE now, where the payload is
+    # still whole.
+    from molbuilder.structure import METADATA_FIELDS
+    known = set(METADATA_FIELDS) | set(ENVELOPE_KEYS)
+    stray = sorted(k for k in data if k not in known)
+    if stray:
+        raise MolstructJsonError(
+            f"sidecar {source} carries {stray!r}, which this version does not "
+            f"read. Refused rather than ignored -- a key nobody reads is "
+            f"metadata the writer thinks it saved. Known keys: "
+            f"{sorted(known)!r}"
         )
 
     # Re-validate regions + frozen_atoms via _normalised_dict.  This

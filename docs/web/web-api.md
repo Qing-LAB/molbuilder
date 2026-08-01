@@ -169,13 +169,14 @@ no extension) because only the caller knows what the export *is*; the server
 completes it, because the extension follows from the format and the format
 follows from the frame count, which `StructureCodec.pair` already decided.
 
-A caller that appends its own extension is answering a question that has an
-answer. The one that did got it wrong: it appended `.xyz` to a multi-frame
-export, producing a file named `.xyz` with extended-XYZ `Lattice=` lines inside
-it, at the extension trajectory readers dispatch on. It also re-serialised the
-sidecar's JSON, a second answer to a question `molstruct.dumps` owns. Both now
-come out of the codec together — see [`molview.md`](?doc=web/molview.md) § 11.7
-and [`model/structure.md`](?doc=model/structure.md) § 2.4.
+Both files come back under `.xyz` — extended XYZ is a strict superset of plain
+XYZ, so the same extension covers one frame or four hundred, which is the
+ordinary convention and what our own load door accepts. A caller that builds the
+names itself is keeping a second copy of the pairing rule; the one that did also
+re-serialised the sidecar's JSON, a second answer to a question
+`molstruct.dumps` owns. Both now come out of the codec together — see
+[`molview.md`](?doc=web/molview.md) § 11.7 and
+[`model/structure.md`](?doc=model/structure.md) § 2.4.
 
 ### How the two shapes coexist
 

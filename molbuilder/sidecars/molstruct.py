@@ -69,7 +69,24 @@ except ImportError:                  # pragma: no cover - Windows branch
     _HAVE_FLOCK = False
 
 
-SCHEMA_VERSION = 6
+#: The on-disk sidecar schema.  BUMPED TO 7 (2026-07-31) with the one-label-store
+#: change, and READ STRICTLY: this build reads 7 and refuses everything else.
+#:
+#: WHAT CHANGED IN 7.  ``frozen_atoms`` stopped being a field of its own and
+#: became an ORDINARY LABEL in ``regions``, like every other one.  What makes it
+#: reserved is not storage: it is a special INTERPRETATION where the context calls
+#: for it (SIESTA's ``Geometry.Constraints``) plus one designated accessor to pull
+#: that group out (:func:`frozen_atoms` here, ``getFrozen()`` in the browser).  One
+#: store, one spelling of the name, interpreted at the end.
+#:
+#: WHY THE CLEAN BREAK.  Versions 3-6 were left in the readable set, so a v3 file
+#: was ACCEPTED and then read by a loader that no longer looks at the old top-level
+#: key -- it came back with its frozen atoms silently gone, and the generated
+#: SIESTA input carried no ``Geometry.Constraints`` block.  A junction's electrodes
+#: were free to relax; the run converged and was wrong.  A version gate that admits
+#: a version the code cannot honour is worse than no gate: it turns a loud failure
+#: into a quiet one.
+SCHEMA_VERSION = 7
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the

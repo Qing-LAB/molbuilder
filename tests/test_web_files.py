@@ -1154,7 +1154,7 @@ def _seed_paired(picker_root: Path, dirname: str = "", stem: str = "water",
     struct.write_text(xyz_text)
     sidecar = parent / f"{stem}.molstruct.json"
     sidecar.write_text(json.dumps({
-        "schema_version": 3,
+        "schema_version": 7,
         "n_atoms_total":  3,
         "structure_hash": hashlib.sha256(xyz_text.encode()).hexdigest(),
         "regions":        {"L-electrode": [0]},

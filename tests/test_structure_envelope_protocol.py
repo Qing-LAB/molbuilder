@@ -246,8 +246,15 @@ def test_export_returns_what_a_save_would_write(client, tmp_path):
         f"the download and the save disagree about WHICH files exist: "
         f"{sorted(handed)} vs {sorted(on_disk)}")
     for name, text in handed.items():
-        assert text == on_disk[name], (
-            f"{name}: the bytes handed over differ from the bytes written")
+        if name.endswith(".molstruct.json"):
+            # Content, not text: `created_at` is provenance stamped per call.
+            got = {k: v for k, v in _json.loads(text).items() if k != "created_at"}
+            want = {k: v for k, v in _json.loads(on_disk[name]).items()
+                    if k != "created_at"}
+            assert got == want, f"{name}: different sidecar content"
+        else:
+            assert text == on_disk[name], (
+                f"{name}: the bytes handed over differ from the bytes written")
 
     # `regions` carries the reserved label, so there is no second key to compare
     # -- and the designated read agrees with it on both sides.
@@ -285,8 +292,9 @@ def test_export_names_the_files_so_no_caller_has_to(client):
     many = client.post("/api/structure/export",
                        json=dict(_envelope(), name="wire",
                                  frames=frames)).get_json()
-    assert [f["name"] for f in many["files"]] == ["wire.extxyz"], (
-        "a range was named after the format it does not contain")
+    assert [f["name"] for f in many["files"]] == ["wire.xyz"], (
+        "a range must be named under the extension that reads it back -- "
+        "extended XYZ is a superset of plain XYZ and shares its extension")
     assert many["frames"] == 2
 
     for hostile in ("../../etc/passwd", "", "  ", ".."):

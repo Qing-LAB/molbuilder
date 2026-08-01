@@ -52,17 +52,17 @@ from .sidecars import molstruct
 class StructurePair(NamedTuple):
     """What a Structure looks like outside memory: the coordinate document, the
     sidecar payload beside it, whether that payload is worth keeping, and the
-    file suffix the format implies.
+    extension it belongs under.
 
     ONE shape for every consumer -- disk, bytes, wire -- so "what does this
     structure look like when it leaves" has one answer instead of one per caller.
 
-    ``suffix`` is CARRIED rather than re-derived, because the format decision is
-    made once, from the frame count, in :meth:`StructureCodec.pair`.  A caller
-    that appends an extension of its own is answering a question that already has
-    an answer -- and the caller that did appended ``.xyz`` to a multi-frame
-    export, producing a file whose name said one format and whose bytes were
-    another, at the extension every trajectory reader dispatches on.
+    ``suffix`` is always ``.xyz``: extended XYZ is a strict superset of plain
+    XYZ, so the format can follow the frame count while the NAME does not have
+    to.  It is carried here rather than assumed by each caller because the
+    pairing rule is the codec's -- a caller that appends its own extension is
+    keeping a second copy of a rule it does not own, which is how the sidecar's
+    name came to be derived in two places.
     """
     document: str
     sidecar: dict
@@ -98,16 +98,32 @@ def _metadata_is_default(meta: dict) -> bool:
 class StructureCodec:
     """``.xyz`` + ``.molstruct.json`` ⇄ :class:`~molbuilder.structure.Structure`."""
 
-    #: The suffixes this codec writes a geometry document under.  A target
-    #: already carrying one of them is CORRECTED to the format actually
-    #: produced; a target carrying anything else keeps its whole name and the
-    #: suffix is appended -- so ``run.v2`` becomes ``run.v2.xyz`` instead of
-    #: losing the ``.v2`` that a bare ``with_suffix`` would have eaten.
-    _GEOMETRY_SUFFIXES = (".xyz", ".extxyz")
+    #: THE ONE EXTENSION THIS CODEC WRITES.  One frame or four hundred, plain
+    #: XYZ or extended -- the file is ``.xyz``, because extended XYZ is a strict
+    #: superset of plain XYZ and shares its extension by convention.
+    GEOMETRY_SUFFIX = ".xyz"
+
+    #: Extensions RECOGNISED on a target so they are replaced rather than
+    #: appended to.  ``.extxyz`` is here because it is a name a caller might
+    #: hand us, NOT one we produce: ``files(struct, "run.extxyz")`` answers
+    #: ``run.xyz``.  Anything else keeps its whole name and gets the suffix
+    #: appended, so ``run.v2`` becomes ``run.v2.xyz`` rather than losing the
+    #: ``.v2`` a bare ``with_suffix`` would have eaten.
+    _REPLACEABLE_SUFFIXES = (".xyz", ".extxyz")
 
     # ---- load durable -> working Structure --------------------------- #
     def load(self, source_path, *,
-             notices_out: "list | None" = None) -> Structure:
+             notices_out: "list | None" = None,
+             frames_out: "list | None" = None) -> Structure:
+        """Read the pair back into a Structure.
+
+        ``frames_out`` closes the round trip this codec can now write: a range
+        goes out as one extended-XYZ document (:meth:`pair`), and a caller that
+        passes a list here gets EVERY frame of it back, in file order.  Without
+        it a trajectory reopens as its first frame -- which is the right default
+        for a Structure (one geometry) and the wrong answer for whoever wrote
+        the range.
+        """
         src = Path(source_path)
         # Parse the SOURCE in ITS OWN format (dispatch on the extension) -- the
         # file picker accepts .xyz AND .pdb, and each needs its own parser: a
@@ -118,7 +134,7 @@ class StructureCodec:
         if suffix == ".pdb":
             struct = Structure.from_pdb(src)
         elif suffix == ".xyz":
-            struct = Structure.from_xyz(src)
+            struct = Structure.from_xyz(src, frames_out=frames_out)
         else:
             raise ValueError(
                 f"StructureCodec.load: unsupported structure format "
@@ -172,10 +188,16 @@ class StructureCodec:
         # structure's shared identity -- the same for frame 0 and frame 400 --
         # so there is one .json beside a trajectory, not one per frame.  Its
         # hash pins it to the document actually written, whichever that is.
-        if frames:
-            document, suffix = struct.to_extxyz(frames=frames), ".extxyz"
-        else:
-            document, suffix = struct.to_xyz(), ".xyz"
+        # THE FORMAT follows the count; THE NAME does not follow the format.
+        # Extended XYZ is a strict SUPERSET of plain XYZ -- the extra facts ride
+        # in the comment line, which a plain reader skips -- so both are written
+        # under ``.xyz``.  That is the ordinary convention (ASE, where the
+        # format's modern use comes from, writes extended XYZ to ``.xyz`` by
+        # default), and it is the only extension :meth:`load` accepts: a range
+        # named ``.extxyz`` was a file THIS CODEC COULD NOT REOPEN, so a
+        # trajectory saved into a project could never be loaded again.
+        document = (struct.to_extxyz(frames=frames) if frames
+                    else struct.to_xyz())
         meta = struct.metadata_to_dict()
         payload = molstruct.to_dict(
             meta,
@@ -184,7 +206,7 @@ class StructureCodec:
         )
         return StructurePair(document=document, sidecar=payload,
                              keep_sidecar=not _metadata_is_default(meta),
-                             suffix=suffix)
+                             suffix=self.GEOMETRY_SUFFIX)
 
     # ---- the pair as NAMED bytes: <stem>.xyz + <stem>.molstruct.json -- #
     def files(self, struct: Structure, target, *,
@@ -208,7 +230,7 @@ class StructureCodec:
         """
         target = Path(target)
         made = self.pair(struct, frames=frames)
-        if target.suffix.lower() in self._GEOMETRY_SUFFIXES:
+        if target.suffix.lower() in self._REPLACEABLE_SUFFIXES:
             target = target.with_suffix(made.suffix)
         else:
             target = target.with_name(target.name + made.suffix)
@@ -266,10 +288,13 @@ class StructureCodec:
 
     # ---- read the pair from disk (alias of load, symmetric name) ----- #
     def read(self, source_path, *,
-             notices_out: "list | None" = None) -> Structure:
+             notices_out: "list | None" = None,
+             frames_out: "list | None" = None) -> Structure:
         """Symmetric read-side name for :meth:`load` -- parse the geometry +
         apply its paired sidecar into a Structure (missing sidecar => empty
         metadata, not an error).  ``notices_out`` collects the frame-contract
         gate's heal notices (structure-periodicity.md 6.1) so the load door
-        can SURFACE a heal instead of silently rewriting the user's state."""
-        return self.load(source_path, notices_out=notices_out)
+        can SURFACE a heal instead of silently rewriting the user's state;
+        ``frames_out`` collects every frame of a multi-frame document."""
+        return self.load(source_path, notices_out=notices_out,
+                         frames_out=frames_out)

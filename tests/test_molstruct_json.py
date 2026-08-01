@@ -349,7 +349,7 @@ class TestLoadErrors:
     def test_missing_required_field(self, tmp_path):
         p = tmp_path / "bad.molstruct.json"
         p.write_text(_json.dumps({
-            "schema_version": 3,
+            "schema_version": 7,
             "n_atoms_total": 3,
             # structure_hash missing
         }))
@@ -359,7 +359,7 @@ class TestLoadErrors:
     def test_load_propagates_error_with_path(self, tmp_path):
         p = tmp_path / "bad.molstruct.json"
         p.write_text(_json.dumps({
-            "schema_version": 3,
+            "schema_version": 7,
             "n_atoms_total": 3,
             "structure_hash": "b" * 32,
             "regions": {"L": [99]},  # out-of-range
@@ -426,19 +426,34 @@ class TestSchemaVersioning:
     coercing.  The reader-version list is the single source of
     truth for which on-disk schemas this build accepts."""
 
-    def test_v2_fails_to_load(self, tmp_path):
-        """v2 had ``fixed_atoms`` key + no terminology unification.
-        v3 onwards uses ``frozen_atoms``.  Strict load: refuse rather
-        than silently coerce."""
-        p = tmp_path / "v2.molstruct.json"
-        p.write_text(_json.dumps({
-            "schema_version": 2,
+    @pytest.mark.parametrize("version, why", [
+        (2, "v2 kept a `fixed_atoms` key"),
+        (3, "v3 kept frozen atoms in a top-level key, not in `regions`"),
+        (6, "v6 was the last before the label store was unified"),
+        (99, "a version from the future"),
+        (None, "no version at all"),
+    ])
+    def test_any_version_but_the_current_one_is_refused(self, tmp_path,
+                                                        version, why):
+        """One gate, one answer: this build reads the current schema and refuses
+        everything else, whether it is older or newer.
+
+        RETIRED (2026-07-31) the separate `test_v2_fails_to_load` /
+        `test_unknown_version_raises` pair. While several versions were readable
+        those described different code paths; under a strict gate they are one
+        refusal, and keeping two tests of it implied a distinction that no longer
+        exists. What each version MEANT is kept above, as the reason it is here.
+        """
+        payload = {
             "n_atoms_total":  3,
             "structure_hash": "b" * 32,
             "regions":        {"L-electrode": [0]},
-            "fixed_atoms":    [],
-        }))
-        with pytest.raises(msj.MolstructJsonError, match="reads versions"):
+        }
+        if version is not None:
+            payload["schema_version"] = version
+        p = tmp_path / "old.molstruct.json"
+        p.write_text(_json.dumps(payload))
+        with pytest.raises(msj.MolstructJsonError, match="reads version 7 only"):
             msj.load(p)
 
     def test_writes_the_reserved_label_into_the_one_label_store(self, tmp_path):
@@ -453,16 +468,6 @@ class TestSchemaVersioning:
         assert d["regions"] == {"L-electrode": [0], "frozen_atoms": [1, 2]}
         assert "frozen_atoms" not in d
         assert "fixed_atoms" not in d
-
-    def test_unknown_version_raises(self, tmp_path):
-        p = tmp_path / "v99.molstruct.json"
-        p.write_text(_json.dumps({
-            "schema_version": 99,
-            "n_atoms_total":  3,
-            "structure_hash": "b" * 32,
-        }))
-        with pytest.raises(msj.MolstructJsonError, match="reads versions"):
-            msj.load(p)
 
 
 class TestSelectionRules:

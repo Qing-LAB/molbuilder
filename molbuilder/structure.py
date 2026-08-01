@@ -1049,57 +1049,85 @@ class Structure:
 
     @classmethod
     def from_xyz(cls, source: Union[str, Path], *,
-                 title: Optional[str] = None) -> "Structure":
+                 title: Optional[str] = None,
+                 frames_out: Optional[List] = None) -> "Structure":
         """Load a Structure from an XYZ file path or XYZ text content.
 
-        Standard xmol layout is expected::
+        THE PARSE IS ASE'S, NOT OURS (``ase.io.read(..., format="extxyz")``).
+        ASE's extended-XYZ reader is a superset reader: it handles the plain
+        xmol layout AND the ``Lattice="…" Properties=… pbc="…"`` comment line,
+        it canonicalises an external tool's ``FE`` / ``ZN`` to ``Fe`` / ``Zn``,
+        and it reads every frame of a multi-frame file.  ASE is a declared
+        dependency of this project **for exactly this** (``pyproject.toml``:
+        *"XYZ I/O + atomic-number table"*).
 
-            N
-            <comment / title>
-            <El>  x  y  z
-            ...   (N atom lines)
+        WHY THIS IS NOT HAND-ROLLED ANY MORE.  It was, and the hand-rolled
+        parser read the atoms out of the first block and nothing else -- so a
+        file this class had itself written with ``to_extxyz`` came back with
+        **no cell, no pbc and one frame**.  The project already knew: a second
+        reader had been built at ``siesta/input.py`` whose comment said *"Use
+        ASE for XYZ -- it understands extended-XYZ headers and gives us the
+        lattice when present, which our hand-rolled parser doesn't."*  Two
+        readers of one format is two answers to "what is in this file", and the
+        one that lost data was the one every other caller used.
 
-        Extra trailing whitespace and blank lines after the N atoms
-        are ignored.  XYZ stores no atom names / residues, so all
-        atoms come back tagged as residue 1 ("MOL", chain "A") and
-        atom names default to the element symbol.
+        XYZ stores no atom names / residues, so all atoms come back tagged as
+        residue 1 ("MOL", chain "A") and atom names default to the element
+        symbol.
+
+        :param title: overrides the comment line.
+        :param frames_out: when given, EVERY frame's positions are appended to
+            it, in file order -- the read-side inverse of ``to_extxyz(frames=)``.
+            The Structure itself holds one geometry (frames live with the caller
+            that needs them), so a multi-frame file is otherwise read as its
+            first frame and this is how the rest is recovered.
         """
         text = _resolve_source(source)
+        # THE TITLE IS OURS, and it is the one thing read here rather than
+        # parsed by ASE.  ASE's extended-XYZ reader treats the comment line as
+        # `key=value` pairs, so a human comment -- "water molecule" -- comes
+        # back as ``{'water': True, 'molecule': True}`` and the sentence is
+        # gone.  The line is taken verbatim for this one field, which is
+        # metadata this class owns, not part of reading the structure.
         lines = text.splitlines()
-        if len(lines) < 2:
-            raise ValueError("XYZ too short: need header + comment + atoms")
-        try:
-            n = int(lines[0].strip())
-        except ValueError as e:
-            raise ValueError(
-                f"first line of XYZ must be an integer atom count; got "
-                f"{lines[0]!r}"
-            ) from e
-        if n < 0:
-            raise ValueError(f"negative atom count in XYZ: {n}")
-        elements: List[str] = []
-        positions: List[List[float]] = []
-        for raw in lines[2:2 + n]:
-            parts = raw.split()
-            if len(parts) < 4:
-                raise ValueError(
-                    f"malformed XYZ atom line (need 'El x y z'): {raw!r}"
-                )
-            # Same case-canonicalisation as from_pdb: an XYZ produced
-            # by an external tool might emit ``FE`` / ``ZN``; downstream
-            # consumers (siesta/input._detect_species, ase.data) key on
-            # the ``Fe``/``Zn`` form.
-            elements.append(parts[0].capitalize())
-            positions.append([float(parts[1]), float(parts[2]), float(parts[3])])
-        if len(elements) != n:
-            raise ValueError(
-                f"XYZ header says {n} atoms but only {len(elements)} found"
-            )
         comment = lines[1].strip() if len(lines) >= 2 else ""
+
+        from ase.io import read as _ase_read
+        try:
+            images = _ase_read(StringIO(text), index=":", format="extxyz")
+        except StopIteration as exc:                    # an empty document
+            raise ValueError(
+                "XYZ is empty: need an atom count, a comment line and the atoms"
+            ) from exc
+        except Exception as exc:                        # ASE's own diagnosis
+            raise ValueError(f"could not read XYZ: {exc}") from exc
+        if not images:
+            raise ValueError("XYZ holds no frames")
+        first = images[0]
+
+        if frames_out is not None:
+            frames_out.extend(np.asarray(im.get_positions(), dtype=float)
+                              for im in images)
+
+        # THE CELL, ONLY WHERE IT MEANS ONE.  A `Lattice=` is adopted as this
+        # structure's explicit cell only when some axis is actually periodic.
+        # Our own `to_extxyz` writes the RESOLVED box for an isolated molecule
+        # too -- its bounding box plus vacuum, with `pbc="F F F"` beside it --
+        # and adopting that would promote a DERIVED value into a stored one, so
+        # the box would stop tracking the vacuum it came from
+        # (structure-periodicity.md's raw-vs-resolved line).  A `.xyz` that
+        # travels with its `.molstruct.json` gets the real cell from the
+        # sidecar anyway, applied after this parse.
+        cell = np.asarray(first.cell, dtype=float)
+        periodic = tuple(bool(b) for b in first.pbc)
+        carries_cell = bool(cell.any()) and any(periodic)
+
         return cls(
-            elements=elements,
-            positions=np.asarray(positions, dtype=float),
+            elements=list(first.get_chemical_symbols()),
+            positions=np.asarray(first.get_positions(), dtype=float),
             title=(title if title is not None else comment),
+            cell=(cell.tolist() if carries_cell else None),
+            pbc=(periodic if carries_cell else None),
         )
 
     # ------------------------------------------------------------------ #

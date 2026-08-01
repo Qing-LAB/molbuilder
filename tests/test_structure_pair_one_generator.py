@@ -136,15 +136,16 @@ def test_a_stale_sidecar_is_removed_rather_than_left_disagreeing(tmp_path):
 #  The names, which the caller must not be left to derive                #
 # --------------------------------------------------------------------- #
 
-def test_a_range_is_named_for_the_format_it_actually_contains():
+def test_a_range_and_a_single_frame_are_both_named_xyz():
     """The defect this closes, and it was live.
 
-    A range produces extended XYZ. The caller appended `.xyz` because that is
-    what a structure file is usually called, so a multi-frame download arrived
-    named `wire.xyz` with `Lattice=` lines inside it — at the extension every
-    trajectory reader dispatches on. The format is decided by the frame count
-    inside `pair()`, so the NAME is decided there too and the caller is handed
-    both.
+    `pair()` named a range `.extxyz`, on the reasoning that a name should say
+    which format it holds. It should not: extended XYZ is a strict SUPERSET of
+    plain XYZ -- the cell rides in the comment line, which a plain reader skips
+    -- so `.xyz` covers both, and that is the convention ASE established.
+
+    And it could not: `load()` dispatches on the extension and takes `.xyz` /
+    `.pdb` only, so a trajectory saved into a project COULD NOT BE REOPENED.
     """
     struct = _with_metadata()
     frames = [struct.positions, struct.positions + 0.1]
@@ -153,18 +154,35 @@ def test_a_range_is_named_for_the_format_it_actually_contains():
     many = [p.name for p, _ in StructureCodec().files(struct, "wire",
                                                       frames=frames)]
 
-    assert one[0] == "wire.xyz", f"a single frame is a plain .xyz: {one}"
-    assert many[0] == "wire.extxyz", (
-        f"a range must not be named after the format it is not: {many}")
-    # ONE sidecar either way, named off the document beside it.
-    assert one[1:] == ["wire.molstruct.json"]
-    assert many[1:] == ["wire.molstruct.json"]
+    assert one == ["wire.xyz", "wire.molstruct.json"], one
+    assert many == ["wire.xyz", "wire.molstruct.json"], (
+        f"a range must be named under the extension that reads it back: {many}")
+
+
+def test_a_saved_range_can_be_opened_again(tmp_path):
+    """The pin that was missing, which is why the naming defect survived: the
+    save test wrote a trajectory and never read its file back.
+
+    A project save is the scientific record (molview.md § 11.3). A record that
+    cannot be reopened is not one.
+    """
+    struct = _with_metadata()
+    frames = [struct.positions, struct.positions + 0.1, struct.positions + 0.2]
+    target = tmp_path / "run.xyz"
+    written = StructureCodec().write(struct, target, frames=frames)
+
+    got = []
+    back = StructureCodec().read(written, frames_out=got)
+    assert len(got) == 3, f"the frames did not survive the round trip: {len(got)}"
+    assert back.regions == struct.regions, "the labels did not come back"
+    assert back.cell is not None, "the cell did not come back"
+    assert got[2] == pytest.approx(frames[2])
 
 
 def test_a_stem_that_already_carries_a_suffix_is_corrected_not_appended_to():
     """Both callers exist: the export door hands a bare stem, and a comparison
     against `write()` hands a full path. Neither may end up with two suffixes,
-    and a stem carrying a suffix that is NOT a geometry one keeps it — `run.v2`
+    and a stem carrying a suffix that is NOT a geometry one keeps it -- `run.v2`
     is a name, not a mistake, and `with_suffix` would eat the `.v2`.
     """
     struct = _with_metadata()
@@ -173,11 +191,11 @@ def test_a_stem_that_already_carries_a_suffix_is_corrected_not_appended_to():
         struct, target, **kw)[0][0].name
 
     assert name("wire.xyz") == "wire.xyz"
-    assert name("wire.xyz", frames=frames) == "wire.extxyz", (
-        "a .xyz target holding a range must be corrected, not left lying")
-    assert name("wire.extxyz") == "wire.xyz"
+    assert name("wire.xyz", frames=frames) == "wire.xyz"
+    assert name("wire.extxyz") == "wire.xyz", (
+        "a non-standard extension is corrected to the one load() accepts")
     assert name("run.v2") == "run.v2.xyz", "the .v2 was eaten"
-    assert name("run.v2", frames=frames) == "run.v2.extxyz"
+    assert name("run.v2", frames=frames) == "run.v2.xyz"
 
 
 def test_the_suffix_travels_with_the_pair_rather_than_being_re_derived():
@@ -186,4 +204,5 @@ def test_the_suffix_travels_with_the_pair_rather_than_being_re_derived():
     struct = _with_metadata()
     assert StructureCodec().pair(struct).suffix == ".xyz"
     assert StructureCodec().pair(
-        struct, frames=[struct.positions, struct.positions]).suffix == ".extxyz"
+        struct, frames=[struct.positions, struct.positions]).suffix == ".xyz", (
+        "extended XYZ is a superset of plain XYZ and shares its extension")
