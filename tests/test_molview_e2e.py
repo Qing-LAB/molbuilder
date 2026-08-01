@@ -143,18 +143,22 @@ def test_a_switch_changes_the_picture(demo, index, name):
     )
 
 
-def test_the_cell_switch_carries_only_a_boolean(demo):
-    """§ 10.3: "The visibility switch carries ONLY a boolean: show it or don't.
-    It never carries geometry." Whether there IS a box is the structure's
-    business — a molecule with no cell has none to show.
+def test_showing_the_unit_cell_draws_the_box_the_structure_uses(demo):
+    """§ 1.1's `▦` switch, in a real page: pressing it draws the cell.
 
-    WHAT THIS CANNOT CHECK, stated rather than left as a silent hole: that the
-    box is drawn AT THE STRUCTURE'S CORNER after a hidden load, which § 10.3
-    calls out as the assertion that matters. None of the demo's samples is
-    periodic — including the one labelled "Au (with cell)", which carries no
-    lattice — so there is no cell to draw anywhere on this page. Closing that
-    needs a periodic sample in the demo (§ 13.4: the demo exists to make this
-    testable), and it is the one row of § 13.3 this file leaves open.
+    § 10.3: "The visibility switch carries ONLY a boolean: show it or don't. It
+    never carries geometry" — the geometry travels on its own, unconditionally,
+    so it is already there when the switch goes on. And § 9.3: the cell a reader
+    is given is the one "as it will actually be used... so it always has an
+    answer", which means EVERY structure has a box to show, not only one that was
+    handed an explicit lattice.
+
+    THIS TEST USED TO ASSERT THE OPPOSITE — that the canvas does not change — and
+    it passed, because the box was derived from the raw `cell` field, which is
+    null for every structure nobody gave an explicit lattice to. It then reasoned
+    from its own green run that the demo has no periodic sample. The drawing was
+    wrong and the test agreed with it, so "Show unit cell" did nothing at all and
+    nothing said so.
     """
     before = _canvas_pixels(demo)
     button = demo.locator(".mol-viewer-quickbar button").nth(4)
@@ -162,10 +166,19 @@ def test_the_cell_switch_carries_only_a_boolean(demo):
     _settle(demo)
 
     assert button.get_attribute("aria-pressed") == "true"
-    assert _canvas_pixels(demo) == before, (
-        "a box was drawn for a structure that has no cell"
+    assert _canvas_pixels(demo) != before, (
+        "pressing 'Show unit cell' changed nothing on screen — the box the "
+        "structure actually uses was not drawn"
     )
     assert demo.locator(".molview-card").is_visible(), "the switch broke the card"
+
+    # And off again: a boolean both ways, with the geometry untouched underneath.
+    button.click()
+    _settle(demo)
+    assert button.get_attribute("aria-pressed") == "false"
+    assert _canvas_pixels(demo) == before, (
+        "turning the cell off left something of the box behind"
+    )
 
 
 def test_selecting_an_atom_draws_a_highlight(demo):

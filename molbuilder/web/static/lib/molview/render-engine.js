@@ -49,6 +49,10 @@
 "use strict";
 
 import { toDisplay } from "./_atom.js";
+// The one answer to "which cell is this structure actually using" (§ 9.3). The
+// drawing asks the same question the Cell page asks, so the two cannot describe
+// different structures — which they did.
+import { effectiveCell } from "./model-jobs.js";
 
 
 /* ══ The per-frame calculation (§ 10.3, § 6.5) ═══════════════════════════════
@@ -196,8 +200,25 @@ export function processFrames(input) {
 // enough to stay out of the way even in a dense junction.
 const CARTESIAN_AXIS_LENGTH = 1.5;
 
-// Red / green / blue maps to the first / second / third axis in either mode.
-const AXIS_COLORS = ["#ff5555", "#55cc55", "#5588ff"];
+/* THE TWO TRIADS ARE DIFFERENT COLOURS, because they are different things.
+ *
+ * The triad in the window is either the world's x/y/z or the cell's a/b/c
+ * (§ 10.3), and which one you are looking at changes what every arrow means: the
+ * Cartesian triad says which way is which in the room, the lattice triad says
+ * which way the box repeats. Drawn in one palette — which they were — the two are
+ * indistinguishable, so a skewed cell reads as a mis-drawn axis widget and a
+ * structure whose cell failed to load looks exactly like one that never had a
+ * cell. The label at each tip says which, but a label is read second and a
+ * colour is seen first.
+ *
+ * x/y/z keeps red/green/blue: that is the near-universal convention for world
+ * axes and nothing is gained by moving it. a/b/c takes a set that shares no hue
+ * with it — amber, violet, teal — so the two cannot be confused at a glance, and
+ * each stays legible against both the card's dark ground and a white background
+ * chosen for export (§ 1.1).
+ */
+const CARTESIAN_AXIS_COLORS = ["#ff5555", "#55cc55", "#5588ff"];   // x / y / z
+const LATTICE_AXIS_COLORS   = ["#ffb020", "#c56bff", "#20d0d0"];   // a / b / c
 
 // The label sits 15% past the arrow tip: clear of the arrowhead without flying
 // off into space at long cell vectors.
@@ -231,10 +252,20 @@ export function sceneFor(periodicity) {
      * and the corner an origin. That rename is this layer's job — the same
      * translation it does for `style` → `rep` (§ 9.8) — and it is the only place
      * in the module where the drawing's words are used. */
-    const per = periodicity || {};
-    const lattice = isLattice(per.cell) ? per.cell : null;
-    const origin = (Array.isArray(per.cell_origin) && per.cell_origin.length === 3)
-        ? per.cell_origin : [0, 0, 0];
+    /* THE CELL AS IT WILL ACTUALLY BE USED, not the raw field (§ 9.3). A
+     * structure given no explicit cell still HAS one — the server works out the
+     * box that wraps the atoms and sends it as `resolved_cell` — and that is the
+     * box a calculation runs in, so it is the box to draw.
+     *
+     * Reading `cell` alone is why "Show unit cell" drew nothing on every plain
+     * `.xyz`: the raw field is null there, so the box was null, and the axes
+     * fell back to the Cartesian triad at the world origin — which is § 10.3's
+     * named failure, reached from a different direction than the one it warns
+     * about. */
+    const used = effectiveCell(periodicity);
+    const lattice = isLattice(used.cell) ? used.cell : null;
+    const origin = (Array.isArray(used.cell_origin) && used.cell_origin.length === 3)
+        ? used.cell_origin : [0, 0, 0];
 
     // Cell mode follows the lattice vectors and labels them a/b/c; with no cell
     // the triad is Cartesian, at the world origin, labelled x/y/z.
@@ -245,11 +276,14 @@ export function sceneFor(periodicity) {
            [0, 0, CARTESIAN_AXIS_LENGTH]];
     const names = lattice ? ["a", "b", "c"] : ["x", "y", "z"];
     const base = lattice ? origin : [0, 0, 0];
+    // The colours follow the same choice the names do, so the two say the same
+    // thing and cannot come apart.
+    const colors = lattice ? LATTICE_AXIS_COLORS : CARTESIAN_AXIS_COLORS;
 
     const axes = vectors.map((v, i) => ({
         start:    [base[0], base[1], base[2]],
         end:      [base[0] + v[0], base[1] + v[1], base[2] + v[2]],
-        color:    AXIS_COLORS[i],
+        color:    colors[i],
         label:    names[i],
         labelEnd: [base[0] + v[0] * LABEL_PAST_TIP,
                    base[1] + v[1] * LABEL_PAST_TIP,

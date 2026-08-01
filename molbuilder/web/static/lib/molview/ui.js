@@ -1061,6 +1061,53 @@ function mountPanel(doc, card, model) {
         assign.hidden = model.mode === "readonly";
     }
 
+    /* ONE ROW PER ATOM: a checkbox, the atom's facts, and the labels it carries
+     * as chips you can take off (§ 6.2's three facts — element, labels, residue
+     * — are exactly these columns).
+     *
+     * The checkbox is what makes the list a list of things you TICK. The row
+     * stays clickable too, because a row is a bigger target than a box, and both
+     * go through the same one write (§ 9.5) — so neither is a second answer.
+     */
+    function cell(className, text) {
+        const node = el("td", className);
+        node.textContent = text;
+        return node;
+    }
+
+    /* A LABEL CHIP, with the × that takes it off THIS atom.
+     *
+     * Removing one label from one atom is a change to the structure like any
+     * other, so it goes through the same door with the same gate (§ 9.4) — it
+     * simply names the atom instead of letting the door default to the
+     * selection. That is why it can be offered per row without the user first
+     * having to select the atom, and why what they had selected is not disturbed.
+     *
+     * In a read-only viewer the × is not drawn at all: the gate would swallow
+     * it, and a control that silently does nothing is a bad answer for a user
+     * (§ 9.4). The chip itself stays — reading the labels is not an edit.
+     */
+    function labelTag(name, atomIndex) {
+        const tag = el("span", "selection-tag tag-region");
+        const text = el("span");
+        text.textContent = name;
+        tag.appendChild(text);
+        if (model.mode === "readonly") return tag;
+        const strip = el("button", "selection-tag-remove");
+        strip.type = "button";
+        strip.textContent = "×";
+        // 1-based on screen, through the one translation (§ 11.5).
+        strip.title = "Remove " + name + " from atom #" + toDisplay(atomIndex);
+        strip.setAttribute("aria-label", strip.title);
+        strip.addEventListener("click", (e) => {
+            // The row is clickable; taking a label off is not also a selection.
+            e.stopPropagation();
+            model.selection.writeLabel(name, "remove", [atomIndex]);
+        });
+        tag.appendChild(strip);
+        return tag;
+    }
+
     function drawList(state) {
         const atoms = model.getAtoms();
         count.textContent = atoms
@@ -1072,21 +1119,37 @@ function mountPanel(doc, card, model) {
         for (const atom of atoms) {
             const row = doc.createElement("tr");
             if (picked.has(atom.index)) row.className = "is-selected";
-            const number = doc.createElement("td");
+
+            const checkCell = el("td", "col-check");
+            const check = doc.createElement("input");
+            check.type = "checkbox";
+            check.checked = picked.has(atom.index);
+            check.setAttribute("aria-label",
+                               "Select atom #" + toDisplay(atom.index));
+            check.addEventListener("change", (e) => {
+                // The row's own handler would toggle it straight back.
+                e.stopPropagation();
+                model.selection.toggle(atom.index);
+            });
+            checkCell.appendChild(check);
+            row.appendChild(checkCell);
+
             // 1-based on screen, through the one translation (§ 11.5).
-            number.textContent = String(toDisplay(atom.index));
-            const element = doc.createElement("td");
-            element.textContent = atom.element;
-            const labels = doc.createElement("td");
+            row.appendChild(cell("col-idx", String(toDisplay(atom.index))));
+            row.appendChild(cell("col-el", atom.element || ""));
+            row.appendChild(cell("col-res", atom.residue || ""));
+
+            const labels = el("td", "col-labels");
             for (const name of atom.labels) {
-                const tag = el("span", "selection-tag tag-region");
-                tag.textContent = name;
-                labels.appendChild(tag);
+                labels.appendChild(labelTag(name, atom.index));
             }
-            row.appendChild(number);
-            row.appendChild(element);
             row.appendChild(labels);
-            row.addEventListener("click", () => model.selection.toggle(atom.index));
+
+            row.addEventListener("click", (e) => {
+                // The controls inside the row speak for themselves.
+                if (e.target === check) return;
+                model.selection.toggle(atom.index);
+            });
             list.appendChild(row);
         }
     }

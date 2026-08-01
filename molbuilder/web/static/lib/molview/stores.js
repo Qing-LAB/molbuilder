@@ -270,8 +270,18 @@ export function createSelectionStore(handed) {
         // travels with the call because all three are the same truth change on
         // the same atoms, and splitting them into three doors would give the
         // gate three things to stand in front of instead of one (§ 9.4).
-        writeLabel(name, verb) {
-            return handed.writeLabel(name, selected.slice(), verb || "replace");
+        // `atoms` is optional and defaults to the selection, which is the case
+        // § 9.5 describes — the label block acts on what you picked. Naming a
+        // set explicitly is the same truth change on a different set, and it is
+        // what the × on a single label chip needs: remove THIS label from THIS
+        // atom, without disturbing what the user has selected. One door, one
+        // gate; a second door for the one-atom case would be a truth change the
+        // gate has to be taught about separately (§ 9.4).
+        writeLabel(name, verb, atoms) {
+            return handed.writeLabel(
+                name,
+                Array.isArray(atoms) ? atoms.slice() : selected.slice(),
+                verb || "replace");
         },
     };
 }

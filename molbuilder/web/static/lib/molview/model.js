@@ -18,7 +18,8 @@
 
 import {
     createLoad, createWriteOut, createEdits, createCellEdit, FROZEN_LABEL,
-    structureForServer, groupByLabel, resolveFilter as askServerToFilter,
+    structureForServer, groupByLabel, effectiveCell,
+    resolveFilter as askServerToFilter,
 } from "./model-jobs.js";
 import { createSelectionStore, createViewStore } from "./stores.js";
 import { createHistory } from "./history.js";
@@ -491,24 +492,21 @@ export function createModel(opts) {
          * carries the block and interprets none of it (§ 6.2).
          */
         getUnitCellInfo() {
-            /* THE CELL AS IT WILL ACTUALLY BE USED — which the server already
-             * works out and sends beside the raw values (`resolved_cell`,
-             * `resolved_cell_origin`, `resolved_vacuum`). Reading those is what
-             * makes § 9.3's "with the defaults filled in for whatever the
-             * structure left unsaid, so it always has an answer" true; before,
-             * this returned the raw values under different names and the
-             * resolved ones were dropped at the boundary.
+            /* THE CELL AS IT WILL ACTUALLY BE USED — the server works it out and
+             * sends it beside the raw values, and this reads it (§ 6.2: MolView
+             * interprets none of it).
+             *
+             * THROUGH THE ONE FUNCTION THAT ANSWERS THAT QUESTION, because the
+             * drawing asks it too (§ 5.2). This used to spell the fallback out
+             * here while `sceneFor` spelled a different one out there, and the
+             * two disagreed: this said a plain `.xyz` had a cell, the drawing
+             * said it had none, and "Show unit cell" drew nothing while the Cell
+             * page listed a lattice.
              *
              * COPIED, like every other read (§ 9.3) — the main way in was the one
              * way in that could be written through, which is the opposite of the
              * rule. */
-            const per = (structure && structure.periodicity) || {};
-            return {
-                cell:        copy(per.resolved_cell || per.cell) || null,
-                cell_origin: copy(per.resolved_cell_origin || per.cell_origin) || null,
-                axis_kind:   copy(per.axis_kind) || null,
-                vacuum:      copy(per.resolved_vacuum || per.vacuum) || null,
-            };
+            return copy(effectiveCell(structure && structure.periodicity));
         },
         // The RAW values — what the structure actually says, `null` where it says
         // nothing (§ 9.3: "the raw 3×3 or null").

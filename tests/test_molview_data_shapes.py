@@ -582,7 +582,14 @@ def test_cell_geometry_arrives_even_while_the_cell_is_hidden():
     """
     out = _run(
         """
-        const cell = { cell: [[4,0,0],[0,4,0],[0,0,4]], cell_origin: [10, 10, 10] };
+        // THE SERVER'S BLOCK, with the resolved values beside the raw ones as
+        // /api/build/load always sends them (§ 6.2) — not a hand-made block
+        // carrying only the raw half, which is a shape nothing produces.
+        const cell = { cell: [[4,0,0],[0,4,0],[0,0,4]], cell_origin: [10, 10, 10],
+                       resolved_cell: [[4,0,0],[0,4,0],[0,0,4]],
+                       resolved_cell_origin: [10, 10, 10],
+                       axis_kind: ["periodic","periodic","periodic"],
+                       vacuum: [0,0,0], resolved_vacuum: [0,0,0] };
         // Every switch off — the cell is hidden.
         const scene = ENGINE.sceneFor(cell);
         console.log(JSON.stringify({
@@ -604,6 +611,98 @@ def test_cell_geometry_arrives_even_while_the_cell_is_hidden():
     )
     assert out["axisLabels"] == ["a", "b", "c"], (
         "with a cell the triad follows the lattice vectors and is labelled a/b/c"
+    )
+
+
+def test_the_box_drawn_is_the_cell_the_structure_actually_uses():
+    """§ 9.3: the cell a reader is given is "the cell as it will actually be
+    used, with the defaults filled in for whatever the structure left unsaid, so
+    it ALWAYS HAS AN ANSWER" — and § 5.2 says that answer has one home, so the
+    drawing and the Cell page cannot give different ones.
+
+    THE FIXTURE IS THE REAL THING. This is byte-for-byte the periodicity block
+    ``/api/build/load`` sends for a plain three-atom water `.xyz`: no explicit
+    cell, and the box the server worked out sitting beside it. That structure
+    still HAS a cell — it is the box a calculation runs in — and pressing "Show
+    unit cell" has to draw it.
+
+    Reading the raw `cell` alone made the box null for every structure nobody had
+    given an explicit cell to, which is every plain `.xyz`: the switch drew
+    nothing, the axes fell back to the Cartesian triad at the world origin, and
+    the Cell page said "Lattice: set" the whole time. Nothing failed, because a
+    missing cell is an ordinary answer — the same shape of defect as § 6.2's
+    `lattice` rename, one field over.
+    """
+    out = _run(
+        """
+        const fromServer = {
+            axis_kind: ["isolated","isolated","isolated"],
+            cell: null, cell_origin: null, vacuum: [0,0,0],
+            resolved_cell: [[7.196,0,0],[0,6.927,0],[0,0,6]],
+            resolved_cell_origin: [-3.239,-3,-3],
+            resolved_vacuum: [3,3,3],
+        };
+        const scene = ENGINE.sceneFor(fromServer);
+        console.log(JSON.stringify({
+            box:        scene.cellBox,
+            axisStarts: scene.axes.map(a => a.start),
+            axisLabels: scene.axes.map(a => a.label),
+        }));
+        """
+    )
+    assert out["box"] is not None, (
+        "a structure with no EXPLICIT cell still has one — the box the server "
+        "resolved — and 'Show unit cell' must draw it"
+    )
+    assert out["box"]["lattice"] == [[7.196, 0, 0], [0, 6.927, 0], [0, 0, 6]], (
+        f"the box drawn is not the cell the structure uses: {out['box']}"
+    )
+    assert out["box"]["origin"] == [-3.239, -3, -3], (
+        "the box must be anchored at the structure's corner so it wraps the "
+        f"atoms, not at the world origin: {out['box']}"
+    )
+    assert all(s == [-3.239, -3, -3] for s in out["axisStarts"]), (
+        f"the axes must start at the same corner: {out['axisStarts']}"
+    )
+    assert out["axisLabels"] == ["a", "b", "c"], (
+        "with a cell the triad follows the lattice vectors and is labelled a/b/c "
+        f"— falling back to x/y/z means the cell was not seen: {out['axisLabels']}"
+    )
+
+
+def test_the_two_triads_are_told_apart_by_colour_as_well_as_by_label():
+    """The triad in the window is either the world's x/y/z or the cell's a/b/c
+    (§ 10.3), and which one it is changes what every arrow means. Drawn in one
+    palette the two are indistinguishable, so a structure whose cell failed to
+    load looks exactly like one that never had a cell.
+
+    The label at each tip says which; the colour has to say it too, because a
+    label is read second and a colour is seen first.
+    """
+    out = _run(
+        """
+        const withCell = ENGINE.sceneFor({
+            resolved_cell: [[5,0,0],[0,5,0],[0,0,5]],
+            resolved_cell_origin: [0,0,0] });
+        const without = ENGINE.sceneFor(null);
+        console.log(JSON.stringify({
+            abc: withCell.axes.map(a => a.color),
+            xyz: without.axes.map(a => a.color),
+            abcLabels: withCell.axes.map(a => a.label),
+            xyzLabels: without.axes.map(a => a.label),
+        }));
+        """
+    )
+    assert out["abcLabels"] == ["a", "b", "c"]
+    assert out["xyzLabels"] == ["x", "y", "z"]
+    # Each triad's three axes differ from one another...
+    assert len(set(out["xyz"])) == 3, f"the x/y/z axes share a colour: {out['xyz']}"
+    assert len(set(out["abc"])) == 3, f"the a/b/c axes share a colour: {out['abc']}"
+    # ...and no colour is used by both, so the two triads cannot be confused.
+    shared = set(out["xyz"]) & set(out["abc"])
+    assert not shared, (
+        f"the world triad and the cell triad share {sorted(shared)}, so which "
+        "one is on screen cannot be seen at a glance"
     )
 
 

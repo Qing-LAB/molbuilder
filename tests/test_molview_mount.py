@@ -1100,7 +1100,8 @@ def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store():
         const card = host.querySelector(".molview-card");
         const rows = card.querySelectorAll(".selection-atom-table")[0].children;
 
-        const numbers = Array.from(rows).map(r => r.children[0].textContent);
+        const numbers = Array.from(rows).map(
+            r => r.querySelectorAll(".col-idx")[0].textContent);
         rows[1].click();                       // the SECOND atom, which reads #2
         console.log(JSON.stringify({
             numbers,
@@ -1116,6 +1117,101 @@ def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store():
         "clicking the row that reads #2 must select the atom the code calls 1"
     )
     assert "1 of 2 selected" in out["count"]
+
+
+def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
+    """The atom list is a list of things you TICK, and each row shows the labels
+    that atom carries with a × to take one off.
+
+    § 6.2 fixes the columns: an atom's facts are its element, the labels it
+    carries and its residue — so those are what a row shows, beside the number
+    (§ 11.5, 1-based) and the tick.
+
+    The × is a change to the STRUCTURE (§ 9.5), so it goes through the same
+    label door with the same gate — it just names the atom instead of letting the
+    door default to the selection. Two things follow, and both are asserted here:
+    it works without the atom being selected first, and it leaves the selection
+    exactly as it was.
+
+    A reserved label is an ordinary one (§ 6.6): it arrives in the same list,
+    wears the same chip, and comes off the same way. There is no second kind of
+    tag and no case for it here.
+    """
+    out = _run(
+        """
+        globalThis.__nextAtoms = [
+            { index: 0, element: "C", x: 0, y: 0, z: 0,
+              regions: ["bridge", "frozen_atoms"], residue_name: "ALA" },
+            { index: 1, element: "O", x: 1, y: 0, z: 0,
+              regions: [], residue_name: "ALA" },
+        ];
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const card = host.querySelector(".molview-card");
+        const rows = () => card.querySelectorAll(".selection-atom-table")[0].children;
+
+        const first = rows()[0];
+        const columns = {
+            index:   first.querySelectorAll(".col-idx")[0].textContent,
+            element: first.querySelectorAll(".col-el")[0].textContent,
+            residue: first.querySelectorAll(".col-res")[0].textContent,
+            labels:  first.querySelectorAll(".col-labels .selection-tag")
+                          .map(t => t.children[0].textContent),
+        };
+
+        // THE TICK. Driven as a change on the box itself, not a row click.
+        const box = first.querySelectorAll(".col-check input")[0];
+        const tickedBefore = box.checked;
+        box.dispatch("change", { target: box });
+        const afterTick = viewer.data.selection.get();
+
+        // Set from elsewhere: the box follows the store (§ 8.4).
+        viewer.data.selection.clear();
+        const afterClear = rows()[0].querySelectorAll(".col-check input")[0].checked;
+
+        // THE ×, on an atom nothing has selected — and on the RESERVED label,
+        // because § 6.6 says it comes off exactly like any other.
+        const selectionBefore = viewer.data.selection.get();
+        rows()[0].querySelectorAll(".col-labels .selection-tag-remove")[1]
+                 .dispatch("click", {});
+        const left = rows()[0].querySelectorAll(".col-labels .selection-tag")
+                              .map(t => t.children[0].textContent);
+
+        console.log(JSON.stringify({
+            columns, tickedBefore, afterTick, afterClear,
+            selectionBefore, left,
+            selectionAfter: viewer.data.selection.get(),
+            otherAtomUntouched: viewer.data.getAtoms()[1].labels,
+        }));
+        """
+    )
+    assert out["columns"]["index"] == "1", "the row must read 1-based (§ 11.5)"
+    assert out["columns"]["element"] == "C"
+    assert out["columns"]["residue"] == "ALA", (
+        "§ 6.2 makes the residue one of the three facts an atom carries"
+    )
+    assert out["columns"]["labels"] == ["bridge", "frozen_atoms"], (
+        "every label the atom carries must show, the reserved one among them "
+        f"and wearing the same chip (§ 6.6): {out['columns']['labels']}"
+    )
+    assert out["tickedBefore"] is False
+    assert out["afterTick"] == [0], (
+        f"ticking the box did not reach the selection store: {out['afterTick']}"
+    )
+    assert out["afterClear"] is False, (
+        "the box kept its own answer instead of following the store (§ 8.4)"
+    )
+    assert out["selectionBefore"] == [], "the × is being tested on an unselected atom"
+    assert out["left"] == ["bridge"], (
+        f"the × did not take that one label off that one atom: {out['left']}"
+    )
+    assert out["selectionAfter"] == [], (
+        "taking a label off disturbed the selection — the door defaulted to the "
+        "selection instead of using the atom it was given"
+    )
+    assert out["otherAtomUntouched"] == [], (
+        "removing a label from one atom reached another"
+    )
 
 
 def test_a_filter_row_is_added_typed_and_removed_from_the_panel():

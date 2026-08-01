@@ -103,9 +103,14 @@ function makeElement(doc, tag) {
             }
             node.dispatch("click", { target: node });
         },
+        /* A dispatched event carries `stopPropagation`, as a real one does. A
+         * handler on a control inside a clickable row calls it so the row does
+         * not act on the same gesture; a stand-in without it throws there, which
+         * would make the module look broken for obeying the DOM. */
         dispatch(type, event) {
+            const base = { target: node, stopPropagation() {}, preventDefault() {} };
             for (const fn of (node._listeners[type] || []).slice()) {
-                fn(Object.assign({ target: node }, event || {}));
+                fn(Object.assign(base, { target: node }, event || {}));
             }
         },
 

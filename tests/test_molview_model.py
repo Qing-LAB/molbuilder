@@ -30,6 +30,9 @@ from tests._node_esm import run_node
 REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
 MODEL = MODULE_DIR / "model.js"
+# The pipeline's scene derivation, so a test can ask the DRAWING what cell it
+# would draw and compare it with what the Cell page reports (§ 5.2).
+ENGINE = MODULE_DIR / "render-engine.js"
 
 # A stand-in server. It answers the three routes of § 11.1 and records what it
 # was sent, so a test can assert what actually left the browser.
@@ -73,6 +76,7 @@ globalThis.fetch = async function (route, init) {
 
 PRELUDE = f"""
 const {{ createModel }} = await import({json.dumps(MODEL.resolve().as_uri())});
+const ENGINE = await import({json.dumps(ENGINE.resolve().as_uri())});
 
 async function loaded(opts) {{
     globalThis.__requests = [];
@@ -292,6 +296,62 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
         "the cell as it will be used must agree with the raw cell when the "
         "structure states one — the resolved value only fills in what was left "
         "unsaid (§ 9.3)"
+    )
+
+
+def test_the_cell_page_and_the_drawing_cannot_describe_different_structures():
+    """§ 5.2 and § 9.3: "the cell as it will actually be used" is one fact, so
+    the panel that reports it and the pipeline that draws it must read the same
+    answer.
+
+    They did not. `getUnitCellInfo` read the RESOLVED values and `sceneFor` read
+    the RAW ones, so for a structure with no explicit cell — every plain `.xyz` —
+    the Cell page listed a lattice while the drawing had none and "Show unit
+    cell" drew nothing. Two readers of one fact, disagreeing, with no error
+    anywhere.
+    """
+    out = _run(
+        """
+        // The server's own block for a structure nobody gave a cell to: the raw
+        // field is empty and the box it worked out sits beside it.
+        globalThis.__nextPayload = globalThis.__payload(
+            [globalThis.__atomRow(0, "O", 0), globalThis.__atomRow(1, "H", 1)],
+            { periodicity: {
+                axis_kind: ["isolated","isolated","isolated"],
+                cell: null, cell_origin: null, vacuum: [0,0,0],
+                resolved_cell: [[7,0,0],[0,7,0],[0,0,6]],
+                resolved_cell_origin: [-3,-3,-3],
+                resolved_vacuum: [3,3,3] } });
+        const m = createModel({});
+        await m.installMolecule({ text: "x", filename: "x.xyz" });
+
+        const panel = m.getUnitCellInfo();          // what the Cell page shows
+        const drawn = ENGINE.sceneFor(m.getStructure().periodicity);   // what is drawn
+
+        console.log(JSON.stringify({
+            panelCell:  panel.cell,
+            drawnCell:  drawn.cellBox && drawn.cellBox.lattice,
+            panelOrigin: panel.cell_origin,
+            drawnOrigin: drawn.cellBox && drawn.cellBox.origin,
+            // The RAW reads still say what the structure itself states, which is
+            // nothing — that is their job (§ 9.3) and it is not a disagreement.
+            rawCell: m.getUnitCell(),
+        }));
+        """
+    )
+    assert out["panelCell"] == [[7, 0, 0], [0, 7, 0], [0, 0, 6]], (
+        "the Cell page lost the cell the structure actually uses"
+    )
+    assert out["drawnCell"] == out["panelCell"], (
+        f"the drawing and the Cell page describe different cells: drawn "
+        f"{out['drawnCell']} vs panel {out['panelCell']}"
+    )
+    assert out["drawnOrigin"] == out["panelOrigin"] == [-3, -3, -3], (
+        f"the box is not anchored where the panel says it is: {out}"
+    )
+    assert out["rawCell"] is None, (
+        "the raw read must still report what the structure itself states — "
+        "nothing — or it has stopped being the narrower cut § 9.3 describes"
     )
 
 

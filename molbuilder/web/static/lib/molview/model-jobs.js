@@ -108,6 +108,32 @@ export function structureFromServer(payload) {
     };
 }
 
+/* ══ The cell as it will actually be used ═══════════════════════════════════
+ *
+ * § 9.3 asks the block one question — "the cell as it will actually be used,
+ * with the defaults filled in for whatever the structure left unsaid, so it
+ * ALWAYS HAS AN ANSWER" — and the answer is the server's own: it sends the
+ * `resolved_*` values beside the raw ones, and this reads them rather than
+ * working anything out (§ 6.2: MolView interprets none of it).
+ *
+ * IT IS ONE FUNCTION BECAUSE THE QUESTION HAS ONE ANSWER (§ 5.2). Two readers
+ * asked it separately and disagreed: the Cell page read the resolved values and
+ * said a structure had a cell, while the drawing read the RAW ones and found
+ * none — so "Show unit cell" drew nothing at all for every structure that had
+ * not been given an explicit cell, which is every plain `.xyz`. The panel and
+ * the window described different structures, and neither failed.
+ */
+export function effectiveCell(periodicity) {
+    const per = periodicity || {};
+    return {
+        cell:        per.resolved_cell        || per.cell        || null,
+        cell_origin: per.resolved_cell_origin || per.cell_origin || null,
+        axis_kind:   per.axis_kind || null,
+        vacuum:      per.resolved_vacuum      || per.vacuum      || null,
+    };
+}
+
+
 /* ══ The labels, walked once ════════════════════════════════════════════════
  *
  * An atom carries a list of the names it is tagged with. Everything that needs
