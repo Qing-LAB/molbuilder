@@ -1034,7 +1034,7 @@ function mountPanel(doc, card, model, reserved) {
     clickSection.setAttribute("data-fill", "");
     const count = el("div", "molviewer-selection-count");
     const listWrap = el("div", "molviewer-selection-list-wrap");
-    const list = el("table", "molviewer-selection-atom-table");
+    const list = el("table", "molviewer-atoms-table");
     listWrap.appendChild(list);
     clickSection.appendChild(count);
     clickSection.appendChild(listWrap);
@@ -1126,7 +1126,6 @@ function mountPanel(doc, card, model, reserved) {
      * (§ 6.6). A label that stops being carried by any atom leaves the list on
      * its own, with nothing to keep in step.
      */
-    const NEW_LABEL = " new";      // not a name any label could have
     const targetRow = el("div", "molviewer-selection-target-row");
     const chooser = el("select", "molviewer-selection-assign-select");
     chooser.setAttribute("aria-label", "Label to apply");
@@ -1137,9 +1136,29 @@ function mountPanel(doc, card, model, reserved) {
     targetRow.appendChild(target);
     assign.appendChild(targetRow);
 
+    /* WHAT IS CHOSEN — three states, and they are three TYPES rather than three
+     * strings: `undefined` before the list has been drawn, `null` for
+     * "+ new label…", and a string for a label that exists.
+     *
+     * "+ new label…" is not a label, so it does not get a label's value. It used
+     * to: the option carried `"\0new"`, a name no label could have. Encoding
+     * "this one is not a name" INTO the name is what needed a character no name
+     * could contain, and the cost landed somewhere unrelated — a single NUL
+     * makes ui.js binary to `grep`, which then reports no matches AND no error.
+     * A search that silently finds nothing is worse than one that fails, and
+     * this file is the module's whole UI layer.
+     *
+     * Held here rather than read back off the `<select>`, which is rebuilt
+     * whenever the set of names changes: reading a choice off a control you are
+     * about to rebuild is how a rebuild invents one (§ 8.5). */
+    let chosen;
+    const NO_NAME = "";     // the option's DOM value — a select carries strings
     // The free-text box is only in the way when an existing label is chosen.
-    const showNewBox = () => { target.hidden = chooser.value !== NEW_LABEL; };
-    chooser.addEventListener("change", showNewBox);
+    const showNewBox = () => { target.hidden = chosen !== null; };
+    chooser.addEventListener("change", () => {
+        chosen = chooser.value || null;
+        showNewBox();
+    });
 
     /* WHICH NAMES ARE ON OFFER, so the list is rebuilt only when it changes.
      *
@@ -1147,15 +1166,19 @@ function mountPanel(doc, card, model, reserved) {
      * every click — and rebuilding a `<select>` under a user who has it open
      * shuts it. Same rule as the filter rows below: rebuild when the SET
      * changes, never because something else did. */
-    let renderedTargets = null;
+    let renderedTargets = null;   // the last list of names drawn
 
     function drawTargets() {
         const regions = model.getRegions() || {};
         const names = Object.keys(regions).sort();
-        const signature = names.join(" ");
-        if (signature === renderedTargets) return;
-        renderedTargets = signature;
-        const chosen = chooser.value;
+        /* Compare the LISTS. This used to flatten them into one string and
+         * compare that, which needed a separator no name could contain -- the
+         * second NUL in this file. Comparing what you already have needs no
+         * separator, no encoding, and no character to reserve. */
+        if (renderedTargets
+            && renderedTargets.length === names.length
+            && renderedTargets.every((name, at) => name === names[at])) return;
+        renderedTargets = names;
         chooser.textContent = "";
         for (const name of names) {
             const option = doc.createElement("option");
@@ -1164,7 +1187,7 @@ function mountPanel(doc, card, model, reserved) {
             chooser.appendChild(option);
         }
         const fresh = doc.createElement("option");
-        fresh.value = NEW_LABEL;
+        fresh.value = NO_NAME;
         fresh.textContent = "+ new label…";
         chooser.appendChild(fresh);
 
@@ -1173,20 +1196,21 @@ function mountPanel(doc, card, model, reserved) {
          * rather than silently landing on whichever label happens to sort first.
          * Quietly retargeting the next Assign is how a user labels the wrong
          * atoms and is never told. */
-        if (chosen && chosen !== NEW_LABEL && names.indexOf(chosen) < 0) {
-            chooser.value = NEW_LABEL;
+        if (chosen === undefined) {
+            chosen = names.length ? names[0] : null;
+        } else if (chosen !== null && names.indexOf(chosen) < 0) {
             if (!target.value) target.value = chosen;
-        } else {
-            chooser.value = chosen || (names.length ? names[0] : NEW_LABEL);
+            chosen = null;
         }
+        chooser.value = chosen === null ? NO_NAME : chosen;
         showNewBox();
     }
 
     const verbRow = el("div", "molviewer-selection-verb-row");
     // What the three verbs act on: the chosen label, or the typed one.
-    const named = () => (chooser.value === NEW_LABEL
+    const named = () => (chosen === null
         ? String(target.value || "").trim()
-        : chooser.value);
+        : String(chosen || ""));
     for (const [label, className, verb] of [
         ["Assign",   "molviewer-selection-assign-btn",        "replace"],
         ["+ Add",    "molviewer-selection-add-target-btn",    "add"],

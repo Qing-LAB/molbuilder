@@ -68,6 +68,12 @@ AREAS = {
     "export":     ("mol-viewer-export-", "molviewer-export-",
                    ("mol-viewer-export-btn", "mol-viewer-export-row",
                     "mol-viewer-export-section", "mol-viewer-export-section-label")),
+    # the atom table belongs to the `atoms` area, not `selection` -- the plan's
+    # section 3 said so, but phase 2 ran `selection-` first and its prefix
+    # matched `selection-atom-table` before the `atoms` pass could claim it.
+    # Left alone, the columns read `molviewer-atoms-column-*` while the table
+    # they sit in read `molviewer-selection-atom-table`.
+    "atomstable": ("molviewer-selection-atom-table", "molviewer-atoms-table"),
     "knobs":      ("mol-viewer-knobs",   "molviewer-menu-bar"),
     "toggle":     ("mol-viewer-toggle",  "molviewer-rail-toggle"),
     "stage":      ("mol-viewer-stage",   "molviewer-window-stage"),

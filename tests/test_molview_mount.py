@@ -1125,7 +1125,7 @@ def test_the_atom_list_reads_one_based_and_a_click_goes_through_the_store():
         const { host, viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         const card = host.querySelector(".molview-card");
-        const rows = card.querySelectorAll(".molviewer-selection-atom-table")[0].children;
+        const rows = card.querySelectorAll(".molviewer-atoms-table")[0].children;
 
         const numbers = Array.from(rows).map(
             r => r.querySelectorAll(".molviewer-atoms-column-idx")[0].textContent);
@@ -1175,7 +1175,7 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
         const { host, viewer } = await mounted();
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
         const card = host.querySelector(".molview-card");
-        const rows = () => card.querySelectorAll(".molviewer-selection-atom-table")[0].children;
+        const rows = () => card.querySelectorAll(".molviewer-atoms-table")[0].children;
 
         const first = rows()[0];
         const columns = {

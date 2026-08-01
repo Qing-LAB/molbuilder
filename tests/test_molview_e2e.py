@@ -64,7 +64,7 @@ def demo(page, molview_server):
     page.wait_for_selector(".molview-card .molviewer-rail button")
     page.click("#demo-benzene")
     page.wait_for_function(
-        "() => document.querySelectorAll('.molviewer-selection-atom-table tr').length === 12"
+        "() => document.querySelectorAll('.molviewer-atoms-table tr').length === 12"
     )
     _settle(page)
     return page
@@ -189,7 +189,7 @@ def test_selecting_an_atom_draws_a_highlight(demo):
     hit detection rather than MolView's.
     """
     before = _canvas_pixels(demo)
-    demo.locator(".molviewer-selection-atom-table tr").first.click()
+    demo.locator(".molviewer-atoms-table tr").first.click()
     _settle(demo)
 
     assert demo.locator(".molviewer-selection-count").inner_text().startswith("1 of 12")
@@ -206,7 +206,7 @@ def test_isolate_hides_the_rest_and_gives_them_back(demo):
 
     § 1.1: isolate turns itself off when the selection empties.
     """
-    demo.locator(".molviewer-selection-atom-table tr").first.click()
+    demo.locator(".molviewer-atoms-table tr").first.click()
     _settle(demo)
     whole = _canvas_pixels(demo)
 
@@ -241,7 +241,7 @@ def test_measuring_reads_one_two_and_three_atoms(demo):
     Benzene's ring carbons are 1.396 Å from the centre and 120° apart, so the
     numbers are checkable rather than merely present.
     """
-    rows = demo.locator(".molviewer-selection-atom-table tr")
+    rows = demo.locator(".molviewer-atoms-table tr")
     readout = demo.locator(".molview-overlay--info")
 
     rows.nth(0).click()
