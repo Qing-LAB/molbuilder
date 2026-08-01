@@ -1104,20 +1104,21 @@ of them mirrors the model: `ok` and `error`, `dispose`, `data`, `play` / `pause`
 `resetView`. There is no forwarded read left to retire.
 
 **Playback's settings are set and read; playback itself is just done.** `play`
-takes **no arguments**. It used to accept `{fps}`, and that is the shape this
-section exists to forbid: frames per second is `setInterval`'s vocabulary, not
-MolView's, so `play({fps})` published an internal knob through the handle and
-let a caller run playback at a speed the frame bar never showed. Speed is now
-`setSpeed(msPerFrame)` / `getSpeed()` — the unit § 1.1 fixes, beside `setLoop` /
-`getLoop`, because they are the same kind of thing.
+takes **no arguments** — speed is `setSpeed(ms)` / `getSpeed()`, beside `setLoop`
+/ `getLoop`, because they are the same kind of thing. The unit is **milliseconds
+per frame** the whole way down: the box sets ms, the handle holds ms, the timer
+is given ms. Nothing converts.
 
-**The clamp belongs to the handle, not the box.** § 1.1's 20–3000 ms holds for
-every caller rather than only for the one with an `<input min max>` in front of
-it, and nonsense leaves the speed alone instead of stopping the timer. Carrying
-milliseconds also fixed a defect the old unit had hidden: the guard against a
-zero rate, `Math.max(1, fps)`, capped the **slow** end at 1 fps, so the
-contract's slowest setting of 3000 ms actually played at 1000 ms — three times
-too fast, with nothing on screen to say so.
+**The clamp belongs to the handle, not the box**, so § 1.1's 20–3000 ms holds
+for every caller and not only for the one with an `<input min max>` in front of
+it; nonsense leaves the speed alone instead of stopping the timer.
+
+> Both of those replaced a design in frames per second, and it had gone wrong in
+> the two ways a stray unit does. `play({fps})` published the timer's own
+> parameter through the handle, so a caller could run playback at a speed the
+> frame bar never showed. And the guard against a zero rate, `Math.max(1, fps)`,
+> silently capped the **slow** end at 1 fps — so the slowest setting the contract
+> offers, 3000 ms, actually played at 1000 ms.
 
 ### 9.3 The model — the one place the structure lives
 

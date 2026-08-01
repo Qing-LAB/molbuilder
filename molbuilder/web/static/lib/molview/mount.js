@@ -162,15 +162,8 @@ export async function mount(hostEl, workspace, opts) {
      */
     let timer = null;
     let loop = true;
-    /* Playback speed, in MILLISECONDS PER FRAME — the module's vocabulary
-     * (§ 1.1 fixes the range and the default), not the timer library's.
-     *
-     * It used to be frames per second, and that cost twice. Every call site had
-     * to convert; and the guard against a zero rate, `Math.max(1, fps)`, CAPPED
-     * THE SLOW END — 3000 ms is 0.33 fps, so the contract's slowest setting
-     * played at 1000 ms, three times too fast, with nothing to say so. An
-     * interval is what `setInterval` wants and an interval is what this is, so
-     * now nothing divides and there is no floor to trip over. */
+    // Playback speed, in milliseconds per frame — the interval, straight to
+    // setInterval. § 1.1 fixes the range and the default.
     let speedMs = SPEED_DEFAULT_MS;
 
     function stop() {
@@ -178,11 +171,8 @@ export async function mount(hostEl, workspace, opts) {
     }
     parts.push(stop);
 
-    /* PLAY TAKES NO ARGUMENTS. It used to accept `{fps}`, which published the
-     * timer's own parameter through the handle and let a caller run playback at
-     * a speed the frame bar did not show. Speed is SET (below) and then played
-     * at — § 9.2's rule that the handle exposes what a viewer DOES, never the
-     * knobs it does it with. */
+    /* PLAY TAKES NO ARGUMENTS: speed is SET (below) and then played at. § 9.2 —
+     * the handle exposes what a viewer does, never the knobs it does it with. */
     function play() {
         stop();
         const count = model.frameCount();

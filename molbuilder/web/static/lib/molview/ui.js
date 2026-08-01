@@ -224,19 +224,10 @@ function mountFrameBar(doc, card, model, handle) {
     loopWrap.appendChild(loopBox);
     loopWrap.appendChild(doc.createTextNode(" loop"));
 
-    /* HOW FAST THE MOVIE PLAYS (§ 1.1, § 8.5).
-     *
-     * In MILLISECONDS PER FRAME, not frames per second, because that is the
-     * question a user actually has of a relaxation: "how long do I get to look
-     * at each step?" The handle takes fps, so the conversion happens here —
-     * once, at the one place the two vocabularies meet.
-     *
-     * The bounds are the contract's (§ 1.1: 20–3000 ms, default 150). The floor
-     * is not cosmetic: `fps = 1000 / ms` divides by this, so a blank or zero box
-     * would produce an infinite rate and a runaway timer. The old
-     * implementation had found that and clamped for it; the clamp is kept, and
-     * so is the reason.
-     */
+    /* HOW FAST THE MOVIE PLAYS (§ 1.1, § 8.5): milliseconds per frame, which is
+     * the question a user has of a relaxation — "how long do I get to look at
+     * each step?" — and also, exactly, what the timer is given. The box shows
+     * the range (§ 1.1: 20–3000); the handle enforces it. */
     const speedWrap = el("label", "molviewer-frames-speed");
     speedWrap.title = "Playback speed (ms per frame)";
     // THE CLASS MATTERS: molview.css styles `.molviewer-frames-speed-input` (its width, and
