@@ -162,23 +162,27 @@ itself belongs to the page rather than to the viewer — in the Modify tab it si
 with the editing (§ 11.2). This is not a file and nothing appears in your project
 (§ 11.3).
 
-**Getting things out.** The Export menu offers three things, each with a *Save*
+**Getting things out.** The Export menu offers four things, each with a *Save*
 (into the project) and a *Download* row:
 
 - **Data** — the current frame's coordinates as `.xyz`, plus the metadata that
   goes with them as `.json`.
+- **Trajectory** — *every* frame as one **extended-XYZ** document, plus the same
+  metadata `.json` beside it. It appears only when there is more than one frame.
+  Extended XYZ because a plain `.xyz` has nowhere to put the cell, and a
+  trajectory that loses its cell is not the thing that was computed.
 - **Snapshot** — a `.png` of the molecule exactly as it is drawn right now,
   transparent if you chose that background.
 - **Animation** — the whole trajectory as `.webm` or `.gif`, rendered frame by
   frame with the view you have set. It appears only when there is more than one
   frame.
 
-Two things are worth knowing about that menu, both in § 11.3: **Data** comes from
-the structure while **Snapshot** and **Animation** come from what is on screen —
-and *Save* versus *Download* is only a choice of destination, since MolView
-produces bytes and never writes a file itself. Who the menu belongs to is § 11.4,
-which also records the one thing here the code has not caught up with: today's
-Data rows write the coordinates and leave the `.json` behind.
+Two things are worth knowing about that menu, both in § 11.3: **Data** and
+**Trajectory** come from the structure while **Snapshot** and **Animation** come
+from what is on screen — and *Save* versus *Download* is only a choice of
+destination, since MolView produces no bytes and never writes a file itself. The
+four are a 2×2 of those two questions, which is § 11.3's grid. Who the menu
+belongs to is § 11.4.
 
 **The unit cell.** When a structure is periodic, the panel shows its cell too, and
 in an editable view it can be changed there. A cell edit goes through one door and
@@ -2396,10 +2400,12 @@ flowchart LR
     V["WHAT IS DRAWN<br/>the drawing copy"]
     S["Save state<br/>every frame · undoable<br/>never leaves the viewer"]
     D["Export → Data<br/>the displayed frame<br/>.xyz + .json"]
+    J["Export → Trajectory<br/>every frame<br/>.extxyz + .json"]
     P["Export → Snapshot<br/>the displayed frame<br/>.png"]
     A["Export → Animation<br/>every frame<br/>.webm / .gif"]
     T --> S
     T --> D
+    T --> J
     V --> P
     V --> A
 ```
@@ -2408,11 +2414,35 @@ flowchart LR
 |---|---|---|---|:--:|
 | **Save state** (and Retract) | one point in an ordered, persistent sequence — undo that survives a reload | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
 | **Export → Data** | the structure as data — a coordinate document and the metadata beside it (§ 11.7), written out as the `.xyz` and its `.json` | **the truth** — the master copy | the displayed one, only | no |
+| **Export → Trajectory** | the same, for every frame — one **extended-XYZ** document plus the one `.json` | **the truth** — the master copy | every frame | no |
 | **Export → Snapshot** | a `.png` of the molecule as it is drawn right now | **the drawing** | the displayed one, only | no |
 | **Export → Animation** | a `.webm` or `.gif` of the whole trajectory | **the drawing** | every frame | no |
 
-Snapshot and Animation are one kind in two sizes — both are renders, differing
-only in how many frames they cover.
+**The four exports are a 2×2, and that is how to remember them.** One axis is the
+one this section is about — *the truth, or a view of it*. The other is *this
+frame, or all of them*. Every cell is filled:
+
+| | the displayed frame | every frame |
+|---|---|---|
+| **the truth** | **Data** — `.xyz` + `.json` | **Trajectory** — `.extxyz` + `.json` |
+| **a view of it** | **Snapshot** — `.png` | **Animation** — `.webm` / `.gif` |
+
+That grid is worth drawing because the missing cell is how the gap survived: for
+a long time this section listed three exports and called Snapshot and Animation
+"one kind in two sizes", which describes the bottom row perfectly and quietly
+implies the top row has only one. It does not. **A user who wants the whole
+optimization as data — not as a movie of it — had nowhere to go**, and the answer
+"export each frame one at a time" is not one.
+
+**Why extended XYZ for the trajectory.** A plain `.xyz` has one comment line per
+frame and nowhere to put a cell, so a periodic trajectory written that way loses
+the box on every frame — and a trajectory that has lost its cell is not the thing
+that was computed. Extended XYZ puts the cell in that comment line
+(`Lattice="…" Properties=…`), which is why every tool that reads trajectories
+expects it. The **metadata `.json` is written once**, not per frame: the labels
+and the cell block are § 6.2's shared identity, the same for frame 0 and frame
+400, and writing them four hundred times would be four hundred chances to
+disagree.
 
 Every export goes either into the project or to a download. That choice is a
 separate axis from all of the above, and it is the subject of the second half of
@@ -2423,10 +2453,12 @@ modification. Nothing appears in the project, nothing is named, and it is the
 only one you can step backwards through — an export produces something and is
 finished.
 
-**Of the three Export menu items, only Data is about the truth.** Snapshot and
-Animation are renders and nothing else. (A saved state is the truth too — it is
-just not an export, which is the distinction the numbered list above makes.) That
-division is the one worth remembering, because the rest follows from it.
+**Of the four Export menu items, Data and Trajectory are about the truth.**
+Snapshot and Animation are renders and nothing else. (A saved state is the truth
+too — it is just not an export, which is the distinction the numbered list above
+makes.) That division is the one worth remembering, because the rest follows from
+it — and everything said below about Data holds of Trajectory as well, for every
+frame rather than one.
 
 **Data has to be the truth.** You export a structure to run a calculation on it.
 Taken from the drawing it would be missing every atom isolate had hidden, with
@@ -2475,8 +2507,10 @@ made. It is the only export that spans frames, and it is still entirely a render
 
 Notice those are two independent axes. Data is **one frame of the truth**; an
 animation is **every frame of the view**. Neither "which frames" nor "truth or
-view" predicts the other, which is exactly why these are three menu items and not
-one with options.
+view" predicts the other, which is exactly why these are four menu items and not
+one with options — and why there are four rather than three: two independent
+two-valued axes make a 2×2, and a menu offering three of its cells has a hole in
+it whether or not anybody has noticed yet.
 
 **Save-to-project and Download produce identical bytes — and mean different
 things.** MolView writes neither: it produces the bytes and stops there, the
