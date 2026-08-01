@@ -2154,11 +2154,18 @@ stateDiagram-v2
 | **HOLDING**, editable | replaces it, and re-anchors the sequence | **delivered** | applied | records a point |
 | **HOLDING**, read-only | refused unless `enforce` | **delivered** | no-op | no-op |
 
-**Frames arrive the same way in both modes.** The four delivery doors are not a
-read-only concession and not an editable privilege — an editable viewer follows a
-running job exactly as a read-only one does. What differs between the modes is
-only what the third and fourth columns say: whether the structure can be
-**edited**, and whether a point can be recorded.
+**Frames arrive the same way in both modes — the line is rewrite versus
+append.** `addFrame`, `addFrames` and `setForces` only EXTEND: after them frame 0
+is still exactly what the run produced, and § 10.8 forbids an arriving frame from
+carrying different atoms. Nothing already held is altered, so an editable viewer
+follows a running job exactly as a read-only one does; this is not a read-only
+concession and not an editable privilege.
+
+`reloadFrames` is the exception and belongs with the edits. It **replaces** every
+coordinate and can shrink the trajectory, so after it frame 0 need not be what the
+calculation produced at all — which is the same kind of act as `applyOp`, not the
+same kind as an append. A read-only viewer refuses it unless the caller says it
+means to, with the same `enforce` that a replacement of the structure takes.
 
 **Arriving frames do not raise the unsaved badge**, in either mode. The badge
 means "there is work here that is not on the sequence yet" (§ 11.2), and a run's
@@ -2173,7 +2180,7 @@ value in the last column — it never throws, so no caller has to wrap it (§ 9.
 |---|---|---|---|
 | `mount(host, workspace, opts)` | builds the viewer, in **EMPTY**. `opts.mode: "readonly"` is what makes it one; `workspace` is the door the states go through | — | — |
 | `installMolecule(input)` | the **only** way a structure gets in. One settle, every frame (§ 9.3), then the sequence is anchored | always | from EMPTY: **yes**. From HOLDING: **no-op → `null`**, unless `input.enforce` |
-| `reloadFrames(frames, forces)` | replace the coordinates of the structure held | yes | **yes** — delivery, not a change |
+| `reloadFrames(frames, {forces, enforce})` | **replace** every coordinate — it can shrink the trajectory, so after it frame 0 need not be what the run produced | yes | no-op unless `enforce` — this one rewrites (§ 11.2a) |
 | `addFrame(frame, {forces})` | extend by one | yes | **yes** |
 | `addFrames(frames, {forces})` | extend by several | yes | **yes** |
 | `setForces(perFrame)` | swap the forces, coordinates untouched | yes | **yes** |

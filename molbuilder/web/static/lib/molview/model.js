@@ -675,8 +675,19 @@ export function createModel(opts) {
          *
          * The range is recomputed from the master copy — never from what the
          * caller said it was adding (§ 6.4 step 2).
+         *
+         * `reloadFrames` IS THE EXCEPTION AMONG THEM, and it sits here rather
+         * than with the append doors for one reason: it REPLACES every
+         * coordinate and can shrink the trajectory, where the others only
+         * extend. After an append, frame 0 is still exactly what the run
+         * produced; after a reload it need not be. That is a change to the
+         * truth, so in a read-only viewer it is refused unless the caller says
+         * it means it — the same word, for the same reason, as replacing the
+         * structure outright.
          */
-        reloadFrames: (function (nextFrames, nextForces) {
+        reloadFrames: (function (nextFrames, options) {
+            const nextForces = (options && options.forces) || null;
+            if (readOnly && !(options && options.enforce)) return;
             // Checked BEFORE anything lands (§ 10.8): every frame carries the
             // same atoms, and those atoms are the loaded structure's.
             requireSameAtoms(nextFrames, "reloadFrames");

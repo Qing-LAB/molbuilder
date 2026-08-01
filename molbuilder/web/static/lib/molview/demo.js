@@ -184,7 +184,7 @@ async function start() {
         await load(SAMPLES.water, "water");
         // A trajectory extends what is already there: identity was fixed at
         // load, and a streamed frame carries coordinates only (§ 10.8).
-        viewer.data.reloadFrames(FRAMES, FORCES);
+        viewer.data.reloadFrames(FRAMES, { forces: FORCES });
         report();
     });
 

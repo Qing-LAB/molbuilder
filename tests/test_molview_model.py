@@ -420,17 +420,26 @@ def test_what_the_viewer_is_has_one_answer_and_a_replacement_can_be_enforced():
     )
 
 
-def test_frames_arrive_the_same_way_in_both_modes_and_raise_no_badge():
-    """The four delivery doors are not a read-only concession and not an editable
-    privilege: an editable viewer follows a running job exactly as a read-only
-    one does. What the mode decides is whether the structure can be EDITED and
-    whether a point can be recorded — neither of which is what these do.
+def test_appending_is_the_same_in_both_modes_but_replacing_is_not():
+    """The line is REWRITE versus APPEND, not "coordinates versus everything
+    else".
 
-    And none of them raises the unsaved badge. It means "there is work here that
-    is not on the sequence yet" (§ 11.2), and a run's own output is not the
-    user's work: it is reproducible from the run, and a poll arriving every few
-    seconds would otherwise flicker the badge continuously. Only an edit raises
-    it.
+    `addFrame`, `addFrames` and `setForces` only EXTEND: after them, frame 0 is
+    still exactly what the run produced, and § 10.8 forbids an arriving frame
+    from carrying different atoms. Nothing already in the master copy is altered,
+    so they are the same in both modes — an editable viewer follows a running job
+    exactly as a read-only one does.
+
+    `reloadFrames` is the odd one out and belongs with the edits: it REPLACES
+    every coordinate and can shrink the trajectory, so after it frame 0 need not
+    be what the calculation produced at all. In a read-only viewer that is
+    refused unless the caller says it means it — the same word, for the same
+    reason, as replacing the structure outright (§ 9.4).
+
+    None of them raises the unsaved badge. It means "there is work here that is
+    not on the sequence yet" (§ 11.2), and a run's own output is not the user's
+    work: it is reproducible from the run, and a poll arriving every few seconds
+    would otherwise flicker the badge continuously. Only an edit raises it.
     """
     out = _run(
         """
@@ -442,20 +451,27 @@ def test_frames_arrive_the_same_way_in_both_modes_and_raise_no_badge():
             await m.installMolecule({ text: "x", filename: "x.xyz" });
             await new Promise((r) => setTimeout(r, 0));
 
+            // APPENDING — identical either way.
             m.addFrames([[[0,0,1],[1,0,1]], [[0,0,2],[1,0,2]]],
                         { forces: [[[0,0,1],[0,0,1]], null] });
             m.addFrame([[0,0,3],[1,0,3]]);
-            m.reloadFrames([[[0,0,0],[1,0,0]], [[0,0,9],[1,0,9]]]);
-            m.setForces([null, [[0,0,4],[0,0,4]]]);
+            m.setForces([null, null, null, [[0,0,4],[0,0,4]]]);
 
             answer[mode] = {
                 frames: m.frameCount(),
+                frameZero: m.getFrameAllAtoms(0),
                 forces: m.getCoordinates().forcesPerFrame,
                 badgeAfterDelivery: m.uncommitted,
             };
+
+            // REPLACING — an edit-shaped act, so read-only wants to be asked.
+            m.reloadFrames([[[99,0,0],[99,0,0]]]);
+            answer[mode].afterCasualReload = m.frameCount();
+            m.reloadFrames([[[99,0,0],[99,0,0]]], { enforce: true });
+            answer[mode].afterEnforcedReload = m.frameCount();
         }
 
-        // An EDIT does raise it, so the badge is not simply dead.
+        // An EDIT does raise the badge, so it is not simply dead.
         const e = createModel({ workspace: store });
         await e.installMolecule({ text: "x", filename: "x.xyz" });
         await new Promise((r) => setTimeout(r, 0));
@@ -466,16 +482,27 @@ def test_frames_arrive_the_same_way_in_both_modes_and_raise_no_badge():
         console.log(JSON.stringify(answer));
         """
     )
-    assert out["editable"] == out["readonly"], (
-        f"delivery differs between the modes: {out['editable']} vs {out['readonly']}"
+    for mode in ("editable", "readonly"):
+        got = out[mode]
+        assert got["frames"] == 4, f"{mode}: appending did not extend: {got}"
+        assert got["frameZero"] == [[0, 0, 0], [1, 0, 0]], (
+            f"{mode}: appending altered frame 0 — an append must leave what the "
+            f"run produced exactly as it was: {got['frameZero']}"
+        )
+        assert got["forces"] == [None, None, None, [[0, 0, 4], [0, 0, 4]]]
+        assert got["badgeAfterDelivery"] is False, (
+            f"{mode}: arriving frames raised the unsaved badge"
+        )
+        assert got["afterEnforcedReload"] == 1, (
+            f"{mode}: an enforced replacement did not land: {got}"
+        )
+    assert out["editable"]["afterCasualReload"] == 1, (
+        "an editable viewer must replace its frames when asked, plainly"
     )
-    assert out["editable"]["frames"] == 2, (
-        f"the delivery doors did not do their job: {out['editable']}"
-    )
-    assert out["editable"]["forces"] == [None, [[0, 0, 4], [0, 0, 4]]]
-    assert out["editable"]["badgeAfterDelivery"] is False, (
-        "arriving frames raised the unsaved badge — a polling run would flicker "
-        "it continuously, and the job's output is not the user's unsaved work"
+    assert out["readonly"]["afterCasualReload"] == 4, (
+        "a read-only viewer let every coordinate be replaced without being "
+        "asked — `reloadFrames` rewrites where the append doors only extend, so "
+        "it belongs with the edits, not with delivery"
     )
     assert out["badgeAfterAnEdit"] is True, (
         "an edit must still raise the badge, or the badge is simply dead"
