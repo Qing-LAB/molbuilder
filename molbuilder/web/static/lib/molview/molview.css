@@ -1542,37 +1542,10 @@
     min-height:     280px;
 }
 
-.mol-viewer-card-header {
-    display:        flex;
-    align-items:    baseline;
-    justify-content: space-between;
-    gap:            var(--space-md, 0.8rem);
-    /* Header has a slim baseline so it doesn't bulk-up over the
-       viewer canvas; padding inherited from .card. */
-    padding-bottom: var(--mv-space-xs);
-    border-bottom:  1px solid var(--mv-edge-soft);
-}
-
-.mol-viewer-card-title {
-    margin:         0;
-    font-size:      var(--text-md, 1rem);
-    font-weight:    600;
-    color:          var(--mv-text);
-    /* Long titles wrap to a second line rather than push the
-       info-line off the right edge. */
-    flex:           1 1 auto;
-    min-width:      0;
-}
-
-.mol-viewer-info-line {
-    flex:           0 0 auto;
-    font-size:      var(--text-sm, 0.875rem);
-    color:          var(--mv-text-faint);
-    font-variant-numeric: tabular-nums;
-    /* The info-line is steady-state secondary text -- right-aligned
-       so it doesn't compete with the title for primary attention. */
-    text-align:     right;
-}
+/* (.mol-viewer-card-header / -card-title / -info-line removed 2026-08-01: the
+   retired lib/viewer embed drew that card chrome, MolView never did, and no
+   section of molview.md asks for it. Unlike the Projection select below, there
+   is nothing here waiting to be built.) */
 
 .molviewer-window-canvas {
     /* Height is opt.card.height (default clamp(360px, 52vh, 500px)),
