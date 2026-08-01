@@ -128,64 +128,89 @@ Each collapses to one name. That is a **behaviour change, not a rename** — two
 selectors becoming one can change which rule wins — so each of the five gets
 checked in the browser individually rather than as part of a bulk pass.
 
-## 4. The plan
+## 4. Ownership — measured, and it redraws the plan
+
+Before renaming anything, every class the stylesheet defines was traced to who
+**creates** it (MolView's own JS), who else **references** it (a template or
+another module's JS), and who else **defines** it (another stylesheet):
+
+| Bucket | Count | What it means |
+|---|--:|---|
+| **MolView's own** | **72** | created only by `ui.js` / `mount.js`, styled only here — rename freely |
+| **shared** with templates or other JS | **72** | the risky half: all the `mol-viewer-*` names the 3Dmol embed also uses, plus the global ones |
+| **orphaned** — styled, created by nobody | **17** | dead rules, and some of them are more interesting than that |
+| collides but is ours | 1 | `mol-viewer-toggle` |
+
+**The phase-2 "private areas" label was unreliable and is now replaced by this
+measurement.** It had already proved wrong once — `cell-*` turned out to belong
+to a server-rendered partial — and guessing again would waste the same day twice.
+
+### The 17 orphans are two different things
+
+**Stale classes** — the feature exists under another name, so the rule is simply
+dead: `selection-measurement-overlay` (the readout is built, under other
+classes), `tag-frozen` (superseded by the `tag-reserved--N` tones),
+`molview-overlay--top-left` / `--top-right` (two of four corners unused),
+`mol-viewer-action`, `mol-viewer-bare`, `col-name`, `ctab-panel`,
+`selection-actions-left`, `selection-add-btn-primary`, `selection-field-label`.
+
+**Styled but never built** — the UI was designed, given CSS, and no control was
+ever written. These are contract claims with nothing behind them:
+
+| Orphan | What the contract promises |
+|---|---|
+| `mvf-speed`, `mvf-speed-input` | § 1.1: *"speed box in milliseconds per frame (20–3000, default 150)"*, and § 8.5 lists **speed** as part of the frame bar. Playback itself is real (`mount.js:179` `setInterval`) — there is simply **no control to set it** |
+| `selection-isolate-toggle` | § 8.5: isolate *"is the one switch with a control of its own ('Show selected only')"*. Only the rail switch exists; the panel control does not |
+| `selection-loading`, `selection-error` | loading and error states for the panel, never rendered |
+
+That is the answer to "is any UI design not linked to actual code": **yes, three
+of them**, and the stylesheet is what gave them away — a rule with no element is
+a design that was drawn and dropped.
+
+---
+
+## 5. The plan
 
 **The rule that shapes it: never blind-sed a namespace rename.** A stylesheet
 rename is invisible to unit tests — every stub keeps passing while the UI is
-broken, because nothing in a DOM stand-in has a computed style. So the safety has
-to come from ordering and from the browser, not from the suite.
+broken, because nothing in a DOM stand-in has a computed style. So the safety
+comes from ordering and from the browser, not from the suite.
 
-**Phase 1 — retire the dead sheet.** ✅ **Landed 2026-08-01.** Deleted
-`lib/molview-old/molview.css` (2020 lines), referenced by nothing — not by a
-template, not by the frozen tree's own JS, which points at `fused-layout.css`
-instead.
+**Phase 1 — retire the dead sheet.** ✅ **Landed 2026-08-01** (`233f06c`).
+Deleted `lib/molview-old/molview.css` (2020 lines), referenced by nothing. It did
+not turn the duplicate-selector guard green — that was my wrong expectation, the
+guard was already failing on the embed collisions underneath — but it left the
+report unambiguous: 82 duplicates, one file pair.
 
-It did **not** turn the guard green, and expecting it to was wrong: the guard was
-already failing on the embed collisions underneath. What it did is worth more —
-it left the report unambiguous. Before, the noise from a dead file sat on top of
-the real problem; now the failure reads *82 selectors, one file pair*, which is
-exactly the work phase 3 does and nothing else.
+**Phase 1b — one size for the panel's controls.** ✅ **Landed 2026-08-01**
+(`979ea9c`), out of order because it is a defect rather than a rename. Three type
+sizes, three font families and four control heights inside one card, because
+browsers do not inherit fonts into `button` / `input` / `select`. Now one of each.
 
-The rest of `molview-old/` stays until the MolView-users pass is done with it as
-a reference. The file is in git history either way.
+**Phase 1c — clear the orphans.** *Next, and it is the cheapest thing here.*
+Delete the eleven stale rules outright. For the three **unbuilt** ones, the CSS
+does not get deleted quietly — each is a decision: build the control, or drop it
+from the contract too. The speed box is the one worth building; the contract even
+specifies its range.
 
-**Phase 1b — one size for the panel's controls.** ✅ **Landed 2026-08-01**, out
-of order because it is a defect rather than a rename and needed no namespace to
-fix.
+Doing this first shrinks phases 2–4 by 17 names and removes the risk of
+carefully renaming rules that style nothing.
 
-Measured on the live panel: **three type sizes (11 / 13.33 / 16 px), three font
-families (system-ui / Arial / -apple-system) and four control heights (13 / 20.4 /
-22.8 / 34)** — inside one card. The cause is one fact about browsers: `button`,
-`input`, `select` and `textarea` do **not** inherit the page font. The buttons had
-been styled explicitly; the "New label name" box and the atom-list checkboxes
-never had, so they were showing UA defaults, which is why a 16 px text box sat
-beside 11 px buttons.
+**Phase 2 — the 72 that are MolView's own.** No template and no other module
+references them, so a mistake stays inside MolView. In order: `cell` →
+`regions` → `label` → `atoms` → `filter` → `panel` → `frames` → `selection`.
+One commit each.
 
-Fixed with control tokens (`--mv-control-font`, `--mv-control-height`, …) and one
-rule scoped to `.molview-panel` — scoped deliberately, since the rail and the
-window's chrome have their own sizing and a global control rule would reach them.
-After: **one size, one family, one row height (22 px)**. The point is not the
-tidy-up but that the next control added to the panel is consistent *by default*
-instead of by somebody remembering.
+**Phase 3 — the 72 shared names.** Where the win is (46 stop being shared with
+the 3Dmol embed) and where the risk is, because today's appearance may *depend*
+on the embed's rules. One area per commit, screenshot before and after. **The
+duplicate-selector guard going green is this phase's acceptance criterion.**
 
-**Phase 2 — the areas nobody else touches**, in this order, one commit each:
-`cell` → `regions` → `label` → `atoms` → `filter`. None of their names appear in
-another stylesheet, so a mistake shows up only inside MolView, and each is small
-enough to read the whole diff.
+**Phase 4 — the global names** (`card`, `is-*`, `viewer*`, `sr-only`). Smallest
+diff, largest blast radius: another page may rely on MolView's `.card` winning.
 
-**Phase 3 — the areas that collide with the embed**: `export`, `menu`, `window`,
-`rail`, `frames`, `card`. This is where the win is — 46 names stop being shared —
-and where the risk is, because today's appearance may *depend* on the embed's
-rules. Take one area per commit and screenshot before and after.
-
-**Phase 4 — the global names**: `is-*`, `card`, `viewer*`, `sr-only`. Smallest
-diff, largest blast radius: another page may be relying on MolView's copy of
-`.card` or `.is-active` winning. Do it last, when everything else is settled.
-
-**Phase 5 — the guard.** `test_css_no_duplicate_selectors` already goes green at
-the end of phase 3; this adds the stronger one — every selector in
-`lib/molview/molview.css` starts with `molviewer-`, so the next stray name cannot
-drift back in. It lands last because added earlier it just fails for four phases.
+**Phase 5 — the guard.** Every selector in `lib/molview/molview.css` starts with
+`molviewer-`. Last, because added earlier it just fails for four phases.
 
 ### Per-phase method
 
