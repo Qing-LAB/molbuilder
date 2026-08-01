@@ -5,7 +5,10 @@
  * practice" per the published transport literature?
  *
  * Mounts into ``#selection-target-info-panel`` (the popover next
- * to the Target: dropdown in _selection_panel.html).  Toggled by
+ * to the Target: dropdown).  NOTE 2026-08-01: the markup this
+ * populated was retired with `_selection_panel.html`; MolView has not
+ * reimplemented the popover, so these definitions currently reach no DOM.
+ * Toggled by
  * clicking the ⓘ button.
  *
  * The reference table covers:

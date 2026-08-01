@@ -812,8 +812,7 @@
  * Combine/Target mini-labels AND the Cell-page captions (readout dt + the unit-cell
  * matrix label) all share this ONE block.  Do not re-declare it under a new selector. */
 .selection-mini-label,
-.cell-readout dt,
-.cell-matrix-label {
+.cell-readout dt {
     color: var(--ps-fg-dim);
     font: 600 11px/1.2 system-ui, sans-serif;
     letter-spacing: 0.04em;
@@ -1482,26 +1481,7 @@
     white-space: nowrap;
 }
 
-/* Unit-cell 3x3 matrix -- aligned, right-justified tabular numbers (§3b). */
-.cell-matrix-block { margin: 0 0 0.6rem; }
 /* caption style from the shared .selection-mini-label rule (§2.1); only the layout delta here. */
-.cell-matrix-label { margin-bottom: 0.25rem; }
-.cell-tag { text-transform: none; color: var(--ps-fg-dim); font-weight: 400; }
-.cell-matrix-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 2px 0.5rem;
-    padding: 0.35rem 0.5rem;
-    background: var(--ps-bg-deep);
-    border: 1px solid var(--ps-border);
-    border-radius: 4px;
-}
-.cell-matrix-cell {
-    text-align: right;
-    color: var(--ps-fg);
-    font: 12px/1.5 ui-monospace, monospace;
-    font-variant-numeric: tabular-nums;
-}
 
 /* ==========================================================================
    The measurement readout (was selection/measurement-chip.css)

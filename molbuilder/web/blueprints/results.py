@@ -10,7 +10,6 @@ Routes:
     GET /partials/spectra-inspector         rendered spectra inspector HTML
                                             (consumed by
                                             ``lib/inspectors/spectra.js``)
-    GET /partials/selection-panel           rendered selection-panel HTML
                                             (consumed by /modify; later
                                             /spectra and any other tab that
                                             needs atom selection)
@@ -116,26 +115,6 @@ def partial_spectra_inspector():
     share an HTTP contract.
     """
     html = render_template("_spectra_inspector.html")
-    resp = make_response(html)
-    resp.headers["Content-Type"]  = "text/html; charset=utf-8"
-    resp.headers["Cache-Control"] = "private, max-age=300"
-    return resp
-
-
-@bp.route("/partials/selection-panel")
-def partial_selection_panel():
-    """Return the rendered selection-panel partial as HTML.
-
-    Source: ``templates/_selection_panel.html``.  The panel is the L4
-    UI of the atom-selection system (see
-    ``molbuilder/web/blueprints/selection.py``); it's included by
-    /modify (via fetch into the page's selection host) and will later
-    be reused on /spectra to replace the three frozen-atoms inputs.
-
-    Cache + content-type semantics identical to the inspector
-    partials -- same HTTP contract for every partial endpoint.
-    """
-    html = render_template("_selection_panel.html")
     resp = make_response(html)
     resp.headers["Content-Type"]  = "text/html; charset=utf-8"
     resp.headers["Cache-Control"] = "private, max-age=300"

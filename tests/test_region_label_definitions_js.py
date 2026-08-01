@@ -22,9 +22,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFS_JS = REPO_ROOT / "molbuilder" / "web" / "static" / "lib" / "region-label-definitions.js"
-SELECTION_HTML = REPO_ROOT / "molbuilder" / "web" / "templates" / "_selection_panel.html"
 MODIFY_HTML = REPO_ROOT / "molbuilder" / "web" / "templates" / "modify.html"
-SELECTION_CSS = REPO_ROOT / "molbuilder" / "web" / "static" / "lib" / "molview" / "selection" / "selection-panel.css"
 
 
 def test_canonical_definitions_present():
@@ -79,24 +77,16 @@ def test_electrode_convention_helper_is_consistent_with_python():
     assert not is_electrode_label("interface")
 
 
-def test_popover_html_landed_in_template():
-    """The ⓘ button + the popover panel exist in the shared
-    _selection_panel.html partial.
-    """
-    html = SELECTION_HTML.read_text()
-    assert 'id="selection-target-info-btn"' in html
-    assert 'id="selection-target-info-panel"' in html
-    # Popover is hidden by default — visible only after click.
-    assert 'class="selection-target-info-panel"' in html
-    panel_block = html[html.index('id="selection-target-info-panel"'):]
-    panel_block = panel_block[: panel_block.index("</div>") + len("</div>")]
-    assert " hidden" in panel_block, (
-        "popover panel must ship hidden by default; the ⓘ button "
-        "toggles it visible"
-    )
-    # ⓘ glyph for the button.
-    assert "ⓘ" in html or "&#9432;" in html
-
+# RETIRED 2026-08-01: `test_popover_html_landed_in_template`.
+#
+# The ⓘ region-label popover's markup lived in `templates/_selection_panel.html`,
+# which is gone -- and with it the feature.  The rebuilt MolView never
+# reimplemented it: `lib/molview/ui.js` creates no `selection-target-info-btn`,
+# no `-panel`, no `region-defs-*`.  The JS below still ships on six pages via
+# `_molview_scripts.html` and now populates nothing.
+#
+# The tests kept here are the ones still true: the DEFINITIONS in the JS source,
+# which are the reusable half and which the feature would be rebuilt from.
 
 def test_modify_template_loads_the_js_module():
     """``modify.html`` loads BOTH the library + the init script.

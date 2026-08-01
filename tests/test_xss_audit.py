@@ -100,10 +100,19 @@ def _all_js_files() -> list[Path]:
     code free of these patterns, not to re-audit upstream.  License
     + provenance for each vendored file is documented in
     ``molbuilder/web/static/vendor/README.md``.
+
+    ``molview-old/`` is excluded for a different reason: it is the FROZEN
+    pre-rebuild MolView, kept as a reference for the rewrite and loaded by no
+    page. Auditing it reports on code that cannot run -- and did: its
+    ``mount.js:607`` (``host.innerHTML = await r.text()``) fetched
+    ``/partials/selection-panel``, a route retired 2026-08-01, so the finding
+    was about a fetch that can no longer resolve. The tree goes when the
+    MolView-users pass is done with it; until then it is reference material,
+    not shipped code.
     """
     return sorted(
         p for p in STATIC_ROOT.rglob("*.js")
-        if "vendor" not in p.relative_to(STATIC_ROOT).parts
+        if not {"vendor", "molview-old"} & set(p.relative_to(STATIC_ROOT).parts)
     )
 
 
@@ -249,12 +258,13 @@ class TestNoUnsafeInnerHTML:
             # render of ``_spectra_inspector.html``) to host.innerHTML.
             # Same trust boundary; same justification.
             ("lib/inspectors/spectra.js", "host.innerHTML = partialHtml"),
-            # Fused molview selection-panel mount (Phase 5): assigns the response
-            # body of GET /partials/selection-panel (Jinja-autoescaped render of
-            # ``_selection_panel.html``, no user data) to host.innerHTML -- the
-            # SAME trust boundary + pattern as the inspector partials above and
-            # the modify selection-bootstrap.
-            ("lib/molview/selection/mount-panel.js", "host.innerHTML = await r.text()"),
+            # (RETIRED 2026-08-01: the fused molview selection-panel mount.
+            #  Its file `lib/molview/selection/mount-panel.js` had already been
+            #  deleted in the MolView rebuild, so this allowlisted an innerHTML
+            #  assignment that no longer existed -- and the route it fetched,
+            #  GET /partials/selection-panel, is retired with it.  An allowlist
+            #  entry for a deleted file is worse than none: it reads as a
+            #  reviewed exemption for code nobody can find.)
             # Markdown inspector: the live-preview pane assigns
             # ``_renderToHTML(cm.getValue())`` to innerHTML.  Verified safe:
             # ``_renderToHTML`` (markdown.js, the SINGLE render path) pipes
@@ -294,13 +304,12 @@ class TestNoUnsafeInnerHTML:
             # render Jinja-autoescaped templates with no user input.
             ("lib/inspectors/_partial_inspector_factory.js",
              "host.innerHTML = partialHtml"),
-            # Selection-panel bootstrap: identical pattern.  Assigns
-            # the response body of GET /partials/selection-panel
-            # (Jinja-autoescaped render of ``_selection_panel.html``)
-            # to host.innerHTML.  Same-origin fetch, no user data in
-            # the template, same trust boundary as the inspector
-            # adapters above.
-            ("modify/selection-bootstrap.js", "host.innerHTML = html"),
+            # (STALE 2026-08-01: this described selection-bootstrap.js fetching
+            #  GET /partials/selection-panel into host.innerHTML.  That route is
+            #  retired and the file no longer does it -- its only innerHTML is a
+            #  `= ""` clear, which the safe-RHS check passes unaided.  Kept as a
+            #  note rather than an entry, because an allowlist that outlives the
+            #  code it excuses is how a real finding gets waved through later.)
             # Bundle-handoff result panel (Step 3 PR-E): builds an
             # HTML array out of literal tags + escapeHtml(...) calls
             # on every dynamic value (paths, engine name, region
