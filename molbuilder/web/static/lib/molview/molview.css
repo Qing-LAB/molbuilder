@@ -1093,8 +1093,18 @@
     color: var(--sp-exclude-fg);
 }
 
+/* ---------- Action buttons + Assign block ------------------------- */
+
+/* Clear / Invert / All, laid out as a row.
+ *
+ * `display: flex` is DECLARED HERE. It used to live on a companion class the
+ * element never carried, so every flex property below was inert on a block
+ * div. `justify-content: space-between` went with it: it was pushing an
+ * isolate toggle to the right, and that control is on the rail. */
 .molviewer-selection-actions-row {
-    justify-content: space-between;   /* left group, isolate-toggle on right */
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
     align-items: center;
     flex-wrap: wrap;
     row-gap: 0.4rem;
