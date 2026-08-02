@@ -147,7 +147,7 @@ contrast, at a glance (each door's full contract is in its own doc):
 | Door | On failure | "Nothing there" | Cancellation |
 |---|---|---|---|
 | **`mount()`** — [molview](?doc=web/molview.md), [vibrationview](?doc=web/vibrationview.md) | returns `{ ok:false, error, dispose(){} }` — **never a null sentinel**; success is `{ ok:true, … }`. Branch on `.ok`; call `.dispose()` unconditionally | — | — |
-| **`molview.data`** | `Promise.reject(Error)` for the write verbs (installMolecule / applyOp / generate / save / load); **validate-and-throw** on bad frame ops | reads return `null` / empty defaults | — |
+| **`molview.data`** | **`Promise.reject(Error)`** from the doors that change the structure through the server — `installMolecule` / `applyOp` / `commitPeriodicityOp` — carrying **the server's own sentence**, never a status code ([molview](?doc=web/molview.md) § 6.9). `null` from those same doors means only *there was nothing to do* (nothing loaded, a read-only viewer, an op the controls rule out, an edit already in flight) and is never a failure. `save` answers whether it landed; **validate-and-throw** on bad frame ops | reads return `null` / empty defaults | — |
 | **[workspace](?doc=web/workspace.md)** | **never rejects** — `readState` resolves `null` on *any* failure (a miss, a network drop, and malformed data are indistinguishable **by design**: the caller treats every miss as "re-anchor"); `persist` is fire-and-forget | `null` | — |
 | **[projects](?doc=web/projects.md)** (files) | a uniform `{ ok:false, error }` envelope — **never throws** | `null` = a deliberate third state ("no file selected") | **yes** — every file op threads `opts.signal`; an abort maps to `{ ok:false, error:"aborted", aborted:true }` |
 

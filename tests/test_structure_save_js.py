@@ -50,8 +50,9 @@ def _run_node(snippet: str) -> object:
             global.molbuilder = global.molbuilder || {{}};
             global.molbuilder.projects = global.molbuilder.projects || {{}};
             global.molbuilder.projects.parser = {{
-                saveMolecule: (path, opts) => {{
+                saveMolecule: (viewer, path, opts) => {{
                     calls.push({{path: path,
+                                 gotViewer: !!viewer,
                                  overwrite: !!(opts && opts.overwrite)}});
                     const q = state.saveResults;
                     const r = (q && q.length) ? q.shift()
@@ -59,10 +60,14 @@ def _run_node(snippet: str) -> object:
                     return Promise.resolve(r);
                 }},
             }};
+            /* A stand-in VIEWER on the surface molview.md § 9.3 lists. It used to
+             * answer isEmpty / isDirty / getSource / getLastSavedTo, none of which
+             * MolView has: where a structure came FROM and went TO are facts about
+             * file operations the PAGE performed, and the viewer tracks contents
+             * (§ 6.7). The page keeps them now, so they are not here. */
             return {{
-                isEmpty:        () => state.empty,
-                isDirty:        () => state.dirty,
                 getStructure:   () => state.structure,
+                get uncommitted() {{ return state.dirty; }},
                 // save.js reads getStructure()/isEmpty(); the projects.parser door
                 // (faked above) is what serialises via exportFile.  Kept for shape.
                 exportFile: () => (state.structure ? {{
@@ -71,8 +76,6 @@ def _run_node(snippet: str) -> object:
                                frozen_atoms: [], cell: null, axis_kind: null,
                                vacuum: null, selection_rules: {{}} }},
                 }} : null),
-                getSource:      () => state.source,
-                getLastSavedTo: () => state.lastSaveTo,
                 subscribe:      () => () => {{}},
                 _calls:         () => calls.slice(),
                 _saveCalls:     () => calls.slice(),
@@ -99,10 +102,17 @@ def _run_node(snippet: str) -> object:
                 _calls: () => calls.slice(),
             }};
         }}
-        function _mkFakeStructurePage() {{
+        /* The page coordinator. It is what REMEMBERS where this page last saved
+         * — the page chose the destination, and the viewer tracks contents, not
+         * files (molview.md § 6.7). `save.targetPath()` asks it, where it used to
+         * ask the viewer for `getLastSavedTo()` / `getSource()` and get
+         * `undefined` from both. */
+        function _mkFakeStructurePage(lastSaveTo) {{
             const calls = [];
+            let saved = lastSaveTo || null;
             return {{
-                markSavedTo: (p) => calls.push(p),
+                markSavedTo: (p) => {{ saved = p; calls.push(p); }},
+                getCanvasSnapshot: () => ({{ lastSaveTo: saved }}),
                 _calls:      () => calls.slice(),
             }};
         }}
@@ -188,33 +198,34 @@ class TestSurfacePresence:
 
 class TestTargetPath:
 
-    def test_returns_last_save_to_when_set(self):
-        """Once a Save has happened this session, the recorded path
-        wins — even if source.file is different."""
+    def test_returns_where_this_page_last_saved(self):
+        """Save writes back to wherever this page last wrote.
+
+        The answer comes from the page coordinator, which performed that save.
+        It used to come from the viewer, twice — `getLastSavedTo()` then
+        `getSource().file` — and the viewer has never had either: it tracks
+        contents, not files (molview.md § 6.7).
+        """
         out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                source: {kind: "file", file: "/p/loaded.xyz"},
-                lastSaveTo: "/p/saved.xyz",
-            });
+            const c = _mkFakeCanvas({ empty: false });
             save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
-                            structurePage: _mkFakeStructurePage()});
+                            structurePage: _mkFakeStructurePage("/p/saved.xyz")});
             console.log(JSON.stringify(save.targetPath()));
         ''')
         assert out == "/p/saved.xyz"
 
-    def test_falls_back_to_source_file_when_kind_is_file(self):
+    def test_null_before_this_page_has_saved_anything(self):
+        """Nothing saved yet -> no target -> Save is disabled and the user needs
+        Save-as. Opening a file no longer sets one: opening is not saving, and
+        the page records a destination only when it writes to one.
+        """
         out = _run_node('''
-            const c = _mkFakeCanvas({
-                empty: false,
-                source: {kind: "file", file: "/p/loaded.xyz"},
-                lastSaveTo: null,
-            });
+            const c = _mkFakeCanvas({ empty: false });
             save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
                             structurePage: _mkFakeStructurePage()});
             console.log(JSON.stringify(save.targetPath()));
         ''')
-        assert out == "/p/loaded.xyz"
+        assert out is None
 
     def test_null_for_smiles_without_prior_save(self):
         """SMILES-generated structure with no last_save_to → null
@@ -268,8 +279,11 @@ class TestSaveFlow:
         ''')
         assert out["envelope"] == {
             "ok": True, "path": "/projects/p/water-modified.xyz"}
+        # `gotViewer` pins the other half: the save door writes FROM a viewer
+        # and is given one, rather than looking one up (molview.md § 5.6).
         assert out["saveCalls"] == [
-            {"path": "/projects/p/water-modified.xyz", "overwrite": False}]
+            {"path": "/projects/p/water-modified.xyz",
+             "gotViewer": True, "overwrite": False}]
 
     def test_base_name_gets_xyz_appended_and_sidebar_refreshes(self):
         """The user names the structure WITHOUT an extension; the save owns the

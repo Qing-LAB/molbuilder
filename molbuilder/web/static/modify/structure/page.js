@@ -27,14 +27,17 @@
  *     real error.
  *
  *   markDirtyAfterModification()
- *     -> void.  Sets ``canvas.dirty = true``.  Modifier panels
- *     (delete / add / orient / electrode / geom) call after a
- *     successful op so the next Load/Generate triggers the
- *     warning.
+ *     -> void.  A NO-OP, kept only while the modifier panels still
+ *     call it: the edit raised the unsaved badge itself, inside the
+ *     viewer's gate, when it landed (molview.md § 11.2).
  *
  *   markSavedTo(path)
- *     -> void.  Clears ``dirty`` + records ``last_save_to``.  Save
- *     handler calls after a successful project write.
+ *     -> void.  Records where the structure was last saved TO.  The
+ *     save handler calls it after a successful project write.  It
+ *     does NOT clear anything: whether there is unsaved work is the
+ *     viewer's own answer (``uncommitted``), and where a file went is
+ *     the page's, because the viewer tracks contents, not files
+ *     (molview.md § 6.7).
  *
  *   getCanvasSnapshot()
  *     -> the full canvas snapshot from canvas-state.  Read-only;
@@ -58,20 +61,25 @@
 (function (root) {
     "use strict";
 
-    // The orchestrator binds against MolView's unified DATA model
-    // (``molbuilder.molview.data``) for DATA ops — load / markDirty /
-    // markSaved / isEmpty / isDirty / getStructure / getSource /
-    // getLastSavedTo / subscribe.  ``molbuilder.workspace`` is the
-    // persistence layer only and is no longer bound here.  Public
-    // methods are unchanged so existing consumers see no API drift.
-    var _modelOverride = null;   // TEST override (set by _bind); production looks up molview.data (below)
+    // The orchestrator works against the viewer this page mounted, through the
+    // surface molview.md § 9.3 lists: installMolecule, getStructure, uncommitted,
+    // subscribe.  Its own public methods are unchanged, so the panels calling it
+    // see no difference.
+    /* THE VIEWER THIS PAGE MOUNTED, handed over by modify/selection-bootstrap.js
+     * once it has one (`useViewer` below). This is a classic script — it loads
+     * before that file and cannot import — so being TOLD is the only way it can
+     * have a viewer at all.
+     *
+     * It used to look one up in `window.molbuilder.molview.data`, which MolView
+     * has published nothing to since it was rebuilt, so every load, every dirty
+     * check and every save gate on this tab was reading `undefined`. */
+    var _viewer    = null;
     var _modal     = null;   // TEST override (set by _bind); production looks up (below)
 
     // molview.data + warningModal are LOOKED UP at call time (molview-module.md §D.0): read the
     // LIVE model through the door, never import/auto-bind it (the molview module is deferred, so it
     // is not published when this classic script loads).  A test injects stubs via _bind.
-    function _model()  { return _modelOverride || (root.molbuilder && root.molbuilder.molview
-                                            && root.molbuilder.molview.data) || null; }
+    function _model()  { return (_viewer && _viewer.ok) ? _viewer.data : null; }
     function _mod() { return _modal || (root.molbuilder && root.molbuilder.warningModal) || null; }
 
     function _bind(workspaceApi, modalApi) {
@@ -85,8 +93,8 @@
             throw new Error(
                 "structure-page: warning-modal API missing");
         }
-        _modelOverride = workspaceApi;
-        _modal     = modalApi;
+        _viewer = { ok: true, data: workspaceApi };
+        _modal  = modalApi;
     }
 
     /**
@@ -124,14 +132,15 @@
                 atoms:       structure.atoms || null,
             }).then(function () { return { ok: true }; });
         }
-        // Empty canvas — load directly; no warning.
-        if (_model().isEmpty()) {
+        // Nothing loaded — load directly; no warning. A read answers nothing
+        // when there is nothing, which is a different answer from a structure
+        // with no atoms (molview.md § 9.3).
+        if (_model().getStructure() === null) {
             return _apply();
         }
-        // Clean canvas — load directly; no warning.  The user has
-        // saved (or just loaded) the current canvas; overwriting it
-        // does not lose modifications.
-        if (!_model().isDirty()) {
+        // No unsaved work — load directly; no warning.  The user has saved (or
+        // just loaded) what is there, so overwriting it loses nothing.
+        if (!_model().uncommitted) {
             return _apply();
         }
         // Dirty canvas — ask before overwriting.
@@ -143,30 +152,36 @@
         });
     }
 
+    /* NEITHER OF THESE MARKS THE VIEWER ANY MORE, and both are kept only so the
+     * panels that call them keep working while the tab is rewired.
+     *
+     * "There is unsaved work here" is the viewer's own answer, raised inside its
+     * gate after a change lands and cleared when a state is saved (molview.md
+     * § 11.2) — not a flag set from outside. And where a structure was saved TO
+     * is a fact about a file operation the page performed, so the page keeps it
+     * (§ 6.7); the viewer never knew it. */
+    var _lastSavedTo = null;
+
     function markDirtyAfterModification() {
-        if (!_model()) {
-            throw new Error("structure-page: not bound");
-        }
-        _model().markDirty();
+        // Nothing to do: the edit itself raised the badge.
     }
 
     function markSavedTo(path) {
-        if (!_model()) {
-            throw new Error("structure-page: not bound");
-        }
-        _model().markSaved(path);
+        _lastSavedTo = path || null;
     }
 
     function getCanvasSnapshot() {
         if (!_model()) {
             throw new Error("structure-page: not bound");
         }
+        var structure = _model().getStructure();
         return {
-            isEmpty:      _model().isEmpty(),
-            isDirty:      _model().isDirty(),
-            structure:    _model().getStructure(),
-            source:       _model().getSource(),
-            lastSaveTo:   _model().getLastSavedTo(),
+            isEmpty:      structure === null,
+            isDirty:      !!_model().uncommitted,
+            structure:    structure,
+            // The page's own note, not the viewer's: the viewer tracks contents,
+            // not files (molview.md § 6.7).
+            lastSaveTo:   _lastSavedTo,
         };
     }
 
@@ -179,6 +194,8 @@
 
     var api = {
         _bind:                      _bind,
+        // The production door: the page hands over the viewer it mounted.
+        useViewer:                  function (viewer) { _viewer = viewer || null; },
         loadIntoCanvas:             loadIntoCanvas,
         markDirtyAfterModification: markDirtyAfterModification,
         markSavedTo:                markSavedTo,

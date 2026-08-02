@@ -39,10 +39,23 @@ export const WRITING  = "writing";    // a write is on its way to storage
  * @param handed  what the model allows this helper to call (§ 7.3):
  *                `recordState()`  — make a state out of the current structure
  *                `restoreState(s)`— put a state back
- *                `store`          — where the bytes go: {read(step), write(step, bytes)}
+ *                `workspace`      — the workspace's front door (workspace.md § 5):
+ *                                   `persist` · `readState` · `pruneStatesAbove` ·
+ *                                   `workspaceId`. Handed in at mount; MolView
+ *                                   never learns where the bytes end up, only
+ *                                   which calls to make.
+ *                `tag`            — whose bytes these are (workspace.md § 4). The
+ *                                   viewer's `owner`, so two viewers on one page
+ *                                   never write over each other.
  *                `onBadge(flag)`  — the unsaved-changes badge changed
  *
  * Note what is NOT handed: anything that would let this look inside a state.
+ *
+ * IT CALLS THE WORKSPACE BY NAME, on purpose. The rebuild had it asking for a
+ * two-call door of its own invention — `read(step)` / `write(step, bytes)` — which
+ * nothing implemented, so nothing was ever saved and every stub in every test
+ * satisfied it perfectly. A door shaped like the real dependency fails the moment
+ * the two disagree; a door shaped like a wish does not.
  */
 export function createHistory(handed) {
     // 0 is the state the structure opened at.
@@ -87,8 +100,37 @@ export function createHistory(handed) {
             // state". A write held through a bracket that captured its bytes at
             // request time would land the halfway structure the bracket exists
             // to keep out of storage.
-            await handed.store.write(step, handed.recordState());
-            landed = true;
+            const bytes = handed.recordState();
+            /* ONE CALL, BOTH COPIES (§ 11.3). The session copy goes to the browser
+             * straight away so a reload finds it; the numbered point is sent to
+             * the server without waiting, so a slow disk never stalls an edit.
+             *
+             * A ROUTINE WRITE SENDS NO POINT. `snapshotBlob` is null unless this is
+             * a save, which is what keeps § 11.2's two rules from collapsing into
+             * one: every change refreshes what would be lost, and only the user's
+             * own Save state lays down somewhere to come back to. */
+            /* A MILESTONE AND A DRAFT GO TO DIFFERENT FILES.
+             *
+             * `save` writes a numbered point you can come back to. An edit writes
+             * the draft — what you would lose if the tab closed — and it must not
+             * land on a numbered point, or every edit after a save would quietly
+             * rewrite the thing Retract is supposed to return you to.
+             *
+             * They are two file names, not two stores: both are state files in
+             * the same directory on the server. The draft is one file that keeps
+             * being replaced, so there is exactly one of it.
+             *
+             * VERSION-STAMPED, because these files outlive the code that wrote
+             * them. Someone upgrades molbuilder, opens a tab, and the reader is
+             * new while the file on disk is old; without a stamp there is no way
+             * to tell that apart from bytes it understands. */
+            const id = handed.workspace.workspaceId(handed.tag);
+            landed = handed.workspace.persist(
+                handed.tag,
+                { v: 1, state: bytes },
+                isSave ? { workspace_id: id, state_index: step }
+                       : { workspace_id: id + "-draft", state_index: 0 },
+            ) !== false;
         } catch (_) {
             landed = false;
         }
@@ -98,6 +140,16 @@ export function createHistory(handed) {
         if (landed && isSave) {
             position = step;
             highest = step;                  // a save drops every point above it
+            /* AND THE DROP REACHES THE DISK. `highest` alone only stops this
+             * session from stepping forward into an abandoned point; the files
+             * for those points stay on the server, so a later session could still
+             * find them. The workspace's own ordering rule matters here: the
+             * delete finishes before the next baseline is written, so the history
+             * never briefly holds both (workspace.md § 9). */
+            try {
+                handed.workspace.pruneStatesAbove(
+                    handed.workspace.workspaceId(handed.tag), step);
+            } catch (_) { /* a failed prune leaves a stale tail, not a lost save */ }
             setBadge(false);
         }
         state = SETTLED;
@@ -110,6 +162,15 @@ export function createHistory(handed) {
         return landed;
     }
 
+    /* The write that is on its way, or null when none is.
+     *
+     * `send` drains anything held before it resolves, so this one promise covers
+     * the whole run of writes — not just the first of them. It exists so a READ
+     * can wait for a write, which the SETTLED / CHANGING / WRITING states cannot
+     * do on their own: they order writes against other writes, and a read is
+     * neither. */
+    let inFlight = null;
+
     // What is remembered is the INTENT — which step, and whether it is a save —
     // not the bytes. See send().
     async function request(step, isSave) {
@@ -120,7 +181,19 @@ export function createHistory(handed) {
             if (!held || (isSave && !held.isSave)) held = { step, isSave };
             return false;
         }
-        return send(step, isSave);
+        inFlight = send(step, isSave);
+        try { return await inFlight; }
+        finally { inFlight = null; }
+    }
+
+    /* Wait for a write that has not finished, if there is one.
+     *
+     * A failed write must not stop the read: the point of the wait is that the
+     * position and the stored bytes have settled, and a write that failed has
+     * settled too — it left the position where it was. */
+    async function settled() {
+        if (!inFlight) return;
+        try { await inFlight; } catch (_) { /* it failed; it is still over */ }
     }
 
     return {
@@ -160,11 +233,27 @@ export function createHistory(handed) {
         // and does NOT record a state; the user decides when the structure is
         // worth being able to come back to, and says so."
         //
-        // Nothing is written on a timer and nothing is written because something
-        // changed. Storage is touched by exactly three things: opening a
-        // structure, an explicit save, and a load.
+        /* NO POINT is laid down on a timer or because something changed: the
+         * sequence grows from opening a structure, an explicit save, and a load.
+         *
+         * THE SESSION COPY IS A DIFFERENT WRITE, and it follows every change
+         * (§ 11.3). An edit changes what would be lost if the tab closed, so an
+         * edit refreshes it — `request` with `isSave` false, which sends the
+         * bytes to the browser and lays down no point.
+         *
+         * Persistence is about the accident, the timeline about the decision.
+         * Making one behave like the other takes it away: save on every edit and
+         * every keystroke becomes a milestone, so there is nothing left to come
+         * back to; save on neither and a reload loses the afternoon.
+         *
+         * It goes through the same machine as any other write, so an edit landing
+         * mid-bracket is held exactly like a save would be — the halfway
+         * structure a bracket exists to keep out of storage is the same halfway
+         * structure either way. */
         edited() {
-            if (anchored) setBadge(true);
+            if (!anchored) return;
+            setBadge(true);
+            return request(position, false);
         },
 
         /* ── save(step) (§ 11.2's table) ────────────────────────────────── */
@@ -203,6 +292,19 @@ export function createHistory(handed) {
         // to keep.
         async load(step) {
             if (!anchored) return null;
+            /* WAIT FOR A WRITE THAT IS STILL ON ITS WAY, and do it BEFORE working
+             * out which point to fetch.
+             *
+             * Both halves matter. A save moves `position` and lowers the badge
+             * when it lands, and both are read below to decide the target — so a
+             * Retract pressed while a save was in flight used to aim at the point
+             * BEFORE the one just saved, and then fetch bytes the save had not
+             * written yet. Two wrong answers from one missing wait.
+             *
+             * The write machine could not prevent it: SETTLED / CHANGING /
+             * WRITING queue writes behind other writes, and a read is not a
+             * write, so it walked straight past them. */
+            await settled();
             let target;
             if (step === 0) {
                 target = position;                 // restore where I was
@@ -213,9 +315,20 @@ export function createHistory(handed) {
             }
             if (target < 0 || target > highest) return null;
 
-            const bytes = await handed.store.read(target);
-            if (bytes == null) return null;
-            handed.restoreState(bytes);
+            /* THE POINT COMES BACK BY ITS NUMBER, from the id this tag's drafts
+             * are kept under. `readState` answers null for a miss and for any
+             * failure alike, deliberately (workspace.md § 5) — so "there is no
+             * such point" and "the server could not be reached" arrive the same
+             * way, and the only safe reading of null is "nothing to put back". */
+            const saved = await handed.workspace.readState({
+                workspace_id: handed.workspace.workspaceId(handed.tag),
+                state_index:  target,
+            });
+            if (saved == null) return null;
+            // Written by this module, so unwrapped by it. A file from a layout
+            // this code does not know is not something to guess at.
+            if (saved.v !== 1) return null;
+            handed.restoreState(saved.state);
             position = target;
             setBadge(false);
             return target;
@@ -240,7 +353,12 @@ export function createHistory(handed) {
             if (!held) return false;
             const next = held;
             held = null;
-            return send(next.step, next.isSave);
+            // Released here, so this is where the wait a read performs has to be
+            // able to see it — the same bookkeeping as `request`, for the same
+            // reason (`settled`).
+            inFlight = send(next.step, next.isSave);
+            try { return await inFlight; }
+            finally { inFlight = null; }
         },
     };
 }

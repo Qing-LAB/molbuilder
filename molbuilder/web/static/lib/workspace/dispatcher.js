@@ -1,11 +1,8 @@
 /* Workspace — the session-persistence layer.
  *
  * MODULE: workspace persistence  (lib/workspace/; contract: docs/web/workspace.md).
- *   Two files make up the module:
- *     - dispatcher.js  (this file; a native ES module)  -> window.molbuilder.workspace : persist/restore
- *         transport, session identity, owner namespace, non-blocking error surface.
- *     - snapshot-io.js              -> window.molbuilder.workspaceSnapshot: the SOLE sessionStorage
- *         read/write owner (namespaced); this file delegates every sessionStorage touch to it.
+ *   ONE file: this one. It is the whole module -- the transport to the state
+ *   files, the per-tag identity, and the non-blocking error surface.
  *   Server backend: POST /api/state-timeline/{write,read,prune} (blueprints/state_timeline.py) —
  *   the on-disk indexed STATE TIMELINE (workspace-contract §4.7).
  *
@@ -16,139 +13,121 @@
  *   "when the data changed" decision (PUSH-ONLY, no debounce) live in the data model —
  *   persist() here is a synchronous write of the bytes it is handed.
  *
+ * EVERY SAVE AND LOAD NAMES ITS TAG (docs/web/workspace.md § 4). The tag is who the
+ * bytes belong to -- "modify", "results:structure", "results:trajectory" -- and it
+ * becomes the workspace_id the state files are named after. Two tags are two ids
+ * and two sets of files, so one saver cannot reach another's work.
+ *
+ * It is an ARGUMENT, not something set beforehand. There used to be
+ * ``useNamespace(owner)``, which set one value that every later write then used --
+ * so on a page with two savers the second to set it silently took the first one's
+ * writes, and neither found out until one read back something it never wrote. A
+ * tag passed with each call has no such window.
+ *
  * USED BY (callers of window.molbuilder.workspace):
- *   - lib/molview/data-model.js — the state save/retract TIMELINE: persist(), readState(),
- *     pruneStatesAbove(), workspaceId().  The primary consumer; it owns WHEN to write.
- *   - lib/molview/mount.js — useNamespace(owner) at each mount, so one owner's session never
- *     overwrites another's (per-owner key isolation).
- *   - lib/molview/_canvas-state-impl.js — reload restore; reads the session snapshot via the
- *     shared snapshot-io owner (NOT this dispatcher — see that file's rationale).
+ *   - lib/molview/history.js — the state save/retract TIMELINE: persist(), readState(),
+ *     pruneStatesAbove(), workspaceId(). The primary consumer; it owns WHEN to write.
  *   - tabs that mount a molview hand window.molbuilder.workspace to molview.mount:
- *     modify/, spectra/viewer.js, transport/core.js, static/viewer.js, molview/demo.js,
- *     lib/inspectors/structure.js.
+ *     modify/, spectra/viewer.js, transport/core.js, structure-optimization/viewer.js,
+ *     molview/demo.js, lib/inspectors/structure.js.
  *   - a UI notification layer subscribes to onPersistError() to warn on a failed disk write.
  *
- * Public surface (window.molbuilder.workspace):
- *   - persist(sessionBytes, snapshotBlob, identity)  -- write the consumer's serialised state now
- *                                                    (session mirror + on-disk indexed state file).
+ * Public surface (window.molbuilder.workspace) -- THE ONLY WAY IN. There is no
+ * layer under it to reach past (workspace.md § 4).
+ *   - persist(tag, bytes, identity)  -- send the consumer's serialised state to its
+ *                                 state file. Does not wait; `true` means sent.
  *   - readState(identity)      -- read the opaque snapshot bytes at {workspace_id, state_index}
  *                                 from disk (a history index popState navigates to), or null.
  *   - pruneStatesAbove(workspace_id, index)  -- tail-delete on-disk state files above ``index``
  *                                 (index === -1 clears the whole timeline).
- *   - workspaceId()            -- the stable id a sourceless workspace's draft is keyed under.
- *   - readPersistedSnapshot()  -- the persisted session snapshot (or null).
- *   - mountRestoreTarget()     -- the source-file a mount-time restore owns (single-authority
- *                                 rule, workspace-contract §4.5), or null.
- *   - hasRestorableSnapshot()  -- true when a persisted snapshot exists for the current owner
- *                                 (gate for the §4.5 mount-restore rule).
- *   - useNamespace(owner)      -- switch the active owner namespace (mirror key + workspace_id).
+ *   - workspaceId(tag)         -- the stable id this tag's draft is keyed under.
  *   - onPersistError(fn)       -- subscribe to non-blocking disk-write failures.
- *   - STORAGE_KEY              -- the sessionStorage key (shared constant).
+ *   - STORAGE_KEY is gone with the browser copy: there is no browser-side slot.
  */
 "use strict";
 
-import { workspaceSnapshot } from "./snapshot-io.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
-    // The sessionStorage half is a package-internal sibling -- IMPORTED (its window global
-    // stays published by snapshot-io itself for the _canvas-state-impl cross-package read).
-    function _snapshotIO() { return workspaceSnapshot; }
     function _runtime() {
         return (root.molbuilder && root.molbuilder.runtime) ? root.molbuilder.runtime : null;
     }
 
-    // Shared classic-script constant — see lib/constants.js.  Fallback keeps the module
-    // functional in test contexts that don't load constants.js.
-    var STORAGE_KEY = ((root.molbuilder || {}).constants || {}).SS_WORKSPACE
-        || "molbuilder.workspace.v1";
 
-    // ─── Owner namespace (molview-module.md §18.4) ────────────────── //
-    // Each consumer that mounts a molview declares an ``owner`` (mount.js). We fold it into
-    // BOTH storage keys so one consumer's session never overwrites another's:
-    //   - the sessionStorage mirror key (delegated to snapshot-io's setNamespace), and
-    //   - the on-disk ``workspace_id`` -- indirectly: workspaceId() derives from the
-    //     now-namespaced mirror, so a fresh namespace generates its own id.  Switching
-    //     namespace clears the cached id so it is recomputed against the new mirror.
-    // A single active namespace is coherent: each page mounts one active owner at a time.
-    function useNamespace(owner) {
-        owner = owner || null;
-        var io = _snapshotIO();
-        if (io && typeof io.setNamespace === "function") io.setNamespace(owner);
-        _workspaceId = null;   // recompute against this namespace's mirror
-    }
-
-    // ─── Session identity ─────────────────────────────────────────── //
-    // A stable id for a SOURCELESS workspace's draft, so repeated updates hit the SAME draft
-    // file and a same-tab reload keeps it (not a fresh orphan each time).
-    var _workspaceId = null;
-    function workspaceId() {
-        if (_workspaceId) return _workspaceId;
-        var snap = readPersistedSnapshot();      // reuse across same-tab reload
-        if (snap && snap.workspace_id) {
-            _workspaceId = snap.workspace_id;
-            return _workspaceId;
-        }
-        _workspaceId = "ws-" + Date.now().toString(36) + "-"
-                     + Math.random().toString(36).slice(2, 10);
-        return _workspaceId;
-    }
-
-    // ─── Reads from persistence (restore) ─────────────────────────── //
-    /**
-     * The parsed session snapshot if the unified key has one, else null.  Callers (the data
-     * model's restore + canvas-state init) check this before falling back to legacy mirrors.
-     * Delegates to the shared snapshot IO (snapshot-io.js) — the ONE owner of the read.
-     */
-    function readPersistedSnapshot() {
-        var io = _snapshotIO();
-        return (io && typeof io.read === "function") ? io.read() : null;
-    }
-
-    /**
-     * MOUNT-RESTORE OWNERSHIP (workspace-contract.md §4.5).  Returns the source-file path a
-     * mount-time snapshot restore will hydrate, or null when the snapshot carries no restorable
-     * structure.  Every mount-time writer MUST honor this and defer when it equals the file it
-     * was about to load (the two-writer mount race).  Order-independent: reads the SAME persisted
-     * snapshot the restore derives from.
+    // ─── Session identity, per tag (workspace.md § 4, § 9) ─────────── //
+    //
+    // A stable id for a tag's draft, so repeated updates hit the SAME state files
+    // and a same-tab reload keeps them (not a fresh orphan each time).
+    //
+    // REMEMBERED PER TAG, and that is load-bearing rather than tidy. The id is
+    // what the state files are named after -- <workspace_id>.<step>.wc.json --
+    // so one shared memory would hand the first tag's id to every tag that asked
+    // afterwards, and two savers would write over each other's numbered history
+    // while their browser copies stayed properly apart. Isolation has to hold for
+    // the identity as well as for the content; holding for only one of them is
+    // broken in the half that survives a crash, which is the half the timeline
+    // exists for.
+    //
+    // This replaced a single `_workspaceId` variable that `useNamespace(owner)`
+    // reset. That worked only because a page had one saver: the setter was the
+    // thing keeping the cache honest, so removing it without this would have
+    // taken the guarantee away in silence.
+    /* THE ID IS THE TAG, MADE SAFE FOR A FILE NAME.
      *
-     * CAUTION: a null return is AMBIGUOUS -- it means EITHER "no restorable snapshot" OR "a
-     * restorable snapshot with no source file" (a GENERATED structure: SMILES / RNA / peptide /
-     * name build has ``structure.text`` but no ``source.file``).  A mount-time writer that needs
-     * to know "does the restore own the canvas AT ALL" (regardless of by-file identity) must use
-     * ``hasRestorableSnapshot()`` below, NOT a ``!== mountRestoreTarget()`` file comparison --
-     * the latter wrongly treats a generated structure as "no snapshot" and clobbers it.
+     * The state files are `<workspace_id>.<step>.wc.json`, and the id has to be
+     * the same every time this tag comes back — otherwise a reopened page looks
+     * for its work under a name it has never used and finds nothing. Working it
+     * out from the tag makes that true by construction, with nothing remembered
+     * anywhere.
+     *
+     * It used to be a random string minted per browser tab and kept in
+     * sessionStorage so a reload could find it again. That went with the
+     * sessionStorage copy: there is one place work is kept now, and it is on the
+     * server.
+     *
+     * TWO CONSEQUENCES, both deliberate. Two browser windows open on the same
+     * page now share one saved workspace, because they are two windows onto the
+     * same work rather than two workspaces that happen to look alike. And the
+     * file pile is bounded: a closed tab used to abandon its whole timeline under
+     * an id nothing would ever use again, which is why this directory grew until
+     * an operator deleted it by hand.
+     *
+     * The server allows letters, digits, `_` and `-` in an id — no dots, so the
+     * index stays unambiguous — so anything else in a tag becomes a dash.
      */
-    function mountRestoreTarget() {
-        var snap = readPersistedSnapshot();
-        if (!snap || !snap.state || !snap.state.structure
-                || !snap.state.structure.text) return null;
-        return (snap.state.source && snap.state.source.file) || null;
+    function workspaceId(tag) {
+        _requireTag(tag);
+        return "ws-" + tag.replace(/[^A-Za-z0-9_-]+/g, "-");
     }
 
-    /**
-     * MOUNT-RESTORE OWNERSHIP (workspace-contract.md §4.5).  True iff the persisted snapshot
-     * carries a restorable structure (``structure.text`` present), whether or not it came from a
-     * file.  This is the invariant a mount-time writer actually needs: when it is true, the
-     * mount-time restore is the SOLE authority for the canvas and no other writer may load
-     * anything -- persistency wins over a stale sidebar selection (file load stays explicit).
-     * Unlike ``mountRestoreTarget()`` this does not conflate "no snapshot" with "file-less
-     * generated structure".
+    /* EVERY CALL NAMES ITS TAG (workspace.md § 4), and a missing one is an error
+     * rather than a default. A default would be a shared slot wearing the look of
+     * an isolated one — the failure the tag exists to prevent, arrived at by
+     * omission instead of by collision. */
+    function _requireTag(tag) {
+        if (!tag || typeof tag !== "string") {
+            throw new Error(
+                "workspace: every save and load names its tag (workspace.md § 4)");
+        }
+    }
+
+    /* THERE IS NO `hasRestorableSnapshot` OR `mountRestoreTarget` HERE ANY MORE,
+     * and their absence is the rule rather than an omission.
+     *
+     * They answered two questions a tab asks when a page loads: "have I got work
+     * saved here worth bringing back?" and "which project file was it from?" This
+     * module answered them by opening the saved bytes and looking for a molecule
+     * inside — which it is documented not to do, and which it got wrong: a
+     * molecule you build from SMILES has no file it came from, so the second one
+     * reported "nothing saved" and the tab wiped work that was there.
+     *
+     * Both are the TAB's questions about the TAB's own bytes. It wrote them, so it
+     * knows what is in them: it reads its own state file back and looks. And
+     * `mountRestoreTarget` handed out a PROJECT FILE PATH, which belongs to the
+     * projects module and has no business being read out of here at all.
      */
-    function hasRestorableSnapshot() {
-        var snap = readPersistedSnapshot();
-        return !!(snap && snap.state && snap.state.structure
-                  && snap.state.structure.text);
-    }
 
-    // ─── Writes (persist) — format-blind ──────────────────────────── //
-    function _persistToSession(sessionBytes) {
-        // The shared snapshot IO owns the sessionStorage write — the SAME module canvas-state
-        // reads on reload, so there is one key + one format.
-        var io = _snapshotIO();
-        if (io && typeof io.write === "function" && sessionBytes) io.write(sessionBytes);
-    }
-
+    // ─── The write (format-blind) ─────────────────────────────────── //
     // The on-disk indexed STATE FILE (workspace-contract §4.7, the push-only state timeline).
     // ``snapshotBlob`` is the consumer's already-serialised OPAQUE session snapshot; ``identity``
     // = {workspace_id, state_index} keys the filename ``<workspace_id>.<state_index>.wc.json``.
@@ -232,16 +211,26 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     /**
-     * Persist the consumer's serialised state NOW — the single write-in.  The data model owns
-     * WHEN (push-only: load anchor + each pushState); this just writes the bytes, format-blind:
-     *   sessionBytes -> the sessionStorage session mirror (fast same-tab reload)
-     *   snapshotBlob -> the on-disk indexed state file, keyed by ``identity`` {workspace_id,
-     *                   state_index} -> ``<workspace_id>.<state_index>.wc.json``
+     * Send the consumer's serialised state to its state file.  The consumer owns
+     * WHEN to call this; here it is only bytes, moved without being read:
+     *   bytes    -> ``<workspace_id>.<state_index>.wc.json``, keyed by ``identity``
+     *               ({workspace_id, state_index}).
      */
-    function persist(sessionBytes, snapshotBlob, identity) {
-        if (!root.sessionStorage && !root.fetch) return;
-        _persistToSession(sessionBytes);
-        _persistState(snapshotBlob, identity);
+    function persist(tag, bytes, identity) {
+        _requireTag(tag);
+        if (!root.fetch) return false;
+        /* ONE PLACE, and the call does not wait for it. There used to be a second
+         * copy in the browser's own storage, written on the way past; it was
+         * dropped because nothing ever read it back to restore anything — every
+         * restore went to the server anyway — so it cost a write per edit and
+         * bought nothing.
+         *
+         * NOTHING USEFUL CAN COME BACK FROM HERE. The write is sent without
+         * waiting, so a slow disk never stalls an edit, and whether it arrived is
+         * not known yet. A failure turns up afterwards on `onPersistError`.
+         * `true` means "sent", never "saved". */
+        _persistState(bytes, identity);
+        return true;
     }
 
     /**
@@ -296,13 +285,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         persist:               persist,
         readState:             readState,
         pruneStatesAbove:      pruneStatesAbove,
-        useNamespace:          useNamespace,
         workspaceId:           workspaceId,
-        readPersistedSnapshot: readPersistedSnapshot,
-        mountRestoreTarget:    mountRestoreTarget,
-        hasRestorableSnapshot: hasRestorableSnapshot,
         onPersistError:        onPersistError,   // subscribe to non-blocking write failures
-        STORAGE_KEY:           STORAGE_KEY,
     };
 
     // MERGE into any pre-existing ``workspace`` namespace, not replace it -- defensive, so a

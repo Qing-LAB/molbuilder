@@ -15,7 +15,7 @@
  *      structure file in the Projects sidebar and click Load to
  *      see it in the viewer.  The spectra inspector's Generate POST
  *      reads the structure OFF THE MODEL at send time
- *      (core.js getStructureText -> molview.data.getStructure().text)
+ *      (core.js reads the structure off the viewer this page mounted)
  *      -- no push, no in-memory holder (the old setStructureText
  *      seam + the pre-#309 hidden ``<textarea id="structure-text">``
  *      are both gone).
@@ -35,12 +35,10 @@
  *     load roundtrip keeps the load fast.
  */
 import { mount, formula as mvFormula } from "/static/lib/molview/index.js";
-// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
-// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
-function _mvdata() {
-    return (window.molbuilder && window.molbuilder.molview
-            && window.molbuilder.molview.data) || null;
-}
+
+// Who this tab's saved work belongs to (workspace.md § 4): the viewer's `owner`
+// and the tag on any workspace call, so the two cannot name different slots.
+const WORKSPACE_TAG = "spectra";
 (function () {
     "use strict";
 
@@ -88,8 +86,8 @@ function _mvdata() {
         const title   = _$("info-title");
         const atomsEl = _$("info-atoms");
         const formula = _$("info-formula");
-        const d = _mvdata();
-        const elements = (d && typeof d.getElements === "function") ? d.getElements() : [];
+        const elements = (mvHandle && mvHandle.ok
+            && mvHandle.data.getElements()) || [];
         if (!elements.length) {
             if (title)   title.textContent   = "no structure loaded";
             if (atomsEl) atomsEl.textContent = "—";
@@ -116,9 +114,10 @@ function _mvdata() {
         // in mode:"readonly" for structure demonstration only (view toggles +
         // selection/cell panel, no editing).  Mounted lazily on the first load.
         const ws   = window.molbuilder && window.molbuilder.workspace;
-        const data = _mvdata();
         const proj = window.molbuilder && window.molbuilder.projects;
-        if (!ws || !data || typeof mount !== "function"
+        // NOT gated on a viewer: there is none until a load mounts one, and
+        // testing for one here is what stopped this page mounting at all.
+        if (!ws || typeof mount !== "function"
                 || !proj || !proj.parser
                 || typeof proj.parser.openMolecule !== "function") {
             setStatus("load-status",
@@ -176,25 +175,32 @@ function _mvdata() {
             const mySeq = ++_loadSeq;
             setStatus("load-status",
                 `Loading ${_basename(f)}…`, null);
-            let text;
             try {
-                // Load the committed file through the format-aware sidebar door
-                // (projects.parser.openMolecule — reads .xyz+.molstruct.json + installs
-                // the model in ONE write) + mount the read-only card on first load; the
-                // mounted render reacts to later loads.
-                const r = await proj.parser.openMolecule(f);
-                if (r && r.ok === false) {
-                    throw new Error(r.error || ("Could not load " + f));
-                }
-                const s = data.getStructure();
-                text = (s && s.text) || "";
+                // THE VIEWER FIRST, THEN THE FILE: a viewer mounts before it has
+                // a structure (molview.md § 8), and the load door needs somewhere
+                // to put what it reads. This ran the other way round, which only
+                // worked while the door could find a viewer in a global.
                 if (!mvHandle || !mvHandle.ok) {
                     // Cache ONLY a live handle (mount contract: failure ->
                     // {ok:false}); a failed mount must not stick, so the next
                     // structure load retries instead of staying viewer-less.
                     const _h = await mount(host, ws,
-                        { mode: "readonly", owner: "spectra" });
+                        { mode: "readonly", owner: WORKSPACE_TAG });
                     mvHandle = (_h && _h.ok) ? _h : null;
+                    if (!mvHandle) throw new Error("the viewer could not be built");
+                    // The page mounted it, so the page hands it on: the Generate
+                    // panel in lib/spectra/core.js needs this same viewer.
+                    const inspector = window.molbuilder
+                        && window.molbuilder.spectraInspector;
+                    if (inspector && typeof inspector.useViewer === "function") {
+                        inspector.useViewer(mvHandle);
+                    }
+                }
+                // The format-aware sidebar door reads the .xyz + its
+                // .molstruct.json and installs both into THIS viewer in one write.
+                const r = await proj.parser.openMolecule(mvHandle, f);
+                if (r && r.ok === false) {
+                    throw new Error(r.error || ("Could not load " + f));
                 }
             } catch (e) {
                 setStatus("load-status",
@@ -203,8 +209,8 @@ function _mvdata() {
             }
             if (mySeq !== _loadSeq) return;  // superseded by a newer load
             _sidebarLastFile = f;
-            // (No push into spectra/core.js: its Generate POST reads the structure
-            // OFF THE MODEL at send time -- getStructureText() -> molview.data --
+            // (Nothing else to push into spectra/core.js: it was handed the
+            // viewer at mount and reads the structure off it at send time --
             // so there is no second in-memory copy to feed or drift.)
             _updateInfo(_basename(f));
             setStatus("load-status",

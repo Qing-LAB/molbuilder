@@ -19,13 +19,18 @@
  * Contract + map: docs/model/structure.md.
  */
 
-// The molview MODEL primitives these doors call.  molview is a classic script mounted on
-// window; this is an ES module -- look the model up at CALL time (never a static import,
-// which would also invert the package dependency).
-function _model() {
-  return (typeof window !== "undefined"
-    && window.molbuilder && window.molbuilder.molview
-    && window.molbuilder.molview.data) || null;
+/* THE VIEWER IS PASSED IN, by whoever mounted it.
+ *
+ * These doors move a file between disk and a viewer, so they need one — and the
+ * only way to a viewer is the handle `mount` gave you (molview.md § 5.6). This
+ * used to look one up by name on `window`, which stopped working the day MolView
+ * was rebuilt to publish nothing, and every load on every tab failed with
+ * "molview.data.installMolecule unavailable".
+ *
+ * A page can have more than one viewer, so "the viewer" was never a question this
+ * file could answer anyway. The caller knows which one it means. */
+function _modelOf(viewer) {
+  return (viewer && viewer.ok && viewer.data) || null;
 }
 
 // The save door refuses an existing target (no overwrite) with a 409 whose envelope is
@@ -39,7 +44,7 @@ function _isExistsEnvelope(env) {
 }
 
 /**
- * openMolecule(path, { confirmDiscard? }) -- THE load door (contract §2).
+ * openMolecule(viewer, path, { confirmDiscard? }) -- THE load door (contract §2).
  *
  * FILE-ONLY load (structure-authority.md § 3.3): hand the PATH to the model install
  * primitive (`molview.data.installMolecule({path})`), which POSTs it to `/api/build/load`
@@ -51,18 +56,19 @@ function _isExistsEnvelope(env) {
  * dirty-canvas gate (UI policy; this layer stays DOM-free).  Returns `{ok:true, payload}`
  * | `{ok:false, cancelled|error}`.
  */
-export async function openMolecule(path, opts) {
+export async function openMolecule(viewer, path, opts) {
   opts = opts || {};
   if (typeof path !== "string" || !path) {
-    return { ok: false, error: "projects.parser.openMolecule(path): non-empty string required" };
+    return { ok: false, error: "projects.parser.openMolecule(viewer, path): non-empty string required" };
   }
-  const model = _model();
-  if (!model || typeof model.installMolecule !== "function") {
-    return { ok: false, error: "projects.parser.openMolecule: molview.data.installMolecule unavailable" };
+  const model = _modelOf(viewer);
+  if (!model) {
+    return { ok: false, error: "projects.parser.openMolecule: no viewer was given to load into" };
   }
   // Dirty-canvas gate (injected UI policy): a fresh open discards unsaved edits.
-  if (typeof opts.confirmDiscard === "function"
-      && typeof model.isDirty === "function" && model.isDirty()) {
+  // `uncommitted` is the viewer's own answer to "is there work here that is not
+  // on the sequence yet" (molview.md § 11.2) -- a value it holds, not a question.
+  if (typeof opts.confirmDiscard === "function" && model.uncommitted) {
     const proceed = await opts.confirmDiscard();
     if (!proceed) return { ok: false, cancelled: true };
   }
@@ -92,7 +98,7 @@ export async function openMolecule(path, opts) {
 }
 
 /**
- * saveMolecule(path, { overwrite? }) -- THE save door (contract §2).
+ * saveMolecule(viewer, path, { overwrite?, range? }) -- THE save door (contract §2).
  *
  * FILE-ONLY save (structure-authority.md § 3.3): read the SETTLED model
  * (`molview.data.exportFile` -> the structure) and hand it to the SERVER
@@ -101,19 +107,19 @@ export async function openMolecule(path, opts) {
  * the write order/atomicity, AND the sidecar schema (schema_version + a real hash).  The
  * browser no longer writes the sidecar itself (a browser-authored sidecar had no
  * schema_version, so the file-only load door rejected the pair on the next open).  Then
- * `markSaved` (clears dirty + re-anchors the store sourceFile).  On an "exists" envelope
+ * On an "exists" envelope
  * (no overwrite) -> `{needsOverwrite:true}` so the tab confirms + retries with
  * `{overwrite:true}` (the dialog is UI policy).  Returns `{ok:true, path}` |
  * `{ok:false, needsOverwrite|error}`.  Never throws.
  */
-export async function saveMolecule(path, opts) {
+export async function saveMolecule(viewer, path, opts) {
   opts = opts || {};
   if (typeof path !== "string" || !path) {
-    return { ok: false, error: "projects.parser.saveMolecule(path): non-empty string required" };
+    return { ok: false, error: "projects.parser.saveMolecule(viewer, path): non-empty string required" };
   }
-  const model = _model();
-  if (!model || typeof model.exportFile !== "function") {
-    return { ok: false, error: "projects.parser.saveMolecule: molview.data.exportFile unavailable" };
+  const model = _modelOf(viewer);
+  if (!model) {
+    return { ok: false, error: "projects.parser.saveMolecule: no viewer was given to save from" };
   }
   /* THE RANGE GOES STRAIGHT THROUGH (molview.md § 11.3). `saveMolecule` does
    * not decide which frames leave -- the caller does, the model resolves it
@@ -125,9 +131,11 @@ export async function saveMolecule(path, opts) {
    * two destinations cannot come to disagree about what "the trajectory" was. */
   const file = model.exportFile(opts.range);  // {name, structure, frames?}; null = empty OR desync
   if (!file) {
-    return { ok: false, error: (model.isEmpty && model.isEmpty())
-      ? "save: workspace has no data"
-      : "save: workspace state is inconsistent (atom-count desync); reload before saving." };
+    // Nothing loaded reads as nothing, which is a different answer from a
+    // structure with no atoms (molview.md § 9.3).
+    return { ok: false, error: (model.getStructure() === null)
+      ? "save: there is nothing loaded to save"
+      : "save: the structure is inconsistent (atom-count desync); reload before saving." };
   }
   // Hand the STRUCTURE to the server save door; the SERVER writes the pair through
   // StructureCodec.write -- the one paired-file writer, which owns the pairing rule,
@@ -156,7 +164,10 @@ export async function saveMolecule(path, opts) {
     if (_isExistsEnvelope(env)) return { ok: false, needsOverwrite: true };
     return { ok: false, error: (env.error || "Save failed.") };
   }
-  if (typeof model.markSaved === "function") model.markSaved(path);
+  /* NOTHING IS MARKED ON THE VIEWER. Where a structure was saved TO is a fact
+   * about a file operation the caller performed, so the caller keeps it
+   * (molview.md § 6.7), and the unsaved-work badge is raised and cleared inside
+   * the viewer's own gate rather than set from out here (§ 11.2). */
   return { ok: true, path: path };
 }
 

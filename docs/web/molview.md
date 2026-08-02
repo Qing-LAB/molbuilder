@@ -769,6 +769,28 @@ what a viewer holds nor anything in this document.
 
 ---
 
+
+**It does not hold which file this came from.** MolView tracks **contents** — the
+atoms, their labels, the cell, the frames. Which file they were read out of is a
+fact about a *file operation*, and the tab performed it: the tab clicked the
+sidebar, the tab called the loader, the tab is what says "loaded wire.xyz". So
+the tab remembers it, and MolView never sees a path.
+
+That is not tidiness. A viewer holding a path is a second answer to a question the
+tab already owns, and the two come apart the moment they disagree — a molecule
+built from SMILES has no file at all, and a tab that reads a viewer's empty answer
+as "there is nothing here" throws away the molecule somebody just built. That
+happened.
+
+**The one exception is a name, not a file:** what an export should be *called*.
+Open `runs/mine.xyz` and an Export → Data writes `mine.xyz`, because a file you
+get back should say what it came from (§ 11.4). That is a stem — no folder, no
+extension — and it is never a path, never compared against one, and answers no
+question about where anything lives.
+
+**"Loaded wire.xyz" and "Saved to runs/out.xyz" are the tab's to say**, for the
+same reason: the tab did the operation, so the tab reports it.
+
 ### 6.8 Notices — what the server warns about, and how long it stays true
 
 Some answers come back with **notices**: `{level, message}`, in plain language,
@@ -922,6 +944,100 @@ Pinned by `test_a_fixed_box_is_not_still_reported_as_broken` and
 `test_a_condition_is_reported_once_not_twice`, both verified to fail against the
 old behaviour.
 
+### 6.9 When a change does not happen
+
+A door that changes the structure does one of three things, and never anything
+else:
+
+| | When | What the caller gets |
+|---|---|---|
+| **it worked** | the change happened | the thing — the structure, the cell block |
+| **it was refused** | the server said no, or the request never completed | **it throws**, carrying the reason |
+| **there was nothing to do** | nothing is loaded · the viewer is read-only · an op was asked for that the controls already rule out · **one edit is already in flight** (§ 11.1) | **`null`**, and nothing else — none of these needs explaining |
+
+**`null` is not a failure.** It is the answer to a question that was never really
+asked: there is no structure to edit, or the viewer does not edit, or the atoms
+picked are not what the operation takes. In every one of those the interface has
+already said so — a read-only viewer does not draw the control at all (§ 9.4),
+and a control that needs two atoms is not clickable with three. Announcing them
+afterwards would be telling somebody about a button they cannot see.
+
+**A refusal is different, and it belongs to whoever asked.** The server decided
+something and said why. MolView is not the one who asked, does not own the button
+that was pressed, and in general does not own the part of the screen the person
+was looking at when they pressed it — the cell numbers are typed in the tab's own
+form, not in the card. **So MolView hands the reason to the caller and shows
+nothing.** The caller has the button; the caller has the place to say it.
+
+Where MolView *is* the caller — its own controls, its own menus — it catches its
+own refusals and shows them in its own card, by the same rule and for the same
+reason.
+
+**The words are the server's, unchanged.** It is the side that decided, and its
+sentence carries the numbers — the clearance, the axis, what to do instead.
+MolView writes a message itself only when there is none to quote: the request
+never arrived, or something answered without saying why.
+
+**Nothing is stored, so there is no lifetime to get wrong.** A refusal is thrown,
+caught and shown; it is never kept anywhere. That is what keeps it away from the
+notices of § 6.8, which are a different thing — those describe a change that
+*happened*, and are cleared by the next one. A failed change clears nothing:
+nothing moved, so every condition that held a moment before still holds. Had the
+reason been kept beside them, a refusal would have wiped warnings that were still
+true, on the strength of an edit that never took place.
+
+**The one thing this puts on callers: catch it.** A door that throws is only as
+good as the handler around it, and a handler that forgets is silent again — which
+is the bug this exists to end. It is stated here as an obligation rather than
+designed away, because the alternative is every caller writing a check even where
+nothing can go wrong, and a result object that can be used as though it worked.
+
+#### Saving a state is the exception, and for a reason
+
+All of the above is about the doors that ask **the server** a question and wait
+for the answer. **`save(step)` does not wait**, and cannot be made to.
+
+**It is also not one write.** § 11.3 names the two: the **draft**, rewritten by
+every edit, and the **saved point**, added when you press Save state. Both are
+files on the server and neither is waited for — a slow disk must never freeze an
+edit — so `save` has already returned by the time either one's fate is known.
+Making it throw would mean awaiting a write that exists precisely so nothing
+awaits it.
+
+So it answers, and never throws:
+
+| | Means |
+|---|---|
+| **`true`** | the write was sent and the position moved |
+| **`false`** | the write is **held** behind a change still in flight and goes out after it (§ 11.2's machine) — not a failure, and nothing to say about it |
+
+**A failure turns up afterwards, not here.** The workspace is non-blocking but
+*error-explicit*: a write that does not arrive reaches its own error channel, and
+the app-wide notification bar shows it — *"Couldn't save state to disk. Your
+edits are kept in memory, but retract / crash-recovery history may be
+incomplete."*
+
+**And the app-wide bar is the right place for it**, which is worth saying because
+§ 6.8 keeps notices *out* of it. The rule there is that the bar is for what
+matters after you navigate away. A warning about the cell you are editing does
+not. Work that was never written down does: leaving the page is exactly when it
+is lost.
+
+**The badge answers a narrower question than either write.** It says *there is
+work here that is not on the sequence yet* — so it stands when a save did not
+land, and it says nothing about the draft, which is not a point on the sequence
+(§ 11.3). It is not a general "something went wrong" light, and reading it as one
+is how a failed draft write comes to look handled.
+
+> **The reason is destroyed twice today, before anything could catch it.**
+> `postJson` raises `new Error(route + ": " + status)` **without reading the
+> response body**, so the envelope's `error` — the gate's own sentence, *"swap two
+> lattice vectors or negate one"* — never exists in the browser at all. What
+> little is left, the status code, is then swallowed by a bare `catch (_)` that
+> returns `null`, which is how a refusal came to be indistinguishable from having
+> nothing to do. The server was made to answer 400 with that sentence on
+> 2026-08-02; nothing on this side has ever been able to read it.
+
 
 ## 7. The layers
 
@@ -1036,9 +1152,26 @@ it, the switches, and MolView's own menu surface (§ 11.4). The frame bar is the
 one piece that is not decided at mount: a viewer mounts before it has a structure,
 and the bar appears once a structure with more than one frame is loaded into it.
 
-The **workspace** handed in is a door, not a module: anything that can store and
-return bytes satisfies it. That is what lets a viewer mount in a test page with a
-stand-in, and it is the whole of § 4's "nothing it needs comes from a global".
+The **workspace** is handed in when the viewer is created; MolView never goes
+looking for one. What it expects is the set of calls
+[`workspace.md`](?doc=web/workspace.md) § 5 lists — `persist`, `readState`,
+`pruneStatesAbove`, `workspaceId` — and a test page standing in for it has to
+provide those same calls. That is § 4's "nothing it needs comes from a global",
+and it is why swapping in a stand-in is a test's business rather than a change
+here.
+
+**`owner` is also the name the work is saved under.** The viewer's identity and
+its storage slot are the same fact, so it is passed down rather than worked out
+again — which is what makes two viewers on one page save separately without
+either of them arranging it.
+
+> This used to read *"a door, not a module: anything that can store and return
+> bytes satisfies it"*, which names no call, no argument and no answer. Code was
+> then written from it — `read(step)` and `write(step, bytes)`, invented on the
+> spot — and no workspace has ever had those, so nothing could save. Every
+> stand-in implemented the invention, so every test passed. A sentence in a
+> contract that specifies nothing is worse than no sentence: the next person
+> fills the hole with a guess.
 
 **Anywhere a structure leaves MolView, it leaves through a door handed in the
 same way.** The session history writes through the workspace; an export goes
@@ -1334,6 +1467,7 @@ rather than maintained separately.
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
 | Get the structure out, to hand to a door | `exportFile(range)` — the structure over a range of frames, plus the name it came in under (§ 11.7). The range defaults to the displayed frame | | — |
 | Hear that the structure changed | `subscribe(fn)` — the structure only; the frame has its own channel | | — |
+| Read what the server said about it | `getNotices()` (§ 6.8) — `{where, list:[{level, message}]}` for the structure now showing, or `null` when the server had nothing to say. A host that shows findings reads them here; they do not ride back on the door that made the change | | — |
 | Reach the selection / the drawing settings | `selection` (§ 9.5) · `view` (§ 9.6) | | — |
 | Put a structure in | `installMolecule(input)` | | **yes** |
 | Edit the geometry | `applyOp(name)` (§ 11.1) | | **yes** |
@@ -1345,7 +1479,7 @@ rather than maintained separately.
 | Make several changes land as one | `beginChange` · `endChange` — the bracket of § 11.2: writes asked for inside are held, and one lands at the end carrying the settled state | | — |
 | Ask which kind of viewer this is | `mode` — so MolView can hide the controls the gate would swallow (§ 9.4). Configuration, not data: the gate is still what makes the guarantee true | | — |
 
-Sixteen needs. That count is the honest measure of the surface; everything else
+Seventeen needs. That count is the honest measure of the surface; everything else
 is a narrower cut, and a cut earns its place only by being what a caller actually
 asks for.
 
@@ -1389,9 +1523,9 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `exportFile(range)` | `range` — `{from, to}`, inclusive, 0-based, clamped to what exists. Omitted means the displayed frame alone | `{name, structure}` for one frame; `{name, structure, frames}` when the range covers more — `frames` is **additive**, so a caller that knows nothing about ranges keeps working. `null` if the geometry and the per-atom facts disagree |
 | `mode` | — | **`"editable"` or `"readonly"`**, never `null` |
 | `state_index` · `uncommitted` | — | the position; whether there is unsaved work |
-| `installMolecule(input)` | `{path}` **or** `{text, filename, format?, sidecar?}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure, or `null` |
-| `applyOp(name, args)` | `name` — a row of § 11.1's table, and the route segment. `args` — that operation's own arguments, flat | the structure, or `null` |
-| `commitPeriodicityOp(op, payload)` | `op` — `vacuum` · `axis_kind` · `cell` · `cell_origin`. `payload` — that op's value; `null` clears | the cell block, or `null` |
+| `installMolecule(input)` | `{path}` **or** `{text, filename, format?, sidecar?}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
+| `applyOp(name, args)` | `name` — a row of § 11.1's table, and the route segment. `args` — that operation's own arguments, flat | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
+| `commitPeriodicityOp(op, payload)` | `op` — `vacuum` · `axis_kind` · `cell` · `cell_origin`. `payload` — that op's value; `null` clears | the cell block · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `reloadFrames(frames, opts)` | `opts` — `{forces?, enforce?}` | — |
 | `addFrame(frame, opts)` · `addFrames(frames, opts)` | `opts` — `{forces?}` | — |
 | `setForces(perFrame)` | one entry per frame; `null` clears | — |
@@ -2342,8 +2476,12 @@ whole-structure path even with a partial selection, because it rigidly maps ever
 atom into the cell and clears the cell origin.
 
 **One mutation in flight.** A second edit started while one is still running is
-refused rather than interleaved. Two responses applying over each other produce a
-structure neither edit asked for, and a history state the user never saw.
+**not started** rather than interleaved. Two responses applying over each other
+produce a structure neither edit asked for, and a history state the user never
+saw. It answers `null` and says nothing — there is nothing to explain, because
+the edit already running is about to change the thing the second one was aimed
+at (§ 6.9). *Not* "refused": under § 6.9 that word means the server said no, and
+this one never left the browser.
 
 **If the edit does not come back, nothing happened.** A request the server refuses
 — or one that never arrives — leaves the structure exactly as it was: nothing is
@@ -2480,9 +2618,21 @@ every frame it had and the selection, and nothing about looking: there is no
 page-hide flush, and neither the camera nor the switches nor the displayed frame
 is written anywhere.
 
-**Nothing is written on a timer, and nothing is written because something
-changed.** Storage is touched by exactly three things: opening a structure (which
-lays down point 0), an explicit save, and a load.
+**No POINT is laid down on a timer, and none is laid down because something
+changed.** The sequence grows from exactly three things: opening a structure
+(which lays down point 0), an explicit save, and a load.
+
+**That rule is about the sequence, and only about it.** The draft — the other
+file, § 11.3 — is rewritten by *every* change, because that is what it is for: an
+edit changes what would be lost if the tab closed. Nobody asks for it and nobody
+should have to.
+
+**The two together are the whole promise.** Persistence means *you do not lose
+work you did* — automatic, and about the accident. The timeline means *you can go
+back to a moment you chose* — explicit, and about the decision. Confusing them
+takes one of the two away: make persistence explicit and unsaved work is lost on
+a reload; make the timeline automatic and every keystroke becomes a milestone,
+so there is nothing left to come back *to*.
 
 **When a write may go out is a state machine, and it has three states.** Every
 rule below is a transition of it; there is no fourth state and no other reason a
@@ -2508,6 +2658,51 @@ flowchart LR
 | **SETTLED** | goes out immediately | the structure is consistent, so there is nothing to wait for |
 | **CHANGING** | is remembered and sent when the change finishes. At most one is remembered; if a **saved state** is among them, that is the one sent, and a routine write arriving after it does not replace it | the structure is halfway between two files, and what is halfway is wrong — see below |
 | **WRITING** | waits until the one already on its way has landed | two writes in flight is how the position comes to describe a state that was never written |
+
+**A read waits for a write that has not finished.** The three states above decide
+when a *write* may go out, and they decide nothing about a read — so without this
+rule a read walks straight past them.
+
+Three words, used exactly:
+
+- a **write** is putting a state into storage: `save`, and the point laid down
+  when a structure is opened;
+- a **read** is taking one back out: `load` in all three of its forms, `undo`
+  among them;
+- **finished** means the write is over either way — it landed, or it failed and
+  left the position where it was. A read waits for the answer, not for success.
+
+**Why waiting is not just about the bytes.** A save that lands moves the position
+and lowers the badge, and a read looks at both to work out *which* point it is
+being asked for. So a read answered early gets two things wrong at once: it picks
+its point from a position the user has already left, and then fetches bytes that
+had not been written yet.
+
+**Where it shows.** "Put me back where I am" — `load(0)`, which is what a
+reopened page uses — asked while a save is still on its way. Which point that
+*is* changes the instant the save lands, so answering early hands back the point
+before it: you ask to be put where you are and are given where you were.
+
+> A Retract does **not** show it, and the difference is worth knowing before
+> anyone writes a test: `load(-1)` from an unsaved edit spends that edit and
+> lands on the current point, and after the save it steps back one from a
+> position one higher. Both routes arrive at the same point, so a test built on
+> that case passes whether the rule is honoured or not. One was, until it was
+> replaced by `test_a_read_during_a_save_answers_from_after_it`.
+
+**When a write does not land**, the position does not move and the badge is not
+cleared — so "there is work here that is not on the sequence yet" stays true and
+stays on screen. That is the whole of what `save` answers: `true` when the point
+was recorded, `false` when the write is *held* and still to go out. It never
+throws, because the write is not awaited: the structure in memory is the truth,
+and a slow or unreachable disk must not stall an edit.
+
+**Which is why the reason travels a different road from the server's.** A refused
+edit throws, carrying the server's sentence, because MolView asked and waited
+(§ 6.9). A failed write has no such moment — by the time it is known, `save` is
+long finished. So the store reports its own failures on its own channel, and the
+app-wide notification bar shows them; the badge is the standing half of the same
+answer and needs no second voice.
 
 Two rules sit on top of the machine:
 
@@ -2602,17 +2797,27 @@ value in the last column — it never throws, so no caller has to wrap it (§ 9.
 | `uncommitted` | is there work not on the sequence yet | reads it | always `false` |
 | `beginChange()` · `endChange()` | the bracket: writes asked for inside land once, at the end, carrying the settled state | holds them | nothing to hold |
 
-**The workspace door** is `{read(step), write(step, bytes)}` and nothing else — it
-is handed in at mount and MolView never learns anything about where the bytes go
-(§ 11.2). **Exactly three things touch it:** anchoring a structure, an explicit
-`save`, and a `load`. Nothing is written on a timer and nothing is written
-because something changed.
+**The workspace is the bottom of this stack, and it knows about the session** —
+this tab's identity, and where things are kept. **Where is not MolView's to
+choose:** the persistency directory is fixed by the workspace's own contract
+([`workspace.md`](?doc=web/workspace.md)), decided there, and nothing above it
+picks a location.
+
+What is left to MolView is **when** to write and **what goes in** the bytes. The
+`owner` given at mount travels with it, so two viewers on one page never write
+over each other (§ 5.6). The workspace cannot read what it stores and holds no
+opinion about the content.
+
+**Three things lay down a point:** anchoring a structure, an explicit `save`, and
+a `load`. **The draft is rewritten by every change**, which is the other half of
+§ 11.2's promise and not an exception to it.
 
 **Starting, in an editable viewer.** `mount` → EMPTY → `installMolecule(input)`
 → the whole structure lands in one settle (§ 6.4) → **point 0 is laid down**, and
-that is the only point nobody asks for. From there: edits raise the badge and
-record nothing, `save(1)` writes a point and drops everything above it, `load(-1)`
-steps back, `load(0)` puts back the point you are on.
+that is the only point nobody asks for. From there: edits raise the badge and lay
+down no point — while rewriting the draft, so nothing is lost to a reload —
+`save(1)` writes a point and drops everything above it, `load(-1)` steps back,
+`load(0)` puts back the point you are on.
 
 **Starting, in a read-only viewer.** `mount` → EMPTY → `installMolecule(input)`
 → HOLDING, and **no point 0 is laid down at all**: a read-only viewer has no
@@ -2699,35 +2904,67 @@ mechanisms — they are one call that names a destination. A viewer that grew a
 separate download path would have two places to keep in step for something one
 already expressed.
 
-### 11.3 Three different things that all look like saving
+### 11.3 Four different things that all look like saving
 
-Three kinds of thing, not variants of each other:
+Four kinds of thing, not variants of each other. Sorted by what somebody wants
+when they do it:
 
-1. **a saved state** — somewhere to get back to;
-2. **an export of the truth** — a structure, to compute on;
-3. **an export of the view** — a picture, to look at.
+1. **come back to this later** — a **saved point**, one step on the sequence;
+2. **do not lose this if the tab closes** — the **draft**, which nobody asks for
+   and which happens on its own;
+3. **take the structure away** — an **export of the truth**, to compute on;
+4. **take a picture away** — an **export of the view**, to look at.
 
-They differ in **what they produce**, **what they read it from**, and **whether
-you can go back**. The first two are the truth; the third is a view of it — the
-same line § 11.2 draws.
+The first two are easy to run together and must not be. They are both files in
+the same place — under the project directory, on the server — but they answer
+different questions and one must never land on the other. **A saved point is
+somewhere you chose to be able to return to. The draft is just where you are.**
+An edit rewrites the draft and leaves every point alone; a save adds a point and
+leaves the earlier ones alone.
+
+> Writing an edit onto the point you last saved would be the quiet version of
+> losing work: Retract would take you back to something that had been rewritten
+> since you chose it. So they are two file names, and only that keeps them apart.
+
+The last two are exports, and they split for a different reason: 3 is the truth
+and 4 is a view of it, which is the line § 11.2 draws.
 
 ```mermaid
 flowchart LR
     T["THE TRUTH<br/>the master copy"]
     V["WHAT IS DRAWN<br/>the drawing copy"]
-    S["Save state<br/>every frame · undoable<br/>never leaves the viewer"]
+    S["Save state<br/>a numbered point on the server<br/>undoable · never leaves as a file"]
+    R["The draft<br/>one file, replaced on every edit<br/>nobody asks for it"]
     D["Export → Data<br/>a frame range<br/>.xyz + .json"]
     P["Export → Image<br/>a frame range<br/>.png / .webm / .gif"]
     T --> S
+    T --> R
     T --> D
     V --> P
 ```
 
 | | Produces | Reads from | Which frames | Undoable |
 |---|---|---|---|:--:|
-| **Save state** (and Retract) | one point in an ordered, persistent sequence — undo that survives a reload | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
+| **Save state** (and Retract) | one point in an ordered, numbered sequence of files kept on the server — undo that survives a browser crash | **the truth** — the structure with its cell and labels, and the selection (§ 11.2) | all of them | **yes** — going back is the whole point of it |
+| **The draft** | one file beside those points, replaced each time rather than added to — what makes a reopened tab find the work you never saved | the same bytes a point is made of | all of them | no — it is not a place on the sequence, it is *where you were* |
 | **Export → Data** | the structure as data — a coordinate document and the metadata beside it (§ 11.7). One frame writes an `.xyz`; a range writes one **extended-XYZ**. The `.json` is written once either way | **the truth** — the master copy | **the range asked for**, defaulting to the displayed frame | no |
 | **Export → Image** | a picture of the molecule as it is drawn. One frame is a `.png`; a range is a `.webm` or `.gif`, rendered frame by frame with the view as it is set | **the drawing** | **the range asked for**, defaulting to the displayed frame | no |
+
+**When each is written.** An edit changes what would be lost if the tab closed,
+so **an edit rewrites the draft**. An edit is not a milestone, so **an edit adds
+no point**: you decide what is worth coming back to and say so (§ 11.2).
+
+**Neither write is waited for.** Both are sent to the server without waiting, so
+a slow disk never freezes an edit — which means neither one's outcome can come
+back from the call that made it. A failure turns up afterwards, on the
+workspace's own error channel, and the notification bar shows it.
+
+> There used to be a third copy of your work, in the browser's own storage,
+> written on the way past every save. It was there to make reopening a tab
+> instant with no trip to the server — and nothing ever restored from it, so
+> every reopen went to the server anyway. It cost a write on every edit and
+> bought nothing, and it is gone. One place your work is kept: the files
+> (workspace.md § 2).
 
 **The exports are a 2×2 — and only one of its axes is a menu.**
 
@@ -3335,6 +3572,12 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.8 — a notice reaches the user | a load, a cell edit, or any of the eight modify ops that answers with notices shows them: a cell notice under the Cell-page row it is about, everything else at the top of the panel |
 | § 6.8 — every op is checked | each `/api/modify/*` route validates the structure it returns, because the check is in the shared return path; the op list is read from the app's route table so a new op is covered on arrival |
 | § 6.8 — a notice lives until what it describes changes | an edit to the structure clears the set, and an answer carrying notices replaces it; nothing is stored, saved, or survives a reload |
+| § 6.9 — a refused change throws, carrying the server's own sentence | the caller of a door the server refused receives the *text the server sent*, not a status code and not `null`; asserting it means asserting that text |
+| § 6.9 — `null` and a refusal are different answers | nothing loaded, a read-only viewer and a wrongly-sized selection all answer `null` and say nothing; only a refusal throws — so a caller cannot mistake one for the other |
+| § 6.9 — a failed change leaves the notices alone | after a refused edit every condition that held before it still stands, because nothing is stored and nothing was cleared |
+| § 11.3 — the draft and a saved point are separate files | an edit rewrites the draft and leaves every point exactly as it was, so Retract returns you to what you chose; and the badge answers only whether work is on the sequence |
+| § 6.7 — a viewer holds no file path | nothing a viewer answers, saves or restores names a file it was read from; a structure built with no file behaves exactly like one read from disk, and the only name kept is what an export gets called |
+| § 11.2 — a read waits for a write that has not finished | "put me back where I am", asked while a save is on its way, answers about the point that save creates and returns its bytes — not the point before it; and a write that failed ends the wait too, rather than leaving the read hanging |
 | § 6.6 — the predefined names are offered, not typed | the five appear in the label chooser and in a `by label` row before any structure carries them, once each however many sources name them, and a user's own name is offered beside them |
 | § 9.5 — `by label` chooses from what is defined | the value control is a chooser for that rule and a text box for the other three, and re-kinding a row swaps it |
 | § 6.6 / § 9.3 — the accessor is the only way in | the designated read agrees with the label store because it is a cut of it, cannot be used to write, and is the one place the reserved name is spelled |
@@ -3446,6 +3689,7 @@ what they already said, and § 15 is a map for reading the code.
 | § 5 the ideas | — | the source everything else is checked against |
 | § 6 the data | **5.1, 5.2** | the whole of what-you-see-is-what-you-get-out, and one-home-per-fact |
 | § 6.6 reserved labels | **5.2, 5.5** | a special meaning costs a name and a translator, not a second mechanism — and it is the user's intent travelling to the calculation |
+| § 6.9 when a change does not happen | **5.4, 5.6** | the reason goes back to whoever asked, because the asker owns the button and the place to say it; keeping nothing is what stops a refusal from erasing warnings that are still true |
 | § 7 the layers | **5.2, 5.3** | the "never" column is how one-home-per-fact and an invisible library get enforced instead of remembered |
 | § 8 making a viewer | **5.4, 5.6** | embedding is one call, and `owner` is what makes it a viewer of its own |
 | § 8.1–8.3 the card, its sizing, its fold | **5.4** | a host hands over an empty element and gets a working viewer — so what it must respect is one number, and everything else derives from the square |
@@ -3456,7 +3700,7 @@ what they already said, and § 15 is a map for reading the code.
 | § 9.6 the camera is not held | **5.2** | the one fact MolView cannot own without owning something that goes stale — so it owns none of it |
 | § 10 the render pipeline | **5.1, 5.2, 5.3** | the one path from the master copy to the picture: what each switch produces, in what order, at what cost |
 | § 11 the other connections | 5.2, 5.5 | the server, the workspace, the three kinds of saving, and the one atom-numbering translation |
-| § 11.3–11.4 saving, and who decides it | **5.1, 5.2, 5.5** | three things wear the same word; separating them is what makes "the truth" and "a view of it" mean something at the point a user acts |
+| § 11.3–11.4 saving, and who decides it | **5.1, 5.2, 5.5** | four things wear the same word, and two of them are written by one call — separating those is what stops a sentence about the undo history being believed about the reopen, and separating the exports is what makes "the truth" and "a view of it" mean something at the point a user acts |
 | § 11.7 the structure on the wire | **5.2, 5.5** | one blob assembled once is how the facts that leave together stay together — and the line between the fields a viewer knows and the envelope only a writer can supply is what keeps a saved file loadable |
 | § 12 worked examples | — | the concepts above, in the order they actually happen |
 | § 13 the tests | all six | a test derived from the source cannot defend an idea |

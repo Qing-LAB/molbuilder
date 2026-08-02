@@ -9,7 +9,8 @@
  *                     Save has happened in this session; otherwise
  *                     the panel disables ("Save as" comes later).
  *
- * On a successful write the save door's ``molview.data.markSaved`` runs —
+ * On a successful write the page records where it went (it chose the
+ * destination; the viewer tracks contents, not files) —
  * the dirty bit clears, ``last_save_to`` is recorded, and any
  * subsequent Load / Generate WILL NOT fire the warning modal
  * unless the user re-edits.
@@ -49,6 +50,14 @@
     // by configure() for test contexts that pass a fake — the test
     // fake just needs the ws.* method names.
     var _model     = null;
+    // The viewer this page mounted, handed over by selection-bootstrap.js.
+    var _handle = null;
+    function useViewer(viewer) {
+        _handle = (viewer && viewer.ok) ? viewer : null;
+        _model  = _handle ? _handle.data : null;
+    }
+    // The save door writes FROM a viewer, so it is given one (parser.js).
+    function _viewer() { return _handle; }
 
     function configure(opts) {
         opts = opts || {};
@@ -57,8 +66,10 @@
         // Accept either ``workspace`` (canonical, Phase 10+) or
         // ``canvas`` (legacy alias kept for tests still passing the
         // old fake).  Both name the same object.
-        if (opts.workspace)     _model     = opts.workspace;
-        else if (opts.canvas)   _model     = opts.canvas;
+        // A test injects a stand-in viewer's DATA here. Wrap it so the save door
+        // — which is handed a VIEWER, not a model — gets one either way.
+        if (opts.workspace)     useViewer({ ok: true, data: opts.workspace });
+        else if (opts.canvas)   useViewer({ ok: true, data: opts.canvas });
     }
 
     /**
@@ -75,27 +86,28 @@
             _projects      = root.molbuilder.projects;
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        // _model = molview.data, LOOKED UP live (molview-module.md §D.0) -- renamed from
-        // the misleading pre-carve ``_workspace`` (the WORKSPACE has no data API); reading is
-        // decoupled from loading.  A test injects a stub via configure({workspace}).
-        if (!_model && root.molbuilder.molview && root.molbuilder.molview.data)
-            _model = root.molbuilder.molview.data;
+        // The viewer arrives through `useViewer`, called by the page that mounted
+        // it. There is nothing to look up: this used to read
+        // `molbuilder.molview.data`, which MolView has published nothing to since
+        // it was rebuilt, so the Save panel has been holding `undefined`.
     }
 
     /**
-     * Resolve the natural save target.  Order:
-     *   1. ``last_save_to`` if previously saved this session.
-     *   2. ``source.file`` if the canvas was loaded from a project file.
-     *   3. null → Save disabled, user needs Save-as (future).
+     * Resolve the natural save target: where this page last saved, or null.
+     *
+     * BOTH ANSWERS ARE THE PAGE'S OWN. The viewer tracks contents, not files
+     * (molview.md § 6.7) — it never knew where anything came from or went to.
+     * This used to ask it for both, and got `undefined` twice.
+     *
+     * `structurePage` keeps the "last saved to" note because it is the thing
+     * that performed the save. When there is none, Save is disabled and the user
+     * needs Save-as.
      */
     function targetPath() {
         _lazyResolve();
-        if (!_model) return null;
-        var lastSaved = _model.getLastSavedTo();
-        if (lastSaved) return lastSaved;
-        var src = _model.getSource();
-        if (src && src.kind === "file" && src.file) return src.file;
-        return null;
+        var snap = (_structurePage && _structurePage.getCanvasSnapshot)
+            ? _structurePage.getCanvasSnapshot() : null;
+        return (snap && snap.lastSaveTo) || null;
     }
 
     function _basename(p) {
@@ -135,7 +147,7 @@
             return Promise.resolve({ ok: false, error: "save: parser door unavailable" });
         }
         var dialog = root.molbuilder && root.molbuilder.structureSaveDialog;
-        return saver.saveMolecule(path, { overwrite: false }).then(function (r) {
+        return saver.saveMolecule(_viewer(), path, { overwrite: false }).then(function (r) {
             if (r.ok) return { ok: true, path: r.path };
             if (r.needsOverwrite && dialog
                     && typeof dialog.confirmOverwrite === "function") {
@@ -143,7 +155,7 @@
                     if (!proceed) {
                         return { ok: false, cancelled: true, error: "Save cancelled." };
                     }
-                    return saver.saveMolecule(path, { overwrite: true })
+                    return saver.saveMolecule(_viewer(), path, { overwrite: true })
                         .then(function (r2) {
                             return r2.ok
                                 ? { ok: true, path: r2.path }
@@ -170,7 +182,8 @@
             return Promise.reject(new Error(
                 "save: structurePage not configured"));
         }
-        if (_model.isEmpty()) {
+        // Nothing loaded reads as nothing (molview.md § 9.3).
+        if (!_model || _model.getStructure() === null) {
             return Promise.resolve({
                 ok: false, error: "No structure to save." });
         }
@@ -201,9 +214,10 @@
         // MODIFY the structure, so a Save is a save-AS to a file the user names;
         // we never pre-fill the loaded file's name (that invites silently
         // overwriting the source).  Blank box -> the dialog keeps Save disabled
-        // until the user types a name.  ``path`` (the loaded source) is still
-        // threaded below, only for provenance (sidecar propagation).
-        var path = targetPath();
+        // until the user types a name.
+        // (The remembered target is deliberately NOT read here: it is what the
+        // readout shows, not what the box is pre-filled with.  A `targetPath()`
+        // call did sit here, assigned to a variable nothing below ever read.)
         var initial = "";
 
         // Route the Save click through the confirm-name dialog so
@@ -245,6 +259,24 @@
             // the SERVER writes the .xyz + .molstruct.json pair).  Overwrite is ALWAYS confirmed inside _saveDataset
             // (needsOverwrite -> confirm -> retry with overwrite:true); no save-back skip.
             return _saveDataset(finalPath).then(function (res) {
+                /* TELL THE PAGE WHERE THE BYTES WENT.
+                 *
+                 * The viewer tracks contents, not files (molview.md § 6.7), so
+                 * where a structure was saved TO is the page's own note -- and
+                 * this is the only moment anything knows it.  It drives the
+                 * readout beside the button ("Target: <name>.xyz", and "Unsaved"
+                 * once you edit again).
+                 *
+                 * Nothing called this.  `markSaved(path)` used to be set on the
+                 * VIEWER from out here, and when that was correctly taken off
+                 * the viewer the call was deleted rather than redirected -- so
+                 * `targetPath()` answered null forever, the readout said
+                 * "Save as... into structure/" straight after a save, and the
+                 * `path` it reads was assigned and then used by nobody. */
+                if (res && res.ok && _structurePage
+                        && typeof _structurePage.markSavedTo === "function") {
+                    _structurePage.markSavedTo(res.path || finalPath);
+                }
                 // On a successful write, refresh the sidebar listing so the new
                 // <name>.xyz (+ its sidecar) appears without a manual reload --
                 // the save door does auto-refresh the current dir, but
@@ -264,7 +296,7 @@
     var _unsubCanvas = null;
     // 2026-06-12: while a Save click is in flight, the workspace's
     // subscriber callback fires DURING the save (the door's
-    // ``molview.data.markSaved`` clears dirty + re-anchors the store -> notify()).  The
+    // the page records where it saved to -> notify()).  The
     // subscriber re-runs ``refreshState`` mid-save, which would re-
     // enable the button on a successful write — letting the user
     // click Save AGAIN before the first save's saveMolecule
@@ -292,7 +324,7 @@
         function refreshState() {
             _lazyResolve();
             var path = targetPath();
-            var dirty = _model && _model.isDirty();
+            var dirty = !!(_model && _model.uncommitted);
             // 2026-06-09: Save-as for generator-sourced workspaces.
             // When ``path`` is null (no backing file), allow Save
             // iff the workspace has content AND the sidebar has a
@@ -300,7 +332,7 @@
             // surfaces a clear error if either is missing at click
             // time; this just keeps the button visibly enabled when
             // a Save-as is actually possible.
-            var hasContent = _model && !_model.isEmpty();
+            var hasContent = !!(_model && _model.getStructure() !== null);
             var sidebarDir = (_projects
                               && typeof _projects.getCurrentDir
                                  === "function")
@@ -377,6 +409,7 @@
 
     var api = {
         configure:  configure,
+        useViewer:  useViewer,
         save:       save,
         targetPath: targetPath,
         wirePanel:  wirePanel,

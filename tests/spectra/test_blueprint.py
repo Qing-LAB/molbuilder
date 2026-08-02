@@ -504,9 +504,11 @@ class TestSpectraPage:
         """The inspector core exposes the viewer setup + animation
         entry points.
 
-        Note: ``_parseXyz`` / ``_geomToXyz`` moved to the shared
-        ``static/lib/xyz-io.js`` (window.molbuilder.xyz.{parse,toText})
-        on 2026-05-16 — the symbol-name pin updates accordingly."""
+        Note: the pin on ``molbuilder.xyz.parse`` went on 2026-08-02 with the
+        thing it pinned. ``_equilibriumGeometry`` used to ask the viewer for an
+        XYZ document and parse it back into atoms — a round trip through a
+        document the viewer never had, to arrive at the atoms it was holding all
+        along. It reads them off the viewer now, and nothing here parses text."""
         js = web_client.get("/static/lib/spectra/core.js").data.decode()
         for sym in (
             "renderModeViewer",
@@ -514,7 +516,6 @@ class TestSpectraPage:
             "_startAnimation",
             "_stopAnimation",
             "_equilibriumGeometry",
-            "molbuilder.xyz.parse",
             "$3Dmol",
         ):
             assert sym in js, f"missing {sym!r} in lib/spectra/core.js"
@@ -1192,6 +1193,28 @@ class TestSchemaEndpointFrozenSeed:
 # --------------------------------------------------------------------- #
 
 
+def _envelope(xyz: str) -> dict:
+    """The molecule as data — what every structure door takes (web-api.md § 1).
+
+    These tests used to post an XYZ document in a ``structure_text`` field. That
+    field is gone, and so is the text path behind it: the browser holds the
+    molecule as numbers and writes no coordinate document (molview.md § 11.7), so
+    the tab reading a ``text`` field that does not exist sent an empty string and
+    the route answered "no structure provided" with a molecule on screen.
+
+    Building the envelope from XYZ *here* keeps the fixtures readable while the
+    request is the real shape.
+    """
+    lines = [ln for ln in xyz.strip().splitlines()]
+    atoms = lines[2:2 + int(lines[0].strip())]
+    elements, positions = [], []
+    for row in atoms:
+        parts = row.split()
+        elements.append(parts[0])
+        positions.append([float(parts[1]), float(parts[2]), float(parts[3])])
+    return {"elements": elements, "positions": positions}
+
+
 class TestRenderEndpoint:
 
     def _render(self, web_client, **body):
@@ -1202,7 +1225,7 @@ class TestRenderEndpoint:
         )
 
     def test_happy_path_returns_script(self, web_client):
-        r = self._render(web_client, structure_text=_WATER_XYZ, params={})
+        r = self._render(web_client, structure=_envelope(_WATER_XYZ), params={})
         assert r.status_code == 200, r.data
         body = r.get_json()
         assert body["ok"] is True
@@ -1216,7 +1239,7 @@ class TestRenderEndpoint:
         assert body["job_name"] == "spectra"
 
     def test_render_with_compute_raman_off(self, web_client):
-        r = self._render(web_client, structure_text=_WATER_XYZ,
+        r = self._render(web_client, structure=_envelope(_WATER_XYZ),
                          params={"compute_raman": False})
         assert r.status_code == 200
         body = r.get_json()
@@ -1229,7 +1252,7 @@ class TestRenderEndpoint:
         """The script delivered over the wire must compile -- this is
         the cheapest catchall for syntax bugs in the template that
         only manifest with certain configs."""
-        r = self._render(web_client, structure_text=_WATER_XYZ, params={
+        r = self._render(web_client, structure=_envelope(_WATER_XYZ), params={
             "compute_raman":     True,
             "es_mode_selection": "explicit",
             "es_explicit_indices": "1,2,3",
@@ -1237,46 +1260,35 @@ class TestRenderEndpoint:
         body = r.get_json()
         compile(body["script"], "<wire-render>", "exec")
 
-    def test_missing_structure_text_400(self, web_client):
-        """Empty body (no ``structure_text``) -> 400 with a
-        structured error.  The body field was renamed 2026-05-22
-        from the misleading ``"xyz"`` (which also accepted PDB)
-        to ``"structure_text"``."""
+    def test_a_body_with_no_structure_is_a_400(self, web_client):
+        """No molecule in the body -> 400 with a structured error.
+
+        Replaced `test_missing_structure_text_400`, which named the field that
+        used to carry an XYZ document. The route takes the molecule as data now
+        (web-api.md § 1), so the missing thing is the structure itself.
+        """
         r = self._render(web_client, params={})
         assert r.status_code == 400
         assert r.get_json()["ok"] is False
-        assert "structure_text" in r.get_json()["error"]
+        assert "structure" in r.get_json()["error"].lower()
 
-    def test_render_accepts_pdb_text(self, web_client):
-        """The render endpoint accepts PDB text (auto-detected by
-        content, falls through to Structure.from_pdb).  Broadened
-        2026-05-22 so the user can drive /spectra against PDB
-        structures, not just XYZ.  See design.md "Module init
-        contract" + selection.py PDB suffix dispatch."""
-        pdb_water = (
-            "HEADER    TEST\n"
-            "ATOM      1  O   HOH A   1       0.000   0.000   0.000  1.00  0.00           O\n"
-            "ATOM      2  H1  HOH A   1       0.957   0.000   0.000  1.00  0.00           H\n"
-            "ATOM      3  H2  HOH A   1      -0.240   0.927   0.000  1.00  0.00           H\n"
-            "END\n"
-        )
-        r = self._render(web_client, structure_text=pdb_water, params={})
-        assert r.status_code == 200, r.data
-        body = r.get_json()
-        assert body["ok"] is True
-        assert body["script"].startswith('"""PySCF Spectra')
+    def test_a_malformed_structure_is_a_400(self, web_client):
+        """A molecule that cannot be built -> 400, refused at the boundary
+        rather than becoming a half-built structure downstream.
 
-    def test_unparseable_structure_text_400(self, web_client):
-        """Unparseable structure text (neither XYZ nor PDB) -> 400
-        with a "could not parse structure text" error.  The
-        ``xyz`` body field name is historical -- as of 2026-05-22
-        the render endpoint sniffs the content and dispatches to
-        from_xyz / from_pdb."""
-        r = self._render(web_client, structure_text="not an xyz or pdb", params={})
+        This replaced two tests about unparseable and PDB *text*. Neither has a
+        subject any more: the route parses no documents. A person who wants to
+        open a PDB does it through the load door, which reads the file and hands
+        back a structure — one place that turns bytes into a molecule, instead of
+        every route that needs one growing its own parser.
+        """
+        r = self._render(web_client,
+                         structure={"elements": ["O"], "positions": []},
+                         params={})
         assert r.status_code == 400
         body = r.get_json()
         assert body["ok"] is False
-        assert "could not parse structure text" in body["error"].lower()
+        assert body["error"]
 
     def test_unsupported_method_blocks_render(self, web_client):
         """Preflight catches an unknown method -- response carries
@@ -1289,7 +1301,7 @@ class TestRenderEndpoint:
         ok:false (scientific advisory, class (b)).  Either status
         is contract-compliant; the test pins the ok:false outcome.
         """
-        r = self._render(web_client, structure_text=_WATER_XYZ, params={
+        r = self._render(web_client, structure=_envelope(_WATER_XYZ), params={
             "method": "BOGUS_METHOD",
         })
         assert r.status_code in (200, 400), r.status_code
@@ -1304,7 +1316,7 @@ class TestRenderEndpoint:
         bucket — HTTP 200 + ok:false; the form's workflow cards
         render the findings inline.
         """
-        r = self._render(web_client, structure_text=_WATER_XYZ, params={
+        r = self._render(web_client, structure=_envelope(_WATER_XYZ), params={
             "es_mode_selection": "top_n",
             "es_top_n":          5,
         })
@@ -1320,7 +1332,7 @@ class TestRenderEndpoint:
         """A warn-severity issue (e.g. displacement amplitude outside
         the defensible window) doesn't block render -- it's
         delivered alongside the script."""
-        r = self._render(web_client, structure_text=_WATER_XYZ, params={
+        r = self._render(web_client, structure=_envelope(_WATER_XYZ), params={
             "displacement_amplitude_ang": 0.25,  # above the 0.20 cap
         })
         assert r.status_code == 200
@@ -1334,7 +1346,7 @@ class TestRenderEndpoint:
         """A bogus prior_path is non-fatal -- preflight just doesn't
         get the L3-completed signal; the user sees a warn so they
         know the resume context was ignored."""
-        r = self._render(web_client, structure_text=_WATER_XYZ,
+        r = self._render(web_client, structure=_envelope(_WATER_XYZ),
                          params={},
                          prior_path=str(tmp_path / "nonexistent.json"))
         assert r.status_code == 200
@@ -1348,7 +1360,7 @@ class TestRenderEndpoint:
         prior = _make_minimal_results()  # phase_raman=COMPLETE in fixture
         prior_path = tmp_path / "prior.spectra.json"
         dump_spectra_json(prior, prior_path)
-        r = self._render(web_client, structure_text=_WATER_XYZ,
+        r = self._render(web_client, structure=_envelope(_WATER_XYZ),
                          params={"es_mode_selection": "top_n",
                                  "es_top_n":          3},
                          prior_path=str(prior_path))
@@ -1416,7 +1428,7 @@ class TestRenderHonorsSidecar:
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
-                "structure_text": _WATER_XYZ,
+                "structure": _envelope(_WATER_XYZ),
                 # The reserved label rides in the ONE store, like every other
                 # label -- retired 2026-07-31: it used to be sent beside it.
                 "regions":        {"frozen_atoms": [0]},
@@ -1443,7 +1455,7 @@ class TestRenderHonorsSidecar:
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
-                "structure_text": _WATER_XYZ,
+                "structure": _envelope(_WATER_XYZ),
                 "regions":        {"L-electrode": [0], "bridge": [1, 2]},
                 "params":         {},
             }),
@@ -1471,7 +1483,7 @@ class TestRenderHonorsSidecar:
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
-                "structure_text": _WATER_XYZ,
+                "structure": _envelope(_WATER_XYZ),
                 "params": {},
             }),
             content_type="application/json",
@@ -1504,7 +1516,7 @@ class TestRenderHonorsSidecar:
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
-                "structure_text": _WATER_XYZ,
+                "structure": _envelope(_WATER_XYZ),
                 "structure_path": str(xyz),   # names the file; not a label source
                 "params":         {},
             }),
@@ -1531,7 +1543,7 @@ class TestRenderHonorsSidecar:
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
-                "structure_text": _WATER_XYZ,
+                "structure": _envelope(_WATER_XYZ),
                 "structure_path": str(xyz),
                 "regions":        {},
                 "params":         {},

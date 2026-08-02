@@ -21,12 +21,11 @@
  * Phase D form skeleton).
  */
 import { mount } from "/static/lib/molview/index.js";
-// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
-// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
-function _mvdata() {
-    return (window.molbuilder && window.molbuilder.molview
-            && window.molbuilder.molview.data) || null;
-}
+
+/* WHO THIS TAB'S SAVED WORK BELONGS TO (workspace.md § 4) — the one string used
+ * both as the viewer's `owner` and as the tag on any workspace call, so the two
+ * cannot drift into naming different slots. */
+const WORKSPACE_TAG = "transport";
 (function (root) {
     "use strict";
 
@@ -224,18 +223,26 @@ function _mvdata() {
                 || typeof proj.parser.openMolecule !== "function") {
             return;
         }
-        proj.parser.openMolecule(path).then(function (r) {
-            if (r && r.ok === false) {
-                if (root.console) {
+        /* THE VIEWER FIRST, THEN THE FILE. A viewer mounts before it has a
+         * structure (molview.md § 8), and the load door needs somewhere to put
+         * what it reads. This ran the other way round, which only worked while
+         * the load door could find a viewer by name in a global. */
+        var ready = (_mvHandle && _mvHandle.ok)
+            ? Promise.resolve(_mvHandle)
+            // Cache ONLY a live handle (mount contract: failure -> {ok:false}),
+            // so a failed mount doesn't permanently block a later remount.
+            : mount(host, ws, { mode: "modify", owner: WORKSPACE_TAG })
+                .then(function (h) {
+                    _mvHandle = (h && h.ok) ? h : null;
+                    return _mvHandle;
+                });
+        ready.then(function (viewer) {
+            if (!viewer) return;
+            return proj.parser.openMolecule(viewer, path).then(function (r) {
+                if (r && r.ok === false && root.console) {
                     root.console.error("[transport] load failed", r.error);
                 }
-                return;
-            }
-            if (_mvHandle && _mvHandle.ok) return;   // already mounted; the reload redrew it
-            return mount(host, ws, { mode: "modify", owner: "transport" })
-                // Cache ONLY a live handle (mount contract: failure -> {ok:false}),
-                // so a failed mount doesn't permanently block a later remount.
-                .then(function (h) { _mvHandle = (h && h.ok) ? h : null; });
+            });
         }).catch(function (e) {
             if (root.console) {
                 root.console.error("[transport] MolView load/mount failed", e);
@@ -558,14 +565,20 @@ function _mvdata() {
             // back to the disk sidecar at structure_path (apply_labels_to_struct
             // keys on presence, not truthiness).
             var _genBody = { params: params, structure_path: _currentStructureFile };
-            var _mvData = _mvdata();
-            if (_mvData
-                    && typeof _mvData.getFrozen === "function"
-                    && typeof _mvData.getRegions === "function"
-                    && typeof _mvData.isEmpty === "function"
-                    && !_mvData.isEmpty()) {
+            /* THE VIEWER WE MOUNTED, not a name looked up in a global. `mount`
+             * handed the handle back and `_mvHandle` has been holding it all
+             * along; this used to reach for `window.molbuilder.molview.data`
+             * instead, which nothing has published since the module was rebuilt,
+             * so every generate here quietly shipped no labels at all.
+             *
+             * "Is there a structure?" is `getStructure() === null` — with nothing
+             * loaded a read answers nothing, which is a different answer from a
+             * structure with no atoms (molview.md § 9.3). */
+            var _mvData = (_mvHandle && _mvHandle.ok) ? _mvHandle.data : null;
+            var _loaded = _mvData ? _mvData.getStructure() : null;
+            if (_loaded) {
                 _genBody.frozen_atoms = _mvData.getFrozen() || [];
-                _genBody.periodicity = ((_mvData.getStructure() || {}).periodicity) || null;  // tab-emit contract (§7)
+                _genBody.periodicity  = _loaded.periodicity || null;   // tab-emit contract (§7)
                 _genBody.regions      = _mvData.getRegions() || {};
             }
             root.fetch("/api/transport/render", {

@@ -55,7 +55,7 @@
     // button (task #309, 2026-06-09 follow-up to #296).  Pre-#309
     // the bytes were stored in a hidden ``<textarea id="structure-
     // text">``; then in a module-level ``_loadedStructureText`` holder.
-    // BOTH are gone (2026-07): ``getStructureText`` reads the structure
+    // BOTH are gone (2026-07): the structure is read from the viewer
     // OFF THE MODEL (molview.data) at call time -- no second copy.
 
     function mountInspector(rootEl, opts) {
@@ -70,7 +70,7 @@
         // ``structureText`` slot removed 2026-06-10 along with the
         // ``$("structure-text")`` lookup in init() — the underlying
         // ``<textarea id="structure-text">`` was retired in task #309;
-        // structure bytes are read OFF THE MODEL (getStructureText ->
+        // the structure is read off the viewer (getTheStructure ->
         // molview.data) at call time.
         // xyzFile / xyzLoadBtn / xyzStatus removed 2026-05-18: the
         // in-template <input type="file" id="xyz-file"> + sibling
@@ -721,50 +721,49 @@
         return fs.collectForm(els.formContainer, state.schema);
     }
 
-    function getStructureText() {
-        // Read the committed structure OFF THE MODEL at call time
-        // (molview.data.getStructure().text -- the single source of truth the
-        // Inspect-structure card's Load installed).  No in-memory copy: the old
-        // ``_loadedStructureText`` holder was a second home for module state a
-        // consumer must never keep (it could only drift).  XYZ or PDB content
-        // both accepted; the server sniffs the format.
-        const d = ((window.molbuilder || {}).molview || {}).data;
-        const st = (d && typeof d.getStructure === "function") ? d.getStructure() : null;
-        return (st && typeof st.text === "string") ? st.text.trim() : "";
+    /* THE VIEWER THIS PAGE MOUNTED, handed to us by the page that mounted it
+     * (spectra/viewer.js). We do not look one up: there is nothing to look up in,
+     * and a viewer belongs to whoever mounted it (molview.md § 5.6). */
+    let _viewer = null;
+    function useViewer(handle) { _viewer = (handle && handle.ok) ? handle : null; }
+
+    function getTheStructure() {
+        return _viewer ? _viewer.data.getStructure() : null;
     }
 
     // ----- Render button: POST /api/spectra/render -------------
     async function generateScript() {
-        const structureText = getStructureText();
-        if (!structureText) {
+        const structure = getTheStructure();
+        if (!structure) {
             setStatus(els.generateStatus,
-                      "Paste an XYZ or PDB block, or pick a structure file first.",
-                      "error");
+                      "Pick a structure file first.", "error");
             return;
         }
         setStatus(els.generateStatus, "Rendering…");
         clearOutputs();
 
-        // Read the committed structure's labels straight off the MODEL (the single
-        // source of truth the sidebar parser door loaded) -- NOT a separate sidecar
-        // re-read.  ``structureText`` IS the model's committed text (getStructureText
-        // reads molview.data.getStructure().text), so the labels match it.
-        const _md = ((window.molbuilder || {}).molview || {}).data;
+        /* ONE READ OF THE VIEWER, and everything the request carries comes out of
+         * it. The coordinates, the labels and the cell were read from three
+         * separate calls at three separate moments; one read means the facts that
+         * leave together were read together (molview.md § 9.3).
+         *
+         * IT GOES AS DATA. This used to send an XYZ document in `structure_text`,
+         * which the viewer cannot produce — it writes no coordinate document
+         * (§ 11.7) — so it sent an empty string and the server answered "no
+         * structure provided" with a molecule on the screen. */
         const body = {
-            // ``structure_text`` (renamed 2026-05-22 from the
-            // misleading ``xyz``): server sniffs XYZ vs PDB from
-            // the first line of the content.
-            structure_text: structureText,
-            params:         collectParams(),
+            structure: {
+                elements:  structure.elements,
+                positions: structure.frames[0],
+                metadata:  { periodicity: structure.periodicity },
+            },
+            params:      collectParams(),
             // viewer-is-truth: ship the model's labels directly.  Server applies them
             // verbatim; only when ABSENT does it fall back to disk sidecar discovery
             // against ``structure_path`` (_shared.apply_labels_to_struct).
-            periodicity:    (_md && typeof _md.getStructure === "function")
-                ? (((_md.getStructure() || {}).periodicity) || null) : null,  // tab-emit contract (§7)
-            frozen_atoms:   (_md && typeof _md.getFrozen === "function")
-                                ? _md.getFrozen() : [],
-            regions:        (_md && typeof _md.getRegions === "function")
-                                ? _md.getRegions() : {},
+            periodicity:  structure.periodicity || null,   // tab-emit contract (§7)
+            frozen_atoms: (_viewer && _viewer.data.getFrozen()) || [],
+            regions:      (_viewer && _viewer.data.getRegions()) || {},
         };
         // Pass the current sidebar XYZ path (if any) so the server
         // can apply the .molstruct.json sidecar to the structure
@@ -2069,7 +2068,7 @@
     // Geometry source priority:
     //   1. results.equilibrium.elements + positions_ang
     //      (preferred; works after page reload).
-    //   2. Parsed from getStructureText() (the MODEL's committed text,
+    //   2. Read off the viewer (getTheStructure -- the structure it holds,
     //      molview.data.getStructure().text).
     //
     // The mode shape is faithful (eigenvector_display carries the
@@ -2097,16 +2096,16 @@
                 positions: r.equilibrium.positions_ang.map(row => row.slice()),
             };
         }
-        // Fallback: parse the XYZ the user loaded via the
-        // Inspect-structure card (getStructureText -> the MODEL's
-        // committed text).
-        const structureText = getStructureText();
-        if (!structureText) return null;
-        try {
-            return window.molbuilder.xyz.parse(structureText);
-        } catch (_) {
-            return null;
-        }
+        /* Fallback: the structure the Inspect-structure card loaded, read
+         * straight off the viewer. It used to fetch that as TEXT and parse it
+         * back into atoms — a round trip through a document the viewer never
+         * had, to arrive at the atoms it was holding all along. */
+        const loaded = getTheStructure();
+        if (!loaded) return null;
+        return {
+            elements: loaded.elements.slice(),
+            coords:   loaded.frames[0].map((p) => p.slice()),
+        };
     }
 
     function renderModeViewer() {
@@ -2132,7 +2131,7 @@
             return;
         }
         // Geometry/mode AGREEMENT gate: the eigenvector is per-atom, so the geometry
-        // must have exactly that many atoms.  This matters for the getStructureText
+        // must have exactly that many atoms.  This matters for the viewer-read
         // fallback on /results, where the shared model may hold an UNRELATED structure
         // (whatever the last inspection installed) -- animating this mode on it would
         // be silent nonsense.  Mismatch -> treat as "no usable geometry" and hide.
@@ -2842,8 +2841,9 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.spectraInspector = {
         mount: mountInspector,
-        // (setStructureText removed 2026-07: getStructureText reads the model
-        //  at call time; there is no in-memory holder to feed.)
+        useViewer: useViewer,
+        // (No setter: the structure is read off the viewer this page mounted,
+        //  so there is no in-memory holder to feed.)
     };
 
 })(typeof window !== "undefined" ? window : this);

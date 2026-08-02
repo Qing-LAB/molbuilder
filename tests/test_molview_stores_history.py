@@ -35,21 +35,53 @@ PRELUDE = f"""
 const S = await import({json.dumps(STORES.resolve().as_uri())});
 const H = await import({json.dumps(HISTORY.resolve().as_uri())});
 
-// A store that obeys what § 11.2 says sits underneath: it holds bytes at a step
-// and hands them back. It knows nothing about what is in them.
+/* A STAND-IN WORKSPACE — the calls docs/web/workspace.md § 5 lists, answered from
+ * memory, keyed per tag as the real one is.
+ *
+ * IT IMPLEMENTS THE REAL DOOR ON PURPOSE. What was here before was a two-call
+ * store, `read(step)` / `write(step, bytes)`, which is what the module asked for
+ * and what no workspace has ever had — so every test in this file passed while
+ * nothing on any page could save. A stand-in has to obey the level it stands in
+ * for (§ 13.1); one shaped like the caller's wish only ever confirms the wish.
+ *
+ * `slots` is the numbered points, `sessions` the browser copy — the two things
+ * § 11.3 keeps apart, kept apart here so a test can ask about either.
+ */
 function makeStore() {{
-    const slots = {{}};
-    const log = [];
+    const slots  = {{}};       // step -> a milestone, as it was written
+    const drafts = {{}};       // id   -> the latest draft, replaced each time
+    const log = [];           // every write, in order
+    const pruned = [];        // every tail-drop asked for
     let failNext = false;
+    const isDraft = (identity) => /-draft$/.test(identity.workspace_id);
     return {{
-        slots, log,
+        slots, drafts, log, pruned,
         failWrite() {{ failNext = true; }},
-        async write(step, bytes) {{
-            if (failNext) {{ failNext = false; throw new Error("storage refused"); }}
-            log.push({{ step, bytes }});
-            slots[step] = bytes;
+        workspaceId(tag) {{ return "id-" + tag; }},
+        persist(tag, bytes, identity) {{
+            if (failNext) {{ failNext = false; return false; }}
+            const draft = isDraft(identity);
+            log.push({{ tag, bytes, draft, step: identity.state_index,
+                       // what the caller actually saved, unwrapped
+                       state: bytes && bytes.state }});
+            if (draft) drafts[identity.workspace_id] = bytes;
+            else slots[identity.state_index] = bytes;
+            return true;
         }},
-        async read(step) {{ return step in slots ? slots[step] : null; }},
+        async readState(identity) {{
+            if (isDraft(identity)) {{
+                return identity.workspace_id in drafts
+                    ? drafts[identity.workspace_id] : null;
+            }}
+            const step = identity.state_index;
+            return step in slots ? slots[step] : null;
+        }},
+        pruneStatesAbove(id, index) {{
+            pruned.push({{ id, index }});
+            Object.keys(slots).forEach((step) => {{
+                if (Number(step) > index) delete slots[step];
+            }});
+        }},
     }};
 }}
 
@@ -62,10 +94,14 @@ function makeHistory(store) {{
     const h = H.createHistory({{
         recordState: () => truth,
         restoreState: (s) => restored.push(s),
-        store: store,
+        workspace: store,
+        tag: "test-viewer",
         onBadge: (b) => badges.push(b),
     }});
-    return {{ h, restored, badges, edit: (t) => {{ truth = t; h.edited(); }} }};
+    return {{
+        h, restored, badges,
+        edit: (t) => {{ truth = t; return h.edited(); }},
+    }};
 }}
 """
 
@@ -515,31 +551,54 @@ def test_a_drawing_setting_is_not_a_switch():
 # § 11.2 — the history
 # ---------------------------------------------------------------------------
 
-def test_there_is_no_automatic_write():
-    """§ 13.3: "nothing persists except through installing, saving or loading."
+def test_an_edit_refreshes_the_session_copy_and_lays_down_no_point():
+    """§ 11.2 and § 11.3 — the two rules that must not collapse into each other.
 
-    § 11.2: nothing is written on a timer, and nothing is written because
-    something changed.
+    An edit changes what would be lost if the tab closed, so it **refreshes the
+    session copy**. An edit is not a milestone, so it **lays down no point**: the
+    user decides what is worth coming back to and says so.
+
+    Persistence is about the accident; the timeline is about the decision. Make
+    persistence explicit and an unsaved edit dies on a reload; make the timeline
+    automatic and every keystroke becomes a milestone, so there is nothing left
+    to come back *to*.
+
+    This replaced a test asserting that an edit wrote NOTHING, which was the rule
+    when the two were one thing.
     """
     out = _run(
         """
         const store = makeStore();
         const { h, edit } = makeHistory(store);
         await h.anchor();                        // opening a structure
-        const afterOpen = store.log.length;
-        edit("one"); edit("two"); edit("three"); // three edits record nothing
+        const pointsAfterOpen = Object.keys(store.slots).length;
+        await edit("one"); await edit("two"); await edit("three");
         console.log(JSON.stringify({
-            afterOpen, afterEdits: store.log.length, badge: h.uncommitted,
+            pointsAfterOpen,
+            points:  Object.keys(store.slots).sort(),
+            draft:   store.drafts["id-test-viewer-draft"],
+            badge:   h.uncommitted,
+            at:      h.state_index,
         }));
         """
     )
-    assert out["afterOpen"] == 1, "opening a structure lays down point 0"
-    assert out["afterEdits"] == 1, (
-        f"an edit wrote to storage on its own: {out['afterEdits']} writes"
+    assert out["pointsAfterOpen"] == 1, "opening a structure lays down point 0"
+    assert out["points"] == ["0"], (
+        f"an edit laid down a point of its own — the user never asked for one: "
+        f"{out['points']}"
     )
+    assert out["at"] == 0, "an edit moved the position on the sequence"
+    assert out["draft"] == {"v": 1, "state": "three"}, (
+        f"the draft does not hold the latest edit, so a reload would lose it: "
+        f"{out['draft']!r}"
+    )
+    # The version stamp is not decoration: the reader parses the bytes, looks for
+    # it, and hands back nothing without it. Every save went in unstamped until
+    # 2026-08-02 and no read ever came back out.
+    assert out["draft"]["v"] == 1, "the draft carries no version stamp"
     assert out["badge"] is True, (
-        "an edit must raise the badge — without it an explicit-save history "
-        "silently loses work the user assumed was being kept"
+        "an edit must raise the badge — the work is kept against an accident, "
+        "but it is not on the sequence and Retract cannot reach it"
     )
 
 
@@ -714,7 +773,7 @@ def test_a_bracketed_change_writes_once_at_the_end():
         edit("settled");
         await h.endChange();
         console.log(JSON.stringify({
-            during, midBracket, after: store.log.map(w => w.bytes),
+            during, midBracket, after: store.log.filter(w => !w.draft).map(w => w.state),
         }));
         """
     )
@@ -760,7 +819,7 @@ def test_a_saved_state_wins_over_a_routine_write_held_beside_it():
         edit("settled");                          // the change finishes
         await h.endChange();
         console.log(JSON.stringify({
-            wrote: store.log.map(w => ({ step: w.step, bytes: w.bytes })),
+            wrote: store.log.filter(w => !w.draft).map(w => ({ step: w.step, bytes: w.state })),
             at: h.state_index,
             badge: h.uncommitted,
         }));
@@ -803,7 +862,7 @@ def test_a_new_structure_drops_what_was_held_for_the_old_one():
         await h.endChange();
 
         console.log(JSON.stringify({
-            wrote: store.log.map(w => ({ step: w.step, bytes: w.bytes })),
+            wrote: store.log.filter(w => !w.draft).map(w => ({ step: w.step, bytes: w.state })),
             at: h.state_index,
         }));
         """
@@ -863,13 +922,17 @@ def test_the_mechanism_never_looks_inside_a_state():
         const h = H.createHistory({
             recordState: () => shapes[which],
             restoreState: (s) => restored.push(s),
-            store: store,
+            workspace: store,
+            tag: "test-viewer",
         });
         await h.anchor();
         for (which = 1; which < shapes.length; which++) { h.edited(); await h.save(1); }
         await h.load(0);
         console.log(JSON.stringify({
-            wrote: store.log.map(w => w.bytes),
+            // Only the writes that carried a POINT: an edit refreshes the session
+            // copy and sends no point (§ 11.3), so those rows carry null and are
+            // not what this rule is about.
+            wrote: store.log.filter(w => !w.draft).map(w => w.state),
             restored,
         }));
         """
@@ -894,3 +957,91 @@ def test_the_history_draws_no_control_of_its_own():
             f"the history reaches the DOM ({token}) — it is offered as calls, "
             "not as a control"
         )
+
+
+# ---------------------------------------------------------------------------
+# § 11.2 — a read waits for a write that has not finished
+# ---------------------------------------------------------------------------
+
+def test_a_read_cannot_answer_from_before_a_write_that_is_under_way():
+    """§ 11.2: "a read waits for a write that has not finished."
+
+    THE ORDERING NOW FALLS OUT OF THE WRITE BEING SYNCHRONOUS. `persist` writes
+    the session copy straight away and sends the numbered point without waiting,
+    so by the time `save` has returned to its caller the position has already
+    moved — there is no instant in between for a read to land in.
+
+    It was not always so. When the history awaited a store's own `write`, a
+    Retract or a reopen arriving during that await chose its point from a
+    position the save had not yet moved, and then read bytes the save had not yet
+    written. The guard that waits for an unfinished write is still in the code,
+    because "the session copy is written synchronously" is the workspace's
+    promise rather than this module's, and a store that broke it would put the
+    window straight back.
+
+    What is asserted here is the property, not the mechanism: interleaved as
+    tightly as this module allows, the read answers about the point the save
+    created.
+    """
+    out = _run(
+        """
+        const store = makeStore();
+        const { h, restored, edit } = makeHistory(store);
+        await h.anchor();
+        await edit("first edit");
+        await h.save(1);
+        await edit("second edit");
+
+        // Started, not awaited — then a read immediately behind it.
+        const saving = h.save(1);
+        const reading = h.load(0);
+        await saving;
+        const target = await reading;
+
+        console.log(JSON.stringify({
+            target, restored, points: Object.keys(store.slots).sort(),
+        }));
+        """
+    )
+    assert out["points"] == ["0", "1", "2"], (
+        f"the save did not land: {out['points']}"
+    )
+    assert out["target"] == 2, (
+        f"the read answered about point {out['target']}, which the save had "
+        f"already moved past"
+    )
+    assert out["restored"] == ["second edit"], (
+        f"the read returned bytes from before the save: {out['restored']}"
+    )
+
+
+def test_a_failed_write_does_not_wedge_the_next_read():
+    """The wait must end when the write ENDS, not when it succeeds. A write that
+    failed has settled too — it left the position where it was — so a read after
+    it answers from the point that is actually current, and does not hang.
+    """
+    out = _run(
+        """
+        const store = makeStore();
+        const { h, restored, edit } = makeHistory(store);
+        await h.anchor();
+        edit("first edit");
+        await h.save(1);
+
+        edit("second edit");
+        store.failWrite();
+        const failed = await h.save(1);      // refused by the storage
+
+        const target = await h.load(0);      // put back where I am
+        console.log(JSON.stringify({ failed, target, restored, index: h.state_index }));
+        """
+    )
+    assert out["failed"] is False, "a refused write reported as landed"
+    assert out["index"] == 1, (
+        f"a refused write moved the position: {out['index']}"
+    )
+    assert out["target"] == 1, f"the read after a failed write answered {out['target']}"
+    assert out["restored"] == ["first edit"], (
+        f"the read did not return the point that is actually current: "
+        f"{out['restored']}"
+    )

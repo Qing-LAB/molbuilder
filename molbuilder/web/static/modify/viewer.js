@@ -1,8 +1,8 @@
 /* molbuilder Modify tab -- op controls + state-timeline, NO structure data of its own.
  *
  * Post-migration (Track B + the state.* rip-out): the concealed MolView module owns the
- * viewer, the render loop, the selection panel, AND the in-memory structure
- * (``window.molbuilder.molview.data``).  This file holds ONLY:
+ * viewer, the render loop, the selection panel, AND the structure itself.
+ * This file is handed that viewer and holds ONLY:
  *
  *   * the edit-op controls -- Atom (Delete, Add atom), Transform (Translate, Center,
  *     Rotate, Orient), and the electrode/anchor (Junction) panel.  Each POSTs op-PARAMS via
@@ -20,15 +20,22 @@
  *
  * Spec: docs/web/tabs.md; docs/web/molview.md; molview-migration-plan.md.
  */
-import { formula as mvFormula, toDisplay } from "/static/lib/molview/index.js";
-// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
-// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
-function _mvdata() {
-    return (window.molbuilder && window.molbuilder.molview
-            && window.molbuilder.molview.data) || null;
-}
+import { formula as mvFormula } from "/static/lib/molview/index.js";
 
-(function () {
+// The atom number as the user sees it. MolView exports `mount` and `formula` and
+// nothing else (molview.md § 4), so this is not imported; § 11.5's one home for
+// the translation is inside the module, where its own panel and readout use it.
+const displayNumber = (index) => index + 1;
+
+/**
+ * Start the Modify tab's op controls against a viewer.
+ *
+ * @param viewer  the handle `mount` returned — this page's viewer. It is passed
+ *                in by modify/selection-bootstrap.js, which mounts it. Nothing
+ *                here looks a viewer up: the only way to one is the handle you
+ *                were handed (molview.md § 5.6), and there is nowhere to look.
+ */
+export function init(viewer) {
     "use strict";
 
     const $ = (id) => document.getElementById(id);
@@ -43,17 +50,18 @@ function _mvdata() {
         inFlight: false,       // true while an /api/modify/* fetch is open
     };
 
+    // The reload-restore, so `init` can hand it to the owner (see the bottom of
+    // this file).  Set once, at the end of the wiring block.
+    let _restored = null;
+
     // ----- Unified data model + persistence accessors ---------------- //
     //
-    // The in-memory DATA MODEL is MolView's unified door
-    // (``window.molbuilder.molview.data``): every structure read /
-    // mutation / selection op / state-timeline call goes through it
-    // (data-model.js §19).  Persistence lives on
-    // ``window.molbuilder.workspace`` but the tab no longer touches it
-    // directly -- reload-restore is ``molview.data.load(0)`` (§19.5),
-    // which reads the session mirror inside the data model.
+    // Every structure read, every edit, every selection op and every
+    // state-timeline call goes through the viewer this page mounted
+    // (molview.md § 9.3).  Reload-restore is `load(0)`, which reads the state
+    // this viewer's own tag was saved under.
     function _data() {
-        return _mvdata();   // the in-memory molview.data model, imported from the door
+        return (viewer && viewer.ok) ? viewer.data : null;
     }
 
     // ----- Selection helpers ----------------------------------------- //
@@ -66,15 +74,25 @@ function _mvdata() {
     // Selection reads/writes go through the unified model's selection
     // sub-namespace (``molview.data.selection``) -- never a direct
     // store reach.  Read-live so ops see the current selection without
-    // a local mirror.  getState() returns the contract snapshot with
-    // ``.indices``.
+    // a local mirror.
     function _selStore() {
         const d = _data();
         return (d && d.selection) ? d.selection : null;
     }
+    /* WHICH ATOMS ARE SELECTED, IN THE ORDER THEY WERE PICKED.
+     *
+     * `get()` is the selection door's read for exactly this and hands back its
+     * own copy (molview.md § 9.5). This used to ask for `getState().indices` —
+     * a key on no snapshot the store has ever produced, so the read was
+     * `undefined.slice()`, a TypeError on the FIRST line of every refresh.
+     *
+     * Both subscriber paths swallow what a subscriber throws, so nothing was
+     * printed and nothing looked wrong: the op buttons, every anchor readout,
+     * Save state, Retract and the timeline indicator simply never updated
+     * again after the page was built. */
     function selectedIndices() {
         const s = _selStore();
-        return s ? s.getState().indices.slice() : [];
+        return s ? s.get() : [];
     }
     // Structure reads through the unified API -- the SINGLE source (no state.* mirror).
     // Cheap accessors: getElements/getCoordinates map the store atoms without a full clone.
@@ -162,7 +180,7 @@ function _mvdata() {
                 const a = sel[0];
                 addBtn.disabled = locked;
                 anchorReadout.textContent =
-                    `Anchor: #${toDisplay(a)} ${els[a]}`;
+                    `Anchor: #${displayNumber(a)} ${els[a]}`;
             } else {
                 addBtn.disabled = true;
                 anchorReadout.textContent =
@@ -180,8 +198,8 @@ function _mvdata() {
                 const [a, b] = sel;
                 orientBtn.disabled = locked;
                 orientReadout.textContent =
-                    `Anchors: #${toDisplay(a)} ${els[a]} → ` +
-                    `#${toDisplay(b)} ${els[b]}`;
+                    `Anchors: #${displayNumber(a)} ${els[a]} → ` +
+                    `#${displayNumber(b)} ${els[b]}`;
             } else {
                 orientBtn.disabled = true;
                 orientReadout.textContent =
@@ -403,18 +421,27 @@ function _mvdata() {
         el.className = "modify-status" + (kind ? ` status-${kind}` : "");
     }
 
-    // Render the op's validation advisories into the dedicated message region.
-    // While EDITING, findings are shown, never blocking (design.md § 6): each
-    // ``{severity, message, where}`` becomes a severity-styled row; an empty /
-    // absent list hides the list entirely (no stale rows across ops).
-    function renderEditAdvisories(issues) {
+    /* WHAT THE SERVER SAID about the structure the edit produced.
+     *
+     * While EDITING these are shown and never block (design.md § 6). They are
+     * read off the model with `getNotices()` (molview.md § 6.8), which answers
+     * `{where, list:[{level, message}]}` for the structure now showing, or null
+     * when the server had nothing to say. An empty list hides the region so no
+     * row survives into the next op.
+     *
+     * They used to be read off applyOp's return as `r.issues`. That door
+     * returns the STRUCTURE (§ 6.9) and never carried an `issues` key, so the
+     * region has been fed `undefined` on every op — findings the server took the
+     * trouble to compute reached nobody. */
+    function renderEditAdvisories(notices) {
         const el = $("edit-advisories");
         if (!el) return;
-        const list = (Array.isArray(issues) ? issues : []).filter(Boolean);
+        const list = (notices && Array.isArray(notices.list))
+            ? notices.list.filter(Boolean) : [];
         el.textContent = "";                       // clear any prior op's rows
         if (!list.length) { el.hidden = true; return; }
         for (const iss of list) {
-            const sev = (iss && iss.severity) || "info";
+            const sev = (iss && iss.level) || "info";
             const li = document.createElement("li");
             li.className = "modify-advisory modify-advisory--" + sev;
             const tag = document.createElement("span");
@@ -442,7 +469,7 @@ function _mvdata() {
         state.inFlight = true;
         refreshSelectionUI();
         setEditStatus(`${label}…`);
-        renderEditAdvisories([]);   // clear the previous op's advisories
+        renderEditAdvisories(null);   // clear the previous op's advisories
         const op = path.replace(/^\/api\/modify\//, "");
         let r = null;
         try {
@@ -465,12 +492,15 @@ function _mvdata() {
                 setEditStatus(`${label} failed.`, "error");
                 return null;
             }
-            setEditStatus(`${label}: ${r.n_atoms} atoms.`, "ok");
-            // ADVISORY surfacing (validation contract, design.md § 6): while
-            // editing, validate_geometry findings are shown -- never blocked.
-            // They ride back in ``r.issues``; render them in the dedicated
-            // message region so the user is notified (and decides).
-            renderEditAdvisories(r.issues);
+            /* THE COUNT IS READ OFF THE STRUCTURE THE DOOR HANDED BACK.
+             * `applyOp` answers the structure itself (§ 6.9) — elements and
+             * their metadata — not a report about it. Asking it for `n_atoms`
+             * put "Deleted: undefined atoms." on screen after every op. */
+            setEditStatus(
+                `${label}: ${(r.elements || []).length} atoms.`, "ok");
+            renderEditAdvisories(
+                (typeof _data().getNotices === "function")
+                    ? _data().getNotices() : null);
             return r;
         } finally {
             state.inFlight = false;
@@ -854,7 +884,11 @@ function _mvdata() {
     // --------------------------------------------------------------- //
     //  Wire DOM events.                                                //
     // --------------------------------------------------------------- //
-    document.addEventListener("DOMContentLoaded", () => {
+    // Run now rather than on DOMContentLoaded: the page mounted its viewer before
+    // calling this, and the document is long since parsed by then. Waiting for an
+    // event that has already fired is how a controller comes to sit there doing
+    // nothing.
+    (() => {
         // Subscribe to the selection store so the per-op buttons
         // re-evaluate enablement + anchor readouts on every
         // selection change.  Initial fire happens immediately,
@@ -1037,8 +1071,12 @@ function _mvdata() {
         // restored UI behaves identically to a freshly-loaded one);
         // save on pagehide so the user's latest state survives a
         // click on /, /watch, or anywhere else.
-        restoreModifyState();
-    });
+        /* KEPT SO THE OWNER CAN WAIT FOR IT. Whether this page arrived with work
+         * already in it decides whether the sidebar's highlighted file may be
+         * seeded onto the canvas, and that question has no answer until the
+         * restore has finished. `init` hands the promise back. */
+        _restored = restoreModifyState();
+    })();
 
     // State persistence across tab navigation is owned by the workspace
     // PERSISTENCE layer under sessionStorage["molbuilder.workspace.v1"]
@@ -1061,18 +1099,34 @@ function _mvdata() {
         // refreshUndoButton / _refreshTitleReadout) update the UI as a side effect.
         const d = _data();
         if (!d || typeof d.load !== "function") return;
-        // Declare THIS tab's persistence namespace before the restore reads the
-        // session mirror.  The Modify tab is one consumer split across two files:
-        // selection-bootstrap.js mounts molview with ``owner:"modify"`` (which calls
-        // useNamespace), but THIS DOMContentLoaded restore runs first (viewer.js loads
-        // earlier), so it must set the same namespace itself -- otherwise it reads the
-        // un-namespaced base key and misses the ``::modify`` mirror the last visit wrote
-        // (molview-module.md §18.4).  Idempotent with the mount's later call.
-        const _ws = window.molbuilder && window.molbuilder.workspace;
-        if (_ws && typeof _ws.useNamespace === "function") _ws.useNamespace("modify");
-        await d.load(0);
+        // Nothing to declare first: the viewer was mounted before this file was
+        // started, and every workspace call names its tag (workspace.md § 4), so
+        // there is no shared setting for two files to get out of order.
+        /* A FAILED RESTORE IS SAID OUT LOUD AND STOPS HERE.
+         *
+         * The owner waits for this before wiring the sidebar, so letting it
+         * reject would take the Load button and the file gate down with it —
+         * a corrupt state file would cost the whole page. Catching it is not
+         * hiding it: the sentence goes on the status line, and the page comes
+         * up empty rather than not at all. */
+        let at;
+        try {
+            at = await d.load(0);
+        } catch (e) {
+            setStatus(
+                `Could not restore your last structure: `
+                + `${(e && e.message) || String(e)}`,
+                "error");
+            return;
+        }
         refreshUndoButton();
         _refreshTitleReadout();
+        /* SAY NOTHING WHEN NOTHING CAME BACK. `load(0)` answers the point it put
+         * back, or null when this tag has no saved point at all (§ 11.2). The
+         * message used to be written either way, so a first visit was greeted
+         * with "Restored 0-atom structure (unnamed)" — and that sentence then
+         * sat there through the next file load, describing nothing. */
+        if (at === null || at === undefined) return;
         // Read the restored structure LIVE from molview.data (the single source).
         const s = (d.getStructure && d.getStructure()) || null;
         const title = (s && s.title) ? s.title : "unnamed";
@@ -1171,4 +1225,10 @@ function _mvdata() {
     // page no longer decorates a ``positionsProvider`` onto the molview.selection
     // namespace.  Concealment flows one way: consumers call INTO MolView, they
     // don't hang members ON it.)
-})();
+
+    /* HAND THE RESTORE BACK. Everything above is wired synchronously; the one
+     * thing still in flight when `init` returns is `load(0)`. The owner awaits
+     * this before deciding whether the sidebar's file may be seeded, because
+     * "is there already work on this canvas?" is not answerable until it lands. */
+    return _restored;
+}

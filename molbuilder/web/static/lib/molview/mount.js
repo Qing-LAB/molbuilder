@@ -127,7 +127,14 @@ export async function mount(hostEl, workspace, opts) {
         return fail("mount: the drawing could not start — " + (e && e.message));
     }
 
-    const model = createModel({ mode: opts.mode, workspace: workspace });
+    /* `owner` goes down as well as onto the card. It is the viewer's identity
+     * (§ 5.6) and it is the tag its saved work is kept under (workspace.md § 4),
+     * and those are the same fact — so it is passed, not re-derived. Two viewers
+     * on one page therefore save into two slots without either of them arranging
+     * it. */
+    const model = createModel({
+        mode: opts.mode, workspace: workspace, owner: opts.owner,
+    });
     const engine = createRenderEngine(embed);
     model._attachRenderer(engine);
 

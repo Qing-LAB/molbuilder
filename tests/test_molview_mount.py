@@ -786,22 +786,33 @@ def test_the_readout_measures_from_the_truth_in_pick_order():
         console.log(JSON.stringify({ one, two, picked, bulk, laterFrame, isolated }));
         """
     )
-    assert out["one"].startswith("#2"), (
-        f"one atom reads its own 1-based number and position: {out['one']}"
+    # § 1.1's three formats, WORD FOR WORD. These assertions used to be
+    # `startswith("#2")` and `"1.000 Å"` — copied from what the code printed, in
+    # a file whose docstring says every test comes from the document. So the
+    # readout had never carried the element at all, and this test was what kept
+    # it that way: it agreed with the code because it was written from it.
+    assert out["one"] == "C #2 — (0.000, 0.000, 0.000) Å", (
+        f"one atom → `Au #3 — (0.000, 0.000, 0.000) Å` (§ 1.1): {out['one']}"
     )
-    assert out["two"] == "1.000 Å", f"two atoms read their distance: {out['two']}"
+    assert out["two"] == "|C #2 – C #3| = 1.000 Å", (
+        f"two atoms → `|H #5 – O #1| = 0.957 Å` (§ 1.1): {out['two']}"
+    )
     # Picked 1→0→2, so the vertex is atom 0 — off to the side, giving 45°. By
     # number or by geometry the vertex would be atom 1, giving 90°: the two
     # answers differ, which is what makes this test able to tell them apart.
-    assert out["picked"] == "45.0°", (
+    assert out["picked"] == "∠C #2 – C #1 – C #3 = 45.0°", (
         f"the vertex must be the atom picked SECOND, not the middle one by "
-        f"number or by geometry: {out['picked']}"
+        f"number or by geometry, and it is named in the middle position "
+        f"(§ 1.1): {out['picked']}"
     )
     # With no trail, geometry: atom 1 sits between the other two, giving 90°.
-    assert out["bulk"] == "90.0°", (
+    # Written out, the vertex moves to the middle NAME as well as the middle
+    # value — which is what makes the two cases distinguishable on screen and
+    # not only in the number.
+    assert out["bulk"] == "∠C #1 – C #2 – C #3 = 90.0°", (
         f"with no pick trail the vertex comes from geometry: {out['bulk']}"
     )
-    assert out["laterFrame"] == "90.0°" and out["laterFrame"] == out["bulk"], (
+    assert out["laterFrame"] == out["bulk"], (
         "the readout did not re-read the master copy at the new frame"
     )
     assert out["isolated"] == out["laterFrame"], (
@@ -898,7 +909,15 @@ def test_the_demo_imports_nothing_but_the_entry_point():
     import re
 
     code = (MODULE_DIR / "demo.js").read_text()
-    imports = re.findall(r'from\s+"([^"]+)"', code)
+    # AN IMPORT, not the word "from". This matched `from\s+"..."` anywhere in the
+    # file, so the ordinary sentence `say("nothing to load from " + name)` read
+    # as a second import and failed the test — a scanner loose enough to be
+    # tripped by prose is one that will also be quietly satisfied by the wrong
+    # thing. Both spellings are checked: the static form and the dynamic one,
+    # which the old pattern could not see at all.
+    imports = re.findall(r'\bimport\s[^;]*?\bfrom\s+"([^"]+)"', code)
+    imports += re.findall(r'\bimport\s*\(\s*"([^"]+)"', code)
+    imports += re.findall(r'\bimport\s+"([^"]+)"', code)
     assert imports == ["/static/lib/molview/index.js"], (
         f"the demo reaches past the entry point: {imports}"
     )

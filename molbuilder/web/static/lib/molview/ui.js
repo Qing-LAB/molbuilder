@@ -816,18 +816,31 @@ function mountReadout(doc, card, model) {
             return;
         }
         const at = (i) => frame[i];
+        /* WHICH ATOM, not just which number (§ 1.1). A bare `#5` makes the
+         * reader look away from the answer to find out what it is about, and
+         * on a mixed structure the number alone does not say whether the 0.96 Å
+         * is the bond they meant. The element comes from the master copy, read
+         * here beside the coordinates so both describe the same moment. */
+        const elements = model.getElements() || [];
+        const name = (i) => (elements[i] || "?") + " #" + toDisplay(i);
         let text = "";
         if (picked.length === 1) {
             const p = at(picked[0]);
-            if (p) text = "#" + toDisplay(picked[0]) + "  "
-                        + p.map((v) => v.toFixed(3)).join(", ");
+            if (p) text = name(picked[0]) + " — ("
+                        + p.map((v) => v.toFixed(3)).join(", ") + ") Å";
         } else if (picked.length === 2) {
             const a = at(picked[0]), b = at(picked[1]);
-            if (a && b) text = distance(a, b).toFixed(3) + " Å";
+            if (a && b) text = "|" + name(picked[0]) + " – " + name(picked[1])
+                             + "| = " + distance(a, b).toFixed(3) + " Å";
         } else {
-            // picked[1] is the vertex: the atom clicked SECOND.
+            // picked[1] is the vertex: the atom clicked SECOND. Writing the
+            // three in that order is what says which one it is — the middle
+            // position IS the claim, so the reader can check the answer against
+            // the atoms it came from without being told the convention.
             const a = at(picked[0]), v = at(picked[1]), c = at(picked[2]);
-            if (a && v && c) text = angle(a, v, c).toFixed(1) + "°";
+            if (a && v && c) text = "∠" + name(picked[0]) + " – " + name(picked[1])
+                                  + " – " + name(picked[2])
+                                  + " = " + angle(a, v, c).toFixed(1) + "°";
         }
         readout.textContent = text;
         readout.hidden = text === "";

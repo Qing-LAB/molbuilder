@@ -18,12 +18,22 @@
  * architecture.
  */
 import { mount } from "/static/lib/molview/index.js";
-// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
-// §D.0), never import it. page/save/file look it up themselves; here it's the guard + store read.
-function _mvdata() {
-    return (window.molbuilder && window.molbuilder.molview
-            && window.molbuilder.molview.data) || null;
-}
+import { init as startOpControls } from "./viewer.js";
+import { init as startCellPanel }  from "./periodicity.js";
+
+/* THIS FILE IS THE MOLBUILDER TAB'S OWNER. It mounts the one viewer this page
+ * has and hands it to everything else on the page.
+ *
+ * The tab is split across several files, and each of them used to find the
+ * viewer by name in `window.molbuilder.molview.data`. MolView publishes nothing
+ * there (molview.md § 4) — a viewer belongs to whoever mounted it and the handle
+ * is the only way to one (§ 5.6) — so every one of them was reading `undefined`.
+ *
+ * They are started HERE, after the mount, rather than each waking on its own
+ * DOMContentLoaded. That is not tidiness: the load order put two of them before
+ * this file, so they ran before any viewer existed and there was no arrangement
+ * that could have fixed it while they were looking a viewer up rather than being
+ * given one. */
 
 (function () {
     "use strict";
@@ -32,6 +42,10 @@ function _mvdata() {
     // View-menu toggles + measurement + fold), exactly like the demo / Results.  Modify
     // no longer hand-builds a card, so the mount takes the module's build path.
     const HOST_ID     = "molview-host";
+    /* WHO THESE BYTES BELONG TO (workspace.md § 4) — the one string used BOTH as the
+     * viewer's `owner` and as the tag on every workspace call, so the two cannot drift
+     * into naming different slots. */
+    const WORKSPACE_TAG = "modify";
 
     function _renderFailure(host, message) {
         // Surface the failure inline so the user doesn't stare at a
@@ -59,16 +73,34 @@ function _mvdata() {
         // uniform ws.* data interface) -- no store/embed/loader wiring here.  Modify's
         // DATA orchestration (loader, sidebar candidate, Load button) stays below; molview
         // reacts to the workspace it was given.
-        if (typeof mount !== "function" || !_mvdata()) {
+        /* THE CHECK THAT KILLED THIS TAB. It tested for a viewer BEFORE
+         * mounting one — a name looked up in a global that MolView has published
+         * nothing to since it was rebuilt — so it failed every time and returned
+         * without ever calling `mount`. The Molbuilder tab has had no viewer at
+         * all since then. What is worth checking here is the import itself. */
+        if (typeof mount !== "function") {
             console.error("[selection-bootstrap] molview import missing");
             _renderFailure(host, "molview module missing");
             return;
         }
         const _mounted = await mount(host, window.molbuilder.workspace, {
             mode: "modify",
-            owner: "modify",   // namespaces this tab's workspace saving points (§18.4)
+            owner: WORKSPACE_TAG,
         });
         if (!_mounted || !_mounted.ok) return;   // mount contract: failure -> {ok:false}; it warned already
+
+        /* THE REST OF THE PAGE, STARTED WITH THE VIEWER IT NEEDS. */
+        // The op controls put this tag's last saved point back on the canvas as
+        // the last thing they do, and that is still in flight when they return.
+        // Held here and awaited below, where the answer is needed.
+        const _restoring = startOpControls(_mounted);   // edit ops + state timeline
+        startCellPanel(_mounted);      // the Cell op-tab's periodicity editors
+        // The classic generator/save scripts loaded before this file and cannot
+        // import; they are handed the viewer through their own bind door.
+        const page = window.molbuilder && window.molbuilder.structurePage;
+        if (page && typeof page.useViewer === "function") page.useViewer(_mounted);
+        const save = window.molbuilder && window.molbuilder.structureSave;
+        if (save && typeof save.useViewer === "function") save.useViewer(_mounted);
 
         // (The old store-loader injection is gone: the store no longer holds a
         // structure loader -- the render engine draws from molview.data, and file
@@ -94,7 +126,7 @@ function _mvdata() {
         // file, adopt session, subscribe to selection changes).  This
         // is the only surface; the legacy ``selection.store`` global
         // is a private implementation detail.
-        const store    = _mvdata() && _mvdata().selection;
+        const store    = _mounted.data.selection;
         // Both .xyz and .pdb are loadable into /molbuilder -- the
         // server's selection blueprint dispatches by extension
         // (see web/blueprints/selection.py
@@ -109,6 +141,10 @@ function _mvdata() {
 
         // ----- Candidate state ----------------------------------- //
         let _candidate = "";
+        // Which file is actually ON the canvas, as opposed to picked in the
+        // sidebar.  The page's own note — the viewer tracks contents, not files
+        // (molview.md § 6.7).  Set in `_commitFile`; read by `_refreshLoadUI`.
+        let _loadedFrom = "";
         const _candidateListeners = [];
         function _notifyCandidate() {
             for (const fn of _candidateListeners.slice()) {
@@ -155,29 +191,34 @@ function _mvdata() {
 
         if (projects) {
             const initial = projects.getCurrentFile() || "";
-            // MOUNT-RESTORE OWNERSHIP (workspace-contract.md § "Mount-time
-            // restore").  PERSISTENCY WINS.  If this tab has ANY restorable
-            // persisted snapshot -- the structure MolView held when you left
-            // the tab, whether you loaded it from a file OR generated it
-            // (SMILES / RNA / peptide / name build) -- then the snapshot
-            // restore (viewer.js::restoreModifyState) is the SOLE authority
-            // for the canvas.  We must NOT auto-commit the sidebar's selected
-            // file: that would clobber your restored work, and file load is
-            // an EXPLICIT action (the Load button / a dblclick), not a side
-            // effect of a file still being highlighted in the sidebar.
+            // WHAT IS ALREADY HERE WINS.  Whatever this tab held when you left
+            // it -- loaded from a file or generated (SMILES / RNA / peptide /
+            // name) -- comes back on the canvas, and the sidebar's highlighted
+            // file must NOT overwrite it.  Loading a file is an explicit action
+            // (the Load button, or a double-click), never a side effect of a
+            // file still being highlighted from last time.
             //
-            // We seed from the sidebar ONLY when there is no restorable
-            // snapshot at all (an empty canvas): that is the genuine
-            // "arrived here to work on this file" case.  We deliberately do
-            // NOT compare ``initial`` against ``mountRestoreTarget()`` -- a
-            // generated structure has restorable text but no source file, so
-            // that file comparison mis-reads it as "no snapshot" and wipes
-            // it (the RNA-wipe bug).  ``hasRestorableSnapshot()`` is the
-            // file-agnostic invariant.
-            const _ws = window.molbuilder && window.molbuilder.workspace;
-            const _hasRestore = !!(_ws
-                && typeof _ws.hasRestorableSnapshot === "function"
-                && _ws.hasRestorableSnapshot());
+            // The sidebar seeds the canvas ONLY when the canvas came up empty:
+            // that is the genuine "I came here to work on this file" case.  What
+            // is asked is "are there atoms?", never "does the file on the canvas
+            // match the one in the sidebar" -- a generated structure has atoms
+            // and no file at all, so the file comparison read it as empty and
+            // wiped it (the RNA-wipe bug).
+            /* WE ASK THE CANVAS, NOT THE FILING CABINET.
+             *
+             * Wait for the restore, then look at what is actually on the canvas:
+             * `getStructure()` answers null when nothing is loaded (molview.md
+             * § 9.3), and atoms are what "there is work here" means.
+             *
+             * This used to read the saved bytes back out of the workspace and
+             * inspect them — through `readPersistedSnapshot`, a door the
+             * workspace no longer has. It was called behind a `typeof` guard, so
+             * it quietly answered "nothing saved" on every visit, and the
+             * sidebar's highlighted file was free to overwrite restored work. */
+            await _restoring;
+            const _onCanvas = _mounted.data.getStructure();
+            const _hasRestore = !!(_onCanvas
+                && (_onCanvas.elements || []).length);
             if (_isLoadableStructure(initial) && !_hasRestore) {
                 // Empty canvas + a loadable sidebar pick: seed it on mount.
                 // Goes through the same _commitFile path as the Load button
@@ -216,18 +257,22 @@ function _mvdata() {
             const ix = p.lastIndexOf("/");
             return ix >= 0 ? p.slice(ix + 1) : p;
         }
-        // BOMB-7 fix (2026-06-07): readout distinguishes "Picked"
-        // (candidate set but not yet committed) from "Loaded"
-        // (candidate equals what's currently in the viewer's source
-        // file).  Pre-fix the readout always said "Picked: X" even
-        // after a successful Load — the user couldn't tell whether
-        // clicking Load again would re-run a no-op or re-fire the
-        // pipeline.  Button is disabled when there's no candidate
-        // OR when the candidate already matches the loaded source.
+        /* WHICH FILE IS ON THE CANVAS — THE PAGE'S OWN NOTE.
+         *
+         * The readout tells "Picked" (chosen in the sidebar, not committed)
+         * apart from "Loaded" (already on the canvas), and the Load button goes
+         * dead for the second, so a user can tell a no-op click from a real one.
+         *
+         * It asked the selection snapshot for `sourceFile`. No snapshot has ever
+         * had that key — and it correctly never will, because the viewer tracks
+         * contents, not files (molview.md § 6.7). So the comparison was always
+         * against `""`, the readout said "Picked" straight after a load, and the
+         * button never went dead. The page performed the load, so the page is
+         * what knows; this is the same note `lastSaveTo` is for the other
+         * direction. It is declared up with `_candidate` — the mount seed calls
+         * `_commitFile` before this point in the file. */
         function _refreshLoadUI() {
-            const loadedSrc = store.getState
-                ? (store.getState().sourceFile || "") : "";
-            const isLoaded = !!_candidate && _candidate === loadedSrc;
+            const isLoaded = !!_candidate && _candidate === _loadedFrom;
             if (_loadBtn) {
                 _loadBtn.disabled = !_candidate || isLoaded;
             }
@@ -244,13 +289,13 @@ function _mvdata() {
             }
         }
         _onCandidateChange(_refreshLoadUI);
-        // Re-render when the store's sourceFile changes (after a
-        // successful Load / commit).  Without this subscription,
-        // _refreshLoadUI only fires on candidate changes, so the
-        // readout would still say "Picked" until the user re-clicks
-        // the sidebar.
-        if (store && typeof store.subscribe === "function") {
-            store.subscribe(_refreshLoadUI);
+        /* Re-paint when what is ON THE CANVAS changes, not only when the
+         * sidebar pick does — an edit or a Retract leaves the file it came from
+         * unchanged, but a load through any route (the button, a double-click,
+         * the mount seed) has to reach the readout. The note is set in
+         * `_commitFile`; this keeps the two in step. */
+        if (typeof _mounted.data.subscribe === "function") {
+            _mounted.data.subscribe(_refreshLoadUI);
         }
 
         // "Commit a structure file into the workspace" -- a THIN wrapper over the ONE
@@ -281,11 +326,27 @@ function _mvdata() {
             const confirmDiscard =
                 (warn && typeof warn.confirmDiscardUnsaved === "function")
                     ? () => warn.confirmDiscardUnsaved() : null;
-            const res = await proj.parser.openMolecule(path, { confirmDiscard });
+            const res = await proj.parser.openMolecule(
+                _mounted, path, { confirmDiscard });
+            const s = document.getElementById("status");
+            if (!s) return;
             if (res && res.ok === false && !res.cancelled && res.error) {
-                const s = document.getElementById("status");
-                if (s) { s.textContent = res.error; s.className = "status error"; }
+                s.textContent = res.error;
+                s.className = "status error";
+                return;
             }
+            if (res && res.cancelled) return;    // the user kept what was there
+            // This page performed the load, so this page is what knows which
+            // file is on the canvas (§ 6.7).  Both readouts below read it.
+            _loadedFrom = path;
+            _refreshLoadUI();
+            /* SAY WHAT LANDED. The line only ever spoke up when a load FAILED,
+             * so after a successful one it still read "No structure loaded." —
+             * the template's opening text — beside a drawn molecule. The count
+             * comes from the viewer, which is the thing that now holds it. */
+            const n = (_mounted.data.getElements() || []).length;
+            s.textContent = `Loaded ${_basename(path)} — ${n} atoms.`;
+            s.className = "status ok";
         }
         if (_loadBtn) {
             _loadBtn.addEventListener("click", () => _commitFile(_candidate));

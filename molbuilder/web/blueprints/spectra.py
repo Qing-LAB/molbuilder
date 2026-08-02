@@ -270,16 +270,18 @@ def api_spectra_render():
     Body (JSON)::
 
         {
-          "structure_text": "<XYZ or PDB text content>",
+          "structure":      {<the structure envelope, web-api.md 1>},
           "params":         {<SpectraConfig dict>},
           "structure_path": "<optional path to the on-disk .xyz/.pdb>",
           "prior_path":     "<optional path to a prior .spectra.json>"
         }
 
-    The ``structure_text`` field accepts either XYZ or PDB content;
-    the server sniffs the format by the first line (integer ->
-    XYZ; non-integer -> PDB).  Renamed 2026-05-22 from the
-    misleading ``"xyz"`` field name.
+    ``structure`` is the same envelope every other structure door takes --
+    coordinates as numbers, with the labels and the cell block beside them --
+    read by the one shared ``struct_from_body``.  It replaced a
+    ``structure_text`` field carrying an XYZ or PDB document, which the browser
+    cannot produce: the viewer holds no coordinate document and writes none
+    (molview.md 11.7).
 
     Returns on success::
 
@@ -316,31 +318,32 @@ def api_spectra_render():
     inert; preflight still validates the inline form fields.
     """
     body = request.get_json(silent=True) or {}
-    structure_text: Optional[str] = body.get("structure_text")
     params: Dict[str, Any] = body.get("params") or {}
     structure_path: Optional[str] = body.get("structure_path")
     prior_path: Optional[str] = body.get("prior_path")
 
-    if not structure_text:
+    # THE STRUCTURE ARRIVES AS DATA, in the shape every other structure door
+    # takes (web-api.md § 1): coordinates as numbers, labels and the cell block
+    # beside them.
+    #
+    # It used to arrive as TEXT, in a `structure_text` field, and that could not
+    # work: the viewer holds no coordinate document and writes none
+    # (molview.md § 11.7), so the tab read a `text` field the model has never had
+    # and posted an empty string. This route then answered "no structure_text
+    # provided" while a molecule sat on the page. The textarea a person could
+    # once have pasted into was removed long before that, so nothing produced the
+    # field at all.
+    if not isinstance(body.get("structure"), dict):
+        # Said here rather than left to the shared helper, whose fallback is the
+        # legacy `xyz` text field and whose complaint is therefore about `xyz` --
+        # a field this route's only caller has never sent and no longer could.
         return jsonify({"ok": False,
-                        "error": "no 'structure_text' provided"}), 400
-
-    # Parse the structure text.  Sniff XYZ vs PDB by the first
-    # line (matches /api/build/load's auto-detect logic): an
-    # integer = XYZ; anything else falls through to PDB.  Errors
-    # surface as 400.
+                        "error": "no 'structure' provided"}), 400
+    from ._shared import struct_from_body
     try:
-        first_line = (structure_text.lstrip().splitlines()[0]
-                      if structure_text.strip() else "")
-        if first_line.strip().isdigit():
-            struct = Structure.from_xyz(structure_text, title="from-browser")
-        else:
-            # PDB / unknown: dispatch to from_pdb, which itself
-            # raises if there's no ATOM/HETATM in the input.
-            struct = Structure.from_pdb(structure_text, title="from-browser")
-    except (ValueError, IndexError) as exc:
-        return jsonify({"ok": False,
-                        "error": f"could not parse structure text: {exc}"}), 400
+        struct = struct_from_body(body)
+    except (ValueError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     # F2 (science/validation.md 4.1): the body carries ``frozen_atoms`` /
     # ``regions`` from the model; omitting them is a 400, not a disk re-read.

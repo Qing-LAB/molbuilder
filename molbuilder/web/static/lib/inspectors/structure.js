@@ -25,12 +25,31 @@
  * path and owns the whole assembly).
  */
 import { mount } from "/static/lib/molview/index.js";
+/* WHO THESE BYTES BELONG TO (workspace.md § 4) — the one string used BOTH as the
+ * viewer's `owner` and as the tag on every workspace call, so the two cannot
+ * drift into naming different slots. */
+const WORKSPACE_TAG = "results:structure";
+
+/* THIS TAB'S OWN NOTE, under its own tag beside the viewer's (workspace.md § 4).
+ * One fact: which file is on screen. It is written when this inspector opens a
+ * file and read when it is asked to open one, and MolView never sees it. */
+const SHOWING_TAG = "results:structure:showing";
+
+async function _readShowing(ws) {
+    if (!ws || typeof ws.readState !== "function") return null;
+    const note = await ws.readState({
+        workspace_id: ws.workspaceId(SHOWING_TAG), state_index: 0,
+    });
+    return (note && note.showing) || null;
+}
+
+function _rememberShowing(ws, path) {
+    if (!ws || typeof ws.persist !== "function") return;
+    ws.persist(SHOWING_TAG, { showing: path || null },
+               { workspace_id: ws.workspaceId(SHOWING_TAG), state_index: 0 });
+}
 // molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
 // §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
-function _mvdata() {
-    return (window.molbuilder && window.molbuilder.molview
-            && window.molbuilder.molview.data) || null;
-}
 (function (root) {
     "use strict";
 
@@ -129,7 +148,10 @@ function _mvdata() {
             // load-time cell override (edit it on the Cell page if a change is needed).
             (async () => {
                 if (disposed) return;
-                if (typeof mount !== "function" || !_mvdata()) {
+                // NOT gated on a viewer existing: the mount below is what
+                // creates one, and testing for one first is what stopped three
+                // pages mounting at all.
+                if (typeof mount !== "function") {
                     status.textContent = (
                         "Viewer unavailable: the MolView module is missing "
                         + "from the template script tags."
@@ -160,7 +182,7 @@ function _mvdata() {
                     // for free through molview.mount.
                     handle = await mount(molviewHost, ws, {
                         mode:  "readonly",
-                        owner: "results:structure",
+                        owner: WORKSPACE_TAG,
                     });
                     if (disposed) {
                         if (handle && typeof handle.dispose === "function") {
@@ -189,14 +211,25 @@ function _mvdata() {
                     // .molstruct.json shows its JSON via the `source` inspector: it is a
                     // metadata file; open the .xyz to view the structure.)
                     const structPath = file;
-                    const restoreTarget =
-                        (typeof ws.mountRestoreTarget === "function")
-                            ? ws.mountRestoreTarget() : null;
+                    /* WHICH FILE THIS INSPECTOR IS SHOWING — this tab's own note,
+                     * saved under this tab's own tag.
+                     *
+                     * It is not MolView's to remember. MolView tracks contents:
+                     * the atoms, the labels, the cell. Which file they came out
+                     * of is a fact about a file operation THIS tab performed, so
+                     * this tab keeps it, next to the viewer's state and not
+                     * inside it (workspace.md § 4 — several savers, one page).
+                     *
+                     * It used to be dug out of the viewer's saved bytes, which
+                     * meant a path from the projects world was riding inside the
+                     * structure's own saved state and being read back out by
+                     * whoever needed it. */
+                    const restoreTarget = await _readShowing(ws);
                     if (restoreTarget && restoreTarget === structPath) {
                         // Same file this owner left -> restore its session state
                         // (selection/camera) via the session-state timeline (a
                         // separate module), NOT a fresh open.
-                        await _mvdata().load(0);
+                        await handle.data.load(0);
                     } else {
                         // Fresh open: the format-aware sidebar door reads the
                         // .xyz + .molstruct.json (labels/regions/frozen + periodicity)
@@ -210,18 +243,21 @@ function _mvdata() {
                             status.classList.add("inspector-inline-error");
                             return;
                         }
-                        const res = await _proj.parser.openMolecule(structPath);
+                        const res = await _proj.parser.openMolecule(handle, structPath);
                         if (res && res.ok === false) {
                             status.textContent = "Error: "
                                 + (res.error || "could not load " + structPath);
                             status.classList.add("inspector-inline-error");
                             return;
                         }
+                        // Written only once the open SUCCEEDED: a note saying we
+                        // are showing a file we failed to load would make the
+                        // next click restore a viewer holding something else.
+                        _rememberShowing(ws, structPath);
                     }
                     if (disposed) return;
 
-                    const elems = (typeof _mvdata().getElements === "function"
-                        && _mvdata().getElements()) || [];
+                    const elems = handle.data.getElements() || [];
                     status.textContent = elems.length > 0
                         ? "Loaded " + elems.length + " atoms."
                         : "Loaded.";

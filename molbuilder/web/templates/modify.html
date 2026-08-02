@@ -16,7 +16,11 @@
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
 </head>
-<body data-sidebars="projects" data-workspace-owner="modify">
+{#- No `data-workspace-owner`: it existed so a read happening before any mount was
+    still namespaced, back when the workspace held one active namespace that had to
+    be set beforehand. Every save and load now names its tag in the call
+    (workspace.md § 4), so there is no pre-mount window to cover. -#}
+<body data-sidebars="projects">
 
 {% set active_tab = "molbuilder" %}
 {% include "_app_header.html" %}
@@ -860,9 +864,16 @@
      formula renderer (Hill order with C+H first). -->
 {#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js (below). -#}
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
-{# Cell op-tab: per-group periodicity editors (vacuum/pbc/cell). #}
-<script type="module" src="{{ url_for('static', filename='modify/periodicity.js') }}"></script>
+{#- NO TAGS for modify/viewer.js or modify/periodicity.js.
+
+    They are IMPORTED by modify/selection-bootstrap.js, which is this page's
+    owner: it mounts the one viewer the page has and starts them with it.
+
+    They used to be loaded here and wake on DOMContentLoaded, each finding the
+    viewer by name in a global. MolView publishes nothing there, and the load
+    order put both of them BEFORE the file that mounts — so even a global would
+    have been empty when they ran. Being started by the owner replaces both
+    problems with one line. -#}
 {# The shared MolView + workspace stack -- ONE include, not a pasted copy
    (_molview_scripts.html: vendor 3Dmol + molview/index.js + workspace/dispatcher.js +
    warning-modal + region-label-definitions). #}

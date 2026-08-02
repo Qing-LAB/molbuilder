@@ -1,35 +1,39 @@
-/* Modify tab -- per-GROUP periodicity editors (structure-periodicity.md § 3b).
+/* Modify tab -- the Cell op-tab's per-GROUP periodicity editors.
  *
- * MolView only DISPLAYS periodicity; the actual edits live in the Modify "Cell" op-tab,
- * one Update per group (vacuum / pbc / unit cell) so each can independently stay at its
- * default or be committed.  Each group reads the current value from the SAME molview
- * accessors the display uses (getVacuumInfo / getAxisKindInfo / getUnitCellInfo
- * -> { value, isDefault }) and commits through the MolView DATA API
- * (window.molbuilder.molview.data -- NOT the persistence-only workspace):
- *   - vacuum / pbc / unit cell -> data.commitPeriodicityOp (re-resolves the effective cell
- *     through the ONE server resolver, § 3a).
- * (k-grid is NOT here: it's a reciprocal-space sampling knob on SiestaConfig /
- * TransportConfig, not geometry -- structure-periodicity.md.)
- * No auto-commit: editing a field only stages; the group's Update button commits.
+ * Contract: docs/model/structure-periodicity.md § 3b; docs/web/molview.md § 9.3.
+ * Owns:     the form. One Update button per group (vacuum / periodicity / unit
+ *           cell / origin) so each can independently stay at its default or be
+ *           committed. Editing a field only stages; the button commits.
+ * Called by: modify/selection-bootstrap.js, which mounts the viewer and hands it
+ *           here. Nothing self-starts.
+ *
+ * WHERE THE VALUES COME FROM. Two reads, and the pair is the answer:
+ *   getUnitCellInfo()  -- the cell AS IT WILL BE USED, defaults filled in, never null
+ *   getUnitCell() / getUnitCellOrigin() / getAxisKind() / getVacuum()
+ *                      -- what the structure ITSELF says, null where it says nothing
+ * So "this value is a default" is "the raw read is null while the effective read
+ * has one". The server works the cell out once and sends both halves; nothing here
+ * decides which values are defaults, because a second opinion is a second resolver.
+ *
+ * This used to ask for getVacuumInfo / getAxisKindInfo / getUnitCellOriginInfo and
+ * read `.isDefault` off them. None of those has ever existed. Every call was
+ * written `w.getVacuumInfo ? … : fallback`, so the panel showed "(default)" on
+ * every row for every structure instead of failing.
+ *
+ * (k-grid is NOT here: it is a reciprocal-space sampling knob on the config, not
+ * geometry.)
  */
+"use strict";
 
-// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
-// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
-function _mvdata() {
-    return (window.molbuilder && window.molbuilder.molview
-            && window.molbuilder.molview.data) || null;
-}
-
-(function () {
-    "use strict";
+export function init(viewer) {
     var root = window;
     var AXIS = ["isolated", "periodic", "transport"];
 
     function $(id) { return document.getElementById(id); }
-    // DATA access (getStructure / get*Info / commitPeriodicity / subscribe) is the
-    // in-memory model on molview.data; ``workspace`` is persistence-only now.
+    // THE VIEWER THIS PAGE MOUNTED, handed in above. Not looked up: a viewer
+    // belongs to whoever mounted it (molview.md § 5.6).
     function data() {
-        return _mvdata();   // the in-memory molview.data model, imported from the door
+        return (viewer && viewer.ok) ? viewer.data : null;
     }
     function hasStructure() {
         var w = data();
@@ -84,48 +88,60 @@ function _mvdata() {
         panel.querySelectorAll("fieldset").forEach(function (fs) { fs.disabled = !has; });
         if (!has || !w) return;
 
-        // An EXPLICIT cell (isDefault === false) is the source of truth: vacuum is
-        // inert (resolve_cell returns the cell verbatim) and "Use default" is invalid
-        // for a periodic/transport axis (you can't derive a commensurate lattice from
-        // a bbox -- clearing the cell would make the box DISAPPEAR).  Read both first
-        // so the group guards below can react (structure-periodicity.md § 3c).
-        var cellInfo = w.getUnitCellInfo ? w.getUnitCellInfo() : { isDefault: true };
-        var axisInfo = w.getAxisKindInfo ? w.getAxisKindInfo() : { value: [] };
-        var explicitCell = !cellInfo.isDefault;
-        var hasPeriodicAxis = (axisInfo.value || []).some(function (k) {
+        /* TWO READS: what will be USED, and what the structure itself SAYS.
+         *
+         * The pair is what "(default)" means — the structure says nothing here, so
+         * the value on screen was worked out for it. The server resolves the cell
+         * once and sends both halves; this reads them and decides nothing. */
+        var used = w.getUnitCellInfo();          // never null
+        var rawCell   = w.getUnitCell();
+        var rawOrigin = w.getUnitCellOrigin();
+        var rawAxis   = w.getAxisKind();
+        var rawVacuum = w.getVacuum();
+
+        // An EXPLICIT cell is the source of truth: vacuum is inert (the box comes
+        // back verbatim) and "Use default" is invalid for a periodic/transport axis
+        // (you cannot derive a commensurate lattice from a bounding box -- clearing
+        // it would make the box DISAPPEAR).  Read first so the groups below react.
+        var explicitCell = rawCell !== null;
+        var axes = used.axis_kind || [];
+        var hasPeriodicAxis = axes.some(function (k) {
             return k === "periodic" || k === "transport";
         });
 
-        if (w.getVacuumInfo) {
-            var v = w.getVacuumInfo(), vv = v.value || [0, 0, 0];
-            setIdle($("pv-vac-a"), round(vv[0] || 0));
-            setIdle($("pv-vac-b"), round(vv[1] || 0));
-            setIdle($("pv-vac-c"), round(vv[2] || 0));
-            // Vacuum only grows a DERIVED isolated axis; with an explicit cell it does
-            // nothing, so mark the group "not applicable" instead of a silent no-op.
-            tag("pv-vac-tag", explicitCell ? false : v.isDefault);
-            // § 6.2 v3: vacuum edits are ALLOWED under an explicit cell —
-            // they reset the box to the derived regime (confirm-gated in
-            // wire()).  The note warns; the button stays enabled.
-            var vacNa = $("pv-vac-na");
-            if (vacNa) vacNa.hidden = !explicitCell;
-        }
-        if (w.getAxisKindInfo) {
-            var av = axisInfo.value || [];
-            ["pv-axis-a", "pv-axis-b", "pv-axis-c"].forEach(function (id, i) {
-                var sel = $(id);
-                if (sel && document.activeElement !== sel) sel.value = av[i] || "isolated";
-            });
-            tag("pv-axis-tag", axisInfo.isDefault);
-        }
-        if (w.getUnitCellInfo && cellInputs.length === 9) {
-            var m = cellInfo.value;
+        var vac = used.vacuum || [0, 0, 0];
+        setIdle($("pv-vac-a"), round(vac[0] || 0));
+        setIdle($("pv-vac-b"), round(vac[1] || 0));
+        setIdle($("pv-vac-c"), round(vac[2] || 0));
+        // Vacuum ALWAYS has a value -- "unset" is not a state it has -- so what
+        // marks it a default is it being zero on every axis. With an explicit cell
+        // it grows nothing, so the group says so instead of silently doing nothing.
+        tag("pv-vac-tag", explicitCell
+            ? false
+            : !rawVacuum || rawVacuum.every(function (x) { return !x; }));
+        // Vacuum edits are ALLOWED under an explicit cell -- they reset the box to
+        // the derived regime (confirm-gated in wire()).  The note warns; the button
+        // stays enabled.
+        var vacNa = $("pv-vac-na");
+        if (vacNa) vacNa.hidden = !explicitCell;
+
+        ["pv-axis-a", "pv-axis-b", "pv-axis-c"].forEach(function (id, i) {
+            var sel = $(id);
+            if (sel && document.activeElement !== sel) sel.value = axes[i] || "isolated";
+        });
+        // Unset, or every axis isolated: a fresh molecule loads all-isolated, and
+        // that is still the default configuration rather than a choice made.
+        tag("pv-axis-tag", !rawAxis
+            || rawAxis.every(function (k) { return k === "isolated"; }));
+
+        if (cellInputs.length === 9) {
+            var m = used.cell;
             for (var r = 0; r < 3; r++) {
                 for (var col = 0; col < 3; col++) {
                     setIdle(cellInputs[r * 3 + col], m ? round(m[r][col]) : "");
                 }
             }
-            tag("pv-cell-tag", cellInfo.isDefault);
+            tag("pv-cell-tag", !explicitCell);
         }
         // "Use default" clears the explicit cell -> resolve_cell(); on a periodic /
         // transport axis that RAISES (no bbox-derived lattice), so disable it there --
@@ -141,17 +157,16 @@ function _mvdata() {
         // § 6.2 v3: no calibrate button — emission translates implicitly.
 
         // § 3c: the cell origin -- the low corner the box is drawn from.  Shows the
-        // RESOLVED corner (getUnitCellOriginInfo().value); editing it sets an explicit
+        // corner the box is actually drawn from; editing it sets an explicit
         // cell_origin.  cell_origin is ONLY meaningful with an explicit cell (the
         // dataclass drops it otherwise), so the group is enabled only there -- with a
         // bbox+vacuum cell the corner is auto and there is nothing to override.
-        if (w.getUnitCellOriginInfo) {
-            var oInfo = w.getUnitCellOriginInfo();
-            var ov = oInfo.value || [0, 0, 0];
+        {
+            var ov = used.cell_origin || [0, 0, 0];
             setIdle($("pv-org-a"), round(ov[0] || 0));
             setIdle($("pv-org-b"), round(ov[1] || 0));
             setIdle($("pv-org-c"), round(ov[2] || 0));
-            tag("pv-org-tag", oInfo.isDefault);
+            tag("pv-org-tag", rawOrigin === null);
             var orgNa = $("pv-org-na");
             if (orgNa) orgNa.hidden = explicitCell;
             var orgBtn = $("pv-org-update");
@@ -166,44 +181,35 @@ function _mvdata() {
         if (!isFinite(raw)) return dflt;
         return isInt ? Math.max(1, Math.round(raw)) : raw;
     }
-    // § 6.2 v3 — every edit goes through the ONE server door (Python owns
-    // the change); this page renders what comes back and surfaces the
-    // gate's notices through the app notification bar.
-    function _surfaceNotices(notices) {
-        var notify = (window.molbuilder || {}).notify;
-        if (!notify || !notify.show) return;
-        // Clear the PREVIOUS edit's notices first: a 2-notice edit followed
-        // by a 1-notice edit must not leave a stale second banner up.
-        if (typeof notify.list === "function"
-                && typeof notify.clear === "function") {
-            notify.list().forEach(function (n) {
-                if (n && n.id
-                        && String(n.id).indexOf("periodicity-") === 0) {
-                    notify.clear(n.id);
-                }
-            });
-        }
-        (notices || []).forEach(function (n, i) {
-            notify.show({
-                id:      "periodicity-" + i,
-                level:   n.level === "warn" ? "warn" : "info",
-                message: n.message,
-            });
-        });
-    }
+    /* THREE OUTCOMES, and the middle one is why this exists (molview.md § 6.9):
+     *
+     *   the cell block  the edit happened
+     *   a THROW         the server refused it, and the reason it threw IS the
+     *                   server's own sentence -- "swap two lattice vectors or
+     *                   negate one" -- which is what the user needs to read
+     *   null            there was nothing to do; nothing to say either
+     *
+     * This used to expect a server envelope back — `{ok, error, notices}` — and
+     * got the cell block, so the error branch never ran; and on a refusal it got
+     * null and skipped both branches, so the Update button did nothing at all
+     * while the server had answered with exactly the sentence that would have
+     * explained it.
+     *
+     * The notices are NOT in the answer: they are delivered inside the door and
+     * MolView draws them (§ 6.8). Pushing them to the notification bar as well
+     * would put one fact in two places. */
     function commitOp(op, payload) {
         var w = data();
-        if (!w || typeof w.commitPeriodicityOp !== "function") return;
-        return Promise.resolve(w.commitPeriodicityOp(op, payload))
-            .then(function (res) {
-                if (res && !res.ok && res.error) {
-                    var notify = (window.molbuilder || {}).notify;
-                    if (notify && notify.show) notify.show({
-                        id: "periodicity-error", level: "error",
-                        message: "Periodicity edit failed: " + res.error,
-                    });
-                } else if (res) {
-                    _surfaceNotices(res.notices);
+        if (!w) return Promise.resolve();
+        return Promise.resolve()
+            .then(function () { return w.commitPeriodicityOp(op, payload); })
+            .then(function () { refresh(); })
+            .catch(function (err) {
+                var notify = (window.molbuilder || {}).notify;
+                var said = (err && err.message) || "the cell edit did not happen";
+                if (notify && notify.show) {
+                    notify.show({ id: "periodicity-error", level: "error",
+                                  message: said });
                 }
                 refresh();
             });
@@ -213,9 +219,11 @@ function _mvdata() {
     // user must know BEFORE committing (§ 6.2 v3).
     function _confirmReset(body) {
         var w = data();
-        var info = (w && w.getUnitCellInfo) ? w.getUnitCellInfo()
-                                            : { isDefault: true };
-        if (info.isDefault) return Promise.resolve(true);   // already derived
+        // Already derived -> nothing to reset, so nothing to confirm. "Derived"
+        // is the structure stating no cell of its own; asking `getUnitCellInfo`
+        // would answer with the box that was worked out FOR it, which is never
+        // absent and so never told us anything here.
+        if (!w || w.getUnitCell() === null) return Promise.resolve(true);
         var wm = (window.molbuilder || {}).warningModal;
         if (!wm || !wm.confirm) return Promise.resolve(true);
         return wm.confirm({
@@ -286,7 +294,7 @@ function _mvdata() {
         // rewrite lives with the Modify ops as /api/modify/calibrate).
     }
 
-    function init() {
+    function start() {
         if (!$("optab-panel-cell")) return;
         buildCellGrid();
         fillAxisOptions();
@@ -298,9 +306,5 @@ function _mvdata() {
         if (w && typeof w.subscribe === "function") w.subscribe(refresh);
     }
 
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", init);
-    } else {
-        init();
-    }
-})();
+    start();
+}

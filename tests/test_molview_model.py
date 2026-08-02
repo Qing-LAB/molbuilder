@@ -650,9 +650,16 @@ def test_a_trajectory_arrives_whole_in_one_install():
     out = _run(
         """
         const slots = new Map();
+        // The real front door (workspace.md § 5), answered from a Map.
         const m = createModel({ workspace: {
-            read:  async (k) => (slots.has(k) ? slots.get(k) : null),
-            write: async (k, v) => { slots.set(k, v); },
+            workspaceId: () => "id",
+            persist: (tag, session, point, identity) => {
+                if (point) slots.set(identity.state_index, point);
+                return true;
+            },
+            readState: async (identity) => (slots.has(identity.state_index)
+                ? slots.get(identity.state_index) : null),
+            pruneStatesAbove: () => {},
         } });
         const seen = [];
         m.subscribe(() => seen.push(m.frameCount()));
@@ -1115,18 +1122,31 @@ def test_a_read_only_seed_anchors_no_history():
     """
     out = _run(
         """
+        // A stand-in workspace speaking the real front door (workspace.md § 5).
+        // Only a POINT counts as anchoring: `persist` also carries the session
+        // copy, which is a different write with a different rule (§ 11.3).
+        // A stand-in workspace speaking the real front door. Only a MILESTONE
+        // counts as anchoring — an edit's draft goes to its own file and is a
+        // different rule (workspace.md § 7).
         const writes = [];
-        const workspace = {
-            read: async () => null,
-            write: async (step, bytes) => { writes.push(step); },
-        };
-        const ro = createModel({ mode: "readonly", workspace });
+        function spy(label) {
+            return {
+                workspaceId: (tag) => "id-" + tag,
+                persist: (tag, bytes, identity) => {
+                    if (!/-draft$/.test(identity.workspace_id)) {
+                        writes.push(label + ":" + identity.state_index);
+                    }
+                    return true;
+                },
+                readState: async () => null,
+                pruneStatesAbove: () => {},
+            };
+        }
+        const ro = createModel({ mode: "readonly", owner: "ro",
+                                 workspace: spy("readonly") });
         await ro.installMolecule({ text: "x", filename: "x.xyz" });
 
-        const editable = createModel({ workspace: {
-            read: async () => null,
-            write: async (step) => { writes.push("editable:" + step); },
-        } });
+        const editable = createModel({ owner: "ed", workspace: spy("editable") });
         await editable.installMolecule({ text: "x", filename: "x.xyz" });
 
         console.log(JSON.stringify({
@@ -1405,6 +1425,11 @@ def test_a_failed_edit_changes_nothing():
 
     § 11.1: that is the other half of "all at once" — it is what lets a failed
     edit be a state the viewer can sit in without being wrong.
+
+    A refusal REACHES THE CALLER BY THROWING (§ 6.9), which is what this asserts
+    now; it used to expect `null`, back when a refused edit and an empty viewer
+    gave the same answer. What the failure route is does not change what this
+    test is about: nothing moved.
     """
     out = _run(
         """
@@ -1412,15 +1437,16 @@ def test_a_failed_edit_changes_nothing():
         const before = JSON.stringify(m.getStructure());
         const beforeFrame = m.getFrameAllAtoms(0);
         globalThis.__serverFails = true;
-        const result = await m.applyOp("translate");
+        let told = false;
+        try { await m.applyOp("translate"); } catch (_) { told = true; }
         console.log(JSON.stringify({
-            result,
+            told,
             unchanged: JSON.stringify(m.getStructure()) === before,
             coordsUnchanged: JSON.stringify(m.getFrameAllAtoms(0)) === JSON.stringify(beforeFrame),
         }));
         """
     )
-    assert out["result"] is None, "a failed edit must tell the caller"
+    assert out["told"] is True, "a failed edit must tell the caller"
     assert out["unchanged"] is True, "a failed edit changed the structure"
     assert out["coordsUnchanged"] is True
 
@@ -1507,7 +1533,8 @@ def test_an_edit_raises_the_badge_and_a_failed_one_does_not():
 
         globalThis.__serverFails = true;
         const before = m.uncommitted;
-        await m.applyOp("translate");
+        // The refusal leaves by throwing (§ 6.9); the badge is what is on trial.
+        try { await m.applyOp("translate"); } catch (_) {}
         console.log(JSON.stringify({
             fresh, afterEdit, afterFailure: m.uncommitted, before,
         }));

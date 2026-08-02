@@ -54,14 +54,48 @@ const FORCES = FRAMES.map((_, f) => ([
     [2.0 - f * 0.4, 0, 0], [0.1, 0, 0], [0.1, 0, 0],
 ]));
 
-/* THE WORKSPACE DOOR (§ 8): "anything that can store and return bytes satisfies
- * it". In this page it is a Map — which is the point: the module cannot tell the
- * difference, and that is what makes it embeddable anywhere. */
+/* A STAND-IN WORKSPACE — the calls of workspace.md § 5, answered from memory.
+ *
+ * IT IMPLEMENTS THE REAL DOOR, and that is the whole point of it. The first
+ * version was a `Map` with `read(step)` / `write(step, bytes)`, which the module
+ * asked for and no workspace has ever had: so the demo passed, every test passed,
+ * and nothing on any tab could save. A stand-in shaped like a wish proves the
+ * wish; a stand-in shaped like the dependency fails the moment the two disagree.
+ *
+ * It keeps one slot per tag, as the real one does — different tag, different
+ * place — so a second viewer on this page would be isolated here too.
+ */
 function memoryWorkspace() {
-    const slots = new Map();
+    const sessions = new Map();   // tag  -> the session copy
+    const points   = new Map();   // "id:step" -> a numbered point
+    const ids      = new Map();   // tag  -> this tag's id
     return {
-        async read(step) { return slots.has(step) ? slots.get(step) : null; },
-        async write(step, bytes) { slots.set(step, bytes); },
+        workspaceId(tag) {
+            if (!ids.has(tag)) ids.set(tag, "demo-" + tag);
+            return ids.get(tag);
+        },
+        persist(tag, sessionBytes, snapshotBlob, identity) {
+            if (sessionBytes) sessions.set(tag, sessionBytes);
+            // A point only when one was offered — a routine write sends none.
+            if (snapshotBlob && identity) {
+                points.set(identity.workspace_id + ":" + identity.state_index,
+                           snapshotBlob);
+            }
+            return true;                       // the session copy was kept
+        },
+        async readState(identity) {
+            const key = identity.workspace_id + ":" + identity.state_index;
+            return points.has(key) ? points.get(key) : null;
+        },
+        pruneStatesAbove(id, index) {
+            for (const key of Array.from(points.keys())) {
+                const [owner, step] = key.split(":");
+                if (owner === id && Number(step) > index) points.delete(key);
+            }
+        },
+        readPersistedSnapshot(tag) {
+            return sessions.has(tag) ? sessions.get(tag) : null;
+        },
     };
 }
 
@@ -158,12 +192,27 @@ async function start() {
         return;
     }
 
+    /* CATCHING IS THE HOST'S JOB (§ 6.9), and this page is a host — which is why
+     * it does it here rather than leaving it to the module. A door that changes
+     * the structure THROWS when the server refused it, carrying the server's own
+     * sentence, and `null` means only that there was nothing to do. Two outcomes,
+     * two lines, and the one the reader can act on is the message.
+     *
+     * A host that skips this gets an unhandled rejection and a page that goes
+     * quiet — which is the exact failure § 6.9 was written to end, reappearing
+     * one level up. */
     async function load(text, name) {
         say("loading " + name + "…");
-        const structure = await viewer.data.installMolecule({
-            text: text, filename: name + ".xyz",
-        });
-        if (!structure) { say("could not load " + name); return; }
+        let structure;
+        try {
+            structure = await viewer.data.installMolecule({
+                text: text, filename: name + ".xyz",
+            });
+        } catch (err) {
+            say(err && err.message ? err.message : "could not load " + name);
+            return;
+        }
+        if (!structure) { say("nothing to load from " + name); return; }
         report();
     }
 
@@ -214,8 +263,16 @@ async function start() {
      * could perform, and the notices arrive with the answer. */
     on("demo-bad-box", async () => {
         await load(SAMPLES.water, "water");
-        await viewer.data.commitPeriodicityOp("cell", [[5, 0, 0], [0, 5, 0], [0, 0, 5]]);
-        await viewer.data.commitPeriodicityOp("cell_origin", [20, 20, 20]);
+        try {
+            await viewer.data.commitPeriodicityOp(
+                "cell", [[5, 0, 0], [0, 5, 0], [0, 0, 5]]);
+            await viewer.data.commitPeriodicityOp("cell_origin", [20, 20, 20]);
+        } catch (err) {
+            // The server refused one of the two. Its sentence says what to do
+            // about it, so it is what goes on screen (§ 6.9).
+            say(err && err.message ? err.message : "the cell edit did not happen");
+            return;
+        }
         say("the box was moved off the molecule — see the Cell page");
     });
 

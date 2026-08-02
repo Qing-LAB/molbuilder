@@ -13,15 +13,13 @@
  */
 import { mount as mvMount, formula as mvFormula }
     from "/static/lib/molview/index.js";
-// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
-// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
-function _mvdata() {
-    return (window.molbuilder && window.molbuilder.molview
-            && window.molbuilder.molview.data) || null;
-}
 
 (function () {
     "use strict";
+    /* WHO THESE BYTES BELONG TO (workspace.md § 4) — the one string used BOTH as the
+     * viewer's `owner` and as the tag on every workspace call, so the two cannot
+     * drift into naming different slots. */
+    const WORKSPACE_TAG = "structure-opt";
 
     const $ = (id) => document.getElementById(id);
 
@@ -62,25 +60,42 @@ function _mvdata() {
         fdf: null,
         pyscf: null,
         // NOTHING structural is held here.  Coordinates, labels and periodicity
-        // are read LIVE off the model at request time via
-        // molview.data.factsForRequest() -- contract F1
-        // (docs/science/validation.md 4.1).  ``state.xyz`` used to live here,
+        // are read LIVE off the viewer at request time, in ONE read
+        // (getStructure) -- contract F1 (docs/science/validation.md 4.1).  ``state.xyz`` used to live here,
         // filled once at load, so a request could carry fresh labels + fresh
         // periodicity + STALE coordinates and validation judged a structure the
         // viewer was not showing.  There is no mirror to desync now.
     };
 
-    // The facts for a request, read live from the ONE fact holder (F1).
-    // Returns null when nothing is loaded -- callers must not invent a payload.
+    /* THE STRUCTURE, READ LIVE, IN ONE READ (F1, docs/science/validation.md § 4.1).
+     *
+     * `getStructure()` is the whole master copy — the elements, the per-atom
+     * facts, the cell block, every frame — so the facts that leave together were
+     * read together. That property is the shape of the read, not a promise about
+     * how callers behave: this used to be `factsForRequest()`, a second door
+     * whose only job was to hand back the same facts in a different shape.
+     *
+     * Null when nothing is loaded, which is different from a structure with no
+     * atoms — callers must not invent a payload out of it. */
     function _facts() {
         const d = _data();
-        return (d && typeof d.factsForRequest === "function")
-            ? d.factsForRequest() : null;
+        return d ? d.getStructure() : null;
     }
-    // Coordinates only, for the call sites that need just the geometry.
-    function _liveXyz() {
+
+    /* THE STRUCTURE AS THE SERVER TAKES IT (web-api.md § 1): coordinates as
+     * numbers, with the cell beside them.
+     *
+     * It used to be an XYZ DOCUMENT, built by asking the viewer for text. The
+     * viewer has none and writes none (molview.md § 11.7), so every request
+     * carrying it sent an empty string. */
+    function _structureForRequest() {
         const f = _facts();
-        return (f && f.xyz) || "";
+        if (!f || !f.frames || !f.frames.length) return null;
+        return {
+            elements:  f.elements,
+            positions: f.frames[0],
+            metadata:  { periodicity: f.periodicity },
+        };
     }
 
     // Embedded MolViewer (#198, 2026-06-02; contract:
@@ -98,11 +113,13 @@ function _mvdata() {
     // because this tab READS the structure (to generate SIESTA/PySCF scripts), it does
     // not edit geometry.  The structure lives in molview.data as the single source of
     // truth.  Mounted lazily on the first renderStructure().
-    // MolView is imported through its one door (top of file): `mvMount`, `_mvdata()`, `mvFormula`.
-    // `_data()` returns the imported molview.data singleton.  Workspace is a SEPARATE module still
-    // published as a classic global (`window.molbuilder.workspace`); read it at call time.
+    // MolView is imported through its one door (top of file): `mvMount` and
+    // `mvFormula`.  `_data()` is THE VIEWER THIS PAGE MOUNTED — the handle
+    // `mvMount` handed back, held in `_mvHandle` — and not a name looked up in a
+    // global, because a viewer belongs to whoever mounted it (molview.md § 5.6).
+    // Workspace is a separate module, read at call time.
     const _ws   = () => (window.molbuilder && window.molbuilder.workspace) || null;
-    const _data = () => _mvdata();
+    const _data = () => ((_mvHandle && _mvHandle.ok) ? _mvHandle.data : null);
     let _mvHandle = null;
 
     // ----- Status helpers --------------------------------------------
@@ -164,7 +181,7 @@ function _mvdata() {
     // user who just landed on the page and is fiddling with form
     // defaults doesn't see warnings that haven't been earned yet.
     async function refreshPreflight(engine) {
-        if (!_liveXyz()) return;
+        if (!_structureForRequest()) return;
         const params = (engine === "siesta")
             ? collectFdfParams()
             : collectPyscfParams();
@@ -175,7 +192,7 @@ function _mvdata() {
             const r = await fetch("/api/build/preflight", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ xyz: _liveXyz(), engine, params,
+                body: JSON.stringify({ structure: _structureForRequest(), engine, params,
                     periodicity: _modelPeriodicity() }),
             }).then(x => x.json());
             if (r.ok) renderIssues(panelId, r.issues, formContainerId);
@@ -639,9 +656,17 @@ function _mvdata() {
                 clearStructureInfo("load failed: " + filename);
                 return;
             }
+            const _viewer = await _ensureMounted();
+            if (!_viewer) {
+                setStatus("load-status",
+                    "Viewer unavailable: nothing to load the structure into.",
+                    "error");
+                clearStructureInfo("load failed: " + filename);
+                return;
+            }
             let res;
             try {
-                res = await _proj2.parser.openMolecule(f);
+                res = await _proj2.parser.openMolecule(_viewer, f);
             } catch (e) {
                 if (mySeq !== _sidebarLoadSeq) return;
                 setStatus("load-status", _formatFetchError(e), "error");
@@ -700,15 +725,18 @@ function _mvdata() {
             ? _proj.getCurrentFile() : "";
         (async function _restoreOrSeedOnMount() {
             const _wsP = (window.molbuilder || {}).workspace;
-            // Declare this tab's namespace BEFORE reading the session mirror so the
-            // read sees the ::structure-opt state this tab last wrote (idempotent
-            // with molview.mount's later useNamespace; molview-module.md §18.4).
-            if (_wsP && typeof _wsP.useNamespace === "function") {
-                _wsP.useNamespace("structure-opt");
-            }
-            const _hasData = !!(_wsP
-                && typeof _wsP.hasRestorableSnapshot === "function"
-                && _wsP.hasRestorableSnapshot());
+            // The tag names whose state is being asked about (workspace.md § 4) --
+            // the same one this tab mounts its viewer under, below. It used to be
+            // declared first with useNamespace and then left implicit here, which
+            // meant the read's answer depended on who had declared last.
+            // Our own saved bytes, read and inspected here -- the workspace
+            // stores them and does not open them.
+            const _savedHere = (_wsP && typeof _wsP.readPersistedSnapshot === "function")
+                ? _wsP.readPersistedSnapshot(WORKSPACE_TAG) : null;
+            // Atoms are what "there is work here" means; MolView holds no text.
+            const _hasData = !!(_savedHere && _savedHere.state
+                && _savedHere.state.structure
+                && (_savedHere.state.structure.elements || []).length);
             const _d = _data();
             if (_hasData && _d && typeof _d.load === "function") {
                 // Restore MolView's own data (reload-restore primitive: no network,
@@ -716,11 +744,14 @@ function _mvdata() {
                 // page chrome (info panel + Generate buttons) FROM the restored model.
                 try {
                     await _d.load(0);
-                    const src = (_d.getSource && _d.getSource()) || null;
-                    const rf  = (src && src.file) ? String(src.file) : "";
-                    _sidebarLastFile = rf;
-                    _applyLoadedModel(rf ? rf.split("/").pop()
-                                         : "restored structure");
+                    /* NO FILE NAME COMES BACK WITH IT, and none is wanted.
+                     * MolView tracks contents, not files (molview.md § 6.7): it
+                     * restored the atoms, the labels and the cell, which is the
+                     * work. Which file they were read out of was a fact about an
+                     * operation this tab performed, and it is not part of the
+                     * structure. */
+                    _sidebarLastFile = "";
+                    _applyLoadedModel("restored structure");
                 } catch (_e) {
                     // Restore failed -> leave the canvas empty; the user can Load.
                 }
@@ -752,13 +783,14 @@ function _mvdata() {
         // sees "Loaded: X · unsaved changes" after they modify the
         // structure but before saving.  Read lazily so this code
         // works during early init when ws may not be wired yet.
-        // Dirty lives on the DATA MODEL (molview.data.isDirty), NOT the workspace -- the
-        // workspace is persistence-only and never had getState/dirty (the 2026-06 carve).
-        // Read lazily so this works during early init.
+        // "Is there work here that is not on the sequence yet" is `uncommitted`,
+        // a value the viewer holds rather than a question asked of it. It is
+        // raised inside the gate, after a change lands, so nothing outside marks
+        // it (molview.md § 11.2). Read lazily: there is no viewer until the first
+        // load mounts one.
         const _modelDirty = () => {
             const d = _data();
-            try { return !!(d && d.isDirty && d.isDirty()); }
-            catch (_e) { return false; }
+            return !!(d && d.uncommitted);
         };
         function _refreshLoadButton() {
             const btn = $("load-from-sidebar-btn");
@@ -1085,12 +1117,21 @@ function _mvdata() {
     // ensures the read-only MolView card is mounted on first load.  The mounted render
     // reacts to the model on its own -- we must NOT re-install bare text here (that was
     // the old second load path, and it would drop the sidecar labels the door loaded).
-    function _ensureMounted() {
+    /* AWAITABLE, because the load door needs a viewer to put the file into and
+     * this is what makes one. A viewer mounts before it has a structure
+     * (molview.md § 8), so this runs first and the load follows.
+     *
+     * It used to be fire-and-forget, called AFTER the load — which worked only
+     * while the load door could find a viewer by name in a global. */
+    async function _ensureMounted() {
         const ws = _ws();
-        if (!ws || !_mvdata() || _mvHandle) return;
-        mvMount($("viewer-host"), ws,
-                { mode: "readonly", owner: "structure-opt" })
-            .then(function (h) { _mvHandle = h; })
+        // NOT gated on a viewer existing: this IS what creates it, and testing
+        // for one first is what stopped three pages mounting at all.
+        if (!ws) return null;
+        if (_mvHandle) return _mvHandle;
+        return mvMount($("viewer-host"), ws,
+                { mode: "readonly", owner: WORKSPACE_TAG })
+            .then(function (h) { _mvHandle = (h && h.ok) ? h : null; return _mvHandle; })
             .catch(function (e) {
                 // #load-status is the page's real load/viewer status slot (there is
                 // no #status element -- the old id was a phantom that made this
@@ -1248,7 +1289,7 @@ function _mvdata() {
     // enable Download/Save.  Does NOT touch disk.  The user clicks
     // "Save to current dir" once they're happy with the preview.
     $("generate-fdf").addEventListener("click", async () => {
-        if (!_liveXyz()) {
+        if (!_structureForRequest()) {
             setStatus("fdf-status", "Build a structure first.", "error");
             return;
         }
@@ -1296,7 +1337,7 @@ function _mvdata() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    xyz:            _liveXyz(),
+                    structure:      _structureForRequest(),
                     params,
                     dest_dir:       _destDir || null,
                     // structure_path remains a back-compat fallback
@@ -1485,7 +1526,7 @@ function _mvdata() {
                     body: JSON.stringify({
                         psml_lib:        psmlLib,
                         dest_dir:        written.dir,
-                        structure_text:  _liveXyz(),
+                        structure:       _structureForRequest(),
                     }),
                     signal: abortSignal,
                 }).then(x => x.json());
@@ -1704,7 +1745,7 @@ function _mvdata() {
 
     // ----- 4. Generate PySCF script (render-only preview) -----------
     $("generate-pyscf").addEventListener("click", async () => {
-        if (!_liveXyz()) {
+        if (!_structureForRequest()) {
             setStatus("pyscf-status", "Build a structure first.", "error");
             return;
         }
@@ -1731,7 +1772,7 @@ function _mvdata() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    xyz:            _liveXyz(),
+                    structure:      _structureForRequest(),
                     params,
                     // structure_path: back-compat fallback when
                     // in-body labels aren't present.

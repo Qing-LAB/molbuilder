@@ -273,7 +273,8 @@ export function createLoad(handed) {
         }
         const payload = await postJson("/api/build/load", body);
         const loaded = structureFromServer(payload);
-        if (!loaded) return null;
+        if (!loaded) throw said(payload,
+            "The server answered, but not with a structure.");
 
         /* A TRAJECTORY ARRIVES WITH THE LOAD, not after it.
          *
@@ -301,6 +302,13 @@ export function createLoad(handed) {
         }
 
         // Replace the whole model at once, then anchor a fresh history on it.
+        /* THE ONLY THING KEPT ABOUT WHERE THIS CAME FROM is what an export
+         * should be CALLED — "mine", no folder and no extension (§ 11.4).
+         *
+         * MolView tracks contents, not files. Which file is on screen is the
+         * TAB's business: the tab did the file operation, the tab says "loaded
+         * wire.xyz", and the tab remembers what it is showing. A viewer holding
+         * a path would be a second answer to a question the tab already owns. */
         handed.put(loaded.structure, loaded.coordinates, stemOf(input),
                    /* what the read said about it (§ 6.8), from the ONE place
                     * the payload was read -- this line asked the wire for the
@@ -496,19 +504,24 @@ export function createEdits(handed) {
             body[spec.group] = spec.scalar ? selection[0] : selection.slice();
         }
 
-        // The operation name IS the server route segment (§ 11.1): the delete
-        // operation is `delete`, not `deleteAtoms`.
+        /* NO CATCH HERE. A refusal is the caller's to hear (§ 6.9): it owns the
+         * button that was pressed and the place to say so. This used to swallow
+         * it and answer `null`, which made "the server refused your edit" and
+         * "there was nothing to do" the same answer — so the button went dead
+         * with nothing on screen, which is the bug § 6.9 exists to end.
+         *
+         * The operation name IS the server route segment (§ 11.1): the delete
+         * operation is `delete`, not `deleteAtoms`. */
         let payload;
         running = true;
         try {
             payload = await postJson("/api/modify/" + name, body);
-        } catch (_) {
-            return null;                        // nothing came back, nothing happened
         } finally {
-            running = false;
+            running = false;                    // even when the edit was refused
         }
         const applied = structureFromServer(payload);
-        if (!applied) return null;
+        if (!applied) throw said(payload,
+            "The server answered, but not with a structure.");
         /* The structure AND what the server found true of it, in one handoff.
          * The check runs on every op because it lives in the return path, not
          * in the ops -- so an op that says nothing has been checked and had
@@ -557,16 +570,15 @@ export function createCellEdit(handed) {
          */
         const structure = handed.readData();
         if (!structure) return null;
-        let answer;
-        try {
-            answer = await postJson("/api/structure/periodicity", {
-                structure: structure,
-                op:        op,
-                payload:   payload === undefined ? null : payload,
-            });
-        } catch (_) {
-            return null;
-        }
+        /* NO CATCH HERE either, and this is the door it mattered most on. A cell
+         * the gate cannot accept comes back 400 carrying the one sentence that
+         * says what to do about it; swallowing that and answering `null` is why
+         * the Update button appeared to do nothing (§ 6.9). */
+        const answer = await postJson("/api/structure/periodicity", {
+            structure: structure,
+            op:        op,
+            payload:   payload === undefined ? null : payload,
+        });
         /* ADOPTED VERBATIM. The block comes back in the shape § 6.2 carries —
          * the server's own field names, with the `resolved_*` answers beside the
          * raw ones — which is the same shape `/api/build/load` sends, so there
@@ -577,7 +589,9 @@ export function createCellEdit(handed) {
          * "the cell as it will actually be used"), so after an edit the main way
          * in would quietly have answered with the raw value instead. */
         const block = answer && answer.periodicity;
-        if (!answer || answer.ok === false || !block) return null;
+        if (!answer || answer.ok === false || !block) {
+            throw said(answer, "The server answered, but not with a cell.");
+        }
         /* The answer's notices ride WITH the block it describes (§ 6.8). They
          * are passed on verbatim -- the server's own words, its own levels --
          * because rewording a warning here would put a second author on it. */
@@ -608,6 +622,12 @@ export async function resolveFilter(structure, rule) {
             residueName: facts.residue || null,
         };
     });
+    /* THIS ONE STILL SWALLOWS, on purpose and not by oversight. § 6.9 governs
+     * the doors that CHANGE the structure; a filter changes nothing, so nothing
+     * was lost when it failed and there is no half-done state to explain. That
+     * a failed filter selects nothing, silently, is a real gap of its own — but
+     * widening § 6.9 to cover reads is a decision about that section, not
+     * something to slip in beside this one. */
     try {
         const payload = await postJson("/api/selection/eval", { atoms, rule });
         return Array.isArray(payload && payload.selected_indices)
@@ -628,11 +648,60 @@ export async function resolveFilter(structure, rule) {
  * payloads belongs to web-api.md.
  */
 async function postJson(route, body) {
-    const response = await fetch(route, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(body),
-    });
-    if (!response.ok) throw new Error(route + ": " + response.status);
-    return response.json();
+    let response;
+    try {
+        response = await fetch(route, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify(body),
+        });
+    } catch (_) {
+        /* IT NEVER GOT THERE, so there is no sentence to quote — one of the two
+         * cases § 6.9 lets MolView write a message of its own. The browser's
+         * own wording for this is "Failed to fetch", which reads as a bug in the
+         * page rather than as something the reader can act on. */
+        throw new Error(
+            "Could not reach the server. Check your connection and try again.");
+    }
+    if (!response.ok) {
+        /* THE BODY IS WHERE THE REASON IS, and not reading it is how the reason
+         * used to be lost. This threw `route + ": " + status` — a line nobody
+         * could act on — while the server had answered 400 with the sentence
+         * that says what to do: "swap two lattice vectors or negate one". The
+         * envelope is `{ok: false, error}` at every door (web-api.md), so the
+         * sentence is one read away and was never taken. */
+        throw said(await bodyOf(response),
+                   "The server refused the request and gave no reason.");
+    }
+    /* A 200 CARRYING SOMETHING THAT IS NOT JSON is rarer and lands in the same
+     * place: a proxy or a cache answering in the server's stead. Letting the
+     * parser's own rejection through would put "Unexpected token <" in front of
+     * the reader, which is the kind of sentence § 6.9 exists to keep off the
+     * screen. */
+    try {
+        return await response.json();
+    } catch (_) {
+        throw new Error("The server's answer could not be read.");
+    }
+}
+
+/* The answer's own words if it has any, ours if it has none — § 6.9: "the words
+ * are the server's, unchanged... MolView writes a message itself only when there
+ * is none to quote". */
+function said(payload, fallback) {
+    const words = payload && typeof payload.error === "string"
+        && payload.error.trim();
+    return new Error(words || fallback);
+}
+
+/* The body of a refusal, or nothing. It is JSON in every case the server itself
+ * writes, and not JSON when something upstream answered instead — a proxy, a
+ * crash page. This must not throw: it runs on the failure path, and a parse
+ * error raised here would replace the reason with a second, worse one. */
+async function bodyOf(response) {
+    try {
+        return await response.json();
+    } catch (_) {
+        return null;
+    }
 }

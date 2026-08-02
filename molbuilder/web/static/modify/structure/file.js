@@ -100,14 +100,19 @@
             if (!gate || !gate.ok) {
                 return { ok: false, cancelled: !!(gate && gate.cancelled) };
             }
-            // n_atoms (cosmetic, for the status line) reads off the loaded MODEL --
-            // the single source; null if the model isn't reachable (test contexts).
+            /* n_atoms is cosmetic — it fills in the status line.
+             *
+             * It comes from the page coordinator's snapshot, which reads the
+             * viewer the page mounted. This used to look the viewer up by name in
+             * a global that MolView has published nothing to since it was rebuilt,
+             * so the count was always null and the line always read "loaded". */
             var n = null;
             try {
-                var d = root.molbuilder && root.molbuilder.molview
-                        && root.molbuilder.molview.data;
-                var s = d && typeof d.getStructure === "function" && d.getStructure();
-                if (s && Array.isArray(s.atoms)) n = s.atoms.length;
+                var page = root.molbuilder && root.molbuilder.structurePage;
+                var snap = (page && page.getCanvasSnapshot)
+                    ? page.getCanvasSnapshot() : null;
+                var st = snap && snap.structure;
+                if (st && Array.isArray(st.elements)) n = st.elements.length;
             } catch (_) { /* n_atoms is cosmetic */ }
             return { ok: true, n_atoms: n };
         }).catch(function (err) {

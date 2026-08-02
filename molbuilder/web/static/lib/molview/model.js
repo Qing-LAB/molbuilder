@@ -183,7 +183,29 @@ export function createModel(opts) {
             selection.adopt(state.selection || []);
             view.reset();
         },
-        store: opts.workspace || { read: async () => null, write: async () => {} },
+        /* THE WORKSPACE'S FRONT DOOR, handed in at mount, and the viewer's own
+         * name as the tag it saves under (workspace.md § 4, § 5).
+         *
+         * The stand-in below is for a viewer built with no workspace at all — a
+         * unit test of something else, which must not be made to care about
+         * saving. It answers the same calls and keeps nothing, so nothing here
+         * has to check whether it is real. It is NOT a default for production:
+         * a viewer that quietly saved into a black hole would look identical to
+         * one that saved. */
+        workspace: opts.workspace || {
+            persist:           () => null,
+            readState:         async () => null,
+            pruneStatesAbove:  () => {},
+            workspaceId:       () => "no-workspace",
+        },
+        /* NO DEFAULT. A viewer that saves must have been given an owner, and
+         * `mount` refuses to build one without it — so the only way here with
+         * nothing is a model built directly, in a test. Substituting a name
+         * would give every such viewer the same one, which is a shared slot
+         * wearing the look of a private one: the failure the tag exists to
+         * prevent, arrived at by helpfulness. Missing, the first save is
+         * refused by the workspace, which is where it should be refused. */
+        tag: opts.owner,
         onBadge: () => announceStructure(),
     });
 

@@ -37,53 +37,47 @@ _FAKES = r"""
 // door: molview.data.load({text, filename, source, periodicity,
 // annotations}).  Helper preserved as _mkFakeCanvas for
 // test-name continuity.
+/* A stand-in VIEWER, speaking the surface molview.md § 9.3 actually lists.
+ *
+ * It used to speak isEmpty / isDirty / getSource / getLastSavedTo / markDirty /
+ * markSaved — six names MolView has never had, so this file tested page.js
+ * against an invention while every one of those calls was `undefined` on the
+ * real thing. What replaced them:
+ *
+ *   isEmpty()        -> getStructure() === null   (nothing loaded reads as nothing)
+ *   isDirty()        -> uncommitted               (a value, raised inside the gate)
+ *   markDirty()      -> nothing; the edit raised it
+ *   markSaved(path)  -> nothing; the PAGE keeps where it saved (§ 6.7)
+ *   getSource()      -> nothing; the viewer tracks contents, not files
+ */
 function _mkFakeCanvas(initial) {
     initial = initial || {};
     let state = {
-        empty:      initial.empty !== undefined ? initial.empty : true,
-        dirty:      !!initial.dirty,
-        structure:  initial.structure || null,
-        source:     initial.source || {kind: "blank", file: null,
-                                       generator_input: null},
-        lastSaveTo: initial.lastSaveTo || null,
+        structure:   initial.empty === false
+            ? (initial.structure || { text: "seeded" })
+            : (initial.structure || null),
+        uncommitted: !!initial.dirty,
     };
     const calls = [];
     return {
-        // Public surface page.js uses (molview.data names).
-        isEmpty:        () => state.empty,
-        isDirty:        () => state.dirty,
-        getStructure:   () => state.structure,
-        getSource:      () => state.source,
-        getLastSavedTo: () => state.lastSaveTo,
-        // The ONE atomic whole-model load door (molview.data model primitive).
-        // installMolecule forwards {text, filename, source, periodicity,
-        // annotations}; record the full arg so tests can assert the payload,
-        // and mirror text/source into the state so getStructure() reflects the load.
+        getStructure: () => state.structure,
+        get uncommitted() { return state.uncommitted; },
         installMolecule: (arg) => {
-            state.empty     = false;
-            state.dirty     = false;
-            state.structure = { text: arg.text };
-            state.source    = arg.source;
+            state.structure   = { text: arg.text };
+            state.uncommitted = false;
             calls.push({fn: "installMolecule", arg: arg,
                         structure: { text: arg.text },
                         source: arg.source});
             return Promise.resolve();
         },
-        markDirty: () => {
-            state.dirty = true;
-            calls.push({fn: "markDirty"});
-        },
-        markSaved: (p) => {
-            state.dirty      = false;
-            state.lastSaveTo = p;
-            calls.push({fn: "markSaved", path: p});
-        },
         subscribe: (cb) => {
             calls.push({fn: "onChange"});
             return () => {};
         },
-        // Test inspection helpers.
-        _state: () => ({...state}),
+        _edit:  () => { state.uncommitted = true; },
+        _state: () => ({ empty: state.structure === null,
+                         dirty: state.uncommitted,
+                         structure: state.structure }),
         _calls: () => calls.slice(),
     };
 }
@@ -309,7 +303,7 @@ class TestLoadGateDirtyCanvas:
                 envelope:   r,
                 modalCalls: modal._calls(),
                 setCount:   setCalls.length,
-                stillDirty: canvas.isDirty(),
+                stillDirty: canvas._state().dirty,
                 stillText:  canvas.getStructure().text,
             }));
         ''')
@@ -326,31 +320,49 @@ class TestLoadGateDirtyCanvas:
 
 class TestModifierHelpers:
 
-    def test_mark_dirty_after_modification_delegates(self):
+    def test_the_edit_raises_the_badge_not_the_page(self):
+        """`markDirtyAfterModification` no longer touches the viewer.
+
+        "There is unsaved work here" is the viewer's own answer, raised inside
+        its gate after a change lands (molview.md § 11.2). A panel setting it
+        from outside is a second writer of one fact — and the panels called this
+        AFTER their edit, so the viewer had already said so.
+        """
         out = _run_node('''
             const canvas = _mkFakeCanvas({ empty: false, dirty: false });
             page._bind(canvas, _mkFakeModal(false));
-            page.markDirtyAfterModification();
+            canvas._edit();                       // the op itself raised it
+            page.markDirtyAfterModification();    // and this does nothing
             console.log(JSON.stringify({
-                isDirty: canvas.isDirty(),
-                calls:   canvas._calls().map(c => c.fn),
+                isDirty: canvas._state().dirty,
+                touched: canvas._calls().map(c => c.fn),
             }));
         ''')
         assert out["isDirty"] is True
-        assert "markDirty" in out["calls"]
+        assert out["touched"] == [], (
+            f"the page wrote to the viewer to say something the viewer already "
+            f"knew: {out['touched']}"
+        )
 
-    def test_mark_saved_to_delegates(self):
+    def test_where_it_was_saved_is_the_pages_own_note(self):
+        """The page chose the destination, so the page remembers it.
+
+        The viewer tracks contents, not files (molview.md § 6.7): it was never
+        told where anything was written, and asking it produced `undefined`.
+        """
         out = _run_node('''
             const canvas = _mkFakeCanvas({ empty: false, dirty: true });
             page._bind(canvas, _mkFakeModal(false));
             page.markSavedTo("/p/saved.xyz");
             console.log(JSON.stringify({
-                isDirty:    canvas.isDirty(),
-                lastSavedTo: canvas.getLastSavedTo(),
+                lastSavedTo: page.getCanvasSnapshot().lastSaveTo,
+                touched:     canvas._calls().map(c => c.fn),
             }));
         ''')
-        assert out["isDirty"] is False
         assert out["lastSavedTo"] == "/p/saved.xyz"
+        assert out["touched"] == [], (
+            "recording where the page saved must not write to the viewer"
+        )
 
 
 # ----- snapshot + onChange --------------------------------------- #
@@ -374,7 +386,9 @@ class TestSnapshot:
         assert out["isDirty"] is True
         assert out["structure"] == {
             "source_format": "pdb", "text": "HETATM"}
-        assert out["source"]["kind"] == "smiles"
+        # No `source`: the viewer tracks contents, not where they came from
+        # (molview.md § 6.7), so the snapshot cannot carry one.
+        assert "source" not in out
         assert out["lastSaveTo"] is None
 
     def test_onCanvasChange_is_a_passthrough(self):
@@ -418,23 +432,26 @@ class TestUnboundErrors:
         assert out["rejected"] is True
         assert "not bound" in out["msg"]
 
-    def test_synchronous_helpers_throw_when_unbound(self):
+    def test_the_helpers_that_need_a_viewer_refuse_without_one(self):
+        """Only the two that ASK the viewer something.
+
+        `markDirtyAfterModification` and `markSavedTo` used to be here as well.
+        Neither touches the viewer any more — the first says something the
+        viewer already knows, the second records a fact the page owns — so
+        neither has anything to refuse.
+        """
         out = _run_node('''
             const r = {};
-            for (const m of ["markDirtyAfterModification",
-                             "markSavedTo",
-                             "getCanvasSnapshot",
-                             "onCanvasChange"]) {
+            for (const m of ["getCanvasSnapshot", "onCanvasChange"]) {
                 let threw = false;
                 try {
-                    if (m === "markSavedTo") page[m]("/p");
-                    else if (m === "onCanvasChange") page[m](() => {});
+                    if (m === "onCanvasChange") page[m](() => {});
                     else page[m]();
                 } catch (e) { threw = true; }
                 r[m] = threw;
             }
             console.log(JSON.stringify(r));
         ''')
-        for m in ("markDirtyAfterModification", "markSavedTo",
-                  "getCanvasSnapshot", "onCanvasChange"):
+        # The two that ASK the viewer something still refuse without one.
+        for m in ("getCanvasSnapshot", "onCanvasChange"):
             assert out[m] is True
