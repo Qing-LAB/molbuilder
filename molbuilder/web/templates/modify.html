@@ -871,7 +871,6 @@
    so the CSP `script-src 'self'` contract holds.  Pre-fix the
    inline block was silently dropped in production and the
    popover never wired up. #}
-<script src="{{ url_for('static', filename='lib/region-label-popover-init.js') }}"></script>
 {# molview.mount's build path also wires the trajectory bar (mountFrameControls);
    load it before mount.js. #}
 <script type="module" src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>

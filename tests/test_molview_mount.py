@@ -1316,14 +1316,17 @@ def test_a_reserved_label_reads_differently_and_so_does_each_of_them():
 
 
 def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
-    """A label already on the structure is something the structure can be asked
-    for, so it is offered rather than retyped — and a typo while retyping makes a
-    SECOND label that looks like the first, which is a whole extra region as far
-    as anything downstream is concerned.
+    """A label is offered, never retyped — a typo while retyping makes a SECOND
+    label that looks like the first, which is a whole extra region as far as
+    anything downstream is concerned.
 
-    The list is read from `getRegions` — the same one walk everything else reads
-    (§ 6.6) — and never kept (§ 5.2), so it follows the structure with nothing to
-    keep in step.
+    TWO SOURCES, ONE LIST. The five predefined names are offered before anyone
+    has used them, because nearly every device structure needs them and typing
+    `L-electrode` by hand is where `L-Electrode` comes from. Everything the
+    structure itself carries is offered beside them, read from `getRegions` and
+    never kept (§ 5.2), so the list follows the structure with nothing to keep in
+    step. A predefined name is a SPELLING, not a meaning: MolView assigns none of
+    them (§ 6.6).
     """
     out = _run(
         """
@@ -1366,12 +1369,23 @@ def test_the_labels_in_play_are_offered_so_none_has_to_be_retyped():
         }));
         """
     )
-    assert out["offered"][:2] == ["bridge", "frozen_atoms"], (
-        "every label the structure carries must be offered, the reserved one "
-        f"among them — it is an ordinary label (§ 6.6): {out['offered']}"
+    assert out["offered"][:5] == ["L-electrode", "R-electrode", "bridge",
+                                  "interface", "frozen_atoms"], (
+        "the five predefined names come first, in the order the device reads: "
+        f"{out['offered']}"
     )
-    assert len(out["offered"]) == 3, (
-        f"the labels in play, plus a way to name a new one: {out['offered']}"
+    assert out["offered"][-1] == "", (
+        f"the last entry is the way to name a new label: {out['offered']}"
+    )
+    # `bridge` and `frozen_atoms` are BOTH carried here and predefined -- offered
+    # once, not twice, or the same name would appear as two choices.
+    assert out["offered"].count("bridge") == 1, out["offered"]
+    assert out["offered"].count("frozen_atoms") == 1, (
+        "the reserved label is offered like any other, and only once — it is an "
+        f"ordinary label (§ 6.6): {out['offered']}"
+    )
+    assert len(out["offered"]) == 6, (
+        f"five predefined + nothing else carried + a way to name a new one: {out['offered']}"
     )
     assert out["boxHiddenForExisting"] is True, (
         "the typing box is in the way once an existing label is chosen"
@@ -1463,6 +1477,79 @@ def test_typing_in_a_filter_row_does_not_replace_the_control_being_typed_in():
     )
     assert out["rowsNow"] == 2, (
         "adding a row IS a change to the set and must rebuild them"
+    )
+
+
+def test_by_label_offers_the_defined_names_and_nothing_else():
+    """§ 9.5: what is worth offering is read from the structure — and for a label
+    rule, what is worth offering is the whole of what can match.
+
+    A label that is not defined matches no atom, so a free-text box on this rule
+    can only ever produce an empty selection and a user wondering why. It is also
+    the second place a name gets retyped into a near-duplicate, after the Assign
+    chooser. So `by label` CHOOSES; the other three rules still type, because an
+    element symbol, an index range and a residue name are typed, not chosen.
+    """
+    out = _run(
+        """
+        globalThis.__nextAtoms = [
+            { index: 0, element: "C", x: 0, y: 0, z: 0, regions: ["custom-tag"] },
+            { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
+        ];
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        viewer.data.selection.setEditor("filter");
+        const card = host.querySelector(".molviewer-card");
+        card.querySelector(".molviewer-selection-add-filter-row").click();
+
+        const kindOf = () => card.querySelector(".molviewer-filter-kind");
+        const valueOf = () => card.querySelector(".molviewer-filter-text");
+
+        // A fresh row is `by_element`: typed, not chosen.
+        const asElement = valueOf().tagName;
+
+        kindOf().value = "by_label";
+        kindOf().dispatch("change", { target: kindOf() });
+        const asLabel = valueOf().tagName;
+        const offered = valueOf().children.map(o => o.value);
+
+        // Choosing one reaches the store like any other row edit.
+        const box = valueOf();
+        box.value = "custom-tag";
+        box.dispatch("change", { target: box });
+        const stored = viewer.data.selection.getState().filters[0];
+
+        // Back to a typed rule: the control swaps back.
+        kindOf().value = "by_residue";
+        kindOf().dispatch("change", { target: kindOf() });
+        const backToTyped = valueOf().tagName;
+
+        console.log(JSON.stringify({
+            asElement, asLabel, backToTyped, offered, stored,
+        }));
+        """
+    )
+    assert out["asElement"] == "INPUT", (
+        f"`by element` is typed, not chosen: {out['asElement']}"
+    )
+    assert out["asLabel"] == "SELECT", (
+        "`by label` must offer the defined names rather than a free-text box: "
+        f"{out['asLabel']}"
+    )
+    assert out["backToTyped"] == "INPUT", (
+        "re-kinding back to a typed rule must swap the control back — a chooser "
+        f"left behind is a rule the user cannot express: {out['backToTyped']}"
+    )
+    assert out["offered"][:5] == ["L-electrode", "R-electrode", "bridge",
+                                  "interface", "frozen_atoms"], (
+        f"the five predefined names are offered first: {out['offered']}"
+    )
+    assert "custom-tag" in out["offered"], (
+        "a label the structure carries must be offered beside the predefined "
+        f"ones: {out['offered']}"
+    )
+    assert out["stored"]["value"] == "custom-tag", (
+        f"choosing a name must reach the store like any other row edit: {out['stored']}"
     )
 
 

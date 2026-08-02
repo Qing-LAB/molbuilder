@@ -234,7 +234,6 @@ class TestNoUnsafeInnerHTML:
             # at the top of the same file — no user-controlled data
             # in the value chain.  Region labels (the one dynamic
             # piece) flow through escapeHtml().
-            ("lib/region-label-definitions.js", "panel.innerHTML"),
             # 2026-06-12: forms.js renamed to mutation-bar.js after the
             # v2 buttons-not-inline-forms refactor; the New-project
             # subdir-list innerHTML was deleted with the inline form

@@ -664,11 +664,16 @@ only difference is that something downstream knows what they mean.
 
 Today's set is `frozen_atoms` and the transport vocabulary — `L-electrode`,
 `R-electrode`, `bridge`, `interface`. They are named here as examples, not as a
-list this document keeps: **the list lives with the labels themselves**, in
+list this document keeps: **what each one MEANS lives with the labels
+themselves**, in
 [`model/structure-annotations.md`](?doc=model/structure-annotations.md), keyed by
 name and next to the description each one shows a user. That is deliberate, so
-that adding a reserved meaning touches that list and its translator and nothing
+that adding a reserved MEANING touches that list and its translator and nothing
 else — not this document, and nothing in the viewer.
+
+The viewer holds the same five as **spellings to offer** (below). The two are
+different things and they are allowed to be in different places: a spelling costs
+nothing to know, a meaning is what § 6.6 keeps out of here.
 
 **MolView does not interpret any of them.** It stores them, offers them in the
 label list, filters by them, and writes them out. What `frozen_atoms` *means* —
@@ -676,6 +681,31 @@ that those atoms are held still, which becomes a constraints block in a SIESTA
 input or a freeze list for a geometry optimiser — is decided by the code that
 generates the input, not here. The viewer's job ends at "these atoms carry this
 name".
+
+**The viewer does hold the SPELLINGS, and only the spellings.** Five names are
+offered before anyone has used them — `L-electrode`, `R-electrode`, `bridge`,
+`interface`, `frozen_atoms` — as `PREDEFINED_LABELS` in `model-jobs.js`, beside
+`FROZEN_LABEL` and built from it rather than repeating it.
+
+That is not the module acquiring a meaning. A predefined name is a **spelling**:
+it exists so that the five names nearly every device structure needs are picked
+rather than typed, because a retyped name is how `L-electrode` and `L-Electrode`
+become two regions that look like one. MolView still assigns none of them,
+interprets none of them, and treats a user's own name identically.
+
+**Where a label can be chosen, the choice is the same list.** The predefined
+names first, in the order the device reads; then whatever the loaded structure
+carries that is not already among them; and a name appears once however many
+sources name it. Two controls ask this question — the Assign chooser and the
+filter's `by label` row — and both read the one list, because reading it twice is
+how they come to disagree about what exists.
+
+**`by label` chooses; the other rules type.** A label that is not defined matches
+no atom, so a free-text box on that rule can only ever produce an empty selection
+and a user wondering why. `by element`, `by atom index` and `by residue` stay
+typed: a symbol, a range and a residue name are written, not picked. A row still
+carrying a name that has since gone keeps showing it rather than silently
+becoming the first option — the rule is still what the row says it is.
 
 **Typing a reserved name is allowed, and the viewer says so.** A user can type
 any label they like, including a reserved one. Nothing refuses it — refusing
@@ -3148,6 +3178,8 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen_atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.6 — a reserved label is stored, filtered and drawn like any other | it arrives in the same list, groups through the same walk, filters through the same rule and leaves in the same field; no atom carries the fact twice, and no boundary renames or moves it |
+| § 6.6 — the predefined names are offered, not typed | the five appear in the label chooser and in a `by label` row before any structure carries them, once each however many sources name them, and a user's own name is offered beside them |
+| § 9.5 — `by label` chooses from what is defined | the value control is a chooser for that rule and a text box for the other three, and re-kinding a row swaps it |
 | § 6.6 / § 9.3 — the accessor is the only way in | the designated read agrees with the label store because it is a cut of it, cannot be used to write, and is the one place the reserved name is spelled |
 | § 11.1 — an edit reaches the route it names | the operation's arguments arrive where the route reads them, and the selection lands under the key its row gives; a request the route cannot act on is refused, not answered `ok` |
 | § 11.1 — one mutation in flight | a second edit started while one is running is refused, and only one request leaves |

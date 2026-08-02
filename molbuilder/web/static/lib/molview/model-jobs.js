@@ -53,6 +53,28 @@
  */
 export const FROZEN_LABEL = "frozen_atoms";
 
+
+/* THE NAMES OFFERED BEFORE ANYONE HAS USED THEM.
+ *
+ * A predefined label is a SPELLING, not a meaning. MolView assigns none of
+ * them and interprets none of them (§ 6.6) — it only stops the user retyping
+ * the five names nearly every device structure uses, because a retyped name is
+ * where `L-electrode` and `L-Electrode` become two regions that look like one.
+ *
+ * They are offered wherever a label is chosen, alongside whatever the loaded
+ * structure already carries, and a user is free to define any other name.
+ *
+ * `frozen_atoms` is here as the CONSTANT, never as a second literal: § 6.6 buys
+ * a reserved meaning with one name and one accessor, and this file is where the
+ * name is spelled. */
+export const PREDEFINED_LABELS = [
+    "L-electrode",
+    "R-electrode",
+    "bridge",
+    "interface",
+    FROZEN_LABEL,
+];
+
 /**
  * The server's structure payload, in the shapes of § 6.2.
  *

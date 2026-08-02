@@ -20,6 +20,7 @@
 "use strict";
 
 import { toDisplay } from "./_atom.js";
+import { PREDEFINED_LABELS } from "./model-jobs.js";
 
 
 /**
@@ -1166,11 +1167,27 @@ function mountPanel(doc, card, model, reserved) {
      * every click — and rebuilding a `<select>` under a user who has it open
      * shuts it. Same rule as the filter rows below: rebuild when the SET
      * changes, never because something else did. */
+    /* EVERY LABEL A CONTROL MAY OFFER: the predefined names, then whatever this
+     * structure carries that is not already among them.
+     *
+     * ONE answer, because two controls ask the same question -- the Assign
+     * chooser and the filter's `by label` row. Reading it in two places is how
+     * they come to disagree about what exists.
+     *
+     * Predefined first and in their own order (the device reads left to right:
+     * L-electrode, R-electrode, bridge, interface), then the structure's own,
+     * sorted. § 9.5: what is worth offering is read from the structure -- the
+     * predefined names are added to that reading, never instead of it. */
+    const knownLabels = () => {
+        const carried = Object.keys(model.getRegions() || {}).sort();
+        return PREDEFINED_LABELS.concat(
+            carried.filter((name) => PREDEFINED_LABELS.indexOf(name) < 0));
+    };
+
     let renderedTargets = null;   // the last list of names drawn
 
     function drawTargets() {
-        const regions = model.getRegions() || {};
-        const names = Object.keys(regions).sort();
+        const names = knownLabels();
         /* Compare the LISTS. This used to flatten them into one string and
          * compare that, which needed a separator no name could contain -- the
          * second NUL in this file. Comparing what you already have needs no
@@ -1380,8 +1397,19 @@ function mountPanel(doc, card, model, reserved) {
     let renderedRows = null;
 
     function drawRows(state) {
-        if (renderedRows === state.filters.length) return;
-        renderedRows = state.filters.length;
+        /* REBUILD ON THE SET *AND* ON EACH ROW'S KIND. The count alone was
+         * enough while every row held the same free-text box; it is not now that
+         * `by label` carries a chooser instead. Re-kinding a row leaves the count
+         * unchanged, so a count-only guard would leave the old control in place
+         * and the user typing into a box the rule no longer uses.
+         *
+         * A row's VALUE is still not a reason to rebuild -- that is the caret
+         * bug above, and the control the user typed into already holds it. */
+        const shape = state.filters.map((f) => f.kind);
+        if (renderedRows
+            && renderedRows.length === shape.length
+            && renderedRows.every((kind, at) => kind === shape[at])) return;
+        renderedRows = shape;
         rows.textContent = "";
         if (!state.filters.length) {
             const empty = el("div", "molviewer-filter-empty");
@@ -1409,12 +1437,42 @@ function mountPanel(doc, card, model, reserved) {
                 model.selection.updateFilter(at, { kind: e.target.value });
             });
 
-            const value = el("input", "molviewer-filter-text");
-            value.type = "text";
-            value.value = filter.value;
-            value.addEventListener("input", (e) => {
-                model.selection.updateFilter(at, { value: e.target.value });
-            });
+            /* BY LABEL OFFERS THE DEFINED NAMES, and only those. A label that
+             * does not exist matches nothing, so a free-text box here can only
+             * ever produce an empty selection and a user wondering why -- and it
+             * is the second place a name gets retyped into a near-duplicate.
+             * The other three rules stay free text: an element symbol, an index
+             * range and a residue name are typed, not chosen. */
+            let value;
+            if (filter.kind === "by_label") {
+                value = el("select", "molviewer-filter-text");
+                for (const name of knownLabels()) {
+                    const option = doc.createElement("option");
+                    option.value = name;
+                    option.textContent = name;
+                    value.appendChild(option);
+                }
+                /* A row carrying a name no longer defined keeps it visible
+                 * rather than silently becoming the first option -- the rule the
+                 * user wrote is still what the row says it is. */
+                if (filter.value && knownLabels().indexOf(filter.value) < 0) {
+                    const stale = doc.createElement("option");
+                    stale.value = filter.value;
+                    stale.textContent = filter.value;
+                    value.appendChild(stale);
+                }
+                value.value = filter.value || knownLabels()[0];
+                value.addEventListener("change", (e) => {
+                    model.selection.updateFilter(at, { value: e.target.value });
+                });
+            } else {
+                value = el("input", "molviewer-filter-text");
+                value.type = "text";
+                value.value = filter.value;
+                value.addEventListener("input", (e) => {
+                    model.selection.updateFilter(at, { value: e.target.value });
+                });
+            }
 
             const remove = el("button", "molviewer-filter-remove");
             remove.type = "button";
