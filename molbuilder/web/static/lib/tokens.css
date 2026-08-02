@@ -164,44 +164,6 @@
     --ps-code-fg:           #88aacc;
     --ps-on-accent:         #ffffff;
 
-    /* --- Selection panel (lib/selection-panel.css) ---
-     * Distinct teal/cyan accent + green-include / red-exclude tags
-     * so the selection-panel reads visually distinct from the
-     * sidebar (blue) and the global accent (cool blue).  Greys /
-     * borders reuse the --ps-* family above to keep the surface
-     * palette consistent across the sidebar + panel column. */
-    --sp-accent:          #2a5a78;
-    --sp-accent-strong:   #356f93;
-    --sp-accent-light:    #4b95c2;
-    --sp-accent-bg:       #15263a;
-    --sp-accent-bg-mid:   #1b3a52;
-    --sp-accent-fg:       #cce6ff;
-    /* Region/include tag (green) */
-    --sp-include-bg:      #1f3a1f;
-    --sp-include-fg:      #b9dab9;
-    /* Exclude tag (red) */
-    --sp-exclude-bg:      #3a1f1f;
-    --sp-exclude-fg:      #dab9b9;
-    --sp-exclude-border:  #5a2f2f;
-    /* Hover-state remove / delete affordances (lighter than --error
-     * for legibility on a dark panel background) */
-    --sp-danger-fg:       #ff7070;
-    /* Danger hover + soft-bg used by tag-remove hover state and the
-     * selection-bootstrap-error banner.  Promoted from raw rgba
-     * literals 2026-06-13 — Phase 3 had registered --sp-danger-fg
-     * but left the surrounding hover/banner literals raw in
-     * selection-panel.css.  Per docs/web/ui-contract.md
-     * Rule 4, all selection-panel palette values live here. */
-    --sp-danger-bg-hover:     rgba(255, 80, 80, 0.22);
-    --sp-danger-border-hover: rgba(255, 120, 120, 0.45);
-    --sp-danger-bg-soft:      rgba(255, 112, 112, 0.08);
-    /* Tag-remove button (the little × inside region tags) — neutral
-     * subtle-hover before the danger colour takes over on actual
-     * hover.  Semi-transparent white reads on every region-tag
-     * background colour without per-region overrides. */
-    --sp-tag-remove-bg:       rgba(255, 255, 255, 0.08);
-    --sp-tag-remove-border:   rgba(255, 255, 255, 0.15);
-
     /* --- Workflow-group accents (lib/form-schema.css) ---
      * Three roles used by stage-shaped multi-card forms (the
      * Structure-Optimization stage UI; future Spectrum/Transport

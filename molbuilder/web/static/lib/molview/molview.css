@@ -132,8 +132,8 @@
      * person to widen a button would have made the canvas overlap the rail. */
     --molviewer-size-rail-button:   24px;
     --molviewer-size-rail-gap:      6px;
-    --molviewer-space-xs:      var(--space-xs, 0.4rem);
-    --molviewer-space-sm:      var(--space-sm, 0.6rem);
+    --molviewer-space-xs:      var(--space-xs, 4px);
+    --molviewer-space-sm:      var(--space-sm, 8px);
 
     /* ── The stack over the 3D window ─────────────────────────────────────
      * One scale, in the order the pieces sit in front of each other, so a new
@@ -158,6 +158,50 @@
      * script that applies them. */
     --molviewer-menu-gap:      4px;
     --molviewer-menu-margin:   8px;
+
+    /* ── The panel's palette ────────────────────────────────────────────
+     * The panel came into this module with its colours still in the app's
+     * token file. The greys are shared with other sheets, so they are mapped
+     * here like the rest of the palette; the panel's OWN colours -- the pick
+     * accent, the include/exclude tags, the danger tones -- are declared as
+     * values, because the file that owned them is gone and this module is
+     * their only reader. */
+    --molviewer-color-panel-danger:              var(--ps-danger, #5a1f1f);
+    --molviewer-color-panel-edge:                var(--ps-border, #2a2a2a);
+    --molviewer-color-panel-edge-strong:         var(--ps-border-strong, #3a3a3a);
+    --molviewer-color-panel-hover:               var(--ps-hover, #232323);
+    --molviewer-color-panel-selected-text:       var(--ps-selected-fg, #ffffff);
+    --molviewer-color-panel-text:                var(--ps-fg, #dddddd);
+    --molviewer-color-panel-text-dim:            var(--ps-fg-dim, #888888);
+    --molviewer-color-panel-tile:                var(--ps-bg-tile, #1c1c1c);
+    --molviewer-color-panel-well:                var(--ps-bg-deep, #141414);
+    --molviewer-color-surface-elevated:          var(--bg-card-elev, #232a35);
+    --molviewer-color-warn:                      var(--warn, #fbbf24);
+    --molviewer-color-warn-bg:                   var(--warning-bg, rgba(251, 191, 36, 0.18));
+    --molviewer-font-mono:                       var(--font-mono, ui-monospace, "SF Mono", Consolas, monospace);
+    --molviewer-line-normal:                     var(--line-normal, 1.5);
+    --molviewer-line-snug:                       var(--line-snug, 1.4);
+    --molviewer-space-lg:                        var(--space-lg, 20px);
+    --molviewer-text-2xs:                        var(--text-2xs, 0.6875rem);
+    --molviewer-text-sm:                         var(--text-sm, 0.875rem);
+    --molviewer-text-xs:                         var(--text-xs, 0.78rem);
+
+    /* Values, not references: MolView owns these. */
+    --molviewer-color-chip-remove-bg:            rgba(255, 255, 255, 0.08);
+    --molviewer-color-chip-remove-edge:          rgba(255, 255, 255, 0.15);
+    --molviewer-color-danger-bg-hover:           rgba(255, 80, 80, 0.22);
+    --molviewer-color-danger-edge-hover:         rgba(255, 120, 120, 0.45);
+    --molviewer-color-danger-text:               #ff7070;  /* exempt: the module's own palette value, declared once */
+    --molviewer-color-exclude-bg:                #3a1f1f;  /* exempt: the module's own palette value, declared once */
+    --molviewer-color-exclude-edge:              #5a2f2f;  /* exempt: the module's own palette value, declared once */
+    --molviewer-color-exclude-text:              #dab9b9;  /* exempt: the module's own palette value, declared once */
+    --molviewer-color-include-bg:                #1f3a1f;  /* exempt: the module's own palette value, declared once */
+    --molviewer-color-include-text:              #b9dab9;  /* exempt: the module's own palette value, declared once */
+    --molviewer-color-pick:                      #2a5a78;  /* exempt: the module's own palette value, declared once */
+    --molviewer-color-pick-bg:                   #15263a;  /* exempt: the module's own palette value, declared once */
+    --molviewer-color-pick-bg-mid:               #1b3a52;  /* exempt: the module's own palette value, declared once */
+    --molviewer-color-pick-strong:               #356f93;  /* exempt: the module's own palette value, declared once */
+    --molviewer-color-pick-text:                 #cce6ff;  /* exempt: the module's own palette value, declared once */
 }
 
 /* ==========================================================================
@@ -488,8 +532,8 @@
     /* A resting SHADE (not transparent) so the rail is visually identifiable as the
      * fold/unfold affordance against the card background -- hover/active deepen it.
      * Design tokens (tokens.css), with hex fallbacks for embeds that lack the sheet. */
-    background: var(--bg-input, #262b33);
-    color: var(--text-muted, #6c7280);
+    background: var(--molviewer-color-control);
+    color: var(--molviewer-color-text-faint);
     font-size: 0.85rem;
     line-height: 1;
     border-radius: 6px;
@@ -511,12 +555,12 @@
     transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .molviewer-panel-fold-btn:hover {
-    background: var(--bg-input-focus, #2c323b);
-    color: var(--text-secondary, #a8aebb);
+    background: var(--molviewer-color-control-hover);
+    color: var(--molviewer-color-text-dim);
 }
-.molviewer-panel-fold-btn:active { background: var(--border-strong, #3a3f48); }
+.molviewer-panel-fold-btn:active { background: var(--molviewer-color-edge); }
 .molviewer-panel-fold-btn:focus-visible {
-    outline: 2px solid var(--accent, #6ba6ff);
+    outline: 2px solid var(--molviewer-color-accent);
     outline-offset: -2px;
 }
 
@@ -598,13 +642,13 @@
        row (the knob bar is flex-wrap:wrap) once View/Export leave it less than that -- so a small
        viewer stacks the bar instead of overflowing the canvas. */
     flex: 1 1 15rem;
-    font: var(--text-2xs, 0.6875rem)/1.2 system-ui, sans-serif;
+    font: var(--molviewer-text-2xs)/1.2 system-ui, sans-serif;
     color: var(--molviewer-color-text-dim);
 }
 /* Playback buttons -- ‹ prev, ▶/⏸ play-loop, › next (controls.js). */
 .molviewer-frames-play, .molviewer-frames-step {
     padding: 0.1rem 0.45rem;
-    font-size: var(--text-2xs, 0.6875rem); line-height: 1.4;
+    font-size: var(--molviewer-text-2xs); line-height: 1.4;
     cursor: pointer;
     background: var(--molviewer-color-control);
     color: var(--molviewer-color-text-dim);
@@ -629,19 +673,19 @@
 /* "loop" checkbox -- small; play + ‹/› wrap at the ends when checked. */
 .molviewer-frames-loop {
     display: inline-flex; align-items: center; gap: 0.2rem;
-    font-size: var(--text-2xs, 0.6875rem); cursor: pointer; user-select: none;
+    font-size: var(--molviewer-text-2xs); cursor: pointer; user-select: none;
 }
 .molviewer-frames-loop input { margin: 0; cursor: pointer; }
 .molviewer-frames-speed {
     display: inline-flex; align-items: center; gap: 0.2rem;
-    font-size: var(--text-2xs, 0.6875rem); user-select: none;
+    font-size: var(--molviewer-text-2xs); user-select: none;
 }
 .molviewer-frames-speed-input {
     /* Wide enough for the full value (up to 3000 = 4 digits); the number spinners
      * are hidden so they don't eat the width -- the user types the value.  Paired
      * with the compact loop glyph (⟳) that frees the row space. */
     width: 4.2em; min-width: 4.2em; margin: 0; padding: 1px 3px;
-    font-size: var(--text-2xs, 0.6875rem);
+    font-size: var(--molviewer-text-2xs);
     -moz-appearance: textfield;
     appearance: textfield;
 }
@@ -662,25 +706,25 @@
     z-index: var(--molviewer-layer-overlay);  /* over the drawing AND over the rebuild cover: it only reads */
     display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm);
-    max-width: calc(100% - 2 * var(--space-sm));
-    font-size: var(--text-2xs);
-    line-height: var(--line-snug);
-    color: var(--text-primary);
-    background: var(--bg-card-elev, var(--bg-card));
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-card);
+    gap: var(--molviewer-space-xs);
+    padding: var(--molviewer-space-xs) var(--molviewer-space-sm);
+    max-width: calc(100% - 2 * var(--molviewer-space-sm));
+    font-size: var(--molviewer-text-2xs);
+    line-height: var(--molviewer-line-snug);
+    color: var(--molviewer-color-text);
+    background: var(--molviewer-color-surface-elevated);
+    border: 1px solid var(--molviewer-color-edge);
+    border-radius: var(--molviewer-radius-sm);
+    box-shadow: var(--molviewer-shadow-card);
     pointer-events: none;             /* never intercept viewer drags; the text carries the meaning */
 }
 .molviewer-overlay[hidden] { display: none; }
 /* Corner placement modifiers (the factory picks one). */
-.molviewer-overlay--bottom-right { bottom: var(--space-sm); right: var(--space-sm); }
-.molviewer-overlay--bottom-left  { bottom: var(--space-sm); left:  var(--space-sm); }
+.molviewer-overlay--bottom-right { bottom: var(--molviewer-space-sm); right: var(--molviewer-space-sm); }
+.molviewer-overlay--bottom-left  { bottom: var(--molviewer-space-sm); left:  var(--molviewer-space-sm); }
 /* Semantic tint modifiers (border + surface), consistent with the palette's severity tokens. */
-.molviewer-overlay--warn { border-color: var(--warn);   background: var(--warning-bg); }
-.molviewer-overlay--info { border-color: var(--accent); }
+.molviewer-overlay--warn { border-color: var(--molviewer-color-warn);   background: var(--molviewer-color-warn-bg); }
+.molviewer-overlay--info { border-color: var(--molviewer-color-accent); }
 
 /* SIZING-CONTRACT FAILURE (mount.js): the parent handed the card less than --molviewer-size-card-min-width.
  * The module refuses to render broken/overflowing -- it shows a blank card with a centered message.
@@ -693,15 +737,15 @@
     box-sizing: border-box;
     width: 100%;
     min-height: var(--molviewer-size-window-min);
-    padding: var(--space-lg);
+    padding: var(--molviewer-space-lg);
     text-align: center;
     text-wrap: balance;
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-    line-height: var(--line-normal);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--bg-card);
+    color: var(--molviewer-color-text-dim);
+    font-size: var(--molviewer-text-sm);
+    line-height: var(--molviewer-line-normal);
+    border: 1px solid var(--molviewer-color-edge);
+    border-radius: var(--molviewer-radius-sm);
+    background: var(--molviewer-color-surface);
 }
 
 /* ==========================================================================
@@ -737,7 +781,7 @@
 }
 
 .molviewer-selection-count {
-    color: var(--ps-fg);
+    color: var(--molviewer-color-panel-text);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
@@ -760,8 +804,8 @@
     gap: 0;
     margin: 0 0 0.6rem;
     padding: 2px;
-    background: var(--ps-bg-deep);
-    border: 1px solid var(--ps-border);
+    background: var(--molviewer-color-panel-well);
+    border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 4px;
 }
 
@@ -775,11 +819,11 @@
     transition: background 0.12s, color 0.12s;
 }
 .molviewer-selection-mode-option:hover {
-    background: var(--ps-hover);
+    background: var(--molviewer-color-panel-hover);
 }
 .molviewer-selection-mode-option:has(input:checked) {
-    background: var(--sp-accent-bg);
-    box-shadow: inset 0 0 0 1px var(--sp-accent);
+    background: var(--molviewer-color-pick-bg);
+    box-shadow: inset 0 0 0 1px var(--molviewer-color-pick);
 }
 .molviewer-selection-mode-option input[type="radio"] {
     /* The label text is enough; hide the radio dot.  ``:has()``
@@ -791,13 +835,13 @@
     pointer-events: none;
 }
 .molviewer-selection-mode-option > span {
-    color: var(--ps-fg-dim);
+    color: var(--molviewer-color-panel-text-dim);
     font: 600 12px/1.2 system-ui, sans-serif;
     letter-spacing: 0.03em;
     text-transform: uppercase;
 }
 .molviewer-selection-mode-option:has(input:checked) > span {
-    color: var(--sp-accent-fg);
+    color: var(--molviewer-color-pick-text);
 }
 
 /* ---------- Filter rows ------------------------------------------- */
@@ -805,8 +849,8 @@
 .molviewer-filter-section {
     margin-bottom: 0.6rem;
     padding: 0.5rem;
-    background: var(--ps-bg-deep);
-    border: 1px solid var(--ps-hover);
+    background: var(--molviewer-color-panel-well);
+    border: 1px solid var(--molviewer-color-panel-hover);
     border-radius: 4px;
 }
 
@@ -836,7 +880,7 @@
  * matrix label) all share this ONE block.  Do not re-declare it under a new selector. */
 .molviewer-selection-mini-label,
 .molviewer-cell-readout dt {
-    color: var(--ps-fg-dim);
+    color: var(--molviewer-color-panel-text-dim);
     font: 600 11px/1.2 system-ui, sans-serif;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -845,9 +889,9 @@
 
 .molviewer-selection-combinator-select {
     flex: 1;
-    background: var(--ps-bg-deep);
-    color: var(--ps-fg);
-    border: 1px solid var(--ps-border);
+    background: var(--molviewer-color-panel-well);
+    color: var(--molviewer-color-panel-text);
+    border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 3px;
     padding: 0.18rem 0.4rem;
     font: 11px system-ui, sans-serif;
@@ -875,17 +919,17 @@
     flex: 1;
     padding: 0.18rem 0.5rem;
     font: 600 11px/1.15 system-ui, sans-serif;
-    background: var(--sp-accent-bg-mid);
-    color: var(--sp-accent-fg);
-    border: 1px solid var(--sp-accent);
+    background: var(--molviewer-color-pick-bg-mid);
+    color: var(--molviewer-color-pick-text);
+    border: 1px solid var(--molviewer-color-pick);
     border-radius: 3px;
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .molviewer-selection-apply-filter-btn:hover {
-    background: var(--sp-accent-bg-mid);
-    border-color: var(--sp-accent-strong);
-    color: var(--ps-selected-fg);
+    background: var(--molviewer-color-pick-bg-mid);
+    border-color: var(--molviewer-color-pick-strong);
+    color: var(--molviewer-color-panel-selected-text);
 }
 
 .molviewer-filter-rows {
@@ -896,7 +940,7 @@
 
 .molviewer-filter-empty {
     margin: 0;
-    color: var(--ps-fg-dim);
+    color: var(--molviewer-color-panel-text-dim);
     font: italic 11px/1.3 system-ui, sans-serif;
 }
 
@@ -909,15 +953,15 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0.25rem 0.35rem;
-    background: var(--ps-bg-tile);
-    border: 1px solid var(--ps-border);
+    background: var(--molviewer-color-panel-tile);
+    border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 3px;
 }
 
 .molviewer-filter-kind {
-    background: var(--ps-bg-deep);
-    color: var(--ps-fg);
-    border: 1px solid var(--ps-border);
+    background: var(--molviewer-color-panel-well);
+    color: var(--molviewer-color-panel-text);
+    border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 3px;
     padding: 0.18rem 0.4rem;
     font: 11px system-ui, sans-serif;
@@ -925,9 +969,9 @@
 }
 
 .molviewer-filter-text {
-    background: var(--ps-bg-deep);
-    color: var(--ps-fg);
-    border: 1px solid var(--ps-border);
+    background: var(--molviewer-color-panel-well);
+    color: var(--molviewer-color-panel-text);
+    border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 3px;
     padding: 0.18rem 0.4rem;
     font: 11px ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
@@ -936,8 +980,8 @@
 
 .molviewer-filter-remove {
     background: transparent;
-    color: var(--ps-fg-dim);
-    border: 1px solid var(--ps-border);
+    color: var(--molviewer-color-panel-text-dim);
+    border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 3px;
     width: 1.8em;
     height: 1.8em;
@@ -948,9 +992,9 @@
     transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
 .molviewer-filter-remove:hover:not(:disabled) {
-    color: var(--sp-danger-fg);
-    border-color: var(--ps-danger);
-    background: var(--sp-exclude-bg);
+    color: var(--molviewer-color-danger-text);
+    border-color: var(--molviewer-color-panel-danger);
+    background: var(--molviewer-color-exclude-bg);
 }
 
 /* ---------- Atom list --------------------------------------------- */
@@ -958,9 +1002,9 @@
 .molviewer-selection-list-wrap {
     position: relative;
     margin: 0;
-    border: 1px solid var(--ps-border);
+    border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 4px;
-    background: var(--ps-bg-deep);
+    background: var(--molviewer-color-panel-well);
     max-height: 340px;
     overflow: auto;
 }
@@ -974,16 +1018,16 @@
 .molviewer-atoms-table thead {
     position: sticky;
     top: 0;
-    background: var(--ps-bg-deep);
+    background: var(--molviewer-color-panel-well);
     z-index: 1;
     /* Subtle bottom border to separate header from rows on scroll. */
-    box-shadow: inset 0 -1px 0 var(--ps-border);
+    box-shadow: inset 0 -1px 0 var(--molviewer-color-panel-edge);
 }
 .molviewer-atoms-table th {
     text-align: left;
     padding: 0.35rem 0.5rem;
     font-weight: 600;
-    color: var(--ps-fg-dim);
+    color: var(--molviewer-color-panel-text-dim);
     font-family: system-ui, sans-serif;
     font-size: 11px;
     letter-spacing: 0.05em;
@@ -992,30 +1036,30 @@
 
 .molviewer-atoms-table td {
     padding: 0.25rem 0.5rem;
-    color: var(--ps-fg);
-    border-top: 1px solid var(--ps-bg-tile);
+    color: var(--molviewer-color-panel-text);
+    border-top: 1px solid var(--molviewer-color-panel-tile);
     vertical-align: middle;
     white-space: nowrap;
 }
 
 .molviewer-atoms-table tr.molviewer-is-selected td {
-    background: var(--sp-accent-bg);
-    color: var(--sp-accent-fg);
+    background: var(--molviewer-color-pick-bg);
+    color: var(--molviewer-color-pick-text);
 }
 .molviewer-atoms-table tr:hover td {
-    background: var(--ps-bg-deep);
+    background: var(--molviewer-color-panel-well);
 }
 .molviewer-atoms-table tr.molviewer-is-selected:hover td {
-    background: var(--sp-accent-bg);
+    background: var(--molviewer-color-pick-bg);
 }
 
 .molviewer-atoms-table .molviewer-atoms-column-check { width: 1.6em; }
 .molviewer-atoms-table .molviewer-atoms-column-idx   { width: 3em;   text-align: right; }
 .molviewer-atoms-table .molviewer-atoms-column-el    { width: 2.5em; font-weight: 600; }
-.molviewer-atoms-table .molviewer-atoms-column-res   { width: 4em; color: var(--ps-fg-dim); }
+.molviewer-atoms-table .molviewer-atoms-column-res   { width: 4em; color: var(--molviewer-color-panel-text-dim); }
 
 .molviewer-atoms-table .molviewer-atoms-column-labels {
-    color: var(--ps-fg-dim);
+    color: var(--molviewer-color-panel-text-dim);
 }
 
 .molviewer-atoms-table input[type="checkbox"] {
@@ -1042,9 +1086,9 @@
     border-radius: 3px;
 }
 .molviewer-label-region {
-    background: var(--sp-include-bg);
-    color: var(--sp-include-fg);
-    border: 1px solid var(--sp-include-bg);
+    background: var(--molviewer-color-include-bg);
+    color: var(--molviewer-color-include-text);
+    border: 1px solid var(--molviewer-color-include-bg);
 }
 /* ====================================================================
  * RESERVED LABELS.
@@ -1097,8 +1141,8 @@
 }
 
 .molviewer-selection-tag-remove {
-    background: var(--sp-tag-remove-bg);
-    border: 1px solid var(--sp-tag-remove-border);
+    background: var(--molviewer-color-chip-remove-bg);
+    border: 1px solid var(--molviewer-color-chip-remove-edge);
     color: inherit;
     opacity: 0.85;
     padding: 0 0.35em;
@@ -1112,9 +1156,9 @@
 }
 .molviewer-selection-tag-remove:hover {
     opacity: 1;
-    background: var(--sp-danger-bg-hover);
-    border-color: var(--sp-danger-border-hover);
-    color: var(--sp-exclude-fg);
+    background: var(--molviewer-color-danger-bg-hover);
+    border-color: var(--molviewer-color-danger-edge-hover);
+    color: var(--molviewer-color-exclude-text);
 }
 
 /* ---------- Action buttons + Assign block ------------------------- */
@@ -1149,9 +1193,9 @@
 .molviewer-selection-assign-btn,
 .molviewer-selection-add-target-btn,
 .molviewer-selection-remove-target-btn {
-    background: var(--ps-border);
-    color: var(--ps-fg);
-    border: 1px solid var(--ps-border-strong);
+    background: var(--molviewer-color-panel-edge);
+    color: var(--molviewer-color-panel-text);
+    border: 1px solid var(--molviewer-color-panel-edge-strong);
     border-radius: 3px;
     padding: 0.18rem 0.5rem;
     font: 600 11px/1.15 system-ui, sans-serif;
@@ -1165,45 +1209,45 @@
 .molviewer-selection-assign-btn:hover,
 .molviewer-selection-add-target-btn:hover,
 .molviewer-selection-remove-target-btn:hover {
-    background: var(--ps-border-strong);
-    border-color: var(--ps-border-strong);
-    color: var(--ps-selected-fg);
+    background: var(--molviewer-color-panel-edge-strong);
+    border-color: var(--molviewer-color-panel-edge-strong);
+    color: var(--molviewer-color-panel-selected-text);
 }
 
 /* Assign = REPLACE -- blue accent (the "primary" action). */
 .molviewer-selection-assign-btn {
-    background: var(--sp-accent-bg-mid);
-    border-color: var(--sp-accent);
-    color: var(--sp-accent-fg);
+    background: var(--molviewer-color-pick-bg-mid);
+    border-color: var(--molviewer-color-pick);
+    color: var(--molviewer-color-pick-text);
 }
 .molviewer-selection-assign-btn:hover {
-    background: var(--sp-accent-bg-mid);
-    border-color: var(--sp-accent-strong);
-    color: var(--ps-selected-fg);
+    background: var(--molviewer-color-pick-bg-mid);
+    border-color: var(--molviewer-color-pick-strong);
+    color: var(--molviewer-color-panel-selected-text);
 }
 
 /* + Add = UNION -- green accent. */
 .molviewer-selection-add-target-btn {
-    background: var(--sp-include-bg);
-    border-color: var(--sp-include-bg);
-    color: var(--sp-include-fg);
+    background: var(--molviewer-color-include-bg);
+    border-color: var(--molviewer-color-include-bg);
+    color: var(--molviewer-color-include-text);
 }
 .molviewer-selection-add-target-btn:hover {
-    background: var(--sp-include-bg);
-    border-color: var(--sp-include-bg);
-    color: var(--sp-include-fg);
+    background: var(--molviewer-color-include-bg);
+    border-color: var(--molviewer-color-include-bg);
+    color: var(--molviewer-color-include-text);
 }
 
 /* − Remove = DIFFERENCE -- red accent. */
 .molviewer-selection-remove-target-btn {
-    background: var(--sp-exclude-bg);
-    border-color: var(--sp-exclude-border);
-    color: var(--sp-exclude-fg);
+    background: var(--molviewer-color-exclude-bg);
+    border-color: var(--molviewer-color-exclude-edge);
+    color: var(--molviewer-color-exclude-text);
 }
 .molviewer-selection-remove-target-btn:hover {
-    background: var(--sp-exclude-bg);
-    border-color: var(--sp-exclude-border);
-    color: var(--sp-exclude-fg);
+    background: var(--molviewer-color-exclude-bg);
+    border-color: var(--molviewer-color-exclude-edge);
+    color: var(--molviewer-color-exclude-text);
 }
 
 /* Visual divider between SELECT-side controls (mode + filters) and
@@ -1211,7 +1255,7 @@
 .molviewer-selection-divider {
     margin: 0.6rem 0 0.5rem;
     border: 0;
-    border-top: 1px solid var(--ps-border);
+    border-top: 1px solid var(--molviewer-color-panel-edge);
 }
 
 /* The Assign block stacks its Target row and its three verb buttons
@@ -1239,16 +1283,16 @@
 .molviewer-selection-assign-select,
 .molviewer-selection-new-label {
     flex: 1;
-    background: var(--ps-bg-deep);
-    color: var(--ps-fg);
-    border: 1px solid var(--ps-border);
+    background: var(--molviewer-color-panel-well);
+    color: var(--molviewer-color-panel-text);
+    border: 1px solid var(--molviewer-color-panel-edge);
     border-radius: 3px;
     padding: 0.18rem 0.4rem;
     font: 11px system-ui, sans-serif;
     min-width: 0;
 }
 .molviewer-selection-new-label {
-    font-family: var(--font-mono);
+    font-family: var(--molviewer-font-mono);
 }
 
 /* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
@@ -1273,17 +1317,17 @@
     cursor: pointer;
     transition: color 0.12s, border-color 0.12s;
 }
-.molviewer-panel-tab-option:has(input:checked) { border-bottom-color: var(--sp-accent); }
+.molviewer-panel-tab-option:has(input:checked) { border-bottom-color: var(--molviewer-color-pick); }
 .molviewer-panel-tab-option input[type="radio"] {
     position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
 }
 .molviewer-panel-tab-option > span {
-    color: var(--ps-fg-dim);
+    color: var(--molviewer-color-panel-text-dim);
     font: 700 13px/1.2 system-ui, sans-serif;
     letter-spacing: 0.01em;
 }
-.molviewer-panel-tab-option:hover > span { color: var(--ps-fg); }
-.molviewer-panel-tab-option:has(input:checked) > span { color: var(--sp-accent-fg); }
+.molviewer-panel-tab-option:hover > span { color: var(--molviewer-color-panel-text); }
+.molviewer-panel-tab-option:has(input:checked) > span { color: var(--molviewer-color-pick-text); }
 
 /* Cell readout -- read-only display of the resolved periodicity (stage 2). */
 .molviewer-cell-readout {
@@ -1295,7 +1339,7 @@
 /* .molviewer-cell-readout dt caption style comes from the shared .molviewer-selection-mini-label rule (§2.1). */
 .molviewer-cell-readout dd { margin: 0; }
 .molviewer-cell-value {
-    color: var(--ps-fg);
+    color: var(--molviewer-color-panel-text);
     font: 12px/1.4 ui-monospace, monospace;
     word-break: break-word;
     white-space: pre;                    /* the 3x3 keeps its rows (§3b) */
@@ -1404,18 +1448,18 @@
     display:        flex;
     align-items:    center;
     justify-content: center;
-    background:     color-mix(in srgb, var(--bg-card, #1d2128) 60%, transparent);
+    background:     color-mix(in srgb, var(--molviewer-color-surface) 60%, transparent);
     pointer-events: auto;              /* eat clicks on the mid-render scene */
     cursor:         progress;
 }
 .molviewer-window-busy[hidden] { display: none; }
 .molviewer-window-busy-msg {
     padding:        0.35rem 0.8rem;
-    font:           var(--text-xs, 0.75rem)/1.3 system-ui, sans-serif;
+    font:           var(--molviewer-text-xs)/1.3 system-ui, sans-serif;
     color:          var(--molviewer-color-text);
-    background:     var(--bg-card-hover, #232831);
+    background:     var(--molviewer-color-surface-raised);
     border:         1px solid var(--molviewer-color-edge);
-    border-radius:  var(--radius-md, 8px);
+    border-radius:  var(--molviewer-radius-md);
     box-shadow:     0 4px 16px rgba(0,0,0,0.4);
 }
 
@@ -1433,7 +1477,7 @@
        viewer lets the trajectory bar drop to its OWN full-width row below View/Export instead
        of overflowing the canvas.  (A single structure has no bar, so the row never wraps.) */
     flex-wrap:      wrap;
-    row-gap:        var(--space-xs, 0.35rem);
+    row-gap:        var(--molviewer-space-xs);
     gap:            var(--molviewer-space-sm);
     padding:        var(--molviewer-space-sm) var(--molviewer-space-sm);
     background:     var(--molviewer-color-surface);
@@ -1442,7 +1486,7 @@
        chrome sits at (or below) the scale of the surrounding controls (the ~12px toggles,
        11px panel buttons) instead of overpowering them.  --text-2xs (11px) matches the small
        buttons. */
-    font-size:      var(--text-2xs, 0.6875rem);
+    font-size:      var(--molviewer-text-2xs);
     color:          var(--molviewer-color-text);
 }
 
@@ -1530,7 +1574,7 @@
     max-height:     min(28rem, calc(100vh - 8rem));
     overflow:       auto;
     padding:        0.3rem 0.4rem;
-    font-size:      var(--text-2xs, 0.6875rem);   /* compact menu: items inherit this */
+    font-size:      var(--molviewer-text-2xs);   /* compact menu: items inherit this */
     background:     var(--molviewer-color-surface-raised);
     color:          var(--molviewer-color-text);
     border:         1px solid var(--molviewer-color-edge);
@@ -1550,7 +1594,7 @@
    (plus MolView's injected isolate checkbox) stacked with a small gap. */
 .molviewer-menu-heading {
     margin:         0 0 0.2rem 0;
-    font-size:      var(--text-2xs, 0.6875rem);
+    font-size:      var(--molviewer-text-2xs);
     font-weight:    600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -1599,7 +1643,7 @@
     margin-top:     0.4rem;
 }
 .molviewer-menu-radius-row > label {
-    font-size:      var(--text-2xs, 0.6875rem);   /* match the 11px menu, not 0.8rem */
+    font-size:      var(--molviewer-text-2xs);   /* match the 11px menu, not 0.8rem */
     color:          var(--molviewer-color-text-faint);
     flex:           0 0 auto;
 }
@@ -1609,7 +1653,7 @@
     accent-color:   var(--molviewer-color-accent);
 }
 .molviewer-menu-radius-row > output {
-    font-size:      var(--text-2xs, 0.6875rem);
+    font-size:      var(--molviewer-text-2xs);
     color:          var(--molviewer-color-text);
     font-variant-numeric: tabular-nums;
     min-width:      2.2rem;
