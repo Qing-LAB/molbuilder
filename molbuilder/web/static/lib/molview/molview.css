@@ -21,7 +21,6 @@
  * window, never what is inside it.
  */
 
-
 /* ==========================================================================
    THE MODULE'S OWN TOKENS — the one place a value is decided (§ 4, § 5.4)
    ==========================================================================
@@ -141,7 +140,6 @@
     --mv-menu-gap:      4px;
     --mv-menu-margin:   8px;
 }
-
 
 /* ==========================================================================
    The fused card: viewer + panel + the fold (was fused-layout.css)
@@ -383,7 +381,9 @@
                 opacity 0.15s ease;
 }
 
-
+/* The card fills the panel's column, and `min-height: 0` is what lets the page
+ * inside it scroll: without it a flex child refuses to shrink below its content
+ * and the scroll region never forms. */
 .molviewer-panel .molviewer-selection-card {
     flex: 1 1 auto;
     min-height: 0;
@@ -392,13 +392,14 @@
     flex-direction: column;
 }
 .molviewer-panel .molviewer-selection-card > .molviewer-card-header { flex: 0 0 auto; }
-/* :not([hidden]) is CRITICAL: `display: flex` would otherwise override the [hidden]
- * attribute's display:none and show BOTH the Selection AND Cell pages at once (so the tab
- * switch would appear to do nothing). */
-/* The panel's single scroll region is the active page. The tabs header stays
- * put and the page body scrolls when it is taller than the panel, so the panel
- * and the atom list inside it do not each carry their own bar. Scoped to
- * `.molviewer-panel`. */
+
+/* THE PANEL'S ONE SCROLL REGION is the active page: the tabs header stays put
+ * and the page body scrolls when it is taller than the panel, so the panel and
+ * the atom list inside it do not each carry their own bar.
+ *
+ * `:not([hidden])` is CRITICAL: `display: flex` would otherwise override the
+ * [hidden] attribute's display:none and show BOTH the Selection AND Cell pages
+ * at once, so the tab switch would appear to do nothing. */
 .molviewer-panel .molviewer-selection-card > .molviewer-panel-tab:not([hidden]) {
     flex: 1 1 auto;
     min-height: 0;
@@ -505,8 +506,8 @@
 }
 
 /* Folded: the window takes the freed width, so folding EXPANDS the view rather
- * than leaving a gap. Height stays --molviewer-window-extent (capped at
- * --molviewer-window-edge), so the window becomes a wide rectangle. */
+ * than leaving a gap. Height stays --viewer-extent (capped at --viewer-edge),
+ * so the window becomes a wide rectangle. */
 .molviewer-card.molviewer-is-folded .molviewer-window {
     flex: 1 1 auto;
     width: auto;
@@ -625,7 +626,6 @@
     -webkit-appearance: none;
     margin: 0;
 }
-
 
 /* ── VIEWER-OVERLAY FRAMEWORK ─────────────────────────────────────────────────────────────── //
  * ONE shared class for every corner overlay the MolView module draws over the viewer square
@@ -1223,7 +1223,6 @@
     gap: 0.3rem;
 }
 
-
 .molviewer-selection-assign-select,
 .molviewer-selection-new-label {
     flex: 1;
@@ -1238,7 +1237,6 @@
 .molviewer-selection-new-label {
     font-family: var(--font-mono);
 }
-
 
 /* ====================================================================
  * The ⓘ info popover beside Target: a small round trigger and the panel it
@@ -1443,32 +1441,19 @@
 /* caption style from the shared .molviewer-selection-mini-label rule (§2.1); only the layout delta here. */
 
 /* ==========================================================================
-   The measurement readout (was selection/measurement-chip.css)
+   The measurement readout
    ========================================================================== */
 
-/* The measurement readout — xyz / distance / angle, floating over the drawing
- * canvas.  Built by `mountReadout` in ui.js (§ 8.5).
+/* xyz / distance / angle, floating over the drawing canvas.  Built by
+ * `mountReadout` in ui.js (§ 8.5).
  *
- * It is anchored ``position: absolute`` inside `.molviewer-window-wrap`, which
+ * Anchored ``position: absolute`` inside `.molviewer-window-wrap`, which
  * mount.js builds as position:relative, so top/right land on the actual canvas
  * corner.  ``pointer-events: none`` lets clicks pass through to the drawing.
  *
- *   2. ``position: static`` mode (trajectory Inspect panel) —
- *      the chip sits inline in the panel's flow.  An override on
- *      ``.ctab-panel > .selection-measurement-overlay`` rolls
- *      back to static positioning + no pointer-events guard so
- *      the readout is selectable text in the panel body.
- *
- * Monospace + tabular-nums so coords / distances / angles don't
- * jitter as their decimals change.  Border-left + data-kind sets
- * a subtle category colour: grey for xyz, blue for distance,
- * orange for angle (matches the historical Watch-tab pick
- * highlight). */
-/* Trajectory-inspector Inspect panel: the chip lives inline in
- * the panel body (no canvas to overlay), so static positioning
- * with normal margin + a tighter border treatment reads as a
- * regular panel readout.  Pointer-events back on so the text
- * stays selectable without the floating-chip caveat. */
+ * Monospace + tabular-nums so coordinates, distances and angles do not jitter
+ * as their decimals change.  Border-left with data-kind gives each a category
+ * colour: grey for xyz, blue for distance, orange for angle. */
 /* ==========================================================================
    The 3D window's own chrome
    ========================================================================== */
@@ -1511,14 +1496,12 @@
        below, the menu bar takes its natural size and the canvas fills what
        remains. */
     height:         100%;
-    /* Realistic usability floor — below these sizes the 2-menu
-       bar wraps onto two rows and the canvas becomes a strip.
-       Consumers that need smaller (e.g. an icon-mode embed) can
-       override; the defaults guard against accidental tiny cards. */
+    /* Usability floor — below these sizes the menu bar wraps onto two rows
+       and the canvas becomes a strip.  A host that needs smaller can override;
+       the defaults guard against an accidentally tiny card. */
     min-width:      320px;
     min-height:     280px;
 }
-
 
 .molviewer-window-canvas {
     /* Width is 100% so the canvas fills the card's content area, and flex: 1
@@ -1564,9 +1547,8 @@
     box-shadow:     0 4px 16px rgba(0,0,0,0.4);
 }
 
-
 /* ============================================================ */
-/*  Standard knob bar (§ 6.2)                                    */
+/*  The menu bar (§ 8.5)                                         */
 /* ============================================================ */
 
 /* The 2-menu bar: View and Export.  Each menu is a <details> with a <summary>
@@ -1794,7 +1776,6 @@
     border-color:   var(--mv-accent);
 }
 
-
 /* Background row (preset swatches + custom chip) ------------ */
 .molviewer-menu-background-row {
     display:        flex;
@@ -1905,7 +1886,6 @@
     opacity:        0.85;
 }
 
-
 /* Narrow viewports ------------------------------------------ */
 @media (max-width: 480px) {
     .molviewer-menu-bar {
@@ -1972,7 +1952,6 @@
     outline:        2px solid var(--mv-accent);
     outline-offset: 1px;
 }
-
 
 /* ═══ Control sizing — one type size and one height across the panel ═══════
  *
