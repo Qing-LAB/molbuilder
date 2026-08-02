@@ -203,8 +203,9 @@ export function createModel(opts) {
      */
     /* WHAT THE SERVER SAID ABOUT THE LAST ANSWER (§ 6.8).
      *
-     * `{where, list}` -- `where` is "load" or "cell", because the two are shown
-     * in different places, and `list` is the server's `{level, message}` rows
+     * `{where, list}` -- `where` is "load", "structure" or "cell", and it exists
+     * to answer ONE question: does this belong under a Cell-page row, or at the
+     * top of the panel (§ 6.8)? `list` is the server's `{level, message}` rows
      * verbatim. MolView neither writes nor rewords them.
      *
      * NOT STORED, not saved, not restored: they describe one exchange. Any
@@ -456,8 +457,17 @@ export function createModel(opts) {
         readFrame:     (i) => (frames ? frames[i] : null),
         currentFrame:  () => frameIndex,
         readSelection: () => selection.get(),
-        apply: (s, c, countChanged) => {
-            settle(() => put(s, c), { resetFrame: true });
+        apply: (s, c, countChanged, said) => {
+            settle(() => put(s, c), {
+                resetFrame: true,
+                // The structure and what is true of it land in ONE settle, the
+                // same way the cell door below does it. Set afterwards, the
+                // panel would draw against the new structure while the notice
+                // was still the old one's -- § 6.4: no one observes a half
+                // state.
+                notices: (said && said.length)
+                    ? { where: "structure", list: said } : null,
+            });
             // The badge is raised HERE, inside the gate and after the change has
             // landed — which makes two of the contract's rules fall out rather
             // than needing cases of their own: a read-only viewer never reaches

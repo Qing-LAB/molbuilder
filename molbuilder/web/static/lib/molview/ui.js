@@ -979,11 +979,12 @@ function mountPanel(doc, card, model, reserved) {
     header.appendChild(tabs);
     root.appendChild(header);
     /* WHAT THE SERVER SAID ABOUT THE STRUCTURE ITSELF (§ 6.8), above the tabs
-     * so it is visible on either page: a load notice is about the whole
-     * structure, so unlike a cell notice it has no row to sit under. */
-    const loadNotices = el("div", "molviewer-notices");
-    loadNotices.hidden = true;
-    root.appendChild(loadNotices);
+     * so it is visible on either page: a notice about the whole structure --
+     * from a load or from an edit -- has no row to sit under the way a cell
+     * notice does. */
+    const panelNotices = el("div", "molviewer-notices");
+    panelNotices.hidden = true;
+    root.appendChild(panelNotices);
     root.appendChild(pages.selection);
     root.appendChild(pages.cell);
 
@@ -1283,7 +1284,14 @@ function mountPanel(doc, card, model, reserved) {
          * that is gone is gone because the fact is, not because something here
          * remembered to remove it. */
         const said = model.getNotices();
-        drawNotices(loadNotices, said && said.where === "load" ? said.list : []);
+        /* Anything not addressed to the Cell page lands here. Written as "not
+         * cell" rather than a list of accepted names, because a list has to be
+         * extended every time a notice gains a new origin and the failure when
+         * someone forgets is SILENT: the server checks, the answer carries the
+         * verdict, and this line drops it. The eight modify ops became such an
+         * origin on 2026-08-01; nothing here had to change for them, and that
+         * is the point. */
+        drawNotices(panelNotices, said && said.where !== "cell" ? said.list : []);
         // A read-only viewer does not show the controls the gate would swallow.
         assign.hidden = model.mode === "readonly";
     }

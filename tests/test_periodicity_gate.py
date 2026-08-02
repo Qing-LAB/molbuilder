@@ -320,6 +320,81 @@ class TestPeriodicityDoor:
         assert "resolved_cell_origin" in per and "resolved_vacuum" in per
         assert any(n["level"] == "warn" for n in j["notices"])
 
+    def _explicit_box_structure(self):
+        """Three atoms in a row inside a box the USER typed: 4 A cube at the
+        world origin, all three axes isolated.  Manual, so no resolver
+        recomputes it -- what happens to it is only ever reported.
+        """
+        s = Structure(elements=["H", "H", "H"],
+                      positions=np.array([[0.0, 0, 0], [1.0, 0, 0], [2.0, 0, 0]]))
+        s.cell = np.eye(3) * 4.0
+        s.cell_origin = np.zeros(3)
+        s.axis_kind = ("isolated",) * 3
+        s.__post_init__()
+        return s
+
+    def test_moving_one_atom_out_of_an_explicit_box_is_reported(self, client):
+        """A PARTIAL translate moves atoms and leaves the box where it is
+        (``modify.py:422`` -- "``indices`` -> move ONLY those atoms, box
+        untouched"), so it is the op that can strand a manual box.  The user
+        typed this box, so nothing rewrites it; the validation at the single
+        exit says what is now true of it.
+        """
+        s = self._explicit_box_structure()
+        r = client.post("/api/modify/translate", json={
+            "structure": self._envelope(s),
+            "dx": 50.0, "dy": 0.0, "dz": 0.0, "indices": [0]})
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["periodicity"]["cell"][0][0] == 4.0, "the typed box is kept"
+        said = " ".join(n["message"] for n in (body.get("notices") or []))
+        assert "does NOT contain" in said, f"no containment notice: {body.get('notices')}"
+
+    def test_a_derived_box_regrows_around_an_atom_that_moved(self, client):
+        """The box the USER did not type.  Nothing stores a cell for it: the
+        resolver computes one from the atoms + vacuum every time the structure
+        is serialised (``to_wire`` -> ``resolve_cell``), so moving an atom
+        moves the box that reports back.  No healing, no write-back -- the
+        derived cell was never a stored value to correct.
+        """
+        s = Structure(elements=["H", "H", "H"],
+                      positions=np.array([[0.0, 0, 0], [1.0, 0, 0], [2.0, 0, 0]]))
+        s.axis_kind = ("isolated",) * 3
+        s.vacuum = (5.0, 5.0, 5.0)
+        s.__post_init__()
+        assert s.cell is None, "this structure has no cell of its own"
+
+        before = client.post("/api/modify/translate", json={
+            "structure": self._envelope(s),
+            "dx": 0.0, "dy": 0.0, "dz": 0.0}).get_json()
+        after = client.post("/api/modify/translate", json={
+            "structure": self._envelope(s),
+            "dx": 20.0, "dy": 0.0, "dz": 0.0, "indices": [2]}).get_json()
+
+        span_before = before["periodicity"]["resolved_cell"][0][0]
+        span_after = after["periodicity"]["resolved_cell"][0][0]
+        assert span_after > span_before + 15.0, (
+            f"the derived box did not follow the atom: {span_before} -> {span_after}")
+        assert after["periodicity"]["cell"] is None, "still nothing stored"
+        said = " ".join(n["message"] for n in (after.get("notices") or []))
+        assert "does NOT contain" not in said, f"a derived box cannot fail to contain: {said}"
+
+    def test_translating_the_whole_molecule_keeps_the_box_with_it(self, client):
+        """The same distance, every atom: ``affine`` carries ``cell_origin``
+        with the atoms (``structure.py:1619``), so the structure sits in the
+        box exactly as before and there is nothing to report.  This is the
+        pair to the test above -- the warning must depend on the atoms moving
+        RELATIVE to the box, not on their coordinates being large.
+        """
+        s = self._explicit_box_structure()
+        r = client.post("/api/modify/translate", json={
+            "structure": self._envelope(s), "dx": 50.0, "dy": 0.0, "dz": 0.0})
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["periodicity"]["cell_origin"][0] == 50.0, "the box moved too"
+        said = " ".join(n["message"] for n in (body.get("notices") or []))
+        assert "does NOT contain" not in said, f"spurious notice: {body.get('notices')}"
+
     def test_a_fixed_box_is_not_still_reported_as_broken(self, client):
         """molview.md § 6.8: a CONDITION describes the state the answer carries.
 
@@ -1002,3 +1077,102 @@ class TestSiestaNeverReceivesAZeroVolumeCell:
             for r, row in enumerate(rows):
                 length = max(abs(float(x)) for x in row.split())
                 assert length > 1e-6, f"{name}: lattice row {r} is zero"
+
+class TestEveryOpIsChecked:
+    """The guarantee is not "this op can break the box" -- it is that the
+    check RUNS, on every op, every time.
+
+    Each op below is handed a structure that is ALREADY outside its typed
+    box.  Whatever the op does to it, the single exit
+    (``_shared.ok_structure_response``) validates what comes out, so every
+    one of them must say so.  An op that stays silent has found a way past
+    the exit.
+
+    The route list is read from the app, not typed here, so an op added
+    later fails this test until it is covered.
+    """
+
+    #: op -> the minimum body it accepts (the structure is added per-test).
+    #: Read from each route's own validation, molbuilder/web/blueprints/modify.py.
+    OPS = {
+        "/api/modify/delete":      {"indices": [2]},
+        "/api/modify/add_atom":    {"element": "H", "anchor_index": 0,
+                                    "offset": [0.0, 0.0, 1.0]},
+        "/api/modify/orient":      {"anchors": [0, 1]},
+        "/api/modify/rotate":      {"axis": "z", "angle": 30.0},
+        "/api/modify/translate":   {"dx": 1.0, "dy": 0.0, "dz": 0.0},
+        "/api/modify/calibrate":   {},
+        "/api/modify/electrode":   {"element": "Au", "plane": "111",
+                                    "size": [1, 1, 2]},
+        "/api/modify/symmetric_electrodes": {"element": "Au", "plane": "111",
+                                             "size": [1, 1, 2], "gap": 8.0},
+    }
+
+    @pytest.fixture
+    def client(self):
+        pytest.importorskip("flask")
+        from molbuilder.web.app import create_app
+        return create_app(config={}).test_client()
+
+    #: GET, returns dropdown enums -- no structure goes in or out, so there is
+    #: nothing to validate (modify.py:113).
+    NOT_AN_OP = {"/api/modify/meta"}
+
+    def _stranded(self):
+        """Atoms at x = 50..52 in a 4 A box the user typed at the origin."""
+        s = Structure(elements=["H", "H", "H"],
+                      positions=np.array([[50.0, 0, 0], [51.0, 0, 0], [52.0, 0, 0]]))
+        s.cell = np.eye(3) * 4.0
+        s.cell_origin = np.zeros(3)
+        s.axis_kind = ("isolated",) * 3
+        s.__post_init__()
+        return s
+
+    def test_the_op_list_is_complete(self, client):
+        live = {str(r.rule) for r in client.application.url_map.iter_rules()
+                if str(r.rule).startswith("/api/modify/")}
+        missing = live - set(self.OPS) - self.NOT_AN_OP
+        assert not missing, (
+            "these modify ops are not covered by the always-checked test:\n  "
+            + "\n  ".join(sorted(missing))
+            + "\n\nAdd it to OPS with the body it needs, or to NOT_AN_OP with"
+              "\nthe reason it returns no structure."
+        )
+
+    @pytest.mark.parametrize("route", sorted(OPS))
+    def test_every_op_runs_the_check(self, client, route, monkeypatch):
+        """The check RAN.  Not "it printed something" -- a silent response can
+        be perfectly correct (``/api/modify/electrode`` turns two axes
+        periodic, and an atom cannot be outside an axis that wraps), so
+        absence of a message proves nothing in either direction.  What must
+        hold for every op is that the structure it returns went past the
+        validator on its way out.
+        """
+        from molbuilder.web.blueprints import _shared
+        real, seen = _shared.validate_periodicity, []
+
+        def spy(struct):
+            seen.append(struct.n_atoms)
+            return real(struct)
+
+        monkeypatch.setattr(_shared, "validate_periodicity", spy)
+        body = dict(self.OPS[route])
+        body["structure"] = self._stranded().to_dict()
+        r = client.post(route, json=body)
+        assert r.status_code == 200, f"{route}: {r.get_json()}"
+        assert seen, (
+            f"{route} returned a structure that never went past the "
+            f"periodicity check.  Every op leaves through "
+            f"_shared.ok_structure_response; this one found another way out.")
+
+    def test_the_check_reaches_the_user_when_it_has_something_to_say(self, client):
+        """The companion to the test above: running the check is worth nothing
+        if its verdict is dropped between the validator and the wire.  A
+        partial translate strands a typed box, so this op has something to
+        say, and it has to arrive in ``notices``.
+        """
+        body = {"structure": self._stranded().to_dict(),
+                "dx": 1.0, "dy": 0.0, "dz": 0.0}
+        said = client.post("/api/modify/translate", json=body).get_json()
+        messages = [n["message"] for n in (said.get("notices") or [])]
+        assert any("does NOT contain" in m for m in messages), messages

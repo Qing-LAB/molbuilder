@@ -777,12 +777,23 @@ the request. A notice is the server saying "this worked, and here is something
 you should know about the result".
 
 Today they are produced in one place, `periodicity_gate`, and reach MolView
-through two doors:
+through three doors:
 
 | Door | What it validates | When |
 |---|---|---|
 | `/api/build/load` | the structure as read from disk | every load |
 | `/api/structure/periodicity` | the structure as it arrived, then the edit | every cell edit |
+| `/api/modify/*` | the structure the op produced | every edit, all eight ops |
+
+The third door is not eight doors. Every `/api/modify/*` route returns through
+one helper, `ok_structure_response`, and the check lives **in that return path**
+— so an op cannot answer without having been checked. "Always validated" is a
+property of the shape of the code, not of eight authors remembering.
+
+(The eight are delete, add_atom, orient, rotate, translate, calibrate, electrode
+and symmetric_electrodes. There is a ninth `/api/modify/*` route, `meta`, and it
+is not an op: a GET of the dropdown enums, with no structure in either
+direction.)
 
 (`/api/structure/export` returns them too, but MolView does not call it — bytes
 leave through the `files` door, § 6.7.)
@@ -804,8 +815,11 @@ regime change) and seven receipts, one per Cell-page edit.
 
 Receipts clear because the next action makes them stale by definition. Conditions
 clear because MolView **cannot know whether they still hold**: a condition is a
-relationship between the box and the atoms, and only one of the two doors that
-can change them reports.
+relationship between the box and the atoms, and deciding it takes the cell logic,
+which lives on the server and only there. So MolView never re-derives a
+condition — it drops the old one and shows what the next answer says. Every door
+that can move the box or the atoms now reports, so the next answer always has
+one.
 
 Notices are never stored, never saved, and never survive a reload. They describe
 one exchange.
@@ -815,7 +829,14 @@ one exchange.
 | | |
 |---|---|
 | A cell notice | on the **Cell page**, under the row it is about — that is where the user is looking, having just typed one of those numbers |
-| A load notice | one line at the **top of the panel**, above the tabs — it is about the whole structure, so it has no row to sit under |
+| Anything else — a load, an edit | one line at the **top of the panel**, above the tabs — it is about the whole structure, so it has no row to sit under |
+
+The panel line takes **everything that is not a cell notice**, rather than a list
+of names it accepts. A list has to be extended whenever a notice gains a new
+origin, and the failure when someone forgets is silent: the server checks, the
+answer carries the verdict, and the display drops it. The eight modify ops became
+such an origin on 2026-08-01, and the display needed no edit to show them — which
+is the whole reason the rule is written this way round.
 
 Not a corner overlay: both corners are the badge and the measurement readout, and
 a corner is for state that persists, not for something that just happened. Not
@@ -825,14 +846,42 @@ are.
 
 #### Where the logic does NOT close — two gaps, named rather than papered over
 
-**1. An edit can break the cell and nothing checks.** All nine `/api/modify/*`
-routes return no notices. Move an atom outside the box, delete the atom that was
-holding a clearance, translate the structure — the server never re-checks
-containment, so no notice is produced and the display is honestly empty. The rule
-above keeps MolView from *lying* about it (a stale condition is cleared), but the
-condition itself goes unreported until the user next touches the cell. **The fix
-is server-side**: the modify doors would have to validate their result the way
-the cell door does.
+**1. ~~An edit can break the cell and nothing checks.~~** ✅ Fixed 2026-08-01.
+
+All eight `/api/modify/*` ops used to return no notices. Move an atom outside
+the box, delete the atom holding a clearance, translate the structure — nothing
+re-checked containment, so the display was honestly empty. The lifetime rule kept
+MolView from *lying* (a stale condition is cleared), but the condition went
+unreported until the user next touched the Cell page.
+
+The fix is one procedure, followed by every op:
+
+```
+gather   the master copy + the current frame's coordinates + the selection
+rebuild  the server reconstructs the Structure from the body
+apply    the op transforms it                         -> receipts
+settle   explicit cell -> kept verbatim
+         derived  cell -> recomputed from the new positions, at read time
+check    validate the RESULT                          -> conditions
+answer   one envelope: the new structure + both sets
+adopt    one settle: master copy, history, selection, notices — together
+```
+
+`settle` needs no code: `resolve_cell` rebuilds a derived cell on every read, so
+it follows the atoms by construction, and an explicit cell is returned untouched
+— which is precisely the case where atoms can end up outside it, and precisely
+what `check` now reports.
+
+Two properties make it hold rather than depend on care:
+
+* **The check is in the return path, not in the ops.** `ok_structure_response`
+  is the only way out, so an op that says nothing has been checked and had
+  nothing to say — a different thing from not being checked.
+* **The data and its verdict land in one `settle`.** Set afterwards, the panel
+  would draw the new structure beside the previous answer's notice (§ 6.4).
+
+Pinned by `TestEveryOpIsChecked` — the op list is read from the app's own route
+table, so an op added later fails the test until it is covered.
 
 **2. ~~A cell edit's conditions describe the state BEFORE the edit.~~** ✅ Fixed
 2026-08-01, before any display work, because a surface that sometimes shows a
@@ -3272,7 +3321,8 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen_atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.6 — a reserved label is stored, filtered and drawn like any other | it arrives in the same list, groups through the same walk, filters through the same rule and leaves in the same field; no atom carries the fact twice, and no boundary renames or moves it |
-| § 6.8 — a notice reaches the user | a load or a cell edit that answers with notices shows them: a cell notice under the Cell-page row it is about, a load notice at the top of the panel |
+| § 6.8 — a notice reaches the user | a load, a cell edit, or any of the eight modify ops that answers with notices shows them: a cell notice under the Cell-page row it is about, everything else at the top of the panel |
+| § 6.8 — every op is checked | each `/api/modify/*` route validates the structure it returns, because the check is in the shared return path; the op list is read from the app's route table so a new op is covered on arrival |
 | § 6.8 — a notice lives until what it describes changes | an edit to the structure clears the set, and an answer carrying notices replaces it; nothing is stored, saved, or survives a reload |
 | § 6.6 — the predefined names are offered, not typed | the five appear in the label chooser and in a `by label` row before any structure carries them, once each however many sources name them, and a user's own name is offered beside them |
 | § 9.5 — `by label` chooses from what is defined | the value control is a chooser for that rule and a text box for the other three, and re-kinding a row swaps it |

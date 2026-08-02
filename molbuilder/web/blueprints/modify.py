@@ -331,10 +331,14 @@ def api_modify_orient():
 
 @bp.route("/api/modify/rotate", methods=["POST"])
 def api_modify_rotate():
-    """Rotate every atom by ``angle`` degrees (right-hand rule) around
-    the named axis through the origin.
+    """Rotate by ``angle`` degrees (right-hand rule) about the named axis.
 
-    Body: ``{xyz, [...metadata...], axis, angle}``.
+    Body: ``{xyz, [...metadata...], axis, angle, center?, indices?}``.
+
+    ``center`` picks what the axis passes through -- ``"origin"``
+    (default) or ``"centroid"``.  ``indices`` turns ONLY those atoms,
+    about their own centroid, leaving the box where it is; omitted, the
+    whole structure turns and the box turns with it.
 
     Useful for redirecting a tilted molecule's azimuth after an
     ``orient`` op with non-zero angle (e.g. spin a tilt from the
@@ -382,22 +386,28 @@ def api_modify_rotate():
 
 @bp.route("/api/modify/translate", methods=["POST"])
 def api_modify_translate():
-    """Translate every atom rigidly.
+    """Translate the structure, or a named subset of its atoms.
 
-    Two modes (mutually exclusive; ``recenter`` wins if both):
+    THREE modes (``recenter`` wins over the others if both are sent):
 
     * ``{recenter: true}`` -- translate so the geometric centroid
       lands on the origin.  Useful after adding electrode slabs
       shifts the structure off-axis: re-anchoring the centroid
       makes mouse-zoom feel sane and aligns subsequent slab ops
       against a predictable origin.
-    * ``{dx, dy, dz}`` (Å) -- translate by the given vector.
-      Each component defaults to 0.
+    * ``{dx, dy, dz}`` (Å) -- translate EVERY atom by the given
+      vector.  Each component defaults to 0.  The box goes with them:
+      a rigid translation moves ``cell_origin`` by the same vector
+      (``Structure.affine``), so the structure sits in the cell
+      exactly as it did before and containment cannot change.
+    * ``{dx, dy, dz, indices: [...]}`` -- move ONLY those atoms.  The
+      box is NOT moved, because only part of what it contains did.
+      This is the mode that can put atoms outside an explicit cell,
+      and the reason the response is validated on the way out.
 
-    The op is rigid: bonds, angles, residue assignments, and
-    selection indices are all preserved (callers should keep their
-    ``state.selected`` indices across the round-trip; only the
-    coordinates change).
+    Rigid in every mode: bonds, angles, residue assignments and atom
+    ORDER are preserved, so a caller's selection indices survive the
+    round-trip -- only coordinates change.
     """
     body = request.get_json(silent=True) or {}
     try:

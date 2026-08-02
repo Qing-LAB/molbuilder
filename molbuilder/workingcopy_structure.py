@@ -113,7 +113,6 @@ class StructureCodec:
 
     # ---- load durable -> working Structure --------------------------- #
     def load(self, source_path, *,
-             notices_out: "list | None" = None,
              frames_out: "list | None" = None) -> Structure:
         """Read the pair back into a Structure.
 
@@ -142,15 +141,21 @@ class StructureCodec:
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
             molstruct.apply_to_structure(struct, molstruct.load(sidecar_path))
-        # The frame-contract gate on the READ seam too (§ 6.1 clause 1-2:
-        # defaulting/healing is gated by the LOADER and saver of the pair).
-        # Without this, /api/build/load served a corrupted pair unhealed and
-        # MolView drew the box from the world origin -- the live symptom on
-        # projects/hemeC-dithiol (explicit cell, dropped origin).
+        # THE READ SEAM REFUSES A CELL NOTHING CAN BE DONE WITH -- left-handed,
+        # or too small to contain the structure along a non-periodic axis for
+        # any origin.  That is this call's whole job here: a file holding one
+        # must fail on the way in, not become a Structure that every later step
+        # has to cope with.
+        #
+        # IT REPORTS NOTHING.  The gate corrects nothing (verified against its
+        # body: every branch returns the struct it was given), so what it has to
+        # say is a CONDITION -- a fact about the structure as it stands -- and a
+        # condition is answered once, by whoever is about to hand the structure
+        # over.  For the web that is `ok_structure_response`, which validates
+        # every structure it sends.  Collecting them here as well put the same
+        # sentence in one answer twice.
         from .periodicity_gate import validate_periodicity
-        struct, notices = validate_periodicity(struct)
-        if notices_out is not None:
-            notices_out.extend(notices)
+        struct, _conditions = validate_periodicity(struct)
         return struct
 
     # ---- THE ONE GENERATOR: a Structure -> the pair --------------------- #
@@ -288,13 +293,9 @@ class StructureCodec:
 
     # ---- read the pair from disk (alias of load, symmetric name) ----- #
     def read(self, source_path, *,
-             notices_out: "list | None" = None,
              frames_out: "list | None" = None) -> Structure:
         """Symmetric read-side name for :meth:`load` -- parse the geometry +
         apply its paired sidecar into a Structure (missing sidecar => empty
-        metadata, not an error).  ``notices_out`` collects the frame-contract
-        gate's heal notices (structure-periodicity.md 6.1) so the load door
-        can SURFACE a heal instead of silently rewriting the user's state;
-        ``frames_out`` collects every frame of a multi-frame document."""
-        return self.load(source_path, notices_out=notices_out,
-                         frames_out=frames_out)
+        metadata, not an error).  ``frames_out`` collects every frame of a
+        multi-frame document."""
+        return self.load(source_path, frames_out=frames_out)

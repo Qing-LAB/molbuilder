@@ -34,6 +34,7 @@ from molbuilder.structure import (
     annotations_from_json,
 )
 from molbuilder.validation import validate_geometry
+from molbuilder.periodicity_gate import validate_periodicity
 
 
 # J2 2026-06-14: charset guard for region label keys in
@@ -358,10 +359,16 @@ def workspace_payload(
       ``source_format="pdb"`` via ``extra`` plus a ``"text"``
       override at the callsite (see Phase 2 migration in
       :doc:`protocols/workspace-state` § 6).
-    * ``lattice`` is currently always ``None``: the L1 ``Structure``
-      dataclass carries geometry only; lattice belongs to
-      :class:`molbuilder.frame.Frame` / :class:`Trajectory`.  When
-      Structure grows a periodic-cell field, this helper is the
+    * ``lattice`` is always ``None`` here, and NOT because the structure
+      has no cell -- it has one.  ``Structure`` grew ``cell`` /
+      ``cell_origin`` / ``axis_kind`` / ``vacuum``, and they travel in
+      the ``periodicity`` block that :func:`structure_to_dict` takes
+      from ``struct.to_wire()``, together with the resolved views.
+      ``lattice`` is the older single-field spelling that no consumer
+      reads; it stays for the wire shape's sake.  (This note used to
+      say Structure "carries geometry only" and that a future cell
+      field would land here -- it landed elsewhere, on purpose:
+      one block, so a cell cannot half-arrive.)  This helper is the
       one place to add it.
     * ``issues`` is populated via :func:`validate_geometry` — the
       same set the modify-tab response array already exposed.
@@ -507,11 +514,45 @@ def ok_structure_response(
       no per-op selection remap is emitted.
 
     Wraps :func:`structure_to_dict` (which routes through
-    :func:`workspace_payload`) in ``{"ok": True, ...}``.  No
-    extra validate-pass — issues come from the workspace payload
-    via structure_to_dict.
+    :func:`workspace_payload`) in ``{"ok": True, ...}``.
+
+    EVERY STRUCTURE LEAVING FOR THE BROWSER IS CHECKED HERE, and this is the
+    only place it can be done once (structure-periodicity.md § 8.1).  The EIGHT
+    ``/api/modify/*`` ops plus the two build doors return through this helper,
+    and until 2026-08-01 none of the eight ran the gate at all: deleting the atom
+    that held a clearance, or translating the structure out of an explicit box,
+    changed nothing anyone was told about.  (``/api/modify/meta`` is the ninth
+    route and not an op -- a GET of the dropdown enums, no structure either way.)
+
+    Note what does NOT need doing here.  In the DERIVED regime the cell is a
+    computed view -- ``resolve_cell`` builds it from the bounding box and the
+    vacuum on every read -- so it follows the atoms by construction and there is
+    nothing to regenerate.  An EXPLICIT cell is returned verbatim, which is the
+    whole point of it, and is exactly the case where moving atoms can put them
+    outside.  So the op runs, the cell answers for itself, and the check reports.
+
+    ``extra["notices"]`` is the RECEIPTS slot, and it is kept ahead of what is
+    computed here for the order the cell door already uses: what the edit did
+    first, what is now true after it (molview.md § 6.8).  No caller passes it
+    today -- every op's answer is conditions only -- but the merge is not
+    decoration: without it, the assignment below would drop a caller's receipts
+    without a word, which is the failure this whole helper exists to make
+    impossible.
     """
-    return jsonify({"ok": True, **structure_to_dict(struct, extra=extra)})
+    said = list((extra or {}).get("notices") or [])
+    try:
+        _checked, conditions = validate_periodicity(struct)
+        said.extend(conditions)
+    except ValueError as exc:
+        # The gate refuses a left-handed cell or one no origin could fit. A
+        # geometry op cannot produce either -- neither touches the cell -- but a
+        # refusal must not turn a successful edit into a 500, so it is reported
+        # like anything else the user should know.
+        said.append({"level": "warn", "message": str(exc)})
+    merged = dict(extra or {})
+    if said:
+        merged["notices"] = said
+    return jsonify({"ok": True, **structure_to_dict(struct, extra=merged or None)})
 
 
 def err(msg: str, code: int = 400):
@@ -1188,7 +1229,6 @@ def apply_periodicity_from_body(struct, body):
             struct.vacuum = tuple(per["vacuum"])
         # (resolved_* keys are VIEWS -- ignored by design, clause 1.)
         struct.__post_init__()
-    from molbuilder.periodicity_gate import validate_periodicity
     healed, _notices = validate_periodicity(struct)
     return healed
 

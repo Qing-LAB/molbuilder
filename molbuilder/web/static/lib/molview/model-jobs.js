@@ -144,6 +144,13 @@ export function structureFromServer(payload) {
                                        Number(a.z) || 0])],
             forcesPerFrame: null,
         },
+        /* THE VERDICT TRAVELS WITH THE DATA. Every structure-returning route
+         * leaves through the server's one exit, which validates what it is
+         * about to send (structure-periodicity.md § 8.1), so the payload can
+         * carry conditions about the structure beside it. Read HERE, where the
+         * payload becomes this module's shape (§ 11.1), so no caller learns the
+         * wire spelling and no caller can forget to look. */
+        notices: Array.isArray(payload.notices) ? payload.notices : null,
     };
 }
 
@@ -295,8 +302,11 @@ export function createLoad(handed) {
 
         // Replace the whole model at once, then anchor a fresh history on it.
         handed.put(loaded.structure, loaded.coordinates, stemOf(input),
-                   /* what the read said about it (§ 6.8) */
-                   Array.isArray(payload.notices) ? payload.notices : []);
+                   /* what the read said about it (§ 6.8), from the ONE place
+                    * the payload was read -- this line asked the wire for the
+                    * field a second time, ten lines after `structureFromServer`
+                    * had already normalised it. */
+                   loaded.notices || []);
         handed.recordFirstState();
         handed.announce();
         return loaded.structure;
@@ -499,8 +509,13 @@ export function createEdits(handed) {
         }
         const applied = structureFromServer(payload);
         if (!applied) return null;
+        /* The structure AND what the server found true of it, in one handoff.
+         * The check runs on every op because it lives in the return path, not
+         * in the ops -- so an op that says nothing has been checked and had
+         * nothing to say, which is a different thing from not being checked. */
         handed.apply(applied.structure, applied.coordinates,
-                     countChanged(structure, applied.structure));
+                     countChanged(structure, applied.structure),
+                     applied.notices);
         return applied.structure;
     };
 }
