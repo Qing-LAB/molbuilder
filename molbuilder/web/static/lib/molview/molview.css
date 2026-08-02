@@ -193,15 +193,9 @@
     --molviewer-size-panel-min:  320px;               /* min panel width */
     --molviewer-size-fold-width:     22px;                /* the fold-handle rail's width (row layout) */
 
-    /* THE SIZING CONTRACT (embedded-module).  min-width = what MolView ABSOLUTELY needs to render,
-     * DERIVED from the same vars (never a lone magic number).  It is the STACKED minimum
-     * (max(--molviewer-size-window-min, --molviewer-size-panel-min)), NOT the row sum: below the row's viewer+fold+panel width the
-     * card FLIPS to the vertical stacked layout (viewer over panel, the @container query below), so
-     * the card can legitimately be narrower than the row -- it just stacks.  The floor is the wider
-     * of the two stacked pieces; only a host narrower than THAT is a broken embed (mount.js renders a
-     * blank window + error).  There is NO module max-width: the card FILLS its host (width: 100%),
-     * and the PARENT decides how wide per use case, so header + panels always share one width. */
-    --molviewer-size-card-min-width: max(var(--molviewer-size-window-min), var(--molviewer-size-panel-min));
+    /* No module max-width: the card FILLS its host, and the PARENT decides how
+     * wide, so a header and the panels below it always share one width. The
+     * floor itself is declared further down, with the padding it must include. */
     width: 100%;
     min-width: var(--molviewer-size-card-min-width);
 }
@@ -281,12 +275,23 @@
     --molviewer-size-card-border: 1px;
     padding: var(--molviewer-size-card-pad);
 
-    /* The floor GROWS BY THE SURFACE — and it is the same variable, not a second
-     * `min-width` beside it. `--molviewer-size-card-min-width` is read back by mount.js to
-     * decide whether the host is wide enough (§ 8.2); a floor written only into
-     * the CSS property would leave the script checking a number the card no
-     * longer honours, and the check would pass on a card too narrow to draw. One
-     * name, one value, both readers. */
+    /* THE SIZING FLOOR — what MolView absolutely needs in order to render,
+     * derived from the same variables rather than written as a number.
+     *
+     * It is the STACKED minimum, max(window-min, panel-min), not the row sum:
+     * below the row's width the card FLIPS to the vertical layout (the
+     * @container query below), so a narrower card is not broken, it stacks.
+     * Only a host narrower than the wider single piece is a broken embed, and
+     * mount.js renders a blank card with the error in it.
+     *
+     * IT GROWS BY THE SURFACE because the card is `box-sizing: border-box`:
+     * padding and border sit inside the declared width, so a floor omitting
+     * them would be short by exactly that much.
+     *
+     * ONE declaration. mount.js reads this same name back to decide whether the
+     * host is wide enough (§ 8.2), so a second declaration would leave the
+     * script agreeing with whichever the cascade happened to pick. There was
+     * one, without the padding, and it was the half that lost. */
     --molviewer-size-card-min-width: calc(max(var(--molviewer-size-window-min), var(--molviewer-size-panel-min))
                               + 2 * (var(--molviewer-size-card-pad) + var(--molviewer-size-card-border)));
 }
