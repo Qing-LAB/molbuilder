@@ -7,7 +7,7 @@
  * CARRIED, NOT REDESIGNED. This is the validated layout, brought across whole in
  * step G of the rebuild. It is not decoration: § 8.2 leans on it for the SIZING
  * CONTRACT — the square, the shared extent that bottom-aligns the panel with no
- * script, and `--molview-min-width` as the floor mount.js keys its
+ * script, and `--molviewer-size-card-min-width` as the floor mount.js keys its
  * blank-card-with-error path to.
  *
  * The rules below were settled over a long time and several failures they now
@@ -26,7 +26,7 @@
    ==========================================================================
 
    Every colour, distance and stacking order this file uses has ONE name, and
-   that name is declared here. A rule below says `var(--mv-surface)`; it never
+   that name is declared here. A rule below says `var(--molviewer-color-surface)`; it never
    says `#1d2128`, never says `var(--bg-card, #1d2128)`, and never says `24px`
    where a named metric already exists.
 
@@ -46,14 +46,33 @@
        different ones (§ 5.6). Concealment is the same rule the 3D-scene
        constants already follow.
 
-   READ FROM SCRIPT, DELIBERATELY. Three of these are read back by JS with
-   `getComputedStyle`, because they are layout facts the stylesheet owns and the
-   script must agree with rather than restate:
+   NINE CATEGORIES, AND THE NAME SAYS WHICH. A token's prefix is its kind, so
+   the kind cannot be guessed wrong:
 
-     --molview-min-width   mount.js, to decide whether a host is wide enough
-     --mv-menu-gap         ui.js, to place an open menu under its trigger
-     --mv-menu-margin      ui.js, to keep that menu inside the window
-     --mol-scene-*         3dmol-embed.js, for what WebGL cannot be styled with
+     --molviewer-color-*     14  the palette, each mapped to an app token
+     --molviewer-shadow-*     2  card, popover
+     --molviewer-space-*      2  xs, sm
+     --molviewer-radius-*     3  base, sm, md
+     --molviewer-control-*    7  ONE type size and one height for panel controls
+     --molviewer-layer-*      4  stacking order, so no rule invents a z-index
+     --molviewer-size-*      12  layout metrics: card, rail, panel, window, stack
+     --molviewer-menu-*       2  where an open popover sits
+     --molviewer-scene-*      3  3D-scene constants for the WebGL draw
+
+   `color-control` is the control's BACKGROUND; `control-*` is its SIZE. They
+   were one prefix before, which is how a colour and a font size came to look
+   like the same family.
+
+   READ FROM SCRIPT, DELIBERATELY. Six are read back with `getComputedStyle`,
+   because they are facts the stylesheet owns and the script must agree with
+   rather than restate:
+
+     --molviewer-size-card-min-width   mount.js, is the host wide enough
+     --molviewer-menu-gap              ui.js, how far an open menu hangs
+     --molviewer-menu-margin           ui.js, how close to the edge it may come
+     --molviewer-scene-background      3dmol-embed.js, the WebGL clear colour
+     --molviewer-scene-cell-color      3dmol-embed.js, unit-cell wireframe
+     --molviewer-scene-cell-radius     3dmol-embed.js, its thickness
 
    A number that both a rule and a script need lives here and nowhere else. */
 .molviewer-card {
@@ -62,26 +81,26 @@
      * organisation (§ 8.1): the module's own box is the GROUND, the 3D window
      * and the panel are the SURFACES raised on it, and the drawing has a ground
      * of its own — darker, because it is a window and not a card. */
-    --mv-ground:        var(--bg-page,   #14171c);
-    --mv-surface:       var(--bg-card,   #1d2128);
-    --mv-surface-raised: var(--bg-card-hover, #232831);
-    --mv-scene:         var(--bg-code,   #0f1217);
-    --mv-control:       var(--bg-input,  #262b33);
-    --mv-control-hover: var(--bg-input-focus, #2c323b);
+    --molviewer-color-ground:        var(--bg-page,   #14171c);
+    --molviewer-color-surface:       var(--bg-card,   #1d2128);
+    --molviewer-color-surface-raised: var(--bg-card-hover, #232831);
+    --molviewer-color-scene:         var(--bg-code,   #0f1217);
+    --molviewer-color-control:       var(--bg-input,  #262b33);
+    --molviewer-color-control-hover: var(--bg-input-focus, #2c323b);
 
-    --mv-edge:          var(--border-strong, #3a3f48);
-    --mv-edge-soft:     var(--border-soft,   #2c313a);
+    --molviewer-color-edge:          var(--border-strong, #3a3f48);
+    --molviewer-color-edge-soft:     var(--border-soft,   #2c313a);
 
-    --mv-text:          var(--text-primary,   #e6e9ef);
-    --mv-text-dim:      var(--text-secondary, #a8aebb);
-    --mv-text-faint:    var(--text-muted,     #6c7280);
-    --mv-accent:        var(--accent,     #6ba6ff);
-    --mv-accent-on:     var(--bg-page,    #14171c);
-    --mv-accent-wash:   var(--accent-bg,  rgba(107, 166, 255, 0.10));
+    --molviewer-color-text:          var(--text-primary,   #e6e9ef);
+    --molviewer-color-text-dim:      var(--text-secondary, #a8aebb);
+    --molviewer-color-text-faint:    var(--text-muted,     #6c7280);
+    --molviewer-color-accent:        var(--accent,     #6ba6ff);
+    --molviewer-color-accent-on:     var(--bg-page,    #14171c);
+    --molviewer-color-accent-wash:   var(--accent-bg,  rgba(107, 166, 255, 0.10));
 
-    --mv-radius:        var(--radius,    7px);
-    --mv-radius-sm:     var(--radius-sm, 4px);
-    --mv-radius-md:     var(--radius-md, 8px);
+    --molviewer-radius:        var(--radius,    7px);
+    --molviewer-radius-sm:     var(--radius-sm, 4px);
+    --molviewer-radius-md:     var(--radius-md, 8px);
 
     /* ── One size for every control in the panel ────────────────────────────
      *
@@ -94,27 +113,27 @@
      *
      * These are the one answer, so a new control inherits the size instead of
      * picking its own. */
-    --mv-control-font:   11px;
-    --mv-control-family: system-ui, sans-serif;
-    --mv-control-line:   1.15;
-    --mv-control-height: 22px;      /* the row height buttons/selects/inputs share */
-    --mv-control-pad-y:  0.18rem;
-    --mv-control-pad-x:  0.5rem;
-    --mv-control-box:    13px;      /* checkbox / radio, matched to the text */
-    --mv-shadow:        var(--shadow-card, 0 1px 0 rgba(255,255,255,0.02) inset,
+    --molviewer-control-font:   11px;
+    --molviewer-control-family: system-ui, sans-serif;
+    --molviewer-control-line:   1.15;
+    --molviewer-control-height: 22px;      /* the row height buttons/selects/inputs share */
+    --molviewer-control-pad-y:  0.18rem;
+    --molviewer-control-pad-x:  0.5rem;
+    --molviewer-control-box:    13px;      /* checkbox / radio, matched to the text */
+    --molviewer-shadow-card:        var(--shadow-card, 0 1px 0 rgba(255,255,255,0.02) inset,
                                            0 4px 12px rgba(0,0,0,0.30));
-    --mv-shadow-pop:    0 8px 24px rgba(0, 0, 0, 0.45);
+    --molviewer-shadow-popover:    0 8px 24px rgba(0, 0, 0, 0.45);
 
     /* ── Metrics ──────────────────────────────────────────────────────────
      * The rail's width is DERIVED from what is in it, not asserted beside it.
      * A button and the gap that separates it from the window are the two facts;
-     * `--rail-w` is their sum, and the square's arithmetic (§ 8.2) reads that
+     * `--molviewer-size-rail-width` is their sum, and the square's arithmetic (§ 8.2) reads that
      * sum. Written as a third number it was right by coincidence, and the next
      * person to widen a button would have made the canvas overlap the rail. */
-    --mv-rail-button:   24px;
-    --mv-rail-gap:      6px;
-    --mv-space-xs:      var(--space-xs, 0.4rem);
-    --mv-space-sm:      var(--space-sm, 0.6rem);
+    --molviewer-size-rail-button:   24px;
+    --molviewer-size-rail-gap:      6px;
+    --molviewer-space-xs:      var(--space-xs, 0.4rem);
+    --molviewer-space-sm:      var(--space-sm, 0.6rem);
 
     /* ── The stack over the 3D window ─────────────────────────────────────
      * One scale, in the order the pieces sit in front of each other, so a new
@@ -126,10 +145,10 @@
      * measurement — goes over it, so a rebuild does not blank the numbers a user
      * is reading. The popover clears the lot, including whatever the HOST has
      * stacked nearby. */
-    --mv-layer-chrome:  3;      /* the View/Export row and the frame bar */
-    --mv-layer-busy:    4;      /* the "Updating view…" cover — eats clicks */
-    --mv-layer-overlay: 5;      /* the badge, the measurement readout */
-    --mv-layer-menu:    1000;   /* an open menu, fixed to the viewport */
+    --molviewer-layer-chrome:  3;      /* the View/Export row and the frame bar */
+    --molviewer-layer-busy:    4;      /* the "Updating view…" cover — eats clicks */
+    --molviewer-layer-overlay: 5;      /* the badge, the measurement readout */
+    --molviewer-layer-menu:    1000;   /* an open menu, fixed to the viewport */
 
     /* ── Where an open menu sits (read by ui.js) ──────────────────────────
      * The popover is `position: fixed` — it must be, because it opens over the
@@ -137,8 +156,8 @@
      * measure it against its trigger. These two numbers are that placement, and
      * they live here with every other distance rather than as literals in the
      * script that applies them. */
-    --mv-menu-gap:      4px;
-    --mv-menu-margin:   8px;
+    --molviewer-menu-gap:      4px;
+    --molviewer-menu-margin:   8px;
 }
 
 /* ==========================================================================
@@ -149,11 +168,11 @@
  * card, with a foldable panel (molview-module.md).
  *
  * The model (simple, container-query driven -- correct in any embed width):
- *   - VIEWER: a 1:1 square, bounded [--viewer-min, --viewer-edge].  It never stretches to
+ *   - VIEWER: a 1:1 square, bounded [--molviewer-size-window-min, --molviewer-size-window-edge].  It never stretches to
  *     fill the card ("won't occupy the full width"); leftover width goes to the panel.
- *   - PANEL: takes the leftover width, with its OWN --panel-min.
+ *   - PANEL: takes the leftover width, with its OWN --molviewer-size-panel-min.
  *   - WIDE: viewer | handle | panel, side by side.
- *   - STACK (viewer on top): the moment the card can't hold --viewer-min + --panel-min
+ *   - STACK (viewer on top): the moment the card can't hold --molviewer-size-window-min + --molviewer-size-panel-min
  *     side by side (the container query below), so the viewer never overflows the card.
  *   - FOLD: show/hide the panel -- width-only when wide, height-only when stacked. */
 
@@ -166,25 +185,25 @@
      * space.  ONE source of truth for the rail width -- and it is the SUM OF WHAT IS IN IT
      * (a button, and the gap to the window), so widening a button cannot leave the square's
      * arithmetic behind. */
-    --rail-w: calc(var(--mv-rail-button) + var(--mv-rail-gap));
+    --molviewer-size-rail-width: calc(var(--molviewer-size-rail-button) + var(--molviewer-size-rail-gap));
 
     /* ONE source of truth for the square's size + the stack threshold. */
-    --viewer-edge: min(60vh, calc(560px + var(--rail-w)));   /* max square edge + rail */
-    --viewer-min: calc(320px + var(--rail-w));               /* min square width + rail */
-    --panel-min:  320px;               /* min panel width */
-    --fold-w:     22px;                /* the fold-handle rail's width (row layout) */
+    --molviewer-size-window-edge: min(60vh, calc(560px + var(--molviewer-size-rail-width)));   /* max square edge + rail */
+    --molviewer-size-window-min: calc(320px + var(--molviewer-size-rail-width));               /* min square width + rail */
+    --molviewer-size-panel-min:  320px;               /* min panel width */
+    --molviewer-size-fold-width:     22px;                /* the fold-handle rail's width (row layout) */
 
     /* THE SIZING CONTRACT (embedded-module).  min-width = what MolView ABSOLUTELY needs to render,
      * DERIVED from the same vars (never a lone magic number).  It is the STACKED minimum
-     * (max(--viewer-min, --panel-min)), NOT the row sum: below the row's viewer+fold+panel width the
+     * (max(--molviewer-size-window-min, --molviewer-size-panel-min)), NOT the row sum: below the row's viewer+fold+panel width the
      * card FLIPS to the vertical stacked layout (viewer over panel, the @container query below), so
      * the card can legitimately be narrower than the row -- it just stacks.  The floor is the wider
      * of the two stacked pieces; only a host narrower than THAT is a broken embed (mount.js renders a
      * blank window + error).  There is NO module max-width: the card FILLS its host (width: 100%),
      * and the PARENT decides how wide per use case, so header + panels always share one width. */
-    --molview-min-width: max(var(--viewer-min), var(--panel-min));
+    --molviewer-size-card-min-width: max(var(--molviewer-size-window-min), var(--molviewer-size-panel-min));
     width: 100%;
-    min-width: var(--molview-min-width);
+    min-width: var(--molviewer-size-card-min-width);
 }
 
 /* ── THE CARD SURFACE (§ 4, § 5.4) ──────────────────────────────────────────
@@ -214,19 +233,19 @@
  * (which is what shipped first) draws three coincident rectangles and reads as
  * one undivided slab with controls loose on it. */
 .molviewer-card {
-    background:    var(--mv-ground);
-    border:        var(--card-border) solid var(--mv-edge-soft);
-    border-radius: var(--mv-radius);
-    color:         var(--mv-text);
+    background:    var(--molviewer-color-ground);
+    border:        var(--molviewer-size-card-border) solid var(--molviewer-color-edge-soft);
+    border-radius: var(--molviewer-radius);
+    color:         var(--molviewer-color-text);
 }
 
 .molviewer-card .molviewer-window-frame,
 .molviewer-card .molviewer-selection-card {
-    background:    var(--mv-surface);
-    border:        var(--card-border) solid var(--mv-edge);
-    border-radius: var(--mv-radius);
-    box-shadow:    var(--mv-shadow);
-    color:         var(--mv-text);
+    background:    var(--molviewer-color-surface);
+    border:        var(--molviewer-size-card-border) solid var(--molviewer-color-edge);
+    border-radius: var(--molviewer-radius);
+    box-shadow:    var(--molviewer-shadow-card);
+    color:         var(--molviewer-color-text);
 }
 
 /* A surface costs WIDTH, and the sizing contract above is arithmetic that has to
@@ -240,14 +259,14 @@
  *    for; under content-box the same padding would push the canvas OUT of the
  *    square and into the panel.
  *
- * 2. `--card-pad` is a NAMED part of the derivation, not a value sprinkled on
+ * 2. `--molviewer-size-card-pad` is a NAMED part of the derivation, not a value sprinkled on
  *    three rules. The outer card's padding and border sit OUTSIDE the content
- *    box that `100cqw` measures, so `--viewer-extent` is unaffected — but they
+ *    box that `100cqw` measures, so `--molviewer-size-window-extent` is unaffected — but they
  *    are inside `min-width`, so the floor has to grow by exactly them or a host
  *    that honours the floor still delivers a card too narrow to hold the row.
  *
  * There is NO gutter rule here. The gap between the window and the panel is the
- * fold handle's own rail, `--fold-w`, which the extent already subtracts (§ 8.3);
+ * fold handle's own rail, `--molviewer-size-fold-width`, which the extent already subtracts (§ 8.3);
  * adding a `gap` would spend width the arithmetic has not been told about and
  * overflow the row by exactly that much. */
 .molviewer-card,
@@ -258,23 +277,23 @@
 }
 
 .molviewer-card {
-    --card-pad:    var(--mv-space-sm);
-    --card-border: 1px;
-    padding: var(--card-pad);
+    --molviewer-size-card-pad:    var(--molviewer-space-sm);
+    --molviewer-size-card-border: 1px;
+    padding: var(--molviewer-size-card-pad);
 
     /* The floor GROWS BY THE SURFACE — and it is the same variable, not a second
-     * `min-width` beside it. `--molview-min-width` is read back by mount.js to
+     * `min-width` beside it. `--molviewer-size-card-min-width` is read back by mount.js to
      * decide whether the host is wide enough (§ 8.2); a floor written only into
      * the CSS property would leave the script checking a number the card no
      * longer honours, and the check would pass on a card too narrow to draw. One
      * name, one value, both readers. */
-    --molview-min-width: calc(max(var(--viewer-min), var(--panel-min))
-                              + 2 * (var(--card-pad) + var(--card-border)));
+    --molviewer-size-card-min-width: calc(max(var(--molviewer-size-window-min), var(--molviewer-size-panel-min))
+                              + 2 * (var(--molviewer-size-card-pad) + var(--molviewer-size-card-border)));
 }
 
 .molviewer-card .molviewer-window-frame,
 .molviewer-card .molviewer-selection-card {
-    padding: var(--card-pad);
+    padding: var(--molviewer-size-card-pad);
 }
 
 /* WIDE (row): viewer | handle | panel.  justify-content:flex-start so the viewer sits at the card's
@@ -290,30 +309,30 @@
 
     /* The viewer square's ACTUAL edge -- ONE value the viewer AND the panel both key off,
      * so the panel's height matches the viewer with no JS and no fixed magic number:
-     *   - capped at --viewer-edge (never fills the card),
-     *   - but shrinks so the panel (--panel-min) + handle (--fold-w) always fit beside it.
+     *   - capped at --molviewer-size-window-edge (never fills the card),
+     *   - but shrinks so the panel (--molviewer-size-panel-min) + handle (--molviewer-size-fold-width) always fit beside it.
      * 100cqw is the CARD's own content width (it is `container-type: inline-size`), so this
      * is content-driven -- it resolves against the embed, not the viewport (contract §3).
-     * The @container query below flips to stacked before this could fall under --viewer-min,
+     * The @container query below flips to stacked before this could fall under --molviewer-size-window-min,
      * so the max() floor is only belt-and-braces. */
-    --viewer-extent: max(var(--viewer-min),
-                         min(var(--viewer-edge),
-                             calc(100cqw - var(--panel-min) - var(--fold-w))));
+    --molviewer-size-window-extent: max(var(--molviewer-size-window-min),
+                         min(var(--molviewer-size-window-edge),
+                             calc(100cqw - var(--molviewer-size-panel-min) - var(--molviewer-size-fold-width))));
 }
 
-/* Viewer: a 1:1 square sized to --viewer-extent (== card leftover, capped at --viewer-edge).
+/* Viewer: a 1:1 square sized to --molviewer-size-window-extent (== card leftover, capped at --molviewer-size-window-edge).
  * A DEFINITE square edge -- so the panel beside it can be told the SAME height and the two
  * bottom-align at any width, declaratively (the trajectory-inspector `align-items: stretch`
  * pattern, expressed here as a shared extent). */
 .molviewer-card-body > .molviewer-window {
     flex: 0 0 auto;
-    width: var(--viewer-extent);
-    height: var(--viewer-extent);
+    width: var(--molviewer-size-window-extent);
+    height: var(--molviewer-size-window-extent);
     position: relative;            /* anchors the measurement-chip overlay */
 }
 
 /* The viewer chain FILLS the square, end to end -- so the embedded drawing canvas is sized by
- * the module's own square (--viewer-extent), never by the embed's standalone default height.
+ * the module's own square (--molviewer-size-window-extent), never by the embed's standalone default height.
  * This is the module OWNING its viewer sizing: a consumer drops the fused card into any host
  * and the viewer fits, with zero per-tab CSS.  Each level fills its parent and clips, so a
  * transient over-size during the drawing's init can't spill out of the square (into the panel / the
@@ -327,16 +346,16 @@
     /* Viewer chrome -- the module owns it (it BUILDS .molviewer-window-wrap).  Moved here from
      * form-components.css, dropping that sheet's parallel aspect-ratio / min-height /
      * max-height:56vh sizing which duplicated (and drifted from -- 56vh vs the module's
-     * 60vh --viewer-edge) the square the module already sizes above. */
-    border: 1px solid var(--mv-edge);
-    border-radius: var(--mv-radius-sm);
+     * 60vh --molviewer-size-window-edge) the square the module already sizes above. */
+    border: 1px solid var(--molviewer-color-edge);
+    border-radius: var(--molviewer-radius-sm);
     /* THE SAME GROUND THE DRAWING CLEARS TO. It was `#ffffff`, justified as
      * "matches the drawing canvas's own clear colour" — which stopped being true
      * the moment the scene took the card's ground, and was invisible only
      * because the inner card covers it. A colour nothing can see is still a
      * colour that will be seen the day the layer above it moves. */
-    background: var(--mv-scene);
-    box-shadow: var(--mv-shadow);
+    background: var(--molviewer-color-scene);
+    box-shadow: var(--molviewer-shadow-card);
 }
 .molviewer-window .molviewer-window-wrap > .molviewer-window-inner {
     width: 100%;
@@ -357,19 +376,19 @@
  * wider. */
 .molviewer-panel {
     /* GROWS to absorb the width the host gives beyond the viewer square + fold (flex-grow:1), with
-     * --panel-min as its floor -- so the content fills the card (aligned with the header) instead of
+     * --molviewer-size-panel-min as its floor -- so the content fills the card (aligned with the header) instead of
      * the pair centering.  Folding is still a clean width collapse to 0 (the .molviewer-is-folded rule below
      * overrides flex-basis/width).  Width tracks the CARD width, NOT the atom-list<->filter switch
      * (that does not change the card width), so switching tabs never resizes. */
     flex: 1 1 auto;
-    min-width: var(--panel-min);
+    min-width: var(--molviewer-size-panel-min);
     /* HEIGHT == the viewer square's extent -- the SAME value the viewer uses, so the two
      * bottom-align at EVERY width with no JS and no fixed magic number.  The viewer's
      * View/Export bar is an OVERLAY inside its square (adds no height), so the panel's
      * bottom lines up with the viewer's.  Switching atom-list <-> filter (or Selection <->
      * Cell) never resizes it; the inner list/filter is the scroll region.  A ``min-height``
      * floor keeps it usable if the viewport (hence the extent) is very short. */
-    height: var(--viewer-extent);
+    height: var(--molviewer-size-window-extent);
     min-height: 18rem;
     /* ONE scroll, not nested: the panel is a flex column that does not scroll
      * itself (overflow hidden); the ACTIVE page inside is the single scroll
@@ -453,7 +472,7 @@
 .molviewer-panel-fold-btn {
     flex: 0 0 auto;
     align-self: stretch;
-    width: var(--fold-w);   /* the SAME rail width the layout math reserves (one source of truth) */
+    width: var(--molviewer-size-fold-width);   /* the SAME rail width the layout math reserves (one source of truth) */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -506,7 +525,7 @@
 }
 
 /* Folded: the window takes the freed width, so folding EXPANDS the view rather
- * than leaving a gap. Height stays --viewer-extent (capped at --viewer-edge),
+ * than leaving a gap. Height stays --molviewer-size-window-extent (capped at --molviewer-size-window-edge),
  * so the window becomes a wide rectangle. */
 .molviewer-card.molviewer-is-folded .molviewer-window {
     flex: 1 1 auto;
@@ -515,33 +534,33 @@
 .molviewer-card.molviewer-is-folded .molviewer-panel-fold-chevron { transform: rotate(0deg); }  /* folded: point RIGHT -- clicking reveals the panel */
 
 /* ---- STACK only when the card is too NARROW to hold BOTH min-widths side by side:
-   the threshold is the DERIVED sum --viewer-min(320 + --rail-w 30 = 350) + --fold-w(22) +
-   --panel-min(320) = 692 (contract §7.1 -- the one named breakpoint).  It MUST track
-   --viewer-min: the rail added 30px to the viewer square, so the row needs 30px more before
-   both mins fit -- otherwise between 664 and 692 the row layout is on but --viewer-min +
-   --panel-min overflow the card.  (@container can't read var(), so this literal mirrors the
-   sum by hand.)  Above it, the row's shared --viewer-extent keeps the viewer + panel
+   the threshold is the DERIVED sum --molviewer-size-window-min(320 + --molviewer-size-rail-width 30 = 350) + --molviewer-size-fold-width(22) +
+   --molviewer-size-panel-min(320) = 692 (contract §7.1 -- the one named breakpoint).  It MUST track
+   --molviewer-size-window-min: the rail added 30px to the viewer square, so the row needs 30px more before
+   both mins fit -- otherwise between 664 and 692 the row layout is on but --molviewer-size-window-min +
+   --molviewer-size-panel-min overflow the card.  (@container can't read var(), so this literal mirrors the
+   sum by hand.)  Above it, the row's shared --molviewer-size-window-extent keeps the viewer + panel
    bottom-aligned; below it we go VERTICAL: viewer on top (a centred square), panel below. */
 @container (max-width: 692px) {
-    /* ONE stacked square edge -- capped at --viewer-edge (which already carries the sole
+    /* ONE stacked square edge -- capped at --molviewer-size-window-edge (which already carries the sole
      * allowed 60vh, §7.1), else the CARD's own width (100cqw).  Reused by the viewer AND the
      * panel so both columns share one width and align; no fresh viewport magic number. */
     .molviewer-card-body {
         flex-direction: column;
         align-items: center;
-        --stack-extent: min(var(--viewer-edge), 100cqw);
+        --molviewer-size-stack-extent: min(var(--molviewer-size-window-edge), 100cqw);
     }
     .molviewer-card-body > .molviewer-window {
-        width: var(--stack-extent);              /* centred square */
-        height: var(--stack-extent);
+        width: var(--molviewer-size-stack-extent);              /* centred square */
+        height: var(--molviewer-size-stack-extent);
     }
     .molviewer-panel {
         /* Same width as the viewer square (columns align), and a height that MATCHES the
          * square too -- a generous, stable frame (so the atom list is usable, not a sliver)
          * that an atom-list <-> filter switch never resizes; the inner list scrolls, and the
          * page scrolls if the stacked pair exceeds the viewport (the narrow case). */
-        width: var(--stack-extent);
-        height: var(--stack-extent);
+        width: var(--molviewer-size-stack-extent);
+        height: var(--molviewer-size-stack-extent);
         min-height: 22rem;
         transition: height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
     }
@@ -575,22 +594,22 @@
        viewer stacks the bar instead of overflowing the canvas. */
     flex: 1 1 15rem;
     font: var(--text-2xs, 0.6875rem)/1.2 system-ui, sans-serif;
-    color: var(--mv-text-dim);
+    color: var(--molviewer-color-text-dim);
 }
 /* Playback buttons -- ‹ prev, ▶/⏸ play-loop, › next (controls.js). */
 .molviewer-frames-play, .molviewer-frames-step {
     padding: 0.1rem 0.45rem;
     font-size: var(--text-2xs, 0.6875rem); line-height: 1.4;
     cursor: pointer;
-    background: var(--mv-control);
-    color: var(--mv-text-dim);
-    border: 1px solid var(--mv-edge-soft);
+    background: var(--molviewer-color-control);
+    color: var(--molviewer-color-text-dim);
+    border: 1px solid var(--molviewer-color-edge-soft);
     border-radius: 4px;
 }
-.molviewer-frames-play:hover, .molviewer-frames-step:hover { background: var(--mv-control-hover); }
+.molviewer-frames-play:hover, .molviewer-frames-step:hover { background: var(--molviewer-color-control-hover); }
 .molviewer-frames-slider {
     flex: 1 1 4rem; min-width: 3rem;
-    accent-color: var(--mv-accent);
+    accent-color: var(--molviewer-color-accent);
     cursor: pointer;
 }
 .molviewer-frames-counter { font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
@@ -635,7 +654,7 @@
  * .molviewer-window-wrap (position: relative already), so it tracks the viewer in every fold state. */
 .molviewer-overlay {
     position: absolute;
-    z-index: var(--mv-layer-overlay);  /* over the drawing AND over the rebuild cover: it only reads */
+    z-index: var(--molviewer-layer-overlay);  /* over the drawing AND over the rebuild cover: it only reads */
     display: inline-flex;
     align-items: center;
     gap: var(--space-xs);
@@ -658,7 +677,7 @@
 .molviewer-overlay--warn { border-color: var(--warn);   background: var(--warning-bg); }
 .molviewer-overlay--info { border-color: var(--accent); }
 
-/* SIZING-CONTRACT FAILURE (mount.js): the parent handed the card less than --molview-min-width.
+/* SIZING-CONTRACT FAILURE (mount.js): the parent handed the card less than --molviewer-size-card-min-width.
  * The module refuses to render broken/overflowing -- it shows a blank card with a centered message.
  * The --unmountable modifier drops the min-width so the message itself fits the too-small host. */
 .molviewer-card--unmountable { min-width: 0; }
@@ -668,7 +687,7 @@
     justify-content: center;
     box-sizing: border-box;
     width: 100%;
-    min-height: var(--viewer-min);
+    min-height: var(--molviewer-size-window-min);
     padding: var(--space-lg);
     text-align: center;
     text-wrap: balance;
@@ -1320,8 +1339,8 @@
      * styled by CSS directly, so the draw code LOOKS THESE UP via getComputedStyle on THIS
      * element -- named, discoverable, and CONCEALED to the MolView module (scoped here, not on
      * global :root, so they never leak into the page's token namespace). */
-    --mol-cell-wireframe-color:  #888;   /* exempt: per-module 3D-scene token (unit-cell box line colour, read by getComputedStyle for the WebGL draw); no UI palette token matches this mid-gray */
-    --mol-cell-wireframe-radius: 0.04;   /* box line thickness, in ANGSTROM (3D world units, NOT px) */
+    --molviewer-scene-cell-color:  #888;   /* exempt: per-module 3D-scene token (unit-cell box line colour, read by getComputedStyle for the WebGL draw); no UI palette token matches this mid-gray */
+    --molviewer-scene-cell-radius: 0.04;   /* box line thickness, in ANGSTROM (3D world units, NOT px) */
     /* The 3D window's ground -- painted TWICE from this one value: by the
      * stylesheet on .molviewer-window-canvas below, and by the drawing library as its
      * clear colour (3dmol-embed.js reads it here, as it does the two above).
@@ -1329,16 +1348,16 @@
      * only alternative -- and two literals is how the drawing came to paint
      * itself white inside a dark card.
      *
-     * It is the module's own scene token (`--mv-scene`) under the name the
+     * It is the module's own scene token (`--molviewer-color-scene`) under the name the
      * SEALED LAYER reads, so the drawing's ground and the card's palette are one
      * decision made in one place. */
-    --mol-scene-background: var(--mv-scene);
+    --molviewer-scene-background: var(--molviewer-color-scene);
 
     /* Inherit base .card padding + radius from tokens.css; this
        file only adds the per-component overrides. */
     display:        flex;
     flex-direction: column;
-    gap:            var(--mv-space-xs);
+    gap:            var(--molviewer-space-xs);
     /* When the host gives the card a fixed height, the flex column must
        respect it instead of stretching beyond it.  With the canvas's flex: 1
        below, the menu bar takes its natural size and the canvas fills what
@@ -1361,9 +1380,9 @@
     /* The same value the drawing clears its scene to, so the element behind the
        canvas and the canvas itself are one surface — no seam while the drawing
        starts, none if it fails. */
-    background:     var(--mv-scene);
-    border:         1px solid var(--mv-edge-soft);
-    border-radius:  var(--mv-radius-sm);
+    background:     var(--molviewer-color-scene);
+    border:         1px solid var(--molviewer-color-edge-soft);
+    border-radius:  var(--molviewer-radius-sm);
     overflow:       hidden;
 }
 
@@ -1376,7 +1395,7 @@
 .molviewer-window-busy {
     position:       absolute;
     inset:          0;
-    z-index:        var(--mv-layer-busy);   /* over everything with a button in it, under what only reads */
+    z-index:        var(--molviewer-layer-busy);   /* over everything with a button in it, under what only reads */
     display:        flex;
     align-items:    center;
     justify-content: center;
@@ -1388,9 +1407,9 @@
 .molviewer-window-busy-msg {
     padding:        0.35rem 0.8rem;
     font:           var(--text-xs, 0.75rem)/1.3 system-ui, sans-serif;
-    color:          var(--mv-text);
+    color:          var(--molviewer-color-text);
     background:     var(--bg-card-hover, #232831);
-    border:         1px solid var(--mv-edge);
+    border:         1px solid var(--molviewer-color-edge);
     border-radius:  var(--radius-md, 8px);
     box-shadow:     0 4px 16px rgba(0,0,0,0.4);
 }
@@ -1410,16 +1429,16 @@
        of overflowing the canvas.  (A single structure has no bar, so the row never wraps.) */
     flex-wrap:      wrap;
     row-gap:        var(--space-xs, 0.35rem);
-    gap:            var(--mv-space-sm);
-    padding:        var(--mv-space-sm) var(--mv-space-sm);
-    background:     var(--mv-surface);
-    border-bottom:  1px solid var(--mv-edge-soft);
+    gap:            var(--molviewer-space-sm);
+    padding:        var(--molviewer-space-sm) var(--molviewer-space-sm);
+    background:     var(--molviewer-color-surface);
+    border-bottom:  1px solid var(--molviewer-color-edge-soft);
     /* Compact base: the View/Export triggers + every menu item inherit this, so the viewer
        chrome sits at (or below) the scale of the surrounding controls (the ~12px toggles,
        11px panel buttons) instead of overpowering them.  --text-2xs (11px) matches the small
        buttons. */
     font-size:      var(--text-2xs, 0.6875rem);
-    color:          var(--mv-text);
+    color:          var(--molviewer-color-text);
 }
 
 /* THE ROW RIDES OVER THE 3D WINDOW (§ 8.1), and that is a STACKING question, not
@@ -1441,7 +1460,7 @@
     top: 0;
     left: 0;
     right: 0;
-    z-index: var(--mv-layer-chrome);
+    z-index: var(--molviewer-layer-chrome);
 }
 
 /* Top-level menu trigger ------------------------------------- */
@@ -1455,10 +1474,10 @@
     align-items:    center;
     gap:            0.35em;
     padding:        0.28rem 0.7rem;
-    background:     var(--mv-control);
-    color:          var(--mv-text);
+    background:     var(--molviewer-color-control);
+    color:          var(--molviewer-color-text);
     border:         1px solid transparent;
-    border-radius:  var(--mv-radius-sm);
+    border-radius:  var(--molviewer-radius-sm);
     font-weight:    500;
     cursor:         pointer;
     user-select:    none;
@@ -1475,14 +1494,14 @@
 }
 .molviewer-menu > summary:hover,
 .molviewer-menu > summary:focus-visible {
-    background:     var(--mv-control-hover);
-    border-color:   var(--mv-edge);
+    background:     var(--molviewer-color-control-hover);
+    border-color:   var(--molviewer-color-edge);
     outline:        none;
 }
 .molviewer-menu[open] > summary {
-    background:     var(--mv-accent);
-    color:          var(--mv-accent-on);
-    border-color:   var(--mv-accent);
+    background:     var(--molviewer-color-accent);
+    color:          var(--molviewer-color-accent-on);
+    border-color:   var(--molviewer-color-accent);
 }
 
 /* Menu body (popover) --------------------------------------- */
@@ -1498,7 +1517,7 @@
    flash at 0,0). */
 .molviewer-menu-body {
     position:       fixed;
-    z-index:        var(--mv-layer-menu);
+    z-index:        var(--molviewer-layer-menu);
     top:            -9999px;
     left:           -9999px;
     min-width:      11.5rem;
@@ -1507,17 +1526,17 @@
     overflow:       auto;
     padding:        0.3rem 0.4rem;
     font-size:      var(--text-2xs, 0.6875rem);   /* compact menu: items inherit this */
-    background:     var(--mv-surface-raised);
-    color:          var(--mv-text);
-    border:         1px solid var(--mv-edge);
-    border-radius:  var(--mv-radius-md);
-    box-shadow:     var(--mv-shadow-pop);
+    background:     var(--molviewer-color-surface-raised);
+    color:          var(--molviewer-color-text);
+    border:         1px solid var(--molviewer-color-edge);
+    border-radius:  var(--molviewer-radius-md);
+    box-shadow:     var(--molviewer-shadow-popover);
 }
 
 /* Sections inside a menu body ------------------------------- */
 .molviewer-menu-section {
     padding:        0.28rem 0.15rem;
-    border-top:     1px solid var(--mv-edge-soft);
+    border-top:     1px solid var(--molviewer-color-edge-soft);
 }
 .molviewer-menu-section:first-child {
     border-top:     none;
@@ -1530,7 +1549,7 @@
     font-weight:    600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color:          var(--mv-text-faint);
+    color:          var(--molviewer-color-text-faint);
 }
 
 /* Style rep button row --------------------------------------- */
@@ -1547,22 +1566,22 @@
     font:           inherit;
     line-height:    1.3;                 /* tight box: match the 11px menu text, not a chunky UA button */
     padding:        0.12rem 0.45rem;
-    background:     var(--mv-control);
-    color:          var(--mv-text);
-    border:         1px solid var(--mv-edge-soft);
-    border-radius:  var(--mv-radius-sm);
+    background:     var(--molviewer-color-control);
+    color:          var(--molviewer-color-text);
+    border:         1px solid var(--molviewer-color-edge-soft);
+    border-radius:  var(--molviewer-radius-sm);
     cursor:         pointer;
     text-align:     center;
     transition:     background 120ms ease, border-color 120ms ease;
 }
 .molviewer-menu-style-btn:hover {
-    background:     var(--mv-control-hover);
-    border-color:   var(--mv-edge);
+    background:     var(--molviewer-color-control-hover);
+    border-color:   var(--molviewer-color-edge);
 }
 .molviewer-menu-style-btn.molviewer-is-active {
-    background:     var(--mv-accent);
-    color:          var(--mv-accent-on);
-    border-color:   var(--mv-accent);
+    background:     var(--molviewer-color-accent);
+    color:          var(--molviewer-color-accent-on);
+    border-color:   var(--molviewer-color-accent);
     font-weight:    500;
 }
 
@@ -1576,17 +1595,17 @@
 }
 .molviewer-menu-radius-row > label {
     font-size:      var(--text-2xs, 0.6875rem);   /* match the 11px menu, not 0.8rem */
-    color:          var(--mv-text-faint);
+    color:          var(--molviewer-color-text-faint);
     flex:           0 0 auto;
 }
 .molviewer-menu-radius-row > input[type="range"] {
     flex:           1 1 auto;
     min-width:      0;
-    accent-color:   var(--mv-accent);
+    accent-color:   var(--molviewer-color-accent);
 }
 .molviewer-menu-radius-row > output {
     font-size:      var(--text-2xs, 0.6875rem);
-    color:          var(--mv-text);
+    color:          var(--molviewer-color-text);
     font-variant-numeric: tabular-nums;
     min-width:      2.2rem;
     text-align:     right;
@@ -1597,10 +1616,10 @@
 .molviewer-menu-projection {
     width:          100%;
     padding:        0.4rem 0.6rem;
-    background:     var(--mv-control);
-    color:          var(--mv-text);
-    border:         1px solid var(--mv-edge-soft);
-    border-radius:  var(--mv-radius-sm);
+    background:     var(--molviewer-color-control);
+    color:          var(--molviewer-color-text);
+    border:         1px solid var(--molviewer-color-edge-soft);
+    border-radius:  var(--molviewer-radius-sm);
     text-align:     left;
     cursor:         pointer;
     transition:     background 120ms ease, border-color 120ms ease;
@@ -1609,19 +1628,19 @@
     content:        "○";
     display:        inline-block;
     margin-right:   0.5em;
-    color:          var(--mv-text-faint);
+    color:          var(--molviewer-color-text-faint);
 }
 .molviewer-menu-projection[aria-pressed="true"]::before {
     content:        "●";
-    color:          var(--mv-accent);
+    color:          var(--molviewer-color-accent);
 }
 .molviewer-menu-projection:hover {
-    background:     var(--mv-control-hover);
-    border-color:   var(--mv-edge);
+    background:     var(--molviewer-color-control-hover);
+    border-color:   var(--molviewer-color-edge);
 }
 .molviewer-menu-projection[aria-pressed="true"] {
-    background:     var(--mv-control-hover);
-    border-color:   var(--mv-accent);
+    background:     var(--molviewer-color-control-hover);
+    border-color:   var(--molviewer-color-accent);
 }
 
 /* Background row (preset swatches + custom chip) ------------ */
@@ -1637,7 +1656,7 @@
     width:          1.8rem;
     height:         1.8rem;
     padding:        0;
-    border:         1px solid var(--mv-edge);
+    border:         1px solid var(--molviewer-color-edge);
     border-radius:  50%;
     cursor:         pointer;
     box-sizing:     border-box;
@@ -1659,7 +1678,7 @@
     text-align:     center;
 }
 .molviewer-menu-background-swatch.molviewer-is-active {
-    outline:        2px solid var(--mv-accent);
+    outline:        2px solid var(--molviewer-color-accent);
     outline-offset: 2px;
 }
 /* Styled custom-colour chip wraps the native <input type="color"> so
@@ -1699,17 +1718,17 @@
 .molviewer-export-btn {
     flex:           0 0 auto;
     padding:        0.3rem 0.65rem;
-    background:     var(--mv-control);
-    color:          var(--mv-text);
-    border:         1px solid var(--mv-edge-soft);
-    border-radius:  var(--mv-radius-sm);
+    background:     var(--molviewer-color-control);
+    color:          var(--molviewer-color-text);
+    border:         1px solid var(--molviewer-color-edge-soft);
+    border-radius:  var(--molviewer-radius-sm);
     font-variant-numeric: tabular-nums;
     cursor:         pointer;
     transition:     background 120ms ease, border-color 120ms ease;
 }
 .molviewer-export-btn:hover {
-    background:     var(--mv-control-hover);
-    border-color:   var(--mv-accent);
+    background:     var(--molviewer-color-control-hover);
+    border-color:   var(--molviewer-color-accent);
 }
 
 /* Export menu sections ---------------------------------------
@@ -1724,13 +1743,13 @@
 .molviewer-export-section + .molviewer-export-section {
     margin-top:     0.6rem;
     padding-top:    0.5rem;
-    border-top:     1px solid var(--mv-edge-soft);
+    border-top:     1px solid var(--molviewer-color-edge-soft);
 }
 .molviewer-export-section-label {
     font-size:      0.7rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color:          var(--mv-text-faint);
+    color:          var(--molviewer-color-text-faint);
     opacity:        0.85;
 }
 
@@ -1753,9 +1772,9 @@
 .molviewer-window-stage {
     display:        flex;
     align-items:    stretch;
-    /* The SAME gap the rail's width is derived from (--rail-w = button + gap),
+    /* The SAME gap the rail's width is derived from (--molviewer-size-rail-width = button + gap),
        so the square's arithmetic and what is actually on screen cannot drift. */
-    gap:            var(--mv-rail-gap);
+    gap:            var(--molviewer-size-rail-gap);
     flex:           1 1 auto;
     min-height:     0;
     min-width:      0;
@@ -1769,11 +1788,11 @@
     align-self:     flex-start;          /* rail hugs the top-left, doesn't stretch tall */
     display:        flex;
     flex-direction: column;
-    gap:            var(--mv-menu-gap);  /* the same small step the popover hangs by */
+    gap:            var(--molviewer-menu-gap);  /* the same small step the popover hangs by */
 }
 .molviewer-rail-button {
-    width:          var(--mv-rail-button);
-    height:         var(--mv-rail-button);
+    width:          var(--molviewer-size-rail-button);
+    height:         var(--molviewer-size-rail-button);
     display:        flex;
     align-items:    center;
     justify-content: center;
@@ -1781,23 +1800,23 @@
     font-size:      13px;
     line-height:    1;
     cursor:         pointer;
-    color:          var(--mv-text);
-    background:     color-mix(in srgb, var(--mv-surface) 72%, transparent);
-    border:         1px solid var(--mv-edge-soft);
-    border-radius:  var(--mv-radius-sm);
+    color:          var(--molviewer-color-text);
+    background:     color-mix(in srgb, var(--molviewer-color-surface) 72%, transparent);
+    border:         1px solid var(--molviewer-color-edge-soft);
+    border-radius:  var(--molviewer-radius-sm);
     transition:     background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 .molviewer-rail-button:hover {
-    background:     var(--mv-control-hover);
-    border-color:   var(--mv-edge);
+    background:     var(--molviewer-color-control-hover);
+    border-color:   var(--molviewer-color-edge);
 }
 .molviewer-rail-button[aria-pressed="true"] {
-    color:          var(--mv-accent);
-    border-color:   var(--mv-accent);
-    background:     var(--mv-accent-wash);
+    color:          var(--molviewer-color-accent);
+    border-color:   var(--molviewer-color-accent);
+    background:     var(--molviewer-color-accent-wash);
 }
 .molviewer-rail-button:focus-visible {
-    outline:        2px solid var(--mv-accent);
+    outline:        2px solid var(--molviewer-color-accent);
     outline-offset: 1px;
 }
 
@@ -1818,9 +1837,9 @@
 .molviewer-panel input,
 .molviewer-panel select,
 .molviewer-panel textarea {
-    font-family: var(--mv-control-family);
-    font-size:   var(--mv-control-font);
-    line-height: var(--mv-control-line);
+    font-family: var(--molviewer-control-family);
+    font-size:   var(--molviewer-control-font);
+    line-height: var(--molviewer-control-line);
 }
 
 /* The three that share a row have to share a height, or they step. The select
@@ -1830,8 +1849,8 @@
 .molviewer-panel select,
 .molviewer-panel button {
     box-sizing:  border-box;
-    min-height:  var(--mv-control-height);
-    padding:     var(--mv-control-pad-y) var(--mv-control-pad-x);
+    min-height:  var(--molviewer-control-height);
+    padding:     var(--molviewer-control-pad-y) var(--molviewer-control-pad-x);
 }
 
 /* Checkboxes size to the text they label rather than to the UA default, so the
@@ -1839,8 +1858,8 @@
 .molviewer-panel input[type="checkbox"],
 .molviewer-panel input[type="radio"] {
     box-sizing: border-box;
-    width:      var(--mv-control-box);
-    height:     var(--mv-control-box);
+    width:      var(--molviewer-control-box);
+    height:     var(--molviewer-control-box);
     min-height: 0;                 /* not a row control -- exempt from the above */
     padding:    0;
     margin:     0;

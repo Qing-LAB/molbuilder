@@ -81,13 +81,13 @@ const CELL_FALLBACK = { color: "#888", radius: 0.04 };
  * WebGL cannot take a colour from CSS: the clear colour is an argument to the
  * library, and the element behind it is painted by the stylesheet. Those are two
  * paints of the SAME surface, so they are one declared value — the card's
- * `--mol-scene-background` — read here the way the cell wireframe's colour
+ * `--molviewer-scene-background` — read here the way the cell wireframe's colour
  * already is. Written as two literals instead, they drift, and the drawing sits
  * as a bright rectangle inside a dark card (which is exactly what shipped).
  *
  * The literal below is the last resort for a page with no stylesheet at all — a
  * node test — not a second palette. */
-const SCENE_BACKGROUND = { name: "--mol-scene-background", fallback: "#0f1217" };
+const SCENE_BACKGROUND = { name: "--molviewer-scene-background", fallback: "#0f1217" };
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
@@ -633,8 +633,8 @@ export function create(hostEl, opts) {
             ];
             // Read each draw so a theme override applies live; cell redraws are
             // infrequent, so the lookup costs nothing that matters.
-            const color  = cssVar("--mol-cell-wireframe-color", CELL_FALLBACK.color);
-            const radius = parseFloat(cssVar("--mol-cell-wireframe-radius",
+            const color  = cssVar("--molviewer-scene-cell-color", CELL_FALLBACK.color);
+            const radius = parseFloat(cssVar("--molviewer-scene-cell-radius",
                                              String(CELL_FALLBACK.radius)))
                            || CELL_FALLBACK.radius;
             for (const [u, v] of edges) {

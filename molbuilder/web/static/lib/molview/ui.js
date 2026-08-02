@@ -103,7 +103,7 @@ export function mountControls(card, model, handle, files, reserved) {
  * top of the molecule." Those are the toolbar switches, and the last clause is
  * the design rather than a detail: they are what a user reaches for WHILE
  * looking at the molecule, so they may not cover it. The card pays for the
- * column in its own arithmetic (`--rail-w`) instead of taking it out of the
+ * column in its own arithmetic (`--molviewer-size-rail-width`) instead of taking it out of the
  * drawing.
  *
  * Five switches and one action, in one list because they are one surface. Each
@@ -328,8 +328,8 @@ function mountFrameBar(doc, card, model, handle) {
  */
 
 /* Where an open popover sits: how far under its trigger it hangs, and how close
- * to the window's edge it may come. BOTH LIVE IN THE STYLESHEET — `--mv-menu-gap`
- * and `--mv-menu-margin` — with every other distance the module uses, and this
+ * to the window's edge it may come. BOTH LIVE IN THE STYLESHEET — `--molviewer-menu-gap`
+ * and `--molviewer-menu-margin` — with every other distance the module uses, and this
  * asks for them rather than restating them. It is the same rule mount.js follows
  * for the sizing floor and the sealed layer follows for the scene constants: a
  * number a rule AND a script both need has one home, and it is the stylesheet.
@@ -347,8 +347,8 @@ function placementFor(el) {
         return Number.isFinite(px) ? px : fallback;
     };
     return {
-        gap:    read("--mv-menu-gap",    MENU_PLACEMENT.gap),
-        margin: read("--mv-menu-margin", MENU_PLACEMENT.margin),
+        gap:    read("--molviewer-menu-gap",    MENU_PLACEMENT.gap),
+        margin: read("--molviewer-menu-margin", MENU_PLACEMENT.margin),
     };
 }
 

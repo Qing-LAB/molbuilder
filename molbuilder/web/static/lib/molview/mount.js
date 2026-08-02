@@ -317,7 +317,7 @@ function buildCard(hostEl, opts) {
      * sit down the left edge, ALWAYS OUTSIDE THE CANVAS, NEVER ON TOP OF THE
      * MOLECULE". That is why it is a sibling of the window and not an overlay
      * over it, and why the square's arithmetic pays for its width up in
-     * `--rail-w` rather than taking it out of the drawing.
+     * `--molviewer-size-rail-width` rather than taking it out of the drawing.
      *
      * Built here and FILLED by ui.js, the same division as the frame bar: the
      * scaffold owns where things sit, the controls own what they do. */
@@ -379,7 +379,7 @@ function minimumWidth(root) {
     if (!view || typeof view.getComputedStyle !== "function") return 0;
     try {
         const raw = view.getComputedStyle(root)
-            .getPropertyValue("--molview-min-width").trim();
+            .getPropertyValue("--molviewer-size-card-min-width").trim();
         return parseFloat(raw) || 0;
     } catch (_) { return 0; }
 }
