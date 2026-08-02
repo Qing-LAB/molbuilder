@@ -39,13 +39,6 @@ def spectra_core_src() -> str:
     return (STATIC / "lib/spectra/core.js").read_text(encoding="utf-8")
 
 
-@pytest.fixture(scope="module")
-def viewer_embed_src() -> str:
-    return (STATIC / "lib/viewer/mol-viewer-embed.js").read_text(
-        encoding="utf-8"
-    )
-
-
 # --------------------------------------------------------------------- #
 #  Spectra ES-column headers                                             #
 # --------------------------------------------------------------------- #
@@ -79,56 +72,15 @@ def test_spectra_es_columns_not_hidden_on_no_es_data(spectra_core_src):
         )
 
 
-# --------------------------------------------------------------------- #
-#  mol-viewer-embed Animation Export section                             #
-# --------------------------------------------------------------------- #
-
-
-def test_animation_export_section_never_hidden(viewer_embed_src):
-    """The Animation Export section MUST remain visible regardless
-    of whether an animation is currently mounted.
-
-    Pre-2026-06-14 ``lib/viewer/mol-viewer-embed.js:1768`` did
-    ``sect.hidden = !hasAnim``, vanishing the Save/Download
-    buttons (and their label) on every static-structure load.
-    A user who learned the section was on the Export tab didn't
-    find it on the next load.
-    """
-    bad_patterns = [
-        "sect.hidden = !hasAnim",
-        "section.hidden = !hasAnim",
-        'sect.hidden = !state.current.animation',
-        # The aria-true form is a common variant.
-        'aria-hidden", "true"',  # only flag if specifically on the section
-    ]
-    # Only the substring search; aria-hidden is OK elsewhere in the
-    # file (knob buttons, etc.).  We narrow by requiring ``data-
-    # section="animation"`` to appear in the same window.
-    assert "sect.hidden = !hasAnim" not in viewer_embed_src, (
-        "lib/viewer/mol-viewer-embed.js must not write "
-        "``sect.hidden = !hasAnim`` -- the Animation Export "
-        "section is unconditionally visible per the 2026-06-14 "
-        "UI-presence contract.  Disable the buttons inside when "
-        "there's no animation instead."
-    )
-
-
-def test_animation_buttons_disabled_when_no_anim(viewer_embed_src):
-    """The contract's other half: when there's no animation, the
-    buttons inside the Animation Export section MUST be disabled
-    so the user sees the no-op state visibly.  Pin the disable
-    pattern so a future refactor that drops it (and reverts to
-    hide-the-section) doesn't slip past."""
-    # The fix uses ``btn.setAttribute("disabled", "")`` on each
-    # button inside the section.
-    assert "setAttribute(\"disabled\", \"\")" in viewer_embed_src \
-        or 'setAttribute("disabled", "")' in viewer_embed_src, (
-            "Animation Export section MUST disable its buttons "
-            "when no animation is mounted (the data-independent-"
-            "presence contract requires this)."
-        )
-    assert 'data-section="animation"' in viewer_embed_src, (
-        "regression: the ``data-section=\"animation\"`` selector "
-        "was removed; the disable-pattern guard above relies on "
-        "the section being identifiable.  Update both."
-    )
+# RETIRED 2026-08-01: the two Animation-Export tests.
+#
+# They read `lib/viewer/mol-viewer-embed.js` and asserted on its source. NO PAGE
+# LOADS THAT FILE -- no template links it, no module imports it -- so both tests
+# passed while pinning nothing that runs. MolView draws its own Export menu and
+# its own frame bar now.
+#
+# What replaced them, derived from molview.md rather than from the source:
+#   * the frame bar appears only once there is more than one frame --
+#     tests/test_molview_mount.py::test_the_frame_bar_appears_only_once_there_is_more_than_one_frame
+#   * the Export menu is built and reachable --
+#     tests/test_molview_mount.py::test_an_open_menu_is_placed_against_its_own_trigger

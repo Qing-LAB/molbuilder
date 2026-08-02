@@ -232,83 +232,22 @@ class TestSpectraResultsFingerprintGuard:
             "reset bug class returns.")
 
 
-# --------------------------------------------------------------------- #
-#  Frame-slider: snapshot input value BEFORE state-mutating helper      #
-# --------------------------------------------------------------------- #
-
-
-class TestFrameSliderHandlerSnapshotPattern:
-    """The frame-strip slider's input handler MUST capture
-    ``parseInt(slider.value, 10)`` BEFORE calling
-    ``_stopAnimationLoop(state)``.  That call routes through
-    ``_refreshFrameStrip`` which rewrites ``slider.value`` from the
-    pre-drag frame; reading after the helper means parseInt sees the
-    reset value and the seek is a no-op (the original bug)."""
-
-    @pytest.fixture(scope="class")
-    def embed_body(self):
-        return (_LIB / "viewer" / "mol-viewer-embed.js").read_text()
-
-    def test_slider_handler_snapshots_value_before_stopAnimationLoop(
-            self, embed_body):
-        """Find the slider's ``addEventListener("input", ...)`` block
-        and verify the order of operations is:
-
-          1. ``const target = parseInt(slider.value, 10)`` (snapshot)
-          2. ``_stopAnimationLoop(state)``
-          3. ``_showTrajectoryFrame(state, target)``
-
-        Where ``target`` was captured at step 1 and reused at step 3,
-        NOT re-read from slider.value after step 2.  If a future edit
-        inlines the parseInt as a parameter (the pre-fix shape),
-        ``_stopAnimationLoop``'s side effect on slider.value is what
-        parseInt reads — and the slider scrub silently regresses."""
-        # Locate the input handler body.
-        m = re.search(
-            r'slider\.addEventListener\("input"\s*,\s*\(\)\s*=>\s*'
-            r"\{([^}]+)\}",
-            embed_body, re.DOTALL,
-        )
-        assert m is not None, (
-            "mol-viewer-embed.js no longer wires a slider 'input' "
-            "handler with the documented closure shape; the frame-"
-            "scrub UI is gone or has been refactored without "
-            "preserving the snapshot pattern.")
-        body = m.group(1)
-
-        # Forbidden shape — `parseInt(slider.value, ...)` inside the
-        # _showTrajectoryFrame call.  This is the pre-fix shape; the
-        # post-fix shape captures it into a `const target` first.
-        forbidden = re.search(
-            r"_showTrajectoryFrame\s*\(\s*state\s*,\s*"
-            r"parseInt\s*\(\s*slider\.value",
-            body,
-        )
-        assert forbidden is None, (
-            "mol-viewer-embed.js slider input handler re-reads "
-            "slider.value AFTER _stopAnimationLoop runs.  This is "
-            "the bug class fixed in 2026-06-12 (task #353): "
-            "_stopAnimationLoop calls _refreshFrameStrip which "
-            "rewrites slider.value to the pre-drag frame, so parseInt "
-            "sees the old value and the seek is a no-op.  Snapshot "
-            "the parsed value into a const BEFORE calling "
-            "_stopAnimationLoop.  See "
-            "docs/process/testing.md § Handler input "
-            "snapshot for the rule.")
-
-        # Required shape — a const captures parseInt(slider.value, ...)
-        # BEFORE _stopAnimationLoop is referenced.
-        assert re.search(
-            r"const\s+\w+\s*=\s*parseInt\s*\(\s*slider\.value",
-            body,
-        ), ("mol-viewer-embed.js slider handler no longer snapshots "
-            "parseInt(slider.value, 10) into a const at handler "
-            "entry.  Without this snapshot, side-effecting helpers "
-            "(_stopAnimationLoop -> _refreshFrameStrip) reset "
-            "slider.value before the seek runs.  See "
-            "docs/process/testing.md § Handler input "
-            "snapshot.")
-
+# RETIRED 2026-08-01: TestFrameSliderHandlerSnapshotPattern.
+#
+# It read `lib/viewer/mol-viewer-embed.js` and asserted its slider handler
+# snapshots `parseInt(slider.value)` before the stop helper rewrites it. NO PAGE
+# LOADS THAT FILE, so the class passed while guarding nothing.
+#
+# The bug it guarded cannot recur in the rebuilt module for a structural reason,
+# not a careful one: MolView's slider does not read itself back. It sends the
+# dragged value straight to the one write -- `model.setCurrentFrame(...)`,
+# ui.js -- and the bar REDRAWS from the model afterwards (`reflect()`), so there
+# is no window in which the handler could read a value the helper had reset.
+# That is molview.md section 6.4, "one write reaches every subscriber", and
+# section 8.5, "a control reads a fact from where it lives".
+#
+# Guarded by, derived from the document rather than from the source:
+#   tests/test_molview_mount.py::test_playback_moves_the_frame_through_the_same_write_everyone_uses
 
 # --------------------------------------------------------------------- #
 #  Selection panel: _isolateUnsubscribe cleanup-array discipline        #

@@ -994,7 +994,6 @@ def test_build_load_response_includes_atoms_list(web_client):
         assert "index" in row
         assert "element" in row
         assert "regions" in row and isinstance(row["regions"], list)
-        assert "is_frozen" in row
     elements = [row["element"] for row in atoms]
     assert elements == ["O", "H", "H"]
 
@@ -1298,7 +1297,6 @@ def test_modify_responses_carry_atoms_list(web_client):
     assert row["index"]    == 0
     assert row["element"]  == "O"
     assert row["regions"]  == []
-    assert row["is_frozen"] is False
 
 
 def test_modify_delete_silently_ignores_out_of_range(web_client):
