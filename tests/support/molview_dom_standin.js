@@ -8,7 +8,7 @@
  *     whatever the host was told to be — which is what § 8.2's sizing contract
  *     is checked against;
  *   - `getComputedStyle` answers custom properties from the nearest ancestor
- *     that set one, because that is how `--molview-min-width` reaches mount.js;
+ *     that set one, because that is how `--molviewer-size-card-min-width` reaches mount.js;
  *   - `classList.toggle` returns whether the class is now present, which is what
  *     the fold reads.
  *
@@ -243,7 +243,7 @@ globalThis.innerHeight = 800;
 
 globalThis.document = doc;
 
-/* `--molview-min-width` is declared on the card by the stylesheet, so mount.js
+/* `--molviewer-size-card-min-width` is declared on the card by the stylesheet, so mount.js
  * reads it rather than writing the number itself (§ 8.2). The stand-in serves it
  * from whatever the test set on the nearest ancestor that has one. */
 globalThis.getComputedStyle = function (node) {
@@ -265,7 +265,7 @@ globalThis.__makeHost = function (width, minWidth) {
     const host = makeElement(doc, "div");
     host.clientWidth = width == null ? 900 : width;
     // What the stylesheet would declare on the card.
-    host._customProps = { "--molview-min-width": (minWidth == null ? 350 : minWidth) + "px" };
+    host._customProps = { "--molviewer-size-card-min-width": (minWidth == null ? 350 : minWidth) + "px" };
     doc.body.appendChild(host);
     return host;
 };

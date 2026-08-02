@@ -446,7 +446,7 @@ def test_the_window_clears_to_the_cards_ground_and_a_redraw_keeps_it():
 
     The drawing library cannot be styled by CSS, so the colour behind the atoms
     is an ARGUMENT, not a rule. It is the same colour the stylesheet paints
-    behind the canvas (`--mol-scene-background` on the card), read from there,
+    behind the canvas (`--molviewer-scene-background` on the card), read from there,
     because the two are one surface: written as two literals they drift, and the
     drawing sits as a bright rectangle inside a dark card.
 
@@ -461,7 +461,7 @@ def test_the_window_clears_to_the_cards_ground_and_a_redraw_keeps_it():
             getPropertyValue: (name) => (el && el._props && el._props[name]) || "",
         });
         const host = globalThis.__makeHost();
-        host._props = { "--mol-scene-background": "#123456" };
+        host._props = { "--molviewer-scene-background": "#123456" };
 
         globalThis.__resetCalls();
         const e = MOD.create(host, {});
