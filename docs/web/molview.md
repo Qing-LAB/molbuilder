@@ -769,6 +769,95 @@ what a viewer holds nor anything in this document.
 
 ---
 
+### 6.8 Notices — what the server warns about, and how long it stays true
+
+Some answers come back with **notices**: `{level, message}`, in plain language,
+about the structure the answer describes. They are not errors — an error fails
+the request. A notice is the server saying "this worked, and here is something
+you should know about the result".
+
+Today they are produced in one place, `periodicity_gate`, and reach MolView
+through two doors:
+
+| Door | What it validates | When |
+|---|---|---|
+| `/api/build/load` | the structure as read from disk | every load |
+| `/api/structure/periodicity` | the structure as it arrived, then the edit | every cell edit |
+
+(`/api/structure/export` returns them too, but MolView does not call it — bytes
+leave through the `files` door, § 6.7.)
+
+**Two kinds, and the difference decides everything about their lifetime.**
+
+| Kind | Example | What it describes |
+|---|---|---|
+| **A condition** | *"the box does NOT contain the structure along a non-periodic axis — per-axis (near, far) clearances in Å: …"* | a fact about the structure **right now**. Stays true until the cell or the atoms change |
+| **A receipt** | *"explicit cell cleared; the box is derived again"* | what the edit just **did**. True about that moment, meaningless afterwards |
+
+There are ten of them today: three conditions (containment, a derived corner, a
+regime change) and seven receipts, one per Cell-page edit.
+
+#### The lifetime rule
+
+> **A notice lives until the thing it describes changes.** An answer that carries
+> notices replaces the set. **Any edit to the structure clears it.**
+
+Receipts clear because the next action makes them stale by definition. Conditions
+clear because MolView **cannot know whether they still hold**: a condition is a
+relationship between the box and the atoms, and only one of the two doors that
+can change them reports.
+
+Notices are never stored, never saved, and never survive a reload. They describe
+one exchange.
+
+#### Where they are shown
+
+| | |
+|---|---|
+| A cell notice | on the **Cell page**, under the row it is about — that is where the user is looking, having just typed one of those numbers |
+| A load notice | one line at the **top of the panel**, above the tabs — it is about the whole structure, so it has no row to sit under |
+
+Not a corner overlay: both corners are the badge and the measurement readout, and
+a corner is for state that persists, not for something that just happened. Not
+the app-wide bar either — that is for messages that matter *after you navigate
+away*, and a warning about the cell you are editing matters exactly where you
+are.
+
+#### Where the logic does NOT close — two gaps, named rather than papered over
+
+**1. An edit can break the cell and nothing checks.** All nine `/api/modify/*`
+routes return no notices. Move an atom outside the box, delete the atom that was
+holding a clearance, translate the structure — the server never re-checks
+containment, so no notice is produced and the display is honestly empty. The rule
+above keeps MolView from *lying* about it (a stale condition is cleared), but the
+condition itself goes unreported until the user next touches the cell. **The fix
+is server-side**: the modify doors would have to validate their result the way
+the cell door does.
+
+**2. A cell edit's conditions describe the state BEFORE the edit.** The door
+validates what arrived, then applies the edit, then returns both sets together:
+
+```
+struct, notices      = validate_and_heal(struct)          # the INCOMING state
+new_struct, receipts = apply_edit(struct, op, payload)     # what the edit did
+notices = notices + receipts                               # returned together
+```
+
+So the answer's *data* is post-edit and its *conditions* are pre-edit. Fix a
+containment problem by setting a correct cell and the response still carries "the
+box does NOT contain the structure" — beside a receipt saying the edit
+succeeded. The user corrects the problem and is told it is still broken.
+
+`apply_edit` re-checks containment itself for the `cell` op, so that one op
+produces a correct post-edit warning as well — which means the same answer can
+carry a stale condition and a fresh one at once.
+
+**Until that is fixed server-side, MolView shows the receipts and the conditions
+it is given, and the pre-edit condition will sometimes be wrong.** Displaying it
+is still better than the present state, where none of them reach anyone at all —
+but it is a known wrong, not an accepted one.
+
+
 ## 7. The layers
 
 Seven levels, read from outside in: a tab at the top, the drawing library at the
@@ -3178,6 +3267,8 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen_atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.6 — a reserved label is stored, filtered and drawn like any other | it arrives in the same list, groups through the same walk, filters through the same rule and leaves in the same field; no atom carries the fact twice, and no boundary renames or moves it |
+| § 6.8 — a notice reaches the user | a load or a cell edit that answers with notices shows them: a cell notice under the Cell-page row it is about, a load notice at the top of the panel |
+| § 6.8 — a notice lives until what it describes changes | an edit to the structure clears the set, and an answer carrying notices replaces it; nothing is stored, saved, or survives a reload |
 | § 6.6 — the predefined names are offered, not typed | the five appear in the label chooser and in a `by label` row before any structure carries them, once each however many sources name them, and a user's own name is offered beside them |
 | § 9.5 — `by label` chooses from what is defined | the value control is a chooser for that rule and a text box for the other three, and re-kinding a row swaps it |
 | § 6.6 / § 9.3 — the accessor is the only way in | the designated read agrees with the label store because it is a cut of it, cannot be used to write, and is the one place the reserved name is spelled |
