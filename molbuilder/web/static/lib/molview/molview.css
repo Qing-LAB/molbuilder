@@ -362,7 +362,7 @@
      * --panel-min as its floor -- so the content fills the card (aligned with the header) instead of
      * the pair centering.  Folding is still a clean width collapse to 0 (the .molviewer-is-folded rule below
      * overrides flex-basis/width).  Width tracks the CARD width, NOT the atom-list<->filter switch
-     * (that never changes the card width), so task #53's "no resize on tab switch" holds. */
+     * (that does not change the card width), so switching tabs never resizes. */
     flex: 1 1 auto;
     min-width: var(--panel-min);
     /* HEIGHT == the viewer square's extent -- the SAME value the viewer uses, so the two
@@ -373,9 +373,9 @@
      * floor keeps it usable if the viewport (hence the extent) is very short. */
     height: var(--viewer-extent);
     min-height: 18rem;
-    /* ONE scroll, not nested: the panel is a flex column and never scrolls itself
-     * (overflow hidden); the ACTIVE page inside is the single scroll region (below).  This
-     * kills the redundant outer scrollbar the panel used to add on top of the atom list. */
+    /* ONE scroll, not nested: the panel is a flex column that does not scroll
+     * itself (overflow hidden); the ACTIVE page inside is the single scroll
+     * region (below), so there is one bar over the atom list, not two. */
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -383,10 +383,7 @@
                 opacity 0.15s ease;
 }
 
-/* The panel's single scroll region = the active [Selection|Cell] page.  The tabs header
- * stays put; the page body scrolls when it's taller than the panel; the panel itself and the
- * inner atom-list no longer each add their own bar.  Scoped to .molviewer-panel so a
- * stand-alone selection-panel (outside a fused card) is unaffected. */
+
 .molviewer-panel .molviewer-selection-card {
     flex: 1 1 auto;
     min-height: 0;
@@ -398,6 +395,10 @@
 /* :not([hidden]) is CRITICAL: `display: flex` would otherwise override the [hidden]
  * attribute's display:none and show BOTH the Selection AND Cell pages at once (so the tab
  * switch would appear to do nothing). */
+/* The panel's single scroll region is the active page. The tabs header stays
+ * put and the page body scrolls when it is taller than the panel, so the panel
+ * and the atom list inside it do not each carry their own bar. Scoped to
+ * `.molviewer-panel`. */
 .molviewer-panel .molviewer-selection-card > .molviewer-panel-tab:not([hidden]) {
     flex: 1 1 auto;
     min-height: 0;
@@ -411,13 +412,13 @@
  * Selection page it may simply SCROLL as a whole when it's taller than the panel -- it sizes
  * to its content (compact when short), then scrolls.
  *
- * KEYED BY ROLE, NOT BY IDENTITY.  This was `#panel-page-cell`, which is a document-global
- * name -- and § 5.6 puts TWO viewers on one page, so the id was duplicated the moment a
- * second one mounted.  `[data-page]` says what the element IS rather than which one it is,
- * and it is unique to nothing, which is the point.  The extra attribute also carries the
- * specificity the id used to: this selector must out-rank the `.molviewer-panel-tab` rule above (whose
- * `overflow: hidden` would clip the scroll), and 0-5-0 over 0-4-0 does that by construction
- * rather than by source order. */
+ * KEYED BY ROLE, NOT BY IDENTITY.  § 5.6 puts TWO viewers on one page, so an id
+ * would be duplicated the moment the second one mounts.  `[data-page]` says what
+ * the element IS rather than which one it is, and it is unique to nothing, which
+ * is the point.  The attribute also carries the specificity this rule needs: it
+ * must out-rank the `.molviewer-panel-tab` rule above (whose `overflow: hidden`
+ * would clip the scroll), and 0-5-0 over 0-4-0 does that by construction rather
+ * than by source order. */
 .molviewer-panel .molviewer-selection-card > .molviewer-panel-tab[data-page="cell"]:not([hidden]) {
     flex: 0 1 auto;
     overflow-y: auto;
@@ -502,9 +503,10 @@
     opacity: 0;
     pointer-events: none;
 }
-/* Folded: the panel is gone and the viewer no longer needs to be a square bottom-aligned with it,
- * so give the viewer the freed width -- folding EXPANDS the view instead of leaving an empty gap.
- * Height stays --viewer-extent (capped at --viewer-edge); the viewer becomes a wide rectangle. */
+
+/* Folded: the window takes the freed width, so folding EXPANDS the view rather
+ * than leaving a gap. Height stays --molviewer-window-extent (capped at
+ * --molviewer-window-edge), so the window becomes a wide rectangle. */
 .molviewer-card.molviewer-is-folded .molviewer-window {
     flex: 1 1 auto;
     width: auto;
@@ -1221,7 +1223,6 @@
     gap: 0.3rem;
 }
 
-/* (.selection-field-label removed 2026-07: zero producers.) */
 
 .molviewer-selection-assign-select,
 .molviewer-selection-new-label {
@@ -1238,12 +1239,10 @@
     font-family: var(--font-mono);
 }
 
+
 /* ====================================================================
- * Region-label definitions popover.
- *
- * NOT BUILT BY THIS MODULE: no ui.js literal names `target-info`. These rules
- * style markup written elsewhere, which is the one thing this stylesheet is
- * not for. Kept only until the ownership is settled.
+ * The ⓘ info popover beside Target: a small round trigger and the panel it
+ * shows.
  * ==================================================================== */
 .molviewer-selection-target-info-btn {
     background: transparent;
@@ -1324,10 +1323,7 @@
     background: var(--success);
     color: white;
 }
-/* (.available removed 2026-08-01: the badge's "not in use yet" tone. Nothing
-   ever applied the class -- only .molviewer-is-in-use is ever set -- so this
-   was an orphan of the phase-1c kind, found by phase 4 because it was the last
-   name in the file without the prefix.) */
+
 .molviewer-regions-short {
     color: var(--ps-fg-dim);
     margin-left: 0.4em;
@@ -1523,9 +1519,6 @@
     min-height:     280px;
 }
 
-/* (.mol-viewer-card-header / -card-title / -info-line removed 2026-08-01: the
-   card chrome came from an embed this module no longer uses, MolView never
-   drew it, and no section of molview.md asks for it.) */
 
 .molviewer-window-canvas {
     /* Width is 100% so the canvas fills the card's content area, and flex: 1
@@ -1571,17 +1564,13 @@
     box-shadow:     0 4px 16px rgba(0,0,0,0.4);
 }
 
-/* (The .mol-viewer-frame-strip block -- 5 rules -- removed 2026-08-01. That
-   was a transport bar this module no longer uses. MolView builds its own:
-   .molviewer-frames-* (ui.js), which is the one with the speed box.) */
 
 /* ============================================================ */
 /*  Standard knob bar (§ 6.2)                                    */
 /* ============================================================ */
 
-/* Phase 6 chrome: 2-menu bar (View + Export) replaces the flat
-   7-knob row.  Each menu is a <details> with a <summary> trigger
-   and a structured popover body containing labelled <section>s. */
+/* The 2-menu bar: View and Export.  Each menu is a <details> with a <summary>
+   trigger and a popover body of labelled <section>s. */
 
 .molviewer-menu-bar {
     display:        flex;
@@ -1804,14 +1793,6 @@
     border-color:   var(--mv-accent);
 }
 
-/* (.mol-viewer-select removed 2026-08-01: this was the OLD Projection
-   dropdown. The control shipped instead as a toggle button --
-   ui.js:614 builds it with .molviewer-rail-toggle and it sets
-   view.orthographic. One control, not two.) */
-
-/* (.mol-viewer-action removed 2026-07: no JS ever created it -- Reset lives on the
-   rail as a VIEW_TOGGLE (.molviewer-rail-button); the block was a dead byte-identical
-   copy of .molviewer-rail-toggle.) */
 
 /* Background row (preset swatches + custom chip) ------------ */
 .molviewer-menu-background-row {
@@ -1901,7 +1882,7 @@
     border-color:   var(--mv-accent);
 }
 
-/* Export menu sections (Phase 6e) ---------------------------
+/* Export menu sections ---------------------------------------
    Group the data / snapshot / animation buttons so the user can
    see they are three different export kinds at a glance, instead
    of one undifferentiated row. */
@@ -1923,10 +1904,6 @@
     opacity:        0.85;
 }
 
-/* (The export progress modal + params form -- 15 classes, a keyframes and a
-   reduced-motion rule -- removed 2026-08-01. They were the dialog of an embed
-   this module no longer uses: designed, styled, and built by no code here.
-   Task #39 reworks Export and designs its dialog fresh.) */
 
 /* Narrow viewports ------------------------------------------ */
 @media (max-width: 480px) {
