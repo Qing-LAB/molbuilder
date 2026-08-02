@@ -44,8 +44,8 @@ def _with_metadata() -> Structure:
     # heal the same way — but a fixture that skips it is a structure the
     # application could not have produced, and comparing it against a healed one
     # measures the gate rather than the generator.
-    from molbuilder.periodicity_gate import validate_and_heal
-    healed, _ = validate_and_heal(s)
+    from molbuilder.periodicity_gate import validate_periodicity
+    healed, _ = validate_periodicity(s)
     return healed
 
 

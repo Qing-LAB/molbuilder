@@ -195,6 +195,24 @@ async function start() {
         report();
     });
 
+    /* WHAT THE SERVER SAYS, and where it lands (§ 6.8).
+     *
+     * Three real edits through the one route: give water a 5 Å box, then move
+     * the box's corner 20 Å away so it no longer contains the molecule. The
+     * server answers with a RECEIPT (what the edit did) and a CONDITION (the
+     * box does not contain the structure, with the per-axis clearances), and
+     * the Cell page shows both under the numbers they are about.
+     *
+     * Nothing is faked here: no message is written by the demo, and the demo
+     * does not reach into the viewer to place one. It performs an edit a user
+     * could perform, and the notices arrive with the answer. */
+    on("demo-bad-box", async () => {
+        await load(SAMPLES.water, "water");
+        await viewer.data.commitPeriodicityOp("cell", [[5, 0, 0], [0, 5, 0], [0, 0, 5]]);
+        await viewer.data.commitPeriodicityOp("cell_origin", [20, 20, 20]);
+        say("the box was moved off the molecule — see the Cell page");
+    });
+
     say("ready — pick a sample");
 }
 

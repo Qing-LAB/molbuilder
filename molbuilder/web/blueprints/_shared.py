@@ -1188,8 +1188,8 @@ def apply_periodicity_from_body(struct, body):
             struct.vacuum = tuple(per["vacuum"])
         # (resolved_* keys are VIEWS -- ignored by design, clause 1.)
         struct.__post_init__()
-    from molbuilder.periodicity_gate import validate_and_heal
-    healed, _notices = validate_and_heal(struct)
+    from molbuilder.periodicity_gate import validate_periodicity
+    healed, _notices = validate_periodicity(struct)
     return healed
 
 

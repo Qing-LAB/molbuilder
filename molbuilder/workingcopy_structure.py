@@ -147,8 +147,8 @@ class StructureCodec:
         # Without this, /api/build/load served a corrupted pair unhealed and
         # MolView drew the box from the world origin -- the live symptom on
         # projects/hemeC-dithiol (explicit cell, dropped origin).
-        from .periodicity_gate import validate_and_heal
-        struct, notices = validate_and_heal(struct)
+        from .periodicity_gate import validate_periodicity
+        struct, notices = validate_periodicity(struct)
         if notices_out is not None:
             notices_out.extend(notices)
         return struct

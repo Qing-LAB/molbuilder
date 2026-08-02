@@ -1,7 +1,7 @@
 """The frame-contract gate — structure-periodicity.md § 6.1 / § 6.2.
 
 MODULE  periodicity_gate (L1; imports structure only)
-ROLE    the ONE place periodicity state is defaulted, validated, and healed
+ROLE    the ONE place periodicity state is defaulted and validated
 USED-BY StructureCodec (load/save gate), web/blueprints/build.py (the
         unified periodicity door), tests/test_periodicity_gate.py
 
@@ -54,7 +54,9 @@ delegates to it.
 
 Notices (the machine-readable half of the contract).  Every entry is
 ``{"level": "info"|"warn", "message": str}``.  A notice that reports state
-the gate MODIFIED additionally carries ``"kind": "heal"`` — the web load
+the gate corrected would have carried a marker; NOTHING DOES, and nothing
+should: clause 1 forbids writing a resolved value back, so there is no
+correction to mark.  The web load
 door keys on it to mark the session dirty (the disk pair still holds the
 old value until the user saves), so the key is load-bearing, not
 decoration.  Callers surface notices; they never parse the message text.
@@ -168,18 +170,26 @@ def _require_right_handed(cell: np.ndarray) -> None:
             f"Swap two lattice vectors or negate one (§ 6.1).")
 
 
-def validate_and_heal(struct: Structure, *,
+def validate_periodicity(struct: Structure, *,
                       live_edit: bool = False) -> Tuple[Structure, List[dict]]:
-    """Apply the § 6.1 heal table to STORED state.  Returns
-    (possibly-corrected struct, notices).  ``live_edit=True`` = the
-    explicit-origin manual-edit row: accept as typed, warn, never auto-fix.
+    """Check STORED periodicity against the § 6.1 table and REPORT.  Returns
+    ``(struct, notices)``.  ``live_edit=True`` selects the explicit-origin
+    manual-edit row: accept as typed, warn, never auto-fix.
 
-    Since 2026-07-29 this returns the struct UNCHANGED in every row — a
-    resolved corner is a view (``resolve_cell_origin``), never truth — so the
-    function is a validator that reports, and the second element is the whole
-    output.  It stays named ``validate_and_heal`` because the heal table is the
-    contract it enforces, and a future row may legitimately need to correct
-    stored state; callers must keep adopting the returned struct.
+    IT CORRECTS NOTHING, and must not.  Clause 1: `cell` / `cell_origin` hold
+    only what the user set, and every resolved value is a VIEW that is never
+    written back.  The struct comes out as it went in.
+
+    It was called ``validate_and_heal`` until 2026-08-01 and that name outlived
+    the behaviour: healing was removed on 2026-07-29 when materialising a
+    resolved corner was found to corrupt a saved pair (the hemeC case named in
+    the module header).  The name then had readers — and the author of this
+    docstring — looking for a correction step that clause 1 forbids, and
+    worrying about a marker (``kind: "heal"``) that two comments described and
+    no code produced.  A function is named for what it does.
+
+    The struct is still returned, and callers still adopt it, so that this stays
+    the one seam every structure passes through rather than an optional check.
 
     Raises ``ValueError`` (the door maps it to HTTP 400) for a left-handed
     cell (``det <= 0``) or one no origin could make contain the structure."""
@@ -375,7 +385,7 @@ def apply_edit(struct: Structure, op: str,
             # v3 precedence: respect the existing explicit ORIGIN first.
             s.__post_init__()
             # RECEIPT ONLY. Whether the result contains the structure is a
-            # CONDITION, and conditions are answered once, by validate_and_heal
+            # CONDITION, and conditions are answered once, by validate_periodicity
             # on the result (molview.md § 6.8).  Saying it here too put the same
             # fact in the answer twice, in two wordings.
             notices.append(_notice(
@@ -431,9 +441,12 @@ def apply_edit(struct: Structure, op: str,
         raise ValueError("cell_origin must be 3 floats (Å)")
     s.cell_origin = np.asarray(origin, dtype=float)
     s.__post_init__()
-    s, edit_notes = validate_and_heal(s, live_edit=True)
-    notices.extend(edit_notes)
-    if not edit_notes:
+    # The validator DECIDES here; it does not report here. Its notices are
+    # CONDITIONS and the door answers those once, on the result (molview.md
+    # § 6.8) -- merging them in as well put the same containment warning in one
+    # answer twice, word for word.
+    s, conditions = validate_periodicity(s, live_edit=True)
+    if not conditions:
         notices.append(_notice(
             "warn",
             "cell_origin set. Vacuum values are NOT respected under a "

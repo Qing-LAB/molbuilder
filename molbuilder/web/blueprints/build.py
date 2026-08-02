@@ -664,14 +664,15 @@ def api_periodicity():
     ``axis_kind`` / ``vacuum`` plus the ``resolved_*`` views beside them), so the
     client adopts it verbatim through the same path a load takes and there is one
     shape for the block rather than two.  ``notices`` is a list of
-    ``{level, message}`` for the Cell page + the app notify bar, where an entry
-    that reports state the gate MODIFIED also carries ``kind: "heal"``.
+    ``{level, message}`` for the Cell page (molview.md § 6.8).  There is no
+    "the gate changed this" marker and there should not be: clause 1 forbids the
+    gate writing a resolved value back, so nothing is ever changed to mark.
 
     400 on: an unknown op, a missing payload for ``cell`` / ``cell_origin``, a
     malformed envelope, and every contract violation the gate raises (a
     left-handed cell, a cell no origin could make fit, a degenerate derived
     box, a periodic axis with no explicit cell)."""
-    from molbuilder.periodicity_gate import apply_edit, OPS, validate_and_heal
+    from molbuilder.periodicity_gate import apply_edit, OPS, validate_periodicity
     body = request.get_json(silent=True) or {}
     op = body.get("op")
     if op not in OPS:
@@ -695,11 +696,11 @@ def api_periodicity():
         # describe the state that ARRIVED and are deliberately dropped: this
         # answer describes the state the edit PRODUCED, and a user who has just
         # corrected a box must not be told it is still wrong (molview.md § 6.8).
-        struct, _incoming = validate_and_heal(struct)
+        struct, _incoming = validate_periodicity(struct)
         new_struct, receipts = apply_edit(struct, op, body.get("payload"))
         # The CONDITIONS are re-derived on the RESULT, so "the box does not
         # contain the structure" is answered about the box that now exists.
-        new_struct, conditions = validate_and_heal(new_struct)
+        new_struct, conditions = validate_periodicity(new_struct)
         # Receipts first (what the edit did), then conditions (what is now true).
         notices = list(receipts) + list(conditions)
     except ValueError as exc:
@@ -813,8 +814,8 @@ def api_structure_export():
         return jsonify({"ok": False, "error": str(exc)}), 400
     # The same gate every other structure door runs, so what leaves is what a
     # save would have written -- healed identically, not merely similarly.
-    from molbuilder.periodicity_gate import validate_and_heal
-    struct, notices = validate_and_heal(struct)
+    from molbuilder.periodicity_gate import validate_periodicity
+    struct, notices = validate_periodicity(struct)
     # THE FRAMES, when a range was asked for (molview.md § 11.3).  They ride
     # BESIDE the envelope rather than inside it -- the same shape
     # ``/api/build/load`` takes on the way in: one structure carrying the

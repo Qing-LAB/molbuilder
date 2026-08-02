@@ -294,7 +294,9 @@ export function createLoad(handed) {
         }
 
         // Replace the whole model at once, then anchor a fresh history on it.
-        handed.put(loaded.structure, loaded.coordinates, stemOf(input));
+        handed.put(loaded.structure, loaded.coordinates, stemOf(input),
+                   /* what the read said about it (§ 6.8) */
+                   Array.isArray(payload.notices) ? payload.notices : []);
         handed.recordFirstState();
         handed.announce();
         return loaded.structure;
@@ -561,7 +563,10 @@ export function createCellEdit(handed) {
          * in would quietly have answered with the raw value instead. */
         const block = answer && answer.periodicity;
         if (!answer || answer.ok === false || !block) return null;
-        handed.applyCell(block);
+        /* The answer's notices ride WITH the block it describes (§ 6.8). They
+         * are passed on verbatim -- the server's own words, its own levels --
+         * because rewording a warning here would put a second author on it. */
+        handed.applyCell(block, Array.isArray(answer.notices) ? answer.notices : []);
         return block;
     };
 }

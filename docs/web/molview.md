@@ -847,9 +847,9 @@ clearance numbers in the same answer.
 The door now re-derives the conditions on the **result**:
 
 ```
-struct, _incoming    = validate_and_heal(struct)      # arrived; notices dropped
+struct, _incoming    = validate_periodicity(struct)      # arrived; notices dropped
 new_struct, receipts = apply_edit(struct, op, payload)   # what the edit DID
-new_struct, conditions = validate_and_heal(new_struct)   # what is NOW true
+new_struct, conditions = validate_periodicity(new_struct)   # what is NOW true
 notices = receipts + conditions
 ```
 

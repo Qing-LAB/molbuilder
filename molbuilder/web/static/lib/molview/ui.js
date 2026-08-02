@@ -978,6 +978,12 @@ function mountPanel(doc, card, model, reserved) {
     }
     header.appendChild(tabs);
     root.appendChild(header);
+    /* WHAT THE SERVER SAID ABOUT THE STRUCTURE ITSELF (§ 6.8), above the tabs
+     * so it is visible on either page: a load notice is about the whole
+     * structure, so unlike a cell notice it has no row to sit under. */
+    const loadNotices = el("div", "molviewer-notices");
+    loadNotices.hidden = true;
+    root.appendChild(loadNotices);
     root.appendChild(pages.selection);
     root.appendChild(pages.cell);
 
@@ -1249,6 +1255,10 @@ function mountPanel(doc, card, model, reserved) {
     /* ── The Cell page: read-only (§ 8.1) ────────────────────────────────── */
     const cellReadout = el("dl", "molviewer-cell-readout");
     pages.cell.appendChild(cellReadout);
+    // What the server said about this box, under the numbers it is about.
+    const cellNotices = el("div", "molviewer-notices");
+    cellNotices.hidden = true;
+    pages.cell.appendChild(cellNotices);
 
     function atomCount() {
         const atoms = model.getAtoms();
@@ -1268,6 +1278,12 @@ function mountPanel(doc, card, model, reserved) {
         drawList(state);
         drawRows(state);
         drawTargets();
+        /* Read back from where it lives, like every other control here (§ 8.5).
+         * The model clears the set on any change to the structure, so a line
+         * that is gone is gone because the fact is, not because something here
+         * remembered to remove it. */
+        const said = model.getNotices();
+        drawNotices(loadNotices, said && said.where === "load" ? said.list : []);
         // A read-only viewer does not show the controls the gate would swallow.
         assign.hidden = model.mode === "readonly";
     }
@@ -1515,6 +1531,24 @@ function mountPanel(doc, card, model, reserved) {
      * value is the default, not that nobody ever typed it. Provenance is not
      * what a reader of this page needs -- "is this box mine?" is.
      */
+    /* ONE WAY A NOTICE IS DRAWN, because the Cell page and the panel line show
+     * the same thing in two places and two renderers would drift.
+     *
+     * The server's words and the server's level, verbatim: MolView reports what
+     * it was told. Rewording a warning here would put a second author on it, and
+     * the message carries numbers -- clearances, axes -- that only the server
+     * computed. */
+    function drawNotices(into, list) {
+        into.textContent = "";
+        into.hidden = !(list && list.length);
+        for (const notice of (list || [])) {
+            const line = el("p", "molviewer-notice molviewer-notice--"
+                                 + (notice.level === "warn" ? "warn" : "info"));
+            line.textContent = notice.message;
+            into.appendChild(line);
+        }
+    }
+
     function drawCell() {
         cellReadout.textContent = "";
         // THE CELL AS IT WILL BE USED (§ 9.3's main way in), under the names the
@@ -1558,6 +1592,11 @@ function mountPanel(doc, card, model, reserved) {
             cellReadout.appendChild(term);
             cellReadout.appendChild(detail);
         }
+        /* UNDER THE ROWS THEY ARE ABOUT (§ 6.8). A cell warning names an axis
+         * and a clearance; those numbers are the four rows above it, so this is
+         * where the user is already looking, having just typed one of them. */
+        const said = model.getNotices();
+        drawNotices(cellNotices, said && said.where === "cell" ? said.list : []);
     }
 
     /* The 3x3 as three rows of three, at a fixed precision so the columns line

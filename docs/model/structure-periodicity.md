@@ -374,7 +374,7 @@ to these or is a bug:
 `POST /api/structure/periodicity`, body `{data, op, payload}` — serves every
 Cell-page button; one module (`molbuilder/periodicity_gate.py`) owns
 `apply_edit(struct, op, payload) → (struct′, notices)` and the
-`validate_and_heal` core shared with `StructureCodec`. Uniform response:
+`validate_periodicity` core shared with `StructureCodec`. Uniform response:
 `{ok, blob, resolved_cell, resolved_cell_origin, notices[]}` — the client
 adopts the returned truth blob and renders the views; it never computes.
 
@@ -469,16 +469,89 @@ carries no sampling parameter. Periodicity flows one way, read at each stage:
 ```mermaid
 flowchart TB
     DS[".xyz + .molstruct.json<br/>(cell / cell_origin / axis_kind / vacuum)"]
+    GATE{{"validate_periodicity<br/>§ 6.1 table — CHECKS, never corrects"}}
     MV["MolView: cell wireframe + box at resolved origin"]
     FDF["fdf generator: LatticeVectors (from resolved cell),<br/>atoms translated by −resolve_cell_origin()"]
     TR["transport: reads Structure.cell + axis_kind<br/>(--cell-fdf overrides if given)"]
     OUT[".fdf → run → SIESTA .out/.XV (cell)"]
     PARSE["parse/ → StructureResult.cell → back into a dataset"]
-    DS --> MV
+    DS --> GATE
+    GATE -->|"structure unchanged"| MV
+    GATE -->|"notices {level, message}"| MV
     DS --> FDF
     DS --> TR
     FDF --> OUT --> PARSE --> DS
 ```
+
+### 8.1 Where the gate runs, and in what order
+
+Every structure MolView draws has already passed the gate; **MolView itself
+checks nothing.** The gate is server-side only, and it runs at six points:
+
+| # | Seam | Trigger | What happens to its answer |
+|---|---|---|---|
+| 1 | `StructureCodec.load` | reading the pair from disk | notices ride out with the structure |
+| 2 | `/api/structure/periodicity` — before | a Cell-page edit arrives | notices **dropped** — they describe what arrived, not the result |
+| 3 | `/api/structure/periodicity` — after | the edit has been applied | notices **returned** — these describe the box the user now has |
+| 4 | `apply_edit`, `cell_origin` branch | inside the edit | used only to DECIDE whether a caveat is needed; its notices are not reported |
+| 5 | `/api/structure/export` | export | notices returned |
+| 6 | `_shared.apply_periodicity_from_body` | a tab emits a job | the checked structure is what the emitter uses |
+
+**The 2 → 4 → 3 order is the whole reason a corrected box reports as corrected.**
+The check that reaches the user runs on the *result*, after the edit — not on the
+request that asked for it. Reporting seam 2 instead told a user who had just
+fixed their box that it was still broken.
+
+**Loading a structure:**
+
+```mermaid
+sequenceDiagram
+    participant U as user
+    participant C as StructureCodec
+    participant G as validate_periodicity
+    participant M as MolView
+    U->>C: open a .xyz
+    C->>C: read coordinates
+    C->>C: apply the .molstruct.json sidecar<br/>(regions, frozen_atoms, cell, origin, axes, vacuum)
+    C->>G: check the ASSEMBLED structure
+    G-->>C: the same structure, plus notices
+    C-->>M: structure + notices, in one answer
+    M->>M: draw, and show the notices (molview.md § 6.8)
+```
+
+**Editing the cell:**
+
+```mermaid
+sequenceDiagram
+    participant M as MolView
+    participant D as the periodicity door
+    participant G as validate_periodicity
+    participant E as apply_edit
+    M->>D: the whole structure + op + payload
+    D->>G: check what ARRIVED
+    G-->>D: notices — dropped, they describe the old box
+    D->>E: apply the op
+    E-->>D: new structure + RECEIPTS (what the edit did)
+    D->>G: check the RESULT
+    G-->>D: CONDITIONS (what is now true)
+    D-->>M: post-edit cell block + receipts + conditions
+    M->>M: adopt the block, show the notices on the Cell page
+```
+
+**The metadata is checked by the same pass, not a separate one.** The sidecar's
+`regions` — every label, `frozen_atoms` among them — and its periodicity fields
+are applied to the structure *before* the gate sees it (step 3 above), so the
+gate always checks an assembled structure rather than a half-built one. A
+sidecar whose labels name atoms that do not exist is refused earlier, by the
+sidecar reader (`structure-molstruct.md`); the gate's subject is the box.
+
+**When does it take effect? It does not.** The gate changes nothing — clause 1 —
+so "takes effect" is the wrong question for it. What takes effect is what the
+user did. The gate only says whether the result is sound, and that answer
+reaches the user as a notice or not at all. It was called `validate_and_heal`
+until 2026-08-01; healing was removed on 2026-07-29 and the name outlived the
+behaviour, which is how a reader comes to look for a correction step that
+clause 1 forbids.
 
 Downstream read points (host-side via `parse/`): a `.xyz` reads its
 `.molstruct.json` sidecar; a SIESTA `.out`/`.XV` gets its cell from

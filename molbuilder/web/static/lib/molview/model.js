@@ -201,8 +201,28 @@ export function createModel(opts) {
      *      longer fits
      *   4. only then is anyone told, and what they see is a matching pair
      */
+    /* WHAT THE SERVER SAID ABOUT THE LAST ANSWER (§ 6.8).
+     *
+     * `{where, list}` -- `where` is "load" or "cell", because the two are shown
+     * in different places, and `list` is the server's `{level, message}` rows
+     * verbatim. MolView neither writes nor rewords them.
+     *
+     * NOT STORED, not saved, not restored: they describe one exchange. Any
+     * change to the structure clears them, because a condition is a fact about
+     * the box AND the atoms, and MolView cannot know whether it still holds
+     * once either has moved. */
+    let notices = null;
+
     function settle(change, options) {
         const opts = options || {};
+        /* The set belongs to the answer that produced it, and this is every
+         * change to the structure -- so it is settled HERE, once.
+         *
+         * SET BEFORE ANYONE IS TOLD. Assigning it after the settle meant the
+         * panel drew while the fact was still null, so the notice appeared only
+         * on a later unrelated redraw and the next settle wiped it -- a flash.
+         * § 6.4: updated completely first, and no one observes a half state. */
+        notices = opts.notices || null;
         change();                                             // 1
         const count = Array.isArray(frames) ? frames.length : 0;   // 2
         const wanted = opts.resetFrame ? 0 : frameIndex;
@@ -379,8 +399,12 @@ export function createModel(opts) {
     /* ══ The helpers, each handed exactly what it may call (§ 7.3) ════════ */
 
     const installMolecule = createLoad({
-        put: (s, c, name) => {
-            settle(() => put(s, c, name), { resetFrame: true });
+        put: (s, c, name, said) => {
+            settle(() => put(s, c, name), {
+                resetFrame: true,
+                notices: (said && said.length)
+                    ? { where: "load", list: said } : null,
+            });
             unit = HOLDING;
         },
         announce: () => {},                 // settle already told everyone
@@ -451,8 +475,12 @@ export function createModel(opts) {
         readData: readData,
         // A cell edit does not move an atom, so the frame and its range are
         // untouched — this is why § 10.5 makes it an overlay refresh.
-        applyCell: (block) => {
-            settle(() => { structure.periodicity = block; }, { redraw: "cell" });
+        applyCell: (block, said) => {
+            settle(() => { structure.periodicity = block; }, {
+                redraw: "cell",
+                notices: (said && said.length)
+                    ? { where: "cell", list: said } : null,
+            });
             history.edited();
         },
     });
@@ -510,6 +538,17 @@ export function createModel(opts) {
         },
         // "Which atoms are the electrodes" is a real question, and this is a CUT
         // OF THE LABELS — not a second place where groups of atoms are stored.
+        /* WHAT THE SERVER SAID about the answer now showing (§ 6.8), or null.
+         *
+         * `{where, list}`. A copy, like every read here: a caller that edits
+         * what it was handed changes nothing (§ 9.3). */
+        getNotices() {
+            return notices
+                ? { where: notices.where, list: notices.list.map(
+                        (n) => ({ level: n.level, message: n.message })) }
+                : null;
+        },
+
         getRegions() {
             return structure ? groupByLabel(structure.annotations) : null;
         },

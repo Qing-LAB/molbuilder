@@ -234,8 +234,8 @@ def test_export_returns_what_a_save_would_write(client, tmp_path):
     assert answer["ok"] is True
 
     struct = struct_from_body(body)
-    from molbuilder.periodicity_gate import validate_and_heal
-    struct, _ = validate_and_heal(struct)
+    from molbuilder.periodicity_gate import validate_periodicity
+    struct, _ = validate_periodicity(struct)
     target = tmp_path / "same.xyz"
     StructureCodec().write(struct, target)
 

@@ -12,7 +12,7 @@ import pytest
 
 from molbuilder.structure import Structure
 from molbuilder.periodicity_gate import (
-    OPS, apply_edit, contains_atoms, expected_corner, validate_and_heal)
+    OPS, apply_edit, contains_atoms, expected_corner, validate_periodicity)
 
 
 def _mol(off=(10.0, 10.0, 10.0), vacuum=(2.5, 2.5, 2.5)):
@@ -46,14 +46,14 @@ class TestHealTable:
 
     def test_derived_state_is_untouched(self):
         s = _mol()
-        healed, notes = validate_and_heal(s)
+        healed, notes = validate_periodicity(s)
         assert healed.cell is None and not notes    # row 1
 
     def test_explicit_no_origin_containing_is_legal(self):
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0
         s.__post_init__()
-        healed, notes = validate_and_heal(s)
+        healed, notes = validate_periodicity(s)
         assert healed.cell_origin is None and not notes   # row 2
 
     def test_hemec_state_derives_the_corner_without_materialising_it(self):
@@ -64,7 +64,7 @@ class TestHealTable:
         s = _mol()                                   # atoms near (10,10,10)
         s.cell = np.eye(3) * 7.0
         s.__post_init__()
-        out, notes = validate_and_heal(s)
+        out, notes = validate_periodicity(s)
         assert out.cell_origin is None               # truth untouched
         assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
         assert contains_atoms(out, out.resolve_cell_origin())
@@ -80,7 +80,7 @@ class TestHealTable:
         s = _mol()
         s.cell = np.eye(3) * 7.0
         s.__post_init__()
-        gated, _ = validate_and_heal(s)
+        gated, _ = validate_periodicity(s)
         reset, _ = apply_edit(s, "cell_origin", None)
         assert gated.cell_origin is None and reset.cell_origin is None
         assert np.allclose(gated.resolve_cell_origin(),
@@ -91,7 +91,7 @@ class TestHealTable:
         s.cell = np.eye(3) * 10.0
         s.cell_origin = np.array([0.5, 0.5, 0.5])
         s.__post_init__()
-        healed, notes = validate_and_heal(s)
+        healed, notes = validate_periodicity(s)
         assert np.allclose(healed.cell_origin, [0.5, 0.5, 0.5])  # row 4
         assert not notes
 
@@ -100,7 +100,7 @@ class TestHealTable:
         s.cell = np.eye(3) * 7.0
         s.cell_origin = np.array([100.0, 100.0, 100.0])  # nonsense corner
         s.__post_init__()
-        healed, notes = validate_and_heal(s, live_edit=True)
+        healed, notes = validate_periodicity(s, live_edit=True)
         assert np.allclose(healed.cell_origin, [100.0, 100.0, 100.0])
         assert notes and notes[0]["level"] == "warn"     # row 5, live half
 
@@ -109,14 +109,14 @@ class TestHealTable:
         s.cell = np.eye(3) * 1.0                     # extent 2 Å can't fit
         s.__post_init__()
         with pytest.raises(ValueError, match="cannot contain"):
-            validate_and_heal(s)
+            validate_periodicity(s)
 
     def test_left_handed_cell_is_refused(self):
         s = _mol()
         s.cell = np.diag([7.0, 7.0, -7.0])
         s.__post_init__()
         with pytest.raises(ValueError, match="right-handed"):
-            validate_and_heal(s)
+            validate_periodicity(s)
 
 
 # ------------------------------------------------------------------ #
@@ -360,7 +360,7 @@ class TestPeriodicityDoor:
             f"the pre-edit warning that it does not: {notices}")
 
     def test_a_condition_is_reported_once_not_twice(self, client):
-        """§ 6.8: `apply_edit` emits RECEIPTS, `validate_and_heal` emits
+        """§ 6.8: `apply_edit` emits RECEIPTS, `validate_periodicity` emits
         CONDITIONS. Setting a cell whose result still does not contain the
         structure used to produce the containment fact twice — once from each —
         in two different wordings.
@@ -496,7 +496,7 @@ class TestPeriodicAxesAreNeverContained:
         s.cell = np.eye(3) * 10.0
         s.axis_kind = ("periodic", "periodic", "periodic")
         s.__post_init__()
-        healed, notes = validate_and_heal(s)
+        healed, notes = validate_periodicity(s)
         assert healed.cell_origin is None and not notes
 
     def test_junction_periodic_periodic_transport_is_legal(self):
@@ -507,7 +507,7 @@ class TestPeriodicAxesAreNeverContained:
         s.cell = np.diag([10.0, 10.0, 2.0])
         s.axis_kind = ("periodic", "periodic", "transport")
         s.__post_init__()
-        out, notes = validate_and_heal(s)
+        out, notes = validate_periodicity(s)
         # x/y ignored (periodic); z extent 0 fits; the transport axis takes
         # its corner from the DERIVED view (bbox_min), not a stored value.
         assert out.cell_origin is None
@@ -520,7 +520,7 @@ class TestPeriodicAxesAreNeverContained:
         s.cell = np.eye(3) * 7.0
         s.cell_origin = np.array([100.0, 100.0, 100.0])
         s.__post_init__()
-        healed, notes = validate_and_heal(s)          # NOT live_edit
+        healed, notes = validate_periodicity(s)          # NOT live_edit
         assert np.allclose(healed.cell_origin, [100.0, 100.0, 100.0])
         assert notes and notes[0]["level"] == "warn"
 

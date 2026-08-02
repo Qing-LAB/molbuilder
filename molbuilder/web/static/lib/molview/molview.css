@@ -1295,6 +1295,29 @@
     font-family: var(--molviewer-font-mono);
 }
 
+/* What the server said about the answer now showing (§ 6.8). One block, used
+   both under the Cell page's rows and above the panel's tabs. */
+.molviewer-notices {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin: 0.4rem 0 0 0;
+}
+.molviewer-notices[hidden] { display: none; }
+.molviewer-notice {
+    margin: 0;
+    padding: 0.3rem 0.45rem;
+    border-left: 3px solid var(--molviewer-color-panel-edge);
+    border-radius: 3px;
+    background: var(--molviewer-color-panel-well);
+    color: var(--molviewer-color-panel-text);
+    font: var(--molviewer-text-2xs)/1.35 var(--molviewer-control-family);
+}
+/* The severity carries in the RULE, not in a colour written at the call site:
+   the message is the server's, the tone is this stylesheet's. */
+.molviewer-notice--warn { border-left-color: var(--molviewer-color-warn); }
+.molviewer-notice--info { border-left-color: var(--molviewer-color-accent); }
+
 /* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
 .molviewer-selection-header-tabs { align-items: center; }
 /* The [Selection|Cell] switch is the panel's SECTION-level tab bar -- left-aligned
