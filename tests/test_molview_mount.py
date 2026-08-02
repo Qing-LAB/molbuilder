@@ -1614,7 +1614,7 @@ def test_the_view_menu_opens_showing_what_the_store_already_says():
             litCount:    lit.length,
             litLabel:    lit.length === 1 ? lit[0].textContent : null,
             radiusShown: card.querySelector(".molviewer-menu-radius-row input").value,
-            projection:  card.querySelector(".molviewer-rail-toggle")
+            projection:  card.querySelector(".molviewer-menu-projection")
                              .getAttribute("aria-pressed"),
         }));
         """
@@ -1655,7 +1655,7 @@ def test_the_projection_toggle_reads_the_store_not_its_own_attribute():
         const { host, viewer } = await mounted();
         const card = host.querySelector(".molviewer-card");
         const view = viewer.data.view;
-        const toggle = card.querySelector(".molviewer-rail-toggle");
+        const toggle = card.querySelector(".molviewer-menu-projection");
         const readBack = () => toggle.getAttribute("aria-pressed");
 
         toggle.click();

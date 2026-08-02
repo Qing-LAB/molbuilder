@@ -612,7 +612,7 @@ function buildViewMenu(doc, model) {
 
     const projection = doc.createElement("button");
     projection.type = "button";
-    projection.className = "molviewer-rail-toggle";
+    projection.className = "molviewer-menu-projection";
     projection.textContent = "Orthographic";
     /* NO initial `aria-pressed` here, and the next value is NOT read back off
      * the attribute. Both were the same mistake: treating what was last PAINTED

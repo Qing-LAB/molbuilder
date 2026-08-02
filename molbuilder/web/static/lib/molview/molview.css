@@ -1762,8 +1762,9 @@
     text-align:     right;
 }
 
-/* Toggle (Labels, Axes) ------------------------------------- */
-.molviewer-rail-toggle {
+/* The Projection toggle: Perspective when off, Orthographic when pressed.
+   One button in the View menu, aria-pressed carrying the state. */
+.molviewer-menu-projection {
     width:          100%;
     padding:        0.4rem 0.6rem;
     background:     var(--mv-control);
@@ -1774,21 +1775,21 @@
     cursor:         pointer;
     transition:     background 120ms ease, border-color 120ms ease;
 }
-.molviewer-rail-toggle::before {
+.molviewer-menu-projection::before {
     content:        "○";
     display:        inline-block;
     margin-right:   0.5em;
     color:          var(--mv-text-faint);
 }
-.molviewer-rail-toggle[aria-pressed="true"]::before {
+.molviewer-menu-projection[aria-pressed="true"]::before {
     content:        "●";
     color:          var(--mv-accent);
 }
-.molviewer-rail-toggle:hover {
+.molviewer-menu-projection:hover {
     background:     var(--mv-control-hover);
     border-color:   var(--mv-edge);
 }
-.molviewer-rail-toggle[aria-pressed="true"] {
+.molviewer-menu-projection[aria-pressed="true"] {
     background:     var(--mv-control-hover);
     border-color:   var(--mv-accent);
 }
