@@ -83,7 +83,7 @@ neighbouring cell intended, or an artefact of the box?*
 
 Two consumers follow from that one rule, and both were bugs before they did:
 
-* **Containment** (§ 6.1 heal table) is required along non-periodic axes only —
+* **Containment** (§ 6.1 state table) is required along non-periodic axes only —
   requiring it everywhere made real crystals and junction files unopenable.
 * **The atom-to-nearest-image distance check** (`cell.image_distance`,
   `validation/geometry.py`) steps only along **isolated** axes. It used to walk
@@ -261,7 +261,7 @@ derived isolated axis), so the vacuum control reads "not applicable".
 
 ---
 
-## 6.1 The frame contract (v2, decided 2026-07-29) — one gate, a heal table, no silent frames
+## 6.1 The frame contract (v2, decided 2026-07-29) — one gate, a state table, no silent frames
 
 Six clauses, agreed with the project owner; every periodicity change conforms
 to these or is a bug:
@@ -273,29 +273,33 @@ to these or is a bug:
    engine inputs are **computed views** and are never written back into the
    truth. (A resolved cell materialised into `cell` with the origin dropped —
    the 2026-07 hemeC corruption — is the violation this clause forbids.)
-2. **One gate.** All default-resolution, validation, and healing happen at
-   exactly one seam: the **loader/saver of the pair** (`StructureCodec`),
-   whose logic is shared verbatim by the periodicity mutation door (§ 6.2).
-   The UI edits truth and renders views; emitters translate; only the gate
-   corrects state.
+2. **One gate — one implementation, not one location.** Default-resolution
+   and validation live in exactly one function, `validate_periodicity`, and
+   every seam that needs them calls it rather than reimplementing a rule:
+   the loader/saver of the pair (`StructureCodec`), the periodicity mutation
+   door (§ 6.2), the exit every structure-returning route leaves through, and
+   the emit path. § 8.1 lists all seven and what each does with the answer.
+   The UI edits truth and renders views; emitters translate. **Nothing
+   corrects state** — not even the gate (clause 1); the correction step this
+   clause used to describe was removed 2026-07-29.
 3. **The world frame belongs to the structure.** Atoms are authored relative
    to the world origin (composition convenience); the **cell is constructed
    around the structure**, never the structure moved into the cell — except
    by the one sanctioned rewrite, *calibrate* (§ 6, user-invoked only).
-4. **The heal table** (right-handed cells enforced, `det(cell) > 0`;
+4. **The state table** (right-handed cells enforced, `det(cell) > 0`;
    per-axis `expected_corner = bbox_min − vacuum` on isolated, `bbox_min` on
    transport, `0` on periodic). **Containment is required only along
    NON-PERIODIC axes** — along a periodic axis, atoms outside `[0, cell)`
    are legitimate periodic images (the engine wraps them), so the gate
-   never constrains or heals that direction (corrected 2026-07-29 after
+   never constrains that direction (corrected 2026-07-29 after
    the first cut made real crystals/junctions unopenable):
 
    | Stored state | Atoms contained (non-periodic axes)? | Gate action |
    |---|---|---|
-   | no `cell`, no `cell_origin` | — | fully derived (§ 4); **vacuum authoritative**; nothing to heal |
-   | explicit `cell`, no origin | yes | legal (imported-crystal): the corner **is** the world origin; vacuum **reference-only**; no heal |
+   | no `cell`, no `cell_origin` | — | fully derived (§ 4); **vacuum authoritative**; nothing stored to judge |
+   | explicit `cell`, no origin | yes | legal (imported-crystal): the corner **is** the world origin; vacuum **reference-only**; nothing reported |
    | explicit `cell`, no origin | NO | legal: the corner is **derived** — the wrapping corner, or the structure centred in the box where the per-side vacuum does not fit — and reported as an `info` notice. **Nothing is written into the truth.** A cell the structure cannot fit for ANY origin (fractional extent > 1 on a non-periodic axis) is a hard error at the edit, so an unfittable cell is never stored |
-   | explicit `cell` + origin | yes | legal, user-owned; **never healed**; vacuum reference-only |
+   | explicit `cell` + origin | yes | legal, user-owned; **never rewritten**; vacuum reference-only |
    | explicit `cell` + origin | NO | **user-owned in both halves**: warned (actual per-side clearances reported), **never auto-fixed** — at the live edit *and* on load (a stored manual origin must round-trip verbatim; silently flipping it on reload was the corrected defect) |
 
    **The minimum-thickness floor** (decided 2026-07-29). On an **isolated** axis
@@ -336,16 +340,19 @@ to these or is a bug:
    place, `Structure.resolve_cell_origin` (with `expected_cell_corner` /
    `cell_contains_atoms` beside it), and `periodicity_gate` delegates to it: the
    gate **validates and reports**, it does not rewrite. `tests/
-   test_periodicity_gate.py::TestHealTable::
+   test_periodicity_gate.py::TestTheStateTable::
    test_no_seam_materialises_a_resolved_corner` pins the agreement between the
    two seams.
 
    **Notices are part of the contract, not decoration.** Every notice is
-   `{level: "info"|"warn", message: str}`; one that reports state the gate
-   *modified* additionally carries `kind: "heal"`, which the web load door keys
-   on to mark the session dirty (the disk pair still holds the old value until
-   the user saves). No row emits `kind: "heal"` today — nothing is materialised
-   — and the mechanism stays for any future row that must correct stored state.
+   `{level: "info"|"warn", message: str}` — those two keys, and no others.
+   There was a third, `kind: "heal"`, described here and in `web-api.md` as
+   marking a notice about state the gate had corrected, and as the flag the web
+   load door keyed on to mark the session dirty. **No code ever wrote it and no
+   code ever read it**, including the load door named as its consumer; it was
+   documented into existence alongside a correction step that clause 1 forbids.
+   Removed from both documents 2026-08-02. A future row that must genuinely
+   rewrite stored state can add a key then, against a real reader.
    Callers surface notices; they never parse the message text.
 
    **Errors vs notices.** `ValueError` (HTTP 400 at the door) is raised only for
@@ -486,18 +493,26 @@ flowchart TB
 ### 8.1 Where the gate runs, and in what order
 
 Every structure MolView draws has already passed the gate; **MolView itself
-checks nothing.** The gate is server-side only, and it runs at six points:
+checks nothing.** The gate is server-side only, and it runs at seven points:
 
 | # | Seam | Trigger | What happens to its answer |
 |---|---|---|---|
-| 1 | `StructureCodec.load` | reading the pair from disk | notices ride out with the structure |
-| 2 | `/api/structure/periodicity` — before | a Cell-page edit arrives | notices **dropped** — they describe what arrived, not the result |
-| 3 | `/api/structure/periodicity` — after | the edit has been applied | notices **returned** — these describe the box the user now has |
-| 4 | `apply_edit`, `cell_origin` branch | inside the edit | used only to DECIDE whether a caveat is needed; its notices are not reported |
-| 5 | `/api/structure/export` | export | notices returned |
-| 6 | `_shared.apply_periodicity_from_body` | a tab emits a job | the checked structure is what the emitter uses |
+| 1 | `StructureCodec.load` | reading the pair from disk | nothing is reported — the read seam is here to REFUSE a cell nothing can be done with (left-handed, or too small for any origin), which raises rather than reports. What is true of the structure it produces is said at seam 2, on the way out |
+| 2 | `_shared.ok_structure_response` | **every structure the server sends the browser**: `/api/build/load`, `/api/build/molecule`, and the eight `/api/modify/*` ops | notices ride out with the structure |
+| 3 | `/api/structure/periodicity` — before | a Cell-page edit arrives | notices **dropped** — they describe what arrived, not the result |
+| 4 | `/api/structure/periodicity` — after | the edit has been applied | notices **returned** — these describe the box the user now has |
+| 5 | `apply_edit`, `cell_origin` branch | inside the edit | used only to DECIDE whether a caveat is needed; its notices are not reported |
+| 6 | `/api/structure/export` | export | notices returned |
+| 7 | `_shared.apply_periodicity_from_body` | a tab emits a job | the checked structure is what the emitter uses; its notices are dropped, and nothing on that path carries them (`molview.md` § 6.8) |
 
-**The 2 → 4 → 3 order is the whole reason a corrected box reports as corrected.**
+**Seam 2 is why "always checked" is not a rule anyone has to remember.** It is
+the single return path of every structure-returning route, so the check is in the
+code's shape rather than in each author's care: an op that says nothing has been
+checked and had nothing to say. Added 2026-08-01; until then the eight modify ops
+ran no check at all, and an edit could strand the atoms outside an explicit box
+with nobody told.
+
+**The 3 → 5 → 4 order is the whole reason a corrected box reports as corrected.**
 The check that reaches the user runs on the *result*, after the edit — not on the
 request that asked for it. Reporting seam 2 instead told a user who had just
 fixed their box that it was still broken.
@@ -508,14 +523,18 @@ fixed their box that it was still broken.
 sequenceDiagram
     participant U as user
     participant C as StructureCodec
+    participant D as the load door
     participant G as validate_periodicity
     participant M as MolView
     U->>C: open a .xyz
     C->>C: read coordinates
     C->>C: apply the .molstruct.json sidecar<br/>(regions, frozen_atoms, cell, origin, axes, vacuum)
     C->>G: check the ASSEMBLED structure
-    G-->>C: the same structure, plus notices
-    C-->>M: structure + notices, in one answer
+    G-->>C: refuses an unusable cell (raises); says nothing otherwise
+    C-->>D: the structure
+    D->>G: check what is about to be sent (seam 2)
+    G-->>D: the same structure, plus notices
+    D-->>M: structure + notices, in one answer
     M->>M: draw, and show the notices (molview.md § 6.8)
 ```
 

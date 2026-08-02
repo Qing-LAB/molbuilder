@@ -322,8 +322,9 @@ def test_export_reports_what_the_server_did_to_the_structure(client):
     The export door runs the same periodicity gate the save door runs, which is
     what makes `test_export_returns_what_a_save_would_write` true rather than
     coincidental; anything that gate says is passed on instead of swallowed.
-    (Which structures it heals is `structure-periodicity.md`'s business, and is
-    tested there — this pins only that the channel exists and is a list.)
+    (Which structures it has something to say about is
+    `structure-periodicity.md`'s business and is tested there — this pins only
+    that the channel exists and is a list.)
     """
     answer = client.post("/api/structure/export", json=_envelope()).get_json()
     assert isinstance(answer["notices"], list)

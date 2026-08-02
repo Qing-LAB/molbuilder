@@ -1,8 +1,8 @@
-"""The frame-contract gate — structure-periodicity.md § 6.1 (heal table)
+"""The frame-contract gate — structure-periodicity.md § 6.1 (state table)
 + § 6.2 v3 (the unified door's regime model).
 
 Python owns every periodicity-metadata change (the gate); the JS only
-calls.  These tests pin each heal-table row, each op's v3 semantics, the
+calls.  These tests pin each state-table row, each op's v3 semantics, the
 calibrate≡emit frame equivalence, and the unified endpoint envelope.
 """
 from __future__ import annotations
@@ -26,12 +26,12 @@ def _mol(off=(10.0, 10.0, 10.0), vacuum=(2.5, 2.5, 2.5)):
 
 
 # ------------------------------------------------------------------ #
-#  § 6.1 heal table (stored state)                                    #
+#  § 6.1 state table (stored state)                                   #
 # ------------------------------------------------------------------ #
 
 
-class TestHealTable:
-    """PINS: docs/model/structure-periodicity.md § 6.1 — the heal table, one
+class TestTheStateTable:
+    """PINS: docs/model/structure-periodicity.md § 6.1 — the state table, one
     row per stored state.
 
     INVARIANT: for every (cell, cell_origin, containment) combination the gate
@@ -46,15 +46,15 @@ class TestHealTable:
 
     def test_derived_state_is_untouched(self):
         s = _mol()
-        healed, notes = validate_periodicity(s)
-        assert healed.cell is None and not notes    # row 1
+        checked, notes = validate_periodicity(s)
+        assert checked.cell is None and not notes    # row 1
 
     def test_explicit_no_origin_containing_is_legal(self):
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0
         s.__post_init__()
-        healed, notes = validate_periodicity(s)
-        assert healed.cell_origin is None and not notes   # row 2
+        checked, notes = validate_periodicity(s)
+        assert checked.cell_origin is None and not notes   # row 2
 
     def test_hemec_state_derives_the_corner_without_materialising_it(self):
         """Row 3 — the 2026-07 hemeC corruption: explicit cell, no origin,
@@ -69,8 +69,9 @@ class TestHealTable:
         assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
         assert contains_atoms(out, out.resolve_cell_origin())
         assert notes and notes[0]["level"] == "info"
-        # Nothing was modified, so nothing claims the session is dirty.
-        assert not any(n.get("kind") == "heal" for n in notes)
+        # A notice is exactly {level, message}. There is no key that says "and
+        # I changed something", because nothing here changes anything.
+        assert all(set(n) == {"level", "message"} for n in notes), notes
 
     def test_no_seam_materialises_a_resolved_corner(self):
         """The invariant behind the 2026-07-29 decision: for ONE state
@@ -86,23 +87,40 @@ class TestHealTable:
         assert np.allclose(gated.resolve_cell_origin(),
                            reset.resolve_cell_origin())
 
-    def test_user_owned_origin_is_never_healed(self):
+    def test_user_owned_origin_is_never_rewritten(self):
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0
         s.cell_origin = np.array([0.5, 0.5, 0.5])
         s.__post_init__()
-        healed, notes = validate_periodicity(s)
-        assert np.allclose(healed.cell_origin, [0.5, 0.5, 0.5])  # row 4
+        checked, notes = validate_periodicity(s)
+        assert np.allclose(checked.cell_origin, [0.5, 0.5, 0.5])  # row 4
         assert not notes
 
-    def test_live_origin_edit_is_accepted_with_warning(self):
+    def test_a_manual_origin_gets_the_same_answer_from_either_direction(self):
+        """Row 5 is ONE row.  A nonsense corner the user typed on the Cell page
+        and the same corner read back off disk are the same state, so they get
+        the same answer: kept verbatim, warned about, never auto-fixed.
+
+        This used to be two tests either side of a ``live_edit`` flag.  Both
+        passed, which was the proof the flag selected nothing -- it was removed
+        2026-08-02.  What the pair was really pinning is the equality below, so
+        that is what this asserts.
+        """
         s = _mol()
         s.cell = np.eye(3) * 7.0
         s.cell_origin = np.array([100.0, 100.0, 100.0])  # nonsense corner
         s.__post_init__()
-        healed, notes = validate_periodicity(s, live_edit=True)
-        assert np.allclose(healed.cell_origin, [100.0, 100.0, 100.0])
-        assert notes and notes[0]["level"] == "warn"     # row 5, live half
+        checked, notes = validate_periodicity(s)
+        assert np.allclose(checked.cell_origin, [100.0, 100.0, 100.0])
+        assert notes and notes[0]["level"] == "warn"
+
+        # The live half: the same corner set through the Cell-page door.
+        live = _mol()
+        live.cell = np.eye(3) * 7.0
+        live.__post_init__()
+        typed, _ = apply_edit(live, "cell_origin", [100.0, 100.0, 100.0])
+        assert np.allclose(typed.cell_origin, [100.0, 100.0, 100.0])
+        assert validate_periodicity(typed)[1] == notes
 
     def test_too_small_cell_is_a_hard_error(self):
         s = _mol()
@@ -499,15 +517,17 @@ class TestLoaderGate:
     """PINS: docs/model/structure-periodicity.md § 6.1 clause 2 — ONE gate,
     on both seams of the .xyz/.molstruct.json pair.
 
-    The gate must sit on BOTH pair seams.  Gating the in-memory seam alone left
-    /api/build/load serving corrupted pairs unhealed — MolView drew the
-    box from the world origin while the Cell page showed healed values
-    (observed live on projects/hemeC-dithiol, 2026-07-29)."""
+    Both seams must answer the same way.  While the in-memory seam derived the
+    corner and the read seam did not, /api/build/load served a pair whose box
+    MolView drew from the world origin while the Cell page showed the wrapping
+    corner: one state, two answers (observed live on projects/hemeC-dithiol,
+    2026-07-29)."""
 
-    def _write_corrupted_pair(self, dirpath):
-        """The pair written BY HAND, not through ``write()`` — the point is to
-        put a corrupted pair on disk, so it must not pass through the door whose
-        healing is under test."""
+    def _write_pair_with_no_stored_corner(self, dirpath):
+        """A pair whose sidecar holds an explicit cell and NO origin, with the
+        atoms outside it at the world origin — the hemeC state, and a legal one
+        (row 3).  Written BY HAND rather than through ``write()`` so it reaches
+        the read seam exactly as a file on disk would."""
         import json as _json
         from molbuilder.workingcopy_structure import StructureCodec
         s = _mol()                          # atoms near (10,10,10), vac 2.5
@@ -519,9 +539,9 @@ class TestLoaderGate:
             _json.dumps(made.sidecar), encoding="utf-8")
         return dirpath / "m.xyz"
 
-    def test_codec_read_heals_a_corrupted_pair(self, tmp_path):
+    def test_the_read_seam_invents_no_corner(self, tmp_path):
         from molbuilder.workingcopy_structure import StructureCodec
-        xyz = self._write_corrupted_pair(tmp_path)
+        xyz = self._write_pair_with_no_stored_corner(tmp_path)
         out = StructureCodec().read(xyz)
         # The pair round-trips VERBATIM (no origin invented in the sidecar);
         # the wrapping corner comes back as the resolved view.
@@ -529,14 +549,14 @@ class TestLoaderGate:
         assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
         assert contains_atoms(out, out.resolve_cell_origin())
 
-    def test_load_endpoint_serves_the_healed_resolved_origin(
+    def test_the_load_door_serves_the_derived_corner(
             self, tmp_path, monkeypatch):
         pytest.importorskip("flask")
         from molbuilder.diagnostics import Capabilities, set_capabilities
         monkeypatch.chdir(tmp_path)
         sdir = tmp_path / "projects" / "P" / "structure"
         sdir.mkdir(parents=True)
-        xyz = self._write_corrupted_pair(sdir)
+        xyz = self._write_pair_with_no_stored_corner(sdir)
         set_capabilities(Capabilities(runtime_config={},
                                       conda_binary="/usr/bin/conda"))
         try:
@@ -571,13 +591,13 @@ class TestPeriodicAxesAreNeverContained:
         s.cell = np.eye(3) * 10.0
         s.axis_kind = ("periodic", "periodic", "periodic")
         s.__post_init__()
-        healed, notes = validate_periodicity(s)
-        assert healed.cell_origin is None and not notes
+        checked, notes = validate_periodicity(s)
+        assert checked.cell_origin is None and not notes
 
     def test_junction_periodic_periodic_transport_is_legal(self):
         """The BDT/Au junction shape: periodic x/y, transport z; atoms
         wrapped to negative fractionals along x/y must not trip the
-        gate; the transport axis still heals via the corner."""
+        gate; the transport axis is still judged, via the derived corner."""
         s = _mol(off=(-3.0, -2.0, 10.0), vacuum=(0.0, 0.0, 0.0))
         s.cell = np.diag([10.0, 10.0, 2.0])
         s.axis_kind = ("periodic", "periodic", "transport")
@@ -588,15 +608,15 @@ class TestPeriodicAxesAreNeverContained:
         assert out.cell_origin is None
         assert contains_atoms(out, out.resolve_cell_origin())
 
-    def test_stored_manual_origin_is_warned_never_healed(self):
+    def test_stored_manual_origin_is_warned_never_rewritten(self):
         """Row 5 stored half: a manual origin round-trips verbatim (the
         silent flip on reload is the review finding)."""
         s = _mol()
         s.cell = np.eye(3) * 7.0
         s.cell_origin = np.array([100.0, 100.0, 100.0])
         s.__post_init__()
-        healed, notes = validate_periodicity(s)          # NOT live_edit
-        assert np.allclose(healed.cell_origin, [100.0, 100.0, 100.0])
+        checked, notes = validate_periodicity(s)
+        assert np.allclose(checked.cell_origin, [100.0, 100.0, 100.0])
         assert notes and notes[0]["level"] == "warn"
 
     def test_unfittable_cell_edit_is_refused_not_stored(self):
@@ -721,12 +741,16 @@ class TestTabEmitContract:
 from pathlib import Path  # noqa: E402  (used by TestTabEmitContract)
 
 
-class TestLoadHealIsVisible:
-    """§ 6.1 clause 6 (approved 2026-07-29): a heal at the load door must
-    never be silent — the response carries the notices, marked with a
-    machine-readable kind so the client can dirty-mark the session."""
+class TestTheLoadAnswerIsNotSilent:
+    """§ 6.1 clause 6 (approved 2026-07-29): what the gate finds at the load
+    door must never be silent — the answer carries it.
 
-    def test_load_response_carries_the_heal_notice(self, tmp_path, monkeypatch):
+    The clause was written when a load could REWRITE stored state, and asked for
+    a machine-readable marker so the client could dirty-mark the session.
+    Nothing rewrites anything now, so there is nothing to mark and no marker:
+    the answer reports, and the pair on disk is still what the user saved."""
+
+    def test_the_load_answer_carries_what_the_gate_found(self, tmp_path, monkeypatch):
         pytest.importorskip("flask")
         from molbuilder.diagnostics import Capabilities, set_capabilities
         import json as _json
@@ -751,10 +775,11 @@ class TestLoadHealIsVisible:
             assert r.status_code == 200
             j = r.get_json()
             notices = j.get("notices") or []
-            # The corner is DERIVED, so the load REPORTS it (info) and
-            # changes nothing: no "heal" kind, hence no phantom dirty state.
+            # The corner is DERIVED, so the load REPORTS it (info) and changes
+            # nothing -- and the shape says so: two keys, no third one claiming
+            # a correction, hence no phantom dirty state.
             assert notices and notices[0]["level"] == "info"
-            assert not any(n.get("kind") == "heal" for n in notices)
+            assert all(set(n) == {"level", "message"} for n in notices), notices
             # The served model: no invented truth, the corner as a view.
             per = j["periodicity"]
             assert per.get("cell_origin") is None
@@ -852,13 +877,10 @@ class TestDocMatchesTheDoor:
     docs/model/structure-periodicity.md, and the door's own docstring.
 
     INVARIANT: documentation and code cannot disagree about what the door
-    accepts.  Also pins that the notice envelope is documented where it is
-    produced AND where it is consumed, because ``kind: "heal"`` is load-bearing
-    (the load door marks the session dirty on it) rather than decorative.
+    accepts.  The docstring once claimed FIVE ops, including a ``calibrate``
+    that had been deliberately removed (found 2026-07-29) -- this is the guard
+    so the three cannot rot apart again.
     """
-    """The op set is documented in three places; a guard so they cannot rot
-    apart again (the door's docstring claimed FIVE ops including a
-    ``calibrate`` that was deliberately removed -- found 2026-07-29)."""
 
     DOC = "docs/model/structure-periodicity.md"
 
@@ -1176,3 +1198,101 @@ class TestEveryOpIsChecked:
         said = client.post("/api/modify/translate", json=body).get_json()
         messages = [n["message"] for n in (said.get("notices") or [])]
         assert any("does NOT contain" in m for m in messages), messages
+
+
+class TestARefusedCellIsA400:
+    """A cell the gate REFUSES is the user's to fix, so the door has to say so.
+
+    ``validate_periodicity`` raises ``ValueError`` for a state that cannot be
+    represented at all -- here a left-handed cell (det < 0).  SEVEN doors run the
+    gate on the way IN; the six below called it outside any try (the seventh,
+    the Cell-page door, has always handled it).  The refusal became an unhandled
+    exception, Flask answered 500 with an HTML page, and the browser's
+    ``r.json()`` reported it as a network failure -- so the one sentence that
+    said what was wrong ("swap two lattice vectors") never reached anybody.
+
+    The fix is not six try/excepts: ``_shared.checked_periodicity`` raises
+    ``PeriodicityRefused`` and ONE handler in ``web/app.py`` answers it, the way
+    the 413 handler beside it already works.  Each test asserts the gate's OWN
+    words come back, because a 400 from some earlier check would otherwise pass
+    this test while the bug survived.
+    """
+
+    #: det = -64.  Refused by ``_require_right_handed`` before anything else in
+    #: the gate runs, so no test here depends on containment or atom count.
+    LEFT_HANDED = [[-4.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 4.0]]
+    XYZ = "1\nrefused-cell fixture\nH 0.000 0.000 0.000\n"
+
+    @pytest.fixture
+    def client(self):
+        pytest.importorskip("flask")
+        from molbuilder.web.app import create_app
+        return create_app(config={}).test_client()
+
+    @pytest.fixture
+    def client_with_root(self, monkeypatch, tmp_path):
+        """A client whose picker allowlist contains ``tmp_path`` -- the transport
+        door takes a PATH, not an envelope, so it needs a file it may read."""
+        pytest.importorskip("flask")
+        from molbuilder.web.app import create_app
+        from molbuilder import diagnostics
+        caps = diagnostics.Capabilities(
+            runtime_config={}, conda_binary=None, conda_envs=frozenset())
+        monkeypatch.setattr(type(caps), "file_picker_roots",
+                            lambda self: ((tmp_path.resolve(), "projects"),))
+        diagnostics.set_capabilities(caps)
+        return create_app(config={}).test_client(), tmp_path
+
+    def _assert_refused(self, response, door):
+        assert response.status_code == 400, (
+            f"{door}: a refusable cell answered {response.status_code}, not 400"
+            f" -- the gate's ValueError escaped the door")
+        body = response.get_json()
+        assert body is not None, f"{door}: answered with something that is not JSON"
+        assert body.get("ok") is False, f"{door}: {body}"
+        assert "right-handed" in (body.get("error") or ""), (
+            f"{door}: answered 400, but not with the gate's reason: "
+            f"{body.get('error')!r}")
+
+    def test_the_fdf_door_refuses(self, client):
+        self._assert_refused(client.post("/api/build/fdf", json={
+            "xyz": self.XYZ, "params": {},
+            "periodicity": {"cell": self.LEFT_HANDED}}), "/api/build/fdf")
+
+    def test_the_pyscf_door_refuses(self, client):
+        self._assert_refused(client.post("/api/build/pyscf", json={
+            "xyz": self.XYZ, "params": {},
+            "periodicity": {"cell": self.LEFT_HANDED}}), "/api/build/pyscf")
+
+    def test_the_preflight_door_refuses(self, client):
+        self._assert_refused(client.post("/api/build/preflight", json={
+            "xyz": self.XYZ, "engine": "siesta", "params": {},
+            "periodicity": {"cell": self.LEFT_HANDED}}), "/api/build/preflight")
+
+    def test_the_spectra_door_refuses(self, client):
+        self._assert_refused(client.post("/api/spectra/render", json={
+            "structure_text": self.XYZ, "params": {},
+            "regions": {}, "frozen_atoms": [],
+            "periodicity": {"cell": self.LEFT_HANDED}}), "/api/spectra/render")
+
+    def test_the_export_door_refuses(self, client):
+        """The export door reads the cell off the ENVELOPE rather than a
+        `periodicity` block, and called the gate directly -- so it is the one
+        door the shared entry helper does not cover, and it needs the same
+        wrapper."""
+        s = Structure(elements=["H"], positions=np.zeros((1, 3)))
+        s.cell = self.LEFT_HANDED
+        s.__post_init__()
+        self._assert_refused(client.post("/api/structure/export", json={
+            "structure": s.to_dict(), "name": "refused"}),
+            "/api/structure/export")
+
+    def test_the_transport_door_refuses(self, client_with_root):
+        client, tmp = client_with_root
+        xyz = tmp / "refused.xyz"
+        xyz.write_text(self.XYZ)
+        self._assert_refused(client.post("/api/transport/render", json={
+            "structure_path": str(xyz), "params": {},
+            "regions": {}, "frozen_atoms": [],
+            "periodicity": {"cell": self.LEFT_HANDED}}),
+            "/api/transport/render")

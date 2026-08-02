@@ -29,7 +29,9 @@ There is exactly one error builder and one structure-success builder, both in
 - `err(msg, code=400)` → `{ "ok": false, "error": msg }` at the given status.
 - `ok_structure_response(struct, extra)` → the success envelope for any route
   that returns a molecule (`/api/build/load`, `/api/build/molecule`, all
-  `/api/modify/*`).
+  `/api/modify/*`). **It validates what it is about to send** — being the only
+  way out, it is the one place that can be done once, and what the check finds
+  arrives in `notices` (`?doc=model/structure-periodicity.md` § 8.1 seam 2).
 
 **The canonical structure shape.** A molecule crosses the wire in one shape,
 built by `workspace_payload()` (the single serializer):
@@ -42,8 +44,16 @@ built by `workspace_payload()` (the single serializer):
   "periodicity": { "…cell / origin / axis_kind / vacuum…" },
   "annotations": { "…regions / frozen / channels…" },
   "issues": [ "…" ],
+  "notices": [ { "level": "info|warn", "message": "…" } ],
   "extra": { "…endpoint add-ons…" } }
 ```
+
+`notices` and `issues` are different channels and do not overlap. An **issue**
+is a validation finding about a calculation you are about to run — it is what
+the Generate panel lists, and it carries a `where` naming the field to fix. A
+**notice** is what the periodicity gate says about the box on the structure in
+this answer; it is absent when there is nothing to say, and MolView shows it on
+the panel or the Cell page (`?doc=web/molview.md` § 6.8).
 
 Two notes that matter for a reader of the code: `lattice` is now **always
 `null`** (the geometry moved into `periodicity`), and `structure_to_dict` also
@@ -148,7 +158,7 @@ which is a bug this project has already shipped once.
 
 ```json
 { "ok": true, "structure": { "geometry": …, "metadata": …, "document": … },
-  "notices": [ "…heals and warnings…" ] }
+  "notices": [ { "level": "info|warn", "message": "…" } ] }
 ```
 
 **What this replaces, door by door.**
@@ -213,7 +223,7 @@ cases the current designs need, and the answer for each is part of the contract:
 | **part of a structure** — a partial translate or rotate, where the edit routes act on the whole structure they are given | an envelope may describe a **subset**, with `source_index` giving each atom's number in the structure it came from. The receiver answers about the subset; the caller maps the coordinates back. Without this the caller sends a bare document and re-checks element-by-element that nothing was reordered, which is what the previous implementation had to do |
 | **one frame, or many** | `positions` is **one frame** — the one the user is looking at (§ 5.1). A trajectory is not a wire concern: its frames come from a run file the tab owns, and what leaves a viewer is the frame that was chosen. A door that ever needs many is a new door, not a wider envelope |
 | **where a structure lives** | **not in the envelope.** A path is an argument to the call — `save` takes one, `load` takes one — because the envelope describes a *structure*, never a location. A structure that carries its own path is one that can be saved to the wrong place by being copied |
-| **what the server wants to say** | `notices` beside `ok` — the heals and warnings a door produces (a cell corrected to contain its atoms, a vacuum too thin). They belong to the *call*, not to the structure, so they never ride inside it |
+| **what the server wants to say** | `notices` beside `ok` — `{level, message}` rows the door produces about the structure it is answering with: a box that no longer contains its atoms, a corner that had to be worked out because none was stored. Nothing is corrected, so a notice never reports a repair. They belong to the *call*, not to the structure, so they never ride inside it |
 
 **The envelope is not versioned, and that is a decision.** The sidecar on disk
 carries `schema_version` because a file outlives the program that wrote it. The
@@ -363,7 +373,7 @@ auth routes.
 | POST `/api/build/pyscf` | `{ structure, config }` → the generated PySCF `.py` text |
 | POST `/api/build/preflight` | `{ structure, config, engine }` → the pre-run validation report (pseudos + config gates) |
 | POST `/api/structure/analyze` | `{ structure }` → the geometry/chemistry report + summary |
-| POST `/api/structure/periodicity` | `{structure, op, payload}` → `{ok, periodicity, notices}`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `cell_origin` — through the frame-contract gate. There is deliberately **no** `calibrate`: moving atoms is not a periodicity edit and lives at `/api/modify/calibrate`. The answer is the cell block in the same shape `/api/build/load` sends it — raw values with the `resolved_*` views beside them — so a client adopts it verbatim through the path a load already takes, and `notices` carries `{level, message}` with `kind: "heal"` on anything the gate modified |
+| POST `/api/structure/periodicity` | `{structure, op, payload}` → `{ok, periodicity, notices}`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `cell_origin` — through the frame-contract gate. There is deliberately **no** `calibrate`: moving atoms is not a periodicity edit and lives at `/api/modify/calibrate`. The answer is the cell block in the same shape `/api/build/load` sends it — raw values with the `resolved_*` views beside them — so a client adopts it verbatim through the path a load already takes, and `notices` carries `{level, message}` rows — first what the edit did, then what is now true of the result |
 | POST `/api/run/install-wrapper` | install the run-wrapper script into a run dir (optional `continue_retries` 1–5 bakes the SIESTA warm-retry budget — `?doc=execution/running-a-job.md` § 3.5) |
 | POST `/api/siesta/install-pseudos` | install SIESTA pseudopotentials |
 

@@ -6,10 +6,11 @@ USED-BY StructureCodec (load/save gate), web/blueprints/build.py (the
         unified periodicity door), tests/test_periodicity_gate.py
 
 Contract (§ 6.1, decided 2026-07-29): the .xyz/.molstruct.json pair is the
-only truth; resolved values are views and are never written back; ALL
-healing happens here.  The § 6.1 heal table governs STORED state (load/
-save); ``apply_edit`` below governs LIVE edits per the § 6.2 v3 regime
-model:
+only truth; resolved values are views and are never written back; NOTHING
+here rewrites stored state.  The § 6.1 state table governs STORED state
+(load/save) -- it says, for each state the pair can hold, whether it is legal
+and what the user is told; ``apply_edit`` below governs LIVE edits per the
+§ 6.2 v3 regime model:
 
   DERIVED regime: {structure size, vacuum, axis_kind} => {cell, origin}
   are computed views.  Editing vacuum / axis_kind RESETS to this regime
@@ -26,7 +27,8 @@ model:
   calibrate_to_cell).  Emission translates to the engine frame
   implicitly; nothing on the Cell page moves atoms.
 
-Heal table (§ 6.1, stored state; right-handed cells only, det > 0):
+State table (§ 6.1, stored state; right-handed cells only, det > 0).  Every
+row ends in "legal" -- the gate reports, it does not repair:
 
   | stored state                | contained? | action                       |
   |-----------------------------|-----------|-------------------------------|
@@ -35,7 +37,7 @@ Heal table (§ 6.1, stored state; right-handed cells only, det > 0):
   |                             |           | corner IS the world origin    |
   | explicit cell, no origin    |    no     | legal: the corner is DERIVED  |
   |                             |           | (wrapping/centred) + info     |
-  | explicit cell + origin      |    yes    | legal, user-owned, never healed|
+  | explicit cell + origin      |    yes    | legal, user-owned, untouched  |
   | explicit cell + origin      |    no     | user-owned in BOTH halves:    |
   |                             |           | warn, never auto-fix          |
 
@@ -170,11 +172,19 @@ def _require_right_handed(cell: np.ndarray) -> None:
             f"Swap two lattice vectors or negate one (§ 6.1).")
 
 
-def validate_periodicity(struct: Structure, *,
-                      live_edit: bool = False) -> Tuple[Structure, List[dict]]:
+def validate_periodicity(struct: Structure) -> Tuple[Structure, List[dict]]:
     """Check STORED periodicity against the § 6.1 table and REPORT.  Returns
-    ``(struct, notices)``.  ``live_edit=True`` selects the explicit-origin
-    manual-edit row: accept as typed, warn, never auto-fix.
+    ``(struct, notices)``.
+
+    THE ANSWER DOES NOT DEPEND ON HOW THE STATE ARRIVED.  There was a
+    ``live_edit`` flag here, documented as selecting the explicit-origin
+    manual-edit row -- and never read by a line of this function.  It was true
+    once: the flag chose between healing a stored origin and accepting a typed
+    one.  Healing left on 2026-07-29 and both branches became the same branch,
+    so the flag went on being passed, and read, and believed for three days
+    while doing nothing.  Removed 2026-08-02.  Row 5 is one row: a manual origin
+    is user-owned, warned about, and never auto-fixed -- from disk and from the
+    Cell page alike, which is the property the round-trip depends on.
 
     IT CORRECTS NOTHING, and must not.  Clause 1: `cell` / `cell_origin` hold
     only what the user set, and every resolved value is a VIEW that is never
@@ -445,7 +455,7 @@ def apply_edit(struct: Structure, op: str,
     # CONDITIONS and the door answers those once, on the result (molview.md
     # § 6.8) -- merging them in as well put the same containment warning in one
     # answer twice, word for word.
-    s, conditions = validate_periodicity(s, live_edit=True)
+    s, conditions = validate_periodicity(s)
     if not conditions:
         notices.append(_notice(
             "warn",

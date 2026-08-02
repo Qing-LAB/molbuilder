@@ -27,11 +27,12 @@ from molbuilder.workingcopy_structure import StructureCodec
 
 _META = {
     "cell":         [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
-    "cell_origin":  [0.5, 1.5, 2.5],          # <- NON-zero (and CONTAINING: the
-                                           #    read gate heals a pair whose box
-                                           #    does not wrap the atoms, so the
-                                           #    verbatim round-trip invariant only
-                                           #    holds for legal rows 2/4 - 6.1)
+    "cell_origin":  [0.5, 1.5, 2.5],          # <- NON-zero (and CONTAINING: a box
+                                           #    that does not wrap the atoms is
+                                           #    still round-tripped verbatim, but
+                                           #    it comes back with a warning, and
+                                           #    this fixture is about the pair, not
+                                           #    about the warning - 6.1 rows 2/4)
     "pbc":          [True, True, False],
     "axis_kind":    ["periodic", "periodic", "isolated"],
     "vacuum":       [0.0, 0.0, 2.0],

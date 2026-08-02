@@ -40,13 +40,13 @@ def _with_metadata() -> Structure:
     })
     # THROUGH THE PERIODICITY GATE, as every structure that reaches a save has
     # been: a cell whose axes still say "isolated" is inconsistent, and the gate
-    # heals it. The save route and the export route both run the gate, so both
-    # heal the same way — but a fixture that skips it is a structure the
-    # application could not have produced, and comparing it against a healed one
+    # judges it. The save route and the export route both run the gate, so both
+    # answer the same way — but a fixture that skips it is a structure the
+    # application could not have produced, and comparing it against a checked one
     # measures the gate rather than the generator.
     from molbuilder.periodicity_gate import validate_periodicity
-    healed, _ = validate_periodicity(s)
-    return healed
+    checked, _ = validate_periodicity(s)
+    return checked
 
 
 def _plain() -> Structure:

@@ -812,10 +812,11 @@ def api_structure_export():
         struct = _struct_from_body(body)
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    # The same gate every other structure door runs, so what leaves is what a
-    # save would have written -- healed identically, not merely similarly.
-    from molbuilder.periodicity_gate import validate_periodicity
-    struct, notices = validate_periodicity(struct)
+    # The same gate every other structure door runs, so what leaves here is
+    # judged by the same rules a save is judged by -- and a cell it refuses
+    # leaves as a 400 carrying the gate's sentence, not as a 500.
+    from ._shared import checked_periodicity
+    struct, notices = checked_periodicity(struct)
     # THE FRAMES, when a range was asked for (molview.md § 11.3).  They ride
     # BESIDE the envelope rather than inside it -- the same shape
     # ``/api/build/load`` takes on the way in: one structure carrying the

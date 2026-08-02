@@ -180,8 +180,8 @@ def api_modify_delete():
     except (ValueError, IndexError) as exc:
         return _err(f"delete_atoms failed: {exc}", 400)
     # No selection_remap: the client CLEARS the selection on any atom-count
-    # change (molview-module.md §19.3.2) -- a cleared selection can never
-    # mis-point at a shifted index, so the server does not compute a remap.
+    # change (molview.md § 11.1, "Effect on atom count") -- a cleared selection
+    # can never mis-point at a shifted index, so the server computes no remap.
     return _ok_response(new_struct)
 
 
@@ -253,7 +253,7 @@ def api_modify_add_atom():
     except (ValueError, IndexError) as exc:
         return _err(f"add_atom failed: {exc}", 400)
     # No selection_remap: the client CLEARS the selection on any atom-count
-    # change (molview-module.md §19.3.2).
+    # change (molview.md § 11.1, "Effect on atom count").
     return _ok_response(new_struct)
 
 
@@ -608,7 +608,7 @@ def api_modify_electrode():
     except (ValueError, NotImplementedError) as exc:
         return _err(f"add_electrode_slab failed: {exc}", 400)
     # No selection_remap: the client CLEARS the selection on any atom-count
-    # change (molview-module.md §19.3.2).
+    # change (molview.md § 11.1, "Effect on atom count").
     return _ok_response(new_struct)
 
 
@@ -696,5 +696,5 @@ def api_modify_symmetric_electrodes():
         return _err(
             f"add_symmetric_electrodes failed ({type(exc).__name__}): {exc}", 500)
     # No selection_remap: the client CLEARS the selection on any atom-count
-    # change (molview-module.md §19.3.2).
+    # change (molview.md § 11.1, "Effect on atom count").
     return _ok_response(new_struct)

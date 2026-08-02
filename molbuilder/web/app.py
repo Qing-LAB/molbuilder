@@ -297,6 +297,18 @@ def create_app(*, config=None) -> Flask:
                       f"point the loader at the path on disk."),
         }), 413
 
+    # A REFUSED CELL IS THE USER'S TO FIX, so it leaves as a 400 with the gate's
+    # own sentence -- not as the 500 + HTML page that six of the seven doors
+    # running the gate used to produce, by running it outside any try.  Handled
+    # HERE, once, for the same reason as the 413 above: a door that forgets
+    # inherits the right answer instead of a misleading one
+    # (structure-periodicity.md § 8.1 seam 7).
+    from .blueprints._shared import PeriodicityRefused
+
+    @app.errorhandler(PeriodicityRefused)
+    def _periodicity_refused(exc):
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
     # --- Security headers ----------------------------------------- #
     #
     # Defense-in-depth headers for the internet-deployment use case

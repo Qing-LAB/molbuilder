@@ -279,12 +279,13 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         a stale sidecar's atom indices. No-metadata + stale sidecar => sidecar
         removed. Owns both-or-neither."""
 
-    def read(self, source_path, *, notices_out=None) -> Structure:
+    def read(self, source_path, *, frames_out=None) -> Structure:
         """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND its
         paired sidecar, applying metadata via molstruct.apply_to_structure.
         Missing sidecar = empty metadata (NOT an error). Runs the periodicity
-        gate and reports what it healed through `notices_out`.
-        `load` is the same call under its read-side name."""
+        gate to REFUSE a cell nothing can be done with; it reports nothing,
+        because what is true of the structure is said by whoever hands it
+        over. `load` is the same call under its read-side name."""
 ```
 
 > **The rule this shape exists to make checkable:** *every structure↔bytes

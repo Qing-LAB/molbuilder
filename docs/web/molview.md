@@ -776,8 +776,8 @@ about the structure the answer describes. They are not errors — an error fails
 the request. A notice is the server saying "this worked, and here is something
 you should know about the result".
 
-Today they are produced in one place, `periodicity_gate`, and reach MolView
-through three doors:
+Every one of them is worded by `periodicity_gate` — MolView writes none and
+rewords none — and they reach it through three doors:
 
 | Door | What it validates | When |
 |---|---|---|
@@ -805,8 +805,19 @@ leave through the `files` door, § 6.7.)
 | **A condition** | *"the box does NOT contain the structure along a non-periodic axis — per-axis (near, far) clearances in Å: …"* | a fact about the structure **right now**. Stays true until the cell or the atoms change |
 | **A receipt** | *"explicit cell cleared; the box is derived again"* | what the edit just **did**. True about that moment, meaningless afterwards |
 
-There are ten of them today: three conditions (containment, a derived corner, a
-regime change) and seven receipts, one per Cell-page edit.
+There are ten of them today. Three are conditions — the box does not contain the
+structure; the corner had to be derived because none was stored; the
+minimum-thickness floor is in effect, so the box is thicker than the vacuum on
+the Cell page. The other seven are receipts, one per Cell-page edit. The
+regime-change line reads like a condition and is not one: it says what the edit
+did to the box, which is the definition of a receipt.
+
+> **The floor condition is not yet answered like the other two.** It is emitted
+> only from the vacuum / axis-kind edit, never from the check every hand-over
+> runs — so a flat molecule is told once, by an edit that was not about it, and
+> not on load or after any modify op. Tracked with the thin-vacuum work
+> (task #36), because the two are halves of one sentence: *you typed this
+> vacuum, the box used that one, and this is what the physics needs.*
 
 #### The lifetime rule
 
@@ -2366,8 +2377,8 @@ MolView calls are listed there with their bodies and answers:
 
 | MolView's call | Route | Sends | Answers |
 |---|---|---|---|
-| `installMolecule` | `/api/build/load` | `{path}`, or `{text, filename, format?, sidecar?}` | the structure payload this module normalises (§ 6.2) |
-| `applyOp(name, args)` | `/api/modify/<name>` | the envelope + the op's arguments + the selection under § 11.1's key | the structure |
+| `installMolecule` | `/api/build/load` | `{path}`, or `{text, filename, format?, sidecar?}` | the structure payload this module normalises (§ 6.2), with the notices the check on the way out produced (§ 6.8) |
+| `applyOp(name, args)` | `/api/modify/<name>` | the envelope + the op's arguments + the selection under § 11.1's key | the structure, with the same notices beside it — both routes leave through the one helper that validates what it sends |
 | `commitPeriodicityOp(op, payload)` | `/api/structure/periodicity` | the envelope + `op`, `payload` | `{ok, periodicity, notices}` — the cell block in the same shape a load sends it |
 | the filter (§ 9.5) | `/api/selection/eval` | `{atoms, rule}` — no coordinates, because no rule matches on position | `{selected_indices}` |
 

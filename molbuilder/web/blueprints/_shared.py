@@ -510,8 +510,8 @@ def ok_structure_response(
     * ``/api/build/molecule``: ``{"pdb", "summary",
       "backend_used", "add_hydrogens_mode"}``.
     * ``/api/modify/<op>``: no ``extra`` keys — the client CLEARS
-      the selection on any atom-count change (molview §19.3.2), so
-      no per-op selection remap is emitted.
+      the selection on any atom-count change (molview.md § 11.1,
+      "Effect on atom count"), so no per-op selection remap is emitted.
 
     Wraps :func:`structure_to_dict` (which routes through
     :func:`workspace_payload`) in ``{"ok": True, ...}``.
@@ -1202,6 +1202,39 @@ def config_from_params(cls, params: Dict[str, Any],
     return cls(**kwargs)
 
 
+class PeriodicityRefused(Exception):
+    """The gate REFUSED the periodicity a request carried.
+
+    Not a warning about a box: a state that cannot be represented at all -- a
+    left-handed cell, or one too small to hold the structure whatever origin it
+    is given (periodicity_gate, "Errors vs notices").  The user has to change
+    something before the request can be answered, which is what a 400 means.
+
+    It exists so that answer cannot be forgotten.  ``validate_periodicity``
+    raises ``ValueError``, and every door that runs it on the way IN had to
+    remember a try/except.  SIX OF THE SEVEN DID NOT -- only the Cell-page door
+    handled it -- so a refusable cell arrived as a 500 and an HTML error page,
+    which the browser's ``r.json()`` then reported as a network failure, hiding
+    the real message the gate had written.  Raising a
+    type ONE handler in ``web/app.py`` knows about means a seventh door inherits
+    the right answer instead of inheriting the omission.  (Same reasoning, same
+    file, as the 413 handler beside it.)
+    """
+
+
+def checked_periodicity(struct):
+    """Run the gate and let a refusal become the door's 400.
+
+    The one wrapper both entry paths use -- ``apply_periodicity_from_body``
+    below and the export door -- so neither owns a copy of the translation.
+    Returns the gate's ``(struct, notices)`` unchanged.
+    """
+    try:
+        return validate_periodicity(struct)
+    except ValueError as exc:
+        raise PeriodicityRefused(str(exc)) from exc
+
+
 def apply_periodicity_from_body(struct, body):
     """The tab-emit contract (structure-periodicity.md § 7, decided
     2026-07-29): the client sends the MODEL's periodicity truth
@@ -1215,7 +1248,11 @@ def apply_periodicity_from_body(struct, body):
     failure that severed this wire on 2026-06-14 (the label-presence
     branch silently skipping the sidecar's cell).
 
-    Returns the (possibly healed) structure — callers rebind.
+    Returns the CHECKED structure -- the same object the gate was given, since
+    the gate corrects nothing (clause 1: a resolved value is never written back).
+    Callers rebind so this stays the one seam every emitted structure passes
+    through rather than an optional check.  A refusable cell raises
+    :class:`PeriodicityRefused`, which the app turns into the door's 400.
     """
     per = body.get("periodicity")
     if isinstance(per, dict):
@@ -1229,8 +1266,8 @@ def apply_periodicity_from_body(struct, body):
             struct.vacuum = tuple(per["vacuum"])
         # (resolved_* keys are VIEWS -- ignored by design, clause 1.)
         struct.__post_init__()
-    healed, _notices = validate_periodicity(struct)
-    return healed
+    checked, _conditions = checked_periodicity(struct)
+    return checked
 
 
 def apply_labels_to_struct(struct, body):
@@ -1567,6 +1604,8 @@ __all__ = [
     "config_from_params",
     "apply_labels_to_struct",
     "apply_sidecar_if_possible",
+    "PeriodicityRefused",
+    "checked_periodicity",
     "apply_companion_labels_if_present",
     "regions_pattern_b_notice",
 ]

@@ -197,11 +197,17 @@ async function start() {
 
     /* WHAT THE SERVER SAYS, and where it lands (§ 6.8).
      *
-     * Three real edits through the one route: give water a 5 Å box, then move
-     * the box's corner 20 Å away so it no longer contains the molecule. The
-     * server answers with a RECEIPT (what the edit did) and a CONDITION (the
-     * box does not contain the structure, with the per-axis clearances), and
-     * the Cell page shows both under the numbers they are about.
+     * Two real edits through the one route: give water a 5 Å box, then move the
+     * box's corner 20 Å away so it no longer contains the molecule. The first
+     * answers with a RECEIPT (what the edit did); the second with a CONDITION
+     * (the box does not contain the structure, with the per-axis clearances),
+     * and the Cell page shows what the LAST answer said -- a notice set belongs
+     * to one exchange and the next one replaces it (§ 6.8).
+     *
+     * The second answer carries the condition ALONE, not both: the door adds
+     * its "cell_origin set" receipt only when the result has nothing wrong with
+     * it (periodicity_gate.py, the cell_origin branch), because the condition
+     * already says the same thing in the words that matter.
      *
      * Nothing is faked here: no message is written by the demo, and the demo
      * does not reach into the viewer to place one. It performs an edit a user
