@@ -712,23 +712,10 @@
     gap: 0.6rem;
 }
 
-.molviewer-selection-status {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.8rem;
-    font: 13px/1.4 system-ui, sans-serif;
-    color: var(--ps-fg-dim);
-}
-
 .molviewer-selection-count {
     color: var(--ps-fg);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-}
-
-.molviewer-selection-loading {
-    color: var(--accent);
-    font-style: italic;
 }
 
 /* ---------- Click-mode body -------------------------------------- */
@@ -1106,14 +1093,6 @@
     color: var(--sp-exclude-fg);
 }
 
-/* ---------- Buttons + Assign block -------------------------------- */
-
-.molviewer-selection-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.4rem;
-}
-
 .molviewer-selection-actions-row {
     justify-content: space-between;   /* left group, isolate-toggle on right */
     align-items: center;
@@ -1236,147 +1215,6 @@
 }
 .molviewer-selection-new-label {
     font-family: var(--font-mono);
-}
-
-/* ====================================================================
- * The ⓘ info popover beside Target: a small round trigger and the panel it
- * shows.
- * ==================================================================== */
-.molviewer-selection-target-info-btn {
-    background: transparent;
-    color: var(--ps-fg-dim);
-    border: 1px solid var(--ps-border);
-    border-radius: 50%;
-    width: 1.6em;
-    height: 1.6em;
-    padding: 0;
-    font: 14px/1 system-ui, sans-serif;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-.molviewer-selection-target-info-btn:hover {
-    color: var(--ps-fg);
-    border-color: var(--ps-fg-dim);
-}
-.molviewer-selection-target-info-btn[aria-expanded="true"] {
-    background: var(--ps-bg-deep);
-    color: var(--ps-fg);
-}
-.molviewer-selection-target-info-panel {
-    margin-top: 0.4rem;
-    padding: 0.6rem 0.7rem;
-    background: var(--ps-bg-deep);
-    border: 1px solid var(--ps-border);
-    border-radius: 4px;
-    font: 12px system-ui, sans-serif;
-    color: var(--ps-fg);
-    max-height: 50vh;
-    overflow-y: auto;
-}
-.molviewer-selection-target-info-panel[hidden] {
-    display: none;
-}
-.molviewer-regions-title {
-    margin: 0 0 0.5rem 0;
-    font-size: 13px;
-    color: var(--ps-fg);
-    border-bottom: 1px solid var(--ps-border);
-    padding-bottom: 0.3rem;
-}
-.molviewer-regions-row {
-    margin-bottom: 0.5rem;
-}
-.molviewer-regions-row > summary {
-    cursor: pointer;
-    padding: 0.2rem 0;
-    line-height: 1.5;
-    list-style: none;
-}
-.molviewer-regions-row > summary::-webkit-details-marker {
-    display: none;
-}
-.molviewer-regions-row > summary::before {
-    content: "▸ ";
-    color: var(--ps-fg-dim);
-}
-.molviewer-regions-row[open] > summary::before {
-    content: "▾ ";
-}
-.molviewer-regions-key {
-    font-family: var(--font-mono);
-    background: var(--ps-bg);
-    padding: 1px 5px;
-    border-radius: 3px;
-    color: var(--ps-fg);
-}
-.molviewer-regions-badge {
-    font-size: 10px;
-    padding: 1px 5px;
-    border-radius: 3px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-left: 0.3em;
-}
-.molviewer-regions-badge.molviewer-is-in-use {
-    background: var(--success);
-    color: white;
-}
-
-.molviewer-regions-short {
-    color: var(--ps-fg-dim);
-    margin-left: 0.4em;
-}
-.molviewer-regions-body {
-    margin: 0.3rem 0 0.4rem 1.5rem;
-    font-size: 11.5px;
-    line-height: 1.45;
-}
-.molviewer-regions-body > dt {
-    font-weight: 600;
-    color: var(--ps-fg);
-    margin-top: 0.3rem;
-}
-.molviewer-regions-body > dd {
-    margin: 0.1rem 0 0 0;
-    color: var(--ps-fg-dim);
-}
-.molviewer-regions-bias {
-    margin-top: 0.7rem;
-    padding-top: 0.6rem;
-    border-top: 1px solid var(--ps-border);
-    color: var(--ps-fg-dim);
-    line-height: 1.45;
-}
-.molviewer-regions-bias > strong {
-    color: var(--ps-fg);
-}
-.molviewer-regions-doc {
-    margin-top: 0.4rem;
-    color: var(--ps-fg-dim);
-    font-size: 11px;
-}
-.molviewer-regions-doc > a {
-    color: var(--ps-fg);
-}
-
-.molviewer-selection-error {
-    margin: 0.6rem 0 0 0;
-    color: var(--sp-danger-fg);
-    font: 13px system-ui, sans-serif;
-}
-
-/* Surfaced by selection-bootstrap.js when the panel partial can't
- * be fetched -- the selection-panel CSS above never reaches the DOM
- * in that case, so this banner has to stand on its own.  Same colour
- * family as .molviewer-selection-error for visual coherence. */
-.molviewer-selection-bootstrap-error {
-    margin: 0.6rem;
-    padding: 0.6rem 0.8rem;
-    border: 1px solid var(--sp-danger-border-hover);
-    background: var(--sp-danger-bg-soft);
-    color: var(--sp-danger-fg);
-    font: 13px system-ui, sans-serif;
-    border-radius: 4px;
 }
 
 /* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
