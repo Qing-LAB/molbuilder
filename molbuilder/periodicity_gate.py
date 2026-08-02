@@ -374,18 +374,14 @@ def apply_edit(struct: Structure, op: str,
         if s.cell_origin is not None:
             # v3 precedence: respect the existing explicit ORIGIN first.
             s.__post_init__()
-            if contains_atoms(s, s.cell_origin):
-                notices.append(_notice(
-                    "info",
-                    "explicit cell set; the existing origin is respected. "
-                    "Vacuum values are reference-only (§ 6.1)."))
-            else:
-                notices.append(_notice(
-                    "warn",
-                    "explicit cell set and the existing origin respected — "
-                    "but the box does NOT contain the structure. Per-axis "
-                    "(near, far) clearances in Å: "
-                    + _clearance_text(s, s.cell_origin) + "."))
+            # RECEIPT ONLY. Whether the result contains the structure is a
+            # CONDITION, and conditions are answered once, by validate_and_heal
+            # on the result (molview.md § 6.8).  Saying it here too put the same
+            # fact in the answer twice, in two wordings.
+            notices.append(_notice(
+                "info",
+                "explicit cell set; the existing origin is respected. "
+                "Vacuum values are reference-only (§ 6.1)."))
             return s, notices
         # ... then respect the VACUUM: anchor at the expected corner.
         # A cell the structure cannot fit for ANY origin is REFUSED, not

@@ -320,6 +320,74 @@ class TestPeriodicityDoor:
         assert "resolved_cell_origin" in per and "resolved_vacuum" in per
         assert any(n["level"] == "warn" for n in j["notices"])
 
+    def test_a_fixed_box_is_not_still_reported_as_broken(self, client):
+        """molview.md § 6.8: a CONDITION describes the state the answer carries.
+
+        The door used to validate what ARRIVED, then apply the edit, then return
+        both sets together — so correcting a box that did not contain the
+        structure came back with the edit's receipt AND the pre-edit warning that
+        it does not contain the structure. The user fixes the problem and is told
+        it is still broken, which is how a warning surface gets ignored.
+        """
+        import numpy as np
+        from molbuilder.structure import Structure
+
+        # A box that does NOT contain the structure: origin far from the atoms.
+        s = Structure(elements=["H", "H"],
+                      positions=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]))
+        s.cell = np.eye(3) * 5.0
+        s.cell_origin = np.array([50.0, 50.0, 50.0])
+        s.axis_kind = ("isolated",) * 3
+        s.__post_init__()
+
+        broken = client.post("/api/structure/periodicity", json={
+            "structure": self._envelope(s), "op": "cell_origin",
+            "payload": [50.0, 50.0, 50.0]})
+        assert broken.status_code == 200, broken.get_json()
+        assert any("does NOT contain" in n["message"]
+                   for n in broken.get_json()["notices"]), (
+            "a box that does not contain the structure must be reported: "
+            f"{broken.get_json()['notices']}")
+
+        # Now FIX it — an origin that does contain the atoms.
+        fixed = client.post("/api/structure/periodicity", json={
+            "structure": self._envelope(s), "op": "cell_origin",
+            "payload": [-1.0, -2.0, -2.0]})
+        assert fixed.status_code == 200, fixed.get_json()
+        notices = fixed.get_json()["notices"]
+        assert not any("does NOT contain" in n["message"] for n in notices), (
+            "the box now contains the structure, so the answer must not carry "
+            f"the pre-edit warning that it does not: {notices}")
+
+    def test_a_condition_is_reported_once_not_twice(self, client):
+        """§ 6.8: `apply_edit` emits RECEIPTS, `validate_and_heal` emits
+        CONDITIONS. Setting a cell whose result still does not contain the
+        structure used to produce the containment fact twice — once from each —
+        in two different wordings.
+        """
+        import numpy as np
+        from molbuilder.structure import Structure
+
+        # The INCOMING structure already has a box that does not contain it --
+        # so the incoming validation has something to say -- and the edit leaves
+        # it not containing, so the edit path has the same thing to say.
+        # The box runs 5..15 along x; an atom sits at x = 0.
+        s = Structure(elements=["H", "H"],
+                      positions=np.array([[0.0, 0.0, 0.0], [9.0, 0.0, 0.0]]))
+        s.cell = np.eye(3) * 10.0
+        s.cell_origin = np.array([5.0, 0.0, 0.0])
+        s.axis_kind = ("isolated",) * 3
+        s.__post_init__()
+
+        r = client.post("/api/structure/periodicity", json={
+            "structure": self._envelope(s), "op": "cell",
+            "payload": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 10.0]]})
+        assert r.status_code == 200, r.get_json()
+        notices = r.get_json()["notices"]
+        containment = [n for n in notices if "does NOT contain" in n["message"]]
+        assert len(containment) <= 1, (
+            f"the same condition was reported {len(containment)} times: {notices}")
+
     def test_the_door_takes_the_envelope_molview_can_actually_produce(self, client):
         """molview.md § 11.7: the browser hands over the structure and writes no
         coordinate document, so the door must accept the atoms as numbers."""

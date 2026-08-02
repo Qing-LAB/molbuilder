@@ -691,10 +691,17 @@ def api_periodicity():
     try:
         struct = _struct_from_body(body)
         # The frame-contract gate every other structure door runs, so what the
-        # edit is applied to is what a load would have produced.
-        struct, notices = validate_and_heal(struct)
-        new_struct, edit_notices = apply_edit(struct, op, body.get("payload"))
-        notices = list(notices) + list(edit_notices)
+        # edit is applied to is what a load would have produced.  Its notices
+        # describe the state that ARRIVED and are deliberately dropped: this
+        # answer describes the state the edit PRODUCED, and a user who has just
+        # corrected a box must not be told it is still wrong (molview.md § 6.8).
+        struct, _incoming = validate_and_heal(struct)
+        new_struct, receipts = apply_edit(struct, op, body.get("payload"))
+        # The CONDITIONS are re-derived on the RESULT, so "the box does not
+        # contain the structure" is answered about the box that now exists.
+        new_struct, conditions = validate_and_heal(new_struct)
+        # Receipts first (what the edit did), then conditions (what is now true).
+        notices = list(receipts) + list(conditions)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- malformed envelope -> 400

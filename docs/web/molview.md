@@ -834,28 +834,33 @@ condition itself goes unreported until the user next touches the cell. **The fix
 is server-side**: the modify doors would have to validate their result the way
 the cell door does.
 
-**2. A cell edit's conditions describe the state BEFORE the edit.** The door
-validates what arrived, then applies the edit, then returns both sets together:
+**2. ~~A cell edit's conditions describe the state BEFORE the edit.~~** ✅ Fixed
+2026-08-01, before any display work, because a surface that sometimes shows a
+false warning is a surface people learn to ignore.
+
+The door had validated what arrived, applied the edit, and returned both sets
+together — so the answer's *data* was post-edit while its *conditions* were
+pre-edit. Correcting a box that did not contain the structure came back still
+saying it does not, beside a receipt saying the edit worked, with contradictory
+clearance numbers in the same answer.
+
+The door now re-derives the conditions on the **result**:
 
 ```
-struct, notices      = validate_and_heal(struct)          # the INCOMING state
-new_struct, receipts = apply_edit(struct, op, payload)     # what the edit did
-notices = notices + receipts                               # returned together
+struct, _incoming    = validate_and_heal(struct)      # arrived; notices dropped
+new_struct, receipts = apply_edit(struct, op, payload)   # what the edit DID
+new_struct, conditions = validate_and_heal(new_struct)   # what is NOW true
+notices = receipts + conditions
 ```
 
-So the answer's *data* is post-edit and its *conditions* are pre-edit. Fix a
-containment problem by setting a correct cell and the response still carries "the
-box does NOT contain the structure" — beside a receipt saying the edit
-succeeded. The user corrects the problem and is told it is still broken.
+**Receipts first, then conditions** — what you did, then what holds. And
+`apply_edit` no longer reports containment itself: that is a condition, answered
+once, by the validator. Saying it in both places put the same fact in one answer
+twice, in two wordings.
 
-`apply_edit` re-checks containment itself for the `cell` op, so that one op
-produces a correct post-edit warning as well — which means the same answer can
-carry a stale condition and a fresh one at once.
-
-**Until that is fixed server-side, MolView shows the receipts and the conditions
-it is given, and the pre-edit condition will sometimes be wrong.** Displaying it
-is still better than the present state, where none of them reach anyone at all —
-but it is a known wrong, not an accepted one.
+Pinned by `test_a_fixed_box_is_not_still_reported_as_broken` and
+`test_a_condition_is_reported_once_not_twice`, both verified to fail against the
+old behaviour.
 
 
 ## 7. The layers
