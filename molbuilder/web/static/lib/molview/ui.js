@@ -1080,12 +1080,26 @@ function mountPanel(doc, card, model, reserved) {
      * that replaced would make the second gesture undo the first; `Clear` is
      * how you start over. Both ends are inclusive, in either direction, and the
      * bulk door carries no pick trail — a run has no vertex to measure from. */
+    /* THE RUN IS THE ROWS BETWEEN THEM, read off the list as drawn.
+     *
+     * It counted `for (i = lo; i <= hi; i++)` — arithmetic on two atom indices,
+     * which INVENTS every index in between rather than reading atoms the model
+     * handed over. That is only right while the list happens to show every atom
+     * in index order: it says "the atoms between these two" when the user asked
+     * for "the rows between these two", and those are the same sentence only by
+     * coincidence of today's `getAtoms`. Show a subset, or order the rows by
+     * element or residue, and shift-click starts selecting atoms that are not on
+     * screen — silently, because a made-up index is still a valid one.
+     *
+     * `rowBoxes` is the list as the user sees it, in the order they see it, so
+     * "between" means what it looks like it means and nothing is invented. */
     function selectRun(fromAtom, toAtom) {
-        const lo = Math.min(fromAtom, toAtom);
-        const hi = Math.max(fromAtom, toAtom);
-        const run = [];
-        for (let i = lo; i <= hi; i++) run.push(i);
-        model.selection.add(run);
+        const from = rowBoxes.findIndex((e) => e.atom === fromAtom);
+        const to   = rowBoxes.findIndex((e) => e.atom === toAtom);
+        if (from < 0 || to < 0) return;   // a row that is no longer drawn
+        const lo = Math.min(from, to);
+        const hi = Math.max(from, to);
+        model.selection.add(rowBoxes.slice(lo, hi + 1).map((e) => e.atom));
     }
 
     /* THE ROWS AS THEY ARE BUILT, so the drag box has something to hit-test
@@ -1521,7 +1535,13 @@ function mountPanel(doc, card, model, reserved) {
                 e.stopPropagation();
                 if (e.shiftKey && rangeAnchor !== null) {
                     selectRun(rangeAnchor, atom.index);
-                    check.checked = true;      // the run adds; never un-ticks
+                    /* THE TICK IS NOT SET HERE. The browser flips a checkbox
+                     * before `change` fires, so the box is momentarily wrong —
+                     * and the fix is not to write the right answer over it, it
+                     * is to let the redraw put every box where the selection
+                     * says. A line here that says "ticked" is a second opinion
+                     * about what is selected, and § 8.4 exists because the
+                     * second opinion is the one that drifts. */
                     return;
                 }
                 rangeAnchor = atom.index;
