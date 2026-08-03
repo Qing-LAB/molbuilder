@@ -779,6 +779,60 @@ class TestTabEmitContract:
 from pathlib import Path  # noqa: E402  (used by TestTabEmitContract)
 
 
+class TestReadingDoesNotJudge:
+    """§ 8.2 (2026-08-03): a file whose sidecar holds an unusable box OPENS.
+
+    The reader used to raise, and that put a user in a trap with no way out
+    inside the app: the Cell page is the one place a box can be corrected, and
+    it cannot be reached without the structure on screen.
+
+    What must never happen is a CALCULATION built on an impossible box, and that
+    is refused where it belongs -- by the validator, at every emitter. Both
+    halves are asserted here together, because either alone is the wrong
+    behaviour: opening without the refusal downstream would ship a bad deck;
+    refusing at the read is the trap.
+    """
+
+    def _pair(self, tmp_path, cell):
+        import json as _json
+        from molbuilder.sidecars.molstruct import sha256_of_file
+        (tmp_path / "wire.xyz").write_text("2\nx\nO 0 0 0\nH 1 0 0\n")
+        (tmp_path / "wire.molstruct.json").write_text(_json.dumps({
+            "schema_version": 7, "n_atoms_total": 2,
+            "structure_hash": sha256_of_file(tmp_path / "wire.xyz"),
+            "cell": cell, "regions": {"frozen_atoms": [0]},
+        }))
+        return tmp_path / "wire.xyz"
+
+    def test_an_unusable_box_still_opens_with_its_labels(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        path = self._pair(tmp_path, [[7, 0, 0], [0, 7, 0], [0, 0, -7]])
+        struct = StructureCodec().read(path)          # must not raise
+        assert len(struct.elements) == 2
+        assert dict(struct.regions) == {"frozen_atoms": [0]}, (
+            "the labels were lost on the way in, so 'open it and fix it' costs "
+            "the user the work they had already done"
+        )
+        assert struct.cell is not None, (
+            "the bad box was silently dropped; the user cannot correct a value "
+            "they were never shown"
+        )
+
+    def test_but_no_calculation_is_generated_from_it(self):
+        """The other half, and the reason opening it is safe."""
+        from molbuilder.config.pyscf import PySCFConfig
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.pyscf import render_script
+        from molbuilder.siesta import render_fdf
+        s = Structure(elements=["H", "H"],
+                      positions=np.array([[0.0, 0, 0], [1, 0, 0]]),
+                      cell=[[7, 0, 0], [0, 7, 0], [0, 0, -7]])
+        for name, render, cfg in (("SIESTA", render_fdf, SiestaConfig()),
+                                  ("PySCF", render_script, PySCFConfig())):
+            with pytest.raises(Exception, match="cell|determinant|hand"):
+                render(s, cfg)
+
+
 class TestTheLoadAnswerIsNotSilent:
     """§ 6.1 clause 6 (approved 2026-07-29): what the gate finds at the load
     door must never be silent — the answer carries it.

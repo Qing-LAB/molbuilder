@@ -497,7 +497,7 @@ checks nothing.** The gate is server-side only, and it runs at seven points:
 
 | # | Seam | Trigger | What happens to its answer |
 |---|---|---|---|
-| 1 | `StructureCodec.load` | reading the pair from disk | nothing is reported — the read seam REFUSES a cell nothing can be done with (left-handed, or too small for any origin), raising rather than reporting. **This is the one place that still contradicts § 8.2** — reading is loading, and loading is supposed to report. See the note there |
+| 1 | `StructureCodec.load` | reading the pair from disk | **nothing is refused and nothing is reported — reading does not judge** (§ 8.2, 2026-08-03). The structure it produces is checked at seam 2, on the way out, where the answer can carry the verdict. It used to raise, which made a file with an unusable box unopenable and therefore unfixable |
 | 2 | `_shared.ok_structure_response` | **every structure the server sends the browser**: `/api/build/load`, `/api/build/molecule`, and the eight `/api/modify/*` ops | notices ride out with the structure |
 | 3 | `/api/structure/periodicity` — before | a Cell-page edit arrives | notices **dropped** — they describe what arrived, not the result |
 | 4 | `/api/structure/periodicity` — after | the edit has been applied | notices **returned** — these describe the box the user now has |
@@ -565,25 +565,34 @@ the translation:
   emitting door uses it; the refusal becomes the door's 400 through one
   app-level handler.
 
-#### The one place this is not true yet
+#### Reading does not judge (and why that is safe)
 
-**A file whose sidecar holds an unusable box cannot be opened at all.** The read
-seam (seam 1 above) raises, so the load door answers *"could not load …"* and
-the structure never reaches the screen — which is precisely the trap the
-report-don't-refuse rule exists to avoid: it cannot be fixed, because it cannot
-be opened.
+**A file whose sidecar holds an unusable box opens.** The reader used to raise,
+which put the user in a trap: the Cell page is the one place a box can be
+corrected, and it cannot be reached without the structure on screen. The load
+door answered *"could not load wire.xyz"* and the only ways out were to
+hand-edit the `.molstruct.json` outside molbuilder, or delete it and lose the
+labels with it.
 
-**It is left standing on purpose, because removing it alone would be worse.**
-The gate is called from exactly two places: that read seam, and the web's own
-seams. **The CLI's generating path calls it nowhere** — its only protection
-today *is* the read refusal. Take that away and `molbuilder` would render an
-`.fdf` from an impossible box without a word, which breaks the half of the rule
-that matters most.
+**Nothing is left unguarded by that change**, and this was measured rather than
+assumed. What must never happen is a *calculation* built on an impossible box,
+and that is refused at every door that would act on one:
 
-So the fix is two changes together, not one: reading stops judging, **and** the
-CLI's generating path gets the refusal the web's emitting doors already have.
-Tracked as **task #53**; until then this row is the known exception, named here
-rather than papered over.
+| Door | What it does with a left-handed cell |
+|---|---|
+| `StructureCodec.read` — opening a file | opens it; says nothing (the answer reports, at seam 2) |
+| `render_fdf` / the PySCF renderer | **refuses** — `validate()` calls it an `error`, and both emitters run `report(validate(…))` before writing a byte |
+| `/api/build/fdf` · `/pyscf` · `/preflight` · `/spectra/render` · transport · export | **refuses** — 400, at the request seam |
+
+So the CLI is protected too, by the validator rather than by the reader: a
+left-handed cell is an error-severity finding, and `report()` raises on any
+error. That is the project's ordinary rule — *block only what is physically
+impossible* — doing exactly the job it exists for, and it needed no change.
+
+> **An earlier draft of this section claimed the CLI would generate from a bad
+> box in silence.** That was wrong: it came from looking for callers of the
+> periodicity gate and finding none in `cli.py`, without checking whether some
+> *other* check already covered it. The emitters do, through `validate()`.
 
 #### The report has to arrive
 

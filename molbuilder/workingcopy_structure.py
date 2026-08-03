@@ -141,21 +141,25 @@ class StructureCodec:
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
             molstruct.apply_to_structure(struct, molstruct.load(sidecar_path))
-        # THE READ SEAM REFUSES A CELL NOTHING CAN BE DONE WITH -- left-handed,
-        # or too small to contain the structure along a non-periodic axis for
-        # any origin.  That is this call's whole job here: a file holding one
-        # must fail on the way in, not become a Structure that every later step
-        # has to cope with.
+        # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
+        # 2026-08-03).  A file whose sidecar holds an unusable box -- a
+        # left-handed cell, or one too small for any origin -- OPENS, and what
+        # is wrong with it is reported by whoever hands the structure on.
         #
-        # IT REPORTS NOTHING.  The gate corrects nothing (verified against its
-        # body: every branch returns the struct it was given), so what it has to
-        # say is a CONDITION -- a fact about the structure as it stands -- and a
-        # condition is answered once, by whoever is about to hand the structure
-        # over.  For the web that is `ok_structure_response`, which validates
-        # every structure it sends.  Collecting them here as well put the same
-        # sentence in one answer twice.
-        from .periodicity_gate import validate_periodicity
-        struct, _conditions = validate_periodicity(struct)
+        # It used to raise here, and that made such a file unopenable and
+        # therefore UNFIXABLE: the Cell page is the one place the box can be
+        # corrected, and it cannot be reached without the structure on screen.
+        # The load door answered "could not load <file>" and the only way out
+        # was to hand-edit the .molstruct.json outside molbuilder, or delete it
+        # and lose the labels with it.
+        #
+        # NOTHING IS LEFT UNGUARDED BY THIS.  What must not happen is a
+        # CALCULATION built on an impossible box, and that is refused where it
+        # belongs: `validate()` reports a left-handed cell as an ERROR, and both
+        # emitters run `report(validate(...))` before writing anything
+        # (siesta/input.py, and the PySCF renderer).  The web's emitting doors
+        # refuse it a second time at the request seam.  So the box is stopped at
+        # every door that would ACT on it, and at none that would merely show it.
         return struct
 
     # ---- THE ONE GENERATOR: a Structure -> the pair --------------------- #
