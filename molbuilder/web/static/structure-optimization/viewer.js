@@ -82,20 +82,27 @@ import { mount as mvMount, formula as mvFormula }
         return d ? d.getStructure() : null;
     }
 
-    /* THE STRUCTURE AS THE SERVER TAKES IT (web-api.md § 1): coordinates as
-     * numbers, with the cell beside them.
+    /* THE STRUCTURE AS THE SERVER TAKES IT — ASKED FOR, NOT ASSEMBLED.
      *
-     * It used to be an XYZ DOCUMENT, built by asking the viewer for text. The
-     * viewer has none and writes none (molview.md § 11.7), so every request
-     * carrying it sent an empty string. */
+     * `exportFile()` is the viewer's own producer: the atoms, their positions
+     * at the frame on screen, and the facts beside them, in the one envelope
+     * every structure door reads (molview.md § 9.3 — the facts that leave
+     * together were read together).
+     *
+     * IT USED TO BE BUILT HERE, by hand, and got the shape wrong: the cell went
+     * in as `metadata: {periodicity: …}`, a key the envelope does not define,
+     * so the receiver refused the whole body. That was invisible while the
+     * doors still read the legacy `xyz` text field and ignored the envelope
+     * entirely — the moment they started reading it, every Generate and every
+     * preflight on this tab answered 400.
+     *
+     * Before that it was an XYZ DOCUMENT, asked of a viewer that has none and
+     * writes none (§ 11.7), so every request carried an empty string. Three
+     * shapes, one door: the door's own producer is the answer. */
     function _structureForRequest() {
-        const f = _facts();
-        if (!f || !f.frames || !f.frames.length) return null;
-        return {
-            elements:  f.elements,
-            positions: f.frames[0],
-            metadata:  { periodicity: f.periodicity },
-        };
+        const d = _data();
+        const out = d ? d.exportFile() : null;
+        return (out && out.structure) ? out.structure : null;
     }
 
     // Embedded MolViewer (#198, 2026-06-02; contract:

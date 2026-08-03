@@ -267,6 +267,14 @@ serving a **public, unauthenticated, fully read/write/delete `projects/` tree**.
 Encryption on the wire is not access control. A real deployment turns auth on
 (§ 3) or sits behind a proxy that authenticates.
 
+**⚠ The app can generate 4xx during ordinary use, and the limiter counts 4xx.**
+Two instances found so far, which is enough to make it a rule rather than a
+pair of bugs: **a 4xx should mean the request was wrong, not that the answer was
+empty.** One is fixed — asking the workspace "did I leave anything here?"
+answered `404` when the answer was simply "no", so a tab that restores its own
+state manufactured one 4xx per page load against its own user (it is a `200`
+with an empty result now). The other is below.
+
 **⚠ An expired session can look like an attack.** The auth gate runs first and
 answers `401`; the limiter's response hook still counts it, because `401` is
 4xx and the session is not authenticated. On a remote deployment (loopback is

@@ -199,9 +199,9 @@ reads no global, calls only § 9.3's surface, and has been looked at in a browse
 
 | | Page | State |
 |---|---|---|
-| **a** | `/transport-calculation` | wired — needs a browser |
-| **b** | `/spectrum-calculation` | wired — needs a browser |
-| **c** | `/structure-optimization` | wired — needs a browser. Mounts before the load door needs a viewer; **no session restore, and the code now says so** — a read-only viewer holds none (§ 9.4, measured: 0 writes, `load(0)` → null), so both restores ever written here were dead. The decision is task #51 |
+| **a** | `/transport-calculation` | walked 2026-08-03 (mounts, no console errors); asked for `mode: "modify"`, a mode MolView has never had — fixed. Needs a walk that actually generates |
+| **b** | `/spectrum-calculation` | walked 2026-08-03 — **its whole Generate side was dead** (`useViewer` exported from a scope it was not in, so the module never published); fixed. Needs a second walk with a real spectra run |
+| **c** | `/structure-optimization` | ✅ **walked in a browser 2026-08-03.** Restores the structure it was showing (the TAB saves it, under its own tag); Generate + preflight fixed — all three doors were answering `400 no xyz provided` |
 | **d** | `/results` | wired — the structure inspector and `lib/trajectory/core.js` both (§ 5a); needs a browser, and the run's lattice needs a decision |
 | **e** | `/molbuilder` | ✅ **done** — all six steps of § 6.5 walked in a browser, five defects found and fixed (§ 6.6); 192 of its own tests pass |
 

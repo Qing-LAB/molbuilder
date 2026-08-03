@@ -128,6 +128,22 @@ def _open_build(page, base_url):
         errors.append(("console.error", msg.text))
         if msg.type == "error" else None
     ))
+    # ARRIVE AT A TAB THAT REMEMBERS NOTHING.
+    #
+    # This tab keeps the structure it was showing (workspace.md § 4: several
+    # savers on one page, each deciding what and when), so "open the tab" is not
+    # the same as "open an empty tab" once anything has been loaded -- and these
+    # tests share one server and one workspace, so without this each one
+    # inherits whatever the previous one left on the canvas.
+    #
+    # Cleared through the tab's own door rather than by deleting files: the id
+    # is the workspace's to compute, and a test that hard-codes a filename is
+    # pinning a layout the workspace is free to change.  `above_index = -1`
+    # clears the whole tag.
+    page.request.post(
+        f"{base_url}/api/workspace-storage/prune",
+        data={"workspace_id": "ws-structure-opt", "above_index": -1},
+    )
     page.goto(f"{base_url}/structure-optimization")
     # The "Load from sidebar selection" button is server-rendered;
     # waiting for it proves the HTML reached the browser.  The form-

@@ -46,13 +46,21 @@ JSON shape:
                          returns: same shape as /api/build/molecule
                                   plus "source_format": "xyz"|"pdb"
 
-  /api/build/fdf      -- body: {"xyz": "<xyz>", "params": {<SiestaConfig dict>}}
+  /api/build/fdf      -- body: {"structure": {<envelope>},
+                                "params": {<SiestaConfig dict>}}
                          returns: {"ok": True, "fdf": "<text>",
                                    "system_label": "..."}
 
-  /api/build/pyscf    -- body: {"xyz": "<xyz>", "params": {<PySCFConfig dict>}}
+  /api/build/pyscf    -- body: {"structure": {<envelope>},
+                                "params": {<PySCFConfig dict>}}
                          returns: {"ok": True, "script": "<text>",
                                    "job_name": "..."}
+
+  The three emitting doors (fdf / pyscf / preflight) read the structure
+  through ``_shared.struct_from_body`` -- the atoms as NUMBERS with their
+  facts beside them, which is what the browser holds and what every other
+  structure door already takes.  A legacy ``{"xyz": "<text>"}`` body still
+  works; the helper accepts either and the envelope wins when both appear.
 """
 
 from __future__ import annotations
@@ -1066,17 +1074,24 @@ def api_build_load():
 @bp.route("/api/build/fdf", methods=["POST"])
 def api_build_fdf():
     body = request.get_json(silent=True) or {}
-    xyz_text = body.get("xyz")
     params: Dict[str, Any] = body.get("params") or {}
-    if not xyz_text:
-        return jsonify({"ok": False, "error": "no xyz provided"}), 400
 
     # Parse XYZ -> Structure (skip ASE round-trip; we wrote it ourselves)
+    # THE STRUCTURE ARRIVES AS DATA, through the one reader every structure
+    # door shares: the atoms as numbers and the facts beside them, with the
+    # legacy `xyz` text still accepted for a caller that has only text.
+    #
+    # THIS DOOR READ `xyz` AND NOTHING ELSE, and the browser stopped sending it
+    # -- the tab posts the envelope, like every other emitting door already
+    # takes.  So Generate FDF, Generate PySCF and the live preflight on
+    # /structure-optimization all answered `400 no xyz provided` for the exact
+    # body the tab sends.  Found by driving the page: the boot test caught the
+    # console error only once a restored structure made the preflight fire
+    # before anybody clicked anything.
     try:
-        struct = _xyz_to_structure(xyz_text)
-    except (ValueError, IndexError) as exc:
-        return jsonify({"ok": False,
-                        "error": f"could not parse xyz: {exc}"}), 400
+        struct = _struct_from_body(body)
+    except (ValueError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     # F2 (science/validation.md 4.1): labels come from the BODY, which the
     # viewer model fills via factsForRequest().  A body that omits them is a
@@ -1165,16 +1180,23 @@ def api_build_fdf():
 @bp.route("/api/build/pyscf", methods=["POST"])
 def api_build_pyscf():
     body = request.get_json(silent=True) or {}
-    xyz_text = body.get("xyz")
     params: Dict[str, Any] = body.get("params") or {}
-    if not xyz_text:
-        return jsonify({"ok": False, "error": "no xyz provided"}), 400
 
+    # THE STRUCTURE ARRIVES AS DATA, through the one reader every structure
+    # door shares: the atoms as numbers and the facts beside them, with the
+    # legacy `xyz` text still accepted for a caller that has only text.
+    #
+    # THIS DOOR READ `xyz` AND NOTHING ELSE, and the browser stopped sending it
+    # -- the tab posts the envelope, like every other emitting door already
+    # takes.  So Generate FDF, Generate PySCF and the live preflight on
+    # /structure-optimization all answered `400 no xyz provided` for the exact
+    # body the tab sends.  Found by driving the page: the boot test caught the
+    # console error only once a restored structure made the preflight fire
+    # before anybody clicked anything.
     try:
-        struct = _xyz_to_structure(xyz_text)
-    except (ValueError, IndexError) as exc:
-        return jsonify({"ok": False,
-                        "error": f"could not parse xyz: {exc}"}), 400
+        struct = _struct_from_body(body)
+    except (ValueError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     # Three-stage contract carrier: apply frozen_atoms + regions to
     # the structure before render_script sees it.  2026-06-14 update:
@@ -1284,23 +1306,30 @@ def api_build_preflight():
     input and update a structured issues panel live.
     """
     body = request.get_json(silent=True) or {}
-    xyz_text = body.get("xyz")
     engine = (body.get("engine") or "").strip().lower()
     params: Dict[str, Any] = body.get("params") or {}
 
-    if not xyz_text:
-        return jsonify({"ok": False, "error": "no xyz provided"}), 400
     if engine not in ("siesta", "pyscf"):
         return jsonify({
             "ok": False,
             "error": f"engine must be 'siesta' or 'pyscf'; got {engine!r}",
         }), 400
 
+    # THE STRUCTURE ARRIVES AS DATA, through the one reader every structure
+    # door shares: the atoms as numbers and the facts beside them, with the
+    # legacy `xyz` text still accepted for a caller that has only text.
+    #
+    # THIS DOOR READ `xyz` AND NOTHING ELSE, and the browser stopped sending it
+    # -- the tab posts the envelope, like every other emitting door already
+    # takes.  So Generate FDF, Generate PySCF and the live preflight on
+    # /structure-optimization all answered `400 no xyz provided` for the exact
+    # body the tab sends.  Found by driving the page: the boot test caught the
+    # console error only once a restored structure made the preflight fire
+    # before anybody clicked anything.
     try:
-        struct = _xyz_to_structure(xyz_text)
-    except (ValueError, IndexError) as exc:
-        return jsonify({"ok": False,
-                        "error": f"could not parse xyz: {exc}"}), 400
+        struct = _struct_from_body(body)
+    except (ValueError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     # Preflight must see exactly what Generate sees (labels + the
     # model's periodicity truth) -- it validated a phantom before.
     from ._shared import apply_labels_to_struct, apply_periodicity_for_emit

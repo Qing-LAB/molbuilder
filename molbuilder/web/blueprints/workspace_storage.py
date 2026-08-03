@@ -198,7 +198,20 @@ def _warn_if_residue_piling(state_dir) -> None:
 @bp.route("/api/workspace-storage/read", methods=["POST"])
 def ws_read_state():
     """Return the opaque JSON at ``<workspace_id>.<state_index>.wc.json`` (what a
-    popState navigating to a history index fetches), or 404 with data=null."""
+    popState navigating to a history index fetches), or ``data: null``.
+
+    NOTHING SAVED IS A NORMAL ANSWER, NOT A FAILURE -- so it is a 200 with
+    ``data: null``, and 4xx is kept for a request that is actually wrong (a bad
+    id or index) and 500 for a file that cannot be read.
+
+    It answered 404 with ``{"ok": true}`` in the body, which was two things
+    saying opposite things, and it cost twice.  A browser logs every 4xx
+    resource load as a console error, so a tab that asks "did I leave anything
+    here?" on arrival -- which is exactly what a tab restoring its own state
+    does -- printed an error on every clean boot and failed the no-JS-errors
+    gate.  Worse, the rate limiter counts 4xx (rate_limit.py): a page that
+    manufactures one per load is building a case against its own user.
+    """
     b = _body()
     ws_id, idx = b.get("workspace_id"), _state_index(b.get("state_index"))
     if not _valid_ws_id(ws_id):
@@ -207,7 +220,7 @@ def ws_read_state():
         return _bad("missing or invalid 'state_index' (non-negative int)")
     p = _state_path(ws_id, idx)
     if not p.exists():
-        return jsonify({"ok": True, "data": None}), 404
+        return jsonify({"ok": True, "data": None})
     try:
         return jsonify({"ok": True, "data": persist.read_json(p)})
     except Exception as e:  # noqa: BLE001 -- corrupt file -> 500

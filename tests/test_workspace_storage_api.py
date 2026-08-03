@@ -48,10 +48,18 @@ def test_workspace_storage_roundtrip_and_prune(client_project):
     r = _json(client.post("/api/workspace-storage/read",
                           json={"workspace_id": ws, "state_index": 1}))
     assert r["data"] == dict(snap, idx=1)
-    # missing index -> 404 + null
+    # NOTHING SAVED THERE IS A NORMAL ANSWER: 200, data null.  It was a 404,
+    # which a browser logs as a console error -- so a tab asking "did I leave
+    # anything here?" on arrival printed one on every clean load -- and which
+    # the rate limiter counts as 4xx, so the page built a case against its own
+    # user once per page view.  4xx is for a request that is wrong.
     r = client.post("/api/workspace-storage/read",
                     json={"workspace_id": ws, "state_index": 9})
-    assert r.status_code == 404 and _json(r)["data"] is None
+    assert r.status_code == 200 and _json(r)["data"] is None
+    # ...and a request that IS wrong still is.
+    bad = client.post("/api/workspace-storage/read",
+                      json={"workspace_id": ws, "state_index": -3})
+    assert bad.status_code == 400
     # prune tail: drop everything above index 1
     r = _json(client.post("/api/workspace-storage/prune",
                           json={"workspace_id": ws, "above_index": 1}))

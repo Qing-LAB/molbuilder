@@ -751,12 +751,15 @@
          * which the viewer cannot produce — it writes no coordinate document
          * (§ 11.7) — so it sent an empty string and the server answered "no
          * structure provided" with a molecule on the screen. */
+        /* ASKED FOR, NOT ASSEMBLED. `exportFile()` is the viewer's own
+         * producer and emits the exact envelope the door reads. Built by hand
+         * here, the cell went in under a `metadata.periodicity` key the
+         * envelope does not define -- and a receiver that refuses a key it does
+         * not know refuses the whole body with it. */
+        const _out = _viewer ? _viewer.data.exportFile() : null;
+        if (!_out || !_out.structure) return null;
         const body = {
-            structure: {
-                elements:  structure.elements,
-                positions: structure.frames[0],
-                metadata:  { periodicity: structure.periodicity },
-            },
+            structure: _out.structure,
             params:      collectParams(),
             // viewer-is-truth: ship the model's labels directly.  Server applies them
             // verbatim; only when ABSENT does it fall back to disk sidecar discovery
