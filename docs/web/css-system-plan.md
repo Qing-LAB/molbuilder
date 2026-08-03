@@ -141,18 +141,66 @@ Plus three lists: sheets loaded by nobody, page rules reaching at module names
 
 ---
 
+## 3.2 What the inventory found (step B, run 2026-08-02)
+
+Built by a script over every page-layer sheet; module sheets counted and never
+read (§ 1). **421 page-layer rules**: T0 1 · T1 63 · T2 127 · **T2? 91** · T3 137.
+
+**T2? is the number that matters** — 91 rules in *page* sheets that name a class
+the page does not own. That is the boundary, measured.
+
+### The contamination, and it points the other way
+
+**20 rules in `results/style.css` are the inspectors module's own appearance.**
+`.inspector-card`, `-header`, `-title`, `-note`, `-actions`, `-link` are built
+**entirely in JavaScript** by `lib/inspectors/` — `_partial_inspector_factory.js`
+(the failed-to-mount card), `source.js` (`inspector-card source-card`) and
+`structure.js` (`inspector-card structure-card`). No template writes them. And no
+sheet styles them except a page's.
+
+So this is not a page reaching into a module — it is **a module whose visual
+identity lives in a page's stylesheet**, which is the same coupling seen from the
+other end and is worse, because the module cannot be mounted anywhere else without
+carrying a page sheet with it. The inspectors module is loaded by **results.html,
+modify.html and spectra.html**; only results.html loads `results/style.css`. An
+inspector's error card on `/spectra` renders unstyled.
+
+**Not fixed here, because the fix is a module change**: the rules are repatriated
+to a sheet under `lib/inspectors/`, which every page mounting an inspector links —
+and § 1 says a module's CSS is changed inside the module, deliberately, not as a
+side effect of tidying a page. Recorded as the first item of § 7.
+
+### The document tier, measured pairwise
+
+Comparing each page's copy against `page-shell.css`'s, property by property:
+
+| Selector | Page copy vs the shared one |
+|---|---|
+| `*` | **byte-identical** in modify and spectra — **done, deleted** |
+| `html, body` | differs in all three, on 8 properties each |
+| `header` · `header h1` | differs in modify and spectra |
+| `button` · `:hover` · `:disabled` | differs in spectra |
+| `footer` · `footer a` · `:hover` | **page-shell has no rule at all**; modify and structure-optimization each invented one, and they differ (sopt's still carries `16px 28px` / `0.82rem`) |
+| `textarea` | page-shell has no rule; spectra invented one |
+
+**Only the `*` rules were provably safe** — identical bodies, so deleting them
+cannot change a pixel. Everything else is a visual decision and waits for a
+browser, which is the whole reason C is called the risky step.
+
+---
+
 ## 4. Order of work
 
 Ordered so each step is verifiable alone and the risky ones come last.
 
 | | Step | Why here |
 |---|---|---|
-| **A** | Delete `lib/viewer/mol-viewer-embed.css` | loaded by nothing; pure subtraction, no visual risk |
-| **B** | Inventory (§ 3.1) — read-only, no edits | the whole plan is guesswork without it |
-| **C** | **T1 first: one document tier.** Reconcile `html` / `body` / `*` / `header` / `footer` / bare input+textarea into `page-shell.css`; delete the three page copies | the deepest drift, and it changes every page — so it happens once, deliberately, with all six pages checked in a browser |
+| **A** ✅ | ~~Delete `lib/viewer/mol-viewer-embed.css`~~ **done 2026-08-02** — and it turned out the whole `lib/viewer/` directory is orphaned: 307 KB of JS that no template loads and no module imports, MolView having been rebuilt on its own `3dmol-embed.js`. Only the stylesheet was deleted here; the JS is task #104's, and the `test_css_molview_namespace` skip that anticipated exactly this now fires | loaded by nothing; pure subtraction, no visual risk |
+| **B** ✅ | ~~Inventory~~ **done 2026-08-02, § 3.2** | the whole plan is guesswork without it |
+| **C** ◐ | **T1: one document tier.** The `*` reset is **done** — it was byte-identical in modify and spectra, so deleting it provably cannot change a pixel. The rest (`html, body`, `header`, `header h1`, `button`, `footer`, `textarea`) genuinely differs per page and is **blocked on a browser** | the deepest drift, and it changes every page — so it happens once, deliberately, with all six pages checked in a browser |
 | **D** | **T2: one home per component.** `.card`, `.status`, `header .tagline` — the allowlist entries. Each page's variant either scopes under its own root or becomes a named variant | shrinks the guard's allowlist to zero |
 | **E** | **T3 per page**, one page per commit: tokens → namespace → residue. `modify` is done and is the worked example; then `spectra`, `structure-optimization`, `transport`, `results`, `documents` | independent, and a browser check per page is cheap |
-| **F** | Extend the guards (§ 5) | last, so it locks in a state that already holds |
+| **F** ◐ | Extend the guards (§ 5). **Guard 3 is done** — `tests/test_css_module_boundary.py`: no page sheet may name a module class, the retired embed sheet stays deleted, and the exception list may not grow. Guards 1 and 2 wait for C and D, because a guard that fails on the day it lands teaches people to skip the suite | mostly last, so it locks in a state that already holds — but the boundary guard could land now, since the boundary already holds except for one recorded item |
 
 **C before E.** Converting a page's own vocabulary while the document tier is still
 contested means measuring spacing against a base three files are fighting over.
@@ -187,6 +235,15 @@ audit and the duplicate-selector check.
   `molviewer-*`, the fix is to delete the reach, never to edit the module.
 
 ## 7. Open, for your decision
+
+0. **The inspectors module's appearance lives in `results/style.css`** (§ 3.2) —
+   20 rules for elements the module builds in JavaScript. Mount an inspector on
+   `/molbuilder` or `/spectra`, where the module also loads, and it renders
+   unstyled. The fix is a **module change**: repatriate the rules to a sheet under
+   `lib/inspectors/` and link it wherever the module is mounted. It is listed here
+   rather than done because § 1's rule cuts both ways — a module's CSS is changed
+   inside the module, deliberately, not as a side effect of tidying a page.
+   Recorded in `tests/test_css_module_boundary.py`'s `KNOWN` list until it lands.
 
 1. **Does `modify` keep its own sheet?** This plan says yes and the measurements
    back it: 52 classes, no form schema, near-zero vocabulary overlap with the

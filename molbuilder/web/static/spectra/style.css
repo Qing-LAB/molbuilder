@@ -17,7 +17,10 @@
  * Tokens come from lib/tokens.css via the template <link> (no @import).
  */
 
-* { box-sizing: border-box; }
+/* No `*` reset here: `lib/page-shell.css` owns the document tier and its rule is
+ * byte-identical to the one that stood here.  Two identical copies in two sheets
+ * means the winner is decided by <link> order rather than by anyone -- and the
+ * day they stop being identical, nothing says which was meant. */
 
 html, body { height: 100%; }
 

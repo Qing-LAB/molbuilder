@@ -80,7 +80,6 @@ STRICT_FILES: set[str] = {
     "lib/projects/projects-sidebar.css",
     "lib/molview/selection/selection-panel.css",
     "lib/tabs.css",
-    "lib/viewer/mol-viewer-embed.css",
     "lib/molview/selection/measurement-chip.css",
     "lib/molview/fused-layout.css",
     "lib/inspectors/markdown.css",
