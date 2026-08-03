@@ -912,6 +912,9 @@ def api_build_load():
     # atom-count-only), never validated through ``load_text``.  Carries only
     # atom-scoped keys, so the parsed geometry / cell above stay intact.
     atom_metadata_text: str = ""
+    # Bound on BOTH branches: a multipart upload carries no JSON, and the
+    # periodicity seam below reads this for every path through the route.
+    body: Dict[str, Any] = {}
     if "file" in request.files:
         f = request.files["file"]
         filename = f.filename or ""
@@ -989,6 +992,27 @@ def api_build_load():
         except _molstruct.MolstructJsonError as exc:
             return jsonify({"ok": False,
                             "error": f"atom_metadata: {exc}"}), 400
+
+    # THE PERIODICITY THE CALLER STATED, through the seam every other structure
+    # door already passes: ``body["periodicity"]`` = {cell, cell_origin,
+    # axis_kind, vacuum}, applied verbatim and then CHECKED.  A refusable cell
+    # raises PeriodicityRefused, which the app turns into this door's 400 --
+    # the same sentence /api/build/fdf, /pyscf, /preflight, /spectra/render and
+    # the transport door answer with.
+    #
+    # WHY IT IS HERE AND NOT INSIDE THE BLOCK ABOVE.  A run has no
+    # `.molstruct.json`: the Results tab recovers its labels from the input
+    # script and its lattice from the output logs.  Folding the lattice into
+    # that block would have gone around this gate -- a left-handed cell would
+    # have been ACCEPTED at 200 -- and it would have meant the browser opening
+    # a metadata document it does not own.  Two facts, two named inputs, one
+    # authority applying each.
+    #
+    # AFTER the sidecar / atom_metadata application, never before:
+    # ``apply_metadata_dict`` is full-REPLACE, so a block applied second would
+    # reset the cell this just set.
+    from ._shared import apply_periodicity_from_body
+    struct = apply_periodicity_from_body(struct, body)
 
     # Workspace-state Phase 2 migration (2026-06-07): route through
     # the canonical ``ok_structure_response`` helper.  Per-atom

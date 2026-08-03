@@ -162,39 +162,104 @@ class TestBuildLoadDoor:
             "atom_metadata": block_json})
         assert as_meta.status_code == 200
 
-    def test_the_runs_cell_rides_in_the_same_block_as_its_labels(self, client):
-        """Seam 4 (2026-08-03): a run's LATTICE travels with its labels.
+    def test_the_runs_cell_arrives_as_periodicity_beside_its_labels(self, client):
+        """Seam 4 (2026-08-03): a run's LATTICE reaches the structure too.
 
         A trajectory has no `.molstruct.json`.  Its labels come from the input
-        script and its lattice from the output logs, and both describe the same
-        atoms -- so the Results tab sends one block and the server applies it
-        through the one authority, rather than inventing a second door for the
-        cell.
+        script and its lattice from the output logs -- TWO facts from two
+        places, so two named fields.  The load door applies the labels through
+        `apply_to_structure` and the cell through `apply_periodicity_from_body`,
+        the seam every other structure door already passes.
 
-        AND NO ``pbc`` IS SENT, deliberately.  A run's 3x3 says nothing about
-        which axes repeat, and guessing periodicity in the browser is the one
-        thing the model refuses to do.  ``Structure``'s own rule resolves it --
-        "a lattice implies periodicity" -- so a stated cell comes back fully
-        periodic, decided in one place.
+        NO ``pbc`` AND NO ``axis_kind`` ARE SENT, and the result is better for
+        it: the box is drawn and NOTHING claims the structure repeats.  The
+        drawing uses ``resolved_cell`` -- "the box a calculation runs in, so it
+        is the box to draw" (render-engine) -- and a stated cell resolves to
+        itself.  The axis kinds stay ``isolated``, because a run's 3x3 says
+        nothing about which axes repeat and `axis_kind` is authoritative, so
+        setting a cell beside it does not silently promote a container into a
+        periodicity.
         """
-        block = json.loads(_md_json_4c())
-        block["cell"] = [[10.0, 0, 0], [0, 11.0, 0], [0, 0, 12.0]]
-        assert "pbc" not in block, "the browser must not state periodicity"
+        cell = [[10.0, 0, 0], [0, 11.0, 0], [0, 0, 12.0]]
         r = client.post("/api/build/load", json={
             "text": _XYZ_4C_FRAME0, "filename": "run.xyz",
-            "atom_metadata": json.dumps(block)})
+            "atom_metadata": _md_json_4c(),
+            "periodicity": {"cell": cell}})
         assert r.status_code == 200, r.get_json()
         body = r.get_json()
         per = body.get("periodicity") or {}
-        assert per.get("cell") == [[10.0, 0, 0], [0, 11.0, 0], [0, 0, 12.0]], (
+        assert per.get("cell") == cell, (
             f"the run's cell did not reach the structure: {per!r} -- a "
             f"trajectory then draws no unit-cell box, at HTTP 200"
         )
-        # The labels still landed: one block, both kinds of fact.
+        assert per.get("resolved_cell") == cell, (
+            "the box that gets DRAWN is not the run's box"
+        )
+        assert per.get("axis_kind") == ["isolated"] * 3, (
+            f"stating a cell invented a periodicity nobody claimed: "
+            f"{per.get('axis_kind')!r}.  The run reported a box, not a "
+            f"statement about which axes repeat."
+        )
         atoms = body.get("atoms") or []
         assert any(a.get("regions") for a in atoms), (
-            "the cell arrived but the labels did not; they travel together"
+            "the cell arrived but the labels did not; both facts travel"
         )
+
+    def test_a_refusable_cell_is_refused_by_this_door_too(self, client):
+        """THE REASON THE CELL IS NOT SMUGGLED INSIDE THE LABEL BLOCK.
+
+        `apply_to_structure` applies `cell` along with the atom-scoped fields,
+        so folding a run's lattice into that block WORKS -- and goes around the
+        periodicity gate every other door runs.  A left-handed cell was then
+        accepted at 200 by the one door a viewer actually loads through.
+
+        The same cell is refused now, with the gate's own sentence, exactly as
+        /api/build/fdf and /api/spectra/render refuse it
+        (tests/test_periodicity_gate.py).
+
+        AND THE CHECK IS ON THE STRUCTURE, not on the field it arrived in.  The
+        seam runs before the door answers, so a cell that reaches the structure
+        some other way -- smuggled inside the label block, which
+        ``apply_to_structure`` will happily apply -- is refused as well.  Same
+        property the modify ops have: "always validated" is a fact about the
+        shape of the code, not about every author remembering.
+        """
+        left_handed = [[1, 0, 0], [0, 1, 0], [0, 0, -1]]
+        smuggled = json.loads(_md_json_4c())
+        smuggled["cell"] = left_handed
+
+        for label, payload in (
+            ("the named field", {"periodicity": {"cell": left_handed}}),
+            ("the label block", {"atom_metadata": json.dumps(smuggled)}),
+        ):
+            r = client.post("/api/build/load", json={
+                "text": _XYZ_4C_FRAME0, "filename": "run.xyz", **payload})
+            assert r.status_code == 400, (
+                f"the load door accepted a refusable cell through {label} "
+                f"({r.status_code}); every other structure door answers 400"
+            )
+            assert "right-handed" in (r.get_json().get("error") or ""), (
+                f"{label}: refused, but not with the gate's reason: "
+                f"{r.get_json().get('error')!r}")
+
+    def test_the_label_block_is_passed_through_untouched(self, client):
+        """The browser must not re-state ``n_atoms_total``.
+
+        It is the guard that stops a label set written for one structure
+        landing on another, and a caller that parses the block and puts the key
+        back sets it to the count of the geometry it is loading -- so the
+        comparison becomes n == n and the guard can never fire.
+        """
+        stale = json.loads(_md_json_4c())
+        stale["n_atoms_total"] = 12          # written for a 12-atom structure
+        r = client.post("/api/build/load", json={
+            "text": _XYZ_4C_FRAME0, "filename": "run.xyz",   # 4 atoms
+            "atom_metadata": json.dumps(stale)})
+        assert r.status_code == 400, (
+            "a label block written for a different structure was applied; the "
+            "count guard did not fire"
+        )
+        assert "n_atoms_total" in r.get_json()["error"]
 
 
 # --------------------------------------------------------------------- #

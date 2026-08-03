@@ -201,7 +201,7 @@ reads no global, calls only § 9.3's surface, and has been looked at in a browse
 |---|---|---|
 | **a** | `/transport-calculation` | wired — needs a browser |
 | **b** | `/spectrum-calculation` | wired — needs a browser |
-| **c** | `/structure-optimization` | wired — needs a browser. `readPersistedSnapshot` is gone: it mounts first, calls `data.load(0)`, and asks the canvas (2026-08-03) |
+| **c** | `/structure-optimization` | wired — needs a browser. Mounts before the load door needs a viewer; **no session restore, and the code now says so** — a read-only viewer holds none (§ 9.4, measured: 0 writes, `load(0)` → null), so both restores ever written here were dead. The decision is task #51 |
 | **d** | `/results` | wired — the structure inspector and `lib/trajectory/core.js` both (§ 5a); needs a browser, and the run's lattice needs a decision |
 | **e** | `/molbuilder` | ✅ **done** — all six steps of § 6.5 walked in a browser, five defects found and fixed (§ 6.6); 192 of its own tests pass |
 
@@ -272,33 +272,74 @@ mount returns now.
 | `installMolecule({atomMetadata})` | **carried now.** The server has taken `atom_metadata` at `/api/build/load` all along — a trusted block applied through `apply_to_structure` with no file envelope to satisfy. MolView's request builder simply never forwarded it, so a run's region labels and frozen tags were dropped **in the browser**, at HTTP 200 |
 | `installMolecule(frame 0)` then `reloadFrames(the rest)` | **one call.** The contract names this shape as broken (§ 9.3): the one entrance stops being one, a subscriber sees a single-frame structure that never existed (§ 6.4), and point 0 is anchored on that one frame — so **a Retract threw the trajectory away** (§ 11.2). Found while fixing the row above |
 
-### The run's lattice — decided 2026-08-03
+### What a read-only tab cannot get from MolView
+
+Three of these four pages mount `mode: "readonly"`, and **a read-only viewer
+holds no session** — § 9.4: "a history exists to get back to a state you left,
+and in a read-only viewer nothing can leave one", so `save`, `load` and `undo`
+are no-ops and point 0 is never written. Driven directly against the model: **0
+writes to the workspace, `load(0)` → `null`.**
+
+So "the tab still shows what it had when you come back" cannot be delivered by
+MolView on these pages, and two generations of code have tried anyway —
+`readPersistedSnapshot` (a deleted door, behind a `typeof` guard) and then
+`data.load(0)` (copied from the **editable** Modify tab, where it is the whole
+restore). Both looked like they worked. Neither did.
+
+If that promise is to be kept, it belongs to the **tab**, under the tab's own
+tag, exactly like the panel note on `/molbuilder`. That is a decision, not a
+fix: **task #51**.
+
+### The run's lattice — decided 2026-08-03, then corrected on review
 
 `installMolecule({periodicity})` was never forwarded either, and unlike
-`atomMetadata` there was **no field on the route to forward it to**. There did
-not need to be: `apply_to_structure` applies `cell`, `cell_origin`, `pbc`,
-`axis_kind` and `vacuum` alongside the atom-scoped fields, so **the run's
-lattice now rides in the same metadata block as its labels**. One block, one
-authority, no second door — they describe the same atoms.
+`atomMetadata` there was **no field on the route to apply it with**.
 
-**The decision was what to say about periodicity**, and the user made it: *show
-the box, and mark it as the run's.* `TrajectoryResult.lattice` is a bare 3×3;
-the run does not report which axes repeat.
+**The decision the user made:** *show the box, and mark it as the run's.*
 
-**No `pbc` is sent.** Guessing periodicity in the browser is the one thing the
-Cell rules refuse (§ 9.5: `axis_kind` is the field MolView will not default),
-so the browser states the cell and nothing else. `Structure`'s own rule then
-resolves it — *a lattice implies periodicity* — and the structure comes back
-`axis_kind: [periodic, periodic, periodic]`, decided in the one place that owns
-that decision.
+**The first implementation of that decision was wrong, and a fresh-eyes review
+caught it.** It folded the cell into the metadata block beside the labels —
+which works, because `apply_to_structure` applies `cell` along with the
+atom-scoped fields — and it cost three things:
 
-**The accepted cost, said out loud rather than hidden:** an isolated molecule
-that ran in a large SIESTA box now gets a box drawn round it. So the tab's
-status line says *"Unit cell taken from the run output, not set by you."* It is
-the **tab** that says it, because the Cell page deliberately answers *"is this
-box mine?"* and not *"where did it come from"* (§ 9.5) — and the tab is what
-performed the load. Putting provenance on the Cell page itself would be a
-change to that decision, not an application of it.
+1. **The cell went around the periodicity gate.** Every other structure door
+   runs `apply_periodicity_from_body`, so a left-handed cell comes back 400 with
+   the gate's sentence. Through the metadata block it was **accepted at 200**,
+   on the one door a viewer actually loads through.
+2. **The browser opened a document it does not own** — parsing the block,
+   inserting a key, re-serialising. That block is a format the server writes.
+3. **Worst: it re-stated `n_atoms_total`**, using the count of the geometry
+   being loaded. That field is the guard that stops a label set written for one
+   structure landing on another, and a count copied from the target makes the
+   comparison `n == n` — **the guard could never fire again**.
+
+**What landed instead.** Two facts from two places travel as two named fields,
+and `/api/build/load` gained the one line every other door already has:
+
+```
+labels  (run's INPUT script)  → atom_metadata → apply_to_structure     (its own guard intact)
+cell    (run's OUTPUT logs)   → periodicity   → apply_periodicity_from_body  (the gate)
+```
+
+The block is passed through **untouched**, as bytes. And because the gate now
+runs on the structure rather than on the field it arrived in, the smuggling
+route is closed too: a refusable cell is refused whichever way it reaches the
+door — the same "the check lives in the return path" property § 6.8 gives the
+modify ops.
+
+**No `pbc` and no `axis_kind` are sent**, and the result is better than the
+periodic-on-all-axes the first version produced by accident. A run reports a
+box, not a statement about which axes repeat, and `axis_kind` is the one field
+MolView will not default (§ 9.5). The axes stay `isolated`; **the box is still
+drawn**, because the drawing uses the cell *as it will be used*
+(`resolved_cell`) and a stated cell resolves to itself. So an isolated molecule
+that ran in a large SIESTA box shows that box without anything claiming it
+repeats.
+
+The tab's status line still says *"Unit cell taken from the run output, not set
+by you"* — the **tab** says it, because the Cell page deliberately answers *"is
+this box mine?"* and not *"where did it come from"* (§ 9.5), and the tab is what
+performed the load.
 
 (Task **#35**, "Results-tab trajectory first load animates a single frozen
 frame", was the symptom the `setViewFlag` comment describes and should be

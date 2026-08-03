@@ -296,7 +296,7 @@ export function init(viewer) {
         const el = $("title-readout");
         if (!el) return;
         const d = _data();
-        const s = (d && typeof d.getStructure === "function") ? d.getStructure() : null;
+        const s = d ? d.getStructure() : null;
         const title = (s && s.title) || "";
         const f = mvFormula(_elements());
         el.textContent = title ? `${title} (${f})` : (s ? f : "");

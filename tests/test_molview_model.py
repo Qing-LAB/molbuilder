@@ -1356,51 +1356,60 @@ def test_what_the_caller_knew_about_the_atoms_reaches_the_server():
 
     THE CASE THIS EXISTS FOR is a trajectory. There is no `.molstruct.json`
     beside a run: the region labels and frozen tags come out of the input
-    script the Build tab wrote, and the lattice out of the run's output. The
-    caller hands them over with the structure, in one call, exactly as it hands
-    over the frames — the alternative is a second door, and § 9.3 has one.
+    script the Build tab wrote, and the lattice out of the run's output. Both
+    are handed over with the structure, in one call, exactly as the frames are
+    — the alternative is a second door, and § 9.3 has one.
 
-    A `sidecar` is a different thing and cannot carry this: it is the content of
-    an untrusted document, whose envelope the server checks first. These facts
-    are molbuilder's own emit and have no envelope, which is why the route takes
-    them under their own name.
+    THEY ARE TWO FIELDS BECAUSE THEY ARE TWO FACTS from two places, and one of
+    them is checked. The label block is a document the server wrote, carried as
+    BYTES and never opened here — it holds its own atom-count guard, and a
+    caller that parsed it and put a key back would be writing a format it does
+    not own. The cell is a plain value in the block every other structure door
+    already takes, so the server applies it through the seam that also refuses
+    a bad one.
 
-    It was silently dropped: the request builder simply did not forward the
-    field, so a trajectory opened with no labels and no cell at HTTP 200.
+    Both were silently dropped: the request builder forwarded neither, so a
+    trajectory opened with no labels and no cell at HTTP 200.
     """
     out = _run(
         """
         const m = createModel({});
         await m.installMolecule({
             text: "x", filename: "run.xyz",
-            atomMetadata: { n_atoms_total: 2, regions: { frozen_atoms: [1] } },
+            atomMetadata: '{"n_atoms_total":2,"regions":{"frozen_atoms":[1]}}',
+            periodicity: { cell: [[9,0,0],[0,9,0],[0,0,9]] },
         });
         const sent = globalThis.__requests[0].body;
         console.log(JSON.stringify({
             route: globalThis.__requests[0].route,
             carried: sent.atom_metadata || null,
+            cell: (sent.periodicity || {}).cell || null,
             keys: Object.keys(sent).sort(),
         }));
         """
     )
     assert out["route"] == "/api/build/load"
-    assert out["carried"], (
-        "installMolecule dropped what the caller knew about these atoms; a "
-        "trajectory then opens with no region labels, no frozen tags and no "
-        "cell, at HTTP 200 — nothing refused it, the facts never left the "
-        "browser"
+    assert out["carried"] == (
+        '{"n_atoms_total":2,"regions":{"frozen_atoms":[1]}}'
+    ), (
+        "the label block was dropped or rewritten. Dropped: a trajectory opens "
+        "with no region labels and no frozen tags, at HTTP 200 — nothing "
+        "refused them. Rewritten: whatever re-stated `n_atoms_total` also "
+        "disabled the guard that stops a label set landing on the wrong atoms"
     )
-    assert json.loads(out["carried"]) == {
-        "n_atoms_total": 2, "regions": {"frozen_atoms": [1]},
-    }, "the block reached the server changed"
-    assert "atom_metadata" in out["keys"]
+    assert out["cell"] == [[9, 0, 0], [0, 9, 0], [0, 0, 9]], (
+        "the caller's cell never left the browser, so no trajectory can draw "
+        "the box its run used"
+    )
+    assert "atom_metadata" in out["keys"] and "periodicity" in out["keys"]
 
 
 def test_a_caller_that_knew_nothing_extra_sends_nothing_extra():
-    """The field is absent, not null, when there is nothing to say.
+    """The fields are absent, not null, when there is nothing to say.
 
-    An ordinary file load has no such block, and a key carrying `null` is a
-    statement the caller did not make.
+    An ordinary file load has no such block and states no cell, and a key
+    carrying `null` is a statement the caller did not make — on the server side
+    the periodicity block is applied verbatim, so an empty one is not nothing.
     """
     out = _run(
         """
@@ -1413,6 +1422,9 @@ def test_a_caller_that_knew_nothing_extra_sends_nothing_extra():
     )
     assert "atom_metadata" not in out["keys"], (
         f"an ordinary load sent an empty metadata block: {out['keys']}"
+    )
+    assert "periodicity" not in out["keys"], (
+        f"an ordinary load stated a cell it was never given: {out['keys']}"
     )
 
 

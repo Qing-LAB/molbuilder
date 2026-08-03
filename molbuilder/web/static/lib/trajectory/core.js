@@ -897,7 +897,7 @@ import { mount } from "/static/lib/molview/index.js";
     // append path + knob wiring read unchanged.
     function drawForces() {
         const d = _mvdata();
-        if (d && typeof d.setForces === "function") {
+        if (d) {
             d.setForces(buildForcesPerFrame());
         }
     }
@@ -919,53 +919,33 @@ import { mount } from "/static/lib/molview/index.js";
     // Optional ``seekIdx`` jumps to a frame afterwards (used to keep the
     // playhead near the tail when a live poll forces a full rebuild).
     //
-    // THE LATTICE THE RUN REPORTED rides in the metadata block with the labels
-    // (user decision, 2026-08-03).  It used to be passed as a `periodicity`
-    // argument the request builder never forwarded, so it was dropped at HTTP
-    // 200 and no trajectory has ever drawn its unit cell.
+    // THE LATTICE THE RUN REPORTED is handed over as `periodicity` (user
+    // decision, 2026-08-03: show the box, mark it as the run's).  The argument
+    // was always here; what was missing was the request builder forwarding it
+    // and the route applying it, so it was dropped at HTTP 200 and no
+    // trajectory has ever drawn its unit cell.
     //
-    // ONLY THE CELL IS SENT, never a `pbc`.  A run's 3x3 says nothing about
-    // which axes repeat, and guessing is the one thing the model refuses to do
-    // in the browser (molview.md § 9.5's Cell rules: axis_kind is the field
-    // MolView will not default).  The rule that resolves it belongs to
-    // `Structure` and is applied there -- "a lattice implies periodicity", so a
-    // stated cell comes back fully periodic.  The cost the user accepted: an
-    // isolated molecule that ran in a large SIESTA box gets a box drawn round
-    // it, so the tab says where the box came from (below).
-    /* Everything this run knows about its atoms, as ONE block for the load.
+    // The cost the user accepted: an isolated molecule that ran in a large
+    // SIESTA box gets a box drawn round it -- so the tab says where the box
+    // came from (below).
+    /* The lattice the run reported, as the periodicity block the load takes.
      *
-     * Two sources, one envelope: the ATOM-METADATA block the Build tab wrote
-     * into the input script (region labels, frozen tags, annotation channels,
-     * recovered by /api/watch/load as a JSON STRING), and the lattice the run
-     * itself reported.  They go together because they describe the same atoms
-     * and the server applies them through one authority.
+     * A PLAIN VALUE IN A NAMED FIELD, not a key pushed into the label document
+     * beside it.  Two reasons, and the first is a correctness one: the server
+     * CHECKS this block (a left-handed cell comes back refused, with the gate's
+     * own sentence) and it does not check what arrives inside a metadata
+     * document.  The second is provenance -- the labels come from the run's
+     * INPUT script and this comes from its OUTPUT logs, so they are two facts
+     * from two places and travel as two fields.
      *
-     * `n_atoms_total` is not decoration -- the server checks it against the
-     * geometry it parsed and refuses a block that does not match, which is what
-     * stops a stale label set landing on a structure it was not written for.
-     *
-     * Returns null when there is nothing to say: no labels, no lattice.  An
-     * empty block would be a claim (full-REPLACE semantics: an absent key
-     * RESETS that field), so saying nothing has to look like nothing.
+     * No `pbc` and no `axis_kind`: a run's 3x3 says nothing about which axes
+     * repeat, and guessing periodicity in the browser is the one thing the Cell
+     * rules refuse (molview.md § 9.5).  `Structure`'s own rule -- a lattice
+     * implies periodicity -- resolves it in the one place that owns it.
      */
-    function _runMetadataBlock(nAtoms) {
-        let block = {};
-        if (state.atomMetadata) {
-            try {
-                block = (typeof state.atomMetadata === "string")
-                    ? JSON.parse(state.atomMetadata)
-                    : Object.assign({}, state.atomMetadata);
-            } catch (_e) {
-                // A block this build cannot read is not something to guess at;
-                // the labels are lost, the geometry is not.
-                block = {};
-            }
-        }
+    function _runPeriodicity() {
         const lat = state.data && state.data.lattice;
-        if (Array.isArray(lat) && lat.length === 3) block.cell = lat;
-        if (!Object.keys(block).length) return null;
-        block.n_atoms_total = nAtoms;
-        return block;
+        return (Array.isArray(lat) && lat.length === 3) ? { cell: lat } : null;
     }
 
     /* Whether the box on screen came from the run rather than from the user --
@@ -1029,7 +1009,10 @@ import { mount } from "/static/lib/molview/index.js";
                 filename:     (state.label || "trajectory") + ".xyz",
                 frames:       coordFrames,
                 forces:       buildForcesPerFrame(),
-                atomMetadata: _runMetadataBlock(allFrames[0].length),
+                // Handed on exactly as it arrived: a document the server wrote,
+                // carrying its own atom-count guard.  This tab does not open it.
+                atomMetadata: state.atomMetadata || null,
+                periodicity:  _runPeriodicity(),
             });
         } catch (e) {
             setStatus("Viewer failed to load the run: "

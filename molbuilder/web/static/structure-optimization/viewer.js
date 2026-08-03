@@ -210,8 +210,7 @@ import { mount as mvMount, formula as mvFormula }
     // 2026-06-14 severed-wire class).  Truth keys only; resolved_* are views.
     function _modelPeriodicity() {
         const d = _data();
-        const per = (d && typeof d.getStructure === "function")
-            ? ((d.getStructure() || {}).periodicity || null) : null;
+        const per = d ? ((d.getStructure() || {}).periodicity || null) : null;
         if (!per) return null;
         return { cell: per.cell || null, cell_origin: per.cell_origin || null,
                  axis_kind: per.axis_kind || null, vacuum: per.vacuum || null };
@@ -277,8 +276,7 @@ import { mount as mvMount, formula as mvFormula }
     // sidecar labels; the info panel reads the counts; all come off molview.data.
     function _applyLoadedModel(filename) {
         const d = _data();
-        const s = (d && typeof d.getStructure === "function")
-            ? d.getStructure() : null;
+        const s = d ? d.getStructure() : null;
         /* THE COUNT COMES OFF THE ELEMENTS, because that is what the structure
          * carries. This read `s.atoms` — a key the envelope has never had
          * (`elements`, `annotations`, `periodicity`, `frames`, `forcesPerFrame`)
@@ -712,81 +710,58 @@ import { mount as mvMount, formula as mvFormula }
             : _proj.onChange.bind(_proj);
         subscribe(_commitStructure);
 
-        // PERSISTENCY WINS on mount (workspace-contract.md §4.5): keep THIS tab's
-        // own MolView data.  If the tab already holds a structure from an earlier
-        // load -- persisted in the workspace session mirror under owner
-        // "structure-opt" -- RESTORE it.  The user may have changed directory in
-        // the Projects sidebar since loading it, so the sidebar pointer
-        // (``getCurrentFile()``) is NOT the tab's structure any more; the tab must
-        // keep the data it loaded, not auto-swap to whatever the sidebar now points
-        // at.  File load is EXPLICIT: a sidebar pick is only a candidate; the "Load
-        // from sidebar selection" button (below) is the sole commit gesture.
-        //
-        // Seed from the sidebar pick ONLY when the tab has no data yet (an empty
-        // canvas) -- the genuine first-arrival / cross-tab handoff.  What is asked
-        // is "are there atoms on the canvas?", never "does the sidebar's file match
-        // the one the canvas came from": a structure that was generated, or loaded
-        // from a directory the user has since left, has atoms and no matching file,
-        // and the comparison read that as empty and wiped it.
+        /* WHAT HAPPENS WHEN YOU COME BACK TO THIS TAB -- and what does NOT.
+         *
+         * THIS VIEWER IS READ-ONLY, AND A READ-ONLY VIEWER HOLDS NO SESSION.
+         * That is the contract, not an omission: § 9.4 -- "a history exists to
+         * get back to a state you left, and in a read-only viewer nothing can
+         * leave one", so `save`, `load` and `undo` are no-ops, and § 11.2's
+         * point 0 is never written (`recordFirstState` returns null in this
+         * mode). Measured, not assumed: a read-only model writes ZERO bytes to
+         * the workspace, and `load(0)` answers null.
+         *
+         * So there is nothing here to restore, and this block does not pretend
+         * otherwise. It mounted a viewer and it seeds from the sidebar pick.
+         *
+         * TWO DEAD RESTORES HAVE STOOD HERE, and both looked like they worked.
+         * The first read the saved bytes back out of the workspace and opened
+         * them (`readPersistedSnapshot`, a door the workspace no longer has,
+         * behind a `typeof` guard -- so it answered "nothing saved" every
+         * visit). The second called `data.load(0)`, copied from the Modify tab
+         * -- which is EDITABLE, and where that call is the whole restore. Here
+         * it is a gate that returns null.
+         *
+         * WHAT IS ACTUALLY MISSING is a decision, filed as task #51: whether a
+         * read-only tab should keep the structure it was showing across a page
+         * visit at all, and if so, that it belongs to the TAB -- persisted
+         * under this tab's own tag, like the panel note on /molbuilder -- never
+         * to a viewer whose contract says it holds nothing.
+         * `tests/test_build_e2e.py::TestBuildSecondVisitExternalChange
+         * ::test_external_xyz_replacement_reloads_on_explicit_load` pins the
+         * old promise and fails today; it is waiting on that decision.
+         *
+         * THE VIEWER IS MOUNTED FIRST regardless, because the load door needs
+         * something to put a file into. That was a real defect: this ran
+         * against whatever `_data()` happened to answer, and on a fresh page
+         * that was null -- nothing had mounted yet.
+         */
         const _initialFile = (typeof _proj.getCurrentFile === "function")
             ? _proj.getCurrentFile() : "";
-        (async function _restoreOrSeedOnMount() {
-            /* THE VIEWER COMES FIRST, because there has to be something to put the
-             * work back INTO. This block used to run against whatever `_data()`
-             * happened to answer, and on a reopened page that was null -- nothing
-             * had mounted yet -- so the restore branch could never be taken and the
-             * sidebar's highlighted file seeded over the session every time. */
-            const _viewer = await _ensureMounted();
-            const _d = _data();
-
-            /* ASK MOLVIEW, NOT THE WORKSPACE. `load(0)` on a fresh viewer takes up
-             * the sequence that is already on disk (molview.md § 11.2a) -- the
-             * sequence outlives the page, and this is the one call that reaches it
-             * before anything has been installed.
-             *
-             * It used to read the saved bytes back out of the workspace and open
-             * them, looking for `state.structure.elements`. That is MolView's own
-             * layout, which the workspace stores and never interprets, and it was
-             * reached through `readPersistedSnapshot` -- a door the workspace no
-             * longer has. Behind a `typeof` guard, so it answered "nothing saved"
-             * on every visit without a word. */
-            let _restoredAt = null;
-            if (_viewer && _d && typeof _d.load === "function") {
-                try {
-                    _restoredAt = await _d.load(0);
-                } catch (_e) {
-                    // A restore that fails leaves the canvas empty; the user can Load.
-                }
-            }
-            const _onCanvas = (_d && typeof _d.getStructure === "function")
-                ? _d.getStructure() : null;
-            // Atoms are what "there is work here" means; MolView holds no text.
-            const _hasRestore = !!(_onCanvas && (_onCanvas.elements || []).length);
-
-            if (_hasRestore) {
-                /* NO FILE NAME COMES BACK WITH IT, and none is wanted. MolView
-                 * tracks contents, not files (molview.md § 6.7): it restored the
-                 * atoms, the labels and the cell, which is the work. Which file
-                 * they were read out of was a fact about an operation this tab
-                 * performed, and it is not part of the structure. */
-                _sidebarLastFile = "";
-                _applyLoadedModel("restored structure");
-            } else if (_initialFile) {
-                // Empty canvas + a sidebar pick: seed it once (first load / handoff).
-                const _initialDir = (typeof _proj.getCurrentDir === "function")
-                    ? _proj.getCurrentDir() : "";
-                _commitStructure({ dir: _initialDir, file: _initialFile });
-            }
-            return _restoredAt;
+        (async function _mountThenSeed() {
+            await _ensureMounted();
+            if (!_initialFile) return;
+            // A sidebar pick on arrival is the cross-tab handoff: show it.
+            const _initialDir = (typeof _proj.getCurrentDir === "function")
+                ? _proj.getCurrentDir() : "";
+            _commitStructure({ dir: _initialDir, file: _initialFile });
         })().catch(function (e) {
             /* NOBODY IS WAITING ON THIS PROMISE, so a throw would land nowhere.
-             * Restoring is the first thing this page does; failing at it in
-             * silence leaves an empty canvas that looks like a page with nothing
-             * saved, which is the one story that must not be told wrongly. */
+             * This is the first thing the page does; failing at it in silence
+             * leaves an empty canvas that reads as "there was nothing here". */
             setStatus("load-status",
-                "Could not restore this tab's structure: "
+                "Could not open this tab's viewer: "
                 + ((e && e.message) || "unknown error")
-                + ". Load a file to start again.", "error");
+                + ". Pick a file and press Load.", "error");
         });
 
         // ----- Load-from-sidebar button (task #295, 2026-06-08) ---- //

@@ -1522,7 +1522,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `exportFile(range)` | `range` — `{from, to}`, inclusive, 0-based, clamped to what exists. Omitted means the displayed frame alone | `{name, structure}` for one frame; `{name, structure, frames}` when the range covers more — `frames` is **additive**, so a caller that knows nothing about ranges keeps working. `null` if the geometry and the per-atom facts disagree |
 | `mode` | — | **`"editable"` or `"readonly"`**, never `null` |
 | `state_index` · `uncommitted` | — | the position; whether there is unsaved work |
-| `installMolecule(input)` | `{path}` **or** `{text, filename, format?, sidecar?, atomMetadata?}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
+| `installMolecule(input)` | `{path}` **or** `{text, filename, format?, sidecar?, atomMetadata?, periodicity?}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `applyOp(name, args)` | `name` — a row of § 11.1's table, and the route segment. `args` — that operation's own arguments, flat | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `commitPeriodicityOp(op, payload)` | `op` — `vacuum` · `axis_kind` · `cell` · `cell_origin`. `payload` — that op's value; `null` clears | the cell block · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `reloadFrames(frames, opts)` | `opts` — `{forces?, enforce?}` | — |
@@ -1652,20 +1652,39 @@ second read back, whatever the rule said.
   (§ 6.4); and point 0 is anchored on that one frame, so **a Retract to the
   anchor throws the trajectory away** (§ 11.2).
 
-  **And so does what the caller already knew about the atoms** — `atomMetadata`,
-  for the same reason. Two things arrive without a `.molstruct.json` beside
-  them: a trajectory's region labels and frozen tags, which the Build tab wrote
-  into the input script and the Results tab recovered from it, and anything else
-  molbuilder itself emitted. They are not a **`sidecar`** and must not be passed
-  as one: a sidecar is the content of an untrusted document, whose envelope the
-  server checks before applying it, and these have no envelope because nothing
-  outside molbuilder wrote them. So they ride in the same call as the structure
-  they describe, under their own name, and the server applies both through the
-  one authority that owns the field set.
+  **And so does everything else that came with the structure**, for the same
+  reason. A run arrives without a `.molstruct.json` beside it, carrying two
+  facts from two places: its **region labels and frozen tags**, which the Build
+  tab wrote into the input script and the Results tab recovered from it
+  (`atomMetadata`), and the **cell it ran in**, read from its output logs
+  (`periodicity`). Handing either over separately would be a second door again,
+  and would lose the same way — a structure would exist, briefly, with none of
+  the facts that came with it.
 
-  Handing them over separately would be a second door again — and it would lose
-  the same way: a structure would exist, briefly, with none of the facts that
-  came with it.
+  **They are two inputs because they are two different kinds of thing.**
+
+  `atomMetadata` is a **document the server wrote**, in a format the server
+  owns, and it travels as bytes that this module never opens. It is not a
+  **`sidecar`** and must not be passed as one: a sidecar is an *untrusted*
+  document whose envelope is checked first, and this has no envelope because
+  nothing outside molbuilder wrote it. It carries its own guard — the atom count
+  it was written for, which is what stops a label set landing on a structure it
+  does not describe. Anything here that parsed it and put a key back would be
+  writing that format, and re-stating the count is how that guard stops being
+  able to fire.
+
+  `periodicity` is a **plain value** — the same `{cell, cell_origin, axis_kind,
+  vacuum}` block every other structure door takes — so the server applies it
+  through the one seam that also **checks** it: a refusable cell comes back as a
+  refusal (§ 6.9), not as a box that was quietly accepted. A cell folded into
+  the metadata document instead would have gone around that check, and the load
+  door is the one door a viewer actually loads through.
+
+  **Nothing is said about which axes repeat.** A run reports a box, not a
+  periodicity, so only the cell is sent; `axis_kind` stays whatever the
+  structure says (§ 9.5 — it is the one field MolView will not default). The box
+  is still drawn, because the drawing uses the cell *as it will be used* and a
+  stated cell resolves to itself.
 - **`exportFile(range)`** — its exact inverse. Returns **the structure as
   data** — the frames in the range, with the name it came in under — and stops
   there (§ 11.7). The range defaults to **the frame currently displayed** (§ 6.4),
@@ -2560,7 +2579,7 @@ MolView calls are listed there with their bodies and answers:
 
 | MolView's call | Route | Sends | Answers |
 |---|---|---|---|
-| `installMolecule` | `/api/build/load` | `{path}`, or `{text, filename, format?, sidecar?, atom_metadata?}` | the structure payload this module normalises (§ 6.2), with the notices the check on the way out produced (§ 6.8) |
+| `installMolecule` | `/api/build/load` | `{path}`, or `{text, filename, format?, sidecar?, atom_metadata?, periodicity?}` | the structure payload this module normalises (§ 6.2), with the notices the check on the way out produced (§ 6.8) |
 | `applyOp(name, args)` | `/api/modify/<name>` | the envelope + the op's arguments + the selection under § 11.1's key | the structure, with the same notices beside it — both routes leave through the one helper that validates what it sends |
 | `commitPeriodicityOp(op, payload)` | `/api/structure/periodicity` | the envelope + `op`, `payload` | `{ok, periodicity, notices}` — the cell block in the same shape a load sends it |
 | the filter (§ 9.5) | `/api/selection/eval` | `{atoms, rule}` — no coordinates, because no rule matches on position | `{selected_indices}` |

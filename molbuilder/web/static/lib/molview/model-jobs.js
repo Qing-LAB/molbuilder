@@ -352,20 +352,35 @@ function requestBodyFor(input) {
     /* WHAT THE CALLER ALREADY KNEW ABOUT THESE ATOMS, when it did not come out
      * of a file. A `sidecar` is the CONTENT OF A `.molstruct.json` — an
      * untrusted document, so the server checks its envelope before applying it.
-     * A run's own facts have no such document: the Results tab recovers the
-     * region labels and frozen tags from the ATOM-METADATA block the Build tab
-     * wrote into the input script, and the lattice from the run's output. That
-     * is molbuilder's own emit, and the server has taken it as `atom_metadata`
-     * all along (`/api/build/load`), applying it through the same one authority
-     * with no envelope to satisfy.
+     * A run has no such document: the Results tab recovers its region labels
+     * and frozen tags from the ATOM-METADATA block the Build tab wrote into the
+     * input script. That is molbuilder's own emit, and the server has taken it
+     * as `atom_metadata` all along, applying it through the one authority with
+     * no envelope to satisfy. The browser simply never sent it, so a trajectory
+     * opened with no labels — at HTTP 200, because nothing refused them; they
+     * were dropped one layer above the request.
      *
-     * The browser simply never sent it. A trajectory therefore opened with no
-     * region labels, no frozen tags and no cell — at HTTP 200, because nothing
-     * was refused; the facts were dropped one layer above the request. */
-    if (input.atomMetadata && typeof input.atomMetadata === "object") {
-        body.atom_metadata = JSON.stringify(input.atomMetadata);
-    } else if (typeof input.atomMetadata === "string" && input.atomMetadata) {
+     * IT TRAVELS AS BYTES AND IS NEVER OPENED HERE. It is a document the server
+     * wrote, in a format the server owns, and it carries its own guard —
+     * `n_atoms_total`, which is what stops a label set written for one
+     * structure landing on another. Anything in the browser that parsed it and
+     * put a key back would be writing that format, and re-stating the count is
+     * how the guard stops being able to fire. */
+    if (typeof input.atomMetadata === "string" && input.atomMetadata) {
         body.atom_metadata = input.atomMetadata;
+    }
+
+    /* THE CELL THE CALLER STATED — the same `{cell, cell_origin, axis_kind,
+     * vacuum}` block every other structure door takes, so the server applies it
+     * through the one seam that also CHECKS it (a refusable cell comes back as
+     * a refusal, § 6.9, not a silently-accepted box).
+     *
+     * The caller for this is a trajectory: its lattice comes from the run's
+     * output logs, which is a different source from the labels above and so a
+     * different field. It went nowhere for as long as this builder ignored it,
+     * which is why no trajectory has ever drawn its unit cell. */
+    if (input.periodicity && typeof input.periodicity === "object") {
+        body.periodicity = input.periodicity;
     }
     return body;
 }

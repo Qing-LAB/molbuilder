@@ -37,7 +37,7 @@ export function init(viewer) {
     }
     function hasStructure() {
         var w = data();
-        return !!(w && typeof w.getStructure === "function" && w.getStructure());
+        return !!(w && w.getStructure());
     }
     function round(n) { return Math.round(Number(n) * 1000) / 1000; }
     function setIdle(el, val) {
