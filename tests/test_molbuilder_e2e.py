@@ -81,6 +81,40 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
     monkeypatch.setattr(diagnostics, "_snapshot", _orig)
 
 
+@pytest.fixture(autouse=True)
+def _a_session_that_did_not_happen():
+    """Each test starts as a browser that has never opened this tab.
+
+    MolView's sequence is PERSISTENT — it outlives the page (molview.md § 11.2)
+    — so from the moment `load(0)` learned to adopt one, a test inherited
+    whatever the test before it left on the canvas, unsaved badge and all.  The
+    symptom was not a wrong assertion: the next test's Load hit the
+    discard-unsaved gate and its click waited on a modal nobody answered.
+
+    That the state lands HERE at all is a separate, worse problem, recorded
+    rather than papered over: the workspace keeps its files under
+    ``projects_root()``, which is ``Path.cwd()/projects``, so an e2e run writes
+    into the developer's real project tree.  Clearing this tag before and after
+    keeps runs from colliding with each other and with a live browser session,
+    but the right fix is for a test server to have a projects root of its own.
+    """
+    from molbuilder.projects import projects_root
+    states = projects_root() / ".molbuilder_workspace" / "states"
+
+    def wipe():
+        if not states.is_dir():
+            return
+        for f in states.glob("ws-modify*.wc.json"):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+    wipe()
+    yield
+    wipe()
+
+
 @pytest.fixture
 def labelled_xyz(tmp_path, monkeypatch):
     """A structure WITH its sidecar — the pair a project file really is.

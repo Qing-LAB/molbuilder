@@ -588,10 +588,19 @@ def test_an_edit_refreshes_the_session_copy_and_lays_down_no_point():
         f"{out['points']}"
     )
     assert out["at"] == 0, "an edit moved the position on the sequence"
-    assert out["draft"] == {"v": 1, "state": "three"}, (
+    assert out["draft"]["state"] == "three", (
         f"the draft does not hold the latest edit, so a reload would lose it: "
         f"{out['draft']!r}"
     )
+    # AND WHERE THAT LEFT YOU (molview.md § 11.2a).  A reopened page builds a
+    # fresh viewer that starts at position 0 with no sequence, so these three are
+    # the only way it can come back standing where the user left off.  Asserted
+    # as a whole envelope rather than key-by-key: this is the shape the reader
+    # in `adopt()` expects, and the two drifting apart is the failure that would
+    # restore the right structure into the wrong place on the sequence.
+    assert out["draft"] == {
+        "v": 1, "state": "three", "at": 0, "highest": 0, "dirty": True,
+    }, f"the draft does not describe where the session was: {out['draft']!r}"
     # The version stamp is not decoration: the reader parses the bytes, looks for
     # it, and hands back nothing without it. Every save went in unstamped until
     # 2026-08-02 and no read ever came back out.
@@ -1045,3 +1054,145 @@ def test_a_failed_write_does_not_wedge_the_next_read():
         f"the read did not return the point that is actually current: "
         f"{out['restored']}"
     )
+
+
+def test_a_sequence_outlives_its_page_and_a_fresh_viewer_takes_it_up():
+    """PINS molview.md § 11.2a — coming back to a session without re-opening the file.
+
+    § 11.2 says the sequence is persistent: "it outlives the page". A reopened
+    page builds a FRESH viewer, so `load(0)` is the one call that has to work
+    before anything has been installed. It used to refuse — `if (!anchored)
+    return null` — which made that sentence false: the bytes sat on disk and
+    nothing could reach them.
+
+    WHAT COMES BACK IS THE DRAFT, NOT THE POINT. The point is where the user last
+    chose to be able to return to; the draft is what was actually on screen.
+    Coming back to the point throws away every edit made after it, silently,
+    because the structure that appears looks perfectly reasonable.
+
+    The second session shares the STORE and nothing else — a new history, as a
+    new page would build.
+    """
+    out = _run(
+        """
+        const store = makeStore();
+
+        // Session one: open, edit, save a point, then edit again.
+        const one = makeHistory(store);
+        await one.h.anchor();
+        await one.edit("after-open");
+        await one.h.save(1);              // the point the user chose
+        await one.edit("work-since-the-save");
+
+        // Session two: a NEW history over the same store, as a reopened page
+        // builds a new viewer.
+        const two = makeHistory(store);
+        const beforeAdopt = { at: two.h.state_index, badge: two.h.uncommitted };
+        const adopted = await two.h.load(0);
+        // READ THE MOMENT IT LANDS. The Retract below correctly lowers the
+        // badge, so asking afterwards measures the retract, not the restore.
+        const afterAdopt = {
+            at: two.h.state_index, badge: two.h.uncommitted,
+            restored: two.restored.slice(),
+        };
+
+        // And the sequence is usable: Retract spends the unsaved work first,
+        // landing on the point that was saved (§ 11.2).
+        const retracted = await two.h.load(-1);
+
+        console.log(JSON.stringify({
+            beforeAdopt,
+            adopted,
+            restored: afterAdopt.restored,
+            at: afterAdopt.at,
+            badge: afterAdopt.badge,
+            retracted,
+            atAfterRetract: two.h.state_index,
+            restoredAfterRetract: two.restored[two.restored.length - 1],
+        }));
+        """
+    )
+    assert out["beforeAdopt"] == {"at": 0, "badge": False}, (
+        "a fresh viewer must start knowing nothing — otherwise this test is "
+        "measuring leftover state, not a restore"
+    )
+    assert out["adopted"] == 1, (
+        f"load(0) on a fresh viewer did not take up the sequence: {out['adopted']!r}. "
+        f"§ 11.2 says it outlives the page"
+    )
+    assert out["restored"][0] == "work-since-the-save", (
+        f"the reopened page came back to the POINT, losing the work done after "
+        f"it — the exact loss persistence exists to prevent: {out['restored']!r}"
+    )
+    assert out["at"] == 1, (
+        f"the work came back but the position did not: standing on {out['at']}, "
+        f"not on the point the session was on. Retract would go somewhere the "
+        f"user never was"
+    )
+    assert out["badge"] is True, (
+        "the badge came back down over work that is not on the sequence — an "
+        "explicit-save history that lies about this loses work silently (§ 11.2)"
+    )
+    # And the adopted sequence actually works.
+    assert out["retracted"] == 1 and out["atAfterRetract"] == 1, (
+        f"Retract on an adopted sequence did not spend the unsaved work first: "
+        f"{out['retracted']!r} / {out['atAfterRetract']!r}"
+    )
+    assert out["restoredAfterRetract"] == "after-open", (
+        f"Retract restored the wrong point: {out['restoredAfterRetract']!r}"
+    )
+
+
+def test_a_first_visit_finds_nothing_and_stays_empty():
+    """The other half of § 11.2a: no draft is a FIRST VISIT, not a failure.
+
+    `load(0)` answers null, the viewer stays EMPTY and ready for an install, and
+    nothing is restored. Distinguishing this from a broken read matters because
+    the two want opposite responses — one waits for the user to open something,
+    the other must not pretend it did.
+    """
+    out = _run(
+        """
+        const store = makeStore();
+        const fresh = makeHistory(store);
+        const answer = await fresh.h.load(0);
+        console.log(JSON.stringify({
+            answer, restored: fresh.restored, at: fresh.h.state_index,
+            wrote: store.log.length,
+        }));
+        """
+    )
+    assert out["answer"] is None, "a first visit must answer nothing"
+    assert out["restored"] == [], "nothing was stored, so nothing may be restored"
+    assert out["wrote"] == 0, (
+        "adopting wrote something — it must not: the sequence being taken up is "
+        "the one that was already there (§ 11.2a, adopting is not anchoring)"
+    )
+
+
+def test_a_draft_this_build_cannot_read_is_not_guessed_at():
+    """A version stamp this code does not know reads as nothing (§ 11.2a).
+
+    These files outlive the code that wrote them: someone upgrades molbuilder and
+    opens a tab whose draft was written by the old one. Bytes from a layout this
+    build has never seen are not something to guess at — and guessing would put a
+    structure on screen assembled from fields that meant something else.
+    """
+    out = _run(
+        """
+        const store = makeStore();
+        store.drafts["id-test-viewer-draft"] =
+            { v: 99, state: "from-a-later-molbuilder", at: 3, highest: 3 };
+        const fresh = makeHistory(store);
+        const answer = await fresh.h.load(0);
+        console.log(JSON.stringify({
+            answer, restored: fresh.restored, at: fresh.h.state_index,
+        }));
+        """
+    )
+    assert out["answer"] is None, "an unreadable draft must answer nothing"
+    assert out["restored"] == [], (
+        "bytes from an unknown layout were restored anyway — a structure "
+        "assembled from fields that meant something else"
+    )
+    assert out["at"] == 0, "an unreadable draft moved the position"

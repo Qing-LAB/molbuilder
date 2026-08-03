@@ -2580,7 +2580,7 @@ Both `save` and `load` take a **step**, and the step is what tells them apart:
 | `save(0)` | re-write the current point where it is, without moving | — |
 | `load(-1)` | step back one point; `undo` is exactly this | **Retract** |
 | `load(+1)` | step forward again, into a point a Retract moved away from | — |
-| `load(0)` | **not a move**: put back the point you were on — how a reopened page returns to where it was | — |
+| `load(0)` | **not a move**: put back the point you were on. On a **fresh viewer** it adopts the sequence already in storage and puts back the *draft* — how a reopened page returns to where it was (§ 11.2a) | — |
 
 `load(0)` is the one worth reading twice. Zero is not "move by nothing"; it is a
 different verb. The three things this surface does are *step back*, *step forward*,
@@ -2822,7 +2822,7 @@ value in the last column — it never throws, so no caller has to wrap it (§ 9.
 | `save(0)` | re-write the point you are on, without moving | → landed? | no-op → `false` |
 | `load(-1)` · `undo()` | step back — spends unsaved work first (§ 11.2) | → the point, or `null` | no-op → `null` |
 | `load(+1)` | step forward into a point a Retract left | → the point, or `null` | no-op → `null` |
-| `load(0)` | **not a move** — put back the point you are on | → the point, or `null` | no-op → `null` |
+| `load(0)` | **not a move** — put back the point you are on; from EMPTY, adopt the stored sequence and put back the draft (§ 11.2a) | → the point, or `null` | no-op → `null` |
 | `state_index` | where you are on the sequence | reads it | always `0` |
 | `uncommitted` | is there work not on the sequence yet | reads it | always `false` |
 | `beginChange()` · `endChange()` | the bracket: writes asked for inside land once, at the end, carrying the settled state | holds them | nothing to hold |
@@ -2866,26 +2866,56 @@ is now standing.
 So the two ways back are both within an open structure, and both work:
 `load(0)` puts back the point you are on, and `load(-1)` steps to the one before.
 
-> **What has no path today: coming back to a session without re-opening the
-> file.** § 11.2 calls `load(0)` "how a reopened page returns to where it was",
-> and a reopened page builds a fresh viewer. That viewer has no sequence yet —
-> only an install anchors one — so:
->
-> ```
-> session 1: install, edit, save(1)   -> storage holds points 0 and 1
-> session 2: fresh viewer, load(0)    -> null; the structure is still null
-> ```
->
-> Its only way to become useful is to install, which correctly starts a fresh
-> sequence. So the stored points are reachable only by the viewer that wrote
-> them, and "reopen where I left off" and "open this file again" are the same
-> gesture.
->
-> Whether that is a gap depends on what a reopened page is *meant* to do — take
-> the file again, or take back the work — and that is a decision, not an
-> oversight. What is missing if it is the second is a way for a viewer to adopt a
-> sequence that already exists, which today's `load` cannot do because it refuses
-> before there is an anchor.
+**Coming back to a session, without re-opening the file.** § 11.2 says the
+sequence is persistent — *it outlives the page* — and calls `load(0)` "how a
+reopened page returns to where it was". A reopened page builds a **fresh viewer**,
+and a fresh viewer has no sequence, so `load(0)` has to be able to **adopt one
+that already exists**. That is the only place the two states of § 11.2a's diagram
+are entered other than by installing.
+
+```
+session 1: install, edit, save(1), edit again
+session 2: fresh viewer, load(0)  ->  the second edit is on screen,
+                                      the badge is up, and Retract
+                                      goes to point 1 exactly as it would have
+```
+
+**What comes back is the draft, not the point** — and that is the whole of
+§ 11.2's first promise. "Persistence means *you do not lose work you did*". The
+numbered point is where you last chose to be able to return to; the draft is what
+was actually on screen. Coming back to the point would silently throw away every
+edit made after it, which is precisely the loss persistence exists to prevent.
+
+**So three things travel with the draft**, because a reopened page cannot work
+them out and nothing else knows them:
+
+| | Why it cannot be inferred |
+|---|---|
+| the **position** on the sequence | a fresh viewer starts at 0; without this, Retract from a session that was on point 3 steps to −1 and answers nothing |
+| the **highest** point that exists | `load(+1)` has nowhere to go, and a save would drop a tail it never knew about |
+| whether there was **unsaved work** | the badge is the honest part of an explicit-save history (§ 11.2); coming back with it down would say the work was on the sequence when it is not |
+
+They ride in the draft's own envelope. MolView already decides "what goes in the
+bytes" — the workspace holds no opinion about content — so this needs nothing new
+from underneath and no second file.
+
+**Adopting is not anchoring.** `anchor()` lays down a *fresh* point 0 and prunes
+what was above it, which is right when a molecule is opened and wrong when a page
+is reopened: the sequence being adopted is the one that was already there.
+Adoption puts the work back and takes the position with it; it writes nothing.
+
+**A reopened page and the tab you left are then the same thing** — same
+structure, same selection, same place on the sequence, same badge. Which is what
+"it outlives the page" has to mean if it means anything.
+
+**Two ways it can find nothing, and they are not the same.** No draft at all is a
+first visit — `load(0)` answers `null` and the viewer stays EMPTY, ready for an
+install. A draft this code cannot read (a version it does not know) is also
+`null`: bytes from a layout this build does not understand are not something to
+guess at (§ 11.2's version stamp).
+
+**A read-only viewer adopts nothing.** It has no history at all (§ 9.4), so there
+is nothing to come back to, and `load` stays a no-op in every form.
 
 **MolView owns the whole mechanism and the policy** — what a save records, what
 to prune, how far back a step goes, and the rule that nothing is recorded on its

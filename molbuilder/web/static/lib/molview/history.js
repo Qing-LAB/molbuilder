@@ -131,26 +131,61 @@ export function createHistory(handed) {
                 isSave ? { workspace_id: id, state_index: step }
                        : { workspace_id: id + "-draft", state_index: 0 },
             ) !== false;
+
+            // "it landed: the position moves" / "it failed: the position does
+            // not move". Two writes in flight is how the position comes to
+            // describe a state that was never written, which is why WRITING
+            // queues.
+            if (landed && isSave) {
+                position = step;
+                highest = step;              // a save drops every point above it
+                /* AND THE DROP REACHES THE DISK. `highest` alone only stops this
+                 * session from stepping forward into an abandoned point; the
+                 * files for those points stay on the server, so a later session
+                 * could still find them. The workspace's own ordering rule
+                 * matters here: the delete finishes before the next baseline is
+                 * written, so the history never briefly holds both
+                 * (workspace.md § 9). */
+                try {
+                    handed.workspace.pruneStatesAbove(
+                        handed.workspace.workspaceId(handed.tag), step);
+                } catch (_) { /* a stale tail, not a lost save */ }
+                setBadge(false);
+            }
+
+            /* ── AND THE DRAFT RECORDS WHERE THAT LEFT YOU (§ 11.2a) ───────
+             *
+             * Written AFTER the position settles, and after a save as well as
+             * after an edit, because a save MOVES where you are standing. Write
+             * it before and the file says point 3 while the user is on point 4;
+             * reopen, and Retract goes somewhere they never were.
+             *
+             * The three fields are the ones a reopened page cannot work out and
+             * nothing else knows: a fresh viewer starts at 0 with no sequence.
+             * They ride in the envelope MolView already writes — § 11.2a leaves
+             * "what goes in the bytes" to MolView and the workspace holds no
+             * opinion about content — so this needs no second file.
+             *
+             * THE NUMBERED POINT CARRIES NONE OF IT. A point is a place on the
+             * sequence, not a note about where someone was standing when they
+             * wrote it; putting the position inside one would make an old point
+             * claim to know the shape of a sequence that has since moved on.
+             *
+             * A failure here loses the ability to come back to this exact spot,
+             * not the point itself, so it does not fail the save.
+             */
+            if (landed) {
+                try {
+                    handed.workspace.persist(
+                        handed.tag,
+                        { v: 1, state: bytes, at: position,
+                          highest: highest, dirty: uncommitted },
+                        { workspace_id: id + "-draft", state_index: 0 },
+                    );
+                } catch (_) { /* the point stands; only the return path is lost */ }
+            }
         } catch (_) {
             landed = false;
-        }
-        // "it landed: the position moves" / "it failed: the position does not
-        // move". Two writes in flight is how the position comes to describe a
-        // state that was never written, which is why WRITING queues.
-        if (landed && isSave) {
-            position = step;
-            highest = step;                  // a save drops every point above it
-            /* AND THE DROP REACHES THE DISK. `highest` alone only stops this
-             * session from stepping forward into an abandoned point; the files
-             * for those points stay on the server, so a later session could still
-             * find them. The workspace's own ordering rule matters here: the
-             * delete finishes before the next baseline is written, so the history
-             * never briefly holds both (workspace.md § 9). */
-            try {
-                handed.workspace.pruneStatesAbove(
-                    handed.workspace.workspaceId(handed.tag), step);
-            } catch (_) { /* a failed prune leaves a stale tail, not a lost save */ }
-            setBadge(false);
         }
         state = SETTLED;
         // A write asked for while this one was on its way waits its turn.
@@ -194,6 +229,54 @@ export function createHistory(handed) {
     async function settled() {
         if (!inFlight) return;
         try { await inFlight; } catch (_) { /* it failed; it is still over */ }
+    }
+
+    /* ── Taking up a sequence that outlived its page (§ 11.2a) ──────────────
+     *
+     * WHAT COMES BACK IS THE DRAFT, NOT THE POINT, and that is the whole of
+     * § 11.2's first promise: "persistence means you do not lose work you did".
+     * The numbered point is where the user last chose to be able to return to;
+     * the draft is what was actually on screen. Coming back to the point would
+     * throw away every edit made after it — exactly the loss persistence exists
+     * to prevent — and it would do it silently, because the structure that
+     * appeared would look perfectly reasonable.
+     *
+     * ADOPTING IS NOT ANCHORING. `anchor()` lays down a FRESH point 0 and prunes
+     * what is above it, which is right when a molecule is opened and wrong when
+     * a page is reopened: the sequence being taken up is the one that was
+     * already there. This writes nothing at all — it puts the work back and
+     * takes the position with it.
+     *
+     * TWO WAYS TO FIND NOTHING, and they are not the same thing said twice. No
+     * draft is a first visit: the viewer stays EMPTY, ready for an install. A
+     * draft this build cannot read is a version it does not know, and bytes from
+     * a layout this code has never seen are not something to guess at.
+     */
+    async function adopt() {
+        let saved;
+        try {
+            saved = await handed.workspace.readState({
+                workspace_id: handed.workspace.workspaceId(handed.tag) + "-draft",
+                state_index:  0,
+            });
+        } catch (_) {
+            return null;              // unreachable storage reads as "nothing"
+        }
+        if (saved == null || saved.v !== 1) return null;
+
+        handed.restoreState(saved.state);
+
+        /* THE POSITION COMES BACK WITH THE WORK, or the sequence is taken up
+         * standing in the wrong place. A draft written before this field existed
+         * has neither, and 0 is the honest reading of that: it is where a
+         * sequence starts, so the worst case is a Retract that finds nothing
+         * rather than one that lands somewhere the user never was. */
+        position = Number.isInteger(saved.at) ? saved.at : 0;
+        highest  = Number.isInteger(saved.highest)
+            ? Math.max(saved.highest, position) : position;
+        anchored = true;
+        setBadge(saved.dirty === true);
+        return position;
     }
 
     return {
@@ -291,7 +374,19 @@ export function createHistory(handed) {
         // first press undoes what you just did, not what you had already decided
         // to keep.
         async load(step) {
-            if (!anchored) return null;
+            /* A FRESH VIEWER ADOPTS THE SEQUENCE THAT IS ALREADY THERE (§ 11.2a).
+             *
+             * § 11.2 says the sequence is persistent — "it outlives the page" —
+             * and a reopened page builds a NEW viewer, so `load(0)` is the one
+             * call that has to work before anything has been installed. It used
+             * to refuse here, which made "it outlives the page" false: the bytes
+             * were on disk and nothing could reach them, so every reopened tab
+             * had to be re-loaded from its file and a GENERATED structure was
+             * simply gone.
+             *
+             * Only step 0 adopts. A step is a move along a sequence, and there
+             * is nothing to move along until one has been taken up. */
+            if (!anchored) return step === 0 ? await adopt() : null;
             /* WAIT FOR A WRITE THAT IS STILL ON ITS WAY, and do it BEFORE working
              * out which point to fetch.
              *
@@ -331,6 +426,11 @@ export function createHistory(handed) {
             handed.restoreState(saved.state);
             position = target;
             setBadge(false);
+            /* AND THE DRAFT FOLLOWS THE MOVE. Retract changes both what is on
+             * screen and where on the sequence you are standing; a draft left
+             * describing the point before it would send the next reopened page
+             * somewhere the user has already stepped away from. */
+            request(position, false);
             return target;
         },
 
