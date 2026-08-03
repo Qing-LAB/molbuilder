@@ -84,12 +84,12 @@ wrong for at least one of them.
 |---|---|---|---|
 | **Do I know who this is?** | the auth gate (SSO) | browser → `/login`; `/api/*` → `401` JSON | `web/auth.py` |
 | **Does this traffic look hostile?** | the rate limiter | empty `429`, `Connection: close`, 1 h | `web/rate_limit.py` |
-| **May this person read and clear the block list?** | `admin_emails` | `403` | `rate_limit.py` § admin routes |
-| **May this person stop the process everyone shares?** | supervisor **and** `admin_emails` | the route **does not exist** — `404` | `web/app.py` |
+| **May this person read and clear the block list?** | the `admin` list | `403` | `web/admin.py` |
+| **May this person stop the process everyone shares?** | supervisor **and** the `admin` list | the route **does not exist** — `404` | `web/app.py` |
 
-Read the last two rows together: they are the same list answering two questions
-of very different weight, and the second one refuses in a different way. § 5 and
-§ 6 are why.
+Read the last two rows together: **one list answers both**, and they refuse in
+different ways — a 403 for the block list, an absent route for the restart. § 5
+and § 6 are why.
 
 ---
 
@@ -199,29 +199,34 @@ poll cadence.
 
 ---
 
-## 5. Admin — one list, and it means two things
+## 5. Admin — one list, one meaning
 
-`rate_limit.admin_emails` decides who may use `GET /api/admin/rate_limit/status`
-and `POST /api/admin/rate_limit/clear` — read the block list, and unblock
-somebody who tripped it.
+**Who may do the things only an operator should do** lives in its own section:
 
-**Empty means "any logged-in user".** For a single-tenant lab tool where the
-alternative is nobody being able to unblock a colleague, that is defensible.
+```json
+"admin": { "emails": ["operator@asu.edu"] }
+```
 
-**It is now read by a second subsystem that needs the opposite reading**, and
-that is a real defect, filed rather than papered over:
+Two subsystems ask it — who may read and clear the rate limiter's block list
+(`GET /api/admin/rate_limit/status`, `POST …/clear`), and who may restart the
+server (§ 6) — and they get the same answer.
 
-- The reload route (§ 6) **inverts** it: empty means *nobody*.
-- `create_app` reaches the list through `app.extensions["rate_limiter"]`, so
-  disabling the limiter would also move the admin list — a coupling nobody would
-  predict from the names.
+**Absent or empty means NOBODY.** That is the shape, not an oversight: the state
+you get by writing no config is the safe one, so a mistake takes a capability
+away rather than handing it to everybody.
 
-Both are **task #49**: give the admin identity its own config section, and
-decide there whether a standalone empty list should still mean "everybody". It
-is a config-surface change, so it waits for that decision rather than being
-made quietly.
+**What that costs on a laptop: nothing.** Loopback is never rate-limited, so
+there is no block list to clear; and the restart button needs a supervisor
+before it exists at all.
 
----
+> **It lived under `rate_limit.admin_emails` until 2026-08-03**, where an empty
+> list meant *any signed-in user*. That is defensible for reading a block list
+> and wrong for stopping a shared process — so the restart route had to
+> **invert** it for itself: one value, two opposite readings, depending on which
+> subsystem asked. It was also reached through the rate limiter's own object, so
+> **turning the limiter off silently changed who was an admin** — a connection
+> nothing in the names would suggest. The old key is gone, not aliased: a config
+> that still sets it names nobody, and the server says nobody.
 
 ## 6. Stopping the process — absent, not refused
 
@@ -235,7 +240,7 @@ what belongs here is who may press it.
 1. **A supervisor is running** (`serve --supervise`). Without one nothing brings
    the server back, and an endpoint that stops an unsupervised server leaves a
    dead site with no way back from a browser.
-2. **`admin_emails` names somebody.** Restarting the process everyone shares is
+2. **The `admin` section names somebody.** Restarting the process everyone shares is
    not something to inherit by omission.
 
 **404, not 403, and the difference is the point.** A misconfiguration then reads
@@ -317,9 +322,9 @@ The transferable part. A new gate should be able to point at one of these.
 
 1. **The safe state is the one you get by doing nothing.** Every default here is
    the restrictive reading, and every misconfiguration removes a capability
-   rather than granting one. `admin_emails`-empty-means-everybody is the single
-   place this is currently violated, which is why § 5 files it instead of
-   defending it.
+   rather than granting one. The one place that used to violate it —
+   `admin_emails` empty meaning *everybody* — was fixed on 2026-08-03: the list
+   has its own section and one meaning (§ 5).
 2. **Absent beats refused, when existence is itself the answer.** A capability
    that cannot be exercised safely should not appear. `404` is not rudeness; it
    is the honest statement that there is nothing there.

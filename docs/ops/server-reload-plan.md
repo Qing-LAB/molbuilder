@@ -133,36 +133,39 @@ no way back from the browser. The flag is what makes the promise true.
 below were adopted as written, and the first is pinned by
 `tests/test_admin_reload.py`.
 
-`rate_limit.py` ships `admin_emails: []`, and its own comment says what that means:
-*"Empty list = ANY logged-in session is admin (the implicit default that ships)."*
-The server binds `0.0.0.0` behind OAuth.
+At the time, `rate_limit.py` shipped `admin_emails: []` and its own comment said
+what that meant: *"Empty list = ANY logged-in session is admin."* The server
+binds `0.0.0.0` behind OAuth.
 
-**So with the shipping default, a restart button next to the user's email hands
+**So with that default, a restart button next to the user's email would hand
 every person who can log in the ability to disconnect everyone else** — mid
-calculation, mid edit. Workspace writes are fire-and-forget, so in-flight ones are
-lost.
+calculation, mid edit. Workspace writes are fire-and-forget, so in-flight ones
+are lost. (That default is gone: see the note below.)
 
 Three conditions, and the first is not optional:
 
-1. **A real admin gate.** `admin_emails` must be non-empty for the route to exist
-   at all — an empty list disables the endpoint rather than admitting everybody.
-   That inverts the current default *for this route only*, and it is the safe
-   direction: the failure mode of a mistake is "the button is missing", not
-   "anyone can restart the server". (Task #15 already carries an admin-gate
-   review.)
+1. **A real admin gate.** Somebody must be named for the route to exist at all —
+   an empty list disables the endpoint rather than admitting everybody. The
+   failure mode of a mistake is then "the button is missing", not "anyone can
+   restart the server". (Originally an inversion *for this route only*; since
+   2026-08-03 it is simply what the one admin list means everywhere.)
 2. **The button is hidden when the route is absent**, so a non-admin never sees a
    control they cannot use.
 3. **A confirm that names the cost** — *"this disconnects everyone using this
    server and drops saves that are still in flight."*
 
-**What building it exposed, and what was filed rather than patched over.** One key
-now gates two unrelated subsystems: `rate_limit.admin_emails` decides both who may
-read the rate-limit table and who may stop the process. The two read the *same
-empty default in opposite directions* — "everybody" there, "nobody" here — and
-`create_app` reaches the list through `app.extensions["rate_limiter"]`, so turning
-the limiter off would quietly move the admin list. Giving the admin identity its
-own config section is **task #49**; it is a config-surface change and needs the
-user's call on the name and on whether an empty list still means "everybody".
+**What building it exposed — and it was fixed 2026-08-03, not left.** One key
+gated two unrelated subsystems: `rate_limit.admin_emails` decided both who may
+read the rate-limit table and who may stop the process, and the two read the
+*same empty default in opposite directions* — "everybody" there, "nobody" here.
+`create_app` also reached the list through `app.extensions["rate_limiter"]`, so
+turning the limiter off quietly moved the admin list.
+
+The admin identity has its own section now — top-level `admin: {emails: […]}`,
+read through `web/admin.py` — and **absent or empty means nobody, to every
+subsystem that asks**. So this route no longer inverts anything; it reads the
+same list the same way. See [`access-control.md`](?doc=ops/access-control.md)
+§ 5.
 
 ## 5. Order — all landed 2026-08-03
 
@@ -170,7 +173,7 @@ user's call on the name and on whether an empty list still means "everybody".
 |---|---|---|
 | **A** ✅ | ~~The version guard~~ **static revalidation (§ 2)** | independent of everything else, no new surface, useful on its own |
 | **B** ✅ | `serve --supervise` — the parent loop | `cli.py::_supervise_forever`; the sentinel lives in `molbuilder/reload_protocol.py`, a **leaf module that imports nothing** |
-| **C** ✅ | The admin gate: route exists only when `admin_emails` is non-empty | `app.py`, before the route does anything |
+| **C** ✅ | The admin gate: route exists only when somebody is named an admin | `app.py`, before the route does anything |
 | **D** ✅ | `POST /api/admin/reload` — reply 202, then exit with the sentinel | `os._exit` on a short timer, so the response is already on the wire |
 | **E** ✅ | The button + the poll-and-reload, shown only when the route exists | `_app_header.html` + `static/lib/app-reload.js`; availability read from `/api/admin/reload/available` |
 

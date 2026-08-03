@@ -545,6 +545,42 @@ def get_envs(cfg: Mapping[str, Any]) -> Dict[str, str]:
     return dict(cfg.get("envs", {}))
 
 
+def get_admin_emails(cfg: Mapping[str, Any]) -> frozenset:
+    """Who may do the things only an operator should do.
+
+    Reads the top-level ``admin`` section::
+
+        "admin": { "emails": ["operator@asu.edu"] }
+
+    **Absent or empty means NOBODY**, and that is the whole point of the shape:
+    the state you get by writing no config is the safe one.  Two subsystems ask
+    this question -- who may read and clear the rate limiter's block list, and
+    who may restart the server everyone is using -- and they get the same
+    answer.
+
+    IT LIVED UNDER ``rate_limit.admin_emails`` UNTIL 2026-08-03, where an empty
+    list meant "any signed-in user".  That was defensible for reading a block
+    list and wrong for stopping a shared process, so the restart route had to
+    INVERT it for itself: one value, two opposite readings, depending on which
+    subsystem asked.  Worse, it was reached through the limiter's own object,
+    so turning the limiter off silently changed who was an admin -- a
+    connection nothing in the names would suggest.
+
+    Emails are lowercased and blanks dropped, matching how the auth layer
+    stores ``session["user"]["email"]``, so membership is case-stable.
+    """
+    section = cfg.get("admin") or {}
+    if not isinstance(section, Mapping):
+        return frozenset()
+    raw = section.get("emails") or []
+    if not isinstance(raw, (list, tuple)):
+        return frozenset()
+    return frozenset(
+        e.strip().lower() for e in raw
+        if isinstance(e, str) and e.strip()
+    )
+
+
 def get_rate_limit(cfg: Mapping[str, Any]) -> Dict[str, Any]:
     """Return the ``rate_limit`` section, or ``{}``.
 

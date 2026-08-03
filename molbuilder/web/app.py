@@ -79,6 +79,23 @@ def _maybe_install_auth(app, cfg) -> None:
     init_auth(app, auth_cfg, get_secret_key_file(cfg))
 
 
+def _install_admins(app, cfg) -> None:
+    """Resolve who is an admin, once, from the top-level ``admin`` section.
+
+    ONE LIST, TWO CONSUMERS, ONE MEANING: the rate limiter's block-list routes
+    and the reload route both ask ``admin.is_admin_request()``.  Absent or empty
+    means NOBODY -- writing no config leaves both capabilities off, which is the
+    safe direction for each of them.
+
+    Installed independently of the rate limiter.  It used to live inside that
+    limiter's config and be reached through its object, so disabling the limiter
+    silently changed who was an admin.
+    """
+    from ..runtime_config import get_admin_emails
+    from .admin import install_admins
+    install_admins(app, get_admin_emails(cfg))
+
+
 def _install_rate_limit(app, cfg) -> None:
     """Always-on IP rate-limit + scanner detection.
 
@@ -276,6 +293,10 @@ def create_app(*, config=None) -> Flask:
     # a no-op (the localhost-only default).  See molbuilder/web/auth.py
     # + docs/ops/deployment.md for the auth-enabled shape.
     _maybe_install_auth(app, config)
+
+    # WHO IS AN ADMIN -- one list, read by the block-list routes and by the
+    # reload route.  Installed before both, and independently of either.
+    _install_admins(app, config)
 
     # IP rate-limit + scanner detection (always on, configurable).
     # MUST land BEFORE blueprints so the before_request hook runs
@@ -476,15 +497,18 @@ def create_app(*, config=None) -> Flask:
     #      one, nothing brings the server back: an endpoint that stops an
     #      unsupervised server leaves a dead site and no way back from the
     #      browser.
-    #   2. `rate_limit.admin_emails` IS NON-EMPTY.  That list ships empty, and
-    #      empty means "any logged-in user is admin" -- fine for reading a
-    #      rate-limit table, wrong for stopping the process everyone is using.
-    #      This route inverts that default for itself: no named admins, no
-    #      route.  (Moving `admin_emails` out from under `rate_limit`, now that
-    #      a second subsystem gates on it, is task #49.)
+    #   2. SOMEBODY IS NAMED AS AN ADMIN -- the top-level `admin` section.
+    #      Absent or empty means nobody, for this route and for the block-list
+    #      routes alike, so writing no config leaves both capabilities off.
+    #
+    #      That list used to live inside `rate_limit`, where empty meant "any
+    #      logged-in user" and THIS route had to invert it for itself: one
+    #      value, two opposite readings.  It also hung off the limiter's own
+    #      object, so disabling the limiter moved who was an admin.  Both gone
+    #      2026-08-03; there is one list and one meaning now.
+    from .admin import is_admin_request as _is_admin, named_admins as _admins
     _supervised = os.environ.get(SUPERVISED_ENV) == "1"
-    _rl = app.extensions.get("rate_limiter")
-    _named_admins = bool(getattr(_rl, "admin_emails", None))
+    _named_admins = bool(_admins(app))
 
     if _supervised and _named_admins:
         @app.post("/api/admin/reload")
@@ -495,11 +519,12 @@ def create_app(*, config=None) -> Flask:
             request was accepted and can start polling /api/health; a process
             that died mid-response would look identical to one that crashed.
             """
-            if not _rl.is_admin_request():
+            if not _is_admin():
                 return jsonify({
                     "ok": False,
-                    "error": ("admin auth required: this session is "
-                              "authenticated but not in rate_limit.admin_emails"),
+                    "error": ("admin auth required: this session is not one of "
+                              "the emails named in the `admin` section of "
+                              "molbuilder.json"),
                 }), 403
 
             def _exit_after_response():
@@ -528,8 +553,7 @@ def create_app(*, config=None) -> Flask:
         """
         return jsonify({
             "ok": True,
-            "available": bool(_supervised and _named_admins
-                              and _rl is not None and _rl.is_admin_request()),
+            "available": bool(_supervised and _named_admins and _is_admin()),
         })
 
     @app.route("/api/health")

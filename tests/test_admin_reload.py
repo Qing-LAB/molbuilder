@@ -7,18 +7,21 @@ for, so a fresh server starts with every module imported again.  There is no
 module-swapping and no partial reload -- a new child is the whole mechanism,
 which is why it cannot leave half the app on old code.
 
-WHY THE GATE IS THE INTERESTING PART.  ``rate_limit.admin_emails`` ships EMPTY,
-and empty means "any logged-in user is admin" -- a fine default for reading a
-rate-limit table, and a bad one for stopping the process everyone is using.  This
-server binds 0.0.0.0 behind OAuth, so under that default a Reload button beside
-the user's email would hand everyone who can authenticate a way to disconnect
-everyone else mid-calculation, losing workspace writes that are still in flight.
+WHY THE GATE IS THE INTERESTING PART.  Restarting the process everyone is using
+is not something to inherit by omission.  This server binds 0.0.0.0 behind
+OAuth, so a Reload button beside the user's email must not be reachable by
+everyone who can authenticate -- pressing it disconnects them all mid-calculation
+and loses workspace writes still in flight.
 
-So the route INVERTS that default for itself, and the tests below pin both
-halves: with no supervisor, or with no named admins, **the route does not
-exist** -- 404, not 403.  The difference matters.  A misconfiguration then reads
-as "the button is missing", never as "anyone can restart the server", and the
-safe state is the one you get by doing nothing.
+The admin list therefore means NOBODY when it is absent or empty, and it says
+that to every subsystem that asks (web/admin.py).  It lived inside `rate_limit`
+until 2026-08-03, where empty meant "anyone signed in" and this route inverted
+it for itself -- one value, two opposite readings.
+
+The tests below pin both halves of the gate: with no supervisor, or with no
+named admins, **the route does not exist** -- 404, not 403.  A misconfiguration
+then reads as "the button is missing", never as "anyone can restart the server",
+and the safe state is the one you get by doing nothing.
 """
 from __future__ import annotations
 
@@ -35,7 +38,11 @@ def _app(monkeypatch, *, supervised: bool, admins: list[str] | None):
         monkeypatch.setenv(SUPERVISED_ENV, "1")
     else:
         monkeypatch.delenv(SUPERVISED_ENV, raising=False)
-    cfg = {"rate_limit": {"enabled": False, "admin_emails": admins or []}}
+    # The admin list is its own top-level section (2026-08-03): the same list
+    # answers "who may clear the block list", and an absent or empty one means
+    # NOBODY for both.  It used to live inside `rate_limit`, where empty meant
+    # "anyone signed in" and this route had to invert it for itself.
+    cfg = {"rate_limit": {"enabled": False}, "admin": {"emails": admins or []}}
     app = create_app(config=cfg)
     # A session needs a signing key.  These tests do not exercise auth -- they
     # exercise the ADMIN GATE, which reads an already-established session -- so
@@ -71,17 +78,15 @@ def test_no_supervisor_means_no_route(monkeypatch):
 def test_no_named_admins_means_no_route(monkeypatch):
     """THE ONE THAT MATTERS: an empty admin list disables the route.
 
-    `rate_limit.py`'s own comment says an empty ``admin_emails`` means any
-    logged-in user is admin.  If this route honoured that, every person who can
-    log in could restart the server.  It must be 404 -- absent -- and not 403,
-    so that the shipping default is the safe one.
+    Nobody is named, so nobody may restart the server -- and the route is not
+    registered at all rather than registered-and-refusing, so the failure mode
+    of a misconfiguration is "the button is missing".
     """
     app = _app(monkeypatch, supervised=True, admins=[])
     r = _as_logged_in(app.test_client()).post("/api/admin/reload")
     assert r.status_code == 404, (
-        "the reload route exists while admin_emails is empty, which means "
-        "ANY logged-in session can restart the server (rate_limit.py:397). "
-        "The route must not be registered until somebody is named."
+        "the reload route exists with nobody named as an admin. It must not be "
+        "registered until somebody is."
     )
 
 

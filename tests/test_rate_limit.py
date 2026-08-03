@@ -31,16 +31,24 @@ flask = pytest.importorskip("flask")
 # --------------------------------------------------------------------- #
 
 
-def _build_client(rate_limit_cfg=None, environ_base=None):
+def _build_client(rate_limit_cfg=None, environ_base=None, admins=None):
     """Build a test client with the rate-limit module enabled.
 
     ``rate_limit_cfg`` overrides apply on top of the module
     defaults.  ``environ_base`` lets a caller pin
     ``REMOTE_ADDR`` and headers for every request without
     repeating the kwargs at every call site.
+
+    ``admins`` goes in the TOP-LEVEL ``admin`` section, not inside
+    ``rate_limit``: who may clear the block list is the same question "who may
+    restart the server" asks, and one list answers both (web/admin.py).  It
+    lived under ``rate_limit.admin_emails`` until 2026-08-03, where its empty
+    default meant "anyone signed in" here and had to be inverted there.
     """
     from molbuilder.web.app import create_app
     cfg = {"rate_limit": {"enabled": True, **(rate_limit_cfg or {})}}
+    if admins is not None:
+        cfg["admin"] = {"emails": admins}
     app = create_app(config=cfg)
     client = app.test_client()
     if environ_base:
@@ -294,15 +302,16 @@ class TestXFFTrust:
 
 
 def _admin_login(app, client, email="admin@example.com"):
-    """Attach a logged-in admin session to ``client``.
+    """Attach a logged-in session to ``client`` AND name it as an admin.
 
-    The admin endpoints now refuse non-admin sessions; the
-    existing TestAdminEndpoints cases were written before the
-    role gate landed.  This helper centralises the
-    secret-key + session injection so the per-test boilerplate
-    stays short.
+    Both halves are needed now: signing in is not enough, because an absent or
+    empty admin list means NOBODY.  The set is installed on the app the same
+    way `create_app` installs it from config, so these tests exercise the real
+    door rather than a stand-in.
     """
+    from molbuilder.web.admin import install_admins
     app.secret_key = "test-only-not-for-prod"
+    install_admins(app, [email])
     with client.session_transaction() as s:
         s["user"] = {"email": email}
 
@@ -395,47 +404,65 @@ class TestAdminRoleGate:
         assert r.status_code == 403
         assert "admin auth required" in r.get_json()["error"]
 
-    def test_empty_admin_emails_treats_any_logged_in_as_admin(self):
-        # Default: ``admin_emails = []``.  Any session with an
-        # email passes.
-        app, client = _build_client({})
+    def test_signing_in_is_not_enough_when_nobody_is_named(self):
+        """THE DEFAULT REVERSED, 2026-08-03 (user decision).
+
+        An absent or empty admin list used to mean "any signed-in user is an
+        admin" HERE, while the reload route read the same value as "nobody" --
+        one value, two opposite readings.  It means nobody everywhere now, so
+        the state you get by writing no config is the safe one.
+        """
+        app, client = _build_client({})           # no `admin` section at all
         client.environ_base = {**client.environ_base,
                                "REMOTE_ADDR": "127.0.0.1"}
-        _admin_login(app, client, email="alice@asu.edu")
+        app.secret_key = "test-only-not-for-prod"
+        with client.session_transaction() as s:
+            s["user"] = {"email": "alice@asu.edu"}
         r = client.get("/api/admin/rate_limit/status")
-        assert r.status_code == 200, r.get_data(as_text=True)
+        assert r.status_code == 403, (
+            "a signed-in user cleared the block list with nobody named as an "
+            "admin -- the empty default is back to meaning 'everybody'"
+        )
+
+    def test_an_empty_list_means_nobody_too(self):
+        """Written out and empty is the same statement as not written."""
+        app, client = _build_client({}, admins=[])
+        client.environ_base = {**client.environ_base,
+                               "REMOTE_ADDR": "127.0.0.1"}
+        app.secret_key = "test-only-not-for-prod"
+        with client.session_transaction() as s:
+            s["user"] = {"email": "alice@asu.edu"}
+        assert client.get("/api/admin/rate_limit/status").status_code == 403
 
     def test_non_admin_email_refused_when_allowlist_set(self):
-        app, client = _build_client({
-            "admin_emails": ["operator@asu.edu"],
-        })
+        app, client = _build_client({}, admins=["operator@asu.edu"])
         client.environ_base = {**client.environ_base,
                                "REMOTE_ADDR": "127.0.0.1"}
-        _admin_login(app, client, email="bob@asu.edu")
+        app.secret_key = "test-only-not-for-prod"
+        with client.session_transaction() as s:
+            s["user"] = {"email": "bob@asu.edu"}
         r = client.get("/api/admin/rate_limit/status")
         assert r.status_code == 403
 
     def test_listed_admin_email_passes(self):
-        app, client = _build_client({
-            "admin_emails": ["operator@asu.edu"],
-        })
+        app, client = _build_client({}, admins=["operator@asu.edu"])
         client.environ_base = {**client.environ_base,
                                "REMOTE_ADDR": "127.0.0.1"}
-        _admin_login(app, client, email="operator@asu.edu")
+        app.secret_key = "test-only-not-for-prod"
+        with client.session_transaction() as s:
+            s["user"] = {"email": "operator@asu.edu"}
         r = client.get("/api/admin/rate_limit/status")
         assert r.status_code == 200, r.get_data(as_text=True)
 
     def test_admin_email_match_is_case_insensitive(self):
-        # auth.py lowercases the email before stashing it in the
-        # session; the admin_emails set is also lowercased on init.
-        # Verify the comparison works against an upper-cased input
-        # in the cfg (which gets normalised).
-        app, client = _build_client({
-            "admin_emails": ["Operator@ASU.EDU"],
-        })
+        # auth.py lowercases the email before stashing it in the session; the
+        # admin set is lowercased when it is read from config.
+        app, client = _build_client({}, admins=["Operator@ASU.EDU"])
         client.environ_base = {**client.environ_base,
                                "REMOTE_ADDR": "127.0.0.1"}
-        _admin_login(app, client, email="operator@asu.edu")
+        app.secret_key = "test-only-not-for-prod"
+        with client.session_transaction() as s:
+            s["user"] = {"email": "operator@asu.edu"}
         r = client.get("/api/admin/rate_limit/status")
         assert r.status_code == 200
 
@@ -451,16 +478,21 @@ class TestAdminRoleGate:
         )
         assert r.status_code == 403
 
-    def test_malformed_admin_emails_does_not_crash_init(self):
-        # Non-string entries + empty strings are silently dropped
-        # so a typo in molbuilder.json doesn't take down the app.
-        _app, client = _build_client({
-            "admin_emails": ["valid@asu.edu", "", None, 42, "  "],
-        })
-        # The app stood up — that's what the test asserts.  Verify
-        # the surviving entry works.
-        rl = _app.extensions["rate_limiter"]
-        assert rl.admin_emails == frozenset({"valid@asu.edu"})
+    def test_a_malformed_admin_list_does_not_crash_the_app(self):
+        # Non-string entries + blanks are dropped so a typo in
+        # molbuilder.json doesn't take the server down on start.
+        from molbuilder.web.admin import named_admins
+        app, _client = _build_client(
+            {}, admins=["valid@asu.edu", "", None, 42, "  "])
+        assert named_admins(app) == frozenset({"valid@asu.edu"})
+
+    def test_the_admin_list_does_not_move_when_the_limiter_is_off(self):
+        """It hung off the limiter's own object until 2026-08-03, so turning
+        the limiter off silently changed who counted as an admin."""
+        from molbuilder.web.admin import named_admins
+        app, _client = _build_client({"enabled": False},
+                                     admins=["operator@asu.edu"])
+        assert named_admins(app) == frozenset({"operator@asu.edu"})
 
 
 # --------------------------------------------------------------------- #

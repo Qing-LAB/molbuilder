@@ -132,11 +132,12 @@ DEFAULTS: Dict[str, Any] = {
     "trust_proxy":     False,
     "allowlist":       ["127.0.0.1", "::1"],
     "max_tracked_ips": 10_000,
-    # Empty list = ANY logged-in session is admin (the implicit
-    # default that ships).  Non-empty list = the session's
-    # ``user.email`` must be in this list.  See § 5 of
-    # docs/ops/deployment.md for the threat model.
-    "admin_emails":    [],
+    # NO `admin_emails` HERE.  Who may read and clear the block list is not a
+    # rate-limiting setting -- it is the same question "who may restart the
+    # server" asks, and one list answers both: the top-level `admin` section
+    # (web/admin.py).  It lived here until 2026-08-03, where its empty default
+    # meant "any signed-in user" to this subsystem and had to be inverted by
+    # the other one.
 }
 
 
@@ -198,15 +199,9 @@ class RateLimiter:
         self.allowlist_nets  = _parse_allowlist(
             cfg.get("allowlist", DEFAULTS["allowlist"]),
         )
-        # Admin-emails allowlist for the /api/admin/rate_limit/*
-        # surface.  Stored lowercased + as a frozenset for O(1)
-        # lookup.  Non-string / empty entries are dropped silently;
-        # malformed cfg never crashes the limiter init.
-        self.admin_emails = frozenset(
-            e.strip().lower()
-            for e in cfg.get("admin_emails", DEFAULTS["admin_emails"])
-            if isinstance(e, str) and e.strip()
-        )
+        # Who may reach /api/admin/rate_limit/* is NOT held here: it is the
+        # top-level `admin` section, read through web/admin.py, because the
+        # same list answers "who may restart the server" (§ 5).
         # OrderedDict gives O(1) move-to-end + popitem(last=False)
         # for LRU eviction.
         self._states: "OrderedDict[str, _IPState]" = OrderedDict()
@@ -365,39 +360,6 @@ class RateLimiter:
             n = len(self._states)
             self._states.clear()
             return n
-
-    def is_admin_request(self) -> bool:
-        """True iff the current Flask request is from a session
-        authorized to use the admin endpoints.
-
-        Rules:
-        * No session / no user / no email → not admin.
-        * ``admin_emails`` empty → any logged-in user is admin
-          (the implicit single-tenant default; documented in § 5
-          of docs/ops/deployment.md).
-        * ``admin_emails`` non-empty → the session's email must
-          be in the set.
-
-        Auth layer stores ``session["user"] = {"email": "...", ...}``
-        with email lowercased (auth.py::authenticate); the set
-        membership is therefore case-stable.
-        """
-        try:
-            user = session.get("user") or {}
-        except Exception:  # noqa: BLE001
-            # Outside-request context, missing secret key, malformed
-            # session — all count as "not admin".  Same fault-tolerant
-            # shape as ``_is_authenticated_session()``.
-            return False
-        if not isinstance(user, dict):
-            return False
-        email = (user.get("email") or "").strip().lower()
-        if not email:
-            return False
-        # Empty allowlist = "any logged-in user" mode.
-        if not self.admin_emails:
-            return True
-        return email in self.admin_emails
 
     # -- internals -------------------------------------------------------
 
@@ -606,33 +568,34 @@ def _register_admin_routes(app: Flask, rl: RateLimiter) -> None:
        HTTP 401.  Without auth installed, this layer is a no-op —
        the deployment is expected to be loopback-only, gated by the
        bind guard in ``cli.py::_refuse_remote_bind_without_tls``.
-    2. ``RateLimiter.is_admin_request()`` then refuses requests
-       from non-admin sessions with HTTP 403.  The "admin" set is
-       configurable via ``rate_limit.admin_emails``:
-         * empty list (default) → any logged-in user is admin (the
-           single-tenant lab-tool default the project ships with);
-         * non-empty → only the listed emails are admin.
+    2. ``admin.is_admin_request()`` then refuses a session nobody named,
+       with HTTP 403.  The set is the top-level ``admin`` section
+       (web/admin.py), which also answers "who may restart the server":
+       **absent or empty means nobody**, so the state you get by writing
+       no config is the safe one.
     """
+    from .admin import is_admin_request
+
     def _refuse_non_admin():
         return jsonify({
             "ok": False,
             "error": (
                 "admin auth required to access "
-                "/api/admin/rate_limit/*; the session is "
-                "authenticated but not in the admin set "
-                "(see rate_limit.admin_emails in molbuilder.json)"
+                "/api/admin/rate_limit/*: this session is not one of the "
+                "emails named in the `admin` section of molbuilder.json "
+                "(an absent or empty list means nobody is an admin)"
             ),
         }), 403
 
     @app.route("/api/admin/rate_limit/status", methods=["GET"])
     def _rl_status():
-        if not rl.is_admin_request():
+        if not is_admin_request():
             return _refuse_non_admin()
         return jsonify({"ok": True, **rl.status()})
 
     @app.route("/api/admin/rate_limit/clear", methods=["POST"])
     def _rl_clear():
-        if not rl.is_admin_request():
+        if not is_admin_request():
             return _refuse_non_admin()
         body = request.get_json(silent=True) or {}
         if not isinstance(body, dict):

@@ -144,8 +144,13 @@ Two admin routes let an operator inspect and clear blocks:
 - `GET /api/admin/rate_limit/status` → `{enabled, blocked:[{ip,reason,ttl_s}], …}`
 - `POST /api/admin/rate_limit/clear` with `{"ip":"…"}` or `{"all":true}`
 
-Both require a logged-in **admin** (any authenticated user if `admin_emails` is
-empty; otherwise the session email must be listed).
+Both require a logged-in **admin** — an email listed in the top-level `admin`
+section of `molbuilder.json`. **Absent or empty means nobody**, the same answer
+the restart route gets (`access-control.md` § 5):
+
+```json
+"admin": { "emails": ["operator@asu.edu"] }
+```
 
 > **Gotcha:** the admin API needs **auth on**. Without an `auth` section (or under
 > `--no-auth`) there's no session key, so those two routes always answer `403`.
@@ -170,9 +175,8 @@ the server*:
 
 1. **the server runs under `--supervise`** — otherwise nothing brings it back,
    and stopping it would leave a dead site with no way back from the browser;
-2. **`rate_limit.admin_emails` names somebody.** This route **inverts** the empty
-   list's usual meaning: for the rate-limit routes above, empty means *any
-   logged-in user is admin*; here, empty means *nobody*. Restarting the process
+2. **The `admin` section names somebody.** Absent or empty means nobody — for
+   this route and for the block-list routes alike. Restarting the process
    everyone shares is not a default anyone should get by omission.
 
 The button is drawn hidden and revealed only after
