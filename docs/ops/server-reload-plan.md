@@ -1,6 +1,6 @@
 # Reloading a running server — a plan
 
-**Role:** plan (proposed, not started)
+**Role:** plan (step A done; B–E need the § 4 decision)
 **Domain:** ops
 **Started:** 2026-08-03
 **Companions:** [`deployment.md`](?doc=ops/deployment.md) — how the server is
@@ -16,7 +16,7 @@ halves of "the code" are not the same problem and must not get one answer:
 | What changed | Why the change is not visible | What it actually needs |
 |---|---|---|
 | **Python** | modules were imported once, at startup | a **fresh interpreter** — nothing else will do it |
-| **JS / CSS / templates** | the browser is serving its cached copy | a **new URL** for the changed file |
+| **JS / CSS / templates** | the browser is serving its cached copy, unasked | the browser to **ask** before reusing it (§ 2) |
 
 Templates need neither: Jinja re-reads from disk on request. Static files are read
 per request too — so **only the browser's cache makes them look stale**, and only
@@ -117,7 +117,7 @@ molbuilder serve --supervise        the parent: spawn, wait, respawn on <sentine
 3. The parent sees the sentinel and spawns a fresh child — new interpreter, every
    module imported again.
 4. The browser polls **`/api/health`** (it already exists) until it answers, then
-   reloads the page — which picks up new JS through § 2's version.
+   reloads the page — which picks up new JS through § 2's revalidation.
 
 **Without `--supervise` the route does not exist.** A server started plainly has
 no one to restart it, and an endpoint that stops it would leave a dead site with
