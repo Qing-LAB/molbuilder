@@ -120,12 +120,70 @@ def check_dft_grid_level(cfg, *, context: str) -> List[Issue]:
 # --------------------------------------------------------------------- #
 
 
+def _check_periodic_structure_in_a_gas_phase_script(
+        struct: Structure) -> List[Issue]:
+    """THE EMITTER IS GAS-PHASE.  Say so when the structure is not.
+
+    This renderer builds a molecular ``gto.M()``.  It has no lattice, no
+    k-points, and no way to express one -- a periodic calculation is PySCF's
+    ``pbc`` module, which is a different builder entirely.  So a structure with
+    a repeating axis produces a script that quietly drops the cell and computes
+    an ISOLATED CLUSTER instead: not a rough version of what was asked for, a
+    different calculation.
+
+    Nothing said so until 2026-08-03.  A three-axis-periodic NaCl cell with a
+    5.6 Å lattice generated a two-atom gas-phase script, the lattice appeared
+    nowhere in it, and no check mentioned the difference.
+
+    WARN, NOT ERROR, and that is the project's rule rather than a hedge: an
+    isolated-cluster calculation of a periodic input is legal and occasionally
+    deliberate, and only the physically impossible refuses (``report()`` raises
+    on error severity, so an error here would mean no script at all).  The user
+    decides; the user is told first.
+
+    Keyed on ``axis_kind``, which is the authoritative field and is never None
+    after construction -- ``pbc`` is its derived view and collapses `transport`
+    into the same True as `periodic`.  Both are wrong for a gas-phase script,
+    and both are named here for what they are.
+    """
+    kinds = tuple(struct.axis_kind or ("isolated", "isolated", "isolated"))
+    repeating = [("abc"[i], k) for i, k in enumerate(kinds) if k != "isolated"]
+    if not repeating:
+        return []
+    where = ", ".join(f"{axis} ({kind})" for axis, kind in repeating)
+    cell_text = "no explicit lattice"
+    if struct.cell is not None:
+        lengths = np.linalg.norm(np.asarray(struct.cell, dtype=float), axis=1)
+        cell_text = ("lattice lengths "
+                     + " × ".join(f"{v:.3g} Å" for v in lengths))
+    return [Issue(
+        "warn",
+        f"This structure is periodic along {where}, but the PySCF script "
+        f"generated here is GAS-PHASE: it builds a molecular gto.M() with no "
+        f"lattice and no k-points, so your cell ({cell_text}) is NOT used and "
+        f"the result is an isolated cluster of {struct.n_atoms} atoms. For a "
+        f"periodic calculation use SIESTA, or set the axes to 'isolated' "
+        f"(Modify → Cell tab) if an isolated cluster is what you want.",
+        "cell.periodic_in_gas_phase",
+    )]
+
+
 def _validate_pyscf(struct: Structure, cfg,
                     cell: Optional[np.ndarray] = None, **_) -> List[Issue]:
-    """PySCF-specific checks.  ``cell`` is unused (PySCF jobs are gas-
-    phase or PCM-solvent here); accepted for signature uniformity
-    with the engine-validator registry."""
+    """PySCF-specific checks.
+
+    ``cell`` is not used to BUILD anything -- this emitter is gas-phase -- but
+    the structure's own periodicity is checked, because a periodic structure
+    reaching a gas-phase emitter is a silent change of calculation
+    (``_check_periodic_structure_in_a_gas_phase_script``).  The argument is
+    accepted for signature uniformity with the engine-validator registry.
+    """
     issues: List[Issue] = []
+
+    # Periodicity vs what this emitter can express.  FIRST, because it changes
+    # what every other finding is about: the rest describe a cluster
+    # calculation, and this says whether you asked for one.
+    issues += _check_periodic_structure_in_a_gas_phase_script(struct)
 
     # Open-shell metal + closed-shell SCF: shared rule with SIESTA.
     method_upper = (getattr(cfg, "method", "") or "").upper()

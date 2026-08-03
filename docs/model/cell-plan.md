@@ -152,7 +152,8 @@ what the other is*, not delete one.
 
 **Step 1 — the model can say "unset".** `vacuum` becomes `Optional`, like its
 three siblings. Round-trips through `apply_metadata_dict` / `metadata_to_dict`,
-the `.molstruct.json` schema, and the wire. **Open question, § 5.**
+the `.molstruct.json` schema, and the wire. A stored `[0,0,0]` reads as
+**unset** (§ 5), so nothing on disk changes meaning.
 
 **Step 2 — the floor becomes the three-condition rule** (3b), and
 `vacuum_floor_axes()` reports only what it actually raised.
@@ -191,26 +192,59 @@ hint saying what it *does*, not what it *is*:
 | Axes | *periodic repeats forever · isolated is a molecule in a box · transport is a device length. Vacuum only applies to isolated axes* |
 | Vacuum | *the empty gap left on each side of the molecule when the box is worked out. Ignored when you have typed a lattice. ≥ 8 Å per side is the usual advice for an isolated molecule* |
 
-## 5. The one question this plan cannot answer by itself
+## 5. Existing files — decided 2026-08-03
 
-**Every `.molstruct.json` on disk today says `vacuum: [0,0,0]`.** Under the new
-rule that reads as *"I explicitly chose zero"*, not *"unset"* — so a flat
-molecule saved last week would stop getting its 3 Å guard, silently, on the next
-load.
+Every `.molstruct.json` on disk today says `vacuum: [0,0,0]`. Under the new rule
+that would read as *"I explicitly chose zero"*, so a flat molecule saved last
+week would silently lose its 3 Å guard on the next load.
 
-Three ways out, and it is a decision, not a detail:
+**Decision (user): treat a stored `[0,0,0]` as unset on read.** Old files keep
+behaving exactly as they do now — nothing on disk changes, and nothing silently
+changes meaning. A user who genuinely wants a zero gap says so once the writer
+starts emitting `null` for unset, and from then on the two are distinguishable
+in new files.
 
-1. **Treat a stored `[0,0,0]` as unset** on read. Old files keep behaving as they
-   did; a user who genuinely means zero has to type something once the writer
-   starts emitting `null`. Simple, and slightly dishonest for exactly one value.
-2. **Migrate on read**: `[0,0,0]` → `null`, rewritten on the next save. Honest,
-   and it changes files the user did not ask to change.
-3. **Take `[0,0,0]` at its word.** Cleanest rule, and it silently changes the box
-   for existing flat-molecule structures — which is the failure this whole plan
-   exists to prevent.
+It is slightly dishonest for exactly one value, and that is the price of not
+rewriting files nobody asked us to touch. Write it down where the reader is:
+the sidecar schema doc must say that `[0,0,0]` is read as *unset*, so nobody
+later "fixes" the asymmetry without knowing what it protects.
 
-Nothing in steps 1–7 should land before this is settled, because step 1 is what
-makes it live.
+## 5a. The periodicity truth must reach the check that acts on it
+
+**Instruction (user, 2026-08-03): make sure `pbc` is used in the validation
+path.** Chasing it turned up a live science-correctness defect, and clarified
+what the instruction has to mean.
+
+**What `pbc` is.** `axis_kind` is authoritative and is never `None` after
+construction; `pbc` is its derived view — `periodic → True`, `isolated → False`,
+**`transport → True`**. Validation keys on `axis_kind` everywhere, so it already
+honours the periodicity truth: the two cannot disagree. Switching validation
+*to* `pbc` would be a regression, because `pbc` collapses transport and periodic
+into one and the k-grid check needs them apart (k>1 is *wasted* on an isolated
+axis but *wrong* on a lead).
+
+**The real gap: the check has to know what the ENGINE will do with it.** Fixed
+2026-08-03:
+
+> A structure periodic on all three axes generated a **gas-phase PySCF script**
+> — molecular `gto.M()`, no lattice, no k-points — with the cell dropped and
+> **nothing said**. A 5.6 Å NaCl cell produced a two-atom isolated cluster. Not
+> a rough version of what was asked for: a different calculation, and a
+> plausible-looking one. The PySCF validator's own comment said why — *"`cell` is
+> unused (PySCF jobs are gas-phase)"* — an assumption never checked against the
+> structure in front of it.
+
+Now `cell.periodic_in_gas_phase` names the repeating axes, the lattice being
+dropped, and what you get instead. **Warn, not error** (user): an
+isolated-cluster run of a periodic input is legal, and only the physically
+impossible refuses — an error would mean no script at all. It reaches the tab's
+panel before the click, and the CLI through `report(validate(...))`.
+Seven tests in `tests/test_pyscf_periodicity_check.py`.
+
+**What this leaves open** — worth its own look, not part of this plan: a
+transport structure loaded from an extended XYZ carries `pbc="T T F"` and no
+axis kinds, so its axes come back `periodic`, never `transport`. The lossy
+direction runs inbound too.
 
 ## 6. What this plan does not do
 

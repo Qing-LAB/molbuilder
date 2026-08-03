@@ -309,6 +309,22 @@ either nagging or dangerous:
   tight-box run, or deliberately accepting image interaction. molbuilder states
   the number and the recommendation and gets out of the way — it never resizes
   the box and never refuses the run.
+* **Will this engine even USE the cell?** — `cell.periodic_in_gas_phase`
+  (added 2026-08-03). A **warning**, by the same rule: the PySCF renderer builds
+  a molecular `gto.M()` with no lattice and no k-points, so a structure with a
+  repeating axis produces an **isolated cluster** and the cell is dropped. That
+  is not a rough version of what was asked for — it is a different calculation,
+  and it used to happen in silence. An isolated-cluster run of a periodic input
+  is legal and occasionally deliberate, so the user is told, not stopped: the
+  finding names the repeating axes, the lattice being ignored, and what comes
+  out instead.
+
+  It keys on `axis_kind`, not `pbc`. `axis_kind` is authoritative and never
+  `None`; `pbc` is its derived view and collapses `transport` into the same
+  `True` as `periodic` — both are wrong for a gas-phase script, but a check
+  written on `pbc` alone could not tell a lead from a crystal axis, which
+  `cell.kgrid` depends on.
+
 * **Can this cell exist at all?** — `cell.determinant` (zero volume or
   left-handed). This is an **error**, and upstream of it the gate refuses the
   edit outright (§ 6.1). Not a judgement about quality: a zero-volume lattice
