@@ -156,19 +156,47 @@ def _capture_on_fail(request):
     snap = {"note": "no page for this test"}
     if page is not None:
         try:
-            snap = page.evaluate(
-                "() => { const w=window.molbuilder||{}, ws=w.workspace,"
-                " t=w.__molbuilder_modify_test; let p=null;"
-                " try{p=ws&&ws.readPersistedSnapshot&&ws.readPersistedSnapshot();}catch(e){}"
-                " const pa=p&&p.state&&p.state.structure&&p.state.structure.atoms;"
-                " return { url: location.href,"
-                " viewer_n_atoms: t&&t.getNAtoms?t.getNAtoms():null,"
-                " store_atoms: ws&&ws.getState?((ws.getState().atoms||[]).length):null,"
-                " source_file: ws&&ws.getSourceFile?ws.getSourceFile():null,"
-                " dirty: ws&&ws.isDirty?ws.isDirty():null,"
-                " mount_restore_target: ws&&ws.mountRestoreTarget?ws.mountRestoreTarget():null,"
-                " persisted_n_atoms: pa?pa.length:null,"
-                " persisted_dirty: p&&p.state?!!p.state.dirty:null }; }")
+            # ASK THE VIEWER, NOT THE WORKSPACE.  This used to read five doors
+            # off ``window.molbuilder.workspace`` -- readPersistedSnapshot,
+            # getState, getSourceFile, isDirty, mountRestoreTarget -- none of
+            # which exist.  The workspace stores opaque bytes and never opens
+            # them (workspace.md § 4), so it cannot answer "how many atoms" at
+            # all; every field came back null and a failing e2e wrote a
+            # diagnostic that said nothing.
+            #
+            # The structure lives in MolView.  The Results pages stash their
+            # handle on the viewer host (``__molview_results_handle``) so the
+            # inspector and the trajectory can find each other's viewer; the
+            # Modify page exposes its own small read-only hook instead.  "Is
+            # there unsaved work" is ``uncommitted``, a value the viewer holds
+            # (molview.md § 11.2).
+            snap = page.evaluate("""() => {
+                let h = null;
+                // The two hosts that carry a handle: the trajectory's
+                // #viewer-host and the structure inspector's generated slot.
+                for (const el of document.querySelectorAll(
+                        "#viewer-host, .structure-viewer-slot")) {
+                    if (el.__molview_results_handle) {
+                        h = el.__molview_results_handle;
+                        break;
+                    }
+                }
+                const d = h && h.ok !== false ? h.data : null;
+                let s = null;
+                try { s = d && d.getStructure ? d.getStructure() : null; } catch (e) {}
+                const t = window.__molbuilder_modify_test;
+                return {
+                    url: location.href,
+                    viewer_found: !!d,
+                    n_atoms: s ? (s.elements || []).length : null,
+                    has_cell: !!(s && s.periodicity),
+                    uncommitted: d ? !!d.uncommitted : null,
+                    state_index: d ? d.state_index : null,
+                    // The Modify tab's own hook, when this is that page.
+                    modify_n_atoms: t && t.getNAtoms ? t.getNAtoms() : null,
+                    modify_selected: t && t.getSelected ? t.getSelected().length : null,
+                };
+            }""")
         except Exception as e:  # noqa: BLE001
             snap = {"evaluate_error": str(e)}
     ts = _dt.datetime.now().strftime("%Y%m%dT%H%M%S")

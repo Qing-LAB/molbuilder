@@ -723,51 +723,71 @@ import { mount as mvMount, formula as mvFormula }
         // from sidebar selection" button (below) is the sole commit gesture.
         //
         // Seed from the sidebar pick ONLY when the tab has no data yet (an empty
-        // canvas) -- the genuine first-arrival / cross-tab handoff.  We gate on
-        // ``hasRestorableSnapshot()`` (does this tab hold ANY structure?), NOT on a
-        // sidebar-path comparison: the data is restorable regardless of which file
-        // (or none) it came from.
+        // canvas) -- the genuine first-arrival / cross-tab handoff.  What is asked
+        // is "are there atoms on the canvas?", never "does the sidebar's file match
+        // the one the canvas came from": a structure that was generated, or loaded
+        // from a directory the user has since left, has atoms and no matching file,
+        // and the comparison read that as empty and wiped it.
         const _initialFile = (typeof _proj.getCurrentFile === "function")
             ? _proj.getCurrentFile() : "";
         (async function _restoreOrSeedOnMount() {
-            const _wsP = (window.molbuilder || {}).workspace;
-            // The tag names whose state is being asked about (workspace.md § 4) --
-            // the same one this tab mounts its viewer under, below. It used to be
-            // declared first with useNamespace and then left implicit here, which
-            // meant the read's answer depended on who had declared last.
-            // Our own saved bytes, read and inspected here -- the workspace
-            // stores them and does not open them.
-            const _savedHere = (_wsP && typeof _wsP.readPersistedSnapshot === "function")
-                ? _wsP.readPersistedSnapshot(WORKSPACE_TAG) : null;
-            // Atoms are what "there is work here" means; MolView holds no text.
-            const _hasData = !!(_savedHere && _savedHere.state
-                && _savedHere.state.structure
-                && (_savedHere.state.structure.elements || []).length);
+            /* THE VIEWER COMES FIRST, because there has to be something to put the
+             * work back INTO. This block used to run against whatever `_data()`
+             * happened to answer, and on a reopened page that was null -- nothing
+             * had mounted yet -- so the restore branch could never be taken and the
+             * sidebar's highlighted file seeded over the session every time. */
+            const _viewer = await _ensureMounted();
             const _d = _data();
-            if (_hasData && _d && typeof _d.load === "function") {
-                // Restore MolView's own data (reload-restore primitive: no network,
-                // no timeline re-anchor -- unlike installMolecule), then populate the
-                // page chrome (info panel + Generate buttons) FROM the restored model.
+
+            /* ASK MOLVIEW, NOT THE WORKSPACE. `load(0)` on a fresh viewer takes up
+             * the sequence that is already on disk (molview.md § 11.2a) -- the
+             * sequence outlives the page, and this is the one call that reaches it
+             * before anything has been installed.
+             *
+             * It used to read the saved bytes back out of the workspace and open
+             * them, looking for `state.structure.elements`. That is MolView's own
+             * layout, which the workspace stores and never interprets, and it was
+             * reached through `readPersistedSnapshot` -- a door the workspace no
+             * longer has. Behind a `typeof` guard, so it answered "nothing saved"
+             * on every visit without a word. */
+            let _restoredAt = null;
+            if (_viewer && _d && typeof _d.load === "function") {
                 try {
-                    await _d.load(0);
-                    /* NO FILE NAME COMES BACK WITH IT, and none is wanted.
-                     * MolView tracks contents, not files (molview.md § 6.7): it
-                     * restored the atoms, the labels and the cell, which is the
-                     * work. Which file they were read out of was a fact about an
-                     * operation this tab performed, and it is not part of the
-                     * structure. */
-                    _sidebarLastFile = "";
-                    _applyLoadedModel("restored structure");
+                    _restoredAt = await _d.load(0);
                 } catch (_e) {
-                    // Restore failed -> leave the canvas empty; the user can Load.
+                    // A restore that fails leaves the canvas empty; the user can Load.
                 }
+            }
+            const _onCanvas = (_d && typeof _d.getStructure === "function")
+                ? _d.getStructure() : null;
+            // Atoms are what "there is work here" means; MolView holds no text.
+            const _hasRestore = !!(_onCanvas && (_onCanvas.elements || []).length);
+
+            if (_hasRestore) {
+                /* NO FILE NAME COMES BACK WITH IT, and none is wanted. MolView
+                 * tracks contents, not files (molview.md § 6.7): it restored the
+                 * atoms, the labels and the cell, which is the work. Which file
+                 * they were read out of was a fact about an operation this tab
+                 * performed, and it is not part of the structure. */
+                _sidebarLastFile = "";
+                _applyLoadedModel("restored structure");
             } else if (_initialFile) {
                 // Empty canvas + a sidebar pick: seed it once (first load / handoff).
                 const _initialDir = (typeof _proj.getCurrentDir === "function")
                     ? _proj.getCurrentDir() : "";
                 _commitStructure({ dir: _initialDir, file: _initialFile });
             }
-        })();
+            return _restoredAt;
+        })().catch(function (e) {
+            /* NOBODY IS WAITING ON THIS PROMISE, so a throw would land nowhere.
+             * Restoring is the first thing this page does; failing at it in
+             * silence leaves an empty canvas that looks like a page with nothing
+             * saved, which is the one story that must not be told wrongly. */
+            setStatus("load-status",
+                "Could not restore this tab's structure: "
+                + ((e && e.message) || "unknown error")
+                + ". Load a file to start again.", "error");
+        });
 
         // ----- Load-from-sidebar button (task #295, 2026-06-08) ---- //
         //
@@ -1142,9 +1162,13 @@ import { mount as mvMount, formula as mvFormula }
                 // #load-status is the page's real load/viewer status slot (there is
                 // no #status element -- the old id was a phantom that made this
                 // handler throw into its own catch, hiding every mount failure).
+                // "error", not "err": the severity is a CSS class
+                // (.status.ok/.error/.warn/.muted, page-shell.css), and "err"
+                // matches none of them -- so the one message that says the
+                // viewer is not there was drawn in ordinary body text.
                 setStatus("load-status",
                     "Viewer failed to mount: " + ((e && e.message) || "render failed"),
-                    "err");
+                    "error");
             });
     }
 

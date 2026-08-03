@@ -1270,8 +1270,17 @@ class TestARefusedCellIsA400:
             "periodicity": {"cell": self.LEFT_HANDED}}), "/api/build/preflight")
 
     def test_the_spectra_door_refuses(self, client):
+        """The spectra door takes the structure AS DATA, like every other one.
+
+        It used to take `structure_text`, and this test posted that -- so after
+        the route changed it was refused for the wrong reason ("no 'structure'
+        provided") and still passed the status check while never reaching the
+        periodicity gate at all.  The subject here is the gate, so the body has
+        to be one the route accepts.
+        """
+        s = Structure(elements=["H"], positions=np.zeros((1, 3)))
         self._assert_refused(client.post("/api/spectra/render", json={
-            "structure_text": self.XYZ, "params": {},
+            "structure": s.to_dict(), "params": {},
             "regions": {}, "frozen_atoms": [],
             "periodicity": {"cell": self.LEFT_HANDED}}), "/api/spectra/render")
 

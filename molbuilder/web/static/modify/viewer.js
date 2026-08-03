@@ -1119,20 +1119,17 @@ export function init(viewer) {
     // few references to ``window`` that nothing else looks at.
     // ``getSelected`` reads live from the selection store (the
     // viewer no longer owns selection state).
+    /* THERE IS NO WAY TO THE RAW 3Dmol VIEWER, and that is the contract, not a
+     * gap. `getViewer` used to hand one out through `_viewer3dmol()` on a handle
+     * stashed at `host.__molview_test_handle`. Neither exists: MolView conceals
+     * the embed (molview.md § 4), so nothing stashes that handle and nothing
+     * answers that call. It returned null on every invocation, and no test asked.
+     *
+     * What tests need is what the page shows -- atom count, selection,
+     * coordinates -- and those are read below through `molview.data`, the one
+     * route (§ 9.3). A test that needs to reach past it is testing the embed,
+     * which is 3Dmol's to test. */
     window.__molbuilder_modify_test = {
-        // Phase 5e B6: query the handle escape hatch lazily at call
-        // time instead of caching the raw viewer at module scope.
-        // Production code never has a tempting raw-viewer reference
-        // to misuse, and tests still get the same object back via
-        // the documented _viewer3dmol() escape (§ 2.4).
-        // The viewer is the MODULE's now.  mount.js stashes the embed handle on the
-        // built card's viewer host (viewerHost.__molview_test_handle); read it lazily so
-        // e2e still gets the raw 3Dmol viewer via the documented escape hatch.
-        getViewer:   () => {
-            const vh = document.querySelector("#molview-host .viewer");
-            const h  = vh && vh.__molview_test_handle;
-            return h ? h._viewer3dmol() : null;
-        },
         getSelected: () => selectedIndices(),
         getNAtoms:   () => _nAtoms(),
         // Transform-subtab tests probe coordinates after a translate / center op.  Read LIVE

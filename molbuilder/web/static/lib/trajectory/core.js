@@ -14,7 +14,7 @@
  *
  * --- How the viewer + plots stay fast --------------------------------
  * Frames are loaded once into a 3Dmol "movie" model (addModelsAsFrames)
- * and the slider / playback simply calls viewer.setFrame(idx), which is
+ * and the slider / playback simply calls viewer.setCurrentFrame(idx), which is
  * fast (no DOM rebuild).  When the server reports a new mtime we rebuild
  * the model with the fresh frame list.
  *
@@ -32,14 +32,19 @@
  */
 
 import { mount } from "/static/lib/molview/index.js";
-// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
-// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
-function _mvdata() {
-    return (window.molbuilder && window.molbuilder.molview
-            && window.molbuilder.molview.data) || null;
-}
 (function (root) {
     "use strict";
+
+    /* THE VIEWER IS THE ONE THIS MODULE MOUNTED, and it is reached through the
+     * handle that mounting returned -- `_mv.data` (molview.md § 5.6: a viewer
+     * belongs to whoever mounted it; there is no registry to look one up in).
+     *
+     * There used to be a module-level `_mvdata()` reading
+     * `window.molbuilder.molview.data`. MolView publishes nothing on `window`
+     * (§ 4), so it answered null every time -- and the mount guard below tested
+     * it before mounting, which meant THIS TAB NEVER MOUNTED A VIEWER AT ALL.
+     * Every later call went to null too, inside try/catch or behind a `typeof`
+     * guard, so the failure never said a word. */
 
     /**
      * Mount the trajectory inspector inside ``rootEl``.
@@ -563,11 +568,18 @@ function _mvdata() {
     // resolves are safe: applyNewData sets state.data + the plots regardless,
     // and rebuildModel() awaits ``_mvReady`` before feeding frames.
     let _mv = null;
+    /* The one route to this viewer's data (molview.md § 9.3). Read through the
+     * handle every time rather than caching `_mv.data`: the handle is null until
+     * the mount below resolves, and a cached null would outlive it. */
+    const _mvdata = () => (_mv && _mv.ok) ? _mv.data : null;
     const _mvReady = (async function mountMolView() {
         const mb = window.molbuilder || {};
         const ws = mb.workspace;
         const host = $("viewer-host");
-        if (!host || typeof mount !== "function" || !_mvdata() || !ws) {
+        /* NOT GATED ON A VIEWER EXISTING -- this is what creates one. The guard
+         * used to ask `_mvdata()` first, which is a question about the thing
+         * this block has not built yet, and it is why nothing ever mounted. */
+        if (!host || typeof mount !== "function" || !ws) {
             setStatus("Viewer unavailable: the MolView module / persistence "
                     + "layer is missing from results.html.", "error");
             return null;
@@ -951,17 +963,20 @@ function _mvdata() {
             });
         });
         try {
-            // Force scale (Å per force unit) is a cheap STORE flag the engine reads -- it
-            // lives on the SELECTION surface (data.selection.setViewFlag, the view-flag
-            // store; NOT top-level data).  Set it from the knob so the first arrow bake
-            // uses the right length.  Inside the try + feature-detected so a surface drift
-            // can never kill the frame load silently (2026-07 regression: a top-level
-            // setViewFlag call threw OUTSIDE the try -> reloadFrames never ran -> a
-            // trajectory showed ONE frame with no frame bar).
-            var _sel = _mvdata().selection;
-            var _fscaleEl = $("force-scale");
-            if (_sel && typeof _sel.setViewFlag === "function" && _fscaleEl) {
-                _sel.setViewFlag("forceScale", parseFloat(_fscaleEl.value) || 1.0);
+            /* Force scale (Å per force unit) is one of the SWITCHES that sit
+             * beside the selection (molview.md § 9.5) -- `setSwitch`, the same
+             * door as isolate / showForces / showCell.
+             *
+             * It used to call `setViewFlag`, which no store has ever had. The
+             * call threw, and because it sat OUTSIDE this try the throw took
+             * `reloadFrames` with it -- a trajectory showing ONE frame and no
+             * frame bar. It was then wrapped in a `typeof` guard rather than
+             * corrected, which stopped the crash and left the knob doing
+             * nothing at all. */
+            const _fscaleEl = $("force-scale");
+            if (_fscaleEl) {
+                _mvdata().selection.setSwitch(
+                    "forceScale", parseFloat(_fscaleEl.value) || 1.0);
             }
             // Build all frames into MolView's native animation ONCE, handing the filtered raw
             // per-frame forces -- the ENGINE bakes + styles the arrows (process.js §2.4);
@@ -974,11 +989,15 @@ function _mvdata() {
         }
         if (typeof seekIdx === "number"
                 && seekIdx > 0 && seekIdx < coordFrames.length) {
-            try { _mvdata().setFrame(seekIdx); } catch (_) {}
+            /* `setCurrentFrame`, not `setFrame` -- no viewer has ever had a
+             * `setFrame`. Both seeks called it, so the playhead never moved:
+             * not after a rebuild, and not when a live run grew a tail. Inside
+             * a catch, so it failed without a word. */
+            try { _mvdata().setCurrentFrame(seekIdx); } catch (_) {}
         }
     }
 
-    // (No local showFrame(): seeking is `molview.data.setFrame(i)`, which already range-checks
+    // (No local showFrame(): seeking is `data.setCurrentFrame(i)`, which already range-checks
     // against the frames MolView holds.  A tab-side clamp re-derived that range from a second
     // count, which is exactly the drift this file no longer carries.)
 
@@ -2443,7 +2462,7 @@ function _mvdata() {
                 // the feed's count grown, the movie's not -- that was #35.
                 if (wasAtEnd) {
                     const shown = _mvdata().frameCount();
-                    if (shown > 1) _mvdata().setFrame(shown - 1);
+                    if (shown > 1) _mvdata().setCurrentFrame(shown - 1);
                 }
             }
         } else {
@@ -2634,7 +2653,7 @@ function _mvdata() {
     // there is exactly one bar and one timer.
     //
     // The only seek this file performs is the follow-the-tail jump after an append, and it
-    // goes through `molview.data.setFrame` like every other frame write -- never through the
+    // goes through `data.setCurrentFrame` like every other frame write -- never through the
     // embed handle.
 
     /* ------------------------------------------------------------------ */
@@ -2768,11 +2787,13 @@ function _mvdata() {
     _on($("force-scale"), "input", (e) => {
         const v = parseFloat(e.target.value) || 1.0;
         $("force-scale-val").textContent = v.toFixed(1);
-        // Scale is a cheap store flag on the SELECTION surface: the engine re-bakes arrow
-        // LENGTH in place (no forces rebuild), so dragging the slider is smooth.
+        // Scale is one of the switches beside the selection (§ 9.5): the engine
+        // re-bakes arrow LENGTH in place (no forces rebuild), so dragging the
+        // slider is smooth.  Guarded on the VIEWER existing, not on the method:
+        // there is no viewer before the mount resolves, and asking whether the
+        // door exists is what hid this knob doing nothing.
         const d = _mvdata();
-        const sel = d && d.selection;
-        if (sel && typeof sel.setViewFlag === "function") sel.setViewFlag("forceScale", v);
+        if (d) d.selection.setSwitch("forceScale", v);
     });
     // The FILTER knobs change WHICH forces show (min threshold / exclude frozen), so they
     // re-hand the filtered per-frame forces (drawForces -> setForces, in-place re-bake).

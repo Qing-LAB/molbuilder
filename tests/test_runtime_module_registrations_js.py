@@ -66,10 +66,21 @@ _REGISTER_CALL_RE = re.compile(
 # data-model.js) but through the ``_runtime()`` helper form this scanner's regex
 # doesn't match; it isn't a whenReady dependency of any consumer, so it's not in
 # this required set.
+# 2026-08-03: ``selection.panel`` and ``selection.viewerAdapter`` are RETIRED
+# from this list, because the things they named no longer exist.  The selection
+# panel belongs to MolView now -- it is part of a mounted viewer, reached
+# through the handle that mounting returns (molview.md § 5.6), so there is no
+# page-level singleton for a consumer to wait on.  The viewer adapter went with
+# the global it adapted.  Requiring a registration that nothing can produce
+# tests the architecture that was replaced, not the one that shipped.
+#
+# What is left is what a consumer actually waits on.  Every ``whenReady`` call
+# under static/ names ``projects`` (8 call sites) or ``viewer`` (1) -- so those
+# two are the contract, and the rest of the ``structure.*`` family registers
+# without anyone waiting on it.
 _REQUIRED_REGISTRATIONS = sorted([
     "projects",
-    "selection.panel",
-    "selection.viewerAdapter",
+    "viewer",
 ])
 
 
