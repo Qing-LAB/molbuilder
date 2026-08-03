@@ -275,6 +275,24 @@ def _register_auth_gate(app) -> None:
             g.user = user   # available to templates as g.user
             return None
 
+        # THIS ANSWER IS NOT EVIDENCE OF ANYTHING, and the rate limiter is
+        # told so.  "I do not know who you are yet" is what this gate says to
+        # every ordinary visitor, including one whose session simply expired --
+        # it is not a probe.
+        #
+        # Left uncounted it was: the limiter counts 4xx, a session expiring with
+        # a tab open turns the page's own 1 Hz poll into one 4xx per second, and
+        # twenty in thirty seconds blocked the user's address FOR AN HOUR on
+        # every path -- the login page included.  From their side the site was
+        # simply down, with no message.  The app locking its own user out.
+        #
+        # Marked HERE, on the one gate that produces it, rather than by
+        # excluding 401 wherever it appears: a 401 from somewhere else has a
+        # different author and may well mean something.  Everything else the
+        # limiter watches is untouched -- the attack-string signature fires as
+        # before, and a genuine 404 storm still counts.
+        g.molbuilder_auth_challenge = True
+
         # API requests get a clean 401 so JS clients can render a
         # "please log in" prompt instead of trying to parse HTML.
         if request.path.startswith("/api/"):

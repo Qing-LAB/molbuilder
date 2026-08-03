@@ -468,6 +468,104 @@ class TestAdminRoleGate:
 # --------------------------------------------------------------------- #
 
 
+class TestTheSignInCheckIsNotEvidence:
+    """The app must not lock its own user out (2026-08-03, user decision).
+
+    "I do not know who you are yet" is what the auth gate says to EVERY
+    ordinary visitor, including one whose session simply expired.  It is not a
+    probe, and it is not counted.
+
+    WHAT HAPPENED WITHOUT THIS.  The limiter counts 4xx.  A session expiring
+    with a tab open turns the page's own 1 Hz poll into one 4xx per second:
+    twenty in thirty seconds, and the visitor's address was blocked for an hour
+    ON EVERY PATH -- the sign-in page included.  From their side the site was
+    simply down, with no message, and signing back in was impossible.
+
+    The mark is set by the gate that produces the answer, not by excluding 401
+    wherever it appears: a 401 from somewhere else has a different author and
+    may well mean something.
+    """
+
+    @pytest.fixture
+    def app_with_auth(self, tmp_path):
+        pytest.importorskip("flask")
+        from molbuilder.web.app import create_app
+        secret = tmp_path / "key"
+        secret.write_text("x" * 40)
+        return create_app(config={
+            "auth": {"providers": [{
+                "id": "g", "kind": "google", "client_id": "x",
+                "client_secret": "y", "allowed_users": ["a@b.c"],
+                "enabled": True}]},
+            "secret_key_file": str(secret),
+            "rate_limit": {"enabled": True, "threshold_404": 5,
+                           "window_404_s": 30, "allowlist": [],
+                           "cooldown_s": 3600},
+        })
+
+    def test_a_polling_tab_with_an_expired_session_is_never_blocked(
+            self, app_with_auth):
+        client = app_with_auth.test_client()
+        env = {"REMOTE_ADDR": "203.0.113.9"}
+        codes = [client.get("/api/build/schema/siesta", environ_base=env)
+                 .status_code for _ in range(12)]
+        assert set(codes) == {401}, (
+            f"the app blocked its own user out of the sign-in page after their "
+            f"session expired: {codes}. Twelve polls is twelve seconds of a "
+            f"tab left open."
+        )
+
+    def test_a_scanner_walking_for_files_is_still_blocked(self, app_with_auth):
+        """The other half: nothing about the change weakens the real signal."""
+        client = app_with_auth.test_client()
+        env = {"REMOTE_ADDR": "198.51.100.4"}
+        codes = [client.get(p, environ_base=env).status_code for p in (
+            "/admin.php", "/.env", "/wp-login.php", "/config.php",
+            "/.git/config", "/backup.sql", "/phpmyadmin", "/xmlrpc.php")]
+        assert 429 in codes, (
+            f"a scanner enumerating paths was not blocked: {codes}"
+        )
+
+    def test_an_attack_string_is_still_blocked_at_once(self, app_with_auth):
+        """And the signature signal, which never needed a count.
+
+        Aimed at a path that does not map to a page -- which is what a scanner
+        probes.  See the sibling test for the case where it is NOT reached.
+        """
+        client = app_with_auth.test_client()
+        env = {"REMOTE_ADDR": "198.51.100.7"}
+        first = client.get("/api/nope?q=union%20select%201", environ_base=env)
+        assert first.status_code == 429, (
+            f"an unambiguous attack string was not blocked on sight: "
+            f"{first.status_code}"
+        )
+
+    def test_the_signature_check_never_runs_on_a_real_page_when_auth_is_on(
+            self, app_with_auth):
+        """A gap this change did not create and does not close -- pinned so it
+        is a known shape rather than a surprise.
+
+        Flask runs before-request hooks in the order they were registered, and
+        auth is installed before the limiter (`app.py`).  So for a path that
+        DOES map to a page, the auth gate answers first -- a redirect to the
+        sign-in page -- and the limiter's signature check never runs.  The
+        request is not served either way, so nothing leaks; what is lost is the
+        BLOCK, so that visitor is not cooled off and can keep trying.
+
+        A scanner is unaffected in practice: it probes paths that map to
+        nothing (`/admin.php`, `/.env`), the auth gate passes those straight
+        through to Flask's 404, and the limiter sees every one.
+        """
+        client = app_with_auth.test_client()
+        env = {"REMOTE_ADDR": "198.51.100.21"}
+        r = client.get("/?q=%3Cscript%3Ealert(1)%3C/script%3E", environ_base=env)
+        assert r.status_code == 302, (
+            f"the auth gate no longer answers first for a real page ({r.status_code}) "
+            f"-- if the limiter now sees these, this test has become the record "
+            f"of a fixed gap and should be rewritten to assert 429"
+        )
+
+
 class TestAuthenticatedBypass:
     """A logged-in session short-circuits the limiter.
 

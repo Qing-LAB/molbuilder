@@ -93,7 +93,7 @@ from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Mapping, Optional, Tuple
 
-from flask import Flask, Response, jsonify, request, session
+from flask import Flask, Response, g, jsonify, request, session
 
 logger = logging.getLogger(__name__)
 
@@ -566,6 +566,15 @@ def init_rate_limit(app: Flask, cfg: Mapping[str, Any]) -> RateLimiter:
     @app.after_request
     def _rate_limit_after(response):
         try:
+            # THE AUTH GATE'S OWN ANSWER IS NOT EVIDENCE.  "I do not know who
+            # you are yet" is what that gate says to every ordinary visitor,
+            # including one whose session just expired -- so it is skipped here,
+            # marked by the gate that produced it (auth.py::_require_login).
+            #
+            # Everything else is counted as before.  Not "ignore 401": a 401
+            # from anywhere else has a different author and may mean something.
+            if getattr(g, "molbuilder_auth_challenge", False):
+                return response
             rl.record_response(
                 rl.client_ip(), response.status_code,
                 authenticated=_is_authenticated_session(),

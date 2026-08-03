@@ -275,13 +275,27 @@ answered `404` when the answer was simply "no", so a tab that restores its own
 state manufactured one 4xx per page load against its own user (it is a `200`
 with an empty result now). The other is below.
 
-**⚠ An expired session can look like an attack.** The auth gate runs first and
-answers `401`; the limiter's response hook still counts it, because `401` is
-4xx and the session is not authenticated. On a remote deployment (loopback is
-allowlisted, so this cannot bite locally) a page that polls once a second
-reaches twenty 4xx in twenty seconds — and the user is then blocked for an hour
-from everything, including `/login`. Verified against `RateLimiter` directly, not
-inferred. **Filed as task #50.**
+**An expired session used to look like an attack — fixed 2026-08-03.** The
+limiter counts 4xx, and the auth gate's *"I do not know who you are yet"* is a
+4xx. A session expiring with a tab open turned the page's own once-a-second poll
+into one 4xx per second: twenty in thirty seconds, and the visitor was blocked
+for an hour on every path, the sign-in page included. The app locking out its
+own user, silently.
+
+The gate now **marks its own answer** and the limiter skips it. Not "ignore 401
+everywhere": a 401 from somewhere else has a different author and may mean
+something. Everything else is untouched — pinned by three tests: the polling tab
+is never blocked, a scanner walking for files still is, and an attack string is
+still blocked on sight.
+
+**⚠ The attack-signature check does not run on a path that maps to a real page,
+when auth is on.** Flask runs before-request hooks in registration order, and
+auth is installed before the limiter — so for `/?q=<script>` the sign-in
+redirect answers first and the limiter never looks. The request is not served
+either way, so nothing leaks; what is lost is the **block**, so that visitor is
+never cooled off. A scanner is unaffected in practice, because it probes paths
+that map to nothing and those reach the limiter untouched. Pinned as a known
+shape in `tests/test_rate_limit.py` rather than left to be rediscovered.
 
 **The admin API needs auth on.** With no `auth` section there is no session, so
 `is_admin_request()` is false for everyone and both admin routes answer `403`
