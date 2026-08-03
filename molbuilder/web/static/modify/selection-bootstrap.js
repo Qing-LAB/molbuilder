@@ -144,7 +144,11 @@ import { init as startCellPanel }  from "./periodicity.js";
         // Which file is actually ON the canvas, as opposed to picked in the
         // sidebar.  The page's own note — the viewer tracks contents, not files
         // (molview.md § 6.7).  Set in `_commitFile`; read by `_refreshLoadUI`.
-        let _loadedFrom = "";
+        /* WHICH FILE IS ON THE CANVAS lives in `structurePage`, under the page's
+         * own tag (workspace.md § 4's `modify:panel`), so it survives a reload
+         * along with everything else the page did. This file only reads it. */
+        const _loadedFrom = () =>
+            (window.molbuilder.structurePage.getLoadedFrom() || "");
         const _candidateListeners = [];
         function _notifyCandidate() {
             for (const fn of _candidateListeners.slice()) {
@@ -216,6 +220,13 @@ import { init as startCellPanel }  from "./periodicity.js";
              * it quietly answered "nothing saved" on every visit, and the
              * sidebar's highlighted file was free to overwrite restored work. */
             await _restoring;
+            /* AND THE PAGE'S OWN NOTE COMES BACK TOO. The viewer restores the
+             * molecule; this restores what the PAGE did with it -- which file it
+             * came from, where it was saved. Without it a restored session shows
+             * a structure while the loader readout says nothing is loaded, and
+             * the Load button re-enables against the very file the work came
+             * from. */
+            await page.restorePanelNote();
             const _onCanvas = _mounted.data.getStructure();
             const _hasRestore = !!(_onCanvas
                 && (_onCanvas.elements || []).length);
@@ -272,7 +283,7 @@ import { init as startCellPanel }  from "./periodicity.js";
          * direction. It is declared up with `_candidate` — the mount seed calls
          * `_commitFile` before this point in the file. */
         function _refreshLoadUI() {
-            const isLoaded = !!_candidate && _candidate === _loadedFrom;
+            const isLoaded = !!_candidate && _candidate === _loadedFrom();
             if (_loadBtn) {
                 _loadBtn.disabled = !_candidate || isLoaded;
             }
@@ -296,6 +307,12 @@ import { init as startCellPanel }  from "./periodicity.js";
          * `_commitFile`; this keeps the two in step. */
         if (typeof _mounted.data.subscribe === "function") {
             _mounted.data.subscribe(_refreshLoadUI);
+        }
+        // AND when the page's own note changes, which the viewer knows nothing
+        // about: a generate replaces the structure AND clears the filename, and
+        // only the second of those reaches the readout through this channel.
+        if (page && typeof page.onPanelChange === "function") {
+            page.onPanelChange(_refreshLoadUI);
         }
 
         // "Commit a structure file into the workspace" -- a THIN wrapper over the ONE
@@ -337,8 +354,9 @@ import { init as startCellPanel }  from "./periodicity.js";
             }
             if (res && res.cancelled) return;    // the user kept what was there
             // This page performed the load, so this page is what knows which
-            // file is on the canvas (§ 6.7).  Both readouts below read it.
-            _loadedFrom = path;
+            // file is on the canvas (§ 6.7).  Recorded under the page's own tag,
+            // so a reopened tab still knows; both readouts below read it back.
+            window.molbuilder.structurePage.markLoadedFrom(path);
             _refreshLoadUI();
             /* SAY WHAT LANDED. The line only ever spoke up when a load FAILED,
              * so after a successful one it still read "No structure loaded." —

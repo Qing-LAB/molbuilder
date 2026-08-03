@@ -502,3 +502,80 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
     sidecar = json.loads((tmp_path / "saved_by_test.molstruct.json").read_text())
     assert sidecar["regions"] == {"SOLVENT": [0, 1, 2]}
     assert "saved_by_test.xyz" in page.locator("#save-readout").inner_text()
+
+
+def test_the_page_remembers_which_file_it_is_showing_across_a_reload(
+        page, flask_server, labelled_xyz):
+    """The page's own note survives, so Load does not offer to discard your work.
+
+    workspace.md § 4: a page may have several savers, kept apart by their tags,
+    and it names this one — *"the Modify tab has a viewer holding a molecule AND
+    its own panel state"*.  The viewer saves under `modify`; the page saves under
+    `modify:panel`.  Two tags, two slots.
+
+    THE BUG THIS CLOSES.  `loadedFrom` used to live in a closure variable, set
+    only by the path that READS A FILE.  When a reload was served by the viewer's
+    restore instead — now the normal case — it was empty while a structure was
+    plainly on the canvas, so the readout fell back to "Picked:" and **the Load
+    button re-enabled against the very file the work came from**.  One press
+    discarded the restored work through the dirty gate.
+    """
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    page.wait_for_function(
+        "() => /^Loaded:/.test("
+        "  document.getElementById('load-candidate-readout').textContent)",
+        timeout=_ACT_MS)
+
+    # Come back to the tab.
+    page.goto(f"{flask_server}/molbuilder")
+    page.wait_for_selector(_CARD, timeout=_BOOT_MS)
+    page.wait_for_function(
+        "() => /\\d+ of [1-9]\\d* selected/.test("
+        "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
+        timeout=_ACT_MS)
+
+    page.wait_for_function(
+        "() => /^Loaded:/.test("
+        "  document.getElementById('load-candidate-readout').textContent)",
+        timeout=_ACT_MS)
+    assert page.locator("#load-candidate-btn").is_disabled(), (
+        "the Load button came back enabled against the file the structure is "
+        "already showing — pressing it discards the restored work"
+    )
+
+
+def test_a_generated_structure_claims_no_file(page, flask_server, labelled_xyz):
+    """A structure built from SMILES has no file behind it, and the page says so.
+
+    The note is written at the ONE gate every generator comes through, which
+    already knows whether a file was involved.  Before, `loadedFrom` was whatever
+    the last file load had left there, so a generated molecule inherited a
+    filename it had nothing to do with — and the loader readout claimed that file
+    was on the canvas.
+    """
+    _open(page, flask_server)
+    _load(page, labelled_xyz)          # a real file first, so the note is set
+    page.wait_for_function(
+        "() => /^Loaded:/.test("
+        "  document.getElementById('load-candidate-readout').textContent)",
+        timeout=_ACT_MS)
+
+    # Now generate, which replaces it with something that came from no file.
+    page.evaluate(
+        "() => { [...document.querySelectorAll('.modify-init-tab')]"
+        "  .find(b => /SMILES/i.test(b.textContent)).click();"
+        "  const i = document.getElementById('smiles-input');"
+        "  i.value = 'CCO';"
+        "  i.dispatchEvent(new Event('input', {bubbles:true})); }")
+    page.locator("#smiles-generate-btn").click()
+    page.wait_for_function(
+        "() => /of 9 selected/.test("
+        "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
+        timeout=30_000)
+
+    readout = page.locator("#load-candidate-readout").inner_text()
+    assert not readout.startswith("Loaded:"), (
+        f"a generated structure is claiming to be the file that was loaded "
+        f"before it: {readout!r}"
+    )

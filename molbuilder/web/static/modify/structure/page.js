@@ -130,7 +130,20 @@
                 // store write (see installMolecule's load contract).  Omitted by
                 // generators / raw-text loads.
                 atoms:       structure.atoms || null,
-            }).then(function () { return { ok: true }; });
+            }).then(function () {
+                /* AND THE PAGE RECORDS WHAT IT JUST DID. This is the one gate
+                 * every generator and the file upload come through, and it
+                 * already knows whether a file is behind the structure: a
+                 * SMILES/DNA/RNA/peptide/name build passes no `file`, so the
+                 * note becomes null and the loader readout stops claiming a file
+                 * that never existed.
+                 *
+                 * (The sidebar's own load does not come through here -- it goes
+                 * via `projects.parser.openMolecule` -- and records the same
+                 * note at its own gate.) */
+                markLoadedFrom(filename);
+                return { ok: true };
+            });
         }
         // Nothing loaded — load directly; no warning. A read answers nothing
         // when there is nothing, which is a different answer from a structure
@@ -161,6 +174,86 @@
      * is a fact about a file operation the page performed, so the page keeps it
      * (§ 6.7); the viewer never knew it. */
     var _lastSavedTo = null;
+    var _loadedFrom  = null;
+
+    /* ── The page's own two facts, kept under the page's own tag ────────────
+     *
+     * workspace.md § 4: a page can have more than one thing worth keeping, and
+     * "the Modify tab has a viewer holding a molecule AND its own panel state".
+     * The tag it names for that is `modify:panel`. The viewer saves under
+     * `modify`; these are two tags, so they are two slots and neither can reach
+     * the other.
+     *
+     * § 6 says the rest: say the tag on every call, decide what goes in the
+     * bytes and be able to read them back, and decide when to save. So this
+     * writes at the moments the page CHANGES one of these — a load, a generate,
+     * a save — and never on a timer.
+     *
+     * ONE WRITER FOR ONE SLOT. Both facts live here and both are written by this
+     * one function, because two writers on a single state file is how one of
+     * them silently drops the other's field.
+     */
+    var PANEL_TAG = "modify:panel";
+
+    function _ws() {
+        return (root.molbuilder && root.molbuilder.workspace) || null;
+    }
+
+    /* THE NOTE HAS ITS OWN READERS, so it needs its own channel.
+     *
+     * The viewer's `subscribe` announces a structure change from INSIDE
+     * `installMolecule`, before the promise that call returns has resolved -- so
+     * a readout listening there re-renders while this note still holds the
+     * PREVIOUS load's filename, and nothing tells it to look again afterwards.
+     * That is how a molecule generated from SMILES came to sit under
+     * "Loaded: water.xyz".
+     *
+     * This is the page's own state with the page's own readers, so the channel
+     * is the page's too -- not something asked of the viewer, which has no
+     * business knowing a file was involved (molview.md § 6.7). */
+    var _panelListeners = [];
+
+    function _rememberPanel() {
+        var ws = _ws();
+        if (ws && typeof ws.persist === "function") {
+            ws.persist(PANEL_TAG,
+                       { v: 1, loadedFrom: _loadedFrom, lastSavedTo: _lastSavedTo },
+                       { workspace_id: ws.workspaceId(PANEL_TAG), state_index: 0 });
+        }
+        _panelListeners.slice().forEach(function (fn) {
+            try { fn({ loadedFrom: _loadedFrom, lastSavedTo: _lastSavedTo }); }
+            catch (_) { /* one bad reader cannot muzzle the rest */ }
+        });
+    }
+
+    function onPanelChange(cb) {
+        if (typeof cb !== "function") return function () {};
+        _panelListeners.push(cb);
+        return function () {
+            var at = _panelListeners.indexOf(cb);
+            if (at >= 0) _panelListeners.splice(at, 1);
+        };
+    }
+
+    /* Read the page's own note back. Version-stamped like every other state file:
+     * these outlive the code that wrote them, and bytes from a layout this build
+     * has never seen are not something to guess at. */
+    async function restorePanelNote() {
+        var ws = _ws();
+        if (!ws || typeof ws.readState !== "function") return null;
+        var saved;
+        try {
+            saved = await ws.readState({
+                workspace_id: ws.workspaceId(PANEL_TAG), state_index: 0,
+            });
+        } catch (_) {
+            return null;
+        }
+        if (!saved || saved.v !== 1) return null;
+        _loadedFrom  = saved.loadedFrom  || null;
+        _lastSavedTo = saved.lastSavedTo || null;
+        return { loadedFrom: _loadedFrom, lastSavedTo: _lastSavedTo };
+    }
 
     function markDirtyAfterModification() {
         // Nothing to do: the edit itself raised the badge.
@@ -168,7 +261,19 @@
 
     function markSavedTo(path) {
         _lastSavedTo = path || null;
+        _rememberPanel();
     }
+
+    /* Which file is on the canvas -- or null when what is on it came from a
+     * generator and has no file behind it at all. The page knows because the
+     * page performed the load; it never asks the viewer, which tracks contents
+     * and not files (molview.md § 6.7). */
+    function markLoadedFrom(path) {
+        _loadedFrom = path || null;
+        _rememberPanel();
+    }
+
+    function getLoadedFrom() { return _loadedFrom; }
 
     function getCanvasSnapshot() {
         if (!_model()) {
@@ -182,6 +287,7 @@
             // The page's own note, not the viewer's: the viewer tracks contents,
             // not files (molview.md § 6.7).
             lastSaveTo:   _lastSavedTo,
+            loadedFrom:   _loadedFrom,
         };
     }
 
@@ -199,6 +305,10 @@
         loadIntoCanvas:             loadIntoCanvas,
         markDirtyAfterModification: markDirtyAfterModification,
         markSavedTo:                markSavedTo,
+        markLoadedFrom:             markLoadedFrom,
+        getLoadedFrom:              getLoadedFrom,
+        restorePanelNote:           restorePanelNote,
+        onPanelChange:              onPanelChange,
         getCanvasSnapshot:          getCanvasSnapshot,
         onCanvasChange:             onCanvasChange,
     };

@@ -87,42 +87,41 @@ save, so the readout says *"Target: wire.xyz"* — until a reload, after which i
 says *"Save as… into structure/"* again, as though the structure had never been
 saved anywhere.
 
-### 3.2 What the rule should be
+### 3.2 The rule — it is already written, in two places
 
-§ 11.2 already gives the test, for MolView's own state:
+Nothing here is new design. Both halves are stated in the contracts:
 
-> **State is the truth. What you are looking at is not state.**
+| | Where |
+|---|---|
+| A page may have several savers; each says its tag on every call, decides what goes in the bytes, and decides when to save. **`"modify:panel"` is named as the example** — *"the Modify tab has a viewer holding a molecule AND its own panel state"* | workspace.md § 4 and § 6 |
+| MolView asks for nothing until the first structure is in; `installMolecule` lays down point 0; edits rewrite the draft and lay down no point; `save(1)` and `load(-1)` are the user's | molview.md § 11.2a, *"Starting, in an editable viewer"* |
 
-The same line sorts the tab's context, and it does not put everything on one
-side:
+So the viewer saves under `modify`, the page saves under `modify:panel`, and two
+tags are two slots. **They cannot disagree**: each writes what *it itself did*, at
+the moment it did it. The page writes `loadedFrom` because the page performed the
+load, and writes `null` when the user generates instead, because it performed that
+too.
 
-| The tab's fact | Truth, or a way of looking? | Keep it? |
-|---|---|---|
-| which file is on the canvas | a fact about **what you are working on** — the same class as the structure itself | **yes** |
-| where it last saved | a fact about **what you did** | **yes** |
-| which op sub-tab is open | where the user's attention was — a **view** | no |
-| which Init source is open | a view | no |
-| op form fields (dx, gap, element…) | arguments to an act not yet performed — a view | no |
+### 3.3 What was built (2026-08-03)
 
-The first two are the ones whose absence produces a wrong readout. The last three
-are genuinely "what you were looking at", and § 11.2 is right to drop them: a
-reopened tab opening on the Atom panel is correct, not a bug.
+`structure/page.js` owns both facts and is the single writer of the slot — two
+writers on one state file is how one silently drops the other's field. It gained
+`markLoadedFrom`, `restorePanelNote`, `getLoadedFrom` and `onPanelChange`
+alongside the existing `markSavedTo`.
 
-### 3.3 The door already exists
+The note is written at the two gates every install passes through:
+`loadIntoCanvas` (all six generators and the upload — it already knows whether a
+file was involved) and `_commitFile` (the sidebar load). It is read at mount,
+before the seed decision.
 
-The workspace is public and the **tag** is the mechanism for several savers to
-share one page (workspace.md § 4). MolView writes under `modify`. The tab would
-write under a tag of its own — `modify-page` — and the two would not touch.
-
-```js
-ws.persist("modify-page", { loadedFrom, lastSavedTo },
-           { workspace_id: ws.workspaceId("modify-page"), state_index: 0 });
-```
-
-That is exactly the shape `lib/inspectors/structure.js` already uses for
-`SHOWING_TAG`, which is the same problem — *which file is this panel showing* —
-solved once already, one directory away. **The tab should not invent a mechanism;
-it should copy that one.**
+**One thing the build turned up that reading could not.** `installMolecule`
+announces to subscribers from *inside* the call, before the promise resolves — so
+a readout listening on the viewer re-renders while the note still holds the
+previous filename, and nothing tells it to look again. A molecule generated from
+SMILES sat under *"Loaded: water.xyz"*. The note therefore has its own change
+channel (`onPanelChange`): the page's own state, the page's own readers, and
+nothing asked of the viewer, which has no business knowing a file was involved
+(§ 6.7). Pinned by `test_a_generated_structure_claims_no_file`.
 
 ## 4. What is already correct, and should not be touched
 
@@ -139,18 +138,39 @@ it should copy that one.**
   crash-recovery history may be incomplete."* Confirmed live, with a repeat count
   rather than a stack of identical rows.
 
-## 5. Open questions, and one that is a bug
+## 5. What is left
 
-1. **Is "Save to project" a fifth kind, or Export → Data with a destination?**
-   § 11.3 should say either way. Bundle with task #39.
-2. **Which tag does the tab write under?** `modify-page` keeps it clearly apart
-   from MolView's `modify`. One tag per *saver*, not per page, is the rule that
-   already holds.
-3. **Should a restore and a re-read look different on screen?** They have
-   different consequences and currently read identically. A restore could say so
-   — *"Restored your unsaved work"* versus *"Loaded wire.xyz"* — which is one
-   sentence and removes a real ambiguity.
-4. **BUG, independent of all of the above:** after a genuine restore the Load
-   button re-enables against the file the structure came from, because
-   `_loadedFrom` was never set. Pressing it discards restored work through the
-   dirty-canvas gate. Fixing row 6 fixes this; until then it is reachable.
+**One piece of work, and it is small** (§ 3.4): the page writes its own two facts
+under its own tag, and reads them at mount. No new API, no change to MolView, no
+change to the workspace, no change to the server. It closes the Load-button bug
+in § 3.1 by construction.
+
+**One contract question**, which is not this document's to answer: is *Save to
+project* a fifth kind of saving, or Export → Data with a destination (§ 2)?
+molview.md § 11.3 names four and this is a fifth door onto the same act. It
+belongs with task #39, which is already about those two doors disagreeing over
+the sidecar.
+
+**One nicety, worth a sentence if it is wanted:** a restore and a re-read of the
+file currently read identically on screen. They have different consequences, and
+saying which happened is one line of status text.
+
+---
+
+### A note on how this document went wrong first
+
+An earlier draft raised an "ordering problem" between the page's note and
+MolView's draft — two independent writes, no atomicity, so they might disagree —
+and proposed reconciling them.
+
+**There is no such problem.** Each saver writes what *it itself did*, at the
+moment it did it: the page writes `loadedFrom` because the page performed the
+load, and writes `loadedFrom: null` when the user generates instead, because it
+performed that too. Neither is guessing at the other's business. Their data is
+orthogonal by tag, which is what workspace.md § 4 means — a tag is a wall, and
+walls do not need locks between them.
+
+The invented problem produced an invented requirement (some coordinating
+mechanism), which would have produced code nobody needed. Worth leaving in the
+record: **when a design starts asking for a mechanism the contract never mentions,
+the likely fault is in the reading, not in the contract.**
