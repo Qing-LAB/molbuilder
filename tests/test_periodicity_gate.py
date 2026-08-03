@@ -729,17 +729,51 @@ class TestTabEmitContract:
                          (r.get_json().get("issues") or []))
         assert "Thin vacuum" not in texts or "4.0" not in texts
 
-    def test_tabs_send_the_model_periodicity(self):
-        """Source pin: every calculation tab's render body includes the
-        model's periodicity block (the client half of the contract)."""
+    def test_tabs_send_the_model_cell_with_the_atoms(self):
+        """Source pin: the cell a tab sends comes from the same read as the
+        atoms.
+
+        The tab-emit contract asks for the MODEL's cell, never a second source
+        -- and the shape that guarantees it is one read, not a `periodicity`
+        key.  `exportFile()` returns the atoms, the labels and the cell
+        together, in the server's words, for the frame on screen (molview.md
+        § 9.3a), so a tab cannot send a cell that is younger or older than the
+        coordinates beside it.
+
+        THIS PINNED THE OPPOSITE UNTIL 2026-08-03: it required a `periodicity:`
+        key in each render body, which meant a SECOND read of a fact the
+        structure already carried -- and the server preferred that later copy,
+        so the structure's own cell was never the one judged.
+
+        Transport is the one tab still exempt: its geometry comes from the file
+        on disk, not from the viewer, so its cell has nothing to travel with.
+        That deviation is recorded in the route itself and is not this test's
+        subject.
+        """
+        import re as _re
+
+        def _code_only(src: str) -> str:
+            """The source with comments removed.
+
+            A pin that greps the whole file also reads the PROSE, and the prose
+            here explains the very bug being pinned -- so the comment "the cell
+            went in as `metadata: {periodicity: …}`" tripped the check that no
+            `periodicity` key is sent.  A test that cannot tell a warning from
+            the thing it warns about will be silenced by deleting the warning.
+            """
+            src = _re.sub(r"/\*.*?\*/", "", src, flags=_re.S)
+            return _re.sub(r"^\s*//.*$", "", src, flags=_re.M)
+
         base = Path(__file__).resolve().parents[1] / "molbuilder/web/static"
-        for rel, needle in [
-            ("structure-optimization/viewer.js", "periodicity: _modelPeriodicity()"),
-            ("lib/spectra/core.js", "periodicity:"),
-            ("lib/transport/core.js", "_genBody.periodicity"),
-        ]:
-            text = (base / rel).read_text(encoding="utf-8")
-            assert needle in text, f"{rel} lost the tab-emit contract"
+        for rel in ("structure-optimization/viewer.js", "lib/spectra/core.js"):
+            text = _code_only((base / rel).read_text(encoding="utf-8"))
+            assert "exportFile()" in text, (
+                f"{rel} no longer asks the viewer for the structure it sends; a "
+                f"hand-built body is how the cell ended up under a key the "
+                f"receiver refuses")
+            assert "periodicity:" not in text, (
+                f"{rel} sends a `periodicity` key beside the structure -- a "
+                f"second read of a fact `exportFile()` already carried")
 
 
 from pathlib import Path  # noqa: E402  (used by TestTabEmitContract)

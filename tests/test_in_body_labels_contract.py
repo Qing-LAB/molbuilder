@@ -1,25 +1,30 @@
-"""L2 source-text invariant: Generate POSTs across optimization /
-spectrum / transport tabs carry in-body ``frozen_atoms`` + ``regions``.
+"""L2 source-text invariant: a Generate POST carries the structure ONCE, from
+ONE read of the viewer.
 
-Viewer-is-truth contract: every tab that lets the user Load a structure
-and then click Generate MUST ship the file's labels (frozen_atoms +
-regions) in the Generate POST body.  The server's ``apply_labels_to_struct``
-(molbuilder/web/blueprints/_shared.py) applies them verbatim and SKIPS the
-disk-sidecar re-read when these keys are present.
+**The rule (molview.md § 9.3):** "after an edit, a request built from the viewer
+carries that edit in EVERY part of what it sends -- no piece can be older than
+another, because it all came from one read of the structure."
 
-**Source of the labels (post MolView migration):** the labels are read
-straight off the concealed MolView data model — ``molview.data.getFrozen()``
-/ ``getRegions()`` — at Generate time.  The earlier design fetched them via a
-client ``modify/structure/sidecar-labels.js`` helper at Load time and cached
-them in tab-local ``_committed*`` / ``_current*`` variables; that helper +
-those caches were removed when the tabs migrated to reading the model
-directly (the sidecar is now applied server-side by ``/api/build/load``).  The
-single read at Generate time is the ONE source of truth — no second fetch, no
-path-pointer indirection, so the bytes the user sees in the viewer travel with
-the labels the user sees in the panel.
+`exportFile()` is that one read: it returns the atoms, their positions at the
+displayed frame, the labels and the cell, assembled by the viewer.  A tab sends
+that envelope and nothing else about the structure.
 
-These tests pin the source text at the POST sites so a refactor can't quietly
-drop the keys (or reintroduce a second read path) without surfacing at CI time.
+**What these tests used to pin, and why it changed (2026-08-03).**  They
+required the body to carry `frozen_atoms:` and `regions:` keys, read from
+`getFrozen()` / `getRegions()` at emit.  That was the right INSTINCT -- the
+labels must be live, never a load-time mirror -- expressed as the wrong
+invariant.  Each tab ended up reading the model FOUR times for one request (the
+envelope, then the frozen list, then the regions, then the cell), and the server
+overwrote the envelope's copy with the later ones, so the envelope was dead
+weight and "read together" was false exactly where it is load-bearing.  Every
+read was fresh; four fresh reads are still four.
+
+So the invariant is now the stronger one: **one read, and no second copy.**  The
+anti-mirror guards below are kept unchanged -- a cached label set is still the
+failure they were written for.
+
+These are source-text tests so a refactor cannot quietly reintroduce a second
+read path without surfacing.
 """
 from __future__ import annotations
 
@@ -50,6 +55,32 @@ def _post_body_around(src: str, url_fragment: str, window: int = 6000) -> str:
     return src[start:end]
 
 
+def _assert_one_read(body: str, what: str) -> None:
+    """The body carries the viewer's own envelope, and nothing that repeats it.
+
+    `exportFile()` already holds the labels and the cell.  A body that ALSO
+    sends `frozen_atoms` / `regions` / `periodicity` read them again, at another
+    moment, from another call -- which is the failure § 9.3 names: a request
+    whose pieces are not all the same age.
+    """
+    assert "structure:" in body, (
+        f"{what} POST does not carry a `structure` at all: it must send the "
+        f"viewer's own envelope"
+    )
+    assert "exportFile" in body or "_structureForRequest" in body or "_out.structure" in body, (
+        f"{what} POST builds its structure some other way than asking the "
+        f"viewer for it -- a hand-built envelope is how the cell ended up under "
+        f"a `metadata.periodicity` key the receiver refuses"
+    )
+    for repeated in ("frozen_atoms:", "regions:", "periodicity:"):
+        assert repeated not in body, (
+            f"{what} POST sends `{repeated}` beside the envelope, which already "
+            f"carries it. That is a SECOND read of the same fact at a second "
+            f"moment -- and the server prefers the later copy, so the envelope "
+            f"stops being what is judged (molview.md § 9.3)"
+        )
+
+
 @pytest.fixture(scope="module")
 def viewer_src() -> str:
     return VIEWER_JS.read_text(encoding="utf-8")
@@ -78,20 +109,20 @@ class TestOptimizationTabContract:
     is NO ``state.*`` mirror to desync (unified-API access; the 2026-07 audit
     removed the load-time mirror this tab alone still kept)."""
 
-    def test_siesta_post_body_carries_labels_from_model(self, viewer_src):
-        body = _post_body_around(viewer_src, 'fetch("/api/build/fdf"')
-        assert "frozen_atoms:" in body and "getFrozen" in body, (
-            "SIESTA Generate POST body must carry ``frozen_atoms`` sourced from "
-            "``getFrozen()`` (read FRESH off the model, not a state.* mirror)."
-        )
-        assert "regions:" in body and "getRegions" in body, (
-            "SIESTA Generate POST body must carry ``regions`` from ``getRegions()``"
-        )
+    def test_siesta_post_body_is_one_read_of_the_viewer(self, viewer_src):
+        _assert_one_read(_post_body_around(viewer_src, 'fetch("/api/build/fdf"'),
+                         "SIESTA Generate")
 
-    def test_pyscf_post_body_carries_labels_from_model(self, viewer_src):
-        body = _post_body_around(viewer_src, 'fetch("/api/build/pyscf"')
-        assert "frozen_atoms:" in body and "getFrozen" in body
-        assert "regions:" in body and "getRegions" in body
+    def test_pyscf_post_body_is_one_read_of_the_viewer(self, viewer_src):
+        _assert_one_read(_post_body_around(viewer_src, 'fetch("/api/build/pyscf"'),
+                         "PySCF Generate")
+
+    def test_preflight_body_is_one_read_of_the_viewer(self, viewer_src):
+        """The live panel must judge the structure on screen, not a cell
+        fetched a moment after the atoms."""
+        _assert_one_read(
+            _post_body_around(viewer_src, 'fetch("/api/build/preflight"'),
+            "preflight")
 
     def test_no_stale_label_mirror(self, viewer_src):
         """The old load-time ``state.frozen_atoms`` / ``state.regions`` mirror was
@@ -115,19 +146,12 @@ class TestSpectrumTabContract:
     """lib/spectra/core.js drives /api/spectra/render, reading labels
     off molview.data at Generate time."""
 
-    def test_post_body_carries_labels_from_model(self, spectra_src):
-        """The Generate POST must carry ``frozen_atoms`` / ``regions``
-        read from the model (``getFrozen`` / ``getRegions``)."""
+    def test_post_body_is_one_read_of_the_viewer(self, spectra_src):
+        """The render POST carries the envelope and no second copy of it."""
         assert "/api/spectra/render" in spectra_src
-        # The body literal is declared far above the fetch (a multi-line
-        # ternary reads the model), so pin file-scope: the key + the model
-        # read must both exist in the module.
-        assert "frozen_atoms:" in spectra_src and "getFrozen()" in spectra_src, (
-            "spectrum tab Generate POST must carry ``frozen_atoms`` sourced "
-            "from ``getFrozen()`` per the viewer-is-truth contract.")
-        assert "regions:" in spectra_src and "getRegions()" in spectra_src, (
-            "spectrum tab Generate POST must carry ``regions`` sourced from "
-            "``getRegions()``")
+        ix = spectra_src.find("const body = {")
+        assert ix > 0, "the render body literal moved; this test cannot see it"
+        _assert_one_read(spectra_src[ix:ix + 900], "spectra render")
 
     def test_no_stale_committed_label_cache(self, spectra_src):
         """The old load-time ``_committed*`` cache was removed with the

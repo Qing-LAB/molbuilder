@@ -256,8 +256,11 @@ import { mount as mvMount, formula as mvFormula }
             const r = await fetch("/api/build/preflight", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ structure: _structureForRequest(), engine, params,
-                    periodicity: _modelPeriodicity() }),
+                /* The cell rides inside `structure`, from the same read as the
+                 * atoms -- the preflight has to judge the structure the user is
+                 * looking at, not a cell fetched a moment later. */
+                body: JSON.stringify({ structure: _structureForRequest(),
+                                       engine, params }),
             }).then(x => x.json());
             if (r.ok) renderIssues(panelId, r.issues, formContainerId);
         } catch (e) {
@@ -268,17 +271,6 @@ import { mount as mvMount, formula as mvFormula }
         }
     }
     
-    // The tab-emit contract (structure-periodicity.md §7): every render/
-    // preflight body carries the MODEL's periodicity truth, read fresh off
-    // the MolView data model at emit — never a second source (the
-    // 2026-06-14 severed-wire class).  Truth keys only; resolved_* are views.
-    function _modelPeriodicity() {
-        const d = _data();
-        const per = d ? ((d.getStructure() || {}).periodicity || null) : null;
-        if (!per) return null;
-        return { cell: per.cell || null, cell_origin: per.cell_origin || null,
-                 axis_kind: per.axis_kind || null, vacuum: per.vacuum || null };
-    }
     const refreshPreflightDebounced = {
         siesta: debounce(() => refreshPreflight("siesta"), 250),
         pyscf:  debounce(() => refreshPreflight("pyscf"),  250),
@@ -1441,23 +1433,28 @@ import { mount as mvMount, formula as mvFormula }
                     structure:      _structureForRequest(),
                     params,
                     dest_dir:       _destDir || null,
-                    // structure_path remains a back-compat fallback
-                    // for the server (kicks in when frozen_atoms /
-                    // regions keys aren't sent).  In-body labels
-                    // below are the authoritative source under the
-                    // 2026-06-14 viewer-is-truth contract.
+                    /* `structure_path` says WHERE THE FILE LIVES -- it anchors the
+                     * dest dir and pseudopotential resolution.  It is not a second
+                     * source for the structure: no sidecar is read for an emitted
+                     * deck. */
                     structure_path: _structPath || null,
-                    // In-body labels (viewer-is-truth contract):
-                    // the server consumes these directly and skips
-                    // sidecar re-read when the keys are present
-                    // (even when empty).  See _shared.apply_labels_
-                    // to_struct docstring.  Read FRESH off the model
-                    // at emit (unified API, getFrozen/getRegions) --
-                    // never a state.* mirror that could desync from
-                    // the live labels (matches the spectra tab).
-                    frozen_atoms: (_data() && _data().getFrozen) ? _data().getFrozen() : [],
-                    periodicity: _modelPeriodicity(),
-                    regions:      (_data() && _data().getRegions) ? _data().getRegions() : {},
+                    /* THE LABELS AND THE CELL ARE ALREADY IN `structure`, and
+                     * they are not sent again.
+                     *
+                     * `exportFile()` returns the atoms, their positions at the
+                     * displayed frame, the labels and the cell -- assembled by
+                     * the viewer in ONE read (molview.md § 9.3: "the facts a
+                     * request carries were read together; no piece can be older
+                     * than another").
+                     *
+                     * This body used to carry all of it TWICE MORE, from two
+                     * further reads: `frozen_atoms` and `regions` off
+                     * `getFrozen`/`getRegions`, and the cell off a third call.
+                     * Four reads at four moments -- and the server overwrote the
+                     * envelope's copy with the later ones, so the envelope was
+                     * dead weight and "read together" was false in the one place
+                     * it is load-bearing.  Each read WAS fresh; that was never
+                     * the problem.  Four fresh reads are still four. */
                 }),
                 signal: _signal,
             }).then(x => x.json());
@@ -1875,15 +1872,28 @@ import { mount as mvMount, formula as mvFormula }
                 body: JSON.stringify({
                     structure:      _structureForRequest(),
                     params,
-                    // structure_path: back-compat fallback when
-                    // in-body labels aren't present.
+                    /* `structure_path` says WHERE THE FILE LIVES -- it anchors the
+                     * dest dir and pseudopotential resolution.  It is not a second
+                     * source for the structure: no sidecar is read for an emitted
+                     * deck. */
                     structure_path: _structPathPy || null,
-                    // In-body labels (viewer-is-truth contract), read
-                    // FRESH off the model at emit (unified API) -- not a
-                    // state.* mirror.  Server prefers these over sidecar.
-                    frozen_atoms: (_data() && _data().getFrozen) ? _data().getFrozen() : [],
-                    periodicity: _modelPeriodicity(),
-                    regions:      (_data() && _data().getRegions) ? _data().getRegions() : {},
+                    /* THE LABELS AND THE CELL ARE ALREADY IN `structure`, and
+                     * they are not sent again.
+                     *
+                     * `exportFile()` returns the atoms, their positions at the
+                     * displayed frame, the labels and the cell -- assembled by
+                     * the viewer in ONE read (molview.md § 9.3: "the facts a
+                     * request carries were read together; no piece can be older
+                     * than another").
+                     *
+                     * This body used to carry all of it TWICE MORE, from two
+                     * further reads: `frozen_atoms` and `regions` off
+                     * `getFrozen`/`getRegions`, and the cell off a third call.
+                     * Four reads at four moments -- and the server overwrote the
+                     * envelope's copy with the later ones, so the envelope was
+                     * dead weight and "read together" was false in the one place
+                     * it is load-bearing.  Each read WAS fresh; that was never
+                     * the problem.  Four fresh reads are still four. */
                 }),
                 signal: _signalPy,
             }).then(x => x.json());

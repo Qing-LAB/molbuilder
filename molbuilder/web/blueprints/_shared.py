@@ -1350,9 +1350,9 @@ def apply_labels_to_struct(struct, body):
         # read my sidecar" and refuses a great many legitimate callers.
         #
         # Loudness belongs on the side that can actually guarantee it: F1 --
-        # ``molview.data.factsForRequest()`` assembles coordinates, labels and
-        # periodicity together, so a tab cannot send a partial set, and that is
-        # pinned by tests.  What used to be a disk read is now simply absent.
+        # ``molview.data.exportFile()`` assembles coordinates, labels and
+        # periodicity together, in one read, so a tab can neither send a partial
+        # set nor send the same facts twice; that is pinned by tests.  What used to be a disk read is now simply absent.
         return None
 
     # In-body branch: the client claims authority over the labels.

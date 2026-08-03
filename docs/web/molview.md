@@ -1514,7 +1514,7 @@ rather than maintained separately.
 | Get the cell | `getUnitCellInfo` — the cell as it will actually be used, with the defaults filled in for whatever the structure left unsaid, so it always has an answer. Those filled-in values are **the server's own**: it sends them beside the raw ones, and this reads them rather than working anything out (§ 6.2 — MolView interprets none of it) | `getUnitCell` (the raw 3×3 or `null`), `getUnitCellOrigin`, `getAxisKind`, `getVacuum` — **what the structure actually says**, `null` where it says nothing | — |
 | Get one frame's coordinates | `getFrameAllAtoms(i)` — **every** atom, original order, before isolate cuts anything down | | — |
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
-| Get the structure out, to hand to a door | `exportFile(range)` — the structure over a range of frames, plus the name it came in under (§ 11.7). The range defaults to the displayed frame | | — |
+| **Build a request from the structure** — anything the server must check, generate from, or write | `exportFile(range)` — the structure **in the server's words**, over a range of frames, plus the name it came in under (§ 11.7). The range defaults to **the frame on screen**. This is what a request body carries; a tab never assembles one (§ 9.3a) | | — |
 | Hear that the structure changed | `subscribe(fn)` — the structure only; the frame has its own channel | | — |
 | Reach the selection / the drawing settings | `selection` (§ 9.5) · `view` (§ 9.6) | | — |
 | Put a structure in | `installMolecule(input)` | | **yes** |
@@ -1640,40 +1640,98 @@ restate it, and there is no rival: reading coordinates back out of the drawing
 would give the isolated subset under its own renumbering, which is a different
 thing and one MolView does not offer.
 
-**Why there is no separate door for "the facts a request carries".**
+### 9.3a Handing the structure to the server
 
-A request that asks the server to check a structure, or to generate a calculation
-input from it, carries the coordinates, the labels, which atoms are held still, and
-the cell. **Every one of those is part of the structure**, so one read of the
-structure already holds them. There is nothing a request needs that
-`getStructure()` does not have.
+Everything the server is ever asked about a structure — check this, generate an
+input from it, write it to a file — needs the same four things: the coordinates,
+the labels, which atoms are held still, and the cell. **All four are part of the
+structure**, so one read holds them all.
 
-A second door for it would therefore not be a second *need*. It would be a second
-*shape* — the same facts renamed and regrouped for the wire. Shaping a payload is a
-translation, and this module already has exactly one place for translations: the
-place that turns the server's names into this module's names when a structure comes
-in (§ 11.1). Outbound is the same job facing the other way, and it belongs in the
-same place.
+**Two doors, and they answer two different questions.**
 
-The property worth protecting survives, and is stronger this way: **the facts that
-leave together were read together.** That is not something a special door provides
-— it is what one read returning the whole structure means. It matters because it
-went wrong once: a tab read the labels and the cell fresh as it sent a request,
-while the coordinates came from a copy it had taken when the page loaded. The
-request carried current labels with stale positions, and the server judged a
-structure that was not the one on screen. A single read of the whole structure
-makes that set impossible to assemble.
+| You want… | Ask | You get |
+|---|---|---|
+| to **look at** the structure — how many atoms, what is labelled, is there a cell, how many frames | `getStructure()` | the master copy whole, **in this module's words**: `{elements, annotations, periodicity, frames, forcesPerFrame}` — *every* frame |
+| to **send** the structure to the server | `exportFile(range)` | the same facts **in the server's words**, for **one frame** (the one on screen, unless a range says otherwise), plus the name it came in under |
 
-With nothing loaded, a read returns **nothing** rather than an empty structure.
+**A tab never converts between them.** The renaming is a translation, and this
+module has exactly one place for translations — the place that turns the
+server's names into this module's names when a structure comes in (§ 11.1).
+Outbound is the same job facing the other way and lives there too. A tab that
+did it itself would be a second translator, and the two would drift.
+
+#### What that looks like — one worked case
+
+A user opens a 40-frame optimisation, scrubs to **frame 12**, tags four atoms
+`frozen_atoms`, sets a 10 Å cubic cell on the Cell page, and presses **Generate
+FDF**.
+
+```
+the tab does exactly this:
+
+    const out = viewer.data.exportFile();        // ONE read
+    POST /api/build/fdf  { structure: out.structure, params }
+```
+
+and `out.structure` is:
+
+```
+{ elements:  ["Au", "Au", "S", …],          ← the atoms
+  positions: [[x,y,z], …],                  ← FRAME 12 ONLY, not all forty
+  metadata: {
+    regions:     { frozen_atoms: [3,4,5,6],   ← the labels, grouped by name
+                   L-electrode:  [0,1] },
+    cell:        [[10,0,0],[0,10,0],[0,0,10]],
+    cell_origin: null,
+    axis_kind:   null,
+    vacuum:      null } }
+```
+
+Three things happened in that one call, and each is a translation a tab must not
+be doing:
+
+1. **Forty frames became one.** A request is about the structure the user is
+   looking at. `getStructure()` would have handed over all forty and left the
+   tab to pick — and picking is where "the request judged a structure that was
+   not the one on screen" comes from.
+2. **Per-atom facts became per-label lists.** The viewer holds annotations atom
+   by atom; the server's `regions` is the inverse map. Same information, other
+   direction.
+3. **The cell block was renamed.** `periodicity` is this module's word;
+   `metadata.cell` / `cell_origin` / `axis_kind` / `vacuum` are the server's,
+   flat and unnested.
+
+**The nesting is not decoration.** A hand-built body once sent the cell as
+`metadata: {periodicity: …}` — a key the envelope does not define. The receiver
+refuses a key it does not know rather than ignoring it, so the whole request was
+rejected, on every Generate, until somebody drove the page.
+
+#### The property this protects
+
+**The facts that leave together were read together.** It is not something a
+special door provides — it is what one read means. It went wrong once: a tab
+read the labels and the cell fresh as it sent a request, while the coordinates
+came from a copy taken when the page loaded. The request carried current labels
+with stale positions, and the server judged a structure that was not the one on
+screen.
+
+And a second read is no better for being fresh. A body that carries the envelope
+*and* `frozen_atoms` *and* `regions` *and* `periodicity` beside it has read the
+same facts four times at four moments — every one of them current, none of them
+together. Pinned by `tests/test_in_body_labels_contract.py`, which fails on a
+request body carrying any of those keys next to the structure.
+
+**With nothing loaded, a read returns nothing** rather than an empty structure.
 "There is nothing here" and "here is a structure with no atoms" are different
-answers, and a caller has to be able to tell them apart.
+answers, and a caller has to be able to tell them apart — `exportFile` answers
+`null`, and so does `getStructure`.
 
-**This is true of the code today**, and it was the last thing about this section
-that was not. There is no second door: `getStructure()` returns the whole master
-copy and the outbound shaping happens in the one place translations happen
-(§ 11.1). Note that the guarantee lives in the *shape of the read*, not in a
-caller's discipline — a read that returned three of the five fields would put the
-second read back, whatever the rule said.
+**There is still no `factsForRequest()` door, and there should not be.** That
+was a proposed *third* entry point whose only job was to reshape what the other
+two already hold — a second shape, not a second need. `exportFile` is not that:
+it is the one way the structure leaves this module, whether the destination is a
+calculation door, a validator, or a file (§ 11.7 — it returns data, never bytes,
+because a coordinate document is a format the server owns).
 
 > [`science/validation.md`](?doc=science/validation.md) § 4.1 still states this
 > obligation in terms of a `factsForRequest()` door that no longer exists. That

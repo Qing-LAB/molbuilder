@@ -758,15 +758,17 @@
          * not know refuses the whole body with it. */
         const _out = _viewer ? _viewer.data.exportFile() : null;
         if (!_out || !_out.structure) return null;
+        /* THE LABELS AND THE CELL ARE ALREADY IN `structure`.  `exportFile()`
+         * assembles the atoms, the positions at the displayed frame, the labels
+         * and the cell in ONE read -- which is the whole of § 9.3's "the facts a
+         * request carries were read together".
+         *
+         * They were sent again beside it, off two more calls: three reads at
+         * three moments for one set of facts, and the server overwrote the
+         * envelope's copy with the later ones. */
         const body = {
             structure: _out.structure,
-            params:      collectParams(),
-            // viewer-is-truth: ship the model's labels directly.  Server applies them
-            // verbatim; only when ABSENT does it fall back to disk sidecar discovery
-            // against ``structure_path`` (_shared.apply_labels_to_struct).
-            periodicity:  structure.periodicity || null,   // tab-emit contract (§7)
-            frozen_atoms: (_viewer && _viewer.data.getFrozen()) || [],
-            regions:      (_viewer && _viewer.data.getRegions()) || {},
+            params:    collectParams(),
         };
         // Pass the current sidebar XYZ path (if any) so the server
         // can apply the .molstruct.json sidecar to the structure
