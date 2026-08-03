@@ -54,26 +54,43 @@
 export const FROZEN_LABEL = "frozen_atoms";
 
 
-/* THE NAMES OFFERED BEFORE ANYONE HAS USED THEM.
+/* THE NAMES OFFERED BEFORE ANYONE HAS USED THEM — MolView's own list.
  *
- * A predefined label is a SPELLING, not a meaning. MolView assigns none of
- * them and interprets none of them (§ 6.6) — it only stops the user retyping
- * the five names nearly every device structure uses, because a retyped name is
+ * A predefined label is a SPELLING, not a meaning. It saves the user retyping
+ * the four names nearly every device structure uses, because a retyped name is
  * where `L-electrode` and `L-Electrode` become two regions that look like one.
+ * They are conveniences — commonest in SIESTA today, and the same idea will fit
+ * whatever engine comes next. MolView assigns none of them and reads meaning
+ * into none of them; each is a name sitting ready to be used.
  *
- * They are offered wherever a label is chosen, alongside whatever the loaded
- * structure already carries, and a user is free to define any other name.
+ * ONLY `frozen_atoms` IS DIFFERENT, and it is different because something
+ * downstream acts on it: the atoms wearing it are held still by the
+ * calculation. That is the one a user is owed a warning about before tagging
+ * atoms with it by accident, and it is why it is `tone: "warn"` below while the
+ * others are just told apart from each other.
  *
- * `frozen_atoms` is here as the CONSTANT, never as a second literal: § 6.6 buys
- * a reserved meaning with one name and one accessor, and this file is where the
- * name is spelled. */
+ * WHY THE LIST LIVES HERE AND NOT IN THE TABS (user decision, 2026-08-03).
+ * It was a mount option, so each page would have had to hand in the same four
+ * names — five copies of one list, drifting. Only the module's own demo page
+ * ever did, which is why every label chip on every real tab came out the same
+ * colour. These are MolView's conveniences, so MolView keeps them.
+ *
+ * `frozen_atoms` appears here as the CONSTANT, never as a second literal: the
+ * reserved meaning costs one name and one accessor, and that name is spelled
+ * once, above. */
 export const PREDEFINED_LABELS = [
-    "L-electrode",
-    "R-electrode",
-    "bridge",
-    "interface",
-    FROZEN_LABEL,
+    { name: "L-electrode", tone: 1, description: "the left semi-infinite lead" },
+    { name: "R-electrode", tone: 2, description: "the right semi-infinite lead" },
+    { name: "bridge",      tone: 3,
+      description: "the scattering region between the leads" },
+    { name: "interface",   tone: 4,
+      description: "contact atoms inside the bridge" },
+    { name: FROZEN_LABEL,  tone: "warn",
+      description: "these atoms are held still by the calculation" },
 ];
+
+/* Just the names, in order — what every chooser offers. */
+export const PREDEFINED_LABEL_NAMES = PREDEFINED_LABELS.map((e) => e.name);
 
 /**
  * The server's structure payload, in the shapes of § 6.2.

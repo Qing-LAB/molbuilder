@@ -63,11 +63,15 @@ const FOLD   = "molviewer-panel-fold-btn";
  *                   therefore everything in it (§ 5.6); `mode: "readonly"`
  *                   freezes the master copy (§ 9.4); `files` is the door bytes
  *                   leave through (§ 6.7), handed in the same way the workspace
- *                   is, because MolView never reaches a file itself;
- *                   `reservedLabels` is the list of § 6.6's reserved names
- *                   — `[{name, description, tone?}]` — handed in the same
- *                   way, because the viewer holds no such list of its own
- *                   and knowing a name is reserved is not interpreting it.
+ *                   is, because MolView never reaches a file itself.
+ *
+ *                   There is no `reservedLabels` here any more. The names
+ *                   MolView offers before anyone has used them are MolView's
+ *                   own (model-jobs.js): they are conveniences, and asking five
+ *                   pages to hand in the same four names meant five copies of
+ *                   one list — of which only the demo page ever passed it, so
+ *                   every label chip on every real page came out the same
+ *                   colour.
  */
 export async function mount(hostEl, workspace, opts) {
     opts = opts || {};
@@ -262,8 +266,7 @@ export async function mount(hostEl, workspace, opts) {
      * for the frame and its range, the handle for playback — because those are
      * two different owners and it reads each from where it lives.
      */
-    const controls = mountControls(card, model, handle, opts.files,
-                                   opts.reservedLabels);
+    const controls = mountControls(card, model, handle, opts.files);
     parts.push(() => controls.dispose());
 
     return handle;

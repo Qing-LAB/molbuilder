@@ -1260,77 +1260,66 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
     )
 
 
-def test_a_reserved_label_reads_differently_and_so_does_each_of_them():
-    """§ 6.6: a reserved label is "stored, filtered and displayed exactly like
-    any other label", and the only difference is that something downstream knows
-    what it means — which a user is owed before they tag atoms with one by
-    accident. "Knowing a name is reserved is not interpreting it."
+def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out():
+    """MolView offers four names before anyone has used them — `L-electrode`,
+    `R-electrode`, `bridge`, `interface` — because nearly every device structure
+    needs them and typing one by hand is where `L-Electrode` comes from. They
+    are SPELLINGS: MolView reads no meaning into any of them.
 
-    So the chip reads differently from an ordinary label, and each reserved one
-    reads differently from the others: `frozen_atoms` and `L-electrode` do very
-    different things to a calculation, and one shared "reserved" colour would say
-    only that they are both special.
+    Each wears its own colour for one reason: so you can tell them apart on a
+    crowded atom list.
 
-    WHICH names are reserved is not the viewer's (§ 6.6: "nothing in the
-    viewer"), so the list is handed in at mount like the workspace and the files
-    door. With no list, every label is ordinary — the honest answer, because the
-    viewer genuinely does not know.
+    `frozen_atoms` IS DIFFERENT, and looks it. The calculation acts on it — the
+    atoms wearing it are held still — so it is the one a user is owed a warning
+    about before tagging atoms with it by accident. "This changes your run" and
+    "this is a name I picked" must not look the same.
+
+    THE LIST IS MOLVIEW'S OWN (user decision, 2026-08-03). It was handed in at
+    mount, so five pages would each have had to repeat the same four names —
+    and only the module's demo page ever did, which is why every chip on every
+    real page came out the same colour.
     """
     out = _run(
         """
-        const atoms = [
+        globalThis.__nextAtoms = [
             { index: 0, element: "C", x: 0, y: 0, z: 0,
-              regions: ["frozen_atoms", "L-electrode", "my-notes"] },
+              regions: ["frozen_atoms", "L-electrode", "bridge", "my-notes"] },
             { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
         ];
-        const chips = (card) => card.querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag")
+        const m = await mounted();
+        await m.viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const chips = m.host.querySelector(".molviewer-card")
+            .querySelectorAll(".molviewer-atoms-column-labels .molviewer-selection-tag")
             .map(t => ({ name: t.children[0].textContent,
                          classes: Array.from(t._classes).sort().join(" "),
                          title: t.title || null }));
-
-        // TOLD which names are reserved.
-        globalThis.__nextAtoms = atoms;
-        const told = await mounted({ mount: { reservedLabels: [
-            { name: "frozen_atoms", description: "held still by the calculation" },
-            { name: "L-electrode",  description: "the left lead" },
-        ] } });
-        await told.viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
-        const withList = chips(told.host.querySelector(".molviewer-card"));
-
-        // TOLD NOTHING: every label is an ordinary one.
-        globalThis.__nextAtoms = atoms;
-        const untold = await mounted();
-        await untold.viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
-        const withoutList = chips(untold.host.querySelector(".molviewer-card"));
-
-        console.log(JSON.stringify({ withList, withoutList }));
+        console.log(JSON.stringify({ chips }));
         """
     )
-    told = {c["name"]: c for c in out["withList"]}
-    assert set(told) == {"frozen_atoms", "L-electrode", "my-notes"}, (
-        "every label the atom carries must show, reserved or not (§ 6.6)"
+    chip = {c["name"]: c for c in out["chips"]}
+    assert set(chip) == {"frozen_atoms", "L-electrode", "bridge", "my-notes"}, (
+        "every label the atom carries must show, offered by MolView or not"
     )
-    assert "molviewer-label-region" in told["my-notes"]["classes"], (
-        "a label nobody reserved must read as an ordinary one"
+    assert "molviewer-label-region" in chip["my-notes"]["classes"], (
+        "a name the user invented must read as an ordinary label"
     )
-    for name in ("frozen_atoms", "L-electrode"):
-        assert "molviewer-label-reserved" in told[name]["classes"], (
-            f"{name} is reserved and must not read as an ordinary label"
+    for name in ("L-electrode", "bridge", "frozen_atoms"):
+        assert "molviewer-label-region" not in chip[name]["classes"], (
+            f"{name} is one of the names MolView offers and reads as an "
+            f"ordinary label — which is what it looked like when nobody handed "
+            f"the list in: every chip the same colour"
         )
-        assert "molviewer-label-region" not in told[name]["classes"]
-    assert told["frozen_atoms"]["classes"] != told["L-electrode"]["classes"], (
-        "the two reserved labels read identically, so the chip says only that "
-        "they are both special — and they do very different things"
+    assert chip["L-electrode"]["classes"] != chip["bridge"]["classes"], (
+        "two of the offered names look identical, so the colour says only that "
+        "they came from the list — the point is telling them apart"
     )
-    assert "held still" in (told["frozen_atoms"]["title"] or ""), (
-        "the chip must carry what the list says the name does, so a user can "
-        "find out without leaving the panel"
+    assert "molviewer-label-frozen" in chip["frozen_atoms"]["classes"], (
+        "frozen_atoms is the one the calculation acts on and must not look like "
+        f"the conveniences beside it: {chip['frozen_atoms']['classes']}"
     )
-    # And with no list handed in, the viewer does not pretend to know.
-    untold = {c["name"]: c for c in out["withoutList"]}
-    assert all("molviewer-label-region" in c["classes"] for c in untold.values()), (
-        "the viewer marked a label reserved without being told which are — it "
-        f"is holding a list of its own (§ 6.6): {out['withoutList']}"
+    assert "held still" in (chip["frozen_atoms"]["title"] or ""), (
+        "the chip must say what the name does, so a user can find out without "
+        "leaving the panel"
     )
 
 
@@ -1527,10 +1516,17 @@ def test_by_label_offers_the_defined_names_and_nothing_else():
         // A fresh row is `by_element`: typed, not chosen.
         const asElement = valueOf().tagName;
 
+        // Type an atom range FIRST, then re-kind: the value must not follow.
+        const typed = valueOf();
+        typed.value = "3-7";
+        typed.dispatch("input", { target: typed });
+
         kindOf().value = "by_label";
         kindOf().dispatch("change", { target: kindOf() });
         const asLabel = valueOf().tagName;
         const offered = valueOf().children.map(o => o.value);
+        const shownAfterReKind = valueOf().value;
+        const storedAfterReKind = viewer.data.selection.getState().filters[0].value;
 
         // Choosing one reaches the store like any other row edit.
         const box = valueOf();
@@ -1545,6 +1541,7 @@ def test_by_label_offers_the_defined_names_and_nothing_else():
 
         console.log(JSON.stringify({
             asElement, asLabel, backToTyped, offered, stored,
+            shownAfterReKind, storedAfterReKind,
         }));
         """
     )
@@ -1559,9 +1556,27 @@ def test_by_label_offers_the_defined_names_and_nothing_else():
         "re-kinding back to a typed rule must swap the control back — a chooser "
         f"left behind is a rule the user cannot express: {out['backToTyped']}"
     )
-    assert out["offered"][:5] == ["L-electrode", "R-electrode", "bridge",
-                                  "interface", "frozen_atoms"], (
-        f"the five predefined names are offered first: {out['offered']}"
+    assert out["storedAfterReKind"] == "", (
+        f"the atom range survived the change of rule: "
+        f"{out['storedAfterReKind']!r}. A value belongs to its kind — \"3-7\" "
+        f"is not a label, and carrying it across left the row saying something "
+        f"its new rule cannot mean"
+    )
+    assert out["shownAfterReKind"] == "", (
+        f"the chooser opened on something instead of nothing: "
+        f"{out['shownAfterReKind']!r}"
+    )
+    assert out["offered"][0] == "", (
+        f"a row nobody has filled in must say so, not pick the first label on "
+        f"the user's behalf: {out['offered']}"
+    )
+    assert "3-7" not in out["offered"], (
+        f"the leftover atom range was offered as though somebody had defined a "
+        f"label called it: {out['offered']}"
+    )
+    assert out["offered"][1:6] == ["L-electrode", "R-electrode", "bridge",
+                                   "interface", "frozen_atoms"], (
+        f"the five names MolView offers come first: {out['offered']}"
     )
     assert "custom-tag" in out["offered"], (
         "a label the structure carries must be offered beside the predefined "

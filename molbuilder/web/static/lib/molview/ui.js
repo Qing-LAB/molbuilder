@@ -20,7 +20,8 @@
 "use strict";
 
 import { toDisplay } from "./_atom.js";
-import { PREDEFINED_LABELS } from "./model-jobs.js";
+import { FROZEN_LABEL, PREDEFINED_LABELS, PREDEFINED_LABEL_NAMES }
+    from "./model-jobs.js";
 
 
 /**
@@ -32,27 +33,28 @@ import { PREDEFINED_LABELS } from "./model-jobs.js";
  * @param files   the door bytes leave through (§ 6.7, § 8) — `save(destination,
  *                filename, contents)`. MolView never reaches a file itself.
  */
-/* THE TONES A RESERVED LABEL CAN WEAR. Written out rather than composed, so the
- * class an element gets is a string that appears in this file — which is what
- * lets "every class the module writes is one the stylesheet defines" be checked
- * at all. The stylesheet owns what each one looks like; this owns only how many
- * there are. */
-const RESERVED_TONES = [
-    "molviewer-label-reserved--1", "molviewer-label-reserved--2", "molviewer-label-reserved--3",
-    "molviewer-label-reserved--4", "molviewer-label-reserved--5",
-];
+/* THE CLASS EACH PREDEFINED NAME WEARS. Written out rather than composed, so
+ * the class an element gets is a string that appears in this file — which is
+ * what lets "every class the module writes is one the stylesheet defines" be
+ * checked at all. The stylesheet owns what each one looks like; the list in
+ * model-jobs.js owns which name wears which. */
+const TONE_CLASS = {
+    1:      "molviewer-label-predefined--1",
+    2:      "molviewer-label-predefined--2",
+    3:      "molviewer-label-predefined--3",
+    4:      "molviewer-label-predefined--4",
+    // The one that means something: `frozen_atoms` changes the calculation.
+    warn:   "molviewer-label-frozen",
+};
 
 /**
  * Draw and wire every control, and return one teardown for all of them.
  *
- * @param reserved  the reserved-label list (§ 6.6), handed in like every other
- *                  door: `[{name, description, tone?}]`. MolView holds no such
- *                  list of its own — "adding a reserved meaning touches that
- *                  list and its translator and nothing else, and nothing in the
- *                  viewer" — and KNOWING a name is reserved is not interpreting
- *                  it. With no list handed in, every label is an ordinary one,
- *                  which is the honest answer: the viewer genuinely does not
- *                  know.
+ * The names MolView offers before anyone has used them are its own
+ * (`PREDEFINED_LABELS`, model-jobs.js). They are conveniences — spellings, so a
+ * user does not retype `L-electrode` as `L-Electrode` — and MolView reads
+ * meaning into none of them. The single exception is `frozen_atoms`, which the
+ * calculation acts on, and it looks different for that reason.
  */
 /* The playback-speed bounds the contract fixes (§ 1.1): milliseconds per frame,
  * 20 to 3000, defaulting to 150.
@@ -68,7 +70,7 @@ export const SPEED_MAX_MS = 3000;
 export const SPEED_DEFAULT_MS = 150;
 
 
-export function mountControls(card, model, handle, files, reserved) {
+export function mountControls(card, model, handle, files) {
     const doc = card.root.ownerDocument;
     const off = [];
 
@@ -87,7 +89,7 @@ export function mountControls(card, model, handle, files, reserved) {
     const readout = mountReadout(doc, card, model);
     off.push(readout.dispose);
 
-    const panel = mountPanel(doc, card, model, reserved);
+    const panel = mountPanel(doc, card, model);
     off.push(panel.dispose);
 
     return {
@@ -920,19 +922,21 @@ function angle(a, vertex, c) {
  * The class names are the carried stylesheet's, so this function does not get to
  * choose them.
  */
-function mountPanel(doc, card, model, reserved) {
-    /* WHICH NAMES ARE RESERVED, and what each one wears. Read once from the list
-     * handed in; the viewer keeps no list of its own (§ 6.6). A tone the entry
-     * does not name falls to its place in the list, so a caller supplying only
-     * names still gets each of them looking different from the others. */
-    const reservedTone = new Map();
-    const reservedNote = new Map();
-    (Array.isArray(reserved) ? reserved : []).forEach((entry, at) => {
-        if (!entry || !entry.name) return;
-        const tone = RESERVED_TONES.indexOf(entry.tone) >= 0
-            ? entry.tone : RESERVED_TONES[at % RESERVED_TONES.length];
-        reservedTone.set(entry.name, tone);
-        if (entry.description) reservedNote.set(entry.name, entry.description);
+function mountPanel(doc, card, model) {
+    /* WHAT EACH PREDEFINED NAME WEARS, and what it says on hover. Read once
+     * from MolView's own list (model-jobs.js).
+     *
+     * IT USED TO BE HANDED IN AT MOUNT, and that is why every chip on every real
+     * page came out the same colour: the option existed, the tones existed, and
+     * only the module's own demo page ever passed the list. Five pages would
+     * have had to repeat the same four names — five copies of one list, drifting
+     * apart. They are MolView's conveniences, so MolView keeps them. */
+    const labelTone = new Map();
+    const labelNote = new Map();
+    PREDEFINED_LABELS.forEach((entry) => {
+        const cls = TONE_CLASS[entry.tone];
+        if (cls) labelTone.set(entry.name, cls);
+        if (entry.description) labelNote.set(entry.name, entry.description);
     });
 
     const el = (tag, className) => {
@@ -1338,8 +1342,8 @@ function mountPanel(doc, card, model, reserved) {
      * predefined names are added to that reading, never instead of it. */
     const knownLabels = () => {
         const carried = Object.keys(model.getRegions() || {}).sort();
-        return PREDEFINED_LABELS.concat(
-            carried.filter((name) => PREDEFINED_LABELS.indexOf(name) < 0));
+        return PREDEFINED_LABEL_NAMES.concat(
+            carried.filter((name) => PREDEFINED_LABEL_NAMES.indexOf(name) < 0));
     };
 
     let renderedTargets = null;   // the last list of names drawn
@@ -1484,12 +1488,16 @@ function mountPanel(doc, card, model, reserved) {
          *
          * The description rides on the chip, which is as far as the viewer goes:
          * it CARRIES what the list says and acts on none of it. */
-        const tone = reservedTone.get(name);
+        const tone = labelTone.get(name);
         const tag = el("span", tone
-            ? "molviewer-selection-tag molviewer-label-reserved " + tone
+            ? "molviewer-selection-tag " + tone
             : "molviewer-selection-tag molviewer-label-region");
-        const note = reservedNote.get(name);
-        if (note) tag.title = name + " — reserved: " + note;
+        const note = labelNote.get(name);
+        if (note) {
+            tag.title = name === FROZEN_LABEL
+                ? name + " — " + note
+                : name + " — a name MolView offers: " + note;
+        }
         const text = el("span");
         text.textContent = name;
         tag.appendChild(text);
@@ -1645,6 +1653,18 @@ function mountPanel(doc, card, model, reserved) {
             let value;
             if (filter.kind === "by_label") {
                 value = el("select", "molviewer-filter-text");
+                /* A ROW THAT HAS NOT BEEN FILLED IN SAYS SO. A fresh row -- and
+                 * a row just switched to this kind -- holds no value, and a rule
+                 * with no value is skipped, exactly like an empty text box on
+                 * the other three kinds. Selecting the first label instead would
+                 * make a choice on the user's behalf and show a filter that is
+                 * not the one being applied. */
+                if (!filter.value) {
+                    const unset = doc.createElement("option");
+                    unset.value = "";
+                    unset.textContent = "Choose a label…";
+                    value.appendChild(unset);
+                }
                 for (const name of knownLabels()) {
                     const option = doc.createElement("option");
                     option.value = name;
@@ -1660,7 +1680,7 @@ function mountPanel(doc, card, model, reserved) {
                     stale.textContent = filter.value;
                     value.appendChild(stale);
                 }
-                value.value = filter.value || knownLabels()[0];
+                value.value = filter.value || "";
                 value.addEventListener("change", (e) => {
                     model.selection.updateFilter(at, { value: e.target.value });
                 });

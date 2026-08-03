@@ -685,13 +685,33 @@ name".
 **The viewer does hold the SPELLINGS, and only the spellings.** Five names are
 offered before anyone has used them — `L-electrode`, `R-electrode`, `bridge`,
 `interface`, `frozen_atoms` — as `PREDEFINED_LABELS` in `model-jobs.js`, beside
-`FROZEN_LABEL` and built from it rather than repeating it.
+`FROZEN_LABEL` and built from it rather than repeating it. **The list is
+MolView's own, and each entry carries the colour its chip wears and the sentence
+it shows on hover.**
+
+> **This was a mount option once, and it cost the feature.** Each page was to
+> hand in `reservedLabels: [{name, description, tone?}]`, on the reasoning that
+> knowing which names are special is the host's business. Five pages then had to
+> repeat the same four names — five copies of one list — and only the module's
+> own demo page ever did. So on every page a user actually works in, every chip
+> came out the same neutral colour and the tones sat unused in the stylesheet,
+> for as long as they existed. **Decided 2026-08-03: the spellings are
+> conveniences, so the module that offers them keeps them.**
 
 That is not the module acquiring a meaning. A predefined name is a **spelling**:
 it exists so that the five names nearly every device structure needs are picked
 rather than typed, because a retyped name is how `L-electrode` and `L-Electrode`
 become two regions that look like one. MolView still assigns none of them,
 interprets none of them, and treats a user's own name identically.
+
+**What the colours say, and what they do not.** Four of the five —
+`L-electrode`, `R-electrode`, `bridge`, `interface` — each wear a different tone
+for one reason: so they can be told apart on a crowded atom list. That is a
+reading aid, not a meaning. **`frozen_atoms` is the exception and looks it**: the
+calculation acts on it, so it wears the tone a warning wears here, and a user is
+told what it does before tagging atoms with it by accident. *"This changes your
+run"* and *"this is a name I picked"* must not look the same. A name the user
+invented reads as an ordinary label, which is what it is.
 
 **Where a label can be chosen, the choice is the same list.** The predefined
 names first, in the order the device reads; then whatever the loaded structure
@@ -706,6 +726,16 @@ and a user wondering why. `by element`, `by atom index` and `by residue` stay
 typed: a symbol, a range and a residue name are written, not picked. A row still
 carrying a name that has since gone keeps showing it rather than silently
 becoming the first option — the rule is still what the row says it is.
+
+**A row's value belongs to its kind.** Change a row from `by atom index` to
+`by label` and what was typed does not come with it: `3-7` is a range of atoms,
+not a label, and a rule that kept it would be saying something it cannot mean.
+The row comes back empty — a chooser that has not been filled in says *choose a
+label* rather than picking the first one on the user's behalf, exactly as an
+empty text box says nothing on the other three rules, and a rule with no value
+is skipped. This went wrong the obvious way: the typed `3-7` was carried across,
+and since the chooser must show whatever the row holds, it appeared **in the
+list of labels** as though somebody had defined one.
 
 **Typing a reserved name is allowed, and the viewer says so.** A user can type
 any label they like, including a reserved one. Nothing refuses it — refusing

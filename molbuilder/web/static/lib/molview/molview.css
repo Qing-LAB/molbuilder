@@ -1113,53 +1113,54 @@
     border: 1px solid var(--molviewer-color-include-bg);
 }
 /* ====================================================================
- * RESERVED LABELS.
+ * THE NAMES MOLVIEW OFFERS BEFORE ANYONE HAS USED THEM.
  *
- * A reserved label is stored, filtered and applied exactly like any
- * other (molview.md § 6.6) — the ONLY difference is that something
- * downstream knows what it means, and a user is owed that warning
- * before they tag atoms with one by accident.  So it reads differently
- * from an ordinary label, and each one reads differently from the
- * others: `frozen_atoms` and `L-electrode` do very different things to
- * a calculation, and a single "reserved" colour would say only that
- * they are both special.
+ * Four of them are conveniences — `L-electrode`, `R-electrode`, `bridge`,
+ * `interface` — the spellings nearly every device structure uses.  They mean
+ * nothing to MolView and nothing to the calculation by themselves; they exist
+ * so a user does not retype `L-electrode` as `L-Electrode` and end up with two
+ * regions that look like one.  Each wears its own tone for one reason only: so
+ * you can tell them apart at a glance on a crowded atom list.
  *
- * WHICH names are reserved is NOT decided here and not in the module
- * (§ 6.6) — the viewer is handed the list.  This stylesheet owns only
- * what a reserved chip LOOKS like, in numbered tone slots, so adding a
- * reserved meaning is an entry in that list and nothing else.
+ * `frozen_atoms` IS THE ONE THAT MEANS SOMETHING.  The atoms wearing it are
+ * held still by the calculation, so it is the one a user is owed a warning
+ * about before tagging atoms with it by accident.  It gets the amber a warning
+ * wears here, and it is deliberately unlike the other four — "this changes your
+ * calculation" and "this is a name I picked" should not look the same.
  *
- * The tones are deliberately unlike `.molviewer-label-region`'s neutral fill: a
- * chip a user must think about should not be the same weight as one
- * they invented.
+ * All five are deliberately unlike `.molviewer-label-region`'s neutral fill: a
+ * chip that came from MolView's own list should not weigh the same as one the
+ * user invented.
  * ==================================================================== */
-.molviewer-label-reserved {
+.molviewer-label-predefined {
     font-weight: 700;
 }
-.molviewer-label-reserved--1 {                        /* amber */
-    background: #4a3410; /* exempt: reserved-label tone */
-    color:      #ffc247; /* exempt: reserved-label tone */
-    border:     1px solid #8a6316; /* exempt: reserved-label tone */
+.molviewer-label-predefined--1 {                      /* violet */
+    background: #38215c; /* exempt: predefined-label tone */
+    color:      #d3a6ff; /* exempt: predefined-label tone */
+    border:     1px solid #6a3fa8; /* exempt: predefined-label tone */
 }
-.molviewer-label-reserved--2 {                        /* violet */
-    background: #38215c; /* exempt: reserved-label tone */
-    color:      #d3a6ff; /* exempt: reserved-label tone */
-    border:     1px solid #6a3fa8; /* exempt: reserved-label tone */
+.molviewer-label-predefined--2 {                      /* teal */
+    background: #10403f; /* exempt: predefined-label tone */
+    color:      #55e0dd; /* exempt: predefined-label tone */
+    border:     1px solid #1d7370; /* exempt: predefined-label tone */
 }
-.molviewer-label-reserved--3 {                        /* teal */
-    background: #10403f; /* exempt: reserved-label tone */
-    color:      #55e0dd; /* exempt: reserved-label tone */
-    border:     1px solid #1d7370; /* exempt: reserved-label tone */
+.molviewer-label-predefined--3 {                      /* rose */
+    background: #4d1730; /* exempt: predefined-label tone */
+    color:      #ff9ec0; /* exempt: predefined-label tone */
+    border:     1px solid #93304f; /* exempt: predefined-label tone */
 }
-.molviewer-label-reserved--4 {                        /* rose */
-    background: #4d1730; /* exempt: reserved-label tone */
-    color:      #ff9ec0; /* exempt: reserved-label tone */
-    border:     1px solid #93304f; /* exempt: reserved-label tone */
+.molviewer-label-predefined--4 {                      /* moss */
+    background: #23401a; /* exempt: predefined-label tone */
+    color:      #a6e08a; /* exempt: predefined-label tone */
+    border:     1px solid #4a7a37; /* exempt: predefined-label tone */
 }
-.molviewer-label-reserved--5 {                        /* moss */
-    background: #23401a; /* exempt: reserved-label tone */
-    color:      #a6e08a; /* exempt: reserved-label tone */
-    border:     1px solid #4a7a37; /* exempt: reserved-label tone */
+/* The one with a meaning: amber, the tone a warning wears. */
+.molviewer-label-frozen {
+    font-weight: 700;
+    background: #4a3410; /* exempt: frozen-label tone */
+    color:      #ffc247; /* exempt: frozen-label tone */
+    border:     1px solid #8a6316; /* exempt: frozen-label tone */
 }
 
 .molviewer-selection-tag-remove {

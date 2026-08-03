@@ -229,9 +229,26 @@ export function createSelectionStore(handed) {
             rows.push(Object.assign({ kind: "by_element", value: "" }, row || {}));
             changed.fire(snapshot());
         },
+        /* A ROW'S VALUE BELONGS TO ITS KIND, so changing the kind clears it.
+         *
+         * "3-7" is an atom range. It is not an element, not a residue, and not
+         * a label — so carrying it across a kind change leaves the row saying
+         * something its new rule cannot mean. It was carried, and the by-label
+         * chooser has to show whatever the row holds (a label deleted from the
+         * structure must stay visible rather than silently becoming the first
+         * option), so the leftover "3-7" appeared in the list of labels as
+         * though somebody had defined one.
+         *
+         * Cleared HERE and not in the panel: the rule is about what a filter row
+         * IS, so every caller gets it — a restored session and a test drive the
+         * same store, and neither should have to remember. */
         updateFilter(at, patch) {
             if (!rows[at]) return;
+            const changing = patch && patch.kind && patch.kind !== rows[at].kind;
             Object.assign(rows[at], patch || {});
+            // Unless the same call also said what the new value is — one change,
+            // not a change followed by a correction.
+            if (changing && !(patch && "value" in patch)) rows[at].value = "";
             changed.fire(snapshot());
         },
         removeFilter(at) {
