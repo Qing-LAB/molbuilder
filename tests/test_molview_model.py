@@ -1350,6 +1350,72 @@ def test_the_facts_a_request_carries_all_came_from_one_read():
     assert out["elements"] == ["C"]
 
 
+def test_what_the_caller_knew_about_the_atoms_reaches_the_server():
+    """§ 9.3: `installMolecule` is "the only way a structure gets in", so
+    everything the caller knows about that structure has to fit through it.
+
+    THE CASE THIS EXISTS FOR is a trajectory. There is no `.molstruct.json`
+    beside a run: the region labels and frozen tags come out of the input
+    script the Build tab wrote, and the lattice out of the run's output. The
+    caller hands them over with the structure, in one call, exactly as it hands
+    over the frames — the alternative is a second door, and § 9.3 has one.
+
+    A `sidecar` is a different thing and cannot carry this: it is the content of
+    an untrusted document, whose envelope the server checks first. These facts
+    are molbuilder's own emit and have no envelope, which is why the route takes
+    them under their own name.
+
+    It was silently dropped: the request builder simply did not forward the
+    field, so a trajectory opened with no labels and no cell at HTTP 200.
+    """
+    out = _run(
+        """
+        const m = createModel({});
+        await m.installMolecule({
+            text: "x", filename: "run.xyz",
+            atomMetadata: { n_atoms_total: 2, regions: { frozen_atoms: [1] } },
+        });
+        const sent = globalThis.__requests[0].body;
+        console.log(JSON.stringify({
+            route: globalThis.__requests[0].route,
+            carried: sent.atom_metadata || null,
+            keys: Object.keys(sent).sort(),
+        }));
+        """
+    )
+    assert out["route"] == "/api/build/load"
+    assert out["carried"], (
+        "installMolecule dropped what the caller knew about these atoms; a "
+        "trajectory then opens with no region labels, no frozen tags and no "
+        "cell, at HTTP 200 — nothing refused it, the facts never left the "
+        "browser"
+    )
+    assert json.loads(out["carried"]) == {
+        "n_atoms_total": 2, "regions": {"frozen_atoms": [1]},
+    }, "the block reached the server changed"
+    assert "atom_metadata" in out["keys"]
+
+
+def test_a_caller_that_knew_nothing_extra_sends_nothing_extra():
+    """The field is absent, not null, when there is nothing to say.
+
+    An ordinary file load has no such block, and a key carrying `null` is a
+    statement the caller did not make.
+    """
+    out = _run(
+        """
+        const m = createModel({});
+        await m.installMolecule({ text: "x", filename: "x.xyz" });
+        console.log(JSON.stringify({
+            keys: Object.keys(globalThis.__requests[0].body).sort(),
+        }));
+        """
+    )
+    assert "atom_metadata" not in out["keys"], (
+        f"an ordinary load sent an empty metadata block: {out['keys']}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # § 11.1 — geometry edits go to the server
 # ---------------------------------------------------------------------------

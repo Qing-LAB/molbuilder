@@ -162,6 +162,40 @@ class TestBuildLoadDoor:
             "atom_metadata": block_json})
         assert as_meta.status_code == 200
 
+    def test_the_runs_cell_rides_in_the_same_block_as_its_labels(self, client):
+        """Seam 4 (2026-08-03): a run's LATTICE travels with its labels.
+
+        A trajectory has no `.molstruct.json`.  Its labels come from the input
+        script and its lattice from the output logs, and both describe the same
+        atoms -- so the Results tab sends one block and the server applies it
+        through the one authority, rather than inventing a second door for the
+        cell.
+
+        AND NO ``pbc`` IS SENT, deliberately.  A run's 3x3 says nothing about
+        which axes repeat, and guessing periodicity in the browser is the one
+        thing the model refuses to do.  ``Structure``'s own rule resolves it --
+        "a lattice implies periodicity" -- so a stated cell comes back fully
+        periodic, decided in one place.
+        """
+        block = json.loads(_md_json_4c())
+        block["cell"] = [[10.0, 0, 0], [0, 11.0, 0], [0, 0, 12.0]]
+        assert "pbc" not in block, "the browser must not state periodicity"
+        r = client.post("/api/build/load", json={
+            "text": _XYZ_4C_FRAME0, "filename": "run.xyz",
+            "atom_metadata": json.dumps(block)})
+        assert r.status_code == 200, r.get_json()
+        body = r.get_json()
+        per = body.get("periodicity") or {}
+        assert per.get("cell") == [[10.0, 0, 0], [0, 11.0, 0], [0, 0, 12.0]], (
+            f"the run's cell did not reach the structure: {per!r} -- a "
+            f"trajectory then draws no unit-cell box, at HTTP 200"
+        )
+        # The labels still landed: one block, both kinds of fact.
+        atoms = body.get("atoms") or []
+        assert any(a.get("regions") for a in atoms), (
+            "the cell arrived but the labels did not; they travel together"
+        )
+
 
 # --------------------------------------------------------------------- #
 #  3. Results adapter: /api/watch/load surfaces atom_metadata           #

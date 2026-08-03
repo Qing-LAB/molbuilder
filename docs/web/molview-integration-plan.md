@@ -201,8 +201,8 @@ reads no global, calls only § 9.3's surface, and has been looked at in a browse
 |---|---|---|
 | **a** | `/transport-calculation` | wired — needs a browser |
 | **b** | `/spectrum-calculation` | wired — needs a browser |
-| **c** | `/structure-optimization` | wired — needs a browser, and it still calls `readPersistedSnapshot`, the door **e** found deleted (`structure-optimization/viewer.js:734`) |
-| **d** | `/results` | **half** — the structure inspector is wired; `lib/trajectory/core.js` is not |
+| **c** | `/structure-optimization` | wired — needs a browser. `readPersistedSnapshot` is gone: it mounts first, calls `data.load(0)`, and asks the canvas (2026-08-03) |
+| **d** | `/results` | wired — the structure inspector and `lib/trajectory/core.js` both (§ 5a); needs a browser, and the run's lattice needs a decision |
 | **e** | `/molbuilder` | ✅ **done** — all six steps of § 6.5 walked in a browser, five defects found and fixed (§ 6.6); 192 of its own tests pass |
 
 **What "wired" was worth, measured on the one page that has now been walked:** `e`
@@ -253,28 +253,56 @@ viewer up by name. **So every file load on every tab failed**, with
 the viewer now: `openMolecule(viewer, path)`, `saveMolecule(viewer, path)`. Found by
 running the real page, not by any test.
 
-## 5a. `lib/trajectory/core.js` — read, not yet changed
+## 5a. `lib/trajectory/core.js` — wired 2026-08-03, one decision left
 
-It is not like the other three read-only tabs. It watches a **running** calculation
-and feeds frames in as they arrive, so it is the data source for what the viewer
-shows. It already holds its handle in `_mv`; every `_mvdata()` beside it is the dead
-global.
+It is not like the other three read-only tabs. It watches a **running**
+calculation and feeds frames in as they arrive, so it is the data source for
+what the viewer shows.
 
-Three calls it makes do not exist, and each fails silently:
+**It never mounted a viewer at all.** `_mvdata()` read the dead global, and the
+mount guard tested it *before* mounting — so the guard's answer was always "no
+viewer", and none was ever built. Every later call went to null too, each inside
+a try/catch or behind a `typeof` guard. It reads through the handle its own
+mount returns now.
 
-| It calls | Reality |
+| It called | What landed |
 |---|---|
-| `setFrame(i)` | `setCurrentFrame(i)`. Used to seek after a rebuild and to follow the tail of a growing run — so **the playhead never moves** |
-| `selection.setViewFlag("forceScale", …)` | no store has `setViewFlag`; `forceScale` is a selection **switch**, so `setSwitch`. The comment beside it records this exact call throwing once and leaving *"a trajectory showing ONE frame with no frame bar"* — it was wrapped and feature-detected rather than fixed, so **the force-arrow knob does nothing** |
-| `installMolecule({periodicity, atomMetadata})` | `requestBodyFor` reads neither. The lattice recovered from the run and the region labels the Build tab embedded in the input script are **dropped**, at HTTP 200 — so a trajectory shows no unit-cell box and no frozen tags |
+| `setFrame(i)` | **`setCurrentFrame(i)`.** Both seeks called the missing name, so the playhead never moved — not after a rebuild, not to follow a growing run |
+| `selection.setViewFlag("forceScale", …)` | **`selection.setSwitch(…)`** — `forceScale` is one of the switches beside the selection (§ 9.5). The original throw took the frame load with it (*"a trajectory showing ONE frame with no frame bar"*); it was then wrapped in a `typeof` guard rather than fixed, which stopped the crash and left the knob doing nothing |
+| `installMolecule({atomMetadata})` | **carried now.** The server has taken `atom_metadata` at `/api/build/load` all along — a trusted block applied through `apply_to_structure` with no file envelope to satisfy. MolView's request builder simply never forwarded it, so a run's region labels and frozen tags were dropped **in the browser**, at HTTP 200 |
+| `installMolecule(frame 0)` then `reloadFrames(the rest)` | **one call.** The contract names this shape as broken (§ 9.3): the one entrance stops being one, a subscriber sees a single-frame structure that never existed (§ 6.4), and point 0 is anchored on that one frame — so **a Retract threw the trajectory away** (§ 11.2). Found while fixing the row above |
 
-The first two are mechanical. **The third is a contract question**, and this tab's
-alone: it needs to say *"here is a structure and the facts that came with the run"*,
-and `installMolecule` has nowhere to put them. Either it grows a way to carry them or
-the run's facts arrive by another route — not something to guess.
+### The run's lattice — decided 2026-08-03
 
-(Task **#35**, "Results-tab trajectory first load animates a single frozen frame", is
-the symptom the `setViewFlag` comment describes and may be this same family.)
+`installMolecule({periodicity})` was never forwarded either, and unlike
+`atomMetadata` there was **no field on the route to forward it to**. There did
+not need to be: `apply_to_structure` applies `cell`, `cell_origin`, `pbc`,
+`axis_kind` and `vacuum` alongside the atom-scoped fields, so **the run's
+lattice now rides in the same metadata block as its labels**. One block, one
+authority, no second door — they describe the same atoms.
+
+**The decision was what to say about periodicity**, and the user made it: *show
+the box, and mark it as the run's.* `TrajectoryResult.lattice` is a bare 3×3;
+the run does not report which axes repeat.
+
+**No `pbc` is sent.** Guessing periodicity in the browser is the one thing the
+Cell rules refuse (§ 9.5: `axis_kind` is the field MolView will not default),
+so the browser states the cell and nothing else. `Structure`'s own rule then
+resolves it — *a lattice implies periodicity* — and the structure comes back
+`axis_kind: [periodic, periodic, periodic]`, decided in the one place that owns
+that decision.
+
+**The accepted cost, said out loud rather than hidden:** an isolated molecule
+that ran in a large SIESTA box now gets a box drawn round it. So the tab's
+status line says *"Unit cell taken from the run output, not set by you."* It is
+the **tab** that says it, because the Cell page deliberately answers *"is this
+box mine?"* and not *"where did it come from"* (§ 9.5) — and the tab is what
+performed the load. Putting provenance on the Cell page itself would be a
+change to that decision, not an application of it.
+
+(Task **#35**, "Results-tab trajectory first load animates a single frozen
+frame", was the symptom the `setViewFlag` comment describes and should be
+re-checked against the two fixes above.)
 
 ---
 

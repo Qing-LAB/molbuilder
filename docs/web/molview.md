@@ -1522,7 +1522,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `exportFile(range)` | `range` — `{from, to}`, inclusive, 0-based, clamped to what exists. Omitted means the displayed frame alone | `{name, structure}` for one frame; `{name, structure, frames}` when the range covers more — `frames` is **additive**, so a caller that knows nothing about ranges keeps working. `null` if the geometry and the per-atom facts disagree |
 | `mode` | — | **`"editable"` or `"readonly"`**, never `null` |
 | `state_index` · `uncommitted` | — | the position; whether there is unsaved work |
-| `installMolecule(input)` | `{path}` **or** `{text, filename, format?, sidecar?}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
+| `installMolecule(input)` | `{path}` **or** `{text, filename, format?, sidecar?, atomMetadata?}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `applyOp(name, args)` | `name` — a row of § 11.1's table, and the route segment. `args` — that operation's own arguments, flat | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `commitPeriodicityOp(op, payload)` | `op` — `vacuum` · `axis_kind` · `cell` · `cell_origin`. `payload` — that op's value; `null` clears | the cell block · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `reloadFrames(frames, opts)` | `opts` — `{forces?, enforce?}` | — |
@@ -1651,6 +1651,21 @@ second read back, whatever the rule said.
   another door; a subscriber sees a one-frame structure that never existed
   (§ 6.4); and point 0 is anchored on that one frame, so **a Retract to the
   anchor throws the trajectory away** (§ 11.2).
+
+  **And so does what the caller already knew about the atoms** — `atomMetadata`,
+  for the same reason. Two things arrive without a `.molstruct.json` beside
+  them: a trajectory's region labels and frozen tags, which the Build tab wrote
+  into the input script and the Results tab recovered from it, and anything else
+  molbuilder itself emitted. They are not a **`sidecar`** and must not be passed
+  as one: a sidecar is the content of an untrusted document, whose envelope the
+  server checks before applying it, and these have no envelope because nothing
+  outside molbuilder wrote them. So they ride in the same call as the structure
+  they describe, under their own name, and the server applies both through the
+  one authority that owns the field set.
+
+  Handing them over separately would be a second door again — and it would lose
+  the same way: a structure would exist, briefly, with none of the facts that
+  came with it.
 - **`exportFile(range)`** — its exact inverse. Returns **the structure as
   data** — the frames in the range, with the name it came in under — and stops
   there (§ 11.7). The range defaults to **the frame currently displayed** (§ 6.4),
@@ -2545,7 +2560,7 @@ MolView calls are listed there with their bodies and answers:
 
 | MolView's call | Route | Sends | Answers |
 |---|---|---|---|
-| `installMolecule` | `/api/build/load` | `{path}`, or `{text, filename, format?, sidecar?}` | the structure payload this module normalises (§ 6.2), with the notices the check on the way out produced (§ 6.8) |
+| `installMolecule` | `/api/build/load` | `{path}`, or `{text, filename, format?, sidecar?, atom_metadata?}` | the structure payload this module normalises (§ 6.2), with the notices the check on the way out produced (§ 6.8) |
 | `applyOp(name, args)` | `/api/modify/<name>` | the envelope + the op's arguments + the selection under § 11.1's key | the structure, with the same notices beside it — both routes leave through the one helper that validates what it sends |
 | `commitPeriodicityOp(op, payload)` | `/api/structure/periodicity` | the envelope + `op`, `payload` | `{ok, periodicity, notices}` — the cell block in the same shape a load sends it |
 | the filter (§ 9.5) | `/api/selection/eval` | `{atoms, rule}` — no coordinates, because no rule matches on position | `{selected_indices}` |

@@ -348,6 +348,25 @@ function requestBodyFor(input) {
     // otherwise be auto-detected as PDB and refused.
     if (input.format) body.format = input.format;
     if (typeof input.sidecar === "string") body.sidecar = input.sidecar;
+
+    /* WHAT THE CALLER ALREADY KNEW ABOUT THESE ATOMS, when it did not come out
+     * of a file. A `sidecar` is the CONTENT OF A `.molstruct.json` — an
+     * untrusted document, so the server checks its envelope before applying it.
+     * A run's own facts have no such document: the Results tab recovers the
+     * region labels and frozen tags from the ATOM-METADATA block the Build tab
+     * wrote into the input script, and the lattice from the run's output. That
+     * is molbuilder's own emit, and the server has taken it as `atom_metadata`
+     * all along (`/api/build/load`), applying it through the same one authority
+     * with no envelope to satisfy.
+     *
+     * The browser simply never sent it. A trajectory therefore opened with no
+     * region labels, no frozen tags and no cell — at HTTP 200, because nothing
+     * was refused; the facts were dropped one layer above the request. */
+    if (input.atomMetadata && typeof input.atomMetadata === "object") {
+        body.atom_metadata = JSON.stringify(input.atomMetadata);
+    } else if (typeof input.atomMetadata === "string" && input.atomMetadata) {
+        body.atom_metadata = input.atomMetadata;
+    }
     return body;
 }
 

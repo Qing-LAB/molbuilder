@@ -910,16 +910,73 @@ import { mount } from "/static/lib/molview/index.js";
     // MolView's selection panel + measurement overlay (molview-module §14.5.3),
     // driven off the shared molview.data selection store.
 
-    // Feed the parsed trajectory to MolView.  A full (re)build: establish the
-    // atoms/elements + periodicity from frame 0 (a single-frame XYZ handed to
-    // openMolecule — the parser already did the parsing; this hands MolView the
-    // result), then hand it the whole coordinate series via reloadFrames.
-    // MolView's frame bar appears (frameCount > 1), and it owns playback /
-    // speed / loop / cell / labels / selection from there.  Async because
-    // openMolecule round-trips through the data model; awaits _mvReady so it
-    // never runs before the mount handle exists.  Optional ``seekIdx`` jumps to
-    // a frame after the reload (used to keep the playhead near the tail when a
-    // live poll forces a full rebuild).
+    // Feed the parsed trajectory to MolView, in ONE call: frame 0 as the text
+    // that establishes atom identity, every frame beside it, the filtered
+    // forces, and the labels the run carried.  MolView's frame bar appears
+    // (frameCount > 1) and it owns playback / speed / loop / cell / labels /
+    // selection from there.  Async because the load round-trips through the
+    // server; awaits _mvReady so it never runs before the mount handle exists.
+    // Optional ``seekIdx`` jumps to a frame afterwards (used to keep the
+    // playhead near the tail when a live poll forces a full rebuild).
+    //
+    // THE LATTICE THE RUN REPORTED rides in the metadata block with the labels
+    // (user decision, 2026-08-03).  It used to be passed as a `periodicity`
+    // argument the request builder never forwarded, so it was dropped at HTTP
+    // 200 and no trajectory has ever drawn its unit cell.
+    //
+    // ONLY THE CELL IS SENT, never a `pbc`.  A run's 3x3 says nothing about
+    // which axes repeat, and guessing is the one thing the model refuses to do
+    // in the browser (molview.md § 9.5's Cell rules: axis_kind is the field
+    // MolView will not default).  The rule that resolves it belongs to
+    // `Structure` and is applied there -- "a lattice implies periodicity", so a
+    // stated cell comes back fully periodic.  The cost the user accepted: an
+    // isolated molecule that ran in a large SIESTA box gets a box drawn round
+    // it, so the tab says where the box came from (below).
+    /* Everything this run knows about its atoms, as ONE block for the load.
+     *
+     * Two sources, one envelope: the ATOM-METADATA block the Build tab wrote
+     * into the input script (region labels, frozen tags, annotation channels,
+     * recovered by /api/watch/load as a JSON STRING), and the lattice the run
+     * itself reported.  They go together because they describe the same atoms
+     * and the server applies them through one authority.
+     *
+     * `n_atoms_total` is not decoration -- the server checks it against the
+     * geometry it parsed and refuses a block that does not match, which is what
+     * stops a stale label set landing on a structure it was not written for.
+     *
+     * Returns null when there is nothing to say: no labels, no lattice.  An
+     * empty block would be a claim (full-REPLACE semantics: an absent key
+     * RESETS that field), so saying nothing has to look like nothing.
+     */
+    function _runMetadataBlock(nAtoms) {
+        let block = {};
+        if (state.atomMetadata) {
+            try {
+                block = (typeof state.atomMetadata === "string")
+                    ? JSON.parse(state.atomMetadata)
+                    : Object.assign({}, state.atomMetadata);
+            } catch (_e) {
+                // A block this build cannot read is not something to guess at;
+                // the labels are lost, the geometry is not.
+                block = {};
+            }
+        }
+        const lat = state.data && state.data.lattice;
+        if (Array.isArray(lat) && lat.length === 3) block.cell = lat;
+        if (!Object.keys(block).length) return null;
+        block.n_atoms_total = nAtoms;
+        return block;
+    }
+
+    /* Whether the box on screen came from the run rather than from the user --
+     * a fact about the FILE OPERATION this tab performed, so this tab keeps it
+     * (molview.md § 6.7: the viewer tracks contents, not where they came from).
+     * Read by the status line after a load. */
+    function _cellCameFromTheRun() {
+        const lat = state.data && state.data.lattice;
+        return Array.isArray(lat) && lat.length === 3;
+    }
+
     async function rebuildModel(seekIdx) {
         await _mvReady;
         if (!_mv || !_mvdata() || !state.data
@@ -928,62 +985,54 @@ import { mount } from "/static/lib/molview/index.js";
         }
         const allFrames = state.data.frames;
         // Frame 0 as a single-frame XYZ establishes the atom identity (elements)
-        // + coordinates; the lattice rides along as periodicity so MolView's
-        // Cell page + unit-cell box work (it NEVER parses — data-vocabulary).
+        // + coordinates.  The server parses ONE geometry, because that is what a
+        // file has; the rest of the run is handed over beside it.
         const firstFrameXyz = framesToMultiXyz([allFrames[0]]);
-        const lat = state.data.lattice;
-        const periodicity = (Array.isArray(lat) && lat.length === 3)
-            ? { cell: lat } : null;
-        try {
-            await _mvdata().installMolecule({
-                text:        firstFrameXyz,
-                filename:    (state.label || "trajectory") + ".xyz",
-                periodicity: periodicity,
-                // Region labels / frozen tags / annotation channels the
-                // Build tab embedded in this run's input script, recovered
-                // by /api/watch/load.  MolView's load door applies it via
-                // sidecars.molstruct.apply_to_structure (it carries ONLY
-                // atom-scoped keys, so the frame-0 geometry + lattice above
-                // stay intact).  Distinct from a .molstruct.json ``sidecar``:
-                // this is a TRUSTED block, applied without the file envelope.
-                // null when the run had no ATOM-METADATA block.
-                atomMetadata: state.atomMetadata || null,
-            });
-        } catch (e) {
-            setStatus("Viewer failed to load frame 0: "
-                + (e && e.message ? e.message : String(e)), "error");
-            return;
-        }
-        // Hand MolView the full coordinate series ([[x,y,z]...] per frame).  The
-        // frame-series enforces the same-atoms invariant against the structure
-        // just opened; reset lands on frame 0.
         const coordFrames = allFrames.map(function (frame) {
             return frame.map(function (atom) {
                 return [atom[1], atom[2], atom[3]];
             });
         });
+
+        /* Force scale (Å per force unit) is one of the SWITCHES that sit beside
+         * the selection (molview.md § 9.5) -- `setSwitch`, the same door as
+         * isolate / showForces / showCell.  Set BEFORE the load, so the first
+         * arrow bake already uses the right length.
+         *
+         * It used to call `setViewFlag`, which no store has ever had. The call
+         * threw, and because it sat outside the try around the frame load, the
+         * throw took the frames with it -- a trajectory showing ONE frame and
+         * no frame bar. It was then wrapped in a `typeof` guard rather than
+         * corrected, which stopped the crash and left the knob doing nothing. */
+        const _fscaleEl = $("force-scale");
+        if (_fscaleEl) {
+            _mvdata().selection.setSwitch(
+                "forceScale", parseFloat(_fscaleEl.value) || 1.0);
+        }
+
+        /* THE WHOLE RUN GOES IN ONE CALL (molview.md § 9.3).
+         *
+         * This used to install frame 0 and then call `reloadFrames` with the
+         * rest, which is the exact shape the contract names as broken: the one
+         * entrance stops being one; a subscriber sees a single-frame structure
+         * that never existed (§ 6.4); and worst, point 0 is anchored on that
+         * one frame -- so **a Retract threw the trajectory away** (§ 11.2).
+         *
+         * The labels ride along the same way.  `atomMetadata` is the region /
+         * frozen / annotation block the Build tab wrote into this run's input
+         * script, recovered by /api/watch/load; it is molbuilder's own emit, so
+         * it is NOT a `.molstruct.json` sidecar and carries no file envelope.
+         * null when the run had no ATOM-METADATA block. */
         try {
-            /* Force scale (Å per force unit) is one of the SWITCHES that sit
-             * beside the selection (molview.md § 9.5) -- `setSwitch`, the same
-             * door as isolate / showForces / showCell.
-             *
-             * It used to call `setViewFlag`, which no store has ever had. The
-             * call threw, and because it sat OUTSIDE this try the throw took
-             * `reloadFrames` with it -- a trajectory showing ONE frame and no
-             * frame bar. It was then wrapped in a `typeof` guard rather than
-             * corrected, which stopped the crash and left the knob doing
-             * nothing at all. */
-            const _fscaleEl = $("force-scale");
-            if (_fscaleEl) {
-                _mvdata().selection.setSwitch(
-                    "forceScale", parseFloat(_fscaleEl.value) || 1.0);
-            }
-            // Build all frames into MolView's native animation ONCE, handing the filtered raw
-            // per-frame forces -- the ENGINE bakes + styles the arrows (process.js §2.4);
-            // playback then swaps frames + arrows natively, no per-frame synthesis.
-            _mvdata().reloadFrames(coordFrames, { forces: buildForcesPerFrame() });
+            await _mvdata().installMolecule({
+                text:         firstFrameXyz,
+                filename:     (state.label || "trajectory") + ".xyz",
+                frames:       coordFrames,
+                forces:       buildForcesPerFrame(),
+                atomMetadata: _runMetadataBlock(allFrames[0].length),
+            });
         } catch (e) {
-            setStatus("Viewer failed to load frames: "
+            setStatus("Viewer failed to load the run: "
                 + (e && e.message ? e.message : String(e)), "error");
             return;
         }
@@ -2598,8 +2647,19 @@ import { mount } from "/static/lib/molview/index.js";
         // Bottom status banner keeps the diagnostic detail (mtime,
         // frame count) -- the badge above is the user-facing state,
         // this is the technical readout.
+        /* AND WHERE THE BOX CAME FROM, when there is one.  A cell drawn round a
+         * structure is a claim about its physics, and this one was not made by
+         * the person reading it -- the run reported it and molbuilder applied
+         * it, which for a molecule in a large SIESTA box means a box appears
+         * round something isolated.  Saying so is the difference between a
+         * shown fact and a silent one; the Cell page deliberately answers "is
+         * this box mine?" and not "where did it come from" (molview.md \u00a7 9.5),
+         * so the tab that did the load is what says it. */
         setStatus(
-            "Loaded " + n + " " + state.label + " frames \u2014 mtime " + ts + ".",
+            "Loaded " + n + " " + state.label + " frames \u2014 mtime " + ts + "."
+            + (_cellCameFromTheRun()
+               ? "  Unit cell taken from the run output, not set by you."
+               : ""),
             "ok"
         );
     }
