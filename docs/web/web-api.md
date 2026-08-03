@@ -5,7 +5,7 @@
 **Companions:** the module docs own their own routes' consumer-side detail —
 [`molview.md`](?doc=web/molview.md) (`/api/build/load`, `/api/modify/*`),
 [`projects.md`](?doc=web/projects.md) (`/api/files/*`),
-[`workspace.md`](?doc=web/workspace.md) (`/api/state-timeline/*`),
+[`workspace.md`](?doc=web/workspace.md) (`/api/workspace-storage/*`),
 [`form-schema.md`](?doc=web/form-schema.md) (`/api/build/schema/*`). This doc is
 the **shared contract** those routes obey and the one **complete catalogue**.
 
@@ -332,7 +332,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/structure/save` | Save a structure + its sidecar to a path |
 
 **Session timeline** — owned by [`workspace.md`](?doc=web/workspace.md):
-POST `/api/state-timeline/{write,read,prune}`.
+POST `/api/workspace-storage/{write,read,prune}`.
 
 **Config forms** — owned by [`form-schema.md`](?doc=web/form-schema.md):
 GET `/api/build/schema/<engine>`, GET `/api/build/schema/spectra`,
@@ -440,7 +440,7 @@ So a reader of older code or bookmarked URLs isn't lost, these routes are
 
 | Old route | What happened |
 |---|---|
-| `/api/workingcopy/*` | renamed to `/api/state-timeline/*`; the working-copy blueprint and module were deleted |
+| `/api/workingcopy/*` | renamed to `/api/state-timeline/*`, then to `/api/workspace-storage/*` (2026-08-02) — the middle name said *timeline*, which is MolView's, not the workspace's; the working-copy blueprint and module were deleted |
 | `/api/selection/save-sidecar` | removed (no code remains) |
 | `/api/selection/refresh-hash` | removed (no code remains) |
 | `/api/files/result-list` | retired 2026-06-01 with its single consumer |

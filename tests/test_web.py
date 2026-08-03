@@ -844,7 +844,12 @@ def test_molbuilder_page_loads(web_client):
         "Molbuilder workspace",
         # Static asset paths the template references.
         "modify/style.css",
-        "modify/viewer.js",
+        # THE PAGE'S OWNER, and the only modify/ module with a <script> tag.
+        # `viewer.js` and `periodicity.js` are IMPORTED by it -- they used to
+        # load before the file that mounts, so nothing could have handed them a
+        # viewer even if one had existed (molview-integration-plan.md § 6.3).
+        # Asserting a tag for viewer.js pinned that broken load order.
+        "modify/selection-bootstrap.js",
         # Scaffolding the JS targets by id.  Post-Track-B the template
         # exposes only the EMPTY host (#molview-host); molview.mount
         # builds the whole fused card (the .viewer div, the selection
@@ -877,7 +882,10 @@ def test_modify_static_assets_load(web_client):
     """The ``modify/`` static dir must serve the CSS + JS files."""
     css = web_client.get("/static/modify/style.css")
     assert css.status_code == 200
-    assert b".molbuilder-tab-main" in css.data
+    # The page's own namespace: every class this sheet owns is `modify-*`
+    # (css-system-plan.md T3).  `.molbuilder-tab-main` was one of eight competing
+    # prefixes before 2026-08-02.
+    assert b".modify-main" in css.data
     js = web_client.get("/static/modify/viewer.js")
     assert js.status_code == 200
     body = js.data.decode()

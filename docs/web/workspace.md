@@ -4,7 +4,7 @@
 **Domain:** web
 **Companions:** [`molview.md`](?doc=web/molview.md) — owns the molecule the
 workspace saves; the workspace holds no data of its own. `web-api.md` — the
-`/api/state-timeline/*` server routes (web wave). The Modify tab's Save panel
+`/api/workspace-storage/*` server routes (web wave). The Modify tab's Save panel
 and the projects file doors — a *file* save is their job, not the workspace's
 (§ 8).
 
@@ -32,8 +32,18 @@ Nothing ever restored from it — every restore went to the server anyway — so
 cost a write on every edit and bought nothing. It is gone, and with it the only
 other place your work could be.
 
-The server side is three small routes — `/api/state-timeline/{write,read,prune}`
-in `state_timeline.py` — described in § 9.
+The server side is three small routes — `/api/workspace-storage/{write,read,prune}`
+in `workspace_storage.py` — described in § 9.
+
+> **They were called `/api/state-timeline/*`, in `state_timeline.py`, and the name
+> was wrong.** It named MolView's **timeline** — the sequence of saved points, the
+> position on it, the badge, and the policy of what a save records and what to
+> prune. None of that is on the server. That is `lib/molview/history.js`, and
+> nothing in these routes knows a sequence exists: no order, no position, no
+> notion that index 3 follows index 2. They store one opaque blob per
+> `{workspace_id, state_index}` for **any** tag — `lib/inspectors/structure.js`
+> keeps `{showing: "<path>"}` in them, which is a file path and not a history.
+> Renamed 2026-08-02 (§ 2a).
 
 ## 2. Where your work is kept
 
@@ -75,6 +85,29 @@ window.molbuilder.workspace.persist(tag, bytes, identity);
 never freezes the editor — which means "it worked" cannot come back from here. A
 failure turns up afterwards through `onPersistError`. The workspace never looks
 inside the bytes; that is MolView's business.
+
+## 2a. What the workspace is not
+
+Jobs this module could plausibly grow into, and does not. Each boundary is here
+because something has already drifted across it, or has been read as though it
+had.
+
+| Not | Whose job it is | Why the boundary is there |
+|---|---|---|
+| the **timeline** — the sequence of saved points, where you are on it, what a save records, what to prune, how far a step goes | **MolView**, in `lib/molview/history.js` (molview.md § 11.2) | The workspace stores numbered *states*; the **timeline is the sequence MolView makes of them**. The workspace has no idea one exists — it never compares two indices, and index 3 means nothing more to it than "a different file from index 2". A server that knew the order would be a second opinion about a history it cannot see the contents of |
+| a **reader** of what it stores | nobody — the bytes are opaque | It moves bytes and never parses them. That is what lets a trajectory become restorable with no change here (molview.md § 11.2), and it is why the same routes serve a molecule, a history point and one inspector's `{showing: "<path>"}` without knowing the difference |
+| a **file** save | the Modify tab's Save panel + the projects doors (§ 8) | Saving to a project is a decision a user makes about a name and a place. The workspace saves what you did not ask it to save |
+| the **owner** of where `projects/` is | the app, through `Capabilities` | The root is resolved once for the whole app. Answering it separately here is exactly how the storage came to write somewhere the file picker was not looking |
+
+**The first row is the one that has actually cost time.** The server half was
+named `state_timeline.py`, serving `/api/state-timeline/*`, after a concept that
+lives entirely in the browser and entirely inside MolView. Reading the name
+instead of the callers led, on 2026-08-02, to two opposite wrong conclusions
+about the same file within an hour — that it was a shared domain module to be
+promoted out of the web layer, and that it was MolView-private plumbing to be
+hidden. It is neither: it is this module's storage, and this module is public.
+
+---
 
 ## 3. A worked example — close the tab, reopen, undo
 
@@ -292,7 +325,7 @@ Two small ordering rules keep the history consistent:
 
 - `test_workspace_dispatcher_js.py` — the front-door surface + the
   persistence-only guard.
-- `test_workspace_state_api.py` — the server `/api/state-timeline/*` routes.
+- `test_workspace_storage_api.py` — the server `/api/workspace-storage/*` routes.
 - `test_workspace_dispatcher_mount_e2e.py`,
   `test_workspace_dispatcher_canvas_mount_js.py` — restore-at-mount.
 - `test_no_legacy_store_consumers.py` — the deleted data globals stay deleted.

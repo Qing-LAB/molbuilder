@@ -65,12 +65,12 @@ globalThis.fetch = async (route, init) => {
 };
 """
 
-# The load route answers with a one-atom molecule; the state-timeline routes go to
+# The load route answers with a one-atom molecule; the storage routes go to
 # the stand-in server above. Used by the two round-trip tests at the end.
 WITH_A_SERVER = BROWSER + """
 const _files = globalThis.fetch;
 globalThis.fetch = async (route, init) => {
-    if (route.indexOf("state-timeline") !== -1) return _files(route, init);
+    if (route.indexOf("workspace-storage") !== -1) return _files(route, init);
     return { ok: true, status: 200, json: async () => ({
         ok: true,
         atoms: [{ index: 0, element: "H", x: 0, y: 0, z: 0, regions: [] }],

@@ -3,7 +3,7 @@
  * MODULE: workspace persistence  (lib/workspace/; contract: docs/web/workspace.md).
  *   ONE file: this one. It is the whole module -- the transport to the state
  *   files, the per-tag identity, and the non-blocking error surface.
- *   Server backend: POST /api/state-timeline/{write,read,prune} (blueprints/state_timeline.py) —
+ *   Server backend: POST /api/workspace-storage/{write,read,prune}
  *   the on-disk indexed STATE TIMELINE (workspace-contract §4.7).
  *
  * ROLE: session state + concealed file access ONLY.  Holds NO in-memory data model and never
@@ -192,7 +192,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         var idx = identity && identity.state_index;
         _stateWriteChain = _stateWriteChain.then(function () {
             _trace("http:write-state:issue", { idx: idx });
-            return root.fetch("/api/state-timeline/write", {
+            return root.fetch("/api/workspace-storage/write", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body:    JSON.stringify(Object.assign({}, identity || {}, { data: snapshotBlob })),
@@ -241,7 +241,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
      */
     function readState(identity) {
         if (!root.fetch || !identity) return Promise.resolve(null);
-        return root.fetch("/api/state-timeline/read", {
+        return root.fetch("/api/workspace-storage/read", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify(identity),
@@ -261,7 +261,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     function pruneStatesAbove(workspace_id, index) {
         if (!root.fetch || !workspace_id) return Promise.resolve();
         _trace("http:prune-states:issue", { above: index });
-        return root.fetch("/api/state-timeline/prune", {
+        return root.fetch("/api/workspace-storage/prune", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ workspace_id: workspace_id, above_index: index }),

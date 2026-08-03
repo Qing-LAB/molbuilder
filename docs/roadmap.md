@@ -223,7 +223,7 @@ this is the plan tail.
 - **A3** *(decision-gated)* — decide whether the crash-surviving draft stays
   in browser `sessionStorage` or moves server-side. Note the alternative the
   original decision named is **gone**: the `/api/workingcopy/*` endpoints were
-  removed, and only `/api/state-timeline/*` survives. So the real choice today
+  removed, and only `/api/workspace-storage/*` survives. So the real choice today
   is "keep `sessionStorage`" vs "build something new" — not "switch to the
   staging endpoints".
 - **A4** — remove the obsolete disk-based selection/atom endpoints from the
@@ -237,14 +237,14 @@ this is the plan tail.
 - **A5a** *(verification residual)* — confirm in a **real browser** that the
   `.molbuilder_workspace/` draft appears and updates both for a file loaded
   from the sidebar and for a freshly generated molecule. The mechanism ships
-  (`web/blueprints/state_timeline.py`); only this check was never done.
+  (`web/blueprints/workspace_storage.py`); only this check was never done.
 - **A6 — state-file lifecycle re-verification** *(recovered from the parked
   task store, ex-#48)*: the 2026-07 workspace review verified three latent
   defects against the OLD working-copy module — (1) state files keyed by a
   sessionStorage-only random id leak unbounded **across** sessions (the
   30-step window prunes only the current id); (2) orphan-listing mis-read
   state files as drafts; (3) a corrupt history file makes undo a silent
-  no-op. The module was since replaced by `state_timeline.py`, so each
+  no-op. The module was since replaced by `workspace_storage.py`, so each
   finding needs RE-verification against the new implementation ((2)'s
   module is deleted — likely moot), then a GC/signal fix for whichever
   survive.

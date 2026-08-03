@@ -58,7 +58,7 @@ The shared "nouns" and the cross-engine chemistry:
 
 `molbuilder/web/` is the Flask UI:
 
-- **Server:** `app.py` (the app factory), `blueprints/` (the route modules — `build`, `modify`, `results`, `spectra`, `transport`, `watch`, `files`, `docs`, `checkpoint`, `selection`, `state_timeline`, `system_load` + `_shared.py`), `auth.py`, `rate_limit.py`, `tabs.py`, `auth_providers/`, `runtime_config` (shared with ops), `projects.py`.
+- **Server:** `app.py` (the app factory), `blueprints/` (the route modules — `build`, `modify`, `results`, `spectra`, `transport`, `watch`, `files`, `docs`, `checkpoint`, `selection`, `workspace_storage`, `system_load` + `_shared.py`), `auth.py`, `rate_limit.py`, `tabs.py`, `auth_providers/`, `runtime_config` (shared with ops), `projects.py`.
 - **Client:** `templates/` (one `.html` per tab + partials) and `static/` — per-tab asset dirs (`modify/`, `structure-optimization/`, `spectra/`, `results/`, `transport/`, `documents/`, `molview/`), `vendor/` (codemirror, dompurify, marked, mermaid, gitgraph), and **`static/lib/`** — the reusable front-end **module packages**, each owned by a web doc:
 
 | `static/lib/…` | Doc |
