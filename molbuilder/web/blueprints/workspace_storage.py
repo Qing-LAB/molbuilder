@@ -50,7 +50,6 @@ import re
 from flask import Blueprint, jsonify, request
 
 from molbuilder import persist
-from molbuilder.diagnostics import get_capabilities
 from molbuilder.projects import projects_root
 
 bp = Blueprint("workspace_storage", __name__)
@@ -81,34 +80,26 @@ SCRATCH_DIR = ".molbuilder_workspace"
 
 
 def _default_draft_dir():
-    """Home for the workspace state files -- the projects root, resolved THE ONE
-    WAY the rest of the app resolves it.
+    """Home for the workspace state files.  The contract persists ANY in-memory
+    data -- a project dir is NOT required (workspace.md) -- so state files live at
+    the top-level ``projects_root()``, keyed by ``workspace_id``.
 
-    The contract persists ANY in-memory data (a project dir is not required), so
-    state files live at the top-level root, keyed by ``workspace_id``.
+    KNOWN DEFECT, tracked as task #46 and deliberately NOT fixed here: the app
+    resolves the projects root TWICE.  The file picker asks
+    ``Capabilities.file_picker_roots()`` -- the resolved answer a deployment or a
+    test can point elsewhere -- and this asks ``projects_root()``, which is always
+    ``Path.cwd()/projects`` and cannot be redirected.  So a test that pins the
+    picker at a temp directory still has its SESSION STATE land in the developer's
+    live ``projects/`` tree.
 
-    WHERE THAT ROOT IS COMES FROM ``Capabilities``, not from ``projects_root()``
-    directly.  ``file_picker_roots()`` is the app's resolved, overridable answer
-    to "where is projects/" -- what the file picker browses and what a deployment
-    or a test can point somewhere else.  This asked ``projects_root()`` instead,
-    which is always ``Path.cwd()/projects``, so there were TWO answers to one
-    question and only one of them could be redirected.
-
-    The bill for that arrived on 2026-08-02: an end-to-end test pins the picker
-    at a temp directory and then drives a real server, so its FILES went to the
-    temp dir while its SESSION STATE went to the developer's live ``projects/``
-    tree -- writing into real data, and inheriting whatever a browser open on the
-    same machine had left there.  A test cannot isolate a root it has no way to
-    move.
-
-    One resolution, one root: point the picker somewhere and the session state
-    follows it.  ``projects_root()`` stays as the fallback for the degenerate
-    case Capabilities reports when the root cannot be resolved at all (a broken
-    cwd symlink, a mount loop) -- the same answer it would have given anyway, so
-    it is the one opinion, not a second.
+    A fix was written and reverted, because it carried its own bug: it fell back
+    to ``projects_root()`` when Capabilities answered nothing -- but Capabilities
+    answers nothing ONLY when ``projects_root().expanduser().resolve()`` threw, so
+    the fallback returns the UNRESOLVED form of a path that has just failed to
+    resolve.  A second answer, produced exactly when the first one broke.  The
+    real fix resolves once and fails loudly; #46 carries it.
     """
-    roots = get_capabilities().file_picker_roots()
-    return roots[0][0] if roots else projects_root()
+    return projects_root()
 
 
 def _bad(msg, status=400):
