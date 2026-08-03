@@ -22,19 +22,48 @@ Templates need neither: Jinja re-reads from disk on request. Static files are re
 per request too — so **only the browser's cache makes them look stale**, and only
 Python genuinely needs the process replaced.
 
-## 2. Half one — the version guard on static assets
+## 2. Half one — static assets revalidate ✅ done 2026-08-03
 
-Static URLs carry a version, so a changed file is a different URL and the browser
-fetches it. Nothing is restarted and nothing is invalidated by hand.
+**Not a version on the URL. That was this plan's first answer and it was wrong.**
 
-The version is the app's own build identity — the same string `/api/health`
-already reports — so one value moves every asset at once and there is no per-file
-bookkeeping to get wrong.
+Flask's default caches a static file for **12 hours with no check**, so a changed
+`.js` or `.css` keeps loading from the browser's copy — while the server has been
+serving the new bytes the whole time. That is the entire reason a front-end change
+has looked like it "needs a restart".
 
-**Why this is not "cache-busting as a workaround".** Today there is no
-`SEND_FILE_MAX_AGE` and no version, so correctness depends on the user knowing to
-hard-reload. A URL that changes when the bytes change is the honest statement of
-what happened.
+`SEND_FILE_MAX_AGE_DEFAULT = 0` makes it `Cache-Control: no-cache`, which does not
+mean *do not store* — the browser keeps its copy and **asks** whether it is still
+good. Unchanged files come back **304 with no body**, so the saving that mattered
+is kept and the staleness is gone.
+
+**Why the version guard was the wrong answer.** It only reaches URLs the *server*
+builds. 119 of this app's asset references come through `url_for('static')` — but
+**51 more are ESM imports written inside the JavaScript** (`export { mount } from
+"./mount.js"`), which no template sees and no `url_for` can rewrite. Versioning
+the entry point would have left the whole module graph behind it on cached copies:
+the half that actually breaks. And the identity it would have used —
+`/api/health`'s `__version__` — is the *package* version, which does not move when
+a file is edited, so it could not have signalled a change at all.
+
+Revalidation is a property of how a file is **served**, so it covers all 170
+references with no build step and no bookkeeping.
+
+**It does not weaken the rate limiter, and that was checked rather than assumed.**
+It multiplies requests per page load, but `rate_limit.py:310` reads
+`if not (400 <= status_code < 500): return` — **only 4xx feeds the counter**. A 200
+or a 304 is discarded before reaching any buffer. Pinned by
+`tests/test_static_revalidates.py`, including a guard on that predicate: if the
+limiter is ever widened to count 3xx, the assumption behind this change breaks and
+the test says so.
+
+**A `/static` exemption was considered and rejected.** The idea was to make
+`threshold_total` usable again — but that counter counts *all* requests, not 4xx,
+so exempting static from the 4xx path would not have helped it. Worse, a scanner
+probing `/static/.env`, `/static/config.php` generates exactly the 4xx storm the
+limiter exists to catch, on that very path — the exemption would have created a
+namespace where enumeration is free. Legitimate static traffic already passes
+freely because it returns 200/304; **there is no legitimate static 4xx to
+protect.**
 
 ## 3. Half two — an *enforced* reload, not a watched one
 
@@ -124,7 +153,7 @@ Three conditions, and the first is not optional:
 
 | | Step | Note |
 |---|---|---|
-| **A** | The version guard (§ 2) | independent of everything else, no new surface, useful on its own |
+| **A** ✅ | ~~The version guard~~ **static revalidation (§ 2) — done 2026-08-03** | independent of everything else, no new surface, useful on its own |
 | **B** | `serve --supervise` — the parent loop, no route yet | testable alone: start it, kill the child by hand, watch it come back |
 | **C** | The admin gate: route exists only when `admin_emails` is non-empty | before the route does anything |
 | **D** | `POST /api/admin/reload` — reply, then exit with the sentinel | |

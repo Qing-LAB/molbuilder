@@ -239,6 +239,31 @@ def create_app(*, config=None) -> Flask:
     app = Flask(__name__)
     app.config["JSON_SORT_KEYS"] = False
     app.config["MAX_CONTENT_LENGTH"] = _MAX_UPLOAD_MB * 1024 * 1024
+    # ---- Static assets: REVALIDATE, never serve a stale copy blind ------
+    #
+    # Flask's default caches a static file for 12 hours with no check, so a
+    # changed .js or .css keeps loading from the browser's copy until that
+    # expires or someone knows to hard-reload.  That is the whole reason a code
+    # change "needs a restart" -- the server was always serving the new bytes;
+    # the browser never asked for them.
+    #
+    # 0 means `Cache-Control: no-cache`: KEEP the copy, but ASK before using it.
+    # The browser sends If-None-Match / If-Modified-Since and gets a 304 with no
+    # body when nothing changed, so the saving that mattered is kept and the
+    # staleness is gone.
+    #
+    # WHY NOT A VERSION ON THE URL, which is the usual answer.  It only reaches
+    # URLs the server builds.  119 of this app's asset references come through
+    # `url_for('static')` -- but 51 more are ESM imports written INSIDE the
+    # JavaScript (`export { mount } from "./mount.js"`), which no template ever
+    # sees and no `url_for` can rewrite.  Versioning the entry point would leave
+    # the whole module graph behind it on cached copies, which is the half that
+    # actually breaks.  Revalidation is a property of how a file is SERVED, so it
+    # reaches every one of the 170 without a build step.
+    #
+    # (`/api/plotly.js` keeps its own long max-age: that file changes only when
+    # the plotly PACKAGE is upgraded, which is a fresh app start anyway.)
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
     # Optional auth.  When the cfg has no ``auth`` section the call is
     # a no-op (the localhost-only default).  See molbuilder/web/auth.py
