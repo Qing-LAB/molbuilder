@@ -503,7 +503,7 @@ checks nothing.** The gate is server-side only, and it runs at seven points:
 | 4 | `/api/structure/periodicity` — after | the edit has been applied | notices **returned** — these describe the box the user now has |
 | 5 | `apply_edit`, `cell_origin` branch | inside the edit | used only to DECIDE whether a caveat is needed; its notices are not reported |
 | 6 | `/api/structure/export` | export | notices returned |
-| 7 | `_shared.apply_periodicity_from_body` | a tab emits a job | the checked structure is what the emitter uses; its notices are dropped, and nothing on that path carries them (`molview.md` § 6.8) |
+| 7 | `_shared.apply_periodicity_for_emit` | a tab emits a job | the checked structure is what the emitter uses; its notices are dropped, and nothing on that path carries them (`molview.md` § 6.8) |
 
 **Seam 2 is why "always checked" is not a rule anyone has to remember.** It is
 the single return path of every structure-returning route, so the check is in the
@@ -516,6 +516,65 @@ with nobody told.
 The check that reaches the user runs on the *result*, after the edit — not on the
 request that asked for it. Reporting seam 2 instead told a user who had just
 fixed their box that it was still broken.
+
+### 8.2 One way in, and two verdicts — the contract (decided 2026-08-03)
+
+**Every structure enters the same way, whatever door it knocks on.** Four things
+can carry a box — the `.molstruct.json` sidecar on disk, the labels package
+recovered from a run's input script, a `periodicity` field in the request, and
+the metadata inside a structure envelope — and before this was written down,
+which one you used decided whether the box was checked at all.
+
+**The sequence, in this order, with no step optional:**
+
+| # | Step | Rule |
+|---|---|---|
+| 1 | **Get the geometry** | from exactly ONE source: a file path, raw text, or a structure envelope. A request carrying two is a caller mistake and is refused — never silently resolved by precedence |
+| 2 | **Apply the facts that travelled with it** | at most ONE metadata document — a sidecar *or* a trusted labels package, never both. Applying is whole-replace, so a second document does not merge with the first, it erases it |
+| 3 | **Apply what the caller stated** | the request's own `periodicity` block, which beats the document, because stating it is a deliberate act |
+| 4 | **Check once, at the end, on the structure** | never on the field the box arrived in. This is what makes the route irrelevant: whichever of the four carried it, the same check sees the same assembled structure |
+| 5 | **Answer** | refuse or report — see below |
+
+Step 4 is the load-bearing one. A check attached to a *field* only guards the
+callers who use that field; a check attached to the *structure*, immediately
+before the door answers, cannot be walked around. It is the same property that
+makes seam 2 work for the eight edit ops.
+
+#### The two verdicts, and what decides which
+
+**What the request is FOR decides what a bad box costs**, not which door it came
+through and not who stated it:
+
+| The request is… | A bad box | Why |
+|---|---|---|
+| **generating something you would run** — a SIESTA `.fdf`, a PySCF script, a transport or spectra job, an exported document | **refused**, HTTP 400, with the reason | these parameters have to be right. There is nothing to gain from emitting a calculation whose box is impossible; it would only fail later, further from the cause |
+| **loading or modifying a structure** — opening a file, restoring a tab, any of the eight edit ops | **reported**, with the structure, as a warning | the user needs to see the problem to fix it. A load that refused would leave a structure with a bad box unopenable, and so unfixable — you could not get it on screen to correct it. Fix it on the Cell page, and it is checked again |
+
+The one sub-case worth naming: **the Cell page itself refuses the value you
+type.** It is a modifying door, but its whole subject is that value, so the
+refusal is immediate feedback on what was just typed rather than a block on
+getting work done — and a good value entered right after is accepted. You are
+never stuck.
+
+In code the split is two named seams over one applier, so neither owns a copy of
+the translation:
+
+- `apply_periodicity_only(struct, body)` — applies, judges nothing. The loading
+  doors use it, and `ok_structure_response` (seam 2) reports on the way out.
+- `apply_periodicity_for_emit(struct, body)` — applies, then refuses. Every
+  emitting door uses it; the refusal becomes the door's 400 through one
+  app-level handler.
+
+#### The report has to arrive
+
+A reported problem the user never sees is the same as no check at all, so the
+sentence the server wrote is carried to the screen **unchanged**: these messages
+carry numbers — determinants, per-axis clearances — that only the server
+computed, and rewording would put a second author on a sentence one of them can
+write. MolView draws it in the viewer's own panel, marked as a warning
+(`molview.md` § 6.8: a cell notice goes under the Cell rows, everything else
+above the atom list). Pinned by
+`tests/test_molview_mount.py::test_a_warning_from_a_load_is_put_in_front_of_the_user`.
 
 **Loading a structure:**
 

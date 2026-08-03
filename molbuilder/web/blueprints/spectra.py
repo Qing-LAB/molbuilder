@@ -349,8 +349,8 @@ def api_spectra_render():
     # ``regions`` from the model; omitting them is a 400, not a disk re-read.
     from ._shared import apply_labels_to_struct
     sidecar_notice: Optional[str] = apply_labels_to_struct(struct, body)
-    from ._shared import apply_periodicity_from_body
-    struct = apply_periodicity_from_body(struct, body)
+    from ._shared import apply_periodicity_for_emit
+    struct = apply_periodicity_for_emit(struct, body)
 
     # Build SpectraConfig from form params.  Coercion failures
     # surface as an error-severity Issue rather than HTTP 400 so

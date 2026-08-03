@@ -1225,7 +1225,7 @@ class PeriodicityRefused(Exception):
 def checked_periodicity(struct):
     """Run the gate and let a refusal become the door's 400.
 
-    The one wrapper both entry paths use -- ``apply_periodicity_from_body``
+    The one wrapper both entry paths use -- ``apply_periodicity_for_emit``
     below and the export door -- so neither owns a copy of the translation.
     Returns the gate's ``(struct, notices)`` unchanged.
     """
@@ -1235,24 +1235,35 @@ def checked_periodicity(struct):
         raise PeriodicityRefused(str(exc)) from exc
 
 
-def apply_periodicity_from_body(struct, body):
-    """The tab-emit contract (structure-periodicity.md § 7, decided
-    2026-07-29): the client sends the MODEL's periodicity truth
-    (``body["periodicity"]`` = {cell, cell_origin, axis_kind, vacuum})
-    read fresh off the MolView data model at emit — **never a second
-    source**.  The server applies it verbatim and runs the frame-contract
-    gate; an absent block means the Structure's own defaults (isolated,
-    vacuum 0).  There is deliberately NO disk-sidecar fallback here: a
-    render request reflects the model the user is looking at, and
-    inferring state from what happens to be in the request is the exact
-    failure that severed this wire on 2026-06-14 (the label-presence
-    branch silently skipping the sidecar's cell).
+def apply_periodicity_only(struct, body):
+    """Apply what the caller STATED about the box, and check nothing.
 
-    Returns the CHECKED structure -- the same object the gate was given, since
-    the gate corrects nothing (clause 1: a resolved value is never written back).
-    Callers rebind so this stays the one seam every emitted structure passes
-    through rather than an optional check.  A refusable cell raises
-    :class:`PeriodicityRefused`, which the app turns into the door's 400.
+    ``body["periodicity"]`` = {cell, cell_origin, axis_kind, vacuum}, read
+    fresh off the MolView data model at emit -- **never a second source**.
+    Applied verbatim; an absent block means the Structure's own defaults
+    (isolated, vacuum 0).  There is deliberately NO disk-sidecar fallback: a
+    request reflects the model the user is looking at, and inferring state from
+    what happens to be in the request is the exact failure that severed this
+    wire on 2026-06-14 (the label-presence branch silently skipping the
+    sidecar's cell).
+
+    THE APPLYING AND THE JUDGING ARE TWO STEPS, because the same bad box has
+    two right answers depending on what the request is FOR (user decision,
+    2026-08-03):
+
+      * a request that GENERATES something you would run -- an .fdf, a PySCF
+        script, a transport or spectra job, an exported document -- is REFUSED.
+        Those parameters have to be right; there is no point emitting a
+        calculation nobody can trust.
+      * a request that LOADS or MODIFIES a structure carries on, and the
+        problem is REPORTED with the answer, so the user can look at it, fix it
+        in the Cell page, and be checked again.  Refusing here would leave a
+        structure with a bad box unfixable through the UI -- you could not even
+        open it to correct it.
+
+    So this half applies; :func:`apply_periodicity_for_emit` adds the refusal
+    for the first kind of door, and :func:`ok_structure_response` reports for
+    the second.
     """
     per = body.get("periodicity")
     if isinstance(per, dict):
@@ -1266,7 +1277,19 @@ def apply_periodicity_from_body(struct, body):
             struct.vacuum = tuple(per["vacuum"])
         # (resolved_* keys are VIEWS -- ignored by design, clause 1.)
         struct.__post_init__()
-    checked, _conditions = checked_periodicity(struct)
+    return struct
+
+
+def apply_periodicity_for_emit(struct, body):
+    """Apply the stated box, then REFUSE a bad one -- the emitting doors.
+
+    Returns the CHECKED structure -- the same object the gate was given, since
+    the gate corrects nothing (clause 1: a resolved value is never written
+    back).  Callers rebind so this stays the one seam every emitted structure
+    passes through rather than an optional check.  A refusable cell raises
+    :class:`PeriodicityRefused`, which the app turns into the door's 400.
+    """
+    checked, _conditions = checked_periodicity(apply_periodicity_only(struct, body))
     return checked
 
 

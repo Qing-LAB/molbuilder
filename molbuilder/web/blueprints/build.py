@@ -894,6 +894,30 @@ def api_build_load():
             "title": struct.title or _resolved.name,
         })
 
+    # A STRUCTURE PUT BACK, with no file and no text behind it.  A tab that
+    # showed a structure before the page was left hands the SAME envelope every
+    # edit posts -- atoms as numbers, the facts beside them -- and gets the same
+    # answer a file load gives, so a restored viewer is indistinguishable from a
+    # freshly-loaded one.  Nothing is parsed: the one deserialiser rebuilds it,
+    # and refuses a malformed envelope rather than half-building a structure.
+    if isinstance(_pbody.get("structure"), dict):
+        from ._shared import struct_from_body
+        try:
+            struct = struct_from_body(_pbody)
+        except (ValueError, TypeError) as exc:
+            return jsonify({"ok": False,
+                            "error": f"could not restore structure: {exc}"}), 400
+        # The stated box is applied, never refused: this is a LOAD.  A bad one
+        # is reported with the answer (ok_structure_response below) so the user
+        # can see it, fix it in the Cell page and be checked again -- refusing
+        # would make a structure with a bad box unopenable, and so unfixable.
+        from ._shared import apply_periodicity_only
+        struct = apply_periodicity_only(struct, _pbody)
+        return ok_structure_response(struct, extra={
+            "source_format": "xyz",
+            "title": struct.title or "restored structure",
+        })
+
     text: str = ""
     fmt: str = "auto"
     filename: str = ""
@@ -993,26 +1017,28 @@ def api_build_load():
             return jsonify({"ok": False,
                             "error": f"atom_metadata: {exc}"}), 400
 
-    # THE PERIODICITY THE CALLER STATED, through the seam every other structure
-    # door already passes: ``body["periodicity"]`` = {cell, cell_origin,
-    # axis_kind, vacuum}, applied verbatim and then CHECKED.  A refusable cell
-    # raises PeriodicityRefused, which the app turns into this door's 400 --
-    # the same sentence /api/build/fdf, /pyscf, /preflight, /spectra/render and
-    # the transport door answer with.
+    # THE PERIODICITY THE CALLER STATED: ``body["periodicity"]`` =
+    # {cell, cell_origin, axis_kind, vacuum}, applied verbatim.
     #
-    # WHY IT IS HERE AND NOT INSIDE THE BLOCK ABOVE.  A run has no
-    # `.molstruct.json`: the Results tab recovers its labels from the input
-    # script and its lattice from the output logs.  Folding the lattice into
-    # that block would have gone around this gate -- a left-handed cell would
-    # have been ACCEPTED at 200 -- and it would have meant the browser opening
-    # a metadata document it does not own.  Two facts, two named inputs, one
-    # authority applying each.
+    # APPLIED, NOT JUDGED.  This is a LOAD, so a bad box is REPORTED with the
+    # answer rather than refused -- the emitting doors (fdf / pyscf / preflight
+    # / spectra / transport / export) are the ones that refuse, because what
+    # they produce is a calculation somebody runs.  A load that refused would
+    # leave a structure with a bad box unopenable, and so unfixable: the user
+    # could not even get it on screen to correct it.
+    #
+    # WHY IT IS A FIELD OF ITS OWN and not folded into the metadata block above.
+    # A run has no `.molstruct.json`: the Results tab recovers its labels from
+    # the input script and its lattice from the output logs -- two facts from
+    # two places.  Folding the lattice into the labels document meant the
+    # browser opening a document the server wrote, and re-stamping the atom
+    # count that guards it.
     #
     # AFTER the sidecar / atom_metadata application, never before:
     # ``apply_metadata_dict`` is full-REPLACE, so a block applied second would
     # reset the cell this just set.
-    from ._shared import apply_periodicity_from_body
-    struct = apply_periodicity_from_body(struct, body)
+    from ._shared import apply_periodicity_only
+    struct = apply_periodicity_only(struct, body)
 
     # Workspace-state Phase 2 migration (2026-06-07): route through
     # the canonical ``ok_structure_response`` helper.  Per-atom
@@ -1056,11 +1082,11 @@ def api_build_fdf():
     # viewer model fills via factsForRequest().  A body that omits them is a
     # 400 -- there is no disk fallback, so an emitted deck can never mix body
     # geometry with disk labels the model has since changed.
-    from ._shared import apply_labels_to_struct, apply_periodicity_from_body
+    from ._shared import apply_labels_to_struct, apply_periodicity_for_emit
     sidecar_notice = apply_labels_to_struct(struct, body)
     # The tab-emit contract: the body carries the MODEL's periodicity
     # truth (never a second source); apply + gate (structure-periodicity.md 7).
-    struct = apply_periodicity_from_body(struct, body)
+    struct = apply_periodicity_for_emit(struct, body)
 
     try:
         cfg = _siesta_config_from_params(params)
@@ -1154,11 +1180,11 @@ def api_build_pyscf():
     # the structure before render_script sees it.  2026-06-14 update:
     # prefer in-body labels (the viewer-is-truth contract) and only
     # fall back to disk sidecar when neither key is sent.
-    from ._shared import apply_labels_to_struct, apply_periodicity_from_body
+    from ._shared import apply_labels_to_struct, apply_periodicity_for_emit
     sidecar_notice = apply_labels_to_struct(struct, body)
     # The tab-emit contract: the body carries the MODEL's periodicity
     # truth (never a second source); apply + gate (structure-periodicity.md 7).
-    struct = apply_periodicity_from_body(struct, body)
+    struct = apply_periodicity_for_emit(struct, body)
 
     try:
         cfg = _pyscf_config_from_params(params)
@@ -1277,9 +1303,9 @@ def api_build_preflight():
                         "error": f"could not parse xyz: {exc}"}), 400
     # Preflight must see exactly what Generate sees (labels + the
     # model's periodicity truth) -- it validated a phantom before.
-    from ._shared import apply_labels_to_struct, apply_periodicity_from_body
+    from ._shared import apply_labels_to_struct, apply_periodicity_for_emit
     apply_labels_to_struct(struct, body)
-    struct = apply_periodicity_from_body(struct, body)
+    struct = apply_periodicity_for_emit(struct, body)
 
     try:
         if engine == "siesta":

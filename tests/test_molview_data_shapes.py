@@ -280,10 +280,17 @@ def test_a_reserved_label_is_written_in_exactly_one_place():
 
     written = {}
     for name, code in module_code().items():
-        # The NAME being written — a string literal — not a reference to the
-        # constant that holds it. § 9.3's table has a `getFrozen` door, so more
-        # than one place legitimately USES the name; what costs is spelling it.
-        literals = re.findall(r"""["'][^"'\n]*frozen[^"'\n]*["']""", code, re.I)
+        # THE NAME being written — the string `frozen_atoms` itself — not a
+        # reference to the constant that holds it, and not any string that
+        # happens to contain the word. § 9.3's table has a `getFrozen` door, so
+        # more than one place legitimately USES the name; what costs is
+        # SPELLING it, because two spellings are what drift apart.
+        #
+        # `molviewer-label-frozen` is a CSS class, not the name: it says what
+        # the chip looks like, and the stylesheet is where a class is defined.
+        # Matching it here would have made the rule "never write the word",
+        # which is not the rule and would forbid a comment.
+        literals = re.findall(r"""["']frozen_atoms["']""", code, re.I)
         if literals:
             written[name] = literals
     assert list(written) == ["model-jobs.js"], (

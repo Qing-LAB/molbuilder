@@ -47,8 +47,11 @@ globalThis.fetch = async function (route, init) {
         { index: 0, element: "C", x: 0, y: 0, z: 0, regions: [] },
         { index: 1, element: "O", x: 1, y: 0, z: 0, regions: [] },
     ];
-    return { ok: true, status: 200, json: async () => ({ atoms }) };
+    const extra = globalThis.__nextNotices
+        ? { notices: globalThis.__nextNotices } : {};
+    return { ok: true, status: 200, json: async () => Object.assign({ atoms }, extra) };
 };
+globalThis.__nextNotices = null;
 globalThis.setInterval = globalThis.setInterval;
 """
 
@@ -1257,6 +1260,50 @@ def test_an_atom_row_ticks_shows_its_labels_and_lets_one_be_taken_off():
     )
     assert out["otherAtomUntouched"] == [], (
         "removing a label from one atom reached another"
+    )
+
+
+def test_a_warning_from_a_load_is_put_in_front_of_the_user():
+    """A LOAD REPORTS, IT DOES NOT REFUSE — so the report has to be visible.
+
+    A structure whose box is unusable still opens: the user has to be able to
+    see it to fix it, and the doors that GENERATE a calculation are the ones
+    that refuse (nothing worth running comes out of an impossible box). That
+    trade only works if the sentence the server sent actually reaches the
+    screen — a warning nobody sees is the same as no check at all.
+
+    MolView shows it, worded exactly as the server wrote it: the numbers in
+    these messages — clearances, determinants, axes — were computed there, and
+    rewording would put a second author on a sentence only one of them can
+    write.
+    """
+    out = _run(
+        """
+        globalThis.__nextNotices = [
+            { level: "warn",
+              message: "cell must be right-handed (det > 0); got det = -1." },
+        ];
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const card = host.querySelector(".molviewer-card");
+        const box = card.querySelector(".molviewer-notices");
+        const lines = card.querySelectorAll(".molviewer-notice")
+            .map(n => ({ text: n.textContent,
+                         classes: Array.from(n._classes).join(" ") }));
+        console.log(JSON.stringify({ hidden: !!(box && box.hidden), lines }));
+        """
+    )
+    assert out["lines"], (
+        "the server said the box was unusable and the viewer showed nothing. "
+        "A load reports rather than refuses, so this IS the whole of the check "
+        "reaching the user"
+    )
+    assert not out["hidden"], "the message was drawn into a hidden box"
+    assert out["lines"][0]["text"] == (
+        "cell must be right-handed (det > 0); got det = -1."
+    ), f"the sentence was reworded on the way to the screen: {out['lines'][0]}"
+    assert "warn" in out["lines"][0]["classes"], (
+        f"a warning was drawn as ordinary information: {out['lines'][0]}"
     )
 
 

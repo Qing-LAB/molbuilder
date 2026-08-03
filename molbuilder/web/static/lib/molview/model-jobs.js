@@ -358,6 +358,21 @@ function requestBodyFor(input) {
     // A project file is read BY THE SERVER, which owns file access and the
     // pairing with the sidecar — the browser sends a path and no text.
     if (typeof input.path === "string" && input.path) return { path: input.path };
+
+    /* A STRUCTURE PUT BACK — `exportFile`'s exact inverse, which is what that
+     * pair has always claimed to be.
+     *
+     * What comes out of a viewer as data can go back into one: the atoms, the
+     * labels, the cell, in the same envelope every edit already posts. There is
+     * no text and no file, because there was none — the caller is a TAB putting
+     * back the structure it was showing before the page was left.
+     *
+     * It goes through this door like everything else (§ 9.3, one entrance), so
+     * the same checks run and the sequence is anchored the same way. The server
+     * rebuilds it through the one deserialiser rather than parsing anything. */
+    if (input.structure && typeof input.structure === "object") {
+        return { structure: input.structure };
+    }
     if (typeof input.text !== "string") return null;
     const body = { text: input.text, filename: input.filename };
     // An explicit format is for when the caller knows the text's format

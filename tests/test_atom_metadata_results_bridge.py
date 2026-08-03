@@ -205,24 +205,20 @@ class TestBuildLoadDoor:
             "the cell arrived but the labels did not; both facts travel"
         )
 
-    def test_a_refusable_cell_is_refused_by_this_door_too(self, client):
-        """THE REASON THE CELL IS NOT SMUGGLED INSIDE THE LABEL BLOCK.
+    def test_a_bad_box_is_reported_by_this_door_and_refused_by_the_emitters(self, client):
+        """The verdict follows WHAT THE REQUEST IS FOR (contract:
+        structure-periodicity.md § 8.2).
 
-        `apply_to_structure` applies `cell` along with the atom-scoped fields,
-        so folding a run's lattice into that block WORKS -- and goes around the
-        periodicity gate every other door runs.  A left-handed cell was then
-        accepted at 200 by the one door a viewer actually loads through.
+        Loading is not generating.  A structure whose box is unusable still
+        opens, with the problem attached to the answer, because the user has to
+        be able to see it to fix it -- a load that refused would leave that
+        structure unopenable and therefore unfixable.  The doors that emit
+        something you would RUN refuse the same box, because there is nothing to
+        gain from a calculation that cannot be trusted.
 
-        The same cell is refused now, with the gate's own sentence, exactly as
-        /api/build/fdf and /api/spectra/render refuse it
-        (tests/test_periodicity_gate.py).
-
-        AND THE CHECK IS ON THE STRUCTURE, not on the field it arrived in.  The
-        seam runs before the door answers, so a cell that reaches the structure
-        some other way -- smuggled inside the label block, which
-        ``apply_to_structure`` will happily apply -- is refused as well.  Same
-        property the modify ops have: "always validated" is a fact about the
-        shape of the code, not about every author remembering.
+        And the check is on the STRUCTURE, not on the field the box arrived in,
+        so it does not matter which of the four routes carried it -- here, the
+        named field and the label document both.
         """
         left_handed = [[1, 0, 0], [0, 1, 0], [0, 0, -1]]
         smuggled = json.loads(_md_json_4c())
@@ -230,17 +226,30 @@ class TestBuildLoadDoor:
 
         for label, payload in (
             ("the named field", {"periodicity": {"cell": left_handed}}),
-            ("the label block", {"atom_metadata": json.dumps(smuggled)}),
+            ("the label document", {"atom_metadata": json.dumps(smuggled)}),
         ):
             r = client.post("/api/build/load", json={
                 "text": _XYZ_4C_FRAME0, "filename": "run.xyz", **payload})
-            assert r.status_code == 400, (
-                f"the load door accepted a refusable cell through {label} "
-                f"({r.status_code}); every other structure door answers 400"
+            assert r.status_code == 200, (
+                f"loading refused a bad box through {label} "
+                f"({r.status_code}) -- the structure is now unopenable, so "
+                f"there is no way to correct it"
             )
-            assert "right-handed" in (r.get_json().get("error") or ""), (
-                f"{label}: refused, but not with the gate's reason: "
-                f"{r.get_json().get('error')!r}")
+            said = " ".join(n.get("message", "")
+                            for n in (r.get_json().get("notices") or []))
+            assert "right-handed" in said, (
+                f"{label}: the box was accepted and NOTHING was said about it "
+                f"({said!r}) -- a report nobody sees is the same as no check"
+            )
+
+        # The same box, at a door that emits a calculation: refused.
+        emit = client.post("/api/build/fdf", json={
+            "xyz": _XYZ_4C_FRAME0, "params": {},
+            "periodicity": {"cell": left_handed}})
+        assert emit.status_code == 400, (
+            f"an .fdf was generated from an impossible box: {emit.status_code}"
+        )
+        assert "right-handed" in (emit.get_json().get("error") or "")
 
     def test_the_label_block_is_passed_through_untouched(self, client):
         """The browser must not re-state ``n_atoms_total``.

@@ -90,6 +90,18 @@ export async function openMolecule(viewer, path, opts) {
     payload = await model.installMolecule({
       path:   path,
       source: { kind: "file", file: path, generator_input: null },
+      /* THIS IS THE USER SAYING "LOAD THIS FILE", so it replaces whatever is
+       * there.  Without it a read-only viewer that already holds a structure
+       * answers null and does nothing -- so on structure-optimization, spectra,
+       * transport and the results inspector you could load ONE file per page
+       * and picking a second did nothing at all, silently.
+       *
+       * Enforcing is right here and nowhere else: swapping the structure
+       * outright is not an EDIT of the one on screen, which is what read-only
+       * exists to prevent, and this door is only ever reached by an explicit
+       * gesture -- the Load button, or a double-click in the sidebar.  Work
+       * that would be lost is guarded above, by the confirm. */
+      enforce: true,
     });
   } catch (e) {
     return { ok: false, error: (e && e.message) || ("Could not load " + path) };

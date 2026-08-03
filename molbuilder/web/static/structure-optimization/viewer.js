@@ -122,6 +122,63 @@ import { mount as mvMount, formula as mvFormula }
     const _data = () => ((_mvHandle && _mvHandle.ok) ? _mvHandle.data : null);
     let _mvHandle = null;
 
+    /* ── WHAT THIS TAB REMEMBERS ──────────────────────────────────────────
+     *
+     * Two things, and they are the two a user would be annoyed to lose on a
+     * tab switch: THE MOLECULE THEY LOADED, and THE PARAMETERS THEY TYPED.
+     * The parameters already survive (see the form-state block near the end of
+     * this file); this is the molecule.
+     *
+     * IT IS THE TAB'S SAVE, NOT THE VIEWER'S. This viewer is read-only, which
+     * means its timeline does nothing -- no saved points, no Retract, nothing
+     * written of its own accord. That is about the SEQUENCE, not about the
+     * page: what the tab put on screen is the tab's own fact, kept under the
+     * tab's own tag beside its form values (workspace.md § 4 -- several savers
+     * on one page, each deciding what and when).
+     *
+     * WHAT IS SAVED IS THE STRUCTURE, NOT THE PATH. A path would be re-read on
+     * the way back, so a file changed on disk while you were away would quietly
+     * replace what you had; the structure comes back as you left it, and the
+     * Load button is what goes and gets the new bytes.
+     */
+    const _SAVED = () => ({ workspace_id: _ws().workspaceId(WORKSPACE_TAG),
+                            state_index:  0 });
+
+    function _rememberStructure() {
+        const ws = _ws();
+        const d  = _data();
+        if (!ws || !d) return;
+        // What the viewer hands out as data -- atoms, labels, cell -- which is
+        // exactly what it can be handed back (molview.md § 9.3).
+        const out = d.exportFile();
+        if (!out || !out.structure) return;
+        ws.persist(WORKSPACE_TAG,
+                   { v: 1, structure: out.structure, loadedFrom: _sidebarLastFile || "" },
+                   _SAVED());
+    }
+
+    /* Put it back, or answer null when there is nothing to put back.
+     *
+     * `installMolecule` into a viewer that holds nothing is allowed in
+     * read-only -- what read-only refuses is EDITING what is on screen, and
+     * this is a page arriving with no structure at all. */
+    async function _restoreStructure() {
+        const ws = _ws();
+        const d  = _data();
+        if (!ws || !d) return null;
+        let saved;
+        try {
+            saved = await ws.readState(_SAVED());
+        } catch (_e) {
+            return null;          // unreachable storage reads as "nothing saved"
+        }
+        // Bytes from a layout this build does not know are not something to
+        // guess at; an empty canvas is the honest answer.
+        if (!saved || saved.v !== 1 || !saved.structure) return null;
+        await d.installMolecule({ structure: saved.structure });
+        return saved;
+    }
+
     // ----- Status helpers --------------------------------------------
     function setStatus(elId, msg, kind) {
         const el = $(elId);
