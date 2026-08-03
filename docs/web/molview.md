@@ -1467,7 +1467,6 @@ rather than maintained separately.
 | Know / move / follow the displayed frame | `currentFrame()` · `frameCount()` · `setCurrentFrame(i)` · `onFrameChange(fn)` (§ 6.4) | | — |
 | Get the structure out, to hand to a door | `exportFile(range)` — the structure over a range of frames, plus the name it came in under (§ 11.7). The range defaults to the displayed frame | | — |
 | Hear that the structure changed | `subscribe(fn)` — the structure only; the frame has its own channel | | — |
-| Read what the server said about it | `getNotices()` (§ 6.8) — `{where, list:[{level, message}]}` for the structure now showing, or `null` when the server had nothing to say. A host that shows findings reads them here; they do not ride back on the door that made the change | | — |
 | Reach the selection / the drawing settings | `selection` (§ 9.5) · `view` (§ 9.6) | | — |
 | Put a structure in | `installMolecule(input)` | | **yes** |
 | Edit the geometry | `applyOp(name)` (§ 11.1) | | **yes** |
@@ -1479,7 +1478,7 @@ rather than maintained separately.
 | Make several changes land as one | `beginChange` · `endChange` — the bracket of § 11.2: writes asked for inside are held, and one lands at the end carrying the settled state | | — |
 | Ask which kind of viewer this is | `mode` — so MolView can hide the controls the gate would swallow (§ 9.4). Configuration, not data: the gate is still what makes the guarantee true | | — |
 
-Seventeen needs. That count is the honest measure of the surface; everything else
+Sixteen needs. That count is the honest measure of the surface; everything else
 is a narrower cut, and a cut earns its place only by being what a caller actually
 asks for.
 

@@ -6,6 +6,8 @@ what a check needs).  Each test names the invisible failure it prevents.
 from __future__ import annotations
 
 import numpy as np
+import re
+
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
@@ -163,13 +165,31 @@ class TestF2NoSecondSource:
             set_capabilities(None)
 
 
+def _strip_js_comments(src: str) -> str:
+    """JS source with /* block */ and // line comments removed.
+
+    A source-pinning guard must search the CODE.  Searching raw text cannot tell
+    a call from a comment explaining why that call was removed -- so it fires on
+    the very prose that documents the removal, and the way to "fix" it is to
+    delete the explanation.  A guard that punishes documentation is a guard that
+    trains people to strip it.
+    """
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    return re.sub(r"//[^\n]*", "", src)
+
+
 class TestF1TheTabHoldsNoStructuralMirror:
     """PINS: docs/science/validation.md § 4.1 clause F1 — one fact holder.
 
     INVARIANT: coordinates, labels and periodicity are read from
-    ``molview.data.factsForRequest()`` at request time.  No page keeps its own
-    copy, and one accessor assembles the whole payload so a tab cannot send a
+    ``molview.data.getStructure()`` at request time.  No page keeps its own
+    copy, and ONE read carries the whole master copy so a tab cannot send a
     PARTIAL set of facts.
+
+    The door was ``factsForRequest()`` until molview.md § 9.3 retired it.  The
+    guarantee got STRONGER, not weaker: a second assembling accessor could drift
+    from the master copy, so the shape of the one read is what makes F1 true now
+    rather than the caller's discipline.
 
     PREVENTS: the stale-geometry bug — the structure-optimization tab read labels
     and periodicity live but mirrored the geometry into ``state.xyz`` once at
@@ -186,9 +206,20 @@ class TestF1TheTabHoldsNoStructuralMirror:
         # The mirror is gone from the state object...
         assert "xyz: null," not in src, (
             "the tab re-grew a page-local geometry mirror; read it live from "
-            "molview.data.factsForRequest() instead (F1)")
-        # ...and the live accessor is what request bodies use.
-        assert "_liveXyz()" in src and "factsForRequest" in src
+            "molview.data.getStructure() instead (F1)")
+        # ...and the one whole-master-copy read is what request bodies use.
+        assert "getStructure()" in src, (
+            "the tab must read the structure live through § 9.3's one door")
+        # A CALL, not a mention -- so the CODE is what gets searched.  The file
+        # explains in prose what `factsForRequest` was and why it went, which is
+        # worth keeping; what must not come back is a second accessor assembling
+        # the same facts in another shape, because two assemblers is exactly the
+        # drift F1 forbids.  (Searching the raw text conflates the two and makes
+        # the guard fire on its own documentation.)
+        code = _strip_js_comments(src)
+        assert "factsForRequest" not in code, (
+            "factsForRequest was retired by molview.md § 9.3; assembling the "
+            "facts a second way is the drift F1 exists to prevent")
 
 
 class TestF4DerivesOnlyABoxTheStructureAskedFor:

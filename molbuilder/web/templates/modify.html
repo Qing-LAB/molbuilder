@@ -50,52 +50,52 @@
      generator's form is visible at a time, eliminating the
      accordion's vertical sprawl + keeping the workflow visually
      compact.  Order matches docs/web/tabs.md -->
-<section class="init-structure-card card">
+<section class="modify-init-card card">
   <header class="card-header">
     <h2>Init structure</h2>
     <span id="status" class="status">No structure loaded.</span>
   </header>
 
-  <nav class="init-tabs" role="tablist" aria-label="Init structure source">
-    <button class="init-tab is-active" data-init-tab="load"
+  <nav class="modify-init-tabs" role="tablist" aria-label="Init structure source">
+    <button class="modify-init-tab is-active" data-init-tab="load"
             role="tab" type="button" aria-selected="true">
       Load from project
     </button>
-    <button class="init-tab" data-init-tab="upload"
+    <button class="modify-init-tab" data-init-tab="upload"
             role="tab" type="button" aria-selected="false">
       Upload file
     </button>
-    <button class="init-tab" data-init-tab="smiles"
+    <button class="modify-init-tab" data-init-tab="smiles"
             role="tab" type="button" aria-selected="false">
       SMILES
     </button>
-    <button class="init-tab" data-init-tab="name"
+    <button class="modify-init-tab" data-init-tab="name"
             role="tab" type="button" aria-selected="false">
       Name lookup
     </button>
-    <button class="init-tab" data-init-tab="dna"
+    <button class="modify-init-tab" data-init-tab="dna"
             role="tab" type="button" aria-selected="false">
       DNA
     </button>
-    <button class="init-tab" data-init-tab="rna"
+    <button class="modify-init-tab" data-init-tab="rna"
             role="tab" type="button" aria-selected="false">
       RNA
     </button>
-    <button class="init-tab" data-init-tab="peptide"
+    <button class="modify-init-tab" data-init-tab="peptide"
             role="tab" type="button" aria-selected="false">
       Peptide
     </button>
   </nav>
 
-  <div class="init-tab-panel is-active" data-init-panel="load"
+  <div class="modify-init-panel is-active" data-init-panel="load"
        role="tabpanel">
-    <div class="source-panel-body">
-      <p class="source-hint">
+    <div class="modify-source-body">
+      <p class="modify-source-hint">
         Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in
         the <strong>Projects</strong> sidebar, then click
         <strong>Load</strong> to bring it into the workspace.
       </p>
-      <div class="source-actions">
+      <div class="modify-source-actions">
         <button id="load-candidate-btn" class="ghost" disabled
           title="Load the file currently picked in the Projects sidebar into the workspace. Disabled when no loadable file (.xyz / .pdb) is picked.">
           Load picked file
@@ -105,62 +105,61 @@
     </div>
   </div>
 
-  <div class="init-tab-panel" data-init-panel="upload" role="tabpanel" hidden>
-    <div class="source-panel-body">
-      <p class="source-hint">
+  <div class="modify-init-panel" data-init-panel="upload" role="tabpanel" hidden>
+    <div class="modify-source-body">
+      <p class="modify-source-hint">
         Drop a local <code>.xyz</code> / <code>.pdb</code> file
         into the workspace (no project sidebar pick needed —
         useful for one-off geometries from another tool).
       </p>
-      <div class="source-actions">
+      <div class="modify-source-actions">
         <input id="file-upload-input" type="file"
-               accept=".xyz,.pdb,.XYZ,.PDB"
-               class="source-file-input">
+               accept=".xyz,.pdb,.XYZ,.PDB">
         <span id="file-upload-status" class="muted" role="status"></span>
       </div>
     </div>
   </div>
 
-  <div class="init-tab-panel" data-init-panel="smiles" role="tabpanel" hidden>
-    <div class="source-panel-body">
-      <p class="source-hint">
+  <div class="modify-init-panel" data-init-panel="smiles" role="tabpanel" hidden>
+    <div class="modify-source-body">
+      <p class="modify-source-hint">
         Build a 3-D structure from a SMILES string via RDKit.
       </p>
-      <label class="source-input-row">
+      <label class="modify-source-row">
         <span>SMILES</span>
         <input id="smiles-input" type="text"
                placeholder="e.g. CCO  (ethanol)"
                autocomplete="off" spellcheck="false">
       </label>
-      <div class="source-actions">
+      <div class="modify-source-actions">
         <button id="smiles-generate-btn" class="ghost">Generate</button>
         <span id="smiles-status" class="muted" role="status"></span>
       </div>
     </div>
   </div>
 
-  <div class="init-tab-panel" data-init-panel="name" role="tabpanel" hidden>
-    <div class="source-panel-body">
-      <p class="source-hint">
+  <div class="modify-init-panel" data-init-panel="name" role="tabpanel" hidden>
+    <div class="modify-source-body">
+      <p class="modify-source-hint">
         Look up a molecule by IUPAC or common name (PubChem) and
         build a 3-D structure.
       </p>
-      <label class="source-input-row">
+      <label class="modify-source-row">
         <span>Name</span>
         <input id="name-input" type="text"
                placeholder="e.g. ethanol  /  benzene  /  caffeine"
                autocomplete="off" spellcheck="false">
       </label>
-      <div class="source-actions">
+      <div class="modify-source-actions">
         <button id="name-generate-btn" class="ghost">Generate</button>
         <span id="name-status" class="muted" role="status"></span>
       </div>
     </div>
   </div>
 
-  <div class="init-tab-panel" data-init-panel="dna" role="tabpanel" hidden>
-    <div class="source-panel-body">
-      <p class="source-hint">
+  <div class="modify-init-panel" data-init-panel="dna" role="tabpanel" hidden>
+    <div class="modify-source-body">
+      <p class="modify-source-hint">
         Build DNA from a 1-letter sequence (ACGT) in B / A / Z helix form.
         Picks the best installed backend (3DNA preferred, AmberTools fallback).
         <br>
@@ -175,99 +174,99 @@
         mismatch (a B-form starting model — relax before use). B-form only.
         (Requires 3DNA. Read 5'→3'; write <code>3'-…-5'</code> to reverse a strand.)
       </p>
-      <label class="source-input-row">
+      <label class="modify-source-row">
         <span>Sequence</span>
         <input id="dna-input" type="text"
                placeholder="ATGCATGC · ds,ATGCATGC · ATGC,GCAT (two strands)"
                autocomplete="off" spellcheck="false">
       </label>
-      <label class="source-input-row">
+      <label class="modify-source-row">
         <span>Form</span>
         <select id="dna-form-select"
-                class="source-select"
+                
                 title="B = canonical right-handed, A = wide right-handed (dehydrated), Z = left-handed (alternating-purine only)">
           <option value="B" selected>B (canonical)</option>
           <option value="A">A (dehydrated)</option>
           <option value="Z">Z (left-handed, GCGC… only)</option>
         </select>
       </label>
-      <label class="source-input-row">
+      <label class="modify-source-row">
         <span>Backend</span>
         <select id="dna-backend-select"
-                class="source-select"
-                title="auto: pick the best installed backend (3DNA > AmberTools > RDKit).&#10;3DNA: canonical helical fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
+                
+                title="auto: pick the best installed backend (3DNA> AmberTools> RDKit).&#10;3DNA: canonical helical fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
           <option value="auto" selected>auto</option>
           <option value="threedna">3DNA (canonical helix)</option>
           <option value="amber">AmberTools (extended chain)</option>
           <option value="rdkit">RDKit (folded conformer)</option>
         </select>
       </label>
-      <label class="source-input-row"
+      <label class="modify-source-row"
              title="Two-strand duplexes only: a non-complementary (mismatched) base pair interpenetrates at the standard frame.  When checked, a short force-field minimization pushes the overlapping atoms apart (removes near-coincidence) so a later DFT/SIESTA relaxation doesn't explode.  Unchecked, a clash is only reported.">
         <span>Relieve clashes</span>
         <input id="dna-relax-clashes" type="checkbox">
       </label>
-      <div class="source-actions">
+      <div class="modify-source-actions">
         <button id="dna-generate-btn" class="ghost">Generate</button>
         <span id="dna-status" class="muted" role="status"></span>
       </div>
     </div>
   </div>
 
-  <div class="init-tab-panel" data-init-panel="rna" role="tabpanel" hidden>
-    <div class="source-panel-body">
-      <p class="source-hint">
+  <div class="modify-init-panel" data-init-panel="rna" role="tabpanel" hidden>
+    <div class="modify-source-body">
+      <p class="modify-source-hint">
         Build single-stranded RNA from a 1-letter sequence (ACGU)
         in A / B / Z helix form.  A-form is the canonical RNA
         helix; the backend picks the best installed builder
         (3DNA preferred, AmberTools fallback).
       </p>
-      <label class="source-input-row">
+      <label class="modify-source-row">
         <span>Sequence</span>
         <input id="rna-input" type="text"
                placeholder="e.g. ACGUACGU"
                autocomplete="off" spellcheck="false">
       </label>
-      <label class="source-input-row">
+      <label class="modify-source-row">
         <span>Form</span>
         <select id="rna-form-select"
-                class="source-select"
+                
                 title="A = canonical RNA helix (3'-endo sugar).  3DNA's fiber only builds A-form RNA; other backends ignore form and produce an extended (Amber) or folded (RDKit) chain.">
           <option value="A" selected>A (canonical)</option>
         </select>
       </label>
-      <label class="source-input-row">
+      <label class="modify-source-row">
         <span>Backend</span>
         <select id="rna-backend-select"
-                class="source-select"
-                title="auto: pick the best installed backend (3DNA > AmberTools > RDKit).&#10;3DNA: canonical A-form fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
+                
+                title="auto: pick the best installed backend (3DNA> AmberTools> RDKit).&#10;3DNA: canonical A-form fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
           <option value="auto" selected>auto</option>
           <option value="threedna">3DNA (canonical A-form)</option>
           <option value="amber">AmberTools (extended chain)</option>
           <option value="rdkit">RDKit (folded conformer)</option>
         </select>
       </label>
-      <div class="source-actions">
+      <div class="modify-source-actions">
         <button id="rna-generate-btn" class="ghost">Generate</button>
         <span id="rna-status" class="muted" role="status"></span>
       </div>
     </div>
   </div>
 
-  <div class="init-tab-panel" data-init-panel="peptide" role="tabpanel" hidden>
-    <div class="source-panel-body">
-      <p class="source-hint">
+  <div class="modify-init-panel" data-init-panel="peptide" role="tabpanel" hidden>
+    <div class="modify-source-body">
+      <p class="modify-source-hint">
         Build a peptide from a one-letter amino-acid sequence
         (e.g. <code>ACDEF</code>).  Generates an extended
         conformation via AmberTools' <code>tleap</code>.
       </p>
-      <label class="source-input-row">
+      <label class="modify-source-row">
         <span>Sequence</span>
         <input id="peptide-input" type="text"
                placeholder="e.g. ACDEF"
                autocomplete="off" spellcheck="false">
       </label>
-      <div class="source-actions">
+      <div class="modify-source-actions">
         <button id="peptide-generate-btn" class="ghost">Generate</button>
         <span id="peptide-status" class="muted" role="status"></span>
       </div>
@@ -275,7 +274,7 @@
   </div>
 </section>
 
-<main class="molbuilder-tab-main">
+<main class="modify-main">
 
   <!-- Viewer — vertical workflow puts the 3D canvas between Init
        structure (above) and Modify (below).  View actions (Reset
@@ -292,16 +291,16 @@
       between two physically adjacent panels — clean separation
       lets the user keep the viewer steady while editing
       filters or applying ops. -#}
-  <div class="workspace-grid card-row">
+  <div class="modify-grid card-row">
   {#- 2+3. Structure & selection — the FUSED molview card: the viewer and the
       selection panel share ONE card with a foldable panel (fused-layout.css,
       molview-module.md).  Same composition as the Results structure inspector
-      (lib/inspectors/structure.js): molviewer-card > molviewer-card-body >
+      (lib/inspectors/structure.js): molviewer-card> molviewer-card-body>
       (molviewer-window | molviewer-panel-fold-btn | molviewer-panel). -#}
   {#- NOT a .card: molview.mount BUILDS its own .molviewer-card into the bare host below
       (exactly like the demo's bare #molview-demo-host).  Wrapping it in an outer .card
       would double-nest card chrome and break the module card's fold/responsive layout. -#}
-  <section class="viewer-section">
+  <section class="modify-viewer-section">
     <header class="card-header">
       <h2>Structure &amp; selection</h2>
       <span id="title-readout" class="muted"></span>
@@ -318,7 +317,7 @@
        card so the user can keep the viewer + selection panels
        fixed while applying ops.  "Save to project" is in the card
        header row (all cross-tab transfer is via saved project files). -->
-  <section class="card modify-section workspace-modify">
+  <section class="card modify-section">
     <header class="card-header">
       <h2>Modify</h2>
       {#- State timeline (§19.5) -- WHOLE-MODEL controls, always visible (not
@@ -333,7 +332,7 @@
         {#- Dirty/target indicator: shows whether the model has unsaved edits
             and WHICH state Retract will restore (last saved when dirty; the
             previous checkpoint when clean).  Wired in modify/viewer.js. -#}
-        <span id="timeline-status" class="timeline-status" aria-live="polite"></span>
+        <span id="timeline-status" class="modify-timeline-status" aria-live="polite"></span>
       </span>
     </header>
 
@@ -350,22 +349,22 @@
       <span id="save-status" class="muted" role="status"></span>
     </div>
 
-    {#- DEDICATED message region (NOT the title area): the last op's result +
-        any validation advisories (validate_geometry findings) get a clear,
-        space-ample home here.  While EDITING these are advisory only -- shown,
-        never blocking (design.md § "Validation is advisory while editing,
-        enforcing at generation").  Wired in modify/viewer.js. -#}
+    {#- WHAT THE LAST OP DID -- one line, and only that.  What the SERVER says
+        about the structure is MolView's to show, in its own panel (molview.md
+        § 6.8): a cell notice under the Cell rows it is about, everything else on
+        one line above the tabs.  An advisory list stood here too and drew the
+        same facts a second time, from a key the modify routes never answer with.
+        Wired in modify/viewer.js. -#}
     <div class="modify-messages" role="status" aria-live="polite">
       <p id="edit-status" class="modify-status"></p>
-      <ul id="edit-advisories" class="modify-advisories" hidden></ul>
     </div>
 
     <div class="modify-body">
       <!-- Edit (op-tabs) — Atom / Transform / Junction / Cell
            sub-tabs.  Selection is now in its own panel above so
            this column gets the full width. -->
-      <aside class="modify-edit edit-card">
-    <div class="edit-panel">
+      <aside class="modify-edit modify-edit-card">
+    <div class="modify-edit-panel">
       <!-- The "Selection" summary that used to sit at the top of
            this panel was retired 2026-05-20.  The selection panel
            inside the fused molview card (built by molview.mount into
@@ -381,32 +380,32 @@
            picks the tab matching the operation they need; only one
            panel is visible at a time so the edit column doesn't
            sprawl down the page. -->
-      <nav class="op-tabs" role="tablist" aria-label="Operations">
-        <button class="optab is-active" data-op-tab="atom"
+      <nav class="modify-op-tabs" role="tablist" aria-label="Operations">
+        <button class="modify-optab is-active" data-op-tab="atom"
                 role="tab" type="button"
                 id="optab-btn-atom" aria-controls="optab-panel-atom"
                 aria-selected="true">Atom</button>
-        <button class="optab" data-op-tab="transform"
+        <button class="modify-optab" data-op-tab="transform"
                 role="tab" type="button"
                 id="optab-btn-transform" aria-controls="optab-panel-transform"
                 aria-selected="false">Transform</button>
-        <button class="optab" data-op-tab="junction"
+        <button class="modify-optab" data-op-tab="junction"
                 role="tab" type="button"
                 id="optab-btn-junction" aria-controls="optab-panel-junction"
                 aria-selected="false">Junction</button>
-        <button class="optab" data-op-tab="cell"
+        <button class="modify-optab" data-op-tab="cell"
                 role="tab" type="button"
                 id="optab-btn-cell" aria-controls="optab-panel-cell"
                 aria-selected="false">Cell</button>
       </nav>
 
       <!-- Atom edits: delete + add (M3 ops). -->
-      <div class="optab-panel is-active" data-op-panel="atom" role="tabpanel"
+      <div class="modify-optab-panel is-active" data-op-panel="atom" role="tabpanel"
            id="optab-panel-atom" aria-labelledby="optab-btn-atom">
 
       <!-- Delete: enabled when at least one atom is selected.
            Wires to POST /api/modify/delete. -->
-      <fieldset class="op-block">
+      <fieldset class="modify-op-block">
         <legend>Delete</legend>
         <button id="delete-apply" class="full-btn" disabled>
           Delete selected
@@ -418,37 +417,37 @@
            the anchor.  Live |offset| readout helps the user pick a
            sensible bond length client-side; the actual atom is only
            created on Apply. -->
-      <fieldset class="op-block">
+      <fieldset class="modify-op-block">
         <legend>Add atom</legend>
-        <div class="op-row">
+        <div class="modify-op-row">
           <label>Element
             <input id="add-element" type="text" value="H" maxlength="3"
                    size="3" autocomplete="off">
           </label>
           <span class="muted" id="add-anchor-readout">Anchor: (none)</span>
         </div>
-        <label class="slider-row">
+        <label class="modify-slider-row">
           <span>dx</span>
           <input id="add-dx" type="range"
                  min="-3" max="3" step="0.05" value="0">
-          <span id="add-dx-val" class="readout-inline">0.00</span>
+          <span id="add-dx-val" class="modify-readout">0.00</span>
         </label>
-        <label class="slider-row">
+        <label class="modify-slider-row">
           <span>dy</span>
           <input id="add-dy" type="range"
                  min="-3" max="3" step="0.05" value="0">
-          <span id="add-dy-val" class="readout-inline">0.00</span>
+          <span id="add-dy-val" class="modify-readout">0.00</span>
         </label>
-        <label class="slider-row">
+        <label class="modify-slider-row">
           <span>dz</span>
           <input id="add-dz" type="range"
                  min="-3" max="3" step="0.05" value="1.0">
-          <span id="add-dz-val" class="readout-inline">1.00</span>
+          <span id="add-dz-val" class="modify-readout">1.00</span>
         </label>
 
-        <div class="op-row">
+        <div class="modify-op-row">
           <span class="muted">|offset|</span>
-          <span id="add-distance" class="readout-inline">1.00 &Aring;</span>
+          <span id="add-distance" class="modify-readout">1.00 &Aring;</span>
         </div>
 
         <button id="add-apply" class="full-btn" disabled>
@@ -463,7 +462,7 @@
            on the current selection, or on the whole structure when
            nothing is selected; Orient uses the two selected atoms to
            define the axis and aligns the whole structure to it. -->
-      <div class="optab-panel" data-op-panel="transform" role="tabpanel"
+      <div class="modify-optab-panel" data-op-panel="transform" role="tabpanel"
            id="optab-panel-transform" aria-labelledby="optab-btn-transform">
 
       <p class="hint">
@@ -475,14 +474,14 @@
 
       <!-- Translate by offset: rigid (Δx, Δy, Δz) shift of the
            selection (or the whole structure when nothing is picked). -->
-      <fieldset class="op-block">
+      <fieldset class="modify-op-block">
         <legend>Translate by offset</legend>
         <p class="hint">
           Shift the selected atoms &mdash; or the whole structure when
           nothing is selected &mdash; by (Δx,&nbsp;Δy,&nbsp;Δz)
           in&nbsp;Å.
         </p>
-        <div class="op-row translate-row">
+        <div class="modify-op-row modify-translate-row">
           <label>Δx&nbsp;(Å)
             <input id="translate-dx" type="number"
                    step="0.1" value="0.0">
@@ -504,7 +503,7 @@
       <!-- Center at origin: shift so the centroid of the selection
            (or the whole structure) sits at (0, 0, 0).  Handy after
            adding electrodes shifts the structure off-axis. -->
-      <fieldset class="op-block">
+      <fieldset class="modify-op-block">
         <legend>Center at origin</legend>
         <p class="hint">
           Shift the selected atoms &mdash; or the whole structure when
@@ -519,17 +518,17 @@
       <!-- Rotate around axis: a free spin around an axis, either
            through the selection's centroid (in place) or the world
            origin. -->
-      <fieldset class="op-block">
+      <fieldset class="modify-op-block">
         <legend>Rotate around axis</legend>
-        <div class="op-row">
+        <div class="modify-op-row">
           <span class="muted">Axis</span>
-          <span class="axis-radios">
+          <span class="modify-axis-radios">
             <label><input type="radio" name="rotate-axis" value="x">x</label>
             <label><input type="radio" name="rotate-axis" value="y">y</label>
             <label><input type="radio" name="rotate-axis" value="z" checked>z</label>
           </span>
         </div>
-        <div class="op-row">
+        <div class="modify-op-row">
           <label>Pivot
             <select id="rotate-center">
               <option value="centroid" selected>centroid (rotate in place)</option>
@@ -537,11 +536,11 @@
             </select>
           </label>
         </div>
-        <label class="slider-row">
+        <label class="modify-slider-row">
           <span>angle</span>
           <input id="rotate-angle" type="range"
                  min="-180" max="180" step="1" value="0">
-          <span id="rotate-angle-val" class="readout-inline">0°</span>
+          <span id="rotate-angle-val" class="modify-readout">0°</span>
         </label>
         <button id="rotate-apply" class="full-btn" disabled>
           Apply rotate
@@ -553,30 +552,30 @@
            the (a0 -> a1) vector lies along the target axis; the tilt
            slider angles the pair away from the axis (xz-plane for
            axis=z).  See spec § 2.1 (Tilted molecules). -->
-      <fieldset class="op-block">
+      <fieldset class="modify-op-block">
         <legend>Orient along axis</legend>
         <p class="hint">
           Pick two atoms; the whole structure rotates so the vector
           between them lies along the target axis.
         </p>
-        <div class="op-row">
+        <div class="modify-op-row">
           <span id="orient-anchor-readout" class="muted">Anchors: pick two atoms</span>
         </div>
-        <div class="op-row">
+        <div class="modify-op-row">
           <span class="muted">Target axis</span>
-          <span class="axis-radios">
+          <span class="modify-axis-radios">
             <label><input type="radio" name="orient-axis" value="x">x</label>
             <label><input type="radio" name="orient-axis" value="y">y</label>
             <label><input type="radio" name="orient-axis" value="z" checked>z</label>
           </span>
         </div>
-        <label class="slider-row">
+        <label class="modify-slider-row">
           <span>tilt</span>
           <input id="orient-angle" type="range"
                  min="-90" max="90" step="1" value="0">
-          <span id="orient-angle-val" class="readout-inline">0°</span>
+          <span id="orient-angle-val" class="modify-readout">0°</span>
         </label>
-        <div class="op-row">
+        <div class="modify-op-row">
           <label>Center
             <select id="orient-center">
               <option value="midpoint" selected>midpoint (default)</option>
@@ -595,7 +594,7 @@
       <!-- Junction: electrode placement (M5).  Place metal slabs around
            the anchor(s); Save to project, then load that file in the
            Structure optimization / Transport tab to generate FDF/PySCF. -->
-      <div class="optab-panel" data-op-panel="junction" role="tabpanel"
+      <div class="modify-optab-panel" data-op-panel="junction" role="tabpanel"
            id="optab-panel-junction" aria-labelledby="optab-btn-junction">
 
       <!-- Electrode panel: build FCC slab(s) perpendicular to z.
@@ -603,9 +602,9 @@
            the origin (no anchors needed -- centre + pose the
            molecule first); single mode places one slab on +z OR -z
            of one selected anchor. -->
-      <fieldset class="op-block">
+      <fieldset class="modify-op-block">
         <legend>Electrode panel</legend>
-        <div class="op-row">
+        <div class="modify-op-row">
           <label>Mode
             <select id="elc-mode">
               <option value="symmetric" selected>Pair (symmetric)</option>
@@ -617,7 +616,7 @@
           Pair mode: slabs at z = ±gap/2 around the origin.
         </p>
 
-        <div class="op-row">
+        <div class="modify-op-row">
           <label>Element
             <!-- Options populated at init from /api/modify/meta so the
                  list never drifts from molbuilder.modify's
@@ -626,7 +625,7 @@
           </label>
           <label>Plane
             <!-- Same: radios populated from SUPPORTED_FCC_PLANES at init. -->
-            <span class="axis-radios" id="elc-plane-radios"></span>
+            <span class="modify-axis-radios" id="elc-plane-radios"></span>
           </label>
         </div>
 
@@ -638,9 +637,9 @@
         {# "siesta_psml" once they have a bulk-cell relax measured   #}
         {# under their specific SIESTA + PSML setup.  Greyed         #}
         {# automatically when the JSON value is null.                #}
-        <div class="op-row">
+        <div class="modify-op-row">
           <label>Lattice ref
-            <span class="axis-radios" id="elc-lattice-ref-radios"></span>
+            <span class="modify-axis-radios" id="elc-lattice-ref-radios"></span>
             <button type="button"
                     id="elc-lattice-ref-info"
                     class="molviewer-selection-target-info-btn"
@@ -661,7 +660,7 @@
           </div>
         </div>
 
-        <div class="op-row">
+        <div class="modify-op-row">
           <label>m
             <input id="elc-m" type="number" min="1" max="20" step="1" value="3">
           </label>
@@ -673,7 +672,7 @@
           </label>
         </div>
 
-        <label class="slider-row">
+        <label class="modify-slider-row">
           <span id="elc-gap-label">gap</span>
           <!-- Default 12 Å.  A canonical Au-S-X-S-Au junction with
                two 2.4 Å contacts leaves only 7.2 Å of molecule -- enough
@@ -681,38 +680,38 @@
                junctions (oligophenyl, alkanedithiols, OPV3) need 12-20 Å. -->
           <input id="elc-gap" type="range"
                  min="4.0" max="30.0" step="0.1" value="12.0">
-          <span id="elc-gap-val" class="readout-inline">12.0 Å</span>
+          <span id="elc-gap-val" class="modify-readout">12.0 Å</span>
         </label>
 
-        <label class="slider-row">
+        <label class="modify-slider-row">
           <span>dx</span>
           <input id="elc-dx" type="range"
                  min="-3" max="3" step="0.05" value="0">
-          <span id="elc-dx-val" class="readout-inline">0.00</span>
+          <span id="elc-dx-val" class="modify-readout">0.00</span>
         </label>
-        <label class="slider-row">
+        <label class="modify-slider-row">
           <span>dy</span>
           <input id="elc-dy" type="range"
                  min="-3" max="3" step="0.05" value="0">
-          <span id="elc-dy-val" class="readout-inline">0.00</span>
+          <span id="elc-dy-val" class="modify-readout">0.00</span>
         </label>
 
-        <div class="op-row">
-          <label class="check"><input type="checkbox" id="elc-orthogonal">
+        <div class="modify-op-row">
+          <label><input type="checkbox" id="elc-orthogonal">
             Orthogonal cell (fcc(111) only)</label>
         </div>
 
         <!-- Single-mode-only side picker.  Hidden in pair mode. -->
-        <div class="op-row" id="elc-side-row" hidden>
+        <div class="modify-op-row" id="elc-side-row" hidden>
           <label>Side
-            <span class="axis-radios">
+            <span class="modify-axis-radios">
               <label><input type="radio" name="elc-side" value="+z" checked>+z</label>
               <label><input type="radio" name="elc-side" value="-z">−z</label>
             </span>
           </label>
         </div>
 
-        <div class="elc-actions">
+        <div class="modify-electrode-actions">
           <button id="elc-apply" class="full-btn" disabled>
             Add electrode
           </button>
@@ -727,15 +726,15 @@
            Wired by modify/periodicity.js via ws.commitPeriodicity (the server re-resolves
            the effective cell).  (k-grid is NOT here: it's a reciprocal-space sampling knob
            on SiestaConfig / TransportConfig, not geometry.) -->
-      <div class="optab-panel" data-op-panel="cell" role="tabpanel"
+      <div class="modify-optab-panel" data-op-panel="cell" role="tabpanel"
            id="optab-panel-cell" aria-labelledby="optab-btn-cell">
 
-        <p class="op-hint" id="pv-empty-hint">Load a structure to edit its cell.</p>
+        <p class="modify-op-hint" id="pv-empty-hint">Load a structure to edit its cell.</p>
 
         {#- § 6.1: the gate is INVISIBLE otherwise -- the user sees a corrected
             value or a notice with no way to know a backend rule produced it.
             Collapsed by default so it explains on demand without shouting. -#}
-        <details class="pv-help">
+        <details class="modify-cell-help">
           <summary>How the box is decided</summary>
           <p>
             By default the box is <b>derived</b>: it is the structure's extent
@@ -761,40 +760,40 @@
           </p>
         </details>
 
-        <fieldset class="op-block">
-          <legend>Vacuum (Å) <span id="pv-vac-tag" class="pv-tag"></span></legend>
-          <div class="op-row pv-triple">
-            <input type="number" id="pv-vac-a" class="pv-num" step="0.5" min="0"
+        <fieldset class="modify-op-block">
+          <legend>Vacuum (Å) <span id="pv-vac-tag" class="modify-cell-tag"></span></legend>
+          <div class="modify-op-row modify-cell-triple">
+            <input type="number" id="pv-vac-a" class="modify-cell-num" step="0.5" min="0"
                    aria-label="vacuum a">
-            <input type="number" id="pv-vac-b" class="pv-num" step="0.5" min="0"
+            <input type="number" id="pv-vac-b" class="modify-cell-num" step="0.5" min="0"
                    aria-label="vacuum b">
-            <input type="number" id="pv-vac-c" class="pv-num" step="0.5" min="0"
+            <input type="number" id="pv-vac-c" class="modify-cell-num" step="0.5" min="0"
                    aria-label="vacuum c">
           </div>
           <button id="pv-vac-update" class="full-btn" type="button">Update vacuum</button>
           {#- § 6.2 v3: shown when an explicit cell is set — updating vacuum is
               ALLOWED but resets the box to the derived regime (confirm-gated). -#}
-          <p id="pv-vac-na" class="pv-note" hidden>
+          <p id="pv-vac-na"  hidden>
             An explicit unit cell is set — updating vacuum will <b>reset</b> it
             (the box returns to the derived regime and the boundary moves).
           </p>
         </fieldset>
 
-        <fieldset class="op-block">
-          <legend>Periodicity per axis <span id="pv-axis-tag" class="pv-tag"></span></legend>
-          <div class="op-row pv-triple">
-            <select id="pv-axis-a" class="pv-sel" aria-label="axis a"></select>
-            <select id="pv-axis-b" class="pv-sel" aria-label="axis b"></select>
-            <select id="pv-axis-c" class="pv-sel" aria-label="axis c"></select>
+        <fieldset class="modify-op-block">
+          <legend>Periodicity per axis <span id="pv-axis-tag" class="modify-cell-tag"></span></legend>
+          <div class="modify-op-row modify-cell-triple">
+            <select id="pv-axis-a" class="modify-cell-select" aria-label="axis a"></select>
+            <select id="pv-axis-b" class="modify-cell-select" aria-label="axis b"></select>
+            <select id="pv-axis-c" class="modify-cell-select" aria-label="axis c"></select>
           </div>
           <button id="pv-axis-update" class="full-btn" type="button">Update periodicity</button>
         </fieldset>
 
-        <fieldset class="op-block">
-          <legend>Unit cell (Å) <span id="pv-cell-tag" class="pv-tag"></span></legend>
+        <fieldset class="modify-op-block">
+          <legend>Unit cell (Å) <span id="pv-cell-tag" class="modify-cell-tag"></span></legend>
           {#- 3x3 lattice-vector matrix; nine inputs built by periodicity.js. -#}
-          <div id="pv-cell-grid" class="pv-matrix" aria-label="unit cell 3x3"></div>
-          <div class="op-row pv-cell-actions">
+          <div id="pv-cell-grid" class="modify-cell-matrix" aria-label="unit cell 3x3"></div>
+          <div class="modify-op-row modify-cell-actions">
             <button id="pv-cell-update" class="full-btn" type="button">Update cell</button>
             <button id="pv-cell-reset" class="ghost" type="button"
                     title="Clear the explicit cell -- fall back to the default bounding-box + vacuum.">
@@ -804,14 +803,14 @@
           {#- § 6.2 v3: there is NO calibrate button.  Emission translates to the
               engine frame implicitly (cell at (0,0,0), atoms shifted); nothing on
               this page moves atoms.  The note below says so. -#}
-          <p class="pv-note">
+          <p>
             SIESTA receives this box anchored at (0,0,0) with the coordinates
             shifted accordingly — automatically, at generation.
           </p>
         </fieldset>
 
-        <fieldset class="op-block">
-          <legend>Cell origin (Å) <span id="pv-org-tag" class="pv-tag"></span></legend>
+        <fieldset class="modify-op-block">
+          <legend>Cell origin (Å) <span id="pv-org-tag" class="modify-cell-tag"></span></legend>
           {#- § 3c: the low corner the EXPLICIT cell box is drawn from (an electrode
               junction whose cell wraps off-origin atoms).  Editing moves the BOX, not
               the atoms -- SIESTA gets the shift at generation (there is no calibrate
@@ -820,22 +819,22 @@
               - vacuum) and this group is disabled.  Clearing it (Reset origin to
               default) does NOT move the box to (0,0,0): the corner is derived again
               (§ 6.1, 2026-07-29). -#}
-          <div class="op-row pv-vec">
-            <input type="number" id="pv-org-a" class="pv-num" step="0.1"
+          <div class="modify-op-row">
+            <input type="number" id="pv-org-a" class="modify-cell-num" step="0.1"
                    aria-label="cell origin x" />
-            <input type="number" id="pv-org-b" class="pv-num" step="0.1"
+            <input type="number" id="pv-org-b" class="modify-cell-num" step="0.1"
                    aria-label="cell origin y" />
-            <input type="number" id="pv-org-c" class="pv-num" step="0.1"
+            <input type="number" id="pv-org-c" class="modify-cell-num" step="0.1"
                    aria-label="cell origin z" />
           </div>
-          <div class="op-row pv-cell-actions">
+          <div class="modify-op-row modify-cell-actions">
             <button id="pv-org-update" class="full-btn" type="button" disabled>Update origin</button>
             <button id="pv-org-reset" class="ghost" type="button" disabled
                     title="Clear the manual origin -- the other parameters (vacuum, periodicity) regain their freedom; the next vacuum/periodicity update re-derives the box.">
               Reset origin to default
             </button>
           </div>
-          <p id="pv-org-na" class="pv-note" hidden>
+          <p id="pv-org-na"  hidden>
             The cell origin applies to an explicit cell only. Set a unit cell above
             first; otherwise the box corner is the molecule's bounding box (auto).
           </p>

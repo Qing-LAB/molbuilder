@@ -28,7 +28,7 @@ is never read for one.  Two consequences these tests now pin: omitting the label
 keys declares NO labels (it does not trigger a disk read), and ``structure_path``
 is not a label source even though it still travels for pseudopotential and
 dest-dir resolution.  The client half of F1 -- one accessor
-(``molview.data.factsForRequest()``) assembling coordinates, labels and
+(``molview.data.getStructure()``) assembling coordinates, labels and
 periodicity together so a tab cannot send a partial set -- is pinned in
 tests/test_validation_delivery_contract.py.
 """

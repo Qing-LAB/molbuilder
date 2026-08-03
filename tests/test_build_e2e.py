@@ -317,7 +317,6 @@ class TestPeptideBuild:
         _open_build(page, flask_server)
         page.wait_for_function(
             "() => !!(window.molbuilder && window.molbuilder.projects"
-            "         && window.molbuilder.molview && window.molbuilder.molview.mount"
             "         && document.getElementById('viewer-host'))",
             timeout=_BOOT_TIMEOUT_MS,
         )
@@ -334,13 +333,12 @@ class TestPeptideBuild:
             "         && !!h.querySelector('canvas'); }",
             timeout=15_000,
         )
-        # molview.data holds the committed structure (the source of truth).
-        n = page.evaluate(
-            "() => { const d = window.molbuilder.molview.data;"
-            "  return (d && typeof d.getElements === 'function')"
-            "    ? d.getElements().length : 0; }"
-        )
-        assert n == 3   # water
+        # The viewer holds the committed structure, and the panel's own count
+        # line is where that is visible.  Asked through the DOM because there is
+        # nowhere else to ask: a viewer belongs to whoever mounted it and there
+        # is no registry (molview.md § 5.6).
+        count = page.locator(".molviewer-selection-count").inner_text()
+        assert count.split(" of ")[1].split()[0] == "3"   # water
 
     def test_generate_buttons_enable_after_sidebar_load(
             self, page, flask_server, water_xyz_file):

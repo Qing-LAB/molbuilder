@@ -271,10 +271,11 @@ export function init(viewer) {
     function setStatus(msg, kind = null) {
         // Compound-class convention shared with Build + Watch:
         // ``className = "status ok"`` so the CSS rule ``.status.ok``
-        // applies.  Earlier this tab emitted ``status-ok`` (hyphen
-        // form) which would break against a future shared stylesheet;
-        // aligned now -- see web/static/style.css +
-        // web/static/lib/trajectory/trajectory-inspector.css.
+        // applies.  ``#status`` is the SHARED status line (page-shell.css owns
+        // `.status`), which is why the modifier here is bare `ok` / `error` and
+        // not this page's `modify-status--*` -- the two are different elements
+        // with different owners, and giving them one vocabulary would mean this
+        // page renaming a shared component.
         const el = $("status");
         el.textContent = msg;
         el.className = "status" + (kind ? " " + kind : "");
@@ -347,21 +348,21 @@ export function init(viewer) {
         if (statusEl) {
             if (_nAtoms() === 0) {
                 statusEl.textContent = "";
-                statusEl.className = "timeline-status";
+                statusEl.className = "modify-timeline-status";
             } else if (dirty) {
                 statusEl.textContent = `● unsaved — Retract → #${idx}`;
-                statusEl.className = "timeline-status is-dirty";
+                statusEl.className = "modify-timeline-status is-dirty";
                 statusEl.title =
                     `Unsaved edits since checkpoint #${idx}. `
                     + `Retract discards them and returns to #${idx}.`;
             } else if (idx > 0) {
                 statusEl.textContent = `✓ saved #${idx} — Retract → #${idx - 1}`;
-                statusEl.className = "timeline-status is-clean";
+                statusEl.className = "modify-timeline-status is-clean";
                 statusEl.title =
                     `At saved checkpoint #${idx}. Retract steps back to #${idx - 1}.`;
             } else {
                 statusEl.textContent = `✓ saved #0`;
-                statusEl.className = "timeline-status is-clean";
+                statusEl.className = "modify-timeline-status is-clean";
                 statusEl.title = "At the initial state (#0). Nothing to retract.";
             }
         }
@@ -418,44 +419,25 @@ export function init(viewer) {
         const el = $("edit-status");
         if (!el) return;
         el.textContent = msg;
-        el.className = "modify-status" + (kind ? ` status-${kind}` : "");
+        el.className = "modify-status" + (kind ? ` modify-status--${kind}` : "");
     }
 
-    /* WHAT THE SERVER SAID about the structure the edit produced.
+    /* NO ADVISORY REGION HERE. What the server says about a structure is shown
+     * BY MOLVIEW, in its own panel (molview.md § 6.8): a cell notice under the
+     * Cell rows it is about, everything else on one line above the tabs. This
+     * tab drawing them too would put one fact in two places, which is exactly
+     * what the plan's carve-out row for `commitPeriodicityOp` forbids.
      *
-     * While EDITING these are shown and never block (design.md § 6). They are
-     * read off the model with `getNotices()` (molview.md § 6.8), which answers
-     * `{where, list:[{level, message}]}` for the structure now showing, or null
-     * when the server had nothing to say. An empty list hides the region so no
-     * row survives into the next op.
+     * What stood here was a second renderer with a severity vocabulary of its
+     * own, fed from `applyOp`'s return as `r.issues` — a key `/api/modify/*` has
+     * never answered with (`ok_structure_response` emits `notices`, and nothing
+     * else). So it rendered `undefined` on every op while looking implemented.
      *
-     * They used to be read off applyOp's return as `r.issues`. That door
-     * returns the STRUCTURE (§ 6.9) and never carried an `issues` key, so the
-     * region has been fed `undefined` on every op — findings the server took the
-     * trouble to compute reached nobody. */
-    function renderEditAdvisories(notices) {
-        const el = $("edit-advisories");
-        if (!el) return;
-        const list = (notices && Array.isArray(notices.list))
-            ? notices.list.filter(Boolean) : [];
-        el.textContent = "";                       // clear any prior op's rows
-        if (!list.length) { el.hidden = true; return; }
-        for (const iss of list) {
-            const sev = (iss && iss.level) || "info";
-            const li = document.createElement("li");
-            li.className = "modify-advisory modify-advisory--" + sev;
-            const tag = document.createElement("span");
-            tag.className = "modify-advisory-tag";
-            tag.textContent = sev.toUpperCase();
-            const msg = document.createElement("span");
-            msg.className = "modify-advisory-msg";
-            msg.textContent = (iss && iss.message) || "";
-            li.appendChild(tag);
-            li.appendChild(msg);
-            el.appendChild(li);
-        }
-        el.hidden = false;
-    }
+     * NOT A SILENT DROP, and worth being exact about: the periodicity notices it
+     * was meant to carry ARE shown, by MolView. What reaches nobody today is a
+     * `validate_geometry` finding — a coincident-atom warning, say — because no
+     * `/api/modify/*` route runs that validator at all. That is a hole in the
+     * findings-delivery contract (task #37), not something a display fixes. */
 
     async function postOp(path, extraBody, label) {
         // Modifier-button wrapper around ``molview.data.applyOp``.  Owns the
@@ -469,7 +451,6 @@ export function init(viewer) {
         state.inFlight = true;
         refreshSelectionUI();
         setEditStatus(`${label}…`);
-        renderEditAdvisories(null);   // clear the previous op's advisories
         const op = path.replace(/^\/api\/modify\//, "");
         let r = null;
         try {
@@ -498,9 +479,6 @@ export function init(viewer) {
              * put "Deleted: undefined atoms." on screen after every op. */
             setEditStatus(
                 `${label}: ${(r.elements || []).length} atoms.`, "ok");
-            renderEditAdvisories(
-                (typeof _data().getNotices === "function")
-                    ? _data().getNotices() : null);
             return r;
         } finally {
             state.inFlight = false;
@@ -783,7 +761,7 @@ export function init(viewer) {
                 // Accessibility: screen readers don't get any signal
                 // from the visual opacity fade alone.
                 inp.setAttribute("aria-disabled", "true");
-                lbl.classList.add("elc-lattice-ref-disabled");
+                lbl.classList.add("modify-electrode-lattice-off");
             }
             inp.checked = (value === effectivePick);
             lbl.appendChild(inp);
@@ -1023,10 +1001,10 @@ export function init(viewer) {
         // Sub-tabs: click an op-tab button to swap which panel is
         // visible.  Pure DOM toggle (no state in the IIFE; the
         // is-active class is the state).
-        document.querySelectorAll(".optab").forEach((btn) => {
+        document.querySelectorAll(".modify-optab").forEach((btn) => {
             btn.addEventListener("click", () => {
                 const target = btn.dataset.opTab;
-                document.querySelectorAll(".optab").forEach((b) => {
+                document.querySelectorAll(".modify-optab").forEach((b) => {
                     const on = (b.dataset.opTab === target);
                     b.classList.toggle("is-active", on);
                     // Keep aria-selected in sync so screen readers
@@ -1035,7 +1013,7 @@ export function init(viewer) {
                     // <button> and <div role="tabpanel"> elements.
                     b.setAttribute("aria-selected", on ? "true" : "false");
                 });
-                document.querySelectorAll(".optab-panel").forEach((p) => {
+                document.querySelectorAll(".modify-optab-panel").forEach((p) => {
                     p.classList.toggle(
                         "is-active",
                         p.dataset.opPanel === target,
@@ -1047,18 +1025,18 @@ export function init(viewer) {
         // Init-structure tabs (Sources reorganization 2026-06-08):
         // same toggle pattern as the op-tabs above but for the
         // Init structure card's generator/loader bar.  Each tab
-        // unhides ONE ``.init-tab-panel`` and hides the rest;
+        // unhides ONE ``.modify-init-panel`` and hides the rest;
         // ``hidden`` is the canonical "panel not active" state
         // (matches the role="tabpanel" pattern).
-        document.querySelectorAll(".init-tab").forEach((btn) => {
+        document.querySelectorAll(".modify-init-tab").forEach((btn) => {
             btn.addEventListener("click", () => {
                 const target = btn.dataset.initTab;
-                document.querySelectorAll(".init-tab").forEach((b) => {
+                document.querySelectorAll(".modify-init-tab").forEach((b) => {
                     const on = (b.dataset.initTab === target);
                     b.classList.toggle("is-active", on);
                     b.setAttribute("aria-selected", on ? "true" : "false");
                 });
-                document.querySelectorAll(".init-tab-panel").forEach((p) => {
+                document.querySelectorAll(".modify-init-panel").forEach((p) => {
                     const on = (p.dataset.initPanel === target);
                     p.classList.toggle("is-active", on);
                     p.hidden = !on;

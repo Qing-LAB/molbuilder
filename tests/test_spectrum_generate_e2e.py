@@ -160,7 +160,6 @@ def test_spectrum_commit_mounts_readonly_molview(
     tmp_dir = benzene_xyz_file.parent
     page.wait_for_function(
         "() => !!(window.molbuilder && window.molbuilder.projects"
-        "         && window.molbuilder.molview && window.molbuilder.molview.mount"
         "         && document.getElementById('spectra-molview-host'))",
         timeout=10_000,
     )

@@ -29,5 +29,6 @@ def test_no_legacy_persistence_key_writes():
         f"workspace-contract.md §4.1 names molbuilder.workspace.v1 as "
         f"the sole persistence key. Read/write goes through the workspace "
         f"dispatcher (lib/workspace/dispatcher.js); other modules must "
-        f"use ws.readPersistedSnapshot() or ws.installStructure() / ws.applyOp()."
+        f"call it through the tag-naming doors the dispatcher exposes "
+        f"(persist / readState / pruneStatesAbove -- workspace.md § 5)."
     )

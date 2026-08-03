@@ -58,7 +58,7 @@ export function init(viewer) {
             for (var c = 0; c < 3; c++) {
                 var inp = document.createElement("input");
                 inp.type = "number"; inp.step = "0.1";
-                inp.className = "pv-num";
+                inp.className = "modify-cell-num";
                 inp.setAttribute("aria-label", "cell " + r + "," + c);
                 grid.appendChild(inp);
                 cellInputs.push(inp);

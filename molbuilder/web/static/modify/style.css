@@ -5,6 +5,30 @@
  * Page-local additions go below.
  */
 
+/* ── This page's own constants ───────────────────────────────────────────────
+ *
+ * Every measurement in this file comes from `lib/tokens.css` — the spacing
+ * scale (`--space-xs … --space-xl`), the type scale (`--text-2xs … --text-xl`),
+ * the radii and the palette.  A raw number in a rule below is a bug: it is a
+ * second scale, and two scales drift.
+ *
+ * The two things tokens.css cannot answer are named HERE, because they are
+ * facts about THIS page rather than about the design system:
+ *
+ *   --page-max-width   how wide this tab's content is allowed to get.  Not a
+ *                      shared token: /results caps at 1200 and the form pages
+ *                      at 1400, and reconciling those three is a design
+ *                      decision about the whole app, not a tidy-up.
+ *   --focus-ring       the keyboard-focus halo.  It was written out three times
+ *                      inline, so "make the ring thicker" was three edits and
+ *                      the third was the one you forget.
+ */
+:root {
+    --page-max-width: 1680px;
+    --focus-ring:     0 0 0 3px var(--accent-glow);
+}
+
+
 * { box-sizing: border-box; }
 
 html, body { height: 100%; }
@@ -17,60 +41,55 @@ html, body { height: 100%; }
 
 /* ---- Header ---- */
 header {
-    padding: 1.4rem 2rem 1rem;
+    padding: var(--space-xl) var(--space-xl) var(--space-lg);
     border-bottom: 1px solid var(--border-soft);
 }
 header h1 {
     margin: 0;
-    font: 700 1.6rem/1.2 "Inter", system-ui, sans-serif;
+    font: 700 var(--text-xl)/1.2 "Inter", system-ui, sans-serif;
     color: var(--text-primary);
-}
-header .tagline {
-    margin: 0.2rem 0 0;
-    color: var(--text-secondary);
-    font-size: 0.95rem;
 }
 
 /* ---- Init-structure card body ----
  *
- * Each ``.init-tab-panel`` (one per generator/loader: Load, Upload,
+ * Each ``.modify-init-panel`` (one per generator/loader: Load, Upload,
  * SMILES, Name, DNA, RNA, Peptide) wraps its inputs in
- * ``.source-panel-body``; the spacing rules below shape that body.
- * The Init-tab bar above the panels is themed by ``.init-tabs`` /
- * ``.init-tab`` further down.  The pre-task-293 design used a
+ * ``.modify-source-body``; the spacing rules below shape that body.
+ * The Init-tab bar above the panels is themed by ``.modify-init-tabs`` /
+ * ``.modify-init-tab`` further down.  The pre-task-293 design used a
  * ``<details>`` accordion for the same UI; those marker / panel
  * rules were removed as orphan CSS in task #297 (2026-06-08). */
-.source-panel-body {
-    padding: 0.4rem 0 0.6rem 1.2em;
+.modify-source-body {
+    padding: var(--space-sm) 0 var(--space-sm) 1.2em;
 }
-.source-hint {
-    margin: 0 0 0.5rem;
+.modify-source-hint {
+    margin: 0 0 var(--space-sm);
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: var(--text-base);
 }
-.source-input-row {
+.modify-source-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin: 0.3rem 0 0.5rem;
+    gap: var(--space-sm);
+    margin: var(--space-xs) 0 var(--space-sm);
 }
-.source-input-row > span {
+.modify-source-row > span {
     color: var(--text-secondary);
     min-width: 4em;
 }
-.source-input-row > input {
+.modify-source-row > input {
     flex: 1;
-    padding: 0.3rem 0.5rem;
-    background: var(--bg-input, var(--bg-card));
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border-soft);
-    border-radius: 4px;
-    font: 0.92rem/1.2 var(--font-mono);
+    border-radius: var(--radius-sm);
+    font: var(--text-base)/1.2 var(--font-mono);
 }
-.source-actions {
+.modify-source-actions {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: var(--space-sm);
     flex-wrap: wrap;
 }
 
@@ -82,7 +101,7 @@ header .tagline {
  * future "add a severity" change is a single CSS edit. */
 .status {
     color: var(--text-muted);
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     margin-left: auto;   /* right-aligns the status in the Modify action row */
     font-weight: normal;
 }
@@ -98,7 +117,7 @@ header .tagline {
  * to track three columns at once.  The new flow matches the
  * actual workflow: pick/generate → inspect → edit → save.
  */
-.molbuilder-tab-main {
+.modify-main {
     display: flex;
     flex-direction: column;
     gap: var(--gap);
@@ -112,7 +131,7 @@ header .tagline {
  * .viewer-wrap / .viewer / .molviewer-window-frame sizing rules that used to live here -- with copied
  * 560 / 320 / 342 magic mirroring fused-layout.css -- were the module's job leaking into the
  * tab; they moved into fused-layout.css so every consumer fits identically.) */
-.viewer-section {
+.modify-viewer-section {
     display: flex;
     flex-direction: column;
 }
@@ -123,17 +142,17 @@ header .tagline {
  * only adds the page's own max-width/centring; each card declares its width policy via the
  * three --card-* vars, so the row wraps the modify card below the instant both min-widths
  * stop fitting (never crushing one card into the other).  See docs/web/ui-contract.md. */
-.workspace-grid {
-    max-width: 1680px;
+.modify-grid {
+    max-width: var(--page-max-width);
     margin-inline: auto;
 }
 /* Primary card: wide + heavy grow; min == the fused card's own stacked min-width.
- * Targets .viewer-section -- the direct grid child that now WRAPS molview.mount's built
+ * Targets .modify-viewer-section -- the direct grid child that now WRAPS molview.mount's built
  * .molviewer-card (Track B: the module builds its own card into the section's bare host, so
  * the grid weight lives on the section, not the nested card). */
-.workspace-grid > .viewer-section  { --card-weight: 2.4; --card-basis: 640px; --card-min: 340px; }
+.modify-grid > .modify-viewer-section  { --card-weight: 2.4; --card-basis: 640px; --card-min: 340px; }
 /* Secondary card: keeps the op controls at a usable width. */
-.workspace-grid > .workspace-modify { --card-weight: 1;   --card-basis: 320px; --card-min: 300px; }
+.modify-grid > .modify-section { --card-weight: 1;   --card-basis: 320px; --card-min: 300px; }
 
 /* Modify section: hosts the "Save to project" header row + the op-tabs (the
  * selection panel moved to its own workspace card in layout v3, 2026-06-12).
@@ -148,53 +167,25 @@ header .tagline {
 .modify-messages {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    padding: 0.6rem 0.9rem;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
     border-bottom: 1px solid var(--border-soft);
 }
 .modify-status {
     margin: 0;
     min-height: 1.2em;            /* reserve a line so the band doesn't jump */
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     color: var(--text-muted);
 }
-.modify-status.status-ok    { color: var(--text-primary); }
-.modify-status.status-error { color: var(--error); }
+.modify-status.modify-status--ok    { color: var(--text-primary); }
+.modify-status.modify-status--error { color: var(--error); }
 
-.modify-advisories {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-}
-.modify-advisories[hidden] { display: none; }   /* [hidden] precedence guard */
-
-.modify-advisory {
-    display: flex;
-    gap: 0.6rem;
-    align-items: baseline;
-    padding: 0.4rem 0.6rem;
-    font-size: 0.85rem;
-    line-height: 1.4;
-    border-radius: var(--radius-sm);
-    border-left: 3px solid var(--text-muted);
-    background: var(--bg-fieldset);
-}
-.modify-advisory-tag {
-    flex: 0 0 auto;
-    font-size: 0.66rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-}
-.modify-advisory-msg { color: var(--text-primary); }
-.modify-advisory--warn  { border-left-color: var(--warn-soft); }
-.modify-advisory--warn  .modify-advisory-tag { color: var(--warn-soft); }
-.modify-advisory--error { border-left-color: var(--error); }
-.modify-advisory--error .modify-advisory-tag { color: var(--error); }
-.modify-advisory--info  { border-left-color: var(--text-muted); }
+/* NO ADVISORY ROWS HERE. What the server says about a structure is shown by
+ * MolView, in its own panel (molview.md § 6.8) -- a cell notice under the Cell
+ * rows it is about, everything else on one line above the tabs. This page had a
+ * second set of rows with a severity vocabulary of its own, fed from a key the
+ * modify routes never answer with; drawing the same facts twice is what the
+ * one-place rule exists to stop. */
 
 .modify-body {
     display: block;       /* single column: op-tabs only */
@@ -208,41 +199,41 @@ header .tagline {
 .modify-actions {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: var(--space-sm);
     flex-wrap: wrap;
 }
 .modify-actions--header {
-    padding: 0.5rem 0 0.2rem;
+    padding: var(--space-sm) 0 var(--space-xs);
     border-bottom: 1px solid var(--border-soft);
-    margin-bottom: 0.4rem;
+    margin-bottom: var(--space-sm);
 }
 /* Under the title the write action is prominent but not full-bleed. */
 .modify-actions--header button.full-btn { width: auto; min-width: 180px; }
 
 @media (max-width: 640px) {
-    .molbuilder-tab-main { padding: 6px; gap: 6px; }
-    .init-structure-card { margin: 0; padding: 0.4rem 0.8rem; }
-    header               { padding: 0.9rem 1rem 0.6rem; }
+    .modify-main { padding: 6px; gap: 6px; }
+    .modify-init-card { margin: 0; padding: var(--space-sm) var(--space-md); }
+    header               { padding: var(--space-md) var(--space-lg) var(--space-sm); }
 }
 
 /* ---- Init structure card (was Sources) ----
- * Sits at the top of ``.molbuilder-tab-main`` flex column.  Pre-
- * task-303 the card carried its own ``margin: 1rem 2rem 0`` that
+ * Sits at the top of ``.modify-main`` flex column.  Pre-
+ * task-303 the card carried its own ``margin: var(--space-lg) var(--space-xl) 0`` that
  * floated it above the main padding-driven rhythm; now it
  * inherits the parent's ``gap: var(--gap)`` + ``padding:
  * var(--gap)`` so it aligns flush with the Viewer + Modify cards
  * below it. */
-.init-structure-card {
+.modify-init-card {
     margin: 0;
-    padding: 0.6rem 1rem 0.4rem;
+    padding: var(--space-sm) var(--space-lg) var(--space-sm);
 }
-.init-structure-card .card-header {
-    padding: 0 0 0.6rem;
+.modify-init-card .card-header {
+    padding: 0 0 var(--space-sm);
     border-bottom: 1px solid var(--border-soft);
 }
-.init-structure-card .card-header h2 {
+.modify-init-card .card-header h2 {
     margin: 0;
-    font-size: 1rem;
+    font-size: var(--text-base);
     color: var(--text-primary);
 }
 
@@ -250,33 +241,33 @@ header .tagline {
  * visible at a time keeps the card compact regardless of how
  * many generators land).  Wraps onto multiple lines when the
  * window is narrow rather than horizontally scrolling.       */
-.init-tabs {
+.modify-init-tabs {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.3rem;
-    padding: 0.5rem 0 0.6rem;
+    gap: var(--space-xs);
+    padding: var(--space-sm) 0 var(--space-sm);
     border-bottom: 1px solid var(--border-soft);
 }
-.init-tab {
+.modify-init-tab {
     background: transparent;
     color: var(--text-secondary);
     border: 1px solid var(--border-soft);
-    border-radius: 4px;
-    padding: 0.35rem 0.8rem;
-    font-size: 0.92rem;
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm) var(--space-md);
+    font-size: var(--text-base);
     cursor: pointer;
 }
-.init-tab:hover { color: var(--text-primary); border-color: var(--border-strong); }
-.init-tab.is-active {
+.modify-init-tab:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.modify-init-tab.is-active {
     color: var(--text-primary);
     background: var(--bg-card-hover);   /* was the phantom --bg-card-emphasis (never defined) */
-    border-color: var(--accent, #6ba6ff);
+    border-color: var(--accent);
 }
 
-.init-tab-panel {
-    padding: 0.5rem 0 0.6rem;
+.modify-init-panel {
+    padding: var(--space-sm) 0 var(--space-sm);
 }
-.init-tab-panel[hidden] { display: none; }
+.modify-init-panel[hidden] { display: none; }
 
 /* ---- Cards ---- */
 .card {
@@ -292,17 +283,17 @@ header .tagline {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    padding: 0.8rem 1rem;
+    padding: var(--space-md) var(--space-lg);
     border-bottom: 1px solid var(--border-soft);
 }
 .card-header h2 {
     margin: 0;
-    font: 600 1rem/1 system-ui, sans-serif;
+    font: 600 var(--text-base)/1 system-ui, sans-serif;
     color: var(--text-primary);
 }
 .muted {
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
 }
 
 /* (Atom-list styles retired 2026-05-20 along with the left-column
@@ -310,13 +301,13 @@ header .tagline {
  * per-atom list now.  See lib/selection-panel.css.) */
 
 /* ---- Viewer section ---- */
-.viewer-section { gap: 0; }
+.modify-viewer-section { gap: 0; }
 .ghost {
     background: transparent;
     color: var(--text-secondary);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
-    padding: 0.3rem 0.8rem;
+    padding: var(--space-xs) var(--space-md);
     cursor: pointer;
     font: inherit;
     transition: border-color 0.12s, color 0.12s;
@@ -330,7 +321,7 @@ header .tagline {
 .modify-timeline-actions {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     flex-wrap: wrap;
 }
 
@@ -338,159 +329,159 @@ header .tagline {
  * refreshUndoButton): a passive flag showing whether there are unsaved edits
  * and which state Retract restores.  Amber (--warn-soft) when dirty, muted when
  * at a clean checkpoint. */
-.timeline-status {
-    font: var(--text-2xs, 0.6875rem)/1.2 system-ui, sans-serif;
-    color: var(--text-muted, #6c7280);
+.modify-timeline-status {
+    font: var(--text-2xs)/1.2 system-ui, sans-serif;
+    color: var(--text-muted);
     white-space: nowrap;
     user-select: none;
     align-self: center;
 }
-.timeline-status.is-dirty { color: var(--warn-soft, #d8a64b); }
-.timeline-status:empty    { display: none; }
+.modify-timeline-status.is-dirty { color: var(--warn-soft); }
+.modify-timeline-status:empty    { display: none; }
 
 /* ---- Edit panel (right) ---- */
-.edit-card .edit-panel {
+.modify-edit-card .modify-edit-panel {
     flex: 1 1 auto;
     overflow: auto;
-    padding: 0.6rem 0.85rem;
+    padding: var(--space-sm) var(--space-md);
 }
-.edit-panel .hint {
+.modify-edit-panel .hint {
     color: var(--text-muted);
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
-    margin: 0 0 0.6rem;
+    margin: 0 0 var(--space-sm);
 }
 
 /* Sub-tabs (Atom / Pose / Junction) split the op fieldsets into
    the three workflow phases so only one panel is visible at a
    time.  Mirrors the .control-tabs / .ctab pattern in the Watch
    stylesheet. */
-.edit-panel .op-tabs {
+.modify-edit-panel .modify-op-tabs {
     display: flex;
     border-bottom: 1px solid var(--border-soft);
-    margin: 0.6rem -0.85rem 0.4rem;     /* bleed to card edges */
-    padding: 0 0.5rem;
+    margin: var(--space-sm) -var(--space-md) var(--space-sm);     /* bleed to card edges */
+    padding: 0 var(--space-sm);
     background: var(--bg-card);
 }
-.edit-panel .optab {
+.modify-edit-panel .modify-optab {
     flex: 1;
     background: transparent;
     border: 0;
     border-bottom: 2px solid transparent;
     border-radius: 0;
-    padding: 0.45rem 0.3rem;
+    padding: var(--space-sm) var(--space-xs);
     color: var(--text-secondary);
-    font: 600 0.82rem/1 system-ui, sans-serif;
+    font: 600 var(--text-sm)/1 system-ui, sans-serif;
     cursor: pointer;
     transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
-.edit-panel .optab:hover {
+.modify-edit-panel .modify-optab:hover {
     color: var(--text-primary);
     background: var(--bg-card-hover);
 }
-.edit-panel .optab.is-active {
+.modify-edit-panel .modify-optab.is-active {
     color: var(--accent);
     border-bottom-color: var(--accent);
     background: var(--accent-bg);
 }
-.edit-panel .optab-panel {
+.modify-edit-panel .modify-optab-panel {
     display: none;
 }
-.edit-panel .optab-panel.is-active {
+.modify-edit-panel .modify-optab-panel.is-active {
     display: block;
 }
 
-.edit-panel .op-block {
+.modify-edit-panel .modify-op-block {
     background: var(--bg-fieldset);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
-    padding: 0.5rem 0.75rem 0.6rem;
-    margin: 0.55rem 0;
+    padding: var(--space-sm) var(--space-md) var(--space-sm);
+    margin: var(--space-sm) 0;
 }
-.edit-panel .op-block legend {
+.modify-edit-panel .modify-op-block legend {
     color: var(--text-secondary);
     font-weight: 600;
-    font-size: 0.85rem;
-    padding: 0 0.3rem;
+    font-size: var(--text-sm);
+    padding: 0 var(--space-xs);
 }
-.edit-panel .op-row {
+.modify-edit-panel .modify-op-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.6rem;
-    margin: 0.4rem 0;
+    gap: var(--space-sm);
+    margin: var(--space-sm) 0;
     color: var(--text-secondary);
-    font-size: 0.88rem;
+    font-size: var(--text-sm);
 }
 /* Honour the HTML5 ``hidden`` attribute on op-rows.  Without this
-   selector the .op-row { display: flex } rule above wins over
+   selector the .modify-op-row { display: flex } rule above wins over
    the user-agent ``[hidden] { display: none }`` default and the
    side-picker stays visible in pair mode. */
-.edit-panel .op-row[hidden] {
+.modify-edit-panel .modify-op-row[hidden] {
     display: none;
 }
-.edit-panel .op-row label {
+.modify-edit-panel .modify-op-row label {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-sm);
 }
-.edit-panel input[type="text"] {
+.modify-edit-panel input[type="text"] {
     background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
-    padding: 0.25rem 0.45rem;
+    padding: var(--space-xs) var(--space-sm);
     font: inherit;
     width: 4em;
 }
-.edit-panel input[type="text"]:focus {
+.modify-edit-panel input[type="text"]:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    box-shadow: var(--focus-ring);
 }
-.edit-panel .slider-row {
+.modify-edit-panel .modify-slider-row {
     display: grid;
     grid-template-columns: 1.5em 1fr 4em;
     align-items: center;
-    gap: 0.5rem;
-    margin: 0.3rem 0;
-    font: 0.88rem var(--font-mono);
+    gap: var(--space-sm);
+    margin: var(--space-xs) 0;
+    font: var(--text-sm) var(--font-mono);
     color: var(--text-secondary);
 }
-.edit-panel .slider-row > span:first-child {
+.modify-edit-panel .modify-slider-row > span:first-child {
     color: var(--accent);
     font-weight: 600;
     text-align: right;
 }
-.edit-panel input[type="range"] {
+.modify-edit-panel input[type="range"] {
     accent-color: var(--accent);
     width: 100%;
 }
-.edit-panel .readout-inline {
-    font: 0.86rem var(--font-mono);
+.modify-edit-panel .modify-readout {
+    font: var(--text-sm) var(--font-mono);
     color: var(--text-primary);
     text-align: right;
 }
-.edit-panel .axis-radios {
+.modify-edit-panel .modify-axis-radios {
     display: inline-flex;
-    gap: 0.6rem;
+    gap: var(--space-sm);
 }
-.edit-panel .axis-radios label {
+.modify-edit-panel .modify-axis-radios label {
     color: var(--text-primary);
-    font: 0.88rem var(--font-mono);
+    font: var(--text-sm) var(--font-mono);
     cursor: pointer;
     user-select: none;
 }
-.edit-panel .axis-radios input[type="radio"] {
+.modify-edit-panel .modify-axis-radios input[type="radio"] {
     accent-color: var(--accent);
-    margin-right: 0.25rem;
+    margin-right: var(--space-xs);
 }
-.edit-panel select {
+.modify-edit-panel select {
     background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
-    padding: 0.25rem 0.45rem;
+    padding: var(--space-xs) var(--space-sm);
     font: inherit;
 }
 /* (.full-btn base moved to lib/form-components.css 2026-07 -- shared with
@@ -503,43 +494,43 @@ header .tagline {
  * them up against the edges with the labels touching the inputs.
  * Lay them out as an even three-column grid with breathing room so
  * each labelled input stays readable. */
-.edit-panel [data-op-panel="junction"] .op-row {
+.modify-edit-panel [data-op-panel="junction"] .modify-op-row {
     /* Slightly more vertical room between rows; the panel has 8+
        parameters and the default 0.4rem read as cramped. */
-    margin: 0.55rem 0;
+    margin: var(--space-sm) 0;
 }
-.edit-panel [data-op-panel="junction"] .op-row label {
+.modify-edit-panel [data-op-panel="junction"] .modify-op-row label {
     /* Labels stay above their input -- two-line layout reads better
        than the default single-line label+input cluster when several
        sit side-by-side. */
     flex-direction: column;
     align-items: stretch;
-    gap: 0.25rem;
-    font-size: 0.85rem;
+    gap: var(--space-xs);
+    font-size: var(--text-sm);
     flex: 1 1 0;
 }
-.edit-panel [data-op-panel="junction"] input[type="number"] {
+.modify-edit-panel [data-op-panel="junction"] input[type="number"] {
     background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
-    padding: 0.3rem 0.45rem;
+    padding: var(--space-xs) var(--space-sm);
     font: inherit;
     width: 100%;
 }
-.edit-panel [data-op-panel="junction"] input[type="number"]:focus {
+.modify-edit-panel [data-op-panel="junction"] input[type="number"]:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    box-shadow: var(--focus-ring);
 }
 /* The Apply Add Electrode button + Undo button share a row so the
    Undo affordance is right next to the action it rolls back. */
-.edit-panel .elc-actions {
+.modify-edit-panel .modify-electrode-actions {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     align-items: center;
-    margin-top: 0.5rem;
+    margin-top: var(--space-sm);
 }
 
 /* ---- Geom subtab: Δx Δy Δz row ----
@@ -547,38 +538,38 @@ header .tagline {
  * Three labelled number inputs in a single row.  Each label's text
  * sits ABOVE its input (column flow) so the row stays one line on
  * narrow widths instead of wrapping. */
-.edit-panel .translate-row {
+.modify-edit-panel .modify-translate-row {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.5rem;
+    gap: var(--space-sm);
     align-items: stretch;
 }
-.edit-panel .translate-row label {
+.modify-edit-panel .modify-translate-row label {
     flex-direction: column;
     align-items: stretch;
-    gap: 0.25rem;
-    font-size: 0.85rem;
+    gap: var(--space-xs);
+    font-size: var(--text-sm);
 }
-.edit-panel .translate-row input[type="number"] {
+.modify-edit-panel .modify-translate-row input[type="number"] {
     background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
-    padding: 0.3rem 0.45rem;
+    padding: var(--space-xs) var(--space-sm);
     font: inherit;
     width: 100%;
 }
-.edit-panel .translate-row input[type="number"]:focus {
+.modify-edit-panel .modify-translate-row input[type="number"]:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    box-shadow: var(--focus-ring);
 }
 
 /* ---- Footer ---- */
 footer {
-    padding: 1rem 2rem;
+    padding: var(--space-lg) var(--space-xl);
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     border-top: 1px solid var(--border-soft);
 }
 footer a {
@@ -591,32 +582,32 @@ footer a:hover { color: var(--accent-hover); }
  * a_pbe_siesta_psml is not yet measured for this metal).  Was
  * inline ``element.style.opacity = "0.55"`` in modify/viewer.js;
  * lifted out per the 2026-06-19 JS-quality review. */
-.elc-lattice-ref-disabled {
+.modify-electrode-lattice-off {
     opacity: 0.55;
     cursor: not-allowed;
 }
 
 /* Cell op-tab -- per-group periodicity editors (modify/periodicity.js). */
-.op-hint {
+.modify-op-hint {
     color: var(--text-muted);
-    font: italic 12px/1.4 system-ui, sans-serif;
-    margin: 0 0 0.6rem;
+    font: italic var(--text-xs)/1.4 system-ui, sans-serif;
+    margin: 0 0 var(--space-sm);
 }
-.pv-tag {
+.modify-cell-tag {
     color: var(--text-muted);
     font-weight: 400;
-    font-size: 0.85em;
-    margin-left: 0.4rem;
+    font-size: var(--text-xs);
+    margin-left: var(--space-sm);
 }
 /* "How the box is decided" -- the frame-contract gate explained on demand
  * (structure-periodicity.md 6.1).  Same click-to-expand idiom as the form
  * schema's long help (.schema-help*), scoped to the Cell panel. */
-.pv-help {
-    margin: 0 0 0.7rem;
-    font-size: 0.78rem;
+.modify-cell-help {
+    margin: 0 0 var(--space-md);
+    font-size: var(--text-xs);
     color: var(--text-secondary);
 }
-.pv-help > summary {
+.modify-cell-help > summary {
     cursor: pointer;
     user-select: none;
     color: var(--accent);
@@ -624,31 +615,31 @@ footer a:hover { color: var(--accent-hover); }
     padding: 1px 0;
     width: max-content;
 }
-.pv-help > summary:hover {
+.modify-cell-help > summary:hover {
     opacity: 1;
     text-decoration: underline;
 }
-.pv-help p {
-    margin: 0.45rem 0 0;
+.modify-cell-help p {
+    margin: var(--space-sm) 0 0;
     line-height: 1.45;
 }
-.pv-triple,
-.pv-matrix {
+.modify-cell-triple,
+.modify-cell-matrix {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 0.4rem;
-    margin-bottom: 0.5rem;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
 }
-.pv-num,
-.pv-sel {
+.modify-cell-num,
+.modify-cell-select {
     width: 100%;
     background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border-soft);
-    border-radius: 4px;
-    padding: 0.3rem 0.4rem;
-    font: 13px ui-monospace, monospace;
+    border-radius: var(--radius-sm);
+    padding: var(--space-xs) var(--space-sm);
+    font: var(--text-sm) ui-monospace, monospace;
     text-align: right;
 }
-.pv-sel { font-family: system-ui, sans-serif; text-align: left; }
-.pv-cell-actions { display: flex; gap: 0.4rem; }
+.modify-cell-select { font-family: system-ui, sans-serif; text-align: left; }
+.modify-cell-actions { display: flex; gap: var(--space-sm); }

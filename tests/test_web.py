@@ -335,7 +335,7 @@ def _xyz_with_region_sidecar(tmp_path, peptide_xyz):
     The sidecar is written because a real project has one, but since F2
     (docs/science/validation.md § 4.1) the generate endpoints do NOT read it --
     labels travel in the request body, which is what the tabs send via
-    ``molview.data.factsForRequest()``.  Callers must therefore pass
+    ``molview.data.getStructure()``.  Callers must therefore pass
     ``regions=_PATTERN_B_REGIONS`` in the POST; the sidecar alone would leave
     the structure unlabelled and the Pattern-B notice would (correctly) not
     fire.  Returns (xyz_path, xyz_text)."""

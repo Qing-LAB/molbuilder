@@ -463,7 +463,7 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
         model's 0-based [0, 4, 7] shifted +1), and the validator must say so.
 
         The frozen list now travels in the REQUEST BODY, as the tab sends it
-        (``molview.data.factsForRequest()``).  Before F2
+        (``molview.data.getStructure()``).  Before F2
         (docs/science/validation.md § 4.1) this test delivered it by writing a
         sidecar next to the .pdb and letting the server read it -- the second
         source the contract removed, because an emitted deck must never mix body

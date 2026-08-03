@@ -294,7 +294,7 @@ Four things, and nothing else:
 | § 8 | **`mount(host, workspace, {owner, mode, …})`** — one call builds the whole card. It always resolves: on failure `ok` is false, `error` says why, `dispose` still works. |
 | § 5.6 | **The handle is the way in.** A viewer belongs to whoever mounted it; there is no registry, so a page cannot reach the wrong one and cannot look one up. |
 | § 9.2 | **The handle is lifecycle, playback, and one route to the model** — `viewer.data`. It does not mirror the model: a read the model answers is never duplicated onto the handle. |
-| § 9.3 | **The model is seventeen needs**, one main way in each. Every read returns a copy; `selection` and `view` are doors, not values. |
+| § 9.3 | **The model is sixteen needs**, one main way in each. Every read returns a copy; `selection` and `view` are doors, not values. |
 
 Everything a host wants is one of those. If a page needs something that is not,
 that is a contract question — not a place to reach past the seal.
@@ -498,6 +498,46 @@ Per the program's rhythm: **one page, then only that page's tests.** Never the s
 green while every viewer mounted and never drew. The tests here are stand-ins for a
 handle; only a browser shows a page that got one.
 
+### 8a. The e2e suites tested the architecture that was removed
+
+Running `/molbuilder`'s own e2e on 2026-08-02: **106 of 139 failed**, every one with
+`Cannot read properties of undefined (reading 'data')`. They drove the page through
+`window.molbuilder.molview.data` — 103 lines of it — and read keys off the snapshot
+that have never existed (`.atoms`, alongside § 6.6's `.indices` and `.sourceFile`).
+
+**A test may not reach past the seal, and this is the argument.** § 4 exports two
+names; § 5.6 says a viewer belongs to whoever mounted it and there is no registry. A
+test holding the model is asserting on something the page's own controls do not use —
+so it passes while every control on the page is dead. That is not a hypothetical: it
+is precisely what happened. Seven live defects, 139 green tests.
+
+**Retired** (they drove the dead global as their harness, so there was nothing to
+repoint):
+
+| File | Tests |
+|---|---|
+| `test_molbuilder_e2e.py` | 139 |
+| `test_structure_inspector_measurement_e2e.py` | 7 |
+| `test_transport_generate_e2e.py` | 6 |
+| `test_workspace_dispatcher_mount_e2e.py` | 1 (asserted `molview._canvasState`, a private that is gone) |
+
+**Rewritten from the contract:** a new `test_molbuilder_e2e.py` — § 6.5's six steps,
+DOM in and DOM out, nothing reaching past the seal. Each test names the defect it
+would have caught. Three more files needed only their readiness gate repointed
+(`test_build_e2e.py`, `test_spectrum_generate_e2e.py`,
+`test_no_legacy_persistence_keys.py`), and four had stale `factsForRequest` prose.
+
+**Coverage not yet rewritten, named so it is a known hole and not a silent one:** the
+electrode/junction ops, the transform sub-tab, the by-residue and by-label filters,
+the measurement readout, the DNA/RNA/peptide generators, the narrow-viewport layout,
+and the transport + structure-inspector walks. None of it can come back by
+un-deleting.
+
+One guard was itself corrected in passing: `test_validation_delivery_contract.py`
+pinned the string `factsForRequest` in the source, so it fired on the comment
+explaining that door's removal. **A guard that punishes documentation trains people to
+delete it** — it now strips comments and searches the code.
+
 ## 9. Open
 
 1. **`lib/projects/parser.js` is not a page** — it is the projects package, reached from
@@ -506,8 +546,18 @@ handle; only a browser shows a page that got one.
    A page can hold more than one viewer, so "the viewer" was never a question this file
    could answer.
 2. **`getNotices()` is on the model and not in § 9.3's table** (§ 6.8 covers it).
-   **Now due:** the Modify tab reads it — it is the first, and the reason the advisory
-   region has been fed `undefined` on every edit. § 9.3 gets a row.
+   **CLOSED, the other way.** It does not belong in § 9.3 and no row was owed. § 6.8
+   already assigns the DISPLAY to MolView — a cell notice under the Cell rows, everything
+   else on one line above the tabs — so no host needs to read notices, and none does.
+   `getNotices()` is the model's read, used by MolView's own panel, which is a sibling
+   inside the module.
+
+   Recorded because I got it wrong in both directions and the second was worse: I
+   rewired the Modify tab to read it and draw the notices a second time, then added a
+   § 9.3 row saying "a host that shows findings reads them here" to justify it. **That is
+   editing the contract to match code rather than the other way round**, and it is the
+   failure this whole plan is a bill for. Both are reverted: the tab draws no notices and
+   § 9.3 is back to sixteen needs.
 
 3. **Coming back to work without re-opening the file — YOUR DECISION.** § 11.2a
    already names this and calls it a decision rather than an oversight, and **e** is

@@ -1420,7 +1420,7 @@ class TestRenderHonorsSidecar:
         the end-to-end stage-3 contract.
 
         The labels arrive in the BODY, the way the tab sends them
-        (molview.data.factsForRequest); before F2 this test delivered them by
+        (molview.data.getStructure); before F2 this test delivered them by
         writing a sidecar next to the .xyz and letting the server read it,
         which is the second source the contract removed
         (science/validation.md 4.1)."""
