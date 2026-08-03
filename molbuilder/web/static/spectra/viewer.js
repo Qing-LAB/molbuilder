@@ -54,6 +54,11 @@ const WORKSPACE_TAG = "spectra";
             + (kind === "error" ? " error" : "");
     }
 
+    /* THE INSPECTOR THIS PAGE MOUNTED, kept so the page can hand it the viewer
+     * it also mounted.  One page, two things it owns, and it introduces them --
+     * rather than either of them looking the other up. */
+    let _inspector = null;
+
     function _bootstrapSpectraCore() {
         // Defensive: if core.js failed to load (e.g. a CDN-block in
         // some weird CSP edge case), fail loudly in the console
@@ -71,7 +76,7 @@ const WORKSPACE_TAG = "spectra";
         // Mount with ``document`` as the root so $() lookups find
         // /spectra's generate-side form ids (which live OUTSIDE any
         // partial; full-page mount).
-        api.mount(document);
+        _inspector = api.mount(document);
     }
 
     /**
@@ -82,12 +87,20 @@ const WORKSPACE_TAG = "spectra";
      * "no structure parsing in a consumer" (lib/inspectors/structure.js).
      * Runs synchronously after every successful Load (the model is settled).
      */
-    function _updateInfo(filename) {
+    /* THE VIEWER IS HANDED IN, because this function does not have one.
+     *
+     * It read `mvHandle` off a `let` declared inside the bootstrap below --
+     * a name that does not exist in this scope -- so every call threw
+     * `ReferenceError: mvHandle is not defined` and the readout was never
+     * written. The throw happened inside the load path, after the structure was
+     * already on screen, so the page looked like it had loaded a molecule and
+     * then simply refused to say what it was. */
+    function _updateInfo(viewer, filename) {
         const title   = _$("info-title");
         const atomsEl = _$("info-atoms");
         const formula = _$("info-formula");
-        const elements = (mvHandle && mvHandle.ok
-            && mvHandle.data.getElements()) || [];
+        const elements = (viewer && viewer.ok
+            && viewer.data.getElements()) || [];
         if (!elements.length) {
             if (title)   title.textContent   = "no structure loaded";
             if (atomsEl) atomsEl.textContent = "—";
@@ -188,12 +201,16 @@ const WORKSPACE_TAG = "spectra";
                         { mode: "readonly", owner: WORKSPACE_TAG });
                     mvHandle = (_h && _h.ok) ? _h : null;
                     if (!mvHandle) throw new Error("the viewer could not be built");
-                    // The page mounted it, so the page hands it on: the Generate
-                    // panel in lib/spectra/core.js needs this same viewer.
-                    const inspector = window.molbuilder
-                        && window.molbuilder.spectraInspector;
-                    if (inspector && typeof inspector.useViewer === "function") {
-                        inspector.useViewer(mvHandle);
+                    /* The page mounted the viewer, so the page hands it on:
+                     * the Generate panel needs this same one.
+                     *
+                     * Handed to THE INSPECTOR THIS PAGE MOUNTED, not to a
+                     * module-wide door. The viewer belongs to whoever mounted
+                     * it (molview.md § 5.6), and so does the inspector holding
+                     * it -- a module-level setter would be one viewer for every
+                     * mount on the page. */
+                    if (_inspector && typeof _inspector.useViewer === "function") {
+                        _inspector.useViewer(mvHandle);
                     }
                 }
                 // The format-aware sidebar door reads the .xyz + its
@@ -212,7 +229,7 @@ const WORKSPACE_TAG = "spectra";
             // (Nothing else to push into spectra/core.js: it was handed the
             // viewer at mount and reads the structure off it at send time --
             // so there is no second in-memory copy to feed or drift.)
-            _updateInfo(_basename(f));
+            _updateInfo(mvHandle, _basename(f));
             setStatus("load-status",
                 `Loaded ${_basename(f)}.`, "ok");
             _refreshLoadButton();

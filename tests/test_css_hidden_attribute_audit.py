@@ -111,6 +111,45 @@ def _scan_js_for_hidden_ids() -> set[str]:
 
 
 # --------------------------------------------------------------------- #
+#  Step 1b — the same question, for elements that have no id             #
+# --------------------------------------------------------------------- #
+#
+# 2026-08-03: MolView builds its panel with `el("div", "molviewer-…")` and
+# hides pieces of it by variable — there is no id anywhere, so the id-keyed
+# scan above could not see it, and `.molviewer-selection-assign { display:
+# flex }` shipped with no guard.  On every read-only viewer the label box was
+# hidden by the module and drawn by the stylesheet: a chooser and three buttons
+# that did nothing, on four pages.
+#
+# The shape it looks for is the one that module uses:
+#
+#     const assign = el("div", "molviewer-selection-assign");
+#     ...
+#     assign.hidden = model.mode === "readonly";
+
+_VAR_CLASS_RE = re.compile(
+    r"""(?:const|let|var)\s+(\w+)\s*=\s*el\(\s*["'][\w-]+["']\s*,\s*["']([\w\s-]+)["']""",
+)
+
+
+def _scan_js_for_hidden_classes() -> set[str]:
+    """Class names on elements some JS assigns ``.hidden`` on."""
+    names: set[str] = set()
+    for js_path in STATIC.rglob("*.js"):
+        rel = js_path.relative_to(STATIC).as_posix()
+        if rel.startswith("vendor/") or rel.endswith(".min.js"):
+            continue
+        src = js_path.read_text(encoding="utf-8")
+        var_to_classes: dict[str, list[str]] = {}
+        for m in _VAR_CLASS_RE.finditer(src):
+            var_to_classes[m.group(1)] = m.group(2).split()
+        for m in _VAR_HIDDEN_ASSIGNMENT_RE.finditer(src):
+            for cls in var_to_classes.get(m.group(1), ()):
+                names.add(cls)
+    return names
+
+
+# --------------------------------------------------------------------- #
 #  Step 2 — collect CSS rules + their guards                             #
 # --------------------------------------------------------------------- #
 
@@ -311,6 +350,51 @@ def test_every_dynamically_hidden_id_has_a_guard(
             f"CSS [hidden]-precedence violations "
             f"({len(failures)}; see code-audit.md § 3.1):\n"
             + "\n".join(failures)
+        )
+
+
+def test_every_dynamically_hidden_class_has_a_guard(all_hidden_guards):
+    """The same rule, for elements that carry only a class.
+
+    A class selector setting a non-``none`` display ties with the browser's own
+    ``[hidden] { display: none }`` and wins on source order — exactly as an id
+    selector does.  The element being built in JS rather than written in the
+    template changes nothing about the cascade, and it is where this bug
+    actually shipped: MolView's panel has no ids at all.
+    """
+    hidden_classes = _scan_js_for_hidden_classes()
+    assert hidden_classes, (
+        "the class scanner found nothing, so this test passes vacuously — "
+        "the `el(tag, className)` pattern it keys on must have changed"
+    )
+    failures: list[str] = []
+    for css_path in STATIC.rglob("*.css"):
+        css = _strip_comments(css_path.read_text(encoding="utf-8"))
+        for selector_list, props in _split_rules(css):
+            if not _NON_NONE_DISPLAY_RE.search(props):
+                continue
+            for selector in (s.strip() for s in selector_list.split(",")):
+                # The bare class, on its own: `.foo { display: flex }`.  A
+                # descendant rule cannot be guarded by the element's own
+                # attribute, so only the self-selector is checked.
+                if not re.fullmatch(r"\.([\w-]+)", selector):
+                    continue
+                cls = selector[1:]
+                if cls not in hidden_classes:
+                    continue
+                if f"{selector}[hidden]" in all_hidden_guards:
+                    continue
+                failures.append(
+                    f"  .{cls} is hidden by JS, and `{selector} "
+                    f"{{ display: … }}` "
+                    f"({css_path.relative_to(STATIC).as_posix()}) overrides "
+                    f"that.  Add: `{selector}[hidden] {{ display: none; }}`"
+                )
+    if failures:
+        pytest.fail(
+            "CSS [hidden]-precedence violations on class-named elements "
+            "(the control is hidden in JS and drawn anyway):\n"
+            + "\n".join(sorted(failures))
         )
 
 

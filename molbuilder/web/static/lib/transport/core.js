@@ -231,7 +231,20 @@ const WORKSPACE_TAG = "transport";
             ? Promise.resolve(_mvHandle)
             // Cache ONLY a live handle (mount contract: failure -> {ok:false}),
             // so a failed mount doesn't permanently block a later remount.
-            : mount(host, ws, { mode: "modify", owner: WORKSPACE_TAG })
+            /* EDITABLE, and said the way MolView says it. A viewer is
+             * "readonly" or it is editable, and editable is the default -- so
+             * editable is the ABSENCE of the flag, not a third word.
+             *
+             * This asked for `mode: "modify"`, which MolView has never had. It
+             * worked, and only by luck: the gate reads `opts.mode ===
+             * "readonly"`, and any other string is not that. Written the other
+             * way round -- `!== "editable"` -- this tab would have silently
+             * become read-only, and designating an electrode is a LABEL WRITE,
+             * so the whole point of the tab would have gone quiet.
+             *
+             * Editable is right here: this is where a user tags the atoms that
+             * are the leads. */
+            : mount(host, ws, { owner: WORKSPACE_TAG })
                 .then(function (h) {
                     _mvHandle = (h && h.ok) ? h : null;
                     return _mvHandle;

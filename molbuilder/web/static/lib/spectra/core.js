@@ -2826,6 +2826,19 @@
             }
             return loadByPath();
         },
+
+        /* THE VIEWER THIS PAGE MOUNTED, handed over by the page that mounted
+         * it.  On the handle, because the viewer it stores is per-mount state:
+         * `_viewer` lives inside this function, so a module-level door would be
+         * writing into whichever mount happened to run last.
+         *
+         * It WAS module-level, in the export block below -- referencing a name
+         * declared in here, which does not exist out there.  The whole export
+         * threw `ReferenceError: useViewer is not defined` at load, so
+         * `molbuilder.spectraInspector` was NEVER ASSIGNED: the page could not
+         * find `.mount`, logged that core.js must be missing, and the entire
+         * Generate side of /spectrum-calculation never started. */
+        useViewer: useViewer,
     };
 
     }   // ----- end of mountInspector(rootEl, opts) -----
@@ -2841,9 +2854,10 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.spectraInspector = {
         mount: mountInspector,
-        useViewer: useViewer,
-        // (No setter: the structure is read off the viewer this page mounted,
-        //  so there is no in-memory holder to feed.)
+        // `useViewer` is on what `mount` RETURNS, not here: it stores the
+        // viewer for one mounted inspector, and this object is shared by all of
+        // them.  (No structure setter either: the structure is read off the
+        // viewer the page mounted, so there is no in-memory holder to feed.)
     };
 
 })(typeof window !== "undefined" ? window : this);

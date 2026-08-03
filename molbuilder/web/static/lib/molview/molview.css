@@ -1291,6 +1291,20 @@
     margin-top: 0.5rem;
 }
 
+/* [hidden] MUST WIN over the display above.
+ *
+ * A class selector setting `display: flex` ties with the browser's own
+ * `[hidden] { display: none }` and wins on source order -- so `el.hidden = true`
+ * left this row fully visible and fully clickable.  What it hides is the label
+ * box on a READ-ONLY viewer, where writing a label is swallowed by the gate: the
+ * user got a chooser, an Assign button and two more beside it, all of which did
+ * nothing, on every read-only page.  "A control that would do nothing should not
+ * be offered" was true in the module and false on screen.
+ *
+ * The [hidden]-precedence audit did not catch it because it cross-references
+ * ELEMENT IDS, and this element has only a class. */
+.molviewer-selection-assign[hidden] { display: none; }
+
 .molviewer-selection-target-row {
     display: flex;
     align-items: center;

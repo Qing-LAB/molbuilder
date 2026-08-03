@@ -745,9 +745,14 @@ import { mount as mvMount, formula as mvFormula }
             // mount the read-only card.  The Generate/preflight POST + info panel now
             // read the model, not a parallel hand-rolled response.
             _applyLoadedModel(filename);
+            /* KEEP IT, so coming back to this tab shows what you were working
+             * on.  Saved HERE, at the one moment the tab acquires a structure,
+             * rather than on a timer or on the way out: `pagehide` does not
+             * fire reliably on a mobile tab switch, and this page has exactly
+             * one event worth recording. */
+            _rememberStructure();
             const _d = _data();
-            const _atoms = ((_d && _d.getStructure && _d.getStructure())
-                            || {}).atoms;
+            const _atoms = _d ? (_d.getStructure() || {}).elements : null;
             setStatus("load-status",
                 `Loaded ${(Array.isArray(_atoms) ? _atoms.length : "")}-atom `
                 + `${ext.toUpperCase()} from ${filename}.`, "ok");
@@ -767,58 +772,85 @@ import { mount as mvMount, formula as mvFormula }
             : _proj.onChange.bind(_proj);
         subscribe(_commitStructure);
 
-        /* WHAT HAPPENS WHEN YOU COME BACK TO THIS TAB -- and what does NOT.
+        /* WHAT HAPPENS WHEN YOU COME BACK TO THIS TAB.
          *
-         * THIS VIEWER IS READ-ONLY, AND A READ-ONLY VIEWER HOLDS NO SESSION.
-         * That is the contract, not an omission: § 9.4 -- "a history exists to
-         * get back to a state you left, and in a read-only viewer nothing can
-         * leave one", so `save`, `load` and `undo` are no-ops, and § 11.2's
-         * point 0 is never written (`recordFirstState` returns null in this
-         * mode). Measured, not assumed: a read-only model writes ZERO bytes to
-         * the workspace, and `load(0)` answers null.
+         * The molecule you had, and the parameters you typed.  The parameters
+         * are handled at the end of this file (form state); this is the
+         * molecule.
          *
-         * So there is nothing here to restore, and this block does not pretend
-         * otherwise. It mounted a viewer and it seeds from the sidebar pick.
+         * THE TAB SAVES IT, NOT THE VIEWER.  This viewer is read-only, which
+         * settles two things and neither of them is "the tab remembers
+         * nothing": its timeline does nothing -- no saved points, no Retract --
+         * and `installMolecule` is allowed only into a viewer holding nothing,
+         * or when the caller says `enforce`.  Both of those are about the
+         * SEQUENCE and about EDITING.  What this tab put on screen is the tab's
+         * own fact, kept under the tab's own tag beside its form values
+         * (workspace.md § 4: several savers on one page, each deciding what and
+         * when).
          *
-         * TWO DEAD RESTORES HAVE STOOD HERE, and both looked like they worked.
-         * The first read the saved bytes back out of the workspace and opened
-         * them (`readPersistedSnapshot`, a door the workspace no longer has,
-         * behind a `typeof` guard -- so it answered "nothing saved" every
-         * visit). The second called `data.load(0)`, copied from the Modify tab
-         * -- which is EDITABLE, and where that call is the whole restore. Here
-         * it is a gate that returns null.
+         * TWO DEAD RESTORES STOOD HERE BEFORE, and both looked convincing.  The
+         * first read the saved bytes back out of the workspace and opened them
+         * (`readPersistedSnapshot`, a door the workspace no longer has, behind
+         * a `typeof` guard, so it answered "nothing saved" every visit).  The
+         * second called `data.load(0)`, copied from the Modify tab -- which is
+         * EDITABLE, and where that call IS the restore.  Here it is a gate that
+         * returns null.  Neither was measured against this viewer's mode.
          *
-         * WHAT IS ACTUALLY MISSING is a decision, filed as task #51: whether a
-         * read-only tab should keep the structure it was showing across a page
-         * visit at all, and if so, that it belongs to the TAB -- persisted
-         * under this tab's own tag, like the panel note on /molbuilder -- never
-         * to a viewer whose contract says it holds nothing.
-         * `tests/test_build_e2e.py::TestBuildSecondVisitExternalChange
-         * ::test_external_xyz_replacement_reloads_on_explicit_load` pins the
-         * old promise and fails today; it is waiting on that decision.
-         *
-         * THE VIEWER IS MOUNTED FIRST regardless, because the load door needs
-         * something to put a file into. That was a real defect: this ran
+         * THE VIEWER IS MOUNTED FIRST, because a structure needs somewhere to
+         * go.  That was a real defect on its own: this block used to run
          * against whatever `_data()` happened to answer, and on a fresh page
-         * that was null -- nothing had mounted yet.
+         * that was null -- nothing had mounted yet, so the restore branch could
+         * never be taken and the sidebar seeded over the session every time.
+         *
+         * THE SIDEBAR ONLY SEEDS AN EMPTY CANVAS.  A pick left highlighted from
+         * last time is not an instruction to load it: loading a file is the
+         * Load button or a double-click, never a side effect of arriving.  What
+         * is asked is "did anything come back?", never "does the sidebar's file
+         * match" -- a generated structure has atoms and no file at all, and the
+         * file comparison read that as empty and wiped it.
          */
         const _initialFile = (typeof _proj.getCurrentFile === "function")
             ? _proj.getCurrentFile() : "";
-        (async function _mountThenSeed() {
+        const _restored = (async function _restoreThenSeed() {
             await _ensureMounted();
-            if (!_initialFile) return;
-            // A sidebar pick on arrival is the cross-tab handoff: show it.
+            const saved = await _restoreStructure();
+            if (saved) {
+                /* The file it came from is the TAB's note, saved beside the
+                 * structure -- the viewer tracks contents, not files
+                 * (molview.md § 6.7), so it does not come back with the atoms. */
+                _sidebarLastFile = saved.loadedFrom || "";
+                const _name = _sidebarLastFile
+                    ? _basename(_sidebarLastFile) : "restored structure";
+                _applyLoadedModel(_name);
+                /* AND THE PAGE FURNITURE, or the tab contradicts itself: the
+                 * molecule is back on the canvas while the load bar still reads
+                 * "Selected: x.xyz" with the Load button live, as though nothing
+                 * had been loaded.  Same refreshers a fresh load runs -- there
+                 * is one way for this page to say "a structure is loaded", and
+                 * a restore has to use it rather than half of it. */
+                setStatus("load-status",
+                    `Restored ${_name} — ${saved.structure.elements.length} atoms.`,
+                    "ok");
+                if (typeof _refreshLoadButton === "function") _refreshLoadButton();
+                if (typeof _refreshAutoDetectButton === "function") _refreshAutoDetectButton();
+                return true;
+            }
+            if (!_initialFile) return false;
+            // Empty canvas + a sidebar pick: the genuine first arrival, or a
+            // handoff from another tab.
             const _initialDir = (typeof _proj.getCurrentDir === "function")
                 ? _proj.getCurrentDir() : "";
             _commitStructure({ dir: _initialDir, file: _initialFile });
+            return false;
         })().catch(function (e) {
             /* NOBODY IS WAITING ON THIS PROMISE, so a throw would land nowhere.
              * This is the first thing the page does; failing at it in silence
              * leaves an empty canvas that reads as "there was nothing here". */
             setStatus("load-status",
-                "Could not open this tab's viewer: "
+                "Could not restore this tab's structure: "
                 + ((e && e.message) || "unknown error")
                 + ". Pick a file and press Load.", "error");
+            return false;
         });
 
         // ----- Load-from-sidebar button (task #295, 2026-06-08) ---- //

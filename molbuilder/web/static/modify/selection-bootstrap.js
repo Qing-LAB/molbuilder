@@ -83,8 +83,14 @@ import { init as startCellPanel }  from "./periodicity.js";
             _renderFailure(host, "molview module missing");
             return;
         }
+        /* EDITABLE, which is the ABSENCE of the flag -- a viewer is
+         * "readonly" or it is editable, and there is no third word. This said
+         * `mode: "modify"`, a spelling MolView has never had; it worked only
+         * because the gate asks whether the mode IS "readonly", so anything
+         * else falls through to editable. Written the other way round it would
+         * have made this tab -- the one page where a user edits a structure --
+         * silently read-only. */
         const _mounted = await mount(host, window.molbuilder.workspace, {
-            mode: "modify",
             owner: WORKSPACE_TAG,
         });
         if (!_mounted || !_mounted.ok) return;   // mount contract: failure -> {ok:false}; it warned already
