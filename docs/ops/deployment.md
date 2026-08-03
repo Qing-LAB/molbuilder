@@ -2,8 +2,11 @@
 
 **Role:** guide
 **Domain:** ops
-**Companions:** [`installation.md`](?doc=ops/installation.md) — getting molbuilder
-and its envs onto the host first; [`web-api.md`](?doc=web/web-api.md) — the HTTP
+**Companions:** [`access-control.md`](?doc=ops/access-control.md) — **the design
+of the gates** (identity · hostility · admin · stopping the process), which this
+guide is the operational half of; [`installation.md`](?doc=ops/installation.md) —
+getting molbuilder and its envs onto the host first;
+[`web-api.md`](?doc=web/web-api.md) — the HTTP
 API (its security section defers the full rate-limiter threat model to §4 here);
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — `molbuilder.json`
 also carries the job-execution config.
@@ -93,6 +96,10 @@ With auth on:
 `--no-auth` bypasses all of this and is refused on any non-loopback host.
 
 ## 4. Security posture
+
+> **The design of the gates — why there are four, what each refuses and how,
+> and the rules underneath — is [`access-control.md`](?doc=ops/access-control.md).**
+> This section is the operational half: the headers, the knobs, and the routes.
 
 Set on every response (via a header hook, using `setdefault` so a proxy can
 override):

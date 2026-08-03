@@ -5,8 +5,10 @@ what was decided and what was rejected. The shipped behaviour is documented in
 [`deployment.md`](?doc=ops/deployment.md) § 1 and § 4.)
 **Domain:** ops
 **Started:** 2026-08-03
-**Companions:** [`deployment.md`](?doc=ops/deployment.md) — how the server is
-started and exposed, and the auth/admin model this leans on.
+**Companions:** [`access-control.md`](?doc=ops/access-control.md) — the gate this
+route sits behind, and why it answers 404 rather than 403;
+[`deployment.md`](?doc=ops/deployment.md) — how the server is started and
+exposed.
 
 ---
 
