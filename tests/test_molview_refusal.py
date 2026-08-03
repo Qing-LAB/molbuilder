@@ -334,7 +334,7 @@ def test_a_refused_edit_leaves_the_earlier_warnings_standing():
         console.log(JSON.stringify({ before, after: m.getNotices() }));
         """
     )
-    assert out["before"]["list"], "the fixture never produced a notice to keep"
+    assert out["before"], "the fixture never produced a notice to keep"
     assert out["after"] == out["before"], (
         "a refused edit changed the notices, which describe a structure that "
         "did not move")

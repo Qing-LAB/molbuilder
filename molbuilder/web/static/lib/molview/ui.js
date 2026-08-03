@@ -1016,6 +1016,8 @@ function mountPanel(doc, card, model) {
             // later caller — still lights the tab that goes with it.
             tabInputs[key].checked = key === which;
         }
+        // Opening the page clears its mark: by then the message has been seen.
+        markPageWithNotices();
     }
     showPage("selection");
 
@@ -1438,15 +1440,23 @@ function mountPanel(doc, card, model) {
          * The model clears the set on any change to the structure, so a line
          * that is gone is gone because the fact is, not because something here
          * remembered to remove it. */
-        const said = model.getNotices();
-        /* Anything not addressed to the Cell page lands here. Written as "not
-         * cell" rather than a list of accepted names, because a list has to be
-         * extended every time a notice gains a new origin and the failure when
-         * someone forgets is SILENT: the server checks, the answer carries the
-         * verdict, and this line drops it. The eight modify ops became such an
-         * origin on 2026-08-01; nothing here had to change for them, and that
-         * is the point. */
-        drawNotices(panelNotices, said && said.where !== "cell" ? said.list : []);
+        /* EACH NOTICE GOES WHERE ITS SUBJECT IS, and it says its own subject
+         * (§ 6.8). A message about the box is drawn beside the box, on the page
+         * a user would go to in order to change it; everything else is drawn
+         * here, above the tabs, where it shows on either page.
+         *
+         * The split used to be made on where the BATCH came from -- a load, an
+         * edit -- which is the wrong question: a warning that the cell is
+         * unusable is about the cell whether it arrived with a file or with an
+         * edit, and routing it by its origin put it above the atom list, three
+         * clicks from the only control that could fix it.
+         *
+         * Written as "not cell" rather than a list of accepted subjects,
+         * because a list has to be extended every time a notice gains a new
+         * one, and the failure when somebody forgets is SILENT: the server
+         * checks, the answer carries the verdict, and this line drops it. */
+        drawNotices(panelNotices, notFor("cell"));
+        markPageWithNotices();
         // A read-only viewer does not show the controls the gate would swallow.
         assign.hidden = model.mode === "readonly";
     }
@@ -1741,6 +1751,37 @@ function mountPanel(doc, card, model) {
      * it was told. Rewording a warning here would put a second author on it, and
      * the message carries numbers -- clearances, axes -- that only the server
      * computed. */
+    /* THE TWO CUTS OF THE ONE LIST. A notice with no subject is nobody's in
+     * particular, so it lands in the general place -- which is also what an
+     * older server that has not learned to say `about` produces, and that
+     * answer stays readable rather than disappearing. */
+    /* Function declarations, not consts: `showPage` runs during assembly, below
+     * the tab bar and far above this line, and a const would still be in its
+     * dead zone when it did. */
+    function onlyFor(subject) {
+        return (model.getNotices() || []).filter((n) => n.about === subject);
+    }
+    function notFor(subject) {
+        return (model.getNotices() || []).filter((n) => n.about !== subject);
+    }
+
+    /* A MESSAGE ON THE PAGE YOU ARE NOT LOOKING AT STILL HAS TO REACH YOU.
+     *
+     * Putting a cell notice beside the cell is right -- that is where it can be
+     * acted on -- but a structure loaded from the Selection page would then
+     * warn into a page nobody is on. So the tab says there is something there:
+     * the mark is on the TAB, which is visible from either page, and the words
+     * stay where they can be used. Cleared when the page is opened, because by
+     * then it has been seen. */
+    function markPageWithNotices() {
+        const waiting = onlyFor("cell").length > 0;
+        const tab = tabInputs.cell && tabInputs.cell.parentNode;
+        if (!tab) return;
+        const show = waiting && pages.cell.hidden;
+        if (show) tab.setAttribute("data-has-notices", "1");
+        else tab.removeAttribute("data-has-notices");
+    }
+
     function drawNotices(into, list) {
         into.textContent = "";
         into.hidden = !(list && list.length);
@@ -1798,8 +1839,7 @@ function mountPanel(doc, card, model) {
         /* UNDER THE ROWS THEY ARE ABOUT (§ 6.8). A cell warning names an axis
          * and a clearance; those numbers are the four rows above it, so this is
          * where the user is already looking, having just typed one of them. */
-        const said = model.getNotices();
-        drawNotices(cellNotices, said && said.where === "cell" ? said.list : []);
+        drawNotices(cellNotices, onlyFor("cell"));
     }
 
     /* The 3x3 as three rows of three, at a fixed precision so the columns line

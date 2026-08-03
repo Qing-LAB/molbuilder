@@ -548,7 +548,7 @@ def ok_structure_response(
         # geometry op cannot produce either -- neither touches the cell -- but a
         # refusal must not turn a successful edit into a 500, so it is reported
         # like anything else the user should know.
-        said.append({"level": "warn", "message": str(exc)})
+        said.append({"level": "warn", "message": str(exc), "about": "cell"})
     merged = dict(extra or {})
     if said:
         merged["notices"] = said

@@ -1307,6 +1307,85 @@ def test_a_warning_from_a_load_is_put_in_front_of_the_user():
     )
 
 
+def test_a_notice_is_drawn_where_its_subject_is_and_the_tab_says_so():
+    """A message goes where it can be ACTED ON, not where it came from.
+
+    A warning about the box names an axis and a clearance — those numbers are
+    the Cell page's four rows, so that is where it belongs and where a user
+    would go to change them. It used to be routed by ORIGIN instead: the same
+    warning went above the atom list when it arrived with a file, and under the
+    Cell rows when it arrived from a cell edit. Same sentence, same subject, two
+    places.
+
+    AND A PAGE YOU ARE NOT LOOKING AT STILL HAS TO REACH YOU. Loading happens
+    from the Selection page, so putting the words on the Cell page alone would
+    warn into a page nobody is on. The TAB carries a mark — visible from either
+    page — and the words stay where they are useful. Opening the page clears it,
+    because by then it has been seen.
+    """
+    out = _run(
+        """
+        globalThis.__nextNotices = [
+            { level: "warn", about: "cell",
+              message: "the box does NOT contain the structure along z." },
+            { level: "info",
+              message: "something about the structure as a whole." },
+        ];
+        const { host, viewer } = await mounted();
+        await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
+        const card = host.querySelector(".molviewer-card");
+
+        // The stand-in understands tags, classes and descendant chains -- no
+        // attribute selectors -- so the two pages are told apart by the
+        // attribute the stylesheet keys on, read off the elements themselves.
+        let cellPage = null;
+        for (const pg of card.querySelectorAll(".molviewer-panel-tab")) {
+            if (pg.getAttribute("data-page") === "cell") cellPage = pg;
+        }
+        const notesIn = (box) => box.querySelectorAll(".molviewer-notice")
+            .map(n => n.textContent);
+        const boxes = card.querySelectorAll(".molviewer-notices");
+        const onCell = [], aboveTabs = [];
+        for (const box of boxes) {
+            (cellPage.contains(box) ? onCell : aboveTabs).push(...notesIn(box));
+        }
+        const tab = () => {
+            for (const el of card.querySelectorAll(".molviewer-panel-tab-option")) {
+                if (el.textContent.indexOf("Cell") >= 0) return el;
+            }
+            return null;
+        };
+        const marked = () => !!(tab() && tab().getAttribute("data-has-notices"));
+
+        const before = { onCell, aboveTabs, tabMarked: marked() };
+        // Open the Cell page: the mark has done its job.
+        card.querySelectorAll(".molviewer-panel-tab-option input")[1]
+            .dispatch("change", {});
+        console.log(JSON.stringify({ before, markedAfterOpening: marked() }));
+        """
+    )
+    assert out["before"]["onCell"] == [
+        "the box does NOT contain the structure along z."
+    ], (
+        f"the box warning is not beside the box: {out['before']}. Routed by "
+        f"where it came from, it lands above the atom list — nowhere near the "
+        f"only control that can fix it"
+    )
+    assert out["before"]["aboveTabs"] == [
+        "something about the structure as a whole."
+    ], (
+        f"a notice about no particular part was hidden on the Cell page, or the "
+        f"cell warning was drawn twice: {out['before']}"
+    )
+    assert out["before"]["tabMarked"] is True, (
+        "a warning was put on a page the user is not looking at with nothing to "
+        "say it was there"
+    )
+    assert out["markedAfterOpening"] is False, (
+        "the mark stayed after the page was opened, so it says nothing"
+    )
+
+
 def test_the_names_molview_offers_each_read_differently_and_frozen_stands_out():
     """MolView offers four names before anyone has used them — `L-electrode`,
     `R-electrode`, `bridge`, `interface` — because nearly every device structure

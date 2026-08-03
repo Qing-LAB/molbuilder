@@ -1363,6 +1363,27 @@
     cursor: pointer;
     transition: color 0.12s, border-color 0.12s;
 }
+
+/* A TAB WITH SOMETHING WAITING ON IT.
+ *
+ * A notice is drawn where its subject is -- a message about the box sits beside
+ * the box, on the page you would go to in order to change it.  But a structure
+ * loaded while you are on the Selection page would then warn into a page nobody
+ * is looking at, so the tab itself says there is something there.  The mark
+ * goes when the page is opened.
+ *
+ * A dot rather than a count: how MANY things are wrong is not the question a
+ * tab can answer usefully, and the words are one click away. */
+.molviewer-panel-tab-option[data-has-notices] > span::after {
+    content: "";
+    display: inline-block;
+    width: 0.45em;
+    height: 0.45em;
+    margin-left: 0.35em;
+    vertical-align: 0.35em;
+    border-radius: 50%;
+    background: var(--warn-soft);
+}
 .molviewer-panel-tab-option:has(input:checked) { border-bottom-color: var(--molviewer-color-pick); }
 .molviewer-panel-tab-option input[type="radio"] {
     position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;

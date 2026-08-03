@@ -425,8 +425,7 @@ export function createModel(opts) {
         put: (s, c, name, said) => {
             settle(() => put(s, c, name), {
                 resetFrame: true,
-                notices: (said && said.length)
-                    ? { where: "load", list: said } : null,
+                notices: (said && said.length) ? said : null,
             });
             unit = HOLDING;
         },
@@ -488,7 +487,7 @@ export function createModel(opts) {
                 // was still the old one's -- § 6.4: no one observes a half
                 // state.
                 notices: (said && said.length)
-                    ? { where: "structure", list: said } : null,
+                    ? said : null,
             });
             // The badge is raised HERE, inside the gate and after the change has
             // landed — which makes two of the contract's rules fall out rather
@@ -511,7 +510,7 @@ export function createModel(opts) {
             settle(() => { structure.periodicity = block; }, {
                 redraw: "cell",
                 notices: (said && said.length)
-                    ? { where: "cell", list: said } : null,
+                    ? said : null,
             });
             history.edited();
         },
@@ -572,12 +571,22 @@ export function createModel(opts) {
         // OF THE LABELS — not a second place where groups of atoms are stored.
         /* WHAT THE SERVER SAID about the answer now showing (§ 6.8), or null.
          *
-         * `{where, list}`. A copy, like every read here: a caller that edits
-         * what it was handed changes nothing (§ 9.3). */
+         * A flat list. Each notice carries its own subject in `about`, which is
+         * what decides where it is drawn -- a message about the box belongs
+         * beside the box, whatever brought it.
+         *
+         * The list used to be wrapped in `{where, list}`, naming where the batch
+         * CAME FROM -- a load, an edit, the cell door -- and the panel routed on
+         * that. Two mechanisms for one decision, and the origin is the wrong one:
+         * a warning about an unusable cell arriving with a file went above the
+         * atom list, nowhere near the page that could fix it.
+         *
+         * A copy, like every read here: a caller that edits what it was handed
+         * changes nothing (§ 9.3). */
         getNotices() {
             return notices
-                ? { where: notices.where, list: notices.list.map(
-                        (n) => ({ level: n.level, message: n.message })) }
+                ? notices.map((n) => ({ level: n.level, message: n.message,
+                                        about: n.about || null }))
                 : null;
         },
 

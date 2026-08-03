@@ -64,6 +64,11 @@ function makeElement(doc, tag) {
 
         setAttribute(k, v) { node.attributes[k] = String(v); },
         getAttribute(k) { return k in node.attributes ? node.attributes[k] : null; },
+        // Taking one off is half of the pair, and the half that was missing:
+        // the module marks a tab when a page holds a message and unmarks it
+        // when the page is opened, which a stand-in with only `set` cannot do.
+        removeAttribute(k) { delete node.attributes[k]; },
+        hasAttribute(k) { return k in node.attributes; },
         appendChild(child) {
             child.parentNode = node;
             node.children.push(child);

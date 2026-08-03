@@ -497,7 +497,7 @@ checks nothing.** The gate is server-side only, and it runs at seven points:
 
 | # | Seam | Trigger | What happens to its answer |
 |---|---|---|---|
-| 1 | `StructureCodec.load` | reading the pair from disk | nothing is reported — the read seam is here to REFUSE a cell nothing can be done with (left-handed, or too small for any origin), which raises rather than reports. What is true of the structure it produces is said at seam 2, on the way out |
+| 1 | `StructureCodec.load` | reading the pair from disk | nothing is reported — the read seam REFUSES a cell nothing can be done with (left-handed, or too small for any origin), raising rather than reporting. **This is the one place that still contradicts § 8.2** — reading is loading, and loading is supposed to report. See the note there |
 | 2 | `_shared.ok_structure_response` | **every structure the server sends the browser**: `/api/build/load`, `/api/build/molecule`, and the eight `/api/modify/*` ops | notices ride out with the structure |
 | 3 | `/api/structure/periodicity` — before | a Cell-page edit arrives | notices **dropped** — they describe what arrived, not the result |
 | 4 | `/api/structure/periodicity` — after | the edit has been applied | notices **returned** — these describe the box the user now has |
@@ -564,6 +564,26 @@ the translation:
 - `apply_periodicity_for_emit(struct, body)` — applies, then refuses. Every
   emitting door uses it; the refusal becomes the door's 400 through one
   app-level handler.
+
+#### The one place this is not true yet
+
+**A file whose sidecar holds an unusable box cannot be opened at all.** The read
+seam (seam 1 above) raises, so the load door answers *"could not load …"* and
+the structure never reaches the screen — which is precisely the trap the
+report-don't-refuse rule exists to avoid: it cannot be fixed, because it cannot
+be opened.
+
+**It is left standing on purpose, because removing it alone would be worse.**
+The gate is called from exactly two places: that read seam, and the web's own
+seams. **The CLI's generating path calls it nowhere** — its only protection
+today *is* the read refusal. Take that away and `molbuilder` would render an
+`.fdf` from an impossible box without a word, which breaks the half of the rule
+that matters most.
+
+So the fix is two changes together, not one: reading stops judging, **and** the
+CLI's generating path gets the refusal the web's emitting doors already have.
+Tracked as **task #53**; until then this row is the known exception, named here
+rather than papered over.
 
 #### The report has to arrive
 

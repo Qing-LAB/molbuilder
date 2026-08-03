@@ -91,7 +91,20 @@ OPS = ("vacuum", "axis_kind", "cell", "cell_origin")
 
 
 def _notice(level: str, message: str) -> Dict[str, str]:
-    return {"level": level, "message": message}
+    """One notice: how loud, what it says, and WHAT IT IS ABOUT.
+
+    ``about`` is the subject, and it is what decides where the message is shown
+    -- a message about the box belongs beside the box, on the page where a user
+    would go to change it.  Everything this module produces is about the cell,
+    because this module IS the cell's gate; a notice from somewhere else says
+    its own subject.
+
+    It used to be missing, and the display worked out where to put a message
+    from where it CAME FROM instead -- a load, or a cell edit.  That put a
+    warning about an unusable box above the atom list whenever it arrived with
+    a file, which is not where anybody can act on it.
+    """
+    return {"level": level, "message": message, "about": "cell"}
 
 
 def expected_corner(struct: Structure) -> np.ndarray:

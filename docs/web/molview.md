@@ -829,7 +829,9 @@ the request. A notice is the server saying "this worked, and here is something
 you should know about the result".
 
 Every one of them is worded by `periodicity_gate` — MolView writes none and
-rewords none — and they reach it through three doors:
+rewords none, because the numbers in them (determinants, per-axis clearances)
+were computed there and a second author would be writing a sentence only one of
+them can. They reach it through three doors:
 
 | Door | What it validates | When |
 |---|---|---|
@@ -889,17 +891,34 @@ one exchange.
 
 #### Where they are shown
 
-| | |
-|---|---|
-| A cell notice | on the **Cell page**, under the row it is about — that is where the user is looking, having just typed one of those numbers |
-| Anything else — a load, an edit | one line at the **top of the panel**, above the tabs — it is about the whole structure, so it has no row to sit under |
+**A notice goes where its subject is** — where a user can act on it, not where it
+happened to come from. So every notice says what it is about, in an `about`
+field, and that field decides the place:
 
-The panel line takes **everything that is not a cell notice**, rather than a list
-of names it accepts. A list has to be extended whenever a notice gains a new
-origin, and the failure when someone forgets is silent: the server checks, the
-answer carries the verdict, and the display drops it. The eight modify ops became
-such an origin on 2026-08-01, and the display needed no edit to show them — which
-is the whole reason the rule is written this way round.
+| A notice about… | is shown | because |
+|---|---|---|
+| **the cell** (`about: "cell"`) | on the **Cell page**, under the rows it names | it names an axis and a clearance, and those numbers *are* those four rows — the only controls that can change what it is complaining about |
+| **anything else** (no `about`, or another subject) | one line at the **top of the panel**, above the tabs, visible on either page | it is about the structure as a whole, so it has no row to sit under |
+
+**And a page you are not looking at still has to reach you.** Loading happens
+from the Selection page, so a cell warning arriving with a file would otherwise
+land on a page nobody is on. The **Cell tab carries a dot** while its page holds
+notices you have not opened; the words stay where they are useful, and the dot
+goes when you open the page. A dot rather than a count — how *many* things are
+wrong is not a question a tab can usefully answer, and the sentences are one
+click away.
+
+> **This used to be routed by where a notice came FROM** — a load, a cell edit —
+> which is the wrong question. The same sentence about the same box went above
+> the atom list when it arrived with a file and under the Cell rows when it
+> arrived from an edit. `getNotices()` returned `{where, list}`; it now returns
+> the flat list, and each notice carries its own subject. One decision, one
+> mechanism.
+
+The general line takes **everything that is not a cell notice**, rather than a
+list of subjects it accepts. A list has to be extended whenever a notice gains a
+new subject, and the failure when someone forgets is silent: the server checks,
+the answer carries the verdict, and the display drops it.
 
 Not a corner overlay: both corners are the badge and the measurement readout, and
 a corner is for state that persists, not for something that just happened. Not

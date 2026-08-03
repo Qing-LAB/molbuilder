@@ -69,9 +69,13 @@ class TestTheStateTable:
         assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
         assert contains_atoms(out, out.resolve_cell_origin())
         assert notes and notes[0]["level"] == "info"
-        # A notice is exactly {level, message}. There is no key that says "and
-        # I changed something", because nothing here changes anything.
-        assert all(set(n) == {"level", "message"} for n in notes), notes
+        # A notice says how loud it is, what it says, and WHAT IT IS ABOUT --
+        # the subject is what decides where it is shown. What it must never
+        # carry is a key saying "and I changed something", because nothing here
+        # changes anything: that is the whole of clause 1, and a phantom dirty
+        # state is what a correction marker would produce.
+        assert all(set(n) == {"level", "message", "about"} for n in notes), notes
+        assert all(n["about"] == "cell" for n in notes), notes
 
     def test_no_seam_materialises_a_resolved_corner(self):
         """The invariant behind the 2026-07-29 decision: for ONE state
@@ -779,7 +783,10 @@ class TestTheLoadAnswerIsNotSilent:
             # nothing -- and the shape says so: two keys, no third one claiming
             # a correction, hence no phantom dirty state.
             assert notices and notices[0]["level"] == "info"
-            assert all(set(n) == {"level", "message"} for n in notices), notices
+            assert all(set(n) == {"level", "message", "about"} for n in notices), notices
+            # ...and `about` is the SUBJECT, which is what puts the sentence on
+            # the Cell page rather than above the atom list (molview.md § 6.8).
+            assert all(n["about"] == "cell" for n in notices), notices
             # The served model: no invented truth, the corner as a view.
             per = j["periodicity"]
             assert per.get("cell_origin") is None

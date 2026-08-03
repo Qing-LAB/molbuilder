@@ -44,7 +44,7 @@ built by `workspace_payload()` (the single serializer):
   "periodicity": { "…cell / origin / axis_kind / vacuum…" },
   "annotations": { "…regions / frozen / channels…" },
   "issues": [ "…" ],
-  "notices": [ { "level": "info|warn", "message": "…" } ],
+  "notices": [ { "level": "info|warn", "message": "…", "about": "cell" } ],
   "extra": { "…endpoint add-ons…" } }
 ```
 
@@ -52,8 +52,20 @@ built by `workspace_payload()` (the single serializer):
 is a validation finding about a calculation you are about to run — it is what
 the Generate panel lists, and it carries a `where` naming the field to fix. A
 **notice** is what the periodicity gate says about the box on the structure in
-this answer; it is absent when there is nothing to say, and MolView shows it on
-the panel or the Cell page (`?doc=web/molview.md` § 6.8).
+this answer; it is absent when there is nothing to say.
+
+**A notice says what it is ABOUT**, and that is what decides where it is shown:
+`about: "cell"` puts it beside the cell rows, on the page whose controls can
+change what it complains about; anything else goes above the tabs, visible on
+either page (`?doc=web/molview.md` § 6.8). The subject is the notice's own, not
+the door's — the same sentence about the same box belongs in the same place
+whether it arrived with a file load or with an edit.
+
+**Whether a bad box REFUSES or merely reports depends on what the request is
+for**, and that rule lives in one place:
+`?doc=model/structure-periodicity.md` § 8.2. Short version: a door that emits
+something you would run refuses (400); a door that loads or modifies reports and
+carries on, so the user can see the problem and fix it.
 
 Two notes that matter for a reader of the code: `lattice` is now **always
 `null`** (the geometry moved into `periodicity`), and `structure_to_dict` also
@@ -158,7 +170,7 @@ which is a bug this project has already shipped once.
 
 ```json
 { "ok": true, "structure": { "geometry": …, "metadata": …, "document": … },
-  "notices": [ { "level": "info|warn", "message": "…" } ] }
+  "notices": [ { "level": "info|warn", "message": "…", "about": "cell" } ] }
 ```
 
 **What this replaces, door by door.**
