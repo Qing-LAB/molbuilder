@@ -279,10 +279,16 @@ import { mount as mvMount, formula as mvFormula }
         const d = _data();
         const s = (d && typeof d.getStructure === "function")
             ? d.getStructure() : null;
-        const atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
+        /* THE COUNT COMES OFF THE ELEMENTS, because that is what the structure
+         * carries. This read `s.atoms` — a key the envelope has never had
+         * (`elements`, `annotations`, `periodicity`, `frames`, `forcesPerFrame`)
+         * — so it was `undefined`, the count fell to the empty array, and the
+         * header said "0 atoms" beside a drawn molecule. The FORMULA was right
+         * the whole time, because it took the `getElements()` branch: one line
+         * reading the master copy properly, one line guessing at it. */
         const elements = (d && typeof d.getElements === "function")
-            ? d.getElements() : atoms.map((a) => a && a.element);
-        const n_atoms = atoms.length;
+            ? (d.getElements() || []) : [];
+        const n_atoms = elements.length;
         state.title = filename;
         state.fdf = null;
         state.pyscf = null;

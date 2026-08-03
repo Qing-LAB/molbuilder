@@ -1803,10 +1803,41 @@ all in one place. The panel, the highlight and the measurements are all
 
 - **The switches live here** — every one of them off by default, and the arrow
   scale at its default — not in the renderEngine and not in the panel.
-- **The selection is the truth; click and filter are two editors of it.**
-  Switching between them does not touch what is selected. Click mode edits atom
-  by atom, entirely in the browser. Filter mode composes a query that the user
-  explicitly applies, and applying it **replaces** the selection.
+- **The selection is the truth; the atom list and the filter are two editors of
+  it.** Switching between them does not touch what is selected. The **atom list**
+  edits by hand, entirely in the browser. Filter mode composes a query that the
+  user explicitly applies, and applying it **replaces** the selection.
+
+  **They are named for what they are, not for the gesture that reaches them.** The
+  first was called *Click*, which named an input device — so the tab said `CLICK`
+  above a list of atoms, and the name stopped being true the moment the list
+  learned a second gesture. *Atom list* is what the user is looking at.
+
+- **Picking in the list: one, a run, or a box.** All three are the same edit made
+  at different scales, and none of them is a new kind of truth.
+
+  | Gesture | What it does |
+  |---|---|
+  | click a row | toggles that atom |
+  | **shift**-click a row | selects every row **from the last row you clicked to this one**, inclusive — and adds them, so an existing selection is extended rather than replaced |
+  | drag a box over the rows | adds every row the box touches |
+
+  **A run needs somewhere to count from, and that is the last row you clicked** —
+  not the lowest-numbered atom selected, and not the end of the pick trail. It is
+  a fact about the pointer, not about the structure, so it lives in the panel with
+  the other interaction state and never enters the store. Shift-clicking with no
+  previous click has nothing to count from and is an ordinary click.
+
+  **A run adds; it does not replace.** Selecting atoms 1–10 and then 40–50 is the
+  common case — a run that cleared first would make the second gesture undo the
+  first, and there is already a control for starting over (*Clear*).
+
+  Both go through the store's existing bulk `add`, so isolate, the drawing, the
+  count and the measurement all follow exactly as they do for a single click.
+  Neither carries a pick trail: a box has no order in it, and pretending one
+  would put a meaningless vertex on a measurement (§ 8.4's rule that the pick
+  order is part of the one snapshot is what makes that visible rather than
+  subtle).
 
 - **Filtering is a question asked of the server, not a scan done here.** The
   panel builds a small rule and sends it; the server evaluates it against the

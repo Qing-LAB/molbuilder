@@ -1015,13 +1015,19 @@ function mountPanel(doc, card, model, reserved) {
     }
     showPage("selection");
 
-    /* ── Which editor: click, or filter (§ 9.5) ──────────────────────────── */
+    /* ── Which editor: the atom list, or the filter (§ 9.5) ──────────────── */
     //
     // Two editors of ONE selection. Switching between them does not touch what
     // is selected — the panel redraws, the truth does not move.
+    //
+    /* NAMED FOR WHAT IT IS, NOT FOR THE GESTURE THAT REACHES IT. This read
+     * `Click` — an input device — above a list of atoms, and the name stopped
+     * being true the moment the list learned shift-ranges and box-drag. The
+     * store's key stays `click`: it is the editor's id, not its label, and
+     * renaming it would reach into every saved session's `mode`. */
     const mode = el("div", "molviewer-selection-mode");
     const modeInputs = {};
-    for (const [key, label] of [["click", "Click"], ["filter", "Filter"]]) {
+    for (const [key, label] of [["click", "Atom list"], ["filter", "Filter"]]) {
         const option = el("label", "molviewer-selection-mode-option");
         const radio = doc.createElement("input");
         radio.type = "radio";
@@ -1060,6 +1066,124 @@ function mountPanel(doc, card, model, reserved) {
     clickSection.appendChild(count);
     clickSection.appendChild(listWrap);
     pages.selection.appendChild(clickSection);
+
+    /* ── Picking a run, and picking a box (§ 9.5) ────────────────────────── */
+    //
+    /* WHERE A RUN COUNTS FROM: the last row the user clicked. That is a fact
+     * about the pointer, not about the structure, so it lives here with the rest
+     * of the interaction state and never enters the store — the store holds what
+     * is selected and in what order it was picked, and an anchor is neither. It
+     * survives a redraw because it lives in the panel's closure, not in a row. */
+    let rangeAnchor = null;
+
+    /* A RUN ADDS. Picking 1-10 and then 40-50 is the ordinary case, and a run
+     * that replaced would make the second gesture undo the first; `Clear` is
+     * how you start over. Both ends are inclusive, in either direction, and the
+     * bulk door carries no pick trail — a run has no vertex to measure from. */
+    function selectRun(fromAtom, toAtom) {
+        const lo = Math.min(fromAtom, toAtom);
+        const hi = Math.max(fromAtom, toAtom);
+        const run = [];
+        for (let i = lo; i <= hi; i++) run.push(i);
+        model.selection.add(run);
+    }
+
+    /* THE ROWS AS THEY ARE BUILT, so the drag box has something to hit-test
+     * without asking the document to find them again. Rebuilt with the list
+     * (drawList empties it), which is also what keeps a stale row out of a hit
+     * after the structure changes under it. */
+    const rowBoxes = [];
+
+    /* IS THIS ONE OF THE ROW'S OWN CONTROLS? A checkbox or a label chip speaks
+     * for itself and must not also start a drag. Written as a walk rather than
+     * `closest` because the module should lean on the small, ordinary part of
+     * the DOM: the panel is built and driven through a handful of calls, and
+     * every one it adds is one more thing a host's environment has to provide. */
+    function isControl(node) {
+        for (let at = node; at && at !== listWrap; at = at.parentNode) {
+            const tag = at.tagName;
+            if (tag === "INPUT" || tag === "BUTTON" || tag === "SELECT") return true;
+        }
+        return false;
+    }
+
+    /* DRAG A BOX OVER THE ROWS and every row it touches is added.
+     *
+     * The box is drawn in the list's own coordinates so it scrolls with the
+     * content, and the hit test is row-rectangle against box-rectangle — the
+     * rows are the things being picked, so their boxes are what must intersect,
+     * not the pointer's path.
+     *
+     * A drag that never leaves its starting row is a CLICK, and is left to the
+     * click handler: dragging one pixel while picking a single atom must not
+     * become a different gesture. */
+    (function wireDragBox() {
+        const DRAG_FLOOR_PX = 4;          // below this, it was a click
+        let startX = 0, startY = 0, dragging = false, marquee = null;
+
+        function rowsWithin(box) {
+            const hit = [];
+            for (const entry of rowBoxes) {
+                const r = entry.row.getBoundingClientRect();
+                if (r.bottom >= box.top && r.top <= box.bottom
+                    && r.right >= box.left && r.left <= box.right) {
+                    hit.push(entry.atom);
+                }
+            }
+            return hit;
+        }
+
+        listWrap.addEventListener("mousedown", (e) => {
+            if (e.button !== 0) return;                    // left button only
+            if (isControl(e.target)) return;
+            /* A BOX THAT OUTLIVED ITS DRAG IS SWEPT UP HERE. If the pointer
+             * leaves the window mid-drag the mouseup lands somewhere else and
+             * the box is left on screen, pointing at nothing. Clearing it as
+             * the next drag starts costs one line and means a stray box can
+             * never be more than one gesture old. */
+            if (marquee) { marquee.remove(); marquee = null; }
+            startX = e.clientX; startY = e.clientY; dragging = false;
+            /* STOP THE BROWSER STARTING A TEXT SELECTION. Native drag-select
+             * begins on mousedown, so preventing it on the first mousemove is
+             * already too late — the words go blue under the box and the two
+             * highlights fight. The controls are exempted above, so this takes
+             * nothing away: the row is a thing you pick, not prose you read. */
+            e.preventDefault();
+        });
+
+        listWrap.addEventListener("mousemove", (e) => {
+            if (!e.buttons) return;
+            if (!dragging) {
+                if (Math.abs(e.clientX - startX) < DRAG_FLOOR_PX
+                    && Math.abs(e.clientY - startY) < DRAG_FLOOR_PX) return;
+                dragging = true;
+                marquee = el("div", "molviewer-selection-marquee");
+                listWrap.appendChild(marquee);
+            }
+            const wrap = listWrap.getBoundingClientRect();
+            marquee.style.left   = (Math.min(startX, e.clientX) - wrap.left) + "px";
+            marquee.style.top    = (Math.min(startY, e.clientY) - wrap.top
+                                    + listWrap.scrollTop) + "px";
+            marquee.style.width  = Math.abs(e.clientX - startX) + "px";
+            marquee.style.height = Math.abs(e.clientY - startY) + "px";
+        });
+
+        doc.addEventListener("mouseup", (e) => {
+            if (!dragging) return;
+            dragging = false;
+            if (marquee) { marquee.remove(); marquee = null; }
+            const hit = rowsWithin({
+                left:   Math.min(startX, e.clientX),
+                right:  Math.max(startX, e.clientX),
+                top:    Math.min(startY, e.clientY),
+                bottom: Math.max(startY, e.clientY),
+            });
+            if (!hit.length) return;
+            model.selection.add(hit);
+            // The run's anchor follows the last thing the user touched.
+            rangeAnchor = hit[hit.length - 1];
+        });
+    })();
 
     /* ── The filter page: rows, edited one at a time (§ 8.4) ─────────────── */
     const filterSection = el("div", "molviewer-filter-section");
@@ -1377,6 +1501,9 @@ function mountPanel(doc, card, model, reserved) {
             ? state.selection.length + " of " + atoms.length + " selected"
             : "";
         list.textContent = "";
+        // Emptied WITH the list: a row that is gone must not still be hittable,
+        // and a hit on a detached row would name an atom that may not exist.
+        rowBoxes.length = 0;
         if (!atoms) return;
         const picked = new Set(state.selection);
         for (const atom of atoms) {
@@ -1392,6 +1519,12 @@ function mountPanel(doc, card, model, reserved) {
             check.addEventListener("change", (e) => {
                 // The row's own handler would toggle it straight back.
                 e.stopPropagation();
+                if (e.shiftKey && rangeAnchor !== null) {
+                    selectRun(rangeAnchor, atom.index);
+                    check.checked = true;      // the run adds; never un-ticks
+                    return;
+                }
+                rangeAnchor = atom.index;
                 model.selection.toggle(atom.index);
             });
             checkCell.appendChild(check);
@@ -1411,8 +1544,17 @@ function mountPanel(doc, card, model, reserved) {
             row.addEventListener("click", (e) => {
                 // The controls inside the row speak for themselves.
                 if (e.target === check) return;
+                /* SHIFT SELECTS THE RUN from the last row clicked to this one
+                 * (§ 9.5). With nothing to count from it is an ordinary click —
+                 * an anchorless run has no meaning to guess at. */
+                if (e.shiftKey && rangeAnchor !== null) {
+                    selectRun(rangeAnchor, atom.index);
+                    return;
+                }
+                rangeAnchor = atom.index;
                 model.selection.toggle(atom.index);
             });
+            rowBoxes.push({ atom: atom.index, row: row });   // for the drag box
             list.appendChild(row);
         }
     }

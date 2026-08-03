@@ -1009,10 +1009,32 @@
     overflow: auto;
 }
 
+/* The box a user drags over the rows to pick a group (§ 9.5).  Positioned
+ * against the wrap above -- which is already `position: relative` -- so it
+ * scrolls with the rows rather than floating over a list that has moved
+ * underneath it.  `pointer-events: none` so the box cannot swallow the mouseup
+ * that ends the very drag drawing it. */
+.molviewer-selection-marquee {
+    position: absolute;
+    z-index: 2;
+    pointer-events: none;
+    border: 1px solid var(--molviewer-color-accent);
+    background: var(--molviewer-color-accent-wash);
+    border-radius: 2px;
+}
+
 .molviewer-atoms-table {
     width: 100%;
     border-collapse: collapse;
     font: 12px/1.3 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    /* THE ROWS ARE PICKED, NOT READ.  Without this, dragging a box over them
+     * also drags a native text selection, so the words go blue underneath and
+     * two highlights argue about what is chosen.  Every list you pick from
+     * behaves this way; a row is a control, not a paragraph.  The label chips
+     * and the checkboxes keep their own behaviour -- this only stops the
+     * browser turning a pick into a text drag. */
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .molviewer-atoms-table thead {
