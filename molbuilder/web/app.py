@@ -49,9 +49,16 @@ both /results and a tab call into -- live under
 
 from __future__ import annotations
 
+import os
+import threading
+import time
+
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file
 
 from .tabs import TABS, landing_path
+# The supervisor protocol -- a leaf module that imports nothing, so the
+# supervisor can read it without importing the app it restarts.
+from ..reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
 
 from ..diagnostics import initialize as _initialize_diagnostics
 
@@ -457,6 +464,73 @@ def create_app(*, config=None) -> Flask:
         # (design docs + guides + READMEs), rendered through the shared
         # markdown renderer.  Data comes from /api/docs/* (docs blueprint).
         return render_template("documents.html")
+
+    # ---- Admin: reload the server in place ------------------------------
+    #
+    # TWO CONDITIONS, and BOTH must hold or this route does not exist at all.
+    # Not "exists and refuses" -- absent.  So the failure mode of a
+    # misconfiguration is "the button is missing", never "anyone can restart
+    # the server".
+    #
+    #   1. A SUPERVISOR IS RUNNING (`molbuilder serve --supervise`).  Without
+    #      one, nothing brings the server back: an endpoint that stops an
+    #      unsupervised server leaves a dead site and no way back from the
+    #      browser.
+    #   2. `rate_limit.admin_emails` IS NON-EMPTY.  That list ships empty, and
+    #      empty means "any logged-in user is admin" -- fine for reading a
+    #      rate-limit table, wrong for stopping the process everyone is using.
+    #      This route inverts that default for itself: no named admins, no
+    #      route.  (Moving `admin_emails` out from under `rate_limit`, now that
+    #      a second subsystem gates on it, is task #49.)
+    _supervised = os.environ.get(SUPERVISED_ENV) == "1"
+    _rl = app.extensions.get("rate_limiter")
+    _named_admins = bool(getattr(_rl, "admin_emails", None))
+
+    if _supervised and _named_admins:
+        @app.post("/api/admin/reload")
+        def api_admin_reload():
+            """Answer, then exit so the supervisor starts a fresh server.
+
+            The reply goes out BEFORE the exit, so the browser knows the
+            request was accepted and can start polling /api/health; a process
+            that died mid-response would look identical to one that crashed.
+            """
+            if not _rl.is_admin_request():
+                return jsonify({
+                    "ok": False,
+                    "error": ("admin auth required: this session is "
+                              "authenticated but not in rate_limit.admin_emails"),
+                }), 403
+
+            def _exit_after_response():
+                # os._exit, not sys.exit: this runs on a request-handler
+                # thread, and sys.exit would end only that thread and leave
+                # the server up.  The delay lets the 202 reach the socket --
+                # os._exit skips every cleanup handler, which is exactly what
+                # makes it reliable here and why the response must already be
+                # on its way.
+                time.sleep(0.5)
+                os._exit(RELOAD_EXIT_CODE)
+
+            threading.Thread(target=_exit_after_response, daemon=True).start()
+            return jsonify({
+                "ok": True,
+                "message": "reloading; poll /api/health until it answers",
+            }), 202
+
+    @app.route("/api/admin/reload/available")
+    def api_admin_reload_available():
+        """Whether the reload route exists AND this session may use it.
+
+        A separate, always-present read so the page can decide whether to draw
+        the button.  Answering "no" is not a refusal -- it is the honest state
+        of a server started without a supervisor, or one with no named admins.
+        """
+        return jsonify({
+            "ok": True,
+            "available": bool(_supervised and _named_admins
+                              and _rl is not None and _rl.is_admin_request()),
+        })
 
     @app.route("/api/health")
     def api_health():

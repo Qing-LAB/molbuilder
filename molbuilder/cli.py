@@ -2232,6 +2232,46 @@ def cmd_runtime_info(input_path, out_path, pretty):
     click.echo(f"wrote {out}", err=True)
 
 
+# The supervisor protocol lives in a leaf module that imports NOTHING, so this
+# parent can read it without importing the application it restarts -- which is
+# the property that lets a child failing to import leave the supervisor alive.
+from .reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
+
+
+def _supervise_forever() -> int:
+    """Run this same command as a child, and respawn it on RELOAD_EXIT_CODE.
+
+    The shape is Werkzeug's reloader, minus the file watcher: a parent that
+    NEVER IMPORTS APPLICATION CODE, whose only job is to start a child and
+    start another when that one asks.  That is what makes it robust -- the
+    parent cannot be broken by the code it restarts, so a child that fails to
+    import leaves the supervisor alive and the next reload can fix it.
+
+    The watcher is deliberately absent (docs/ops/server-reload-plan.md § 3.1).
+    Werkzeug's reloader stat-polls every imported module once a second and
+    fires on ANY mtime change, so a chunked editor write or a `git checkout`
+    touching fifty files reloads against a momentarily inconsistent tree and
+    the child comes up importing half a module.  Here a person says when it is
+    ready.
+
+    The child is handed SUPERVISED_ENV, which does two things at once: it is
+    how the child knows to run the server instead of becoming a supervisor
+    itself (without it, `--supervise` would fork forever), and it is what tells
+    `create_app` a restart is possible at all, so the reload route may exist.
+    """
+    import subprocess
+
+    env = dict(os.environ)
+    env[SUPERVISED_ENV] = "1"
+    args = [sys.executable, "-m", "molbuilder", *sys.argv[1:]]
+    while True:
+        code = subprocess.call(args, env=env)
+        if code != RELOAD_EXIT_CODE:
+            return code
+        click.echo("molbuilder: reload requested -- starting a fresh server",
+                   err=True)
+
+
 @cli.command("serve", short_help="run the browser UI (Flask + 3Dmol.js)")
 @click.option("--host",  default="127.0.0.1", show_default=True)
 @click.option("--port",  type=int, default=8000, show_default=True)
@@ -2244,15 +2284,27 @@ def cmd_runtime_info(input_path, out_path, pretty):
               help="Bypass the loopback-or-TLS guard.  Only sensible "
                    "when something outside molbuilder (proxy / VPN) "
                    "gates access -- see docs/ops/deployment.md.")
+@click.option("--supervise", is_flag=True,
+              help="Run under a supervisor that can restart the server in "
+                   "place.  Enables the admin Reload button; without it that "
+                   "route does not exist, because nothing would bring the "
+                   "server back.  See docs/ops/server-reload-plan.md.")
 @click.option("--no-auth", is_flag=True,
               help="Run with NO authentication (ignores molbuilder.json's "
                    "auth/TLS).  Allowed ONLY on a loopback --host "
                    "(127.0.0.1 / localhost / ::1) so an unauthenticated "
                    "server can never be exposed; refuses otherwise.  For "
                    "local dev, screenshots, and tests.")
-def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth):
+def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
+              supervise):
     """Start a Flask server with the molbuilder browser UI."""
     from .web.app import create_app
+
+    # THE PARENT BRANCH, and it returns without importing the app: when
+    # --supervise is asked for and this process is not already the child, this
+    # process becomes the supervisor and nothing else here runs.
+    if supervise and os.environ.get(SUPERVISED_ENV) != "1":
+        raise SystemExit(_supervise_forever())
 
     if no_auth:
         # Auth-free is a LOCAL-ONLY convenience: refuse anything but a

@@ -48,6 +48,17 @@
   {% if current_user %}
   <span class="app-account" aria-label="account menu">
     <span class="app-account__email">{{ current_user.email }}</span>
+    {#- RELOAD: hidden until the server says this session may use it.  It is
+        drawn hidden and revealed by app-reload.js, never the other way round --
+        a control that flashes into view and then disappears reads as a
+        permission being taken away.  The route exists only when the server runs
+        under a supervisor AND rate_limit.admin_emails names somebody, so for
+        almost every session this stays hidden and costs one GET.  See
+        docs/ops/server-reload-plan.md § 4. -#}
+    <button type="button" id="app-reload" class="app-account__reload" hidden
+            title="Restart the server so it picks up changed Python code.">
+      Reload server
+    </button>
     <a href="{{ url_for('auth_logout') }}" class="app-account__logout">Sign out</a>
   </span>
   {% endif %}
@@ -72,6 +83,7 @@
 <div id="app-notifications" class="app-notifications" role="region"
      aria-label="System notifications" hidden></div>
 <script src="{{ url_for('static', filename='lib/app-notifications.js') }}" defer></script>
+<script src="{{ url_for('static', filename='lib/app-reload.js') }}" defer></script>
 
 {#- System-load monitor is mounted explicitly by the Results template
     (results.html) -- it lives in ``_system_load_monitor.html`` as a

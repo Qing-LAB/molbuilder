@@ -1,6 +1,8 @@
 # Reloading a running server — a plan
 
-**Role:** plan (step A done; B–E need the § 4 decision)
+**Role:** plan (**complete — A–E all landed 2026-08-03**; kept as the record of
+what was decided and what was rejected. The shipped behaviour is documented in
+[`deployment.md`](?doc=ops/deployment.md) § 1 and § 4.)
 **Domain:** ops
 **Started:** 2026-08-03
 **Companions:** [`deployment.md`](?doc=ops/deployment.md) — how the server is
@@ -123,9 +125,11 @@ molbuilder serve --supervise        the parent: spawn, wait, respawn on <sentine
 no one to restart it, and an endpoint that stops it would leave a dead site with
 no way back from the browser. The flag is what makes the promise true.
 
-## 4. Who may press it
+## 4. Who may press it ✅ decided 2026-08-03
 
-**This is the part to decide before any of it is built.**
+**This was the part to decide before any of it was built.** All three conditions
+below were adopted as written, and the first is pinned by
+`tests/test_admin_reload.py`.
 
 `rate_limit.py` ships `admin_emails: []`, and its own comment says what that means:
 *"Empty list = ANY logged-in session is admin (the implicit default that ships)."*
@@ -149,18 +153,38 @@ Three conditions, and the first is not optional:
 3. **A confirm that names the cost** — *"this disconnects everyone using this
    server and drops saves that are still in flight."*
 
-## 5. Order
+**What building it exposed, and what was filed rather than patched over.** One key
+now gates two unrelated subsystems: `rate_limit.admin_emails` decides both who may
+read the rate-limit table and who may stop the process. The two read the *same
+empty default in opposite directions* — "everybody" there, "nobody" here — and
+`create_app` reaches the list through `app.extensions["rate_limiter"]`, so turning
+the limiter off would quietly move the admin list. Giving the admin identity its
+own config section is **task #49**; it is a config-surface change and needs the
+user's call on the name and on whether an empty list still means "everybody".
+
+## 5. Order — all landed 2026-08-03
 
 | | Step | Note |
 |---|---|---|
-| **A** ✅ | ~~The version guard~~ **static revalidation (§ 2) — done 2026-08-03** | independent of everything else, no new surface, useful on its own |
-| **B** | `serve --supervise` — the parent loop, no route yet | testable alone: start it, kill the child by hand, watch it come back |
-| **C** | The admin gate: route exists only when `admin_emails` is non-empty | before the route does anything |
-| **D** | `POST /api/admin/reload` — reply, then exit with the sentinel | |
-| **E** | The button + the poll-and-reload, shown only when the route exists | |
+| **A** ✅ | ~~The version guard~~ **static revalidation (§ 2)** | independent of everything else, no new surface, useful on its own |
+| **B** ✅ | `serve --supervise` — the parent loop | `cli.py::_supervise_forever`; the sentinel lives in `molbuilder/reload_protocol.py`, a **leaf module that imports nothing** |
+| **C** ✅ | The admin gate: route exists only when `admin_emails` is non-empty | `app.py`, before the route does anything |
+| **D** ✅ | `POST /api/admin/reload` — reply 202, then exit with the sentinel | `os._exit` on a short timer, so the response is already on the wire |
+| **E** ✅ | The button + the poll-and-reload, shown only when the route exists | `_app_header.html` + `static/lib/app-reload.js`; availability read from `/api/admin/reload/available` |
 
-**A is worth doing whether or not B–E are**, and it is the half that removes the
-confusion people actually hit.
+**Where the protocol constants live is load-bearing, and the first placement was
+wrong.** They started at `web/reload_protocol.py`, where importing them ran
+`web/__init__.py` → `app.py` → Flask — which destroys the one property the design
+rests on: *the parent never imports application code*, so a child that fails to
+import leaves the supervisor alive to fix it. Moved to `molbuilder/reload_protocol.py`
+and pinned by `test_the_supervisor_does_not_import_the_app_it_restarts`, which runs
+a subprocess and checks `sys.modules`.
+
+**Tests:** `tests/test_admin_reload.py` (12) — both halves of the gate as **404,
+not 403**; the availability answer in four configurations; the respawn loop
+(sentinel only, and the child is told it is the child, or `--supervise` forks
+forever); one sentinel value read by both sides; and the import-isolation probe.
+Step A is pinned separately by `tests/test_static_revalidates.py`.
 
 ## 6. What this does not do
 

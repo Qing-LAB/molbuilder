@@ -122,6 +122,33 @@ header .app-account__logout:hover {
     color: var(--text-on-accent);
 }
 
+/* The admin Reload button, beside the account.  Deliberately QUIETER than
+ * Sign out: it is rarer, it is destructive to everyone's session, and a
+ * control that shouts invites the click it should not get.  It reads as a
+ * warning only on hover, when the pointer is already committed. */
+header .app-account__reload {
+    color: var(--text-secondary);
+    background: transparent;
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 0.12s, color 0.12s;
+}
+header .app-account__reload:hover:not(:disabled) {
+    border-color: var(--warn-soft);
+    color: var(--warn-soft);
+}
+header .app-account__reload:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+/* [hidden] must win over the display the rule above implies -- the button is
+ * drawn hidden and revealed only when the server says this session may use it
+ * (test_css_hidden_attribute_audit.py pins this class of bug). */
+header .app-account__reload[hidden] { display: none; }
+
 /* ---- Main layout container -------------------------------------- */
 
 main {

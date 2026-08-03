@@ -30,6 +30,7 @@ Flags (`molbuilder/cli.py`):
 | `--debug` | off | Werkzeug reloader + interactive debugger (never in production) |
 | `--cert` / `--key` | none | serve HTTPS directly from PEM files |
 | `--allow-insecure-binding` | off | override the bind guard (below) |
+| `--supervise` | off | run under a parent that can restart the server on request (§4) |
 | `--no-auth` | off | skip auth entirely — **loopback host only** |
 
 There is **no `--workers` flag and no built-in production server** — `serve`
@@ -143,6 +144,41 @@ empty; otherwise the session email must be listed).
 > `--no-auth`) there's no session key, so those two routes always answer `403`.
 > On the default localhost/no-auth shape that's fine — loopback is allowlisted and
 > can never be blocked — but if you want to *use* the admin API, enable auth. (Recorded follow-up.)
+
+### Restarting the server from the browser
+
+A **Reload server** button sits beside the signed-in email. Pressing it makes the
+server **exit with a sentinel code** that its supervisor is waiting for, so a
+fresh child starts with every Python module imported again; the page then polls
+`/api/health` and reloads itself, picking up new JS and CSS through the
+revalidation described in
+[`server-reload-plan.md`](?doc=ops/server-reload-plan.md) § 2. There is no
+module-swapping — a new process is the whole mechanism, which is why it can't
+leave half the app running old code.
+
+**`POST /api/admin/reload` does not exist unless two things are true**, and the
+route is **absent (404), not refused (403)**, when either fails — so a
+misconfiguration reads as *the button is missing*, never as *anyone can restart
+the server*:
+
+1. **the server runs under `--supervise`** — otherwise nothing brings it back,
+   and stopping it would leave a dead site with no way back from the browser;
+2. **`rate_limit.admin_emails` names somebody.** This route **inverts** the empty
+   list's usual meaning: for the rate-limit routes above, empty means *any
+   logged-in user is admin*; here, empty means *nobody*. Restarting the process
+   everyone shares is not a default anyone should get by omission.
+
+The button is drawn hidden and revealed only after
+`GET /api/admin/reload/available` says this session may use it, so most people
+never see it. It asks for confirmation first, naming the cost out loud: everyone
+using the server is disconnected, and workspace writes still in flight are lost
+(`persist` doesn't wait for the server — [`web/workspace.md`](?doc=web/workspace.md) § 6).
+
+> **This does not make the dev server a production server.** Supervision only
+> respawns the same Werkzeug dev server; §2 still governs how it is exposed. Under
+> gunicorn or another process manager, don't use `--supervise` — that manager owns
+> the process lifecycle, and the route will be absent because `MOLBUILDER_SUPERVISED`
+> is unset.
 
 ## 5. Configuration — `molbuilder.json`
 
