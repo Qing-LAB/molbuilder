@@ -77,14 +77,10 @@ out, because it comes from whichever estimate is most trustworthy at the moment:
 The line says which one it used, so a rough early number isn't mistaken for a
 precise one.
 
-> **A known gap.** A *crashed or non-converged* run is a rough edge today. The
-> badge correctly shows **Stopped** (it reads the run's `error` state), but the
-> viewer keeps polling every 15 seconds anyway instead of settling — the code
-> that should stop it checks for a state string (`"errored"`) that the backend
-> never emits (it emits `"error"`). So the badge looks right, but the timer
-> doesn't stop until you leave the tab. This is the same class of run-state
-> vocabulary mismatch as the [decoder `failed` gap that was fixed](?doc=execution/running-a-job.md);
-> it's recorded as a code follow-up.
+A *crashed or non-converged* run settles like a finished one: the badge shows
+**Stopped** and the polling stops. It gets there in one step rather than the two
+a normal finish takes — a crash doesn't un-crash on the next poll, so there is
+nothing to confirm.
 
 ## 5. Live updating
 

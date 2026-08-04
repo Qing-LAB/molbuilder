@@ -344,11 +344,6 @@ required. Contract + current state: `web/vibrationview.md § 5`.
 **Small front-end gaps with a doc-recorded home** *(each doc's note is
 dropped in the same commit that closes its item)*:
 
-- **Trajectory stop-check state mismatch** — the live-poll stop check tests
-  `rs === "errored"` (`lib/trajectory/core.js:480`) but the decoder envelope's
-  terminal error state is `failed` (since the `_build_status` fix), so a
-  crashed run keeps polling. Fix the string (or map both), pin with a test,
-  and drop `web/trajectory.md`'s "known gap" callout.
 - **Spectrum UI preferences persistence** — wire the sessionStorage
   round-trip the code already stubs (`lib/spectra/core.js:185-188` TODO);
   update `web/spectra.md`'s in-memory-prefs note.

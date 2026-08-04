@@ -35,6 +35,32 @@ import { mount } from "/static/lib/molview/index.js";
 (function (root) {
     "use strict";
 
+    /* The run states the server sends, spelled once.
+     *
+     * The vocabulary is the parser's, defined at
+     * parse/engines/_helpers.py:181 and passed through the watch endpoint
+     * unchanged (web/blueprints/watch.py:728):
+     *
+     *     "ongoing" | "finished" | "error" | "unknown"
+     *
+     * Named here because this file reads it in TWO places -- the run-state
+     * badge and the stop-polling decision -- and for a while they disagreed.
+     * The badge tested "error" and was right; the stop-check tested
+     * "errored", which nothing has ever emitted, so a crashed run fell into
+     * the "still going" branch and polled every 15 s until the user left the
+     * tab.  The badge said Stopped the whole time, so it looked fine.
+     *
+     * NOT to be confused with the STATUS envelope's state
+     * ("running"|"stale"|"failed"|"finished", parse/dirs/job.py::_build_status),
+     * which is a different field for a different consumer (jobset/runstatus).
+     * "failed" is not a run_state and never reaches this file. */
+    const RUN_STATE = Object.freeze({
+        ONGOING:  "ongoing",
+        FINISHED: "finished",
+        ERROR:    "error",
+        UNKNOWN:  "unknown",
+    });
+
     /* THE VIEWER IS THE ONE THIS MODULE MOUNTED, and it is reached through the
      * handle that mounting returned -- `_mv.data` (molview.md § 5.6: a viewer
      * belongs to whoever mounted it; there is no registry to look one up in).
@@ -485,11 +511,11 @@ import { mount } from "/static/lib/molview/index.js";
     function _settlePostLoad() {
         const rs = state.fileState.data
                 && state.fileState.data.run_state;
-        if (rs === "errored") {
+        if (rs === RUN_STATE.ERROR) {
             transition("ERROR");
             return;
         }
-        if (rs === "finished") {
+        if (rs === RUN_STATE.FINISHED) {
             // 2-tick buffer: a single "finished" tick may lie if
             // the parser is still flushing trailing data.  Stay in
             // WATCHING until we've seen N consecutive finished
@@ -2388,7 +2414,7 @@ import { mount } from "/static/lib/molview/index.js";
         if (noNewContent) {
             // Update mtime + run-state markers + parse-warnings list
             // (these can flip from "ongoing" → "finished" /
-            // "errored" on a follow-up poll even with no new frames),
+            // "error" on a follow-up poll even with no new frames),
             // then bail before touching the model / animation /
             // plots.  Plots rebuilt only if the run-state changed
             // OR the SCF history for the in-flight step grew.
@@ -2558,7 +2584,8 @@ import { mount } from "/static/lib/molview/index.js";
         // Defaults to "ongoing" when neither is present.  The badge
         // is the user's primary "is this finished?" signal -- ONE
         // location instead of inferring from various places.
-        const runState  = (state.data.run_state || "ongoing").toLowerCase();
+        const runState  = (state.data.run_state
+                           || RUN_STATE.ONGOING).toLowerCase();
         const errMsg    = state.data.error_message || "";
         const badge     = $("run-state-badge");
         const badgeLab  = $("run-state-label");
@@ -2588,7 +2615,7 @@ import { mount } from "/static/lib/molview/index.js";
                 : "";
             const joinParts = (...parts) =>
                 parts.filter(s => s && s.length).join(" \u00b7 ");
-            if (runState === "finished") {
+            if (runState === RUN_STATE.FINISHED) {
                 badge.classList.add("run-state-finished");
                 badgeLab.textContent = "Finished";
                 badgeDet.textContent = joinParts(
@@ -2596,7 +2623,7 @@ import { mount } from "/static/lib/molview/index.js";
                     elapsedTxt ? "total " + elapsedTxt : "",
                 );
                 badgeDet.removeAttribute("title");
-            } else if (runState === "error") {
+            } else if (runState === RUN_STATE.ERROR) {
                 // 2026-05-30: "Error" relabelled to "Stopped" per user
                 // feedback.  Non-convergence is a STATE, not an error
                 // of the viewer / the .out file.  The actual reason
