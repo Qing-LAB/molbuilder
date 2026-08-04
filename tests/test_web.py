@@ -328,6 +328,26 @@ def test_fdf_default_params(web_client, peptide_xyz):
 _PATTERN_B_REGIONS = {"L-electrode": [0, 1, 2]}
 
 
+def _envelope_with_regions(xyz_text, regions):
+    """The structure AS DATA with its labels inside it -- what the tabs send
+    (`molview.exportFile()`), and what `Structure.from_dict` reads.
+
+    These posted `xyz` text plus a TOP-LEVEL `regions`, which only reached the
+    Structure because a second applier existed on the server to move it there.
+    That applier is gone (2026-08-03): labels ride with the atoms they describe.
+    Pattern B is about what the ENGINE does with labels it was given, so only
+    the delivery changes here."""
+    elements, positions = [], []
+    for line in xyz_text.strip().splitlines()[2:]:
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        elements.append(parts[0])
+        positions.append([float(parts[1]), float(parts[2]), float(parts[3])])
+    return {"elements": elements, "positions": positions,
+            "metadata": {"regions": dict(regions)}}
+
+
 def _xyz_with_region_sidecar(tmp_path, peptide_xyz):
     """Write an XYZ + a sibling .molstruct.json carrying an ``L-electrode``
     region label.
@@ -386,14 +406,10 @@ def test_fdf_surfaces_info_when_structure_carries_regions(
 
     xyz_path, xyz_text = _xyz_with_region_sidecar(tmp_path, peptide_xyz)
     r = web_client.post("/api/build/fdf", json={
-        "xyz":            xyz_text,
+        "structure":      _envelope_with_regions(xyz_text,
+                                                 _PATTERN_B_REGIONS),
         "params":         {},
         "structure_path": xyz_path,
-        # F2: the labels are a BODY fact (the server no longer reads the
-        # sidecar for an emitted deck); Pattern B is about what the ENGINE
-        # does with labels it was given, not about where they came from.
-        "regions":        dict(_PATTERN_B_REGIONS),
-        "frozen_atoms":   [],
     })
     body = r.get_json()
     assert body["ok"] is True, body
@@ -427,14 +443,10 @@ def test_pyscf_surfaces_info_when_structure_carries_regions(
 
     xyz_path, xyz_text = _xyz_with_region_sidecar(tmp_path, peptide_xyz)
     r = web_client.post("/api/build/pyscf", json={
-        "xyz":            xyz_text,
+        "structure":      _envelope_with_regions(xyz_text,
+                                                 _PATTERN_B_REGIONS),
         "params":         {},
         "structure_path": xyz_path,
-        # F2: the labels are a BODY fact (the server no longer reads the
-        # sidecar for an emitted deck); Pattern B is about what the ENGINE
-        # does with labels it was given, not about where they came from.
-        "regions":        dict(_PATTERN_B_REGIONS),
-        "frozen_atoms":   [],
     })
     body = r.get_json()
     assert body["ok"] is True, body

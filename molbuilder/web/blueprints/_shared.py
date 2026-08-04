@@ -39,11 +39,35 @@ from molbuilder.periodicity_gate import (notices_for_report,
 
 
 # J2 2026-06-14: charset guard for region label keys in
-# ``apply_labels_to_struct``.  Same charset the wrapper basename
+# the in-body region labels.  Same charset the wrapper basename
 # uses (``runwrap.py::_SAFE_WRAPPER_NAME_RE``) so the labels are
 # safe to embed in shell, JSON, sidecar filenames, and Issue
 # message bodies without per-consumer escaping.  Length capped
 # at 64 to avoid abuse via giant strings.
+#: RETIRED 2026-08-03, and worth saying why rather than just deleting.
+#:
+#: This restricted region labels arriving over the wire to [A-Za-z0-9._-], and
+#: it was enforced in exactly ONE place: `apply_labels_to_struct`, which read a
+#: top-level `regions` key.  That shape is gone (labels ride inside the
+#: structure now), and it turns out the restriction never covered the other two
+#: ways a label reaches the application:
+#:
+#:   * the ENVELOPE -- `test_the_metadata_a_coordinate_file_cannot_hold_arrives
+#:     _with_the_atoms` sends `α-helix` and asserts it survives;
+#:   * the SIDECAR  -- `test_save_emits_utf8_bytes_for_unicode_region_label`
+#:     pins UTF-8 labels on disk, an audit regression fix.
+#:
+#: So deleting the flat shape deleted the only path this guarded, and putting it
+#: back on either surviving path is a NEW restriction, not a preserved one --
+#: tried both, and each broke one of those two tests.
+#:
+#: THE OPEN QUESTION, left open deliberately: the original rationale still
+#: holds -- a label reaches Issue messages, TranSIESTA's region-key comparison
+#: and the sidecar, so a charset is what protects a future consumer that emits
+#: one without escaping.  Whether labels should be ASCII-only EVERYWHERE (and
+#: those two tests changed) or Unicode-capable everywhere (and this constant
+#: deleted) is a decision about the data model, not a tidy-up to fold into a
+#: wiring change.  Kept here, unused, so the question has a location.
 _SAFE_REGION_LABEL_RE = re.compile(r"^[A-Za-z0-9._\-]{1,64}$")
 
 
@@ -155,6 +179,7 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
         raise ValueError("structure.elements must be a non-empty list")
     if not isinstance(env.get("positions"), list):
         raise ValueError("structure.positions must be a list of [x, y, z]")
+
     return Structure.from_dict(env)
 
 
@@ -186,8 +211,16 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
 
     OR THE ENVELOPE (web-api.md § 1, "The request envelope")::
 
-        {"structure": {"geometry": {"elements": [...], "positions": [[x,y,z]…]},
-                       "metadata": {...}}}
+        {"structure": {"elements": [...], "positions": [[x, y, z], …],
+                       "metadata": {"regions": {...}, "cell": [...], ...}}}
+
+    FLAT, with the per-atom facts beside the atoms and everything else under
+    ``metadata``.  This said ``geometry`` wrapped the elements and positions --
+    a shape ``_struct_from_envelope`` REFUSES, because ``geometry`` is not in
+    its known-key set and a stray key fails the whole body.  Written to the
+    letter, this docstring produced a 400.  It is also exactly what
+    ``molview``'s ``structureForServer`` emits, which is the only shape any
+    caller should be sending.
 
     which is the shape every door is being brought to: the atoms as NUMBERS, and
     the facts beside them, so a caller holding coordinates never has to write a
@@ -477,6 +510,27 @@ def structure_to_dict(
         "extra":         base["extra"],
         # Legacy aliases for existing modify-tab consumers (identity columns
         # also sourced from the ONE view so they can't diverge).
+        #
+        # WHICH OF THESE STILL HAVE A READER, asked 2026-08-03 because the note
+        # above says "the legacy keys go when nothing reads them -- a question
+        # the code can answer", and nobody had asked it:
+        #
+        #   `xyz`           -- LIVE.  The generators' answer: modify/structure/
+        #                      {peptide,name,dna,rna,smiles}.js read `body.xyz`.
+        #   `residue_names` -- LIVE.  MolView folds it in as a parallel array
+        #                      (`model-jobs.js::structureFromServer`) because the
+        #                      atoms do not carry it.
+        #   the other five  -- NO reader, in any client or on the Python side.
+        #                      `elements` looks read, but every hit is MolView's
+        #                      OWN shape coming back out of `applyOp` /
+        #                      `getStructure`, not this key.
+        #
+        # They stay anyway, and deleting them is NOT cleanup: the envelope was
+        # "added not swapped" on purpose (tests/test_structure_envelope_protocol
+        # .py), and `test_a_response_carries_the_envelope_beside_todays_keys`
+        # guards each one by name.  Retiring them RETIRES THAT TRANSITION -- a
+        # decision, not a tidy-up, and one that also has to say what happens to
+        # the guard that both views agree.
         "xyz":           base["text"],
         "elements":      wire["elements"],
         "atom_names":    wire["atom_names"],
@@ -1296,153 +1350,6 @@ def apply_periodicity_for_emit(struct, body):
     return checked
 
 
-def apply_labels_to_struct(struct, body):
-    """Apply ``regions`` -- the whole label store -- from the request body.
-
-    THE inbound label seam (contract F2, science/validation.md § 4.1): the body
-    is the only source.  A body that omits the keys declares NO labels; the
-    sidecar is never read for an emitted structure, which used to happen when neither key is
-    present in the body.
-
-    Contract (2026-06-14, ``feedback_three_stage_contract``):
-    the client (viewer) is the source of truth.  When the user
-    clicks Generate, what's in the viewer at that moment IS the
-    input -- including labels.  Tabs that pull the sidecar into
-    in-memory state at Load time ship those labels directly in the
-    POST body.  This endpoint applies them verbatim, with no disk
-    re-read, no path-pointer indirection, no silent no-ops.
-
-    Falls through to :func:`apply_sidecar_if_possible` only when the
-    body carries neither ``regions`` NOR ``annotations`` keys.
-    That branch covers older callers (e.g. /api/spectra/render
-    pending its frontend migration to the in-body contract) and
-    keeps the path-driven flow working for them.
-
-    Why ``in`` instead of truthiness:
-
-      * ``body.get("regions", {})`` -> ``{}`` looks identical whether
-        the client deliberately sent ``regions: {}`` (= "nothing is
-        labelled in the viewer") or omitted the key entirely.  Both
-        reduce to falsy.
-      * ``"regions" in body`` distinguishes them: present-but-empty is
-        the client's explicit "I have nothing labelled."  Absent means
-        "I'm an older caller; please consult disk."
-
-    Returns
-    -------
-    None
-      Success (in-body labels applied, or sidecar applied, or
-      clean no-op).
-    str
-      User-facing notice when in-body labels couldn't be applied
-      (atom-count mismatch) OR when the sidecar fallback couldn't.
-      Caller surfaces as a preflight warn-severity Issue.
-    """
-    has_in_body = ("regions" in body) or ("annotations" in body)
-    if not has_in_body:
-        # F2 (science/validation.md 4.1): NO second source.  The server does not
-        # read the sidecar for an emitted structure -- a validated deck must
-        # never mix body geometry with disk labels the model has since changed.
-        # A body with no label keys therefore declares NO labels.
-        #
-        # There is deliberately no server-side refusal here.  The obvious hook
-        # would be "refuse when structure_path is set", and an earlier cut did
-        # exactly that -- but ``structure_path`` is a general-purpose field
-        # (pseudopotential resolution, dest-dir anchoring, provenance), so
-        # keying on it conflates "here is where the file lives" with "please
-        # read my sidecar" and refuses a great many legitimate callers.
-        #
-        # Loudness belongs on the side that can actually guarantee it: F1 --
-        # ``molview.data.exportFile()`` assembles coordinates, labels and
-        # periodicity together, in one read, so a tab can neither send a partial
-        # set nor send the same facts twice; that is pinned by tests.  What used to be a disk read is now simply absent.
-        return None
-
-    # In-body branch: the client claims authority over the labels.
-    # 2026-06-14: assigning to ``.regions`` does NOT trigger the
-    # ``__post_init__`` validators.  We MUST validate explicitly here, or a
-    # malicious / confused client sending ``{"regions": {"x": [9999]}}`` on a
-    # 5-atom struct sails through this code path and crashes deep inside the
-    # generator (or, worse, silently mis-emits a .fdf with a position line
-    # pointing at a non-existent atom).  Reserved labels are ordinary members
-    # of this one map and are validated by the same loop.
-    regions_in = body.get("regions") or {}
-    n_atoms = len(struct.elements)
-    try:
-        if not isinstance(regions_in, dict):
-            raise ValueError(
-                f"``regions`` must be a dict; got "
-                f"{type(regions_in).__name__}"
-            )
-        for label, indices in regions_in.items():
-            if not isinstance(label, str):
-                raise ValueError(
-                    f"``regions`` keys must be strings; got "
-                    f"{type(label).__name__} ({label!r})"
-                )
-            # J2 2026-06-14 defense in depth: charset-validate the
-            # region label key.  Today no engine emits the label
-            # into a shell context (TranSIESTA reads canonical
-            # keys; spectra warns on labels it doesn't consume),
-            # so a label like ``electrode_1; rm -rf /`` is
-            # functionally inert.  But the same key reaches Issue
-            # messages (textContent-safe), TranSIESTA's region-key
-            # comparison, and the .molstruct.json sidecar on save
-            # — keeping the charset tight protects every future
-            # consumer that might emit the label without escaping.
-            # Matches the SystemLabel + wrapper-basename charset
-            # at runwrap.py: [A-Za-z0-9._-] (no whitespace, no
-            # shell-special chars, no Unicode that could spoof
-            # the canonical-key comparison via NFKC fold).
-            if not _SAFE_REGION_LABEL_RE.match(label):
-                raise ValueError(
-                    f"``regions`` label {label!r} contains "
-                    f"disallowed characters; allowed charset is "
-                    f"[A-Za-z0-9._-] (1-64 chars).  Rename the "
-                    f"region in /modify and resubmit."
-                )
-            if not isinstance(indices, list):
-                raise ValueError(
-                    f"``regions[{label!r}]`` must be a list; got "
-                    f"{type(indices).__name__}"
-                )
-            for idx in indices:
-                if not isinstance(idx, int) or isinstance(idx, bool):
-                    raise ValueError(
-                        f"``regions[{label!r}]`` indices must be int; "
-                        f"got {type(idx).__name__} ({idx!r})"
-                    )
-                if idx < 0 or idx >= n_atoms:
-                    raise ValueError(
-                        f"``regions[{label!r}]`` index {idx} out of "
-                        f"range [0, {n_atoms})"
-                    )
-        # Per-atom annotation channels (atom-annotations.md) ride opaquely through the modify
-        # round-trip so an op reindexes them WITH the geometry (the ops already call
-        # remap_annotations / copy_annotations).  The channels are index-referencing (like
-        # regions), so validate every member index is in range before committing.
-        ann_in = body.get("annotations")
-        annotations = {}
-        if ann_in is not None:
-            annotations = annotations_from_json(ann_in)
-            for name, ch in annotations.items():
-                idxs = ch.data.keys() if ch.kind == "value" else ch.data
-                for i in idxs:
-                    if not isinstance(i, int) or isinstance(i, bool) \
-                            or i < 0 or i >= n_atoms:
-                        raise ValueError(
-                            f"``annotations[{name!r}]`` index {i!r} out of "
-                            f"range [0, {n_atoms})")
-        # All validated; commit atomically.
-        struct.regions      = {k: list(v) for k, v in regions_in.items()}
-        struct.annotations  = annotations
-    except (ValueError, TypeError) as exc:
-        return (f"in-body labels could not be applied ({exc}); "
-                f"the form's freeze rules are the sole boundary "
-                f"condition for this run.")
-    return None
-
-
 def apply_sidecar_if_possible(struct, structure_path):
     """Best-effort .molstruct.json sidecar application.
 
@@ -1643,7 +1550,6 @@ __all__ = [
     "finite_float",
     "coerce_to_field_type",
     "config_from_params",
-    "apply_labels_to_struct",
     "apply_sidecar_if_possible",
     "PeriodicityRefused",
     "checked_periodicity",

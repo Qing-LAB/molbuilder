@@ -1205,8 +1205,14 @@ class TestSchemaEndpointFrozenSeed:
 # --------------------------------------------------------------------- #
 
 
-def _envelope(xyz: str) -> dict:
+def _envelope(xyz: str, regions: dict = None) -> dict:
     """The molecule as data — what every structure door takes (web-api.md § 1).
+
+    ``regions`` goes UNDER ``metadata``, where the structure keeps every fact
+    about its atoms and where ``Structure.from_dict`` reads them. These tests
+    used to send it as a top-level key beside the envelope, which worked only
+    because a second label-applier existed on the server; that is gone
+    (2026-08-03), so labels ride with the structure or not at all.
 
     These tests used to post an XYZ document in a ``structure_text`` field. That
     field is gone, and so is the text path behind it: the browser holds the
@@ -1224,7 +1230,8 @@ def _envelope(xyz: str) -> dict:
         parts = row.split()
         elements.append(parts[0])
         positions.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    return {"elements": elements, "positions": positions}
+    return {"elements": elements, "positions": positions,
+            "metadata": {"regions": dict(regions or {})}}
 
 
 class TestRenderEndpoint:
@@ -1440,10 +1447,11 @@ class TestRenderHonorsSidecar:
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
-                "structure": _envelope(_WATER_XYZ),
-                # The reserved label rides in the ONE store, like every other
-                # label -- retired 2026-07-31: it used to be sent beside it.
-                "regions":        {"frozen_atoms": [0]},
+                # The reserved label rides in the ONE store, and the store
+                # rides INSIDE the structure -- a top-level `regions` beside
+                # the envelope was the second source, retired 2026-08-03.
+                "structure": _envelope(_WATER_XYZ,
+                                       regions={"frozen_atoms": [0]}),
                 "params":         {},  # empty form -> no frozen_indices
             }),
             content_type="application/json",
@@ -1467,8 +1475,9 @@ class TestRenderHonorsSidecar:
         r = web_client.post(
             "/api/spectra/render",
             data=json.dumps({
-                "structure": _envelope(_WATER_XYZ),
-                "regions":        {"L-electrode": [0], "bridge": [1, 2]},
+                "structure": _envelope(
+                    _WATER_XYZ,
+                    regions={"L-electrode": [0], "bridge": [1, 2]}),
                 "params":         {},
             }),
             content_type="application/json",
@@ -1557,7 +1566,6 @@ class TestRenderHonorsSidecar:
             data=json.dumps({
                 "structure": _envelope(_WATER_XYZ),
                 "structure_path": str(xyz),
-                "regions":        {},
                 "params":         {},
             }),
             content_type="application/json",

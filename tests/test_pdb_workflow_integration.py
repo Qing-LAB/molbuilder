@@ -155,7 +155,7 @@ class TestPdbWorkflowEndToEnd:
     catches it; etc.  The class shares fixture state via attributes."""
 
     @staticmethod
-    def _envelope(pdb_path):
+    def _envelope(pdb_path, regions=None):
         """The structure AS DATA, which is how every structure door takes it
         (web-api.md § 1).
 
@@ -167,7 +167,14 @@ class TestPdbWorkflowEndToEnd:
         clearing a prefill) are unaffected; only the delivery moved.
         """
         from molbuilder.structure import Structure
-        return Structure.from_pdb(str(pdb_path)).to_dict()
+        struct = Structure.from_pdb(str(pdb_path))
+        if regions:
+            # INSIDE the structure.  A top-level `regions` beside the envelope
+            # was the second source, applied by a second applier; both are gone
+            # (2026-08-03) and labels now ride with the atoms they describe.
+            struct.regions = dict(regions)
+            struct.__post_init__()
+        return struct.to_dict()
 
     def _path(self, pdb_path):
         return str(pdb_path.resolve())
@@ -295,15 +302,15 @@ class TestPdbWorkflowEndToEnd:
                           regions={"L-electrode": [3, 4]}, frozen=[0, 1, 2])
 
         r = web.post("/api/spectra/render", json={
-            "structure": self._envelope(pdb_path),
-            "structure_path": self._path(pdb_path),
             # F2 (docs/science/validation.md 4.1): the STRUCTURE's labels reach
-            # the server in the body, as the tab sends them.  Pattern A is the
-            # divergence between this structure-side claim and the FORM's
-            # (params.frozen_indices, absent here) -- so the delivery moves but
-            # the two-sided comparison under test does not.
-            "regions":        {"L-electrode": [3, 4],
-                               "frozen_atoms": [0, 1, 2]},
+            # the server WITH the structure, as the tab sends them.  Pattern A is
+            # the divergence between this structure-side claim and the FORM's
+            # (params.frozen_indices, absent here) -- the delivery moved, the
+            # two-sided comparison under test did not.
+            "structure": self._envelope(
+                pdb_path,
+                regions={"L-electrode": [3, 4], "frozen_atoms": [0, 1, 2]}),
+            "structure_path": self._path(pdb_path),
             # Both PDB fixtures (synthetic tripeptide + user's 1c75)
             # have odd electron counts at charge=0, so spin=0 fails
             # the parity check added 2026-05-22.  Pass charge=0,
@@ -391,12 +398,12 @@ class TestPdbWorkflowEndToEnd:
         # AND fire Pattern A so the user can't be surprised later.
         _seed_sidecar_for(pdb_path, n_atoms=n_atoms, frozen=[0, 1, 2])
         r = web.post("/api/spectra/render", json={
-            "structure": self._envelope(pdb_path),
+            # F2: the structure-side claim rides WITH the structure; the FORM
+            # is cleared in params.  The whole point is that these DISAGREE and
+            # the user is told, rather than the override being absorbed.
+            "structure": self._envelope(
+                pdb_path, regions={"frozen_atoms": [0, 1, 2]}),
             "structure_path": self._path(pdb_path),
-            # F2: the structure-side claim rides in the body; the FORM is
-            # cleared in params.  The whole point is that these DISAGREE and the
-            # user is told, rather than the override being absorbed silently.
-            "regions":        {"frozen_atoms": [0, 1, 2]},
             "params":         {"frozen_indices": "",
                                  "charge": 0, "spin": 1, "method": "UKS"},
         })
@@ -499,17 +506,19 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
         # from the PDB.  Simpler: skip via parsing-from-text path.
         from molbuilder.structure import Structure
         struct = Structure.from_pdb(pdb_text)
-        xyz = struct.to_xyz()
+        struct.regions = {"frozen_atoms": [0, 4, 7]}
+        struct.__post_init__()
         r = web.post("/api/build/fdf", json={
-            "xyz":            xyz,
+            # The structure AS DATA with its labels inside.  This posted `xyz`
+            # text plus a top-level `regions`, which is the legacy branch and
+            # the retired second label source.
+            "structure":      struct.to_dict(),
             "params":         {
                 "system_label": "test",
                 "relax_type":   "CG",     # non-none, so the constraint
                                           # block is meaningful
             },
             "structure_path": str(pdb_path.resolve()),
-            # F2: labels are a BODY fact; the sidecar on disk is not read.
-            "regions":        {"frozen_atoms": [0, 4, 7]},
         })
         assert r.status_code == 200, r.data
         body = r.get_json()
@@ -542,9 +551,10 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
         _seed_sidecar_for(pdb_path, n_atoms=10, frozen=[0, 4, 7])
         from molbuilder.structure import Structure
         struct = Structure.from_pdb(pdb_path.read_text())
-        xyz = struct.to_xyz()
+        struct.regions = {"frozen_atoms": [0, 4, 7]}
+        struct.__post_init__()
         r = web.post("/api/build/pyscf", json={
-            "xyz":            xyz,
+            "structure":      struct.to_dict(),
             "params":         {
                 "job_name":  "test",
                 "optimize":  True,
@@ -553,8 +563,6 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
                 "method":    "UKS",
             },
             "structure_path": str(pdb_path.resolve()),
-            # F2: labels are a BODY fact, not a disk read
-            "regions":        {"frozen_atoms": [0, 4, 7]},
         })
         assert r.status_code == 200, r.data
         body = r.get_json()

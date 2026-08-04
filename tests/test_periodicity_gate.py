@@ -1602,11 +1602,13 @@ class TestARefusedCellIsA400:
             "/api/structure/export")
 
     def test_the_transport_door_refuses(self, client_with_root):
+        """Transport takes the structure as DATA since 2026-08-03 -- it used to
+        take a file path as its geometry, with the labels riding beside it."""
         client, tmp = client_with_root
         xyz = tmp / "refused.xyz"
         xyz.write_text(self.XYZ)
+        s = Structure(elements=["H"], positions=np.zeros((1, 3)))
         self._assert_refused(client.post("/api/transport/render", json={
-            "structure_path": str(xyz), "params": {},
-            "regions": {}, "frozen_atoms": [],
+            "structure": s.to_dict(), "structure_path": str(xyz), "params": {},
             "periodicity": {"cell": self.LEFT_HANDED}}),
             "/api/transport/render")

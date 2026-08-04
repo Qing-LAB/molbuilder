@@ -170,15 +170,37 @@ class TestTransportTabContract:
     """lib/transport/core.js drives /api/transport/render, reading labels
     off molview.data at Generate time."""
 
-    def test_post_body_carries_labels_from_model(self, transport_src):
-        assert "getFrozen" in transport_src and "getRegions" in transport_src
-        assert re.search(
-            r"frozen_atoms\s*=\s*[^\n]*getFrozen\s*\(", transport_src
-        ), ("transport tab Generate POST must set "
-            "``frozen_atoms = …getFrozen()``")
-        assert re.search(
-            r"regions\s*=\s*[^\n]*getRegions\s*\(", transport_src
-        ), ("transport tab Generate POST must set ``regions = …getRegions()``")
+    def test_post_body_is_asked_for_not_assembled(self, transport_src):
+        """The labels ride INSIDE the structure, because the structure is asked
+        for whole rather than built from parts.
+
+        This pinned the opposite until 2026-08-03: `frozen_atoms = getFrozen()`
+        and `regions = getRegions()` as separate top-level keys beside a
+        `structure_path`.  That is four reads at four moments for one set of
+        facts, and it made this tab the last caller of the retired flat shape --
+        the only thing keeping a SECOND place for labels alive on the server
+        (`apply_labels_to_struct`), and so a place they could be dropped from.
+
+        molview.md § 9.3a: "this is what a request body carries; a tab never
+        assembles one."  `exportFile()` is that one read."""
+        assert re.search(r"exportFile\s*\(", transport_src), (
+            "transport tab Generate POST must source the structure from "
+            "``exportFile()`` -- the door that returns the atoms, the labels "
+            "and the cell read together")
+        assert re.search(r"structure\s*:\s*_out\.structure", transport_src), (
+            "the POST body must carry the envelope under ``structure``")
+
+        # CODE, not prose.  The comment at the call site NAMES the retired keys
+        # to say why they went; a check that cannot tell an explanation from a
+        # use would forbid explaining the change at all.
+        code = re.sub(r"/\*.*?\*/", "", transport_src, flags=re.S)
+        code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
+        for retired in ("frozen_atoms", "getFrozen", "getRegions"):
+            assert retired not in code, (
+                f"``{retired}`` is back in the transport tab's code.  The "
+                f"labels come with the structure now; reading them again is a "
+                f"second read at a second moment, and a top-level copy is the "
+                f"shape the server retired.")
 
     def test_no_stale_current_label_cache(self, transport_src):
         """The old ``_current*`` load-time cache was removed with the

@@ -309,16 +309,21 @@ def test_transport_render_issues_carry_workflow_group(
     shutil.copy(fixture_dir / "au_bdt_au.xyz", xyz_path)
     shutil.copy(fixture_dir / "au_bdt_au.molstruct.json", sidecar_path)
 
-    # F2 (science/validation.md 4.1): the electrode regions travel in the BODY.
-    # The fixture sidecar is still copied to disk (a real project has one) but
-    # the server no longer reads it for an emitted deck, so the request carries
-    # the same labels the Transport tab would read off the viewer model.
+    # THE STRUCTURE ARRIVES AS DATA, labels inside it (web-api.md § 1) -- what
+    # `molview.exportFile()` hands the tab.  This route took the path as its
+    # GEOMETRY until 2026-08-03, with the labels riding beside it at the top
+    # level: one request from two sources, and the last caller of the shape the
+    # server retired.  The sidecar is still written because a real project has
+    # one; nothing reads it here.
+    from molbuilder.structure import Structure
     _fixture_regions = json.loads(
         sidecar_path.read_text(encoding="utf-8")).get("regions") or {}
+    _struct = Structure.from_xyz(xyz_path.read_text(encoding="utf-8"))
+    _struct.regions = dict(_fixture_regions)
+    _struct.__post_init__()
     body = _post(web_client, "/api/transport/render", {
+        "structure":      _struct.to_dict(),
         "structure_path": str(xyz_path.resolve()),
-        "regions":        _fixture_regions,
-        "frozen_atoms":   [],
         "params": {
             "engine": "transiesta",
             # TransportConfig.electronic_temperature_k range=(10, 2000),

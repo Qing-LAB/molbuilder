@@ -1097,8 +1097,7 @@ def api_build_fdf():
     # viewer model fills via factsForRequest().  A body that omits them is a
     # 400 -- there is no disk fallback, so an emitted deck can never mix body
     # geometry with disk labels the model has since changed.
-    from ._shared import apply_labels_to_struct, apply_periodicity_for_emit
-    sidecar_notice = apply_labels_to_struct(struct, body)
+    from ._shared import apply_periodicity_for_emit
     # The tab-emit contract: the body carries the MODEL's periodicity
     # truth (never a second source); apply + gate (structure-periodicity.md 7).
     struct = apply_periodicity_for_emit(struct, body)
@@ -1130,8 +1129,6 @@ def api_build_fdf():
     # to stderr / raise on errors -- we keep that for CLI/library
     # callers; here we want the issues as JSON for the UI.
     issues = validate(struct, cfg, dest_dir=dest_dir)
-    if sidecar_notice:
-        issues.append(Issue("warn", sidecar_notice, "config.frozen_atoms"))
     # Three-stage Pattern B: the SIESTA SCF/relaxation deck does
     # NOT consume electrode regions (L-electrode / R-electrode /
     # bridge) — those drive the Transport tab.  See
@@ -1202,8 +1199,7 @@ def api_build_pyscf():
     # the structure before render_script sees it.  2026-06-14 update:
     # prefer in-body labels (the viewer-is-truth contract) and only
     # fall back to disk sidecar when neither key is sent.
-    from ._shared import apply_labels_to_struct, apply_periodicity_for_emit
-    sidecar_notice = apply_labels_to_struct(struct, body)
+    from ._shared import apply_periodicity_for_emit
     # The tab-emit contract: the body carries the MODEL's periodicity
     # truth (never a second source); apply + gate (structure-periodicity.md 7).
     struct = apply_periodicity_for_emit(struct, body)
@@ -1215,8 +1211,6 @@ def api_build_pyscf():
                         "error": f"bad parameters: {exc}"}), 400
 
     issues = validate(struct, cfg)
-    if sidecar_notice:
-        issues.append(Issue("warn", sidecar_notice, "config.frozen_atoms"))
     # Three-stage Pattern B (mirrors /api/build/fdf above).
     from ._shared import regions_pattern_b_notice
     regions_notice = regions_pattern_b_notice(struct, "the PySCF script")
@@ -1332,8 +1326,7 @@ def api_build_preflight():
         return jsonify({"ok": False, "error": str(exc)}), 400
     # Preflight must see exactly what Generate sees (labels + the
     # model's periodicity truth) -- it validated a phantom before.
-    from ._shared import apply_labels_to_struct, apply_periodicity_for_emit
-    apply_labels_to_struct(struct, body)
+    from ._shared import apply_periodicity_for_emit
     struct = apply_periodicity_for_emit(struct, body)
 
     try:

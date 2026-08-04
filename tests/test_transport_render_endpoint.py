@@ -29,6 +29,8 @@ import pytest
 
 pytest.importorskip("flask")
 
+from molbuilder.structure import FROZEN_LABEL
+
 
 # --------------------------------------------------------------------- #
 #  Fixtures                                                             #
@@ -96,15 +98,45 @@ def _write_sidecar(xyz_path: Path, regions: dict) -> Path:
     return sidecar_path
 
 
+def _envelope(xyz_path: Path, regions: dict = None) -> dict:
+    """The structure as DATA -- the one envelope every structure door takes,
+    and exactly what ``molview.exportFile()`` hands the tab: the atoms as
+    numbers with every fact about them under ``metadata``.
+
+    Built from the fixture's own .xyz so the test states the CONTRACT rather
+    than a file path the server would have to go and open."""
+    elements, positions = [], []
+    for line in xyz_path.read_text().splitlines()[2:]:
+        if not line.strip():
+            continue
+        sym, x, y, z = line.split()
+        elements.append(sym)
+        positions.append([float(x), float(y), float(z)])
+    return {
+        "elements":  elements,
+        "positions": positions,
+        "metadata":  {"regions": dict(regions or {})},
+    }
+
+
 def _render_body(xyz_path: Path, params: dict,
                  regions: dict = None, frozen: list = None) -> dict:
-    """The body shape the Transport tab actually posts: the structure path plus
-    the label facts read off the viewer model (F2 -- the server does not read
-    the sidecar for an emitted deck)."""
-    body = {"structure_path": str(xyz_path), "params": params,
-            "regions": regions if regions is not None else {},
-            "frozen_atoms": frozen if frozen is not None else []}
-    return body
+    """The body shape the Transport tab posts (2026-08-03): the STRUCTURE, with
+    its labels inside it, and the path only as provenance.
+
+    It used to post the path as the GEOMETRY and the labels beside it at the top
+    level -- one request from two sources, and the last caller of the retired
+    flat shape.  ``frozen_atoms`` is an ordinary label in the ONE store, so it
+    goes into ``regions`` here rather than into a key of its own."""
+    regions = dict(regions or {})
+    if frozen:
+        regions[FROZEN_LABEL] = list(frozen)
+    return {
+        "structure":      _envelope(xyz_path, regions),
+        # Provenance only -- nothing is read from it.
+        "structure_path": str(xyz_path),
+        "params":         params,
+    }
 
 
 _JUNCTION_REGIONS = {
@@ -132,14 +164,9 @@ def test_render_returns_fdf_for_labeled_au_s_junction(web):
         ("Au", (8, 0, 0)), ("Au", (10, 0, 0)),
     ])
     _write_sidecar(xyz, _JUNCTION_REGIONS)
-    r = client.post("/api/transport/render", json={
-        # F2: the electrode labels travel in the BODY (the tab reads them off
-        # the viewer model); the sidecar on disk is no longer a label source.
-        "regions":        _JUNCTION_REGIONS,
-        "frozen_atoms":   [],
-        "structure_path": str(xyz),
-        "params": {"engine": "transiesta", "job_name": "ausau"},
-    })
+    r = client.post("/api/transport/render", json=_render_body(
+        xyz, {"engine": "transiesta", "job_name": "ausau"},
+        regions=_JUNCTION_REGIONS))
     assert r.status_code == 200, r.get_data(as_text=True)
     body = r.get_json()
     assert body["ok"] is True
@@ -171,10 +198,8 @@ def test_render_blocks_when_regions_missing(web):
     ])
     # No regions in the body (and none on disk) -> struct.regions stays empty,
     # which is what transport must refuse (F2: absence is the body's claim).
-    r = client.post("/api/transport/render", json={
-        "structure_path": str(xyz),
-        "params": {"engine": "transiesta", "job_name": "unlabeled"},
-    })
+    r = client.post("/api/transport/render", json=_render_body(
+        xyz, {"engine": "transiesta", "job_name": "unlabeled"}))
     # web-api.md § 1.6 (b): validator hard-fail is scientific
     # advisory — HTTP 200 + ok:false, not 4xx.
     assert r.status_code == 200, r.get_data(as_text=True)
@@ -201,10 +226,8 @@ def test_render_unknown_engine_returns_400(web):
     proj = tmp / "engine_test"
     proj.mkdir()
     xyz = _write_xyz(proj, "x.xyz", [("C", (0, 0, 0))])
-    r = client.post("/api/transport/render", json={
-        "structure_path": str(xyz),
-        "params": {"engine": "no_such_engine"},
-    })
+    r = client.post("/api/transport/render", json=_render_body(
+        xyz, {"engine": "no_such_engine"}))
     assert r.status_code == 400
     body = r.get_json()
     assert "no_such_engine" in body["error"]
@@ -222,23 +245,54 @@ def test_render_rejects_path_outside_picker_root(web):
     Pin so an endpoint refactor that drops the gate gets caught.
     """
     client, tmp = web
-    r = client.post("/api/transport/render", json={
-        "structure_path": "/etc/passwd",
-        "params": {"engine": "transiesta"},
-    })
+    proj = tmp / "traversal"
+    proj.mkdir()
+    xyz = _write_xyz(proj, "j.xyz", [("C", (0, 0, 0))])
+    # A VALID structure with a hostile path beside it.  Since 2026-08-03 the
+    # path is provenance rather than geometry, so this is the case that matters:
+    # nothing is READ from it, but it must still not be accepted and echoed.
+    body_json = _render_body(xyz, {"engine": "transiesta"})
+    body_json["structure_path"] = "/etc/passwd"
+    r = client.post("/api/transport/render", json=body_json)
     assert r.status_code in (400, 403), r.get_data(as_text=True)
     body = r.get_json()
     assert body["ok"] is False
 
 
-def test_render_missing_structure_path_returns_400(web):
-    """No structure path → 400 with a clean error message."""
+def test_render_missing_structure_returns_400(web):
+    """No structure → 400 with a clean error message.
+
+    The required field is the STRUCTURE now, not ``structure_path``.  This
+    endpoint took the path as its geometry until 2026-08-03, which made the
+    request's atoms a thing the server fetched rather than a thing the caller
+    sent -- and left the labels to travel separately, the second source #41 is
+    about.  A path alone is no longer enough to render from."""
     client, _ = web
     r = client.post("/api/transport/render", json={
         "params": {"engine": "transiesta"},
     })
     assert r.status_code == 400
-    assert "structure_path" in r.get_json()["error"]
+    assert "structure" in r.get_json()["error"]
+
+
+def test_render_refuses_a_path_only_body(web):
+    """The old shape, refused BY NAME rather than quietly serviced.
+
+    A caller still posting `structure_path` as the geometry gets told what is
+    missing.  This is the whole point of removing the second source: the old
+    way stops working loudly on its first run instead of silently working
+    differently."""
+    client, tmp = web
+    proj = tmp / "oldshape"
+    proj.mkdir()
+    xyz = _write_xyz(proj, "j.xyz", [("C", (0, 0, 0)), ("H", (1, 0, 0))])
+    r = client.post("/api/transport/render", json={
+        "structure_path": str(xyz),
+        "regions":        {"L-electrode": [0]},   # the retired flat shape
+        "params":         {"engine": "transiesta", "job_name": "old"},
+    })
+    assert r.status_code == 400
+    assert "structure" in r.get_json()["error"]
 
 
 # --------------------------------------------------------------------- #
@@ -260,14 +314,9 @@ def test_render_response_has_documented_shape(web):
         ("Au", (8, 0, 0)), ("Au", (10, 0, 0)),
     ])
     _write_sidecar(xyz, _JUNCTION_REGIONS)
-    r = client.post("/api/transport/render", json={
-        # F2: the electrode labels travel in the BODY (the tab reads them off
-        # the viewer model); the sidecar on disk is no longer a label source.
-        "regions":        _JUNCTION_REGIONS,
-        "frozen_atoms":   [],
-        "structure_path": str(xyz),
-        "params": {"engine": "transiesta", "job_name": "shape"},
-    })
+    r = client.post("/api/transport/render", json=_render_body(
+        xyz, {"engine": "transiesta", "job_name": "shape"},
+        regions=_JUNCTION_REGIONS))
     assert r.status_code == 200
     body = r.get_json()
     for key in (
@@ -293,20 +342,14 @@ def test_render_coerces_bias_voltages_v_from_comma_string(web):
         ("Au", (8, 0, 0)), ("Au", (10, 0, 0)),
     ])
     _write_sidecar(xyz, _JUNCTION_REGIONS)
-    r = client.post("/api/transport/render", json={
-        # F2: the electrode labels travel in the BODY (the tab reads them off
-        # the viewer model); the sidecar on disk is no longer a label source.
-        "regions":        _JUNCTION_REGIONS,
-        "frozen_atoms":   [],
-        "structure_path": str(xyz),
-        "params": {
+    r = client.post("/api/transport/render", json=_render_body(
+        xyz, regions=_JUNCTION_REGIONS, params={
             "engine":          "transiesta",
             "job_name":        "biasc",
             # Comma-floats text input shape — the bug was that this
             # string used to reach the dataclass unchanged.
             "bias_voltages_v": "0.0, 0.5",
-        },
-    })
+        }))
     assert r.status_code == 200, r.get_data(as_text=True)
     body = r.get_json()
     assert body["ok"] is True
@@ -330,10 +373,8 @@ def test_render_preflight_error_envelope_carries_top_level_error(web):
         ("C", (0, 0, 0)), ("H", (1, 0, 0)),
     ])
     # No regions in the body -> struct.regions empty -> preflight errors (F2).
-    r = client.post("/api/transport/render", json={
-        "structure_path": str(xyz),
-        "params": {"engine": "transiesta", "job_name": "envelope"},
-    })
+    r = client.post("/api/transport/render", json=_render_body(
+        xyz, {"engine": "transiesta", "job_name": "envelope"}))
     # web-api.md § 1.6 (b): scientific advisory at HTTP 200.
     assert r.status_code == 200
     body = r.get_json()

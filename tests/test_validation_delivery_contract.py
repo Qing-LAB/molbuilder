@@ -117,13 +117,24 @@ class TestF2NoSecondSource:
     the side that can guarantee it (F1, below).
     """
 
-    def test_a_body_without_label_keys_declares_no_labels(self):
-        """No second source: absent keys mean "this structure has no labels",
-        NOT "go and read the sidecar"."""
-        from molbuilder.web.blueprints._shared import apply_labels_to_struct
-        s = _thin_box_molecule()
-        assert apply_labels_to_struct(
-            s, {"xyz": "...", "structure_path": "/tmp/whatever.xyz"}) is None
+    def test_a_structure_without_labels_declares_no_labels(self):
+        """No second source: a structure carrying no labels HAS no labels, and
+        a ``structure_path`` beside it does not send the server to disk to find
+        some.
+
+        F2 used to be a property of `apply_labels_to_struct` -- absent keys meant
+        "no labels" rather than "read the sidecar", and the function was where
+        that was decided.  Since 2026-08-03 it is a property of the SHAPE: the
+        labels are a field of the structure, so "no labels" is just an empty
+        field, and there is no other key that could have carried them."""
+        from molbuilder.web.blueprints._shared import struct_from_body
+        s = struct_from_body({
+            "structure": {"elements": ["O", "H", "H"],
+                          "positions": [[0, 0, 0], [0.76, 0.59, 0],
+                                        [-0.76, 0.59, 0]],
+                          "metadata": {}},
+            "structure_path": "/tmp/whatever.xyz",
+        })
         assert not s.frozen_atoms
         assert not s.regions
 

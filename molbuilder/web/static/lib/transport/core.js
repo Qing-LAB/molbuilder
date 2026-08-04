@@ -570,30 +570,40 @@ const WORKSPACE_TAG = "transport";
             }
             btn.disabled = true;
             _setStatus("Generating…");
-            // Viewer-is-truth: source the frozen/region labels from the mounted
-            // MolView model — the exact structure the user just inspected — so what
-            // they SEE is what generates.  ``structure_path`` still ships for the
-            // GEOMETRY (the server reads + parses it).  When MolView isn't loaded
-            // (best-effort mount failed), OMIT the label keys so the server falls
-            // back to the disk sidecar at structure_path (apply_labels_to_struct
-            // keys on presence, not truthiness).
-            var _genBody = { params: params, structure_path: _currentStructureFile };
-            /* THE VIEWER WE MOUNTED, not a name looked up in a global. `mount`
-             * handed the handle back and `_mvHandle` has been holding it all
-             * along; this used to reach for `window.molbuilder.molview.data`
-             * instead, which nothing has published since the module was rebuilt,
-             * so every generate here quietly shipped no labels at all.
+            /* ASKED FOR, NOT ASSEMBLED — the move /structure-optimization and
+             * /spectrum-calculation already made.  `exportFile()` returns the
+             * atoms, their positions at the displayed frame, the labels and the
+             * cell, read TOGETHER in one go (molview.md § 9.3a: "this is what a
+             * request body carries; a tab never assembles one").
              *
-             * "Is there a structure?" is `getStructure() === null` — with nothing
-             * loaded a read answers nothing, which is a different answer from a
-             * structure with no atoms (molview.md § 9.3). */
+             * This tab assembled one, and was the last that did.  The geometry
+             * arrived as a FILE PATH the server re-opened, while the labels and
+             * the cell came off three further reads and rode at the TOP LEVEL —
+             * the shape retired on 2026-07-31.  Being its last caller is what
+             * kept `apply_labels_to_struct` alive, and with it a SECOND place
+             * labels could arrive from, which is a place they could be dropped
+             * from without a word (#41).  `frozen_atoms` went in that body and
+             * was never read: `_shared.py` did not contain the name.
+             *
+             * `structure_path` still ships, but ONLY as provenance — which file
+             * this came from, so a message about it can say which.  Nothing is
+             * read from it, so there is no second copy to reconcile.
+             *
+             * "Is there a structure?" is a null answer from the read — with
+             * nothing loaded a read answers nothing, which is a different answer
+             * from a structure with no atoms (molview.md § 9.3). */
             var _mvData = (_mvHandle && _mvHandle.ok) ? _mvHandle.data : null;
-            var _loaded = _mvData ? _mvData.getStructure() : null;
-            if (_loaded) {
-                _genBody.frozen_atoms = _mvData.getFrozen() || [];
-                _genBody.periodicity  = _loaded.periodicity || null;   // tab-emit contract (§7)
-                _genBody.regions      = _mvData.getRegions() || {};
+            var _out    = _mvData ? _mvData.exportFile() : null;
+            if (!_out || !_out.structure) {
+                _setStatus("Load a structure before generating.");
+                btn.disabled = false;
+                return;
             }
+            var _genBody = {
+                params:         params,
+                structure:      _out.structure,
+                structure_path: _currentStructureFile,
+            };
             root.fetch("/api/transport/render", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },

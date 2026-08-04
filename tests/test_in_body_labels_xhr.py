@@ -65,23 +65,46 @@ H  0.629 -0.629 -0.629
 """
 
 
-def _labels(body):
-    """The body carries ONE label store. `frozen_atoms=` is a test convenience
-    that lands in it, because the reserved label is an ordinary label and the
-    wire has no second key for it (molview.md § 6.6)."""
-    frozen = body.pop("frozen_atoms", None)
+def _envelope(regions=None, frozen=None):
+    """The test XYZ as DATA, with its labels INSIDE it.
+
+    The body carries ONE label store and it lives in the structure's own
+    ``metadata`` -- `frozen_atoms=` is a test convenience that lands in that
+    store, because the reserved label is an ordinary label and the wire has no
+    second key for it (molview.md § 6.6).
+
+    These helpers posted `xyz` text plus a TOP-LEVEL `regions` until
+    2026-08-03.  That was the legacy branch plus the second label source, and
+    the labels only reached the Structure because a second applier existed on
+    the server to put them there.  It is gone; labels ride with the atoms."""
+    labels = dict(regions or {})
     if frozen is not None:
-        regions = dict(body.get("regions") or {})
-        regions["frozen_atoms"] = frozen
-        body["regions"] = regions
+        labels["frozen_atoms"] = frozen
+    elements, positions = [], []
+    for line in _XYZ.strip().splitlines():
+        parts = line.split()
+        if len(parts) != 4:
+            continue
+        elements.append(parts[0])
+        positions.append([float(parts[1]), float(parts[2]), float(parts[3])])
+    return {"elements": elements, "positions": positions,
+            "metadata": {"regions": labels}}
+
+
+def _labels(body):
+    """Fold the test-convenience `regions=` / `frozen_atoms=` kwargs into the
+    structure envelope, so a caller writes what it means and the request is the
+    real shape."""
+    if "structure" not in body:
+        body["structure"] = _envelope(body.pop("regions", None),
+                                      body.pop("frozen_atoms", None))
     return body
 
 
 def _post_fdf(web, **body) -> dict:
-    """POST to /api/build/fdf with the test XYZ.  Returns the
+    """POST to /api/build/fdf with the test structure.  Returns the
     parsed JSON envelope.  Caller asserts on ``ok`` and ``fdf``."""
     body = _labels(body)
-    body.setdefault("xyz", _XYZ)
     body.setdefault("params", {})
     r = web.post("/api/build/fdf", json=body)
     return r.get_json() or {}
@@ -89,7 +112,6 @@ def _post_fdf(web, **body) -> dict:
 
 def _post_pyscf(web, **body) -> dict:
     body = _labels(body)
-    body.setdefault("xyz", _XYZ)
     body.setdefault("params", {})
     r = web.post("/api/build/pyscf", json=body)
     return r.get_json() or {}
@@ -329,14 +351,24 @@ class TestBuildPyscfInBodyLabels:
             "PySCF script"
         )
 
-    def test_out_of_range_rejected(self, web):
-        """Same rejection contract as /api/build/fdf."""
+    def test_out_of_range_refused(self, web):
+        """An index that names an atom that isn't there is REFUSED, and the
+        message says which index and what the range is.
+
+        This asserted a warn-and-render-anyway until 2026-08-03: the labels
+        came in beside the structure, a separate applier rejected them, and the
+        route emitted the script regardless with "labels could not be applied"
+        in the issues list.  That hands back a calculation missing the
+        constraints the user asked for, with a notice they may not read.
+
+        Labels now arrive inside the structure, so the same validator that
+        refuses a malformed Structure anywhere refuses this -- at the door,
+        before anything is generated."""
         body = _post_pyscf(web, frozen_atoms=[99])
-        # Render still proceeds (warn-severity); but the bad index
-        # must not leak.  Most importantly we want a warn notice.
-        issues = body.get("issues") or []
-        assert any(
-            i.get("severity") == "warn"
-            and "labels could not be applied" in (i.get("message") or "")
-            for i in issues
-        ), (f"expected warn-severity rejection notice; got {issues!r}")
+        assert body.get("ok") is False, (
+            f"an out-of-range label index must not render; got {body!r}")
+        err = body.get("error") or ""
+        assert "99" in err and "out of range" in err, (
+            f"the refusal must name the offending index; got {err!r}")
+        assert "script" not in body or not body.get("script"), (
+            "nothing may be emitted from a structure the server refused")

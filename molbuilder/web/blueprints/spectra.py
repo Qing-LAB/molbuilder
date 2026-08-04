@@ -347,8 +347,6 @@ def api_spectra_render():
 
     # F2 (science/validation.md 4.1): the body carries ``frozen_atoms`` /
     # ``regions`` from the model; omitting them is a 400, not a disk re-read.
-    from ._shared import apply_labels_to_struct
-    sidecar_notice: Optional[str] = apply_labels_to_struct(struct, body)
     from ._shared import apply_periodicity_for_emit
     struct = apply_periodicity_for_emit(struct, body)
 
@@ -398,16 +396,6 @@ def api_spectra_render():
     )
     if prior_warn is not None:
         issues.append(prior_warn)
-    # Surface the sidecar-application failure (if any) so the user
-    # sees that their sidecar's frozen / region data is NOT a
-    # factor in this run -- no silent absorption.
-    if sidecar_notice is not None:
-        from molbuilder.issues import Issue
-        issues.append(Issue(
-            severity="warn",
-            message=sidecar_notice,
-            where="structure_path",
-        ))
 
     # Block render on any error-severity issue.
     # web-api.md § 1.6 (b) scientific advisory: validator hard-fail

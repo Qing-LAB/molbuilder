@@ -138,43 +138,48 @@ def api_transport_render() -> Any:
 
     body = request.get_json(silent=True) or {}
     params: Dict[str, Any] = body.get("params") or {}
+
+    # THE STRUCTURE ARRIVES AS DATA, in the one envelope every structure door
+    # takes (web-api.md § 1): the atoms as numbers with the labels and the cell
+    # beside them, all read together by `molview.exportFile()`.
+    #
+    # It used to arrive as a FILE PATH this route re-opened, while the labels
+    # rode separately at the top level of the body.  One request, two sources,
+    # read at two moments -- and this was the LAST caller of that retired shape,
+    # which is the only reason `apply_labels_to_struct` still existed.  A second
+    # place labels can arrive from is a place they can be dropped from without
+    # anyone noticing, which is what #41 is; the way to close it is to stop
+    # having a second place, not to rank the two.
+    if not isinstance(body.get("structure"), dict):
+        # Said here rather than left to the shared helper, whose fallback is the
+        # legacy `xyz` text field and whose complaint is therefore about `xyz` --
+        # a field this route's only caller has never sent.
+        return jsonify({
+            "ok": False,
+            "error": "no 'structure' provided (the region-labeled device)",
+        }), 400
+    from ._shared import struct_from_body
+    try:
+        struct = struct_from_body(body)
+    except (ValueError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    # PROVENANCE, NOT GEOMETRY.  `structure_path` says which file this came from
+    # so a message can name it.  It is optional and nothing is read from it;
+    # still checked against the picker roots when present, so a path the caller
+    # invented cannot be echoed back into a response.
     structure_path_raw = (body.get("structure_path") or "").strip()
-    if not structure_path_raw:
-        return jsonify({
-            "ok": False,
-            "error": "structure_path is required (the relaxed "
-                     "geometry XYZ)",
-        }), 400
+    if structure_path_raw:
+        try:
+            from .build import _resolve_path_within_roots
+            _resolve_path_within_roots(structure_path_raw, require="file")
+        except _PickerError as exc:
+            return jsonify({"ok": False, "error": exc.message}), exc.status
 
-    # Path validation through the picker-root allowlist.
-    try:
-        from .build import _resolve_path_within_roots
-        struct_path = _resolve_path_within_roots(
-            structure_path_raw, require="file",
-        )
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-
-    # Parse the XYZ into a Structure.
-    try:
-        from molbuilder.structure import Structure
-        struct = Structure.from_xyz(struct_path.read_text())
-    except (ValueError, IndexError, OSError) as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"could not parse structure file: {exc}",
-        }), 400
-
-    # F2 (science/validation.md 4.1): Transport's L-electrode / R-electrode /
-    # bridge labels travel in the POST body; omitting them is a 400, never a
-    # disk re-read.  (This tab's GEOMETRY is still path-driven -- it reads the
-    # structure file the user picked -- which is the one remaining deviation
-    # from F1, tracked with the pending TranSIESTA workflow rework.)
-    from ._shared import apply_labels_to_struct
-    # ``body`` doesn't yet carry ``structure_path`` in the local
-    # name scope here; the helper reads it via body.get for the
-    # fallback path.
-    sidecar_notice = apply_labels_to_struct(struct, body)
+    # The labels arrived WITH the structure and were applied by
+    # `Structure.from_dict` -- the one deserialiser, which validates through the
+    # same `__post_init__` a freshly built Structure runs.  Nothing to apply
+    # here, and no second copy to rank against the first.
     from ._shared import apply_periodicity_for_emit
     struct = apply_periodicity_for_emit(struct, body)
 
@@ -203,15 +208,6 @@ def api_transport_render() -> Any:
     # chemistry checks), so there is no separate engine.preflight() pass
     # to hand-concatenate and forget.
     issues = list(_validate(struct, cfg))
-    if sidecar_notice:
-        from molbuilder.issues import Issue
-        # ``where="structure_path"`` matches Spectra's sidecar-load
-        # notice (spectra.py:400) so the wire contract is consistent
-        # across engines — the UI shows a single "[structure_path]"
-        # tag for sidecar problems regardless of which engine flagged
-        # them.  The notice text already explains the frozen-atoms
-        # consequence in human-readable form.
-        issues.append(Issue("warn", sidecar_notice, "structure_path"))
 
     # What each field on this response means — written down here so
     # anyone reading the code later does not mistake the names for

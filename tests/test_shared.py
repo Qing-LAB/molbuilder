@@ -406,19 +406,23 @@ def test_every_helper_carries_atoms_for_three_atom_water():
 
 
 def test_annotations_survive_a_delete_op_index_aligned():
-    """§19.3.2 completeness: v4 per-atom annotation channels ride the modify round-trip
-    (client body -> apply_labels_to_struct -> op reindexes -> structure_to_dict) so a
-    delete keeps them ALIGNED to the surviving atoms -- the field the pipeline used to drop."""
-    from molbuilder.web.blueprints._shared import (
-        struct_from_body, apply_labels_to_struct)
+    """§19.3.2 completeness: per-atom annotation channels ride the modify
+    round-trip (envelope -> from_dict -> op reindexes -> structure_to_dict) so a
+    delete keeps them ALIGNED to the surviving atoms -- the field the pipeline
+    used to drop.
+
+    The middle step was `apply_labels_to_struct`, a second applier that read the
+    channels off a top-level body key.  It is gone (2026-08-03); the channels
+    arrive inside the structure and `Structure.from_dict` applies them."""
+    from molbuilder.web.blueprints._shared import struct_from_body
     from molbuilder.modify import delete_atoms
-    body = {
-        "xyz": "4\ndiag\nC 0 0 0\nC 1 1 0\nC 2 2 0\nC 3 3 0\n",
-        "frozen_atoms": [], "regions": {},
-        "annotations": {"spin": {"kind": "tag", "data": [2, 3]}},
-    }
+    body = {"structure": {
+        "elements":  ["C", "C", "C", "C"],
+        "positions": [[0, 0, 0], [1, 1, 0], [2, 2, 0], [3, 3, 0]],
+        "metadata":  {"annotations": {"spin": {"kind": "tag",
+                                               "data": [2, 3]}}},
+    }}
     struct = struct_from_body(body)
-    assert apply_labels_to_struct(struct, body) is None      # applied, no notice
     assert struct.annotations["spin"].data == [2, 3]         # read off the body
     # Delete atom 1: old [0,2,3] -> new [0,1,2]; the tag on old {2,3} remaps to {1,2}.
     out = structure_to_dict(delete_atoms(struct, [1]))
@@ -427,16 +431,24 @@ def test_annotations_survive_a_delete_op_index_aligned():
     assert spin["kind"] == "tag" and spin["data"] == [1, 2], out["annotations"]
 
 
-def test_annotations_out_of_range_index_is_rejected():
-    """apply_labels_to_struct validates channel indices (like regions/frozen) -- an
-    out-of-range annotation index returns a user-facing notice, never a crash."""
-    from molbuilder.web.blueprints._shared import (
-        struct_from_body, apply_labels_to_struct)
-    body = {
-        "xyz": "2\nx\nH 0 0 0\nH 1 0 0\n",
-        "frozen_atoms": [], "regions": {},
-        "annotations": {"bad": {"kind": "tag", "data": [9]}},   # index 9 on a 2-atom struct
-    }
-    struct = struct_from_body(body)
-    notice = apply_labels_to_struct(struct, body)
-    assert notice is not None and "annotations" in notice and "9" in notice
+def test_annotations_out_of_range_index_is_refused():
+    """An annotation channel naming an atom that isn't there is REFUSED, by the
+    same validator that refuses a malformed Structure anywhere -- and the
+    message names the channel and the index.
+
+    This expected a returned NOTICE (build the structure, then hand back a
+    string saying the labels didn't apply).  That path went with
+    `apply_labels_to_struct`: the channels ride inside the structure now, so a
+    bad index cannot produce a half-built structure to warn about -- the
+    structure is simply not built."""
+    import pytest
+    from molbuilder.web.blueprints._shared import struct_from_body
+    body = {"structure": {
+        "elements":  ["H", "H"],
+        "positions": [[0, 0, 0], [1, 0, 0]],
+        # index 9 on a 2-atom struct
+        "metadata":  {"annotations": {"bad": {"kind": "tag", "data": [9]}}},
+    }}
+    with pytest.raises(ValueError) as exc:
+        struct_from_body(body)
+    assert "annotations" in str(exc.value) and "9" in str(exc.value)

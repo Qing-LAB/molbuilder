@@ -126,18 +126,27 @@ class TestSiestaGenerateBytes:
         wired into every emitter; this L3 pins the actual byte
         output of one emitter.
         """
+        # ONE LABEL STORE, INSIDE THE STRUCTURE.  `regions` IS the whole store
+        # and frozen atoms are a label in it; the store lives in the structure's
+        # own `metadata`, which is where `Structure.from_dict` reads it.
+        #
+        # Two shapes preceded this.  A TOP-LEVEL `frozen_atoms` beside
+        # `regions: {}` said "freeze atom 0" and "nothing is labelled" in the
+        # same breath (retired 2026-07-31).  Then a top-level `regions` beside
+        # an `xyz` string, which only worked because a second applier existed on
+        # the server to move it onto the structure -- deleted 2026-08-03.
+        lines = [ln.split() for ln in _H2O_XYZ.strip().splitlines()[2:]
+                 if len(ln.split()) == 4]
         r = web_client.post(
             "/api/build/fdf",
             json={
-                "xyz": _H2O_XYZ,
+                "structure": {
+                    "elements":  [p[0] for p in lines],
+                    "positions": [[float(p[1]), float(p[2]), float(p[3])]
+                                  for p in lines],
+                    "metadata":  {"regions": {"frozen_atoms": [0]}},  # the O
+                },
                 "params": {},
-                # ONE LABEL STORE.  `regions` IS the whole store, and frozen
-                # atoms are a label inside it -- this posted a TOP-LEVEL
-                # `frozen_atoms` beside `regions: {}` until 2026-08-03, which
-                # under the current contract says "freeze atom 0" and "nothing
-                # is labelled" in the same breath.  The server believes
-                # `regions`, correctly, and emitted no constraints.
-                "regions": {"frozen_atoms": [0]},   # freeze the O
             },
         )
         assert r.status_code == 200, r.get_data(as_text=True)
