@@ -72,8 +72,10 @@ the reason there is one on the server is that two of them disagreed once already
 the panel said a structure had a cell while the drawing found none, and neither failed.
 
 (`axis_kind` has no resolved twin: `null` is unset, and that is all the block says
-about it. The floor case is the same shape — `resolved_vacuum` differs from `vacuum`
-when the minimum-thickness floor raised it, and nothing displays that yet: task #36.)
+about it. `vacuum` is the same shape and now genuinely uses it — `null` means *"I
+never chose one"*, and `resolved_vacuum` then carries the default 3 Å gap the box
+was actually built from. The gate reports that in words on every hand-over; the
+Cell page showing it **in the row** is still task #36.)
 
 ---
 

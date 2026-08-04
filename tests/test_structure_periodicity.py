@@ -46,8 +46,14 @@ class TestAxisKindReconciliation:
             _s(axis_kind=("periodic", "bogus", "isolated"))
 
     def test_vacuum_default(self):
+        """UNSET, not zero (2026-08-03).  `None` is the state that says "nobody
+        chose a vacuum", which is what earns an isolated axis the 3 A default
+        gap; a stored (0,0,0) would mean "I deliberately want none" and would
+        give a flat molecule a box with no volume."""
         s = _s()
-        assert s.vacuum == (0.0, 0.0, 0.0)
+        assert s.vacuum is None
+        assert s.effective_vacuum() == (3.0, 3.0, 3.0)
+        assert s.defaulted_vacuum_axes() == [0, 1, 2]
 
     def test_kgrid_is_not_a_structure_field(self):
         # k-grid is a reciprocal-space SAMPLING knob (SiestaConfig /
@@ -103,7 +109,12 @@ class TestSidecarRoundTrip:
             n_atoms_total=2, structure_hash="a" * 64,
         )
         assert d["axis_kind"] == ["periodic", "periodic", "transport"]
-        assert d["vacuum"] == [0.0, 0.0, 0.0]
+        # A STORED ALL-ZERO IS READ AS UNSET (cell-plan.md 5): every sidecar
+        # written before 2026-08-03 says [0,0,0] because the field had no unset
+        # state, so reading them literally would turn "nothing was said" into a
+        # deliberate zero.  The codec normalises on the way through, and the
+        # round-trip therefore lands on `null`.
+        assert d["vacuum"] is None
         assert "kgrid" not in d   # k-grid is not geometry -> not in the sidecar
 
         s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])

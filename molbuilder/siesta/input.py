@@ -372,17 +372,19 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         # LAST LINE OF DEFENCE: SIESTA builds reciprocal vectors from the cell,
         # so a zero-volume lattice fails outright -- it must never be emitted.
         #
-        # A flat / linear molecule used to land here (thin axis, vacuum 0), but
-        # the 6.1 minimum-thickness floor now gives every ISOLATED axis at least
-        # 3 A per side, so that path is gone.  What can still reach this is an
+        # A flat / linear molecule with NO vacuum set used to land here, but the
+        # 6.1 default now gives every ISOLATED axis 3 A per side, so that path
+        # is gone.  Two things still reach here: a vacuum a user SET to zero on
+        # a flat axis (their value is honoured, never overridden), and an
         # axis where vacuum does not apply: a TRANSPORT axis, whose length is the
         # captured device length rather than bbox + padding.  The message names
         # the offending axes and their kinds, because telling the user to "set a
         # vacuum" would be wrong advice for exactly the case that gets here.
-        if abs(float(np.linalg.det(cell))) < 1e-6:
+        from molbuilder.cell import ZERO_VOLUME_TOL
+        if abs(float(np.linalg.det(cell))) < ZERO_VOLUME_TOL:
             _kinds = struct.axis_kind or ("isolated",) * 3
             _thin = [(i, _kinds[i]) for i in range(3)
-                     if abs(float(cell[i, i])) < 1e-6]
+                     if abs(float(cell[i, i])) < ZERO_VOLUME_TOL]
             _detail = ", ".join(f"axis {i} (kind '{k}')" for i, k in _thin) \
                 or "no single axis -- the three vectors are not independent"
             raise ValueError(
@@ -404,19 +406,22 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         # warnings.warn here, which no web user could ever see (contract R5,
         # science/validation.md 4.1).
         sizes = np.diag(cell)
-        # Report the EFFECTIVE vacuum: the § 6.1 minimum-thickness floor may
-        # have raised it on a flat/linear axis, and the provenance comment must
-        # describe the box that was actually emitted -- printing the stored
-        # value would make the note disagree with the LatticeVectors above it.
+        # Report the EFFECTIVE vacuum: where the user set none, the § 6.1
+        # default supplied one, and the provenance comment must describe the
+        # box that was actually emitted -- printing the stored value (``None``)
+        # would make the note disagree with the LatticeVectors above it.
         _eff = struct.effective_vacuum()
-        _floored = struct.vacuum_floor_axes()
+        _defaulted = struct.defaulted_vacuum_axes()
+        # Named from the model rather than repeated as a literal here.
+        from molbuilder.structure import _DEFAULT_ISOLATED_VACUUM as _GAP
+        _DEFAULT_GAP_TEXT = f"{_GAP:g} A/side"
         cell_note = (
             f"# (vacuum cell derived from the structure: "
             f"{sizes[0]:.2f} x {sizes[1]:.2f} x {sizes[2]:.2f} A; "
             f"vacuum = {tuple(round(float(v), 2) for v in _eff)} A/side"
-            + (f"; minimum-thickness floor raised axes {_floored} from "
-               f"{tuple(round(float(v), 2) for v in struct.vacuum)}"
-               if _floored else "")
+            + (f"; no vacuum was set, so the default {_DEFAULT_GAP_TEXT} "
+               f"was used on isolated axes {_defaulted}"
+               if _defaulted else "")
             + f"; atoms centred)"
         )
     else:

@@ -203,6 +203,25 @@ def validate(struct: Structure, cfg, *,
                 f"cell-dependent checks (volume, determinant, image distance) "
                 f"were skipped: this structure has no resolvable cell ({exc})",
                 "cell.unresolved"))
+
+    # THE STRUCTURAL CELL FACTS, from the one checker (cell-plan.md § 6a).
+    #
+    # This is what makes them reach GENERATE.  They were `notices` from the
+    # periodicity gate, and notices travel to the Cell page and nowhere else --
+    # so a box with no volume, or a 3 Å gap nobody chose, was invisible in the
+    # preflight panel that is the last thing a user sees before committing to a
+    # calculation.  As Issues they arrive on both surfaces with no special case,
+    # and `report()` turns the error-severity ones into the refusal the emit
+    # doors already promise.
+    #
+    # Only when the structure DECLARES a box, for the same reason the block
+    # above is gated: `resolve_cell` hands back a bounding box for a gas-phase
+    # molecule that never asked for one, and judging that box would invent
+    # findings about a cell the calculation does not have.
+    if _structure_declares_a_box(struct):
+        from ..cell import check as _check_cell, resolve as _resolve_cell
+        issues += _check_cell(_resolve_cell(struct))
+
     issues += validate_geometry(struct, cell)
     issues += _validate_config_metadata(cfg)
 

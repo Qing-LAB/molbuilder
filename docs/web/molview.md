@@ -859,19 +859,19 @@ leave through the `files` door, § 6.7.)
 | **A condition** | *"the box does NOT contain the structure along a non-periodic axis — per-axis (near, far) clearances in Å: …"* | a fact about the structure **right now**. Stays true until the cell or the atoms change |
 | **A receipt** | *"explicit cell cleared; the box is derived again"* | what the edit just **did**. True about that moment, meaningless afterwards |
 
-There are ten of them today. Three are conditions — the box does not contain the
-structure; the corner had to be derived because none was stored; the
-minimum-thickness floor is in effect, so the box is thicker than the vacuum on
-the Cell page. The other seven are receipts, one per Cell-page edit. The
-regime-change line reads like a condition and is not one: it says what the edit
-did to the box, which is the definition of a receipt.
+There are twelve of them today. **Four are conditions** — the box does not
+contain the structure; the corner had to be derived because none was stored; no
+vacuum was set, so a default gap is sizing the box; and the box has no volume at
+all. The other **eight are receipts**, one per Cell-page edit plus the
+regime-change line. That line reads like a condition and is not one: it says
+what the edit did to the box, which is the definition of a receipt.
 
-> **The floor condition is not yet answered like the other two.** It is emitted
-> only from the vacuum / axis-kind edit, never from the check every hand-over
-> runs — so a flat molecule is told once, by an edit that was not about it, and
-> not on load or after any modify op. Tracked with the thin-vacuum work
-> (task #36), because the two are halves of one sentence: *you typed this
-> vacuum, the box used that one, and this is what the physics needs.*
+All four conditions are now answered by the check **every hand-over runs**
+(`validate_periodicity`), so they arrive on load, after any modify op, and on
+the way out of every structure-returning route alike. The last two were added
+2026-08-03; until then a derived box reported nothing, and a flat molecule was
+told about its gap once, by a vacuum edit that was not about it — never on load,
+and never before Generate.
 
 #### The lifetime rule
 

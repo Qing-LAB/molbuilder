@@ -130,17 +130,50 @@ METADATA_FIELDS = ("regions", "cell", "cell_origin", "pbc", "axis_kind",
 #: to :meth:`Structure.cell_contains_atoms`.
 _CONTAIN_EPS = 1e-6
 
-#: Minimum-thickness floor for a DERIVED box (§ 6.1, decided 2026-07-29).  An
-#: isolated axis whose derived length would fall below _MIN_DERIVED_CELL_LENGTH
-#: (Angstrom) gets its per-side vacuum raised to _MIN_ISOLATED_VACUUM, so a flat
-#: or linear molecule can never yield a zero-thickness box (a zero determinant,
-#: which used to surface as "degenerate cell" from the emitter and blocked a
-#: reset-to-derived in the gate) and there is always a real gap between periodic
-#: images.  STRUCTURAL minimum only -- physical adequacy is a separate, larger
-#: number the validator asks for (>= 8 A per side neutral; see
-#: validation/siesta.py:_check_siesta_vacuum_adequacy).
-_MIN_DERIVED_CELL_LENGTH = 3.0
-_MIN_ISOLATED_VACUUM = 3.0
+#: The per-side gap a DERIVED box uses on an isolated axis when the user set no
+#: vacuum at all (§ 6.1; the rule was rewritten 2026-08-03 — cell-plan.md § 3b).
+#:
+#: IT IS A DEFAULT GAP, NOT A MINIMUM BOX LENGTH.  3 Å of empty space is 3 Å
+#: whether the molecule is 2 Å across or 200, so every isolated axis gets it
+#: when nothing was said.  The previous rule raised the vacuum only when the
+#: resulting BOX came out under 3 Å, which meant a large molecule got no gap at
+#: all and a typed 1.0 Å got overridden to 3.0.
+#:
+#: It keeps a cell well-formed; it is NOT a claim of physical adequacy.  A
+#: converged isolated-molecule run wants far more, and the validator says so
+#: (``cell.vacuum_thin``: ≥ 8 Å per side neutral, ≥ 25 Å charged).
+_DEFAULT_ISOLATED_VACUUM = 3.0
+
+
+def _vacuum_from_stored(raw) -> Optional[Tuple[float, float, float]]:
+    """Read a stored vacuum, treating ``[0, 0, 0]`` as UNSET.
+
+    Decided 2026-08-03 (docs/model/cell-plan.md § 5).  Every
+    ``.molstruct.json`` written before that date says ``vacuum: [0,0,0]``,
+    because the field had no unset state and defaulted to zeros.  Reading those
+    as "the user explicitly chose zero" would silently change what an existing
+    flat-molecule structure does on its next load -- it would stop getting the
+    default gap, and its box would lose its volume -- which is exactly the class
+    of silent change this work exists to prevent.
+
+    So an all-zero stored vacuum reads as *nothing was said*.  It is slightly
+    dishonest for exactly one value, and it is the price of not rewriting files
+    nobody asked us to touch.  A user who genuinely wants a zero gap says so,
+    and once the writer emits ``null`` for unset the two are distinguishable in
+    every new file.
+
+    DO NOT "FIX" THE ASYMMETRY without reading § 5: it is what protects
+    structures already on disk.
+    """
+    if raw is None:
+        return None
+    values = tuple(float(x) for x in raw)
+    if len(values) != 3:
+        raise ValueError("Structure.vacuum must have exactly 3 entries")
+    if not any(values):
+        return None                     # a stored all-zero reads as UNSET
+    return values
+
 
 
 @dataclass
@@ -363,7 +396,7 @@ class Structure:
     # (k-grid is NOT here: it's a reciprocal-space SAMPLING knob, a CALCULATION
     # parameter that lives on SiestaConfig / TransportConfig, not the geometry.
     # structure-periodicity.md.)  Default 0 keeps existing call sites unchanged.
-    vacuum:        Tuple[float, float, float]  = (0.0, 0.0, 0.0)
+    vacuum:        Optional[Tuple[float, float, float]] = None
     # World-space LOW CORNER an EXPLICIT ``cell`` emanates from (Angstrom), or None
     # = (0,0,0) (structure-periodicity.md § 3c).  Editing convenience: an op that
     # builds a cell AROUND off-origin atoms (e.g. add_electrode_slab, whose slabs
@@ -422,7 +455,11 @@ class Structure:
             # parallel/duplicated vectors): it would blow up later in
             # reciprocal-space / k-grid math (1/det, inv(cell)) with an
             # opaque LinAlgError instead of a clear message here.
-            if abs(float(np.linalg.det(cell))) < 1e-8:
+            # THE shared threshold (cell.ZERO_VOLUME_TOL).  It was 1e-8 here
+            # and 1e-6 in the emitter until 2026-08-03 -- two numbers for one
+            # question.  Imported lazily: ``cell`` imports this module.
+            from .cell import ZERO_VOLUME_TOL
+            if abs(float(np.linalg.det(cell))) < ZERO_VOLUME_TOL:
                 raise ValueError(
                     "Structure.cell is singular/degenerate (near-zero "
                     "volume); the three lattice vectors must be linearly "
@@ -468,10 +505,17 @@ class Structure:
                 raise ValueError(
                     "Structure.cell_origin must be 3 finite floats (Angstrom)")
             self.cell_origin = co if self.cell is not None else None
-        # Shape/clamp vacuum (per-side gap).
-        self.vacuum = tuple(float(v) for v in self.vacuum)
-        if len(self.vacuum) != 3:
-            raise ValueError("Structure.vacuum must have exactly 3 entries")
+        # Shape vacuum (per-side gap).  ``None`` MEANS THE STRUCTURE SAYS
+        # NOTHING -- the same "unset" its three siblings (cell, cell_origin,
+        # axis_kind) have always had, and the state the whole regime model
+        # needs in order to tell "I want no gap" from "I never said" (see
+        # docs/model/cell-plan.md § 3a).  Until 2026-08-03 this field defaulted
+        # to (0, 0, 0) and those two were one value, so no rule could branch on
+        # the difference.
+        if self.vacuum is not None:
+            self.vacuum = tuple(float(v) for v in self.vacuum)
+            if len(self.vacuum) != 3:
+                raise ValueError("Structure.vacuum must have exactly 3 entries")
 
         # Validate transport metadata.  Both fields default to empty,
         # so a caller that doesn't care about regions / frozen atoms
@@ -514,9 +558,11 @@ class Structure:
                     f"periodic axis needs a commensurate lattice from "
                     f"construction/import (never a bounding box)."
                 )
-            # vacuum is the PER-SIDE gap -> 2*vacuum total padding.  The
-            # EFFECTIVE vacuum applies the § 6.1 floor so a flat or linear
-            # molecule can never produce a zero-thickness box.
+            # vacuum is the PER-SIDE gap -> 2*vacuum total padding, which is
+            # also the distance between the molecule and its periodic image.
+            # The EFFECTIVE vacuum supplies the § 6.1 default where the user
+            # set nothing, so a flat or linear molecule can never produce a
+            # zero-thickness box.
             pad = 2.0 * self.effective_vacuum()[i] if kind == "isolated" else 0.0
             out[i, i] = float(extent[i]) + pad
         return out
@@ -562,46 +608,64 @@ class Structure:
     def effective_vacuum(self) -> Tuple[float, float, float]:
         """The per-side vacuum the DERIVED box actually uses (§ 6.1).
 
-        Identical to ``self.vacuum`` except for the **minimum-thickness floor**:
-        on an ISOLATED axis whose derived length would come out below
-        ``_MIN_DERIVED_CELL_LENGTH``, the vacuum is raised to
-        ``_MIN_ISOLATED_VACUUM``.  That guarantees two things the rest of the
-        stack relied on and never had: the derived cell is always genuinely
-        three-dimensional, and there is always a real gap between periodic
-        images.  Without it a FLAT molecule (water, benzene — zero extent along
-        one axis) with no vacuum produced a zero-thickness box: a zero
-        determinant that surfaced as "degenerate cell" errors from the emitter
-        and blocked a reset-to-derived in the gate.
+        TWO STATES, AND ONLY TWO (decided 2026-08-03 — cell-plan.md § 3b).
+
+          * **The user set a vacuum** → it is used, verbatim, on every axis.
+            However small.  They dictate what they want; a thin gap is warned
+            about (``cell.vacuum_thin``) and never overridden.
+          * **The user set nothing** → each ISOLATED axis gets
+            ``_DEFAULT_ISOLATED_VACUUM`` per side.  It is a default GAP, not a
+            floor on the box length: 3 Å of empty space is 3 Å whether the
+            molecule is 2 Å across or 200 Å, so a large molecule gets it too.
+
+        Vacuum is meaningless on a periodic axis (the lattice sets the length)
+        and on a transport axis (the device length is matched), so neither gets
+        a default.
+
+        The default is a STARTING gap, not a claim of physical adequacy: it
+        keeps a derived cell three-dimensional even for a FLAT molecule (water,
+        benzene — zero extent along one axis), while a converged
+        isolated-molecule calculation wants far more.  The SIESTA validator
+        still asks for ≥ 8 Å per side, ≥ 25 Å charged (``cell.vacuum_thin``),
+        and says so about the default too.
 
         This is a RESOLVED value, never written back: ``self.vacuum`` keeps
-        exactly what the user typed (§ 6.1 clause 1), and the gate emits a
-        notice when the floor is in effect so the box is never silently
-        different from the number on screen.
+        exactly what the user typed, or ``None`` when they typed nothing
+        (§ 6.1 clause 1).  The gate announces the default on every hand-over
+        (``cell.check`` → ``cell.vacuum_defaulted``) so the box is never
+        silently different from the number on screen.
 
-        The floor is a STRUCTURAL minimum, not a claim of physical adequacy: 3 Å
-        keeps the cell well-formed, while a converged isolated-molecule
-        calculation wants far more (the SIESTA validator still asks for ≥ 8 Å
-        per side, ≥ 25 Å charged — ``cell.vacuum_thin``).  Vacuum is meaningless
-        on a periodic axis (the lattice sets the length) and on a transport axis
-        (the device length is matched), so the floor applies to neither."""
-        vac = [float(v) for v in self.vacuum]
-        if len(self.positions) == 0:
-            return (vac[0], vac[1], vac[2])
-        extent = self.positions.max(axis=0) - self.positions.min(axis=0)
-        for i, kind in enumerate(self.axis_kind):
-            if kind != "isolated":
-                continue
-            if float(extent[i]) + 2.0 * vac[i] < _MIN_DERIVED_CELL_LENGTH:
-                vac[i] = max(vac[i], _MIN_ISOLATED_VACUUM)
+        UNTIL 2026-08-03 THIS WAS A FLOOR ON THE BOX, ``extent + 2·vacuum <
+        3``, which asked about the box rather than about what the user wanted.
+        It raised a typed 1.0 Å to 3.0 — overriding a stated value — and it
+        left a large molecule with NO gap at all, because its box was already
+        over 3 Å.  Both are the same confusion: a minimum box length is not a
+        vacuum."""
+        if self.vacuum is not None:
+            return tuple(float(v) for v in self.vacuum)
+        kinds = self.axis_kind or ("isolated", "isolated", "isolated")
+        vac = [(_DEFAULT_ISOLATED_VACUUM if k == "isolated" else 0.0)
+               for k in kinds]
         return (vac[0], vac[1], vac[2])
 
-    def vacuum_floor_axes(self) -> List[int]:
-        """Isolated axes where :meth:`effective_vacuum` raised the stored value
-        (the § 6.1 minimum-thickness floor).  Empty in the normal case; the gate
-        turns a non-empty list into a user notice."""
+    def defaulted_vacuum_axes(self) -> List[int]:
+        """Axes whose gap is the DEFAULT, because the user set no vacuum.
+
+        The gate turns a non-empty list into a user notice: a number nobody
+        chose is about to size the box a calculation runs in, and that must
+        never be a surprise.
+
+        Empty whenever a vacuum IS set — whatever was typed is what is used, on
+        every axis — and empty for periodic / transport axes, which get no
+        default because vacuum does not apply to them.
+
+        Named ``vacuum_floor_axes`` until 2026-08-03, when the rule stopped
+        being a floor.  Nothing is raised any more: there was no stored value
+        to raise, only an absent one to fill in."""
+        if self.vacuum is not None:
+            return []
         eff = self.effective_vacuum()
-        return [i for i in range(3)
-                if abs(eff[i] - float(self.vacuum[i])) > 1e-9]
+        return [i for i in range(3) if eff[i] > 0.0]
 
     def expected_cell_corner(self) -> np.ndarray:
         """The low corner that wraps the structure honouring the per-direction
@@ -704,7 +768,8 @@ class Structure:
                              if self.pbc is not None else None),
             "axis_kind":    (list(self.axis_kind)
                              if self.axis_kind is not None else None),
-            "vacuum":       [float(x) for x in self.vacuum],
+            "vacuum":       ([float(x) for x in self.vacuum]
+                             if self.vacuum is not None else None),
             "annotations":  annotations_to_json(self.annotations),
         }
 
@@ -737,8 +802,7 @@ class Structure:
                              if data.get("pbc") is not None else None)
         self.axis_kind    = (tuple(str(k) for k in data["axis_kind"])
                              if data.get("axis_kind") is not None else None)
-        self.vacuum       = (tuple(float(x) for x in data["vacuum"])
-                             if data.get("vacuum") is not None else (0.0, 0.0, 0.0))
+        self.vacuum       = _vacuum_from_stored(data.get("vacuum"))
         self.annotations  = annotations_from_json(data.get("annotations"))
         # Re-run the dataclass invariants ONCE: cell 3x3 + non-singular, the
         # axis_kind<->pbc reconciliation (axis_kind authoritative), cell_origin
@@ -840,10 +904,11 @@ class Structure:
                 "resolved_cell_origin": resolved_origin,
                 "axis_kind":            (list(self.axis_kind)
                                          if self.axis_kind is not None else None),
-                "vacuum":               [float(x) for x in self.vacuum],
+                "vacuum":               ([float(x) for x in self.vacuum]
+                                         if self.vacuum is not None else None),
                 # The vacuum the derived box ACTUALLY uses: identical to
-                # ``vacuum`` unless the § 6.1 minimum-thickness floor raised it
-                # on a flat/linear axis.  Sent so the Cell page can show the
+                # ``vacuum`` unless it is UNSET, when the § 6.1 default gap
+                # supplies one.  Sent so the Cell page can show the
                 # effective number -- a box thicker than the vacuum on screen
                 # must never be a surprise (it is a VIEW, like resolved_cell:
                 # the stored vacuum keeps what the user typed).

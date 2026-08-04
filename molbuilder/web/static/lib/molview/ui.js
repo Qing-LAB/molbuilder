@@ -1411,6 +1411,17 @@ function mountPanel(doc, card, model) {
     pages.selection.appendChild(assign);
 
     /* ── The Cell page: read-only (§ 8.1) ────────────────────────────────── */
+    /* WHICH REGIME YOU ARE IN, in one sentence, above the numbers.
+     *
+     * The four rows answer "is this box mine?" (the `(default)` tag) and never
+     * answered "is my vacuum doing anything?" -- which is the question that
+     * decides whether an edit will have any effect at all. A user with a typed
+     * cell can change the vacuum all day and watch nothing happen.
+     *
+     * structure-periodicity.md § 6.1a, matrix A: an explicit cell IS the box,
+     * and demotes vacuum to reference-only. */
+    const cellRegime = el("p", "molviewer-cell-regime");
+    pages.cell.appendChild(cellRegime);
     const cellReadout = el("dl", "molviewer-cell-readout");
     pages.cell.appendChild(cellReadout);
     // What the server said about this box, under the numbers it is about.
@@ -1737,12 +1748,18 @@ function mountPanel(doc, card, model) {
      *   Axes      default when unset OR every axis is `isolated` -- a fresh
      *             molecule loads all-isolated, and that is still the default
      *             configuration rather than a choice somebody made.
-     *   Vacuum    default when it is 0 on every axis, because vacuum ALWAYS has
-     *             a value; "unset" is not a state it has.
+     *   Vacuum    default when there is no explicit `vacuum`. The row then
+     *             shows the RESOLVED gap (3 A per side on each isolated axis),
+     *             which is the number the box was actually built from.
      *
-     * The last two are value-based on purpose: they report that the DISPLAYED
-     * value is the default, not that nobody ever typed it. Provenance is not
-     * what a reader of this page needs -- "is this box mine?" is.
+     * VACUUM MOVED FROM A VALUE TEST TO A PROVENANCE TEST (2026-08-03), because
+     * the model gained the state the old comment said it did not have. It used
+     * to read "default when it is 0 on every axis, because vacuum ALWAYS has a
+     * value; unset is not a state it has" -- true until `vacuum` became
+     * Optional. Left alone, `allZero(null)` is false, so the commonest case of
+     * all -- nobody set one -- would have lost its tag, which is exactly
+     * backwards. `Axes` stays value-based: all-isolated really is a value
+     * judgement, not an absence.
      */
     /* ONE WAY A NOTICE IS DRAWN, because the Cell page and the panel line show
      * the same thing in two places and two renderers would drift.
@@ -1808,25 +1825,64 @@ function mountPanel(doc, card, model) {
             ? v.map((n) => Number(n).toFixed(3)).join(", ") : "—");
         const isolatedEverywhere = (a) => Array.isArray(a)
             && a.length && a.every((k) => k === "isolated");
-        const allZero = (v) => Array.isArray(v) && v.every((n) => Number(n) === 0);
 
-        for (const [label, value, isDefault] of [
+        /* THE REGIME, said before the numbers.  `rawCell` is the whole test:
+         * a cell the structure itself states IS the box (matrix A), and
+         * everything else follows from that one fact. */
+        const manual = !!rawCell;
+        cellRegime.textContent = manual
+            ? "The box is the cell you typed — vacuum is not used."
+            : "The box is worked out from the molecule, your vacuum and the "
+              + "axis kinds.";
+
+        /* WHAT EACH ROW DOES, not what it is (cell-plan.md § 7).  Everything a
+         * user needs to understand the two regimes lived in a document they
+         * are not reading; the page carried a `(default)` tooltip and nothing
+         * else.  Kept as `title` so it is there on hover without spending four
+         * lines of a narrow panel on prose. */
+        const HINT = {
+            Lattice: "The box the calculation runs in. Type one to fix it; "
+                   + "leave it and it is worked out from the molecule, the "
+                   + "vacuum and the axis kinds.",
+            Origin:  "Which corner the box starts at. Only meaningful once "
+                   + "you have typed a lattice.",
+            Axes:    "periodic repeats forever · isolated is a molecule in a "
+                   + "box · transport is a device length. Vacuum applies to "
+                   + "isolated axes only.",
+            Vacuum:  "The empty gap left on each side of the molecule when the "
+                   + "box is worked out — so the gap between the molecule and "
+                   + "its periodic image is twice this. Ignored when you have "
+                   + "typed a lattice. ≥ 8 Å per side is the usual advice for "
+                   + "an isolated molecule.",
+        };
+
+        for (const [label, value, isDefault, inert] of [
             // THE LATTICE IS SHOWN, not summarised. It read "set" / "none",
             // which tells a user their structure has a box and refuses to say
             // what it is -- on the page whose whole job is reporting it.
-            ["Lattice", matrixText(cell.cell), !rawCell],
-            ["Origin",  vector(cell.cell_origin), !rawOrigin],
+            ["Lattice", matrixText(cell.cell), !rawCell, false],
+            ["Origin",  vector(cell.cell_origin), !rawOrigin, false],
             ["Axes",    Array.isArray(cell.axis_kind)
                             ? cell.axis_kind.join(" · ") : "—",
-                        !rawAxes || isolatedEverywhere(rawAxes)],
-            ["Vacuum",  vector(cell.vacuum), allZero(rawVacuum)],
+                        !rawAxes || isolatedEverywhere(rawAxes), false],
+            // INERT IN THE MANUAL REGIME.  The number is still shown -- it is
+            // what the structure says -- but marked as not reaching the
+            // calculation, so nobody edits it expecting the box to move.
+            ["Vacuum",  vector(cell.vacuum), !rawVacuum, manual],
         ]) {
             const term = doc.createElement("dt");
             term.className = "molviewer-selection-mini-label";
             term.textContent = label;
+            if (HINT[label]) term.title = HINT[label];
             const detail = doc.createElement("dd");
-            detail.className = "molviewer-cell-value";
+            detail.className = "molviewer-cell-value"
+                + (inert ? " molviewer-cell-value--inert" : "");
             detail.textContent = value;
+            if (inert) {
+                const note = el("span", "molviewer-cell-inert-tag");
+                note.textContent = " — not used";
+                detail.appendChild(note);
+            }
             if (isDefault) {
                 const tag = el("span", "molviewer-cell-default-tag");
                 tag.textContent = " (default)";

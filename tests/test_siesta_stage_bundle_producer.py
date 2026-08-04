@@ -86,7 +86,7 @@ def test_cell_rides_on_the_structure_no_separate_input():
     ``struct.resolve_cell()``, and changing the structure's vacuum changes every
     stage's lattice with it.  (This used to be probed indirectly -- a linear
     molecule with no vacuum gave a degenerate box, so the producer raised like
-    the single-.fdf path.  The § 6.1 minimum-thickness floor deliberately made
+    the single-.fdf path.  The § 6.1 default gap deliberately made
     that state legal -- 3 A/side rather than a zero-volume cell,
     docs/model/structure-periodicity.md § 6.1 -- so the old probe no longer
     fires.  Asserting the lattice itself is what the section actually claims,

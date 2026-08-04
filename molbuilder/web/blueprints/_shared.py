@@ -34,7 +34,9 @@ from molbuilder.structure import (
     annotations_from_json,
 )
 from molbuilder.validation import validate_geometry
-from molbuilder.periodicity_gate import validate_periodicity
+from molbuilder.cell import resolve_and_check
+from molbuilder.periodicity_gate import (notices_for_report,
+                                         validate_periodicity)
 
 
 # J2 2026-06-14: charset guard for region label keys in
@@ -540,15 +542,17 @@ def ok_structure_response(
     impossible.
     """
     said = list((extra or {}).get("notices") or [])
-    try:
-        _checked, conditions = validate_periodicity(struct)
-        said.extend(conditions)
-    except ValueError as exc:
-        # The gate refuses a left-handed cell or one no origin could fit. A
-        # geometry op cannot produce either -- neither touches the cell -- but a
-        # refusal must not turn a successful edit into a 500, so it is reported
-        # like anything else the user should know.
-        said.append({"level": "warn", "message": str(exc), "about": "cell"})
+    # THE ONE LINE (cell-plan.md § 6a): resolve once, check once, report.
+    #
+    # No try/except, because there is nothing to catch: these are the
+    # loading/modifying doors, and § 8.2 says they REPORT a bad box rather than
+    # refusing it -- so they ask the checker directly instead of calling the
+    # raising gate and reconstructing a notice from the exception. That
+    # reconstruction is what dropped the finding's id: it rebuilt the dict by
+    # hand from ``str(exc)``, so the front end received a message it could not
+    # identify, and tests had to match on the prose.
+    _rc, issues = resolve_and_check(struct)
+    said.extend(notices_for_report(issues))
     merged = dict(extra or {})
     if said:
         merged["notices"] = said

@@ -279,11 +279,29 @@ def _check_siesta_vacuum_adequacy(struct: Structure, cfg) -> List[Issue]:
         q = 0
     min_vac = _VACUUM_MIN_CHARGED if q else _VACUUM_MIN_NEUTRAL
     kinds = struct.axis_kind or ("isolated", "isolated", "isolated")
-    thin = [(i, float(struct.vacuum[i])) for i, k in enumerate(kinds)
-            if k == "isolated" and float(struct.vacuum[i]) < min_vac]
+
+    # MANUAL REGIME: an explicit cell IS the box, and vacuum is reference-only
+    # (structure-periodicity.md § 6.2).  Reading a vacuum here would report a
+    # number that never reaches the calculation -- a molecule in a hand-typed
+    # 30 A box would be told its vacuum is thin.  What matters on a typed box
+    # is the gap actually ACHIEVED, and ``cell.image_distance`` measures that
+    # directly, from the atoms and the box rather than from a setting.
+    if struct.cell is not None:
+        return []
+
+    # The RESOLVED per-side gap, not the stored one: unset means "no vacuum
+    # chosen", and an unset isolated axis is still given a default gap, which
+    # is thin by this check's own standard and worth saying so.
+    vac = struct.effective_vacuum()
+    thin = [(i, vac[i]) for i, k in enumerate(kinds)
+            if k == "isolated" and vac[i] < min_vac]
     if not thin:
         return []
-    where = ", ".join(f"axis {i} ({v:g} Å)" for i, v in thin)
+    defaulted = set(struct.defaulted_vacuum_axes())
+    where = ", ".join(
+        f"axis {i} ({v:g} Å"
+        + (" — the default, none set)" if i in defaulted else ")")
+        for i, v in thin)
     return [Issue(
         "warn",
         (f"Thin vacuum on an isolated system: {where}. Recommended ≥ "

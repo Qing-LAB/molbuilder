@@ -30,6 +30,41 @@ def _mol(off=(10.0, 10.0, 10.0), vacuum=(2.5, 2.5, 2.5)):
 # ------------------------------------------------------------------ #
 
 
+
+# --------------------------------------------------------------------- #
+#  Keying on the ID, not the prose                                      #
+#                                                                       #
+#  The gate's own header says "callers surface notices; they never parse #
+#  the message text", and until 2026-08-03 four tests in this file did   #
+#  exactly that -- matching on "does NOT contain".  A reworded sentence  #
+#  broke them; a DELETED check would not have, which is the wrong way    #
+#  round for a regression test.  Notices now carry ``where``, the same   #
+#  stable id ``Issue`` uses, so a test can name the finding it means.    #
+# --------------------------------------------------------------------- #
+
+
+def _problems(notices):
+    """Findings that say something is WRONG -- warn or error.
+
+    "Legal" used to be spelled ``not notices``, which also forbade INFO.  That
+    broke the moment the gate started disclosing true-but-harmless facts, like
+    a vacuum you typed being inert under a cell you typed
+    (``cell.vacuum_ignored``).  A legal state may still have something worth
+    saying about it; what it may not have is a complaint.
+    """
+    return [n for n in (notices or []) if n.get("level") in ("warn", "error")]
+
+
+def _wheres(notices):
+    """The stable ids in a notice list."""
+    return [n.get("where") for n in (notices or [])]
+
+
+def _said(notices, where):
+    """Did the gate report this specific finding?"""
+    return where in _wheres(notices)
+
+
 class TestTheStateTable:
     """PINS: docs/model/structure-periodicity.md § 6.1 — the state table, one
     row per stored state.
@@ -54,7 +89,7 @@ class TestTheStateTable:
         s.cell = np.eye(3) * 10.0
         s.__post_init__()
         checked, notes = validate_periodicity(s)
-        assert checked.cell_origin is None and not notes   # row 2
+        assert checked.cell_origin is None and not _problems(notes)   # row 2
 
     def test_hemec_state_derives_the_corner_without_materialising_it(self):
         """Row 3 — the 2026-07 hemeC corruption: explicit cell, no origin,
@@ -74,7 +109,8 @@ class TestTheStateTable:
         # carry is a key saying "and I changed something", because nothing here
         # changes anything: that is the whole of clause 1, and a phantom dirty
         # state is what a correction marker would produce.
-        assert all(set(n) == {"level", "message", "about"} for n in notes), notes
+        assert all(set(n) == {"level", "message", "where", "about"}
+                   for n in notes), notes
         assert all(n["about"] == "cell" for n in notes), notes
 
     def test_no_seam_materialises_a_resolved_corner(self):
@@ -98,7 +134,7 @@ class TestTheStateTable:
         s.__post_init__()
         checked, notes = validate_periodicity(s)
         assert np.allclose(checked.cell_origin, [0.5, 0.5, 0.5])  # row 4
-        assert not notes
+        assert not _problems(notes)
 
     def test_a_manual_origin_gets_the_same_answer_from_either_direction(self):
         """Row 5 is ONE row.  A nonsense corner the user typed on the Cell page
@@ -116,7 +152,7 @@ class TestTheStateTable:
         s.__post_init__()
         checked, notes = validate_periodicity(s)
         assert np.allclose(checked.cell_origin, [100.0, 100.0, 100.0])
-        assert notes and notes[0]["level"] == "warn"
+        assert _problems(notes), notes
 
         # The live half: the same corner set through the Cell-page door.
         live = _mol()
@@ -130,8 +166,13 @@ class TestTheStateTable:
         s = _mol()
         s.cell = np.eye(3) * 1.0                     # extent 2 Å can't fit
         s.__post_init__()
-        with pytest.raises(ValueError, match="cannot contain"):
+        # Matched on the sentence ("cannot contain") until 2026-08-03.  What
+        # this test means is that the state is REFUSED and the user is told
+        # which axis -- not that a particular phrasing survives.
+        with pytest.raises(ValueError) as exc:
             validate_periodicity(s)
+        assert "a" in str(exc.value), (
+            f"the refusal does not name the offending axis: {exc.value}")
 
     def test_left_handed_cell_is_refused(self):
         s = _mol()
@@ -234,12 +275,25 @@ class TestApplyEditV3:
         assert out.cell is None and out.cell_origin is None
 
     def test_origin_edit_warns_vacuum_not_respected(self):
+        """After setting an origin, the user is told their vacuum is inert.
+
+        RECEIPTS vs CONDITIONS (molview.md § 6.8).  ``apply_edit`` returns what
+        the edit DID; what is now TRUE of the result comes from the gate, which
+        the door runs on the result -- so this test asks the same two questions
+        in the same order the door does.  It matched a receipt sentence ("NOT
+        respected") until 2026-08-03, when that fact became a condition
+        (``cell.vacuum_ignored``) reported whenever it holds instead of only
+        when nothing else was wrong (§ 3c).
+        """
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0
+        s.vacuum = (2.5, 2.5, 2.5)          # set, and about to be ignored
         s.__post_init__()
-        out, notes = apply_edit(s, "cell_origin", [0.2, 0.2, 0.2])
+        out, receipts = apply_edit(s, "cell_origin", [0.2, 0.2, 0.2])
         assert np.allclose(out.cell_origin, [0.2, 0.2, 0.2])
-        assert any("NOT respected" in n["message"] for n in notes)
+        assert _said(receipts, "cell.edit"), _wheres(receipts)
+        _checked, conditions = validate_periodicity(out)
+        assert _said(conditions, "cell.vacuum_ignored"), _wheres(conditions)
 
     def test_reset_origin_clears_to_none(self):
         s = _mol(off=(1.0, 1.0, 1.0))
@@ -369,8 +423,14 @@ class TestPeriodicityDoor:
         assert r.status_code == 200
         body = r.get_json()
         assert body["periodicity"]["cell"][0][0] == 4.0, "the typed box is kept"
-        said = " ".join(n["message"] for n in (body.get("notices") or []))
-        assert "does NOT contain" in said, f"no containment notice: {body.get('notices')}"
+        # THE SHARPER OF THE TWO containment findings, and the right one here:
+        # atom 0 went from 0 to 50 while the others stayed, so the structure is
+        # now 49 Å across in a 4 Å box.  No corner can make that fit, and
+        # `cell.unfittable` says exactly that -- where `cell.atoms_outside`
+        # would suggest moving the origin, which cannot help.  Before the two
+        # were split, this case reported the vaguer one.
+        assert _said(body.get("notices"), "cell.unfittable"), (
+            f"the stranded box was not reported: {_wheres(body.get('notices'))}")
 
     def test_a_derived_box_regrows_around_an_atom_that_moved(self, client):
         """The box the USER did not type.  Nothing stores a cell for it: the
@@ -398,8 +458,8 @@ class TestPeriodicityDoor:
         assert span_after > span_before + 15.0, (
             f"the derived box did not follow the atom: {span_before} -> {span_after}")
         assert after["periodicity"]["cell"] is None, "still nothing stored"
-        said = " ".join(n["message"] for n in (after.get("notices") or []))
-        assert "does NOT contain" not in said, f"a derived box cannot fail to contain: {said}"
+        assert not _said(after.get("notices"), "cell.atoms_outside"), (
+            f"a derived box cannot fail to contain: {_wheres(after.get('notices'))}")
 
     def test_translating_the_whole_molecule_keeps_the_box_with_it(self, client):
         """The same distance, every atom: ``affine`` carries ``cell_origin``
@@ -415,7 +475,8 @@ class TestPeriodicityDoor:
         body = r.get_json()
         assert body["periodicity"]["cell_origin"][0] == 50.0, "the box moved too"
         said = " ".join(n["message"] for n in (body.get("notices") or []))
-        assert "does NOT contain" not in said, f"spurious notice: {body.get('notices')}"
+        assert not _said(body.get("notices"), "cell.atoms_outside"), (
+            f"spurious finding: {_wheres(body.get('notices'))}")
 
     def test_a_fixed_box_is_not_still_reported_as_broken(self, client):
         """molview.md § 6.8: a CONDITION describes the state the answer carries.
@@ -441,10 +502,9 @@ class TestPeriodicityDoor:
             "structure": self._envelope(s), "op": "cell_origin",
             "payload": [50.0, 50.0, 50.0]})
         assert broken.status_code == 200, broken.get_json()
-        assert any("does NOT contain" in n["message"]
-                   for n in broken.get_json()["notices"]), (
+        assert _said(broken.get_json()["notices"], "cell.atoms_outside"), (
             "a box that does not contain the structure must be reported: "
-            f"{broken.get_json()['notices']}")
+            f"{_wheres(broken.get_json()['notices'])}")
 
         # Now FIX it — an origin that does contain the atoms.
         fixed = client.post("/api/structure/periodicity", json={
@@ -452,9 +512,9 @@ class TestPeriodicityDoor:
             "payload": [-1.0, -2.0, -2.0]})
         assert fixed.status_code == 200, fixed.get_json()
         notices = fixed.get_json()["notices"]
-        assert not any("does NOT contain" in n["message"] for n in notices), (
+        assert not _said(notices, "cell.atoms_outside"), (
             "the box now contains the structure, so the answer must not carry "
-            f"the pre-edit warning that it does not: {notices}")
+            f"the pre-edit warning that it does not: {_wheres(notices)}")
 
     def test_a_condition_is_reported_once_not_twice(self, client):
         """§ 6.8: `apply_edit` emits RECEIPTS, `validate_periodicity` emits
@@ -481,9 +541,11 @@ class TestPeriodicityDoor:
             "payload": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 10.0]]})
         assert r.status_code == 200, r.get_json()
         notices = r.get_json()["notices"]
-        containment = [n for n in notices if "does NOT contain" in n["message"]]
+        containment = [n for n in notices
+                       if n.get("where") == "cell.atoms_outside"]
         assert len(containment) <= 1, (
-            f"the same condition was reported {len(containment)} times: {notices}")
+            f"the same condition was reported {len(containment)} times: "
+            f"{_wheres(notices)}")
 
     def test_the_door_takes_the_envelope_molview_can_actually_produce(self, client):
         """molview.md § 11.7: the browser hands over the structure and writes no
@@ -596,7 +658,7 @@ class TestPeriodicAxesAreNeverContained:
         s.axis_kind = ("periodic", "periodic", "periodic")
         s.__post_init__()
         checked, notes = validate_periodicity(s)
-        assert checked.cell_origin is None and not notes
+        assert checked.cell_origin is None and not _problems(notes)
 
     def test_junction_periodic_periodic_transport_is_legal(self):
         """The BDT/Au junction shape: periodic x/y, transport z; atoms
@@ -621,29 +683,40 @@ class TestPeriodicAxesAreNeverContained:
         s.__post_init__()
         checked, notes = validate_periodicity(s)
         assert np.allclose(checked.cell_origin, [100.0, 100.0, 100.0])
-        assert notes and notes[0]["level"] == "warn"
+        assert _problems(notes), notes
 
     def test_unfittable_cell_edit_is_refused_not_stored(self):
         """A cell the structure cannot fit is refused at the edit — a
-        stored-but-invalid cell locked every later door."""
+        stored-but-invalid cell locked every later door.
+
+        The assertion is REFUSED-AND-NOT-STORED, which is what the title says
+        and what matters.  It matched the sentence ("cannot contain") until
+        2026-08-03; the wording now comes from ``cell.check`` and names the
+        axis, and pinning prose would have failed on an improvement while
+        passing on a deletion."""
         s = _mol()                                    # extent 2 Å
-        with pytest.raises(ValueError, match="cannot contain"):
+        before = s.cell
+        with pytest.raises(ValueError):
             apply_edit(s, "cell", (np.eye(3) * 1.0).tolist())
+        assert s.cell is before, "the refused cell must not have been stored"
 
     def test_reset_to_derived_survives_a_zero_extent_isolated_axis(self):
-        """Was a refusal ("axis would be degenerate") until the § 6.1
-        minimum-thickness floor landed: a zero-extent ISOLATED axis is now
-        rescued with 3 Å per side instead of blocking the reset.  A transport
-        axis, where vacuum has no meaning, still refuses -- see
-        TestMinimumThicknessFloor."""
+        """Was a refusal ("axis would be degenerate"): a structure with a
+        zero-extent ISOLATED axis could not go back to the derived box.
+
+        CLEARING the vacuum is the way back -- the § 6.1 default then gives that
+        axis 3 Å per side.  Asking for an explicit zero there is still refused,
+        and must be: the value is honoured, so the box really would have no
+        volume (see TestTheDefaultVacuumGap).  A transport axis, where vacuum
+        has no meaning, refuses either way."""
         s = _mol(vacuum=(2.5, 2.5, 0.0))              # extent 0 on y,z
         s.cell = np.eye(3) * 10.0
         s.__post_init__()
-        out, notes = apply_edit(s, "vacuum", [3.0, 3.0, 0.0])
+        out, notes = apply_edit(s, "vacuum", None)
         assert out.cell is None                        # reset went through
         assert float(np.linalg.det(out.resolve_cell())) > 0.0
         assert out.effective_vacuum()[2] == 3.0
-        assert any("minimum-thickness floor" in n["message"] for n in notes)
+        assert any("cleared" in n["message"] for n in notes)
 
 
 # ------------------------------------------------------------------ #
@@ -871,7 +944,8 @@ class TestTheLoadAnswerIsNotSilent:
             # nothing -- and the shape says so: two keys, no third one claiming
             # a correction, hence no phantom dirty state.
             assert notices and notices[0]["level"] == "info"
-            assert all(set(n) == {"level", "message", "about"} for n in notices), notices
+            assert all(set(n) == {"level", "message", "where", "about"}
+                       for n in notices), notices
             # ...and `about` is the SUBJECT, which is what puts the sentence on
             # the Cell page rather than above the atom list (molview.md § 6.8).
             assert all(n["about"] == "cell" for n in notices), notices
@@ -1002,10 +1076,25 @@ class TestDocMatchesTheDoor:
         assert "NO ``calibrate`` op" in doc
 
 
-class TestMinimumThicknessFloor:
-    """§ 6.1 (2026-07-29): an isolated axis whose derived length would fall
-    below 3 Å gets at least 3 Å of vacuum per side, so a flat or linear
-    molecule can never produce a zero-thickness box."""
+class TestTheDefaultVacuumGap:
+    """§ 6.1 (2026-08-03): vacuum has THREE states, and the third is what makes
+    the rule sayable.
+
+      * A vacuum is SET -> used verbatim, however small.  Never overridden.
+      * NOTHING is set   -> every ISOLATED axis gets 3 A per side.
+
+    THE DISTINCTION THAT MATTERS: 3 A is a default GAP, not a minimum box
+    length.  3 A of empty space is 3 A whether the molecule is 2 A across or
+    200, so a large molecule gets it too -- and a typed 1.0 A is kept, not
+    raised.
+
+    WHAT THIS REPLACED.  Until 2026-08-03 the rule was a floor on the BOX:
+    ``extent + 2*vacuum < 3 -> vacuum = max(yours, 3)``.  It asked about the box
+    rather than about what the user wanted, and got both ends wrong -- it raised
+    a typed 1.0 to 3.0, OVERRIDING a stated value, and it left a large molecule
+    with NO gap at all because its box already exceeded 3 A.  Both are the same
+    confusion: a minimum box length is not a vacuum.
+    """
 
     @staticmethod
     def _planar():
@@ -1023,47 +1112,77 @@ class TestMinimumThicknessFloor:
                          positions=np.array([[0.0, 0.0, 0.0],
                                              [0.0, 0.0, 0.74]]))
 
+    @staticmethod
+    def _big():
+        """A molecule 20 A across -- the case the old floor left with NO gap,
+        because its box already exceeded 3 A."""
+        return Structure(elements=["H", "H"],
+                         positions=np.array([[0.0, 0.0, 0.0],
+                                             [20.0, 20.0, 20.0]]))
+
+    # -- nothing set: the default gap -------------------------------------- #
+
+    def test_nothing_set_means_unset_not_zero(self):
+        """The whole rule rests on this: `None` is a state the model can hold,
+        distinct from a deliberate zero."""
+        s = self._planar()
+        assert s.vacuum is None, "an unstated vacuum must not become (0,0,0)"
+        assert s.effective_vacuum() == (3.0, 3.0, 3.0)
+        assert s.defaulted_vacuum_axes() == [0, 1, 2]
+
     def test_a_planar_molecule_gets_a_three_dimensional_box(self):
-        """Water has exactly zero extent along z; with no vacuum the box used to
-        have zero thickness there (a zero determinant)."""
+        """Water has exactly zero extent along z; with no vacuum and no default
+        the box would have zero thickness there (a zero determinant)."""
         s = self._planar()
         cell = s.resolve_cell()
         assert float(np.linalg.det(cell)) > 0.0, "box is still degenerate"
-        assert np.diag(cell)[2] >= 3.0            # the flat axis
-        assert s.vacuum == (0.0, 0.0, 0.0), "the STORED vacuum must not change"
-        assert s.effective_vacuum()[2] == 3.0
+        assert np.diag(cell)[2] == pytest.approx(6.0)   # 0 extent + 2 x 3
+        assert s.vacuum is None, "the STORED vacuum must stay unset"
 
     def test_a_linear_molecule_gets_a_three_dimensional_box(self):
         """A diatomic is the harder case: TWO axes have zero extent."""
         cell = self._linear().resolve_cell()
         assert float(np.linalg.det(cell)) > 0.0
-        assert min(np.diag(cell)) >= 3.0
+        assert min(np.diag(cell)) == pytest.approx(6.0)
 
-    def test_the_floored_box_stays_centred_on_the_structure(self):
-        """The corner must use the same floored vacuum, or the box grows on one
-        face only and the molecule sits off-centre."""
-        s = self._planar()
-        cell, origin = s.resolve_cell(), s.resolve_cell_origin()
-        lo, hi = s.positions.min(axis=0), s.positions.max(axis=0)
-        assert np.allclose((lo + hi) / 2.0, origin + np.diag(cell) / 2.0)
+    def test_a_large_molecule_gets_THE_SAME_gap(self):
+        """THE CORRECTION OF 2026-08-03, pinned.
 
-    def test_an_axis_with_enough_vacuum_is_untouched(self):
-        """The floor is a floor, not an override -- a real vacuum wins."""
+        3 A is the vacuum DISTANCE, not the size of the molecule.  The old floor
+        asked "is the box under 3 A?" -- so a 20 A molecule, whose box was
+        already 20 A, got a gap of ZERO.  A big molecule needs the empty space
+        just as much as a small one; it needs MORE box, not less gap.
+        """
+        s = self._big()
+        assert s.effective_vacuum() == (3.0, 3.0, 3.0), (
+            "a large molecule was denied the default gap -- the old floor's "
+            "bug, where 'the box is already big enough' was mistaken for "
+            "'the molecule already has vacuum'")
+        assert np.diag(s.resolve_cell()) == pytest.approx([26.0, 26.0, 26.0])
+
+    # -- a value that IS set: used verbatim --------------------------------- #
+
+    def test_a_typed_vacuum_is_used_however_small(self):
+        """The old floor RAISED a typed 1.0 to 3.0.  You dictate what you want:
+        a thin gap is warned about (cell.vacuum_thin), never overridden."""
         s = self._planar()
-        s.vacuum = (8.0, 8.0, 8.0)
+        s.vacuum = (1.0, 1.0, 1.0)
         s.__post_init__()
-        assert s.effective_vacuum() == (8.0, 8.0, 8.0)
-        assert s.vacuum_floor_axes() == []
+        assert s.effective_vacuum() == (1.0, 1.0, 1.0)
+        assert s.defaulted_vacuum_axes() == [], "nothing was defaulted"
+        assert np.diag(s.resolve_cell())[2] == pytest.approx(2.0)
 
-    def test_only_the_thin_axis_is_floored(self):
-        """Per-axis, not per-structure: a thin z must not inflate x and y."""
+    def test_setting_one_axis_sets_them_all(self):
+        """Vacuum is stored as a whole triple, so a zero on one axis is a
+        DELIBERATE zero -- it does not fall back to the default there.  Under
+        the old floor this axis was silently topped up to 3."""
         s = self._planar()
         s.vacuum = (4.0, 4.0, 0.0)
         s.__post_init__()
-        assert s.vacuum_floor_axes() == [2]
-        assert s.effective_vacuum() == (4.0, 4.0, 3.0)
+        assert s.effective_vacuum() == (4.0, 4.0, 0.0)
+        assert s.defaulted_vacuum_axes() == []
 
-    def test_a_periodic_or_transport_axis_is_never_floored(self):
+    def test_a_periodic_or_transport_axis_never_gets_a_default(self):
         """Vacuum has no meaning there: the lattice / device length sets it."""
         s = self._planar()
         s.cell = np.diag([5.0, 5.0, 5.0])
@@ -1072,27 +1191,84 @@ class TestMinimumThicknessFloor:
         eff = s.effective_vacuum()
         assert eff[0] == 0.0 and eff[1] == 0.0
         assert eff[2] == 3.0
+        assert s.defaulted_vacuum_axes() == [2]
 
-    def test_the_floor_is_announced_not_silent(self):
-        """The box ends up thicker than the vacuum on screen, so the gate must
-        say so -- the stored value is deliberately left alone."""
+    # -- the box built from it ---------------------------------------------- #
+
+    def test_the_derived_box_stays_centred_on_the_structure(self):
+        """The corner must use the same effective vacuum, or the box grows on
+        one face only and the molecule sits off-centre."""
         s = self._planar()
-        out, notes = apply_edit(s, "vacuum", [4.0, 4.0, 0.0])
-        floor = [n for n in notes if "minimum-thickness floor" in n["message"]]
-        assert floor, [n["message"][:60] for n in notes]
-        assert "axis 2" in floor[0]["message"]
-        assert floor[0]["level"] == "info"
-        assert out.vacuum == (4.0, 4.0, 0.0)
+        cell, origin = s.resolve_cell(), s.resolve_cell_origin()
+        lo, hi = s.positions.min(axis=0), s.positions.max(axis=0)
+        assert np.allclose((lo + hi) / 2.0, origin + np.diag(cell) / 2.0)
 
-    def test_a_planar_structure_can_now_reset_to_derived(self):
+    # -- it is never silent -------------------------------------------------- #
+
+    def test_the_default_is_announced_on_every_hand_over(self):
+        """A number the user did not choose is sizing their box, so it must be
+        said -- and said by the check EVERY hand-over runs, not only by the edit
+        path.  Before 2026-08-03 you could load a structure and generate from it
+        without ever being told (cell-plan.md 3f)."""
+        _, notes = validate_periodicity(self._planar())
+        said = [n for n in notes if "no vacuum was set" in n["message"].lower()]
+        assert said, [n["message"][:70] for n in notes]
+        assert said[0]["level"] == "info"
+        assert said[0]["about"] == "cell"
+        msg = said[0]["message"]
+        assert "3 Å per side" in msg
+        # It must state the physical consequence in the currency that matters:
+        # vacuum is per side, so the gap between images is TWICE it.
+        assert "6 Å" in msg, f"the image gap is not named: {msg}"
+
+    def test_a_set_vacuum_is_not_announced(self):
+        """Nothing was defaulted, so there is nothing to disclose."""
+        s = self._planar()
+        s.vacuum = (5.0, 5.0, 5.0)
+        s.__post_init__()
+        _, notes = validate_periodicity(s)
+        assert not [n for n in notes
+                    if "no vacuum was set" in n["message"].lower()]
+
+    # -- clearing it back to unset ------------------------------------------ #
+
+    def test_null_clears_the_vacuum(self):
+        """molview.md 9.5 has always documented this payload as 'null clears'.
+        Until vacuum became Optional there was nothing to clear TO, and the op
+        answered 'must be 3 non-negative floats'."""
+        s = self._planar()
+        s.vacuum = (4.0, 4.0, 4.0)
+        s.__post_init__()
+        out, notes = apply_edit(s, "vacuum", None)
+        assert out.vacuum is None
+        assert out.effective_vacuum() == (3.0, 3.0, 3.0)
+        assert [n for n in notes if "cleared" in n["message"]]
+
+    def test_a_planar_structure_can_reset_to_derived(self):
         """It used to be refused ("axis 2 would be degenerate"): a planar
-        molecule with an explicit cell could not go back to the derived box."""
+        molecule with an explicit cell could not go back to the derived box.
+        Clearing the vacuum is the way back -- the default gives z a thickness.
+        """
         s = self._planar()
         s.cell = np.diag([9.0, 9.0, 9.0])
+        s.axis_kind = ("isolated", "isolated", "isolated")
         s.__post_init__()
-        out, _ = apply_edit(s, "vacuum", [0.0, 0.0, 0.0])
+        out, _ = apply_edit(s, "vacuum", None)
         assert out.cell is None
         assert float(np.linalg.det(out.resolve_cell())) > 0.0
+
+    def test_typing_a_zero_gap_on_a_flat_axis_is_refused_at_the_edit(self):
+        """The Cell page refuses the value you TYPE (8.2): its whole subject is
+        that value, so this is immediate feedback, not a block on getting work
+        done -- a good value entered straight after is accepted.
+
+        A FILE that already holds this state still opens and is reported
+        instead; see TestTheLoadAnswerIsNotSilent.  Same state, two verdicts,
+        decided by whether you just typed it.
+        """
+        s = self._planar()
+        with pytest.raises(ValueError, match="degenerate"):
+            apply_edit(s, "vacuum", [0.0, 0.0, 0.0])
 
     def test_a_zero_extent_transport_axis_still_refuses(self):
         """Vacuum cannot rescue a transport axis -- its length is the captured
@@ -1104,27 +1280,42 @@ class TestMinimumThicknessFloor:
         with pytest.raises(ValueError, match="degenerate"):
             apply_edit(s, "vacuum", [2.0, 2.0, 2.0])
 
-    def test_the_wire_carries_both_the_stored_and_the_effective_vacuum(self):
-        """Clause 1 on the wire: `vacuum` is the truth the user typed,
-        `resolved_vacuum` is the view the box was built from, and the Cell page
-        needs both so a thicker-than-displayed box is never a surprise."""
+    # -- the wire ------------------------------------------------------------ #
+
+    def test_the_wire_carries_unset_and_the_resolved_view(self):
+        """Clause 1 on the wire: `vacuum` is the truth the user typed -- or
+        `null` -- and `resolved_vacuum` is the view the box was built from.  The
+        Cell page needs both so a box built from a number nobody typed is never
+        a surprise."""
         per = self._planar().to_wire()["periodicity"]
-        assert per["vacuum"] == [0.0, 0.0, 0.0]
+        assert per["vacuum"] is None, "unset must travel as null, not [0,0,0]"
         assert per["resolved_vacuum"] == [3.0, 3.0, 3.0]
+
+    def test_a_stored_all_zero_reads_as_unset(self):
+        """Every .molstruct.json written before 2026-08-03 says [0,0,0].  Under
+        the new rule that would read as "I explicitly chose zero", and a flat
+        molecule saved last week would lose its gap on the next load.  Decided
+        (cell-plan.md 5): a stored all-zero reads as UNSET, so nothing on disk
+        changes meaning.  New files say null and the two are distinguishable
+        from then on."""
+        s = self._planar()
+        s.apply_metadata_dict({"vacuum": [0.0, 0.0, 0.0]})
+        assert s.vacuum is None
+        assert s.effective_vacuum() == (3.0, 3.0, 3.0)
 
 
 class TestSiestaNeverReceivesAZeroVolumeCell:
-    """PINS: docs/model/structure-periodicity.md § 6.1 (the minimum-thickness
-    floor) + the emitter's own last-line check.
+    """PINS: docs/model/structure-periodicity.md § 6.1 (the default vacuum gap)
+    + the emitter's own last-line check.
 
     INVARIANT: no code path can hand SIESTA a zero-volume lattice.  SIESTA
     builds reciprocal vectors from the cell, so a zero determinant fails the run
-    outright — we refuse first, at whichever layer sees it, with a message that
+    outright -- we refuse first, at whichever layer sees it, with a message that
     matches the actual cause.
+
+    FOUR independent layers stop one from ever being emitted; this pins each so
+    a future change cannot quietly remove the last of them.
     """
-    """SIESTA builds reciprocal vectors from the lattice, so a zero-volume cell
-    fails outright.  FOUR independent layers stop one from ever being emitted;
-    this pins each so a future change cannot quietly remove the last of them."""
 
     @staticmethod
     def _flat():
@@ -1140,16 +1331,25 @@ class TestSiestaNeverReceivesAZeroVolumeCell:
             s.__post_init__()
 
     def test_layer2_the_gate_refuses_a_zero_volume_cell_edit(self):
-        with pytest.raises(ValueError, match="right-handed"):
+        """Matched on "right-handed" until 2026-08-03, which was an accident of
+        the old check order: ``det > 0`` fails for det == 0, so a FLAT cell was
+        reported as a HANDEDNESS problem.  It is a volume problem, and now says
+        so.  What this test means is that the edit is refused -- not which
+        sentence explains it."""
+        with pytest.raises(ValueError) as exc:
             apply_edit(self._flat(), "cell",
                        [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 0.0]])
+        assert "handed" not in str(exc.value).lower(), (
+            f"a flat cell is not a handedness problem: {exc.value}")
 
-    def test_layer3_the_floor_makes_an_isolated_axis_never_zero(self):
+    def test_layer3_the_default_gap_makes_an_unset_isolated_axis_never_zero(self):
         """The path that used to reach the emitter: a flat molecule with no
-        vacuum.  The § 6.1 floor closes it."""
+        vacuum.  The § 6.1 default closes it -- for the UNSET case only.  A
+        deliberate zero is still honoured (that is the rule), which is why
+        layer 4 below has to stay."""
         cell = self._flat().resolve_cell()
         assert abs(float(np.linalg.det(cell))) > 1e-6
-        assert min(np.diag(cell)) >= 3.0
+        assert min(np.diag(cell)) == pytest.approx(6.0)
 
     def test_layer4_the_emitter_refuses_the_one_remaining_case(self):
         """A zero-extent TRANSPORT axis: vacuum does not pad it, so the floor
@@ -1266,13 +1466,18 @@ class TestEveryOpIsChecked:
         validator on its way out.
         """
         from molbuilder.web.blueprints import _shared
-        real, seen = _shared.validate_periodicity, []
+        # SPIES ON THE CHECKER, not on the gate (2026-08-03).  The modifying
+        # doors no longer call ``validate_periodicity`` -- that one RAISES, and
+        # a modify door reports rather than refuses (§ 8.2) -- so they ask
+        # ``cell.resolve_and_check`` directly.  Same invariant, one entry point
+        # further in: whatever these routes return went past the checker.
+        real, seen = _shared.resolve_and_check, []
 
         def spy(struct):
             seen.append(struct.n_atoms)
             return real(struct)
 
-        monkeypatch.setattr(_shared, "validate_periodicity", spy)
+        monkeypatch.setattr(_shared, "resolve_and_check", spy)
         body = dict(self.OPS[route])
         body["structure"] = self._stranded().to_dict()
         r = client.post(route, json=body)
@@ -1291,8 +1496,9 @@ class TestEveryOpIsChecked:
         body = {"structure": self._stranded().to_dict(),
                 "dx": 1.0, "dy": 0.0, "dz": 0.0}
         said = client.post("/api/modify/translate", json=body).get_json()
-        messages = [n["message"] for n in (said.get("notices") or [])]
-        assert any("does NOT contain" in m for m in messages), messages
+        assert _said(said.get("notices"), "cell.atoms_outside"), (
+            f"the verdict was dropped between validator and wire: "
+            f"{_wheres(said.get('notices'))}")
 
 
 class TestARefusedCellIsA400:

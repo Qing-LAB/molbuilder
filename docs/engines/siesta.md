@@ -180,11 +180,19 @@ As an `Issue` the same advice reaches the browser panel and the CLI report alike
 that is clause **R5** of the delivery contract,
 [`science/validation.md`](?doc=science/validation.md) § 4.1.
 
-Distinct from adequacy, and much smaller: the § 6.1 **minimum-thickness floor**
-gives an isolated axis at least 3 Å per side when the derived box would otherwise
-be thinner than that, so a flat or linear molecule cannot produce a zero-volume
-cell SIESTA would refuse to run. That floor keeps the cell *well-formed*; it says
-nothing about the vacuum being *enough*, which is what the check above is for.
+Distinct from adequacy, and much smaller: the § 6.1 **default vacuum gap** gives
+every isolated axis 3 Å per side **when the user set no vacuum at all**, so a
+flat or linear molecule cannot produce a zero-volume cell SIESTA would refuse to
+run. A vacuum you *did* set is used verbatim, however small — the default fills
+an absence, it never overrides a value.
+
+The default keeps the cell *well-formed*; it says nothing about the vacuum being
+*enough*, which is what the check above is for — and the two speak the same
+physics in different units. **Vacuum is per side, so the gap between periodic
+images is twice it:** the 3 Å default leaves 6 Å between a molecule and its image,
+while the adequacy check asks for 8 Å per side, i.e. a 16 Å gap. So a
+default-gap box is reported as thin, correctly: it is well-formed and not yet
+converged.
 
 *(When the resolved charge ≠ 0, `convert()` additionally writes a
 `makov_payne_correction.py` post-process script — `siesta/makov_payne.py:80,153` —

@@ -113,17 +113,36 @@ export function init(viewer) {
         setIdle($("pv-vac-a"), round(vac[0] || 0));
         setIdle($("pv-vac-b"), round(vac[1] || 0));
         setIdle($("pv-vac-c"), round(vac[2] || 0));
-        // Vacuum ALWAYS has a value -- "unset" is not a state it has -- so what
-        // marks it a default is it being zero on every axis. With an explicit cell
-        // it grows nothing, so the group says so instead of silently doing nothing.
+        // WHAT MARKS IT A DEFAULT: the structure states no vacuum of its own, so
+        // `getVacuum()` answers null while `getUnitCellInfo()` still has a number
+        // -- the raw-vs-effective pair this file's header describes.
+        //
+        // The comment here read "vacuum ALWAYS has a value -- unset is not a state
+        // it has", which was true until 2026-08-03, when `vacuum` became Optional
+        // so that "I want no gap" and "I never chose one" could stop being the
+        // same value.  The all-zero test below still fires for pre-2026-08-03
+        // sidecars, which say [0,0,0] and are READ as unset (cell-plan.md § 5).
+        //
+        // With an explicit cell it grows nothing, so the group says so instead of
+        // silently doing nothing.
         tag("pv-vac-tag", explicitCell
             ? false
             : !rawVacuum || rawVacuum.every(function (x) { return !x; }));
         // Vacuum edits are ALLOWED under an explicit cell -- they reset the box to
         // the derived regime (confirm-gated in wire()).  The note warns; the button
         // stays enabled.
+        // INERT, AND SHOWN TO BE.  The note appears, and the three inputs dim,
+        // so the row does not look like an editable number that will move the
+        // box -- it will not; an explicit cell IS the box
+        // (structure-periodicity.md § 6.1a, matrix A).  They stay ENABLED on
+        // purpose: typing here is how you go back to the derived regime, which
+        // is a real thing to want and is confirm-gated in wire().
         var vacNa = $("pv-vac-na");
         if (vacNa) vacNa.hidden = !explicitCell;
+        ["pv-vac-a", "pv-vac-b", "pv-vac-c"].forEach(function (id) {
+            var f = $(id);
+            if (f) f.classList.toggle("pv-field--inert", explicitCell);
+        });
 
         ["pv-axis-a", "pv-axis-b", "pv-axis-c"].forEach(function (id, i) {
             var sel = $(id);
@@ -217,6 +236,17 @@ export function init(viewer) {
     // Confirm-before for the reset-to-derived edits (vacuum / axis kinds
     // under an explicit cell): the box boundary is about to move — the
     // user must know BEFORE committing (§ 6.2 v3).
+    function _fmtCell(m) {
+        /* The cell about to be discarded, in the user's own numbers.  A
+         * confirm that does not name what it destroys asks you to trust it. */
+        try {
+            return m.map(function (row) {
+                return row.map(function (n) { return Number(n).toFixed(3); })
+                          .join(", ");
+            }).join(" | ");
+        } catch (_) { return "the cell you typed"; }
+    }
+
     function _confirmReset(body) {
         var w = data();
         // Already derived -> nothing to reset, so nothing to confirm. "Derived"
@@ -226,9 +256,15 @@ export function init(viewer) {
         if (!w || w.getUnitCell() === null) return Promise.resolve(true);
         var wm = (window.molbuilder || {}).warningModal;
         if (!wm || !wm.confirm) return Promise.resolve(true);
+        /* NAMES THE CELL, and says the edit is final (2026-08-03).  A
+         * periodicity op never enters MolView's history -- commitPeriodicityOp
+         * calls applyCell directly -- so Ctrl-Z cannot bring the cell back,
+         * and the dialog has to say so before you agree rather than after. */
         return wm.confirm({
-            title: "Reset the box to the derived regime?",
-            body: body,
+            title: "Replace the cell you typed?",
+            body: "This clears the cell you typed (" + _fmtCell(w.getUnitCell())
+                  + ") and works a new box out from the molecule. "
+                  + body + " It cannot be undone.",
             confirmLabel: "Update and reset",
             cancelLabel:  "Cancel",
         });

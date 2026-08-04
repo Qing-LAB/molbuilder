@@ -1410,6 +1410,16 @@
 .molviewer-panel-tab-option:hover > span { color: var(--molviewer-color-panel-text); }
 .molviewer-panel-tab-option:has(input:checked) > span { color: var(--molviewer-color-pick-text); }
 
+/* WHICH REGIME THIS BOX IS IN, above the numbers (structure-periodicity.md
+   § 6.1a, matrix A).  The four rows say whether a value is yours; they never
+   said whether your VACUUM is doing anything, which is what decides if an edit
+   will have any effect.  Quiet by design -- it is orientation, not an alert. */
+.molviewer-cell-regime {
+    margin: 0 0 0.5rem;
+    color: var(--molviewer-color-panel-muted, var(--molviewer-color-panel-text));
+    font: 11px/1.45 var(--molviewer-font-ui, system-ui, sans-serif);
+}
+
 /* Cell readout -- read-only display of the resolved periodicity (stage 2). */
 .molviewer-cell-readout {
     display: grid;
@@ -1426,6 +1436,18 @@
     white-space: pre;                    /* the 3x3 keeps its rows (§3b) */
     font-variant-numeric: tabular-nums;  /* columns line up between redraws */
 }
+/* A VALUE THAT DOES NOT REACH THE CALCULATION.  Under an explicit cell the
+   vacuum is reference-only, so the number is still true of the structure and
+   still shown -- dimmed, and labelled, so nobody edits it expecting the box to
+   move.  Not `[hidden]`: hiding it would answer "what is my vacuum?" with
+   silence. */
+.molviewer-cell-value--inert { opacity: 0.55; }
+.molviewer-cell-inert-tag {
+    opacity: 0.8;
+    font: 10px/1 var(--molviewer-font-ui, system-ui, sans-serif);
+    font-style: italic;
+}
+
 /* The derived-value marker (§ 8.1): a lattice nobody set looks exactly like one
    they did, so the page says which -- quietly, as a qualifier on the value
    rather than a warning about it. */

@@ -48,6 +48,11 @@ import pytest
 
 _L1_MODULES = {
     "structure", "frame", "issues",
+    "cell",              # the ONE cell resolver + checker (cell-plan.md § 6a).
+                         # L1 because it imports ``structure`` and ``issues``
+                         # and nothing else -- which is what lets the L1 gate,
+                         # the L2 validators and the L2 emitter all ask the
+                         # same question of it instead of each answering it.
     "periodicity_gate",  # the frame-contract gate (structure-periodicity.md
                          # 6.1/6.2): defaults + validation for cell / origin /
                          # vacuum / axis kinds.  L1 because it imports
@@ -76,6 +81,15 @@ _L1_MODULES = {
     "persist",           # versioned-document helpers (@major schema check +
                          # JSON IO); pure stdlib, no domain deps -- bench +
                          # jobset persisted artifacts share it.
+    "reload_protocol",   # the two constants the supervisor and its child agree
+                         # on (exit code + env flag).  L1 for a reason the
+                         # design depends on: the SUPERVISOR reads them, and it
+                         # must never import application code -- a child that
+                         # fails to import has to leave the parent alive so the
+                         # next reload can fix the mistake.  It first lived at
+                         # ``web/reload_protocol.py``, where reading it ran
+                         # ``web/__init__.py`` and pulled in the whole app plus
+                         # Flask (docs/ops/server-reload-plan.md 3.3).
 }
 
 _L2_MODULES = {

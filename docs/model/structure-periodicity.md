@@ -40,7 +40,7 @@ file.
 | `cell_origin` | 3 floats (Å) or `null` | world-space **low corner** an explicit `cell` emanates from; lets a cell wrap off-origin atoms without moving them (§ 6) | `null` = `(0,0,0)`; **dropped unless `cell` is explicit** |
 | **`axis_kind`** | 3 × enum `{periodic, isolated, transport}` | **how axis *i* is treated — the authoritative periodicity field** (§ 2) | `(periodic,periodic,periodic)` if a cell is present, else all-`isolated` |
 | `pbc` | 3 bools — **stored, kept in lockstep with `axis_kind`** | ASE-interop view: `periodic\|transport → True`, `isolated → False`; `__post_init__` reconciles the two so they never diverge | derived from `axis_kind` (the richer field: a boolean can't tell `transport` from `periodic`) |
-| `vacuum` | 3 floats (Å) | isolation padding — **nonzero only on an `isolated` axis** | `(0, 0, 0)` |
+| `vacuum` | 3 floats (Å) **or `null`** | isolation padding, **per side** — meaningful only on an `isolated` axis. `null` means *nobody chose one*, which is what earns that axis the default gap (§ 6.1); a stored `[0,0,0]` is read as `null` | `null` (unset) |
 
 `cell` and `axis_kind`, `vacuum`, `cell_origin` all live on `Structure`
 (`structure.py`) and serialize through the one metadata codec
@@ -57,7 +57,7 @@ Every consumer branches on this one field.
 | kind | cell vector on axis *i* | `vacuum[i]` | k-sampleable? | tileable (display) | derived ASE `pbc[i]` | fdf |
 |---|---|---|---|---|---|---|
 | **periodic** | commensurate lattice (construction / import) | 0 | **yes** (a `SiestaConfig` knob) | yes | `True` | k-sampled |
-| **isolated** | `bbox[i] + 2·vacuum[i]` (§ 3) | **> 0** | no (Γ) | no | `False` | Γ box |
+| **isolated** | `bbox[i] + 2·vacuum[i]` (§ 3) | **the only kind it applies to** — unset ⇒ 3 Å default, else exactly what you set | no (Γ) | no | `False` | Γ box |
 | **transport** (semi-infinite) | matched **device length** (captured at construction, § 7) | **0** | no (Γ) | no | `True` | Γ + electrode self-energy |
 
 > **Two physics points the enum encodes** (that a boolean `pbc` could not):
@@ -154,7 +154,7 @@ the box render and the fdf work on a blank molecule.
 | Parameter | Default | Resolver (default → concrete) | Explicit override |
 |---|---|---|---|
 | `cell` | `struct.cell is None` | `resolve_cell()` (§ 4) | `setUnitCell(3×3)` / import / capture → `struct.cell` wins verbatim |
-| `vacuum` | `(0,0,0)` | literal `0` per axis (feeds `resolve_cell`) | `setVacuum([x,y,z])` — grows each isolated axis's box |
+| `vacuum` | `null` (unset) | `effective_vacuum()` — **3 Å per side on each `isolated` axis** (§ 6.1); 0 on periodic / transport, where vacuum does not apply | `setVacuum([x,y,z])` — used verbatim, however small. `null` clears it back to the default |
 | `axis_kind` (pbc) | `isolated` on every axis (a fresh molecule is a vacuum box) | `pbc[i] = axis_kind[i] != "isolated"` | `setAxisKind([...])` |
 
 **Load-bearing rule:** the cell the renderer uses is the **resolved** cell,
@@ -302,34 +302,166 @@ to these or is a bug:
    | explicit `cell` + origin | yes | legal, user-owned; **never rewritten**; vacuum reference-only |
    | explicit `cell` + origin | NO | **user-owned in both halves**: warned (actual per-side clearances reported), **never auto-fixed** — at the live edit *and* on load (a stored manual origin must round-trip verbatim; silently flipping it on reload was the corrected defect) |
 
-   **The minimum-thickness floor** (decided 2026-07-29). On an **isolated** axis
-   whose derived length would come out below **3 Å**, the box uses at least
-   **3 Å of vacuum per side**. A flat or linear molecule — water, benzene, a
-   diatomic — has zero extent along an axis, so with no vacuum it produced a
-   zero-thickness box: a zero determinant that surfaced as a "degenerate cell"
-   error from the emitter and refused a reset-to-derived in the gate. With the
-   floor, **the derived cell is always genuinely three-dimensional and there is
-   always a real gap between periodic images.**
+   **The default vacuum gap** (decided 2026-08-03, replacing the
+   minimum-thickness floor of 2026-07-29). Vacuum has **three** states, not two,
+   and the third is what makes the rule sayable: `None` means *"I never chose
+   one"*, distinct from a chosen zero.
+
+   * **A vacuum is set** → it is used **verbatim**, on every axis, however
+     small. You dictate what you want; a thin gap is *warned about*
+     (`cell.vacuum_thin`) and **never overridden**.
+   * **Nothing is set** → every **isolated** axis gets **3 Å per side**. It is a
+     default **gap**, not a floor on the box length: 3 Å of empty space is 3 Å
+     whether the molecule is 2 Å across or 200 Å, so a large molecule gets it
+     too.
 
    Three properties make it safe:
 
    * It is a **resolved value**, never written back (clause 1):
-     `Structure.effective_vacuum()` applies it, `struct.vacuum` keeps exactly
-     what the user typed, and the wire carries both (`vacuum` +
+     `Structure.effective_vacuum()` supplies it, `struct.vacuum` keeps exactly
+     what the user typed — or `None` — and the wire carries both (`vacuum` +
      `resolved_vacuum`).
-   * It is **never silent**: the gate emits an `info` notice naming the axes and
-     the before → after value, because the box is then thicker than the number
-     on the Cell page.
-   * The **corner uses the same floored value** (`expected_cell_corner`), so a
-     floored axis grows symmetrically and the molecule stays centred.
+   * It is **never silent**: `validate_periodicity` emits an `info` notice on
+     **every hand-over** naming the axes, the gap, and the resulting image
+     distance. (Until 2026-08-03 this was announced only from the vacuum /
+     axis-kind *edit* path, so loading a structure and generating from it said
+     nothing.)
+   * The **corner uses the same value** (`expected_cell_corner`), so the axis
+     grows symmetrically and the molecule stays centred.
 
-   It is a **structural** minimum, not a claim of physical adequacy: 3 Å keeps
-   the cell well-formed, while a converged isolated-molecule calculation wants
-   far more — the SIESTA validator still asks for ≥ 8 Å per side (≥ 25 Å
-   charged) and says so as `cell.vacuum_thin`. Vacuum is meaningless on a
-   periodic axis (the lattice sets the length) and on a transport axis (the
-   device length is matched), so the floor applies to neither, and a
-   zero-extent *transport* axis still refuses to reset to derived.
+   It is a **starting** gap, not a claim of physical adequacy — see the
+   thresholds in § 6.1a. Vacuum is meaningless on a periodic axis (the lattice
+   sets the length) and on a transport axis (the device length is matched), so
+   neither gets a default.
+
+   *What this replaced, and why.* The old rule was a floor on the **box**:
+   `extent + 2·vacuum < 3 Å → vacuum = max(yours, 3)`. It asked about the box
+   rather than about what the user wanted, and got both ends wrong — it **raised
+   a typed 1.0 Å to 3.0**, overriding a stated value, and it left a **large
+   molecule with no gap at all**, because its box already exceeded 3 Å. Both are
+   the same confusion: *a minimum box length is not a vacuum.*
+
+## 6.1a The decision matrices — how the box is made, and what is said about it
+
+Two questions, two tables. Everything on the Cell page is one or the other.
+
+**A. What sets the box, per axis.** Read left to right; the first row that
+matches wins. `extent` is the structure's bounding-box length along that axis.
+
+| Explicit `cell`? | Axis kind | `vacuum` set? | Box length | Low corner | Regime |
+|---|---|---|---|---|---|
+| **yes** | any | *ignored* | **the row you typed** | see the corner rules below | **manual** |
+| no | `isolated` | yes (`v`) | `extent + 2v` | `bbox_min − v` | derived |
+| no | `isolated` | **no** | `extent + 2 × 3 Å` | `bbox_min − 3` | derived |
+| no | `transport` | *never applies* | `extent` | `bbox_min` | derived |
+| no | `periodic` | *never applies* | **refused** the moment the box is resolved — a periodic axis needs a real lattice, never a bounding box | `0` | — |
+
+The one line to carry away: **an explicit cell demotes vacuum to
+reference-only.** Editing vacuum or axis kinds therefore *resets to derived* —
+it clears the cell you typed — which is why that edit warns before committing
+(§ 6.2).
+
+Two traps worth stating outright:
+
+* **The periodic refusal is not at construction.** A `Structure` with a
+  `periodic` axis and no `cell` builds fine; it raises when anything resolves
+  the box. Every seam resolves the box, so it is never emitted — but a test that
+  only constructs one will not see it.
+* **An explicit `cell` with no stated `axis_kind` defaults to `periodic` on all
+  three axes** — the imported-crystal reading. That silently changes two rules
+  at once: vacuum stops applying (§ 2), and *containment stops being required*,
+  because an atom outside a periodic box is a legitimate image. A molecule in a
+  hand-typed box that should be checked for containment needs its axes marked
+  `isolated`.
+
+**Where the corner comes from, under an explicit cell** (`resolve_cell_origin`;
+the low corner the viewer draws from and the shift `render_fdf` applies):
+
+| State | Corner |
+|---|---|
+| You set a `cell_origin` | **yours**, verbatim, never rewritten — even if it does not contain the atoms (you are warned instead) |
+| No origin, box already contains the atoms where they sit | the **world origin** (`None`, no shift) — the imported-crystal case |
+| No origin, atoms outside | the **wrapping corner**, so the box encloses the structure instead of jumping to `(0,0,0)` |
+| No origin, cell fits the structure but not structure + vacuum | the structure **centred** in the box |
+
+**B. What is checked, and who hears it.** The verdict depends on **who is
+asking** — generating a script refuses a box it cannot compute in; loading or
+modifying one reports it, so you can investigate and fix it (§ 8.2).
+
+**Every row has a `where`, and it is the stable id.** Nothing keys on the
+wording — notices carry the id on the wire exactly as `Issue` does, so a
+reworded message never breaks a consumer and a *deleted* check always does.
+
+The first eight come from the one checker, `cell.check` (`molbuilder/cell.py`),
+and reach **both** surfaces. The last three are engine-specific and live with
+the engine that knows them.
+
+| What is true | `where` | Load / modify | Generate |
+|---|---|---|---|
+| No vacuum set; the default gap is sizing the box | `cell.vacuum_defaulted` | `info` | `info` |
+| A vacuum you set is inert, because you typed a cell | `cell.vacuum_ignored` | `info` | `info` |
+| The cell stores no origin, so the corner was worked out | `cell.corner_derived` | `info` | `info` |
+| Atoms outside the box (corner can still be moved) | `cell.atoms_outside` | `warn` | `warn` |
+| Box has **no volume** (`det ≈ 0`) | `cell.no_volume` | `warn` | **error — no script** |
+| Structure longer than the cell — no corner can fit it | `cell.unfittable` | `warn` | **error — no script** |
+| Left-handed cell (`det < 0`) | `cell.left_handed` | `warn` | **error — no script** |
+| A `periodic` axis with no lattice | `cell.unresolvable` | `warn` | **error — no script** |
+| Vacuum below the advisory threshold (below) | `cell.vacuum_thin` | `warn` | `warn` |
+| Measured image distance under 6 Å | `cell.image_distance` | `warn` | `warn` |
+| A repeating axis into a **gas-phase** PySCF script | `cell.periodic_in_gas_phase` | `warn` | `warn` |
+
+**One severity, two verdicts.** The rows above carry *one* severity, and the
+door decides what it costs: `report()` raises on `error`, so a generating door
+refuses; a loading or modifying door reports the same finding as a warning so
+the structure still opens and can be fixed. Nothing is softened — it is the
+same finding answered to a different question.
+
+**And a value you have just typed is refused outright** (HTTP 400), on the four
+error rows, because the Cell page's whole subject is that value and a good one
+entered straight after is accepted (§ 8.2). So a `0` vacuum on a flat axis is
+rejected at the keystroke, while a *file* holding that state opens and reports
+`cell.no_volume`.
+
+A `400` is for a state that **cannot be represented at all**, or for a value you
+have *just typed* into the field whose whole subject is that value — immediate
+feedback, and a good value entered straight after is accepted (§ 8.2). Everything
+else is a finding that travels to the user and leaves the decision with them.
+
+That is why the same zero-volume box appears twice above. Typing a `0` vacuum on
+a flat axis is refused *at the keystroke*; a **file** that already holds that
+state still opens, and is reported, because a load that refused would leave a
+broken box unopenable and therefore unfixable.
+
+**The two thin-gap checks, in one currency.** They look like duplicates and are
+not — they measure a *setting* and a *result*, and the bridge is one line of
+arithmetic:
+
+> **Vacuum is per side. The gap between periodic images is twice it.**
+
+`cell.image_distance` measures the real thing directly: the closest approach
+between any atom and any atom in a neighbouring cell. Along `z` in an orthogonal
+box that is `(top − max z) + (min z − bottom)` — the empty space below the
+molecule plus the empty space above it, which is what an atom actually crosses
+to meet its image. In a *derived* box the molecule is centred, so this comes out
+at exactly `2 × vacuum`; in a *manual* box, or one with a hand-set origin, it
+does not, and only the measurement is trustworthy.
+
+| Check | Asks about | Warns below | Same thing in the other currency |
+|---|---|---|---|
+| `cell.vacuum_thin` | the vacuum you **set** (or defaulted to) | 8 Å per side, 25 Å charged | an image gap of 16 Å / 50 Å |
+| `cell.image_distance` | the gap **achieved**, measured from the atoms | 6 Å image gap | 3 Å per side |
+
+So they are **nested, not contradictory**: `vacuum_thin` is the *advice*
+(converged isolated-molecule work wants a generous gap), `image_distance` is the
+*alarm* (below this, images are demonstrably interacting). A 4 Å-per-side box
+trips the advice and not the alarm — correctly. The **3 Å default trips only the
+advice**, which is the honest reading of a starting value: well-formed, not yet
+converged.
+
+`cell.vacuum_thin` is skipped entirely in the **manual** regime. Vacuum is
+reference-only there, so reporting it would be a number that never reaches the
+calculation — a molecule in a hand-typed 30 Å box would be told its vacuum is
+thin. On a typed box `cell.image_distance` is the check that means anything.
 
    **"No explicit origin" means "derive the corner"** (decided 2026-07-29, after
    the live pass on `projects/hemeC-dithiol`). The corner for row 3 used to be

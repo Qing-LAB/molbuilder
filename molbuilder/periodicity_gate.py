@@ -90,7 +90,7 @@ _EPS = 1e-6
 OPS = ("vacuum", "axis_kind", "cell", "cell_origin")
 
 
-def _notice(level: str, message: str) -> Dict[str, str]:
+def _notice(level: str, message: str, where: str = "cell.edit") -> Dict[str, str]:
     """One notice: how loud, what it says, and WHAT IT IS ABOUT.
 
     ``about`` is the subject, and it is what decides where the message is shown
@@ -103,8 +103,65 @@ def _notice(level: str, message: str) -> Dict[str, str]:
     from where it CAME FROM instead -- a load, or a cell edit.  That put a
     warning about an unusable box above the atom list whenever it arrived with
     a file, which is not where anybody can act on it.
+
+    ``where`` IS THE STABLE ID (added 2026-08-03), the same one ``Issue``
+    carries, because these entries now come from ``cell.check`` and a finding
+    must be identifiable without reading its prose.  Its absence is why four
+    tests matched on message TEXT -- pinning the wording of a sentence this
+    module's own header says callers must never parse -- so a reworded message
+    broke tests while a deleted check would not have.
+
+    CONDITIONS take the checker's id (``cell.no_volume``, ``cell.atoms_outside``
+    …).  RECEIPTS -- what an edit just did -- default to ``cell.edit``: they are
+    not findings, they have no verdict, and nothing should key on an individual
+    one.
     """
-    return {"level": level, "message": message, "about": "cell"}
+    return {"level": level, "message": message,
+            "where": where, "about": "cell"}
+
+
+def _refuse_on_error(s: Structure) -> None:
+    """Raise on the first error the ONE checker finds in ``s``'s box.
+
+    The edit door's half of § 8.2: the Cell page refuses the value you type,
+    because its whole subject is that value and a good one entered straight
+    after is accepted.  A structure that ARRIVED holding the same state is
+    reported instead (``ok_structure_response``) -- same checker, two verdicts.
+
+    This is what ``_require_right_handed`` and ``_too_small_axes`` used to do
+    inline.  They asked the same two questions ``cell.check`` asks, in their own
+    words and at their own thresholds, and a third copy lived in the emitter.
+    """
+    from .cell import resolve_and_check
+    _rc, issues = resolve_and_check(s)
+    for i in issues:
+        if i.severity == "error":
+            raise ValueError(i.message)
+
+
+def notices_for_report(issues) -> List[Dict[str, str]]:
+    """Findings as wire notices, for a door that REPORTS rather than refuses.
+
+    THE ONE SERIALIZER.  Every notice on the wire is made here, from an
+    ``Issue`` that ``cell.check`` produced -- so the id, the wording and the
+    subject travel together and no door invents its own shape.
+    ``ok_structure_response`` used to catch the gate's ``ValueError`` and
+    rebuild a notice by hand from ``str(exc)``, which silently dropped the id
+    and left the front end with a message it could not identify.
+
+    **Error becomes warn here, deliberately.**  § 8.2: a request that is
+    *loading or modifying* reports a bad box, with the structure, so the user
+    can see the problem and fix it; only a request that is *generating
+    something you would run* refuses.  The severity is not being softened --
+    ``report(validate(...))`` still raises on the same finding at the emit
+    door.  What changes is who is being answered.
+    """
+    return [
+        _notice("warn" if i.severity == "error" else i.severity,
+                i.message, i.where)
+        for i in issues
+    ]
+
 
 
 def expected_corner(struct: Structure) -> np.ndarray:
@@ -138,22 +195,6 @@ def contains_atoms(struct: Structure,
     return struct.cell_contains_atoms(origin)
 
 
-def _too_small_axes(struct: Structure) -> List[int]:
-    """Non-periodic axes whose FRACTIONAL extent exceeds 1 — the structure
-    cannot fit along them for ANY origin choice.  Measured along the cell
-    axes (triclinic-safe), never bbox-vs-row-norm."""
-    if struct.cell is None or struct.n_atoms == 0:
-        return []
-    frac = _fractional(struct, np.zeros(3))
-    kinds = struct.axis_kind or ("isolated",) * 3
-    out = []
-    for i in range(3):
-        if kinds[i] == "periodic":
-            continue
-        if float(frac[:, i].max() - frac[:, i].min()) > 1.0 + 2 * _EPS:
-            out.append(i)
-    return out
-
 
 def clearances(struct: Structure, origin: Optional[np.ndarray]) -> List[
         Tuple[float, float]]:
@@ -176,13 +217,6 @@ def _clearance_text(struct: Structure, origin) -> str:
     return ", ".join(f"axis {i}: ({n:.2f}, {f:.2f})"
                      for i, (n, f) in enumerate(gaps))
 
-
-def _require_right_handed(cell: np.ndarray) -> None:
-    det = float(np.linalg.det(cell))
-    if det <= 0.0:
-        raise ValueError(
-            f"cell must be right-handed (det > 0); got det = {det:.6g}. "
-            f"Swap two lattice vectors or negate one (§ 6.1).")
 
 
 def validate_periodicity(struct: Structure) -> Tuple[Structure, List[dict]]:
@@ -215,53 +249,31 @@ def validate_periodicity(struct: Structure) -> Tuple[Structure, List[dict]]:
     the one seam every structure passes through rather than an optional check.
 
     Raises ``ValueError`` (the door maps it to HTTP 400) for a left-handed
-    cell (``det <= 0``) or one no origin could make contain the structure."""
-    notices: List[dict] = []
-    if struct.cell is None or struct.n_atoms == 0:
-        return struct, notices                      # derived: nothing stored
-    cell = np.asarray(struct.cell, dtype=float)
-    _require_right_handed(cell)
-    origin = struct.cell_origin
-    if contains_atoms(struct, origin):
-        return struct, notices                      # legal rows 2 / 4
-    if origin is not None:
-        # Row 5 (both halves): an EXPLICIT origin is user-owned — warn,
-        # never overwrite.  (Healing a stored manual origin silently
-        # flipped what the user typed on the next round-trip — review
-        # finding, 2026-07-29.)
-        notices.append(_notice(
-            "warn",
-            "the box does NOT contain the structure along a non-periodic "
-            "axis — per-axis (near, far) clearances in Å: "
-            + _clearance_text(struct, origin)
-            + ". The manual origin is kept as typed (user-owned); vacuum "
-            "values are not respected under a manual origin."))
-        return struct, notices
-    # Row 3: explicit cell, NO stored origin.  Since the 2026-07-29 decision
-    # this state is LEGAL and needs no repair: "no explicit origin" means
-    # "derive the corner", so ``resolve_cell_origin`` already returns the
-    # wrapping (or centred) corner and the box encloses the structure.  The
-    # gate therefore VALIDATES and INFORMS here — it does not write a resolved
-    # view back into the truth (§ 6.1 clause 1).  Materialising the corner was
-    # the old behaviour, and it disagreed with the reset-origin op, which left
-    # the same state alone: one state, two answers (the bug this closes).
-    bad = _too_small_axes(struct)
-    if bad:
-        raise ValueError(
-            "explicit cell cannot contain the structure along "
-            f"non-periodic axis(es) {bad} for ANY origin (fractional "
-            "extent > 1); enlarge the cell along those axes or clear it "
-            "to return to the derived box.")
-    corner = struct.resolve_cell_origin()
-    notices.append(_notice(
-        "info",
-        "the explicit cell stores no origin, so the box corner is DERIVED: "
-        f"{np.round(np.asarray(corner, dtype=float), 4).tolist()} "
-        "(bbox_min − vacuum per isolated axis; centred where the per-side "
-        "vacuum does not fit). The box wraps the structure, nothing was "
-        "changed, and vacuum stays reference-only under an explicit "
-        "cell (§ 6.1)."))
-    return struct, notices
+    cell (``det <= 0``) or one no origin could make contain the structure.
+
+    ONE LINE SINCE 2026-08-03 (cell-plan.md § 6a).  This function used to walk
+    the § 6.1 state table itself -- five branches, two of which raised and three
+    of which built notices by hand -- while ``validation/`` judged the same box
+    separately in its own vocabulary.  It now does what every other consumer
+    does: ``cell.resolve_and_check(struct)``, once, and hands the findings on.
+
+    The row-by-row reasoning did not disappear; it moved into ``cell.check``
+    where it is stated once and reaches BOTH surfaces.  What did disappear is
+    this function's ability to disagree with the validator about the same box.
+    """
+    from .cell import resolve_and_check
+
+    _rc, issues = resolve_and_check(struct)
+    # ERRORS STILL RAISE HERE, because this door's callers are mid-edit and a
+    # state that cannot be represented has to become an HTTP 400 rather than a
+    # structure nobody can act on (§ 8.2's "the Cell page refuses the value you
+    # type").  The LOADING doors call ``cell.check`` directly and report the
+    # same Issues instead -- one checker, two verdicts, exactly as the contract
+    # says.
+    fatal = [i for i in issues if i.severity == "error"]
+    if fatal:
+        raise ValueError(fatal[0].message)
+    return struct, [_notice(i.severity, i.message, i.where) for i in issues]
 
 
 def _reset_to_derived(s: Structure, what: str,
@@ -270,13 +282,19 @@ def _reset_to_derived(s: Structure, what: str,
     axis_kind} moves the box back to the DERIVED regime — explicit cell +
     origin cleared, boundary recomputed from the structure + vacuum.
 
-    Refuses when the derived box would be DEGENERATE.  On an ISOLATED axis that
-    can no longer happen — the § 6.1 minimum-thickness floor gives a flat or
+    Refuses when the derived box would be DEGENERATE.  On an ISOLATED axis with
+    no vacuum set that can no longer happen — the § 6.1 default gives a flat or
     linear molecule a real 3 Å-per-side gap (``Structure.effective_vacuum``), so
     a planar structure resets cleanly now instead of being told to set a vacuum
-    first.  A TRANSPORT axis still refuses: its length is the captured device
-    length, vacuum does not apply there, and a zero-extent bbox cannot
-    reproduce it."""
+    first.  With a vacuum of 0 explicitly SET it can still happen, and must: the
+    typed value is never overridden.  A TRANSPORT axis still refuses: its length
+    is the captured device length, vacuum does not apply there, and a zero-extent
+    bbox cannot reproduce it.
+
+    Says nothing about the default gap itself.  ``validate_periodicity`` runs on
+    the RESULT of every edit (build.py::api_structure_periodicity) and reports it
+    there, for every hand-over rather than only for an edit — a second producer
+    here just delivered the same sentence twice."""
     if s.n_atoms:
         ext = s.positions.max(axis=0) - s.positions.min(axis=0)
         kinds = s.axis_kind or ("isolated",) * 3
@@ -299,31 +317,6 @@ def _reset_to_derived(s: Structure, what: str,
             "explicit cell and origin were reset, and the boundary is now "
             "recomputed from the structure size + per-direction vacuum "
             "(molecule centred on isolated axes)."))
-    notices.extend(_floor_notices(s))
-
-
-def _floor_notices(s: Structure) -> List[dict]:
-    """Say so when the § 6.1 minimum-thickness floor is in effect.
-
-    The box is then THICKER than the vacuum shown on the Cell page, and that
-    must never be a surprise -- the stored vacuum keeps what the user typed (a
-    resolved value is never written back), so the only way they learn the box
-    used something else is if we tell them."""
-    axes = s.vacuum_floor_axes()
-    if not axes:
-        return []
-    eff = s.effective_vacuum()
-    where = ", ".join(
-        f"axis {i} ({float(s.vacuum[i]):g} → {eff[i]:g} Å)" for i in axes)
-    return [_notice(
-        "info",
-        f"minimum-thickness floor applied to the derived box: {where}. A flat "
-        f"or linear molecule would otherwise give a zero-thickness cell, so "
-        f"the box uses at least 3 Å per side on such an axis. Your stored "
-        f"vacuum is unchanged; this is the value the box was drawn and emitted "
-        f"with (§ 6.1). It keeps the cell well-formed — it is NOT enough vacuum "
-        f"for a converged isolated-molecule run (see the vacuum adequacy "
-        f"check)." )]
 
 
 def apply_edit(struct: Structure, op: str,
@@ -342,15 +335,36 @@ def apply_edit(struct: Structure, op: str,
     kinds = s.axis_kind or ("isolated",) * 3
 
     if op == "vacuum":
-        v = [float(x) for x in (payload or [])]
-        if len(v) != 3 or any(x < 0 for x in v):
-            raise ValueError("vacuum must be 3 non-negative floats (Å)")
+        # ``null`` CLEARS -- the third state the model gained on 2026-08-03.
+        # molview.md § 9.5 has always documented this payload as "null
+        # clears"; until vacuum became Optional there was nothing to clear
+        # TO, and this branch raised "must be 3 non-negative floats".
+        if payload is None:
+            v = None
+        else:
+            try:
+                v = [float(x) for x in payload]
+            except (TypeError, ValueError):
+                raise ValueError(
+                    "vacuum must be 3 non-negative floats (Å), or null to "
+                    "clear it") from None
+            if len(v) != 3 or any(x < 0 for x in v):
+                raise ValueError(
+                    "vacuum must be 3 non-negative floats (Å), or null to "
+                    "clear it")
         if "periodic" in kinds:
             raise ValueError(
                 "cannot re-derive the box while an axis is periodic (a "
                 "bounding box is not a lattice) — make the axis isolated "
                 "first, or edit the cell explicitly (§ 6.2)")
-        s.vacuum = tuple(v)
+        s.vacuum = None if v is None else tuple(v)
+        if v is None:
+            # A RECEIPT, not an explanation: what the default now is, and what
+            # it leaves between images, is a CONDITION of the resulting box,
+            # and ``cell.check`` says it on this same response (the
+            # door re-validates the result).  Saying it twice is what
+            # ``_floor_notices`` used to do.
+            notices.append(_notice("info", "vacuum cleared."))
         _reset_to_derived(s, "vacuum", notices)
         s.__post_init__()
         return s, notices
@@ -402,11 +416,11 @@ def apply_edit(struct: Structure, op: str,
         except (TypeError, ValueError):
             raise ValueError(
                 "cell must be a 3×3 matrix of numbers (Å)") from None
-        _require_right_handed(cell)
         s.cell = cell
         if s.cell_origin is not None:
             # v3 precedence: respect the existing explicit ORIGIN first.
             s.__post_init__()
+            _refuse_on_error(s)
             # RECEIPT ONLY. Whether the result contains the structure is a
             # CONDITION, and conditions are answered once, by validate_periodicity
             # on the result (molview.md § 6.8).  Saying it here too put the same
@@ -420,16 +434,15 @@ def apply_edit(struct: Structure, op: str,
         # A cell the structure cannot fit for ANY origin is REFUSED, not
         # stored — a stored-but-invalid cell locked every later door
         # (review finding, 2026-07-29).
-        bad = _too_small_axes(s)
-        if bad:
-            raise ValueError(
-                "the new cell cannot contain the structure along "
-                f"non-periodic axis(es) {bad} (fractional extent > 1); "
-                "enlarge the cell along those axes.")
         # No explicit origin: leave it unset — the corner is DERIVED from the
         # structure + vacuum by ``resolve_cell_origin``, so the box wraps the
         # structure without storing a computed value as truth (§ 6.1 clause 1).
         s.__post_init__()
+        # A cell the structure cannot fit for ANY origin is REFUSED, not
+        # stored — a stored-but-invalid cell locked every later door (review
+        # finding, 2026-07-29).  Asked of the ONE checker now, so the rule and
+        # its wording live in a single place.
+        _refuse_on_error(s)
         notices.append(_notice(
             "info",
             "explicit cell set (origin first, then vacuum — § 6.2); no "
@@ -469,11 +482,11 @@ def apply_edit(struct: Structure, op: str,
     # § 6.8) -- merging them in as well put the same containment warning in one
     # answer twice, word for word.
     s, conditions = validate_periodicity(s)
-    if not conditions:
-        notices.append(_notice(
-            "warn",
-            "cell_origin set. Vacuum values are NOT respected under a "
-            "manual origin — only the unit-cell parameters are. Per-axis "
-            "(near, far) clearances in Å: "
-            + _clearance_text(s, s.cell_origin) + "."))
+    # A RECEIPT ONLY.  This used to append a warn behind `if not conditions:`
+    # -- so the sentence saying why your vacuum stopped mattering was dropped
+    # precisely when the box also had a problem (cell-plan.md § 3c).  That fact
+    # is a CONDITION now (``cell.vacuum_ignored``), reported on every hand-over
+    # whenever it is true, and the clearances ride with the containment finding
+    # that is about them.
+    notices.append(_notice("info", "cell_origin set."))
     return s, notices

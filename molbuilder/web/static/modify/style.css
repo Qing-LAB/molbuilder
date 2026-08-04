@@ -647,3 +647,17 @@ footer a:hover { color: var(--accent-hover); }
 }
 .modify-cell-select { font-family: system-ui, sans-serif; text-align: left; }
 .modify-cell-actions { display: flex; gap: var(--space-sm); }
+
+/* A CELL FIELD THAT IS CURRENTLY INERT (structure-periodicity.md § 6.1a).
+   When the structure states an explicit cell, that cell IS the box and the
+   vacuum inputs beside it grow nothing.  They are dimmed rather than disabled:
+   typing here is exactly how you go back to the derived regime, which is a real
+   thing to want -- and is confirm-gated before it discards your cell.  Dimming
+   says "this is not doing anything right now"; disabling would say "you may not
+   do this", which is false. */
+.pv-field--inert {
+    opacity: 0.55;
+}
+.pv-field--inert:focus {
+    opacity: 1;                 /* you are using it -- stop apologising */
+}
