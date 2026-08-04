@@ -370,6 +370,58 @@ def test_selecting_an_atom_wakes_the_controls_that_need_one(
     assert "#1" in page.locator("#add-anchor-readout").inner_text()
 
 
+def test_the_edit_survives_a_page_reload(
+        page, flask_server, labelled_xyz):
+    """§ 11.2a: "the sequence outlives the page" — a fresh viewer ADOPTS the
+    draft already in storage, and what comes back is the DRAFT, not the point.
+
+    NOTHING IN THIS SUITE RELOADED A PAGE until 2026-08-04 — thirteen e2e files,
+    zero ``page.reload()``.  So the whole of #44 was unguarded: the write half
+    (history.js called a two-call door no workspace has ever had, so nothing was
+    saved and every stub satisfied it perfectly) and the read half (``load(0)``
+    refused on a fresh viewer, so the bytes were on disk and nothing could reach
+    them).  A GENERATED structure — SMILES, DNA, peptide, no file behind it —
+    was simply gone on leaving the tab.  It was verified once by hand and never
+    since.
+
+    Three things must come back, and they are the three a reopened page cannot
+    infer: the atoms as EDITED (not as loaded), the unsaved badge, and the
+    position in the sequence.  Asserting only the atom count would pass on a
+    viewer that re-read the FILE and threw the edit away.
+    """
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    before = _atom_count(page)
+
+    _pick_atom(page, 1)
+    page.wait_for_function(
+        "() => !document.getElementById('delete-apply').disabled",
+        timeout=_ACT_MS)
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        f"() => /of {before - 1} selected/.test("
+        "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
+        timeout=_ACT_MS)
+    page.wait_for_selector(_BADGE, state="visible", timeout=_ACT_MS)
+
+    page.reload()
+    page.wait_for_selector(_CARD, timeout=_BOOT_MS)
+    page.wait_for_selector(f"{_CARD} canvas", timeout=_BOOT_MS)
+    page.wait_for_function(
+        "() => /\\d+ of [1-9]\\d* selected/.test("
+        "  document.querySelector('.molviewer-selection-count')?.textContent || '')",
+        timeout=_BOOT_MS)
+
+    assert _atom_count(page) == before - 1, (
+        f"the reopened page shows {_atom_count(page)} atoms, not the {before - 1} "
+        f"the edit left -- the draft was not adopted, or the FILE was re-read "
+        f"and the edit thrown away")
+    assert page.locator(_BADGE).is_visible(), (
+        "the unsaved badge did not come back: `dirty` is one of the three "
+        "fields that must travel WITH the draft, because a reopened page has "
+        "no way to work it out")
+
+
 def test_an_edit_changes_the_structure_and_raises_the_unsaved_badge(
         page, flask_server, labelled_xyz):
     """Delete removes the atom, the count follows, and the badge appears.

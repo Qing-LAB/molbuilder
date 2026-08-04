@@ -106,6 +106,34 @@ def water_xyz_file(tmp_path, monkeypatch):
     return str(p)
 
 
+@pytest.fixture
+def two_xyz_files(tmp_path, monkeypatch):
+    """TWO structures with DIFFERENT atom counts, in one picker root.
+
+    Different counts on purpose: the atom-count line is what tells the two
+    apart, so a viewer that ignored the second file would show 3 where the test
+    demands 5.  Same-sized structures would let that pass.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    first = tmp_path / "water.xyz"
+    first.write_text(
+        "3\nwater\n"
+        "O 0.000  0.000 0.000\n"
+        "H 0.957  0.000 0.000\n"
+        "H -0.239 0.927 0.000\n"
+    )
+    second = tmp_path / "methane.xyz"
+    second.write_text(
+        "5\nmethane\n"
+        "C  0.000  0.000  0.000\n"
+        "H  0.629  0.629  0.629\n"
+        "H -0.629 -0.629  0.629\n"
+        "H -0.629  0.629 -0.629\n"
+        "H  0.629 -0.629 -0.629\n"
+    )
+    return str(first), str(second)
+
+
 # --------------------------------------------------------------------- #
 #  Helpers                                                              #
 # --------------------------------------------------------------------- #
@@ -467,6 +495,68 @@ class TestSidebarPickLoad:
             "() => document.querySelector('#info-atoms').textContent"
             ".trim() === '3'",
             timeout=_BOOT_TIMEOUT_MS,
+        )
+
+    def test_a_second_file_replaces_the_first_in_one_visit(
+            self, page, flask_server, two_xyz_files):
+        """PICK ONE FILE, THEN ANOTHER, WITHOUT LEAVING THE PAGE.
+
+        THE BUG THIS EXISTS FOR (#51).  This tab mounts MolView read-only, and
+        `installMolecule` refuses to REPLACE what a read-only viewer already
+        holds unless the caller says it means to (§ 9.4).  `openMolecule` is the
+        user pressing Load, so it passes `enforce: true` -- and until it did,
+        every read-only surface (this tab, spectra, transport, the results
+        inspector) would load ONE file per page and then silently ignore every
+        later pick.  The viewer answered null, nothing threw, and the old
+        structure stayed on screen.
+
+        NOTHING GUARDED IT.  Every commit test here commits a single file, and
+        the second-visit class covers navigating away and back, or the SAME file
+        changed on disk -- neither is a second pick in one visit.  Delete the
+        word `enforce` from projects/parser.js today and the whole suite still
+        passes.
+
+        The two fixtures have different atom counts because that is the only
+        thing on screen that can tell them apart.
+        """
+        first, second = two_xyz_files
+        _open_build(page, flask_server)
+        page.wait_for_function(
+            "() => window.molbuilder "
+            "&& window.molbuilder.projects "
+            "&& typeof window.molbuilder.projects.publishCommit "
+            "       === 'function'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+        from pathlib import Path
+
+        def commit(path):
+            p = str(Path(path).resolve())
+            page.evaluate(
+                """(ctx) => window.molbuilder.projects.publishCommit(
+                    ctx.dir, ctx.file)""",
+                {"dir": str(Path(p).parent), "file": p},
+            )
+
+        commit(first)
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent"
+            ".trim() === '3'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+
+        commit(second)
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent"
+            ".trim() === '5'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+        assert page.evaluate(
+            "() => document.querySelector('#info-atoms').textContent.trim()"
+        ) == "5", (
+            "the second file did not replace the first -- a read-only viewer "
+            "refused the install and said nothing, which is exactly what "
+            "`enforce` exists to prevent"
         )
 
     def test_form_edits_followed_by_commit_fires_warning(
