@@ -41,8 +41,13 @@ row ends in "legal" -- the gate reports, it does not repair:
   | explicit cell + origin      |    no     | user-owned in BOTH halves:    |
   |                             |           | warn, never auto-fix          |
 
-``expected_corner`` respects the per-direction vacuum: ``bbox_min −
-vacuum`` on isolated axes, ``bbox_min`` on transport, ``0`` on periodic.
+The corner respects the per-direction vacuum -- ``bbox_min − vacuum`` on
+isolated axes, ``bbox_min`` on transport, ``0`` on periodic -- and the rule
+lives ONCE, on ``Structure`` (``expected_cell_corner`` /
+``cell_contains_atoms``).  This module used to re-export both under second
+names; they were one-line delegates whose only callers were tests, so a
+reader had two names for one rule and no way to tell which was authoritative.
+Removed 2026-08-03; ask ``Structure``.
 
 NOTHING IS MATERIALISED (decided 2026-07-29).  "No explicit origin" means
 "derive the corner" — ``Structure.resolve_cell_origin`` answers it at every
@@ -55,26 +60,29 @@ user had been shown.  The rule now lives once, on ``Structure``
 delegates to it.
 
 Notices (the machine-readable half of the contract).  Every entry is
-``{"level": "info"|"warn", "message": str}``.  A notice that reports state
-the gate corrected would have carried a marker; NOTHING DOES, and nothing
-should: clause 1 forbids writing a resolved value back, so there is no
-correction to mark.  The web load
-door keys on it to mark the session dirty (the disk pair still holds the
-old value until the user saves), so the key is load-bearing, not
-decoration.  Callers surface notices; they never parse the message text.
+``{"level", "message", "where", "about"}`` -- FOUR keys since 2026-08-03.
+``where`` is the stable id ``Issue`` carries, because the conditions now come
+from ``cell.check`` and a finding has to be identifiable without reading its
+prose; ``about`` is the subject, which is what decides where it is shown.
+Callers surface notices; they never parse the message text.
 
-Errors vs notices.  ``ValueError`` (mapped to HTTP 400 by the door) is
-raised ONLY for states that cannot be represented: a left-handed cell
-(``det <= 0``), a cell no origin could make contain the structure
-(fractional extent > 1 on a non-periodic axis), a degenerate derived box
-(zero extent and no vacuum), a periodic axis with no explicit cell, and
-malformed payloads.  Everything else — including a box that does not
-contain its atoms under a user-owned origin — is a notice, never an
-exception: the gate reports, the user decides.
+A notice that reports state the gate corrected would have carried a marker;
+NOTHING DOES, and nothing should: clause 1 forbids writing a resolved value
+back, so there is no correction to mark.
+
+Errors vs notices.  ``ValueError`` (mapped to HTTP 400 by the door) is raised
+for a malformed payload, and for any error-severity finding ``cell.check``
+returns -- this module no longer decides WHICH states those are, it asks
+(``_refuse_on_error``).  The list used to be repeated here and enforced by
+three hand-written checks in this file; they asked the same questions in
+their own words, at their own thresholds, and are gone (cell-plan.md § 6a).
+Everything else — including a box that does not contain its atoms under a
+user-owned origin — is a notice, never an exception: the gate reports, the
+user decides.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
@@ -163,59 +171,6 @@ def notices_for_report(issues) -> List[Dict[str, str]]:
     ]
 
 
-
-def expected_corner(struct: Structure) -> np.ndarray:
-    """The § 6.1 'correct corner': the low corner that wraps the structure
-    honouring the per-direction vacuum on isolated axes.
-
-    Delegates to :meth:`Structure.expected_cell_corner` — the rule lives with
-    the view resolver so the gate and ``resolve_cell_origin`` can never fork
-    (they did: the gate healed a state the resolver drew from ``(0,0,0)``)."""
-    return struct.expected_cell_corner()
-
-
-def _fractional(struct: Structure, origin: np.ndarray) -> np.ndarray:
-    """Fractional coordinates of every atom relative to (origin, cell).
-    Triclinic-safe: solves cell.T @ frac = (pos - origin)."""
-    rel = struct.positions.astype(float) - origin.reshape(1, 3)
-    return np.linalg.solve(np.asarray(struct.cell, dtype=float).T, rel.T).T
-
-
-def contains_atoms(struct: Structure,
-                   origin: Optional[np.ndarray] = None) -> bool:
-    """True when every atom sits inside ``[origin, origin + cell)`` along
-    every NON-PERIODIC axis (with tolerance).  Along a periodic axis atoms
-    outside the cell are legitimate periodic images (SIESTA wraps them), so
-    containment is NEVER required there — requiring it made real crystals
-    and junction files unopenable (review finding, 2026-07-29).
-    ``origin=None`` means the world origin (imported-crystal semantics).
-
-    Delegates to :meth:`Structure.cell_contains_atoms` (one definition,
-    shared with the view resolver)."""
-    return struct.cell_contains_atoms(origin)
-
-
-
-def clearances(struct: Structure, origin: Optional[np.ndarray]) -> List[
-        Tuple[float, float]]:
-    """Per-axis (near, far) gaps in Angstrom between the structure and the
-    box faces, measured along each cell axis (for the § 6.2 origin-edit
-    warning).  Negative = atoms poke out that face."""
-    o = (np.zeros(3) if origin is None
-         else np.asarray(origin, dtype=float).reshape(3))
-    frac = _fractional(struct, o)
-    lens = np.linalg.norm(np.asarray(struct.cell, dtype=float), axis=1)
-    out = []
-    for i in range(3):
-        out.append((float(frac[:, i].min() * lens[i]),
-                    float((1.0 - frac[:, i].max()) * lens[i])))
-    return out
-
-
-def _clearance_text(struct: Structure, origin) -> str:
-    gaps = clearances(struct, origin)
-    return ", ".join(f"axis {i}: ({n:.2f}, {f:.2f})"
-                     for i, (n, f) in enumerate(gaps))
 
 
 

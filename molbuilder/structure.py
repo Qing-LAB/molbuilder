@@ -44,7 +44,7 @@ import os
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union  # noqa: F401 -- `Any` annotates AtomChannel.data
 
 import numpy as np
 

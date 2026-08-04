@@ -210,19 +210,29 @@ def resolve(struct: Structure, *,
     else:
         corner = np.asarray(corner, dtype=float)
 
+    # TWO fractional projections, and only two: one from the corner this box
+    # actually has, one from the world origin.  Everything below derives from
+    # those, and the determinant is taken once.
+    #
+    # It was THREE, plus two determinants -- `_unfittable` projected at the
+    # world origin while `contains_at_world_origin` projected the same thing
+    # again, inside the module whose whole claim is that the box is worked out
+    # ONCE.  Solving a 3x3 per atom is cheap; a module that does not keep its
+    # own promise is not.
     frac_at_corner = _fractional(struct, box, corner)
+    frac_at_origin = _fractional(struct, box, np.zeros(3))
+    det = float(np.linalg.det(box))
     return ResolvedCell(
         box=box,
         corner=corner,
-        volume=abs(float(np.linalg.det(box))),
+        volume=abs(det),
         contains_atoms=_contains(frac_at_corner, kinds),
-        right_handed=float(np.linalg.det(box)) > 0.0,
-        unfittable_axes=_unfittable(struct, box, kinds),
+        right_handed=det > 0.0,
+        unfittable_axes=_unfittable(frac_at_origin, kinds),
         corner_was_derived=(struct.cell is not None
                             and struct.cell_origin is None),
         clearances=_clearances(frac_at_corner, box),
-        contains_at_world_origin=_contains(
-            _fractional(struct, box, np.zeros(3)), kinds),
+        contains_at_world_origin=_contains(frac_at_origin, kinds),
         **common,
     )
 
@@ -263,15 +273,18 @@ def _contains(frac: Optional[np.ndarray], kinds: Sequence[str]) -> bool:
     return True
 
 
-def _unfittable(struct: Structure, box: np.ndarray,
+def _unfittable(frac: Optional[np.ndarray],
                 kinds: Sequence[str]) -> Tuple[int, ...]:
     """Non-periodic axes the structure cannot fit along for ANY origin.
 
     The distinction from containment is the actionable one: a contained-ness
     failure is fixed by moving the corner, this one cannot be — the cell is
     simply too short along that axis.
+
+    Measured on the SPAN of the fractional coordinates, which no choice of
+    origin changes -- so the caller passes the projection it already made
+    rather than this making a second one.
     """
-    frac = _fractional(struct, box, np.zeros(3))
     if frac is None:
         return ()
     return tuple(

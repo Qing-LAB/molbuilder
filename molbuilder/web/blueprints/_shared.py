@@ -26,7 +26,6 @@ import typing
 from dataclasses import fields
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
 from flask import jsonify
 
 from molbuilder.structure import (

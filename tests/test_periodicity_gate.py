@@ -12,7 +12,7 @@ import pytest
 
 from molbuilder.structure import Structure
 from molbuilder.periodicity_gate import (
-    OPS, apply_edit, contains_atoms, expected_corner, validate_periodicity)
+    OPS, apply_edit, validate_periodicity)
 
 
 def _mol(off=(10.0, 10.0, 10.0), vacuum=(2.5, 2.5, 2.5)):
@@ -102,7 +102,7 @@ class TestTheStateTable:
         out, notes = validate_periodicity(s)
         assert out.cell_origin is None               # truth untouched
         assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
-        assert contains_atoms(out, out.resolve_cell_origin())
+        assert out.cell_contains_atoms(out.resolve_cell_origin())
         assert notes and notes[0]["level"] == "info"
         # A notice says how loud it is, what it says, and WHAT IT IS ABOUT --
         # the subject is what decides where it is shown. What it must never
@@ -262,7 +262,7 @@ class TestApplyEditV3:
         # explicit origin, so a later reset has nothing to undo and the two
         # seams cannot drift (2026-07-29).
         assert out.cell_origin is None
-        assert np.allclose(out.resolve_cell_origin(), expected_corner(out))
+        assert np.allclose(out.resolve_cell_origin(), out.expected_cell_corner())
         assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
         assert any("origin first, then vacuum" in n["message"]
                    for n in notes)
@@ -613,7 +613,7 @@ class TestLoaderGate:
         # the wrapping corner comes back as the resolved view.
         assert out.cell_origin is None
         assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
-        assert contains_atoms(out, out.resolve_cell_origin())
+        assert out.cell_contains_atoms(out.resolve_cell_origin())
 
     def test_the_load_door_serves_the_derived_corner(
             self, tmp_path, monkeypatch):
@@ -672,7 +672,7 @@ class TestPeriodicAxesAreNeverContained:
         # x/y ignored (periodic); z extent 0 fits; the transport axis takes
         # its corner from the DERIVED view (bbox_min), not a stored value.
         assert out.cell_origin is None
-        assert contains_atoms(out, out.resolve_cell_origin())
+        assert out.cell_contains_atoms(out.resolve_cell_origin())
 
     def test_stored_manual_origin_is_warned_never_rewritten(self):
         """Row 5 stored half: a manual origin round-trips verbatim (the
