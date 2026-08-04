@@ -167,7 +167,9 @@ class TestWhatIsChecked:
         found = _by_id(s, "cell.atoms_outside")
         assert found is not None and found.severity == "warn"
         # The clearances ride WITH the finding they are about.
-        assert "near, far" in found.message
+        # It must SHOW the clearances, whatever the wording: the axis letters
+        # and numbers with a sign, so a user can see which side sticks out.
+        assert "a " in found.message and "/" in found.message
 
     def test_an_empty_structure_has_nothing_to_say(self):
         assert _wheres(Structure(elements=[], positions=np.zeros((0, 3)))) == []

@@ -336,8 +336,9 @@ def check(rc: ResolvedCell) -> List[Issue]:
         det = float(np.linalg.det(rc.box))
         out.append(Issue(
             "error",
-            f"The cell must be right-handed (det > 0); this one has "
-            f"det = {det:.6g}. Swap two lattice vectors, or negate one.",
+            f"This cell is mirrored: its three vectors turn the wrong way "
+            f"round (left-handed, det = {det:.6g}). Fix it by swapping any two "
+            f"of the three rows, or by flipping the sign of one.",
             "cell.left_handed"))
         # SHORT-CIRCUIT, as the gate's `_require_right_handed` did by raising:
         # in a mirrored frame the fractional coordinates run backwards, so
@@ -349,22 +350,21 @@ def check(rc: ResolvedCell) -> List[Issue]:
         names = ", ".join("abc"[i] for i in rc.unfittable_axes)
         out.append(Issue(
             "error",
-            f"The structure is longer than the cell along {names}, so no "
-            f"corner can make it fit — moving the origin cannot help. Enlarge "
-            f"the cell along those axes, or clear it to have the box derived "
-            f"from the molecule.",
+            f"The molecule is longer than the cell along {names}, so it "
+            f"cannot fit wherever you put the box. Make the cell bigger along "
+            f"{names}, or clear the cell and let the box be sized around the "
+            f"molecule.",
             "cell.unfittable"))
 
     if not rc.has_volume:
         lengths = " × ".join(f"{v:g}" for v in np.linalg.norm(rc.box, axis=1))
         out.append(Issue(
             "error",
-            f"This box has no volume ({lengths} Å): there is nothing for the "
-            f"calculation to happen in. An axis has no length — either the "
-            f"molecule is flat along it and the vacuum there is zero, or a "
-            f"typed cell has a zero row. Your values are kept exactly as you "
-            f"set them; give that axis a non-zero gap, or type a cell with a "
-            f"real length on it.",
+            f"This box is flat ({lengths} Å), so there is no space for the "
+            f"calculation to happen in. One side has no length — either the "
+            f"molecule is flat that way and you set no vacuum there, or the "
+            f"cell you typed has a row of zeros. Add vacuum on that side, or "
+            f"give that row a real length. Nothing you set has been changed.",
             "cell.no_volume"))
 
     # YOUR VACUUM IS DOING NOTHING -- said whenever it is true, which is the
@@ -376,14 +376,21 @@ def check(rc: ResolvedCell) -> List[Issue]:
     # on every hand-over.
     #
     # Silent when no vacuum was set: there is no expectation to correct.
-    if rc.is_manual and rc.stated_vacuum is not None:
+    #
+    # ALSO SILENT WHEN THE STORED VACUUM IS ALL ZEROS.  A zero vacuum being
+    # ignored changes nothing about the box, so the sentence is true and
+    # useless -- it corrects an expectation nobody has, and it was firing on the
+    # commonest state a typed cell is in.  What earns the interruption is a
+    # NUMBER THE USER CHOSE that has stopped counting.
+    if (rc.is_manual and rc.stated_vacuum is not None
+            and any(float(v) != 0.0 for v in rc.stated_vacuum)):
         typed = ", ".join(f"{v:g}" for v in rc.stated_vacuum)
         out.append(Issue(
             "info",
-            f"The vacuum you set ({typed} Å per side) is not being used: you "
-            f"typed a cell, and an explicit cell IS the box. Vacuum only sizes "
-            f"a box that is worked out from the molecule. Clear the cell to go "
-            f"back to that, or edit the cell itself.",
+            f"Your vacuum ({typed} Å) is not being used, because you typed a "
+            f"cell and that cell is the box. Vacuum only applies when the box "
+            f"is worked out from the molecule. To use it again, clear the "
+            f"cell.",
             "cell.vacuum_ignored"))
 
     # ONLY IN THE DERIVED REGIME.  Under an explicit cell the vacuum is
@@ -397,12 +404,11 @@ def check(rc: ResolvedCell) -> List[Issue]:
         plural = "axes" if len(rc.defaulted_axes) > 1 else "axis"
         out.append(Issue(
             "info",
-            f"No vacuum was set, so the default {gap:g} Å per side is used on "
-            f"the isolated {plural} {where} — which leaves {2 * gap:g} Å "
-            f"between the molecule and its periodic image. That is enough for "
-            f"the box to be well-formed, not enough for a converged "
-            f"isolated-molecule run: those usually want ≥ 8 Å per side. Set a "
-            f"vacuum to choose your own.",
+            f"No vacuum set, so {plural} {where} got the default {gap:g} Å on "
+            f"each side — leaving {2 * gap:g} Å between your molecule and the "
+            f"next copy of it. That is enough to make a valid box, but usually "
+            f"too little for an accurate result: 8 Å per side or more is "
+            f"typical. Set a vacuum to choose your own.",
             "cell.vacuum_defaulted"))
 
     # ONE CAUSE, ONE FINDING.  A box with no volume fails containment by
@@ -413,26 +419,26 @@ def check(rc: ResolvedCell) -> List[Issue]:
     # it names the axes and rules out moving the corner.  Repeating it as a
     # containment warning would be the same defect twice.
     if not rc.contains_atoms and rc.has_volume and not rc.unfittable_axes:
-        gaps = ", ".join(f"{'abc'[i]}: ({n:.2f}, {f:.2f})"
+        gaps = ", ".join(f"{'abc'[i]} {n:.2f}/{f:.2f}"
                          for i, (n, f) in enumerate(rc.clearances))
         if rc.origin_is_user_owned:
             out.append(Issue(
                 "warn",
-                f"The box does not contain the structure along a non-periodic "
-                f"axis — per-axis (near, far) clearances in Å: {gaps}. BOTH "
-                f"the cell and its origin are yours, so neither is changed "
-                f"for you, and vacuum is not respected under an origin you "
-                f"typed. Move the origin, widen the cell, or clear the origin "
-                f"to have the corner worked out.",
+                f"Some atoms are outside the box. Room to spare at each end, "
+                f"in Å — a negative number means atoms stick out that side: "
+                f"{gaps}. You typed both the cell and its corner, so neither "
+                f"is adjusted for you. Move the corner, make the cell bigger, "
+                f"or clear the corner and have it worked out for you.",
                 "cell.atoms_outside"))
         else:
             out.append(Issue(
                 "warn",
-                f"The box does not contain the structure along a non-periodic "
-                f"axis — per-axis (near, far) clearances in Å: {gaps}. The "
-                f"corner was worked out to wrap the atoms and still does not "
-                f"fit them. Widen the cell, or clear it to have the box "
-                f"derived from the molecule.",
+                f"Some atoms are outside the box. Room to spare at each end, "
+                f"in Å — a negative number means atoms stick out that side: "
+                f"{gaps}. The corner was already placed to wrap the molecule "
+                f"as well as it can, so the cell itself is too small. Make it "
+                f"bigger, or clear it and have the box sized around the "
+                f"molecule.",
                 "cell.atoms_outside"))
 
     # A CONDITION, not a complaint: the state is legal (§ 6.1 row 3) and
@@ -446,12 +452,9 @@ def check(rc: ResolvedCell) -> List[Issue]:
             and rc.contains_atoms and rc.has_volume):
         out.append(Issue(
             "info",
-            f"The cell stores no origin, so the box corner was worked out: "
-            f"{np.round(rc.corner, 4).tolist()} (bbox_min − vacuum per "
-            f"isolated axis; the structure centred where the per-side vacuum "
-            f"does not fit). The box wraps the structure, nothing was "
-            f"changed, and vacuum stays reference-only under an explicit "
-            f"cell.",
+            f"Your cell does not say where its corner sits, so it was placed "
+            f"at {np.round(rc.corner, 4).tolist()} to wrap the molecule. The "
+            f"molecule fits, and nothing you set was changed.",
             "cell.corner_derived"))
 
     return out

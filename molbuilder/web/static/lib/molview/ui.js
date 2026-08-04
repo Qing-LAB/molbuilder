@@ -1065,11 +1065,18 @@ function mountPanel(doc, card, model) {
      * 3D window (§ 8.2's shared extent). Without it the section sizes to its
      * content and the page collapses upward. A page has exactly one. */
     clickSection.setAttribute("data-fill", "");
-    const count = el("div", "molviewer-selection-count");
+    /* THE COUNT IS NOT PART OF EITHER EDITOR. It lives with the buttons below
+     * (Clear / Invert / All), which are shared by both pages, because it is a
+     * fact about THE SELECTION and the selection is one truth with two editors
+     * (§ 9.5) — not a fact about the list you happen to be looking at.
+     *
+     * It sat inside this section, so it showed on the atom list and vanished on
+     * Filter. The number was never wrong there: `draw` calls `drawList` on every
+     * snapshot whichever editor caused it, so an accurate count was being kept
+     * behind a hidden element. Only its placement made it unreadable. */
     const listWrap = el("div", "molviewer-selection-list-wrap");
     const list = el("table", "molviewer-atoms-table");
     listWrap.appendChild(list);
-    clickSection.appendChild(count);
     clickSection.appendChild(listWrap);
     pages.selection.appendChild(clickSection);
 
@@ -1222,7 +1229,12 @@ function mountPanel(doc, card, model) {
     const footer = el("div", "molviewer-filter-footer");
     const combineRow = el("div", "molviewer-selection-combinator-row");
     const combine = el("select", "molviewer-selection-combinator-select");
-    for (const [value, label] of [["and", "Match all"], ["or", "Match any"]]) {
+    /* THE THIRD IS THE COMPLEMENT OF THE SECOND, and its label says the set it
+     * gives rather than the operator it is: a chemist wants "everything that is
+     * not the gold and not the sulfur", and reads that far faster than NOR. */
+    for (const [value, label] of [["and", "Match all"],
+                                  ["or", "Match any"],
+                                  ["nor", "Match none"]]) {
         const option = doc.createElement("option");
         option.value = value; option.textContent = label;
         combine.appendChild(option);
@@ -1240,6 +1252,22 @@ function mountPanel(doc, card, model) {
     footer.appendChild(combineRow);
     footer.appendChild(apply);
     filterSection.appendChild(footer);
+    /* WHEN A RULE MATCHES NOTHING, SAY SO. An empty result and never having
+     * filtered leave the panel looking identical -- nothing selected -- so the
+     * user is left to guess whether the rule was wrong or the button missed.
+     *
+     * It also explains the SECOND silence, which is the one that looks like a
+     * bug: with nothing selected, "Show selected only" deliberately does
+     * nothing (render-engine.js -- isolating requires a non-empty selection,
+     * because the alternative is an empty window). The switch stays lit and the
+     * structure stays whole, which is right, and unexplained is what made it
+     * read as broken. */
+    // The panel's existing notice styling, not a class of its own: this says the
+    // same KIND of thing the cell notices say, and a second look for one job is
+    // how two things that should match stop matching.
+    const filterNote = el("div", "molviewer-notice molviewer-notice--warn");
+    filterNote.hidden = true;
+    filterSection.appendChild(filterNote);
     pages.selection.appendChild(filterSection);
 
     /* ── The click operations, and the label block ───────────────────────── */
@@ -1263,6 +1291,11 @@ function mountPanel(doc, card, model) {
         button.addEventListener("click", run);
         actionsRow.appendChild(button);
     }
+    /* Beside the buttons that change it, and after them so the eye lands on the
+     * controls first and the number reads as their result. Shown on both pages
+     * because the row is. */
+    const count = el("div", "molviewer-selection-count");
+    actionsRow.appendChild(count);
     pages.selection.appendChild(actionsRow);
 
     // Tagging is an EDIT (§ 9.4): a label becomes part of what an atom is and
@@ -1443,6 +1476,21 @@ function mountPanel(doc, card, model) {
             modeInputs[key].checked = state.mode === key;
         }
         combine.value = state.combinator;
+
+        /* Drawn from the snapshot like everything else here: the store records
+         * what the last apply found, and clears it the moment a row or the
+         * combinator changes, so this can never show a stale answer to a
+         * question the user has since edited. */
+        const outcome = state.filterOutcome;
+        const matchedNothing = !!outcome && outcome.matched === 0;
+        filterNote.hidden = !matchedNothing;
+        if (matchedNothing) {
+            filterNote.textContent = state.isolate
+                ? "No atoms matched this filter, so nothing is selected. "
+                  + "“Show selected only” needs a selection, so the whole "
+                  + "structure is still shown."
+                : "No atoms matched this filter, so nothing is selected.";
+        }
 
         drawList(state);
         drawRows(state);

@@ -103,6 +103,14 @@ export function createSelectionStore(handed) {
     let mode = "click";          // which editor is showing — not what is selected
     let rows = [];               // the filter rows being built
     let combine = "and";
+    /* WHAT THE LAST APPLY FOUND, or null when no answer is current.
+     * A filter that matches nothing sets the selection to empty, and an
+     * empty selection is indistinguishable from never having filtered --
+     * so the panel could not say "that rule matched no atoms", which is
+     * the one thing the user needs to hear. Cleared whenever the rule
+     * changes, because a stale answer to a question nobody asked is
+     * worse than none. */
+    let lastApply = null;
     let switches = Object.assign({}, SWITCH_DEFAULTS);
 
     const changed = subscribable();
@@ -139,6 +147,7 @@ export function createSelectionStore(handed) {
             mode:       mode,
             filters:    rows.map((r) => Object.assign({}, r)),
             combinator: combine,
+            filterOutcome: lastApply,
             isolate:    switches.isolate,
             showIndex:  switches.showIndex,
             showForces: switches.showForces,
@@ -227,6 +236,7 @@ export function createSelectionStore(handed) {
         },
         addFilter(row) {
             rows.push(Object.assign({ kind: "by_element", value: "" }, row || {}));
+            lastApply = null;                 // the question changed
             changed.fire(snapshot());
         },
         /* A ROW'S VALUE BELONGS TO ITS KIND, so changing the kind clears it.
@@ -249,15 +259,23 @@ export function createSelectionStore(handed) {
             // Unless the same call also said what the new value is — one change,
             // not a change followed by a correction.
             if (changing && !(patch && "value" in patch)) rows[at].value = "";
+            lastApply = null;                 // the question changed
             changed.fire(snapshot());
         },
         removeFilter(at) {
             if (at < 0 || at >= rows.length) return;
             rows.splice(at, 1);
+            lastApply = null;
             changed.fire(snapshot());
         },
         setCombinator(next) {
-            combine = next === "or" ? "or" : "and";
+            /* THREE, and the third is the complement of the second. "None of
+             * these" is NOT(a OR b) -- every atom matching no row -- which is
+             * what carves the rest of a structure out of a set you can describe.
+             * `not` is the server's own operator (selection.py::Not), so this
+             * adds no matching logic here: § 9.5's boundary holds. */
+            combine = (next === "or" || next === "nor") ? next : "and";
+            lastApply = null;                 // the question changed
             changed.fire(snapshot());
         },
 
@@ -273,6 +291,10 @@ export function createSelectionStore(handed) {
             if (!rule) return selected.slice();       // no rows means no filter at all
             const atoms = await handed.resolveFilter(rule);
             if (!Array.isArray(atoms)) return selected.slice();
+            /* SET BEFORE THE OUTCOME IS ANNOUNCED, because `set` fires its own
+             * snapshot: recording the count first would send it out attached to
+             * the OLD selection. */
+            lastApply = { matched: atoms.length };
             set(atoms.slice(), []);
             return atoms.slice();
         },
@@ -322,8 +344,18 @@ export function createSelectionStore(handed) {
 export function buildRule(rows, combine) {
     const operands = (rows || []).map(rowToRule).filter((r) => r !== null);
     if (!operands.length) return null;              // no rows means no filter
-    if (operands.length === 1) return operands[0];  // one row is the rule itself
-    return { op: combine === "or" ? "or" : "and", operands: operands };
+    /* "NONE OF THESE" IS THE COMPLEMENT OF "ANY OF THESE" -- not of "all of
+     * these". With rows `Au` and `S`, what a user wants is every atom that is
+     * neither, which is NOT(Au OR S). NOT(Au AND S) would be almost every atom,
+     * since no atom is both, and would look broken.
+     *
+     * The complement wraps whatever the rows come to, so one row negates too:
+     * NOT(Au) is a perfectly good "everything except the gold". */
+    const negate = combine === "nor";
+    const joined = (operands.length === 1)
+        ? operands[0]                               // one row is the rule itself
+        : { op: (combine === "or" || negate) ? "or" : "and", operands: operands };
+    return negate ? { op: "not", rule: joined } : joined;
 }
 
 function rowToRule(row) {

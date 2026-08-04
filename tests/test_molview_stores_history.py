@@ -366,9 +366,12 @@ def test_the_panel_is_handed_one_settled_state_whole():
     assert out["filters"] == [{"kind": "by_element", "value": "Au"}]
     assert out["combinator"] == "or"
     # Everything the panel draws, in one object.
-    assert out["keys"] == ["combinator", "filters", "forceScale", "isolate", "mode",
-                           "pickOrder", "selection", "showAxis", "showCell",
-                           "showForces", "showIndex"], (
+    # `filterOutcome` joined 2026-08-04: what the last apply matched, so the
+    # panel can say "that rule found nothing" — which an empty selection alone
+    # cannot distinguish from never having filtered.
+    assert out["keys"] == ["combinator", "filterOutcome", "filters", "forceScale",
+                           "isolate", "mode", "pickOrder", "selection",
+                           "showAxis", "showCell", "showForces", "showIndex"], (
         f"the snapshot must be everything the panel draws: {out['keys']}"
     )
 
@@ -1196,3 +1199,65 @@ def test_a_draft_this_build_cannot_read_is_not_guessed_at():
         "assembled from fields that meant something else"
     )
     assert out["at"] == 0, "an unreadable draft moved the position"
+
+
+def test_match_none_is_the_complement_of_match_any():
+    """§ 1.1's third combine option, and the reading that makes it useful.
+
+    "Match none" wraps the rows in the server's own `not` (selection.py::Not) —
+    MolView still holds no matching logic (§ 9.5). It complements ANY, not ALL:
+    with rows `Au` and `S` a user wants every atom that is neither, and
+    NOT(Au AND S) would be almost the whole structure, since no atom is both.
+    """
+    out = _run(
+        """
+        const rows = [{ kind: "by_element", value: "Au" },
+                      { kind: "by_element", value: "S" }];
+        console.log(JSON.stringify({
+            and:  S.buildRule(rows, "and"),
+            or:   S.buildRule(rows, "or"),
+            nor:  S.buildRule(rows, "nor"),
+            one:  S.buildRule([rows[0]], "nor"),
+        }));
+        """
+    )
+    assert out["nor"]["op"] == "not", out["nor"]
+    # The complement is taken over OR, so every atom matching NO row is picked.
+    assert out["nor"]["rule"] == out["or"], (
+        f"Match none must complement Match any, not Match all: {out['nor']}")
+    # One row negates too — "everything except the gold" is a real request.
+    assert out["one"] == {"op": "not", "rule": out["and"]["operands"][0]}, out["one"]
+
+
+def test_an_applied_filter_says_how_many_it_matched():
+    """A filter that matches nothing empties the selection, and an empty
+    selection is indistinguishable from never having filtered — so the panel
+    could not tell the user their rule found nothing, which is the one thing
+    they need to hear (and why `◉` then appears to do nothing: isolate requires
+    a non-empty selection).
+
+    The outcome rides in the snapshot like every other fact the panel draws, and
+    is cleared the moment the rule changes so a stale answer cannot show.
+    """
+    out = _run(
+        """
+        const store = S.createSelectionStore({
+            resolveFilter: async () => [],        // the rule matches nothing
+            writeLabel:    async () => null,
+        });
+        const before = store.getState().filterOutcome;
+        store.addFilter({ kind: "by_element", value: "Xx" });
+        await store.applyFilter();
+        const after = store.getState().filterOutcome;
+        store.updateFilter(0, { value: "Au" });   // the question changed
+        const edited = store.getState().filterOutcome;
+        console.log(JSON.stringify({ before, after, edited,
+                                     selected: store.getState().selection }));
+        """
+    )
+    assert out["before"] is None, "nothing applied yet is not an outcome"
+    assert out["after"] == {"matched": 0}, out["after"]
+    assert out["selected"] == [], "a filter matching nothing selects nothing"
+    assert out["edited"] is None, (
+        "editing a row must clear the recorded outcome — a stale answer to a "
+        "question the user has since changed is worse than none")

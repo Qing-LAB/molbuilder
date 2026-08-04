@@ -123,9 +123,22 @@ atom to pick — so turn isolate off to select again.
 The panel beside the viewer is the other way to select. **Click** mode picks by
 hand; **Filter** mode selects everything matching a rule — by element (`Au,C`),
 by atom index (`1-4, 6, 10-11`), by residue (`ALA,DA`), or by label
-(`L-electrode`). Add several rows and combine them with AND / OR. Switching
+(`L-electrode`). Add several rows and combine them: **Match all** (an atom must
+satisfy every row), **Match any** (any one row is enough), or **Match none** —
+every atom that satisfies *no* row, which is how you take the rest of a structure
+once you can describe the part you do not want. "Match none" is the complement of
+"Match any", not of "Match all": with rows `Au` and `S` it gives you everything
+that is neither, where the other reading would give you almost the whole
+structure. **When a filter matches nothing the panel says so** — an empty result
+and never having pressed Apply look identical otherwise, and `◉` needs a
+selection, so it goes on showing the whole structure. Switching
 between Click and Filter does not disturb what you already have selected. The
-panel shows a live count and measurement of the current selection.
+panel shows a live count and measurement of the current selection. **The count
+sits with Clear / Invert / All**, below both editors, because it is a fact about
+the selection rather than about the list you happen to be looking at — one truth,
+two editors (§ 9.5). It lived inside the atom list until 2026-08-04 and so
+disappeared on the Filter page, which is where you most want to know how many a
+rule just picked.
 
 **Measuring.** Measurements come from what you selected, in the order you picked
 it:

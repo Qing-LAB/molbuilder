@@ -178,7 +178,7 @@ class TestTheStateTable:
         s = _mol()
         s.cell = np.diag([7.0, 7.0, -7.0])
         s.__post_init__()
-        with pytest.raises(ValueError, match="right-handed"):
+        with pytest.raises(ValueError, match="left-handed"):
             validate_periodicity(s)
 
 
@@ -1211,12 +1211,16 @@ class TestTheDefaultVacuumGap:
         path.  Before 2026-08-03 you could load a structure and generate from it
         without ever being told (cell-plan.md 3f)."""
         _, notes = validate_periodicity(self._planar())
-        said = [n for n in notes if "no vacuum was set" in n["message"].lower()]
+        # BY ITS ID, not by a phrase in it. `where` is the stable finding id
+        # (validation contract); the sentence is wording and was rewritten
+        # 2026-08-04 for readability, which is exactly the edit a prose match
+        # turns into a false failure.
+        said = [n for n in notes if n["where"] == "cell.vacuum_defaulted"]
         assert said, [n["message"][:70] for n in notes]
         assert said[0]["level"] == "info"
         assert said[0]["about"] == "cell"
         msg = said[0]["message"]
-        assert "3 Å per side" in msg
+        assert "3 Å" in msg          # the gap it chose, in the message
         # It must state the physical consequence in the currency that matters:
         # vacuum is per side, so the gap between images is TWICE it.
         assert "6 Å" in msg, f"the image gap is not named: {msg}"
@@ -1555,7 +1559,10 @@ class TestARefusedCellIsA400:
         body = response.get_json()
         assert body is not None, f"{door}: answered with something that is not JSON"
         assert body.get("ok") is False, f"{door}: {body}"
-        assert "right-handed" in (body.get("error") or ""), (
+        # PROSE, because a refusal raises and only its sentence reaches the
+        # wire -- there is no `where` on an error body. Matched on the term the
+        # message is built around; if that has to change, this changes with it.
+        assert "left-handed" in (body.get("error") or ""), (
             f"{door}: answered 400, but not with the gate's reason: "
             f"{body.get('error')!r}")
 
