@@ -564,21 +564,40 @@
     outline-offset: -2px;
 }
 
-/* Folded (wide): collapse the panel to zero width; the viewer stays put. */
+/* Folded, IN EITHER LAYOUT: the panel stops taking part. What it collapses
+ * ALONG differs (width when side by side, height when stacked), so that half
+ * belongs to each layout's own block below. */
 .molviewer-card.molviewer-is-folded .molviewer-panel {
-    flex: 0 0 0;          /* kill the grow (the unfolded panel is flex:1 1 auto) so it truly collapses */
-    width: 0;
-    min-width: 0;
     opacity: 0;
     pointer-events: none;
 }
 
-/* Folded: the window takes the freed width, so folding EXPANDS the view rather
- * than leaving a gap. Height stays --molviewer-size-window-extent (capped at --molviewer-size-window-edge),
- * so the window becomes a wide rectangle. */
-.molviewer-card.molviewer-is-folded .molviewer-window {
-    flex: 1 1 auto;
-    width: auto;
+/* ---- Folding, side by side (the ROW layout only) ------------------------
+ *
+ * SCOPED TO THE ROW ON PURPOSE (2026-08-04).  These two rules used to sit
+ * unscoped, and `width: auto` on the folded window then applied in the STACKED
+ * layout too -- where it beat `.molviewer-card-body > .molviewer-window`'s
+ * fixed stack width on specificity (three classes to two).  Folding the panel
+ * on a narrow card made the 3D window jump narrower for no reason: it fell back
+ * to sizing on its content, in a column whose whole point is that both children
+ * share one width.  `width: 0` on the panel leaked the same way; it did no
+ * visible harm only because the stacked block also zeroes the height.
+ *
+ * A rule written for one layout has to SAY which, or the other one inherits it
+ * and the breakage is invisible at the width you developed at. */
+@container (width > 692px) {
+    .molviewer-card.molviewer-is-folded .molviewer-panel {
+        flex: 0 0 0;      /* kill the grow (the unfolded panel is flex:1 1 auto) so it truly collapses */
+        width: 0;
+        min-width: 0;
+    }
+    /* The window takes the freed width, so folding EXPANDS the view rather than
+     * leaving a gap.  Height stays --molviewer-size-window-extent (capped at
+     * --molviewer-size-window-edge), so the window becomes a wide rectangle. */
+    .molviewer-card.molviewer-is-folded .molviewer-window {
+        flex: 1 1 auto;
+        width: auto;
+    }
 }
 .molviewer-card.molviewer-is-folded .molviewer-panel-fold-chevron { transform: rotate(0deg); }  /* folded: point RIGHT -- clicking reveals the panel */
 
@@ -614,14 +633,21 @@
         transition: height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
     }
     .molviewer-panel-fold-btn {
-        /* A COMPACT centred grip (hugs its chevron + a grab margin) -- NOT a full-width bar.
-         * A small centred handle cannot read as "wider than the panels" by construction, so
-         * the stacked layout needs no width-matching against the viewer canvas / panel inset. */
+        /* THE SAME WIDTH AS THE TWO THINGS IT SITS BETWEEN, which is what the row
+         * layout already does one axis over: there the rail is `align-self:
+         * stretch`, so it spans the full height of the viewer and panel it
+         * separates.  Stacked, the cross axis is WIDTH, so spanning it means the
+         * stack extent -- the one width the window and the panel both take.
+         *
+         * It was a compact centred pill (`width: auto; padding: 0 2rem`), on the
+         * reasoning that a small handle "cannot read as wider than the panels by
+         * construction".  True, and it bought the wrong thing: it read as a
+         * fragment laid across a seam rather than as the seam, and the two
+         * layouts stopped resembling each other for no reason a user could see. */
         align-self: center;
-        width: auto;
-        padding: 0 2rem;
+        width: var(--molviewer-size-stack-extent);
+        padding: 0;
         height: 22px;
-        border-radius: 999px;
     }
     /* Stacked (panel BELOW): direction = where the panel moves.  UNFOLDED points UP
      * ("collapse up, away"); FOLDED points DOWN ("reveal the panel below"). */
