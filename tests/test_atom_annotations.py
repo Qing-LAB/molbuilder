@@ -132,7 +132,14 @@ def test_atom_metadata_block_roundtrips_annotations():
     block = sc.emit_atom_metadata(
         regions=s.regions,
         annotations=s.annotations, n_atoms_total=5)
-    assert "molstruct-json/v4" in block and '"annotations"' in block
+    # THE CURRENT schema, read from the one place that defines it.  This
+    # pinned the literal "v4" until 2026-08-03 and had been failing since the
+    # schema moved on -- a version bump is not a regression, and a test that
+    # hard-codes a version number reports one every time.  What this test is
+    # actually about is the ROUND TRIP below.
+    from molbuilder.sidecars.molstruct import SCHEMA_VERSION
+    assert f"molstruct-json/v{SCHEMA_VERSION}" in block
+    assert '"annotations"' in block
     back = _struct(5)
     assert sc.apply_inbody_atom_metadata(back, block) is True
     assert back.regions == {"bridge": [1], FROZEN_LABEL: [4]}

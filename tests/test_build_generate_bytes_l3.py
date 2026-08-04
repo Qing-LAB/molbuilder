@@ -131,8 +131,13 @@ class TestSiestaGenerateBytes:
             json={
                 "xyz": _H2O_XYZ,
                 "params": {},
-                "frozen_atoms": [0],   # freeze the O
-                "regions": {},
+                # ONE LABEL STORE.  `regions` IS the whole store, and frozen
+                # atoms are a label inside it -- this posted a TOP-LEVEL
+                # `frozen_atoms` beside `regions: {}` until 2026-08-03, which
+                # under the current contract says "freeze atom 0" and "nothing
+                # is labelled" in the same breath.  The server believes
+                # `regions`, correctly, and emitted no constraints.
+                "regions": {"frozen_atoms": [0]},   # freeze the O
             },
         )
         assert r.status_code == 200, r.get_data(as_text=True)

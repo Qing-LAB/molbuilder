@@ -306,7 +306,7 @@ Set on every response by an `after_request` hook (`app.py`):
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
-## 2. Endpoint index — all 78 routes
+## 2. Endpoint index — all 79 routes
 
 The application currently has 78 non-static Flask routes. Section 3 groups the
 full catalogue by owner and purpose; update this count whenever a route is added
@@ -403,9 +403,20 @@ auto-discovers new domain docs and best-effort persists the repaired tree —
 read-only installs are served from memory), and `GET /api/docs/img/<path>`
 (images only, contained to `docs/img/`) — what the Documents tab reads.
 
-**Admin** (rate-limit; admin-gated) — `GET /api/admin/rate_limit/status` (the
-blocked-IP list) and `POST /api/admin/rate_limit/clear` (unblock an IP, or
+**Admin** (admin-gated) — `GET /api/admin/rate_limit/status` (the blocked-IP
+list) and `POST /api/admin/rate_limit/clear` (unblock an IP, or
 `{ "all": true }` to wipe).
+
+**Admin — server reload** (2026-08-03). `GET /api/admin/reload/available` is
+**always registered** and always answers `200 {available: bool}`: "no" is not a
+refusal, it is the honest state of a server started without a supervisor or with
+nobody named as an admin, and a page that got a `403` here could not tell "you
+may not" from "the server is broken". `POST /api/admin/reload` restarts the
+process, and is **not registered at all** unless there is a supervisor *and* at
+least one named admin — so a misconfiguration reads as "the button is missing",
+never as "anyone can restart the server". Who counts as an admin comes from the
+top-level `admin.emails` list, and **absent or empty means nobody**; see
+[`ops/access-control.md`](?doc=ops/access-control.md).
 
 **Auth** (only when an `auth` config is present) — `GET /login`,
 `/login/<provider>`, `/oauth-callback/<provider>`, `/cas-callback/<provider>`,

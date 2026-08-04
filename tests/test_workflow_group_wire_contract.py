@@ -248,8 +248,14 @@ def test_spectra_render_issues_carry_workflow_group(web_client):
     enrichment.  A regression that drops the kwarg again fails
     this loudly.
     """
+    # THE STRUCTURE ARRIVES AS DATA (web-api.md § 1).  `structure_text` was
+    # retired from this route: the viewer holds no coordinate document and
+    # writes none (molview.md § 11.7), so the field's only caller could not
+    # produce it.  Sending it got a 400 -- which is why this test reported
+    # "zero issues" and blamed its own payload for not tripping a validator.
+    from molbuilder.structure import Structure
     body = _post(web_client, "/api/spectra/render", {
-        "structure_text": _BENZENE_XYZ,
+        "structure": Structure.from_xyz(_BENZENE_XYZ).to_dict(),
         # SpectraConfig.scf_max_cycle range=(10, 1000),
         # workflow_group="budget" (config/spectra.py:581).  Value 5
         # is below the floor -> reliable warn.

@@ -234,7 +234,13 @@ def test_qdata_max_forces_constrained_masks_frozen_atoms(tmp_path):
     side.write_text(json.dumps({
         "schema_version": 3, "n_atoms_total": 2,
         "structure_hash": "a" * 64,
-        "regions": {}, "frozen_atoms": [0], "selection_rules": {},
+        # ONE LABEL STORE: frozen atoms are a LABEL INSIDE `regions`, not a
+        # sibling key.  This fixture said `regions: {} , frozen_atoms: [0]`
+        # until 2026-08-03 -- "nothing is labelled" and "atom 0 is frozen" at
+        # once -- so the reader found no frozen atoms, the constrained list came
+        # back empty, and the test died on an IndexError rather than on the
+        # masking behaviour it is about.
+        "regions": {"frozen_atoms": [0]}, "selection_rules": {},
     }))
 
     result = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))

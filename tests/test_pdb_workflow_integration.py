@@ -150,6 +150,21 @@ class TestPdbWorkflowEndToEnd:
     if step 2's sidecar write fails, step 3's pre-fill assertion
     catches it; etc.  The class shares fixture state via attributes."""
 
+    @staticmethod
+    def _envelope(pdb_path):
+        """The structure AS DATA, which is how every structure door takes it
+        (web-api.md § 1).
+
+        These three tests posted ``structure_text`` until 2026-08-03 and got a
+        flat 400 -- the field was retired from ``/api/spectra/render`` because
+        the viewer holds no coordinate document and writes none (molview.md
+        § 11.7), so the route's only caller could never have sent it.  The
+        SUBJECTS below (Pattern A/B warnings, form-vs-sidecar precedence,
+        clearing a prefill) are unaffected; only the delivery moved.
+        """
+        from molbuilder.structure import Structure
+        return Structure.from_pdb(str(pdb_path)).to_dict()
+
     def _path(self, pdb_path):
         return str(pdb_path.resolve())
 
@@ -276,7 +291,7 @@ class TestPdbWorkflowEndToEnd:
                           regions={"L-electrode": [3, 4]}, frozen=[0, 1, 2])
 
         r = web.post("/api/spectra/render", json={
-            "structure_text": pdb_path.read_text(),
+            "structure": self._envelope(pdb_path),
             "structure_path": self._path(pdb_path),
             # F2 (docs/science/validation.md 4.1): the STRUCTURE's labels reach
             # the server in the body, as the tab sends them.  Pattern A is the
@@ -333,7 +348,7 @@ class TestPdbWorkflowEndToEnd:
         # per the three-stage contract).
         _seed_sidecar_for(pdb_path, n_atoms=n_atoms, frozen=[0, 1, 2])
         r = web.post("/api/spectra/render", json={
-            "structure_text": pdb_path.read_text(),
+            "structure": self._envelope(pdb_path),
             "structure_path": self._path(pdb_path),
             "params":         {"frozen_indices": "5, 6",
                                  "charge": 0, "spin": 1, "method": "UKS"},
@@ -372,7 +387,7 @@ class TestPdbWorkflowEndToEnd:
         # AND fire Pattern A so the user can't be surprised later.
         _seed_sidecar_for(pdb_path, n_atoms=n_atoms, frozen=[0, 1, 2])
         r = web.post("/api/spectra/render", json={
-            "structure_text": pdb_path.read_text(),
+            "structure": self._envelope(pdb_path),
             "structure_path": self._path(pdb_path),
             # F2: the structure-side claim rides in the body; the FORM is
             # cleared in params.  The whole point is that these DISAGREE and the

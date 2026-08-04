@@ -102,9 +102,18 @@ class TestHappyPath:
         to /api/build/load); n_atoms is read off the loaded model."""
         out = _run_node('''
             let canvasArgs = null;
-            globalThis.molbuilder = { molview: { data: {
-                getStructure: () => ({ atoms: [{}, {}, {}] }),
-            } } };
+            /* THE PAGE COORDINATOR'S SNAPSHOT, which is where the count comes
+             * from.  This stubbed `molbuilder.molview.data.getStructure` until
+             * 2026-08-03 -- a global MolView has published nothing to since it
+             * was rebuilt and sealed (index.js exports `mount` and `formula`,
+             * nothing else).  The code stopped reading it; the stub did not,
+             * so the test asserted a path that no longer exists and failed on
+             * the fix rather than on a bug. */
+            globalThis.molbuilder = { structurePage: {
+                getCanvasSnapshot: () => ({
+                    structure: { elements: ["O", "H", "H"] },
+                }),
+            } };
             fileMod.configure({
                 structurePage: {
                     loadIntoCanvas: async (struct, src) => {

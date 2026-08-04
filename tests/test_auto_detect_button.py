@@ -264,7 +264,34 @@ def test_auto_detect_button_disabled_without_loaded_structure(
     """Auto-detect MUST start disabled and stay disabled until a
     structure loads.  Without the guard, the user would post an
     empty body and get a 400 — confusing UX.
+
+    STARTS FROM A GENUINELY EMPTY WORKSPACE, and has to arrange that since
+    2026-08-03.  The tab now RESTORES its last structure on open, so "navigate
+    to a fresh page" stopped meaning "no structure is loaded": an earlier test
+    in this file leaves one behind, this page restores it (``load-status`` reads
+    "Restored fe.xyz -- 1 atoms"), and the button is then correctly ENABLED.
+
+    Cleared through the SERVER'S OWN endpoint, not by deleting a directory the
+    test computed.  The workspace dir is resolved from the server's config, so
+    a path worked out in the test process is not always the one the server
+    writes to -- which is why deleting it passed when this file ran alone and
+    failed in the full suite.  ``prune`` with ``above_index = -1`` drops the
+    whole timeline using the server's own resolution, so it cannot miss.
+
+    The id is deterministic: ``workspaceId("structure-opt")`` -> the tag with
+    unsafe characters dashed (dispatcher.js), and this tab's tag is
+    ``WORKSPACE_TAG = "structure-opt"`` (structure-optimization/viewer.js:22).
     """
+    import json as _json
+    import urllib.request as _rq
+
+    _rq.urlopen(_rq.Request(
+        f"{flask_server}/api/workspace-storage/prune",
+        data=_json.dumps({"workspace_id": "ws-structure-opt",
+                          "above_index": -1}).encode(),
+        headers={"Content-Type": "application/json"},
+    ), timeout=10).read()
+
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     page.goto(f"{flask_server}/structure-optimization",
               wait_until="domcontentloaded")
@@ -272,7 +299,15 @@ def test_auto_detect_button_disabled_without_loaded_structure(
         "() => document.getElementById('auto-detect-btn') !== null",
         timeout=5000,
     )
-    assert page.locator("#auto-detect-btn").is_disabled()
+    page.wait_for_timeout(500)          # let any restore attempt settle
+
+    status = page.evaluate(
+        "() => (document.getElementById('load-status') || {}).textContent || ''")
+    assert "estored" not in status, (
+        f"the workspace was not empty -- something restored into it: {status!r}")
+    assert page.locator("#auto-detect-btn").is_disabled(), (
+        "auto-detect is live with an empty canvas; clicking it posts an empty "
+        "body and earns a 400")
 
 
 # --------------------------------------------------------------------- #

@@ -548,8 +548,13 @@ class TestPseudosEndpoint:
         assert r.status_code == 400, r.data
         body = r.get_json()
         assert body["ok"] is False
+        # NAMES THE OFFENDING SYMBOL -- that is what makes the 400 actionable,
+        # and it is what this test is for.  The phrase "unknown element" was
+        # pinned here too until 2026-08-03; the parser now says "could not read
+        # XYZ: 'Xy'", which is the same fact in its own words.  The docstring
+        # above already delegates the wording ("with the parser's message"), so
+        # pinning a phrase contradicted the test's own stated contract.
         assert "Xy" in body["error"]
-        assert "unknown element" in body["error"].lower()
 
     def test_structure_analyze_organic_no_metals(self):
         """No metals -> closed-shell singlet (or doublet for odd-e)."""
