@@ -823,7 +823,7 @@ same reason: the tab did the operation, so the tab reports it.
 
 ### 6.8 Notices — what the server warns about, and how long it stays true
 
-Some answers come back with **notices**: `{level, message}`, in plain language,
+Some answers come back with **notices**: `{level, message, where, about}`, in plain language,
 about the structure the answer describes. They are not errors — an error fails
 the request. A notice is the server saying "this worked, and here is something
 you should know about the result".

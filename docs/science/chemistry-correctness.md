@@ -292,7 +292,7 @@ issues carrying `workflow_group` metadata route to the correct UI card
 
 ## 4. What this doc does NOT cover
 
-- **The full validation-check catalog** (min-distance / cell-determinant / k-grid
+- **The full validation-check catalog** (min-distance / cell-volume / k-grid
   / dipole thresholds, with their scientific rationale) and the
   advisory-while-editing vs enforcing-at-generation contract → `overview.md`.
 - **The "why" for each toolkit choice** (OpenBabel vs RDKit, X3DNA quirks) →

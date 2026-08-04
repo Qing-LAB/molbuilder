@@ -325,13 +325,19 @@ either nagging or dangerous:
   written on `pbc` alone could not tell a lead from a crystal axis, which
   `cell.kgrid` depends on.
 
-* **Can this cell exist at all?** — `cell.determinant` (zero volume or
-  left-handed). This is an **error**, and upstream of it the gate refuses the
-  edit outright (§ 6.1). Not a judgement about quality: a zero-volume lattice
-  makes SIESTA fail when it builds reciprocal vectors, so emitting it with a
-  warning would hand the user a guaranteed-failed run dressed as a choice. See
-  [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.1
-  for the four layers that make it unreachable.
+* **Can this cell exist at all?** — `cell.no_volume` and `cell.left_handed`,
+  both **errors**, from the one checker (`molbuilder/cell.py`). Upstream of
+  them the gate refuses the edit outright (§ 6.1). Not a judgement about
+  quality: a zero-volume lattice makes SIESTA fail when it builds reciprocal
+  vectors, so emitting it with a warning would hand the user a
+  guaranteed-failed run dressed as a choice.
+
+  **They were one id, `cell.determinant`, until 2026-08-03** — "degenerate or
+  left-handed", two faults with two different repairs under one name, so a flat
+  molecule was told to swap its lattice vectors. Split when the cell checks
+  became one process line; see
+  [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
+  § 6.1a for the full id list and which surface each reaches.
 
 So: **adequacy is advisory, representability is blocking.** A check that reports
 "your box is small" must not stop the run; a check that reports "this box is not

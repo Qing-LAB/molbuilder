@@ -477,7 +477,13 @@ thin. On a typed box `cell.image_distance` is the check that means anything.
    two seams.
 
    **Notices are part of the contract, not decoration.** Every notice is
-   `{level: "info"|"warn", message: str}` — those two keys, and no others.
+   `{level, message, where, about}` — those **four** keys, and no others.
+   `where` is the stable id (the same one `Issue` carries), because the
+   conditions come from `cell.check` and a finding must be identifiable without
+   reading its prose; `about` is the subject, which decides where it is shown.
+   Both joined 2026-08-03; before that a consumer had only the wording, which is
+   why several tests matched on message TEXT — passing when a check was deleted
+   and failing when one was reworded.
    There was a third, `kind: "heal"`, described here and in `web-api.md` as
    marking a notice about state the gate had corrected, and as the flag the web
    load door keyed on to mark the session dirty. **No code ever wrote it and no
@@ -616,7 +622,7 @@ flowchart TB
     PARSE["parse/ → StructureResult.cell → back into a dataset"]
     DS --> GATE
     GATE -->|"structure unchanged"| MV
-    GATE -->|"notices {level, message}"| MV
+    GATE -->|"notices {level, message, where, about}"| MV
     DS --> FDF
     DS --> TR
     FDF --> OUT --> PARSE --> DS

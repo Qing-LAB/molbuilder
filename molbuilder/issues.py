@@ -40,7 +40,7 @@ class Issue:
     where : str
         Locus of the problem, dotted-namespace style:
           "geometry.min_distance"   -- structural finding
-          "cell.determinant"        -- about the cell
+          "cell.no_volume"          -- about the cell
           "config.mesh_cutoff"      -- about a config field
         Used by the CLI / web UI to highlight the offending field.
     workflow_group : Optional[str]

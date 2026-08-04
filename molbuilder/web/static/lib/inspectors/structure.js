@@ -30,10 +30,16 @@ import { mount } from "/static/lib/molview/index.js";
  * drift into naming different slots. */
 const WORKSPACE_TAG = "results:structure";
 
-/* THIS TAB'S OWN NOTE, under its own tag beside the viewer's (workspace.md § 4).
- * One fact: which file is on screen. It is written when this inspector opens a
- * file and read when it is asked to open one, and MolView never sees it. */
-const SHOWING_TAG = "results:structure:showing";
+/* NO NOTE ANY MORE (2026-08-03).
+ *
+ * This tab kept one fact under its own tag -- which file is on screen -- to
+ * decide between restoring and re-opening.  That decision is gone (a read-only
+ * viewer cannot restore; it always re-opens), and with the reader deleted the
+ * writer was persisting a state file to disk on every open that NOTHING would
+ * ever read.  A write with no reader is not harmless: it is disk I/O, a file in
+ * the workspace states directory, and a fact a later reader might believe.
+ *
+ * If something needs to know this again, it can be added back WITH its reader. */
 
 /* NO READER FOR THE NOTE ANY MORE.  `_readShowing` was removed with the restore
  * branch it fed (2026-08-03): this viewer is read-only, so it cannot restore a
@@ -41,11 +47,6 @@ const SHOWING_TAG = "results:structure:showing";
  * who asks later.  A reader kept "just in case" is how the dead branch survived
  * long enough to blank the tab. */
 
-function _rememberShowing(ws, path) {
-    if (!ws || typeof ws.persist !== "function") return;
-    ws.persist(SHOWING_TAG, { showing: path || null },
-               { workspace_id: ws.workspaceId(SHOWING_TAG), state_index: 0 });
-}
 // molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
 // §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
 (function (root) {
@@ -256,10 +257,6 @@ function _rememberShowing(ws, path) {
                             status.classList.add("inspector-inline-error");
                             return;
                         }
-                        // Written only once the open SUCCEEDED: a note saying we are
-                        // showing a file we failed to load would mislead whoever reads
-                        // it next.
-                        _rememberShowing(ws, structPath);
                     }
                     if (disposed) return;
 

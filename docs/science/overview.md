@@ -132,7 +132,9 @@ states the *why* so the thresholds don't drift silently.
 ### Cell & periodicity (`geometry.py` + `siesta.py`)
 | Check | Severity | Why |
 |---|---|---|
-| cell determinant ≤ 0 | **error** | left-handed or degenerate cell |
+| `cell.no_volume` (det ≈ 0) | **error** | the box has no volume — nothing to calculate in |
+| `cell.left_handed` (det < 0) | **error** | mirrored lattice vectors; swap two of them |
+| `cell.unfittable` | **error** | the structure is longer than the cell — no corner can fit it |
 | cell volume / atom-bounding-volume < 3 | warn | cell suspiciously tight |
 | atom-to-nearest-image distance < 6 Å | warn | atoms interact with their own periodic images; suggest a larger vacuum box (`geometry.py`) |
 | charged supercell (Makov-Payne) | warn | image-charge bias padding alone doesn't remove |
