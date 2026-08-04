@@ -285,6 +285,11 @@
           "subtitle": "Decisions log — archived 2026-07-28 (historical record)"
         },
         {
+          "path": "archive/2026-08-04-closed-tasks.md",
+          "label": "Closed tasks — snapshot 2026-08-04",
+          "subtitle": "Closed tasks — snapshot 2026-08-04"
+        },
+        {
           "path": "archive/MIGRATION.md",
           "label": "Migration ledger — old_docs/ → docs/",
           "subtitle": "Migration ledger — old_docs/ → docs/"

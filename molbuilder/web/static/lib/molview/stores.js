@@ -291,10 +291,18 @@ export function createSelectionStore(handed) {
             if (!rule) return selected.slice();       // no rows means no filter at all
             const atoms = await handed.resolveFilter(rule);
             if (!Array.isArray(atoms)) return selected.slice();
-            /* SET BEFORE THE OUTCOME IS ANNOUNCED, because `set` fires its own
-             * snapshot: recording the count first would send it out attached to
-             * the OLD selection. */
-            lastApply = { matched: atoms.length };
+            /* WHETHER ISOLATE IS ABOUT TO SWITCH ITSELF OFF, read BEFORE `set`
+             * applies the rule above (line ~127): after it, isolate is already
+             * false and "it was on and turned off" is indistinguishable from
+             * "it was off all along". The panel needs the difference, because a
+             * switch changing without the user touching it is worth a sentence.
+             *
+             * SET AFTER, because `set` fires its own snapshot: recording the
+             * count second would send it out attached to the OLD selection. */
+            lastApply = {
+                matched: atoms.length,
+                isolateTurnedOff: !!switches.isolate && atoms.length === 0,
+            };
             set(atoms.slice(), []);
             return atoms.slice();
         },

@@ -1256,12 +1256,16 @@ function mountPanel(doc, card, model) {
      * filtered leave the panel looking identical -- nothing selected -- so the
      * user is left to guess whether the rule was wrong or the button missed.
      *
-     * It also explains the SECOND silence, which is the one that looks like a
-     * bug: with nothing selected, "Show selected only" deliberately does
-     * nothing (render-engine.js -- isolating requires a non-empty selection,
-     * because the alternative is an empty window). The switch stays lit and the
-     * structure stays whole, which is right, and unexplained is what made it
-     * read as broken. */
+     * It also accounts for the switch that moves on its own: when the selection
+     * empties, isolate TURNS ITSELF OFF (stores.js -- "there would be nothing
+     * left to show"). The structure coming back is right, and a control
+     * changing state untouched is worth naming, or it reads as the viewer
+     * ignoring the switch.
+     *
+     * A first draft of this said isolate "needs a selection, so the whole
+     * structure is still shown" -- implying the switch was still on. It is not,
+     * and the tests passed anyway because none of them read the sentence
+     * against the store. A browser did. */
     // The panel's existing notice styling, not a class of its own: this says the
     // same KIND of thing the cell notices say, and a second look for one job is
     // how two things that should match stop matching.
@@ -1485,10 +1489,10 @@ function mountPanel(doc, card, model) {
         const matchedNothing = !!outcome && outcome.matched === 0;
         filterNote.hidden = !matchedNothing;
         if (matchedNothing) {
-            filterNote.textContent = state.isolate
+            filterNote.textContent = outcome.isolateTurnedOff
                 ? "No atoms matched this filter, so nothing is selected. "
-                  + "“Show selected only” needs a selection, so the whole "
-                  + "structure is still shown."
+                  + "“Show selected only” switched itself off, since there "
+                  + "would be nothing left to show."
                 : "No atoms matched this filter, so nothing is selected.";
         }
 

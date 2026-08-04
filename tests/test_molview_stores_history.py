@@ -1256,8 +1256,44 @@ def test_an_applied_filter_says_how_many_it_matched():
         """
     )
     assert out["before"] is None, "nothing applied yet is not an outcome"
-    assert out["after"] == {"matched": 0}, out["after"]
+    assert out["after"] == {"matched": 0, "isolateTurnedOff": False}, out["after"]
     assert out["selected"] == [], "a filter matching nothing selects nothing"
     assert out["edited"] is None, (
         "editing a row must clear the recorded outcome — a stale answer to a "
         "question the user has since changed is worse than none")
+
+
+def test_a_filter_that_empties_the_selection_reports_isolate_switching_off():
+    """The store already turns isolate off when the selection empties ("there
+    would be nothing left to show", § 1.1) — so after a filter matches nothing,
+    `isolate` is ALREADY false and "it was on and switched off" cannot be told
+    from "it was off all along".
+
+    The panel needs that difference: a control changing state without the user
+    touching it is worth a sentence, and without it the message said isolate
+    "needs a selection, so the structure is still shown" — implying the switch
+    was still on. It is not. Every test passed while that sentence was wrong;
+    a browser caught it.
+    """
+    out = _run(
+        """
+        const store = S.createSelectionStore({
+            resolveFilter: async () => [],
+            writeLabel:    async () => null,
+        });
+        store.add([1, 2]);                    // something to isolate
+        store.setIsolate(true);
+        const litBefore = store.getState().isolate;
+        store.addFilter({ kind: "by_element", value: "Xx" });
+        await store.applyFilter();
+        const st = store.getState();
+        console.log(JSON.stringify({
+            litBefore, isolateAfter: st.isolate, outcome: st.filterOutcome,
+        }));
+        """
+    )
+    assert out["litBefore"] is True
+    assert out["isolateAfter"] is False, (
+        "isolate must switch off when the selection empties")
+    assert out["outcome"] == {"matched": 0, "isolateTurnedOff": True}, (
+        f"the outcome must record that the switch moved: {out['outcome']}")

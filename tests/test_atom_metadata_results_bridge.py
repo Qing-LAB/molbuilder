@@ -237,7 +237,12 @@ class TestBuildLoadDoor:
             )
             said = " ".join(n.get("message", "")
                             for n in (r.get_json().get("notices") or []))
-            assert "right-handed" in said, (
+            # PROSE, because a refusal raises and only its sentence reaches
+            # the caller. Keyed on the term the message is built around;
+            # reworded 2026-08-04 ("must be right-handed" -> "is mirrored
+            # ... left-handed"), which is the edit a prose match turns into
+            # a false failure.
+            assert "left-handed" in said, (
                 f"{label}: the box was accepted and NOTHING was said about it "
                 f"({said!r}) -- a report nobody sees is the same as no check"
             )
@@ -249,7 +254,7 @@ class TestBuildLoadDoor:
         assert emit.status_code == 400, (
             f"an .fdf was generated from an impossible box: {emit.status_code}"
         )
-        assert "right-handed" in (emit.get_json().get("error") or "")
+        assert "left-handed" in (emit.get_json().get("error") or "")
 
     def test_the_label_block_is_passed_through_untouched(self, client):
         """The browser must not re-state ``n_atoms_total``.
