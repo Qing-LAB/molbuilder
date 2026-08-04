@@ -18,6 +18,8 @@ Tests:
 """
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 from pathlib import Path
 
@@ -334,6 +336,35 @@ class TestResolvePsmlLib:
         assert "foo" in str(out)
 
 
+def _envelope(elements):
+    """The structure as DATA -- what `molview.exportFile()` hands the tab, and
+    since 2026-08-04 what this route takes.
+
+    THESE TESTS POSTED `structure_text` AND PASSED WHILE THE ROUTE WAS BROKEN.
+    `7447d7d` moved the Save flow onto the envelope and left the route behind,
+    so every real SIESTA save answered 400 here and skipped its .run.sh -- for
+    weeks, with this file green, because it exercised a shape no caller sends.
+    A test of a request nobody makes cannot fail when the request everybody
+    makes stops working.
+
+    Elements are all this door reads: it copies one `<element>.psml` each.
+    Positions are filler, spaced so the Structure is valid."""
+    import sys
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from support.envelope import envelope
+    return envelope(list(elements),
+                    [[float(i) * 2.0, 0.0, 0.0] for i in range(len(elements))])
+
+
+def _from_file_text(text, suffix):
+    """An envelope for a structure whose SOURCE was a file, parsed by the
+    application's own reader -- the client's job now, not this route's."""
+    from molbuilder.structure import Structure
+    struct = (Structure.from_pdb(text) if suffix == ".pdb"
+              else Structure.from_xyz(text))
+    return _envelope(list(struct.elements))
+
+
 class TestPseudosEndpoint:
     def test_install_pseudos_copies_files_into_dest(self, tmp_path, picker_root_at_tmp):
         """The web flow writes the .fdf via /api/files/write, then
@@ -350,11 +381,10 @@ class TestPseudosEndpoint:
         dest.mkdir()
         from molbuilder.web.app import create_app
         c = create_app(config={}).test_client()
-        water = "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n"
         r = c.post("/api/siesta/install-pseudos", json={
-            "psml_lib":       str(lib),
-            "dest_dir":       str(dest),
-            "structure_text": water,
+            "psml_lib":  str(lib),
+            "dest_dir":  str(dest),
+            "structure": _envelope(["O", "H", "H"]),
         })
         assert r.status_code == 200, r.data
         body = r.get_json()
@@ -375,7 +405,7 @@ class TestPseudosEndpoint:
         r = c.post("/api/siesta/install-pseudos", json={
             "psml_lib":       str(lib),
             "dest_dir":       str(dest),
-            "structure_text": "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n",
+            "structure": _envelope(["O", "H", "H"]),
         })
         body = r.get_json()
         assert body["missing"] == ["O"]
@@ -399,7 +429,7 @@ class TestPseudosEndpoint:
         r = c.post("/api/siesta/install-pseudos", json={
             "psml_lib":       str(lib),
             "dest_dir":       str(dest),
-            "structure_text": "1\niron\nFe 0 0 0\n",
+            "structure": _envelope(["Fe"]),
         })
         assert r.status_code == 200, r.data
         body = r.get_json()
@@ -438,7 +468,12 @@ class TestPseudosEndpoint:
         r = c.post("/api/siesta/install-pseudos", json={
             "psml_lib":       str(lib),
             "dest_dir":       str(dest),
-            "structure_text": pdb_with_headers,
+            # From a PDB, but as DATA: this route no longer parses anything.
+            # "a PDB with header lines is read correctly" is
+            # `Structure.from_pdb`'s subject and is tested where that lives;
+            # what matters HERE is that a structure which came from a PDB still
+            # gets one .psml per element.
+            "structure": _from_file_text(pdb_with_headers, ".pdb"),
         })
         assert r.status_code == 200, r.data
         body = r.get_json()
@@ -532,7 +567,7 @@ class TestPseudosEndpoint:
         r = c.post("/api/siesta/install-pseudos", json={
             "psml_lib": "/etc",
             "dest_dir": str(tmp_path),
-            "structure_text": "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n",
+            "structure": _envelope(["O", "H", "H"]),
         })
         assert r.status_code == 400, r.data
 
@@ -883,3 +918,39 @@ class TestErrorStatusesSharedBySurfaces:
                                                dest_dir=tmp_path)
         assert any(i.severity == "error" for i in issues), \
             [(i.severity, i.message) for i in issues]
+
+
+def test_analyze_accepts_the_shape_its_callers_actually_send(tmp_path, monkeypatch):
+    """THE GAP THAT LET THE install-pseudos BREAK GO UNNOTICED, closed one door
+    over.
+
+    Every test above drives /api/structure/analyze with ``structure_text``.  No
+    caller sends that: structure-optimization, spectra and transport all send
+    ``structure_path`` (four call sites, checked 2026-08-04).  So the covered
+    shape and the used shape are different, which is exactly how
+    install-pseudos answered 400 to every real save for weeks with its own
+    tests green -- the suite exercised a request nobody makes.
+
+    This pins the request the tabs actually make.  It is deliberately thin: the
+    chemistry is tested above and does not need repeating; what needs a test is
+    that THE SHAPE THE CLIENT SENDS REACHES AN ANSWER.
+    """
+    from molbuilder import diagnostics
+    from molbuilder.web.app import create_app
+
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text("3\nwater\nO 0 0 0\nH 0.96 0 0\nH -0.24 0.93 0\n")
+    caps = diagnostics.Capabilities(
+        runtime_config={}, conda_binary=None, conda_envs=frozenset())
+    monkeypatch.setattr(type(caps), "file_picker_roots",
+                        lambda self: ((tmp_path.resolve(), "projects"),))
+    diagnostics.set_capabilities(caps)
+
+    c = create_app(config={}).test_client()
+    r = c.post("/api/structure/analyze",
+               json={"structure_path": str(xyz.resolve())})
+    assert r.status_code == 200, r.data
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["n_atoms"] == 3
+    assert sorted(body["elements"]) == ["H", "O"]

@@ -153,9 +153,19 @@ the box render and the fdf work on a blank molecule.
 
 | Parameter | Default | Resolver (default → concrete) | Explicit override |
 |---|---|---|---|
-| `cell` | `struct.cell is None` | `resolve_cell()` (§ 4) | `setUnitCell(3×3)` / import / capture → `struct.cell` wins verbatim |
-| `vacuum` | `null` (unset) | `effective_vacuum()` — **3 Å per side on each `isolated` axis** (§ 6.1); 0 on periodic / transport, where vacuum does not apply | `setVacuum([x,y,z])` — used verbatim, however small. `null` clears it back to the default |
-| `axis_kind` (pbc) | `isolated` on every axis (a fresh molecule is a vacuum box) | `pbc[i] = axis_kind[i] != "isolated"` | `setAxisKind([...])` |
+| `cell` | `struct.cell is None` | `resolve_cell()` (§ 4) | `commitPeriodicityOp("cell", 3×3)` / import / capture → `struct.cell` wins verbatim |
+| `vacuum` | `null` (unset) | `effective_vacuum()` — **3 Å per side on each `isolated` axis** (§ 6.1); 0 on periodic / transport, where vacuum does not apply | `commitPeriodicityOp("vacuum", [x,y,z])` — used verbatim, however small. `null` clears it back to the default |
+| `axis_kind` (pbc) | `isolated` on every axis (a fresh molecule is a vacuum box) | `pbc[i] = axis_kind[i] != "isolated"` | `commitPeriodicityOp("axis_kind", [...])` |
+
+**One door, four ops.** This column named `setUnitCell` / `setVacuum` /
+`setAxisKind` — four separate writers that were deleted in the MolView rework
+and replaced by a single `commitPeriodicityOp(op, payload)`, with `op` one of
+`vacuum · axis_kind · cell · cell_origin` (`periodicity_gate.OPS`, and the
+route validates against that same tuple). Four doors meant four things for the
+gate to stand in front of; one door means the check cannot be bypassed by
+picking a different setter. **For `cell` and `cell_origin` the payload is
+required even when it is `null`** — a dropped key must not be
+indistinguishable from an explicit "clear this".
 
 **Load-bearing rule:** the cell the renderer uses is the **resolved** cell,
 obtained only through the accessor `molview.data.getUnitCellInfo().value` —

@@ -78,10 +78,14 @@ class TestSiestaGenerateBytes:
         r = web_client.post(
             "/api/build/fdf",
             json={
+                # NO LABEL KEYS.  They were `frozen_atoms: []` + `regions: {}`,
+                # which read as "I declare nothing is labelled" and in fact
+                # declared nothing at all: nothing has read a top-level label
+                # key since `apply_labels_to_struct` was deleted.  This test is
+                # about the EMITTED BYTES for an unlabelled structure, and it
+                # says that better by not pretending to send a declaration.
                 "xyz": _H2O_XYZ,
                 "params": {"system_label": "h2o_test"},
-                "frozen_atoms": [],
-                "regions": {},
             },
         )
         assert r.status_code == 200, r.get_data(as_text=True)
@@ -191,10 +195,8 @@ class TestPyscfGenerateBytes:
         r = web_client.post(
             "/api/build/pyscf",
             json={
-                "xyz": _H2O_XYZ,
+                "xyz": _H2O_XYZ,          # unlabelled; see the note above
                 "params": {},
-                "frozen_atoms": [],
-                "regions": {},
             },
         )
         assert r.status_code == 200, r.get_data(as_text=True)

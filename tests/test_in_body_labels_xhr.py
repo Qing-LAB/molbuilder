@@ -220,11 +220,14 @@ class TestBuildFdfInBodyLabels:
     def test_explicit_empty_label_keys_are_a_valid_claim(self, web):
         """The other half of F2: `{}` / `[]` IS the client saying "nothing to
         declare", and it emits cleanly with no Constraints block."""
-        r = web.post(
-            "/api/build/fdf",
-            json={"xyz": _XYZ, "params": {},
-                  "regions": {}, "frozen_atoms": []},
-        )
+        # THE EMPTY DECLARATION HAS TO BE MADE WHERE ONE IS READ.  This posted
+        # `xyz` with a top-level `regions: {}` -- and since the second applier
+        # was deleted, nothing reads that, so the test could not tell "I declare
+        # nothing" from "I said nothing".  It passed either way, which is the
+        # definition of proving nothing.  An envelope carrying an empty label
+        # store IS the claim, and reaches the Structure through `from_dict`.
+        r = web.post("/api/build/fdf",
+                     json={"structure": _envelope(regions={}), "params": {}})
         assert r.status_code == 200
         body = r.get_json() or {}
         assert body.get("ok") is True

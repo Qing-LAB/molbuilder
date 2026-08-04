@@ -356,31 +356,34 @@ def api_siesta_install_pseudos():
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
 
-    # Resolve structure (elements decide which pseudos to copy).
-    text_in = body.get("structure_text")
-    path_in = body.get("structure_path")
-    if path_in:
-        try:
-            p = _resolve_path_within_roots(path_in, require="file")
-        except _PickerError as exc:
-            return jsonify({"ok": False, "error": exc.message}), exc.status
-        text_in = p.read_text()
-        ext = p.suffix.lower()
-    else:
-        ext = "." + _sniff_structure_format(text_in or "")
-    if not text_in:
-        return jsonify({"ok": False,
-                        "error": "structure_path or structure_text is required"}), 400
-
-    from molbuilder.structure import Structure
+    # WHICH ELEMENTS ARE IN IT -- the only thing this route wants from the
+    # structure.  It copies one `<element>.psml` per element and reads nothing
+    # else: not the positions, not the labels, not the cell.
+    #
+    # IT TOOK `structure_text` / `structure_path` AND ITS CALLER STOPPED SENDING
+    # EITHER.  `7447d7d` moved the Save flow onto the envelope --
+    # `structure: _structureForRequest()` -- and did not bring this route with
+    # it, so every SIESTA save since has answered 400 here: "structure_path or
+    # structure_text is required".  The .fdf was written, the pseudos were not
+    # installed, and the wrapper was then skipped on purpose ("pseudos
+    # incomplete"), leaving a deck that cannot run.  Reported from a real save,
+    # 2026-08-04.
+    #
+    # The envelope is what the one caller sends, so the envelope is what this
+    # takes -- through `struct_from_body`, the one deserialiser, like every
+    # other door that receives a structure.
+    if not isinstance(body.get("structure"), dict):
+        return jsonify({
+            "ok": False,
+            "error": "no 'structure' provided (its elements decide which "
+                     "pseudopotentials to copy)",
+        }), 400
+    from ._shared import struct_from_body
     try:
-        if ext == ".pdb":
-            struct = Structure.from_pdb(text_in)
-        else:
-            struct = Structure.from_xyz(text_in)
-    except (ValueError, IndexError) as exc:
+        struct = struct_from_body(body)
+    except (ValueError, TypeError) as exc:
         return jsonify({"ok": False,
-                        "error": f"could not parse structure: {exc}"}), 400
+                        "error": f"could not read structure: {exc}"}), 400
 
     # Walk the unique element set + copy each .psml from psml_lib
     # to dest_dir.  Use shutil.copyfile (no metadata bits, predictable
