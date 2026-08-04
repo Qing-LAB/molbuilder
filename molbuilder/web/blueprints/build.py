@@ -915,12 +915,24 @@ def api_build_load():
         except (ValueError, TypeError) as exc:
             return jsonify({"ok": False,
                             "error": f"could not restore structure: {exc}"}), 400
-        # The stated box is applied, never refused: this is a LOAD.  A bad one
-        # is reported with the answer (ok_structure_response below) so the user
-        # can see it, fix it in the Cell page and be checked again -- refusing
-        # would make a structure with a bad box unopenable, and so unfixable.
-        from ._shared import apply_periodicity_only
-        struct = apply_periodicity_only(struct, _pbody)
+        # THE BOX CAME IN THE ENVELOPE, like everything else about these atoms,
+        # and `from_dict` applied it.  Nothing more to apply.
+        #
+        # This ran `apply_periodicity_only(struct, _pbody)` here, which reads a
+        # TOP-LEVEL `periodicity` and writes it over what the envelope just set
+        # -- a second source for the cell on a route that had already taken a
+        # first (2026-08-04, the same shape the labels wore in #41).  It could
+        # not fire from the shipped client: `requestBodyFor` RETURNS on the
+        # structure branch, so a restore body cannot carry both keys.  A reader
+        # nobody can currently reach is still a reader; that is exactly how the
+        # label version stayed invisible for months.
+        #
+        # It is still applied on the TEXT branch below, and is right there: that
+        # body has no envelope, so a stated block is the only way to say what
+        # the box is.  A load APPLIES rather than refuses either way -- a bad
+        # box is reported with the answer (`ok_structure_response`) so the user
+        # can open the structure and fix it in the Cell page.  Refusing would
+        # make a structure with a bad box unopenable, and so unfixable.
         return ok_structure_response(struct, extra={
             "source_format": "xyz",
             "title": struct.title or "restored structure",
@@ -1097,10 +1109,10 @@ def api_build_fdf():
     # viewer model fills via factsForRequest().  A body that omits them is a
     # 400 -- there is no disk fallback, so an emitted deck can never mix body
     # geometry with disk labels the model has since changed.
-    from ._shared import apply_periodicity_for_emit
+    from ._shared import periodicity_checked_for_emit
     # The tab-emit contract: the body carries the MODEL's periodicity
     # truth (never a second source); apply + gate (structure-periodicity.md 7).
-    struct = apply_periodicity_for_emit(struct, body)
+    struct = periodicity_checked_for_emit(struct)
 
     try:
         cfg = _siesta_config_from_params(params)
@@ -1199,10 +1211,10 @@ def api_build_pyscf():
     # the structure before render_script sees it.  2026-06-14 update:
     # prefer in-body labels (the viewer-is-truth contract) and only
     # fall back to disk sidecar when neither key is sent.
-    from ._shared import apply_periodicity_for_emit
+    from ._shared import periodicity_checked_for_emit
     # The tab-emit contract: the body carries the MODEL's periodicity
     # truth (never a second source); apply + gate (structure-periodicity.md 7).
-    struct = apply_periodicity_for_emit(struct, body)
+    struct = periodicity_checked_for_emit(struct)
 
     try:
         cfg = _pyscf_config_from_params(params)
@@ -1326,8 +1338,8 @@ def api_build_preflight():
         return jsonify({"ok": False, "error": str(exc)}), 400
     # Preflight must see exactly what Generate sees (labels + the
     # model's periodicity truth) -- it validated a phantom before.
-    from ._shared import apply_periodicity_for_emit
-    struct = apply_periodicity_for_emit(struct, body)
+    from ._shared import periodicity_checked_for_emit
+    struct = periodicity_checked_for_emit(struct)
 
     try:
         if engine == "siesta":

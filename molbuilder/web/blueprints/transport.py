@@ -180,8 +180,8 @@ def api_transport_render() -> Any:
     # `Structure.from_dict` -- the one deserialiser, which validates through the
     # same `__post_init__` a freshly built Structure runs.  Nothing to apply
     # here, and no second copy to rank against the first.
-    from ._shared import apply_periodicity_for_emit
-    struct = apply_periodicity_for_emit(struct, body)
+    from ._shared import periodicity_checked_for_emit
+    struct = periodicity_checked_for_emit(struct)
 
     # Build the config.  Unknown-field protection + dataclass
     # validation surfaces a clean 400 for bad params instead of a

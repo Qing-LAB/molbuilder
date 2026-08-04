@@ -1282,7 +1282,7 @@ class PeriodicityRefused(Exception):
 def checked_periodicity(struct):
     """Run the gate and let a refusal become the door's 400.
 
-    The one wrapper both entry paths use -- ``apply_periodicity_for_emit``
+    The one wrapper both entry paths use -- ``periodicity_checked_for_emit``
     below and the export door -- so neither owns a copy of the translation.
     Returns the gate's ``(struct, notices)`` unchanged.
     """
@@ -1318,7 +1318,7 @@ def apply_periodicity_only(struct, body):
         structure with a bad box unfixable through the UI -- you could not even
         open it to correct it.
 
-    So this half applies; :func:`apply_periodicity_for_emit` adds the refusal
+    So this half applies; :func:`periodicity_checked_for_emit` adds the refusal
     for the first kind of door, and :func:`ok_structure_response` reports for
     the second.
     """
@@ -1337,16 +1337,35 @@ def apply_periodicity_only(struct, body):
     return struct
 
 
-def apply_periodicity_for_emit(struct, body):
-    """Apply the stated box, then REFUSE a bad one -- the emitting doors.
+def periodicity_checked_for_emit(struct):
+    """REFUSE a bad box -- the emitting doors.  Checks; applies nothing.
 
     Returns the CHECKED structure -- the same object the gate was given, since
     the gate corrects nothing (clause 1: a resolved value is never written
     back).  Callers rebind so this stays the one seam every emitted structure
     passes through rather than an optional check.  A refusable cell raises
     :class:`PeriodicityRefused`, which the app turns into the door's 400.
+
+    WHY IT NO LONGER APPLIES ANYTHING (2026-08-04).  This ran
+    ``apply_periodicity_only(struct, body)`` first, which reads a TOP-LEVEL
+    ``body["periodicity"]`` and writes it over the structure -- so an emit
+    request had TWO places to say what the box was, and the second one won:
+    an envelope stating an 8 A cell plus a top-level block stating 20 A
+    emitted 20.  Measured, not inferred.
+
+    That is the cell wearing the shape the LABELS wore until the day before
+    (#41): two sources, silently ranked, with no rule that could work -- "the
+    envelope stated no cell" and "the envelope stated a different cell" are the
+    same input to any precedence rule you can write.  No emit caller was
+    sending the top-level key (the tabs send ``molview.exportFile()``, whose
+    cell rides in ``metadata``), so nothing was being mis-emitted; a reader for
+    a shape nobody sends is exactly how the label version stayed invisible.
+
+    ``apply_periodicity_only`` REMAINS, and is right, on ``/api/build/load``:
+    that door takes a structure as TEXT, so there is no envelope and a stated
+    block is the only way to say what the box is.  One key, one door, no rank.
     """
-    checked, _conditions = checked_periodicity(apply_periodicity_only(struct, body))
+    checked, _conditions = checked_periodicity(struct)
     return checked
 
 

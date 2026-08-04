@@ -347,8 +347,8 @@ def api_spectra_render():
 
     # F2 (science/validation.md 4.1): the body carries ``frozen_atoms`` /
     # ``regions`` from the model; omitting them is a 400, not a disk re-read.
-    from ._shared import apply_periodicity_for_emit
-    struct = apply_periodicity_for_emit(struct, body)
+    from ._shared import periodicity_checked_for_emit
+    struct = periodicity_checked_for_emit(struct)
 
     # Build SpectraConfig from form params.  Coercion failures
     # surface as an error-severity Issue rather than HTTP 400 so

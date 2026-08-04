@@ -1584,10 +1584,15 @@ class TestARefusedCellIsA400:
         to be one the route accepts.
         """
         s = Structure(elements=["H"], positions=np.zeros((1, 3)))
+        s.cell = self.LEFT_HANDED
+        s.__post_init__()
+        # IN the envelope.  This stated the bad cell in a top-level
+        # `periodicity` block BESIDE the envelope, and passed because the emit
+        # doors applied that block over the structure -- a second source for the
+        # cell, the same shape the labels had (#41).  The doors check now and
+        # apply nothing, so the cell has to be where the structure keeps it.
         self._assert_refused(client.post("/api/spectra/render", json={
-            "structure": s.to_dict(), "params": {},
-            "regions": {}, "frozen_atoms": [],
-            "periodicity": {"cell": self.LEFT_HANDED}}), "/api/spectra/render")
+            "structure": s.to_dict(), "params": {}}), "/api/spectra/render")
 
     def test_the_export_door_refuses(self, client):
         """The export door reads the cell off the ENVELOPE rather than a
@@ -1608,7 +1613,9 @@ class TestARefusedCellIsA400:
         xyz = tmp / "refused.xyz"
         xyz.write_text(self.XYZ)
         s = Structure(elements=["H"], positions=np.zeros((1, 3)))
+        s.cell = self.LEFT_HANDED
+        s.__post_init__()
         self._assert_refused(client.post("/api/transport/render", json={
-            "structure": s.to_dict(), "structure_path": str(xyz), "params": {},
-            "periodicity": {"cell": self.LEFT_HANDED}}),
+            "structure": s.to_dict(), "structure_path": str(xyz),
+            "params": {}}),
             "/api/transport/render")
