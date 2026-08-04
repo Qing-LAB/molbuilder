@@ -82,7 +82,7 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _a_session_that_did_not_happen():
+def _a_session_that_did_not_happen(tmp_path, monkeypatch):
     """Each test starts as a browser that has never opened this tab.
 
     MolView's sequence is PERSISTENT — it outlives the page (molview.md § 11.2)
@@ -91,28 +91,26 @@ def _a_session_that_did_not_happen():
     symptom was not a wrong assertion: the next test's Load hit the
     discard-unsaved gate and its click waited on a modal nobody answered.
 
-    That the state lands HERE at all is a separate, worse problem, recorded
-    rather than papered over: the workspace keeps its files under
-    ``projects_root()``, which is ``Path.cwd()/projects``, so an e2e run writes
-    into the developer's real project tree.  Clearing this tag before and after
-    keeps runs from colliding with each other and with a live browser session,
-    but the right fix is for a test server to have a projects root of its own.
+    The isolation comes from giving the test server a projects root of its own.
+    ``tmp_path`` is already per-test, so "no state from the last test" is not
+    something this fixture has to arrange — it is true by construction, and the
+    directory is thrown away with the test.
+
+    This replaced a fixture that reached into the DEVELOPER'S real ``projects/``
+    and unlinked ``ws-modify*.wc.json`` before and after every test.  It got the
+    isolation by deleting files it did not own — including, if the developer had
+    a live server on the same tree, their parked Modify-tab session.  The state
+    landed there because ``workspace_storage`` resolves ``projects_root()`` =
+    ``Path.cwd()/projects``, and pytest's cwd is the repo.  A test that wants a
+    different root should say so, which is all this does.
+
+    Patched on ``workspace_storage`` rather than on ``molbuilder.projects``
+    because the name is bound at import (``from ... import projects_root``), so
+    rebinding the source module would not reach the caller.
     """
-    from molbuilder.projects import projects_root
-    states = projects_root() / ".molbuilder_workspace" / "states"
-
-    def wipe():
-        if not states.is_dir():
-            return
-        for f in states.glob("ws-modify*.wc.json"):
-            try:
-                f.unlink()
-            except OSError:
-                pass
-
-    wipe()
+    from molbuilder.web.blueprints import workspace_storage
+    monkeypatch.setattr(workspace_storage, "projects_root", lambda: tmp_path)
     yield
-    wipe()
 
 
 @pytest.fixture

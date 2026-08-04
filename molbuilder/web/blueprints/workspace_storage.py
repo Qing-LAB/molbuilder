@@ -84,20 +84,9 @@ def _default_draft_dir():
     data -- a project dir is NOT required (workspace.md) -- so state files live at
     the top-level ``projects_root()``, keyed by ``workspace_id``.
 
-    KNOWN DEFECT, tracked as task #46 and deliberately NOT fixed here: the app
-    resolves the projects root TWICE.  The file picker asks
-    ``Capabilities.file_picker_roots()`` -- the resolved answer a deployment or a
-    test can point elsewhere -- and this asks ``projects_root()``, which is always
-    ``Path.cwd()/projects`` and cannot be redirected.  So a test that pins the
-    picker at a temp directory still has its SESSION STATE land in the developer's
-    live ``projects/`` tree.
-
-    A fix was written and reverted, because it carried its own bug: it fell back
-    to ``projects_root()`` when Capabilities answered nothing -- but Capabilities
-    answers nothing ONLY when ``projects_root().expanduser().resolve()`` threw, so
-    the fallback returns the UNRESOLVED form of a path that has just failed to
-    resolve.  A second answer, produced exactly when the first one broke.  The
-    real fix resolves once and fails loudly; #46 carries it.
+    A test that wants these files somewhere else patches ``projects_root`` on
+    THIS module -- the name is bound at import, so rebinding it on
+    ``molbuilder.projects`` would not reach here.
     """
     return projects_root()
 
