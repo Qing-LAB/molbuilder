@@ -628,3 +628,90 @@ def test_extract_script_source_empty_blocks_present_but_empty():
     assert src["frozen_atoms"] == []   # nothing carries the label
     from molbuilder.sidecars.molstruct import SCHEMA_VERSION as _SV
     assert src["schema_version"] == _SV
+
+
+# --------------------------------------------------------------------- #
+#  The version line on the in-body block is READ (2026-08-03)           #
+# --------------------------------------------------------------------- #
+#
+# The block states the version that wrote it, and this reader took the contents
+# at face value regardless.  So a block written in the older layout -- frozen
+# atoms as a key BESIDE `regions` rather than a label inside it -- was applied,
+# its frozen set dropped, and a run came back with nothing frozen and nothing
+# said.  That is how real 50- and 216-atom frozen sets went missing.
+#
+# WARN AND TRANSLATE, not refuse (user decision).  Refusing would make a
+# finished run unopenable, and the whole point of these notes is that a run
+# directory explains itself.
+#
+# Built from a constructed junction, never a file found on disk: a fixture
+# cannot go stale, and its relevance is not a guess.
+
+def _block(doc: dict) -> str:
+    import json
+    body = json.dumps(doc, indent=2)
+    return ("# === molbuilder atom-metadata BEGIN ===\n"
+            f"# format: molstruct-json/v{doc['schema_version']}\n"
+            + "\n".join("# " + l for l in body.splitlines())
+            + "\n# === molbuilder atom-metadata END ===")
+
+
+def _junction_parts():
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from support.junction import build_junction
+    from molbuilder.structure import FROZEN_LABEL
+    s = build_junction()
+    return s, list(s.regions[FROZEN_LABEL]), FROZEN_LABEL
+
+
+def test_the_current_version_applies_without_a_word():
+    from molbuilder import script_emit as sc
+    from molbuilder.sidecars.molstruct import SCHEMA_VERSION
+    from molbuilder.structure import Structure
+    s, frozen, FROZEN = _junction_parts()
+    blk = _block({"schema_version": SCHEMA_VERSION, "n_atoms_total": s.n_atoms,
+                  "regions": {k: list(v) for k, v in s.regions.items()},
+                  "annotations": {}})
+    back = Structure(elements=list(s.elements), positions=s.positions.copy())
+    said = []
+    assert sc.apply_inbody_atom_metadata(back, blk, notices=said) is True
+    assert len(back.regions[FROZEN]) == len(frozen)
+    assert said == [], f"a current block must not be complained about: {said}"
+
+
+def test_an_older_layout_recovers_the_frozen_atoms_and_says_so():
+    """The defect, inverted into a pin: the frozen set survives AND the user
+    is told where it came from."""
+    from molbuilder import script_emit as sc
+    from molbuilder.structure import Structure
+    s, frozen, FROZEN = _junction_parts()
+    blk = _block({
+        "schema_version": 4, "n_atoms_total": s.n_atoms,
+        "regions": {k: list(v) for k, v in s.regions.items() if k != FROZEN},
+        "frozen_atoms": frozen,          # the retired two-store shape
+        "annotations": {},
+    })
+    back = Structure(elements=list(s.elements), positions=s.positions.copy())
+    said = []
+    assert sc.apply_inbody_atom_metadata(back, blk, notices=said) is True
+    assert len(back.regions.get(FROZEN, [])) == len(frozen), (
+        "the frozen set was dropped -- this is the loss the check exists for")
+    assert said and said[0]["level"] == "warn"
+    assert said[0]["where"] == "labels.atom_metadata_version"
+
+
+def test_a_label_already_in_the_current_place_is_not_overwritten():
+    """If both shapes are present the CURRENT one wins -- it is the newer
+    truth, and a translation must never clobber it."""
+    from molbuilder import script_emit as sc
+    from molbuilder.structure import Structure
+    s, frozen, FROZEN = _junction_parts()
+    regions = {k: list(v) for k, v in s.regions.items()}
+    regions[FROZEN] = [0]                                  # current, and short
+    blk = _block({"schema_version": 4, "n_atoms_total": s.n_atoms,
+                  "regions": regions, "frozen_atoms": frozen, "annotations": {}})
+    back = Structure(elements=list(s.elements), positions=s.positions.copy())
+    said = []
+    sc.apply_inbody_atom_metadata(back, blk, notices=said)
+    assert back.regions[FROZEN] == [0], "the old key overwrote the current one"

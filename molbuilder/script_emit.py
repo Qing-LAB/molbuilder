@@ -377,27 +377,80 @@ def emit_user_custom_placeholder() -> str:
 # local apply that doesn't require the hash.
 
 
-def apply_inbody_atom_metadata(struct: Any, text: str) -> bool:
-    """If ``text`` carries an ATOM-METADATA block, apply its
-    ``regions`` and ``frozen_atoms`` to ``struct``.
+def apply_inbody_atom_metadata(struct: Any, text: str, *,
+                               notices: Optional[list] = None) -> bool:
+    """If ``text`` carries an ATOM-METADATA block, apply its labels to
+    ``struct``.
 
-    ``struct`` is duck-typed: any object with mutable ``regions``
-    (dict) and ``frozen_atoms`` (list) attributes will do.  Mirrors
-    the protocol that :func:`molbuilder.sidecars.molstruct.apply_to_structure`
-    uses for the sidecar path, minus the structure_hash check.
+    ``struct`` is duck-typed: any object with a mutable ``regions`` dict will
+    do.  Mirrors the protocol :func:`molbuilder.sidecars.molstruct.
+    apply_to_structure` uses for the sidecar, minus the structure_hash check
+    (metadata and coordinates are written by the same generator pass and cannot
+    drift apart by construction).
 
-    Returns ``True`` when labels were applied, ``False`` otherwise
-    (no block, or block carried empty regions + frozen_atoms).
+    Returns ``True`` when labels were applied, ``False`` otherwise (no block,
+    or a block carrying nothing).
+
+    THE VERSION LINE IS READ NOW (2026-08-03), and until then it was not.  The
+    block states the version that wrote it -- and this reader took the contents
+    at face value regardless, so a block in an older layout was applied, its
+    frozen atoms silently dropped, and a run came back with nothing frozen and
+    nothing said.  That is how the label store's move lost 50 and 216-atom
+    frozen sets out of real run directories.
+
+    On a version it does not recognise this WARNS and TRANSLATES rather than
+    refusing (user, 2026-08-03).  Refusing would make a finished run
+    unopenable, and the point of these notes is that a run directory explains
+    itself.  So: say what was found, convert what can be converted, and let the
+    user see both.
+
+    ``notices`` collects ``{level, message, where, about}`` dicts for the
+    caller to surface.  A finding never travels as ``warnings.warn`` -- that
+    reaches server stderr and no web user at all (delivery contract R5,
+    science/validation.md § 4.1), which is the same mistake in a different
+    place.
     """
-    # Local import — avoids a circular import via parse.scripts.
+    # Local import -- avoids a circular import via parse.scripts.
     from molbuilder.parse.scripts.atom_metadata import (
         _extract_atom_metadata_dict,
     )
+    from molbuilder.sidecars.molstruct import SCHEMA_VERSION
+    from molbuilder.structure import FROZEN_LABEL
+
     payload = _extract_atom_metadata_dict(text)
     if payload is None:
         return False
-    regions = payload.get("regions") or {}
+
+    regions = dict(payload.get("regions") or {})
     annotations = payload.get("annotations") or {}
+
+    said = payload.get("schema_version")
+    if said != SCHEMA_VERSION:
+        # THE ONE TRANSLATION WORTH DOING: frozen atoms used to be a key of
+        # their own, beside `regions`.  They are an ordinary label inside it
+        # now, so an old block's `frozen_atoms` is moved in.  An existing
+        # in-regions entry wins -- it is the current shape and the newer truth.
+        moved = payload.get("frozen_atoms")
+        recovered = 0
+        if isinstance(moved, list) and FROZEN_LABEL not in regions:
+            regions[FROZEN_LABEL] = list(moved)
+            recovered = len(moved)
+        if notices is not None:
+            detail = (f"; recovered {recovered} frozen atom(s) from the old "
+                      f"layout" if recovered else
+                      "; nothing needed moving")
+            notices.append({
+                "level": "warn",
+                "message": (
+                    f"These atom labels were written by an older molbuilder "
+                    f"(the notes say version {said!r}; this build writes "
+                    f"{SCHEMA_VERSION}){detail}. Check the labels are what you "
+                    f"expect before running anything from them, and re-save "
+                    f"the structure to store them in the current form."),
+                "where": "labels.atom_metadata_version",
+                "about": "labels",
+            })
+
     if not regions and not annotations:
         return False
     if regions:
@@ -408,8 +461,8 @@ def apply_inbody_atom_metadata(struct: Any, text: str) -> bool:
             for k, v in regions.items()
         }
     if annotations:
-        # Extensible channels (v4) -> struct.annotations, same round-trip as
-        # the sidecar (§ 3 data-model persistence).
+        # Extensible channels -> struct.annotations, same round-trip as the
+        # sidecar (§ 3 data-model persistence).
         from molbuilder.structure import annotations_from_json
         struct.annotations = annotations_from_json(annotations)
     return True

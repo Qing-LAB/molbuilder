@@ -1499,8 +1499,12 @@ def apply_sidecar_if_possible(struct, structure_path):
     # may have drifted).  apply_companion_labels_if_present mutates
     # struct in place and returns a marker string when it applied;
     # the sidecar branch is skipped in that case.
-    if apply_companion_labels_if_present(struct, resolved) is not None:
-        return None
+    _companion_said = []
+    if apply_companion_labels_if_present(
+            struct, resolved, notices=_companion_said) is not None:
+        # Same channel the sidecar branch below uses: a string here becomes a
+        # warn-Issue in the caller's preflight.
+        return _companion_said[0]["message"] if _companion_said else None
     sidecar_path = _molstruct_json.sidecar_path_for(resolved)
     if not sidecar_path.exists():
         return None
@@ -1516,7 +1520,7 @@ def apply_sidecar_if_possible(struct, structure_path):
     return None
 
 
-def apply_companion_labels_if_present(struct, structure_path):
+def apply_companion_labels_if_present(struct, structure_path, *, notices=None):
     """Same-stem ``.fdf`` / ``.py`` companion next to a ``.xyz`` /
     ``.pdb`` wins over a ``.molstruct.json`` sidecar as the label
     source.  See ``docs/execution/job-contracts.md`` and § 5.3.
@@ -1566,7 +1570,15 @@ def apply_companion_labels_if_present(struct, structure_path):
             # outcomes as warn-Issues; an unreadable companion
             # behaves the same as "no companion present".
             continue
-        if _sc.apply_inbody_atom_metadata(struct, text):
+        _said = []
+        if _sc.apply_inbody_atom_metadata(struct, text, notices=_said):
+            # The version warning rides back with the marker, so the caller can
+            # surface it.  Without this it would die here -- the labels would
+            # be recovered and the user would never learn they came from an
+            # older layout, which is the SAME silence the recovery exists to
+            # end (delivery contract R5).
+            if _said and notices is not None:
+                notices.extend(_said)
             return marker
     return None
 
