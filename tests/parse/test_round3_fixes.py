@@ -28,8 +28,16 @@ SIESTA_OUT = REPO / "tests" / "watch" / "fixtures" / "siesta_frozen" \
 
 
 def _need(p: Path) -> Path:
-    if not p.exists():
-        pytest.skip(f"fixture absent: {p}")
+    """Assert the fixture is there.
+
+    This used to ``pytest.skip`` on a missing file.  Every fixture it guards is
+    COMMITTED under tests/ -- so absence means a broken checkout or a deleted
+    file, and skipping turned that into a green run that proved nothing.  A
+    missing committed fixture is a failure, loudly.
+    """
+    assert p.exists(), (
+        f"committed fixture missing: {p}.  It is versioned with these tests; "
+        f"a checkout without it is broken, not a reason to skip.")
     return p
 
 

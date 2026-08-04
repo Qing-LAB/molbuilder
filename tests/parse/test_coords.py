@@ -32,15 +32,21 @@ from molbuilder.parse.registry import _registered_file_parsers
 
 
 REPO = Path(__file__).resolve().parents[2]
-BDT_XV = REPO / "projects" / "BDT" / "optimization" / "BDT-only" / "siesta-BDT.XV"
-TJ_XV  = REPO / "projects" / "BDT" / "optimization" / "TJ-BDT-Au111" \
-    / "siesta-BDT-Au111-TJ.XV"
+# BUILT, NOT FOUND.  The fixture was a real run under projects/, behind a
+# `pytest.skip("fixture absent")` -- so it read the user's scientific record
+# on this machine and SKIPPED (green, proving nothing) anywhere else.
 
 
-def _need(p: Path) -> Path:
-    if not p.exists():
-        pytest.skip(f"fixture absent: {p}")
-    return p
+def _xv(tmp_path):
+    """A valid SIESTA .XV written from the junction defined in source."""
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from support.junction import xv_file
+    return xv_file(tmp_path / "junction.XV")
+
+
+
+
 
 
 # Registration --------------------------------------------------------- #
@@ -89,10 +95,10 @@ def test_pyscf_geom_doesnt_claim_plain_xyz(tmp_path: Path):
 # Real-file parse + cell surface ---------------------------------- #
 
 
-def test_xv_parse_returns_structureresult_with_cell():
+def test_xv_parse_returns_structureresult_with_cell(tmp_path):
     """End-to-end: parse a real .XV via the registry, get back a
     StructureResult with structure + cell + source_format set."""
-    result = parse(_need(TJ_XV))
+    result = parse(_xv(tmp_path))
     assert isinstance(result, StructureResult)
     assert result.result_kind == "structure"
     assert result.parser_name == "siesta-xv"
@@ -159,19 +165,19 @@ def test_xv_structure_elements_match_atomic_numbers(tmp_path: Path):
     assert result.structure.elements == ["Au"]
 
 
-def test_detect_routes_xv_to_siesta_xv_parser():
-    cls = detect(_need(TJ_XV))
+def test_detect_routes_xv_to_siesta_xv_parser(tmp_path):
+    cls = detect(_xv(tmp_path))
     assert cls is SiestaXVFileParser
 
 
 # Frozen invariant ------------------------------------------------- #
 
 
-def test_structureresult_is_frozen():
+def test_structureresult_is_frozen(tmp_path):
     """StructureResult inherits the frozen invariant from
     ParseResult.  Catches an accidental drop of frozen=True on
     the subclass."""
     from dataclasses import FrozenInstanceError
-    r = parse(_need(TJ_XV))
+    r = parse(_xv(tmp_path))
     with pytest.raises(FrozenInstanceError):
         r.source_format = "tampered"

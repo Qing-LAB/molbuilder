@@ -47,13 +47,25 @@ REPO = Path(__file__).resolve().parents[1].parent
 SIESTA_OUT = REPO / "tests" / "watch" / "fixtures" / "siesta_frozen" \
     / "hemeC-stage2-run3-finished-42fr.out"
 MOLSTRUCT_FX = REPO / "tests" / "data" / "au_bdt_au.molstruct.json"
-SPECTRA_FX   = REPO / "projects" / "BDT" / "spectrum" / "BDT-only" \
-    / "spectra.spectra.json"
+# NO PATH INTO projects/.  The spectra fixture was
+# projects/BDT/spectrum/BDT-only/spectra.spectra.json -- the user's scientific
+# record -- behind a `pytest.skip("fixture absent")`, which is the dangerous
+# half: on a machine without that run the test SKIPS and the suite still reads
+# green.  It is now WRITTEN by the application's own `dump_spectra_json`, so
+# the document is valid by construction and cannot go stale.
 
 
 def _need(p: Path) -> Path:
-    if not p.exists():
-        pytest.skip(f"fixture absent: {p}")
+    """Assert the fixture is there.
+
+    This used to ``pytest.skip`` on a missing file.  Every fixture it guards is
+    COMMITTED under tests/ -- so absence means a broken checkout or a deleted
+    file, and skipping turned that into a green run that proved nothing.  A
+    missing committed fixture is a failure, loudly.
+    """
+    assert p.exists(), (
+        f"committed fixture missing: {p}.  It is versioned with these tests; "
+        f"a checkout without it is broken, not a reason to skip.")
     return p
 
 
@@ -155,14 +167,14 @@ def test_i1_bool_not_charted_as_residual() -> None:
 # ---- Envelope-field drift ------------------------------------------ #
 
 
-def test_jobresult_parser_name_is_slug():
+def test_jobresult_parser_name_is_slug(tmp_path):
     """Round-2: JobResult.parser_name must be the slug ``job-dir``,
     matching the convention used by engines + sidecars (not the
     literal classname)."""
-    tj_dir = REPO / "projects" / "BDT" / "optimization" / "TJ-BDT-Au111"
-    if not tj_dir.is_dir():
-        pytest.skip(f"fixture absent: {tj_dir}")
-    result = parse_dir(tj_dir)
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from support.junction import run_dir
+    result = parse_dir(run_dir(tmp_path))
     assert result.parser_name == "job-dir"
     assert result.parser_name == JobDirParser.name
 
@@ -225,12 +237,14 @@ def test_registry_ambiguous_raises():
 # ---- Transport / Spectra JSON-serialisable payloads ------------- #
 
 
-def test_spectra_sidecar_payload_is_json_serialisable():
+def test_spectra_sidecar_payload_is_json_serialisable(tmp_path):
     """Round-2: SpectraSidecarFileParser used asdict(), leaving
     numpy ndarrays in the payload — json.dumps would throw.  The
     .to_dict() switch fixes this."""
-    p = _need(SPECTRA_FX)
-    result = parse(p)
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from support.junction import spectra_sidecar
+    result = parse(spectra_sidecar(tmp_path / "built.spectra.json"))
     # If asdict() were still in place, json.dumps would raise
     # TypeError("Object of type ndarray is not JSON serializable").
     json.dumps(result.payload)

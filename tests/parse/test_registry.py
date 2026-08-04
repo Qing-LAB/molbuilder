@@ -39,12 +39,22 @@ from molbuilder.parse.registry import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SIESTA_FIXTURE = REPO_ROOT / "tests" / "watch" / "fixtures" / "siesta_frozen" \
     / "hemeC-stage2-run3-finished-42fr.out"
-TJ_DIR  = REPO_ROOT / "projects" / "BDT" / "optimization" / "TJ-BDT-Au111"
+# BUILT, NOT FOUND.  The fixture was a real run under projects/, behind a
+# `pytest.skip("fixture absent")` -- so it read the user's scientific record
+# on this machine and SKIPPED (green, proving nothing) anywhere else.
 
 
 def _need(p: Path) -> Path:
-    if not p.exists():
-        pytest.skip(f"fixture absent: {p}")
+    """Assert the fixture is there.
+
+    This used to ``pytest.skip`` on a missing file.  Every fixture it guards is
+    COMMITTED under tests/ -- so absence means a broken checkout or a deleted
+    file, and skipping turned that into a green run that proved nothing.  A
+    missing committed fixture is a failure, loudly.
+    """
+    assert p.exists(), (
+        f"committed fixture missing: {p}.  It is versioned with these tests; "
+        f"a checkout without it is broken, not a reason to skip.")
     return p
 
 
@@ -101,9 +111,12 @@ def test_parse_siesta_out_returns_trajectoryresult():
     assert len(result.frames) > 0
 
 
-def test_parse_dir_dispatches_jobdirparser():
+def test_parse_dir_dispatches_jobdirparser(tmp_path):
     """parse_dir on a project dir routes to JobDirParser."""
-    result = parse_dir(_need(TJ_DIR))
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from support.junction import run_dir
+    result = parse_dir(run_dir(tmp_path))
     assert isinstance(result, JobResult)
     assert result.result_kind == "job"
     assert result.parser_name == "job-dir"

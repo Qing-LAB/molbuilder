@@ -23,15 +23,12 @@ from molbuilder.parse.dirs.bundle import BundleDirParser, BundleError
 from molbuilder.parse.registry import _registered_dir_parsers
 
 
-REPO = Path(__file__).resolve().parents[3]
-TJ_DIR  = REPO / "projects" / "BDT" / "optimization" / "TJ-BDT-Au111"
-BDT_DIR = REPO / "projects" / "BDT" / "optimization" / "BDT-withAuJunction"
-
-
-def _need(p: Path) -> Path:
-    if not p.is_dir():
-        pytest.skip(f"fixture dir absent: {p}")
-    return p
+# NO PATH INTO THE REAL TREE, and no skip helper.  Both are gone (2026-08-03).
+#
+# A `pytest.skip("fixture dir absent")` is the dangerous half: on any machine
+# without that directory the test SKIPS and the run still reads green, so the
+# suite reports coverage it does not have.  Every run directory below is built
+# in the test from a junction defined in source.
 
 
 # Dispatch isolation ----------------------------------------------- #
@@ -131,16 +128,34 @@ def test_the_frozen_set_survives_the_generator_and_comes_back(tmp_path):
 
 
 
-def test_parse_bdt_withaujunction_no_atom_metadata():
-    """Pre-script-contract .fdf (no ATOM-METADATA block) gives an
-    empty regions + frozen_atoms but still a valid BundleResult."""
-    result = BundleDirParser.parse(_need(BDT_DIR))
+def test_a_script_with_no_atom_metadata_gives_empty_labels(tmp_path: Path):
+    """A .fdf carrying no ATOM-METADATA block yields empty regions +
+    frozen_atoms -- an empty dict, NOT None -- and still a valid result.
+
+    BUILT, not found.  This read a real run directory
+    (projects/BDT/optimization/BDT-withAuJunction) whose only relevant
+    property was that it predates the block.  Depending on someone's
+    scientific record for "a file without a feature" is a guess about
+    relevance dressed as a fixture: it skips silently on any other machine,
+    and it changes meaning the day that directory is regenerated or deleted.
+    Stripping the block from a generated script states the property directly.
+    """
+    generated = (_run_dir(tmp_path) / "junction.fdf").read_text(encoding="utf-8")
+    start = generated.index("# === molbuilder atom-metadata BEGIN ===")
+    end = generated.index("# === molbuilder atom-metadata END ===") + len(
+        "# === molbuilder atom-metadata END ===")
+    stripped = generated[:start] + generated[end:]
+    assert "atom-metadata" not in stripped
+
+    bare = tmp_path / "no-labels"
+    bare.mkdir()
+    (bare / "junction.fdf").write_text(stripped, encoding="utf-8")
+
+    result = BundleDirParser.parse(bare)
     assert isinstance(result, BundleResult)
-    # ATOM-METADATA absent → regions empty dict (NOT None).
     assert result.regions == {}
     assert result.frozen_atoms == []
-    # Structure still populated (from .XV / .fdf-initial coords).
-    assert result.structure is not None
+    assert result.structure is not None, "coordinates still come from the .fdf"
 
 
 # BundleError propagation ------------------------------------------ #
@@ -166,16 +181,16 @@ def test_bundle_error_propagates_on_ambiguous_engines(tmp_path: Path):
 # Frozen + envelope ---------------------------------------------- #
 
 
-def test_bundleresult_is_frozen():
+def test_bundleresult_is_frozen(tmp_path: Path):
     from dataclasses import FrozenInstanceError
-    result = BundleDirParser.parse(_need(TJ_DIR))
+    result = BundleDirParser.parse(_run_dir(tmp_path))
     with pytest.raises(FrozenInstanceError):
         result.notes = []   # noqa
 
 
-def test_bundleresult_parser_name_is_slug():
+def test_bundleresult_parser_name_is_slug(tmp_path: Path):
     """Envelope convention: parser_name is the slug 'bundle-dir',
     not the literal classname."""
-    result = BundleDirParser.parse(_need(TJ_DIR))
+    result = BundleDirParser.parse(_run_dir(tmp_path))
     assert result.parser_name == "bundle-dir"
     assert result.parser_name == BundleDirParser.name

@@ -24,12 +24,25 @@ from molbuilder.parse.registry import _registered_file_parsers
 
 REPO = Path(__file__).resolve().parents[2]
 MOLSTRUCT_FX = REPO / "tests" / "data" / "au_bdt_au.molstruct.json"
-SPECTRA_FX   = REPO / "projects" / "BDT" / "spectrum" / "BDT-only" / "spectra.spectra.json"
+# NO PATH INTO projects/.  The spectra fixture was
+# projects/BDT/spectrum/BDT-only/spectra.spectra.json -- the user's scientific
+# record -- behind a `pytest.skip("fixture absent")`, which is the dangerous
+# half: on a machine without that run the test SKIPS and the suite still reads
+# green.  It is now WRITTEN by the application's own `dump_spectra_json`, so
+# the document is valid by construction and cannot go stale.
 
 
 def _need(p: Path) -> Path:
-    if not p.exists():
-        pytest.skip(f"fixture absent: {p}")
+    """Assert the fixture is there.
+
+    This used to ``pytest.skip`` on a missing file.  Every fixture it guards is
+    COMMITTED under tests/ -- so absence means a broken checkout or a deleted
+    file, and skipping turned that into a green run that proved nothing.  A
+    missing committed fixture is a failure, loudly.
+    """
+    assert p.exists(), (
+        f"committed fixture missing: {p}.  It is versioned with these tests; "
+        f"a checkout without it is broken, not a reason to skip.")
     return p
 
 
@@ -48,8 +61,12 @@ def test_molstruct_parser_claims_suffix():
     assert not MolstructSidecarFileParser.can_parse(REPO / "README.md")
 
 
-def test_spectra_parser_claims_suffix():
-    assert SpectraSidecarFileParser.can_parse(_need(SPECTRA_FX))
+def test_spectra_parser_claims_suffix(tmp_path):
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from support.junction import spectra_sidecar
+    assert SpectraSidecarFileParser.can_parse(
+        spectra_sidecar(tmp_path / "built.spectra.json"))
 
 
 def test_detect_routes_to_molstruct_parser():
@@ -73,8 +90,11 @@ def test_parse_molstruct_returns_sidecarresult():
         assert result.schema == f"molstruct/v{sv_in_payload}"
 
 
-def test_parse_spectra_returns_sidecarresult_with_payload():
-    result = parse(_need(SPECTRA_FX))
+def test_parse_spectra_returns_sidecarresult_with_payload(tmp_path):
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from support.junction import spectra_sidecar
+    result = parse(spectra_sidecar(tmp_path / "built.spectra.json"))
     assert isinstance(result, SidecarResult)
     assert result.schema.startswith("spectra/v")
     assert "schema_version" in result.payload

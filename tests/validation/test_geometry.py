@@ -198,19 +198,25 @@ def test_cell_determinant_zero_is_error(water_struct):
     skip the volume check below."""
     cell = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=float)
     issues = validate(water_struct, SiestaConfig(), cell=cell)
-    errs = [i for i in issues if i.where == "cell.determinant"]
-    assert len(errs) == 1
+    # `cell.determinant` said "degenerate OR left-handed" -- two faults with
+    # two different repairs under one id, so a flat molecule was told to swap
+    # its lattice vectors.  Split 2026-08-03; the checker reports one.
+    errs = [i for i in issues if i.where == "cell.no_volume"]
+    assert len(errs) == 1, [i.where for i in issues]
     assert errs[0].severity == "error"
-
+    assert not [i for i in issues if i.where == "cell.left_handed"], (
+        "a flat cell is not a handedness problem")
 
 
 def test_cell_determinant_negative_is_error(water_struct):
     """A left-handed cell (negative det) breaks SIESTA's PBC math."""
     cell = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float) * 10
     issues = validate(water_struct, SiestaConfig(), cell=cell)
-    errs = [i for i in issues if i.where == "cell.determinant"]
-    assert len(errs) == 1
+    errs = [i for i in issues if i.where == "cell.left_handed"]
+    assert len(errs) == 1, [i.where for i in issues]
     assert errs[0].severity == "error"
+    assert not [i for i in issues if i.where == "cell.no_volume"], (
+        "a mirrored cell has volume; it is the wrong way round, not empty")
 
 
 

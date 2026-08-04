@@ -66,8 +66,8 @@ pytestmark = pytest.mark.skipif(
 _CASES = [
     # POSIX home (Linux): username segment after /home/ is redacted.
     (
-        "/home/qqing/molbuilder/projects/BDT/run.out",
-        "~/molbuilder/projects/BDT/run.out",
+        "/home/qqing/molbuilder/projects/BDT/run.out",   # not-a-fixture
+        "~/molbuilder/projects/BDT/run.out",             # not-a-fixture
         "Linux home prefix redacted to ~",
     ),
     # POSIX home with a different username -- must still match.

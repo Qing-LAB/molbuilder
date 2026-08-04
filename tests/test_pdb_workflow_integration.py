@@ -45,11 +45,15 @@ from pathlib import Path
 import pytest
 
 
-# Use the user's actual file if it exists; fall back to a tiny
-# synthetic PDB so this test runs even on a fresh checkout.
-_USER_PDB = Path(
-    "/home/qqing/molbuilder/projects/hemeC-dithiol/structure/1c75.pdb"
-)
+# ONE PDB, BUILT HERE (2026-08-03).
+#
+# This preferred a real file from the user's projects tree
+# (hemeC-dithiol/structure/1c75.pdb) and fell back to the synthetic one only
+# when that was absent -- the worst of both.  The test then meant something
+# DIFFERENT on each machine, so every assertion had to be weak enough to hold
+# for a 3-residue peptide and a real protein at once, and a failure here could
+# not be read without first asking which file had been used.  The user's file
+# is also their scientific record, and nobody had confirmed it was relevant.
 _SYNTHETIC_PDB = (
     "HEADER    SYNTHETIC TRIPEPTIDE\n"
     "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\n"
@@ -96,7 +100,7 @@ def pdb_under_root(tmp_path, monkeypatch):
     so the selection endpoints accept it.  Uses the user's real
     1c75.pdb when available; the tiny synthetic above otherwise.
     Returns ``(pdb_path, n_atoms, n_residues)``."""
-    pdb_text = _USER_PDB.read_text() if _USER_PDB.exists() else _SYNTHETIC_PDB
+    pdb_text = _SYNTHETIC_PDB
     dest = tmp_path / "test_workflow.pdb"
     dest.write_text(pdb_text)
 

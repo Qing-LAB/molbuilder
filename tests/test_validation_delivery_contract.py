@@ -303,8 +303,11 @@ class TestSpatialAdequacyIsAdvisoryNotBlocking:
     def test_representability_stays_blocking(self):
         """The boundary: 'this is not a box' is an error, not advice."""
         import numpy as np
-        from molbuilder.validation import validate_geometry
-        bad = [i for i in validate_geometry(_thin_box_molecule(),
-                                            np.diag([8.0, 8.0, 0.0]))
-               if i.where == "cell.determinant"]
+        from molbuilder.cell import check, resolve
+        # Asked `validate_geometry` for `cell.determinant` until 2026-08-03.
+        # The verdict moved to the ONE checker -- geometry was emitting a second
+        # error for the same box -- and the id split in two, because "no volume"
+        # and "mirrored" are different repairs.
+        rc = resolve(_thin_box_molecule(), box=np.diag([8.0, 8.0, 0.0]))
+        bad = [i for i in check(rc) if i.where == "cell.no_volume"]
         assert bad and bad[0].severity == "error", bad
