@@ -112,8 +112,6 @@ class TestApiBuildPyscfAcceptsStages:
             json={
                 "structure": _env(_H2O_XYZ),
                 "params": {"stages": _PUBLISHABLE_STAGES},
-                "frozen_atoms": [],
-                "regions": {},
             },
         )
         assert r.status_code == 200, r.get_data(as_text=True)
@@ -175,8 +173,6 @@ class TestApiBuildPyscfAcceptsStages:
             json={
                 "structure": _env(_H2O_XYZ),
                 "params": {"stages": _PUBLISHABLE_STAGES},
-                "frozen_atoms": [],
-                "regions": {},
             },
         )
         assert r.status_code == 200
@@ -200,8 +196,6 @@ class TestApiBuildPyscfAcceptsStages:
             json={
                 "structure": _env(_H2O_XYZ),
                 "params": {},
-                "frozen_atoms": [],
-                "regions": {},
             },
         )
         assert r.status_code == 200, r.get_data(as_text=True)
@@ -311,8 +305,6 @@ class TestApiBuildPyscfRejectsBadStages:
             json={
                 "structure": _env(_H2O_XYZ),
                 "params": {"stages": ["bogus"]},
-                "frozen_atoms": [],
-                "regions": {},
             },
         )
         assert r.status_code == 400, r.get_data(as_text=True)
@@ -348,8 +340,7 @@ class TestApiBuildPyscfRejectsBrokenStages:
         The validator must catch this at the API tier."""
         r = web_client.post(
             "/api/build/pyscf",
-            json={"structure": _env(_H2O_XYZ), "params": {"stages": []},
-                  "frozen_atoms": [], "regions": {}},
+            json={"structure": _env(_H2O_XYZ), "params": {"stages": []}},
         )
         assert r.status_code == 200, r.get_data(as_text=True)
         body = r.get_json()
@@ -371,8 +362,7 @@ class TestApiBuildPyscfRejectsBrokenStages:
         ]
         r = web_client.post(
             "/api/build/pyscf",
-            json={"structure": _env(_H2O_XYZ), "params": {"stages": all_off},
-                  "frozen_atoms": [], "regions": {}},
+            json={"structure": _env(_H2O_XYZ), "params": {"stages": all_off}},
         )
         assert r.status_code == 200
         body = r.get_json()
@@ -390,8 +380,7 @@ class TestApiBuildPyscfRejectsBrokenStages:
         ]
         r = web_client.post(
             "/api/build/pyscf",
-            json={"structure": _env(_H2O_XYZ), "params": {"stages": dups},
-                  "frozen_atoms": [], "regions": {}},
+            json={"structure": _env(_H2O_XYZ), "params": {"stages": dups}},
         )
         assert r.status_code == 200
         body = r.get_json()
@@ -406,8 +395,7 @@ class TestApiBuildPyscfRejectsBrokenStages:
         bad = [{"name": "stage 1!", "enabled": True}]
         r = web_client.post(
             "/api/build/pyscf",
-            json={"structure": _env(_H2O_XYZ), "params": {"stages": bad},
-                  "frozen_atoms": [], "regions": {}},
+            json={"structure": _env(_H2O_XYZ), "params": {"stages": bad}},
         )
         assert r.status_code == 200
         body = r.get_json()
@@ -425,7 +413,6 @@ class TestApiBuildPyscfRejectsBrokenStages:
             json={
                 "structure": _env(_H2O_XYZ),
                 "params": {"optimize": False, "stages": []},
-                "frozen_atoms": [], "regions": {},
             },
         )
         assert r.status_code == 200
@@ -477,8 +464,7 @@ class TestMolwatchConvergenceTargetsCarriesAllSixKnobs:
     def _render(self, web_client):
         r = web_client.post(
             "/api/build/pyscf",
-            json={"structure": _env(_H2O_XYZ), "params": {},
-                  "frozen_atoms": [], "regions": {}},
+            json={"structure": _env(_H2O_XYZ), "params": {}},
         )
         assert r.status_code == 200, r.get_data(as_text=True)
         body = r.get_json()
