@@ -244,21 +244,40 @@ def test_measuring_reads_one_two_and_three_atoms(demo):
     rows = demo.locator(".molviewer-atoms-table tr")
     readout = demo.locator(".molviewer-overlay--info")
 
+    # THE FORMAT IS THE CONTRACT'S, spelled out in § 1.1:
+    #   one atom    -> `Au #3 — (0.000, 0.000, 0.000) Å`
+    #   two atoms   -> `|H #5 – O #1| = 0.957 Å`
+    #   three atoms -> `∠H #5 – O #1 – H #6 = 104.5°`
+    #
+    # This asserted a bare `#1` and a leading `120.`, which is the shape from
+    # before the element symbol was added. § 1.1 says why it is there: a bare
+    # number makes the reader look away from the answer to find out which atom
+    # it is about, and on a mixed structure it does not say whether the 0.96 Å
+    # is the bond they meant.
     rows.nth(0).click()
     _settle(demo)
     assert readout.is_visible()
-    assert readout.inner_text().startswith("#1"), readout.inner_text()
+    text = readout.inner_text()
+    assert text.startswith("C #1 — ("), text          # the atom, then its place
+    assert text.endswith("Å"), text
 
     rows.nth(1).click()
     _settle(demo)
-    assert readout.inner_text().endswith("Å"), readout.inner_text()
+    text = readout.inner_text()
+    assert text.startswith("|C #1 – C #2| = "), text  # both atoms named
+    assert text.endswith("Å"), text
 
     rows.nth(2).click()
     _settle(demo)
     text = readout.inner_text()
     assert text.endswith("°"), text
     # Picked 1 → 2 → 3, so atom 2 is the vertex: the interior angle of the ring.
-    assert text.startswith("120."), f"the vertex is not the atom picked second: {text}"
+    # The MIDDLE POSITION IS THE CLAIM (§ 11.6) -- writing the three in pick
+    # order is what says which one the vertex is, so the order is asserted here
+    # rather than only the number.
+    assert text.startswith("∠C #1 – C #2 – C #3 = "), (
+        f"the vertex is not the atom picked second: {text}")
+    assert "120." in text, f"benzene's interior angle is 120 degrees: {text}"
 
 
 # --------------------------------------------------------------------- #

@@ -190,7 +190,7 @@ def test_spectrum_commit_mounts_readonly_molview(
 # --------------------------------------------------------------------- #
 
 
-def test_spectrum_generate_posts_xyz_and_returns_script(
+def test_spectrum_generate_posts_structure_and_returns_script(
         page, flask_server, benzene_xyz_file):
     """The end-to-end CONTRACT:
        1. Page mounts.
@@ -214,15 +214,13 @@ def test_spectrum_generate_posts_xyz_and_returns_script(
     # Drive a direct fetch from inside the page so we test the
     # ACTUAL server route (not the Flask test client which lives
     # in a different test layer).
-    xyz_text = benzene_xyz_file.read_text()
-    body = json.dumps({
-        "structure_text": xyz_text,
-        "params": {},
-        # In-body labels contract: empty list is the explicit
-        # "no labels" claim.
-        "frozen_atoms": [],
-        "regions": {},
-    })
+    # THE STRUCTURE AS DATA (web-api.md § 1).  This posted a `structure_text`
+    # document, which molview.md § 11.7 says cannot exist: what leaves the
+    # viewer is "the atoms, their positions, and the facts about them" -- it
+    # holds no coordinate document and writes none, so the field's only caller
+    # could never fill it and the route retired it.
+    from support.envelope import from_xyz
+    body = json.dumps({"structure": from_xyz(_C6H6_XYZ), "params": {}})
     js = (
         "(body) => fetch('/api/spectra/render', { "
         "  method: 'POST', "
@@ -245,7 +243,7 @@ def test_spectrum_generate_posts_xyz_and_returns_script(
     )
 
 
-def test_spectrum_generate_honors_in_body_frozen_atoms(
+def test_spectrum_generate_honors_in_body_labels(
         page, flask_server, benzene_xyz_file):
     """Viewer-is-truth contract: when the POST body carries
     ``frozen_atoms``, the server applies them DIRECTLY (no disk
@@ -259,13 +257,14 @@ def test_spectrum_generate_honors_in_body_frozen_atoms(
         timeout=10_000,
     )
 
-    xyz_text = benzene_xyz_file.read_text()
+    # The labels ride INSIDE the structure -- one store, and the store is a
+    # field of the thing it describes.  A top-level `frozen_atoms` beside a
+    # `regions: {}` said "freeze the carbons" and "nothing is labelled" in the
+    # same breath; both that key and the second applier that read it are gone.
+    from support.envelope import from_xyz
     body = json.dumps({
-        "structure_text": xyz_text,
+        "structure": from_xyz(_C6H6_XYZ, frozen=[0, 1, 2, 3, 4, 5]),
         "params": {},
-        # Freeze the 6 carbons; leave hydrogens free.
-        "frozen_atoms": [0, 1, 2, 3, 4, 5],
-        "regions": {},
     })
     js = (
         "(body) => fetch('/api/spectra/render', { "
