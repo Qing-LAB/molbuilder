@@ -18,6 +18,13 @@ Single dependency rationale:
   CPU-only host or a missing NVML library degrades gracefully to
   ``gpus: []`` -- the JS widget then hides its GPU bars.
 
+Degrading gracefully is right; degrading SILENTLY is not.  When the
+GPU is missing because something on the host is broken rather than
+because there is no GPU, the reason travels with the snapshot as
+``gpu_error`` and the widget prints it where the cells would have
+been.  See ``_GPU_ERROR`` for the two causes and why only one of them
+is a fault.
+
 Concurrency: the only shared state is psutil's internal CPU-tick
 snapshot (held in a process-global by psutil itself).  Concurrent
 requests interleave their reads of that snapshot; the worst case is
@@ -28,7 +35,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify
 
@@ -54,10 +61,34 @@ _log = logging.getLogger(__name__)
 _NVML_OK: bool = False
 _GPU_HANDLES: List[Any] = []
 
+#: Why there are no GPU stats -- set ONLY when the absence is a FAULT.
+#:
+#: The endpoint reports "no GPUs" as an empty ``gpus`` list for two
+#: causes that look identical on the wire and are not remotely alike:
+#:
+#:   * a CPU-only install never put ``pynvml`` on the box.  Nothing is
+#:     wrong; the widget drops its GPU cells and says nothing.
+#:     ``_GPU_ERROR`` stays ``None``.
+#:   * ``pynvml`` IS installed -- someone asked for ``molbuilder[gpu]``,
+#:     so this host is meant to have a GPU -- and NVML would not start.
+#:     That is a broken host, and it stays broken silently: the strip
+#:     just loses three cells, which reads exactly like a CPU-only box.
+#:     ``_GPU_ERROR`` carries the reason so the log and the widget can
+#:     both say it out loud.
+#:
+#: 2026-08-04: the second case ran unnoticed for five weeks on the
+#: development host (driver userspace upgraded to 595.84 on 2026-06-29,
+#: kernel module still 595.71.05, no reboot).  ``nvidia-smi`` was dead
+#: the whole time and the monitor showed a tidy two-cell strip.
+_GPU_ERROR: Optional[str] = None
+
 try:
     import pynvml  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover -- CPU-only test environments
     pynvml = None  # type: ignore[assignment]
+    # INFO, not WARNING, and no ``_GPU_ERROR``: an optional dependency
+    # that was never installed is a choice, not a fault.  Warning here
+    # would cry wolf on every CPU-only server start.
     _log.info("pynvml not importable; GPU stats disabled "
               "(install molbuilder[gpu] to enable)")
 else:
@@ -68,12 +99,21 @@ else:
         _NVML_OK = True
         _log.info("NVML initialised; %d GPU(s) discovered", n)
     except Exception as exc:  # noqa: BLE001 -- NVML throws many exception types
-        # No NVIDIA driver loaded, no GPU on the box, MIG partitioning
-        # turned on without permission, kernel mismatch, etc.  All
-        # legitimate "no GPU stats today" causes -- log once at startup
-        # and proceed.
-        _log.info("NVML init failed (%s: %s); GPU stats disabled",
-                  type(exc).__name__, exc)
+        # Driver not loaded, driver/library version mismatch after an
+        # upgrade without a reboot, MIG partitioning without permission,
+        # kernel mismatch.  Every one of them means this box was built
+        # for GPU work and cannot currently do it -- which is also true
+        # of the jobs the user is about to submit, since CUDA goes
+        # through the same driver NVML just failed to reach.
+        _GPU_ERROR = f"{type(exc).__name__}: {exc}"
+        _log.warning(
+            "NVML init failed (%s). GPU stats are disabled for the life "
+            "of this process. pynvml is installed, so this host is meant "
+            "to have a usable GPU -- run `nvidia-smi`, which goes through "
+            "the same library and will report the same failure. NVML is "
+            "initialised once, at import, so restart the server after "
+            "fixing the host.",
+            _GPU_ERROR)
 
 
 def _gpu_name(handle) -> str:
@@ -309,6 +349,15 @@ def snapshot() -> Dict[str, Any]:
         "ram_used_gb":         round(vm.used  / (1 << 30), 2),
         "ram_total_gb":        round(vm.total / (1 << 30), 2),
         "gpus":                _gpu_snapshot(),
+        # ``None`` unless NVML was present and refused to start -- see
+        # ``_GPU_ERROR``.  An empty ``gpus`` alone cannot tell the widget
+        # whether to stay quiet or speak up, because both causes produce
+        # the same empty list.
+        "gpu_error":           _GPU_ERROR,
+        # ``None`` unless NVML was present and refused to start -- see
+        # ``_GPU_ERROR``.  An empty ``gpus`` alone cannot tell the widget
+        # whether to stay quiet or speak up, because both causes produce
+        # the same empty list.
     }
 
 

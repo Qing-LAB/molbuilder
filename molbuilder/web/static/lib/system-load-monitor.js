@@ -1,23 +1,32 @@
-/* System-load monitor -- global 1 Hz strip at the bottom of every page.
+/* System-load monitor -- the 1 Hz "Server load" card on the Results tab.
+ *
+ * User-facing contract: docs/web/results.md § 6.
  *
  * Polls /api/system/load (psutil + nvml under the hood, see
- * web/blueprints/system_load.py) and renders four sparkline canvases:
- * CPU %, RAM %, GPU util %, GPU mem %.  Samples held in 60-element
- * ring buffers (60 s of history at 1 Hz).
+ * web/blueprints/system_load.py) and renders five sparkline canvases:
+ * CPU %, RAM %, GPU SM %, GPU BW %, VRAM %.  Samples held in 600-element
+ * ring buffers (10 min of history at 1 Hz).
  *
  * Behaviour:
- *   * Mounts at DOMContentLoaded against #system-load-monitor (HTML
- *     lives in _app_header.html so every page gets the widget).
+ *   * Mounts at DOMContentLoaded against #system-load-monitor.  The HTML
+ *     is templates/_system_load_monitor.html, included by results.html
+ *     ALONE -- mounting it app-wide charged every page a 1 Hz hardware
+ *     probe nobody was reading.
+ *   * Starts COLLAPSED on a first visit; the choice persists in
+ *     sessionStorage so it survives navigation between tabs.
  *   * Pauses polling when document.hidden (browser-tab-backgrounded);
- *     resumes on visibilitychange.
+ *     resumes on visibilitychange.  Collapsing stops it outright.
  *   * Hides GPU + VRAM cells when the API returns gpus=[] (CPU-only
  *     host).  The widget collapses to 2 cells and the toggle is the
  *     same -- no separate code path.
- *   * Collapse toggle persists in sessionStorage so the user's choice
- *     survives intra-session navigation between tabs.
+ *   * Says why when the API also returns a ``gpu_error`` -- the cells
+ *     are missing because the host's driver is unreachable, not because
+ *     there is no GPU.  In TWO places, for two different readers: a
+ *     notice under the strip, and a marker on the header pill for the
+ *     (default) case where the card is closed.  See ``applyGpuStatus``.
  *
  * No external dependencies; plain DOM + canvas.  Plotly would be
- * overkill for 120x32 sparklines redrawn at 1 Hz.
+ * overkill for 320x48 sparklines redrawn at 1 Hz.
  */
 (function() {
     "use strict";
@@ -31,8 +40,10 @@
     // 320 px canvas (compresses ~25 s of detail into one pixel band;
     // peaks remain visible as 1-2 px spikes).
     var BUFFER_N = 600;        // 600 samples = 10 min of history
-    var SPARK_W  = 320;        // wider canvas: panel has room now
-    var SPARK_H  = 48;
+    // Canvas pixel size is NOT set here: it comes from the width/height
+    // attributes on each <canvas> in _system_load_monitor.html (320x48),
+    // with CSS scaling the element.  This file only reads canvas.width /
+    // canvas.height when drawing.
 
     var STORAGE_KEY_COLLAPSED = "mb.system-load.collapsed";
 
@@ -104,6 +115,7 @@
         var cellGpu   = $$("[data-metric='gpu']",   root);
         var cellGpuBw = $$("[data-metric='gpubw']", root);
         var cellVram  = $$("[data-metric='vram']",  root);
+        var notice    = $$("[data-gpu-error]", root);
         var toggle    = $$(".system-load-toggle", root);
 
         var bufCpu   = ringBuffer(BUFFER_N);
@@ -134,7 +146,73 @@
         }
 
         var aborter = null;
-        var lastFetchOk = true;
+
+        /* Where a GPU fault gets said, and why it is said twice.
+         *
+         * The notice under the strip explains it to someone already
+         * looking at the card.  The marker on the header pill exists
+         * for someone who is NOT: the card is collapsed on first visit
+         * (results-state-contract § 9), so the pill is the only part
+         * that is always on screen.  Without a mark there, a broken
+         * driver is invisible to anyone who never opens the card --
+         * which is the failure this whole thing was added to end.
+         *
+         * ``gpuFault`` is kept because the pill's title is composed
+         * from two independent sources (collapsed-or-not, faulted-or-
+         * not) that change at different moments. */
+        var gpuFault = "";
+
+        function refreshToggleTitle() {
+            if (!toggle) return;
+            var base = root.classList.contains("is-collapsed")
+                     ? "Show server load" : "Hide server load";
+            toggle.title = gpuFault
+                ? base + " — GPU stats unavailable (" + gpuFault + ")"
+                : base;
+        }
+
+        function applyGpuStatus(d) {
+            gpuFault = (typeof d.gpu_error === "string" && d.gpu_error)
+                     ? d.gpu_error : "";
+            if (notice) {
+                if (gpuFault) {
+                    notice.textContent =
+                        "GPU stats unavailable — " + gpuFault
+                        + "\nThe driver is checked once, when the server "
+                        + "starts, so restart the server after fixing the "
+                        + "host.";
+                }
+                notice.hidden = !gpuFault;
+            }
+            if (toggle) toggle.classList.toggle("has-gpu-fault", !!gpuFault);
+            refreshToggleTitle();
+        }
+
+        /* ONE request at mount when the card starts collapsed.
+         *
+         * Collapsing means "stop polling" on purpose -- a folded-away
+         * widget doing 1 Hz server work is waste.  But the card is
+         * collapsed on FIRST visit, and taken literally that also
+         * silences the one reading worth interrupting for: a host whose
+         * GPU driver is unreachable, which will fail the calculation
+         * the user is about to submit just as surely as it fails the
+         * sparkline.  So the collapsed card asks exactly once, reads
+         * only gpu_error, and marks the pill.  One request per page
+         * load, not a stream -- the "no polling while collapsed" rule
+         * is intact.
+         *
+         * Deliberately NOT routed through ``aborter``: that handle
+         * belongs to the 1 Hz loop, and stopTimer() aborting this
+         * one-shot would be exactly backwards. */
+        function checkGpuOnce() {
+            fetch(ENDPOINT, { credentials: "same-origin", cache: "no-store" })
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(body) {
+                    if (!body || body.ok !== true) return;
+                    applyGpuStatus(body.data || {});
+                })
+                .catch(function() { /* opening the card asks again */ });
+        }
 
         function poll() {
             if (document.hidden) return;  // skip while tab is backgrounded
@@ -149,11 +227,11 @@
             })
                 .then(function(r) { return r.ok ? r.json() : null; })
                 .then(function(body) {
-                    if (!body || body.ok !== true) {
-                        lastFetchOk = false;
-                        return;
-                    }
-                    lastFetchOk = true;
+                    // A failed reading leaves the cells showing the last
+                    // good one.  That is deliberate: blanking them on a
+                    // single dropped poll would flicker a card whose whole
+                    // job is to show a trend.
+                    if (!body || body.ok !== true) return;
                     var d = body.data || {};
                     // CPU + RAM are always present (psutil never fails on
                     // a healthy box; if it did, the server returns ok=false
@@ -236,10 +314,25 @@
                     setDetail(cellRam,
                         (d.ram_used_gb || 0).toFixed(2) + " GB used of "
                         + (d.ram_total_gb || 0).toFixed(2) + " GB total");
-                    // GPU: server returns [] when NVML init failed (CPU-
-                    // only host or driver missing).  Hide all three GPU
-                    // cells entirely; widget collapses to 2 cells.
+                    // GPU: an empty ``gpus`` list has TWO causes and they
+                    // are not the same news.  ``gpu_error`` is the one
+                    // that tells them apart -- the server sets it only
+                    // when NVML was installed and would not start.
+                    //
+                    //   * null  -> this host has no GPU support at all.
+                    //             Drop the cells, say nothing.  A CPU-
+                    //             only box is not a fault.
+                    //   * a string -> the host is meant to have a GPU
+                    //             and the driver is unreachable.  Still
+                    //             no numbers to draw, so the cells stay
+                    //             hidden, but the reason goes on screen.
+                    //
+                    // 2026-08-04: without this, the two look identical
+                    // -- a tidy two-cell strip.  A driver/library
+                    // mismatch sat on the development host for five
+                    // weeks reading as "this machine has no GPU".
                     var gpus = d.gpus || [];
+                    applyGpuStatus(d);
                     if (gpus.length === 0) {
                         cellGpu.hidden   = true;
                         cellGpuBw.hidden = true;
@@ -299,9 +392,12 @@
                         + gpuListDetail);
                     setDetail(cellVram,  "VRAM occupancy\n" + gpuListDetail);
                 })
-                .catch(function(err) {
-                    if (err && err.name === "AbortError") return;
-                    lastFetchOk = false;
+                .catch(function() {
+                    // Swallowed on purpose, and nothing is recorded: an
+                    // aborted fetch is the normal shutdown path (collapse
+                    // /background), and a genuine network failure is
+                    // handled the same way as a bad reading above -- keep
+                    // the last good sample and try again in a second.
                 });
         }
 
@@ -358,14 +454,15 @@
             if (collapsed) {
                 root.classList.add("is-collapsed");
                 toggle.setAttribute("aria-pressed", "true");
-                toggle.title = "Show server load";
                 stopTimer();
             } else {
                 root.classList.remove("is-collapsed");
                 toggle.setAttribute("aria-pressed", "false");
-                toggle.title = "Hide server load";
                 startTimer();
             }
+            // Composed, not assigned: the title carries the fault too,
+            // and that half doesn't change when the card folds.
+            refreshToggleTitle();
         }
         if (toggle) {
             toggle.addEventListener("click", function() {
@@ -387,6 +484,9 @@
             catch (_) { /* ignore */ }
             var startCollapsed = (saved === null) ? true : (saved !== "0");
             applyCollapsed(startCollapsed);
+            // Expanded already polls, and its first sample carries the
+            // GPU status.  Only the collapsed card needs asking.
+            if (startCollapsed) checkGpuOnce();
         } else {
             // No toggle button mounted -- default to polling.
             startTimer();

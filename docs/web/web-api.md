@@ -441,7 +441,11 @@ doc; the routes are `GET /api/checkpoint/{state,list,diff,config}` and
 `POST /api/checkpoint/{init,config,commit,tag,restore,migrate-manifest}`).
 
 **System** — `GET /api/system/load` → `{ ok, data: { cpu, ram, gpu, … } }`, the
-1 Hz load strip's source.
+1 Hz load strip's source. An empty `gpus` list has two causes, so the snapshot
+also carries `gpu_error`: `null` when this host simply has no GPU support
+installed, and the reason as a string when NVML was installed and refused to
+start. The strip hides its GPU cells either way; only the second case prints
+anything, because only the second case is something being wrong.
 
 **Docs** — `GET /api/docs/list` (the flat docs listing), `GET /api/docs/read`
 (one markdown doc; also serves the whitelisted root `../README.md` /

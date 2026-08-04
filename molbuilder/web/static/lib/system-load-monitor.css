@@ -50,7 +50,8 @@
 /* When collapsed, hide the strip but keep the header so the toggle
  * remains reachable.  Cell strip simply disappears via the same
  * .is-collapsed class as before. */
-#system-load-monitor.is-collapsed .system-load-strip {
+#system-load-monitor.is-collapsed .system-load-strip,
+#system-load-monitor.is-collapsed .system-load-notice {
     display: none;
 }
 #system-load-monitor.is-collapsed {
@@ -106,6 +107,24 @@
     outline: none;
 }
 
+/* Fault marker on the pill.  The pill is the ONLY part of this card
+ * that survives collapsing, and the card is collapsed on first visit
+ * -- so this is the only place a GPU fault can be seen by someone who
+ * never opens the strip.  The appended "!" is deliberate rather than a
+ * colour change alone: colour is not available to every reader, and it
+ * also lands in the button's accessible name.  The full reason is in
+ * the pill's title, and again in the notice once the card is open. */
+.system-load-toggle.has-gpu-fault {
+    color: var(--warn, #f0c040);
+    border-color: var(--warn, #f0c040);
+}
+
+.system-load-toggle.has-gpu-fault::after {
+    content: "!";
+    margin-left: 4px;
+    font-weight: 700;
+}
+
 .system-load-strip {
     /* 2026-06-21 redesign: each cell now carries an always-visible
      * detail block (load avg, per-socket %, per-GPU clocks/temp/etc).
@@ -116,6 +135,36 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
     gap: var(--space-md, 12px);
+}
+
+/* GPU-fault notice, under the strip.  Sits OUTSIDE .system-load-strip
+ * on purpose: the strip is a grid of equal cells and this is one full-
+ * width sentence about why three of those cells are missing, not a
+ * sixth metric.
+ *
+ * Warn colouring rather than error: nothing the user is doing has
+ * failed, but the machine cannot answer a question it is built to
+ * answer, and the same broken driver will fail their GPU jobs.
+ * ``pre-line`` matches .cell-detail so the JS can keep writing plain
+ * ``\n``-separated text instead of building elements. */
+.system-load-notice {
+    display: block;
+    margin: 0;
+    padding: 6px 10px;
+    white-space: pre-line;
+    color: var(--warn, #f0c040);
+    background: var(--surface-deep, rgba(0, 0, 0, 0.18));
+    border: 1px solid var(--warn, #f0c040);
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.system-load-notice[hidden] {
+    /* Same [hidden]-precedence guard as .system-load-cell -- the JS
+     * hides this by setting .hidden, and the display rule above would
+     * otherwise tie with the UA sheet and win on source order. */
+    display: none;
 }
 
 .system-load-cell {

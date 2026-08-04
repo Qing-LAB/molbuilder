@@ -11,7 +11,11 @@
 
     GPU cells start hidden and are unhidden by the JS when
     /api/system/load reports gpus.length > 0 (so CPU-only hosts
-    naturally show a 2-cell strip).  The toggle pill ("≡") collapses
+    naturally show a 2-cell strip).  When the cells are missing
+    because the host's NVIDIA driver is unreachable rather than
+    absent, the notice below the strip says so.
+
+    The toggle pill ("≡") collapses
     /expands the strip AND stops polling; persisted in sessionStorage
     so the user's choice survives intra-session navigation between
     tabs.
@@ -81,5 +85,11 @@
       <div class="cell-detail" data-detail>—</div>
     </div>
   </div>
+  {# GPU-fault notice.  Empty and hidden until /api/system/load reports
+     a ``gpu_error``, which the server sets ONLY when NVML was present
+     and refused to start -- a broken host, not a CPU-only one.  A
+     CPU-only box leaves this hidden forever and the strip is simply
+     two cells wide, as before. #}
+  <p class="system-load-notice" data-gpu-error hidden></p>
 </aside>
 <script src="{{ url_for('static', filename='lib/system-load-monitor.js') }}"></script>

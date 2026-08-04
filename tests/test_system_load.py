@@ -9,9 +9,45 @@ Cheap, no-I/O, no GPU dependency.  Verifies the snapshot helper:
 """
 from __future__ import annotations
 
+import contextlib
+import importlib
+import logging
+import sys
+import types
+
 import pytest
 
 from molbuilder.web.blueprints import system_load as sl
+
+_MISSING = object()
+
+
+@contextlib.contextmanager
+def _reimported_with(fake_pynvml):
+    """Re-run the import-time NVML probe against a substitute ``pynvml``.
+
+    The probe runs ONCE, at import -- which is exactly why a host that
+    breaks after the server starts stays broken for the life of the
+    process -- so the only honest way to exercise either branch is to
+    make the import happen again.  Pass ``None`` to make ``import
+    pynvml`` raise ImportError (CPython treats a ``None`` entry in
+    ``sys.modules`` as "this import fails").
+
+    Reloading rebinds the module's globals in place and the finally
+    reloads it once more against the real environment, so the module
+    other tests see is the true one again.
+    """
+    saved = sys.modules.get("pynvml", _MISSING)
+    sys.modules["pynvml"] = fake_pynvml
+    try:
+        importlib.reload(sl)
+        yield
+    finally:
+        if saved is _MISSING:
+            sys.modules.pop("pynvml", None)
+        else:
+            sys.modules["pynvml"] = saved
+        importlib.reload(sl)
 
 
 def test_snapshot_returns_documented_shape():
@@ -23,7 +59,7 @@ def test_snapshot_returns_documented_shape():
                 "cpu_count_physical", "cpu_count_logical",
                 "loadavg_1m", "loadavg_5m", "loadavg_15m",
                 "ram_pct", "ram_used_gb", "ram_total_gb",
-                "gpus"):
+                "gpus", "gpu_error"):
         assert key in snap, f"snapshot missing required key {key!r}"
     assert isinstance(snap["cpu_pct"],      (int, float))
     assert isinstance(snap["ram_pct"],      (int, float))
@@ -90,6 +126,76 @@ def test_snapshot_endpoint_handles_psutil_failure(monkeypatch):
     body = r.get_json()
     assert body["ok"] is False
     assert "simulated psutil crash" in body["error"]
+
+
+def test_a_host_with_no_gpu_support_reports_no_fault(caplog):
+    """``pynvml`` absent is a CHOICE, not a breakage.
+
+    Nobody installed ``molbuilder[gpu]``, so nothing is wrong: the wire
+    carries no reason, the widget stays silent, and the log does not cry
+    wolf on every start of every CPU-only server.
+    """
+    with caplog.at_level(logging.INFO, logger=sl.__name__):
+        with _reimported_with(None):     # None => `import pynvml` raises
+            assert sl._NVML_OK is False
+            assert sl._GPU_ERROR is None
+            assert sl.snapshot()["gpu_error"] is None
+            warnings = [r for r in caplog.records
+                        if r.levelno >= logging.WARNING
+                        and r.name == sl.__name__]
+            assert warnings == [], \
+                f"a CPU-only host should not warn: {[r.message for r in warnings]}"
+
+
+def test_a_driver_that_will_not_start_is_a_warning_and_reaches_the_wire(caplog):
+    """``pynvml`` present but NVML refusing to start is a BROKEN HOST.
+
+    This is the case that hid: an empty ``gpus`` list looks identical to
+    a CPU-only box, so the strip silently dropped three cells and the
+    only trace was an INFO line nobody runs the server verbose enough to
+    see.  The reason must now be loud in the log AND present on the wire
+    for the widget to print.
+    """
+    fake = types.ModuleType("pynvml")
+
+    def _mismatch():
+        raise RuntimeError("RM has detected an NVML/RM version mismatch.")
+
+    fake.nvmlInit = _mismatch
+
+    with caplog.at_level(logging.INFO, logger=sl.__name__):
+        with _reimported_with(fake):
+            assert sl._NVML_OK is False
+            # The reason names the exception type AND its message -- the
+            # type alone ("RuntimeError") tells a user nothing.
+            assert sl._GPU_ERROR is not None
+            assert "version mismatch" in sl._GPU_ERROR
+            assert "RuntimeError" in sl._GPU_ERROR
+            # On the wire, beside the empty list it explains.
+            snap = sl.snapshot()
+            assert snap["gpus"] == []
+            assert snap["gpu_error"] == sl._GPU_ERROR
+            # And in the log, at a level the operator actually sees.
+            warnings = [r for r in caplog.records
+                        if r.levelno >= logging.WARNING
+                        and r.name == sl.__name__]
+            assert len(warnings) == 1, \
+                f"expected exactly one warning, got {[r.message for r in warnings]}"
+            assert "version mismatch" in warnings[0].getMessage()
+
+
+def test_the_endpoint_carries_the_reason_through_json(monkeypatch):
+    """The widget reads ``gpu_error`` off the response, not off a global
+    -- so the field has to survive the jsonify layer."""
+    from molbuilder.web.app import create_app
+
+    monkeypatch.setattr(sl, "_GPU_ERROR",
+                        "NVMLError_LibRmVersionMismatch: mismatch")
+    client = create_app(config={}).test_client()
+    body = client.get("/api/system/load").get_json()
+    assert body["ok"] is True
+    assert body["data"]["gpu_error"] == \
+        "NVMLError_LibRmVersionMismatch: mismatch"
 
 
 def test_gpu_name_decodes_bytes_and_str():
