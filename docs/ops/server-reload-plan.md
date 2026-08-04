@@ -110,7 +110,7 @@ cannot be broken by the code it restarts.**
 ### 3.3 The shape
 
 ```
-molbuilder serve --supervise        the parent: spawn, wait, respawn on <sentinel>
+molbuilder serve                    the parent: spawn, wait, respawn on <sentinel>
         └── child                   the app, as today
                 POST /api/admin/reload   →  answer 202, then exit(<sentinel>)
 ```
@@ -123,9 +123,26 @@ molbuilder serve --supervise        the parent: spawn, wait, respawn on <sentine
 4. The browser polls **`/api/health`** (it already exists) until it answers, then
    reloads the page — which picks up new JS through § 2's revalidation.
 
-**Without `--supervise` the route does not exist.** A server started plainly has
-no one to restart it, and an endpoint that stops it would leave a dead site with
-no way back from the browser. The flag is what makes the promise true.
+**Without a supervisor the route does not exist.** A server with no one to
+restart it would, on pressing the button, leave a dead site with no way back from
+the browser. Supervision is what makes the promise true.
+
+**It became the default on 2026-08-04.** Opt-in was the wrong shape: the reason
+to supervise — that a restart is possible at all — applies to every ordinary
+run, and as a flag it meant the button was missing for anyone who had not read
+the help text. `--no-supervise` remains for the case where something else
+already owns restarts (systemd, Docker, gunicorn), where a supervisor inside is
+a second answer to a settled question. `--debug` turns it off on its own:
+Werkzeug's reloader respawns its child on *any* exit, so it would swallow the
+sentinel and the button would silently do nothing.
+
+The same change closed a defect that made the whole design a claim rather than a
+fact. `from .web.app import create_app` sat above the fork in `cmd_serve`, so the
+parent imported the entire app before spawning anything — and a parent that
+imports the broken module dies with it, which is precisely what the supervisor
+exists to prevent. The import now happens in the child, and
+`test_the_parent_forks_before_importing_the_application` runs the parent branch
+in a clean interpreter to keep it that way.
 
 ## 4. Who may press it ✅ decided 2026-08-03
 
@@ -172,7 +189,7 @@ same list the same way. See [`access-control.md`](?doc=ops/access-control.md)
 | | Step | Note |
 |---|---|---|
 | **A** ✅ | ~~The version guard~~ **static revalidation (§ 2)** | independent of everything else, no new surface, useful on its own |
-| **B** ✅ | `serve --supervise` — the parent loop | `cli.py::_supervise_forever`; the sentinel lives in `molbuilder/reload_protocol.py`, a **leaf module that imports nothing** |
+| **B** ✅ | the parent loop (`--supervise`, on by default since 2026-08-04) | `cli.py::_supervise_forever`; the sentinel lives in `molbuilder/reload_protocol.py`, a **leaf module that imports nothing** |
 | **C** ✅ | The admin gate: route exists only when somebody is named an admin | `app.py`, before the route does anything |
 | **D** ✅ | `POST /api/admin/reload` — reply 202, then exit with the sentinel | `os._exit` on a short timer, so the response is already on the wire |
 | **E** ✅ | The button + the poll-and-reload, shown only when the route exists | `_app_header.html` + `static/lib/app-reload.js`; availability read from `/api/admin/reload/available` |

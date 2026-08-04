@@ -33,7 +33,7 @@ Flags (`molbuilder/cli.py`):
 | `--debug` | off | Werkzeug reloader + interactive debugger (never in production) |
 | `--cert` / `--key` | none | serve HTTPS directly from PEM files |
 | `--allow-insecure-binding` | off | override the bind guard (below) |
-| `--supervise` | off | run under a parent that can restart the server on request (§4) |
+| `--supervise` / `--no-supervise` | **on** | run under a parent that can restart the server on request (§4); turn off when systemd/Docker/gunicorn owns restarts. `--debug` turns it off on its own |
 | `--no-auth` | off | skip auth entirely — **loopback host only** |
 
 There is **no `--workers` flag and no built-in production server** — `serve`
@@ -173,8 +173,10 @@ route is **absent (404), not refused (403)**, when either fails — so a
 misconfiguration reads as *the button is missing*, never as *anyone can restart
 the server*:
 
-1. **the server runs under `--supervise`** — otherwise nothing brings it back,
-   and stopping it would leave a dead site with no way back from the browser;
+1. **the server is supervised** — the default since 2026-08-04, so this gate is
+   normally already met. It is not met under `--no-supervise` or `--debug`,
+   because then nothing would bring the server back and stopping it would leave
+   a dead site with no way back from the browser;
 2. **The `admin` section names somebody.** Absent or empty means nobody — for
    this route and for the block-list routes alike. Restarting the process
    everyone shares is not a default anyone should get by omission.
@@ -187,9 +189,10 @@ using the server is disconnected, and workspace writes still in flight are lost
 
 > **This does not make the dev server a production server.** Supervision only
 > respawns the same Werkzeug dev server; §2 still governs how it is exposed. Under
-> gunicorn or another process manager, don't use `--supervise` — that manager owns
-> the process lifecycle, and the route will be absent because `MOLBUILDER_SUPERVISED`
-> is unset.
+> gunicorn or another process manager, pass `--no-supervise` — that manager owns
+> the process lifecycle, and a supervisor inside it is a second answer to a
+> question already answered. The route is then absent, because
+> `MOLBUILDER_SUPERVISED` is unset.
 
 ## 5. Configuration — `molbuilder.json`
 

@@ -30,8 +30,8 @@ setup guide: how to *turn on* SSO or *tune* the limiter is
 >   somebody probing for a way in*. It judges **behaviour**, never identity.
 > - **An admin** — a session whose email is in a named list. Not a role, not a
 >   permission system: one list, read by two subsystems.
-> - **The supervisor** — the parent process that can start a fresh server. It
->   exists only under `serve --supervise`.
+> - **The supervisor** — the parent process that can start a fresh server.
+>   Present by default; absent under `--no-supervise` or `--debug`.
 > - **Allowlisted** — an IP the limiter never counts against (loopback, by
 >   default). Different from *authenticated*, which also skips the limiter, for
 >   a different reason.
@@ -237,7 +237,8 @@ what belongs here is who may press it.
 
 `POST /api/admin/reload` **is not registered at all** unless both hold:
 
-1. **A supervisor is running** (`serve --supervise`). Without one nothing brings
+1. **A supervisor is running.** The default since 2026-08-04, so this normally
+   holds; `--no-supervise` and `--debug` take it away. Without one nothing brings
    the server back, and an endpoint that stops an unsupervised server leaves a
    dead site with no way back from a browser.
 2. **The `admin` section names somebody.** Restarting the process everyone shares is

@@ -125,6 +125,12 @@ def _serve(port: int, capture_cwd: Path) -> Iterator[subprocess.Popen]:
         "python", "-m", "molbuilder", "serve",
         "--host", "127.0.0.1",
         "--port", str(port),
+        # ONE process, so the handle below really owns it.  Supervision became
+        # the default on 2026-08-04; under it this Popen would hold the PARENT,
+        # and terminate() would kill the supervisor while the child kept the
+        # port -- an orphan the next run collides with.  Nothing here needs a
+        # restart button.
+        "--no-supervise",
     ]
 
     # Redirect server output to a file so the PIPE buffer never blocks

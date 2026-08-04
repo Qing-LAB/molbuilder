@@ -2265,7 +2265,15 @@ def _supervise_forever() -> int:
     env[SUPERVISED_ENV] = "1"
     args = [sys.executable, "-m", "molbuilder", *sys.argv[1:]]
     while True:
-        code = subprocess.call(args, env=env)
+        try:
+            code = subprocess.call(args, env=env)
+        except KeyboardInterrupt:
+            # Ctrl-C reaches the whole foreground process group, so the child
+            # is already stopping; the parent must not print a traceback over
+            # its shutdown.  128+SIGINT is what a shell reports for this.
+            # Mattered little while --supervise was opt-in; it is the default
+            # path now, so every Ctrl-C goes through here.
+            return 130
         if code != RELOAD_EXIT_CODE:
             return code
         click.echo("molbuilder: reload requested -- starting a fresh server",
@@ -2284,11 +2292,15 @@ def _supervise_forever() -> int:
               help="Bypass the loopback-or-TLS guard.  Only sensible "
                    "when something outside molbuilder (proxy / VPN) "
                    "gates access -- see docs/ops/deployment.md.")
-@click.option("--supervise", is_flag=True,
-              help="Run under a supervisor that can restart the server in "
-                   "place.  Enables the admin Reload button; without it that "
-                   "route does not exist, because nothing would bring the "
-                   "server back.  See docs/ops/server-reload-plan.md.")
+@click.option("--supervise/--no-supervise", default=True, show_default=True,
+              help="Run under a parent that can restart the server in place.  "
+                   "This is what makes the admin Reload button exist; without "
+                   "it that route is absent, because nothing would bring the "
+                   "server back.  Turn it OFF when something else already owns "
+                   "restarts (systemd, Docker, gunicorn) -- a supervisor inside "
+                   "one of those is a second answer to a question already "
+                   "answered.  --debug turns it off on its own.  "
+                   "See docs/ops/server-reload-plan.md.")
 @click.option("--no-auth", is_flag=True,
               help="Run with NO authentication (ignores molbuilder.json's "
                    "auth/TLS).  Allowed ONLY on a loopback --host "
@@ -2297,14 +2309,37 @@ def _supervise_forever() -> int:
                    "local dev, screenshots, and tests.")
 def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
               supervise):
-    """Start a Flask server with the molbuilder browser UI."""
-    from .web.app import create_app
+    """Start a Flask server with the browser UI."""
+    # NO APPLICATION IMPORT ABOVE THE PARENT BRANCH.  ``from .web.app import
+    # create_app`` used to sit here, one line into the function and well before
+    # the fork below -- so the supervisor imported the entire web app, Flask
+    # included, before it ever spawned anything.  That is the one thing the
+    # supervisor must not do: its whole value is that a child which fails to
+    # import leaves the parent alive to be fixed and reloaded, and a parent
+    # that imported the same broken module first dies with it.  The import now
+    # happens in the child, below, after the parent has already returned.
+
+    # --debug hands the process tree to Werkzeug's reloader, which forks its
+    # own child and respawns it on ANY exit -- including the sentinel the
+    # reload route uses to ask for a fresh server.  The request would never
+    # reach our supervisor, so the two cannot both be in charge.  Debug is the
+    # single-process, restart-it-yourself mode; say so rather than starting a
+    # supervisor whose button would quietly not work.
+    if supervise and debug:
+        supervise = False
+        click.echo("molbuilder: --debug owns the process tree, so this server "
+                   "runs unsupervised and the Reload button is absent.",
+                   err=True)
 
     # THE PARENT BRANCH, and it returns without importing the app: when
-    # --supervise is asked for and this process is not already the child, this
-    # process becomes the supervisor and nothing else here runs.
+    # supervision is on and this process is not already the child, this process
+    # becomes the supervisor and nothing else here runs.
     if supervise and os.environ.get(SUPERVISED_ENV) != "1":
         raise SystemExit(_supervise_forever())
+
+    # From here down we ARE the server -- either the supervised child or an
+    # unsupervised run -- so importing the app is what we are for.
+    from .web.app import create_app
 
     if no_auth:
         # Auth-free is a LOCAL-ONLY convenience: refuse anything but a

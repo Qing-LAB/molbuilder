@@ -242,3 +242,92 @@ def test_the_supervisor_does_not_import_the_app_it_restarts():
         f"lives there, so a syntax error in the app would now take the "
         f"supervisor down with it and the site would stay dead."
     )
+
+
+def _serve_probe(argv):
+    """Run ``molbuilder serve <argv>`` with the fork stubbed out.
+
+    Returns ``(forked, app_imported_at_fork_time)``.
+
+    In a SUBPROCESS on purpose: whether ``molbuilder.web.app`` is in
+    ``sys.modules`` is a property of the whole process, and any earlier test in
+    the session may have imported it.  A clean interpreter is the only place
+    the question has a truthful answer.
+    """
+    import json
+    import subprocess
+    import sys
+
+    probe = f"""
+import json, sys, subprocess
+seen = []
+def _fake_call(args, env=None, **kw):
+    seen.append("molbuilder.web.app" in sys.modules)
+    return 0
+subprocess.call = _fake_call
+
+# Stub Flask.run BEFORE invoking: the unsupervised path falls straight through
+# to app.run(), which binds a socket and blocks forever.  Imported here rather
+# than at the top so the module list stays honest -- flask is going to be
+# imported by the app anyway on any path that reaches it, and the assertion
+# above is about molbuilder.web.app, which this does not pull in.
+import flask
+flask.Flask.run = lambda self, *a, **k: None
+
+from click.testing import CliRunner
+from molbuilder import cli
+CliRunner().invoke(cli.cli, {argv!r})
+print(json.dumps([bool(seen), (seen[0] if seen else False)]))
+"""
+    out = subprocess.run([sys.executable, "-c", probe],
+                         capture_output=True, text=True, check=True).stdout
+    return json.loads(out.strip().splitlines()[-1])
+
+
+def test_serve_supervises_by_default():
+    """Plain ``molbuilder serve`` runs supervised.
+
+    The flag was opt-in until 2026-08-04, which meant the Reload button was
+    absent for anyone who had not read the help text -- and the reason to
+    supervise (a restart is possible at all) applies to every ordinary run.
+    """
+    forked, _ = _serve_probe(["serve", "--port", "0"])
+    assert forked, "serve did not become a supervisor without --no-supervise"
+
+
+def test_the_parent_forks_before_importing_the_application():
+    """The property the design rests on, tested where it actually happens.
+
+    ``test_the_supervisor_does_not_import_the_app_it_restarts`` only proves
+    that IMPORTING the CLI is clean.  It never ran the parent branch -- and the
+    branch was not clean: ``from .web.app import create_app`` sat one line into
+    ``cmd_serve``, above the fork, so the supervisor imported the whole app and
+    Flask before spawning anything.  A child that failed to import would have
+    taken the parent with it, which is the exact failure the supervisor exists
+    to prevent.
+    """
+    forked, app_imported = _serve_probe(["serve", "--port", "0"])
+    assert forked
+    assert not app_imported, (
+        "the supervisor imported molbuilder.web.app before forking; a broken "
+        "app now kills the parent too and no reload can fix it"
+    )
+
+
+def test_no_supervise_runs_in_one_process():
+    """The opt-out still opts out -- systemd, Docker and gunicorn already own
+    restarts, and a supervisor inside one of them is a second answer to a
+    question that has one."""
+    forked, _ = _serve_probe(["serve", "--port", "0", "--no-supervise"])
+    assert not forked, "--no-supervise still forked a supervisor"
+
+
+def test_debug_turns_supervision_off_on_its_own():
+    """Werkzeug's reloader respawns its child on ANY exit, including the
+    sentinel the reload route uses to ask for a fresh server -- so the request
+    would never reach our supervisor.  Debug is single-process by nature."""
+    forked, _ = _serve_probe(["serve", "--port", "0", "--debug"])
+    assert not forked, (
+        "--debug started a supervisor; its Reload button would be swallowed "
+        "by Werkzeug's own reloader"
+    )
