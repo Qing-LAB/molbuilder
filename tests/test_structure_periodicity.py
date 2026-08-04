@@ -109,12 +109,10 @@ class TestSidecarRoundTrip:
             n_atoms_total=2, structure_hash="a" * 64,
         )
         assert d["axis_kind"] == ["periodic", "periodic", "transport"]
-        # A STORED ALL-ZERO IS READ AS UNSET (cell-plan.md 5): every sidecar
-        # written before 2026-08-03 says [0,0,0] because the field had no unset
-        # state, so reading them literally would turn "nothing was said" into a
-        # deliberate zero.  The codec normalises on the way through, and the
-        # round-trip therefore lands on `null`.
-        assert d["vacuum"] is None
+        # WHAT WENT IN COMES BACK.  [0,0,0] is a deliberate zero and survives
+        # as one; `null` is "nobody chose" and survives as that.  A brief
+        # legacy rule folded the first into the second -- removed 2026-08-03.
+        assert d["vacuum"] == [0.0, 0.0, 0.0]
         assert "kgrid" not in d   # k-grid is not geometry -> not in the sidecar
 
         s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])

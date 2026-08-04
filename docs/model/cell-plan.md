@@ -268,20 +268,19 @@ hint saying what it *does*, not what it *is*:
 
 ## 5. Existing files — decided 2026-08-03
 
-Every `.molstruct.json` on disk today says `vacuum: [0,0,0]`. Under the new rule
-that would read as *"I explicitly chose zero"*, so a flat molecule saved last
-week would silently lose its 3 Å guard on the next load.
+**REVERSED the same day, on the user's call.** The decision here was to read a
+stored `[0,0,0]` as *unset*, so that sidecars written before vacuum had a third
+state kept behaving as they had. It shipped, and it came straight back out.
 
-**Decision (user): treat a stored `[0,0,0]` as unset on read.** Old files keep
-behaving exactly as they do now — nothing on disk changes, and nothing silently
-changes meaning. A user who genuinely wants a zero gap says so once the writer
-starts emitting `null` for unset, and from then on the two are distinguishable
-in new files.
+Two things were wrong with it. It cost the ability to express a deliberate zero
+**at all** — one value, permanently unsayable — and it bought that with
+compatibility for files the user calls residue. Nobody had asked whether they
+were relevant, which is the actual mistake: **the assumption that old data must
+keep working was never checked with the person whose data it is.**
 
-It is slightly dishonest for exactly one value, and that is the price of not
-rewriting files nobody asked us to touch. Write it down where the reader is:
-the sidecar schema doc must say that `[0,0,0]` is read as *unset*, so nobody
-later "fixes" the asymmetry without knowing what it protects.
+So: `null` is "nobody chose", `[0,0,0]` is "no gap, deliberately", both are
+honoured, and readers refuse a shape they do not recognise rather than quietly
+mapping it onto something else. **The code looks forward** (user, 2026-08-03).
 
 ## 5a. The periodicity truth must reach the check that acts on it
 

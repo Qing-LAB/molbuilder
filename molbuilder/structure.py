@@ -146,32 +146,20 @@ _DEFAULT_ISOLATED_VACUUM = 3.0
 
 
 def _vacuum_from_stored(raw) -> Optional[Tuple[float, float, float]]:
-    """Read a stored vacuum, treating ``[0, 0, 0]`` as UNSET.
+    """Read a stored vacuum.  ``None`` means nobody chose one; ``[0,0,0]``
+    means somebody chose no gap.  Those are different, and both are honoured.
 
-    Decided 2026-08-03 (docs/model/cell-plan.md § 5).  Every
-    ``.molstruct.json`` written before that date says ``vacuum: [0,0,0]``,
-    because the field had no unset state and defaulted to zeros.  Reading those
-    as "the user explicitly chose zero" would silently change what an existing
-    flat-molecule structure does on its next load -- it would stop getting the
-    default gap, and its box would lose its volume -- which is exactly the class
-    of silent change this work exists to prevent.
-
-    So an all-zero stored vacuum reads as *nothing was said*.  It is slightly
-    dishonest for exactly one value, and it is the price of not rewriting files
-    nobody asked us to touch.  A user who genuinely wants a zero gap says so,
-    and once the writer emits ``null`` for unset the two are distinguishable in
-    every new file.
-
-    DO NOT "FIX" THE ASYMMETRY without reading § 5: it is what protects
-    structures already on disk.
+    There is no legacy branch here.  One briefly existed -- an all-zero triple
+    read as UNSET, so that sidecars written before vacuum gained its third state
+    kept behaving as they had.  It cost the ability to express a deliberate zero
+    at all, and it bought compatibility with files that are residue.  Removed
+    2026-08-03: the code looks forward.
     """
     if raw is None:
         return None
     values = tuple(float(x) for x in raw)
     if len(values) != 3:
         raise ValueError("Structure.vacuum must have exactly 3 entries")
-    if not any(values):
-        return None                     # a stored all-zero reads as UNSET
     return values
 
 

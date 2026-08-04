@@ -40,7 +40,7 @@ file.
 | `cell_origin` | 3 floats (Å) or `null` | world-space **low corner** an explicit `cell` emanates from; lets a cell wrap off-origin atoms without moving them (§ 6) | `null` = `(0,0,0)`; **dropped unless `cell` is explicit** |
 | **`axis_kind`** | 3 × enum `{periodic, isolated, transport}` | **how axis *i* is treated — the authoritative periodicity field** (§ 2) | `(periodic,periodic,periodic)` if a cell is present, else all-`isolated` |
 | `pbc` | 3 bools — **stored, kept in lockstep with `axis_kind`** | ASE-interop view: `periodic\|transport → True`, `isolated → False`; `__post_init__` reconciles the two so they never diverge | derived from `axis_kind` (the richer field: a boolean can't tell `transport` from `periodic`) |
-| `vacuum` | 3 floats (Å) **or `null`** | isolation padding, **per side** — meaningful only on an `isolated` axis. `null` means *nobody chose one*, which is what earns that axis the default gap (§ 6.1); a stored `[0,0,0]` is read as `null` | `null` (unset) |
+| `vacuum` | 3 floats (Å) **or `null`** | isolation padding, **per side** — meaningful only on an `isolated` axis. `null` means *nobody chose one*, which is what earns that axis the default gap (§ 6.1); `[0,0,0]` means *no gap, deliberately*, and is used verbatim | `null` (unset) |
 
 `cell` and `axis_kind`, `vacuum`, `cell_origin` all live on `Structure`
 (`structure.py`) and serialize through the one metadata codec

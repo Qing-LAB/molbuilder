@@ -65,23 +65,16 @@ closed the `cell_origin`-dropped-on-reload bug). Their meanings live in
 `structure-periodicity.md` and `structure-annotations.md`; the codec authority
 is `structure.md § 2.2`.
 
-> **`vacuum` has one reading you must not "tidy up": a stored `[0, 0, 0]` is
-> read as UNSET, not as a deliberate zero** (decided 2026-08-03,
-> [`structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.1).
+> **`vacuum` has three states, and all three are honoured.** `null` means
+> *nobody chose one* — which is what earns an isolated axis the default 3 Å gap
+> — while `[0, 0, 0]` means *no gap, deliberately*, and is used verbatim
+> ([`structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.1).
 >
-> Vacuum gained a third state — `null`, meaning *"I never chose one"*, which is
-> what earns an isolated axis the default 3 Å gap. But every sidecar written
-> before that date says `[0, 0, 0]`, because the field had no unset state and
-> that was its default. Read literally, those files would all claim a
-> deliberate zero, and a flat molecule saved last week would silently lose its
-> gap — and its box's volume — on the next load.
->
-> So the reader (`Structure._vacuum_from_stored`) maps an all-zero triple to
-> `None`. Nothing on disk changes, and nothing changes meaning. The writer
-> emits `null` for unset from now on, so new files distinguish the two
-> honestly; the cost is that a *deliberate* all-zero vacuum cannot be expressed
-> in this format. That is the price of not rewriting files nobody asked us to
-> touch — do not remove the asymmetry without knowing what it protects.
+> A legacy reading briefly folded the second into the first, so that sidecars
+> written before the third state existed kept behaving as they had. It cost the
+> ability to express a deliberate zero at all, for compatibility with files that
+> are residue. Removed 2026-08-03 — a reader that cannot be told what it is
+> looking at is worse than one that refuses.
 
 ---
 

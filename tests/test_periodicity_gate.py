@@ -1291,18 +1291,22 @@ class TestTheDefaultVacuumGap:
         assert per["vacuum"] is None, "unset must travel as null, not [0,0,0]"
         assert per["resolved_vacuum"] == [3.0, 3.0, 3.0]
 
-    def test_a_stored_all_zero_reads_as_unset(self):
-        """Every .molstruct.json written before 2026-08-03 says [0,0,0].  Under
-        the new rule that would read as "I explicitly chose zero", and a flat
-        molecule saved last week would lose its gap on the next load.  Decided
-        (cell-plan.md 5): a stored all-zero reads as UNSET, so nothing on disk
-        changes meaning.  New files say null and the two are distinguishable
-        from then on."""
+    def test_a_stored_zero_means_a_deliberate_zero(self):
+        """`None` and `[0,0,0]` are DIFFERENT and both are honoured.
+
+        A stored all-zero briefly read as UNSET, so that sidecars written
+        before vacuum gained its third state kept behaving as they had.  That
+        cost the ability to express a deliberate zero at all -- and bought
+        compatibility with files that are residue.  Removed 2026-08-03.
+        """
         s = self._planar()
         s.apply_metadata_dict({"vacuum": [0.0, 0.0, 0.0]})
+        assert s.vacuum == (0.0, 0.0, 0.0)
+        assert s.effective_vacuum() == (0.0, 0.0, 0.0), (
+            "a vacuum you set is used verbatim, and zero is a value")
+        s.apply_metadata_dict({"vacuum": None})
         assert s.vacuum is None
         assert s.effective_vacuum() == (3.0, 3.0, 3.0)
-
 
 class TestSiestaNeverReceivesAZeroVolumeCell:
     """PINS: docs/model/structure-periodicity.md § 6.1 (the default vacuum gap)
