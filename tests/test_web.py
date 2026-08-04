@@ -329,23 +329,11 @@ _PATTERN_B_REGIONS = {"L-electrode": [0, 1, 2]}
 
 
 def _envelope_with_regions(xyz_text, regions):
-    """The structure AS DATA with its labels inside it -- what the tabs send
-    (`molview.exportFile()`), and what `Structure.from_dict` reads.
-
-    These posted `xyz` text plus a TOP-LEVEL `regions`, which only reached the
-    Structure because a second applier existed on the server to move it there.
-    That applier is gone (2026-08-03): labels ride with the atoms they describe.
-    Pattern B is about what the ENGINE does with labels it was given, so only
-    the delivery changes here."""
-    elements, positions = [], []
-    for line in xyz_text.strip().splitlines()[2:]:
-        parts = line.split()
-        if len(parts) < 4:
-            continue
-        elements.append(parts[0])
-        positions.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    return {"elements": elements, "positions": positions,
-            "metadata": {"regions": dict(regions)}}
+    """The structure as data with its labels inside it, through the ONE
+    builder (`tests/support/envelope.py`).  Pattern B is about what the
+    ENGINE does with labels it was given, so only the delivery changed."""
+    from support.envelope import from_xyz
+    return from_xyz(xyz_text, regions=regions)
 
 
 def _xyz_with_region_sidecar(tmp_path, peptide_xyz):

@@ -29,6 +29,7 @@ import pytest
 
 pytest.importorskip("flask")
 
+from support.envelope import from_file as _from_file
 from molbuilder.structure import FROZEN_LABEL
 
 
@@ -98,27 +99,6 @@ def _write_sidecar(xyz_path: Path, regions: dict) -> Path:
     return sidecar_path
 
 
-def _envelope(xyz_path: Path, regions: dict = None) -> dict:
-    """The structure as DATA -- the one envelope every structure door takes,
-    and exactly what ``molview.exportFile()`` hands the tab: the atoms as
-    numbers with every fact about them under ``metadata``.
-
-    Built from the fixture's own .xyz so the test states the CONTRACT rather
-    than a file path the server would have to go and open."""
-    elements, positions = [], []
-    for line in xyz_path.read_text().splitlines()[2:]:
-        if not line.strip():
-            continue
-        sym, x, y, z = line.split()
-        elements.append(sym)
-        positions.append([float(x), float(y), float(z)])
-    return {
-        "elements":  elements,
-        "positions": positions,
-        "metadata":  {"regions": dict(regions or {})},
-    }
-
-
 def _render_body(xyz_path: Path, params: dict,
                  regions: dict = None, frozen: list = None) -> dict:
     """The body shape the Transport tab posts (2026-08-03): the STRUCTURE, with
@@ -132,7 +112,7 @@ def _render_body(xyz_path: Path, params: dict,
     if frozen:
         regions[FROZEN_LABEL] = list(frozen)
     return {
-        "structure":      _envelope(xyz_path, regions),
+        "structure":      _from_file(xyz_path, regions=regions),
         # Provenance only -- nothing is read from it.
         "structure_path": str(xyz_path),
         "params":         params,

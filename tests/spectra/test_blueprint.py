@@ -1206,32 +1206,15 @@ class TestSchemaEndpointFrozenSeed:
 
 
 def _envelope(xyz: str, regions: dict = None) -> dict:
-    """The molecule as data — what every structure door takes (web-api.md § 1).
+    """The molecule as data -- built by the ONE builder
+    (`tests/support/envelope.py`), which goes through `Structure.to_dict()`.
 
-    ``regions`` goes UNDER ``metadata``, where the structure keeps every fact
-    about its atoms and where ``Structure.from_dict`` reads them. These tests
-    used to send it as a top-level key beside the envelope, which worked only
-    because a second label-applier existed on the server; that is gone
-    (2026-08-03), so labels ride with the structure or not at all.
+    This split the XYZ into elements and positions by hand, and five other
+    test files each had their own copy of that split.  Six hand-rolled XYZ
+    parsers in the suite, for a shape the codec already produces."""
+    from support.envelope import from_xyz
+    return from_xyz(xyz, regions=regions)
 
-    These tests used to post an XYZ document in a ``structure_text`` field. That
-    field is gone, and so is the text path behind it: the browser holds the
-    molecule as numbers and writes no coordinate document (molview.md § 11.7), so
-    the tab reading a ``text`` field that does not exist sent an empty string and
-    the route answered "no structure provided" with a molecule on screen.
-
-    Building the envelope from XYZ *here* keeps the fixtures readable while the
-    request is the real shape.
-    """
-    lines = [ln for ln in xyz.strip().splitlines()]
-    atoms = lines[2:2 + int(lines[0].strip())]
-    elements, positions = [], []
-    for row in atoms:
-        parts = row.split()
-        elements.append(parts[0])
-        positions.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    return {"elements": elements, "positions": positions,
-            "metadata": {"regions": dict(regions or {})}}
 
 
 class TestRenderEndpoint:

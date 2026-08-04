@@ -88,8 +88,12 @@ caller holds.
 | `/api/structure/periodicity` | `{structure: <envelope>, op, payload}` |
 | `/api/structure/save` | `{structure: <envelope>, path, overwrite, frames?}` |
 | `/api/structure/export` | `{structure: <envelope>, name?, frames?}` |
-| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format?, sidecar?}`. **Not the envelope, and right not to be:** nothing is being sent back, a file or a paste is being *parsed*, and raw text is what a user supplied |
+| `/api/build/fdf` · `/api/build/pyscf` · `/api/build/preflight` | `{structure: <envelope>, params, structure_path?}` — the **emit** doors. `structure_path` is provenance and a dest-dir anchor, never a source of geometry or labels |
+| `/api/spectra/render` | `{structure: <envelope>, params, structure_path?, prior_path?}` |
+| `/api/transport/render` | `{structure: <envelope>, params, structure_path?}` — the region-labeled device. Took the path as its GEOMETRY with the labels beside it until 2026-08-03; it was the last door on that shape |
+| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format?, sidecar?}`. **Not the envelope, and right not to be:** nothing is being sent back, a file or a paste is being *parsed*, and raw text is what a user supplied. It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
 | `/api/selection/eval` | `{atoms: [{element, labels, residueName}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs |
+| `/api/siesta/install-pseudos` | takes a structure **today**, and should not: it reads `struct.elements` and nothing else, to copy one `.psml` per element. What it needs is the element list. Same reasoning as `selection/eval` — asking for a structure is what grew it two ways to send one |
 
 > **The old shapes are gone, not deprecated.** `/api/structure/periodicity` used
 > to take `{data: {xyz, sidecar}}`; it now answers 400 to that, which is how the
@@ -231,11 +235,41 @@ cases the current designs need, and the answer for each is part of the contract:
 
 | Case | How the envelope carries it |
 |---|---|
-| **a new kind of per-atom fact** | added to the **structure**, in the one place its codec lives (`to_dict` + the two metadata methods) — and it is then on the wire, in the sidecar and through every edit, with no door touched. What the envelope does *not* do is carry a field the structure does not model: `apply_metadata_dict` reads the set it knows, so an unrecognised key is dropped rather than smuggled through. That is deliberate — a fact worth surviving a round trip is a fact worth the structure knowing about |
+| **a new kind of per-atom fact** | added to the **structure**, in the one place its codec lives (`to_dict` + the two metadata methods) — and it is then on the wire, in the sidecar and through every edit, with no door touched. What the envelope does *not* do is carry a field the structure does not model: `apply_metadata_dict` checks against `METADATA_FIELDS` and **REFUSES** an unrecognised key, naming it. *(This said "dropped" until 2026-08-04, and the code said refuse — changed for #41, where a key that was dropped rather than refused is how frozen atoms vanished from a real run. A fact worth surviving a round trip is a fact worth the structure knowing about; a fact the structure does not know about is worth saying so about, not swallowing.)* |
 | **part of a structure** — a partial translate or rotate, where the edit routes act on the whole structure they are given | an envelope may describe a **subset**, with `source_index` giving each atom's number in the structure it came from. The receiver answers about the subset; the caller maps the coordinates back. Without this the caller sends a bare document and re-checks element-by-element that nothing was reordered, which is what the previous implementation had to do |
 | **one frame, or many** | `positions` is **one frame** — the one the user is looking at (§ 5.1). A trajectory is not a wire concern: its frames come from a run file the tab owns, and what leaves a viewer is the frame that was chosen. A door that ever needs many is a new door, not a wider envelope |
 | **where a structure lives** | **not in the envelope.** A path is an argument to the call — `save` takes one, `load` takes one — because the envelope describes a *structure*, never a location. A structure that carries its own path is one that can be saved to the wrong place by being copied |
 | **what the server wants to say** | `notices` beside `ok` — `{level, message, where, about}` rows (`where` is the stable finding id; `about` is the subject that decides where it is shown) the door produces about the structure it is answering with: a box that no longer contains its atoms, a corner that had to be worked out because none was stored. Nothing is corrected, so a notice never reports a repair. They belong to the *call*, not to the structure, so they never ride inside it |
+
+### Strict where a file is read, lenient where the wire is
+
+The two are not the same problem, and treating them as one was a real mistake
+(made and reverted 2026-08-04).
+
+**A `.molstruct.json` sidecar is a FILE.** It outlives the program that wrote
+it, which is why it is versioned — and why `Structure.apply_metadata_dict`,
+which reads it, **REFUSES** a key it does not know, naming it. A key it cannot
+map is a fact the author believes is stored, and dropping one is how frozen
+atoms vanished from a real run (#41).
+
+**The wire is not a file.** Client and server ship together; the envelope is
+deliberately unversioned for that reason (below). An unrecognised key on a
+request is our own client disagreeing with our own server *in the same build* —
+a defect to fix in development, not a condition to turn into a 400 for someone
+running a calculation. Readers of wire-only blocks take the names they set and
+leave the rest.
+
+**The `periodicity` block is the case that shows why.** `Structure.to_wire`
+sends what the caller stated (`cell`, `cell_origin`, `axis_kind`, `vacuum`)
+BESIDE the server's own derived answers (`resolved_cell`,
+`resolved_cell_origin`, `resolved_vacuum`) so a page can show the box *as it
+will be used*. MolView keeps that block verbatim and hands the whole thing back
+through the load door. A reader made strict here would refuse the viewer's own
+structure — the derived fields are the traffic, not an anomaly.
+
+The same applies to `document` (the export door's answer) and `source_index`
+(the caller's own bookkeeping): both named in the envelope reader's `known` set
+so they are **ignored on purpose** rather than refused.
 
 **The envelope is not versioned, and that is a decision.** The sidecar on disk
 carries `schema_version` because a file outlives the program that wrote it. The
@@ -245,10 +279,23 @@ covers, because the old shape keeps working. A version number would give a false
 sense that mismatches are handled when the additive rule is what actually handles
 them.
 
-> **Status: agreed, not implemented.** This is the protocol the front end and the
-> back end are being brought to; today's four shapes are what ships. The
-> conversion is tracked in
-> [`molview-corrections-plan.md`](?doc=web/molview-corrections-plan.md).
+> **Status: shipped at every door that carries a structure** (2026-08-04). This
+> read "agreed, not implemented — today's four shapes are what ships" while the
+> conversion was under way; leaving it there after the fact is worse than having
+> never written it, because a reader checking the contract is told the code has
+> not been brought to it yet and goes looking for the old shapes.
+>
+> `/api/transport/render` was the last door across, and its migration is the
+> case the rule is for: it took a file PATH as its geometry with the labels
+> beside it, so one request came from two sources read at two moments — and
+> being the last caller of that shape was the only reason the server still had a
+> second place labels could arrive from, and so a place they could be dropped
+> from without a word (#41). The cell had the identical split one day later.
+>
+> **Neither was fixable by ranking the two sources.** "The envelope stated
+> nothing" and "the envelope stated something different" are one input to any
+> precedence rule that can be written; an attempt at one silently discarded a
+> label set. A structure crosses once, or the question has no correct answer.
 
 ### The client mirror
 

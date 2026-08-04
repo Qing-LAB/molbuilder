@@ -148,6 +148,49 @@ def issues_to_json(issues, cfg=None):
 # --------------------------------------------------------------------- #
 
 
+def _stated_periodicity(per: Any) -> Dict[str, Any]:
+    """Read what a caller STATED about the box, from a ``periodicity`` block.
+
+    THE ONE READER of that block.  Its four names were spelled out at three
+    separate call sites, which is the only defect there was here: no one place
+    owned the set, so a fifth field would have had to be added three times.
+
+    UNKNOWN KEYS ARE IGNORED, and that is not an oversight.  The block arrives
+    from `Structure.to_wire`, which sends the stated values BESIDE the server's
+    own derived answers (`resolved_cell`, `resolved_cell_origin`,
+    `resolved_vacuum`) so a page can show the box as it will be used -- and
+    MolView keeps that block verbatim and hands the whole thing back.  Reading
+    the names we set and leaving the rest is what makes that work.
+
+    A stricter reader was tried on 2026-08-04 and reverted the same day.  The
+    reasoning was that `apply_metadata_dict` REFUSES an unknown key, so this
+    should too -- but that reader is on the SIDECAR path, and the sidecar is a
+    FILE.  web-api.md § 1: "the sidecar carries `schema_version` because a file
+    outlives the program that wrote it.  The wire does not: client and server
+    ship together."  An unrecognised key here is our own client disagreeing
+    with our own server in the same build -- a defect to fix in development,
+    not a runtime condition to turn into a 400 for the user.
+
+    (No "kgrid" either: k-grid is a SAMPLING knob on SiestaConfig /
+    TransportConfig, not geometry -- structure-periodicity.md.  One sent here is
+    simply not read.)
+    """
+    if not isinstance(per, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    if per.get("cell") is not None:
+        out["cell"] = per["cell"]
+    # cell_origin (§ 3c) rides with the cell so a modify op on an electrode
+    # junction doesn't drop the corner that makes the box wrap the atoms.
+    if per.get("cell_origin") is not None:
+        out["cell_origin"] = per["cell_origin"]
+    if per.get("axis_kind") is not None:
+        out["axis_kind"] = tuple(per["axis_kind"])
+    if per.get("vacuum") is not None:
+        out["vacuum"] = tuple(per["vacuum"])
+    return out
+
+
 def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
     """The inverse, and the same rule: ``Structure.from_dict`` is the ONE
     deserialiser, and it validates through the same ``__post_init__`` a freshly
@@ -256,22 +299,10 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
     # isolated defaults.  Absent -> Structure's isolated defaults;
     # ``__post_init__`` normalises + validates (a malformed cell raises ->
     # the caller turns it into a 400).
-    per = body.get("periodicity")
-    peri_kw: Dict[str, Any] = {}
-    if isinstance(per, dict):
-        if per.get("cell") is not None:
-            peri_kw["cell"] = per["cell"]
-        # cell_origin (§ 3c) rides with the cell so a modify op on an electrode
-        # junction doesn't drop the corner that makes the box wrap the atoms.
-        if per.get("cell_origin") is not None:
-            peri_kw["cell_origin"] = per["cell_origin"]
-        if per.get("axis_kind") is not None:
-            peri_kw["axis_kind"] = tuple(per["axis_kind"])
-        if per.get("vacuum") is not None:
-            peri_kw["vacuum"] = tuple(per["vacuum"])
-        # (No "kgrid": k-grid is a SAMPLING knob on SiestaConfig /
-        # TransportConfig, not a geometry field -- structure-periodicity.md.
-        # A stray "kgrid" in the periodicity payload is simply ignored.)
+    # cell_origin (§ 3c) rides with the cell so a modify op on an electrode
+    # junction doesn't drop the corner that makes the box wrap the atoms.
+    #
+    peri_kw: Dict[str, Any] = _stated_periodicity(body.get("periodicity"))
     return Structure(
         elements      = list(base.elements),
         positions     = base.positions,
@@ -1295,14 +1326,36 @@ def checked_periodicity(struct):
 def apply_periodicity_only(struct, body):
     """Apply what the caller STATED about the box, and check nothing.
 
-    ``body["periodicity"]`` = {cell, cell_origin, axis_kind, vacuum}, read
-    fresh off the MolView data model at emit -- **never a second source**.
-    Applied verbatim; an absent block means the Structure's own defaults
-    (isolated, vacuum 0).  There is deliberately NO disk-sidecar fallback: a
-    request reflects the model the user is looking at, and inferring state from
-    what happens to be in the request is the exact failure that severed this
-    wire on 2026-06-14 (the label-presence branch silently skipping the
-    sidecar's cell).
+    ``body["periodicity"]`` is the block :meth:`Structure.to_wire` sends, and
+    it has TWO halves that read alike and behave nothing alike:
+
+      * ``cell`` / ``cell_origin`` / ``axis_kind`` / ``vacuum`` -- what the
+        caller STATED.  Applied verbatim.  An absent block means the
+        Structure's own defaults (isolated, vacuum unset).
+      * the ``resolved_*`` answers the server computed and sent back so a page
+        can show the box as it will be USED.  They arrive here because MolView
+        keeps the block verbatim and hands the whole thing back; they are not
+        read, which is all that needs to happen to them.
+
+    WHICH DOORS TAKE THIS BLOCK, and why only they:
+
+      * ``/api/build/load`` (text branch) and ``struct_from_body``'s legacy
+        ``xyz`` branch.  Those bodies carry NO envelope -- the structure is a
+        file or a paste -- so a stated block is the only way to say what the box
+        is.  One key, one door, nothing to rank.
+
+    Every other door takes the envelope, where the cell rides in
+    ``structure.metadata`` and reaches the Structure through
+    ``Structure.from_dict``.  Applying this block THERE gave the cell two
+    sources, and the second won: an envelope stating 8 A plus a block stating
+    20 A emitted 20 (fixed 2026-08-04; see
+    :func:`periodicity_checked_for_emit`).  The rule the whole envelope exists
+    for is that a structure crosses ONCE -- web-api.md § 1.
+
+    There is deliberately NO disk-sidecar fallback: a request reflects the model
+    the user is looking at, and inferring state from what happens to be in the
+    request is the exact failure that severed this wire on 2026-06-14 (the
+    label-presence branch silently skipping the sidecar's cell).
 
     THE APPLYING AND THE JUDGING ARE TWO STEPS, because the same bad box has
     two right answers depending on what the request is FOR (user decision,
@@ -1322,18 +1375,11 @@ def apply_periodicity_only(struct, body):
     for the first kind of door, and :func:`ok_structure_response` reports for
     the second.
     """
-    per = body.get("periodicity")
-    if isinstance(per, dict):
-        if per.get("cell") is not None:
-            struct.cell = per["cell"]
-        if per.get("cell_origin") is not None:
-            struct.cell_origin = per["cell_origin"]
-        if per.get("axis_kind") is not None:
-            struct.axis_kind = tuple(per["axis_kind"])
-        if per.get("vacuum") is not None:
-            struct.vacuum = tuple(per["vacuum"])
-        # (resolved_* keys are VIEWS -- ignored by design, clause 1.)
-        struct.__post_init__()
+    stated = _stated_periodicity(body.get("periodicity"))
+    if stated:
+        for field, value in stated.items():
+            setattr(struct, field, value)
+        struct.__post_init__()          # the ONE validator, on the final shape
     return struct
 
 

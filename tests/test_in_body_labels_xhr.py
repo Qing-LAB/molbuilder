@@ -66,29 +66,29 @@ H  0.629 -0.629 -0.629
 
 
 def _envelope(regions=None, frozen=None):
-    """The test XYZ as DATA, with its labels INSIDE it.
-
-    The body carries ONE label store and it lives in the structure's own
-    ``metadata`` -- `frozen_atoms=` is a test convenience that lands in that
-    store, because the reserved label is an ordinary label and the wire has no
-    second key for it (molview.md § 6.6).
+    """The test molecule as data, labels inside it -- through the ONE
+    builder (`tests/support/envelope.py` -> `Structure.to_dict()`).
 
     These helpers posted `xyz` text plus a TOP-LEVEL `regions` until
-    2026-08-03.  That was the legacy branch plus the second label source, and
-    the labels only reached the Structure because a second applier existed on
-    the server to put them there.  It is gone; labels ride with the atoms."""
-    labels = dict(regions or {})
-    if frozen is not None:
-        labels["frozen_atoms"] = frozen
-    elements, positions = [], []
-    for line in _XYZ.strip().splitlines():
-        parts = line.split()
-        if len(parts) != 4:
-            continue
-        elements.append(parts[0])
-        positions.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    return {"elements": elements, "positions": positions,
-            "metadata": {"regions": labels}}
+    2026-08-03; the labels only reached the Structure because a second
+    applier existed on the server to put them there."""
+    from support.envelope import from_xyz
+    return from_xyz(_XYZ, regions=regions, frozen=frozen)
+
+
+def _bad_envelope(frozen):
+    """An envelope carrying labels that are DELIBERATELY invalid -- an index
+    naming an atom that isn't there, or a string where an int belongs.
+
+    Hand-built on purpose, and the only place in this file that is.  The shared
+    builder goes through `Structure(...)`, which validates -- so a fixture whose
+    SUBJECT is a malformed request cannot be constructed by it: the assertion
+    would fire while building the fixture instead of at the door under test.
+    Everything else here uses `support.envelope`, because everything else is a
+    structure that should be valid."""
+    valid = _envelope()
+    valid["metadata"]["regions"] = {"frozen_atoms": frozen}
+    return valid
 
 
 def _labels(body):
@@ -258,7 +258,7 @@ class TestBuildFdfInBodyLabels:
         wrong-typed indices MUST surface a warn-severity Issue
         rather than mis-emitting a .fdf or crashing.  Per
         viewer-is-truth contract: garbage in -> notice out."""
-        body = _post_fdf(web, frozen_atoms=bad_indices)
+        body = _post_fdf(web, structure=_bad_envelope(bad_indices))
         # Render still succeeds (label rejection is a warn, not
         # an error).  But the FDF must NOT contain a Constraints
         # block with the bad indices.
@@ -364,7 +364,7 @@ class TestBuildPyscfInBodyLabels:
         Labels now arrive inside the structure, so the same validator that
         refuses a malformed Structure anywhere refuses this -- at the door,
         before anything is generated."""
-        body = _post_pyscf(web, frozen_atoms=[99])
+        body = _post_pyscf(web, structure=_bad_envelope([99]))
         assert body.get("ok") is False, (
             f"an out-of-range label index must not render; got {body!r}")
         err = body.get("error") or ""
