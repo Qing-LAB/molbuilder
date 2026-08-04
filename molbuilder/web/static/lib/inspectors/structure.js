@@ -35,13 +35,11 @@ const WORKSPACE_TAG = "results:structure";
  * file and read when it is asked to open one, and MolView never sees it. */
 const SHOWING_TAG = "results:structure:showing";
 
-async function _readShowing(ws) {
-    if (!ws || typeof ws.readState !== "function") return null;
-    const note = await ws.readState({
-        workspace_id: ws.workspaceId(SHOWING_TAG), state_index: 0,
-    });
-    return (note && note.showing) || null;
-}
+/* NO READER FOR THE NOTE ANY MORE.  `_readShowing` was removed with the restore
+ * branch it fed (2026-08-03): this viewer is read-only, so it cannot restore a
+ * session, and the note's only job now is to say what was last shown for anyone
+ * who asks later.  A reader kept "just in case" is how the dead branch survived
+ * long enough to blank the tab. */
 
 function _rememberShowing(ws, path) {
     if (!ws || typeof ws.persist !== "function") return;
@@ -197,15 +195,29 @@ function _rememberShowing(ws, path) {
                         return;
                     }
 
-                    // Restore vs. fresh open (single-authority mount race,
-                    // workspace-contract §4.5 -- same pattern as Modify's
-                    // selection-bootstrap).  If this owner's persisted session is for
-                    // the SAME file we're about to show, RESTORE it (``load(0)`` brings
-                    // back the selection / camera you left on reload) instead of a fresh
-                    // ``openMolecule`` (which resets the timeline and drops that state).
-                    // A different file (you picked a new one) -> open fresh through the
-                    // sidebar door so the .molstruct.json sidecar (labels/regions/frozen +
-                    // periodicity) rides along.  The registry only dispatches .xyz / .pdb
+                    // ALWAYS A FRESH OPEN.  There is no restore branch, and there
+                    // must not be one: this viewer is mounted `mode:"readonly"`, and
+                    // § 9.4's gate makes every truth-changing door a NO-OP there --
+                    // including `load`, which returns `Promise.resolve(null)` without
+                    // touching the master copy (model.js: `load: gated(...)`).
+                    //
+                    // THE BUG THAT WAS (found in a browser 2026-08-03).  This used to
+                    // branch: if this owner's note named the same file, restore with
+                    // `handle.data.load(0)` "to bring back the selection / camera you
+                    // left" instead of re-opening.  On a read-only viewer that call did
+                    // NOTHING -- so the FIRST time you opened a file it worked, and on
+                    // every visit after, the panel said a bare "Loaded." over an empty
+                    // viewer and an empty atom list.  No request, no error: a no-op does
+                    // not throw, and the status line's own empty branch printed the
+                    // reassuring word.  Nothing was restored more cheaply; the structure
+                    // was simply gone.
+                    //
+                    // Re-opening is also what the contract already says: a read-only tab
+                    // keeps its structure by RELOADING it (the tab owns that, not the
+                    // viewer -- molview.md § 12.3).  The camera and selection are not
+                    // preserved, which is what was really happening all along.
+                    //
+                    // The registry only dispatches .xyz / .pdb
                     // to this inspector (see `match`), so the picked file IS the structure
                     // path -- no sidecar-path rewrite.  (Clicking the paired
                     // .molstruct.json shows its JSON via the `source` inspector: it is a
@@ -224,17 +236,11 @@ function _rememberShowing(ws, path) {
                      * meant a path from the projects world was riding inside the
                      * structure's own saved state and being read back out by
                      * whoever needed it. */
-                    const restoreTarget = await _readShowing(ws);
-                    if (restoreTarget && restoreTarget === structPath) {
-                        // Same file this owner left -> restore its session state
-                        // (selection/camera) via the session-state timeline (a
-                        // separate module), NOT a fresh open.
-                        await handle.data.load(0);
-                    } else {
-                        // Fresh open: the format-aware sidebar door reads the
-                        // .xyz + .molstruct.json (labels/regions/frozen + periodicity)
-                        // and installs the model -- the sidecar rides along, which is
-                        // what fixed the label-less atom list bug.
+                    {
+                        // The format-aware sidebar door reads the .xyz +
+                        // .molstruct.json (labels/regions/frozen + periodicity) and
+                        // installs the model -- the sidecar rides along, which is what
+                        // fixed the label-less atom list bug.
                         const _proj = root.molbuilder && root.molbuilder.projects;
                         if (!_proj || !_proj.parser
                                 || typeof _proj.parser.openMolecule !== "function") {
@@ -250,9 +256,9 @@ function _rememberShowing(ws, path) {
                             status.classList.add("inspector-inline-error");
                             return;
                         }
-                        // Written only once the open SUCCEEDED: a note saying we
-                        // are showing a file we failed to load would make the
-                        // next click restore a viewer holding something else.
+                        // Written only once the open SUCCEEDED: a note saying we are
+                        // showing a file we failed to load would mislead whoever reads
+                        // it next.
                         _rememberShowing(ws, structPath);
                     }
                     if (disposed) return;
