@@ -275,44 +275,11 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
     because merging lets a stale field silently override a fresh one.
     """
     envelope = body.get("structure")
-    if isinstance(envelope, dict):
-        return _struct_from_envelope(envelope)
-
-    xyz = body.get("xyz") or ""
-    if not isinstance(xyz, str) or not xyz.strip():
-        raise ValueError("missing or empty 'xyz'")
-    title = body.get("title") or None
-    base = Structure.from_xyz(xyz, title=title)
-    n = base.n_atoms
-    # Pick the body-supplied list only if it's the right shape; else
-    # keep the from_xyz default.  Then construct a fresh Structure
-    # so __post_init__ validates the combined invariants.
-    def _pick(attr, default):
-        v = body.get(attr)
-        if isinstance(v, list) and len(v) == n:
-            return list(v)
-        return default
-    # Periodicity rides through the op round-trip, SYMMETRIC with
-    # ``structure_to_dict``'s ``periodicity`` block.  cell / axis_kind / vacuum
-    # / k-grid are NOT per-atom, so an edit (delete / add / orient / rotate /
-    # translate) must not silently revert a periodic or transport cell to
-    # isolated defaults.  Absent -> Structure's isolated defaults;
-    # ``__post_init__`` normalises + validates (a malformed cell raises ->
-    # the caller turns it into a 400).
-    # cell_origin (§ 3c) rides with the cell so a modify op on an electrode
-    # junction doesn't drop the corner that makes the box wrap the atoms.
-    #
-    peri_kw: Dict[str, Any] = _stated_periodicity(body.get("periodicity"))
-    return Structure(
-        elements      = list(base.elements),
-        positions     = base.positions,
-        atom_names    = _pick("atom_names",    list(base.atom_names)),
-        residue_ids   = _pick("residue_ids",   list(base.residue_ids)),
-        residue_names = _pick("residue_names", list(base.residue_names)),
-        chain_ids     = _pick("chain_ids",     list(base.chain_ids)),
-        title         = base.title,
-        **peri_kw,
-    )
+    if not isinstance(envelope, dict):
+        raise ValueError(
+            "no 'structure' provided: a structure crosses in the envelope "
+            "(web-api.md § 1) -- {elements, positions, metadata}")
+    return _struct_from_envelope(envelope)
 
 
 def atoms_list(struct: Structure) -> List[Dict[str, Any]]:

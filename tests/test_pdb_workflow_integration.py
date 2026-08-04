@@ -44,6 +44,12 @@ from pathlib import Path
 
 import pytest
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from support.envelope import (from_xyz as _env,
+                             from_xyz_with_periodicity as _env_per)
+
+
 
 # ONE PDB, BUILT HERE (2026-08-03).
 #
@@ -590,7 +596,7 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
         struct = Structure.from_pdb(pdb_path.read_text())
         xyz = struct.to_xyz()
         r = web.post("/api/build/fdf", json={
-            "xyz":            xyz,
+            "structure": _env(xyz),
             "params":         {"system_label": "test", "relax_type": "CG"},
             "structure_path": str(pdb_path.resolve()),
         })

@@ -758,12 +758,10 @@ class TestTabEmitContract:
 
     def test_body_vacuum_governs_the_emitted_fdf(self, client):
         r = client.post("/api/build/fdf", json={
-            "xyz": self._XYZ,
-            "params": {"system_label": "pin", "verbose_comments": False},
-            "frozen_atoms": [], "regions": {},          # labels present!
-            "periodicity": {"cell": None, "cell_origin": None,
+            "structure": _env_per(self._XYZ, {"cell": None, "cell_origin": None,
                             "axis_kind": ["isolated"] * 3,
-                            "vacuum": [2.5, 2.5, 2.5]},
+                            "vacuum": [2.5, 2.5, 2.5]}),
+            "params": {"system_label": "pin", "verbose_comments": False},
         })
         assert r.status_code == 200, r.get_json()
         lat, coords = self._lattice_and_coords(r.get_json()["fdf"])
@@ -774,13 +772,11 @@ class TestTabEmitContract:
 
     def test_body_explicit_cell_and_origin_shift_the_frame(self, client):
         r = client.post("/api/build/fdf", json={
-            "xyz": self._XYZ,
-            "params": {"system_label": "pin", "verbose_comments": False},
-            "frozen_atoms": [], "regions": {},
-            "periodicity": {"cell": (np.eye(3) * 10.0).tolist(),
+            "structure": _env_per(self._XYZ, {"cell": (np.eye(3) * 10.0).tolist(),
                             "cell_origin": [9.0, 9.0, 9.0],
                             "axis_kind": ["isolated"] * 3,
-                            "vacuum": [0.0, 0.0, 0.0]},
+                            "vacuum": [0.0, 0.0, 0.0]}),
+            "params": {"system_label": "pin", "verbose_comments": False},
         })
         assert r.status_code == 200, r.get_json()
         lat, coords = self._lattice_and_coords(r.get_json()["fdf"])
@@ -791,11 +787,10 @@ class TestTabEmitContract:
         """A planar molecule with vacuum: preflight must NOT judge the
         vacuum-0 phantom (it used to error/advise on a degenerate box)."""
         r = client.post("/api/build/preflight", json={
-            "xyz": self._XYZ, "engine": "siesta",
-            "params": {"system_label": "pin"},
-            "periodicity": {"cell": None, "cell_origin": None,
+            "structure": _env_per(self._XYZ, {"cell": None, "cell_origin": None,
                             "axis_kind": ["isolated"] * 3,
-                            "vacuum": [4.0, 4.0, 4.0]},
+                            "vacuum": [4.0, 4.0, 4.0]}), "engine": "siesta",
+            "params": {"system_label": "pin"},
         })
         assert r.status_code == 200, r.get_json()
         texts = " ".join(i.get("message", "") for i in
@@ -850,6 +845,12 @@ class TestTabEmitContract:
 
 
 from pathlib import Path  # noqa: E402  (used by TestTabEmitContract)
+
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from support.envelope import (from_xyz as _env,
+                             from_xyz_with_periodicity as _env_per)
+
 
 
 class TestReadingDoesNotJudge:
@@ -1568,18 +1569,27 @@ class TestARefusedCellIsA400:
 
     def test_the_fdf_door_refuses(self, client):
         self._assert_refused(client.post("/api/build/fdf", json={
-            "xyz": self.XYZ, "params": {},
-            "periodicity": {"cell": self.LEFT_HANDED}}), "/api/build/fdf")
+            # THE BOX IS PART OF THE STRUCTURE.  This stated it in a
+            # top-level `periodicity` block beside the envelope -- the legacy
+            # request shape, retired 2026-08-04 once nothing sent it.
+            "structure": _env_per(self.XYZ, {"cell": self.LEFT_HANDED}),
+            "params": {}}), "/api/build/fdf")
 
     def test_the_pyscf_door_refuses(self, client):
         self._assert_refused(client.post("/api/build/pyscf", json={
-            "xyz": self.XYZ, "params": {},
-            "periodicity": {"cell": self.LEFT_HANDED}}), "/api/build/pyscf")
+            # THE BOX IS PART OF THE STRUCTURE.  This stated it in a
+            # top-level `periodicity` block beside the envelope -- the legacy
+            # request shape, retired 2026-08-04 once nothing sent it.
+            "structure": _env_per(self.XYZ, {"cell": self.LEFT_HANDED}),
+            "params": {}}), "/api/build/pyscf")
 
     def test_the_preflight_door_refuses(self, client):
         self._assert_refused(client.post("/api/build/preflight", json={
-            "xyz": self.XYZ, "engine": "siesta", "params": {},
-            "periodicity": {"cell": self.LEFT_HANDED}}), "/api/build/preflight")
+            # THE BOX IS PART OF THE STRUCTURE.  This stated it in a
+            # top-level `periodicity` block beside the envelope -- the legacy
+            # request shape, retired 2026-08-04 once nothing sent it.
+            "structure": _env_per(self.XYZ, {"cell": self.LEFT_HANDED}), "engine": "siesta",
+            "params": {}}), "/api/build/preflight")
 
     def test_the_spectra_door_refuses(self, client):
         """The spectra door takes the structure AS DATA, like every other one.

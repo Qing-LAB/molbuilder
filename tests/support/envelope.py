@@ -60,6 +60,25 @@ def envelope(elements, positions, **kw) -> dict:
     return structure(elements, positions, **kw).to_dict()
 
 
+def from_xyz_with_periodicity(text: str, periodicity=None, **kw) -> dict:
+    """An envelope from XYZ text with a stated box folded into its metadata.
+
+    Tests used to post ``{"xyz": text, "periodicity": {...}}`` -- the legacy
+    request shape, retired 2026-08-04 once the code answered the contract's own
+    question ("a key goes when nothing reads it") and no client sent it.  The
+    box is part of the structure, so it rides in ``metadata`` with everything
+    else about those atoms.
+    """
+    # NOTHING IS STRIPPED HERE.  A first cut popped `kgrid` and the three
+    # `resolved_*` views before handing the block on -- defending against
+    # inputs no caller produces.  Exactly one fixture carried `kgrid`, labelled
+    # in its own source as a "legacy key -> ignored"; the field left the model
+    # long ago and the fixture simply outlived it.  Deleting the line was the
+    # fix.  A helper that quietly accepts a field the data model rejects is
+    # how a fixture keeps a dead field alive.
+    return from_xyz(text, **{**(periodicity or {}), **kw})
+
+
 def from_xyz(text: str, **kw) -> dict:
     """An envelope for a structure a fixture already has as XYZ TEXT.
 

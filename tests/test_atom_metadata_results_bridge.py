@@ -33,6 +33,12 @@ from molbuilder.parse.dirs.atom_metadata import atom_metadata_json_for_run_dir
 from molbuilder.parse.scripts.atom_metadata import _extract_atom_metadata_dict
 from molbuilder.script_emit import emit_atom_metadata
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from support.envelope import (from_xyz as _env,
+                             from_xyz_with_periodicity as _env_per)
+
+
 
 # --------------------------------------------------------------------- #
 #  Fixtures                                                              #
@@ -249,8 +255,10 @@ class TestBuildLoadDoor:
 
         # The same box, at a door that emits a calculation: refused.
         emit = client.post("/api/build/fdf", json={
-            "xyz": _XYZ_4C_FRAME0, "params": {},
-            "periodicity": {"cell": left_handed}})
+            # The box rides IN the structure -- the top-level `periodicity`
+            # block this used went with the legacy request shape.
+            "structure": _env_per(_XYZ_4C_FRAME0, {"cell": left_handed}),
+            "params": {}})
         assert emit.status_code == 400, (
             f"an .fdf was generated from an impossible box: {emit.status_code}"
         )

@@ -58,19 +58,30 @@ def client():
 #  Which shape a body is                                                #
 # --------------------------------------------------------------------- #
 
-def test_a_body_is_an_envelope_when_it_carries_one_and_not_otherwise():
-    """"A body carrying a `structure` key is an envelope; a body without one is
-    read the old way. That is the whole test — one key, present or absent."
+def test_a_body_without_the_envelope_is_refused():
+    """THE LEGACY SHAPE IS GONE, and this test used to be the reason to keep it:
+    "both shapes must work for as long as the legacy keys exist, because a
+    browser tab loaded before a deploy is still calling the old way."
 
-    Both shapes must work for as long as the legacy keys exist, because a
-    browser tab loaded before a deploy is still calling the old way.
+    That is what the contract protects UNTIL its condition is met, not a reason
+    to keep the shape after. § 1: "What ends the legacy. Not a date: the
+    condition is *no reader left*. A key goes when nothing reads it, WHICH IS A
+    QUESTION THE CODE CAN ANSWER — and until then a browser tab that was loaded
+    before a deploy keeps working."
+
+    The code was asked, 2026-08-04: no client sends `xyz` to any door. Every
+    caller had already moved to the envelope; only tests were holding the branch
+    up, and a compatibility path whose sole user is its own test is not
+    compatibility. Reading this docstring as an override of the retirement
+    condition is using a test to overrule the contract it serves.
     """
-    from_envelope = struct_from_body(_envelope())
-    from_legacy = struct_from_body({"xyz": "3\n\nC 0 0 0\nO 1.4 0 0\nH 0 1 0\n"})
+    with pytest.raises(ValueError) as exc:
+        struct_from_body({"xyz": "3\n\nC 0 0 0\nO 1.4 0 0\nH 0 1 0\n"})
+    assert "structure" in str(exc.value)
 
-    assert from_envelope.n_atoms == from_legacy.n_atoms == 3
-    assert list(from_envelope.elements) == list(from_legacy.elements)
-    assert from_envelope.positions.tolist() == from_legacy.positions.tolist()
+    # And the envelope, which is now the only way in, still works.
+    struct = struct_from_body(_envelope())
+    assert struct.n_atoms == 3
 
 
 def test_when_a_body_carries_both_the_envelope_wins_and_the_legacy_is_ignored():

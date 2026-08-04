@@ -7,6 +7,12 @@ Skipped cleanly if Flask isn't installed.
 
 from __future__ import annotations
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from support.envelope import (from_xyz as _env,
+                             from_xyz_with_periodicity as _env_per)
+
+
 import io
 
 import pytest
@@ -171,7 +177,7 @@ def test_fdf_response_includes_validation_issues(web_client, peptide_xyz):
     rendered text so the UI can show warnings to the user.  For a clean
     peptide the list is empty; this just pins the response shape."""
     r = web_client.post("/api/build/fdf",
-                        json={"xyz": peptide_xyz, "params": {}})
+                        json={"structure": _env(peptide_xyz), "params": {}})
     body = r.get_json()
     assert body["ok"] is True
     assert "issues" in body and isinstance(body["issues"], list)
@@ -309,7 +315,7 @@ def peptide_xyz(web_client):
 
 
 def test_fdf_default_params(web_client, peptide_xyz):
-    r = web_client.post("/api/build/fdf", json={"xyz": peptide_xyz, "params": {}})
+    r = web_client.post("/api/build/fdf", json={"structure": _env(peptide_xyz), "params": {}})
     body = r.get_json()
     assert body["ok"] is True
     assert "SystemName" in body["fdf"]
@@ -461,7 +467,7 @@ def test_preflight_returns_issues_for_siesta(web_client, peptide_xyz):
     silently ignore the total-spin pin -- and the validator emits a
     warn that should round-trip through the preflight endpoint."""
     r = web_client.post("/api/build/preflight", json={
-        "xyz": peptide_xyz,
+        "structure": _env(peptide_xyz),
         "engine": "siesta",
         "params": {"spin_total": 1.0},
     })
@@ -483,7 +489,7 @@ def test_preflight_returns_issues_for_pyscf(web_client, peptide_xyz):
     UKS-with-spin-0 mistake (review-fix A) and the preflight surfaces
     it without producing the ~20 KB script body."""
     r = web_client.post("/api/build/preflight", json={
-        "xyz": peptide_xyz,
+        "structure": _env(peptide_xyz),
         "engine": "pyscf",
         "params": {"method": "UKS", "spin": 0},
     })
@@ -497,7 +503,7 @@ def test_preflight_returns_issues_for_pyscf(web_client, peptide_xyz):
 
 def test_preflight_rejects_bad_engine(web_client, peptide_xyz):
     r = web_client.post("/api/build/preflight", json={
-        "xyz": peptide_xyz,
+        "structure": _env(peptide_xyz),
         "engine": "qchem",   # not supported
         "params": {},
     })
@@ -520,7 +526,7 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
     contract pin and not stale documentation.
     """
     r = web_client.post("/api/build/preflight", json={
-        "xyz": peptide_xyz,
+        "structure": _env(peptide_xyz),
         "engine": "siesta",
         # kgrid coercion does int(v[i]) -- a non-numeric string here
         # raises ValueError in _siesta_config_from_params, which the
@@ -552,7 +558,7 @@ def test_string_typed_numeric_params_coerced_to_field_types(web_client, peptide_
     SiestaConfig stores the string and the validator's range check
     raises TypeError on string<int and silently drops the warning."""
     r = web_client.post("/api/build/fdf", json={
-        "xyz": peptide_xyz,
+        "structure": _env(peptide_xyz),
         "params": {
             # All values intentionally as strings to mimic a non-JS
             # HTTP client.
@@ -579,7 +585,7 @@ def test_string_typed_numeric_params_coerced_to_field_types(web_client, peptide_
 def test_pyscf_string_numeric_params_coerced(web_client, peptide_xyz):
     """Same R5 coverage on the PySCF endpoint."""
     r = web_client.post("/api/build/pyscf", json={
-        "xyz": peptide_xyz,
+        "structure": _env(peptide_xyz),
         "params": {
             "scf_max_cycle":  "200",     # int field
             "scf_conv_tol":   "1e-10",   # float field
@@ -657,7 +663,7 @@ def test_fdf_custom_params(web_client, peptide_xyz):
     # longer a config field; SystemName + SystemLabel both come from
     # system_label.
     r = web_client.post("/api/build/fdf", json={
-        "xyz": peptide_xyz,
+        "structure": _env(peptide_xyz),
         "params": {
             "system_label":  "my_pep",
             "basis_size":    "TZP",
@@ -743,7 +749,7 @@ def test_load_then_fdf_chain(web_client, peptide_xyz):
                              json={"text": peptide_xyz, "filename": "p.xyz"}
                              ).get_json()
     r = web_client.post("/api/build/fdf",
-                        json={"xyz": loaded["xyz"],
+                        json={"structure": _env(loaded["xyz"]),
                               "params": {"system_label": "lp"}})
     body = r.get_json()
     assert body["ok"] is True
@@ -757,7 +763,7 @@ def test_load_then_fdf_chain(web_client, peptide_xyz):
 
 def test_pyscf_default_params(web_client, peptide_xyz):
     r = web_client.post("/api/build/pyscf",
-                        json={"xyz": peptide_xyz, "params": {}})
+                        json={"structure": _env(peptide_xyz), "params": {}})
     body = r.get_json()
     assert body["ok"] is True
     assert "from pyscf import gto, scf, dft" in body["script"]
@@ -771,7 +777,7 @@ def test_pyscf_default_params(web_client, peptide_xyz):
 
 def test_pyscf_custom_params(web_client, peptide_xyz):
     r = web_client.post("/api/build/pyscf", json={
-        "xyz": peptide_xyz,
+        "structure": _env(peptide_xyz),
         "params": {
             "job_name":         "my_pep",
             "method":           "UKS",
@@ -816,7 +822,7 @@ def test_pyscf_auto_charge_from_phosphates(web_client):
         "O   1.4  0.0  0.0\n"
         "C   2.5  0.0  0.0\n"
     )
-    r = web_client.post("/api/build/pyscf", json={"xyz": xyz, "params": {}})
+    r = web_client.post("/api/build/pyscf", json={"structure": _env(xyz), "params": {}})
     body = r.get_json()
     assert body["ok"] is True
     assert "charge     = -1" in body["script"]
@@ -1143,7 +1149,7 @@ def test_modify_delete_returns_workspace_payload(web_client):
     (text, source_format, lattice, extra) survive the helper
     refactor."""
     r = web_client.post("/api/modify/delete", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "indices": [0],
     })
     body = r.get_json()
@@ -1164,12 +1170,12 @@ def test_modify_count_changing_ops_emit_no_selection_remap(web_client):
     never mis-point at a shifted index.  Neither delete nor add_atom (nor the
     electrode ops) may carry a ``selection_remap`` in ``extra`` anymore."""
     r = web_client.post("/api/modify/delete", json={
-        "xyz": _H2O_XYZ, "indices": [0]})
+        "structure": _env(_H2O_XYZ), "indices": [0]})
     body = r.get_json()
     assert body["ok"] is True
     assert "selection_remap" not in (body.get("extra") or {})
     r = web_client.post("/api/modify/add_atom", json={
-        "xyz": _H2O_XYZ, "element": "H", "anchor_index": 0, "offset": [0.5, 0, 0]})
+        "structure": _env(_H2O_XYZ), "element": "H", "anchor_index": 0, "offset": [0.5, 0, 0]})
     body = r.get_json()
     assert body["ok"] is True
     assert "selection_remap" not in (body.get("extra") or {})
@@ -1187,11 +1193,10 @@ def test_modify_op_round_trips_the_periodic_cell(web_client):
         "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
         "axis_kind": ["periodic", "periodic", "transport"],
         "vacuum": [5.0, 5.0, 0.0],
-        "kgrid": [2, 2, 8],   # legacy key -> ignored, not echoed back
     }
     # A count-changing op (delete) carries the lattice VERBATIM.
     body = web_client.post("/api/modify/delete", json={
-        "xyz": _H2O_XYZ, "periodicity": periodicity, "indices": [1]}).get_json()
+        "structure": _env_per(_H2O_XYZ, periodicity), "indices": [1]}).get_json()
     assert body["ok"] is True, body
     per = body["periodicity"]
     assert per["cell"] == periodicity["cell"], "delete dropped/changed the cell"
@@ -1203,7 +1208,7 @@ def test_modify_op_round_trips_the_periodic_cell(web_client):
     # pivot -- structure-periodicity.md §3c); it must not DROP them or leave an
     # axis-aligned box behind.  axis_kind / vacuum are non-geometric -> verbatim.
     body = web_client.post("/api/modify/rotate", json={
-        "xyz": _H2O_XYZ, "periodicity": periodicity, "axis": "z", "angle": 30}).get_json()
+        "structure": _env_per(_H2O_XYZ, periodicity), "axis": "z", "angle": 30}).get_json()
     assert body["ok"] is True, body
     per = body["periodicity"]
     th = np.radians(30.0)
@@ -1229,7 +1234,7 @@ def test_modify_op_round_trips_cell_origin(web_client):
         "axis_kind": ["periodic", "periodic", "transport"],
     }
     r = web_client.post("/api/modify/rotate", json={
-        "xyz": _H2O_XYZ, "periodicity": periodicity, "axis": "z", "angle": 15})
+        "structure": _env_per(_H2O_XYZ, periodicity), "axis": "z", "angle": 15})
     per = r.get_json()["periodicity"]
     th = np.radians(15.0)
     R = np.array([[np.cos(th), -np.sin(th), 0.0],
@@ -1245,7 +1250,7 @@ def test_modify_calibrate_moves_atoms_into_the_cell(web_client):
     cell_origin -- the SIESTA coordinate frame, baked into the stored coords."""
     xyz = "2\njx\nS 0 0 -3\nS 0 0 3\n"
     r = web_client.post("/api/modify/calibrate", json={
-        "xyz": xyz, "periodicity": {
+        "structure": _env(xyz), "periodicity": {
             "cell": [[4, 0, 0], [0, 4, 0], [0, 0, 10]],
             "cell_origin": [-2, -2, -5],
             "axis_kind": ["periodic", "periodic", "transport"]}})
@@ -1270,7 +1275,7 @@ _H2O_XYZ = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
 
 def test_modify_delete_drops_listed_indices(web_client):
     r = web_client.post("/api/modify/delete", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "indices": [1, 2],   # both H atoms
     })
     body = r.get_json()
@@ -1288,7 +1293,7 @@ def test_modify_responses_carry_atoms_list(web_client):
     Pre-fix, modifier-op responses only carried xyz + elements +
     metadata lists; the selection panel went stale after every op."""
     r = web_client.post("/api/modify/delete", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "indices": [1, 2],   # delete both H, keep O
     })
     body = r.get_json()
@@ -1310,7 +1315,7 @@ def test_modify_responses_carry_atoms_list(web_client):
 def test_modify_delete_silently_ignores_out_of_range(web_client):
     """Matches molbuilder.modify.delete_atoms behaviour."""
     r = web_client.post("/api/modify/delete", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "indices": [99, -1, 0],   # only 0 is in range
     })
     body = r.get_json()
@@ -1320,7 +1325,7 @@ def test_modify_delete_silently_ignores_out_of_range(web_client):
 
 def test_modify_delete_rejects_non_int_indices(web_client):
     r = web_client.post("/api/modify/delete", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "indices": ["a", "b"],
     })
     assert r.status_code == 400
@@ -1329,7 +1334,7 @@ def test_modify_delete_rejects_non_int_indices(web_client):
 
 def test_modify_add_atom_appends_at_offset(web_client):
     r = web_client.post("/api/modify/add_atom", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "element": "H",
         "anchor_index": 0,            # the O
         "offset": [0.0, 0.0, 1.5],
@@ -1346,7 +1351,7 @@ def test_modify_add_atom_explicit_residue_id_groups_atoms(web_client):
     """The web layer surfaces SP-E (add_atom's optional residue_id) so a
     UI builder can land multiple appended atoms in one residue."""
     r = web_client.post("/api/modify/add_atom", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "element": "C",
         "anchor_index": 0,
         "offset": [1.5, 0, 0],
@@ -1359,7 +1364,7 @@ def test_modify_add_atom_explicit_residue_id_groups_atoms(web_client):
 
 def test_modify_add_atom_rejects_bad_anchor(web_client):
     r = web_client.post("/api/modify/add_atom", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "element": "H",
         "anchor_index": 99,
         "offset": [0, 0, 1],
@@ -1374,7 +1379,7 @@ def test_modify_add_atom_rejects_unknown_element(web_client):
     """Scientific guard: a non-periodic-table symbol is rejected at the op
     boundary (400), not silently accepted to detonate later in a generator."""
     r = web_client.post("/api/modify/add_atom", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "element": "Xx",
         "anchor_index": 0,
         "offset": [0, 0, 1],
@@ -1392,7 +1397,7 @@ def test_modify_add_atom_zero_offset_is_advisory_not_blocked(web_client):
     non-blocking ``geometry.min_distance`` issue.  The editing stage advises; the
     generation gate enforces."""
     r = web_client.post("/api/modify/add_atom", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "element": "H",
         "anchor_index": 0,
         "offset": [0, 0, 0],
@@ -1407,7 +1412,7 @@ def test_modify_add_atom_zero_offset_is_advisory_not_blocked(web_client):
 
 def test_modify_add_atom_rejects_missing_offset(web_client):
     r = web_client.post("/api/modify/add_atom", json={
-        "xyz": _H2O_XYZ,
+        "structure": _env(_H2O_XYZ),
         "element": "H",
         "anchor_index": 0,
         # offset missing
@@ -1425,20 +1430,12 @@ def test_modify_endpoint_chain_preserves_metadata(web_client):
     # roundtrip needed; each modify op revalidates via
     # _struct_from_body.
     s1 = {
-        "xyz":           _H2O_XYZ,
-        "atom_names":    ["OW", "HW1", "HW2"],
-        "residue_ids":   [7, 7, 7],
-        "residue_names": ["WAT", "WAT", "WAT"],
-        "chain_ids":     ["B", "B", "B"],
+        "structure": _env(_H2O_XYZ, atom_names=["OW", "HW1", "HW2"], residue_ids=[7, 7, 7], residue_names=["WAT", "WAT", "WAT"], chain_ids=["B", "B", "B"]),
     }
     # 2. Add an atom; the metadata for the original 3 atoms must
     # survive (Structure preserves through add_atom).
     r2 = web_client.post("/api/modify/add_atom", json={
-        "xyz":           s1["xyz"],
-        "atom_names":    s1["atom_names"],
-        "residue_ids":   s1["residue_ids"],
-        "residue_names": s1["residue_names"],
-        "chain_ids":     s1["chain_ids"],
+        "structure": s1["structure"],
         "element":       "H",
         "anchor_index":  0,
         "offset":        [0, 0, 1.5],
@@ -1451,11 +1448,7 @@ def test_modify_endpoint_chain_preserves_metadata(web_client):
     # 3. Delete the new atom; metadata for the surviving three is
     # still intact.
     r3 = web_client.post("/api/modify/delete", json={
-        "xyz":           s2["xyz"],
-        "atom_names":    s2["atom_names"],
-        "residue_ids":   s2["residue_ids"],
-        "residue_names": s2["residue_names"],
-        "chain_ids":     s2["chain_ids"],
+        "structure": s2["structure"],
         "indices":       [3],
     })
     s3 = r3.get_json()
@@ -1535,7 +1528,7 @@ def test_modify_orient_default_lays_anchor_pair_along_z(web_client):
     lands at the origin so a0 is at -d/2 and a1 at +d/2 along z."""
     import math
     r = web_client.post("/api/modify/orient", json={
-        "xyz": _LINEAR_XYZ,
+        "structure": _env(_LINEAR_XYZ),
         "anchors": [0, 3],
     })
     body = r.get_json()
@@ -1555,7 +1548,7 @@ def test_modify_orient_default_lays_anchor_pair_along_z(web_client):
 
 def test_modify_orient_rejects_bad_axis(web_client):
     r = web_client.post("/api/modify/orient", json={
-        "xyz": _LINEAR_XYZ,
+        "structure": _env(_LINEAR_XYZ),
         "anchors": [0, 3],
         "axis": "w",
     })
@@ -1566,7 +1559,7 @@ def test_modify_orient_rejects_bad_axis(web_client):
 def test_modify_rotate_z_90_degrees(web_client):
     """Rotation around z by 90° maps (1, 1, 0) -> (-1, 1, 0)."""
     r = web_client.post("/api/modify/rotate", json={
-        "xyz": _LINEAR_XYZ, "axis": "z", "angle": 90,
+        "structure": _env(_LINEAR_XYZ), "axis": "z", "angle": 90,
     })
     body = r.get_json()
     assert body["ok"] is True
@@ -1580,7 +1573,7 @@ def test_modify_rotate_z_90_degrees(web_client):
 
 def test_modify_rotate_rejects_bad_axis(web_client):
     r = web_client.post("/api/modify/rotate", json={
-        "xyz": _LINEAR_XYZ, "axis": "w", "angle": 30,
+        "structure": _env(_LINEAR_XYZ), "axis": "w", "angle": 30,
     })
     assert r.status_code == 400
     assert "axis" in r.get_json()["error"]
@@ -1588,7 +1581,7 @@ def test_modify_rotate_rejects_bad_axis(web_client):
 
 def test_modify_rotate_rejects_non_numeric_angle(web_client):
     r = web_client.post("/api/modify/rotate", json={
-        "xyz": _LINEAR_XYZ, "axis": "z", "angle": "ninety",
+        "structure": _env(_LINEAR_XYZ), "axis": "z", "angle": "ninety",
     })
     assert r.status_code == 400
     assert "angle" in r.get_json()["error"]
@@ -1605,7 +1598,7 @@ def test_modify_translate_recenter_puts_centroid_at_origin(web_client):
     (4,4,4) so its centroid is (2.5, 2.5, 2.5); after recentering
     every coord is shifted by -2.5."""
     r = web_client.post("/api/modify/translate", json={
-        "xyz": _LINEAR_XYZ,
+        "structure": _env(_LINEAR_XYZ),
         "recenter": True,
     })
     body = r.get_json()
@@ -1623,7 +1616,7 @@ def test_modify_translate_offset_shifts_every_atom_by_delta(web_client):
     """``{dx, dy, dz}`` shifts every coordinate by exactly that
     vector and preserves intra-structure distances."""
     r = web_client.post("/api/modify/translate", json={
-        "xyz": _LINEAR_XYZ,
+        "structure": _env(_LINEAR_XYZ),
         "dx": 10.0, "dy": -5.0, "dz": 0.5,
     })
     body = r.get_json()
@@ -1641,7 +1634,7 @@ def test_modify_translate_recenter_wins_over_dxdydz(web_client):
     server takes the recenter path (documented behaviour); the dx
     fields are silently ignored."""
     r = web_client.post("/api/modify/translate", json={
-        "xyz": _LINEAR_XYZ,
+        "structure": _env(_LINEAR_XYZ),
         "recenter": True,
         "dx": 999.0, "dy": -999.0, "dz": 999.0,
     })
@@ -1654,7 +1647,7 @@ def test_modify_translate_recenter_wins_over_dxdydz(web_client):
 def test_modify_translate_zero_default_is_a_noop(web_client):
     """Omitting dx/dy/dz defaults each to 0.0; the result is byte-
     identical xyz with the same atom count."""
-    r = web_client.post("/api/modify/translate", json={"xyz": _LINEAR_XYZ})
+    r = web_client.post("/api/modify/translate", json={"structure": _env(_LINEAR_XYZ)})
     body = r.get_json()
     assert body["ok"] is True
     src = _coords_from_xyz(_LINEAR_XYZ)
@@ -1666,7 +1659,7 @@ def test_modify_translate_zero_default_is_a_noop(web_client):
 
 def test_modify_translate_rejects_non_numeric_offset(web_client):
     r = web_client.post("/api/modify/translate", json={
-        "xyz": _LINEAR_XYZ,
+        "structure": _env(_LINEAR_XYZ),
         "dx": "pizza",
     })
     assert r.status_code == 400
@@ -1676,11 +1669,7 @@ def test_modify_translate_rejects_non_numeric_offset(web_client):
 def test_modify_translate_preserves_metadata(web_client):
     """Per-atom metadata round-trips through translate (rigid op)."""
     r = web_client.post("/api/modify/translate", json={
-        "xyz": _LINEAR_XYZ,
-        "atom_names":    ["C1", "C2", "C3", "C4"],
-        "residue_ids":   [1, 1, 1, 1],
-        "residue_names": ["MOL", "MOL", "MOL", "MOL"],
-        "chain_ids":     ["A", "A", "A", "A"],
+        "structure": _env(_LINEAR_XYZ, atom_names=["C1", "C2", "C3", "C4"], residue_ids=[1, 1, 1, 1], residue_names=["MOL", "MOL", "MOL", "MOL"], chain_ids=["A", "A", "A", "A"]),
         "dx": 1.0,
     })
     body = r.get_json()
@@ -1695,26 +1684,14 @@ def test_modify_orient_then_rotate_chains_through_metadata(web_client):
     # Initial state -- canonical body shape; each modify op
     # revalidates via _struct_from_body.
     s1 = {
-        "xyz":           _LINEAR_XYZ,
-        "atom_names":    ["C1", "C2", "C3", "C4"],
-        "residue_ids":   [1, 1, 1, 1],
-        "residue_names": ["MOL", "MOL", "MOL", "MOL"],
-        "chain_ids":     ["A", "A", "A", "A"],
+        "structure": _env(_LINEAR_XYZ, atom_names=["C1", "C2", "C3", "C4"], residue_ids=[1, 1, 1, 1], residue_names=["MOL", "MOL", "MOL", "MOL"], chain_ids=["A", "A", "A", "A"]),
     }
     s2 = web_client.post("/api/modify/orient", json={
-        "xyz":           s1["xyz"],
-        "atom_names":    s1["atom_names"],
-        "residue_ids":   s1["residue_ids"],
-        "residue_names": s1["residue_names"],
-        "chain_ids":     s1["chain_ids"],
+        "structure": s1["structure"],
         "anchors":       [0, 3],
     }).get_json()
     s3 = web_client.post("/api/modify/rotate", json={
-        "xyz":           s2["xyz"],
-        "atom_names":    s2["atom_names"],
-        "residue_ids":   s2["residue_ids"],
-        "residue_names": s2["residue_names"],
-        "chain_ids":     s2["chain_ids"],
+        "structure": s2["structure"],
         "axis": "z", "angle": 45,
     }).get_json()
     assert s3["atom_names"] == ["C1", "C2", "C3", "C4"]
@@ -1772,7 +1749,7 @@ def test_modify_symmetric_electrodes_pair_mode(web_client):
     """Pair mode: 2x2x1 Au(111) on either side of a 2-atom S pair,
     8 Å gap.  4 Au atoms per side -> 8 ELC atoms + 2 S = 10 total."""
     r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "xyz":     _SS_XYZ,
+        "structure": _env(_SS_XYZ),
         "element": "Au", "plane": "111",
         "size":    [2, 2, 1],
         "center_indices": [1, 0],   # junction centres on their centroid
@@ -1792,7 +1769,7 @@ def test_modify_symmetric_electrodes_anchorless_centres_on_origin(web_client):
     xyz.  This is the canonical UI workflow -- centre-and-pose the
     molecule first, then add slabs around the origin."""
     r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "xyz":     _SS_XYZ,
+        "structure": _env(_SS_XYZ),
         "element": "Au", "plane": "111",
         "size":    [2, 2, 1],
         "gap":     8.0,
@@ -1831,7 +1808,7 @@ def test_modify_symmetric_electrodes_rejects_nonpositive_gap(web_client):
     error."""
     for gap in (0.0, -3.0):
         r = web_client.post("/api/modify/symmetric_electrodes", json={
-            "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+            "structure": _env(_SS_XYZ), "element": "Au", "plane": "111",
             "size": [2, 2, 1], "gap": gap,
         })
         assert r.status_code == 400, gap
@@ -1841,7 +1818,7 @@ def test_modify_symmetric_electrodes_rejects_nonpositive_gap(web_client):
 def test_modify_electrode_rejects_nonpositive_contact_distance(web_client):
     """Single-mode contact distance must be strictly positive."""
     r = web_client.post("/api/modify/electrode", json={
-        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "structure": _env(_SS_XYZ), "element": "Au", "plane": "111",
         "size": [2, 2, 1], "center_indices": [0],
         "contact_distance": 0.0, "side": "+z",
     })
@@ -1852,7 +1829,7 @@ def test_modify_electrode_rejects_nonpositive_contact_distance(web_client):
 def test_modify_electrode_single_mode(web_client):
     """Single mode: one slab on +z, centred on the second S atom."""
     r = web_client.post("/api/modify/electrode", json={
-        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "structure": _env(_SS_XYZ), "element": "Au", "plane": "111",
         "size": [2, 2, 1], "center_indices": [1],
         "side": "+z", "contact_distance": 2.4,
     })
@@ -1865,7 +1842,7 @@ def test_modify_electrode_single_mode(web_client):
 
 def test_modify_electrode_rejects_bad_side(web_client):
     r = web_client.post("/api/modify/electrode", json={
-        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "structure": _env(_SS_XYZ), "element": "Au", "plane": "111",
         "size": [2, 2, 1], "center_indices": [0], "side": "above",
     })
     assert r.status_code == 400
@@ -1884,7 +1861,7 @@ def test_modify_fdf_rejects_slash_in_system_label(web_client):
     docs/execution/job-contracts.md."""
     for bad in ("a/b", "with spaces", "has.dot", ".leading"):
         r = web_client.post("/api/build/fdf", json={
-            "xyz": _LINEAR_XYZ,
+            "structure": _env(_LINEAR_XYZ),
             "params": {"system_label": bad},
         })
         body = r.get_json()
@@ -1897,7 +1874,7 @@ def test_modify_fdf_rejects_slash_in_system_label(web_client):
 def test_modify_pyscf_rejects_slash_in_job_name(web_client):
     """Same rule for PySCFConfig.job_name."""
     r = web_client.post("/api/build/pyscf", json={
-        "xyz": _LINEAR_XYZ,
+        "structure": _env(_LINEAR_XYZ),
         "params": {"job_name": "evil/path"},
     })
     body = r.get_json()
@@ -1917,7 +1894,7 @@ def test_modify_translate_rejects_nan_offset(web_client):
     boundary helper ``_shared.finite_float`` rejects non-finite
     values."""
     r = web_client.post("/api/modify/translate", json={
-        "xyz": _LINEAR_XYZ, "dx": float("nan"), "dy": 0.0, "dz": 0.0,
+        "structure": _env(_LINEAR_XYZ), "dx": float("nan"), "dy": 0.0, "dz": 0.0,
     })
     assert r.status_code == 400
     assert "finite" in r.get_json()["error"]
@@ -1925,14 +1902,14 @@ def test_modify_translate_rejects_nan_offset(web_client):
 
 def test_modify_rotate_rejects_nan_angle(web_client):
     r = web_client.post("/api/modify/rotate", json={
-        "xyz": _LINEAR_XYZ, "axis": "z", "angle": float("nan"),
+        "structure": _env(_LINEAR_XYZ), "axis": "z", "angle": float("nan"),
     })
     assert r.status_code == 400
 
 
 def test_modify_symmetric_electrodes_rejects_nan_gap(web_client):
     r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "xyz": _LINEAR_XYZ, "element": "Au", "plane": "111",
+        "structure": _env(_LINEAR_XYZ), "element": "Au", "plane": "111",
         "size": [2, 2, 1], "gap": float("nan"),
     })
     assert r.status_code == 400

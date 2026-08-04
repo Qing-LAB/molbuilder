@@ -14,6 +14,12 @@ from molbuilder.config.siesta import SiestaConfig
 from molbuilder.structure import Structure
 from molbuilder.validation import validate
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from support.envelope import (from_xyz as _env,
+                             from_xyz_with_periodicity as _env_per)
+
+
 
 def _thin_box_molecule() -> Structure:
     """A molecule in a box too small for its own basis orbitals -- the
@@ -165,7 +171,7 @@ class TestF2NoSecondSource:
             from molbuilder.web.app import create_app
             client = create_app(config={}).test_client()
             r = client.post("/api/build/fdf", json={
-                "xyz": xyz_text, "params": {},
+                "structure": _env(xyz_text), "params": {},
                 "structure_path": str(xyz),      # named, but NOT a label source
             })
             assert r.status_code == 200, r.data

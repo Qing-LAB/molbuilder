@@ -66,6 +66,12 @@ from typing import Any, Dict, List
 
 import pytest
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from support.envelope import (from_xyz as _env,
+                             from_xyz_with_periodicity as _env_per)
+
+
 
 pytest.importorskip("flask")
 
@@ -174,7 +180,7 @@ def test_siesta_build_issues_carry_workflow_group(web_client):
     regression that drops the kwarg from any of build.py:726, 731,
     747."""
     body = _post(web_client, "/api/build/fdf", {
-        "xyz": _BENZENE_XYZ,
+        "structure": _env(_BENZENE_XYZ),
         # mesh_cutoff = 30 is < 100 Ry, outside the declared range;
         # config-metadata validator emits a warn whose ``where`` is
         # ``config.mesh_cutoff``, which carries workflow_group="stage".
@@ -190,7 +196,7 @@ def test_pyscf_build_issues_carry_workflow_group(web_client):
     """PySCF mirror of the SIESTA pin.  ``build.py:793,796,812`` all
     pass cfg=cfg."""
     body = _post(web_client, "/api/build/pyscf", {
-        "xyz": _BENZENE_XYZ,
+        "structure": _env(_BENZENE_XYZ),
         # Same OOB approach: pick a PySCF field with workflow_group +
         # range.  ``scf_max_cycle`` is range=(10, 1000),
         # workflow_group="budget" (see config/pyscf.py:172).
@@ -209,7 +215,7 @@ def test_pyscf_build_issues_carry_workflow_group(web_client):
 
 def test_siesta_preflight_issues_carry_workflow_group(web_client):
     body = _post(web_client, "/api/build/preflight", {
-        "xyz": _BENZENE_XYZ,
+        "structure": _env(_BENZENE_XYZ),
         "engine": "siesta",
         "params": {"mesh_cutoff": 30},
     })
@@ -222,7 +228,7 @@ def test_siesta_preflight_issues_carry_workflow_group(web_client):
 
 def test_pyscf_preflight_issues_carry_workflow_group(web_client):
     body = _post(web_client, "/api/build/preflight", {
-        "xyz": _BENZENE_XYZ,
+        "structure": _env(_BENZENE_XYZ),
         "engine": "pyscf",
         "params": {"scf_max_cycle": 5},
     })

@@ -34,6 +34,12 @@ tests/test_validation_delivery_contract.py.
 """
 from __future__ import annotations
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from support.envelope import (from_xyz as _env,
+                             from_xyz_with_periodicity as _env_per)
+
+
 import json
 import re
 from pathlib import Path
@@ -210,7 +216,7 @@ class TestBuildFdfInBodyLabels:
             "regions": {}, "frozen_atoms": [0], "selection_rules": {},
         }), encoding="utf-8")
         r = web.post("/api/build/fdf", json={
-            "xyz": _XYZ, "params": {}, "structure_path": str(xyz_file)})
+            "structure": _env(_XYZ), "params": {}, "structure_path": str(xyz_file)})
         assert r.status_code == 200
         body = r.get_json() or {}
         assert body.get("ok") is True
@@ -238,7 +244,7 @@ class TestBuildFdfInBodyLabels:
         there is no second source to confuse it with, so it means what it
         says.  Demanding two empty keys from such a caller would be ceremony
         with no information in it."""
-        r = web.post("/api/build/fdf", json={"xyz": _XYZ, "params": {}})
+        r = web.post("/api/build/fdf", json={"structure": _env(_XYZ), "params": {}})
         assert r.status_code == 200
         body = r.get_json() or {}
         assert body.get("ok") is True

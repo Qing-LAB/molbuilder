@@ -47,6 +47,12 @@ import re
 
 import pytest
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).resolve().parent))
+from support.envelope import (from_xyz as _env,
+                             from_xyz_with_periodicity as _env_per)
+
+
 
 pytest.importorskip("flask")
 
@@ -84,7 +90,7 @@ class TestSiestaGenerateBytes:
                 # key since `apply_labels_to_struct` was deleted.  This test is
                 # about the EMITTED BYTES for an unlabelled structure, and it
                 # says that better by not pretending to send a declaration.
-                "xyz": _H2O_XYZ,
+                "structure": _env(_H2O_XYZ),
                 "params": {"system_label": "h2o_test"},
             },
         )
@@ -195,7 +201,7 @@ class TestPyscfGenerateBytes:
         r = web_client.post(
             "/api/build/pyscf",
             json={
-                "xyz": _H2O_XYZ,          # unlabelled; see the note above
+                "structure": _env(_H2O_XYZ),          # unlabelled; see the note above
                 "params": {},
             },
         )
