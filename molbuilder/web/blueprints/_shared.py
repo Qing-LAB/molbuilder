@@ -1503,8 +1503,11 @@ def apply_sidecar_if_possible(struct, structure_path):
     if apply_companion_labels_if_present(
             struct, resolved, notices=_companion_said) is not None:
         # Same channel the sidecar branch below uses: a string here becomes a
-        # warn-Issue in the caller's preflight.
-        return _companion_said[0]["message"] if _companion_said else None
+        # warn-Issue in the caller's preflight.  ALL of them, joined -- taking
+        # only the first would be the silent drop this whole path exists to
+        # end, and would go unnoticed for as long as there happened to be one.
+        return (" ".join(n["message"] for n in _companion_said)
+                if _companion_said else None)
     sidecar_path = _molstruct_json.sidecar_path_for(resolved)
     if not sidecar_path.exists():
         return None

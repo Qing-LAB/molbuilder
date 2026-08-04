@@ -147,8 +147,15 @@ class ResolvedCell:
         return self.regime == "manual"
 
 
-def resolve(struct: Structure) -> ResolvedCell:
+def resolve(struct: Structure, *,
+            box: Optional[np.ndarray] = None) -> ResolvedCell:
     """Work the box out, once, and say everything that is true of it.
+
+    ``box`` overrides what the structure resolves to -- for the one caller that
+    has a different one: a generator emitting a lattice it chose itself
+    (``render_fdf`` passes ``cell=`` into ``validate``).  The checker must judge
+    the box that will ACTUALLY be used, or it is answering about a box nobody
+    will run.  Omitting it is the normal case and asks the structure.
 
     Never raises for a *structure* problem: a periodic axis with no lattice is
     a legitimate thing to have loaded and be about to fix, so it comes back as
@@ -164,6 +171,11 @@ def resolve(struct: Structure) -> ResolvedCell:
     regime = "manual" if struct.cell is not None else "derived"
     defaulted = tuple(struct.defaulted_vacuum_axes())
 
+    # NOTE the regime is NOT touched by ``box``.  A box handed in changes WHICH
+    # box is measured; it says nothing about whether the USER typed a cell.
+    # Conflating the two made `cell.vacuum_ignored` tell a user "your vacuum is
+    # not being used: you typed a cell" when they had typed no cell at all and
+    # the generator had merely passed the derived box in for checking.
     common = dict(
         vacuum=eff,
         stated_vacuum=stated,
@@ -179,8 +191,11 @@ def resolve(struct: Structure) -> ResolvedCell:
         return ResolvedCell(box=None, corner=None, volume=0.0,
                             contains_atoms=True, **common)
 
+    if box is not None:
+        box = np.asarray(box, dtype=float).reshape(3, 3)
     try:
-        box = np.asarray(struct.resolve_cell(), dtype=float)
+        if box is None:
+            box = np.asarray(struct.resolve_cell(), dtype=float)
     except ValueError as exc:
         # The one structural impossibility ``resolve_cell`` raises for: a
         # `periodic` axis with no explicit lattice.  A bounding box is not a
@@ -429,7 +444,9 @@ def check(rc: ResolvedCell) -> List[Issue]:
     return out
 
 
-def resolve_and_check(struct: Structure) -> Tuple[ResolvedCell, List[Issue]]:
+def resolve_and_check(struct: Structure, *,
+                      box: Optional[np.ndarray] = None
+                      ) -> Tuple[ResolvedCell, List[Issue]]:
     """The whole line in one call — what almost every caller wants."""
-    rc = resolve(struct)
+    rc = resolve(struct, box=box)
     return rc, check(rc)

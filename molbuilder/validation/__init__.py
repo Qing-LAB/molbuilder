@@ -121,15 +121,20 @@ def _structure_declares_a_box(struct: Structure) -> bool:
     reports a degenerate cell for a calculation that has no cell.  PySCF /
     Spectra are gas-phase: there is no lattice to check.
 
-    A box is declared by an explicit ``cell``, a non-zero vacuum on some axis,
-    or a non-isolated axis kind (periodic / transport).  Anything else is a
-    molecule in free space, and the cell-dependent checks have nothing to say
-    about it.  (A SIESTA run with vacuum 0 still gets a clear degenerate-box
-    error, from ``render_fdf`` -- the engine that genuinely needs a box is the
-    right place for that.)"""
+    A box is declared by an explicit ``cell``, a vacuum the structure STATES
+    (any value, including all-zero), or a non-isolated axis kind (periodic /
+    transport).  Anything else is a molecule in free space, and the
+    cell-dependent checks have nothing to say about it."""
     if struct.cell is not None:
         return True
-    if any(float(v) > 0.0 for v in (struct.vacuum or ())):
+    if struct.vacuum is not None:
+        # STATING one is the declaration -- including an all-zero triple, which
+        # since 2026-08-03 means "no gap, deliberately" and is a real (and
+        # unusable) box rather than an absence.  This tested `any(v > 0)`, which
+        # was the only thing possible while unset WAS (0,0,0); once the two
+        # became distinguishable it left a hole -- a deliberate zero produced a
+        # zero-volume box that validate() reported nothing about, so the user
+        # met it at the emitter instead of in the preflight panel.
         return True
     return any(k != "isolated" for k in (struct.axis_kind or ()))
 
@@ -218,9 +223,14 @@ def validate(struct: Structure, cfg, *,
     # above is gated: `resolve_cell` hands back a bounding box for a gas-phase
     # molecule that never asked for one, and judging that box would invent
     # findings about a cell the calculation does not have.
-    if _structure_declares_a_box(struct):
+    # ``cell`` here is the box that will actually be EMITTED -- a generator may
+    # have chosen one that differs from the structure's, and judging the
+    # structure's instead would answer about a box nobody runs.  That gap is
+    # real: geometry.py used to check the passed-in cell, and moving the verdict
+    # here without passing it on left an overridden degenerate box unreported.
+    if cell is not None or _structure_declares_a_box(struct):
         from ..cell import check as _check_cell, resolve as _resolve_cell
-        issues += _check_cell(_resolve_cell(struct))
+        issues += _check_cell(_resolve_cell(struct, box=cell))
 
     issues += validate_geometry(struct, cell)
     issues += _validate_config_metadata(cfg)

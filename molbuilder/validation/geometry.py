@@ -92,16 +92,20 @@ def validate_geometry(struct: Structure,
     if cell is None:
         return issues
 
-    # Cell determinant: <= 0 means left-handed or degenerate.
+    # A BROKEN CELL STOPS HERE, and says nothing -- `cell.check` owns the
+    # verdict (molbuilder/cell.py, cell-plan.md § 6a).
+    #
+    # This used to emit `cell.determinant`: "degenerate or left-handed".  Two
+    # different faults with two different repairs, conflated in one message and
+    # one id, so a flat molecule was told to swap its lattice vectors.  They are
+    # `cell.no_volume` and `cell.left_handed` now, reported once each by the one
+    # checker -- which validate() runs just above this call.  Emitting here as
+    # well gave every degenerate box TWO errors.
+    #
+    # The early return stays: the volume and image measurements below are
+    # meaningless on a cell with no volume or a mirrored frame.
     det = float(np.linalg.det(cell))
     if det <= 0:
-        issues.append(Issue(
-            "error",
-            f"cell determinant is {det:.3f} -- cell is degenerate or "
-            f"left-handed (right-handed lattice vectors required)",
-            "cell.determinant",
-        ))
-        # Don't run the volume / image checks if the cell is broken.
         return issues
 
     # Cell volume vs atom-bounding-volume: warn when the cell is so
