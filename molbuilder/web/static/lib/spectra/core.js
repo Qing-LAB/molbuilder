@@ -194,6 +194,12 @@
             broadeningFWHM: 20,
             animAmplitude:  0.15,
             animSpeed:      1.0,
+            // WHICH pairing of eigenvector and amplitude (§ 12.2), and the
+            // temperature the thermal one needs.  Preferences like the two above
+            // them, so they belong in the bucket the others live in -- otherwise
+            // they are simply left behind when this bucket learns to persist.
+            animAmplitudeMode: "display",   // or "zero-point" / "thermal"
+            animTemperature:   298,         // K
         },
 
         lifecycle: {
@@ -229,8 +235,6 @@
         vibMounting:    false,   // one build per mount, not one per mode click
         vibStructure:   null,    // which structure the viewer holds (§ 5.1)
         animPaused:     false,   // the USER's intent, not the viewer's state
-        animAmplitudeMode: "display",   // or "zero-point" / "thermal" (§ 12.2)
-        animTemperature:   298,         // K, for the thermal pairing
         exporting:      null,    // the AbortController of a running export
     };
 
@@ -263,6 +267,8 @@
         alias("broadeningFWHM", "uiPrefs");
         alias("animAmplitude",  "uiPrefs");
         alias("animSpeed",      "uiPrefs");
+        alias("animAmplitudeMode", "uiPrefs");
+        alias("animTemperature",   "uiPrefs");
         alias("watchTimer",     "lifecycle");
         alias("watchInFlight",  "lifecycle");
         alias("watchAbort",     "lifecycle");
@@ -437,11 +443,6 @@
     // present MO energies in user-friendly units instead of Eh.
     // CODATA 2018 value.
     const EH_TO_EV = 27.211386245988;
-
-    // ANIM_FRAMES_PER_CYCLE constant removed by #231 Part B — the
-    // embed's vibration animation (handle.setAnimation({kind:
-    // "vibration", displacements})) drives the rAF loop at the
-    // browser's native cadence; no pre-computed frame count needed.
 
     // ----- Listener bookkeeping ---------------------------------
     //
@@ -1531,8 +1532,9 @@
         // fresh structure.
         if (state.vib) {
             _stopAnimation();
-            // Dispose VibrationView (tears down the knob bar DOM + ResizeObserver + the
-            // embed's vibration loop) so the next render rebuilds with the fresh structure.
+            // Dispose the viewer so the next render builds one against the fresh
+            // structure.  It draws no controls of its own to tear down -- only a
+            // canvas, a caption and a clock (vibrationview.md § 5.4, § 8).
             try { state.vib.dispose(); }
             catch (_) {}
             state.vib = null;
@@ -2256,7 +2258,10 @@
      * is live, so there is no not-ready state for a caller to get wrong. */
     async function _showMode(inputs) {
         if (!state.vib) {
-            if (state.vibMounting) return;      // one build, not one per click
+            // A build is already running: this click will be picked up when it
+            // finishes, because that path re-reads the selection rather than
+            // using whatever was current when it started.
+            if (state.vibMounting) return;
             const make = opts.mountVibrationView;
             if (typeof make !== "function") {
                 // The page that mounted this inspector did not hand the viewer
@@ -2287,6 +2292,13 @@
             }
             state.vib = handle;
             state.vibStructure = null;
+
+            /* THE SELECTION MAY HAVE MOVED while the viewer was being built.
+             * `inputs` was worked out before the await, and a mount is slow
+             * enough to click through.  Using the stale one would show the mode
+             * that was selected when the box first appeared rather than the one
+             * chosen since — so the current truth is read again here. */
+            inputs = _animationInputs() || inputs;
         }
 
         /* TWO DOORS, and the slow one only when it is the slow fact
@@ -2412,7 +2424,8 @@
     }
 
     function _stopAnimation() {
-        // Pause VibrationView playback (pauses the embed's vibration loop under the hood).
+        // Not the user's doing -- there is simply nothing to animate -- so the
+        // Pause INTENT is left alone and the motion resumes when a mode returns.
         if (state.vib && typeof state.vib.pause === "function") {
             try { state.vib.pause(); } catch (_) {}
         }
@@ -2442,10 +2455,20 @@
         renderModeViewer();
     }
 
+    /* Only the SIZE changes with temperature -- the eigenvector is the same one
+     * -- so this is a live amplitude write and not a new mode.  Re-showing the
+     * mode would restart the cycle from its peak, which on a number box means
+     * restarting once per keystroke while somebody types "298". */
     function onTemperatureChange() {
         const t = parseFloat(els.animTemperature.value);
-        if (Number.isFinite(t) && t > 0) state.animTemperature = t;
-        renderModeViewer();
+        if (!Number.isFinite(t) || t <= 0) return;
+        state.animTemperature = t;
+        const inputs = _animationInputs();
+        if (!inputs || !state.vib) return;
+        state.vib.setAmplitude(inputs.amplitude);
+        setStatus(els.viewerStatus,
+                  "≤ " + _largestSwing(inputs).toFixed(3) + " Å · " + inputs.norm,
+                  "muted");
     }
 
     /* Speed sets how long ONE OSCILLATION takes, not a frame rate: a cycle is a
@@ -2463,11 +2486,6 @@
         if (state.vib) { try { state.vib.setCycleSec(1 / v); } catch (_) {} }
     }
     function onAnimToggle() {
-        // Phase 5h I-3: read the live runtime state from the embed
-        // (Phase 5g B-1 unified store) rather than a host-side
-        // mirror.  Without B-1 the mirror would silently drift
-        // every time _setMode forced playback via
-        // setAnimation({paused: false}).
         if (!state.vib) return;
         // The button sets the INTENT; the viewer follows it.  Toggling off what
         // the viewer happens to be doing would make the button mean "resume
@@ -3032,9 +3050,9 @@
             // watchAbort, stops watchTimer, clears watchInFlight,
             // clears fileState + viewState, sets machine='IDLE').
             transition("IDLE");
-            // Embed handle is not bucket-owned; tear it down
-            // separately.  #231 Part B: handle.dispose() releases
-            // the embed's vibration loop + WebGL refs.
+            // The viewer is an external resource rather than bucket state, so
+            // it is torn down explicitly: its own dispose stops the clock and
+            // releases the drawing surface (vibrationview.md § 8).
             if (state.vib) {
                 try { state.vib.dispose(); } catch (_) {}
                 state.vib = null;
