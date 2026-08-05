@@ -252,7 +252,6 @@
    and lib/inspectors/spectra.js calls on /results.  Script-order
    load-bearing: this MUST precede spectra/viewer.js so the bootstrap
    finds the mount API. #}
-<script type="module" src="{{ url_for('static', filename='lib/vibrationview/vibrationview.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='spectra/viewer.js') }}"></script>
 

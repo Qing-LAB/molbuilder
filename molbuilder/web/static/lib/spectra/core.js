@@ -228,7 +228,6 @@
         vib:            null,
         vibMounting:    false,   // one build per mount, not one per mode click
         vibStructure:   null,    // which structure the viewer holds (§ 5.1)
-        animCycleSec:   1.0,     // one oscillation per second
         animAmplitudeMode: "display",   // or "zero-point" / "thermal" (§ 12.2)
         animTemperature:   298,         // K, for the thermal pairing
         exporting:      null,    // the AbortController of a running export
@@ -2238,14 +2237,14 @@
             return;
         }
         els.modeViewerWrap.hidden = false;
-        setStatus(els.viewerStatus, inputs.mode.label, "muted");
-        if (els.animPhysicalVal) {
-            // The largest per-atom swing this pairing produces, which is the
-            // number that answers "how far does it actually move".
-            const biggest = _largestSwing(inputs);
-            els.animPhysicalVal.textContent = inputs.norm === "display"
-                ? "" : "≤ " + biggest.toFixed(3) + " Å · " + inputs.norm;
-        }
+        /* WHICH mode is showing is written into the picture itself (§ 12.3), so
+         * it rides into every exported frame -- and repeating it here would be the
+         * same sentence twice, one directly above the other.  The status line
+         * carries what the caption cannot: how big the motion actually is, which
+         * is the number a caption in a paper would have to quote. */
+        setStatus(els.viewerStatus,
+                  "≤ " + _largestSwing(inputs).toFixed(3) + " Å · " + inputs.norm,
+                  "muted");
         _showMode(inputs);
     }
 
@@ -2255,6 +2254,7 @@
      * already there.  Nothing is deferred or queued -- the handle a mount returns
      * is live, so there is no not-ready state for a caller to get wrong. */
     async function _showMode(inputs) {
+        let justMounted = false;
         if (!state.vib) {
             if (state.vibMounting) return;      // one build, not one per click
             const make = opts.mountVibrationView;
@@ -2272,7 +2272,7 @@
             try {
                 handle = await make(els.modeViewer, {
                     amplitude: state.animAmplitude,
-                    cycleSec:  state.animCycleSec,
+                    cycleSec:  1 / state.animSpeed,
                 });
             } catch (e) {
                 handle = { ok: false, error: (e && e.message) || String(e) };
@@ -2287,6 +2287,7 @@
             }
             state.vib = handle;
             state.vibStructure = null;
+            justMounted = true;
         }
 
         /* TWO DOORS, and the slow one only when it is the slow fact
@@ -2304,8 +2305,26 @@
          * decides the number and the viewer just multiplies. */
         state.vib.setAmplitude(inputs.amplitude);
         state.vib.showMode(Object.assign({ norm: inputs.norm }, inputs.mode));
-        state.vib.play();
-        if (els.animToggle) els.animToggle.textContent = "Pause";
+
+        /* PLAY ONLY ON THE FIRST MODE, and never again (vibrationview.md § 9.2).
+         *
+         * A viewer that has just appeared should be moving -- nobody clicks a mode
+         * hoping to see it hold still.  But once it is running, whether it runs is
+         * the user's, and a new mode arriving is not a reason to overrule the
+         * pause button.  The module was built not to touch playback for exactly
+         * this reason; forcing it from out here would put the old behaviour back
+         * one level up, where it is harder to see.
+         *
+         * The button then reads its label from the viewer rather than assuming
+         * one, so it cannot be right by accident. */
+        if (justMounted) state.vib.play();
+        _syncPlayButton();
+    }
+
+    function _syncPlayButton() {
+        if (!els.animToggle) return;
+        els.animToggle.textContent =
+            (state.vib && state.vib.isPlaying()) ? "Pause" : "Play";
     }
 
     /* How far the furthest atom gets, in angstrom, for whichever pairing is in
@@ -2415,7 +2434,6 @@
         if (els.animAmplitudeRow)  els.animAmplitudeRow.hidden  = physical;
         if (els.animTemperatureRow)
             els.animTemperatureRow.hidden = state.animAmplitudeMode !== "thermal";
-        if (els.animPhysicalVal)   els.animPhysicalVal.hidden   = !physical;
         renderModeViewer();
     }
 
@@ -2432,10 +2450,12 @@
     function onAnimSpeedChange() {
         const v = parseFloat(els.animSpeed.value);
         if (!Number.isFinite(v) || v <= 0) return;
-        state.animSpeed    = v;
-        state.animCycleSec = 1 / v;
+        // ONE home: the multiplier the slider shows and the preferences persist.
+        // How long a cycle takes is 1/that, worked out where it is handed over
+        // rather than stored beside it as a second copy that can drift.
+        state.animSpeed = v;
         if (els.animSpeedVal) els.animSpeedVal.textContent = v.toFixed(1) + "×";
-        if (state.vib) { try { state.vib.setCycleSec(state.animCycleSec); } catch (_) {} }
+        if (state.vib) { try { state.vib.setCycleSec(1 / v); } catch (_) {} }
     }
     function onAnimToggle() {
         // Phase 5h I-3: read the live runtime state from the embed
@@ -2444,14 +2464,11 @@
         // every time _setMode forced playback via
         // setAnimation({paused: false}).
         if (!state.vib) return;
-        const wasPlaying = state.vib.isPlaying();
         try {
-            if (wasPlaying) state.vib.pause();
-            else            state.vib.play();
+            if (state.vib.isPlaying()) state.vib.pause();
+            else                       state.vib.play();
         } catch (_) {}
-        if (els.animToggle) {
-            els.animToggle.textContent = wasPlaying ? "Play" : "Pause";
-        }
+        _syncPlayButton();
     }
 
     // ----- Spectrum chart (Plotly) -----------------------------
@@ -2818,7 +2835,6 @@
         els.animAmplitudeRow   = $("anim-amplitude-row");
         els.animTemperature    = $("anim-temperature");
         els.animTemperatureRow = $("anim-temperature-row");
-        els.animPhysicalVal    = $("anim-physical-val");
         els.vibExportFormat    = $("vib-export-format");
         els.vibExportWidth     = $("vib-export-width");
         els.vibExportHeight    = $("vib-export-height");

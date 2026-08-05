@@ -35,20 +35,7 @@ REF = re.compile(r"lib/vibrationview/([A-Za-z0-9_.\-]+)")
 
 #: Files outside the package that still name an internal path, each with the step
 #: that removes it.  Shrink this list; never grow it without recording why.
-KNOWN: dict[str, str] = {
-    "molbuilder/web/templates/spectra.html": (
-        "loads the PREDECESSOR module (vibrationview.js) as a classic <script>. "
-        "It cannot mount — the global it reads is published by nothing — and the "
-        "page has no #mode-viewer to put it in either.  Removed at step 7 of "
-        "task #19, with the module's other dead entries."
-    ),
-    "molbuilder/web/templates/results.html": (
-        "same predecessor <script> tag; this is the page that DOES show a mode "
-        "viewer, so it is replaced rather than merely dropped — the page module "
-        "imports index.js and hands `mount` to the inspector (§ 11).  Step 6-7 of "
-        "task #19."
-    ),
-}
+KNOWN: dict[str, str] = {}
 
 
 def _sources():
