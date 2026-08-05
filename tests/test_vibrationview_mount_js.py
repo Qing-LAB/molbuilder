@@ -753,7 +753,7 @@ def test_a_failed_export_still_restores_the_surface():
         console.log(JSON.stringify({
             msg, restored: glCanvas.width === before[0], playing: vib.isPlaying() }));
     """)
-    assert "unknown format" in out["msg"]
+    assert "cannot export 'mpeg'" in out["msg"]
     assert out["restored"] is True
     assert out["playing"] is True
 
@@ -784,4 +784,4 @@ def test_an_export_reports_progress_and_can_be_cancelled():
     assert out["count"] == 30
     assert out["last"] == 1.0
     assert out["monotonic"] is True
-    assert out["cancelled"] == "cancelled"
+    assert out["cancelled"] == "the export was cancelled"

@@ -26,16 +26,12 @@
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
-export const FORMATS = ["gif", "webm", "png-zip"];
+const FORMATS = ["gif", "webm", "png-zip"];
 
 const GIF_VENDOR    = "/static/vendor/gif.min.js";
 const GIF_WORKER    = "/static/vendor/gif.worker.min.js";
 const WEBM_BITRATE  = 8_000_000;   // the browser default looks muddy on flat 3D
 
-
-function fail(message) {
-    return Promise.reject(new Error("vibrationview export: " + message));
-}
 
 function aborted(signal) {
     return !!(signal && signal.aborted);
@@ -154,26 +150,42 @@ function zip(entries) {
 }
 
 
-/* What the zip says about itself (§ 12.1). Six months later it still explains
- * what it is, at what amplitude, under which normalization — and how to turn the
- * frames into whatever a journal asked for. */
-function manifest(meta, count, width, height) {
-    return JSON.stringify({
+/* WHAT AN EXPORT IS, written once (§ 12).
+ *
+ * The caller gets this back and the zip carries it inside; describing the same
+ * export twice would be two descriptions to keep in step, and the one nobody
+ * looks at is the one that goes stale.
+ *
+ * The amplitude travels BESIDE the normalization, always, because the two
+ * pairings do not share a unit (§ 12.2) — either number alone is an invitation to
+ * write the wrong thing in a caption.
+ */
+function describe(meta, format, count) {
+    return {
+        format:        format,
         frames:        count,
-        fps:           meta.fps,
         cycles:        meta.cycles,
+        fps:           meta.fps,
         cycleSeconds:  meta.cycleSec,
         framesPerCycle: meta.framesPerCycle,
-        width:         width,
-        height:        height,
         amplitude:     meta.amplitude,
         normalization: meta.norm,
         mode:          meta.index,
+    };
+}
+
+/* The zip's copy, plus what only a folder of frames needs: its size, the note
+ * that keeps the amplitude honest, and the line that turns the frames into
+ * whatever a journal asked for. Six months later it still explains itself. */
+function manifest(description, width, height) {
+    return JSON.stringify(Object.assign({}, description, {
+        width:  width,
+        height: height,
         note: "amplitude is meaningful only together with normalization; "
             + "they are the two halves of one pairing (vibrationview.md 12.2)",
-        ffmpeg: "ffmpeg -framerate " + meta.fps + " -i frame_%04d.png"
+        ffmpeg: "ffmpeg -framerate " + description.fps + " -i frame_%04d.png"
               + " -c:v libx264 -pix_fmt yuv420p -crf 18 vibration.mp4",
-    }, null, 2);
+    }), null, 2);
 }
 
 
@@ -185,7 +197,7 @@ function manifest(meta, count, width, height) {
  */
 async function eachFrame(ctx, opts, count, take) {
     for (let n = 0; n < count; n++) {
-        if (aborted(opts.signal)) throw new Error("cancelled");
+        if (aborted(opts.signal)) throw new Error("the export was cancelled");
         ctx.surface.setAtomCoords(ctx.coordsAt(n));
         const canvas = ctx.surface.compositeCanvas();
         if (!canvas) throw new Error("nothing drawn");
@@ -195,22 +207,20 @@ async function eachFrame(ctx, opts, count, take) {
 }
 
 
-async function toPngZip(ctx, opts, count) {
+async function toPngZip(ctx, opts, count, description) {
     const files = [];
+    let width = 0, height = 0;
     await eachFrame(ctx, opts, count, async function (canvas, n) {
+        width = canvas.width; height = canvas.height;
         const blob = await new Promise(function (res, rej) {
-            canvas.toBlob(function (b) { b ? res(b) : rej(new Error("toBlob failed")); },
+            canvas.toBlob(function (b) { b ? res(b) : rej(new Error("a frame could not be encoded")); },
                           "image/png");
         });
-        const name = "frame_" + String(n).padStart(4, "0") + ".png";
-        files.push({ name: name, bytes: new Uint8Array(await blob.arrayBuffer()) });
+        files.push({ name: "frame_" + String(n).padStart(4, "0") + ".png",
+                     bytes: new Uint8Array(await blob.arrayBuffer()) });
     });
-    const canvas = ctx.surface.compositeCanvas();
-    files.push({
-        name: "manifest.json",
-        bytes: new TextEncoder().encode(
-            manifest(ctx.meta, count, canvas.width, canvas.height)),
-    });
+    files.push({ name: "manifest.json",
+                 bytes: new TextEncoder().encode(manifest(description, width, height)) });
     return zip(files);
 }
 
@@ -224,10 +234,12 @@ async function toGif(ctx, opts, count) {
         width: first.width, height: first.height,
         workerScript: GIF_WORKER,
     });
-    // GIF stores a per-frame delay in HUNDREDTHS of a second, so only rates that
-    // divide 100 are exact (§ 12.1). At the default 30 fps this rounds, and a GIF
-    // plays a few percent off the cycle it was asked for.
-    const delay = Math.max(2, Math.round(100 / ctx.meta.fps) * 10);
+    // Milliseconds, which is what the encoder takes. It writes them into the file
+    // in HUNDREDTHS of a second, so only rates dividing 100 come out exact
+    // (§ 12.1) — at the default 30 fps the delay rounds and the GIF plays a few
+    // percent off the cycle it was asked for. Quantising here as well would round
+    // it twice.
+    const delay = 1000 / ctx.meta.fps;
     await eachFrame(ctx, opts, count, function (canvas) {
         gif.addFrame(canvas, { copy: true, delay: delay });
     });
@@ -287,9 +299,10 @@ export async function exportAnimation(opts, ctx) {
     opts = opts || {};
     const format = opts.format || "png-zip";
     if (FORMATS.indexOf(format) < 0) {
-        return fail("unknown format '" + format + "'; one of " + FORMATS.join(", "));
+        throw new Error("cannot export '" + format + "'; the formats are "
+                      + FORMATS.join(", "));
     }
-    if (!ctx.meta.ready) return fail("nothing to export: no mode is showing");
+    if (!ctx.meta.ready) throw new Error("no mode is showing, so there is nothing to export");
 
     const cycles = Math.max(1, Math.round(Number(opts.cycles) || 1));
     const count  = ctx.meta.framesPerCycle * cycles;
@@ -305,11 +318,12 @@ export async function exportAnimation(opts, ctx) {
         background: opts.background,
     });
 
-    let blob;
+    let blob, description;
     try {
         const meta = Object.assign({}, ctx.meta, { cycles: cycles });
         const run  = { "png-zip": toPngZip, "gif": toGif, "webm": toWebm }[format];
-        blob = await run(Object.assign({}, ctx, { meta: meta }), opts, count);
+        description = describe(meta, format, count);
+        blob = await run(Object.assign({}, ctx, { meta: meta }), opts, count, description);
     } finally {
         /* On EVERY path out — done, failed, cancelled — the surface goes back to
          * the size and colour it was, and playback to what it was doing. A viewer
@@ -325,15 +339,6 @@ export async function exportAnimation(opts, ctx) {
     return {
         blob:     blob,
         filename: stem + (format === "png-zip" ? ".zip" : "." + format),
-        meta: {
-            format:         format,
-            frames:         count,
-            cycles:         cycles,
-            fps:            ctx.meta.fps,
-            cycleSeconds:   ctx.meta.cycleSec,
-            amplitude:      ctx.meta.amplitude,
-            normalization:  ctx.meta.norm,
-            mode:           ctx.meta.index,
-        },
+        meta:     description,
     };
 }
