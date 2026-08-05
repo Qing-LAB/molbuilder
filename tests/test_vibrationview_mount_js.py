@@ -66,7 +66,11 @@ HARNESS = r"""
     global.document = {
         createElement: (tag) => (tag === "canvas" ? fakeCanvas(0, 0) : makeEl(tag)),
         getElementById: () => null,
-        head: { appendChild: () => {} },
+        // A stand-in obeys the contract of what it stands in for: appending a
+        // stylesheet link eventually fires its load handler.  Without that, mount
+        // waits for a sheet that never arrives -- which is the browser behaviour
+        // the module now waits on deliberately, so the test must model it.
+        head: { appendChild: (el) => { if (el.onload) queueMicrotask(el.onload); } },
     };
     // A stand-in canvas, at the same level as the rest: an export composites the
     // drawing surface and the caption onto one, and records what it was handed.
@@ -94,9 +98,17 @@ HARNESS = r"""
     // The clock is the handle's, so it is the one thing a test must drive.
     var rafQ = [];
     let clock = 0;
-    global.getComputedStyle = () => ({ fontSize: "12px", paddingLeft: "6px",
-        paddingTop: "3px", left: "8px", top: "8px", fontFamily: "sans-serif",
-        backgroundColor: "#000", color: "#fff" });
+    // The stand-in answers the module's own tokens, because the module reads its
+    // appearance from its sheet rather than carrying literals (§ 13).
+    global.getComputedStyle = () => ({
+        fontSize: "12px", paddingLeft: "6px", paddingTop: "3px",
+        left: "8px", top: "8px", lineHeight: "16px", fontFamily: "sans-serif",
+        backgroundColor: "#000", color: "#fff",
+        getPropertyValue: (name) => ({
+            "--vibview-ground":     "#0f1217",
+            "--vibview-held-still": "#555555",
+        }[name] || ""),
+    });
     global.TextEncoder = global.TextEncoder || (await import("node:util")).TextEncoder;
     global.Blob = global.Blob || (await import("node:buffer")).Blob;
     global.requestAnimationFrame = (fn) => { rafQ.push(fn); return rafQ.length; };
@@ -624,7 +636,7 @@ def test_dispose_stops_the_clock_and_empties_the_host():
         console.log(JSON.stringify({
             keptDrawing: calls.some((c) => c[0] === "render"),
             playing: vib.isPlaying(), threwOnSecond,
-            classGone: !classes.has("vibview"),
+            classGone: !classes.has("vibview-window"),
         }));
     """)
     assert out["keptDrawing"] is False

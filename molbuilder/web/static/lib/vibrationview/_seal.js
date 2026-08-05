@@ -32,23 +32,26 @@
 // A vibration is read by watching atoms move relative to each other, so the
 // representation shows every bond and hides nothing behind a big sphere.
 const STYLE = { stick: { radius: 0.15 }, sphere: { scale: 0.25 } };
+// Ångström and scale factors, not appearance: they say how thick a bond is drawn
+// relative to the molecule, which no stylesheet can express.
 
-// Held-still atoms are drawn dead: no element colour, so the eye separates what
-// the calculation let move from what it pinned. A COLOUR, decided here — the
-// layer above sends indices and no appearance at all (§ 9.3).
-const HELD_STILL_COLOR = "#555";
-
-/* The caption is a DOM overlay, and _style.css decides what it looks like — so
- * there are no colours for it here. These are only what the COMPOSITE needs in
- * order to reproduce on a 2-D canvas what the browser drew with CSS, and each is
- * read off the live element (`getComputedStyle`) rather than declared twice. */
+/* ── Names and values that live in the stylesheet ────────────────────────────
+ *
+ * There are no colours or sizes in this file. WebGL cannot be styled and a canvas
+ * cannot hold a `<div>`, so two appearance values have to reach code — and they
+ * are READ from the module's own sheet rather than written down a second time
+ * here. The fallbacks are for a page with no stylesheet at all, which is a test;
+ * they are not a second palette.
+ *
+ * Everything the caption looks like is read the same way, off the live element,
+ * so the compositor reproduces what the browser drew rather than a second styling
+ * of its own (§ 12.3, § 13). */
+const ROOT_CLASS    = "vibview-window";
+const FAILED_CLASS  = "vibview-window--failed";
 const CAPTION_CLASS = "vibview-caption";
 
-// WebGL cannot take a colour from CSS — the clear colour is an argument to the
-// library while the element behind it is painted by the stylesheet. Two paints of
-// one surface, so one declared value, read off the host (see _style.css). The
-// literal is the last resort for a page with no stylesheet, not a second palette.
-const SCENE_BACKGROUND = { name: "--vibview-scene-background", fallback: "#0f1217" };
+const GROUND      = { name: "--vibview-ground",     fallback: "#0f1217" };
+const HELD_STILL  = { name: "--vibview-held-still", fallback: "#555555" };
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
@@ -57,16 +60,31 @@ const root = (typeof window !== "undefined") ? window : globalThis;
  * own URL so it never hardcodes where it is served from. */
 const STYLESHEET_ID = "vibrationview-style";
 
+/* AWAITED, not fired and forgotten.
+ *
+ * A `<link>` loads asynchronously, so the tokens it declares are not readable the
+ * instant it is appended — and this layer reads two of them to build the drawing
+ * surface. Appending and carrying on meant every first mount got the fallback,
+ * and the only reason that was invisible is that the fallback happened to match
+ * the token. It would have drifted the moment either changed.
+ *
+ * `mount` is asynchronous (§ 8), so waiting costs a caller nothing. */
 function ensureStylesheet() {
-    if (typeof document === "undefined") return;
-    if (document.getElementById(STYLESHEET_ID)) return;
-    try {
-        const link = document.createElement("link");
-        link.id   = STYLESHEET_ID;
-        link.rel  = "stylesheet";
-        link.href = new URL("./_style.css", import.meta.url).href;
-        document.head.appendChild(link);
-    } catch (_) { /* a page without a head is a test, not a browser */ }
+    if (typeof document === "undefined") return Promise.resolve();
+    if (document.getElementById(STYLESHEET_ID)) return Promise.resolve();
+    return new Promise(function (resolve) {
+        try {
+            const link = document.createElement("link");
+            link.id   = STYLESHEET_ID;
+            link.rel  = "stylesheet";
+            link.href = new URL("./_style.css", import.meta.url).href;
+            // Resolve either way: a viewer that draws with fallback colours is
+            // better than one that never appears because a sheet 404'd.
+            link.onload  = function () { resolve(); };
+            link.onerror = function () { resolve(); };
+            document.head.appendChild(link);
+        } catch (_) { resolve(); }
+    });
 }
 
 
@@ -89,18 +107,20 @@ function xyzText(elements, positions) {
 
 /* ── One drawing surface ──────────────────────────────────────────────────── */
 
-export function create(hostEl) {
+export async function create(hostEl) {
     const $3Dmol = root.$3Dmol;
     if (!$3Dmol) {
-        throw new Error("vibrationview: 3Dmol-min.js must be loaded first");
+        throw new Error("vibrationview: the drawing library must be loaded first");
     }
-    ensureStylesheet();
-    // The class is the sheet's hook. Added here rather than asked of the host,
-    // for the same reason the <link> is (§ 13): a page that has to remember it
-    // can forget it, and the failure is silent.
-    try { hostEl.classList.add("vibview"); } catch (_) {}
+    // The class is the sheet's hook, and it goes on FIRST: the tokens are declared
+    // on it, so reading one before it is applied reads nothing. Added here rather
+    // than asked of the host, for the same reason the <link> is (§ 13) — a page
+    // that has to remember it can forget it, and the failure is silent.
+    try { hostEl.classList.add(ROOT_CLASS); } catch (_) {}
+    await ensureStylesheet();
 
-    const ground = readCssVar(hostEl, SCENE_BACKGROUND.name, SCENE_BACKGROUND.fallback);
+    const ground   = readCssVar(hostEl, GROUND.name, GROUND.fallback);
+    const heldGrey = readCssVar(hostEl, HELD_STILL.name, HELD_STILL.fallback);
     const viewer = $3Dmol.createViewer(hostEl, {
         backgroundColor: ground,
         defaultcolors:   $3Dmol.elementColors.Jmol,
@@ -148,8 +168,8 @@ export function create(hostEl) {
         try { viewer.setStyle({}, STYLE); } catch (_) {}
         if (state.heldStill.length) {
             const grey = {
-                stick:  { radius: STYLE.stick.radius, color: HELD_STILL_COLOR },
-                sphere: { scale:  STYLE.sphere.scale,  color: HELD_STILL_COLOR },
+                stick:  { radius: STYLE.stick.radius, color: heldGrey },
+                sphere: { scale:  STYLE.sphere.scale,  color: heldGrey },
             };
             try { viewer.setStyle({ index: state.heldStill, model: 0 }, grey); }
             catch (_) {}
@@ -244,11 +264,16 @@ export function create(hostEl) {
             const x      = (parseFloat(cs && cs.left) || 8) * k;
             const y      = (parseFloat(cs && cs.top)  || 8) * k;
 
+            // The line height is the sheet's as well. It was a literal here, which
+            // is the same defect as the corner was: change the CSS and the
+            // exported caption's box stops matching the one on screen.
+            const lineH = parseFloat(cs && cs.lineHeight);
+            const boxH  = (isFinite(lineH) ? lineH * k : fontPx * 1.35) + 2 * padY;
             g.font = fontPx + "px " + ((cs && cs.fontFamily) || "sans-serif");
             g.textBaseline = "top";
             const w = g.measureText(el.textContent).width;
             g.fillStyle = (cs && cs.backgroundColor) || "rgba(15,18,23,0.62)";
-            g.fillRect(x, y, w + 2 * padX, fontPx * 1.35 + 2 * padY);
+            g.fillRect(x, y, w + 2 * padX, boxH);
             g.fillStyle = (cs && cs.color) || "#e6e9ef";
             g.fillText(el.textContent, x + padX, y + padY);
         }

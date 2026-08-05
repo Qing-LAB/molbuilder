@@ -37,6 +37,8 @@ MODULE_PREFIXES = (
     "mol-viewer-",     # the retired embed — must never come back
     "projects-",       # the projects sidebar
     "trajectory-",     # the trajectory inspector
+    "vibview",         # VibrationView (lib/vibrationview/) — its box is the
+                       # host's, everything inside it is the module's
     "sysload-",        # the system-load monitor
 )
 
@@ -59,6 +61,7 @@ MODULE_SHEETS = {
     "lib/projects/projects-sidebar.css",
     "lib/trajectory/trajectory-inspector.css",
     "lib/inspectors/spectra.css",
+    "lib/vibrationview/_style.css",
     "lib/inspectors/markdown.css",
     "lib/results/bundle-handoff.css",
     "lib/system-load-monitor.css",

@@ -220,14 +220,22 @@
     padding-top: 0.9rem;
     border-top: 1px solid var(--border-soft);
 }
+/* The BOX the mode viewer is given — its size and where it sits on the page,
+ * which is all a host decides (vibrationview.md § 13).  What is inside it, its
+ * ground and how its canvas is positioned, belongs to the module and is declared
+ * module's own sheet, which the module links itself.
+ *
+ * Two rules used to live here that did not belong: a `background`, which fought
+ * the module's own scene ground on the same element and won or lost by load
+ * order; and a `position: relative` carrying a comment about how the 3-D drawing
+ * library lays out its canvas.  A page sheet knowing that is the seal leaking
+ * into another language. */
 .mode-viewer {
     width: 100%;
     height: 340px;
     margin: 0.5rem 0;
-    background: var(--bg-card);
     border: 1px solid var(--border-soft);
     border-radius: 6px;
-    position: relative;       /* 3Dmol canvas positions absolutely */
 }
 .viewer-controls {
     display: flex;

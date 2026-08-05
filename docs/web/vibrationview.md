@@ -859,10 +859,19 @@ are easier to write down than to rediscover:
 
 ## 13. The module owns its own stylesheet
 
-`_style.css` holds the drawing surface's ground and the positioning its canvas
-needs. A host stylesheet that knows how the canvas positions itself is the seal
-leaking into another language; the host decides how big the box is, and nothing
-more.
+**The stylesheet is sealed the way the JavaScript is**, and it is a small system
+rather than a handful of rules:
+
+- **One namespace.** Every class is `vibview-…`, so there is no bare name for a
+  page to collide with — and a page sheet reaching at one fails a guard, the same
+  way a script reaching past `mount` does.
+- **No value written twice, and none written in a rule.** Colours, spacing, type
+  and depth are tokens declared on the module's own root; the rules below read
+  them and carry no literals. Changing how the module looks is changing that
+  block.
+- **Nothing inherited.** The tokens are the module's own, not the page's with a
+  prefix. A viewer takes no palette from whoever mounted it, so it looks the same
+  on every tab — and deleting every other stylesheet in the app leaves it intact.
 
 **The module links it, not the page.** At mount the sealed layer adds its own
 `<link>` once, so no template names the file and none can forget it. This is the
@@ -871,6 +880,18 @@ six templates, so a page that mounts a viewer and omits the `<link>` renders it
 unstyled — a failure with no error, far from its cause, that only a person looking
 at the screen will find. A stylesheet stays a real `.css` file rather than a string
 inside JavaScript, so the repository's existing CSS audits still read it.
+
+**And the mount waits for it.** A `<link>` loads asynchronously, so the tokens it
+declares are not readable the instant it is appended — and the drawing surface
+reads two of them, because a WebGL clear colour cannot be styled and has to be
+handed over as a value. Appending and carrying on gave every first mount the
+fallback instead of the token, invisibly, for exactly as long as the two agreed.
+`mount` is asynchronous already (§ 8), so waiting costs a caller nothing.
+
+**What the host decides is the box**: how big it is and where it sits. Everything
+inside it is the module's. A host stylesheet that knew how the canvas positions
+itself would be the seal leaking into another language, which is what one did
+until this step.
 
 **The on-screen background lives here and only here** — declared in this
 stylesheet, read by the sealed layer at paint time, following the app's light or

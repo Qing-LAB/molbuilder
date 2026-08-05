@@ -4,43 +4,78 @@
  * Linked by: the module itself, at mount (_seal.js), from this file's own URL.
  *            No template names it — docs/web/vibrationview.md § 13 is why.
  *
- * This sheet styles the module's own surface and nothing else. It never reaches
- * out to a page's classes, and a page sheet reaching in here is the same category
- * error as a tab reaching past `mount` (tests/test_css_module_boundary.py).
+ * A SEALED CSS SYSTEM, in the same sense the JavaScript is sealed.
  *
- * WHAT IT DOES NOT DECIDE: how big the box is. The host sizes the element it
- * hands to `mount` — the module fills whatever it is given (§ 13).
+ *   * EVERY name is under one namespace, `vibview-`. There is no bare name to
+ *     collide with a page's, and a page sheet reaching at one fails a guard
+ *     (tests/test_css_module_boundary.py).
+ *   * EVERY value is a token declared on the module's own root, so no rule below
+ *     carries a number or a colour of its own. Changing how the module looks means
+ *     changing that block, not hunting literals through the file.
+ *   * The tokens are declared HERE and inherited from nowhere. They are not the
+ *     page's variables with a prefix: this module takes no palette from a host, so
+ *     deleting every other stylesheet in the app leaves it looking the same.
+ *
+ * The tokens the SCRIPT reads are marked. WebGL cannot be styled and a canvas
+ * cannot hold a `<div>`, so a few appearance values have to reach code — they are
+ * read from here at draw time rather than written down twice.
+ *
+ * WHAT THIS SHEET DOES NOT DECIDE: how big the box is. The host sizes the element
+ * it hands to `mount`, and the module fills whatever it is given (§ 13).
  */
 
-.vibview {
-    /* THE 3D WINDOW'S GROUND — one colour, painted twice.
-     *
-     * WebGL cannot be styled: the clear colour is an argument to the drawing
-     * library, while the element behind the canvas is painted here. Two paints of
-     * one surface, so ONE declared value — _seal.js reads this custom property at
-     * create time (SCENE_BACKGROUND). Written as two literals instead they drift,
-     * and the drawing sits as a bright rectangle inside a dark card.
-     */
-    --vibview-scene-background: #0f1217;
+.vibview-window {
+    /* ── The palette ──────────────────────────────────────────────────────
+     * Declared, not inherited. A module that read the page's tokens would look
+     * different depending on which page mounted it, which is the opposite of
+     * one viewer learned once and used everywhere. */
+    --vibview-ground:        #0f1217;              /* READ BY THE SCRIPT */
+    --vibview-held-still:    #555555;              /* READ BY THE SCRIPT */
+    --vibview-color-text:    #e6e9ef;
+    --vibview-color-dim:     #9aa3af;
+    --vibview-overlay-fill:  rgba(15, 18, 23, 0.62);
+    --vibview-overlay-edge:  rgba(255, 255, 255, 0.14);
+
+    /* ── Space, shape and type ───────────────────────────────────────────── */
+    --vibview-space-xs:      0.2rem;
+    --vibview-space-sm:      0.45rem;
+    --vibview-space-md:      0.5rem;
+    --vibview-space-lg:      1rem;
+    --vibview-radius:        4px;
+    --vibview-text-sm:       0.85rem;
+    --vibview-text-xs:       0.78rem;
+    --vibview-line:          1.35;
+    --vibview-line-loose:    1.45;
+
+    /* ── Depth ────────────────────────────────────────────────────────────
+     * One layer, because there is one thing to stack: the caption, over the
+     * drawing. A module that draws no controls needs no more (§ 5.4). */
+    --vibview-layer-overlay: 5;
 
     position: relative;   /* the drawing library positions its canvas absolutely */
     width: 100%;
     height: 100%;
-    background: var(--vibview-scene-background);
+    background: var(--vibview-ground);
     overflow: hidden;
 }
 
-/* The canvas is the module's, and it fills the surface it was given. Sized in
- * percentages so a host that changes its box needs no cooperation from here —
- * and so a capture, which resizes the backing buffer rather than the element,
- * changes what is drawn without moving anything on the page (§ 12). */
-.vibview > canvas {
+/* THE 3D WINDOW'S GROUND is painted twice, from one declaration. WebGL cannot be
+ * styled — the clear colour is an argument to the drawing library — while the
+ * element behind the canvas is painted by the rule above. Two paints of one
+ * surface, so one token, read by the script at create time. Written as two
+ * literals they drift, and the drawing sits as a bright rectangle in a dark box.
+ *
+ * The canvas fills what it was given, in percentages, so a host that resizes its
+ * box needs no cooperation from here — and so a capture, which resizes the
+ * backing buffer rather than the element, changes what is DRAWN without moving
+ * anything on the page (§ 12). */
+.vibview-window > canvas {
     display: block;
     width: 100% !important;
     height: 100% !important;
 }
 
-/* ── The caption (§ 12.3) ─────────────────────────────────────────────────────
+/* ── The caption (§ 12.3) ────────────────────────────────────────────────────
  *
  * A DOM overlay rather than a mark inside the 3D scene — § 12.3 records the
  * measurement that forced it, and _seal.js carries it out. The shape is MolView's
@@ -50,23 +85,27 @@
  * TOP-left where MolView takes the bottom, because MolView's top band is a chrome
  * row an overlay would cover and this module draws no chrome (§ 5.4) — so the top
  * is free, and a caption belongs where reading starts.
+ *
+ * EVERY VALUE HERE IS READ BACK by the compositor, so an exported picture carries
+ * the caption the browser drew rather than a second one styled in JavaScript.
+ * That is why these are tokens and not literals: one declaration, two readers.
  */
 .vibview-caption {
     position: absolute;
-    top: 0.5rem;
-    left: 0.5rem;
-    z-index: 5;                  /* over the drawing; it only reads */
-    max-width: calc(100% - 1rem);  /* a long caption wraps, never overflows */
-    padding: 0.2rem 0.45rem;
-    font-size: 0.78rem;
-    line-height: 1.35;
-    color: #e6e9ef;
-    background: rgba(15, 18, 23, 0.62);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 4px;
+    top: var(--vibview-space-md);
+    left: var(--vibview-space-md);
+    z-index: var(--vibview-layer-overlay);
+    max-width: calc(100% - 2 * var(--vibview-space-md));
+    padding: var(--vibview-space-xs) var(--vibview-space-sm);
+    font-size: var(--vibview-text-xs);
+    line-height: var(--vibview-line);
+    color: var(--vibview-color-text);
+    background: var(--vibview-overlay-fill);
+    border: 1px solid var(--vibview-overlay-edge);
+    border-radius: var(--vibview-radius);
 
-    /* NEVER intercept a drag. The 3D window under this is rotatable, and a
-     * caption that swallowed pointer events would put a dead patch in the corner
+    /* NEVER intercept a drag. The 3D window under this turns under the mouse, and
+     * a caption that swallowed pointer events would put a dead patch in the corner
      * of it. The text carries the meaning; it does not need clicks. */
     pointer-events: none;
 }
@@ -74,15 +113,15 @@
 .vibview-caption[hidden] { display: none; }
 
 /* A viewer that could not be built says so where the molecule would have been,
- * rather than leaving an empty box that reads as "still loading" forever (§ 8:
- * a failed mount is still a handle, and the host may leave it on screen). */
-.vibview--failed {
+ * rather than leaving an empty box that reads as "still loading" forever (§ 8: a
+ * failed mount is still a handle, and the host may leave it on screen). */
+.vibview-window--failed {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1rem;
-    font-size: 0.85rem;
-    line-height: 1.45;
+    padding: var(--vibview-space-lg);
+    font-size: var(--vibview-text-sm);
+    line-height: var(--vibview-line-loose);
     text-align: center;
-    color: #9aa3af;
+    color: var(--vibview-color-dim);
 }

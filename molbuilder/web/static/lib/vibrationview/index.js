@@ -65,7 +65,9 @@ function warn(msg) {
 function failed(hostEl, message) {
     warn(message);
     try {
-        if (hostEl && hostEl.classList) hostEl.classList.add("vibview", "vibview--failed");
+        if (hostEl && hostEl.classList) {
+            hostEl.classList.add("vibview-window", "vibview-window--failed");
+        }
         if (hostEl && "textContent" in hostEl) hostEl.textContent = message;
     } catch (_) {}
     return { ok: false, error: message, dispose: function () {} };
@@ -91,7 +93,7 @@ export async function mount(hostEl, opts) {
 
     let surface;
     try {
-        surface = createSurface(hostEl);
+        surface = await createSurface(hostEl);
     } catch (e) {
         return failed(hostEl, (e && e.message) || "the drawing surface could not be built");
     }
@@ -355,7 +357,7 @@ export async function mount(hostEl, opts) {
             disposed = true;
             structure = null; disp = null;
             try { surface.dispose(); } catch (_) {}
-            try { if (hostEl.classList) hostEl.classList.remove("vibview"); } catch (_) {}
+            try { if (hostEl.classList) hostEl.classList.remove("vibview-window"); } catch (_) {}
         },
     };
 }
