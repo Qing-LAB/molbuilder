@@ -256,11 +256,10 @@ export function create(hostEl) {
     }
 
     return {
-        /* Draw one structure. Establishes the model, the elements and the bond
-         * topology — the things every later frame reuses. */
-        /* The shapes were checked by the one caller this layer has (§ 9.3: called
-         * by index.js and nothing else, ever). Checking again here would not make
-         * anything safer — it would make one rule live in two places. */
+        /* Draw one structure: the model, the elements and the bond topology —
+         * the things every later frame reuses. The shapes were checked by the one
+         * caller this layer has (§ 9.3), and checking again here would not make
+         * anything safer; it would make one rule live in two places. */
         setStructure(elements, positions) {
             if (state.disposed) return false;
             try {
@@ -280,21 +279,22 @@ export function create(hostEl) {
                 const atoms = model ? model.selectedAtoms({}) : [];
                 const n = Math.min(atoms.length, coords.length);
                 for (let i = 0; i < n; i++) {
-                    const c = coords[i];
-                    if (!c) continue;
-                    atoms[i].x = c[0];
-                    atoms[i].y = c[1];
-                    atoms[i].z = c[2];
+                    atoms[i].x = coords[i][0];
+                    atoms[i].y = coords[i][1];
+                    atoms[i].z = coords[i][2];
                 }
             } catch (_) { return; }
             restyle();
         },
 
-        /* WHICH atoms are held still. What that looks like is this layer's. */
+        /* WHICH atoms are held still. What that looks like is this layer's.
+         *
+         * Taken as given, like the structure above: the caller derives this set
+         * from the same reading of the basis that refuses a mode which does not
+         * fit (§ 6.3), so there is nothing here for a filter to catch. */
         setHeldStill(indices) {
             if (state.disposed) return;
-            state.heldStill = Array.isArray(indices)
-                ? indices.map(Number).filter((i) => i >= 0) : [];
+            state.heldStill = indices;
             restyle();
         },
 
@@ -384,17 +384,6 @@ export function create(hostEl) {
                 }
             });
         },
-
-        /* The video stream comes off the COMPOSITE, not the drawing library's own
-         * canvas — otherwise a recording would be the one export that silently
-         * lost the caption. The caller repaints it per frame via `recompose`. */
-        stream(fps) {
-            const out = compose();
-            if (!out || typeof out.captureStream !== "function") return null;
-            try { return out.captureStream(fps); } catch (_) { return null; }
-        },
-
-        recompose() { compose(); },
 
         dispose() {
             if (state.disposed) return;

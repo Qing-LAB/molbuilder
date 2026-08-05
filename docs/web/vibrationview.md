@@ -453,7 +453,6 @@ refit()                              fit the camera to what is drawn
 beginCapture({ width, height, background }) -> endCapture()
                                      draw for a picture instead of for a screen
 snapshot() -> Blob                   one PNG of what is drawn, right now
-stream(fps) -> MediaStream           a live video stream of the same canvas
 dispose()
 ```
 
@@ -476,8 +475,15 @@ questions can go on being refused like all the others.
 `snapshot` and `stream` take no size of their own for the same reason: the picture
 is of whatever is drawn, and changing what is drawn is `beginCapture`'s job.
 
-They are the two ways pixels leave, and both are requests for a picture of what is
-already drawn — not a second render path (§ 5.3).
+`snapshot` is how pixels leave: a request for a picture of what is already drawn,
+never a second render path (§ 5.3).
+
+**A recording needs one more door than a still does, and it is not named here yet.**
+Video is captured from a live surface rather than asked for a frame at a time, so
+the encoder has to be able to say "repaint now" between frames. What that door
+looks like is decided by the encoder that needs it (§ 12.1) rather than guessed at
+in advance — the caption's mechanism was guessed at in advance, and the guess was
+wrong.
 
 ---
 
