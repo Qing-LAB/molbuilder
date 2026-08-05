@@ -787,11 +787,30 @@ vib.showMode({ …, label: "Mode 7 · 1584.2 cm⁻¹" });
 vib.setLabelVisible(false);     // the tab's switch
 ```
 
-**It is drawn into the canvas, not laid over it**, and that is the whole reason it
-belongs to this module. An export reads canvas pixels; a caption positioned over
-the viewer in HTML would appear on screen and be missing from every GIF, WebM and
-PNG. A published figure stripped of the one number that identifies the mode is the
-failure worth designing against, and it would be a silent one.
+**It is an overlay over the canvas, and an export composites it in on purpose.**
+
+That is a correction. The design said to draw it *inside* the 3D scene, so that it
+would ride into an exported picture for free — and measured against a real browser
+that is not possible with this drawing library. A screen-positioned label draws
+**nothing at all**: the call returns an object, the render runs, and the pixels are
+byte-identical with the caption and without it, on screen and in a captured image
+alike. A label positioned in the *scene* does draw — and then swings away with the
+camera, which is not a caption.
+
+So the caption is an ordinary element over the 3D window, exactly like MolView's
+"Unsaved changes" badge, and every export draws the window and the caption onto
+one surface before encoding. **The rule the design wanted is intact — the caption
+is in the file — and only the mechanism changed.** It is also the better mechanism
+on its own terms: text drawn by the browser is crisper than text baked into a 3D
+scene, it takes its appearance from the stylesheet like everything else here, and
+a long caption wraps instead of running off the edge.
+
+Two things follow, and both are the kind that are cheaper to write down than to
+rediscover. It **never intercepts a pointer** — the window beneath it turns under
+the mouse, and a caption that swallowed drags would put a dead patch in the corner
+of it. And **one place composites**, feeding both a still and a recording, because
+two paths would eventually become two different pictures — the recording being the
+one that silently lost its caption.
 
 **It is text, not a frequency.** Handing over a number would make this module
 decide how many significant figures a frequency gets, how to write `cm⁻¹`, and

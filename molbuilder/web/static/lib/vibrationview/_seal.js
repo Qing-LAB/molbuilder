@@ -18,9 +18,11 @@
  * never what colour or font either should be.
  *
  * ── Carried, not invented ────────────────────────────────────────────────────
- * Two things below are hard-won knowledge about a library that punishes guessing,
- * carried from the retired embed rather than derived from the document. Both are
- * marked in place. The first cost ten rounds of "animation fixes" to find.
+ * Three things below are hard-won knowledge about a library that punishes
+ * guessing. Two are carried from the retired embed rather than derived from the
+ * document; the third was MEASURED against a real browser after the document
+ * asserted the opposite. All three are marked in place. The first cost ten rounds
+ * of "animation fixes" to find.
  */
 "use strict";
 
@@ -36,17 +38,11 @@ const STYLE = { stick: { radius: 0.15 }, sphere: { scale: 0.25 } };
 // layer above sends indices and no appearance at all (§ 9.3).
 const HELD_STILL_COLOR = "#555";
 
-// The caption. Sized as a FRACTION of the canvas, never in fixed pixels: an
-// export is several thousand pixels wide where the screen is a few hundred, and
-// a fixed size that reads well in one is a speck in the other (§ 12.3).
-const LABEL = {
-    heightFraction:    0.055,   // of canvas height
-    minPx:             11,
-    marginFraction:    0.03,
-    fontColor:         "#e6e9ef",
-    backgroundColor:   "rgba(0,0,0,0.45)",
-    backgroundOpacity: 0.45,
-};
+/* The caption is a DOM overlay, and _style.css decides what it looks like — so
+ * there are no colours for it here. These are only what the COMPOSITE needs in
+ * order to reproduce on a 2-D canvas what the browser drew with CSS, and each is
+ * read off the live element (`getComputedStyle`) rather than declared twice. */
+const CAPTION_CLASS = "vibview-caption";
 
 // WebGL cannot take a colour from CSS — the clear colour is an argument to the
 // library while the element behind it is painted by the stylesheet. Two paints of
@@ -132,8 +128,9 @@ export function create(hostEl) {
     const state = {
         disposed:  false,
         heldStill: [],       // indices, so a coord change can re-apply the grey
-        labelText: null,
-        labelObj:  null,
+        labelText: null,     // what the caption says; the layer above owns the words
+        captionEl: null,     // the DOM overlay that shows them (§ 12.3)
+        composite: null,     // the 2-D canvas an export reads (see compose())
         ground:    ground,
         capturing: false,
     };
@@ -182,33 +179,85 @@ export function create(hostEl) {
         try { viewer.render(); } catch (_) {}
     }
 
-    /* The caption is drawn INTO the scene, not laid over it — an export reads
-     * canvas pixels, and an HTML overlay would be on screen and absent from every
-     * exported frame (§ 12.3). `useScreenCoordinates` pins it to the corner
-     * rather than to a point in the molecule, so it stays put while the camera
-     * moves. */
+    /* CARRIED KNOWLEDGE (3 of 3), and this one was measured rather than
+     * remembered. The caption is a DOM overlay, NOT a mark inside the 3D scene.
+     *
+     * The design called for a label drawn into the canvas, so that it would ride
+     * into an exported picture for free. Against a real browser that turns out to
+     * be impossible with this library: a `useScreenCoordinates` label draws
+     * NOTHING — `addLabel` returns an object, `render()` runs, and the pixels are
+     * byte-identical with it and without it, on screen and in `pngURI` alike —
+     * while a scene-positioned label does draw, and rides the camera, which is
+     * not a caption.
+     *
+     * So the caption is a div over the canvas, exactly as MolView's corner badge
+     * has been for months, and an export COMPOSITES it in on purpose (compose()).
+     * The rule the design wanted survives — the caption is in the file — and only
+     * the mechanism changed.
+     */
     function drawLabel() {
-        if (state.labelObj) {
-            try { viewer.removeLabel(state.labelObj); } catch (_) {}
-            state.labelObj = null;
+        if (state.disposed) return;
+        if (!state.captionEl) {
+            if (typeof document === "undefined") return;
+            const el = document.createElement("div");
+            el.className = CAPTION_CLASS;
+            el.hidden = true;
+            try { hostEl.appendChild(el); } catch (_) { return; }
+            state.captionEl = el;
         }
-        if (state.disposed || !state.labelText) return;
-        const c = canvasEl();
-        const h = (c && c.height) || 340;
-        const size   = Math.max(LABEL.minPx, Math.round(h * LABEL.heightFraction));
-        const margin = Math.round(h * LABEL.marginFraction);
-        try {
-            state.labelObj = viewer.addLabel(String(state.labelText), {
-                useScreenCoordinates: true,
-                position:          { x: margin, y: margin, z: 0 },
-                alignment:         "topLeft",
-                fontSize:          size,
-                fontColor:         LABEL.fontColor,
-                backgroundColor:   LABEL.backgroundColor,
-                backgroundOpacity: LABEL.backgroundOpacity,
-                inFront:           true,
-            });
-        } catch (_) { state.labelObj = null; }
+        const el = state.captionEl;
+        el.textContent = state.labelText || "";
+        el.hidden = !state.labelText;
+    }
+
+    /* ONE composited picture, and both ways out read it (§ 5.3).
+     *
+     * The drawing library paints a WebGL canvas; the caption is a div beside it.
+     * A picture of "what is on screen" is therefore both, drawn onto one 2-D
+     * canvas — and doing it in one place is what keeps a snapshot and a recorded
+     * frame from being two different pictures.
+     *
+     * The caption is drawn from the computed style of the live element, so the
+     * stylesheet stays the ONE place its appearance is declared (§ 13), and it is
+     * scaled by how much bigger the capture is than the screen — an export
+     * several thousand pixels wide would otherwise carry a caption sized for a
+     * box a few hundred wide, which is the speck § 12.3 warns about. */
+    function compose() {
+        const src = canvasEl();
+        if (!src) return null;
+        if (!state.composite) {
+            if (typeof document === "undefined") return null;
+            state.composite = document.createElement("canvas");
+        }
+        const out = state.composite;
+        out.width = src.width; out.height = src.height;
+        const g = out.getContext("2d");
+        if (!g) return null;
+        g.clearRect(0, 0, out.width, out.height);
+        g.drawImage(src, 0, 0);
+
+        const el = state.captionEl;
+        if (el && !el.hidden && el.textContent) {
+            let cs = null;
+            try { cs = getComputedStyle(el); } catch (_) {}
+            // How much bigger the captured buffer is than the element on screen.
+            const shown = (hostEl.clientWidth || src.width) || 1;
+            const k = src.width / shown;
+            const fontPx = (parseFloat(cs && cs.fontSize) || 12) * k;
+            const padX   = (parseFloat(cs && cs.paddingLeft) || 6) * k;
+            const padY   = (parseFloat(cs && cs.paddingTop) || 3) * k;
+            const x      = 8 * k;
+            const y      = 8 * k;
+
+            g.font = fontPx + "px " + ((cs && cs.fontFamily) || "sans-serif");
+            g.textBaseline = "top";
+            const w = g.measureText(el.textContent).width;
+            g.fillStyle = (cs && cs.backgroundColor) || "rgba(15,18,23,0.62)";
+            g.fillRect(x, y, w + 2 * padX, fontPx * 1.35 + 2 * padY);
+            g.fillStyle = (cs && cs.color) || "#e6e9ef";
+            g.fillText(el.textContent, x + padX, y + padY);
+        }
+        return out;
     }
 
     return {
@@ -223,7 +272,6 @@ export function create(hostEl) {
                 viewer.addModel(xyzText(elements, positions), "xyz");
             } catch (_) { return false; }
             restyle();
-            drawLabel();
             paint();
             return true;
         },
@@ -330,31 +378,45 @@ export function create(hostEl) {
             };
         },
 
-        /* A picture of what is drawn, right now. No size argument: changing what
-         * is drawn is beginCapture's job (§ 9.3). */
+        /* A picture of what is on screen, right now — the molecule AND its
+         * caption. No size argument: changing what is drawn is beginCapture's job
+         * (§ 9.3). */
         snapshot() {
             return new Promise(function (resolve, reject) {
                 if (state.disposed) { reject(new Error("snapshot: disposed")); return; }
+                const out = compose();
+                if (!out) { reject(new Error("snapshot: nothing drawn")); return; }
                 try {
-                    const blob = dataUrlToBlob(viewer.pngURI());
+                    if (typeof out.toBlob === "function") {
+                        out.toBlob(function (b) {
+                            b ? resolve(b) : reject(new Error("snapshot: toBlob returned null"));
+                        }, "image/png");
+                        return;
+                    }
+                    const blob = dataUrlToBlob(out.toDataURL("image/png"));
                     blob ? resolve(blob)
-                         : reject(new Error("snapshot: pngURI conversion failed"));
+                         : reject(new Error("snapshot: conversion failed"));
                 } catch (e) {
                     reject(new Error("snapshot: " + (e && e.message)));
                 }
             });
         },
 
+        /* The video stream comes off the COMPOSITE, not the drawing library's own
+         * canvas — otherwise a recording would be the one export that silently
+         * lost the caption. The caller repaints it per frame via `recompose`. */
         stream(fps) {
-            const c = canvasEl();
-            if (!c || typeof c.captureStream !== "function") return null;
-            try { return c.captureStream(fps); } catch (_) { return null; }
+            const out = compose();
+            if (!out || typeof out.captureStream !== "function") return null;
+            try { return out.captureStream(fps); } catch (_) { return null; }
         },
+
+        recompose() { compose(); },
 
         dispose() {
             if (state.disposed) return;
             state.disposed = true;
-            try { if (state.labelObj) viewer.removeLabel(state.labelObj); } catch (_) {}
+            try { if (state.captionEl) state.captionEl.remove(); } catch (_) {}
             try { viewer.removeAllModels(); } catch (_) {}
             try { viewer.clear(); } catch (_) {}
             try { hostEl.innerHTML = ""; } catch (_) {}

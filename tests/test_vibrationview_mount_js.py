@@ -50,13 +50,32 @@ HARNESS = r"""
         createViewer: () => viewer,
         elementColors: { Jmol: {} },
     };
+    // A DOM stand-in, at the same level as the $3Dmol one above: the browser is
+    // the boundary the module has, so that is where a test stands in.  The caption
+    // is a real element (§ 12.3), so a test that could not see elements would be
+    // testing something the module does not do.
     const classes = new Set();
+    const children = [];
+    function makeEl(tag) {
+        const el = { tagName: tag, className: "", textContent: "", hidden: false,
+                     children: [], style: {},
+                     appendChild(c) { this.children.push(c); return c; },
+                     remove() { const i = children.indexOf(el); if (i >= 0) children.splice(i, 1); } };
+        return el;
+    }
+    global.document = {
+        createElement: makeEl,
+        getElementById: () => null,
+        head: { appendChild: () => {} },
+    };
     const host = {
         classList: { add: (...c) => c.forEach((x) => classes.add(x)),
                      remove: (...c) => c.forEach((x) => classes.delete(x)) },
         querySelector: () => null,
+        appendChild: (c) => { children.push(c); return c; },
         innerHTML: "", textContent: "",
     };
+    const caption = () => children.find((c) => c.className === "vibview-caption");
     // The clock is the handle's, so it is the one thing a test must drive.
     let rafQ = [];
     let clock = 0;
@@ -384,13 +403,20 @@ def test_the_caption_is_drawn_exactly_as_given():
     out = _run("""
         const vib = await mount(host, {});
         vib.setStructure(WATER);
-        calls.length = 0;
         vib.showMode({ index: 3, displacements: [[1,0,0],[0,1,0],[0,0,1]],
                        label: "Mode 3 · −212.4 cm⁻¹ (imag)" });
-        const drawn = calls.filter((c) => c[0] === "addLabel").map((c) => c[1]);
-        console.log(JSON.stringify({ drawn }));
+        const el = caption();
+        console.log(JSON.stringify({
+            text: el && el.textContent, shown: el && !el.hidden,
+            // an OVERLAY, not a mark in the scene: the drawing library is not
+            // asked to draw text, because measured against a real browser it
+            // draws none (see _seal.js, carried knowledge 3 of 3)
+            askedTheLibrary: calls.some((c) => c[0] === "addLabel"),
+        }));
     """)
-    assert out["drawn"] == ["Mode 3 · −212.4 cm⁻¹ (imag)"]
+    assert out["text"] == "Mode 3 · −212.4 cm⁻¹ (imag)"
+    assert out["shown"] is True
+    assert out["askedTheLibrary"] is False
 
 
 def test_the_caption_switch_shows_and_hides_it():
@@ -401,16 +427,15 @@ def test_the_caption_switch_shows_and_hides_it():
         vib.setStructure(WATER);
         vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]],
                        label: "Mode 1 · 1584.2 cm-1" });
-        calls.length = 0;
         vib.setLabelVisible(false);
-        const afterOff = calls.filter((c) => c[0] === "addLabel").length;
-        calls.length = 0;
+        const off = caption().hidden;
         vib.setLabelVisible(true);
-        const afterOn = calls.filter((c) => c[0] === "addLabel").map((c) => c[1]);
-        console.log(JSON.stringify({ afterOff, afterOn }));
+        const on = caption().hidden;
+        console.log(JSON.stringify({ off, on, text: caption().textContent }));
     """)
-    assert out["afterOff"] == 0                      # nothing drawn while hidden
-    assert out["afterOn"] == ["Mode 1 · 1584.2 cm-1"]
+    assert out["off"] is True                        # hidden is the switch
+    assert out["on"] is False
+    assert out["text"] == "Mode 1 · 1584.2 cm-1"
 
 
 def test_a_viewer_mounted_with_the_caption_off_never_draws_one():
@@ -421,10 +446,10 @@ def test_a_viewer_mounted_with_the_caption_off_never_draws_one():
         vib.setStructure(WATER);
         vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]],
                        label: "Mode 1" });
-        console.log(JSON.stringify({
-            labels: calls.filter((c) => c[0] === "addLabel").length }));
+        const el = caption();
+        console.log(JSON.stringify({ hidden: !el || el.hidden }));
     """)
-    assert out["labels"] == 0
+    assert out["hidden"] is True
 
 
 # ---------------------------------------------------------------------------

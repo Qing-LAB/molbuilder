@@ -43,6 +43,47 @@
     height: 100% !important;
 }
 
+/* ── The caption (§ 12.3) ─────────────────────────────────────────────────────
+ *
+ * A DOM overlay, not a mark inside the 3D scene. That is not a shortcut: the
+ * drawing library's screen-coordinate labels were measured against a real
+ * browser and draw NOTHING — not on screen, and not into an exported picture —
+ * while a scene-positioned label draws but rides the camera, which is not a
+ * caption. So the caption is a div, and an export composites it in deliberately.
+ *
+ * Migrated from MolView's corner badge (`molviewer-overlay`), which has carried
+ * "Unsaved changes" over its 3D window for months. Its shape is carried whole:
+ * absolutely positioned in a corner, tokens only, `pointer-events: none`, a
+ * `max-width` so a long line wraps rather than escaping, and `[hidden]` as the
+ * switch.
+ *
+ * TOP-left rather than MolView's bottom-right, and the reason is the difference
+ * between the two: MolView takes the bottom because its top band is a chrome row
+ * of controls an overlay would cover. VibrationView draws no controls at all
+ * (§ 5.4), so its top is free — and a caption belongs where reading starts.
+ */
+.vibview-caption {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 5;                  /* over the drawing; it only reads */
+    max-width: calc(100% - 1rem);  /* a long caption wraps, never overflows */
+    padding: 0.2rem 0.45rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: #e6e9ef;
+    background: rgba(15, 18, 23, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 4px;
+
+    /* NEVER intercept a drag. The 3D window under this is rotatable, and a
+     * caption that swallowed pointer events would put a dead patch in the corner
+     * of it. The text carries the meaning; it does not need clicks. */
+    pointer-events: none;
+}
+
+.vibview-caption[hidden] { display: none; }
+
 /* A viewer that could not be built says so where the molecule would have been,
  * rather than leaving an empty box that reads as "still loading" forever (§ 8:
  * a failed mount is still a handle, and the host may leave it on screen). */
