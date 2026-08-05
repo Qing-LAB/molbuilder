@@ -404,9 +404,36 @@ export function init(viewer) {
             }
         }
         try {
-            await d.load(-1);
-            setEditStatus(
-                `Retracted to state #${d.state_index}.`, "ok");
+            /* READ THE ANSWER.  `load` returns the index it moved to, or null
+             * when it did not move (molview.md § 11.2) -- and this used to
+             * discard it and print success unconditionally, reporting
+             * `d.state_index`: the position it was ALREADY at.  So at the
+             * bottom of the history the user was told a retraction happened
+             * that did not, which is worse than saying nothing.
+             *
+             * `at === null`, not `!at`: index 0 is a real state and a falsy
+             * number, so a truthiness test would call the oldest retraction in
+             * the sequence a failure. */
+            const at = await d.load(-1);
+            if (at === null || at === undefined) {
+                /* ONE sentence, because the module cannot honestly say more.
+                 * `load` returns null for a target out of range, for a point
+                 * whose file is gone (a sequence is bounded at its last 30
+                 * saves, workspace.md § 9.1), and for a server that did not
+                 * answer -- `readState` conflates the last two on purpose
+                 * (workspace.md § 5).  An earlier draft of this branch split on
+                 * `state_index === 0` to say "already at the oldest", which
+                 * reads well and is wrong where it fires: Retract is disabled at
+                 * index 0 unless there are unsaved edits, and in THAT case a
+                 * null means point 0 was pruned, not that we are at the bottom.
+                 * A distinction the code cannot make is not one to print. */
+                setEditStatus(
+                    "Nothing changed — that earlier state could not be "
+                    + "brought back. A tab keeps its last 30 saves.",
+                    "warn");
+            } else {
+                setEditStatus(`Retracted to state #${at}.`, "ok");
+            }
         } catch (e) {
             setEditStatus(
                 `Retract failed: ${(e && e.message) || String(e)}`,

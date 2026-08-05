@@ -491,6 +491,64 @@ def test_save_state_then_retract_puts_the_atom_back(
     assert "#0" in page.locator("#timeline-status").inner_text()
 
 
+def test_retract_says_so_when_the_point_it_wanted_is_gone(
+        page, flask_server, labelled_xyz, tmp_path):
+    """A retraction that could not happen must not be reported as one.
+
+    A saved sequence is bounded at its last 30 saves (`workspace.md` § 9.1), so
+    the oldest points are deleted as new ones arrive.  `load` answers that
+    honestly -- it returns null and leaves `position` alone -- but the caller
+    used to throw the answer away and print ``Retracted to state #N`` with "ok"
+    styling, N being the position it was ALREADY at.  The user was told a
+    retraction happened that did not.
+
+    Reaching it for real would take 31 saves.  The state files are the test's
+    own now (its projects root is `tmp_path`), so deleting point 0 reproduces
+    exactly what the rolling window does, in one line and without the wait.
+    """
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    page.wait_for_function(
+        "() => !document.getElementById('save-state').disabled",
+        timeout=_ACT_MS)
+
+    _pick_atom(page, 1)
+    page.wait_for_function(
+        "() => !document.getElementById('delete-apply').disabled",
+        timeout=_ACT_MS)
+    page.locator("#delete-apply").click()
+    page.locator("#save-state").click()
+    page.wait_for_function(
+        "() => /saved #1/.test("
+        "  document.getElementById('timeline-status').textContent)",
+        timeout=_ACT_MS)
+
+    # Drop point 0 the way the rolling window would.
+    states = tmp_path / ".molbuilder_workspace" / "states"
+    gone = [p for p in states.glob("*.0.wc.json") if "-draft" not in p.name]
+    assert gone, f"expected a point 0 to delete, found {list(states.iterdir())}"
+    for p in gone:
+        p.unlink()
+
+    # Retract is offered -- we are at #1, so the button is enabled and the user
+    # has every reason to expect it to work.
+    assert not page.locator("#undo-op").is_disabled()
+    page.locator("#undo-op").click()
+
+    status = page.locator("#edit-status")
+    page.wait_for_function(
+        "() => /Nothing changed/.test("
+        "  document.getElementById('edit-status').textContent)",
+        timeout=_ACT_MS)
+    text = status.inner_text()
+    assert "Retracted to state" not in text, \
+        f"retract claimed a move that did not happen: {text!r}"
+    assert "modify-status--warn" in (status.get_attribute("class") or ""), \
+        "a refusal styled as success reads as success"
+    # And it really did not move.
+    assert "#1" in page.locator("#timeline-status").inner_text()
+
+
 def test_the_timeline_indicator_says_where_you_are(
         page, flask_server, labelled_xyz):
     """Unsaved work and the point Retract would restore are both on screen.

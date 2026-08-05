@@ -289,11 +289,61 @@ all. (The details live in the Modify-tab and projects docs.)
 
 For the record: the server keeps each tab's history as small JSON files at
 `<projects_root>/.molbuilder_workspace/states/<workspace_id>.<step>.wc.json`. It
-never parses them as molecules — it just moves JSON bytes. It keeps the most
-recent 30 steps per tab. A crashed or closed tab leaves its files behind (a new
-tab starts a fresh id); these are **not** auto-cleaned — crash recovery is out
-of scope by design — but once the pile passes 300 files the server logs a
-one-time warning so an operator can clear the folder by hand.
+never parses them as molecules — it just moves JSON bytes. A crashed or closed
+tab leaves its files behind (a new tab starts a fresh id); these are **not**
+auto-cleaned — crash recovery is out of scope by design — but once the pile
+passes 300 files the server logs a one-time warning so an operator can clear the
+folder by hand.
+
+### 9.1 A session's history is bounded — the last 30 saves
+
+**A saved sequence has a floor, and it is 30 points deep.** On every write the
+server drops any step older than the newest 30, so the history is a rolling
+window rather than an unbounded pile.
+
+This is a **contract term, not a capacity accident**. Saved state is a
+convenience for stepping back through recent work, and a convenience that grows
+without limit stops being one: an afternoon of editing would otherwise leave
+hundreds of full structure snapshots per tab on disk, forever, for a depth
+nobody reaches. Thirty is the boundary that keeps "you can step back" honest and
+finite.
+
+What it means where you can feel it:
+
+- **Retract reaches back 30 saves, and no further.** At the floor there is
+  nothing older to return to. That is the designed answer, and the viewer says
+  so rather than pretending it moved (§ 9.2).
+- **Your unsaved work is never at risk.** The draft is a *different* workspace —
+  `<id>-draft`, a single file pinned at step 0 (`history.js:132`) — so a
+  one-entry history has nothing to trim. The window bounds *how far back you can
+  step*, never *whether your latest work survives*.
+- **The bound is per tag.** Each tag has its own id and therefore its own
+  thirty; two savers on a page do not share the allowance.
+
+### 9.2 Who prunes which end
+
+Both ends of a sequence get trimmed, by different owners, for different reasons.
+Stating it once here because the two are easy to read as one rule:
+
+| End | Who | When | Why |
+| --- | --- | --- | --- |
+| the **future** — everything above the current point | **MolView** | on `save(step)`, via `pruneStatesAbove` | a save on top of a retracted point makes the abandoned branch meaningless (`molview.md` § 11.2) |
+| the **past** — everything below the newest 30 | **the workspace** | on every write | the bound above |
+
+So MolView owns *what a save means and how far a step goes*; the workspace owns
+*where the bytes live and how many of them there are*. MolView decides where you
+are in the sequence; it does not decide how long the sequence may be.
+
+Because the floor moves without telling the client, **MolView's idea of the
+sequence can outrun what is on disk** — its position and highest-point live in
+memory. `load` already answers this honestly: it returns `null` when the point
+asked for is not there, which the caller must report as *there is nothing
+further back* rather than as a move. "Retracted to state #45" when nothing moved
+is worse than silence.
+
+> **Not yet true of the code.** `modify/viewer.js::retractState` discards
+> `load`'s answer and prints success unconditionally (`viewer.js:407`), so at
+> the floor it claims a retraction that did not happen. Task **#47**.
 
 **An id belongs to a tag, and is remembered per tag.** `workspaceId(tag)` works
 the answer out once and keeps it, because it has to be the same across a reload.

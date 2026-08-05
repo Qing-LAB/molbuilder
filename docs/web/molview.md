@@ -3072,10 +3072,24 @@ guess at (§ 11.2's version stamp).
 is nothing to come back to, and `load` stays a no-op in every form.
 
 **MolView owns the whole mechanism and the policy** — what a save records, what
-to prune, how far back a step goes, and the rule that nothing is recorded on its
-own. The **workspace** module owns only what sits underneath: where the bytes
-actually go, reached through an accessor handed in at mount. That is the entire
-division. See [`workspace.md`](?doc=web/workspace.md).
+to prune **above** the current point, how far a step moves, and the rule that
+nothing is recorded on its own. The **workspace** module owns what sits
+underneath: where the bytes actually go, reached through an accessor handed in at
+mount, and **how many of them there are**.
+
+That last one is the boundary worth being exact about, because both sides trim a
+sequence and they trim opposite ends. MolView drops the **future**: a save on top
+of a retracted point makes the abandoned branch meaningless, so `pruneStatesAbove`
+clears it. The workspace drops the **past**: a session's history is bounded at the
+**last 30 saves**, so it cannot grow without limit
+([`workspace.md`](?doc=web/workspace.md) § 9.1).
+
+So MolView decides *where you are* in the sequence and *what a step means*; it
+does not decide *how long the sequence may be*. Retract therefore reaches back 30
+saves and no further, and at that floor `load` answers `null` — which the host
+must report as *there is nothing further back*, not as a move that happened. Your
+unsaved work is outside this entirely: the draft is a separate one-entry
+workspace, so nothing trims it.
 
 **Save state and Retract are calls, not controls.** MolView offers the doors and
 draws no button for them. That is deliberate, and it is the opposite of the Export

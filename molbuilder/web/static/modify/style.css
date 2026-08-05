@@ -183,6 +183,11 @@ header h1 {
 }
 .modify-status.modify-status--ok    { color: var(--text-primary); }
 .modify-status.modify-status--error { color: var(--error); }
+/* `warn` = the action was understood and correctly did nothing: Retract at the
+ * oldest kept state has nowhere further back to go (workspace.md § 9.1).  Not
+ * `error` -- nothing failed and the user did nothing wrong -- and not `ok`,
+ * which would read as "it happened". */
+.modify-status.modify-status--warn  { color: var(--warn); }
 
 /* NO ADVISORY ROWS HERE. What the server says about a structure is shown by
  * MolView, in its own panel (molview.md § 6.8) -- a cell notice under the Cell

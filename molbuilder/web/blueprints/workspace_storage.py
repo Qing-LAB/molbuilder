@@ -60,7 +60,20 @@ _log = logging.getLogger(__name__)
 # (no path traversal) + index.
 _WS_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")   # no dots -> unambiguous index parse
 _STATE_SUFFIX = ".wc.json"
-_STATE_WINDOW = 30                            # rolling window kept on each write
+#: HOW DEEP A SAVED SEQUENCE GOES.  A contract term, not a capacity accident
+#: (workspace.md § 9.1): saved state exists so you can step back through recent
+#: work, and a convenience that grows without limit stops being one -- an
+#: afternoon of editing would leave hundreds of full structure snapshots per tab
+#: on disk, forever, for a depth nobody reaches.  Thirty is the boundary that
+#: keeps "you can step back" both honest and finite.
+#:
+#: This trims the PAST.  MolView trims the FUTURE, on its own terms and for its
+#: own reason (`pruneStatesAbove`, molview.md § 11.2).  Two ends, two owners --
+#: see workspace.md § 9.2, which is the one place both are stated together.
+#:
+#: Unsaved work is outside this: a draft is its own workspace id holding a single
+#: file at index 0, and a one-entry history has nothing to trim.
+_STATE_WINDOW = 30
 
 # Residue accounting (workspace-contract.md §4.2).  The rolling window bounds each
 # LIVE workspace to <= _STATE_WINDOW files, but a crashed / closed tab leaves its
