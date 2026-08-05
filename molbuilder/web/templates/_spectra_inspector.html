@@ -165,9 +165,12 @@
             <label class="inline-label">
               <span>Amplitude</span>
               <select id="anim-amplitude-mode">
-                <option value="display" selected>exaggerated</option>
-                <option value="zero-point">physical, zero-point</option>
-                <option value="thermal">physical, thermal</option>
+                <option value="display" selected
+                        title="A drawing choice: the biggest-moving atom swings by whatever the Size slider says. Not a physical amplitude.">exaggerated</option>
+                <option value="zero-point"
+                        title="How far the atoms actually move in a molecule at absolute zero — quantum mechanics forbids a still molecule.">physical, zero-point</option>
+                <option value="thermal"
+                        title="Zero-point motion plus what higher vibrational levels add at your temperature. Only changes soft modes.">physical, thermal</option>
               </select>
             </label>
             <label class="inline-label" id="anim-temperature-row" hidden>
@@ -248,15 +251,85 @@
             <button id="anim-export-cancel" type="button" hidden>Cancel</button>
             <span id="anim-export-status" class="status muted"></span>
           </div>
-          <p class="viewer-hint hint">
-            The mode <em>shape</em> -- which atoms move, in what direction, and how
-            far relative to each other -- is faithful from the diagonalisation.
-            How <em>big</em> the motion is drawn is the Amplitude control above:
-            <em>exaggerated</em> is a visualisation choice, because real amplitudes
-            are typically well under 0.1 Å and hard to see; <em>physical</em> draws
-            how far the atoms actually move, which follows from the mode's own
-            frequency and needs no slider.  Fixed atoms are greyed and stay still.
-          </p>
+          <details class="amplitude-help">
+            <summary>What do the amplitude choices mean?</summary>
+            <div class="amplitude-help-body">
+              <p>
+                The mode <em>shape</em> — which atoms move, in what direction, and
+                how far relative to each other — comes straight from the
+                diagonalisation and is the same in all three. What changes is how
+                <em>big</em> the motion is drawn. Fixed atoms are greyed and stay
+                still.
+              </p>
+
+              <p><strong>exaggerated</strong> — a drawing choice, not a
+                measurement. The eigenvector is rescaled so the biggest-moving
+                atom has length 1, and the Size slider says how many ångström that
+                swing is. The default 0.15 Å is roughly a tenth of a bond, which
+                reads clearly on screen. Every other tool that animates modes
+                (Jmol, Avogadro, GaussView) exaggerates the same way, and for the
+                same reason: real amplitudes are too small to see.</p>
+
+              <p><strong>physical, zero-point</strong> — how far the atoms move in
+                a molecule at <em>absolute zero</em>. A quantum oscillator cannot
+                be still: the uncertainty principle leaves every mode with half a
+                quantum, ½ħω, and the atoms spread over
+                <code>Q = √(ħ/2ω)</code> along the normal coordinate. In practical
+                units that is <code>Q = 4.11 / √ν̃</code> in √amu·Å with ν̃ in
+                cm⁻¹, and each atom's share is divided by the square root of its
+                mass — so <strong>heavier atoms and stiffer bonds move
+                less</strong>:</p>
+
+              <table class="amplitude-help-table">
+                <thead><tr><th>mode</th><th>H</th><th>C</th><th>Au</th></tr></thead>
+                <tbody>
+                  <tr><td>100 cm⁻¹ (a floppy torsion)</td>
+                      <td>0.41 Å</td><td>0.12 Å</td><td>0.029 Å</td></tr>
+                  <tr><td>1000 cm⁻¹ (a ring breath)</td>
+                      <td>0.13 Å</td><td>0.037 Å</td><td>0.009 Å</td></tr>
+                  <tr><td>3000 cm⁻¹ (a C–H stretch)</td>
+                      <td>0.075 Å</td><td>0.022 Å</td><td>0.005 Å</td></tr>
+                </tbody>
+              </table>
+              <p class="amplitude-help-note">
+                (the swing of an atom carrying the whole mode; a real mode shares
+                it out, so per-atom values are smaller)
+              </p>
+
+              <p><strong>physical, thermal</strong> — the same thing at your
+                temperature, where higher vibrational levels are populated too.
+                The mean-square displacement grows by
+                <code>coth(ħω / 2k<sub>B</sub>T)</code>, so the amplitude grows by
+                its square root — and as T → 0 it becomes the zero-point case
+                exactly.</p>
+
+              <p>The useful fact is <strong>which modes it changes</strong>. A
+                quantum is worth 1.44 K per cm⁻¹, and room temperature is
+                k<sub>B</sub>T ≈ 207 cm⁻¹ — so anything much stiffer than that is
+                <em>frozen out</em>, sitting in its ground state no matter how warm
+                the sample. At 298 K, as a multiple of the zero-point swing:</p>
+
+              <table class="amplitude-help-table">
+                <thead><tr><th>ν̃</th><th>50</th><th>100</th><th>300</th>
+                           <th>1000</th><th>3000 cm⁻¹</th></tr></thead>
+                <tbody><tr><td>× zero-point</td><td>2.9</td><td>2.1</td>
+                           <td>1.27</td><td>1.01</td><td>1.00</td></tr></tbody>
+              </table>
+
+              <p class="amplitude-help-note">
+                So temperature is worth setting for soft modes — torsions, lattice
+                and libration modes, metal–ligand bends — and makes no visible
+                difference to a C–H stretch. Raising it to 500 K moves the
+                50 cm⁻¹ figure to 3.7× and leaves 3000 cm⁻¹ at 1.00×.
+              </p>
+
+              <p class="amplitude-help-note">
+                An exported file records which of the three it used, because the
+                exaggerated and physical amplitudes are not in the same units and
+                the number alone would not say.
+              </p>
+            </div>
+          </details>
         </div>
       </div>
 

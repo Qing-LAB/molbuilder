@@ -286,13 +286,58 @@
 }
 .mode-viewer-wrap .viewer-controls .unit { font-size: 0.7rem; }
 
-/* The hint is reference material, not a control: it stays available and stops
-   competing with the instrument above it. */
+/* The hint is reference material, not a control: available on request, and
+   silent until then, so it never competes with the instrument above it.  Closed
+   it costs one line; open it explains what the amplitude choices mean. */
 .mode-viewer-wrap .viewer-hint {
     font-size: 0.68rem;
     line-height: 1.4;
     margin: 0.4rem 0 0;
     opacity: 0.75;
+}
+
+.amplitude-help {
+    margin: 0.4rem 0 0;
+    font-size: 0.68rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+.amplitude-help > summary {
+    cursor: pointer;
+    padding: 0.15rem 0;
+    color: var(--text-secondary);
+    opacity: 0.85;
+}
+.amplitude-help > summary:hover { opacity: 1; }
+.amplitude-help[open] > summary { margin-bottom: 0.3rem; }
+
+.amplitude-help-body p { margin: 0 0 0.45rem; }
+.amplitude-help-body code {
+    font-size: 0.95em;
+    padding: 0 0.15em;
+    background: var(--bg-elevated, rgba(255, 255, 255, 0.06));
+    border-radius: 3px;
+}
+.amplitude-help-note { opacity: 0.8; }
+
+/* Small tables of numbers, so the quantities are scannable rather than buried
+   in a sentence -- the point of quoting them at all. */
+.amplitude-help-table {
+    border-collapse: collapse;
+    margin: 0 0 0.5rem;
+    font-variant-numeric: tabular-nums;
+}
+.amplitude-help-table th,
+.amplitude-help-table td {
+    padding: 0.1rem 0.5rem 0.1rem 0;
+    text-align: right;
+    white-space: nowrap;
+}
+.amplitude-help-table th:first-child,
+.amplitude-help-table td:first-child { text-align: left; }
+.amplitude-help-table thead th {
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-soft);
 }
 /* The BOX the mode viewer is given — its size and where it sits on the page,
  * which is all a host decides (vibrationview.md § 13).  What is inside it, its
