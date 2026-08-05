@@ -1767,12 +1767,12 @@ class TestModeAnimationControls:
         partial = web_client.get("/partials/spectra-inspector").data.decode()
         for value in ('value="png-zip"', 'value="webm"', 'value="gif"'):
             assert value in partial, value
-        assert 'id="vib-export-width"' in partial
-        assert 'id="vib-export-background"' in partial
+        assert 'id="anim-export-width"' in partial
+        assert 'id="anim-export-background"' in partial
         assert 'value="transparent"' in partial
-        assert 'id="vib-export-cycles"' in partial
+        assert 'id="anim-export-cycles"' in partial
         # a long export must be stoppable (§ 12)
-        assert 'id="vib-export-cancel"' in partial
+        assert 'id="anim-export-cancel"' in partial
 
     def test_the_physics_lives_in_the_tab_not_the_viewer(self, web_client):
         """§ 12.2: "both are computed by the TAB… the physics of how big a

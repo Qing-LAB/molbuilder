@@ -240,26 +240,26 @@
             sequence is lossless at any size and is what an encoder wants as
             input, which is why it carries a manifest saying what it is and the
             ffmpeg line that turns it into whatever a journal asked for. -#}
-        <div class="viewer-controls" id="vib-export-row">
+        <div class="viewer-controls">
           <label class="inline-label">
             <span>Export</span>
-            <select id="vib-export-format">
+            <select id="anim-export-format">
               <option value="png-zip" selected>PNG frames (.zip)</option>
               <option value="webm">WebM video</option>
               <option value="gif">GIF</option>
             </select>
           </label>
           <label class="inline-label">
-            <span>Size</span>
-            <input id="vib-export-width" type="number" min="200" max="4000"
+            <span>Resolution</span>
+            <input id="anim-export-width" type="number" min="200" max="4000"
                    step="20" value="1600" style="width:5.5rem">
             <span class="unit">×</span>
-            <input id="vib-export-height" type="number" min="200" max="4000"
+            <input id="anim-export-height" type="number" min="200" max="4000"
                    step="20" value="1200" style="width:5.5rem">
           </label>
           <label class="inline-label">
             <span>Background</span>
-            <select id="vib-export-background">
+            <select id="anim-export-background">
               <option value="" selected>as shown</option>
               <option value="#ffffff">white</option>
               <option value="transparent">transparent</option>
@@ -267,12 +267,12 @@
           </label>
           <label class="inline-label">
             <span>Cycles</span>
-            <input id="vib-export-cycles" type="number" min="1" max="20"
+            <input id="anim-export-cycles" type="number" min="1" max="20"
                    step="1" value="1" style="width:4rem">
           </label>
-          <button id="vib-export-btn" type="button">Save animation</button>
-          <button id="vib-export-cancel" type="button" hidden>Cancel</button>
-          <span id="vib-export-status" class="status muted"></span>
+          <button id="anim-export-btn" type="button">Save animation</button>
+          <button id="anim-export-cancel" type="button" hidden>Cancel</button>
+          <span id="anim-export-status" class="status muted"></span>
         </div>
         <p class="viewer-hint hint">
           The mode <em>shape</em> -- which atoms move, in what direction, and how

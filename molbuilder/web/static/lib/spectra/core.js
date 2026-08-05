@@ -2386,8 +2386,8 @@
         if (!state.vib || state.exporting) return;
         const controller = new AbortController();
         state.exporting = controller;
-        if (els.vibExportBtn)    els.vibExportBtn.disabled = true;
-        if (els.vibExportCancel) els.vibExportCancel.hidden = false;
+        if (els.animExportBtn)    els.animExportBtn.disabled = true;
+        if (els.animExportCancel) els.animExportCancel.hidden = false;
 
         const px = (el, fallback) => {
             const v = parseInt(el && el.value, 10);
@@ -2395,30 +2395,30 @@
         };
         try {
             const out = await state.vib.exportAnimation({
-                format:     (els.vibExportFormat && els.vibExportFormat.value) || "png-zip",
-                width:      px(els.vibExportWidth, 1600),
-                height:     px(els.vibExportHeight, 1200),
-                background: (els.vibExportBackground && els.vibExportBackground.value) || undefined,
-                cycles:     px(els.vibExportCycles, 1),
+                format:     (els.animExportFormat && els.animExportFormat.value) || "png-zip",
+                width:      px(els.animExportWidth, 1600),
+                height:     px(els.animExportHeight, 1200),
+                background: (els.animExportBackground && els.animExportBackground.value) || undefined,
+                cycles:     px(els.animExportCycles, 1),
                 signal:     controller.signal,
                 onProgress: (fraction, label) => {
-                    setStatus(els.vibExportStatus,
+                    setStatus(els.animExportStatus,
                               Math.round(fraction * 100) + "% — " + label, "muted");
                 },
             });
             _download(out.blob, out.filename);
             // Say what was actually saved. The amplitude means nothing without
             // the normalization beside it (§ 12.2), so both are shown or neither.
-            setStatus(els.vibExportStatus,
+            setStatus(els.animExportStatus,
                       "saved " + out.filename + " — " + out.meta.frames + " frames, "
                       + out.meta.normalization, "ok");
         } catch (e) {
-            setStatus(els.vibExportStatus,
+            setStatus(els.animExportStatus,
                       (e && e.message) || "the export failed", "error");
         } finally {
             state.exporting = null;
-            if (els.vibExportBtn)    els.vibExportBtn.disabled = false;
-            if (els.vibExportCancel) els.vibExportCancel.hidden = true;
+            if (els.animExportBtn)    els.animExportBtn.disabled = false;
+            if (els.animExportCancel) els.animExportCancel.hidden = true;
         }
     }
 
@@ -2879,14 +2879,14 @@
         els.animAmplitudeRow   = $("anim-amplitude-row");
         els.animTemperature    = $("anim-temperature");
         els.animTemperatureRow = $("anim-temperature-row");
-        els.vibExportFormat    = $("vib-export-format");
-        els.vibExportWidth     = $("vib-export-width");
-        els.vibExportHeight    = $("vib-export-height");
-        els.vibExportBackground = $("vib-export-background");
-        els.vibExportCycles    = $("vib-export-cycles");
-        els.vibExportBtn       = $("vib-export-btn");
-        els.vibExportCancel    = $("vib-export-cancel");
-        els.vibExportStatus    = $("vib-export-status");
+        els.animExportFormat    = $("anim-export-format");
+        els.animExportWidth     = $("anim-export-width");
+        els.animExportHeight    = $("anim-export-height");
+        els.animExportBackground = $("anim-export-background");
+        els.animExportCycles    = $("anim-export-cycles");
+        els.animExportBtn       = $("anim-export-btn");
+        els.animExportCancel    = $("anim-export-cancel");
+        els.animExportStatus    = $("anim-export-status");
 
         // --- Generate-side wiring (only present on /spectra) -------
         //
@@ -2964,10 +2964,18 @@
                 onAnimSpeedChange();
             }
             _on(els.animToggle, "click", onAnimToggle);
-            _on(els.animAmplitudeMode, "change", onAmplitudeModeChange);
+            if (els.animAmplitudeMode) {
+                _on(els.animAmplitudeMode, "change", onAmplitudeModeChange);
+                // Primed like the amplitude and speed handlers above: the markup
+                // carries the starting value, and running the handler once makes
+                // the state and the visible controls agree.  Without it a restored
+                // "thermal" would leave the temperature box hidden and the size
+                // slider showing -- the panel contradicting itself.
+                onAmplitudeModeChange();
+            }
             _on(els.animTemperature,   "input",  onTemperatureChange);
-            _on(els.vibExportBtn,      "click",  onExportAnimation);
-            _on(els.vibExportCancel,   "click",  onExportCancel);
+            _on(els.animExportBtn,      "click",  onExportAnimation);
+            _on(els.animExportCancel,   "click",  onExportCancel);
 
             // Mode-table interactions.
             _on(els.modesTheadRow, "click", onTableHeaderClick);
