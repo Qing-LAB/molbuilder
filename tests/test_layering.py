@@ -229,16 +229,59 @@ _EXEMPT = {
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("rel_path", _all_python_files(),
+def _judged_files() -> list[Path]:
+    """The files the layering rule actually applies to.
+
+    A package ``__init__.py`` is excluded BY DESIGN: it is the public API
+    surface and re-exports across layers on purpose (``import molbuilder``
+    must hand you L2 verbs from the L1 package namespace).  ``_EXEMPT`` names
+    the non-``__init__`` re-export shims.
+
+    These used to be parametrized in and then ``pytest.skip``-ed one by one --
+    25 skips in a suite whose other skips are real ("no node", "no pyscf in
+    this env"), so the noise hid them.  Worse, the skip was reached through
+    ``_module_layer(...) is None``, which means a NON-init file that stopped
+    being classifiable would have gone quiet too.  Excluding them here and
+    asserting the exclusion below turns 25 silent skips into one real check.
+    """
+    return [p for p in _all_python_files()
+            if p.name != "__init__.py" and p not in _EXEMPT]
+
+
+def test_only_package_inits_sit_outside_the_layer_rule():
+    """Nothing escapes the rule by accident.
+
+    Two ways it could: a named exemption that no longer names a real file
+    (so the exemption outlived its subject), or a judged module the layer map
+    cannot classify (so the rule silently did not apply).  Both are drift
+    between the map and the tree, and both should FAIL rather than skip.
+
+    A first cut also asserted that every unjudged file was an ``__init__`` or
+    an exemption -- which is how ``_judged_files`` defines "unjudged", so it
+    could never fail.  Deleted rather than kept as decoration.
+    """
+    # Every named exemption must still name a real file.  A stale entry
+    # exempts nothing and quietly survives the rename that outdated it, so
+    # the next reader trusts a guarantee that no longer has a subject.
+    present = set(_all_python_files())
+    stale = sorted(str(p) for p in _EXEMPT if p not in present)
+    assert not stale, (
+        "_EXEMPT names files that are not in the tree any more; drop them:\n  "
+        + "\n  ".join(stale))
+
+    unclassifiable = [p for p in _judged_files() if _module_layer(p) is None]
+    assert not unclassifiable, (
+        "these modules could not be assigned a layer, so the rule silently "
+        "did not apply to them -- the layer map has drifted from the tree:\n  "
+        + "\n  ".join(str(p) for p in unclassifiable))
+
+
+@pytest.mark.parametrize("rel_path", _judged_files(),
                          ids=lambda p: str(p))
 def test_module_does_not_import_from_higher_layer(rel_path: Path):
     """Every L1 file imports only from L1; every L2 file from L1 or L2;
     L3 may import anything (no constraint)."""
-    if rel_path in _EXEMPT:
-        pytest.skip(f"{rel_path} is an explicit re-export site")
     layer = _module_layer(rel_path)
-    if layer is None:
-        pytest.skip(f"{rel_path} is unclassified (probably __init__ shim)")
     if layer == "L3":
         # L3 is the top; it can import anything.
         return

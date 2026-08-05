@@ -323,21 +323,3 @@ def test_bond_length_inventory_matches_readme_sources():
     assert BL.cs_aromatic == 1.78
     assert BL.au_au_fcc == 2.88
     assert BL.ch_aromatic == 1.09
-
-
-# --------------------------------------------------------------------- #
-#  Marker for the deferred runtime-validation test                      #
-# --------------------------------------------------------------------- #
-
-
-@pytest.mark.skip(
-    reason="Full TranSIESTA run validation needs the molbuilder-siesta "
-           "env + electrode .TSHS files + geometry relaxation.  This "
-           "marker is the placeholder for the follow-up integration "
-           "test that runs the emitted .fdf and checks T(E_F) within "
-           "factor-of-2 of Reed 2006 / Stokbro 2003 (~0.01 G_0)."
-)
-def test_au_bdt_au_transmission_against_literature():
-    """Deferred: full TranSIESTA run + T(E_F) comparison against
-    published Au-BDT-Au transmission values."""
-    pass
