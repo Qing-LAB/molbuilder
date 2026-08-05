@@ -2171,7 +2171,12 @@
         if (!eq || !Array.isArray(eq.elements) || !Array.isArray(eq.positions_ang)
                 || !eq.elements.length
                 || eq.positions_ang.length !== eq.elements.length) {
-            return null;      // no stored geometry: not animatable, and we say so
+            // Not animatable, and WHY is worth saying: results written before the
+            // geometry was stored are a real thing a user still has on disk, and
+            // a mode-visualisation panel that simply vanishes reads as a bug.
+            return { unavailable: "this result has no stored geometry, so its "
+                                + "modes cannot be animated — re-parse the run to "
+                                + "add one" };
         }
         const mode = (r.modes || []).find(
             m => m.index_1based === state.selectedMode);
@@ -2235,8 +2240,20 @@
 
         const inputs = _animationInputs();
         if (!inputs) {
+            // Nothing is selected, or the mode has no eigenvector: there is
+            // nothing to explain, so the panel is simply not shown.
             els.modeViewerWrap.hidden = true;
             _stopAnimation();
+            return;
+        }
+        if (inputs.unavailable) {
+            // Something IS selected and cannot be drawn.  Say why, where the
+            // molecule would have been, rather than hiding the panel and leaving
+            // the user to wonder which click did that.
+            els.modeViewerWrap.hidden = false;
+            _stopAnimation();
+            setStatus(els.viewerStatus, inputs.unavailable, "muted");
+            if (els.modeViewer) els.modeViewer.innerHTML = "";
             return;
         }
         els.modeViewerWrap.hidden = false;

@@ -75,10 +75,12 @@ HARNESS = r"""
     // A stand-in canvas, at the same level as the rest: an export composites the
     // drawing surface and the caption onto one, and records what it was handed.
     const composited = [];
+    const painted = [];   // text drawn onto the composited picture
     function fakeCanvas(w, h) {
         return { width: w, height: h,
                  getContext: () => ({
-                     clearRect(){}, drawImage(){}, fillRect(){}, fillText(){},
+                     clearRect(){}, drawImage(){}, fillRect(){},
+                     fillText(t){ painted.push(t); },
                      measureText: () => ({ width: 40 }),
                      set font(v){}, set fillStyle(v){}, set textBaseline(v){} }),
                  toBlob(cb) { composited.push([this.width, this.height]);
@@ -797,3 +799,71 @@ def test_an_export_reports_progress_and_can_be_cancelled():
     assert out["last"] == 1.0
     assert out["monotonic"] is True
     assert out["cancelled"] == "the export was cancelled"
+
+
+def test_the_caption_is_composited_into_every_exported_frame():
+    r"""§ 12.3: "a caption shown on screen appears in every exported frame; hidden,
+    it appears in none — the export is not asked separately".
+
+    This is the whole reason the caption is composited rather than left as an
+    overlay: an export reads canvas pixels, and the drawing library's own
+    screen-positioned labels were measured against a real browser and draw
+    nothing at all.  Compositing is deliberate work, so it needs a guard that it
+    actually happens.
+    """
+    out = _run("""
+        const vib = await mount(host, {});
+        vib.setStructure(WATER);
+        vib.showMode({ index: 5, displacements: [[1,0,0],[0,1,0],[0,0,1]],
+                       label: "Mode 5 · 1584.2 cm⁻¹" });
+        painted.length = 0;
+        const shown = await vib.exportAnimation({ format: "png-zip", cycles: 1 });
+        const withCaption = painted.length;
+        const everyFrame = painted.every((t) => t === "Mode 5 · 1584.2 cm⁻¹");
+
+        vib.setLabelVisible(false);
+        painted.length = 0;
+        await vib.exportAnimation({ format: "png-zip", cycles: 1 });
+        console.log(JSON.stringify({
+            withCaption, everyFrame, frames: shown.meta.frames,
+            whenHidden: painted.length }));
+    """)
+    assert out["withCaption"] == out["frames"]   # once per frame, not once
+    assert out["everyFrame"] is True
+    assert out["whenHidden"] == 0                # off means off, in the file too
+
+
+def test_the_zip_carries_a_manifest_that_matches_its_frames():
+    r"""§ 12.1: "the manifest's frame count equals the number of PNGs in the zip".
+
+    It also exercises the zip writer, which is hand-rolled binary format work with
+    no other coverage: if the local headers, the central directory or the end
+    record were wrong, nothing else here would notice — the blob would still have
+    a plausible size and no reader would ever be asked to open it.
+    """
+    out = _run(r"""
+        const vib = await mount(host, { fps: 30 });
+        vib.setStructure(WATER);
+        vib.showMode({ index: 2, displacements: [[1,0,0],[0,1,0],[0,0,1]],
+                       norm: "physical, zero-point" });
+        const r = await vib.exportAnimation({ format: "png-zip", cycles: 2 });
+        const bytes = new Uint8Array(await r.blob.arrayBuffer());
+        let text = "";
+        for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
+        // Stored, not deflated, so the manifest is readable in the archive.
+        const m = text.match(/\{[^{}]*"ffmpeg"[^{}]*\}/);
+        const names = (text.match(/frame_\d{4}\.png/g) || []);
+        console.log(JSON.stringify({
+            // a local header and a central-directory entry name each file
+            pngEntries: new Set(names).size,
+            hasEndRecord: text.indexOf("PK\u0005\u0006") >= 0,
+            manifest: m ? JSON.parse(m[0]) : null,
+            declared: r.meta.frames,
+        }));
+    """)
+    assert out["hasEndRecord"] is True, "the archive has no end-of-directory record"
+    assert out["pngEntries"] == out["declared"] == 60
+    assert out["manifest"] is not None, "no readable manifest in the archive"
+    assert out["manifest"]["frames"] == out["declared"]
+    assert out["manifest"]["normalization"] == "physical, zero-point"
+    assert "ffmpeg -framerate 30" in out["manifest"]["ffmpeg"]

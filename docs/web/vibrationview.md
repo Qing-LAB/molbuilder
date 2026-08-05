@@ -979,7 +979,7 @@ the day it is crossed.
 | § 10 — browsing modes keeps the camera | a mode change on an installed structure issues no refit |
 | § 12 — whole cycles | a one-cycle export's last frame joins its first without a jump, at any fps |
 | § 12 — the export records itself | the metadata carries the amplitude, the frame rate, the cycle length, the normalization, the resolution and the frame count that produced the file, read from the same places the animation reads |
-| § 12 — an export changes two things | the picture differs from the screen in size and background, and in nothing else — same maths, same amplitude, same rate, same style, same caption |
+| § 12 — an export changes two things | the picture differs from the screen in size and background, and in nothing else — same maths, same amplitude, same rate, same style, same caption. **Not yet guarded**: what an export leaves alone is most of the module, and a check for it in the small is a check that passes by saying nothing |
 | § 12 — the surface is put back | after an export the drawing surface is the size and colour it was, and playback is what it was — on success, on failure, on cancel, and when the viewer is disposed part-way through |
 | § 12 — one export at a time | a second export started while one is running is refused, and the running one finishes with the viewer restored exactly once |
 | § 12 — cancelling yields nothing | an aborted export rejects; it never returns a short file, and a second export after a cancelled one behaves as though the first never ran |
