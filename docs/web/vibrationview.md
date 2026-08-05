@@ -173,15 +173,27 @@ Four of them. A design choice that breaks one is wrong no matter how convenient.
 
 ### 5.1 A mode is shown against a structure, and the structure is the slower fact
 
-Installing a structure is rare — it happens when you open a different result.
-Showing a mode is frequent — it happens every time you click a row in the mode
-list. So they are two doors, and **the door you call is what says what it costs**:
-`setStructure` redraws and refits, `showMode` does not.
+Clicking through the modes of one result should be instant, and should leave the
+camera exactly where you put it. Opening a *different* result should redraw and
+re-frame, because it is a different molecule.
 
-The alternative — one door that takes both and works out whether the structure
-changed — makes the cost of a click depend on a comparison, and puts the
-question "is this the same molecule?" inside a viewer that has no business having
-an opinion about it.
+Those are two different amounts of work, so they are two different calls:
+
+```
+   setStructure()     rare — you opened a different result
+                      → rebuilds the molecule, re-frames the camera
+                      → and ends whatever mode was running, because a mode
+                        belongs to the structure it was computed against
+
+   showMode()         often — you clicked another row in the mode list
+                      → new displacements, and nothing else
+                      → no rebuild, no camera move
+```
+
+**Which call you make is what decides the cost**, rather than the module working
+it out for itself. One call taking both would have to compare the two structures
+on every click — and would put the question "is this the same molecule?" inside a
+viewer that has no business having an opinion about it.
 
 It follows that **a new structure ends the current mode.** `setStructure` stops
 the clock and forgets the mode, because a mode belongs to the structure it was
@@ -296,26 +308,37 @@ it.
 
 ### 6.3 The free/held-still partition is one fact, given once
 
-A vibrational calculation is run over the atoms that were allowed to move, so a
-mode has one row per free atom. `basis` says which atom each row belongs to.
+A calculation is usually run with some atoms pinned in place, and it only
+produces displacements for the ones that were free to move. So a mode has fewer
+rows than the molecule has atoms, and `basis` says which atom each row is about.
 
-**The held-still set is the complement of the basis, derived here and never
-given.** Two lists that must partition the atoms are two facts that can
-contradict, and nothing downstream could tell which was right — an atom named in
-both would be greyed as frozen while being moved as free.
+Spreading those rows back over the whole molecule is the one piece of
+science-shaped arithmetic this module owns. It looks like this:
 
-The mode arrives one of two ways, and both are honest:
+```
+   the mode's rows                              the structure
+   (one per atom that moved)                    (every atom)
 
-| `basis` | Means | Held still |
-|---|---|---|
-| given | row *k* is atom `basis[k]` | every atom not named in it |
-| absent | the rows are already one per atom, in order | nothing |
+     row 0  [ 0.4,  0.6, 0] ─┐              ┌─ atom 0   O   ·  held still
+     row 1  [-0.4,  0.6, 0] ─┼──┐           ├─ atom 1   H   ←  row 0
+                             │  │           ├─ atom 2   H   ←  row 1
+              basis = [1, 2] ─┘  └──────────┴─ atom 3   Au  ·  held still
 
-The scatter — turning free-atom rows into a full per-atom array with zeros where
-nothing moves — is the one science-shaped piece of arithmetic this module owns.
-It is authoritative even when the free set is not a sorted run, which is why the
-basis is used whenever it is present rather than being second-guessed by a length
-check.
+   Held still is what is LEFT OVER: atoms 0 and 3, because the basis
+   does not name them.  They get a displacement of [0, 0, 0], so they
+   are not a special case in the animation — they simply never move.
+```
+
+**Which atoms are held still is worked out here, not handed in.** Given both
+lists, they could disagree — and an atom named in both would be drawn greyed as
+frozen while being moved as free, with nothing able to say which was meant.
+
+A mode with **no** basis means its rows are already one per atom, in order, and
+nothing is held still.
+
+Note that the basis is used whenever it is there, rather than the module guessing
+from row counts: a molecule where the free atoms are 2, 0, 1 has three rows and
+three atoms, and reading them in order would move the right atoms the wrong ways.
 
 **A mode that does not fit the structure is refused, never padded.** A basis that
 names an atom the structure does not have, or more rows than there are atoms, is
@@ -558,6 +581,22 @@ moving fastest — is about **10% of the amplitude**: at the default 0.15 Å tha
 encoder expects, it keeps a one-cycle export to 30 frames, and on a 60 Hz display
 it lands on every second repaint, so nothing beats against the refresh.
 
+```
+   One cycle, and how the frames sit in it:
+
+     frame 0          frame N/4        frame N/2        frame 3N/4      frame N
+     ────────         ─────────        ─────────        ──────────      ───────
+     as far one       back at          as far the       back at         exactly
+     way as it        the resting      other way        the resting     frame 0
+     goes             positions                         positions       again
+
+        ●··●             ●●               ●··●             ●●             ●··●
+       (stretched)     (at rest)       (compressed)     (at rest)      (stretched)
+
+   N = fps × cycleSec, and it is always a whole number — which is what
+   makes the last frame join the first with no visible jump.
+```
+
 **A cycle is a whole number of frames, and the rounding goes into the cycle
 length.** `fps × cycleSec` need not come out even — 25 fps over 0.3 s is 7.5 — so
 the frame count is rounded and the cycle's real length follows from the rounding
@@ -643,10 +682,19 @@ that cannot be shown stops it too. A tab that read playback back as if it were t
 user's wish freezes the molecule on the second result opened — the install stopped
 the clock, nobody asked for that, and nothing started it again.
 
-**That cut is one function in the tab**, not four reads scattered through it — the
-tab is the only place that is allowed to know both the shape of a spectra result
-and the shape of a mode. VibrationView never names spectra; the server never names
-VibrationView.
+**One function in the tab does that translation** — not four reads scattered
+through it. It is the only place allowed to know both what a spectra result looks
+like and what a mode looks like, and that is what keeps the two ends apart:
+
+```
+   .spectra.json  ──►   the Spectrum tab   ──►  VibrationView
+   (the server's        knows both shapes,      (a structure, a mode,
+    shape)              and is the only              an amplitude)
+                        thing that does
+
+   The server has never heard of VibrationView.
+   VibrationView has never heard of spectra.
+```
 
 **How the tab gets `mount` is the tab's problem, not this module's.** The page's
 module script imports it and hands it to whichever code owns the host element.
@@ -661,8 +709,22 @@ wrong without looking wrong.
 
 ## 12. Exporting the animation
 
-`exportAnimation` produces **bytes**, and the caller decides where they go — saving
-to a project and downloading differ only in destination.
+Getting the animation out is one call. It hands back **bytes and a suggested
+name**; where those bytes go is the page's business, because saving to a project
+and downloading differ only in destination and neither is a viewer's concern.
+
+```mermaid
+flowchart LR
+    A["ask for<br/>an export"] --> B["stop the clock,<br/>remember whether<br/>it was running"]
+    B --> C["resize and recolour<br/>the drawing surface<br/>— the only two things<br/>an export changes"]
+    C --> D["for each frame:<br/>put it on the surface,<br/>draw the caption over it,<br/>hand it to the encoder"]
+    D --> E["GIF · WebM ·<br/>PNG frames in a zip"]
+    E --> F["put the surface back,<br/>and playback with it"]
+    F --> G["bytes + a name<br/>+ what it was made with"]
+```
+
+Step F runs whether the export finished, failed, or was cancelled. A viewer left
+at export resolution is a viewer nobody can use.
 
 ```js
 const out = await vib.exportAnimation({
@@ -767,8 +829,35 @@ asked for. The point is that six months later the zip still explains itself.
 ### 12.2 The two amplitudes
 
 A mode's eigenvector fixes the *shape* of the motion — which atoms move, which
-way, and how far relative to each other. It does not fix the *size*. Two ways to
-choose the size, and they answer different questions:
+way, and how far relative to each other. It does not fix the *size*. The size is a
+separate number, and the animation is the two multiplied together:
+
+```
+     the eigenvector          ×      the amplitude      =    what you see
+     (which way, and how              (how big)
+      far relative to others)
+
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │  display-normalised      ×   0.15 Å                =  the biggest-moving │
+  │  (its largest row = 1)       (whatever the slider       atom swings       │
+  │                               says)                     0.15 Å           │
+  │                                                                          │
+  │                       exaggerated on purpose, so the motion is legible   │
+  └──────────────────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │  mass-weighted           ×   √(ħ/2ω)               =  a hydrogen swings  │
+  │  (Σ mᵢ|Lᵢ|² = 1)             ≈ 0.13 √amu·Å at          0.13 Å, a carbon  │
+  │                               1000 cm⁻¹                0.037 Å           │
+  │                              (from the frequency)                        │
+  │                       true to life, and smaller than people expect       │
+  └──────────────────────────────────────────────────────────────────────────┘
+
+     ✗  NEVER crossed.  The two amplitudes are not in the same units, so a
+        display eigenvector with a physical amplitude — or the reverse —
+        produces a picture that is wrong without looking wrong.
+```
+
+Two ways to choose the size, then, and they answer different questions:
 
 **Display** — the largest-moving atom swings by the slider value, whatever the
 mode. This is a drawing choice: real vibrational amplitudes are small, and a
