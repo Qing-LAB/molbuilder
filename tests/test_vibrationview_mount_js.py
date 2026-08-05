@@ -64,14 +64,29 @@ HARNESS = r"""
         return el;
     }
     global.document = {
-        createElement: makeEl,
+        createElement: (tag) => (tag === "canvas" ? fakeCanvas(0, 0) : makeEl(tag)),
         getElementById: () => null,
         head: { appendChild: () => {} },
     };
+    // A stand-in canvas, at the same level as the rest: an export composites the
+    // drawing surface and the caption onto one, and records what it was handed.
+    const composited = [];
+    function fakeCanvas(w, h) {
+        return { width: w, height: h,
+                 getContext: () => ({
+                     clearRect(){}, drawImage(){}, fillRect(){}, fillText(){},
+                     measureText: () => ({ width: 40 }),
+                     set font(v){}, set fillStyle(v){}, set textBaseline(v){} }),
+                 toBlob(cb) { composited.push([this.width, this.height]);
+                              cb({ size: 128,
+                                   arrayBuffer: async () => new ArrayBuffer(4) }); } };
+    }
+    const glCanvas = fakeCanvas(340, 300);
     const host = {
         classList: { add: (...c) => c.forEach((x) => classes.add(x)),
                      remove: (...c) => c.forEach((x) => classes.delete(x)) },
-        querySelector: () => null,
+        clientWidth: 340,
+        querySelector: (sel) => (sel === "canvas" ? glCanvas : null),
         appendChild: (c) => { children.push(c); return c; },
         innerHTML: "", textContent: "",
     };
@@ -79,6 +94,11 @@ HARNESS = r"""
     // The clock is the handle's, so it is the one thing a test must drive.
     var rafQ = [];
     let clock = 0;
+    global.getComputedStyle = () => ({ fontSize: "12px", paddingLeft: "6px",
+        paddingTop: "3px", left: "8px", top: "8px", fontFamily: "sans-serif",
+        backgroundColor: "#000", color: "#fff" });
+    global.TextEncoder = global.TextEncoder || (await import("node:util")).TextEncoder;
+    global.Blob = global.Blob || (await import("node:buffer")).Blob;
     global.requestAnimationFrame = (fn) => { rafQ.push(fn); return rafQ.length; };
     global.cancelAnimationFrame  = () => { rafQ = []; };
     function pump(n, msPerStep) {
@@ -583,7 +603,8 @@ def test_the_handle_offers_no_read_of_what_it_holds():
     """)
     assert out["doors"] == sorted([
         "ok", "setStructure", "showMode", "play", "pause", "isPlaying",
-        "setAmplitude", "setFps", "setCycleSec", "setLabelVisible", "dispose",
+        "setAmplitude", "setFps", "setCycleSec", "setLabelVisible",
+        "exportAnimation", "dispose",
     ])
 
 
@@ -610,3 +631,157 @@ def test_dispose_stops_the_clock_and_empties_the_host():
     assert out["playing"] is False
     assert out["threwOnSecond"] is False
     assert out["classGone"] is True
+
+
+# ---------------------------------------------------------------------------
+# § 12 — exporting the animation
+# ---------------------------------------------------------------------------
+
+def test_an_export_needs_a_mode_and_says_so():
+    """§ 12: there is nothing to export until something is being animated."""
+    out = _run("""
+        const vib = await mount(host, {});
+        vib.setStructure(WATER);
+        let msg = "";
+        try { await vib.exportAnimation({ format: "png-zip" }); }
+        catch (e) { msg = e.message; }
+        console.log(JSON.stringify({ msg }));
+    """)
+    assert "no mode" in out["msg"]
+
+
+def test_one_export_at_a_time():
+    """§ 12: "a second exportAnimation while one is in flight is refused".
+
+    Two captures would each resize the same surface and each restore it to what
+    IT believed was the original; the loser leaves the viewer wrong.
+    """
+    out = _run("""
+        const vib = await mount(host, {});
+        vib.setStructure(WATER);
+        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        const first = vib.exportAnimation({ format: "png-zip", cycles: 1 });
+        let second = "";
+        try { await vib.exportAnimation({ format: "png-zip" }); }
+        catch (e) { second = e.message; }
+        await first;
+        // ...and once it is finished, another may start
+        let third = "ok";
+        try { await vib.exportAnimation({ format: "png-zip" }); }
+        catch (e) { third = e.message; }
+        console.log(JSON.stringify({ second, third }));
+    """)
+    assert "already running" in out["second"]
+    assert out["third"] == "ok"
+
+
+def test_an_export_walks_a_whole_number_of_cycles():
+    """§ 12: `cycles × framesPerCycle` frames, so a one-cycle file loops without a
+    seam — and § 5.3: they are the frames the screen shows, not a second sequence."""
+    out = _run("""
+        const vib = await mount(host, { fps: 30 });
+        vib.setStructure(WATER);
+        vib.showMode({ index: 4, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        composited.length = 0;
+        const one = await vib.exportAnimation({ format: "png-zip", cycles: 1 });
+        const afterOne = composited.length;
+        composited.length = 0;
+        const two = await vib.exportAnimation({ format: "png-zip", cycles: 2 });
+        console.log(JSON.stringify({
+            afterOne, afterTwo: composited.length,
+            name: one.filename, size: one.blob.size > 0,
+            meta: one.meta, twoFrames: two.meta.frames,
+        }));
+    """)
+    assert out["afterOne"] == 30          # one cycle at 30 frames per cycle
+    assert out["afterTwo"] == 60          # two cycles, no rounding at the seam
+    assert out["name"] == "vibration-mode-4.zip"
+    assert out["size"] is True
+    assert out["meta"]["frames"] == 30
+    assert out["meta"]["fps"] == 30
+    assert out["twoFrames"] == 60
+
+
+def test_the_export_stamps_the_amplitude_beside_its_normalization():
+    """§ 12.2: "the export stamps the amplitude AND `norm` together, and neither is
+    to be read without the other" — the two pairings do not share a unit."""
+    out = _run("""
+        const vib = await mount(host, { amplitude: 0.13 });
+        vib.setStructure(WATER);
+        vib.showMode({ index: 7, displacements: [[1,0,0],[0,1,0],[0,0,1]],
+                       norm: "physical, zero-point" });
+        const r = await vib.exportAnimation({ format: "png-zip" });
+        console.log(JSON.stringify({ meta: r.meta }));
+    """)
+    assert out["meta"]["amplitude"] == 0.13
+    assert out["meta"]["normalization"] == "physical, zero-point"
+    assert out["meta"]["mode"] == 7
+
+
+def test_the_surface_and_playback_are_restored_after_an_export():
+    """§ 12: "endCapture must run on every path out" — and playback with it.
+
+    A viewer left at export resolution is a viewer nobody can use.
+    """
+    out = _run("""
+        const vib = await mount(host, {});
+        vib.setStructure(WATER);
+        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        vib.play();
+        const before = [glCanvas.width, glCanvas.height];
+        await vib.exportAnimation({ format: "png-zip", width: 1600, height: 1200 });
+        console.log(JSON.stringify({
+            before, after: [glCanvas.width, glCanvas.height],
+            playing: vib.isPlaying(),
+        }));
+    """)
+    assert out["after"] == out["before"]    # the size it was
+    assert out["playing"] is True           # doing what it was doing
+
+
+def test_a_failed_export_still_restores_the_surface():
+    """§ 12: "on every path out — done, failed, cancelled"."""
+    out = _run("""
+        const vib = await mount(host, {});
+        vib.setStructure(WATER);
+        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        vib.play();
+        const before = [glCanvas.width, glCanvas.height];
+        let msg = "";
+        try { await vib.exportAnimation({ format: "mpeg", width: 900, height: 700 }); }
+        catch (e) { msg = e.message; }
+        console.log(JSON.stringify({
+            msg, restored: glCanvas.width === before[0], playing: vib.isPlaying() }));
+    """)
+    assert "unknown format" in out["msg"]
+    assert out["restored"] is True
+    assert out["playing"] is True
+
+
+def test_an_export_reports_progress_and_can_be_cancelled():
+    """§ 12: "the reported fraction reaches 1 exactly when the last frame is
+    encoded", and "a cancelled export rejects rather than resolving"."""
+    out = _run("""
+        const vib = await mount(host, { fps: 30 });
+        vib.setStructure(WATER);
+        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        const seen = [];
+        await vib.exportAnimation({ format: "png-zip",
+                                    onProgress: (f) => seen.push(f) });
+
+        // ...and one aborted part-way rejects, handing back no file
+        const ac = new AbortController();
+        let cancelled = "resolved";
+        const p = vib.exportAnimation({ format: "png-zip",
+                                        onProgress: (f) => { if (f > 0.2) ac.abort(); },
+                                        signal: ac.signal });
+        try { await p; } catch (e) { cancelled = e.message; }
+        console.log(JSON.stringify({
+            first: seen[0], last: seen[seen.length - 1], count: seen.length,
+            monotonic: seen.every((v, i) => i === 0 || v > seen[i - 1]),
+            cancelled }));
+    """)
+    assert out["count"] == 30
+    assert out["last"] == 1.0
+    assert out["monotonic"] is True
+    assert out["cancelled"] == "cancelled"

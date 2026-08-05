@@ -28,6 +28,7 @@
 
 import { scatter, positionsAtFrame, rate, regrid } from "./_maths.js";
 import { create as createSurface } from "./_seal.js";
+import { exportAnimation as runExport } from "./_export.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
@@ -121,6 +122,7 @@ export async function mount(hostEl, opts) {
     let rafId      = null;
     let lastDrawAt = 0;
     let disposed   = false;
+    let exporting  = false;
 
     function draw() {
         if (disposed || !structure || !disp) return;
@@ -294,6 +296,42 @@ export async function mount(hostEl, opts) {
             if (disposed) return;
             labelOn = !!on;
             applyLabel();
+        },
+
+        /* § 12. The context below is built HERE, from this closure, and reaches
+         * the exporter as an argument — which is why the handle needs no accessor
+         * for the state, and why deleting the one it used to have cost nothing.
+         *
+         * ONE AT A TIME. Two exports would each resize the same surface and each
+         * restore it to what IT believed was the original, and the loser leaves
+         * the viewer wrong. */
+        exportAnimation(opts) {
+            if (disposed) return Promise.reject(new Error("vibrationview: disposed"));
+            if (exporting) {
+                return Promise.reject(new Error(
+                    "vibrationview: an export is already running"));
+            }
+            exporting = true;
+            return runExport(opts, {
+                surface:  surface,
+                coordsAt: function (n) {
+                    return positionsAtFrame(structure.positions, disp, amplitude,
+                                            n, r.framesPerCycle);
+                },
+                meta: {
+                    ready:          !!(structure && disp),
+                    framesPerCycle: r.framesPerCycle,
+                    fps:            r.fps,
+                    cycleSec:       r.cycleSec,
+                    amplitude:      amplitude,
+                    norm:           modeNorm,
+                    index:          modeIndex,
+                },
+                playing: function () { return playing; },
+                pause:   stop,
+                play:    start,
+                redraw:  draw,
+            }).finally(function () { exporting = false; });
         },
 
         /* NO HATCH FOR THE EXPORT, and that is deliberate.

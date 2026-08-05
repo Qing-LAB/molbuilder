@@ -367,22 +367,18 @@ export function create(hostEl) {
             };
         },
 
-        /* A picture of what is on screen, right now — the molecule AND its
-         * caption. No size argument: changing what is drawn is beginCapture's job
-         * (§ 9.3). */
-        snapshot() {
-            return new Promise(function (resolve, reject) {
-                if (state.disposed) { reject(new Error("snapshot: disposed")); return; }
-                const out = compose();
-                if (!out) { reject(new Error("snapshot: nothing drawn")); return; }
-                try {
-                    out.toBlob(function (b) {
-                        b ? resolve(b) : reject(new Error("snapshot: toBlob returned null"));
-                    }, "image/png");
-                } catch (e) {
-                    reject(new Error("snapshot: " + (e && e.message)));
-                }
-            });
+        /* What is on screen, as one picture: the molecule AND its caption, drawn
+         * onto a single surface. No size argument — changing what is drawn is
+         * beginCapture's job (§ 9.3).
+         *
+         * It hands back the surface rather than a file, because encoding is not
+         * this layer's business: one caller wants PNG bytes, one wants to add it
+         * to a GIF, one wants to record a stream off it. Returning a picture
+         * serves all three; returning a blob served one and made the other two
+         * ask for something else.
+         */
+        compositeCanvas() {
+            return state.disposed ? null : compose();
         },
 
         dispose() {
