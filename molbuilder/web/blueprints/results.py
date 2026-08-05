@@ -38,8 +38,7 @@ bp = Blueprint("results", __name__)
 
 
 # Stem charset for /api/results/bundle.  Same shape as the
-# region-label charset (_SAFE_REGION_LABEL_RE in _shared.py) +
-# the wrapper-basename charset in runwrap.py: ``[A-Za-z0-9._-]``,
+# wrapper-basename charset in runwrap.py: ``[A-Za-z0-9._-]``,
 # 1-64 chars.  Keeps shell-special / Unicode / whitespace out of
 # every downstream consumer (filesystem rename, sidebar list view,
 # the next tab's form fields).

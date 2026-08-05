@@ -15,8 +15,9 @@ This file pins the load-bearing flows:
      POST to ``/api/spectra/render`` and the rendered .py contains
      the loaded XYZ's element + coords.
   4. When a sibling ``.molstruct.json`` sidecar is present, in-body
-     frozen_atoms travel with the POST (verifies the
-     ``apply_labels_to_struct`` server-side path end-to-end).
+     frozen_atoms travel with the POST -- inside the structure
+     envelope, which is the one way they can arrive
+     (``_shared.struct_from_body``).
 """
 from __future__ import annotations
 

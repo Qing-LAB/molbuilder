@@ -143,13 +143,9 @@ def api_transport_render() -> Any:
     # takes (web-api.md § 1): the atoms as numbers with the labels and the cell
     # beside them, all read together by `molview.exportFile()`.
     #
-    # It used to arrive as a FILE PATH this route re-opened, while the labels
-    # rode separately at the top level of the body.  One request, two sources,
-    # read at two moments -- and this was the LAST caller of that retired shape,
-    # which is the only reason `apply_labels_to_struct` still existed.  A second
-    # place labels can arrive from is a place they can be dropped from without
-    # anyone noticing, which is what #41 is; the way to close it is to stop
-    # having a second place, not to rank the two.
+    # A second place labels can arrive from is a place they can be dropped from
+    # without anyone noticing (#41); the way to close that is to stop having a
+    # second place, not to rank the two.
     if not isinstance(body.get("structure"), dict):
         # Said here rather than left to the shared helper, whose fallback is the
         # legacy `xyz` text field and whose complaint is therefore about `xyz` --

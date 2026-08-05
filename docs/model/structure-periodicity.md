@@ -651,7 +651,7 @@ checks nothing.** The gate is server-side only, and it runs at seven points:
 | 4 | `/api/structure/periodicity` — after | the edit has been applied | notices **returned** — these describe the box the user now has |
 | 5 | `apply_edit`, `cell_origin` branch | inside the edit | used only to DECIDE whether a caveat is needed; its notices are not reported |
 | 6 | `/api/structure/export` | export | notices returned |
-| 7 | `_shared.apply_periodicity_for_emit` | a tab emits a job | the checked structure is what the emitter uses; its notices are dropped, and nothing on that path carries them (`molview.md` § 6.8) |
+| 7 | `_shared.periodicity_checked_for_emit` | a tab emits a job | the checked structure is what the emitter uses; its notices are dropped, and nothing on that path carries them (`molview.md` § 6.8) |
 
 **Seam 2 is why "always checked" is not a rule anyone has to remember.** It is
 the single return path of every structure-returning route, so the check is in the
@@ -709,7 +709,8 @@ the translation:
 
 - `apply_periodicity_only(struct, body)` — applies, judges nothing. The loading
   doors use it, and `ok_structure_response` (seam 2) reports on the way out.
-- `apply_periodicity_for_emit(struct, body)` — applies, then refuses. Every
+- `periodicity_checked_for_emit(struct)` — checks only; it applies nothing,
+  because the box already rode in with the structure. Every
   emitting door uses it; the refusal becomes the door's 400 through one
   app-level handler.
 

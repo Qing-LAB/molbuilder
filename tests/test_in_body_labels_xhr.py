@@ -1,10 +1,13 @@
-"""L3 XHR contract test for the 2026-06-14 viewer-is-truth labels
-contract (``apply_labels_to_struct`` in web/blueprints/_shared.py).
+"""L3 XHR contract test for the viewer-is-truth labels contract
+(``struct_from_body`` in web/blueprints/_shared.py).
+
+The labels ride INSIDE the structure envelope, so there is one place they can
+arrive and no second place to drop them.
 
 The companion file ``test_in_body_labels_contract.py`` pins the
 client-side POST body shape via source-text scan; THIS file drives a
 real Flask test client end-to-end against every endpoint that
-flows through ``apply_labels_to_struct`` and asserts:
+rebuilds a structure from the request body, and asserts:
 
   * In-body ``frozen_atoms`` arrives at the renderer and ends up
     in the generated .fdf / PySCF script.
@@ -18,8 +21,8 @@ flows through ``apply_labels_to_struct`` and asserts:
     output.
 
 Pre-2026-06-14 the whole contract was checked only at source-text
-level -- a regression that made ``apply_labels_to_struct`` ignore
-in-body keys would have passed CI.  These tests close that gap.
+level -- a regression that made the server ignore the envelope's
+labels would have passed CI.  These tests close that gap.
 
 WHERE THE RULE LIVES: the "viewer is truth" idea graduated on 2026-07-29 into
 clause **F2** of the delivery contract, docs/science/validation.md § 4.1 -- the

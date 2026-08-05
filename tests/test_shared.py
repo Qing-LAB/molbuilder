@@ -411,9 +411,8 @@ def test_annotations_survive_a_delete_op_index_aligned():
     delete keeps them ALIGNED to the surviving atoms -- the field the pipeline
     used to drop.
 
-    The middle step was `apply_labels_to_struct`, a second applier that read the
-    channels off a top-level body key.  It is gone (2026-08-03); the channels
-    arrive inside the structure and `Structure.from_dict` applies them."""
+    The channels arrive inside the structure and `Structure.from_dict` applies
+    them."""
     from molbuilder.web.blueprints._shared import struct_from_body
     from molbuilder.modify import delete_atoms
     body = {"structure": {
@@ -436,11 +435,8 @@ def test_annotations_out_of_range_index_is_refused():
     same validator that refuses a malformed Structure anywhere -- and the
     message names the channel and the index.
 
-    This expected a returned NOTICE (build the structure, then hand back a
-    string saying the labels didn't apply).  That path went with
-    `apply_labels_to_struct`: the channels ride inside the structure now, so a
-    bad index cannot produce a half-built structure to warn about -- the
-    structure is simply not built."""
+    The channels ride inside the structure, so a bad index cannot produce a
+    half-built structure to warn about -- the structure is simply not built."""
     import pytest
     from molbuilder.web.blueprints._shared import struct_from_body
     body = {"structure": {

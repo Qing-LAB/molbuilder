@@ -174,12 +174,9 @@ class TestTransportTabContract:
         """The labels ride INSIDE the structure, because the structure is asked
         for whole rather than built from parts.
 
-        This pinned the opposite until 2026-08-03: `frozen_atoms = getFrozen()`
-        and `regions = getRegions()` as separate top-level keys beside a
-        `structure_path`.  That is four reads at four moments for one set of
-        facts, and it made this tab the last caller of the retired flat shape --
-        the only thing keeping a SECOND place for labels alive on the server
-        (`apply_labels_to_struct`), and so a place they could be dropped from.
+        Four reads at four moments for one set of facts is four chances to
+        disagree, and a second place labels can arrive from is a place they can
+        be dropped from.
 
         molview.md § 9.3a: "this is what a request body carries; a tab never
         assembles one."  `exportFile()` is that one read."""

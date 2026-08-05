@@ -128,11 +128,9 @@ class TestF2NoSecondSource:
         a ``structure_path`` beside it does not send the server to disk to find
         some.
 
-        F2 used to be a property of `apply_labels_to_struct` -- absent keys meant
-        "no labels" rather than "read the sidecar", and the function was where
-        that was decided.  Since 2026-08-03 it is a property of the SHAPE: the
-        labels are a field of the structure, so "no labels" is just an empty
-        field, and there is no other key that could have carried them."""
+        F2 is a property of the SHAPE: the labels are a field of the structure,
+        so "no labels" is just an empty field, and there is no other key that
+        could have carried them."""
         from molbuilder.web.blueprints._shared import struct_from_body
         s = struct_from_body({
             "structure": {"elements": ["O", "H", "H"],

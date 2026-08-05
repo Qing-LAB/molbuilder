@@ -339,9 +339,11 @@ The invariant that keeps a tab's form and its structure from ever disagreeing:
 
 This is enforced where it can't be bypassed — on the server:
 
-- `apply_labels_to_struct` treats the in-body `frozen_atoms`/`regions` as
-  authoritative but validates each index (`0 ≤ idx < n_atoms`) and raises a
-  visible warning otherwise. Used by the transport and build renders.
+- The labels ride **inside the structure envelope**, not beside it, so there is
+  one place they can arrive and no second place to drop them. `struct_from_body`
+  rebuilds the `Structure` from that one object, and the model validates each
+  index itself (`Structure._validate_regions`: `0 ≤ idx < n_atoms`, else a
+  visible refusal). Every emitting door goes through it.
 - `struct_from_body` honours a per-atom metadata array **only if its length
   equals the atom count** — a malformed array can't corrupt the structure; the
   default is kept.

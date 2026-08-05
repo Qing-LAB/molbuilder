@@ -171,7 +171,10 @@ const WORKSPACE_TAG = "transport";
     // Viewer-is-truth (2026-07): the committed structure's labels (frozen atoms +
     // electrode regions) live in the mounted MolView model (loaded from the sidecar
     // by projects.parser.openMolecule); the Generate POST sources them from molview.data at send
-    // time, so there is no separate label cache here.  See _shared.apply_labels_to_struct.
+    // time, so there is no separate label cache here.  The labels ride INSIDE the
+    // structure envelope `exportFile()` produces (web-api.md § 1); the server
+    // rebuilds the Structure from that one object (`_shared.struct_from_body`)
+    // and the model validates the indices itself (`Structure._validate_regions`).
 
     function _refreshGenerateButton() {
         var btn = _$("transport-generate-btn");
@@ -576,14 +579,9 @@ const WORKSPACE_TAG = "transport";
              * cell, read TOGETHER in one go (molview.md § 9.3a: "this is what a
              * request body carries; a tab never assembles one").
              *
-             * This tab assembled one, and was the last that did.  The geometry
-             * arrived as a FILE PATH the server re-opened, while the labels and
-             * the cell came off three further reads and rode at the TOP LEVEL —
-             * the shape retired on 2026-07-31.  Being its last caller is what
-             * kept `apply_labels_to_struct` alive, and with it a SECOND place
-             * labels could arrive from, which is a place they could be dropped
-             * from without a word (#41).  `frozen_atoms` went in that body and
-             * was never read: `_shared.py` did not contain the name.
+             * A second place labels can arrive from is a place they can be
+             * dropped from without a word (#41), so there is one read here and
+             * the tab assembles nothing.
              *
              * `structure_path` still ships, but ONLY as provenance — which file
              * this came from, so a message about it can say which.  Nothing is

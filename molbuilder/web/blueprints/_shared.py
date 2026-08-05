@@ -38,38 +38,6 @@ from molbuilder.periodicity_gate import (notices_for_report,
                                          validate_periodicity)
 
 
-# J2 2026-06-14: charset guard for region label keys in
-# the in-body region labels.  Same charset the wrapper basename
-# uses (``runwrap.py::_SAFE_WRAPPER_NAME_RE``) so the labels are
-# safe to embed in shell, JSON, sidecar filenames, and Issue
-# message bodies without per-consumer escaping.  Length capped
-# at 64 to avoid abuse via giant strings.
-#: RETIRED 2026-08-03, and worth saying why rather than just deleting.
-#:
-#: This restricted region labels arriving over the wire to [A-Za-z0-9._-], and
-#: it was enforced in exactly ONE place: `apply_labels_to_struct`, which read a
-#: top-level `regions` key.  That shape is gone (labels ride inside the
-#: structure now), and it turns out the restriction never covered the other two
-#: ways a label reaches the application:
-#:
-#:   * the ENVELOPE -- `test_the_metadata_a_coordinate_file_cannot_hold_arrives
-#:     _with_the_atoms` sends `α-helix` and asserts it survives;
-#:   * the SIDECAR  -- `test_save_emits_utf8_bytes_for_unicode_region_label`
-#:     pins UTF-8 labels on disk, an audit regression fix.
-#:
-#: So deleting the flat shape deleted the only path this guarded, and putting it
-#: back on either surviving path is a NEW restriction, not a preserved one --
-#: tried both, and each broke one of those two tests.
-#:
-#: THE OPEN QUESTION, left open deliberately: the original rationale still
-#: holds -- a label reaches Issue messages, TranSIESTA's region-key comparison
-#: and the sidecar, so a charset is what protects a future consumer that emits
-#: one without escaping.  Whether labels should be ASCII-only EVERYWHERE (and
-#: those two tests changed) or Unicode-capable everywhere (and this constant
-#: deleted) is a decision about the data model, not a tidy-up to fold into a
-#: wiring change.  Kept here, unused, so the question has a location.
-_SAFE_REGION_LABEL_RE = re.compile(r"^[A-Za-z0-9._\-]{1,64}$")
-
 
 # --------------------------------------------------------------------- #
 #  Issues                                                                #
