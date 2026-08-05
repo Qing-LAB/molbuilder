@@ -1736,3 +1736,68 @@ class TestLoadEndpoint:
         assert r.status_code == 400
         body = r.get_json()
         assert body["kind"] == "malformed"
+
+
+class TestModeAnimationControls:
+    """The two controls the mode viewer grew when it was rebuilt.
+
+    Both are the TAB's, not the module's: VibrationView draws no controls at all
+    (vibrationview.md § 5.4), holds no frequency and no physical constant
+    (§ 12.2), and produces bytes without deciding where they go (§ 12).
+    """
+
+    def test_the_partial_offers_both_ways_of_asking_how_big(self, web_client):
+        """§ 12.2: display is a drawing choice, physical is a quantity.
+
+        Two pairings, and the control has to make them exclusive — there is no
+        slider for a physical amplitude because there is nothing to slide: the
+        size follows from the mode's own frequency.
+        """
+        partial = web_client.get("/partials/spectra-inspector").data.decode()
+        assert 'id="anim-amplitude-mode"' in partial
+        assert 'value="zero-point"' in partial
+        assert 'value="thermal"' in partial
+        # thermal is the only one that takes a temperature, so its box starts hidden
+        assert 'id="anim-temperature"' in partial
+        assert 'id="anim-temperature-row"' in partial
+        assert "hidden" in partial.split('id="anim-temperature-row"')[1][:80]
+
+    def test_the_partial_offers_the_three_export_formats(self, web_client):
+        """§ 12.1: they are not interchangeable, so the user picks."""
+        partial = web_client.get("/partials/spectra-inspector").data.decode()
+        for value in ('value="png-zip"', 'value="webm"', 'value="gif"'):
+            assert value in partial, value
+        assert 'id="vib-export-width"' in partial
+        assert 'id="vib-export-background"' in partial
+        assert 'value="transparent"' in partial
+        assert 'id="vib-export-cycles"' in partial
+        # a long export must be stoppable (§ 12)
+        assert 'id="vib-export-cancel"' in partial
+
+    def test_the_physics_lives_in_the_tab_not_the_viewer(self, web_client):
+        """§ 12.2: "both are computed by the TAB… the physics of how big a
+        vibration is belongs with the spectrum, not with the viewer".
+
+        The module contains no frequency, no temperature and no physical
+        constant; this is the file that does.
+        """
+        core = web_client.get("/static/lib/spectra/core.js").data.decode()
+        assert "ZERO_POINT_Q" in core
+        assert "CM1_IN_KELVIN" in core
+        assert "Math.tanh" in core, "the thermal form needs coth"
+
+        for name in ("_maths.js", "index.js"):
+            js = web_client.get("/static/lib/vibrationview/" + name).data.decode()
+            for forbidden in ("frequency", "kelvin", "Kelvin", "tanh"):
+                assert forbidden not in js, (
+                    f"{name} names {forbidden!r}: the viewer holds no physics"
+                )
+
+    def test_the_export_records_the_amplitude_with_its_normalization(self, web_client):
+        """§ 12.2: the amplitude is meaningless without the normalization beside
+        it — the two pairings do not share a unit, so either number alone invites
+        the wrong caption."""
+        core = web_client.get("/static/lib/spectra/core.js").data.decode()
+        assert "out.meta.normalization" in core, (
+            "what is reported after an export must name the normalization"
+        )

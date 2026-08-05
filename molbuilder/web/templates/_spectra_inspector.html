@@ -172,8 +172,39 @@
           <span id="viewer-status" class="status muted"></span>
         </header>
         <div class="viewer-controls">
+          {#- HOW BIG the motion is, which is two different questions.
+
+              DISPLAY exaggerates it so the eye can follow: real vibrational
+              amplitudes are small, and every tool that draws them -- Jmol,
+              Avogadro, Gaussian -- exaggerates the same way.  The slider is the
+              size, in angstrom, of the largest-moving atom's swing.
+
+              PHYSICAL draws how far the atoms actually move.  There is no slider
+              for it because there is nothing to choose: the size follows from the
+              mode's own frequency.  Zero-point is the T = 0 quantum floor;
+              thermal adds the population of higher states at a temperature you
+              give, and reduces to zero-point as that goes to zero.
+
+              The two are not interchangeable and the export records which was
+              used, because they do not even share a unit
+              (docs/web/vibrationview.md 12.2). -#}
           <label class="inline-label">
             <span>Amplitude</span>
+            <select id="anim-amplitude-mode">
+              <option value="display" selected>exaggerated</option>
+              <option value="zero-point">physical, zero-point</option>
+              <option value="thermal">physical, thermal</option>
+            </select>
+          </label>
+          <label class="inline-label" id="anim-temperature-row" hidden>
+            <span>Temperature</span>
+            <input id="anim-temperature" type="number" min="1" max="2000"
+                   step="1" value="298" style="width:5rem">
+            <span class="unit">K</span>
+          </label>
+          <span id="anim-physical-val" class="status muted" hidden></span>
+          <label class="inline-label" id="anim-amplitude-row">
+            <span>Size</span>
             {#- 0.05-3.0 Å range: 3.0 Å is well past any physical
                 thermal RMS (typically <0.05 Å) but visually useful
                 for cartoon-grade vibrational displacement,
@@ -204,14 +235,54 @@
         <div id="mode-viewer" class="mode-viewer"
              aria-label="3D structure with vibrational mode animation">
         </div>
+        {#- Getting the animation out.  The three formats are not
+            interchangeable: GIF goes anywhere and cannot hold either a smooth
+            gradient or a soft transparent edge; WebM is a video; the PNG
+            sequence is lossless at any size and is what an encoder wants as
+            input, which is why it carries a manifest saying what it is and the
+            ffmpeg line that turns it into whatever a journal asked for. -#}
+        <div class="viewer-controls" id="vib-export-row">
+          <label class="inline-label">
+            <span>Export</span>
+            <select id="vib-export-format">
+              <option value="png-zip" selected>PNG frames (.zip)</option>
+              <option value="webm">WebM video</option>
+              <option value="gif">GIF</option>
+            </select>
+          </label>
+          <label class="inline-label">
+            <span>Size</span>
+            <input id="vib-export-width" type="number" min="200" max="4000"
+                   step="20" value="1600" style="width:5.5rem">
+            <span class="unit">×</span>
+            <input id="vib-export-height" type="number" min="200" max="4000"
+                   step="20" value="1200" style="width:5.5rem">
+          </label>
+          <label class="inline-label">
+            <span>Background</span>
+            <select id="vib-export-background">
+              <option value="" selected>as shown</option>
+              <option value="#ffffff">white</option>
+              <option value="transparent">transparent</option>
+            </select>
+          </label>
+          <label class="inline-label">
+            <span>Cycles</span>
+            <input id="vib-export-cycles" type="number" min="1" max="20"
+                   step="1" value="1" style="width:4rem">
+          </label>
+          <button id="vib-export-btn" type="button">Save animation</button>
+          <button id="vib-export-cancel" type="button" hidden>Cancel</button>
+          <span id="vib-export-status" class="status muted"></span>
+        </div>
         <p class="viewer-hint hint">
-          The mode <em>shape</em> (which atoms move, in what direction,
-          relative amplitudes) is faithful from the diagonalisation.
-          The <em>animation amplitude</em> is a visualisation knob,
-          not a physical quantity -- thermal RMS amplitudes are
-          typically &lt;0.05 Å and too small to see, so this slider
-          exaggerates the motion the way Gaussian / Jmol / Avogadro
-          do.  Fixed atoms (greyed out) stay still.
+          The mode <em>shape</em> -- which atoms move, in what direction, and how
+          far relative to each other -- is faithful from the diagonalisation.
+          How <em>big</em> the motion is drawn is the Amplitude control above:
+          <em>exaggerated</em> is a visualisation choice, because real amplitudes
+          are typically well under 0.1 Å and hard to see; <em>physical</em> draws
+          how far the atoms actually move, which follows from the mode's own
+          frequency and needs no slider.  Fixed atoms are greyed and stay still.
         </p>
       </div>
 

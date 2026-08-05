@@ -229,6 +229,9 @@
         vibMounting:    false,   // one build per mount, not one per mode click
         vibStructure:   null,    // which structure the viewer holds (§ 5.1)
         animCycleSec:   1.0,     // one oscillation per second
+        animAmplitudeMode: "display",   // or "zero-point" / "thermal" (§ 12.2)
+        animTemperature:   298,         // K, for the thermal pairing
+        exporting:      null,    // the AbortController of a running export
     };
 
     // Backward-compat aliases.  ~3000 lines of existing render +
@@ -2089,6 +2092,56 @@
     // also ships eigenvector_canonical with the mass-weighted unit
     // norm Σ_k m_k|L_k|² = 1.
 
+    /* ── How big a vibration actually is (vibrationview.md § 12.2) ──────────
+     *
+     * The eigenvector fixes the SHAPE of the motion and not its size: its overall
+     * scale is arbitrary until something fixes it. Two things can:
+     *
+     *   DISPLAY   the largest-moving atom swings by whatever the slider says.
+     *             A drawing choice, using the display-normalised eigenvector
+     *             (max|L| = 1, dimensionless), so the amplitude is in angstrom.
+     *
+     *   PHYSICAL  the atoms swing by as much as they do. The size comes from the
+     *             mode's own frequency, using the mass-weighted eigenvector
+     *             (Σ mᵢ|Lᵢ|² = 1, so L is in 1/√mass) — and the amplitude is then
+     *             in √amu·Å, which is why the two can never share a slider.
+     *
+     *         zero-point   Q = √(ħ / 2ω)
+     *         thermal      Q = √(ħ / 2ω · coth(ħω / 2k_BT))
+     *
+     *     The thermal form reduces to the zero-point one as T → 0, which is the
+     *     check that they are one expression and not two.
+     *
+     * THIS IS THE TAB'S ARITHMETIC, not the viewer's. VibrationView holds no
+     * frequency, no temperature and no physical constant (§ 12.2); it is handed a
+     * displacement array and a number and animates their product.
+     */
+
+    // Q for the zero-point RMS, in √amu·Å, from a wavenumber in cm⁻¹:
+    //     √(ħ / 4πcν̃) expressed in those units. At 1000 cm⁻¹ this is 0.1298,
+    //     so a mode entirely on one hydrogen swings 0.13 Å — the textbook figure.
+    const ZERO_POINT_Q = 4.105804;
+    // ħω / k_B per cm⁻¹, in kelvin: the temperature at which a mode's quantum
+    // is comparable to kT.
+    const CM1_IN_KELVIN = 1.438777;
+
+    function _physicalAmplitude(waveNumberCm1, mode, temperatureK) {
+        const nu = Math.abs(Number(waveNumberCm1));
+        if (!isFinite(nu) || nu <= 0) return null;   // an imaginary or zero mode
+        let q = ZERO_POINT_Q / Math.sqrt(nu);
+        if (mode === "thermal") {
+            const t = Number(temperatureK);
+            if (isFinite(t) && t > 0) {
+                const x = CM1_IN_KELVIN * nu / (2 * t);
+                // coth(x); at large x this is 1 and the mode is in its ground
+                // state, which is why a stiff mode at room temperature comes back
+                // barely different from zero-point.
+                q *= Math.sqrt(1 / Math.tanh(x));
+            }
+        }
+        return q;
+    }
+
     /* THE ONE CUT (vibrationview.md § 11).
      *
      * A spectra result carries far more than an animation needs, and the three
@@ -2131,16 +2184,35 @@
         if (!free && mode.eigenvector_display.length !== eq.elements.length) return null;
 
         const hz = Number(mode.frequency_cm1);
+
+        /* WHICH PAIRING (§ 12.2). The array and the amplitude go together: a
+         * display eigenvector with an amplitude in angstrom, or a canonical one
+         * with an amplitude in √amu·Å. Crossing them is the correctness bug the
+         * backend's own schema history records — v1 shipped one field used for
+         * both, and splitting it is why there are two. */
+        const wantPhysical = state.animAmplitudeMode !== "display";
+        const physical = wantPhysical
+            ? _physicalAmplitude(hz, state.animAmplitudeMode, state.animTemperature)
+            : null;
+        const usePhysical = physical !== null
+            && Array.isArray(mode.eigenvector_canonical);
+
         return {
+            amplitude: usePhysical ? physical : state.animAmplitude,
+            norm:      usePhysical
+                ? (state.animAmplitudeMode === "thermal"
+                    ? "physical, thermal at " + state.animTemperature + " K"
+                    : "physical, zero-point")
+                : "display",
             structure: {
                 elements:  eq.elements.slice(),
                 positions: eq.positions_ang.map(row => row.slice()),
             },
             mode: {
                 index:         mode.index_1based,
-                displacements: mode.eigenvector_display,
+                displacements: usePhysical ? mode.eigenvector_canonical
+                                           : mode.eigenvector_display,
                 basis:         free,
-                norm:          "display",
                 // TEXT, not a number (§ 12.3): the sign carries meaning -- a
                 // negative frequency is a saddle point, not a small number -- and
                 // deciding that is spectroscopy, not drawing.
@@ -2167,6 +2239,13 @@
         }
         els.modeViewerWrap.hidden = false;
         setStatus(els.viewerStatus, inputs.mode.label, "muted");
+        if (els.animPhysicalVal) {
+            // The largest per-atom swing this pairing produces, which is the
+            // number that answers "how far does it actually move".
+            const biggest = _largestSwing(inputs);
+            els.animPhysicalVal.textContent = inputs.norm === "display"
+                ? "" : "≤ " + biggest.toFixed(3) + " Å · " + inputs.norm;
+        }
         _showMode(inputs);
     }
 
@@ -2219,9 +2298,93 @@
             state.vib.setStructure(inputs.structure);
             state.vibStructure = key;
         }
-        state.vib.showMode(inputs.mode);
+        /* The amplitude is set BEFORE the mode, and it belongs to the pairing the
+         * cut chose: a display eigenvector wants angstrom, a canonical one wants
+         * √amu·Å (§ 12.2).  Amplitude has one home on the handle, so the tab
+         * decides the number and the viewer just multiplies. */
+        state.vib.setAmplitude(inputs.amplitude);
+        state.vib.showMode(Object.assign({ norm: inputs.norm }, inputs.mode));
         state.vib.play();
         if (els.animToggle) els.animToggle.textContent = "Pause";
+    }
+
+    /* How far the furthest atom gets, in angstrom, for whichever pairing is in
+     * use — amplitude times the biggest row of the eigenvector.  Reported rather
+     * than assumed, because for a physical pairing the answer depends on the mode
+     * and is usually smaller than people expect. */
+    function _largestSwing(inputs) {
+        let max = 0;
+        for (const row of inputs.mode.displacements) {
+            const m = Math.sqrt(row[0] * row[0] + row[1] * row[1] + row[2] * row[2]);
+            if (m > max) max = m;
+        }
+        return inputs.amplitude * max;
+    }
+
+    /* ── Saving the animation (vibrationview.md § 12) ───────────────────────
+     *
+     * The module produces BYTES; where they go is the page's business, and here
+     * that is a download.  The viewer is asked for a picture of what is on screen
+     * at a size and background the user picked, and for nothing else — the maths,
+     * the amplitude and the rate are whatever the animation is already using, so
+     * the file cannot disagree with the screen.
+     */
+    async function onExportAnimation() {
+        if (!state.vib || state.exporting) return;
+        const controller = new AbortController();
+        state.exporting = controller;
+        if (els.vibExportBtn)    els.vibExportBtn.disabled = true;
+        if (els.vibExportCancel) els.vibExportCancel.hidden = false;
+
+        const px = (el, fallback) => {
+            const v = parseInt(el && el.value, 10);
+            return Number.isFinite(v) && v > 0 ? v : fallback;
+        };
+        try {
+            const out = await state.vib.exportAnimation({
+                format:     (els.vibExportFormat && els.vibExportFormat.value) || "png-zip",
+                width:      px(els.vibExportWidth, 1600),
+                height:     px(els.vibExportHeight, 1200),
+                background: (els.vibExportBackground && els.vibExportBackground.value) || undefined,
+                cycles:     px(els.vibExportCycles, 1),
+                signal:     controller.signal,
+                onProgress: (fraction, label) => {
+                    setStatus(els.vibExportStatus,
+                              Math.round(fraction * 100) + "% — " + label, "muted");
+                },
+            });
+            _download(out.blob, out.filename);
+            // Say what was actually saved. The amplitude means nothing without
+            // the normalization beside it (§ 12.2), so both are shown or neither.
+            setStatus(els.vibExportStatus,
+                      "saved " + out.filename + " — " + out.meta.frames + " frames, "
+                      + out.meta.normalization, "ok");
+        } catch (e) {
+            setStatus(els.vibExportStatus,
+                      (e && e.message) || "the export failed", "error");
+        } finally {
+            state.exporting = null;
+            if (els.vibExportBtn)    els.vibExportBtn.disabled = false;
+            if (els.vibExportCancel) els.vibExportCancel.hidden = true;
+        }
+    }
+
+    function onExportCancel() {
+        if (state.exporting) state.exporting.abort();
+    }
+
+    /* The page owns the destination, so the page makes the link. The module never
+     * touches one: it hands back bytes and a suggested name (§ 12). */
+    function _download(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Revoke on the next turn: revoking synchronously can beat the click.
+        setTimeout(() => URL.revokeObjectURL(url), 0);
     }
 
     function _stopAnimation() {
@@ -2240,6 +2403,28 @@
         // reads on its next frame, so dragging never stops the animation.
         if (state.vib) { try { state.vib.setAmplitude(v); } catch (_) {} }
     }
+    /* Switching between the two ways of asking "how big" (§ 12.2).
+     *
+     * The slider disappears for the physical pairings, because there is nothing
+     * to slide: the size follows from the frequency.  What replaces it is a
+     * readout of what that size came out as, which is the number a caption would
+     * have to quote. */
+    function onAmplitudeModeChange() {
+        state.animAmplitudeMode = els.animAmplitudeMode.value || "display";
+        const physical = state.animAmplitudeMode !== "display";
+        if (els.animAmplitudeRow)  els.animAmplitudeRow.hidden  = physical;
+        if (els.animTemperatureRow)
+            els.animTemperatureRow.hidden = state.animAmplitudeMode !== "thermal";
+        if (els.animPhysicalVal)   els.animPhysicalVal.hidden   = !physical;
+        renderModeViewer();
+    }
+
+    function onTemperatureChange() {
+        const t = parseFloat(els.animTemperature.value);
+        if (Number.isFinite(t) && t > 0) state.animTemperature = t;
+        renderModeViewer();
+    }
+
     /* Speed sets how long ONE OSCILLATION takes, not a frame rate: a cycle is a
      * second by default, so 2x is half a second (vibrationview.md § 10.1).
      * Smoothness is a separate knob the viewer owns, which is why asking for a
@@ -2629,6 +2814,19 @@
         els.animSpeed         = $("anim-speed");
         els.animSpeedVal      = $("anim-speed-val");
         els.animToggle        = $("anim-toggle");
+        els.animAmplitudeMode  = $("anim-amplitude-mode");
+        els.animAmplitudeRow   = $("anim-amplitude-row");
+        els.animTemperature    = $("anim-temperature");
+        els.animTemperatureRow = $("anim-temperature-row");
+        els.animPhysicalVal    = $("anim-physical-val");
+        els.vibExportFormat    = $("vib-export-format");
+        els.vibExportWidth     = $("vib-export-width");
+        els.vibExportHeight    = $("vib-export-height");
+        els.vibExportBackground = $("vib-export-background");
+        els.vibExportCycles    = $("vib-export-cycles");
+        els.vibExportBtn       = $("vib-export-btn");
+        els.vibExportCancel    = $("vib-export-cancel");
+        els.vibExportStatus    = $("vib-export-status");
 
         // --- Generate-side wiring (only present on /spectra) -------
         //
@@ -2706,6 +2904,10 @@
                 onAnimSpeedChange();
             }
             _on(els.animToggle, "click", onAnimToggle);
+            _on(els.animAmplitudeMode, "change", onAmplitudeModeChange);
+            _on(els.animTemperature,   "input",  onTemperatureChange);
+            _on(els.vibExportBtn,      "click",  onExportAnimation);
+            _on(els.vibExportCancel,   "click",  onExportCancel);
 
             // Mode-table interactions.
             _on(els.modesTheadRow, "click", onTableHeaderClick);
