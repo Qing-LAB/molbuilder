@@ -183,6 +183,38 @@ def total_electrons(struct: Structure, charge: int = 0) -> int:
     return total - int(charge)
 
 
+def atomic_mass(element: str) -> float:
+    """Standard atomic weight of ``element``, in amu.
+
+    The same lookup :func:`total_electrons` does for atomic number, for
+    the other number every engine needs: ASE ships the IUPAC standard
+    atomic weights, so this is a name for a table rather than a copy of
+    one.  Typing 118 masses into this file would be a second source of
+    truth that no test would ever notice going stale.
+
+    WHO NEEDS IT.  Any mass-weighted quantity: which atoms carry a
+    vibrational mode (``spectra.results.motion_share_by_element``),
+    reduced masses, centre of mass.  Mass is a chemistry fact and lives
+    beside the other chemistry facts, not in the module that happens to
+    want it first.
+
+    NOT the isotope-resolved mass -- the standard weight is the natural
+    isotopic average, which is what a Hessian is built with unless a run
+    deliberately substitutes (deuteration), and PySCF's own default
+    table is the same convention.  Raises KeyError on an unknown symbol,
+    with the same message shape as :func:`total_electrons`.
+    """
+    from ase.data import atomic_numbers as _Z, atomic_masses as _M
+    try:
+        return float(_M[_Z[str(element).capitalize()]])
+    except KeyError:
+        raise KeyError(
+            f"unknown element symbol {element!r} -- check the structure "
+            f"file (typos, lowercase letters, missing-element-column "
+            f"fallback failures)"
+        )
+
+
 def check_spin_charge_parity(struct: Structure, charge: int, spin: int
                               ) -> Optional[str]:
     """Return a human-readable error string when the (charge, spin)

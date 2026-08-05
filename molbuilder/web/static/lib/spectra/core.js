@@ -2128,6 +2128,13 @@
     // is comparable to kT.
     const CM1_IN_KELVIN = 1.438777;
 
+    /* Above this, calling a nearest neighbour a "bond" would be a claim rather
+     * than a label, so the readout says "nearest contact" instead.  Generous on
+     * purpose: it has to cover the long ones this program actually builds, Au–Au
+     * at 2.88 Å and Au–S near 2.4 Å, and it decides one word of wording -- not
+     * chemistry, not what is drawn. */
+    const BOND_LIKE_ANG = 3.0;
+
     function _physicalAmplitude(waveNumberCm1, mode, temperatureK) {
         const nu = Math.abs(Number(waveNumberCm1));
         if (!isFinite(nu) || nu <= 0) return null;   // an imaginary or zero mode
@@ -2233,6 +2240,16 @@
                     ? "physical, thermal at " + state.animTemperature + " K"
                     : "physical, zero-point")
                 : "display",
+            /* THE SAME FACT IN THE OTHER REGISTER.  `norm` is a record: it is
+             * stamped into exported files, so it is terse and stable and must not
+             * be reworded for looks.  This is what a person reads on screen, and
+             * "display" is not English.  Built here, beside its twin, because two
+             * spellings of one fact built in two places drift apart. */
+            saidPlainly: usePhysical
+                ? (state.animAmplitudeMode === "thermal"
+                    ? "real size at " + state.animTemperature + " K"
+                    : "real size, at absolute zero")
+                : "drawn exaggerated",
             structure: {
                 elements:  eq.elements.slice(),
                 positions: eq.positions_ang.map(row => row.slice()),
@@ -2242,6 +2259,12 @@
                 displacements: usePhysical ? mode.eigenvector_canonical
                                            : mode.eigenvector_display,
                 basis:         free,
+                /* WHICH ATOMS THE MODE BELONGS TO -- {"C": 0.914, "H": 0.086}.
+                 * Computed by the server at /api/spectra/load, because it needs
+                 * atomic masses and neither this page nor the .spectra.json has
+                 * any.  Absent on a result the server could not weigh (an element
+                 * ASE does not know), so every reader treats it as optional. */
+                share:         mode.motion_share_by_element || null,
                 // TEXT, not a number (§ 12.3): the sign carries meaning -- a
                 // negative frequency is a saddle point, not a small number -- and
                 // deciding that is spectroscopy, not drawing.
@@ -2281,9 +2304,7 @@
          * same sentence twice, one directly above the other.  The status line
          * carries what the caption cannot: how big the motion actually is, which
          * is the number a caption in a paper would have to quote. */
-        setStatus(els.viewerStatus,
-                  "≤ " + _largestSwing(inputs).toFixed(3) + " Å · " + inputs.norm,
-                  "muted");
+        _reportSwing(inputs);
         _showMode(inputs);
     }
 
@@ -2381,17 +2402,60 @@
         els.animToggle.textContent = state.animPaused ? "Play" : "Pause";
     }
 
-    /* How far the furthest atom gets, in angstrom, for whichever pairing is in
-     * use — amplitude times the biggest row of the eigenvector.  Reported rather
-     * than assumed, because for a physical pairing the answer depends on the mode
-     * and is usually smaller than people expect. */
-    function _largestSwing(inputs) {
-        let max = 0;
-        for (const row of inputs.mode.displacements) {
-            const m = Math.sqrt(row[0] * row[0] + row[1] * row[1] + row[2] * row[2]);
-            if (m > max) max = m;
+    /* HOW BIG THE MOTION IS, said in a way that means something.
+     *
+     * "0.173 Å" is a number, not a fact anyone can picture — is that a tremble or
+     * is the molecule coming apart?  What answers it is the yardstick every
+     * chemist already carries: a bond.  A swing of 0.17 Å is a tenth of a C–C
+     * bond, and stating it that way is the difference between a readout and a
+     * measurement.
+     *
+     * So this finds the atom that moves most, how far it goes, and the distance
+     * to its own nearest neighbour — which for any atom in a molecule is the bond
+     * it is attached by.  The caller reads the swing as a fraction of that.
+     *
+     * The furthest atom, not an average, because it bounds the picture: every
+     * other atom in the mode moves less than this.  The amplitude multiplies the
+     * eigenvector row, so the pairing in force (display or canonical, § 12.2)
+     * carries through without this needing to know which one it was.
+     */
+    function _swingReport(inputs) {
+        const rows  = inputs.mode.displacements;
+        const basis = Array.isArray(inputs.mode.basis) ? inputs.mode.basis : null;
+        const out   = { swing: 0, element: null, bond: null, neighbour: null };
+
+        let worst = -1, max = 0;
+        for (let k = 0; k < rows.length; k++) {
+            const r = rows[k];
+            const m = Math.sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+            if (m > max) { max = m; worst = k; }
         }
-        return inputs.amplitude * max;
+        out.swing = inputs.amplitude * max;
+        if (worst < 0) return out;
+
+        // A row is indexed by MOVING atom; the basis names which structure atom
+        // that is (vibrationview _maths.scatter).  Without a basis every atom
+        // moves and the two indices are the same.
+        const at  = basis ? Math.floor(Number(basis[worst])) : worst;
+        const pos = inputs.structure.positions;
+        const el  = inputs.structure.elements;
+        if (!Array.isArray(pos[at])) return out;
+        out.element = el[at] || null;
+
+        let near = Infinity, nearAt = -1;
+        for (let j = 0; j < pos.length; j++) {
+            if (j === at || !Array.isArray(pos[j])) continue;
+            const dx = pos[j][0] - pos[at][0];
+            const dy = pos[j][1] - pos[at][1];
+            const dz = pos[j][2] - pos[at][2];
+            const d  = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (d < near) { near = d; nearAt = j; }
+        }
+        if (nearAt >= 0 && isFinite(near) && near > 0) {
+            out.bond      = near;
+            out.neighbour = el[nearAt] || null;
+        }
+        return out;
     }
 
     /* Plotly's `responsive: true` listens to the WINDOW, and the window is not
@@ -2495,6 +2559,106 @@
         setTimeout(() => URL.revokeObjectURL(url), 0);
     }
 
+    /* "91% C, 9% H" from {"C": 0.914, "H": 0.086}.
+     *
+     * BIGGEST FIRST, sorted here rather than trusted from the wire: the server
+     * builds the object in that order, but JSON serialisation sorts keys
+     * alphabetically, so C would lead H whatever the physics said.
+     *
+     * Anything under 1% is dropped rather than printed as "0%", which is what
+     * rounding would make of the sulphur that barely moves in a C–H stretch.  A
+     * dropped element is a truer statement than a zero: it says the mode is not
+     * about that atom, which is exactly what a 0.2% share means.
+     */
+    function _sayComposition(share) {
+        if (!share || typeof share !== "object") return "";
+        const parts = Object.keys(share)
+            .map(el => ({ el: el, pct: Math.round(100 * Number(share[el])) }))
+            .filter(p => p.pct >= 1)
+            .sort((a, b) => b.pct - a.pct)
+            .map(p => p.pct + "% " + p.el);
+        return parts.join(", ");
+    }
+
+    /* THE LINE UNDER THE VIEWER, in words rather than symbols.
+     *
+     * It read "≤ 0.050 Å · display", then "max ±0.050 Å", and both were unreadable
+     * for the same reason: they gave a quantity without saying what it measured.
+     * Less than WHAT?  The maximum over WHAT?  A reader who has to ask cannot use
+     * the number, and a number nobody can use is decoration.
+     *
+     * So the line is a sentence now, and each clause answers one of those
+     * questions (spectra.md § 4.2):
+     *
+     *   the motion is 91% C, 9% H · nothing moves further than 0.173 Å from
+     *   rest, 16% of that atom's bond · drawn exaggerated
+     *   └── whose mode ──────────┘   └──── how big, against a yardstick ───┘
+     *                                                        └ is it real? ┘
+     *
+     * WHOSE MODE, FIRST.  A reader wants to know they are looking at a ring
+     * stretch before they are told how far it swings.
+     *
+     * A BOUND, NOT A SUBJECT.  The size clause says "nothing moves further than"
+     * rather than naming the busiest atom, and that wording is deliberate: the
+     * furthest-moving atom is a hydrogen in almost every mode (32 of the 36 in
+     * the BDT result this was read against), because a light atom travels
+     * furthest for the same energy.  "H moves 0.17 Å" therefore reads as a claim
+     * that the mode is a hydrogen motion -- which mode 30 disproves, being 91%
+     * carbon while its hydrogens move furthest.  What the number honestly is, is
+     * a ceiling: every atom in the picture stays inside it.
+     *
+     * FROM REST: to one extreme, not the sweep between them, so an atom covers
+     * twice this between extremes.  THE YARDSTICK: a percentage of that atom's
+     * own bond, because 0.17 Å is a number and "a sixth of a bond" is a picture
+     * -- its own bond, since a C–H bond is short and an Au–Au contact is long.
+     * IS IT REAL: exaggerated is a drawing convention and the two physical
+     * settings are measurements, which is the one thing a reader must not get
+     * wrong about a number quoted from this panel.
+     */
+    function _reportSwing(inputs) {
+        if (!els.viewerStatus) return;
+        const r = _swingReport(inputs);
+
+        let text = "";
+        let why  = "";
+
+        /* WHAT THE MODE IS, before how big it is drawn -- and the order is the
+         * point.  A reader wants to know they are looking at a ring stretch
+         * before they are told how far it swings. */
+        const composition = _sayComposition(inputs.mode.share);
+        if (composition) {
+            text += "the motion is " + composition + " · ";
+            why  += "Each element's share of the mode: its part of the "
+                  + "mass-weighted motion (mᵢ|Lᵢ|² over the total), which is how "
+                  + "a mode is assigned to the atoms it belongs to. ";
+        }
+
+        text += "nothing moves further than " + r.swing.toFixed(3)
+              + " Å from rest";
+        why  += "The distance is a ceiling over every atom: the furthest-moving "
+              + "one gets this far from its rest position and all the others move "
+              + "less. It is measured to one extreme of the swing, so an atom "
+              + "covers twice this between extremes.";
+
+        if (r.bond) {
+            const share = 100 * r.swing / r.bond;
+            text += ", " + (share < 1 ? "<1" : Math.round(share))
+                  + "% of that atom's "
+                  + (r.bond <= BOND_LIKE_ANG ? "bond" : "nearest contact");
+            why  += " The percentage compares it with that atom's own "
+                  + "nearest-neighbour distance — the bond it hangs from — "
+                  + "because a displacement means nothing except beside a bond "
+                  + "length. The atom is deliberately not named: it is usually a "
+                  + "hydrogen whatever the mode is, since the lightest atom "
+                  + "travels furthest for a given energy, so naming it would "
+                  + "suggest the mode belongs to it when it does not.";
+        }
+
+        text += " · " + inputs.saidPlainly;
+        setStatus(els.viewerStatus, text, "muted");
+        els.viewerStatus.title = why;
+    }
+
     function _stopAnimation() {
         // Not the user's doing -- there is simply nothing to animate -- so the
         // Pause INTENT is left alone and the motion resumes when a mode returns.
@@ -2538,9 +2702,7 @@
         const inputs = _animationInputs();
         if (!inputs.ready || !state.vib) return;
         state.vib.setAmplitude(inputs.amplitude);
-        setStatus(els.viewerStatus,
-                  "≤ " + _largestSwing(inputs).toFixed(3) + " Å · " + inputs.norm,
-                  "muted");
+        _reportSwing(inputs);
     }
 
     /* Speed sets how long ONE OSCILLATION takes, not a frame rate: a cycle is a

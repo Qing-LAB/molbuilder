@@ -76,13 +76,220 @@ in 3D**: the atoms oscillate along the mode's displacement vectors so you can se
 which bonds stretch or bend. This 3D box is **not** MolView — it's the concealed
 **VibrationView** module ([`vibrationview.md`](?doc=web/vibrationview.md)), a
 self-contained viewer built for exactly this one job (it owns the oscillation loop
-and greys out frozen atoms). Two sliders, **amplitude** and **speed**, update the
-running animation live.
+and greys out frozen atoms).
 
 > Two different 3D viewers live on the Spectra tab and it's easy to conflate
 > them: the **inspect card at the top** is a read-only *MolView* showing the
 > static input structure (§5); the **mode box** is *VibrationView* showing an
 > animated eigenvector. Different modules, different jobs.
+
+### 4.1 How big to draw the motion — and why the choice is not cosmetic
+
+The eigenvector fixes the **shape** of the motion: which atoms move, in which
+direction, and how far *relative to each other*. It does not fix the **size**.
+An eigenvector's overall scale is arbitrary until something sets it, so the
+animation is always a shape multiplied by a number — and where that number comes
+from is the whole of this control.
+
+```
+   what the diagonalisation gives        what you choose
+   ─────────────────────────────         ───────────────
+   direction, and relative size     ×    absolute size    =   the animation
+```
+
+**Three answers, and only two of them are physics.**
+
+#### exaggerated — a drawing convention
+
+The eigenvector is rescaled so the largest per-atom vector has length 1
+(`eigenvector_display`, dimensionless), and the slider states how many ångström
+that largest swing is. The default **0.15 Å** is roughly a tenth of a bond
+length: visible without looking dislocated.
+
+This is a **visualisation choice and not a result.** Jmol, Avogadro and GaussView
+all exaggerate mode animations, for the reason given below — genuine amplitudes
+are too small to read on screen. It is the default here because the first
+question a user asks of a mode is "which atoms move", and that is a question
+about shape.
+
+#### physical, zero-point — the molecule at absolute zero
+
+A quantum harmonic oscillator cannot be at rest. Localising a particle in a
+potential well costs kinetic energy, so the lowest state of every mode sits
+½ħω above the minimum, and the nuclei retain a spread even at T = 0. That spread
+is the **zero-point amplitude**:
+
+```
+    ⟨Q²⟩ = ħ / 2ω           Q_rms = √( ħ / 2ω )
+```
+
+where **Q** is the mass-weighted normal coordinate. In the units a spectroscopist
+works in — a wavenumber ν̃ in cm⁻¹, since ω = 2πcν̃ — this evaluates to
+
+```
+    Q_rms = 4.106 / √( ν̃ [cm⁻¹] )        in √amu · Å
+```
+
+and the Cartesian displacement of atom *i* is `Q_rms × L_i`, with **L** the
+mass-weighted eigenvector normalised so `Σᵢ mᵢ|Lᵢ|² = 1` (`eigenvector_canonical`).
+The mass carried in that normalisation is what makes the amplitude **atom-specific**:
+a heavier nucleus in the same mode moves as 1/√m.
+
+Two consequences, both visible in the animation:
+
+| ν̃ | H (1 amu) | C (12) | Au (197) |
+|---|---|---|---|
+| 100 cm⁻¹ — a torsion | 0.41 Å | 0.12 Å | 0.029 Å |
+| 1000 cm⁻¹ — a ring breath | 0.13 Å | 0.037 Å | 0.0093 Å |
+| 3000 cm⁻¹ — a C–H stretch | 0.075 Å | 0.022 Å | 0.0053 Å |
+
+*(the swing of an atom carrying the entire mode; a real mode distributes it, so
+per-atom values are smaller)*
+
+**Stiffer bonds move less** — amplitude falls as 1/√ν̃, so a C–H stretch is half a
+torsion. **Heavier atoms move less** — as 1/√m, so gold barely moves in a mode a
+hydrogen dominates. Both are why an honest animation of a stretching mode looks
+almost still, and why the exaggerated default exists.
+
+#### physical, thermal — the same thing at a temperature
+
+Above absolute zero the excited vibrational states are populated too, and the
+thermal average over them raises the mean-square displacement by a factor:
+
+```
+    ⟨Q²⟩_T = ( ħ / 2ω ) · coth( ħω / 2k_BT )
+```
+
+The amplitude therefore grows by **√coth(x)**, `x = ħω / 2k_BT`. As T → 0,
+coth → 1 and this becomes the zero-point expression exactly — the two are one
+formula, not two, which is the check that the limit is right.
+
+**The useful question is which modes it changes.** One wavenumber is worth
+**1.44 K**, so room temperature is only `k_BT ≈ 207 cm⁻¹`. A mode much stiffer
+than that has ħω ≫ k_BT, sits in its ground state whatever the temperature, and
+is said to be **frozen out**. At 298 K, as a multiple of the zero-point swing:
+
+| ν̃ (cm⁻¹) | 50 | 100 | 300 | 1000 | 3000 |
+|---|---|---|---|---|---|
+| ×  zero-point | 2.9 | 2.1 | 1.27 | 1.01 | 1.00 |
+| at 500 K | 3.7 | 2.7 | 1.57 | 1.06 | 1.00 |
+
+So temperature is worth setting for **soft modes** — torsions, librations,
+metal–ligand bends, lattice modes — and is invisible on a C–H stretch. This is
+the same physics that makes the vibrational heat capacity of a stiff mode
+approach zero: a mode that cannot be thermally excited neither stores energy nor
+moves further.
+
+#### Why the two normalisations must never be crossed
+
+The two physical answers use `eigenvector_canonical`; the exaggerated one uses
+`eigenvector_display`. **They are not in the same units**, and the amplitude that
+pairs with each differs accordingly:
+
+| | eigenvector | its amplitude is in |
+|---|---|---|
+| exaggerated | dimensionless (max = 1) | **Å** |
+| physical | 1/√mass (`Σ mᵢ\|Lᵢ\|² = 1`) | **√amu·Å** |
+
+Each pairing multiplies out to ångström of motion — but only within itself.
+Feeding a display eigenvector into a physical amplitude, or the reverse, produces
+a picture that is wrong **without looking wrong**, which is precisely why the
+backend ships two fields: schema v1 carried one `eigenvector_free` used for both
+animation and Raman projection, and that was recorded as a correctness bug when
+the two uses were separated (see the SCHEMA_VERSION history in
+`molbuilder/spectra/results.py`).
+
+For the same reason an **export records which pairing produced it**
+([`vibrationview.md`](?doc=web/vibrationview.md) § 12.2): the amplitude alone
+does not say what it means, so it travels beside its normalisation and neither is
+written without the other.
+
+#### Where each piece is computed
+
+The physics is the **tab's**, not the viewer's. VibrationView holds no frequency,
+no temperature and no physical constant — it receives a displacement array and a
+number and multiplies them ([`vibrationview.md`](?doc=web/vibrationview.md)
+§ 12.2). `lib/spectra/core.js` turns a mode's wavenumber into the amplitude above
+and chooses the eigenvector that pairs with it.
+
+### 4.2 The sentence under the viewer — which atoms the mode belongs to
+
+Under the 3D box is one line describing what you are watching:
+
+```
+the motion is 91% C, 9% H · nothing moves further than 0.173 Å from rest,
+16% of that atom's bond · drawn exaggerated
+   └── whose mode ──┘        └──── how big, against a yardstick ────┘   └ real? ┘
+```
+
+Each part answers a question a bare number leaves open.
+
+**"the motion is 91% C, 9% H" — whose mode is it.** Each element's share of the
+mode, computed as its part of the mass-weighted motion:
+
+```
+        share of atom i  =   mᵢ|Lᵢ|²  ⁄  Σₖ mₖ|Lₖ|²
+```
+
+This is the **kinetic-energy distribution**, the standard way a mode is assigned
+to the atoms that carry it. For a harmonic mode the ratio is the same at every
+phase of the oscillation, so it is a property of the mode and not of the instant
+you look at it. Either stored eigenvector gives the same answer: the two forms
+differ by one scalar per mode, and a scalar cancels in a ratio.
+
+> **Why mass-weight it at all — the trap this replaced.** The line used to name
+> the atom with the largest displacement. In the benzene-dithiol result that is a
+> hydrogen in **32 of 36 modes**, including the 1648 cm⁻¹ ring stretch, where the
+> hydrogens move 18% further than the carbons (|L| = 1.15 against 0.98) and carry
+> **9%** of the motion. A light atom travels further for the same energy, and
+> hydrogen is the lightest thing in most molecules — so "which atom moves
+> furthest" answers *hydrogen* almost regardless of the mode, which is a true
+> sentence that tells you nothing. Weighting by mass asks the question worth
+> asking, and the answers agree with textbook assignments: 92% H for the C–H
+> stretches at 3175 cm⁻¹, 91% C for the ring stretch, 49% S for the 205 cm⁻¹ mode.
+
+**"nothing moves further than 0.173 Å from rest" — a ceiling, not a subject.**
+Every atom in the picture stays inside it. It is measured to *one extreme* of the
+swing, so an atom covers twice this between extremes. The atom concerned is
+deliberately **not named**, for the reason above.
+
+**"16% of that atom's bond" — the yardstick.** 0.173 Å is a number; "a sixth of a
+bond" is a picture. The comparison is against that atom's own nearest-neighbour
+distance, since a C–H bond is short and an Au–Au contact is long. Beyond 3.0 Å
+the line says *nearest contact* rather than *bond*, because calling it a bond
+would be a claim rather than a label.
+
+**"drawn exaggerated" — is it real.** § 4.1: exaggerated is a drawing convention;
+the two physical settings are measurements. This is the one thing a reader must
+not get wrong about a number quoted from this panel.
+
+#### Where the composition is computed, and why there
+
+**The server**, in `/api/spectra/load` — not the browser, and not the file.
+
+The share needs atomic masses. The `.spectra.json` stores none, and the browser
+has none. The **table already exists**: ASE ships the IUPAC standard atomic
+weights, and `chemistry.py` already reaches into `ase.data` for atomic numbers,
+so `chemistry.atomic_mass` is a *name for that table* rather than a second copy
+of it. Typing 118 masses into this program — in Python or, worse, into
+JavaScript — would have been a second source of truth that no test would notice
+going stale.
+
+It is computed **when a result is opened, not when it is written**:
+
+| | what it costs | what it means for the results already on disk |
+|---|---|---|
+| computed at load *(chosen)* | one pass over each eigenvector | every existing result gains the line the moment it is opened |
+| written into the file | a schema bump | nothing shows until each result is re-run |
+
+`SpectraResults.to_dict()` is the **on-disk format** and round-trips through
+`from_dict`; the share is derived, so it is added to the reply and never to the
+file. A result whose shares cannot be worked out — an element ASE does not know,
+or no stored geometry — is served without the field, and the panel simply drops
+that clause.
+
+The maths lives in `spectra/results.py :: motion_share_by_element`; the sentence
+is assembled in `lib/spectra/core.js :: _reportSwing`.
 
 ## 5. The standalone tab — from a structure to a script
 

@@ -203,6 +203,37 @@ relationship is obvious (`errors_only`, not `errors`).
 **Audit invariant.** Before flagging a field as "duplicate" or "redundant," read every
 consumer *and* the field's git history. A deliberate filtered view is not a duplicate.
 
+### 3.6 A reference table typed in by hand
+
+**Symptom.** A literal table of physical or chemical constants appears in the
+source — atomic masses, atomic numbers, covalent radii, isotope abundances,
+element colours — often in the module that first needed it, and sometimes in
+JavaScript because "the browser has no way to know."
+
+**Why.** The need shows up far from where such data belongs, and typing twenty
+entries is faster than finding out whether something already ships them. It
+almost always *is* shipped: this program depends on ASE, and `ase.data` carries
+masses, atomic numbers, covalent radii and more.
+
+**Fix pattern.** Name the existing table instead of copying it — a one-line
+lookup function in the L1 module that owns the concept (`chemistry.atomic_mass`
+wrapping `ase.data.atomic_masses`), and every caller goes through that name. If
+a browser panel is what needs the number, the server computes the answer and
+sends it; shipping a periodic table into JavaScript is the same mistake with a
+longer commute.
+
+**Precedents.**
+- 2026-08-05 — the vibrational-mode composition ("the motion is 91% C, 9% H")
+  needed atomic masses in the Spectra panel. Added `chemistry.atomic_mass` over
+  `ase.data` and computed the share server-side in `/api/spectra/load`; no table
+  was written. See [`web/spectra.md § 4.2`](?doc=web/spectra.md).
+
+**Audit invariant.** A hand-typed constant table is a second source of truth
+with no test guarding it — a wrong value in a rarely used row is found by a
+user, never by the suite. Before accepting one, check the dependencies already
+installed; before writing one, say in a comment which authority it came from and
+why the installed one would not do.
+
 ## 4. Smoking-gun diagnostics
 
 DevTools one-liners that surface a specific bug class. Each: the one-liner, the normal

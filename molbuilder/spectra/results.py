@@ -411,6 +411,79 @@ class ModeData:
 
 
 # --------------------------------------------------------------------- #
+#  Which atoms a mode belongs to                                        #
+# --------------------------------------------------------------------- #
+
+
+def motion_share_by_element(elements: List[str],
+                            eigenvector: Any,
+                            atom_idxs: Optional[List[int]] = None,
+                            ) -> Dict[str, float]:
+    """Each element's share of a mode's motion, summing to 1.
+
+    WHY THIS EXISTS, in one example.  In mode 30 of the benzene-dithiol
+    result, the hydrogens have the largest displacement vectors -- |L| =
+    1.15 against carbon's 0.98 -- so "which atom moves furthest" answers
+    *hydrogen*.  The mode is a ring stretch: carbon carries 91% of it.
+    Distance alone is the wrong question, because a light atom travels
+    further for the same energy, and hydrogen is the lightest thing in
+    most molecules.  Asking which atoms the mode BELONGS to means
+    weighting by mass.
+
+    WHAT IT COMPUTES.  The kinetic-energy distribution: atom *i*'s share
+    is ``mᵢ|Lᵢ|²`` over the sum across atoms.  For a harmonic mode the
+    ratio is the same at every phase of the oscillation, so it is a
+    property of the mode rather than of the instant you look at it --
+    which is what makes it the standard way modes are assigned.
+
+    EITHER EIGENVECTOR WORKS.  The two stored forms differ by one scalar
+    per mode (§ SCHEMA_VERSION v2: canonical is normalised in the
+    mass-weighted metric, display so the largest component is 1), and a
+    scalar cancels in a ratio.  Pass whichever is in hand.
+
+    ``atom_idxs`` maps eigenvector rows onto ``elements`` when the mode
+    covers only the free atoms -- the free-atom list from the result.
+    Omit it when there is one row per atom.  Shares are returned largest
+    first, and a mode with no motion at all returns ``{}`` rather than
+    dividing by zero.
+    """
+    from ..chemistry import atomic_mass
+
+    rows = np.asarray(eigenvector, dtype=float)
+    if rows.ndim != 2 or rows.shape[1] != 3:
+        raise ValueError(
+            f"motion_share_by_element: eigenvector must be (n_atoms, 3), "
+            f"got {rows.shape}"
+        )
+    if atom_idxs is None:
+        idxs = list(range(rows.shape[0]))
+    else:
+        idxs = [int(i) for i in atom_idxs]
+    if len(idxs) != rows.shape[0]:
+        raise ValueError(
+            f"motion_share_by_element: {rows.shape[0]} eigenvector rows but "
+            f"{len(idxs)} atom indices -- the mode does not match the structure"
+        )
+
+    weight: Dict[str, float] = {}
+    total = 0.0
+    for row, at in zip(rows, idxs):
+        if at < 0 or at >= len(elements):
+            raise ValueError(
+                f"motion_share_by_element: atom index {at} is outside the "
+                f"structure ({len(elements)} atoms)"
+            )
+        el = str(elements[at])
+        w = atomic_mass(el) * float(np.dot(row, row))
+        weight[el] = weight.get(el, 0.0) + w
+        total += w
+    if total <= 0.0:
+        return {}
+    return {el: w / total
+            for el, w in sorted(weight.items(), key=lambda kv: -kv[1])}
+
+
+# --------------------------------------------------------------------- #
 #  Complete results from a Spectra run                                  #
 # --------------------------------------------------------------------- #
 

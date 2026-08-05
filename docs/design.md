@@ -220,6 +220,16 @@ Considered and rejected; do not reintroduce.
 - **Hand-rolled per-endpoint response shapes** for Structure-returning
   endpoints — four drifted (the missing `atoms` key was the costliest); every
   such endpoint uses `_shared.workspace_payload`.
+- **Retyping a table a dependency already ships** — atomic masses, atomic
+  numbers, covalent radii, isotope data. Before writing one, look: this program
+  already depends on ASE, and `ase.data` carries all four. `chemistry.py` names
+  them (`atomic_mass`, and the `atomic_numbers` lookup inside `total_electrons`)
+  rather than copying them, so there is one source of truth and no table that
+  can quietly go stale — a wrong mass on element 34 would be found by a user,
+  never by a test. The pull is real: the vibrational-mode composition
+  (2026-08-05, [`web/spectra.md`](?doc=web/spectra.md) § 4.2) needed masses in a
+  browser panel, and the obvious move was a JavaScript periodic table. The right
+  move was to notice the server already had the answer.
 
 ---
 

@@ -20,6 +20,7 @@ import io
 import json
 
 import numpy as np
+import pytest
 
 from molbuilder.sidecars.spectra import dump_spectra_json
 from molbuilder.spectra import (
@@ -1634,6 +1635,62 @@ class TestLoadEndpoint:
         assert r.status_code == 200, body
         assert body["ok"] is True
         assert body["results"]["n_atoms_total"] == 2
+
+    def test_load_says_which_atoms_each_mode_belongs_to(self, web_client):
+        """The panel describes a mode by the atoms that CARRY it, and working
+        that out needs atomic masses — which the browser does not have and the
+        .spectra.json does not store.  So the server computes it at load.
+
+        The fixture is the trap in miniature: the hydrogen has the larger
+        displacement (1.15 against 0.98) and the carbon owns the mode.  Read
+        by distance alone this is a hydrogen mode; it is not.
+
+        Computed at LOAD rather than written into the file, so results already
+        on disk gain it the moment they are opened.
+        """
+        original = _make_minimal_results()
+        original.equilibrium_elements      = ["C", "H"]
+        original.equilibrium_positions_ang = np.array([[0., 0., 0.],
+                                                       [1.09, 0., 0.]])
+        original.modes[0].eigenvector_canonical = np.array([[0.98, 0., 0.],
+                                                            [1.15, 0., 0.]])
+        original.modes[0].eigenvector_display   = original.modes[0].eigenvector_canonical
+
+        r = web_client.post("/api/spectra/load",
+                            data=json.dumps({"json": original.to_dict()}),
+                            content_type="application/json")
+        body = r.get_json()
+        assert r.status_code == 200, body
+        share = body["results"]["modes"][0]["motion_share_by_element"]
+
+        assert share["C"] > share["H"], (
+            "carbon moves less than hydrogen here and still carries the mode; "
+            "reporting the furthest-moving atom instead would say hydrogen")
+        assert share["C"] == pytest.approx(0.885, abs=0.02)
+        assert sum(share.values()) == pytest.approx(1.0, abs=1e-12)
+
+    def test_the_on_disk_format_does_not_grow_the_computed_field(self, web_client):
+        """``to_dict`` is the file format and round-trips through
+        ``from_dict``; the share is derived and belongs to the reply only.  A
+        field that leaked into the file would be written by the emitter as if
+        the schema declared it."""
+        original = _make_minimal_results()
+        original.equilibrium_elements      = ["C", "H"]
+        original.equilibrium_positions_ang = np.array([[0., 0., 0.],
+                                                       [1.09, 0., 0.]])
+        assert "motion_share_by_element" not in original.to_dict()["modes"][0]
+
+    def test_a_result_without_a_geometry_still_loads(self, web_client):
+        """No elements stored means no shares can be computed — the spectrum
+        must still open, one clause shorter."""
+        r = web_client.post(
+            "/api/spectra/load",
+            data=json.dumps({"json": _make_minimal_results().to_dict()}),
+            content_type="application/json")
+        body = r.get_json()
+        assert r.status_code == 200, body
+        assert body["ok"] is True
+        assert "motion_share_by_element" not in body["results"]["modes"][0]
 
     def test_inline_json_input(self, web_client):
         original = _make_minimal_results()

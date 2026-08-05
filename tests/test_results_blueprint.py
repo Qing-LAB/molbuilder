@@ -761,6 +761,23 @@ class TestPartialSpectraInspectorEndpoint:
         "anim-speed",
         "anim-speed-val",
         "anim-toggle",
+        # How big to draw the motion (docs/web/spectra.md § 4.1).  The two
+        # ``-row`` wrappers are the seam, not decoration: the core shows and
+        # hides them per amplitude mode, so a missing wrapper leaves the
+        # temperature box on screen under "exaggerated", where it means nothing.
+        "anim-amplitude-mode",
+        "anim-amplitude-row",
+        "anim-temperature",
+        "anim-temperature-row",
+        # Getting the animation out (vibrationview.md § 12).
+        "anim-export-format",
+        "anim-export-width",
+        "anim-export-height",
+        "anim-export-background",
+        "anim-export-cycles",
+        "anim-export-btn",
+        "anim-export-cancel",
+        "anim-export-status",
         # ES bar diagram
         "es-panel",
         "es-bar-diagram",

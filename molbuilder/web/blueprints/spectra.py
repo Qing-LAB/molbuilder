@@ -89,7 +89,7 @@ from molbuilder.spectra import (
     render_methods_md,
     extract_citation_keys,
 )
-from molbuilder.spectra.results import SpectraResults
+from molbuilder.spectra.results import SpectraResults, motion_share_by_element
 from molbuilder.structure import Structure
 
 
@@ -445,6 +445,53 @@ def api_spectra_render():
 # ===================================================================== #
 
 
+def _loaded(results):
+    """The one success reply for /api/spectra/load — the typed results as a
+    dict, plus what only the server can work out.
+
+    WHY THE PAYLOAD IS NOT SIMPLY ``to_dict()``.  ``to_dict`` is the ON-DISK
+    format: ``from_dict(to_dict(x)) == x``, byte-equal modulo float
+    formatting, and the emitter writes it.  Derived facts must not leak into
+    it or the file grows fields the schema never declared.  So this wraps it:
+    the file's own fields, unchanged, plus a computed one.
+
+    WHAT IS ADDED, and why it cannot be computed in the browser.
+    ``motion_share_by_element`` says which atoms a mode belongs to -- 91%
+    carbon for a ring stretch -- and that needs atomic masses, because
+    hydrogen has the largest displacement in almost every mode of an organic
+    molecule while carrying almost none of the motion.  The browser has no
+    masses, the .spectra.json carries none, and shipping a periodic table
+    into JavaScript to fix that would be a second copy of a table ASE already
+    provides (``chemistry.atomic_mass``).  The server has it, so the server
+    answers.
+
+    COMPUTED AT LOAD, NOT STORED.  Every result already written -- including
+    the ones on disk right now -- gains the field the moment it is opened; a
+    schema bump would have left them showing nothing until re-run.  It costs
+    one pass over each eigenvector.
+
+    A mode whose shares cannot be worked out (an element ASE does not know)
+    is served without the field rather than failing the load: the panel drops
+    one clause, and the spectrum still opens.
+    """
+    payload = results.to_dict()
+    elements = (payload.get("equilibrium") or {}).get("elements") or []
+    # An empty free-atom list is "not recorded", not "no atom is free" -- a
+    # result that never tracked the partition has one eigenvector row per atom,
+    # which is what passing None means downstream.
+    free = payload.get("free_atom_idxs") or None
+    for mode in payload.get("modes") or []:
+        rows = mode.get("eigenvector_canonical") or mode.get("eigenvector_display")
+        if not rows or not elements:
+            continue
+        try:
+            mode["motion_share_by_element"] = motion_share_by_element(
+                elements, rows, free)
+        except (ValueError, KeyError):
+            pass
+    return jsonify({"ok": True, "results": payload})
+
+
 @bp.route("/api/spectra/load", methods=["POST"])
 def api_spectra_load():
     """Parse a spectra.json (file upload / on-disk path / inline JSON)
@@ -500,7 +547,7 @@ def api_spectra_load():
             results = parse_spectra_json_dict(d)
         except SpectraJsonError as exc:
             return _err_load(exc)
-        return jsonify({"ok": True, "results": results.to_dict()})
+        return _loaded(results)
 
     # ---- JSON body (path or inline JSON) ------------------------- #
     body = request.get_json(silent=True) or {}
@@ -511,7 +558,7 @@ def api_spectra_load():
             results = parse_spectra_json(path)
         except SpectraJsonError as exc:
             return _err_load(exc)
-        return jsonify({"ok": True, "results": results.to_dict()})
+        return _loaded(results)
     if inline is not None:
         if not isinstance(inline, dict):
             return _err_load(SpectraJsonMalformedError(
@@ -521,7 +568,7 @@ def api_spectra_load():
             results = parse_spectra_json_dict(inline)
         except SpectraJsonError as exc:
             return _err_load(exc)
-        return jsonify({"ok": True, "results": results.to_dict()})
+        return _loaded(results)
 
     return jsonify({
         "ok":    False,

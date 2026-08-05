@@ -143,7 +143,6 @@
         <div id="mode-viewer-wrap" class="mode-viewer-wrap" hidden>
           <header class="section-header subsection-h">
             <h3>Mode visualisation</h3>
-            <span id="viewer-status" class="status muted"></span>
           </header>
           <div class="viewer-controls">
             {#- HOW BIG the motion is, which is two different questions.
@@ -211,6 +210,16 @@
           <div id="mode-viewer" class="mode-viewer"
                aria-label="3D structure with vibrational mode animation">
           </div>
+          {#- HOW BIG what you are watching is, in a sentence, directly under the
+              picture it describes.  It sat up in the header beside the title,
+              where a squeezed flex row left room for a fragment like "max
+              ±0.173 Å" -- a quantity with nothing to say what it measured.  Given
+              its own line it can name the atom, the distance from rest, the bond
+              it is a fraction of, and whether that is real or exaggerated, which
+              is what the number is FOR.  Written by _reportSwing in
+              lib/spectra/core.js; the science is docs/web/spectra.md § 4.1. -#}
+          <p id="viewer-status" class="status muted viewer-readout"
+             aria-live="polite"></p>
           {#- Getting the animation out.  The three formats are not
               interchangeable: GIF goes anywhere and cannot hold either a smooth
               gradient or a soft transparent edge; WebM is a video; the PNG
@@ -254,79 +263,26 @@
           <details class="amplitude-help">
             <summary>What do the amplitude choices mean?</summary>
             <div class="amplitude-help-body">
-              <p>
-                The mode <em>shape</em> — which atoms move, in what direction, and
-                how far relative to each other — comes straight from the
-                diagonalisation and is the same in all three. What changes is how
-                <em>big</em> the motion is drawn. Fixed atoms are greyed and stay
-                still.
-              </p>
-
-              <p><strong>exaggerated</strong> — a drawing choice, not a
-                measurement. The eigenvector is rescaled so the biggest-moving
-                atom has length 1, and the Size slider says how many ångström that
-                swing is. The default 0.15 Å is roughly a tenth of a bond, which
-                reads clearly on screen. Every other tool that animates modes
-                (Jmol, Avogadro, GaussView) exaggerates the same way, and for the
-                same reason: real amplitudes are too small to see.</p>
-
-              <p><strong>physical, zero-point</strong> — how far the atoms move in
-                a molecule at <em>absolute zero</em>. A quantum oscillator cannot
-                be still: the uncertainty principle leaves every mode with half a
-                quantum, ½ħω, and the atoms spread over
-                <code>Q = √(ħ/2ω)</code> along the normal coordinate. In practical
-                units that is <code>Q = 4.11 / √ν̃</code> in √amu·Å with ν̃ in
-                cm⁻¹, and each atom's share is divided by the square root of its
-                mass — so <strong>heavier atoms and stiffer bonds move
-                less</strong>:</p>
-
-              <table class="amplitude-help-table">
-                <thead><tr><th>mode</th><th>H</th><th>C</th><th>Au</th></tr></thead>
-                <tbody>
-                  <tr><td>100 cm⁻¹ (a floppy torsion)</td>
-                      <td>0.41 Å</td><td>0.12 Å</td><td>0.029 Å</td></tr>
-                  <tr><td>1000 cm⁻¹ (a ring breath)</td>
-                      <td>0.13 Å</td><td>0.037 Å</td><td>0.009 Å</td></tr>
-                  <tr><td>3000 cm⁻¹ (a C–H stretch)</td>
-                      <td>0.075 Å</td><td>0.022 Å</td><td>0.005 Å</td></tr>
-                </tbody>
-              </table>
+              <p>The mode's <em>shape</em> is the same in all three — what changes
+                is how <em>big</em> it is drawn.</p>
+              <p><strong>exaggerated</strong> — a drawing choice. The
+                biggest-moving atom swings by the Size slider. Real amplitudes are
+                too small to read, so every tool exaggerates.</p>
+              <p><strong>zero-point</strong> — how far the atoms really move at
+                absolute zero; a quantum oscillator is never still. Falls as
+                1/√ν̃ and as 1/√mass, so <em>stiff bonds and heavy atoms move
+                less</em>: hydrogen swings 0.41 Å in a 100 cm⁻¹ torsion but only
+                0.075 Å in a C–H stretch, where carbon manages 0.022 Å.</p>
+              <p><strong>thermal</strong> — adds the higher vibrational levels
+                populated at your temperature. Room temperature is worth only
+                ~207 cm⁻¹, so stiffer modes are frozen out and look identical:
+                ×2.1 at 100 cm⁻¹, ×1.27 at 300, ×1.01 at 1000. Worth setting for
+                torsions and librations, invisible on a stretch.</p>
               <p class="amplitude-help-note">
-                (the swing of an atom carrying the whole mode; a real mode shares
-                it out, so per-atom values are smaller)
-              </p>
-
-              <p><strong>physical, thermal</strong> — the same thing at your
-                temperature, where higher vibrational levels are populated too.
-                The mean-square displacement grows by
-                <code>coth(ħω / 2k<sub>B</sub>T)</code>, so the amplitude grows by
-                its square root — and as T → 0 it becomes the zero-point case
-                exactly.</p>
-
-              <p>The useful fact is <strong>which modes it changes</strong>. A
-                quantum is worth 1.44 K per cm⁻¹, and room temperature is
-                k<sub>B</sub>T ≈ 207 cm⁻¹ — so anything much stiffer than that is
-                <em>frozen out</em>, sitting in its ground state no matter how warm
-                the sample. At 298 K, as a multiple of the zero-point swing:</p>
-
-              <table class="amplitude-help-table">
-                <thead><tr><th>ν̃</th><th>50</th><th>100</th><th>300</th>
-                           <th>1000</th><th>3000 cm⁻¹</th></tr></thead>
-                <tbody><tr><td>× zero-point</td><td>2.9</td><td>2.1</td>
-                           <td>1.27</td><td>1.01</td><td>1.00</td></tr></tbody>
-              </table>
-
-              <p class="amplitude-help-note">
-                So temperature is worth setting for soft modes — torsions, lattice
-                and libration modes, metal–ligand bends — and makes no visible
-                difference to a C–H stretch. Raising it to 500 K moves the
-                50 cm⁻¹ figure to 3.7× and leaves 3000 cm⁻¹ at 1.00×.
-              </p>
-
-              <p class="amplitude-help-note">
-                An exported file records which of the three it used, because the
-                exaggerated and physical amplitudes are not in the same units and
-                the number alone would not say.
+                The full derivation, the constants and why the two normalisations
+                must never be crossed:
+                <a href="/documents?doc=web/spectra.md" target="_blank"
+                   rel="noopener">spectra.md § 4.1</a>.
               </p>
             </div>
           </details>
