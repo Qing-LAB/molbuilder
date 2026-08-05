@@ -117,6 +117,24 @@ def test_every_internal_file_is_marked_as_internal():
 #: Every ``import ... from "<specifier>"`` in a JS file.
 IMPORT = re.compile(r"""\bfrom\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']""")
 
+#: Block comments, and lines that are wholly comment.
+_BLOCK = re.compile(r"/\*.*?\*/", re.S)
+_LINE = re.compile(r"^\s*(//|\*).*$", re.M)
+
+
+def _code_only(text: str) -> str:
+    """Strip comments.
+
+    The import guard asks what the code DOES, so it must not read prose — the
+    entry point's own header shows a consumer the absolute specifier to import,
+    which is exactly the documentation that belongs there.
+
+    Note the deliberate difference from the drawing-library guard below, which
+    reads everything: that one asks what a file KNOWS, and a file with no
+    business knowing the library should not name it in a comment either.
+    """
+    return _LINE.sub("", _BLOCK.sub("", text))
+
 
 def test_the_package_imports_nothing_outside_itself():
     """§ 4: "it reaches nothing else in the app by name".
@@ -135,10 +153,10 @@ def test_the_package_imports_nothing_outside_itself():
         return
     escapes: list[str] = []
     for path in sorted(PACKAGE.glob("*.js")):
-        text = path.read_text(encoding="utf-8", errors="ignore")
         # The predecessor, deleted at step 7 of task #19.
         if path.name in {"vibrationview.js", "mode-math.js"}:
             continue
+        text = _code_only(path.read_text(encoding="utf-8", errors="ignore"))
         for m in IMPORT.finditer(text):
             spec = m.group(1) or m.group(2)
             if not spec.startswith("."):

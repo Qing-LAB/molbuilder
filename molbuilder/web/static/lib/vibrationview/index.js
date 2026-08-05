@@ -1,0 +1,296 @@
+/* VibrationView — the single ES-module entry, and the whole of what is importable.
+ *
+ * Contract: docs/web/vibrationview.md § 4, § 8, § 9.1, § 9.2.
+ * Owns:     the one name a consumer may write — `mount` — and, behind it, level 1
+ *           of § 7: the state, the frame loop, and every draw it causes.
+ * Called by: a page's module script, once:
+ *
+ *     import { mount } from "/static/lib/vibrationview/index.js";
+ *     const vib = await mount(hostEl, { amplitude: 0.15, fps: 30 });
+ *
+ * NEVER (§ 4):
+ *   - export anything else. Every other file here is internal, and the
+ *     underscore on its name says so; a consumer that imports one has broken the
+ *     module, not found a shortcut.
+ *   - read or write `window.molbuilder`, in either direction. Nothing this module
+ *     needs comes from a global, and nothing it holds is published to one. Both
+ *     halves of that rule were broken by the module this replaces, which is why
+ *     it could not mount at all.
+ *   - name the sealed layer. § 15: no consumer names its file and neither does
+ *     the document.
+ *
+ * The clock lives HERE and not with the maths, on purpose (§ 7): timing is WHEN
+ * to draw and the maths is WHAT to draw, and only the second is a pure function.
+ * That split is what lets an eigenvector scatter be tested without faking a
+ * browser first.
+ */
+"use strict";
+
+import {
+    scatter, heldStill, positionsAtPhase, framesPerCycle, phaseOfFrame,
+} from "./_maths.js";
+import { create as createSurface } from "./_seal.js";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
+
+const DEFAULTS = { amplitude: 0.15, fps: 30, cycleSec: 1.0, showLabel: true };
+
+
+function warn(msg) {
+    try { if (root.console) root.console.warn("[vibrationview] " + msg); } catch (_) {}
+}
+
+/* Uniform mount contract (§ 8): a failure is a HANDLE carrying `ok:false` and a
+ * working `dispose` — never a rejection and never null — so a caller branches on
+ * `ok` and can tear down unconditionally. Teardown must never have to ask whether
+ * setup worked. */
+function failed(hostEl, message) {
+    warn(message);
+    try {
+        if (hostEl && hostEl.classList) hostEl.classList.add("vibview", "vibview--failed");
+        if (hostEl && "textContent" in hostEl) hostEl.textContent = message;
+    } catch (_) {}
+    return { ok: false, error: message, dispose: function () {} };
+}
+
+function validStructure(s) {
+    return !!(s && Array.isArray(s.elements) && Array.isArray(s.positions)
+              && s.positions.length > 0
+              && s.elements.length === s.positions.length);
+}
+
+
+/* ── Making a viewer (§ 8) ────────────────────────────────────────────────────
+ *
+ * Asynchronous, and it ALWAYS RESOLVES. The handle it returns is live: the
+ * surface is built and every door works from the first call. There is no
+ * readiness flag and nothing deferred, because a viewer that is not ready yet is
+ * a state a caller can get wrong — so it is not offered.
+ */
+export async function mount(hostEl, opts) {
+    opts = opts || {};
+    if (!hostEl) return failed(hostEl, "no element to mount into");
+
+    let surface;
+    try {
+        surface = createSurface(hostEl);
+    } catch (e) {
+        return failed(hostEl, (e && e.message) || "the drawing surface could not be built");
+    }
+
+    /* Everything one viewer holds (§ 6.1). One home each, and no second copy
+     * anywhere — which is what makes "one place holds each fact" mean something
+     * once you ask WHICH viewer's fact you meant. */
+    let structure  = null;       // the equilibrium
+    let disp       = null;       // the current mode, scattered to global order
+    let amplitude  = typeof opts.amplitude === "number" ? opts.amplitude : DEFAULTS.amplitude;
+    let fps        = typeof opts.fps === "number" ? opts.fps : DEFAULTS.fps;
+    let cycleSec   = typeof opts.cycleSec === "number" ? opts.cycleSec : DEFAULTS.cycleSec;
+    let frames     = framesPerCycle(fps, cycleSec);
+    let frame      = 0;
+    let playing    = false;
+    let labelText  = null;
+    let labelOn    = opts.showLabel !== false;
+    let modeIndex  = null;       // carried for the export stamp; never interpreted
+    let modeNorm   = null;       // ditto (§ 6.2)
+    let rafId      = null;
+    let lastDrawAt = 0;
+    let disposed   = false;
+
+    function draw() {
+        if (disposed || !structure || !disp) return;
+        surface.setAtomCoords(
+            positionsAtPhase(structure.positions, disp, amplitude,
+                             phaseOfFrame(frame, frames)));
+    }
+
+    /* The loop. A frame is advanced only when enough wall-clock has passed for
+     * the chosen rate — so `fps` means frames per second, not "every repaint".
+     *
+     * When the browser cannot keep up we draw FEWER frames rather than jumping
+     * ahead in the cycle: the phase comes from the frame number (§ 10.1), so a
+     * slow machine shows a slightly slow vibration instead of a stuttering one.
+     * For a vibration nobody is timing that is the better failure, and it is what
+     * makes the on-screen sequence the same sequence an export encodes. */
+    function tick(now) {
+        if (disposed || !playing) return;
+        rafId = root.requestAnimationFrame(tick);
+        const t = (typeof now === "number") ? now : 0;
+        if (t - lastDrawAt < 1000 / fps) return;
+        lastDrawAt = t;
+        frame += 1;
+        draw();
+    }
+
+    function start() {
+        if (disposed || playing || !disp || !structure) return;
+        playing = true;
+        lastDrawAt = 0;
+        rafId = root.requestAnimationFrame(tick);
+    }
+
+    function stop() {
+        if (!playing) return;
+        playing = false;
+        if (rafId !== null) {
+            try { root.cancelAnimationFrame(rafId); } catch (_) {}
+            rafId = null;
+        }
+    }
+
+    /* A rate change must not move the molecule. The frame number is meaningless
+     * without the count it is measured against, so when the count changes the
+     * number is re-expressed against the new one — same phase, different
+     * arithmetic. Without this, nudging a smoothness slider would visibly jump
+     * the animation.
+     *
+     * The new phase is the NEAREST one the new rate can express, which is the
+     * best that exists: a coarser grid has no point at the old phase. The error
+     * is bounded by half a frame — π/N — and it does not accumulate, because each
+     * change re-anchors from the phase rather than from a running offset. */
+    function reframe(nextFrames) {
+        if (nextFrames === frames) return;
+        const phase = phaseOfFrame(frame, frames);
+        frame = Math.round(phase / (2 * Math.PI) * nextFrames) % nextFrames;
+        frames = nextFrames;
+    }
+
+    function applyLabel() {
+        surface.setLabel(labelOn ? labelText : null);
+    }
+
+    return {
+        ok: true,
+
+        /* The SLOW fact (§ 5.1): rare, and it costs a redraw and a refit.
+         *
+         * It also ENDS whatever mode was running. A mode belongs to the structure
+         * it was computed against and means nothing against another one — and a
+         * viewer animating structure B with structure A's eigenvector would look
+         * entirely plausible while being nonsense. */
+        setStructure(s) {
+            if (disposed) return false;
+            if (!validStructure(s)) {
+                warn("setStructure needs { elements, positions } of equal length");
+                return false;
+            }
+            stop();
+            disp = null; modeIndex = null; modeNorm = null;
+            frame = 0;
+            structure = {
+                elements:  s.elements.slice(),
+                positions: s.positions.map(function (p) { return [p[0], p[1], p[2]]; }),
+            };
+            surface.setStructure(structure.elements, structure.positions);
+            surface.setHeldStill([]);
+            surface.refit();
+            return true;
+        },
+
+        /* The FAST fact (§ 5.1): frequent, and it costs neither a redraw nor a
+         * refit — which is why browsing mode to mode of one result never disturbs
+         * the camera.
+         *
+         * The play/pause state is NOT touched. Playing is its own fact with its
+         * own home (§ 5.2); a new mode arriving is not a reason to overrule what
+         * the user asked the pause button for. Paused, you see the new mode at
+         * its peak, still. */
+        showMode(mode) {
+            if (disposed) return false;
+            if (!structure) {
+                warn("showMode before a structure: nothing to animate against");
+                return false;
+            }
+            if (!mode || !Array.isArray(mode.displacements)) {
+                warn("showMode needs { displacements: [[dx,dy,dz], ...] }");
+                return false;
+            }
+            const basis = Array.isArray(mode.basis) ? mode.basis : null;
+            let scattered;
+            try {
+                scattered = scatter(mode.displacements, basis, structure.positions.length);
+            } catch (e) {
+                // REFUSED, not padded (§ 6.3): this is a mode computed against a
+                // different molecule, and zero-filling would animate the
+                // structure partially, plausibly and wrongly. Nothing is drawn.
+                warn((e && e.message) || "the mode does not fit this structure");
+                return false;
+            }
+            disp      = scattered;
+            modeIndex = (mode.index !== undefined && mode.index !== null) ? mode.index : null;
+            modeNorm  = (mode.norm !== undefined && mode.norm !== null) ? String(mode.norm) : null;
+            labelText = (mode.label !== undefined && mode.label !== null && mode.label !== "")
+                ? String(mode.label) : null;
+            frame = 0;
+            surface.setHeldStill(heldStill(basis, structure.positions.length));
+            applyLabel();
+            draw();
+            return true;
+        },
+
+        play()      { start(); },
+        pause()     { stop(); },
+        isPlaying() { return playing; },
+
+        /* The live knobs (§ 9.2): plain writes the running loop picks up on its
+         * next frame. No rebuild, no re-registration — a slider drag never stops
+         * the animation. */
+        setAmplitude(a) {
+            if (disposed || typeof a !== "number" || !isFinite(a)) return;
+            amplitude = a;
+            if (!playing) draw();          // paused: show the change now
+        },
+
+        setFps(n) {
+            if (disposed || typeof n !== "number" || !isFinite(n)) return;
+            fps = n;
+            reframe(framesPerCycle(fps, cycleSec));
+            if (!playing) draw();
+        },
+
+        setCycleSec(s) {
+            if (disposed || typeof s !== "number" || !isFinite(s) || s <= 0) return;
+            cycleSec = s;
+            reframe(framesPerCycle(fps, cycleSec));
+            if (!playing) draw();
+        },
+
+        setLabelVisible(on) {
+            if (disposed) return;
+            labelOn = !!on;
+            applyLabel();
+        },
+
+        dispose() {
+            if (disposed) return;
+            stop();
+            disposed = true;
+            structure = null; disp = null;
+            try { surface.dispose(); } catch (_) {}
+            try { if (hostEl.classList) hostEl.classList.remove("vibview"); } catch (_) {}
+        },
+
+        /* Not a door. The capture machinery (§ 12) reads the viewer's state
+         * through this rather than through eleven getters that would also let a
+         * host read them — the handle answers no question about what it holds
+         * (§ 6.4), and this is not on the handle a host is given. */
+        _capture: {
+            surface:    surface,
+            frameAt:    function (n) {
+                return positionsAtPhase(structure.positions, disp, amplitude,
+                                        phaseOfFrame(n, frames));
+            },
+            rest:       function () { return structure.positions.map(function (p) { return p.slice(); }); },
+            state:      function () {
+                return { amplitude: amplitude, fps: fps, cycleSec: cycleSec,
+                         framesPerCycle: frames, frame: frame,
+                         index: modeIndex, norm: modeNorm,
+                         ready: !!(structure && disp) };
+            },
+            wasPlaying: function () { return playing; },
+            resume:     start,
+            halt:       stop,
+            redraw:     draw,
+        },
+    };
+}

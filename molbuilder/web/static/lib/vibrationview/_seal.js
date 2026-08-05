@@ -116,6 +116,10 @@ export function create(hostEl) {
         throw new Error("vibrationview: 3Dmol-min.js must be loaded first");
     }
     ensureStylesheet();
+    // The class is the sheet's hook. Added here rather than asked of the host,
+    // for the same reason the <link> is (§ 13): a page that has to remember it
+    // can forget it, and the failure is silent.
+    try { hostEl.classList.add("vibview"); } catch (_) {}
 
     const ground = readCssVar(hostEl, SCENE_BACKGROUND.name, SCENE_BACKGROUND.fallback);
     const viewer = $3Dmol.createViewer(hostEl, {

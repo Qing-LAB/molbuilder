@@ -426,8 +426,15 @@ back would be a second place to believe something, for a caller that already kno
 
 **The live knobs are live.** `setAmplitude`, `setFps` and `setCycleSec` are plain
 writes that the running loop picks up on its next frame — no rebuild, no
-re-registration, and **a slider drag never stops the animation**. A change to
-either rate keeps the phase where it is, so the motion does not jump.
+re-registration, and **a slider drag never stops the animation**.
+
+A rate change keeps the phase, by re-expressing the frame number against the new
+count. Where the new rate can express the old phase — every finer grid contains a
+coarser one's positions — the molecule does not move at all. Where it cannot, the
+phase lands on the **nearest frame the new rate has**, which is off by at most
+half a step and never accumulates, because each change re-anchors from the phase
+rather than from a running offset. Without any of this, nudging a smoothness
+slider would visibly throw the animation to a different part of its cycle.
 
 **`showMode` before a structure does nothing**, and says so; it is not an error and
 not a queue. A caller that has a mode but no structure has a bug one line earlier.
@@ -875,7 +882,8 @@ the day it is crossed.
 | § 8 — mount always resolves | a mount that cannot build a surface still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
 | § 8 — the handle is live | every door works on the first call after `await`, with no readiness wait and nothing deferred |
 | § 9.2 — the knobs are live | amplitude, fps and cycle-length changes take effect on the next frame, issue no call to the drawing surface, and never stop a running animation |
-| § 9.2 — the phase is continuous | pause then play resumes on the frame it stopped on; a rate change mid-flight does not jump the motion |
+| § 9.2 — the phase is continuous | pause then play resumes on the frame it stopped on |
+| § 9.2 — a rate change keeps the phase | going to a finer rate moves the atoms not at all, and going to a coarser one moves them by at most half a frame of phase — read off what is drawn, not off the frame number |
 | § 10.1 — a cycle is whole | a cycle is a whole number of frames at every rate, and frame 0 of the next cycle holds exactly the positions of frame 0 of this one — so a one-cycle export loops without a seam |
 | § 10.1 — the rounding lands on the duration | a rate whose frames-per-cycle is fractional is accepted, and what shifts is the cycle length, not the frame count; the shift does not grow over repeated cycles |
 | § 10.1 — the rate is clamped at the door | a frame rate below the floor or above the ceiling is brought into range rather than honoured or refused, and the animation keeps running across the change |
