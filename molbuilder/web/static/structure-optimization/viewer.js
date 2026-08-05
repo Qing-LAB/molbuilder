@@ -898,8 +898,13 @@ import { mount as mvMount, formula as mvFormula }
                     readout.textContent =
                         `Selected: ${_basename(_candidatePath)}`;
                 } else if (_candidatePath) {
+                    // SAY WHY, not just that.  The reason used to exist only
+                    // on the commit path (double-click), so a single click
+                    // left "not loadable" standing alone with no way to find
+                    // out what would be loadable.
                     readout.textContent =
-                        `Selected: ${_basename(_candidatePath)} (not loadable)`;
+                        `Selected: ${_basename(_candidatePath)} `
+                        + `(not loadable — .xyz / .pdb only)`;
                 } else {
                     readout.textContent =
                         "Pick a .xyz / .pdb in the Projects sidebar.";

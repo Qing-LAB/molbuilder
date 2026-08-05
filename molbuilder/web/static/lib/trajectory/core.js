@@ -1918,6 +1918,21 @@ import { mount } from "/static/lib/molview/index.js";
             //     produced a fresh measurement yet (e.g. the page
             //     was just opened, the server has only seen 1 poll).
             if (!baselineCycle) {
+                /* THE WORDING DEPENDS ON WHETHER ANOTHER MEASUREMENT CAN
+                 * STILL ARRIVE.  While the run is going, the live
+                 * mtime-delta will replace this rough number shortly, and
+                 * "refresh delta pending" tells the user to expect that.
+                 * Once the run has STOPPED nothing further will ever be
+                 * measured, so the same words promise something that
+                 * cannot come -- a run that finished nine hours ago was
+                 * still displaying "refresh delta pending" (browser walk,
+                 * 2026-08-04).
+                 *
+                 * The run state is right here on the data this function is
+                 * already reading; the ladder simply never asked. */
+                const rs = state.data && state.data.run_state;
+                const stopped = (rs === RUN_STATE.FINISHED
+                                 || rs === RUN_STATE.ERROR);
                 for (let i = 0; i < history.length; i++) {
                     const step = history[i];
                     if (!Array.isArray(step)) continue;
@@ -1926,8 +1941,11 @@ import { mount } from "/static/lib/molview/index.js";
                         const v = c && c.cumulative_walltime_s;
                         if (typeof v === "number" && isFinite(v)) {
                             baselineCycle = c;
-                            provenance = "from SIESTA iter-1 timer; "
-                                       + "refresh delta pending";
+                            provenance = stopped
+                                ? "from SIESTA iter-1 timer; the only "
+                                  + "timing this run reported"
+                                : "from SIESTA iter-1 timer; "
+                                  + "refresh delta pending";
                             break;
                         }
                     }
