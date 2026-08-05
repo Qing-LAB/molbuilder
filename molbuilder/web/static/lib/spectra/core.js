@@ -228,6 +228,7 @@
         vib:            null,
         vibMounting:    false,   // one build per mount, not one per mode click
         vibStructure:   null,    // which structure the viewer holds (§ 5.1)
+        animPaused:     false,   // the USER's intent, not the viewer's state
         animAmplitudeMode: "display",   // or "zero-point" / "thermal" (§ 12.2)
         animTemperature:   298,         // K, for the thermal pairing
         exporting:      null,    // the AbortController of a running export
@@ -2254,7 +2255,6 @@
      * already there.  Nothing is deferred or queued -- the handle a mount returns
      * is live, so there is no not-ready state for a caller to get wrong. */
     async function _showMode(inputs) {
-        let justMounted = false;
         if (!state.vib) {
             if (state.vibMounting) return;      // one build, not one per click
             const make = opts.mountVibrationView;
@@ -2287,7 +2287,6 @@
             }
             state.vib = handle;
             state.vibStructure = null;
-            justMounted = true;
         }
 
         /* TWO DOORS, and the slow one only when it is the slow fact
@@ -2306,25 +2305,31 @@
         state.vib.setAmplitude(inputs.amplitude);
         state.vib.showMode(Object.assign({ norm: inputs.norm }, inputs.mode));
 
-        /* PLAY ONLY ON THE FIRST MODE, and never again (vibrationview.md § 9.2).
+        /* IT RUNS UNLESS THE USER STOPPED IT.
          *
-         * A viewer that has just appeared should be moving -- nobody clicks a mode
-         * hoping to see it hold still.  But once it is running, whether it runs is
-         * the user's, and a new mode arriving is not a reason to overrule the
-         * pause button.  The module was built not to touch playback for exactly
-         * this reason; forcing it from out here would put the old behaviour back
-         * one level up, where it is harder to see.
+         * A vibration is the content here, so a still molecule is a viewer showing
+         * nothing: whenever there is a mode to animate, it animates.  The only
+         * thing that stops it is someone pressing Pause, and that intent is the
+         * TAB's to remember -- `state.animPaused` -- not something to read back
+         * off the viewer, because the viewer's clock legitimately stops for
+         * reasons that are not the user: installing a new structure ends the mode
+         * running against the old one (§ 5.1), and a mode that cannot be shown
+         * stops it too.
          *
-         * The button then reads its label from the viewer rather than assuming
-         * one, so it cannot be right by accident. */
-        if (justMounted) state.vib.play();
+         * Reading playback back as if it were the intent is what an earlier draft
+         * did, and it froze the molecule on the SECOND result you opened: the
+         * structure install stopped the clock, nothing had asked for that, and
+         * nothing started it again.
+         *
+         * The module still never touches play/pause on its own (§ 9.2).  Deciding
+         * that a mode should be moving is policy, and policy is the tab's. */
+        if (!state.animPaused) state.vib.play();
         _syncPlayButton();
     }
 
     function _syncPlayButton() {
         if (!els.animToggle) return;
-        els.animToggle.textContent =
-            (state.vib && state.vib.isPlaying()) ? "Pause" : "Play";
+        els.animToggle.textContent = state.animPaused ? "Play" : "Pause";
     }
 
     /* How far the furthest atom gets, in angstrom, for whichever pairing is in
@@ -2464,9 +2469,13 @@
         // every time _setMode forced playback via
         // setAnimation({paused: false}).
         if (!state.vib) return;
+        // The button sets the INTENT; the viewer follows it.  Toggling off what
+        // the viewer happens to be doing would make the button mean "resume
+        // whatever state you drifted into" rather than "I want this stopped".
+        state.animPaused = !state.animPaused;
         try {
-            if (state.vib.isPlaying()) state.vib.pause();
-            else                       state.vib.play();
+            if (state.animPaused) state.vib.pause();
+            else                  state.vib.play();
         } catch (_) {}
         _syncPlayButton();
     }

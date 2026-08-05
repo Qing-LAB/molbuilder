@@ -627,7 +627,21 @@ vib.setStructure({ elements, positions });            // when the result changes
 vib.setAmplitude(A);                                  // display slider, or § 12.2
 vib.showMode({ index, displacements, basis, norm,     // on every mode click
                label: `Mode ${n} · ${f} cm⁻¹` });
+if (!userPaused) vib.play();                          // the tab's policy, below
 ```
+
+**Whether a mode should be moving is the tab's decision, not this module's.**
+The module offers `play` and `pause` and never calls either on its own (§ 9.2) —
+which is what lets a tab hold a policy rather than fight one. The Spectrum tab's
+policy is that a vibration is the content, so it runs whenever there is a mode to
+show, and only an explicit Pause stops it.
+
+That intent lives in the tab, and it is not the same thing as whether the clock is
+running. **A viewer's clock stops for reasons that are not the user**: installing a
+structure ends the mode that was running against the old one (§ 5.1), and a mode
+that cannot be shown stops it too. A tab that read playback back as if it were the
+user's wish freezes the molecule on the second result opened — the install stopped
+the clock, nobody asked for that, and nothing started it again.
 
 **That cut is one function in the tab**, not four reads scattered through it — the
 tab is the only place that is allowed to know both the shape of a spectra result
