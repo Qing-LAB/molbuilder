@@ -495,6 +495,75 @@ def test_the_chosen_rate_is_honoured_on_a_display_that_repaints_faster():
     assert out["drawn60"] == 12   # every repaint
 
 
+def test_a_rate_the_door_cannot_honour_is_brought_into_range():
+    """§ 10.1: "a frame rate below the floor or above the ceiling is brought into
+    range rather than honoured or refused, and the animation keeps running across
+    the change" — asserted AT THE DOOR, which is where a caller reaches.
+
+    The clock divides by the rate to decide when a frame is due, so an unclamped
+    one does not merely animate oddly: ``1000/0`` is Infinity, a frame is never
+    due, and the animation stops for good while the handle goes on reporting
+    itself as playing.  A negative rate makes every repaint due instead.
+
+    The floor is 5 fps, so 12 repaints of a 60 Hz display (200 ms) is one frame.
+    The ceiling is 120, which a 60 Hz display can only meet on every repaint.
+    """
+    out = _run("""
+        async function drawsIn12Repaints(rate) {
+            const v = await mount(host, {});
+            v.setStructure(WATER);
+            v.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+            v.setFps(rate);
+            v.play();
+            calls.length = 0;
+            pump(12, 16.67);
+            const n = calls.filter((c) => c[0] === "render").length;
+            const stillPlaying = v.isPlaying();
+            v.dispose(); rafQ = [];
+            return { n, stillPlaying };
+        }
+        console.log(JSON.stringify({
+            zero:     await drawsIn12Repaints(0),
+            negative: await drawsIn12Repaints(-10),
+            huge:     await drawsIn12Repaints(10000),
+            sane:     await drawsIn12Repaints(30),
+        }));
+    """)
+    # zero and negative are slider end-stops, not caller bugs: they land on the
+    # floor and keep animating rather than freezing or running flat out
+    assert out["zero"]["n"] >= 1,     "a zero rate froze the animation"
+    assert out["zero"]["n"] <= 2,     "a zero rate ran faster than the floor"
+    assert out["zero"]["stillPlaying"] is True
+    assert out["negative"]["n"] >= 1, "a negative rate froze the animation"
+    assert out["negative"]["n"] <= 2, "a negative rate ran flat out"
+    # the ceiling is above what a 60 Hz display offers, so it draws every repaint
+    assert out["huge"]["n"] == 12
+    assert out["sane"]["n"] == 6      # unchanged: every second repaint
+
+
+def test_nonsense_is_ignored_rather_than_reset_to_a_default():
+    """A value out of range and a value of the wrong kind are different answers.
+
+    A slider at its end stop has a clear intention this module cannot honour, so
+    it is honoured as far as it goes.  ``setFps("fast")`` is a caller bug, and
+    quietly substituting the default would hide it — the viewer keeps the rate it
+    already had.
+    """
+    out = _run("""
+        const vib = await mount(host, { fps: 60 });
+        vib.setStructure(WATER);
+        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        vib.setFps("fast");        // ignored -- 60 stands
+        vib.setFps(NaN);           // ignored
+        vib.play();
+        calls.length = 0;
+        pump(12, 16.67);
+        console.log(JSON.stringify({
+            drawn: calls.filter((c) => c[0] === "render").length }));
+    """)
+    assert out["drawn"] == 12       # still 60 fps, not reset to the 30 default
+
+
 def test_a_viewer_mounted_with_the_caption_off_never_draws_one():
     """§ 8: the mount option is the default, and it is honoured from the first
     mode rather than after a first draw."""

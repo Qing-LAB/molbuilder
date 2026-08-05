@@ -27,13 +27,17 @@
 "use strict";
 
 import {
-    scatter, heldStill, positionsAtPhase, framesPerCycle, phaseOfFrame,
+    scatter, heldStill, positionsAtPhase,
+    framesPerCycle, phaseOfFrame, clampFps, clampCycleSec,
 } from "./_maths.js";
 import { create as createSurface } from "./_seal.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
-const DEFAULTS = { amplitude: 0.15, fps: 30, cycleSec: 1.0, showLabel: true };
+/* The rate's defaults and bounds are NOT here — they belong with the rate
+ * arithmetic (`_maths.js`), and a second copy is a second thing to keep in step.
+ * `clampFps(undefined)` is how this file asks for the default. */
+const DEFAULTS = { amplitude: 0.15, showLabel: true };
 
 /* A frame counts as due once this much of its interval has passed.
  *
@@ -94,8 +98,12 @@ export async function mount(hostEl, opts) {
     let structure  = null;       // the equilibrium
     let disp       = null;       // the current mode, scattered to global order
     let amplitude  = typeof opts.amplitude === "number" ? opts.amplitude : DEFAULTS.amplitude;
-    let fps        = typeof opts.fps === "number" ? opts.fps : DEFAULTS.fps;
-    let cycleSec   = typeof opts.cycleSec === "number" ? opts.cycleSec : DEFAULTS.cycleSec;
+    /* Clamped on the way in, exactly as `setFps` clamps: a rate arriving at mount
+     * is no more honourable than one arriving later, and an unclamped `cycleSec`
+     * would also be stamped verbatim into an export's metadata (§ 12) — the one
+     * place a wrong number becomes a wrong caption. */
+    let fps        = clampFps(opts.fps);
+    let cycleSec   = clampCycleSec(opts.cycleSec);
     let frames     = framesPerCycle(fps, cycleSec);
     let frame      = 0;
     let playing    = false;
@@ -255,16 +263,23 @@ export async function mount(hostEl, opts) {
             if (!playing) draw();          // paused: show the change now
         },
 
+        /* Nonsense is IGNORED; a real number out of range is BROUGHT IN.
+         *
+         * The two are different answers on purpose. `setFps("fast")` is a caller
+         * bug and resetting to the default would hide it. `setFps(0)` is a slider
+         * at its end stop — a value with a clear intention that this module simply
+         * cannot honour, so it is honoured as far as it goes. Leaving it raw is
+         * what made the clock divide by zero and stop for good. */
         setFps(n) {
             if (disposed || typeof n !== "number" || !isFinite(n)) return;
-            fps = n;
+            fps = clampFps(n);
             reframe(framesPerCycle(fps, cycleSec));
             if (!playing) draw();
         },
 
         setCycleSec(s) {
-            if (disposed || typeof s !== "number" || !isFinite(s) || s <= 0) return;
-            cycleSec = s;
+            if (disposed || typeof s !== "number" || !isFinite(s)) return;
+            cycleSec = clampCycleSec(s);
             reframe(framesPerCycle(fps, cycleSec));
             if (!playing) draw();
         },

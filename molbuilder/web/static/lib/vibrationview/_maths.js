@@ -38,10 +38,12 @@
  */
 export const FPS_MIN = 5;
 export const FPS_MAX = 120;
+export const FPS_DEFAULT = 30;
 export const FRAMES_PER_CYCLE_MIN = 15;
 export const FRAMES_PER_CYCLE_MAX = 1200;   // 120 fps × 10 s: bounds an export
-
-const CYCLE_SEC_DEFAULT = 1.0;
+export const CYCLE_SEC_MIN = 0.1;
+export const CYCLE_SEC_MAX = 60;
+export const CYCLE_SEC_DEFAULT = 1.0;
 
 
 function clamp(v, lo, hi) {
@@ -192,11 +194,31 @@ export function positionsAtPhase(equilibrium, displacements, amplitude, phase) {
  * positions of frame 0 of this one, on screen and in a file.
  */
 export function framesPerCycle(fps, cycleSec) {
-    const f = isFiniteNumber(fps) ? clamp(fps, FPS_MIN, FPS_MAX) : 30;
-    const s = (isFiniteNumber(cycleSec) && cycleSec > 0)
-        ? cycleSec : CYCLE_SEC_DEFAULT;
-    const n = Math.round(f * s);
+    const n = Math.round(clampFps(fps) * clampCycleSec(cycleSec));
     return clamp(n, FRAMES_PER_CYCLE_MIN, FRAMES_PER_CYCLE_MAX);
+}
+
+
+/* ── Bringing a rate into range (§ 10.1) ─────────────────────────────────────
+ *
+ * These exist so the CALLER can clamp too, and they are not a convenience: the
+ * frame count is not the only thing a rate drives. The clock divides by `fps` to
+ * decide when a frame is due, so a rate that only reached the frame count would
+ * leave the loop running on a raw number — and `1000/0` is Infinity, which means
+ * a frame is never due and the animation stops dead while still reporting itself
+ * as playing. A negative rate is worse: every repaint is "due".
+ *
+ * So the band is applied wherever a rate is stored, and this is the one place it
+ * is written down.
+ */
+export function clampFps(fps) {
+    return isFiniteNumber(fps) ? clamp(fps, FPS_MIN, FPS_MAX) : FPS_DEFAULT;
+}
+
+export function clampCycleSec(cycleSec) {
+    return (isFiniteNumber(cycleSec) && cycleSec > 0)
+        ? clamp(cycleSec, CYCLE_SEC_MIN, CYCLE_SEC_MAX)
+        : CYCLE_SEC_DEFAULT;
 }
 
 

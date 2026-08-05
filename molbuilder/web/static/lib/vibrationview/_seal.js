@@ -198,6 +198,9 @@ export function create(hostEl) {
     function drawLabel() {
         if (state.disposed) return;
         if (!state.captionEl) {
+            // Nothing to say and nothing built yet: build nothing. A viewer that
+            // never carries a caption should not carry an empty element for one.
+            if (!state.labelText) return;
             if (typeof document === "undefined") return;
             const el = document.createElement("div");
             el.className = CAPTION_CLASS;
@@ -230,7 +233,13 @@ export function create(hostEl) {
             state.composite = document.createElement("canvas");
         }
         const out = state.composite;
-        out.width = src.width; out.height = src.height;
+        /* Assigning `width` resets the drawing surface even when the value has not
+         * changed — that is what the property does, not a quirk. During a
+         * recording this runs once per frame, so assigning unconditionally would
+         * buy a full canvas reallocation per frame in the path that is already the
+         * expensive one. */
+        if (out.width !== src.width)   out.width = src.width;
+        if (out.height !== src.height) out.height = src.height;
         const g = out.getContext("2d");
         if (!g) return null;
         g.clearRect(0, 0, out.width, out.height);

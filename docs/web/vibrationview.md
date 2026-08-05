@@ -570,6 +570,19 @@ within it. This is not the module interpreting anything — it is a door refusin
 value it cannot deliver, the same as the ones that refuse a mode which does not
 fit its structure (§ 6.3).
 
+**The clamp belongs wherever a rate is stored, not only where the frame count is
+worked out.** The rate drives two things — how many frames a cycle has, and when
+the next one is due — and only the first is arithmetic. The second is a division,
+and `1000 ÷ 0` is infinity: a frame is never due, the animation stops dead, and
+the viewer goes on reporting itself as playing. A negative rate makes every
+repaint due instead. So a rate is brought into range as it arrives, at mount and
+at the door alike.
+
+**A value out of range and a value of the wrong kind get different answers.** A
+slider at its end stop has a clear intention this module cannot honour, so it is
+honoured as far as it goes. A rate that is not a number is a caller's mistake, and
+quietly substituting the default would hide it — the rate already set stands.
+
 **Below about 15 frames per cycle it starts to look stepped** — the phase moves
 more than 24° at a time, and at large amplitudes the eye follows the jumps instead
 of the motion. That is the floor a control should respect, not a number to leave
@@ -907,7 +920,8 @@ the day it is crossed.
 | § 9.2 — a rate change keeps the phase | going to a finer rate moves the atoms not at all, and going to a coarser one moves them by at most half a frame of phase — read off what is drawn, not off the frame number |
 | § 10.1 — a cycle is whole | a cycle is a whole number of frames at every rate, and frame 0 of the next cycle holds exactly the positions of frame 0 of this one — so a one-cycle export loops without a seam |
 | § 10.1 — the rounding lands on the duration | a rate whose frames-per-cycle is fractional is accepted, and what shifts is the cycle length, not the frame count; the shift does not grow over repeated cycles |
-| § 10.1 — the rate is clamped at the door | a frame rate below the floor or above the ceiling is brought into range rather than honoured or refused, and the animation keeps running across the change |
+| § 10.1 — the rate is clamped at the door | a frame rate below the floor or above the ceiling is brought into range **at the handle**, not merely where the frame count is worked out: zero and negative rates keep the animation running at the floor rather than freezing it or letting it run flat out, and a rate given at mount is clamped exactly as one given later |
+| § 10.1 — out of range and out of kind are different answers | a real number the module cannot honour is brought into range; a value of the wrong kind is ignored and the rate already set stands, because substituting a default would hide a caller's bug |
 | § 10.1 — the phase is the frame number | dropping or delaying a frame slows the animation and never skips a position; the sequence is the same one an export encodes |
 | § 10.1 — the chosen rate is the rate you get | on a display repainting faster than the rate asked for, the frames drawn per second are the ones requested — measured at the awkward case, where the interval is an exact multiple of the repaint and a strict comparison would silently fall to the next multiple down |
 | § 9.3 — the seal faces downward | coordinates, the current frame and the camera cannot be read out of it |
