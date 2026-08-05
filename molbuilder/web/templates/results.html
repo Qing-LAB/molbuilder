@@ -195,8 +195,14 @@
    call ``makePartialInspector`` from it. #}
 <script src="{{ url_for('static', filename='lib/inspectors/_partial_inspector_factory.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/results/file-picker.js') }}"></script>
-{# Specific (compound-extension) inspectors register first... #}
-<script src="{{ url_for('static', filename='lib/inspectors/trajectory.js') }}"></script>
+{# Specific (compound-extension) inspectors register first...
+
+   EVERY INSPECTOR BELOW CARRIES `defer` OR IS A MODULE, deliberately: that puts
+   them all in one queue, which runs in document order, so the order written here
+   is the order that happens.  Mix the two and the modules silently move behind
+   the classic ones -- see the note above source.js, and
+   tests/test_inspector_registration_order.py, which asserts it. #}
+<script defer src="{{ url_for('static', filename='lib/inspectors/trajectory.js') }}"></script>
 {# A MODULE: it imports VibrationView and hands `mount` to the spectra core,
    which is a classic script and cannot import one itself.  See the file. #}
 <script type="module" src="{{ url_for('static', filename='lib/inspectors/spectra.js') }}"></script>
@@ -204,12 +210,22 @@
 <script type="module" src="{{ url_for('static', filename='lib/inspectors/structure.js') }}"></script>
 {# Markdown inspector (.md) -- split-pane editor + live preview.
    Registered BEFORE source.js so .md files dispatch to the rich
-   editor rather than the read-only paginated viewer.  See task #32. #}
-<script src="{{ url_for('static', filename='lib/inspectors/markdown.js') }}"></script>
+   editor rather than the read-only paginated viewer.  See task #32.
+
+   `defer` IS LOad-BEARING, not tidiness.  Registration order decides which
+   inspector claims a file (registry.js: "more specific predicates MUST
+   register before more general ones"), and a plain classic script runs during
+   PARSING while a `type="module"` script is deferred to after it -- so the two
+   module inspectors above would register AFTER these two catch-alls, and
+   `.spectra.json` would be claimed by the read-only text viewer.  It was, for
+   about an hour on 2026-08-05.  `defer` puts a classic script in the same
+   queue as a module, so the whole group runs in DOCUMENT order and the order
+   you read here is the order that happens. #}
+<script defer src="{{ url_for('static', filename='lib/inspectors/markdown.js') }}"></script>
 {# ...then the catch-all source inspector (matches .log / .json /
    .py / .fdf / .out / .txt / .md -- LAST so the specific inspectors
    above get first crack at compound extensions). #}
-<script src="{{ url_for('static', filename='lib/inspectors/source.js') }}"></script>
+<script defer src="{{ url_for('static', filename='lib/inspectors/source.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='results/viewer.js') }}"></script>
 </body>
