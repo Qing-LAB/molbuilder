@@ -246,8 +246,11 @@ export function create(hostEl) {
             const fontPx = (parseFloat(cs && cs.fontSize) || 12) * k;
             const padX   = (parseFloat(cs && cs.paddingLeft) || 6) * k;
             const padY   = (parseFloat(cs && cs.paddingTop) || 3) * k;
-            const x      = 8 * k;
-            const y      = 8 * k;
+            // WHERE it sits is the stylesheet's too, read like everything else.
+            // Repeating the corner here as a literal would mean moving the
+            // caption in CSS and having the exported one stay where it was.
+            const x      = (parseFloat(cs && cs.left) || 8) * k;
+            const y      = (parseFloat(cs && cs.top)  || 8) * k;
 
             g.font = fontPx + "px " + ((cs && cs.fontFamily) || "sans-serif");
             g.textBaseline = "top";
@@ -357,7 +360,6 @@ export function create(hostEl) {
                 } catch (_) {}
             }
             state.capturing = true;
-            drawLabel();          // the caption re-sizes with the new canvas
             paint();
 
             return function endCapture() {
@@ -373,7 +375,6 @@ export function create(hostEl) {
                     state.ground = origGround;
                 }
                 state.capturing = false;
-                drawLabel();
                 paint();
             };
         },
@@ -417,6 +418,8 @@ export function create(hostEl) {
             if (state.disposed) return;
             state.disposed = true;
             try { if (state.captionEl) state.captionEl.remove(); } catch (_) {}
+            state.captionEl = null;
+            state.composite = null;
             try { viewer.removeAllModels(); } catch (_) {}
             try { viewer.clear(); } catch (_) {}
             try { hostEl.innerHTML = ""; } catch (_) {}

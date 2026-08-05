@@ -77,7 +77,7 @@ HARNESS = r"""
     };
     const caption = () => children.find((c) => c.className === "vibview-caption");
     // The clock is the handle's, so it is the one thing a test must drive.
-    let rafQ = [];
+    var rafQ = [];
     let clock = 0;
     global.requestAnimationFrame = (fn) => { rafQ.push(fn); return rafQ.length; };
     global.cancelAnimationFrame  = () => { rafQ = []; };
@@ -438,6 +438,63 @@ def test_the_caption_switch_shows_and_hides_it():
     assert out["text"] == "Mode 1 · 1584.2 cm-1"
 
 
+def test_a_new_structure_takes_the_caption_with_it():
+    """§ 5.1: a new structure ends the mode — and the caption NAMES a mode.
+
+    Left up, it is a confident label on nothing: "Mode 7 · 1584.2 cm⁻¹" written
+    across a molecule that has no mode at all, which is worse than no label.
+    """
+    out = _run("""
+        const vib = await mount(host, {});
+        vib.setStructure(WATER);
+        vib.showMode({ index: 7, displacements: [[1,0,0],[0,1,0],[0,0,1]],
+                       label: "Mode 7 · 1584.2 cm⁻¹" });
+        const before = caption().textContent;
+        vib.setStructure({ elements: ["H","H"], positions: [[0,0,0],[1,0,0]] });
+        const el = caption();
+        console.log(JSON.stringify({
+            before, after: el.textContent, hidden: el.hidden }));
+    """)
+    assert out["before"] == "Mode 7 · 1584.2 cm⁻¹"
+    assert out["after"] == ""
+    assert out["hidden"] is True
+
+
+def test_the_chosen_rate_is_honoured_on_a_display_that_repaints_faster():
+    """§ 10.1: `fps` is frames per second.
+
+    THE REGRESSION HOME for the commonest configuration there is.  A 60 Hz display
+    repaints every 16.67 ms and the default 30 fps asks for 33.33 ms — exactly two
+    repaints.  Comparing strictly makes that a coin flip decided by timestamp
+    jitter: land a hair under and the loop waits a THIRD repaint, so the animation
+    silently runs at 20 fps and alternates as the jitter moves.
+
+    Twelve repaints of a 60 Hz display is 200 ms, which at 30 fps is six frames.
+    """
+    out = _run("""
+        const vib = await mount(host, { fps: 30 });
+        vib.setStructure(WATER);
+        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        vib.play();
+        calls.length = 0;
+        pump(12, 16.67);                       // 60 Hz, twelve repaints
+        const drawn = calls.filter((c) => c[0] === "render").length;
+        vib.dispose();      // its loop shares this recorder; retire it first
+        rafQ = [];
+        // ...and asking for the display's own rate draws on every repaint
+        const vib2 = await mount(host, { fps: 60 });
+        vib2.setStructure(WATER);
+        vib2.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
+        vib2.play();
+        calls.length = 0;
+        pump(12, 16.67);
+        const drawn60 = calls.filter((c) => c[0] === "render").length;
+        console.log(JSON.stringify({ drawn, drawn60 }));
+    """)
+    assert out["drawn"] == 6      # every second repaint, not every third
+    assert out["drawn60"] == 12   # every repaint
+
+
 def test_a_viewer_mounted_with_the_caption_off_never_draws_one():
     """§ 8: the mount option is the default, and it is honoured from the first
     mode rather than after a first draw."""
@@ -466,7 +523,10 @@ def test_the_handle_offers_no_read_of_what_it_holds():
     """
     out = _run("""
         const vib = await mount(host, {});
-        const doors = Object.keys(vib).filter((k) => k !== "_capture");
+        // Every key, unfiltered.  An earlier draft carried a `_capture` hatch and
+        // this line filtered it out to stay green -- a check laundering the thing
+        // it exists to catch.  If a hatch comes back, this fails.
+        const doors = Object.keys(vib);
         console.log(JSON.stringify({ doors: doors.sort() }));
     """)
     assert out["doors"] == sorted([

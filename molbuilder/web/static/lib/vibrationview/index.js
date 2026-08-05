@@ -35,6 +35,16 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
 const DEFAULTS = { amplitude: 0.15, fps: 30, cycleSec: 1.0, showLabel: true };
 
+/* A frame counts as due once this much of its interval has passed.
+ *
+ * It is not 1.0, and the reason is the commonest configuration there is. A
+ * display repaints on its own grid — 16.67 ms at 60 Hz — and the default 30 fps
+ * asks for 33.33 ms, which is exactly two repaints. Comparing strictly makes that
+ * a coin flip decided by timestamp jitter: land a hair under and the loop waits a
+ * THIRD repaint, so the animation runs at 20 fps instead of 30, and alternates
+ * between them as the jitter moves. A frame that is 90% due is due. */
+const FRAME_DUE = 0.9;
+
 
 function warn(msg) {
     try { if (root.console) root.console.warn("[vibrationview] " + msg); } catch (_) {}
@@ -116,7 +126,7 @@ export async function mount(hostEl, opts) {
         if (disposed || !playing) return;
         rafId = root.requestAnimationFrame(tick);
         const t = (typeof now === "number") ? now : 0;
-        if (t - lastDrawAt < 1000 / fps) return;
+        if (t - lastDrawAt < (1000 / fps) * FRAME_DUE) return;
         lastDrawAt = t;
         frame += 1;
         draw();
@@ -175,7 +185,10 @@ export async function mount(hostEl, opts) {
                 return false;
             }
             stop();
-            disp = null; modeIndex = null; modeNorm = null;
+            /* The caption goes with the mode. It names one — "Mode 7 · 1584.2
+             * cm⁻¹" — so leaving it up over a structure that now has no mode is a
+             * confident label on nothing, which is worse than no label. */
+            disp = null; modeIndex = null; modeNorm = null; labelText = null;
             frame = 0;
             structure = {
                 elements:  s.elements.slice(),
@@ -183,6 +196,7 @@ export async function mount(hostEl, opts) {
             };
             surface.setStructure(structure.elements, structure.positions);
             surface.setHeldStill([]);
+            applyLabel();
             surface.refit();
             return true;
         },
@@ -261,6 +275,21 @@ export async function mount(hostEl, opts) {
             applyLabel();
         },
 
+        /* NO HATCH FOR THE EXPORT, and that is deliberate.
+         *
+         * An earlier draft hung a `_capture` object off this handle so § 12's
+         * encoders could read the state and reach the drawing surface. It carried
+         * a comment saying it was not really part of the handle, which was simply
+         * untrue — it was a property of the object every host is given, and the
+         * test that enumerates the doors had to filter it out to stay green: a
+         * check laundering the thing it exists to catch.
+         *
+         * The export needs no hatch. It runs INSIDE this closure, which already
+         * holds the structure, the mode, the amplitude, the rate and the surface;
+         * § 12's door hands them over as arguments at call time and none of them
+         * escapes. The sealed layer warns that every "just for tests" hatch it
+         * ever had became a production read, and this one was on its way.
+         */
         dispose() {
             if (disposed) return;
             stop();
@@ -268,29 +297,6 @@ export async function mount(hostEl, opts) {
             structure = null; disp = null;
             try { surface.dispose(); } catch (_) {}
             try { if (hostEl.classList) hostEl.classList.remove("vibview"); } catch (_) {}
-        },
-
-        /* Not a door. The capture machinery (§ 12) reads the viewer's state
-         * through this rather than through eleven getters that would also let a
-         * host read them — the handle answers no question about what it holds
-         * (§ 6.4), and this is not on the handle a host is given. */
-        _capture: {
-            surface:    surface,
-            frameAt:    function (n) {
-                return positionsAtPhase(structure.positions, disp, amplitude,
-                                        phaseOfFrame(n, frames));
-            },
-            rest:       function () { return structure.positions.map(function (p) { return p.slice(); }); },
-            state:      function () {
-                return { amplitude: amplitude, fps: fps, cycleSec: cycleSec,
-                         framesPerCycle: frames, frame: frame,
-                         index: modeIndex, norm: modeNorm,
-                         ready: !!(structure && disp) };
-            },
-            wasPlaying: function () { return playing; },
-            resume:     start,
-            halt:       stop,
-            redraw:     draw,
         },
     };
 }

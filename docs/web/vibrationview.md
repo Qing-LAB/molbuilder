@@ -891,6 +891,7 @@ the day it is crossed.
 | § 4 — no test seam | the tests themselves reach the module only through `import` and the handle |
 | § 5.1 — the door says the cost | `showMode` on an installed structure issues no redraw and no refit; `setStructure` issues both |
 | § 5.1 — a new structure ends the mode | after `setStructure` the clock is stopped and nothing is animating, whatever was running before — so no eigenvector can survive onto a molecule it was not computed for |
+| § 5.1 — and it takes the caption with it | the caption names a mode, so a structure with no mode carries no caption; a label left standing would be a confident sentence about nothing |
 | § 5.2 — amplitude has one home | there is no way to set amplitude except `setAmplitude`, and what the tick uses is always what was last written there |
 | § 5.3 — what is animated is what is exported | frame *n* of an export holds exactly the positions frame *n* shows on screen, at every amplitude and every rate |
 | § 5.4 — no chrome | a mounted viewer contains no heading, button, menu or control of any kind |
@@ -898,6 +899,7 @@ the day it is crossed.
 | § 6.3 — one partition | held-still atoms are exactly the complement of the basis; a mode with no basis holds nothing still; a basis that is not a sorted run still scatters each row to the right atom |
 | § 6.3 — a mode that does not fit is refused | a basis naming an atom the structure lacks, and a mode with more rows than atoms, are each turned away with nothing drawn — never padded with zeros into a partial animation |
 | § 6.4 — it holds no structure | the handle offers no read of the structure, the mode's vectors, the mode's index, or the camera |
+| § 4 — no hatch, for anyone | the handle's keys are enumerated **unfiltered**: no accessor reaches the drawing surface or the internal state, and a test may not except one from the count |
 | § 8 — mount always resolves | a mount that cannot build a surface still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
 | § 8 — the handle is live | every door works on the first call after `await`, with no readiness wait and nothing deferred |
 | § 9.2 — the knobs are live | amplitude, fps and cycle-length changes take effect on the next frame, issue no call to the drawing surface, and never stop a running animation |
@@ -907,6 +909,7 @@ the day it is crossed.
 | § 10.1 — the rounding lands on the duration | a rate whose frames-per-cycle is fractional is accepted, and what shifts is the cycle length, not the frame count; the shift does not grow over repeated cycles |
 | § 10.1 — the rate is clamped at the door | a frame rate below the floor or above the ceiling is brought into range rather than honoured or refused, and the animation keeps running across the change |
 | § 10.1 — the phase is the frame number | dropping or delaying a frame slows the animation and never skips a position; the sequence is the same one an export encodes |
+| § 10.1 — the chosen rate is the rate you get | on a display repainting faster than the rate asked for, the frames drawn per second are the ones requested — measured at the awkward case, where the interval is an exact multiple of the repaint and a strict comparison would silently fall to the next multiple down |
 | § 9.3 — the seal faces downward | coordinates, the current frame and the camera cannot be read out of it |
 | § 9.3 — appearance is the seal's | nothing above the seal names a colour for a held-still atom, or a font, size or corner for the caption |
 | § 9.2 — nothing animates with nothing to animate | `play()` before a mode is shown starts no clock and draws no frame |
