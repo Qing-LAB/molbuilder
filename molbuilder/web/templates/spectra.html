@@ -238,10 +238,10 @@
   <article id="methods-modal-body" class="methods-modal-body"></article>
 </dialog>
 
-{# MolView component stack (viewer + selection/cell panel + warning-modal + the
-   selection stack) — card 1 mounts the read-only card.  Includes 3Dmol +
-   mol-viewer-embed, which VibrationView also borrows for the mode viewer.  One
-   shared include instead of a hand-pasted copy (ui-design-contract §2.1). #}
+{# MolView component stack (viewer + selection/cell panel + warning-modal) —
+   card 1 mounts the read-only card.  One shared include instead of a hand-pasted
+   copy (ui-design-contract §2.1).  VibrationView borrows nothing from it: it is
+   a sealed module with its own drawing surface (docs/web/vibrationview.md). #}
 {% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>

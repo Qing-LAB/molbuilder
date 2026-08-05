@@ -55,20 +55,17 @@ def test_every_class_molview_defines_is_namespaced():
     )
 
 
-def test_the_namespace_is_not_shared_with_the_retired_embed():
-    """lib/viewer is the retired 3Dmol embed: loaded by no page, imported by no
-    module.  MolView carried 44 of its class names and 82 duplicate selectors
-    with it, styling elements a dead file used to build.
-
-    The directory stays until the VibrationView separation (task #104) removes
-    it.  What must not come back is MolView sharing a single name with it.
-    """
-    embed = CSS.parent.parent / "viewer/mol-viewer-embed.css"
-    if not embed.exists():          # deleted by #104 -- nothing left to share
-        pytest.skip("lib/viewer/mol-viewer-embed.css is gone, as #104 intends")
-    shared = _defined_classes(CSS.read_text()) & _defined_classes(embed.read_text())
-    assert not shared, (
-        "MolView is defining class names the retired embed also defines:\n  "
-        + "\n  ".join(sorted(shared))
-        + "\n\nThose elements are built by lib/molview/3dmol-embed.js now."
-    )
+# RETIRED 2026-08-05 with the thing it watched:
+# test_the_namespace_is_not_shared_with_the_retired_embed.
+#
+# It asserted that MolView defined no class name the retired 3-D embed also
+# defined -- a real hazard while both sheets existed, since MolView had carried
+# 44 of those names across with it.  The embed's stylesheet went first and the
+# test began skipping; the rest of lib/viewer is deleted now (task #19), so there
+# is no second definition left for MolView to collide with and nothing for this
+# to check.  A test that can only skip is a test that reads as coverage and is
+# not.
+#
+# The one-directional guard that still matters -- a PAGE sheet may not name a
+# MODULE's classes -- lives in tests/test_css_module_boundary.py, where
+# `mol-viewer-` remains on the forbidden-prefix list so the names cannot return.

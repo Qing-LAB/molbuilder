@@ -1098,14 +1098,18 @@ is the door, everything else is a room.
 **Deliberately not listed:** the sealed layer. No consumer names its file and
 neither does this document (§ 4).
 
-> **What this replaces.** The previous VibrationView borrowed its drawing surface
-> from a shared 3Dmol embed found at runtime through `window.molbuilder.viewer`.
-> That global's publisher was retired and loaded by no page, so **the module could
+> **What this replaced, and what is now gone.** The previous VibrationView
+> borrowed its drawing surface from a shared 3Dmol embed found at runtime through
+> a global. That global's publisher was loaded by no page, so **the module could
 > not mount at all** — every attempt returned a failure handle and the Spectrum
 > tab showed "vibration viewer unavailable". Its own tests passed because they
-> supplied the missing global themselves. The design above removes the dependency
-> rather than restoring the global: the seal comes inside, the export machinery is
-> carried in with it, and the retired embed is deleted once nothing needs it.
+> supplied the missing global themselves.
+>
+> Both are deleted: the predecessor module and the 6,884-line embed it borrowed
+> from, along with the two source-pinning tests that guarded patterns inside code
+> no page loaded. What replaced the borrow is the sealed layer described above —
+> and the export machinery, which was the one thing in that embed still worth
+> having and is carried across rather than rewritten.
 >
 > The animation export (GIF and WebM) is **carried, not invented** — it worked in
 > the retired embed and is brought across intact. **New** are the PNG sequence with

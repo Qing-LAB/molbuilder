@@ -289,8 +289,8 @@ export function init(viewer) {
     // the server's /api/build/load sniffs the format.)
 
     // Update the section header's #title-readout from the LIVE structure (unified API).
-    // The Hill formula() belongs to the molview module (static/lib/viewer/mol-format.js) -- we `import`
-    // it (as mvFormula, top of file, from the molview door) rather than re-implement it.  It is a
+    // The Hill formula() belongs to MolView and comes through its one door -- we
+    // `import` it (as mvFormula, top of file) rather than re-implement it.  It is a
     // pure stateless helper, so it is a direct ES import (no global lookup, no load-order dance).
     function _refreshTitleReadout() {
         const el = $("title-readout");

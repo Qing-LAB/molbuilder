@@ -160,9 +160,7 @@
 
 {# Script order matters: the registry must be present BEFORE any
    inspector module loads (each inspector self-registers at script
-   load time).  mol-viewer + xyz-io are dependencies of the
-   structure inspector.  mol-style is the style-spec builder used by
-   the trajectory core; trajectory/core.js exposes
+   load time).  xyz-io is a dependency of the structure inspector; trajectory/core.js exposes
    window.molbuilder.trajectoryInspector; no auto-bootstrap, so it
    sits idle until lib/inspectors/trajectory.js asks to mount.
 

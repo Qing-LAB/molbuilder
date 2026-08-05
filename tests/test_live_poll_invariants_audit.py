@@ -254,57 +254,18 @@ class TestSpectraResultsFingerprintGuard:
 # --------------------------------------------------------------------- #
 
 
-class TestInjectedToggleUnsubscribeCleanup:
-    """The isolate ("Show selected only") toggle subscribes to the
-    selection store to keep its button + menu entry in sync.  That
-    subscriber's unsubscribe handle MUST be torn down when the toggle
-    is disposed so a mount→dispose cycle doesn't strand it.
-
-    History: the auto-uncheck-on-empty behaviour lived in
-    ``selection-panel.js``, then ``molview/view-controls.js``.  Both
-    are gone.  Isolate is now view toggle #5, injected through the
-    embed's ONE view-toggle path (``handle.addViewToggle`` in
-    ``mol-viewer-embed.js``): the embed renders its button + menu entry
-    and owns the store subscription that keeps them synced.  The
-    subscription's unsubscribe handle is captured in ``addViewToggle``
-    and invoked from the returned ``dispose()``.  The auto-clear rule
-    itself moved into the store (``_afterSelectionChange``), so this
-    test now pins only the SUBSCRIBER-LEAK invariant at its new home.
-
-    Pin the capture + the dispose teardown so a refactor can't
-    silently revert."""
-
-    @pytest.fixture(scope="class")
-    def embed_body(self):
-        return (_LIB / "viewer" / "mol-viewer-embed.js").read_text()
-
-    def test_injected_toggle_captures_unsubscribe_handle(self, embed_body):
-        """addViewToggle assigns the return value of
-        spec.subscribe(...) to a variable — the unsubscribe handle."""
-        assert re.search(
-            r"unsub\s*=\s*spec\.subscribe",
-            embed_body,
-        ), ("addViewToggle no longer captures its spec.subscribe() "
-            "return value; the injected-toggle (isolate) subscriber "
-            "leaks every viewer mount cycle.")
-
-    def test_injected_toggle_unsubscribe_is_called_in_dispose(
-            self, embed_body):
-        """The captured unsubscribe handle must be invoked from the
-        toggle's returned ``dispose()`` so teardown removes it."""
-        # Match `dispose: function () { ... if (unsub) unsub(); ... }`
-        assert re.search(
-            r"dispose\s*:\s*function\s*\([^)]*\)\s*\{[^}]*"
-            r"unsub\s*\(\s*\)",
-            embed_body, re.DOTALL,
-        ), ("addViewToggle's dispose() does NOT call unsub(); every "
-            "mount cycle leaks the injected-toggle store subscriber.")
-
-
-# --------------------------------------------------------------------- #
-#  Trajectory inspector claims geomeTRIC / PySCF multi-frame XYZ        #
-# --------------------------------------------------------------------- #
-
+# RETIRED 2026-08-05 with the file it read: TestInjectedToggleUnsubscribeCleanup.
+#
+# It read `lib/viewer/mol-viewer-embed.js` and pinned two source patterns in
+# addViewToggle -- that the subscribe handle was captured, and that dispose()
+# called it -- guarding against a subscriber leak on every viewer mount.
+#
+# NO PAGE HAD LOADED THAT FILE for months, so the leak it guarded could not
+# happen and the patterns it pinned belonged to a viewer nobody mounted.  The
+# file is deleted now (task #19), and the invariant lives where the mounting
+# actually happens: MolView tears its own toggles down through the handle its
+# mount returns, and VibrationView's dispose stops the clock and releases the
+# drawing surface (docs/web/vibrationview.md 8).
 
 class TestConvergenceTargetsAndPlotColors:
     """Two invariants for the 2026-06-13 convergence-summary work:

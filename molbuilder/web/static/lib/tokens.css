@@ -189,8 +189,8 @@
     --group-budget-accent:  var(--success);
 
     /* --- Embeddable-overlay tier (CSS-migration step 3, 2026-07) ---
-     * The concealed embed modules (lib/viewer/mol-viewer-embed.css,
-     * lib/results/bundle-handoff.css, lib/system-load-monitor.css,
+     * The concealed embed modules (lib/results/bundle-handoff.css,
+     * lib/system-load-monitor.css,
      * lib/trajectory/trajectory-inspector.css, lib/form-schema.css) render inside
      * host pages, so they tint with TRANSLUCENT overlays that adapt to
      * whatever background sits beneath them — rather than assuming a

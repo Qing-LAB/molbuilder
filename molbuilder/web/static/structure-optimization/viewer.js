@@ -1192,9 +1192,9 @@ import { mount as mvMount, formula as mvFormula }
         });   // close runtime.whenReady("projects").then(...)
     }
 
-    // formula() is imported from MolView's door (mvFormula, top of file) — the Hill formatter in
-    // static/lib/viewer/mol-format.js.  Imported, so it is always the real function (no global-read, no
-    // load-order fallback, no "OHH" full-expansion bug).
+    // formula() is imported from MolView's door (mvFormula, top of file).  Imported,
+    // so it is always the real function (no global-read, no load-order fallback,
+    // no "OHH" full-expansion bug).
     const formula = mvFormula;
 
     // ----- 2. Render --------------------------------------------------
