@@ -44,10 +44,10 @@ def test_held_still_is_exactly_the_complement_of_the_basis():
     """
     out = _run("""
         console.log(JSON.stringify({
-            some:   M.heldStill([1, 3], 5),
-            all:    M.heldStill([], 4),
-            none:   M.heldStill([0, 1, 2], 3),
-            noBasis: M.heldStill(null, 3),
+            some:   M.scatter([[1,0,0],[0,1,0]], [1, 3], 5).heldStill,
+            all:    M.scatter([], [], 4).heldStill,
+            none:   M.scatter([[1,0,0],[0,1,0],[0,0,1]], [0,1,2], 3).heldStill,
+            noBasis: M.scatter([[1,0,0],[0,1,0],[0,0,1]], null, 3).heldStill,
         }));
     """)
     assert out["some"] == [0, 2, 4]
@@ -61,7 +61,7 @@ def test_scatter_places_free_rows_on_the_atoms_the_basis_names():
     zeros where nothing moves."""
     out = _run("""
         console.log(JSON.stringify(
-            M.scatter([[1, 0, 0], [0, 2, 0]], [2, 0], 4)));
+            M.scatter([[1, 0, 0], [0, 2, 0]], [2, 0], 4).displacements));
     """)
     assert out == [[0, 2, 0],    # basis row 1 -> atom 0
                    [0, 0, 0],    # held still
@@ -77,7 +77,7 @@ def test_scatter_is_correct_when_the_basis_is_not_a_sorted_run():
     """
     out = _run("""
         console.log(JSON.stringify(
-            M.scatter([[1, 0, 0], [2, 0, 0], [3, 0, 0]], [2, 0, 1], 3)));
+            M.scatter([[1, 0, 0], [2, 0, 0], [3, 0, 0]], [2, 0, 1], 3).displacements));
     """)
     assert out == [[2, 0, 0], [3, 0, 0], [1, 0, 0]]
 
@@ -86,7 +86,7 @@ def test_scatter_with_no_basis_uses_the_rows_as_given():
     """§ 6.3 table: basis absent -> the rows are already one per atom, in order."""
     out = _run("""
         console.log(JSON.stringify(
-            M.scatter([[1, 0, 0], [0, 1, 0]], null, 2)));
+            M.scatter([[1, 0, 0], [0, 1, 0]], null, 2).displacements));
     """)
     assert out == [[1, 0, 0], [0, 1, 0]]
 
@@ -179,8 +179,8 @@ def test_held_still_atoms_never_move_at_any_phase():
     special case in the loop — they simply do not move"."""
     out = _run("""
         const eq   = [[0,0,0], [1,1,1], [2,0,0]];
-        const disp = M.scatter([[1,1,1]], [1], 3);      // only atom 1 moves
-        const N = M.framesPerCycle(30, 1.0);
+        const disp = M.scatter([[1,1,1]], [1], 3).displacements;      // only atom 1 moves
+        const N = M.rate(30, 1.0).framesPerCycle;
         const moved = [];
         for (let n = 0; n < N; n++) {
             const p = M.positionsAtPhase(eq, disp, 3.0, M.phaseOfFrame(n, N));
@@ -207,7 +207,7 @@ def test_a_cycle_is_a_whole_number_of_frames_and_closes_exactly():
         const disp = [[0,0,0], [1,0,0]];
         const rates = [[30, 1.0], [25, 0.3], [60, 1.0], [24, 1.7], [5, 4.0]];
         const rows = rates.map(([fps, cyc]) => {
-            const N = M.framesPerCycle(fps, cyc);
+            const N = M.rate(fps, cyc).framesPerCycle;
             const first = M.positionsAtPhase(eq, disp, 0.2, M.phaseOfFrame(0, N));
             const next  = M.positionsAtPhase(eq, disp, 0.2, M.phaseOfFrame(N, N));
             const mid   = M.positionsAtPhase(eq, disp, 0.2, M.phaseOfFrame(7, N));
@@ -236,9 +236,9 @@ def test_the_rounding_lands_on_the_duration_not_on_the_frame_count():
     """
     out = _run("""
         console.log(JSON.stringify({
-            even:      M.framesPerCycle(30, 1.0),
-            fractional: M.framesPerCycle(25, 0.7),   // 17.5 -> 18
-            roundsDown: M.framesPerCycle(24, 1.7),   // 40.8 -> 41
+            even:      M.rate(30, 1.0).framesPerCycle,
+            fractional: M.rate(25, 0.7).framesPerCycle,   // 17.5 -> 18
+            roundsDown: M.rate(24, 1.7).framesPerCycle,   // 40.8 -> 41
         }));
     """)
     assert out["even"] == 30
@@ -248,34 +248,65 @@ def test_the_rounding_lands_on_the_duration_not_on_the_frame_count():
     assert abs(out["fractional"] / 25 - 0.72) < 1e-9
 
 
-def test_the_rate_is_clamped_into_a_band_it_can_honour():
+def test_a_rate_out_of_range_is_brought_into_it():
     """§ 10.1: "a frame rate below the floor or above the ceiling is brought into
     range rather than honoured or refused".
 
-    A slideshow and a core-burning loop are both values the door cannot deliver;
-    bringing them into range is the same move the mode-fit door makes, not
-    interpretation.
+    This is the arithmetic half.  Whether the DOOR clamps — which is what stops
+    the clock dividing by zero — is asserted where the door is,
+    ``test_vibrationview_mount_js.py``.  Junk values are the door's business too:
+    this function is handed real numbers, and giving it a second opinion about
+    defaults is what put four of them in two files.
     """
     out = _run("""
         console.log(JSON.stringify({
             MIN: M.FRAMES_PER_CYCLE_MIN,
             MAX: M.FRAMES_PER_CYCLE_MAX,
-            tooFew:   M.framesPerCycle(2, 1.0),        // 2 -> floor
-            tooMany:  M.framesPerCycle(1000, 100),     // -> ceiling
-            // a low fps is fine when the cycle is long: 5 fps x 4 s = 20 frames
-            slowButSmooth: M.framesPerCycle(5, 4.0),
-            // junk falls back rather than producing NaN frames
-            nan:      M.framesPerCycle(NaN, 1.0),
-            zeroCycle: M.framesPerCycle(30, 0),
-            negative: M.framesPerCycle(30, -2),
+            tooFew:   M.rate(2, 1.0).framesPerCycle,        // 2 -> floor
+            tooMany:  M.rate(1000, 100).framesPerCycle,     // -> ceiling
+            // a low rate is fine when the cycle is long: 5 fps x 4 s = 20 frames
+            slowButSmooth: M.rate(5, 4.0).framesPerCycle,
+            // a cycle of zero or less is a duration nobody can draw; the frame
+            // floor contains it without a second bound of its own
+            zeroCycle: M.rate(30, 0).framesPerCycle,
+            negative:  M.rate(30, -2).framesPerCycle,
         }));
     """)
     assert out["tooFew"] == out["MIN"]
     assert out["tooMany"] == out["MAX"]
     assert out["slowButSmooth"] == 20
-    assert out["nan"] == 30                   # the default rate, one second
-    assert out["zeroCycle"] == 30
-    assert out["negative"] == 30
+    assert out["zeroCycle"] == out["MIN"]
+    assert out["negative"] == out["MIN"]
+
+
+def test_the_cycle_length_reported_is_the_one_that_happened():
+    """§ 10.1: "the returned cycleSec is what the rounding produced, not what was
+    asked for".
+
+    It is the number an export stamps into its metadata, so it has to describe the
+    frames that exist rather than the request that produced them — a duration that
+    survived into a caption while the frames said otherwise would be a caption
+    that lies.  It is also why the seconds need no band of their own: the frame
+    count is bounded, so a wild request is already contained.
+    """
+    out = _run("""
+        const eff = (f, c) => { const r = M.rate(f, c);
+            return { fps: r.fps, n: r.framesPerCycle, sec: r.cycleSec }; };
+        console.log(JSON.stringify({
+            plain:     eff(30, 1.0),      // asks for a second, gets one
+            rounded:   eff(25, 0.3),      // 7.5 frames -> the floor, so it stretches
+            enormous:  eff(30, 1000),     // 30000 frames -> the ceiling
+            slow:      eff(5, 1.0),       // 5 frames -> the floor
+        }));
+    """)
+    assert out["plain"] == {"fps": 30, "n": 30, "sec": 1.0}
+    # the frame count is what is honoured; the duration is what moves
+    assert out["rounded"]["n"] == 15 and out["rounded"]["sec"] == 15 / 25
+    assert out["enormous"]["n"] == 1200 and out["enormous"]["sec"] == 1200 / 30
+    assert out["slow"]["n"] == 15 and out["slow"]["sec"] == 3.0
+    # every reported duration is exactly frames / rate -- no third opinion
+    for row in out.values():
+        assert abs(row["sec"] - row["n"] / row["fps"]) < 1e-12
 
 
 def test_the_phase_comes_from_the_frame_number():
@@ -284,7 +315,7 @@ def test_the_phase_comes_from_the_frame_number():
     accumulated addition, and the sequence an export encodes is the one the screen
     shows."""
     out = _run("""
-        const N = M.framesPerCycle(60, 1.0);      // 60 frames: quarters land on frames
+        const N = M.rate(60, 1.0).framesPerCycle;      // 60 frames: quarters land on frames
         console.log(JSON.stringify({
             N,
             zero:    M.phaseOfFrame(0, N),

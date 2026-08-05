@@ -26,18 +26,21 @@
  */
 "use strict";
 
-import {
-    scatter, heldStill, positionsAtPhase,
-    framesPerCycle, phaseOfFrame, clampFps, clampCycleSec,
-} from "./_maths.js";
+import { scatter, positionsAtPhase, rate, phaseOfFrame } from "./_maths.js";
 import { create as createSurface } from "./_seal.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
-/* The rate's defaults and bounds are NOT here — they belong with the rate
- * arithmetic (`_maths.js`), and a second copy is a second thing to keep in step.
- * `clampFps(undefined)` is how this file asks for the default. */
-const DEFAULTS = { amplitude: 0.15, showLabel: true };
+/* Every default, in one place. The BOUNDS live with the rate arithmetic, which
+ * is a different thing: what a value falls back to when nobody said, versus what
+ * this module can actually deliver. Splitting the four across two files — which is
+ * what an earlier draft did, because its clamp function also supplied defaults —
+ * makes four facts into two places to look. */
+const DEFAULTS = { amplitude: 0.15, fps: 30, cycleSec: 1.0, showLabel: true };
+
+function num(v, fallback) {
+    return (typeof v === "number" && isFinite(v)) ? v : fallback;
+}
 
 /* A frame counts as due once this much of its interval has passed.
  *
@@ -98,14 +101,18 @@ export async function mount(hostEl, opts) {
     let structure  = null;       // the equilibrium
     let disp       = null;       // the current mode, scattered to global order
     let amplitude  = typeof opts.amplitude === "number" ? opts.amplitude : DEFAULTS.amplitude;
-    /* Clamped on the way in, exactly as `setFps` clamps: a rate arriving at mount
-     * is no more honourable than one arriving later, and an unclamped `cycleSec`
-     * would also be stamped verbatim into an export's metadata (§ 12) — the one
-     * place a wrong number becomes a wrong caption. */
-    let fps        = clampFps(opts.fps);
-    let cycleSec   = clampCycleSec(opts.cycleSec);
-    let frames     = framesPerCycle(fps, cycleSec);
-    let frame      = 0;
+    /* WHAT WAS ASKED FOR, and what that comes to.
+     *
+     * The request is kept because it is the user's, and the derived triple —
+     * the rate the clock runs at, the frames in a cycle, and how long that cycle
+     * actually lasts — is worked out from it on every change. Keeping only the
+     * derived value would compound: ask for 5 fps and the cycle stretches to fit
+     * the frame floor, and asking for 30 again would then stretch from the
+     * stretched figure instead of returning to the second you asked for. */
+    let reqFps      = num(opts.fps, DEFAULTS.fps);
+    let reqCycleSec = num(opts.cycleSec, DEFAULTS.cycleSec);
+    let r           = rate(reqFps, reqCycleSec);
+    let frame       = 0;
     let playing    = false;
     let labelText  = null;
     let labelOn    = opts.showLabel !== false;
@@ -119,7 +126,7 @@ export async function mount(hostEl, opts) {
         if (disposed || !structure || !disp) return;
         surface.setAtomCoords(
             positionsAtPhase(structure.positions, disp, amplitude,
-                             phaseOfFrame(frame, frames)));
+                             phaseOfFrame(frame, r.framesPerCycle)));
     }
 
     /* The loop. A frame is advanced only when enough wall-clock has passed for
@@ -134,7 +141,7 @@ export async function mount(hostEl, opts) {
         if (disposed || !playing) return;
         rafId = root.requestAnimationFrame(tick);
         const t = (typeof now === "number") ? now : 0;
-        if (t - lastDrawAt < (1000 / fps) * FRAME_DUE) return;
+        if (t - lastDrawAt < (1000 / r.fps) * FRAME_DUE) return;
         lastDrawAt = t;
         frame += 1;
         draw();
@@ -166,11 +173,13 @@ export async function mount(hostEl, opts) {
      * best that exists: a coarser grid has no point at the old phase. The error
      * is bounded by half a frame — π/N — and it does not accumulate, because each
      * change re-anchors from the phase rather than from a running offset. */
-    function reframe(nextFrames) {
-        if (nextFrames === frames) return;
-        const phase = phaseOfFrame(frame, frames);
-        frame = Math.round(phase / (2 * Math.PI) * nextFrames) % nextFrames;
-        frames = nextFrames;
+    function reframe(next) {
+        if (next.framesPerCycle !== r.framesPerCycle) {
+            const phase = phaseOfFrame(frame, r.framesPerCycle);
+            frame = Math.round(phase / (2 * Math.PI) * next.framesPerCycle)
+                  % next.framesPerCycle;
+        }
+        r = next;
     }
 
     function applyLabel() {
@@ -228,9 +237,9 @@ export async function mount(hostEl, opts) {
                 return false;
             }
             const basis = Array.isArray(mode.basis) ? mode.basis : null;
-            let scattered;
+            let m;
             try {
-                scattered = scatter(mode.displacements, basis, structure.positions.length);
+                m = scatter(mode.displacements, basis, structure.positions.length);
             } catch (e) {
                 // REFUSED, not padded (§ 6.3): this is a mode computed against a
                 // different molecule, and zero-filling would animate the
@@ -238,13 +247,13 @@ export async function mount(hostEl, opts) {
                 warn((e && e.message) || "the mode does not fit this structure");
                 return false;
             }
-            disp      = scattered;
+            disp      = m.displacements;
             modeIndex = (mode.index !== undefined && mode.index !== null) ? mode.index : null;
             modeNorm  = (mode.norm !== undefined && mode.norm !== null) ? String(mode.norm) : null;
             labelText = (mode.label !== undefined && mode.label !== null && mode.label !== "")
                 ? String(mode.label) : null;
             frame = 0;
-            surface.setHeldStill(heldStill(basis, structure.positions.length));
+            surface.setHeldStill(m.heldStill);
             applyLabel();
             draw();
             return true;
@@ -272,15 +281,15 @@ export async function mount(hostEl, opts) {
          * what made the clock divide by zero and stop for good. */
         setFps(n) {
             if (disposed || typeof n !== "number" || !isFinite(n)) return;
-            fps = clampFps(n);
-            reframe(framesPerCycle(fps, cycleSec));
+            reqFps = n;
+            reframe(rate(reqFps, reqCycleSec));
             if (!playing) draw();
         },
 
         setCycleSec(s) {
             if (disposed || typeof s !== "number" || !isFinite(s)) return;
-            cycleSec = clampCycleSec(s);
-            reframe(framesPerCycle(fps, cycleSec));
+            reqCycleSec = s;
+            reframe(rate(reqFps, reqCycleSec));
             if (!playing) draw();
         },
 

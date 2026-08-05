@@ -554,14 +554,20 @@ it lands on every second repaint, so nothing beats against the refresh.
 
 **A cycle is a whole number of frames, and the rounding goes into the cycle
 length.** `fps × cycleSec` need not come out even — 25 fps over 0.3 s is 7.5 — so
-the frame count is rounded when it is set and the effective cycle length follows
-from the rounding rather than from the request. At 30 fps a 0.3 s cycle is 9
-frames and lasts 0.3 s; at 25 fps it is 8 frames and lasts 0.32 s. The error is a
-few percent of a duration nobody is measuring, it never accumulates because each
-cycle is the same whole number of frames, and in exchange **every loop closes
-exactly** — frame 0 of the next cycle is frame 0 of this one, on screen and in a
-file. The alternative, refusing rates that do not divide evenly, would make a
-smoothness control throw errors at a user for moving a slider.
+the frame count is rounded and the cycle's real length follows from the rounding
+rather than from the request. The error is a few percent of a duration nobody is
+measuring, it never accumulates because each cycle is the same whole number of
+frames, and in exchange **every loop closes exactly** — frame 0 of the next cycle
+is frame 0 of this one, on screen and in a file. The alternative, refusing rates
+that do not divide evenly, would make a smoothness control throw errors at a user
+for moving a slider.
+
+**So the length a viewer reports is the one that happened, not the one it was
+asked for**, because that is the number an export stamps into its metadata. A
+requested duration surviving into a caption while the frames said otherwise would
+be a caption that lies. It is also why the seconds need no band of their own: the
+frame count is bounded, so a wild request is already contained — a
+thousand-second cycle at 30 fps is 1200 frames, and comes back as forty seconds.
 
 **The rate is clamped, and the clamp is the module's.** `setFps(2)` is a
 slideshow; `setFps(10000)` burns a core drawing frames no display will show. So the
@@ -920,6 +926,7 @@ the day it is crossed.
 | § 9.2 — a rate change keeps the phase | going to a finer rate moves the atoms not at all, and going to a coarser one moves them by at most half a frame of phase — read off what is drawn, not off the frame number |
 | § 10.1 — a cycle is whole | a cycle is a whole number of frames at every rate, and frame 0 of the next cycle holds exactly the positions of frame 0 of this one — so a one-cycle export loops without a seam |
 | § 10.1 — the rounding lands on the duration | a rate whose frames-per-cycle is fractional is accepted, and what shifts is the cycle length, not the frame count; the shift does not grow over repeated cycles |
+| § 10.1 — the duration reported is the one that happened | the cycle length a viewer answers with is exactly its frames divided by its rate, for every rate including ones that were brought into range — never the figure that was requested |
 | § 10.1 — the rate is clamped at the door | a frame rate below the floor or above the ceiling is brought into range **at the handle**, not merely where the frame count is worked out: zero and negative rates keep the animation running at the floor rather than freezing it or letting it run flat out, and a rate given at mount is clamped exactly as one given later |
 | § 10.1 — out of range and out of kind are different answers | a real number the module cannot honour is brought into range; a value of the wrong kind is ignored and the rate already set stands, because substituting a default would hide a caller's bug |
 | § 10.1 — the phase is the frame number | dropping or delaying a frame slows the animation and never skips a position; the sequence is the same one an export encodes |

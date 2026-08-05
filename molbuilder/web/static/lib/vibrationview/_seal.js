@@ -92,18 +92,6 @@ function xyzText(elements, positions) {
     return lines.join("\n");
 }
 
-function dataUrlToBlob(dataUrl) {
-    try {
-        const m = /^data:([^;,]+);base64,(.*)$/.exec(dataUrl);
-        if (!m) return null;
-        const bin = root.atob(m[2]);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        return new root.Blob([bytes], { type: m[1] || "image/png" });
-    } catch (_) { return null; }
-}
-
-
 /* ── One drawing surface ──────────────────────────────────────────────────── */
 
 export function create(hostEl) {
@@ -132,7 +120,6 @@ export function create(hostEl) {
         captionEl: null,     // the DOM overlay that shows them (§ 12.3)
         composite: null,     // the 2-D canvas an export reads (see compose())
         ground:    ground,
-        capturing: false,
     };
 
     function canvasEl() {
@@ -140,10 +127,7 @@ export function create(hostEl) {
     }
 
     function mainModel() {
-        try {
-            const ms = viewer.getModel ? [viewer.getModel()] : [];
-            return ms[0] || null;
-        } catch (_) { return null; }
+        try { return viewer.getModel() || null; } catch (_) { return null; }
     }
 
     /* CARRIED KNOWLEDGE (1 of 2) — THE ONE THAT MATTERS.
@@ -368,7 +352,6 @@ export function create(hostEl) {
                     state.ground = opts.background;
                 } catch (_) {}
             }
-            state.capturing = true;
             paint();
 
             return function endCapture() {
@@ -383,7 +366,6 @@ export function create(hostEl) {
                     try { viewer.setBackgroundColor(origGround, 1); } catch (_) {}
                     state.ground = origGround;
                 }
-                state.capturing = false;
                 paint();
             };
         },
@@ -397,15 +379,9 @@ export function create(hostEl) {
                 const out = compose();
                 if (!out) { reject(new Error("snapshot: nothing drawn")); return; }
                 try {
-                    if (typeof out.toBlob === "function") {
-                        out.toBlob(function (b) {
-                            b ? resolve(b) : reject(new Error("snapshot: toBlob returned null"));
-                        }, "image/png");
-                        return;
-                    }
-                    const blob = dataUrlToBlob(out.toDataURL("image/png"));
-                    blob ? resolve(blob)
-                         : reject(new Error("snapshot: conversion failed"));
+                    out.toBlob(function (b) {
+                        b ? resolve(b) : reject(new Error("snapshot: toBlob returned null"));
+                    }, "image/png");
                 } catch (e) {
                     reject(new Error("snapshot: " + (e && e.message)));
                 }

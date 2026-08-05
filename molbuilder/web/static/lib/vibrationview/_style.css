@@ -97,10 +97,3 @@
     text-align: center;
     color: #9aa3af;
 }
-
-@media (prefers-reduced-motion: reduce) {
-    /* The animation is the content here, so it is not suppressed — a still
-     * molecule would be a viewer showing nothing. The host offers pause; this
-     * only stops the surface from adding motion of its own. */
-    .vibview { transition: none; }
-}

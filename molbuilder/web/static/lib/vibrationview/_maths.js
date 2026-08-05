@@ -38,12 +38,8 @@
  */
 export const FPS_MIN = 5;
 export const FPS_MAX = 120;
-export const FPS_DEFAULT = 30;
 export const FRAMES_PER_CYCLE_MIN = 15;
 export const FRAMES_PER_CYCLE_MAX = 1200;   // 120 fps × 10 s: bounds an export
-export const CYCLE_SEC_MIN = 0.1;
-export const CYCLE_SEC_MAX = 60;
-export const CYCLE_SEC_DEFAULT = 1.0;
 
 
 function clamp(v, lo, hi) {
@@ -66,24 +62,6 @@ function refuse(msg) {
 }
 
 
-/* ── Which atoms are held still (§ 6.3) ──────────────────────────────────────
- *
- * DERIVED from the basis, never given beside it. Two lists that must partition
- * the atoms are two facts that can contradict, and nothing downstream could tell
- * which was right — an atom named in both would be greyed as frozen while being
- * moved as free.
- */
-export function heldStill(basis, atomCount) {
-    const n = Math.floor(Number(atomCount) || 0);
-    if (n <= 0) return [];
-    if (!Array.isArray(basis)) return [];      // no basis -> every atom moves
-    const moving = new Set(basis.map((i) => Math.floor(Number(i))));
-    const out = [];
-    for (let i = 0; i < n; i++) if (!moving.has(i)) out.push(i);
-    return out;
-}
-
-
 /* ── Scattering a mode onto the structure (§ 6.3) ────────────────────────────
  *
  * A vibrational calculation runs over the atoms that were allowed to move, so a
@@ -95,6 +73,11 @@ export function heldStill(basis, atomCount) {
  * molecule; filling the gap with zeros yields a molecule that animates —
  * partially, plausibly, and wrongly. There is no safe partial answer here, so
  * there is no answer at all.
+ *
+ * It returns the HELD-STILL set as well, because that is the same reading of the
+ * same list: which atoms the basis names is what decides both where a row goes
+ * and which atoms have no row at all. Worked out twice, one rule would live in
+ * two places and a change to it would have to find both.
  */
 export function scatter(displacements, basis, atomCount) {
     const n = Math.floor(Number(atomCount));
@@ -125,7 +108,7 @@ export function scatter(displacements, basis, atomCount) {
                       Number(displacements[i][1]),
                       Number(displacements[i][2])];
         }
-        return out;
+        return { displacements: out, heldStill: [] };   // no basis -> all move
     }
 
     if (basis.length !== displacements.length) {
@@ -153,7 +136,9 @@ export function scatter(displacements, basis, atomCount) {
                    Number(displacements[k][1]),
                    Number(displacements[k][2])];
     }
-    return out;
+    const still = [];
+    for (let i = 0; i < n; i++) if (!seen.has(i)) still.push(i);
+    return { displacements: out, heldStill: still };
 }
 
 
@@ -183,42 +168,33 @@ export function positionsAtPhase(equilibrium, displacements, amplitude, phase) {
 }
 
 
-/* ── How many frames one oscillation is drawn in (§ 10.1) ────────────────────
+/* ── The rate this module will actually run at (§ 10.1) ──────────────────────
+ *
+ * ONE call, one answer. A rate drives two things — how many frames a cycle has,
+ * and how often the next one is due — and they must agree, so they are worked out
+ * together and returned together. Clamping them apart is how the clock ended up
+ * dividing by an unclamped zero.
+ *
+ * The caller passes real numbers; supplying defaults for missing ones is the
+ * caller's job, so those live in one place and it is not this one.
  *
  * A cycle is a WHOLE number of frames, always. `fps × cycleSec` need not come out
- * even — 25 fps over 0.3 s is 7.5 — so the count is rounded here and the
- * effective cycle length follows from the rounding rather than from the request.
- * The error is a few percent of a duration nobody is measuring, it never
- * accumulates because every cycle is the same whole number of frames, and in
- * exchange every loop closes exactly: frame 0 of the next cycle holds the
- * positions of frame 0 of this one, on screen and in a file.
- */
-export function framesPerCycle(fps, cycleSec) {
-    const n = Math.round(clampFps(fps) * clampCycleSec(cycleSec));
-    return clamp(n, FRAMES_PER_CYCLE_MIN, FRAMES_PER_CYCLE_MAX);
-}
-
-
-/* ── Bringing a rate into range (§ 10.1) ─────────────────────────────────────
+ * even — 25 fps over 0.3 s is 7.5 — so the count is rounded, and **the returned
+ * `cycleSec` is what that rounding produced**, not what was asked for. That is
+ * the honest number: it is what the animation does, and it is what an export
+ * stamps into its metadata. A requested duration that survived into a caption
+ * while the frames said otherwise would be a caption that lies.
  *
- * These exist so the CALLER can clamp too, and they are not a convenience: the
- * frame count is not the only thing a rate drives. The clock divides by `fps` to
- * decide when a frame is due, so a rate that only reached the frame count would
- * leave the loop running on a raw number — and `1000/0` is Infinity, which means
- * a frame is never due and the animation stops dead while still reporting itself
- * as playing. A negative rate is worse: every repaint is "due".
- *
- * So the band is applied wherever a rate is stored, and this is the one place it
- * is written down.
+ * It is also why the seconds need no band of their own. The frame count is
+ * bounded, so a wild request is already contained — a thousand-second cycle at 30
+ * fps is 1200 frames and comes back as forty seconds — and bounding the seconds
+ * as well would be a second fence around the same field.
  */
-export function clampFps(fps) {
-    return isFiniteNumber(fps) ? clamp(fps, FPS_MIN, FPS_MAX) : FPS_DEFAULT;
-}
-
-export function clampCycleSec(cycleSec) {
-    return (isFiniteNumber(cycleSec) && cycleSec > 0)
-        ? clamp(cycleSec, CYCLE_SEC_MIN, CYCLE_SEC_MAX)
-        : CYCLE_SEC_DEFAULT;
+export function rate(fps, cycleSec) {
+    const f = clamp(fps, FPS_MIN, FPS_MAX);
+    const n = clamp(Math.round(f * cycleSec),
+                    FRAMES_PER_CYCLE_MIN, FRAMES_PER_CYCLE_MAX);
+    return { fps: f, framesPerCycle: n, cycleSec: n / f };
 }
 
 
