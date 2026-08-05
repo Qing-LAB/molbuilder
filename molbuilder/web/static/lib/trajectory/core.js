@@ -1625,8 +1625,33 @@ import { mount } from "/static/lib/molview/index.js";
         // visibility decisions are stable.  Plotly.Plots.resize
         // is a no-op if the container size didn't actually
         // change, so this is cheap to run unconditionally.
-        ["energy-plot", "force-plot",
-         "scf-energy-plot", "scf-gnorm-plot"].forEach((id) => {
+        resizePlots();
+    }
+
+    /* THE PLOTS ARE TOLD THEIR SIZE; they never work it out themselves.
+     *
+     * Plotly draws a fixed-width SVG and `responsive: true` only re-draws on
+     * WINDOW resize.  Every other way this card changes width leaves the SVG
+     * frozen at whatever it measured at draw time:
+     *
+     *   * the SCF plots appearing / disappearing reflows the grid from 2 cells
+     *     to 4, so each cell halves;
+     *   * folding the Projects sidebar changes the column width with no window
+     *     resize at all -- `projects-sidebar.js` toggles a body class and
+     *     notifies nobody.
+     *
+     * Measured 2026-08-05 on a live run: drawn folded the SVG was 283 px; after
+     * unfolding the container was 550 px and the SVG was still 283.  Drawn
+     * unfolded and then folded, the same 267 px goes the other way and the
+     * plots overflow their cells.
+     *
+     * `Plotly.Plots.resize` is a no-op when the size did not actually change,
+     * so this is cheap to call unconditionally. */
+    const PLOT_IDS = ["energy-plot", "force-plot",
+                      "scf-energy-plot", "scf-gnorm-plot"];
+
+    function resizePlots() {
+        PLOT_IDS.forEach((id) => {
             const el = $(id);
             if (el && !el.hidden) {
                 try { Plotly.Plots.resize(el); }
@@ -2714,6 +2739,44 @@ import { mount } from "/static/lib/molview/index.js";
             document.removeEventListener(C.EVENT_REFRESH_REQUESTED,
                                           _onRefresh);
         });
+
+        /* WATCH THE CONTAINER, don't wait to be told.
+         *
+         * This is what the 3-D viewer beside these plots already does -- its
+         * embed installs its own ResizeObserver -- which is why folding the
+         * sidebar has always left the viewer correct and the plots wrong.  Two
+         * widgets in one card, one observing its box and one relying on
+         * whoever changed the layout to remember it.  Nobody remembered:
+         * the only caller of resizePlots() was a render pass, so a width change
+         * with no re-render (the sidebar fold) was invisible.
+         *
+         * Observing the row covers every cause -- fold, unfold, window resize,
+         * the SCF grid reflow, and any future layout change -- without the
+         * sidebar and the plots having to know about each other.
+         *
+         * rAF-coalesced: a fold is a CSS transition, so the observer fires on
+         * many intermediate widths; one resize on the next frame is enough and
+         * keeps Plotly off the critical path. */
+        const plotsRow = rootEl.querySelector(".plots-row");
+        if (plotsRow && typeof ResizeObserver === "function") {
+            /* NO requestAnimationFrame COALESCING HERE.  A first cut wrapped
+             * this in rAF with a `pending` guard, which wedges: rAF does not
+             * run in a tab that is not rendering, so an observer fire while
+             * the tab is hidden leaves `pending` set forever and the guard
+             * then swallows EVERY later resize for the life of the mount.
+             * Caught on 2026-08-05 while debugging through a backgrounded
+             * window -- the plots never resized and the instrumentation
+             * inside the rAF never printed.
+             *
+             * `Plotly.Plots.resize` already returns early when the size has
+             * not changed, so the coalescing was buying almost nothing and
+             * cost correctness.  Straight call, no state to get wrong. */
+            const ro = new ResizeObserver(() => { resizePlots(); });
+            ro.observe(plotsRow);
+            _cleanups.push(() => {
+                try { ro.disconnect(); } catch (_) {}
+            });
+        }
     }
 
     function startPolling() {
