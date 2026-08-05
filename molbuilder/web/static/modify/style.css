@@ -279,6 +279,12 @@ header h1 {
 .modify-init-panel[hidden] { display: none; }
 
 /* ---- Cards ---- */
+/* `display` on a class ties with the browser's own `[hidden] { display: none }`
+   and wins on source order, so `element.hidden = true` stops hiding a `.card`.
+   The Transport tab's "Generated script" panel is written `hidden` and un-hidden
+   by JS once a script exists -- without this guard it was visible, and empty,
+   from page load.  docs/process/code-audit.md. */
+.card[hidden] { display: none; }
 .card {
     background: var(--bg-card);
     border: 1px solid var(--border-soft);

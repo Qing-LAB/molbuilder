@@ -245,6 +245,13 @@
     margin: 0.4rem 0;
     font-size: 0.85rem;
 }
+/* A class that sets `display` ties with the browser's own
+   `[hidden] { display: none }` on specificity and wins on source order, so
+   `element.hidden = true` stops hiding anything -- the control stays in the
+   layout as a ghost.  The Temperature row is toggled exactly that way (it
+   belongs to the thermal amplitude only), and it sat visible under
+   "exaggerated" until this guard existed.  docs/process/code-audit.md. */
+.viewer-controls .inline-label[hidden] { display: none; }
 .viewer-controls .inline-label {
     display: inline-flex;
     align-items: center;

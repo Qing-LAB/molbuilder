@@ -52,9 +52,22 @@
      * drawing. A module that draws no controls needs no more (§ 5.4). */
     --vibview-layer-overlay: 5;
 
+    /* NO WIDTH, NO HEIGHT — and that is the whole of § 13 in one absence.
+     *
+     * `mount` is handed an element the HOST has already sized, and the module
+     * adds this class to THAT element.  So a `height: 100%` here is not the
+     * module filling its box; it is the module overwriting the host's box with
+     * a percentage of a parent that usually has no height of its own — which
+     * resolves to auto, collapses to the content, and leaves a canvas four
+     * pixels tall drawing a molecule nobody can see.  It did exactly that, and
+     * the animation looked broken rather than the layout.
+     *
+     * Both rules are single-class selectors, so the later sheet wins; the module
+     * links its own at mount, which makes it later than every page sheet.  The
+     * module can therefore always out-declare its host here, which is precisely
+     * why it must not try.
+     */
     position: relative;   /* the drawing library positions its canvas absolutely */
-    width: 100%;
-    height: 100%;
     background: var(--vibview-ground);
     overflow: hidden;
 }

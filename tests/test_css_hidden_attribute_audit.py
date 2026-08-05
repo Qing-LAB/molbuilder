@@ -83,6 +83,30 @@ _VAR_HIDDEN_ASSIGNMENT_RE = re.compile(
     r"\b([a-zA-Z_]\w*)\.hidden\s*=",
 )
 
+# 2026-08-05: the pattern above wants a DECLARATION (``const row = $("x")``),
+# and the tab controllers do not use one.  They resolve every element once into
+# a table and reach it by property for the rest of the file:
+#
+#     els.animTemperatureRow = $("anim-temperature-row");
+#     ...
+#     els.animTemperatureRow.hidden = mode !== "thermal";
+#
+# ``spectra/core.js`` alone binds about forty elements that way, and NONE of
+# them were visible to this audit -- so `.viewer-controls .inline-label`
+# shipped with `display: inline-flex` and no guard, and the Temperature control
+# sat in the layout under an amplitude mode that has no temperature.  Found by
+# looking at the page, which is the failure mode this whole file exists to make
+# unnecessary.
+_PROP_GET_RE = re.compile(
+    r"""
+    \b [a-zA-Z_]\w* (?: \.[a-zA-Z_]\w* )* \. ([a-zA-Z_]\w*)   # els.someName
+    \s* = \s*
+    (?: getElementById | \$ | _\$ )
+    \(\s* ["']([a-zA-Z0-9_\-]+)["'] \s*\)
+    """,
+    re.VERBOSE,
+)
+
 
 def _scan_js_for_hidden_ids() -> set[str]:
     """Return the set of HTML element ids that some JS file assigns
@@ -103,6 +127,9 @@ def _scan_js_for_hidden_ids() -> set[str]:
         var_to_id: dict[str, str] = {}
         for m in _VAR_GET_RE.finditer(src):
             var_to_id[m.group(1)] = m.group(2)
+        # ...and the property-table form the tab controllers actually use.
+        for m in _PROP_GET_RE.finditer(src):
+            var_to_id.setdefault(m.group(1), m.group(2))
         for m in _VAR_HIDDEN_ASSIGNMENT_RE.finditer(src):
             name = m.group(1)
             if name in var_to_id:
@@ -421,4 +448,98 @@ def test_audit_actually_found_some_hidden_ids(dynamically_hidden_ids):
         "regex in _scan_js_for_hidden_ids is likely broken; "
         f"expected to find any of {expected_some_of}, got "
         f"{sorted(dynamically_hidden_ids)[:10]}."
+    )
+
+
+# --------------------------------------------------------------------- #
+#  The blind spot the id-keyed scan above cannot see                    #
+# --------------------------------------------------------------------- #
+#
+# Everything above keys on the ID: JS hides `#foo`, so a CSS rule naming `#foo`
+# needs a guard.  That misses the commonest shape in this codebase, because the
+# rule usually does NOT name the id -- it names a CLASS the element happens to
+# carry:
+#
+#     <label class="inline-label" id="anim-temperature-row" hidden>
+#     .viewer-controls .inline-label { display: inline-flex; }
+#
+# Nothing in the CSS mentions `anim-temperature-row`, so no amount of improving
+# the JS scan connects them.  The link is in the TEMPLATE, and only reading it
+# closes the loop.
+#
+# 2026-08-05: that is exactly how the Temperature control shipped visible under
+# an amplitude mode that has no temperature.  It was found by looking at the
+# rendered page.
+
+_ID_CLASS_RE = re.compile(
+    r"""<[a-zA-Z][^>]*?
+        (?: id=["']([\w\-]+)["'][^>]*?class=["']([^"']+)["']
+          | class=["']([^"']+)["'][^>]*?id=["']([\w\-]+)["'] )
+    """,
+    re.VERBOSE | re.S,
+)
+
+TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "molbuilder" / "web" / "templates"
+
+
+def _classes_of_hideable_ids() -> dict[str, set[str]]:
+    """id -> the classes it carries, for ids some JS toggles via `.hidden`."""
+    hideable = _scan_js_for_hidden_ids()
+    out: dict[str, set[str]] = {}
+    for tpl in TEMPLATES_DIR.rglob("*.html"):
+        html = tpl.read_text(encoding="utf-8")
+        for m in _ID_CLASS_RE.finditer(html):
+            el_id = m.group(1) or m.group(4)
+            classes = (m.group(2) or m.group(3) or "").split()
+            if el_id in hideable:
+                out.setdefault(el_id, set()).update(classes)
+    return out
+
+
+def test_a_class_on_a_hideable_element_does_not_defeat_the_hidden_attribute():
+    """A rule that sets `display` on a class ties with the browser's own
+    ``[hidden] { display: none }`` and wins on source order.
+
+    So if JS hides an element by id, and a CSS rule styles it by CLASS, the
+    element stays in the layout: a control the code believes is gone, sitting
+    there for someone to click.  The rule needs its own ``[hidden]`` guard.
+    """
+    offenders: list[str] = []
+    id_classes = _classes_of_hideable_ids()
+    if not id_classes:
+        pytest.skip("no hideable element carries a class in any template")
+
+    for css_path in STATIC.rglob("*.css"):
+        if any(x in css_path.as_posix() for x in ("vendor/", "codemirror")):
+            continue
+        text = css_path.read_text(encoding="utf-8")
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        for block in re.finditer(r"([^{}]+)\{([^{}]*)\}", text):
+            selector, body = block.group(1).strip(), block.group(2)
+            display = re.search(r"(?:^|;)\s*display\s*:\s*([a-zA-Z-]+)", body)
+            if not display or display.group(1) == "none":
+                continue
+            if "[hidden]" in selector:
+                continue
+            named = set(re.findall(r"\.([A-Za-z][\w-]*)", selector))
+            for el_id, classes in id_classes.items():
+                if not (named & classes):
+                    continue
+                # Guarded if the same sheet carries a [hidden] rule for any of
+                # the classes this selector names.
+                guard = any(
+                    re.search(re.escape("." + c) + r"[^{,]*\[hidden\]", text)
+                    for c in (named & classes)
+                )
+                if not guard:
+                    offenders.append(
+                        f"{css_path.relative_to(STATIC).as_posix()}: "
+                        f"`{selector}` sets display:{display.group(1)} and matches "
+                        f"#{el_id}, which JS hides via .hidden"
+                    )
+    assert not offenders, (
+        "these elements are hidden by JS and un-hidden by CSS -- the control "
+        "stays in the layout and the code believes it is gone:\n  "
+        + "\n  ".join(sorted(set(offenders)))
+        + "\n\nAdd a `[hidden] { display: none }` rule for the class."
     )
