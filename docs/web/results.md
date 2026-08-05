@@ -45,13 +45,120 @@ the newest file floats to the top). It **auto-picks the newest** so a viewer
 appears without a click, and mirrors your pick to the sidebar so the highlight
 matches.
 
-Two details that matter:
+### 2.1 The sidebar sets the scope; the dropdown decides what you see
+
+These are the only two controls that touch what this tab displays, and they do
+**different jobs**. Getting them confused is what produced the worst defect this
+tab has had, so the division is written out in full:
+
+| You do this | What happens |
+| --- | --- |
+| **Navigate the sidebar to another folder** | the dropdown **re-scopes**: it re-scans that folder for result-class files and **auto-picks the newest**, so the panel shows the run you just navigated to |
+| **Single-click a file** in the sidebar | nothing here. That is a preview/browse gesture |
+| **Double-click a file** in the sidebar | still nothing here. The sidebar never chooses a result |
+| **Pick from the dropdown** | that file is mounted, and everything below follows it |
+| **Refresh** | re-syncs the menu with the sidebar's current folder, re-scans for files written since, and tells a live viewer to re-fetch now |
+
+**The dropdown dictates the display.** The four plots, the run-state badge, the
+convergence-target card, the 3-D structure and the trajectory all render the
+dropdown's current selection and nothing else. There is no second route to a
+mounted viewer.
+
+**The sidebar's only job on this tab is to say which folder you are in.** A file
+click there cannot hijack a viewer mid-read — that is deliberate, and it is why
+the dropdown exists as a separate control at all.
+
+> **The defect this prevents** (2026-08-04). The dropdown used to scope itself
+> once, when the tab mounted, and never again. Moving the sidebar to a different
+> run folder therefore left it enumerating the *previous* folder's files — so the
+> plots, the badge, the convergence targets and the structure all kept rendering
+> a different run, with nothing on screen saying so. A **live** job was displayed
+> as a finished one from another directory, and the numbers looked entirely
+> plausible. Reloading the page or re-picking in the dropdown fixed it, because
+> both make the picker speak; nothing else did. A menu that dictates the display
+> has to be listing the folder you are actually in.
+
+### 2.2 One scan, one choice, one announcement
+
+Everything the picker does is one pass, and the shape matters because two of
+this tab's three worst defects came from the same mistake — **deriving "which
+file is current" twice, by two different routes.**
+
+```mermaid
+flowchart TD
+  T["the folder changed · Refresh · tab re-entry"] --> S["scan it — list the folder,
+keep the result-class files, newest first"]
+  S --> E{"any results?"}
+  E -->|"none"| N["say so in the menu AND announce
+'nothing selected' — the panel clears"]
+  E -->|"some"| K{"is the file we were
+already showing one of them?"}
+  K -->|"yes"| KEEP["keep it"]
+  K -->|"no"| NEW["take the newest"]
+  KEEP --> ONE["**one** chosen file"]
+  NEW --> ONE
+  ONE --> A["label the menu with it
+**and** announce it — same value, one step"]
+  A --> M["the viewer mounts what was announced"]
+```
+
+**The chosen file is computed once and used for both.** The menu's label and the
+mounted viewer are two uses of one value, never two derivations of "the right
+one". Announcing without labelling — or labelling without announcing — is the
+bug, not an optimisation.
+
+> **Why this is spelled out.** The picker used to build two orderings of the same
+> files: a flat list, newest-first, ties broken **by file name**; and a grouped
+> list, ties broken **by category label**. It labelled the menu from the grouped
+> one and mounted from the flat one. Those agree right up until several results
+> share a timestamp — which is exactly what a job does when it finishes and
+> flushes its outputs in the same second. On 2026-08-04 a pySCF run with four
+> files stamped `10:31:08` showed `…molwatch.log` in the menu while displaying
+> `…_optimized.xyz`. Both orderings were individually correct; having two was the
+> defect.
+>
+> The empty case failed the same way from the other side: a folder with no
+> results updated the menu and told nobody, so the previous folder's run stayed
+> on screen — plots, badge and all.
+
+### 2.3 A run is one result, not a pile of files
+
+A calculation writes several files, and they are **not peers**. One of them is
+the result; the rest are its working parts — the input echoed back, the seed the
+next run warm-starts from, the optimizer's own per-stage streams, the engine's
+verbose log. The menu lists **the result**, once.
+
+**The master absorbs its satellites.** A presenter that recognises a master file
+also says which files in the same folder that master subsumes; those do not get
+their own entry. So a PySCF relaxation is one line in the menu, not five.
+
+Two rules keep this from hiding anything:
+
+- **Absorption needs the master present.** A satellite is only dropped when the
+  file that subsumes it is in the same listing. Delete the master, or run a job
+  that never wrote one, and the satellites list normally — you can always reach
+  what is on disk.
+- **The sidebar still shows every file.** Absorption narrows *the result menu*,
+  which is a question about what you'd want to inspect. It is not a permissions
+  or visibility rule; open any file from the sidebar as always.
+
+> **What this fixes.** PySCF's generator already nominates a single result: its
+> own manifest calls `<label>.molwatch.log` the *"unified per-step log… coords,
+> energy (eV), forces (eV/Å), and SCF cycle history — single-file input for
+> molwatch"*. The picker ignored that and listed the run's internals beside it,
+> because the structure presenter claimed **every** `.xyz` and the trajectory
+> presenter claimed `*_optim.xyz` as well. One relaxation therefore appeared as
+> five results: the master log, the *input* coordinates, the warm-restart seed,
+> and geomeTRIC's two per-stage trajectories. The generator was right; the menu
+> was reading it at the wrong granularity.
+>
+> Note the naming: a staged run's master is `<label>-stage<N>.molwatch.log`
+> while its satellites are plain `<label>_*`, so matching a master to its
+> satellites means stripping the `-stage<N>` overlay suffix first
+> (`execution/job-contracts.md § 2.3`).
 
 - **A file-selected event is the single source of truth.** When you choose from
   the dropdown, it fires a `fileSelected` event that the controller listens for.
-  (It used to react to sidebar clicks directly; that was retired because a stray
-  single-click could hijack a viewer mid-load. Now only the dropdown drives what
-  is mounted.)
 - **Refresh re-scans the folder, and tells a live viewer to re-fetch its data
   *now*** rather than waiting for the next poll. The panel isn't torn down and
   rebuilt — the mounted viewer reloads in place — but that reload is a *clean*

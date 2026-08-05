@@ -48,6 +48,24 @@
  *                                         //   discriminates per-file here.
  *                                         //   Defaults to ``displayName``
  *                                         //   when omitted.
+ *     absorbs: (master, other) => boolean,// optional, used iff isResult.
+ *                                         //   "``master`` subsumes ``other``":
+ *                                         //   both are result-class files in
+ *                                         //   the SAME directory, and ``other``
+ *                                         //   is a working part of the run
+ *                                         //   ``master`` reports -- the input
+ *                                         //   echoed back, the warm-restart
+ *                                         //   seed, the optimizer's per-stage
+ *                                         //   streams.  The picker then lists
+ *                                         //   the master alone (results.md
+ *                                         //   § 2.3), because a run is one
+ *                                         //   result and not a pile of files.
+ *                                         //   Only applied when the master is
+ *                                         //   itself in the listing, so a
+ *                                         //   deleted or never-written master
+ *                                         //   leaves its satellites reachable.
+ *                                         //   Engine naming lives here, with
+ *                                         //   the presenter that knows it.
  *   };
  *
  * Handle contract (returned by mount; required cleanup point):

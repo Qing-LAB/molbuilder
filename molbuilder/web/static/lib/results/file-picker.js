@@ -28,10 +28,11 @@
  * source of truth for "which file is mounted" is the dropdown's
  * selectedOption + the most-recent fileSelected event.
  *
- * Auto-pick: when the directory contains result files AND no file is
- * currently selected, the picker auto-selects the most recent one.
- * Auto-pick is bypassed when the current selection is already a
- * result file in the same dir.
+ * One scan, one choice, one announcement (results.md § 2.2): a scan
+ * keeps the file already showing if this directory still offers it and
+ * otherwise takes the newest, then labels the menu with that one value
+ * AND announces it.  Labelling without announcing -- or the reverse --
+ * is how the menu came to name one file while displaying another.
  *
  * Status line: the meta row doubles as a status surface.  Shows
  * "Scanning for output files…" during the directory listing fetch,
@@ -49,12 +50,16 @@
  *                         re-entry auto-refresh), and triggers the
  *                         first scan.  Returns a disposer that
  *                         aborts any in-flight fetch and detaches
- *                         subscriptions.  Does NOT subscribe to
- *                         the sidebar's onChange any more
- *                         (retired in task #301).
+ *                         subscriptions.  Subscribes to the sidebar's
+ *                         onChange for DIRECTORY changes only -- a file
+ *                         pick there still changes nothing here, which
+ *                         is what #301 protected (results.md § 2.1).
  *   ``parseDir(file)``            -- pure helper (exported for testing).
  *   ``formatRelativeTime(epoch)`` -- pure helper (testing).
  *   ``filterToResultFiles(entries, dir, pickResult)`` -- pure helper.
+ *   ``absorbSatellites(entries, pickResult)`` -- pure helper that drops
+ *                         the files a run's master subsumes, so one run is
+ *                         one entry (results.md § 2.3).
  *   ``groupResultFiles(entries, pickResult)`` -- pure helper that
  *                         buckets pre-filtered entries by
  *                         inspector ``resultCategory(file)`` into
@@ -146,6 +151,52 @@
             return a.name.localeCompare(b.name);
         });
         return out;
+    }
+
+    /**
+     * Drop the entries that another listed entry subsumes, so a run shows up
+     * as ONE result rather than as its pile of working files
+     * (results.md § 2.3).
+     *
+     * A presenter declares this with an optional ``absorbs(master, other)``;
+     * the engine naming lives there, with the code that knows it.  Absorption
+     * only applies between files that are BOTH in this listing, so a run whose
+     * master was deleted or never written still lists its parts and nothing
+     * becomes unreachable.
+     *
+     * An absorbed file cannot absorb anything itself -- that keeps a mutual
+     * claim (a presenter bug) from removing both sides and losing the run
+     * entirely.  Order is the caller's newest-first list, so which side of a
+     * mutual claim survives is deterministic.
+     *
+     * Pure (no DOM, no fetch).  Exported for unit tests.
+     */
+    function absorbSatellites(entries, pickResult) {
+        if (!Array.isArray(entries) || typeof pickResult !== "function") {
+            return Array.isArray(entries) ? entries : [];
+        }
+        const absorbed = new Set();
+        for (const master of entries) {
+            if (absorbed.has(master.path)) continue;
+            let insp;
+            try { insp = pickResult(master.path); } catch (e) { insp = null; }
+            if (!insp || typeof insp.absorbs !== "function") continue;
+            for (const other of entries) {
+                if (other === master || absorbed.has(other.path)) continue;
+                let claims = false;
+                try {
+                    claims = !!insp.absorbs(master.path, other.path);
+                } catch (e) {
+                    console.warn(
+                        "[results-file-picker] absorbs() threw for "
+                        + insp.name + ":", e);
+                }
+                if (claims) absorbed.add(other.path);
+            }
+        }
+        return absorbed.size
+            ? entries.filter(e => !absorbed.has(e.path))
+            : entries;
     }
 
     /**
@@ -505,9 +556,15 @@
                         _showIdleMeta(null);
                         return;
                     }
-                    const results = filterToResultFiles(
-                        body.entries || [],
-                        body.path     || dir,
+                    // Filter to result-class files, then let a run's master
+                    // absorb its working files so the menu lists the RUN, not
+                    // its parts (results.md § 2.3).
+                    const results = absorbSatellites(
+                        filterToResultFiles(
+                            body.entries || [],
+                            body.path     || dir,
+                            inspReg.pickResult
+                        ),
                         inspReg.pickResult
                     );
                     cachedResults = results;
@@ -523,33 +580,48 @@
                         _populatePlaceholder(selEl,
                             "(no result files yet — click Refresh)");
                         _showIdleMeta(null);
+                        /* AND SAY SO, instead of tidying our own bar and
+                         * leaving.  This used to just return: the menu showed
+                         * "no result files yet" while the PREVIOUS folder's
+                         * run stayed mounted below it -- plots, run badge,
+                         * convergence targets and 3-D structure, all from a
+                         * directory the user had left.  Announcing the empty
+                         * selection is what makes the dispatcher dispose the
+                         * old inspector and restore the empty state
+                         * (results/viewer.js::_showFallback).  results.md
+                         * § 2.2: a scan that changes what is current always
+                         * announces it. */
+                        _emitFileSelected("");
                         return;
                     }
                     cachedGroups = groupResultFiles(
                         results, inspReg.pickResult);
-                    _populate(selEl, cachedGroups, currentFile);
                     barEl.hidden = false;
-                    // Auto-pick: if no file is currently selected (or
-                    // the selection is outside this directory's result
-                    // set), promote the newest result to the active
-                    // selection so the inspector mounts without an
-                    // extra user click.  Closes the user's primary
-                    // ask (2026-06-01).
-                    const selectionIsAResult =
+                    /* ONE CHOICE, then label AND announce it (results.md
+                     * § 2.2).  Keep what we were already showing if this
+                     * directory still offers it; otherwise take the newest.
+                     *
+                     * WHY THIS IS ONE VALUE.  It used to be two.  `_populate`
+                     * labelled the menu from ``cachedGroups`` -- grouped, ties
+                     * broken by CATEGORY LABEL -- while the auto-pick mounted
+                     * ``results[0]`` from the flat list, ties broken by FILE
+                     * NAME.  Both orderings are correct; having two is the
+                     * defect.  They agree until several results share an
+                     * mtime, which is precisely what a job produces when it
+                     * finishes and flushes its outputs in the same second: a
+                     * pySCF run with four files stamped 10:31:08 labelled the
+                     * menu `…molwatch.log` and displayed `…_optimized.xyz`
+                     * (2026-08-04).  The chosen path now feeds both, so they
+                     * cannot disagree. */
+                    const keepCurrent =
                         currentFile && results.some(r => r.path === currentFile);
-                    if (!selectionIsAResult) {
-                        // Auto-pick will fire setShared -> onChange
-                        // -> _onSelectionChange, which will start the
-                        // parse-status timer for the auto-picked file.
-                        _autoSelect(results[0]);
-                    } else if (currentFile) {
-                        // The current selection IS in the new dir's
-                        // result set; show "Parsing…" briefly so the
-                        // user gets the same acknowledgement when
-                        // they re-enter a known dir.
-                        _startParseStatus(currentFile);
+                    const chosen = keepCurrent ? currentFile : results[0].path;
+                    _populate(selEl, cachedGroups, chosen);
+                    if (keepCurrent) {
+                        // Already mounted; just acknowledge the re-entry.
+                        _startParseStatus(chosen);
                     } else {
-                        _showIdleMeta(currentFile);
+                        _adoptSelection(chosen);
                     }
                 })
                 .catch(err => {
@@ -569,70 +641,53 @@
         }
 
         /**
-         * Auto-select ``entry`` as the current file.  Mirrors the
-         * pick to the sidebar via ``projects.setShared`` AND
-         * dispatches ``molbuilder:results:fileSelected`` so the
-         * /results dispatcher mounts the matching inspector
-         * (task #301 — the onChange subscription that used to do
-         * that work was retired).  No-op if the sidebar is locked
+         * Make ``path`` the current file: mirror it to the sidebar via
+         * ``projects.setShared`` and announce it with
+         * ``molbuilder:results:fileSelected`` so the /results dispatcher
+         * mounts the matching inspector.  No-op if the sidebar is locked
          * (setShared returns ok:false; we log + don't retry).
+         *
+         * The CALLER labels the menu with the same path first -- announcing
+         * and labelling are two uses of one chosen value (results.md § 2.2),
+         * not two derivations.  This used to rely on setShared's onChange
+         * coming back round to relabel the menu, which stopped happening when
+         * that subscription was retired (#301) and left the label behind.
          */
-        function _autoSelect(entry) {
-            if (!entry || !entry.path) return;
-            const parts = parseDir(entry.path);
-            const r = proj.setShared(parts.dir, entry.path);
+        function _adoptSelection(path) {
+            if (!path) return;
+            const parts = parseDir(path);
+            const r = proj.setShared(parts.dir, path);
             if (r && r.ok === false) {
                 console.warn(
-                    "[results-file-picker] auto-select refused:",
+                    "[results-file-picker] selection refused:",
                     r.error
                 );
                 return;
             }
-            _emitFileSelected(entry.path);
+            _emitFileSelected(path);
         }
 
-        // -- selection-change subscriber ------------------------- //
-        // onChange fires immediately with the current selection (per
-        // projects/state.js contract), so the initial scan happens
-        // here without an extra call. -------------------------- //
-        let lastSelectedFile = null;
-        function _onSelectionChange(sel) {
-            const dir  = sel && sel.dir  ? sel.dir  : "";
-            const file = sel && sel.file ? sel.file : "";
-            if (dir !== lastScannedDir) {
-                // Directory changed: rescan from scratch.  _scan
-                // clears any in-flight parse timer.
-                lastScannedDir = dir;
-                lastSelectedFile = file;
-                _scan(dir, file);
-                return;
-            }
-            // Same dir.
-            if (cachedGroups.length > 0) {
-                _populate(selEl, cachedGroups, file);
-            }
-            if (file && file !== lastSelectedFile) {
-                // File swap within the same dir -- show "Parsing…"
-                // status as acknowledgement that the inspector is
-                // mounting.  Cleared by the timer (or by a follow-on
-                // selection change).
-                lastSelectedFile = file;
-                if (cachedResults.length > 0
-                    && cachedResults.some(r => r.path === file)) {
-                    _startParseStatus(file);
-                } else if (cachedResults.length > 0) {
-                    // File is in the dir but not a result type (e.g.
-                    // the user clicked a config file in the sidebar);
-                    // fall back to the steady-state readout.
-                    _showIdleMeta(file);
-                }
-            } else if (cachedResults.length > 0
-                && parseTimer === null) {
-                // No file change AND no parse in flight -- ensure
-                // the meta is in steady state (in case a previous
-                // transient was left on screen by some edge path).
-                _showIdleMeta(file);
-            }
+        /**
+         * Re-scope the menu to ``dir`` -- the ONE path that changes which
+         * directory the picker is listing.
+         *
+         * ``preferredFile`` is kept if this directory still offers it, so a
+         * Refresh does not jump you to a different result; pass "" to take the
+         * newest, which is what a folder change does (results.md § 2.1).
+         *
+         * This replaced ``_onSelectionChange``, which branched on "same dir or
+         * not".  Its same-dir half had been unreachable since #301 retired the
+         * subscription that fed it: the only remaining caller, _forceRescan,
+         * set ``lastScannedDir = null`` immediately before calling, so the
+         * dir-changed branch was always taken -- as the comment there admitted
+         * ("we deliberately bypass the same-dir branch").  ~30 lines of
+         * file-swap handling, and the ``lastSelectedFile`` that branch was the
+         * only reader of, were dead weight held up by a function shape that no
+         * longer had two cases.
+         */
+        function _rescanDir(dir, preferredFile) {
+            lastScannedDir = dir;
+            _scan(dir, preferredFile || "");
         }
 
         // Sidebar onChange subscription RETIRED 2026-06-09 (task
@@ -644,7 +699,41 @@
         // /results is "set the project directory" only.  Re-scans
         // happen on pageshow / visibilitychange (tab re-entry,
         // bfcache restore) and on the explicit Refresh button.
-        const unsubscribeSelection = null;
+        /* ...but the DIRECTORY half of it has to come back.
+         *
+         * THE CONTRACT IS results.md § 2.1, and it is the whole of the rule:
+         * the sidebar sets the SCOPE (which folder), the dropdown decides
+         * WHAT IS SHOWN within it.  So a folder change re-scopes this menu and
+         * auto-picks the newest; a file click -- single OR double -- changes
+         * nothing here, which is exactly what #301 protected and stays true.
+         *
+         * Why the directory half is not optional: a menu that dictates the
+         * display has to be listing the folder the user is actually in.  This
+         * scoped itself once, at mount, and never again -- so moving the
+         * sidebar to another run folder left it enumerating the PREVIOUS
+         * folder's files, and the four plots, the run badge, the convergence
+         * card and the 3-D structure all went on rendering a different run
+         * with nothing on screen saying so.  Seen 2026-08-04: a LIVE
+         * BDT-Au111 job displayed as a finished BDT run from another
+         * directory, every number plausible and every number wrong.
+         *
+         * The first fire is skipped deliberately.  ``onChange`` fires once
+         * immediately on subscribe (projects/state.js), and the initial scan
+         * is already owned by the pageshow/visibilitychange path below --
+         * scanning here too would list the same directory twice on every
+         * page load. */
+        let sawInitialSelectionFire = false;
+        const unsubscribeSelection = proj.onChange(function (sel) {
+            if (!sawInitialSelectionFire) {
+                sawInitialSelectionFire = true;
+                return;
+            }
+            const dir = (sel && sel.dir) ? sel.dir : "";
+            if (!dir || dir === lastScannedDir) return;
+            // "" -> take the newest; a folder change auto-picks
+            // (results.md § 2.1).
+            _rescanDir(dir, "");
+        });
         document.addEventListener(C.EVENT_INSPECTOR_READY,
                                   _onInspectorReady);
 
@@ -703,9 +792,8 @@
 
         // -- pageshow / visibilitychange: force-rescan on tab re-entry -- //
         //
-        // The picker normally rescans only when the directory CHANGES
-        // (gated on ``lastScannedDir`` in _onSelectionChange).  That
-        // misses two real-world re-entry scenarios:
+        // The picker rescans when the directory CHANGES.  That misses two
+        // real-world re-entry scenarios where the directory is the same:
         //
         //   1. bfcache restore.  Browsers (Chromium + Firefox by
         //      default) cache the whole page when the user navigates
@@ -717,11 +805,9 @@
         //      generated while the user was on /modify never appears.
         //
         //   2. Same-dir refresh after an external change.  The user
-        //      generates a new result file in another tab (or another
-        //      process on the same projects dir).  Returning to
-        //      /results, sessionStorage's dir is unchanged, so the
-        //      "if (dir !== lastScannedDir)" guard suppresses the
-        //      rescan.  Result: the user sees a stale dropdown.
+        //      generates a new result file from another tab.  Returning to
+        //      /results, the directory is unchanged, so nothing would
+        //      re-scope the menu.  Result: a stale dropdown.
         //
         // Hooking ``pageshow`` covers both (the event fires on every
         // page show -- initial load AND bfcache restore -- with
@@ -729,11 +815,9 @@
         // on ``visibilitychange``->visible so a backgrounded tab
         // refreshes when the user re-focuses it; same defense.
         //
-        // Force-rescan policy: reset ``lastScannedDir`` to null + read
-        // the current sessionStorage state + call _scan directly.
-        // We deliberately bypass _onSelectionChange's "same-dir"
-        // branch (which would no-op) -- the whole point is that an
-        // unchanged dir should still get a fresh listing.
+        // Force-rescan policy: read the current sessionStorage state and
+        // re-scope unconditionally -- the whole point is that an unchanged
+        // dir should still get a fresh listing.
 
         function _forceRescan() {
             if (disposed) return;
@@ -749,11 +833,9 @@
                     ? root.sessionStorage.getItem(C.SS_FILE)
                     : "");
             if (!cur) return;
-            // Force the dir-change branch to re-fire even when the
-            // sessionStorage dir matches lastScannedDir.
-            lastScannedDir = null;
-            lastSelectedFile = null;
-            _onSelectionChange({ dir: cur, file: curFile || "" });
+            // Unconditional: an unchanged dir must still get a fresh listing,
+            // which is the whole point of a force-rescan.
+            _rescanDir(cur, curFile || "");
         }
 
         function _onPageShow(_evt) {
@@ -918,6 +1000,7 @@
         formatRelativeTime:  formatRelativeTime,
         filterToResultFiles: filterToResultFiles,
         groupResultFiles:    groupResultFiles,
+        absorbSatellites:    absorbSatellites,
         _labelForResult:     labelForResult,
     };
 })(typeof window !== "undefined" ? window : this);

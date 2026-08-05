@@ -435,3 +435,100 @@ class TestAPISurface:
             "hasGroupResultFiles":    True,
             "hasLabelForResult":      True,
         }
+
+
+class TestAbsorbSatellites:
+    """A run is ONE result, not a pile of files (results.md § 2.3).
+
+    A PySCF relaxation writes its unified ``.molwatch.log`` beside the input it
+    echoed back, the seed the next run warm-starts from, and geomeTRIC's
+    per-stage streams.  Listing those as peers turned one relaxation into five
+    menu entries -- seen 2026-08-04 on a real BDT run whose four outputs all
+    carried the same 10:31:08 mtime.
+    """
+
+    #: The real filenames from that run, master first.
+    _MASTER = "/p/pyscf_relax-stage3.molwatch.log"
+    _SATS = [
+        "/p/pyscf_relax_initial.xyz",
+        "/p/pyscf_relax_optimized.xyz",
+        "/p/pyscf_relax_geom_stage1_optim.xyz",
+        "/p/pyscf_relax_geom_stage2_optim.xyz",
+    ]
+
+    @staticmethod
+    def _absorb(paths):
+        """Run absorbSatellites over ``paths`` with the REAL trajectory
+        presenter's ``absorbs`` -- loaded from source, not re-implemented, so a
+        change to the presenter's naming rules breaks this test rather than
+        sliding past it.
+
+        The shared harness loads only the picker, so the factory the presenter
+        is built from and the presenter itself are prepended here.
+        """
+        import json
+        _INSP = MODULE.parent.parent / "inspectors"
+        extra = ("global.window.molbuilder = global.window.molbuilder || {};\n"
+                 "global.window.molbuilder.inspectors ="
+                 "  global.window.molbuilder.inspectors || {};\n"
+                 + (_INSP / "_partial_inspector_factory.js").read_text()
+                 + "\n"
+                 + (_INSP / "trajectory.js").read_text() + "\n")
+        return _run_node(extra + TestAbsorbSatellites._snippet(paths))
+
+    @staticmethod
+    def _snippet(paths):
+        import json
+        names = json.dumps([{"name": p.rsplit("/", 1)[-1], "path": p,
+                             "mtime": 1000} for p in paths])
+        return (
+            "const entries = " + names + ";\n"
+            "const traj = window.molbuilder.inspectors.trajectoryInspector;\n"
+            "function pickResult(p) {\n"
+            "  return traj.match(p) ? traj\n"
+            "       : (p.endsWith('.xyz') ? { name: 'structure',\n"
+            "            displayName: 'Structure' } : null);\n"
+            "}\n"
+            "const kept = window.molbuilder.resultsFilePicker.absorbSatellites(\n"
+            "  entries, pickResult);\n"
+            "console.log(JSON.stringify(kept.map(e => e.name)));"
+        )
+
+    def test_the_master_log_absorbs_its_working_files(self):
+        out = self._absorb(([self._MASTER] + self._SATS))
+        assert out == ["pyscf_relax-stage3.molwatch.log"], (
+            "one PySCF relaxation must be ONE menu entry; got: " + repr(out)
+        )
+
+    def test_the_stage_overlay_suffix_is_stripped_before_matching(self):
+        """The master is ``<base>-stage<N>.molwatch.log`` while its satellites
+        are plain ``<base>_*`` (job-contracts.md § 2.3).  Without stripping the
+        overlay suffix the prefixes never match and nothing is absorbed."""
+        out = self._absorb((
+            ["/p/pyscf_relax-stage3.molwatch.log", "/p/pyscf_relax_optimized.xyz"]))
+        assert out == ["pyscf_relax-stage3.molwatch.log"]
+
+    def test_without_the_master_the_parts_still_list(self):
+        """Absorption needs the master PRESENT.  A deleted or never-written
+        master must not make its files unreachable from the menu."""
+        out = self._absorb((self._SATS))
+        assert sorted(out) == sorted(p.rsplit("/", 1)[-1] for p in self._SATS)
+
+    def test_a_different_run_in_the_same_folder_is_untouched(self):
+        """Only files sharing the master's base are absorbed -- a second job in
+        the same directory keeps its own result."""
+        out = self._absorb(([
+            self._MASTER,
+            "/p/pyscf_relax_optimized.xyz",
+            "/p/other_job-stage1.molwatch.log",
+            "/p/other_job_optimized.xyz",
+        ]))
+        assert sorted(out) == ["other_job-stage1.molwatch.log",
+                               "pyscf_relax-stage3.molwatch.log"]
+
+    def test_a_master_in_another_directory_absorbs_nothing(self):
+        out = self._absorb((
+            ["/p/a/pyscf_relax-stage3.molwatch.log",
+             "/p/b/pyscf_relax_optimized.xyz"]))
+        assert sorted(out) == ["pyscf_relax-stage3.molwatch.log",
+                               "pyscf_relax_optimized.xyz"]

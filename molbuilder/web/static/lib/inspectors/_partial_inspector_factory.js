@@ -89,6 +89,9 @@
         if (typeof opts.resultCategory === "function") {
             inspector.resultCategory = opts.resultCategory;
         }
+        if (typeof opts.absorbs === "function") {
+            inspector.absorbs = opts.absorbs;
+        }
 
         inspector.mount = function (host, file, _ctx) {
             const cleanups = [];

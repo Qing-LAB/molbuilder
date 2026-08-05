@@ -79,6 +79,52 @@
                 return "PySCF optimization";
             return "Trajectory";  // fallback (shouldn't fire given match())
         },
+
+        /* A RUN IS ONE RESULT (results.md § 2.3).
+         *
+         * A `.molwatch.log` already carries the whole relaxation -- the
+         * generator's own manifest calls it the "unified per-step log ...
+         * single-file input for molwatch" (pyscf/input.py).  The files beside
+         * it are that run's working parts, not peer results:
+         *
+         *   <base>_initial.xyz          the INPUT, echoed back
+         *   <base>_optimized.xyz        final coords; also the seed the NEXT
+         *                               run warm-starts from
+         *   <base>_geom_<stage>_optim.xyz   geomeTRIC's per-stage stream,
+         *                               the same steps the master log reports
+         *
+         * Listing them as peers turned one PySCF relaxation into five menu
+         * entries (2026-08-04).
+         *
+         * NAMING: a staged run's master is `<base>-stage<N>.molwatch.log`
+         * while its satellites stay plain `<base>_*` -- the `-stage<N>`
+         * overlay suffix (job-contracts.md § 2.3) has to come off before the
+         * prefixes can be compared.  Only `.molwatch.log` absorbs; a SIESTA
+         * `.out` names its own stage files the same way and is left alone
+         * until that is verified against a real staged SIESTA run.
+         */
+        absorbs: (master, other) => {
+            const lower = master.toLowerCase();
+            if (!lower.endsWith(".molwatch.log")) return false;
+            const cut = (p) => {
+                const ix = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+                return { dir: ix < 0 ? "" : p.slice(0, ix),
+                         name: ix < 0 ? p : p.slice(ix + 1) };
+            };
+            const m = cut(master);
+            const o = cut(other);
+            if (m.dir !== o.dir) return false;          // same folder only
+            // `<base>-stage3.molwatch.log` -> `<base>`
+            const base = m.name
+                .slice(0, -(".molwatch.log".length))
+                .replace(/-stage\d+$/i, "");
+            if (!base) return false;
+            const n = o.name.toLowerCase();
+            const b = base.toLowerCase();
+            return n === b + "_initial.xyz"
+                || n === b + "_optimized.xyz"
+                || (n.startsWith(b + "_geom_") && n.endsWith("_optim.xyz"));
+        },
     });
 
     root.molbuilder.inspectors.trajectoryInspector = inspector;
