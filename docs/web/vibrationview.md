@@ -130,8 +130,21 @@ import { mount } from "/static/lib/vibrationview/index.js";
 ```
 
 That is the whole surface. Every other file in the module is internal — the
-animation, the export, the sealed layer. A consumer that imports one of them
-directly has broken the module, not found a shortcut.
+maths, the export, the sealed layer, the stylesheet. A consumer that imports one
+of them directly has broken the module, not found a shortcut.
+
+**A directory is not a seal, so the concealment is made three ways.** Everything
+under `web/static/` is served, which means an internal file has a URL and any
+script could reach for it. Convention alone did not hold last time.
+
+- **Every internal file is underscore-prefixed** — `_maths.js`, `_export.js`. An
+  import of `_maths.js` reads as a violation where it is written; an import of
+  `maths.js` reads as ordinary code. The door is the one file without the mark.
+- **The module links its own stylesheet** (§ 13). No template names it, so no page
+  can forget it and no page has to know it exists.
+- **A guard test asserts the boundary** — nothing outside the package may name any
+  path inside it but `index.js`. It runs in one direction and does not read the
+  module's own files, because that is the reach it exists to forbid.
 
 **Nothing it needs comes from a global, and nothing it holds is published to
 one.** It does not read `window.molbuilder` and it does not write to it. A viewer
@@ -784,10 +797,18 @@ are easier to write down than to rediscover:
 
 ## 13. The module owns its own stylesheet
 
-`vibrationview.css` holds the drawing surface's ground and the positioning its
-canvas needs. A host stylesheet that knows how the canvas positions itself is the
-seal leaking into another language; the host decides how big the box is, and
-nothing more.
+`_style.css` holds the drawing surface's ground and the positioning its canvas
+needs. A host stylesheet that knows how the canvas positions itself is the seal
+leaking into another language; the host decides how big the box is, and nothing
+more.
+
+**The module links it, not the page.** At mount the sealed layer adds its own
+`<link>` once, so no template names the file and none can forget it. This is the
+one place the design departs from MolView deliberately: `molview.css` is linked by
+six templates, so a page that mounts a viewer and omits the `<link>` renders it
+unstyled — a failure with no error, far from its cause, that only a person looking
+at the screen will find. A stylesheet stays a real `.css` file rather than a string
+inside JavaScript, so the repository's existing CSS audits still read it.
 
 **The on-screen background lives here and only here** — declared in this
 stylesheet, read by the sealed layer at paint time, following the app's light or
@@ -875,9 +896,12 @@ Everything below lives under `lib/vibrationview/`.
 | File | Owns |
 |---|---|
 | `index.js` | the entry point — `mount`, and nothing else (§ 4, § 9.1); the handle, the state and the frame loop (§ 7 level 1) |
-| `mode-maths.js` | the scatter and the atoms' positions at a phase (§ 6.3, § 10) — pure, no clock, no DOM |
-| `export.js` | the three encoders and the manifest (§ 12) |
-| `vibrationview.css` | the drawing surface's ground and sizing (§ 13) |
+| `_maths.js` | the scatter and the atoms' positions at a phase (§ 6.3, § 10) — pure: no clock, no DOM, no state |
+| `_export.js` | the three encoders and the manifest (§ 12) |
+| `_style.css` | the drawing surface's ground and sizing (§ 13) |
+
+**One file has no underscore, and that is the whole convention** (§ 4): `index.js`
+is the door, everything else is a room.
 
 **Deliberately not listed:** the sealed layer. No consumer names its file and
 neither does this document (§ 4).
