@@ -26,6 +26,15 @@
  *                              the /results picker's optgroup labels)
  *        isResult      bool   (default true; matches both current
  *                              call-sites)
+ *        provide       object (optional)  extra values merged into the
+ *                              opts the core's mount() receives.
+ *
+ *   ``provide`` is how a MODULE reaches a core that cannot import one.  A core
+ *   loaded as a classic script has no way to `import`, and a module that
+ *   published itself to a global so the core could find it would be unsealed --
+ *   which is exactly the defect that left VibrationView unmountable.  So the
+ *   wrapper, which CAN import, hands the capability in: the core is given what
+ *   it needs rather than sent looking for it.
  *
  * The underscore prefix on ``_partialInspectorFactory`` marks this
  * as an internal helper to the inspectors module; production
@@ -74,6 +83,7 @@
         const name          = opts.name;
         const displayName   = opts.displayName;
         const coreApiKey    = opts.coreApiKey;
+        const provide       = opts.provide || {};
         const partialUrl    = opts.partialUrl;
         const errorDisplay  = opts.errorDisplayName || displayName;
         const coreScriptHint =
@@ -135,7 +145,8 @@
                     // with no user input; same content the per-tab
                     // pages (e.g. /spectra) include via Jinja.
                     host.innerHTML = partialHtml;
-                    innerHandle = api.mount(host, { file: file });
+                    innerHandle = api.mount(host,
+                        Object.assign({ file: file }, provide));
                     cleanups.push(() => {
                         try { innerHandle.dispose(); }
                         catch (_) { /* already torn down */ }

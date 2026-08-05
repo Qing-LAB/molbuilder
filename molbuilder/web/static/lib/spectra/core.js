@@ -226,6 +226,9 @@
         // the top level of `state` (not in any bucket) because it's a wrapper-managed
         // external resource.
         vib:            null,
+        vibMounting:    false,   // one build per mount, not one per mode click
+        vibStructure:   null,    // which structure the viewer holds (§ 5.1)
+        animCycleSec:   1.0,     // one oscillation per second
     };
 
     // Backward-compat aliases.  ~3000 lines of existing render +
@@ -2086,30 +2089,65 @@
     // also ships eigenvector_canonical with the mass-weighted unit
     // norm Σ_k m_k|L_k|² = 1.
 
-    function _equilibriumGeometry() {
-        // Return { elements, positions } or null if neither source
-        // has a usable structure.  Positions are Å.
+    /* THE ONE CUT (vibrationview.md § 11).
+     *
+     * A spectra result carries far more than an animation needs, and the three
+     * things it does need used to be read from four places scattered through this
+     * file.  This is the only function that knows both the shape of a
+     * `.spectra.json` and the shape of a mode, which is what keeps VibrationView
+     * from ever naming spectra and the server from ever naming VibrationView.
+     *
+     * It returns null when the result cannot be animated, and the caller says so
+     * rather than finding a structure somewhere else.  There USED to be a
+     * fallback here: when a result carried no stored geometry, it read the
+     * structure off whatever MolView happened to be holding.  On /results that is
+     * "whatever the last inspection installed" — so a mode could be animated
+     * against a molecule it was not computed for, guarded only by an atom count,
+     * which any two molecules of the same size pass.  It was also unreachable and
+     * broken in two independent ways, so deleting it removed no working
+     * behaviour: it returned its coordinates under a key nothing read, and the
+     * viewer it read from is never handed to this page.
+     */
+    function _animationInputs() {
         const r = state.results;
-        if (r && r.equilibrium
-                && Array.isArray(r.equilibrium.elements)
-                && Array.isArray(r.equilibrium.positions_ang)
-                && r.equilibrium.elements.length
-                && r.equilibrium.positions_ang.length
-                   === r.equilibrium.elements.length) {
-            return {
-                elements:  r.equilibrium.elements.slice(),
-                positions: r.equilibrium.positions_ang.map(row => row.slice()),
-            };
+        if (!r || state.selectedMode == null) return null;
+
+        const eq = r.equilibrium;
+        if (!eq || !Array.isArray(eq.elements) || !Array.isArray(eq.positions_ang)
+                || !eq.elements.length
+                || eq.positions_ang.length !== eq.elements.length) {
+            return null;      // no stored geometry: not animatable, and we say so
         }
-        /* Fallback: the structure the Inspect-structure card loaded, read
-         * straight off the viewer. It used to fetch that as TEXT and parse it
-         * back into atoms — a round trip through a document the viewer never
-         * had, to arrive at the atoms it was holding all along. */
-        const loaded = getTheStructure();
-        if (!loaded) return null;
+        const mode = (r.modes || []).find(
+            m => m.index_1based === state.selectedMode);
+        if (!mode || !Array.isArray(mode.eigenvector_display)) return null;
+
+        // The eigenvector is indexed by FREE-atom row, so its length is the size
+        // of the free set -- not of the structure.  Disagreement here means the
+        // result is internally inconsistent; the viewer would refuse it anyway
+        // (§ 6.3), and refusing it here says so before anything is drawn.
+        const free = Array.isArray(r.free_atom_idxs) ? r.free_atom_idxs : null;
+        if (free && free.length !== mode.eigenvector_display.length) return null;
+        if (!free && mode.eigenvector_display.length !== eq.elements.length) return null;
+
+        const hz = Number(mode.frequency_cm1);
         return {
-            elements: loaded.elements.slice(),
-            coords:   loaded.frames[0].map((p) => p.slice()),
+            structure: {
+                elements:  eq.elements.slice(),
+                positions: eq.positions_ang.map(row => row.slice()),
+            },
+            mode: {
+                index:         mode.index_1based,
+                displacements: mode.eigenvector_display,
+                basis:         free,
+                norm:          "display",
+                // TEXT, not a number (§ 12.3): the sign carries meaning -- a
+                // negative frequency is a saddle point, not a small number -- and
+                // deciding that is spectroscopy, not drawing.
+                label: "Mode " + mode.index_1based + " · "
+                     + (isFinite(hz) ? hz.toFixed(1) : "?") + " cm⁻¹"
+                     + (mode.has_imag ? " (imag)" : ""),
+            },
         };
     }
 
@@ -2121,107 +2159,69 @@
         // non-null eigenvector.
         if (!els.modeViewerWrap) return;
 
-        const geom = _equilibriumGeometry();
-        if (!geom || state.selectedMode == null || !state.results) {
-            els.modeViewerWrap.hidden = true;
-            _stopAnimation();
-            return;
-        }
-        const mode = (state.results.modes || []).find(
-            m => m.index_1based === state.selectedMode
-        );
-        if (!mode || !Array.isArray(mode.eigenvector_display)) {
-            els.modeViewerWrap.hidden = true;
-            _stopAnimation();
-            return;
-        }
-        // Geometry/mode AGREEMENT gate: the eigenvector is per-atom, so the geometry
-        // must have exactly that many atoms.  This matters for the viewer-read
-        // fallback on /results, where the shared model may hold an UNRELATED structure
-        // (whatever the last inspection installed) -- animating this mode on it would
-        // be silent nonsense.  Mismatch -> treat as "no usable geometry" and hide.
-        if (geom.elements.length !== mode.eigenvector_display.length) {
+        const inputs = _animationInputs();
+        if (!inputs) {
             els.modeViewerWrap.hidden = true;
             _stopAnimation();
             return;
         }
         els.modeViewerWrap.hidden = false;
-
-        if (typeof window.$3Dmol === "undefined") {
-            els.modeViewer.innerHTML =
-                '<p class="status muted" style="padding:1rem">'
-                + '3Dmol.js failed to load; mode animation '
-                + 'unavailable.</p>';
-            setStatus(els.viewerStatus, "3Dmol not loaded", "muted");
-            return;
-        }
-        setStatus(els.viewerStatus,
-                  `Mode ${mode.index_1based} · `
-                  + Number(mode.frequency_cm1).toFixed(1)
-                  + " cm⁻¹"
-                  + (mode.has_imag ? " (imag)" : ""),
-                  "muted");
-
-        _ensureViewer();
-        _startAnimation(geom, mode);
+        setStatus(els.viewerStatus, inputs.mode.label, "muted");
+        _showMode(inputs);
     }
 
-    function _ensureViewer() {
-        // Mount the concealed VibrationView package ONCE per mount (vibrationview.md).  It
-        // owns the canvas + standard knob bar + the vibration animation; mode swaps go through
-        // vib.showMode without re-mounting.  Spectra no longer drives setStructure /
-        // setAnimation on a raw viewer -- it asks VibrationView.  The viewer options (stick
-        // style, pick: none, axes off, "Vibrational mode" card, "vibration" export) + the
-        // frozen-atom greying + the eigenvector scatter now live inside vibrationview.mount.
-        if (state.vib) return;
-        els.modeViewer.innerHTML = "";
-        const vv = window.molbuilder && window.molbuilder.vibrationview;
-        if (!vv || typeof vv.mount !== "function") {
-            setStatus(els.viewerStatus, "vibration viewer unavailable", "muted");
-            return;
+    /* Mounting is ASYNCHRONOUS (vibrationview.md § 8), so this returns a promise
+     * and the callers do not wait on it: the molecule appears when the viewer is
+     * built, and a second mode click while that is happening finds the viewer
+     * already there.  Nothing is deferred or queued -- the handle a mount returns
+     * is live, so there is no not-ready state for a caller to get wrong. */
+    async function _showMode(inputs) {
+        if (!state.vib) {
+            if (state.vibMounting) return;      // one build, not one per click
+            const make = opts.mountVibrationView;
+            if (typeof make !== "function") {
+                // The page that mounted this inspector did not hand the viewer
+                // in.  A module cannot be looked up in a global -- that is the
+                // point of it -- so this is a wiring fault, not a missing file.
+                setStatus(els.viewerStatus,
+                          "mode animation unavailable on this page", "muted");
+                return;
+            }
+            state.vibMounting = true;
+            els.modeViewer.innerHTML = "";
+            let handle = null;
+            try {
+                handle = await make(els.modeViewer, {
+                    amplitude: state.animAmplitude,
+                    cycleSec:  state.animCycleSec,
+                });
+            } catch (e) {
+                handle = { ok: false, error: (e && e.message) || String(e) };
+            }
+            state.vibMounting = false;
+            if (!handle || handle.ok === false) {
+                setStatus(els.viewerStatus,
+                          "mode animation unavailable"
+                          + (handle && handle.error ? " (" + handle.error + ")" : ""),
+                          "muted");
+                return;
+            }
+            state.vib = handle;
+            state.vibStructure = null;
         }
-        const vh = vv.mount(els.modeViewer, {
-            amplitude: state.animAmplitude,
-            speedHz:   state.animSpeed,
-        });
-        // Uniform mount contract: a failure is {ok:false, dispose} -- never null -- so
-        // branch on .ok; internally state.vib stays null-on-failure (the existing guards).
-        if (!vh || vh.ok === false) {
-            state.vib = null;
-            setStatus(els.viewerStatus,
-                      "vibration viewer unavailable"
-                      + (vh && vh.error ? " (" + vh.error + ")" : ""), "muted");
-            return;
+
+        /* TWO DOORS, and the slow one only when it is the slow fact
+         * (§ 5.1): a new result installs a structure and costs a redraw and a
+         * refit; clicking through the modes of one result costs neither, which is
+         * why the camera stays put while you browse. */
+        const key = JSON.stringify(inputs.structure.elements);
+        if (state.vibStructure !== key) {
+            state.vib.setStructure(inputs.structure);
+            state.vibStructure = key;
         }
-        state.vib = vh;
-    }
-
-    // _buildFrameMovie removed by #231 Part B.  The embed's
-    // vibration animation (the VibrationView-owned loop --
-    // displacements})) replaces the bespoke ANIM_FRAMES_PER_CYCLE
-    // pre-computed sine cycle.  The embed's loop computes
-    // pos_i(φ) = baseline_i + amplitude · cos(φ) · displacement_i
-    // and applies it natively at requestAnimationFrame cadence;
-    // amplitude / speedHz changes are partial-update opts on
-    // setAnimation, no frame rebuild needed.
-
-    function _startAnimation(geom, mode) {
-        // Drive the mode through VibrationView (vibrationview.md): hand it the equilibrium
-        // geometry + the mode's eigenvector (free-atom-indexed, spec.md § 5.1 invariant 3) +
-        // the free/frozen partition.  VibrationView scatters the eigenvector to global order,
-        // greys the frozen atoms, (re)draws the baseline only when the structure changed, and
-        // runs pos_i(φ) = baseline_i + amplitude · cos(φ) · displacement_i.  Amplitude/speed
-        // edits below are live (vib.setAmplitude / setSpeed); a mode swap re-calls showMode
-        // with the new eigenvector.
-        if (!state.vib) return;
+        state.vib.showMode(inputs.mode);
+        state.vib.play();
         if (els.animToggle) els.animToggle.textContent = "Pause";
-        state.vib.showMode({
-            index:         mode.index_1based,
-            displacements: mode.eigenvector_display,
-            geometry:      { elements: geom.elements, positions: geom.positions },
-            freeAtomIdx:   state.results.free_atom_idxs,
-            frozenAtomIdx: state.results.frozen_atom_idxs,
-        });
     }
 
     function _stopAnimation() {
@@ -2236,21 +2236,21 @@
         if (Number.isFinite(v)) state.animAmplitude = v;
         if (els.animAmplitudeVal)
             els.animAmplitudeVal.textContent = v.toFixed(2) + " Å";
-        // #231 Part B: amplitude is a partial-update field on the
-        // embed's vibration animation.  No frame rebuild needed --
-        // the embed's loop reads amplitude live.
-        if (state.vib && state.results && state.selectedMode != null) {
-            try { state.vib.setAmplitude(v); } catch (_) {}
-        }
+        // A live knob (vibrationview.md § 9.2): a plain write the running loop
+        // reads on its next frame, so dragging never stops the animation.
+        if (state.vib) { try { state.vib.setAmplitude(v); } catch (_) {} }
     }
+    /* Speed sets how long ONE OSCILLATION takes, not a frame rate: a cycle is a
+     * second by default, so 2x is half a second (vibrationview.md § 10.1).
+     * Smoothness is a separate knob the viewer owns, which is why asking for a
+     * faster wobble here cannot make it stutter. */
     function onAnimSpeedChange() {
         const v = parseFloat(els.animSpeed.value);
-        if (Number.isFinite(v)) state.animSpeed = v;
-        if (els.animSpeedVal)
-            els.animSpeedVal.textContent = v.toFixed(1) + "×";
-        if (state.vib && state.results && state.selectedMode != null) {
-            try { state.vib.setSpeed(v); } catch (_) {}
-        }
+        if (!Number.isFinite(v) || v <= 0) return;
+        state.animSpeed    = v;
+        state.animCycleSec = 1 / v;
+        if (els.animSpeedVal) els.animSpeedVal.textContent = v.toFixed(1) + "×";
+        if (state.vib) { try { state.vib.setCycleSec(state.animCycleSec); } catch (_) {} }
     }
     function onAnimToggle() {
         // Phase 5h I-3: read the live runtime state from the embed
@@ -2848,9 +2848,9 @@
 
     }   // ----- end of mountInspector(rootEl, opts) -----
 
-    // The free-row -> global-atom eigenvector scatter (spec.md § 5.1 invariant 3) moved to
-    // lib/vibrationview/mode-math.js (molbuilder.vibrationview.scatterDisplacements) when the
-    // vibration view was carved into its own concealed package (vibrationview.md).
+    // The free-row -> global-atom eigenvector scatter (spec.md § 5.1 invariant 3)
+    // belongs to VibrationView and is reached only through its one door: this file
+    // hands over a mode and the module reads its own basis (vibrationview.md § 6.3).
 
     // Export for both consumers (spectra/viewer.js bootstrap on
     // /spectra, lib/inspectors/spectra.js on /results).  Each

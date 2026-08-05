@@ -200,7 +200,9 @@
 <script src="{{ url_for('static', filename='lib/results/file-picker.js') }}"></script>
 {# Specific (compound-extension) inspectors register first... #}
 <script src="{{ url_for('static', filename='lib/inspectors/trajectory.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/inspectors/spectra.js') }}"></script>
+{# A MODULE: it imports VibrationView and hands `mount` to the spectra core,
+   which is a classic script and cannot import one itself.  See the file. #}
+<script type="module" src="{{ url_for('static', filename='lib/inspectors/spectra.js') }}"></script>
 {# ...then specific-but-not-compound (.xyz/.pdb)... #}
 <script type="module" src="{{ url_for('static', filename='lib/inspectors/structure.js') }}"></script>
 {# Markdown inspector (.md) -- split-pane editor + live preview.

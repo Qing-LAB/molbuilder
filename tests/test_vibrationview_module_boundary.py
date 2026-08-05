@@ -48,14 +48,6 @@ KNOWN: dict[str, str] = {
         "imports index.js and hands `mount` to the inspector (§ 11).  Step 6-7 of "
         "task #19."
     ),
-    "molbuilder/web/static/lib/spectra/core.js": (
-        "a COMMENT at :2851-2853 pointing at the predecessor's internal "
-        "mode-math.js, left where the scatter used to live.  Listed rather than "
-        "waved through: a comment naming another module's private file is a "
-        "reference that rots silently, and this one is already half-wrong (the "
-        "global it cites is read by nothing).  It goes when core.js is rewired "
-        "onto injection at step 6 of task #19."
-    ),
 }
 
 

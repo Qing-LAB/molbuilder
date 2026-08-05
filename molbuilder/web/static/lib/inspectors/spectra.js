@@ -1,6 +1,14 @@
 /* Spectra-results inspector -- registry-side adapter that wires
  * the shared partial-inspector factory to ``lib/spectra/core.js``.
  *
+ * A NATIVE ES MODULE, and that is what makes the mode viewer work on /results.
+ * The spectra core is a classic script and cannot `import`; VibrationView is a
+ * sealed module that publishes nothing to a global for it to find (deliberately
+ * -- reaching for a global is how the previous viewer ended up unmountable).
+ * This file can do both, so it imports `mount` and hands it to the core through
+ * the factory's ``provide``: the core is GIVEN the capability rather than sent
+ * looking for one.
+ *
  * Match rule: ``*.spectra.json`` (PySCF spectrum results emitted
  * by molbuilder's spectra wrapper).
  *
@@ -15,6 +23,8 @@
  * task #308; pre-fix this wrapper carried a ~150-LoC scaffold
  * identical to trajectory.js's).
  */
+import { mount as mountVibrationView } from "/static/lib/vibrationview/index.js";
+
 (function (root) {
     "use strict";
 
@@ -38,6 +48,8 @@
         partialUrl:     "/partials/spectra-inspector",
         match:          (file) => file.toLowerCase().endsWith(".spectra.json"),
         resultCategory: (_file) => "PySCF spectrum",
+        // The one thing the core cannot reach for itself.
+        provide:        { mountVibrationView: mountVibrationView },
     });
 
     root.molbuilder.inspectors.spectraInspector = inspector;

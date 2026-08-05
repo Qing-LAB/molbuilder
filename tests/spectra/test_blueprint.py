@@ -512,25 +512,62 @@ class TestSpectraPage:
             "for the inspect-structure card (task #296)"
         )
 
-    def test_core_js_has_mode_animation(self, web_client):
-        """The inspector core exposes the viewer setup + animation
-        entry points.
+    def test_the_tab_reaches_the_mode_viewer_by_injection(self, web_client):
+        """The Spectrum tab is HANDED the mode viewer; it does not go looking.
 
-        Note: the pin on ``molbuilder.xyz.parse`` went on 2026-08-02 with the
-        thing it pinned. ``_equilibriumGeometry`` used to ask the viewer for an
-        XYZ document and parse it back into atoms — a round trip through a
-        document the viewer never had, to arrive at the atoms it was holding all
-        along. It reads them off the viewer now, and nothing here parses text."""
-        js = web_client.get("/static/lib/spectra/core.js").data.decode()
-        for sym in (
-            "renderModeViewer",
-            "_ensureViewer",
-            "_startAnimation",
-            "_stopAnimation",
-            "_equilibriumGeometry",
-            "$3Dmol",
-        ):
-            assert sym in js, f"missing {sym!r} in lib/spectra/core.js"
+        REPLACES a test that listed six private function names in core.js.  Four
+        of them changed when the viewer was rebuilt, and the test failed for a
+        rename that broke nothing — which is what a transcription does instead of
+        guarding a contract (vibrationview.md § 14, § 13.1 of molview.md).
+
+        What is actually load-bearing is the DIRECTION of the dependency.  The
+        core is a classic script and cannot import a module; the module publishes
+        nothing to a global for it to find, deliberately — reaching for a global
+        is precisely how the previous viewer came to be unmountable on every page
+        while its own tests stayed green.  So the registry adapter, which can do
+        both, imports `mount` and hands it over.
+        """
+        core    = web_client.get("/static/lib/spectra/core.js").data.decode()
+        adapter = web_client.get("/static/lib/inspectors/spectra.js").data.decode()
+
+        # The adapter is a module, and it hands the capability in.
+        assert "import " in adapter, "the adapter must import the viewer it provides"
+        assert "/static/lib/vibrationview/index.js" in adapter
+        assert "mountVibrationView" in adapter
+
+        # The core takes it as an option and never looks one up.
+        assert "mountVibrationView" in core
+        assert "molbuilder.vibrationview" not in core, (
+            "the core must not look the viewer up in a global; it is handed one"
+        )
+
+    def test_the_tab_does_not_name_the_drawing_library(self, web_client):
+        """A 3-D viewer is a module now, so the tab has no business knowing what
+        draws it (vibrationview.md § 5.4).
+
+        The core used to check for the library itself and render its own "failed
+        to load" message, which meant two places knew the module was built on it.
+        """
+        core = web_client.get("/static/lib/spectra/core.js").data.decode()
+        assert "$3Dmol" not in core
+
+    def test_the_tab_hands_over_one_partition_not_two(self, web_client):
+        """§ 6.3: which atoms move is ONE fact, as far as the VIEWER is concerned.
+
+        The core used to hand `showMode` both a free set and a frozen set — two
+        lists that must partition the atoms, with nothing checking they did, so an
+        atom named in both would be greyed as frozen while being moved as free.
+        The viewer derives the held-still set from the basis it is given.
+
+        Narrowly about the handoff: the page still READS the frozen list, to show
+        "Free / frozen" in the run-metadata table, and that is not the viewer's
+        business either way.
+        """
+        core = web_client.get("/static/lib/spectra/core.js").data.decode()
+        assert "basis:" in core, "the mode handed over must name its basis"
+        assert "frozenAtomIdx" not in core, (
+            "the viewer is given one partition and derives the other"
+        )
 
     def test_inspector_partial_has_broadening_control(self, web_client):
         """The Spectrum subsection in the inspector partial has a
