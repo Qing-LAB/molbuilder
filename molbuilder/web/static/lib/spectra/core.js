@@ -232,6 +232,7 @@
         // the top level of `state` (not in any bucket) because it's a wrapper-managed
         // external resource.
         vib:            null,
+        chartResizeObserver: null,   // redraws the chart when its BOX changes
         vibMounting:    false,   // one build per mount, not one per mode click
         vibStructure:   null,    // which structure the viewer holds (§ 5.1)
         animPaused:     false,   // the USER's intent, not the viewer's state
@@ -2393,6 +2394,29 @@
         return inputs.amplitude * max;
     }
 
+    /* Plotly's `responsive: true` listens to the WINDOW, and the window is not
+     * what changes.  This chart lives in a grid that reflows when the box it is
+     * in gets wider or narrower -- the projects sidebar collapsing, the results
+     * panel resizing, the mode viewer moving from beside the chart to below it
+     * -- and none of those resize the window.  So the chart kept whatever width
+     * it was first drawn at and either overflowed its box or left a gap.
+     *
+     * One observer on the container, redrawing at its new size. */
+    function _watchChartWidth() {
+        if (state.chartResizeObserver || !els.spectrumChart) return;
+        if (typeof ResizeObserver === "undefined") return;
+        let last = 0;
+        const obs = new ResizeObserver(function (entries) {
+            const w = entries[0] && entries[0].contentRect.width;
+            if (!w || Math.abs(w - last) < 1) return;   // ignore sub-pixel noise
+            last = w;
+            if (typeof Plotly === "undefined") return;
+            try { Plotly.Plots.resize(els.spectrumChart); } catch (_) {}
+        });
+        obs.observe(els.spectrumChart);
+        state.chartResizeObserver = obs;
+    }
+
     /* ── Saving the animation (vibrationview.md § 12) ───────────────────────
      *
      * The module produces BYTES; where they go is the page's business, and here
@@ -2737,6 +2761,8 @@
 
         const config = {
             displaylogo: false,
+            // Follows the WINDOW.  It does not follow the container, which is
+            // the case that actually happens here -- see _watchChartWidth.
             responsive:  true,
             modeBarButtonsToRemove: [
                 "select2d", "lasso2d", "autoScale2d",
@@ -2752,6 +2778,8 @@
                 els.spectrumChart.removeAllListeners
                     && els.spectrumChart.removeAllListeners("plotly_click");
                 els.spectrumChart.on("plotly_click", _onChartClick);
+                // Idempotent: only the first drawn chart installs it.
+                _watchChartWidth();
             });
     }
 
@@ -3115,6 +3143,10 @@
             }
             if (typeof Plotly !== "undefined" && els.spectrumChart) {
                 try { Plotly.purge(els.spectrumChart); } catch (_) {}
+            }
+            if (state.chartResizeObserver) {
+                try { state.chartResizeObserver.disconnect(); } catch (_) {}
+                state.chartResizeObserver = null;
             }
         },
         /**
