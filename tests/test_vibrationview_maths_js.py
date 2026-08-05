@@ -162,9 +162,11 @@ def test_positions_are_the_equilibrium_plus_amplitude_times_cos_phase():
         const eq   = [[0,0,0], [1,0,0]];
         const disp = [[0,0,0], [1,0,0]];        // atom 0 held still
         console.log(JSON.stringify({
-            peak:  M.positionsAtPhase(eq, disp, 0.2, 0),              // cos = 1
-            zero:  M.positionsAtPhase(eq, disp, 0.2, Math.PI / 2),    // cos = 0
-            trough: M.positionsAtPhase(eq, disp, 0.2, Math.PI),       // cos = -1
+            // frame 0 of 4 is phase 0 (cos = 1); frame 1 is a quarter round
+            // (cos = 0); frame 2 is half (cos = -1)
+            peak:   M.positionsAtFrame(eq, disp, 0.2, 0, 4),
+            zero:   M.positionsAtFrame(eq, disp, 0.2, 1, 4),
+            trough: M.positionsAtFrame(eq, disp, 0.2, 2, 4),
         }));
     """)
     assert out["peak"] == [[0, 0, 0], [1.2, 0, 0]]
@@ -183,7 +185,7 @@ def test_held_still_atoms_never_move_at_any_phase():
         const N = M.rate(30, 1.0).framesPerCycle;
         const moved = [];
         for (let n = 0; n < N; n++) {
-            const p = M.positionsAtPhase(eq, disp, 3.0, M.phaseOfFrame(n, N));
+            const p = M.positionsAtFrame(eq, disp, 3.0, n, N);
             for (const i of [0, 2]) {
                 if (p[i][0] !== eq[i][0] || p[i][1] !== eq[i][1]
                     || p[i][2] !== eq[i][2]) moved.push([n, i]);
@@ -208,11 +210,10 @@ def test_a_cycle_is_a_whole_number_of_frames_and_closes_exactly():
         const rates = [[30, 1.0], [25, 0.3], [60, 1.0], [24, 1.7], [5, 4.0]];
         const rows = rates.map(([fps, cyc]) => {
             const N = M.rate(fps, cyc).framesPerCycle;
-            const first = M.positionsAtPhase(eq, disp, 0.2, M.phaseOfFrame(0, N));
-            const next  = M.positionsAtPhase(eq, disp, 0.2, M.phaseOfFrame(N, N));
-            const mid   = M.positionsAtPhase(eq, disp, 0.2, M.phaseOfFrame(7, N));
-            const midNext = M.positionsAtPhase(eq, disp, 0.2,
-                                               M.phaseOfFrame(7 + 3 * N, N));
+            const first = M.positionsAtFrame(eq, disp, 0.2, 0, N);
+            const next  = M.positionsAtFrame(eq, disp, 0.2, N, N);
+            const mid   = M.positionsAtFrame(eq, disp, 0.2, 7, N);
+            const midNext = M.positionsAtFrame(eq, disp, 0.2, 7 + 3 * N, N);
             return { fps, cyc, N,
                      whole:  Number.isInteger(N),
                      closes: JSON.stringify(first) === JSON.stringify(next),
@@ -309,30 +310,29 @@ def test_the_cycle_length_reported_is_the_one_that_happened():
         assert abs(row["sec"] - row["n"] / row["fps"]) < 1e-12
 
 
-def test_the_phase_comes_from_the_frame_number():
-    """§ 10.1: "the phase comes from the frame number, not from the clock" — so
-    frame n and frame n + N are the same phase EXACTLY, with no drift from
-    accumulated addition, and the sequence an export encodes is the one the screen
-    shows."""
+def test_the_same_moment_moves_to_the_nearest_frame_a_new_rate_can_express():
+    """§ 9.2: a rate change keeps the phase, by re-expressing the frame number
+    against the new count.
+
+    A finer grid contains every position a coarser one has, so the move is exact.
+    A coarser grid does not, so the answer is the nearest frame it has — off by at
+    most half a step, and never accumulating, because it re-anchors from the
+    position in the cycle rather than from a running offset.
+    """
     out = _run("""
-        const N = M.rate(60, 1.0).framesPerCycle;      // 60 frames: quarters land on frames
+        const eq   = [[0,0,0]];
+        const disp = [[1,0,0]];
+        const at   = (f, N) => M.positionsAtFrame(eq, disp, 1.0, f, N)[0][0];
         console.log(JSON.stringify({
-            N,
-            zero:    M.phaseOfFrame(0, N),
-            quarter: M.phaseOfFrame(15, N),
-            half:    M.phaseOfFrame(30, N),
-            // exact equality after a thousand cycles
-            drifts:  M.phaseOfFrame(7, N) !== M.phaseOfFrame(7 + 1000 * N, N),
-            // a paused loop resuming from a kept frame number is the same phase
-            resumes: M.phaseOfFrame(13, N) === M.phaseOfFrame(13, N),
-            // a frame is a whole position in the cycle; half of one is the one before
-            fractional: M.phaseOfFrame(7.5, N) === M.phaseOfFrame(7, N),
+            // 30 -> 60: every position survives, so nothing moves
+            finer:   at(8, 30) - at(M.regrid(8, 30, 60), 60),
+            // 60 -> 24: the nearest frame, within half a step of phase
+            coarser: Math.abs(at(15, 60) - at(M.regrid(15, 60, 24), 24)),
+            bound:   Math.PI / 24,
+            // a full cycle regrids to the start, not past it
+            wraps:   M.regrid(30, 30, 60),
         }));
     """)
-    assert out["N"] == 60
-    assert out["zero"] == 0.0
-    assert abs(out["quarter"] - 1.5707963267948966) < 1e-15
-    assert abs(out["half"] - 3.141592653589793) < 1e-15
-    assert out["drifts"] is False
-    assert out["resumes"] is True
-    assert out["fractional"] is True
+    assert abs(out["finer"]) < 1e-12
+    assert out["coarser"] <= out["bound"]
+    assert out["wraps"] == 0

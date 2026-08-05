@@ -36,8 +36,8 @@
  * bounds keep a viewer from drawing frames no display will show, or so few that
  * even a long cycle stutters.
  */
-export const FPS_MIN = 5;
-export const FPS_MAX = 120;
+const FPS_MIN = 5;
+const FPS_MAX = 120;
 export const FRAMES_PER_CYCLE_MIN = 15;
 export const FRAMES_PER_CYCLE_MAX = 1200;   // 120 fps × 10 s: bounds an export
 
@@ -142,9 +142,31 @@ export function scatter(displacements, basis, atomCount) {
 }
 
 
-/* ── Where the atoms are at one phase (§ 10) ─────────────────────────────────
+/* Where in the cycle a frame sits. Private: nothing outside this file has ever
+ * wanted a phase on its own — both callers want what the phase is FOR, and made
+ * the same two-step composition to get it. An export the caller must remember to
+ * compose correctly is an export that can be composed wrongly.
+ *
+ * The wrap is what makes a cycle closed: frame `n` and frame `n + N` are the same
+ * phase exactly, with no drift from accumulated addition. The floor is because a
+ * frame is a whole position in the cycle; half of one is the one before it. */
+function phaseOfFrame(frame, framesPerCycle) {
+    const N = Math.floor(Number(framesPerCycle));
+    if (!isFinite(N) || N <= 0) return 0;
+    const f = Math.floor(Number(frame)) || 0;
+    return 2 * Math.PI * ((((f % N) + N) % N)) / N;
+}
+
+
+/* ── Where the atoms are on one frame (§ 10, § 10.1) ─────────────────────────
  *
  *     position_i(φ) = equilibrium_i + amplitude · cos(φ) · displacement_i
+ *
+ * The phase comes from the FRAME NUMBER, not from a clock. A frame is a position
+ * in the cycle, so the sequence on screen and the sequence in an exported file are
+ * the same sequence. When the browser cannot keep up the animation slows a little
+ * rather than skipping ahead — for a vibration nobody is timing, the better
+ * failure — and pausing is just "keep the number".
  *
  * `displacements` is already scattered — one row per atom, global order, zeros
  * where nothing moves — so held-still atoms are not a special case in the loop.
@@ -153,7 +175,9 @@ export function scatter(displacements, basis, atomCount) {
  * runs on every frame of every export. A check here would be the same refusal
  * paid for a few hundred times a second.
  */
-export function positionsAtPhase(equilibrium, displacements, amplitude, phase) {
+export function positionsAtFrame(equilibrium, displacements, amplitude,
+                                 frame, framesPerCycle) {
+    const phase = phaseOfFrame(frame, framesPerCycle);
     const factor = amplitude * Math.cos(phase);
     const n = equilibrium.length;
     const out = new Array(n);
@@ -198,21 +222,17 @@ export function rate(fps, cycleSec) {
 }
 
 
-/* ── The phase of a frame (§ 10.1) ───────────────────────────────────────────
+/* ── The same moment, counted on a different grid (§ 9.2) ───────────────────
  *
- * The phase comes from the FRAME NUMBER, not from the wall clock. A frame is a
- * position in the cycle, so the sequence on screen and the sequence in an
- * exported file are the same sequence. When the browser cannot keep up the
- * animation slows a little rather than skipping ahead, which for a vibration
- * nobody is timing is the better failure — and pausing is just "keep the number".
+ * A frame number means nothing without the count it is measured against, so when
+ * the count changes the number has to be re-expressed or the molecule jumps.
  *
- * The wrap is what makes a cycle closed: frame `n` and frame `n + N` are the same
- * phase exactly, with no drift from accumulated floating-point addition.
+ * The answer is the NEAREST frame the new grid can express, which is the best
+ * that exists: a coarser grid has no point at the old phase. The error is bounded
+ * by half a frame and does not accumulate, because this re-anchors from the
+ * position in the cycle rather than from a running offset.
  */
-export function phaseOfFrame(frame, framesPerCycleN) {
-    const N = Math.floor(Number(framesPerCycleN));
-    if (!isFinite(N) || N <= 0) return 0;
-    const f = Math.floor(Number(frame)) || 0;
-    const wrapped = ((f % N) + N) % N;
-    return 2 * Math.PI * wrapped / N;
+export function regrid(frame, fromFrames, toFrames) {
+    const phase = phaseOfFrame(frame, fromFrames);
+    return Math.round(phase / (2 * Math.PI) * toFrames) % toFrames;
 }

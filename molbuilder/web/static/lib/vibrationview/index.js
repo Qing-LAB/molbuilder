@@ -26,7 +26,7 @@
  */
 "use strict";
 
-import { scatter, positionsAtPhase, rate, phaseOfFrame } from "./_maths.js";
+import { scatter, positionsAtFrame, rate, regrid } from "./_maths.js";
 import { create as createSurface } from "./_seal.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
@@ -124,9 +124,8 @@ export async function mount(hostEl, opts) {
 
     function draw() {
         if (disposed || !structure || !disp) return;
-        surface.setAtomCoords(
-            positionsAtPhase(structure.positions, disp, amplitude,
-                             phaseOfFrame(frame, r.framesPerCycle)));
+        surface.setAtomCoords(positionsAtFrame(
+            structure.positions, disp, amplitude, frame, r.framesPerCycle));
     }
 
     /* The loop. A frame is advanced only when enough wall-clock has passed for
@@ -175,9 +174,7 @@ export async function mount(hostEl, opts) {
      * change re-anchors from the phase rather than from a running offset. */
     function reframe(next) {
         if (next.framesPerCycle !== r.framesPerCycle) {
-            const phase = phaseOfFrame(frame, r.framesPerCycle);
-            frame = Math.round(phase / (2 * Math.PI) * next.framesPerCycle)
-                  % next.framesPerCycle;
+            frame = regrid(frame, r.framesPerCycle, next.framesPerCycle);
         }
         r = next;
     }

@@ -2,10 +2,7 @@
  *
  * Module:    lib/vibrationview/ — INTERNAL.
  * Linked by: the module itself, at mount (_seal.js), from this file's own URL.
- *            NO TEMPLATE NAMES IT, and that is the point: a page that has to
- *            remember a <link> is a page that can forget one, and the viewer
- *            then mounts unstyled with nothing to catch it. MolView's sheet is
- *            linked by six templates today, which is the arrangement this avoids.
+ *            No template names it — docs/web/vibrationview.md § 13 is why.
  *
  * This sheet styles the module's own surface and nothing else. It never reaches
  * out to a page's classes, and a page sheet reaching in here is the same category
@@ -45,22 +42,14 @@
 
 /* ── The caption (§ 12.3) ─────────────────────────────────────────────────────
  *
- * A DOM overlay, not a mark inside the 3D scene. That is not a shortcut: the
- * drawing library's screen-coordinate labels were measured against a real
- * browser and draw NOTHING — not on screen, and not into an exported picture —
- * while a scene-positioned label draws but rides the camera, which is not a
- * caption. So the caption is a div, and an export composites it in deliberately.
+ * A DOM overlay rather than a mark inside the 3D scene — § 12.3 records the
+ * measurement that forced it, and _seal.js carries it out. The shape is MolView's
+ * corner badge: absolutely positioned, `pointer-events: none`, a `max-width` so a
+ * long line wraps rather than escaping, `[hidden]` as the switch.
  *
- * Migrated from MolView's corner badge (`molviewer-overlay`), which has carried
- * "Unsaved changes" over its 3D window for months. Its shape is carried whole:
- * absolutely positioned in a corner, tokens only, `pointer-events: none`, a
- * `max-width` so a long line wraps rather than escaping, and `[hidden]` as the
- * switch.
- *
- * TOP-left rather than MolView's bottom-right, and the reason is the difference
- * between the two: MolView takes the bottom because its top band is a chrome row
- * of controls an overlay would cover. VibrationView draws no controls at all
- * (§ 5.4), so its top is free — and a caption belongs where reading starts.
+ * TOP-left where MolView takes the bottom, because MolView's top band is a chrome
+ * row an overlay would cover and this module draws no chrome (§ 5.4) — so the top
+ * is free, and a caption belongs where reading starts.
  */
 .vibview-caption {
     position: absolute;

@@ -53,13 +53,8 @@ const SCENE_BACKGROUND = { name: "--vibview-scene-background", fallback: "#0f121
 const root = (typeof window !== "undefined") ? window : globalThis;
 
 
-/* ── The module's own stylesheet (§ 13) ───────────────────────────────────────
- *
- * The MODULE links it, not the page. A template that has to remember a <link> is
- * a template that can forget one, and the viewer then mounts unstyled with
- * nothing to catch it. Resolved from this file's own URL so the module never
- * hardcodes where it is served from.
- */
+/* The module links its own stylesheet (§ 13 says why), resolved from this file's
+ * own URL so it never hardcodes where it is served from. */
 const STYLESHEET_ID = "vibrationview-style";
 
 function ensureStylesheet() {
@@ -147,6 +142,9 @@ export function create(hostEl) {
      * stopped moving for ten rounds of fixes before anyone found it.
      */
     function restyle() {
+        // Always followed by a paint, so it does its own: three call sites wrote
+        // the pair, which is three chances to write only half of it — and half of
+        // it is a style rebuilt and never shown.
         try { viewer.setStyle({}, STYLE); } catch (_) {}
         if (state.heldStill.length) {
             const grey = {
@@ -156,6 +154,7 @@ export function create(hostEl) {
             try { viewer.setStyle({ index: state.heldStill, model: 0 }, grey); }
             catch (_) {}
         }
+        paint();
     }
 
     function paint() {
@@ -259,16 +258,16 @@ export function create(hostEl) {
     return {
         /* Draw one structure. Establishes the model, the elements and the bond
          * topology — the things every later frame reuses. */
+        /* The shapes were checked by the one caller this layer has (§ 9.3: called
+         * by index.js and nothing else, ever). Checking again here would not make
+         * anything safer — it would make one rule live in two places. */
         setStructure(elements, positions) {
             if (state.disposed) return false;
-            if (!Array.isArray(elements) || !Array.isArray(positions)
-                || positions.length === 0) return false;
             try {
                 viewer.removeAllModels();
                 viewer.addModel(xyzText(elements, positions), "xyz");
             } catch (_) { return false; }
             restyle();
-            paint();
             return true;
         },
 
@@ -289,7 +288,6 @@ export function create(hostEl) {
                 }
             } catch (_) { return; }
             restyle();
-            paint();
         },
 
         /* WHICH atoms are held still. What that looks like is this layer's. */
@@ -298,7 +296,6 @@ export function create(hostEl) {
             state.heldStill = Array.isArray(indices)
                 ? indices.map(Number).filter((i) => i >= 0) : [];
             restyle();
-            paint();
         },
 
         setLabel(text) {

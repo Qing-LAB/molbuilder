@@ -16,10 +16,7 @@ The leading underscore on every internal file is the same statement in a form a
 reader sees without running anything: an import of ``_maths.js`` is visibly wrong
 at a glance, where an import of ``maths.js`` looks like ordinary code.
 
-STYLESHEET: the module links its own.  No template names it — which is the point.
-MolView's ``molview.css`` is linked by six templates, so a page that mounts a
-viewer and forgets the ``<link>`` renders it unstyled, and nothing catches that
-until someone looks at it.
+STYLESHEET: the module links its own, and no template names it (§ 13).
 """
 from __future__ import annotations
 
@@ -190,9 +187,7 @@ def test_only_the_sealed_layer_names_the_drawing_library():
 
 
 def test_no_template_links_the_module_stylesheet():
-    """The module links its own sheet (§ 13).  A page that has to remember a
-    <link> is a page that can forget one, and the module then mounts unstyled with
-    nothing to catch it — which is the live defect in MolView's arrangement."""
+    """§ 13: the module links its own sheet, so no template should name it."""
     offenders = []
     for path in (WEB / "templates").rglob("*.html"):
         text = path.read_text(encoding="utf-8", errors="ignore")
