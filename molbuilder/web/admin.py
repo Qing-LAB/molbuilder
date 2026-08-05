@@ -6,25 +6,39 @@ MODULE: admin identity  (web/admin.py).  Contract: docs/ops/access-control.md §
 
 ONE LIST, ONE MEANING.  Two subsystems ask this question -- who may read and
 clear the rate limiter's block list, and who may restart the server everyone is
-using -- and they get the same answer:
+using -- and they get the same answer.
+
+**BY DEFAULT, ANYONE WHO CAN SIGN IN AT ALL.**  Not because the door is open, but
+because it was already locked upstream: ``auth.providers[].allowed_users`` is a
+REQUIRED field (runtime_config.py), so nobody reaches a session without being
+named there.  A second list repeating those same names would be two lists to keep
+in step for one question -- and on a single-operator server it is the SAME name,
+written twice, with the button silently missing until you notice you owe the file
+a second copy of yourself.
 
     "admin": { "emails": ["operator@asu.edu"] }      in molbuilder.json
 
-**Absent or empty means NOBODY.**  That is the shape, not an accident: the state
-you get by writing no config is the safe one, and a misconfiguration takes a
-capability away rather than handing it to everybody.
+Naming anyone here NARROWS it: with the section present, only those addresses are
+admins, and everyone else who can sign in is not.  That is the setting to reach
+for on a shared deployment where signing in and operating the process are
+different privileges.
+
+WHAT MAKES THIS SAFE is the required allow-list, not a second list here.  There is
+no configuration in which "anyone who can sign in" means the public: an operator
+who writes no auth config has no login at all, and one who writes it has had to
+name every person by hand.
 
 WHY IT IS NOT ``rate_limit.admin_emails`` ANY MORE (2026-08-03).  It lived
-inside the limiter's settings, where an empty list meant "any signed-in user".
-That is defensible for reading a block list and wrong for stopping a shared
-process, so the restart route had to INVERT it for itself -- one value, two
-opposite readings, depending on which subsystem asked.  And it was reached
-through the limiter's own object, so turning the limiter off silently changed
-who counted as an admin: a connection nothing in the names would suggest.
+inside the limiter's settings, and the restart route had to INVERT its meaning
+for itself -- one value, two opposite readings, depending on which subsystem
+asked.  And it was reached through the limiter's own object, so turning the
+limiter off silently changed who counted as an admin.  BOTH of those are what
+was wrong; the default itself was not, and it is restored here with one meaning
+in one place.
 
-WHAT AN EMPTY LIST COSTS ON A LAPTOP: nothing.  Loopback is never rate-limited,
-so there is no block list to clear, and the restart button needs a supervisor
-before it exists at all.
+WHAT THIS COSTS ON A LAPTOP: nothing.  Loopback is never rate-limited, so there
+is no block list to clear, and the restart button needs a supervisor before it
+exists at all.
 """
 from __future__ import annotations
 
@@ -63,18 +77,24 @@ def named_admins(app=None) -> frozenset:
 
 
 def is_admin_request() -> bool:
-    """True iff the session making this request belongs to a named admin.
+    """True iff the session making this request may operate the server.
 
-    No session, no email, or an email nobody named -- all not an admin.  There
-    is no "empty means everybody" branch, deliberately: that was the reading
-    that made one value mean two things.
+    ANONYMOUS IS NEVER AN ADMIN.  No session, no email: not an admin, whatever
+    the config says.  That is the one rule with no exception.
+
+    NAMED NOBODY MEANS ANYONE WHO SIGNED IN.  Reaching a session at all required
+    being listed in a provider's ``allowed_users``, which is a required field --
+    so this is not an open door, it is the door that was already locked upstream.
+    Asking an operator to write their own address a second time, in a different
+    section, to get a button on their own server is bookkeeping rather than
+    safety.
+
+    NAMED SOMEBODY NARROWS IT to those addresses.  On a deployment where signing
+    in and operating the process are different privileges, that is the setting.
 
     The auth layer stores ``session["user"] = {"email": …}`` lowercased
     (auth.py::authenticate), so membership is case-stable.
     """
-    admins = named_admins()
-    if not admins:
-        return False
     try:
         user = session.get("user") or {}
     except Exception:  # noqa: BLE001
@@ -84,4 +104,7 @@ def is_admin_request() -> bool:
     if not isinstance(user, dict):
         return False
     email = (user.get("email") or "").strip().lower()
-    return bool(email) and email in admins
+    if not email:
+        return False
+    admins = named_admins()
+    return (email in admins) if admins else True

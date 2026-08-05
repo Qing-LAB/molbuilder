@@ -2163,9 +2163,21 @@
      * behaviour: it returned its coordinates under a key nothing read, and the
      * viewer it read from is never handed to this page.
      */
+    /* ONE SHAPE, ALWAYS, so a caller cannot forget a case:
+     *
+     *     { ready: false, why: null }      nothing is selected — say nothing
+     *     { ready: false, why: "…" }       selected, but it cannot be drawn
+     *     { ready: true, structure, mode, amplitude, norm }
+     *
+     * It used to answer three different shapes — null, an object carrying only a
+     * message, and a full result — and a caller that checked two of the three
+     * read a mode off the one that has none. Checking `ready` is now the only
+     * thing to remember, and there is no fourth case to miss.
+     */
     function _animationInputs() {
+        const nothing = { ready: false, why: null };
         const r = state.results;
-        if (!r || state.selectedMode == null) return null;
+        if (!r || state.selectedMode == null) return nothing;
 
         const eq = r.equilibrium;
         if (!eq || !Array.isArray(eq.elements) || !Array.isArray(eq.positions_ang)
@@ -2174,21 +2186,29 @@
             // Not animatable, and WHY is worth saying: results written before the
             // geometry was stored are a real thing a user still has on disk, and
             // a mode-visualisation panel that simply vanishes reads as a bug.
-            return { unavailable: "this result has no stored geometry, so its "
-                                + "modes cannot be animated — re-parse the run to "
-                                + "add one" };
+            return { ready: false,
+                     why: "this result has no stored geometry, so its modes "
+                        + "cannot be animated — re-parse the run to add one" };
         }
         const mode = (r.modes || []).find(
             m => m.index_1based === state.selectedMode);
-        if (!mode || !Array.isArray(mode.eigenvector_display)) return null;
+        if (!mode || !Array.isArray(mode.eigenvector_display)) return nothing;
 
         // The eigenvector is indexed by FREE-atom row, so its length is the size
         // of the free set -- not of the structure.  Disagreement here means the
         // result is internally inconsistent; the viewer would refuse it anyway
         // (§ 6.3), and refusing it here says so before anything is drawn.
         const free = Array.isArray(r.free_atom_idxs) ? r.free_atom_idxs : null;
-        if (free && free.length !== mode.eigenvector_display.length) return null;
-        if (!free && mode.eigenvector_display.length !== eq.elements.length) return null;
+        if (free && free.length !== mode.eigenvector_display.length) {
+            return { ready: false,
+                     why: "this mode does not match the structure it is stored "
+                        + "with, so it cannot be animated" };
+        }
+        if (!free && mode.eigenvector_display.length !== eq.elements.length) {
+            return { ready: false,
+                     why: "this mode does not match the structure it is stored "
+                        + "with, so it cannot be animated" };
+        }
 
         const hz = Number(mode.frequency_cm1);
 
@@ -2205,6 +2225,7 @@
             && Array.isArray(mode.eigenvector_canonical);
 
         return {
+            ready:     true,
             amplitude: usePhysical ? physical : state.animAmplitude,
             norm:      usePhysical
                 ? (state.animAmplitudeMode === "thermal"
@@ -2239,21 +2260,18 @@
         if (!els.modeViewerWrap) return;
 
         const inputs = _animationInputs();
-        if (!inputs) {
-            // Nothing is selected, or the mode has no eigenvector: there is
-            // nothing to explain, so the panel is simply not shown.
-            els.modeViewerWrap.hidden = true;
+        if (!inputs.ready) {
             _stopAnimation();
-            return;
-        }
-        if (inputs.unavailable) {
-            // Something IS selected and cannot be drawn.  Say why, where the
-            // molecule would have been, rather than hiding the panel and leaving
-            // the user to wonder which click did that.
-            els.modeViewerWrap.hidden = false;
-            _stopAnimation();
-            setStatus(els.viewerStatus, inputs.unavailable, "muted");
-            if (els.modeViewer) els.modeViewer.innerHTML = "";
+            // No reason to give means nothing is selected: hide the panel, since
+            // there is nothing to explain.  A reason means something IS selected
+            // and cannot be drawn — so say why, where the molecule would have
+            // been, rather than vanishing and leaving the user to wonder which
+            // click did that.
+            els.modeViewerWrap.hidden = !inputs.why;
+            if (inputs.why) {
+                setStatus(els.viewerStatus, inputs.why, "muted");
+                if (els.modeViewer) els.modeViewer.innerHTML = "";
+            }
             return;
         }
         els.modeViewerWrap.hidden = false;
@@ -2315,7 +2333,8 @@
              * enough to click through.  Using the stale one would show the mode
              * that was selected when the box first appeared rather than the one
              * chosen since — so the current truth is read again here. */
-            inputs = _animationInputs() || inputs;
+            const fresh = _animationInputs();
+            if (fresh.ready) inputs = fresh;
         }
 
         /* TWO DOORS, and the slow one only when it is the slow fact
@@ -2383,7 +2402,16 @@
      * the file cannot disagree with the screen.
      */
     async function onExportAnimation() {
-        if (!state.vib || state.exporting) return;
+        if (state.exporting) return;
+        // NOT guarded on having a viewer: a button that silently does nothing is
+        // worse than one that says why.  With no mode showing, the export door
+        // answers "no mode is showing, so there is nothing to export", and the
+        // catch below puts that where the user is looking.
+        if (!state.vib) {
+            setStatus(els.animExportStatus,
+                      "no mode is showing, so there is nothing to export", "muted");
+            return;
+        }
         const controller = new AbortController();
         state.exporting = controller;
         if (els.animExportBtn)    els.animExportBtn.disabled = true;
@@ -2413,8 +2441,11 @@
                       "saved " + out.filename + " — " + out.meta.frames + " frames, "
                       + out.meta.normalization, "ok");
         } catch (e) {
-            setStatus(els.animExportStatus,
-                      (e && e.message) || "the export failed", "error");
+            // A cancel is the user getting what they asked for, so it is not an
+            // error and should not be dressed as one.
+            const msg = (e && e.message) || "the export failed";
+            setStatus(els.animExportStatus, msg,
+                      msg.indexOf("cancel") >= 0 ? "muted" : "error");
         } finally {
             state.exporting = null;
             if (els.animExportBtn)    els.animExportBtn.disabled = false;
@@ -2481,7 +2512,7 @@
         if (!Number.isFinite(t) || t <= 0) return;
         state.animTemperature = t;
         const inputs = _animationInputs();
-        if (!inputs || !state.vib) return;
+        if (!inputs.ready || !state.vib) return;
         state.vib.setAmplitude(inputs.amplitude);
         setStatus(els.viewerStatus,
                   "≤ " + _largestSwing(inputs).toFixed(3) + " Å · " + inputs.norm,

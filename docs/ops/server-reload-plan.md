@@ -179,7 +179,7 @@ read the rate-limit table and who may stop the process, and the two read the
 turning the limiter off quietly moved the admin list.
 
 The admin identity has its own section now — top-level `admin: {emails: […]}`,
-read through `web/admin.py` — and **absent or empty means nobody, to every
+read through `web/admin.py` — and **absent or empty means anyone who signed in, to every
 subsystem that asks**. So this route no longer inverts anything; it reads the
 same list the same way. See [`access-control.md`](?doc=ops/access-control.md)
 § 5.

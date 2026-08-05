@@ -145,8 +145,10 @@ Two admin routes let an operator inspect and clear blocks:
 - `POST /api/admin/rate_limit/clear` with `{"ip":"…"}` or `{"all":true}`
 
 Both require a logged-in **admin** — an email listed in the top-level `admin`
-section of `molbuilder.json`. **Absent or empty means nobody**, the same answer
-the restart route gets (`access-control.md` § 5):
+section of `molbuilder.json`. **Absent or empty means anyone who can sign in** —
+which is already a named set, because `auth.providers[].allowed_users` is
+required — and naming addresses here narrows it. The restart route reads the
+same answer (`access-control.md` § 5):
 
 ```json
 "admin": { "emails": ["operator@asu.edu"] }
@@ -176,10 +178,13 @@ the server*:
 1. **the server is supervised** — the default since 2026-08-04, so this gate is
    normally already met. It is not met under `--no-supervise` or `--debug`,
    because then nothing would bring the server back and stopping it would leave
-   a dead site with no way back from the browser;
-2. **The `admin` section names somebody.** Absent or empty means nobody — for
-   this route and for the block-list routes alike. Restarting the process
-   everyone shares is not a default anyone should get by omission.
+   a dead site with no way back from the browser. This one decides whether the
+   route **exists**, because it is a property of the deployment rather than of
+   who is asking;
+2. **the caller is an admin** — by default anyone who signed in, since reaching
+   a session required being named in a provider's required `allowed_users`. An
+   `admin` section narrows that when signing in and operating the process are
+   different privileges. This one decides what the route **answers**.
 
 The button is drawn hidden and revealed only after
 `GET /api/admin/reload/available` says this session may use it, so most people

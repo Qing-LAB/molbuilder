@@ -466,7 +466,7 @@ may not" from "the server is broken". `POST /api/admin/reload` restarts the
 process, and is **not registered at all** unless there is a supervisor *and* at
 least one named admin — so a misconfiguration reads as "the button is missing",
 never as "anyone can restart the server". Who counts as an admin comes from the
-top-level `admin.emails` list, and **absent or empty means nobody**; see
+top-level `admin.emails` list, and **absent or empty means anyone who can sign in**; see
 [`ops/access-control.md`](?doc=ops/access-control.md).
 
 **Auth** (only when an `auth` config is present) — `GET /login`,

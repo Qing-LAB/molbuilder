@@ -211,9 +211,24 @@ Two subsystems ask it — who may read and clear the rate limiter's block list
 (`GET /api/admin/rate_limit/status`, `POST …/clear`), and who may restart the
 server (§ 6) — and they get the same answer.
 
-**Absent or empty means NOBODY.** That is the shape, not an oversight: the state
-you get by writing no config is the safe one, so a mistake takes a capability
-away rather than handing it to everybody.
+**Absent or empty means ANYONE WHO CAN SIGN IN** — and that is not an open door,
+because the door was already locked upstream. `auth.providers[].allowed_users` is
+a **required** field, so a session exists only for someone an operator wrote down
+by hand. There is no configuration in which "anyone who signed in" reaches the
+public: write no auth config and there is no login at all; write one and you have
+named every person yourself.
+
+**Naming addresses here NARROWS it.** With the section present, only those
+addresses are admins and everyone else who can sign in is not — which is the
+setting for a shared deployment where signing in and operating the process are
+different privileges.
+
+**Why the default is not the other way round.** A second list that repeats the
+allow-list is two lists to keep in step for one question, and on a
+single-operator server it is the same address written twice. The failure is
+silent: the capability is simply missing, which looks like a broken build rather
+than a policy. The safety here comes from the required allow-list, not from
+asking an operator to name themselves again.
 
 **What that costs on a laptop: nothing.** Loopback is never rate-limited, so
 there is no block list to clear; and the restart button needs a supervisor

@@ -404,13 +404,20 @@ class TestAdminRoleGate:
         assert r.status_code == 403
         assert "admin auth required" in r.get_json()["error"]
 
-    def test_signing_in_is_not_enough_when_nobody_is_named(self):
-        """THE DEFAULT REVERSED, 2026-08-03 (user decision).
+    def test_naming_nobody_means_anyone_who_signed_in(self, ):
+        """ONE VALUE, ONE READING -- and the reading is the useful one.
 
-        An absent or empty admin list used to mean "any signed-in user is an
-        admin" HERE, while the reload route read the same value as "nobody" --
-        one value, two opposite readings.  It means nobody everywhere now, so
-        the state you get by writing no config is the safe one.
+        What was wrong in the original arrangement was never this default; it
+        was that the value lived inside the limiter's own settings and that the
+        reload route INVERTED it for itself, so the same list meant opposite
+        things depending on which subsystem asked.  Both of those are gone.
+
+        The default is back to "anyone who signed in", because signing in is
+        already the gate: ``auth.providers[].allowed_users`` is a REQUIRED
+        field, so a session exists only for someone an operator wrote down by
+        hand.  Asking that operator to write the same address a second time, in
+        a second section, buys no safety -- it buys a second list to keep in
+        step, and a capability that goes missing without saying why.
         """
         app, client = _build_client({})           # no `admin` section at all
         client.environ_base = {**client.environ_base,
@@ -418,13 +425,9 @@ class TestAdminRoleGate:
         app.secret_key = "test-only-not-for-prod"
         with client.session_transaction() as s:
             s["user"] = {"email": "alice@asu.edu"}
-        r = client.get("/api/admin/rate_limit/status")
-        assert r.status_code == 403, (
-            "a signed-in user cleared the block list with nobody named as an "
-            "admin -- the empty default is back to meaning 'everybody'"
-        )
+        assert client.get("/api/admin/rate_limit/status").status_code == 200
 
-    def test_an_empty_list_means_nobody_too(self):
+    def test_an_empty_list_reads_the_same_as_no_section(self):
         """Written out and empty is the same statement as not written."""
         app, client = _build_client({}, admins=[])
         client.environ_base = {**client.environ_base,
@@ -432,7 +435,7 @@ class TestAdminRoleGate:
         app.secret_key = "test-only-not-for-prod"
         with client.session_transaction() as s:
             s["user"] = {"email": "alice@asu.edu"}
-        assert client.get("/api/admin/rate_limit/status").status_code == 403
+        assert client.get("/api/admin/rate_limit/status").status_code == 200
 
     def test_non_admin_email_refused_when_allowlist_set(self):
         app, client = _build_client({}, admins=["operator@asu.edu"])

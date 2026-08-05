@@ -38,10 +38,11 @@ def _app(monkeypatch, *, supervised: bool, admins: list[str] | None):
         monkeypatch.setenv(SUPERVISED_ENV, "1")
     else:
         monkeypatch.delenv(SUPERVISED_ENV, raising=False)
-    # The admin list is its own top-level section (2026-08-03): the same list
-    # answers "who may clear the block list", and an absent or empty one means
-    # NOBODY for both.  It used to live inside `rate_limit`, where empty meant
-    # "anyone signed in" and this route had to invert it for itself.
+    # The admin list is its own top-level section: the same list answers "who may
+    # clear the block list" and "who may restart the server".  Absent or empty
+    # means ANYONE WHO SIGNED IN -- which is not an open door, because reaching a
+    # session at all required being named in a provider's REQUIRED allowed_users.
+    # Naming addresses here NARROWS that.
     cfg = {"rate_limit": {"enabled": False}, "admin": {"emails": admins or []}}
     app = create_app(config=cfg)
     # A session needs a signing key.  These tests do not exercise auth -- they
@@ -75,19 +76,45 @@ def test_no_supervisor_means_no_route(monkeypatch):
     )
 
 
-def test_no_named_admins_means_no_route(monkeypatch):
-    """THE ONE THAT MATTERS: an empty admin list disables the route.
+def test_naming_nobody_means_anyone_who_signed_in(monkeypatch):
+    """THE ONE THAT MATTERS: with no `admin` section, a signed-in caller is one.
 
-    Nobody is named, so nobody may restart the server -- and the route is not
-    registered at all rather than registered-and-refusing, so the failure mode
-    of a misconfiguration is "the button is missing".
+    Not because the door is open -- because it was already locked upstream.
+    ``auth.providers[].allowed_users`` is a REQUIRED field, so nobody reaches a
+    session without an operator having written their address by hand.  A second
+    list repeating those same names is two lists to keep in step for one
+    question, and on a single-operator server it is the SAME name written twice,
+    with the restart button silently missing until you work out that you owe the
+    file another copy of yourself.
+
+    Asserted through the AVAILABILITY read rather than by pressing the button:
+    a successful reload calls ``os._exit`` half a second later, which would take
+    the test runner with it.  (That is not a hypothetical -- this test used to
+    expect a 404 here, and when the rule changed it started succeeding and
+    killing pytest mid-run.)
     """
     app = _app(monkeypatch, supervised=True, admins=[])
-    r = _as_logged_in(app.test_client()).post("/api/admin/reload")
-    assert r.status_code == 404, (
-        "the reload route exists with nobody named as an admin. It must not be "
-        "registered until somebody is."
+    r = _as_logged_in(app.test_client()).get("/api/admin/reload/available")
+    assert r.status_code == 200
+    assert r.get_json()["available"] is True, (
+        "an operator who has already been named in allowed_users is being asked "
+        "to name themselves a second time before their own server will offer a "
+        "restart button"
     )
+
+
+def test_naming_nobody_still_refuses_a_stranger(monkeypatch):
+    """The default widens to everyone who SIGNED IN, and to nobody else.
+
+    Anonymous is never an admin, whatever the config says -- that is the one
+    rule with no exception, and it is what makes the default safe rather than
+    merely convenient.
+    """
+    app = _app(monkeypatch, supervised=True, admins=[])
+    r = app.test_client().post("/api/admin/reload")
+    assert r.status_code == 403
+    avail = app.test_client().get("/api/admin/reload/available")
+    assert avail.get_json()["available"] is False
 
 
 def test_a_logged_in_non_admin_is_refused(monkeypatch):
@@ -115,19 +142,22 @@ def test_an_anonymous_request_is_refused(monkeypatch):
     [
         (True,  ["boss@example.org"], "boss@example.org",    True),
         (True,  ["boss@example.org"], "someone@example.org", False),
-        (True,  [],                   "boss@example.org",    False),
+        # No section named: the default is anyone who could sign in, which the
+        # required per-provider allowed_users has already narrowed to people an
+        # operator listed by hand.
+        (True,  [],                   "boss@example.org",    True),
         (False, ["boss@example.org"], "boss@example.org",    False),
     ],
-    ids=["admin-on-supervised", "non-admin", "no-named-admins", "no-supervisor"],
+    ids=["admin-on-supervised", "narrowed-out", "no-section-named", "no-supervisor"],
 )
 def test_availability_answers_honestly(monkeypatch, supervised, admins,
                                        email, expected):
     """`/api/admin/reload/available` says whether the button should be drawn.
 
     It is always present and always answers 200 -- "no" is not a refusal, it is
-    the honest state of a server started without a supervisor or with no named
-    admins.  A page that got a 403 here could not tell "you may not" from "the
-    server is broken".
+    the honest state of a server started without a supervisor, or of a caller a
+    narrowing `admin` section leaves out.  A page that got a 403 here could not
+    tell "you may not" from "the server is broken".
     """
     app = _app(monkeypatch, supervised=supervised, admins=admins)
     r = _as_logged_in(app.test_client(), email).get("/api/admin/reload/available")

@@ -488,29 +488,36 @@ def create_app(*, config=None) -> Flask:
 
     # ---- Admin: reload the server in place ------------------------------
     #
-    # TWO CONDITIONS, and BOTH must hold or this route does not exist at all.
-    # Not "exists and refuses" -- absent.  So the failure mode of a
-    # misconfiguration is "the button is missing", never "anyone can restart
-    # the server".
+    # ONE CONDITION decides whether the route exists, and a second decides who
+    # may use it.
     #
-    #   1. A SUPERVISOR IS RUNNING (`molbuilder serve --supervise`).  Without
-    #      one, nothing brings the server back: an endpoint that stops an
-    #      unsupervised server leaves a dead site and no way back from the
-    #      browser.
-    #   2. SOMEBODY IS NAMED AS AN ADMIN -- the top-level `admin` section.
-    #      Absent or empty means nobody, for this route and for the block-list
-    #      routes alike, so writing no config leaves both capabilities off.
+    #   IT EXISTS when A SUPERVISOR IS RUNNING (`molbuilder serve`, which
+    #   supervises by default).  Without one, nothing brings the server back:
+    #   an endpoint that stops an unsupervised server leaves a dead site and no
+    #   way back from the browser.  That is a property of the deployment, not of
+    #   who is asking, so it gates the route's existence.
     #
-    #      That list used to live inside `rate_limit`, where empty meant "any
-    #      logged-in user" and THIS route had to invert it for itself: one
-    #      value, two opposite readings.  It also hung off the limiter's own
-    #      object, so disabling the limiter moved who was an admin.  Both gone
-    #      2026-08-03; there is one list and one meaning now.
-    from .admin import is_admin_request as _is_admin, named_admins as _admins
+    #   IT ANSWERS an admin, and BY DEFAULT that is anyone who could sign in at
+    #   all -- because reaching a session required being named in a provider's
+    #   `allowed_users`, which is a REQUIRED field.  The gate is upstream, in
+    #   the auth config an operator has already had to write by hand.  The
+    #   top-level `admin` section NARROWS it, for deployments where signing in
+    #   and operating the process are different privileges.
+    #
+    #   Requiring an operator to write their own address a SECOND time, in a
+    #   second section, before their own server would offer them a restart
+    #   button is bookkeeping rather than safety -- and it fails silently, since
+    #   a missing button is indistinguishable from a broken build.
+    #
+    #   The list used to live inside `rate_limit`, and THIS route had to invert
+    #   its meaning for itself: one value, two opposite readings.  It also hung
+    #   off the limiter's own object, so disabling the limiter moved who was an
+    #   admin.  Both of those were the real defect and both are gone.  The
+    #   default is not a defect, and it lives in one place now (web/admin.py).
+    from .admin import is_admin_request as _is_admin
     _supervised = os.environ.get(SUPERVISED_ENV) == "1"
-    _named_admins = bool(_admins(app))
 
-    if _supervised and _named_admins:
+    if _supervised:
         @app.post("/api/admin/reload")
         def api_admin_reload():
             """Answer, then exit so the supervisor starts a fresh server.
@@ -522,9 +529,9 @@ def create_app(*, config=None) -> Flask:
             if not _is_admin():
                 return jsonify({
                     "ok": False,
-                    "error": ("admin auth required: this session is not one of "
-                              "the emails named in the `admin` section of "
-                              "molbuilder.json"),
+                    "error": ("admin auth required: sign in first — or, if an "
+                              "`admin` section in molbuilder.json names "
+                              "specific addresses, sign in as one of them"),
                 }), 403
 
             def _exit_after_response():
@@ -549,11 +556,12 @@ def create_app(*, config=None) -> Flask:
 
         A separate, always-present read so the page can decide whether to draw
         the button.  Answering "no" is not a refusal -- it is the honest state
-        of a server started without a supervisor, or one with no named admins.
+        of a server started without a supervisor, or of a caller who has not
+        signed in (or whom a narrowing `admin` section leaves out).
         """
         return jsonify({
             "ok": True,
-            "available": bool(_supervised and _named_admins and _is_admin()),
+            "available": bool(_supervised and _is_admin()),
         })
 
     @app.route("/api/health")
