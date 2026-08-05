@@ -1,0 +1,65 @@
+/* VibrationView — the module's own stylesheet. docs/web/vibrationview.md § 13.
+ *
+ * Module:    lib/vibrationview/ — INTERNAL.
+ * Linked by: the module itself, at mount (_seal.js), from this file's own URL.
+ *            NO TEMPLATE NAMES IT, and that is the point: a page that has to
+ *            remember a <link> is a page that can forget one, and the viewer
+ *            then mounts unstyled with nothing to catch it. MolView's sheet is
+ *            linked by six templates today, which is the arrangement this avoids.
+ *
+ * This sheet styles the module's own surface and nothing else. It never reaches
+ * out to a page's classes, and a page sheet reaching in here is the same category
+ * error as a tab reaching past `mount` (tests/test_css_module_boundary.py).
+ *
+ * WHAT IT DOES NOT DECIDE: how big the box is. The host sizes the element it
+ * hands to `mount` — the module fills whatever it is given (§ 13).
+ */
+
+.vibview {
+    /* THE 3D WINDOW'S GROUND — one colour, painted twice.
+     *
+     * WebGL cannot be styled: the clear colour is an argument to the drawing
+     * library, while the element behind the canvas is painted here. Two paints of
+     * one surface, so ONE declared value — _seal.js reads this custom property at
+     * create time (SCENE_BACKGROUND). Written as two literals instead they drift,
+     * and the drawing sits as a bright rectangle inside a dark card.
+     */
+    --vibview-scene-background: #0f1217;
+
+    position: relative;   /* the drawing library positions its canvas absolutely */
+    width: 100%;
+    height: 100%;
+    background: var(--vibview-scene-background);
+    overflow: hidden;
+}
+
+/* The canvas is the module's, and it fills the surface it was given. Sized in
+ * percentages so a host that changes its box needs no cooperation from here —
+ * and so a capture, which resizes the backing buffer rather than the element,
+ * changes what is drawn without moving anything on the page (§ 12). */
+.vibview > canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* A viewer that could not be built says so where the molecule would have been,
+ * rather than leaving an empty box that reads as "still loading" forever (§ 8:
+ * a failed mount is still a handle, and the host may leave it on screen). */
+.vibview--failed {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    text-align: center;
+    color: #9aa3af;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* The animation is the content here, so it is not suppressed — a still
+     * molecule would be a viewer showing nothing. The host offers pause; this
+     * only stops the surface from adding motion of its own. */
+    .vibview { transition: none; }
+}

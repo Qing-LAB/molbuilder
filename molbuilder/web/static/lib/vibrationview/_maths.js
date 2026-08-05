@@ -10,14 +10,16 @@
  *            makes "what is animated is what is exported" arithmetic rather than
  *            a promise (§ 5.3).
  *
- * PURE. No DOM, no 3Dmol, no clock, no state. Values in, values out — so a test
+ * PURE. No DOM, no drawing library, no clock, no state. Values in, values out — so a test
  * of an eigenvector scatter needs no browser and, in particular, no faked
  * `requestAnimationFrame`. That is the whole reason the clock lives one level up
  * (§ 7): timing is WHEN to draw, this is WHAT to draw, and only the second is a
  * function of its inputs.
  *
  * NEVER (§ 7 level 2): touch the DOM, keep state between calls, read a clock, or
- * name the drawing library.
+ * name the drawing library — not in code, and not in a comment either. A guard
+ * asserts it (tests/test_vibrationview_module_boundary.py), and it caught this
+ * file's own header claiming innocence by naming the thing it disclaims.
  */
 "use strict";
 

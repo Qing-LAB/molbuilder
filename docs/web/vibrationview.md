@@ -491,16 +491,27 @@ Per frame, in order:
 2. ask the maths where the atoms are at that phase;
 3. hand them to the seal through `setAtomCoords`.
 
-**Step 3 moves atoms; it does not rebuild the drawing.** That is the whole reason
-the animation is smooth on a structure of any size: bonds and element identity are
-established once when the structure is installed, and every frame after that is
-coordinates.
+**Step 3 moves atoms; it does not reload the structure.** The parse, the element
+identities and the bond topology are established once, when the structure is
+installed, and every frame after that is coordinates.
+
+**It is not free, though, and the document said otherwise until the drawing layer
+was written.** The library caches its representation meshes when a style is
+applied, so writing new coordinates updates the data and *not* the picture — the
+molecule stands perfectly still while the numbers advance underneath it. Making
+the new positions appear means re-applying the style, which regenerates the
+geometry. So a frame costs **one pass over the atoms**, not a constant: O(atoms),
+at the few hundred atoms this project works with, which is the difference between
+smooth and smooth. Recorded here because it is a property of the drawing library
+rather than a choice, and because the alternative reading — that a frame is free —
+is what let an animation sit motionless through ten rounds of fixes before anyone
+found the cause.
 
 **What costs what:**
 
 | Change | Cost |
 |---|---|
-| a tick | one coordinate update |
+| a frame | one coordinate write and one style pass — O(atoms), no reload, no reparse |
 | `setAmplitude` / `setFps` / `setCycleSec` | a variable write; the next frame differs |
 | `showMode` on the same structure | a scatter and a held-still mark — **no redraw, no refit** |
 | `setStructure` | a full redraw and a camera refit |

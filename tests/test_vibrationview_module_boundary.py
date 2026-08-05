@@ -114,6 +114,63 @@ def test_every_internal_file_is_marked_as_internal():
     )
 
 
+#: Every ``import ... from "<specifier>"`` in a JS file.
+IMPORT = re.compile(r"""\bfrom\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']""")
+
+
+def test_the_package_imports_nothing_outside_itself():
+    """§ 4: "it reaches nothing else in the app by name".
+
+    The seal is only half the claim.  A module that nothing can reach into, but
+    which reaches out to three other modules, is not self-contained — it is
+    coupled in the direction that is harder to see.  Every specifier here must be
+    relative and stay inside the package.
+
+    The predecessor failed exactly this way: it imported the shared XYZ writer
+    from ``../xyz-io.js`` and read its drawing surface off a global.  The rewrite
+    builds its own XYZ block, which is a dozen lines, rather than owing another
+    module for them.
+    """
+    if not PACKAGE.is_dir():
+        return
+    escapes: list[str] = []
+    for path in sorted(PACKAGE.glob("*.js")):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        # The predecessor, deleted at step 7 of task #19.
+        if path.name in {"vibrationview.js", "mode-math.js"}:
+            continue
+        for m in IMPORT.finditer(text):
+            spec = m.group(1) or m.group(2)
+            if not spec.startswith("."):
+                escapes.append(f"{path.name} -> {spec}  (not relative)")
+                continue
+            target = (path.parent / spec).resolve()
+            if PACKAGE.resolve() not in target.parents:
+                escapes.append(f"{path.name} -> {spec}  (leaves the package)")
+    assert not escapes, (
+        "the package must reach nothing outside itself by name (§ 4):\n  "
+        + "\n  ".join(escapes)
+    )
+
+
+def test_only_the_sealed_layer_names_the_drawing_library():
+    """§ 4: "the name 3Dmol occurs in exactly one file — the sealed layer — which
+    is also the only place that fails with a clear error if the library is
+    missing".  That is what makes "the graphics library is invisible" a property
+    of the code rather than a habit."""
+    if not PACKAGE.is_dir():
+        return
+    namers = sorted(
+        p.name for p in PACKAGE.glob("*.js")
+        if p.name not in {"vibrationview.js", "mode-math.js"}
+        and re.search(r"3Dmol", p.read_text(encoding="utf-8", errors="ignore"))
+    )
+    assert namers == ["_seal.js"], (
+        "exactly one file may name the drawing library; these do: "
+        + ", ".join(namers)
+    )
+
+
 def test_no_template_links_the_module_stylesheet():
     """The module links its own sheet (§ 13).  A page that has to remember a
     <link> is a page that can forget one, and the module then mounts unstyled with
