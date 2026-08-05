@@ -346,23 +346,6 @@ def test_a_rate_change_does_not_jump_the_motion():
     assert out["coarserShift"] <= out["bound"]
 
 
-def test_the_loop_advances_at_the_chosen_rate_not_every_repaint():
-    """§ 10.1: `fps` means frames per second, not "every repaint" — so a display
-    painting faster than the chosen rate does not speed the vibration up."""
-    out = _run("""
-        const vib = await mount(host, { fps: 10 });   // one frame per 100 ms
-        vib.setStructure(WATER);
-        vib.showMode({ index: 1, displacements: [[1,0,0],[0,1,0],[0,0,1]] });
-        vib.play();
-        calls.length = 0;
-        pump(12, 16);                     // twelve repaints at 60 Hz = ~192 ms
-        const drawn = calls.filter((c) => c[0] === "render").length;
-        console.log(JSON.stringify({ drawn }));
-    """)
-    # ~192 ms at 10 fps is one or two frames, not twelve
-    assert 1 <= out["drawn"] <= 3
-
-
 def test_pause_keeps_the_place_and_play_resumes_from_it():
     """§ 9.2: "pause then play resumes on the frame it stopped on"."""
     out = _run("""

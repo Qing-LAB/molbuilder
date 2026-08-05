@@ -202,10 +202,9 @@ This is why **amplitude is not a mount option that `showMode` can also set**
 ### 5.3 What is animated is what is exported
 
 The file records the same maths, the same amplitude and the same frame sequence
-as the screen. There is no second render path and no separate "export quality" geometry.
-An export differs from the screen in exactly three ways: **its size, its
-background, and where the bytes go.** Naming the three is what stops a fourth
-joining them quietly.
+as the screen. There is no second render path and no separate "export quality"
+geometry — what an export may change about the picture is a short, closed list,
+and § 12 is where it is written down.
 
 It follows that the export carries **what it was set to** in its own metadata, so a
 caption written from the file is true without the writer having to remember.

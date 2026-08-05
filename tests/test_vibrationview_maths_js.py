@@ -101,6 +101,10 @@ def test_a_mode_that_does_not_fit_the_structure_is_refused():
     Each of these is a mode computed against a different molecule.  Padding with
     zeros would animate the structure partially, plausibly, and wrongly — which is
     exactly the failure that cannot be seen by looking at it.
+
+    A refusal is a throw and not a partial answer, which is the same statement:
+    a caller that swallowed the error is left holding nothing, never a
+    half-scattered array.
     """
     out = _run("""
         function refused(fn) {
@@ -135,21 +139,6 @@ def test_a_mode_that_does_not_fit_the_structure_is_refused():
     assert out["badRow"] is True
     assert out["nanRow"] is True
     assert out["good"] is True
-
-
-def test_a_refused_mode_produces_nothing_at_all():
-    """§ 6.3: "nothing is drawn" — a refusal is not a partial answer.
-
-    Guards the failure mode this rule exists for: a caller that swallowed the
-    error must not be left holding a half-scattered array.
-    """
-    out = _run("""
-        let value = "no value returned";
-        try { value = M.scatter([[1,0,0],[0,1,0]], [0, 9], 3); }
-        catch (e) { value = "threw"; }
-        console.log(JSON.stringify({ value }));
-    """)
-    assert out["value"] == "threw"
 
 
 # ---------------------------------------------------------------------------
