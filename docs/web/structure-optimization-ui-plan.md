@@ -308,6 +308,7 @@ already has:
    ────────────────────────────────────────────────────────────────────
    relaxation                           CG          Broyden     Broyden
    on non-convergence                   proceed     halt        halt
+   start from                           clean       stage 1     stage 2
    ────────────────────────────────────────────────────────────────────
    [ + add a parameter ▾ ]        [ preset ▾ ]  [ + stage ]  [ remove ]
 
@@ -318,6 +319,11 @@ Two things that table has to get right:
 
 - **The typed rows sit below a rule**, separated from the open ones, because they
   are the ones that change the chain rather than a number in a file.
+- **"Start from" is one control, not two.** Saying a stage continues from the one
+  before it sets the engine's own restart parameters *and* the files carried into
+  its folder — which must agree, and whose two ways of disagreeing are both
+  silent (architecture § 6.2). The user states the intent; nothing asks them to
+  keep a flag and a file list in step.
 - **Promotion happens where the parameter lives.** Every field in the other
   subtabs carries a "vary per stage" affordance; using it moves that field into
   this table. The alternative — a long "add a parameter" menu of all 38 — is a

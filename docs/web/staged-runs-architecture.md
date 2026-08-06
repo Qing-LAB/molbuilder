@@ -63,7 +63,7 @@ name · enabled · relax_type · relax_steps · relax_force_tol
 ```
 
 Everything else in a stage's `.fdf` comes from the one shared config. That
-yields two gaps, and they are the reason this is a backend job before it is a
+yields three gaps, and they are the reason this is a backend job before it is a
 UI job.
 
 **Gap 1 — most parameters cannot vary at all.** The mesh cutoff, the energy
@@ -73,7 +73,12 @@ stage; what it actually does is rewrite the single shared value. A ladder that
 coarsens the grid for stage 1 and sharpens it for stage 3 — the ordinary thing
 to want — cannot be described today.
 
-**Gap 2 — resources can be carried but not asked for.** The JobSet gives every
+**Gap 2 — restart intent cannot be said per stage.** Whether a stage continues
+from the one before it is settled in two places that must agree — the engine's
+own bound parameters inside the deck (§ 6.2) and the `Job.carry` list — and a
+stage carries neither. A ladder gets one answer for all of it.
+
+**Gap 3 — resources can be carried but not asked for.** The JobSet gives every
 job its own resources, and `stages_to_jobset` says they are per-stage,
 defaulting to inherit. But no field on a stage says what they should be, so
 nothing can populate them differently. The *transport* exists; the *request*
@@ -330,41 +335,7 @@ each run carries an index (`-run0`, `-run1`, …), and `--force` resets it. That
 invocation-level bookkeeping and it exists; the id is calculation-level and does
 not need to repeat it.
 
-### 6.1 The id is a filename, so it is normalised once and checked
-
-The id becomes the `SystemLabel` literal, and that literal becomes the stem of
-every file the run writes: `<id>.XV`, `<id>.DM`, `<id>_stage1.fdf`,
-`<id>-run0.molwatch.log`. A name with a space or a slash in it does not merely
-look untidy — it breaks a shell line, a glob, or a scheduler argument. So what
-the user types is **never used raw**.
-
-**What the allowed set is, and where it comes from** — none of it is taste:
-
-| Constraint | Set | Source |
-|---|---|---|
-| the wrapper reads the id back out of the script and interpolates it | `[A-Za-z0-9._-]` | § 4.3, where sanitising it is also what blocks shell injection from a hostile script |
-| a stage name is appended to it | `[A-Za-z0-9_]+` | the stage-name pattern in the config |
-| files land on disks that may not distinguish case | one case only | a `BDT.XV` and a `bdt.XV` are one file on macOS |
-
-So the normalisation is: **lowercase, anything outside `[a-z0-9_-]` to `_`,
-runs collapsed, leading and trailing separators trimmed, length capped** with
-room left for the suffixes the run will add.
-
-**Three rules keep it from becoming a source of surprise:**
-
-1. **It is normalised once, when the plan is written, and stored.** The id in the
-   plan is the id — nothing downstream re-derives it from the user's raw text,
-   because two components normalising slightly differently is a silent
-   divergence between what the browser shows and what the engine writes.
-2. **The result is shown, not hidden.** § 6.3 already puts the id on screen; a
-   user who types `BDT/Au relax` sees `bdt_au_relax_c6h4s2au38` and can object
-   there and then, rather than discovering it in a filename later.
-3. **A normalisation that loses the name is refused, not patched.** If what a
-   user typed reduces to nothing, or collides with another run in the same
-   project, the answer is to say so and ask — never to append a digit and carry
-   on, which produces `bdt_2` and no explanation of what it differs from.
-
-### 6.2 What the identity is tied to — as little as possible
+### 6.1 What the identity is tied to — as little as possible
 
 It is easy to overstate this, and overstating it is not a safe error: every
 extra thing in the pin is a case where a user tunes something reasonable and
@@ -398,49 +369,7 @@ separate two isomers, and does not pin the order the species are declared in —
 both of which a `.XV` is sensitive to. That is the known gap in the starting
 point, and § 11 is where it waits.
 
-### 6.3 The id is on screen, and its changes are visible
-
-An identity the user cannot see is one they cannot reason about, and this one
-decides whether their run resumes. So the tab shows both, always:
-
-```
-   ┌────────────────────────────────────────────────────────────┐
-   │  Job ID   bdt_au_relax_c6h4s2au38     ← from "BDT/Au relax" │
-   │           it says which atoms this is. It survives a         │
-   │           relaxation and every tuning; it changes only if    │
-   │           you load a different molecule                      │
-   └────────────────────────────────────────────────────────────┘
-```
-
-Two behaviours that make it worth showing rather than merely correct:
-
-- **When a different molecule is loaded, the id visibly changes**, at that
-  moment. That is the UI saying *this has become a different
-  calculation and it will start cold* — before a bundle is written, not after a
-  run behaves oddly.
-- **When a run directory already holds warm files**, the tab can say whether
-  they match the current id: *"prior state found for this key — the next run
-  resumes"*, or *"prior state found, but from a different calculation"*. That is
-  the same sentence the wrapper's banner prints, moved to where the decision is
-  actually being made.
-
-
-**The plan itself is the record, so nothing else needs hashing.** It is written
-beside the bundle (§ 5), which means the wrapper's banner can say *which plan*
-produced the state it is about to resume from, rather than only that it is
-resuming. That is the existing doctrine — **molbuilder informs, and the user
-decides to continue** — reaching a case it does not cover today: `WARM-RESTART
-(silent)` cannot tell you the state came from a different calculation, because
-nothing beside it recorded which one made it.
-
-What this replaces: a free-typed name that had to do the job with no help — the
-user both inventing an identity and remembering to change it when the thing
-being calculated changed. The id now carries the two facts that matter, and the
-user still gets to say what it is called.
-
----
-
-### 6.4 Every engine has an internal identity, and parameters bound to it
+### 6.2 Every engine has an internal identity, and parameters bound to it
 
 The id is only half of a warm start, and this is not a SIESTA quirk — **every
 engine has its own internal notion of "which job is this, and may I continue
@@ -486,6 +415,82 @@ disagree are both silent, and opposite:
 > The shape is one already in this system: a stage's non-convergence policy
 > *becomes* the scheduler edge (§ 4). One scientific decision, several mechanical
 > consequences, generated from the decision rather than configured beside it.
+
+### 6.3 The id is a filename, so it is normalised once and checked
+
+The id becomes the `SystemLabel` literal, and that literal becomes the stem of
+every file the run writes: `<id>.XV`, `<id>.DM`, `<id>_stage1.fdf`,
+`<id>-run0.molwatch.log`. A name with a space or a slash in it does not merely
+look untidy — it breaks a shell line, a glob, or a scheduler argument. So what
+the user types is **never used raw**.
+
+**What the allowed set is, and where it comes from** — none of it is taste:
+
+| Constraint | Set | Source |
+|---|---|---|
+| the wrapper reads the id back out of the script and interpolates it | `[A-Za-z0-9._-]` | § 4.3, where sanitising it is also what blocks shell injection from a hostile script |
+| a stage name is appended to it | `[A-Za-z0-9_]+` | the stage-name pattern in the config |
+| files land on disks that may not distinguish case | one case only | a `BDT.XV` and a `bdt.XV` are one file on macOS |
+
+So the normalisation is: **lowercase, anything outside `[a-z0-9_-]` to `_`,
+runs collapsed, leading and trailing separators trimmed, length capped** with
+room left for the suffixes the run will add.
+
+**Three rules keep it from becoming a source of surprise:**
+
+1. **It is normalised once, when the plan is written, and stored.** The id in the
+   plan is the id — nothing downstream re-derives it from the user's raw text,
+   because two components normalising slightly differently is a silent
+   divergence between what the browser shows and what the engine writes.
+2. **The result is shown, not hidden.** § 6.4 puts the id on screen; a
+   user who types `BDT/Au relax` sees `bdt_au_relax_c6h4s2au38` and can object
+   there and then, rather than discovering it in a filename later.
+3. **A normalisation that loses the name is refused, not patched.** If what a
+   user typed reduces to nothing, or collides with another run in the same
+   project, the answer is to say so and ask — never to append a digit and carry
+   on, which produces `bdt_2` and no explanation of what it differs from.
+
+### 6.4 The id is on screen, and its changes are visible
+
+An identity the user cannot see is one they cannot reason about, and this one
+decides whether their run resumes. So the tab shows both, always:
+
+```
+   ┌────────────────────────────────────────────────────────────┐
+   │  Job ID   bdt_au_relax_c6h4s2au38     ← from "BDT/Au relax" │
+   │           it says which atoms this is. It survives a         │
+   │           relaxation and every tuning; it changes only if    │
+   │           you load a different molecule                      │
+   └────────────────────────────────────────────────────────────┘
+```
+
+Two behaviours that make it worth showing rather than merely correct:
+
+- **When a different molecule is loaded, the id visibly changes**, at that
+  moment. That is the UI saying *this has become a different
+  calculation and it will start cold* — before a bundle is written, not after a
+  run behaves oddly.
+- **When a run directory already holds warm files**, the tab can say whether
+  they match the current id: *"prior state found for this key — the next run
+  resumes"*, or *"prior state found, but from a different calculation"*. That is
+  the same sentence the wrapper's banner prints, moved to where the decision is
+  actually being made.
+
+
+**The plan itself is the record, so nothing else needs hashing.** It is written
+beside the bundle (§ 5), which means the wrapper's banner can say *which plan*
+produced the state it is about to resume from, rather than only that it is
+resuming. That is the existing doctrine — **molbuilder informs, and the user
+decides to continue** — reaching a case it does not cover today: `WARM-RESTART
+(silent)` cannot tell you the state came from a different calculation, because
+nothing beside it recorded which one made it.
+
+What this replaces: a free-typed name that had to do the job with no help — the
+user both inventing an identity and remembering to change it when the thing
+being calculated changed. The id now carries the two facts that matter, and the
+user still gets to say what it is called.
+
+---
 
 ### 6.5 The cell is generated, not typed
 
@@ -585,7 +590,8 @@ validation path.
 
 | Layer | Today | What this needs |
 |---|---|---|
-| config | `SiestaConfig`, `SiestaStageSpec` (8 fields) | **+ `overrides` map**, and the merge that applies it |
+| config | `SiestaConfig`, `SiestaStageSpec` (8 fields) | **+ `overrides` map** and its merge; **+ a stage's restart intent** — continue, or start clean |
+| engine contract | the warm files, inventoried per engine (§ 4.2) | **+ the identity literal and the parameters bound to it**, declared beside them as one group (§ 6.2) |
 | ladder | `render_siesta_stage_fdfs`, `stages_to_jobset` | renders from the *effective* config per stage; routes `budget` overrides into job resources |
 | bundle | `build_siesta_stage_bundle` | unchanged — it is already the seam § 8 named |
 | plan file | — | **new**: the `stage-plan` format, its reader, and the refusal of unknown keys |
@@ -606,7 +612,13 @@ renders it and nothing else.
 **Step 1 — this document.** Done when the shape is agreed and the open questions
 in § 11 are answered.
 
-**Step 2 — the backend, tuned and validated.** In order:
+**Step 2 — the backend, tuned and validated.** Starting with § 7.3's question,
+because where a bundle may be written decides what the route in item 6 is allowed
+to do at all:
+
+0. **Settle the flat-versus-foldered conflict** in the contracts. *Done when:*
+   `job-contracts.md § 2.5` says where a bundle lives, and it is not a sentence
+   this plan wrote.
 
 1. The **plan format and its reader** (§ 5), including the refusal of a key the
    schema does not know. *Done when:* a plan round-trips — read, rendered,
@@ -615,12 +627,18 @@ in § 11 are answered.
    config. *Done when:* a stage with `{mesh_cutoff: 300}` renders a `.fdf`
    carrying 300 while the shared config still says 150, and a stage with no
    overrides renders exactly what it renders today.
-3. Override routing for `budget` fields into job resources. *Done when:* a
+3. **The engine group, derived from intent.** A stage says continue-or-clean;
+   the producer emits the engine's bound parameters *and* the carry entries from
+   that one fact. *Done when:* a two-stage ladder whose second stage continues
+   produces both the `UseSave*` settings and the carry list, and a stage set to
+   start clean produces neither — asserted together, since the failure mode is
+   that they disagree.
+4. Override routing for `budget` fields into job resources. *Done when:* a
    two-stage plan asking for 8 ranks then 16 produces a JobSet whose two jobs
    differ in resources, with the `.fdf`s unchanged.
-4. Per-stage validation with the stage coordinate. *Done when:* a plan whose
+5. Per-stage validation with the stage coordinate. *Done when:* a plan whose
    stage 1 is under-converged reports against stage 1 alone.
-5. The bundle route. *Done when:* a plan posted to it writes the same bytes the
+6. The bundle route. *Done when:* a plan posted to it writes the same bytes the
    CLI writes for the same ladder — compared file by file, because "the web is
    additive on top of the CLI" is only true if the output is identical.
 
@@ -658,7 +676,7 @@ user needs.
    generated, so they cannot be — but padding that changes the frame the atoms
    are written in makes a prior `.XV` continue from a different origin. Reporting
    it is cheap; putting it in the id would orphan a geometry every time somebody
-   widened a box, which is the overstatement § 6.2 is about.
+   widened a box, which is the overstatement § 6.1 is about.
 6. **Is a plan editable by hand?** It is JSON beside a bundle, so it will be. If
    yes, the reader owes the same errors to a person as to the browser — which is
    an argument for the refusal rule in § 5.1 being loud rather than tolerant.
