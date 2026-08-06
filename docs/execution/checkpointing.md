@@ -27,7 +27,8 @@ and what information must be kept separate from what.
 ## 1. Why invariants rather than a description
 
 The checkpoint history is what makes a folder of stages safe to rewrite, safe to
-branch and safe to come back to (`engines/stages.md § 7.2`, `§ 7.3`). Everything
+branch and safe to come back to (`engines/stages.md § 7.2` and
+`engines/stages.md § 7.3`). Everything
 downstream of it — replacing a produce, redoing a stage, forking a what-if —
 assumes the history is *complete and honest*. A history with a hole in it is
 worse than none, because the hole is invisible until the moment somebody needs
@@ -252,11 +253,12 @@ One line each, for reading over a diff:
 
 - **How to use the checkpoint system** — the CLI verbs, the HTTP routes, the
   sidebar panel, and what is still unbuilt (archive pruning, a `snapshot diff`
-  CLI face) — [`running-a-job.md`](?doc=execution/running-a-job.md) `§ 6`.
+  CLI face) — [`running-a-job.md`](?doc=execution/running-a-job.md) —
+  `running-a-job.md § 6`.
 - **The `.mbcheckpoint.json` schema and the MANIFEST column format** —
-  [`job-contracts.md`](?doc=execution/job-contracts.md) `§ 6.1`.
+  [`job-contracts.md`](?doc=execution/job-contracts.md) — `job-contracts.md § 6.1`.
 - **The folder being checkpointed, and when a checkpoint is taken** —
-  [`engines/stages.md`](?doc=engines/stages.md) `§ 7`.
+  [`engines/stages.md`](?doc=engines/stages.md) — `engines/stages.md § 7`.
 - **Phasing and open questions** —
   [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).
