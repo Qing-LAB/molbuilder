@@ -396,10 +396,12 @@ is agreeing them and answering § 9.
    because that is a fact about the sequence rather than about a member of it
    (R3).
 8. **The route, both directions.** *Done when:* a description posted to it writes
-   the same bytes the CLI writes for the same stages — compared file by file — the
-   folder holds a **runnable wrapper per deck**, not decks alone, and a **GET
-   returns a written description** such that reopening it and producing again
-   yields the identical folder (§ 5.2).
+   the same bytes the CLI writes for the same stages — compared file by file,
+   **excluding PROVENANCE's `generated-at`**, which stamps generation time
+   (`job-contracts.md § 3.2`) and so differs between any two produces; that is the
+   only legitimate exclusion. The folder holds a **runnable wrapper per deck**, not
+   decks alone, and a **GET returns a written description** such that reopening it
+   and producing again yields the identical folder (§ 5.2).
 9. **The second surface.** "One reader for both" (`engines/stages.md § 6.4`) needs
    a CLI verb that writes and consumes a description, or item 8's byte comparison
    has nothing to compare against. *Done when:* the same description produces the
@@ -421,12 +423,14 @@ is agreeing them and answering § 9.
     with the code, a test pinning it, and `job-contracts.md` updated in the same
     commit, which its `§ 7` requires.
 12. **The checkpoint invariants become tests**
-    ([`checkpointing.md`](?doc=execution/checkpointing.md) § 6). *Done when:* each
-    of the sixteen has an assertion, and the two most valuable run over a real
-    produced folder rather than a fixture — **I2** (every MANIFEST entry matches
-    its file by name, size and sha256) and **S1** (tracked XOR archived, never
-    both, never neither), because those two are what a silent corruption and a
-    multi-gigabyte git blob respectively look like before anyone notices.
+    ([`checkpointing.md`](?doc=execution/checkpointing.md) `§ 6`). Eighteen, of
+    which **eleven can be asserted against the code as it stands** and need none
+    of this project's other work. *Done when:* all eighteen have an assertion, and
+    the two that catch silent failures run over a real produced folder rather than
+    a fixture — **I2** (every MANIFEST entry matches its file by name, size and
+    sha256) and **S1** (tracked XOR archived, never both, never neither).
+    Worth starting **before** step 2 rather than after it: they are the check that
+    tells you whether items 10 and 11 broke anything.
 
 **Step 3 — the surface.** The description model first (pure, tested), then the
 matrix view, then the subtabs.

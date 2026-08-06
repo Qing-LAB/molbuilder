@@ -14,10 +14,13 @@ of, and the two boundaries where it is taken (`stages.md § 7.3`);
 [`execution/run-identity.md`](?doc=execution/run-identity.md) — the id every
 commit and tag carries.
 
-**Status: the shipped half is a contract; the added half is proposed.** § 2–§ 4
-state invariants the shipped `Repo` core already holds and that a change must not
-break. § 5 states what a staged folder adds and is not built yet. Every invariant
-is written so a test can assert it — that is the point of the document.
+**Status: mixed, and each invariant says which it is.** Most hold of the shipped
+`Repo` core today and a change must not break them; a few depend on the staged
+layout (`engines/stages.md § 7.1`) and cannot be asserted until it exists. The
+split is *not* by section — § 2 contains both — so every invariant carries a
+**holds today** or **needs the layout** marker, and § 6's sheet collects them.
+Every one is written so a test can assert it; that is the point of the
+document.
 
 **This contract owns:** what must never change in a checkpointed run directory,
 and what information must be kept separate from what.
@@ -42,7 +45,7 @@ code, not a tour of the feature.
 
 The `Repo` core, the `molbuilder snapshot` CLI, the HTTP routes and the sidebar
 panel all ship (`running-a-job.md § 6`). Read this document as a statement of
-what that code must keep doing, plus four changes a staged folder needs:
+what that code must keep doing, plus the six changes a staged folder needs:
 
 | | Shipped today | With a staged folder |
 |---|---|---|
@@ -63,6 +66,8 @@ that a change can be checked against them.
 
 ### S1 — a file is git-tracked **or** content-archived, never both, never neither
 
+*holds today.*
+
 `.mbcheckpoint.json`'s `archive_globs` classify a run directory's files: text
 (including the small warm-restart `.XV` / `.CG`) is committed to git; the large
 binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
@@ -72,20 +77,23 @@ binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
 | **How it fails** | A file matching an archive glob that is *also* tracked puts a multi-gigabyte blob in git history forever. A file matching neither is in no snapshot at all — a restore silently does not bring it back |
 | **How to check** | For every file in a checkpointed directory: `matches_archive_glob(f) XOR git_tracked(f)` is true. Assert it over a fixture directory containing one of each engine's warm files plus a text log |
 
-**S1 rests on two lists agreeing, and nothing today keeps them in step.**
-`archive_globs` lives in `.mbcheckpoint.json`; what git ignores lives in
-`.gitignore`; `snapshot init` seeds both, and `snapshot config --set` edits the
-first (`running-a-job.md § 6.2`). If editing the globs does not rewrite the
-ignore file, a formerly-archived pattern starts being committed as a blob, or a
-newly-archived one keeps being tracked — S1 broken by a configuration change
-rather than by a bug.
+### S1a — the ignore set is *derived* from `archive_globs`, never kept beside it
 
-> **S1a — the ignore set is derived from `archive_globs`, never maintained
-> beside it.** One list, one writer. *Check:* `snapshot config --set` changes
-> `.gitignore` in the same operation, and a fixture whose two files disagree is
-> reported rather than obeyed.
+*holds today.*
+
+S1 rests on two lists agreeing. `archive_globs` lives in `.mbcheckpoint.json`;
+what git ignores lives in `.gitignore`; `snapshot init` seeds both, and
+`snapshot config --set` edits the first (`running-a-job.md § 6.2`). One list, one
+writer, or the agreement is a coincidence somebody has to maintain.
+
+| | |
+|---|---|
+| **How it fails** | Editing the globs without rewriting the ignore file makes a formerly-archived pattern start committing as a blob, or a newly-archived one keep being tracked — **S1 broken by a configuration change rather than by a bug**, which is the kind nobody thinks to test |
+| **How to check** | `snapshot config --set` changes `.gitignore` in the same operation. A fixture whose two files disagree is *reported*, not obeyed |
 
 ### S2 — shared state lives above; a stage writes only inside its own directory
+
+*needs the layout.*
 
 A staged folder holds shared files once at the parent and one subdirectory per
 stage (`engines/stages.md § 7.1`). Cross-contamination is exactly what that
@@ -98,6 +106,8 @@ separation exists to prevent.
 
 ### S3 — inherited and owned are distinguishable on disk
 
+*needs the layout.*
+
 A carried file is a **symlink** until its producer has run and the consumer
 localizes it; after that it is a **regular file** the consumer owns.
 
@@ -107,6 +117,8 @@ localizes it; after that it is a **regular file** the consumer owns.
 | **How to check** | Before a stage runs, its carried entries are symlinks (possibly dangling — that is correct, `engines/stages.md § 7.4`). After it runs, they are regular files. The checkpoint diff across a run shows a type change, and that type change is the record |
 
 ### S4 — the description is input; everything else in the folder is derived
+
+*needs the description (`engines/stages.md § 6`).*
 
 `stages.json` is written by the user's surface and read by the generator. Decks,
 wrappers, links and outputs are derived from it.
@@ -118,6 +130,8 @@ wrappers, links and outputs are derived from it.
 
 ### S5 — identity is calculation-level; the run index is invocation-level
 
+*holds today.*
+
 The id names the calculation; `-run0`, `-run1` name invocations of it
 (`run-identity.md § 2`).
 
@@ -128,6 +142,8 @@ The id names the calculation; `-run0`, `-run1` name invocations of it
 
 ### S6 — a restored folder is internally consistent
 
+*needs the description.*
+
 `stages.json` is tracked text (S1), so it travels with the commit. Restoring a
 checkpoint therefore restores **the description together with the decks it
 produced** — the folder explains itself at every point in its history, not only
@@ -136,13 +152,15 @@ at the tip.
 | | |
 |---|---|
 | **How it fails** | If the description were untracked or archived, a restore would give you last week's decks beside this week's description, and nothing would say which the results came from |
-| **How to check** | Restore any commit and re-run the produce with `dry_run`: it reports no change. That is the strongest form of the property — the description at that commit is exactly the one that would generate the decks at that commit |
+| **How to check** | Restore any commit and re-run the produce with `dry_run`: it reports no change. **One exclusion, and only one:** PROVENANCE stamps `generated-at` at generation time (`job-contracts.md § 3.2`), so two produces of the same description are never byte-identical and the comparison ignores that key. Anything else differing is a real difference — which is exactly what makes this check worth running |
 
 ---
 
 ## 3. The immutabilities — what must never change
 
 ### I1 — a written archive's *content* is never modified
+
+*holds today.*
 
 Git commits are immutable by construction; the archived bytes must be too.
 
@@ -160,6 +178,8 @@ the `bytes` column it adds agrees with the file on disk.**
 
 ### I2 — a MANIFEST is authoritative for its archive
 
+*holds today.*
+
 The 3-column `<sha256>  <bytes>  <name>` MANIFEST (`job-contracts.md § 6.1`)
 describes exactly what is in that archive.
 
@@ -169,6 +189,8 @@ describes exactly what is in that archive.
 | **How to check** | For every entry: the file exists, its size equals the recorded bytes, and its sha256 equals the recorded sha. Run it over every archive in a repository — this is the single most valuable test in the system |
 
 ### I3 — warm state is moved or restored, never incidentally lost
+
+*holds today.*
 
 `--cold` **moves warm files aside** into `<basename>-restart-aside-<UTC>/`; it
 does not delete them (`job-contracts.md § 4.1`). No operation *whose purpose is
@@ -190,6 +212,8 @@ replace it (`restore`), and nothing else may touch it.**
 
 ### I4 — a generated wrapper contains no git
 
+*holds today.*
+
 `running-a-job.md § 6.2` records that the wrapper-bootstraps-git path was
 deliberately dropped: *"the wrapper is deliberately git-agnostic, so init is
 CLI/UI-only."* A wrapper that committed would need git on the compute node, which
@@ -198,13 +222,15 @@ CLI/UI-only."* A wrapper that committed would need git on the compute node, whic
 | | |
 |---|---|
 | **How it fails** | A run that dies on a node without git, for a reason having nothing to do with the calculation |
-| **How to check** | No emitted `.run.sh` or `.sbatch` contains the string `git`. One grep over the rendered wrapper fixtures |
+| **How to check** | No emitted `.run.sh` or `.sbatch` invokes git: grep the rendered wrapper fixtures for `git` **as a command word** (`(^\|[;&|(\s])git\s`), not as a substring — `digits` and `logging` are not violations, and a check that flags them is one somebody will disable |
 
 ---
 
 ## 4. The atomicity rules — a mutation completes or does not happen
 
 ### A1 — archiving is build, verify, then swap
+
+*holds today.*
 
 The shipped sequence is: build into a `.tmp`, hash, copy, **re-hash and verify the
 copy**, write the MANIFEST, then `os.replace` (`running-a-job.md § 6.1`).
@@ -215,6 +241,8 @@ copy**, write the MANIFEST, then `os.replace` (`running-a-job.md § 6.1`).
 | **How to check** | Kill the process between each step of a checkpoint; afterwards the archive set is either the old one or the new one, never a mixture |
 
 ### A2 — restore verifies before it mutates
+
+*holds today.*
 
 Restore refuses on a dirty text tree, refuses on dirty binaries (sha-compared
 against HEAD's archive), **verifies the target ref's archive before touching
@@ -227,19 +255,21 @@ anything**, and only then restores the worktree and copies binaries back.
 
 ### A3 — the checkpoint precedes the mutation it protects
 
+*needs automatic checkpoints (`engines/stages.md § 7.3`).*
+
 A pre-produce checkpoint is committed **before** the first file of the new produce
 is written (`engines/stages.md § 7.3`).
 
 | | |
 |---|---|
 | **How it fails** | Taken afterwards, it records the state it was supposed to preserve a way back to |
-| **How to check** | The commit's timestamp precedes every written file's mtime, and a produce that fails partway leaves the checkpoint but no new files (which is also `engines/stages.md § 7.2`'s transactional rule) |
+| **How to check** | Interrupt a produce after the checkpoint and before the swap: the commit exists and **`git status` is clean** — no new file reached the folder. That is the same assertion as `engines/stages.md § 7.2`'s transactional rule seen from the history's side, and like S4's check it uses git rather than an mtime comparison, which clock skew and filesystem granularity both defeat |
 
 ---
 
-## 5. What a staged folder adds — proposed
+## 5. What a staged folder adds
 
-Not built. Each of these follows from the layout in `engines/stages.md § 7.1`.
+All four **need the layout**, and each follows from `engines/stages.md § 7.1`.
 
 ### P1 — one repository, at the parent
 
@@ -289,26 +319,32 @@ on what the automatic path emits, not on the total.
 
 One line each, for reading over a diff:
 
-| | Invariant |
-|---|---|
-| **S1** | tracked XOR archived — never both, never neither |
-| **S2** | a stage writes only inside its own directory |
-| **S3** | inherited is a symlink; owned is a regular file |
-| **S4** | the description is never modified by a produce or a run |
-| **S5** | nothing a run produces can change the id |
-| **S6** | a restored folder explains itself: description and decks travel together |
-| **S1a** | the git-ignore set is *derived* from `archive_globs`, never kept beside it |
-| **I1** | a written archive is never rewritten; identical content dedupes |
-| **I2** | every MANIFEST entry matches the file: name, size, sha256 |
-| **I3** | exactly one operation moves warm state, exactly one replaces it, nothing else touches it |
-| **I4** | no generated wrapper contains git |
-| **A1** | archive: build, verify the copy, then swap |
-| **A2** | restore verifies the target archive before touching the worktree |
-| **A3** | the checkpoint is committed before the mutation it protects |
-| **P1** | one repository, at the parent |
-| **P2** | archive globs match at depth |
-| **P3** | every commit and tag names its calculation |
-| **P4** | tags are stage completions only |
+| | Invariant | Assertable |
+|---|---|:--:|
+| **S1** | tracked XOR archived — never both, never neither | today |
+| **S1a** | the git-ignore set is *derived* from `archive_globs`, never kept beside it | today |
+| **S2** | a stage writes only inside its own directory | needs the layout |
+| **S3** | inherited is a symlink; owned is a regular file | needs the layout |
+| **S4** | the description is never modified by a produce or a run | needs the description |
+| **S5** | nothing a run produces can change the id | today |
+| **S6** | a restored folder explains itself: description and decks travel together | needs the description |
+| **I1** | a written archive's *content* is never rewritten; identical content dedupes | today |
+| **I2** | every MANIFEST entry matches its file: name, size, sha256 | today |
+| **I3** | exactly one operation moves warm state, exactly one replaces it, nothing else touches it | today |
+| **I4** | no generated wrapper invokes git | today |
+| **A1** | archive: build, verify the copy, then swap | today |
+| **A2** | restore verifies the target archive before touching the worktree | today |
+| **A3** | the checkpoint is committed before the mutation it protects | needs automatic checkpoints |
+| **P1** | one repository, at the parent | needs the layout |
+| **P2** | archive globs match at depth | needs the layout |
+| **P3** | every commit and tag names its calculation | needs the layout |
+| **P4** | molbuilder tags stage completions only | needs the layout |
+
+**Eleven of the eighteen can be asserted against the code as it stands**, and two
+of those eleven are worth writing first: **I2**, because the failure it catches is
+silent corruption that nothing else notices, and **S1**, because the failure it
+catches is a multi-gigabyte blob in git history forever. Neither needs a line of
+new feature code to be useful.
 
 ---
 
