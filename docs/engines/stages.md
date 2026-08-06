@@ -116,6 +116,13 @@ and neither belonged there.
 edge a JobSet threads (`proceed → afterany`, `halt → afterok`). Without a
 scheduler there is nothing for it to mean.
 
+Leaving the stage is not enough, though: if it stayed a field of the **shared
+schema** it would be promotable through `overrides` like anything else, and § 2's
+"any field of the shared schema" would quietly readmit it. So it is not a field
+of the shared schema at all. It belongs to the JobSet producer's own input, which
+is a different object with a different reader
+([`execution/job-system.md`](?doc=execution/job-system.md) — `job-system.md § 4.1`).
+
 **`continue_retries` passes both questions and is still not a stage field.**
 `running-a-job.md § 3.5` is explicit: a *single* SIESTA run whose wrapper was
 installed with a retry budget re-runs itself with `--continue`. It is an ordinary
@@ -150,7 +157,11 @@ can each be individually reasonable and jointly wrong: a mesh cutoff that is
 fine, a basis that is fine, and a pair that is under-converged together. The
 validator is handed a whole config plus the stage's name as a label — never an
 overlay. The label travels beside `where`, never inside it
-(`science/validation.md § 4.1`); `error` blocks, for every stage.
+(`science/validation.md § 4.1`).
+
+**An `error` in any stage blocks the whole produce**, not just its own deck.
+That is not a policy choice made here — it falls out of § 7.1: the folder appears
+whole or not at all, so there is no such thing as writing the stages that passed.
 
 ---
 
@@ -163,12 +174,22 @@ decks that are subtly wrong for the machine they run on.
 |---|---|---|
 | an ordinary deck line | `mesh_cutoff` → `MeshCutoff` | the stage's deck, and nowhere else |
 | **a deck line that is also a resource decision** | `diag_algorithm` → `Diag.Algorithm`; `enable_gpu` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
-| a field the deck never carries | `mpi_np`, `omp_threads`, `time`, `mem`, `continue_retries` | the **wrapper** — baked at install (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` / `-t` / `--mem` if one is asked |
+| a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at install (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
 
 **The routing is derivable, never a second list.** A field carries an
 `engine_key` when it is a line in the deck; the config ↔ exchange translation for
 the third row is already fixed by `job-contracts.md § 6.2` and applied by the
 producer at its boundary. Nobody maintains a mapping table by hand.
+
+**Walltime, memory and partition are deliberately absent from that table.** They
+are not fields of the shared schema: `running-a-job.md § 5.3` puts `time` and
+`mem` under `molbuilder.json`'s `scheduler.defaults`, and a routing `domain`
+resolves to a partition and QoS the same way. That is **the machine's knowledge**,
+and `job-system.md`'s decision 3 keeps it on the machine — a description that
+carried a walltime would stop being portable, and would be wrong the moment it
+was opened on a different cluster. A per-stage walltime is a real thing to want;
+it is asked for at export (`job-system.md § 5.1`'s `--stage-resources`), where
+the target is known.
 
 ### 5.1 The middle row, and what it costs
 
@@ -322,6 +343,8 @@ In order, and all of it before anything is written:
 | the schema fingerprint matches | proceed, and say plainly it was written against a different schema |
 | every named field exists in the shared schema | refuse, naming the field |
 | no `overrides` key names a stage field (§ 2) | refuse, naming the field |
+| every stage `name` matches `[A-Za-z0-9_]+` | refuse, naming the stage and the rule |
+| **stage names are unique**, compared case-insensitively | refuse, naming the repeat |
 | every value is inside the schema's bounds | refuse, naming the field and both bounds |
 
 **Two things are deliberately not checked here.**
@@ -341,6 +364,14 @@ In order, and all of it before anything is written:
 written against a different schema*; it cannot say which fields moved. The
 per-field rows do that work.
 
+**Why two of those rows are about names.** A stage name becomes a filename
+(§ 2), so a name outside the set or repeated between stages produces two decks
+that collide — the second silently overwriting the first, in a folder whose whole
+premise is that every file in it is accounted for. Refusing costs a message;
+allowing it costs a calculation nobody knows is missing. (Two stages that are
+*identical in value* but differently named is a separate question, and a warning
+rather than a refusal — the plan records it.)
+
 ---
 
 ## 7. What the generator must produce
@@ -354,8 +385,12 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   refuses on `xc_family_mismatch`, and written into the folder. (`job-contracts.md
   § 2.7` says the layout does not *require* co-location; putting them there is
   what makes the folder self-contained.)
-- **every field the schema declares**, defaults resolved rather than
-  omitted-and-hoped-for.
+- **every value the description determined**, written rather than left to an
+  engine default. A field the user set must appear in the deck; a field the
+  description never touched may rely on the engine's own default, which is what
+  engine defaults are for. The failure this rules out is *omit-and-hope* — leaving
+  out a value the calculation depends on and discovering later which default
+  filled it.
 - **the engine's identity group set as one**, never key by key —
   [`execution/run-identity.md`](?doc=execution/run-identity.md) § 4.
 - **BENCH-MARKS declaring every line derived from a launch quantity** (§ 5.2).

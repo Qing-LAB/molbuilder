@@ -321,7 +321,9 @@ is agreeing them and answering § 9.
 4. **`restart` and the engine identity group** (`run-identity.md § 4`). *Done
    when:* a two-stage description whose second stage continues renders every
    bound parameter set, and a stage set to `clean` renders none — asserted
-   together, since the failure mode is that they disagree.
+   together, since the failure mode is that they disagree — **and** the group is
+   written down beside the warm files it governs, which is `job-contracts.md § 4`
+   and therefore a doc change in the same commit as the code (`§ 7` there).
 5. **Resource-shaped overrides reach all three destinations**
    (`engines/stages.md § 5`). *Done when:* a description asking for ScaLAPACK
    then ELPA renders two decks whose solver differs **and** two wrappers
