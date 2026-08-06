@@ -25,6 +25,8 @@ It is not a tour of the current code; the code it replaces is 345 lines inside a
 >   it holds. Two on a page are two of these, sharing nothing.
 > - **The handle** — the object you get back from `mount`. It *is* the chart;
 >   there is no other way to reach one.
+> - **The box** — the rectangle the chart lives in: how wide and how tall it is
+>   on screen. Whoever puts the chart on the page decides it (§ 5.4).
 > - **The sealed layer** — the one file in this module allowed to name Plotly.
 >   Nothing above it knows that library exists.
 > - **A mode** — one row of the spectrum: a wavenumber, optionally a Raman
@@ -154,7 +156,8 @@ asked what is drawn, what the axes are, or where a point landed on screen (§ 8.
 
 ## 4. SpectrumChart is a self-contained module
 
-**SpectrumChart is one ES module, sealed at every edge.** It is imported by name,
+**SpectrumChart is one module — one folder the browser loads by name — and it is
+sealed at every edge.** It is imported by name,
 it reaches nothing else in the app by name, and nothing in the app can reach
 inside it.
 
@@ -199,8 +202,9 @@ That is the practice MolView and VibrationView already follow with 3Dmol: each
 module seals the library for itself, because independence beat sharing. The rule
 is what the code complies with, not a description of what it currently does.
 
-**No test seam.** Tests import the module and drive the handle, exactly as a page
-does (§ 12).
+**No special door for tests.** Tests import the module and drive the handle
+exactly as a page does (§ 12): there is nothing a test can reach that a page
+cannot.
 
 **The test of all of this:** delete every other web module and SpectrumChart still
 loads, mounts, draws and reports clicks.
@@ -260,8 +264,8 @@ layer and nowhere else.
 
 The host sizes the element and the chart fills whatever it is given: **the box
 states its size, the module never sets one.** And the module watches *its own box*
-rather than the window — a container query, a collapsing sidebar and a tab
-becoming visible all change a box while the window sits still.
+rather than the window — a panel opening beside it, a sidebar collapsing, a tab
+becoming visible: each changes the box while the window sits perfectly still.
 
 Three separate bugs came from breaking this rule, all on 2026-08-05. They are
 written down where they can be enforced, as the box rules in § 11.5.
@@ -288,7 +292,11 @@ mode = {
 | `index` | **yes** | — | *(the record is refused)* | missing, not a finite number, or repeated within the list |
 | `freq` | **yes** | cm⁻¹ | *(the record is refused)* | missing, or not a finite number |
 | `activity` | no | Å⁴/amu | **not computed yet** — drawn as pending, never as zero (§ 6.2) | present but not a finite number |
-| `imaginary` | no | — | `false` | never — anything truthy is true |
+| `imaginary` | no | — | `false` | never — it is read as yes-or-no, so anything that is not `false`, `0`, `null` or missing counts as yes |
+
+*A finite number* above means an ordinary number — not text, not `NaN`, not
+infinity. A caller that hands over `"1131.8"` where a frequency belongs has a bug
+one line earlier, and the chart says so rather than drawing at a place it made up.
 
 **A record that must be refused takes the whole call with it.** `setModes` draws
 the list it was given or it draws none of it; it never quietly skips the bad rows
@@ -636,9 +644,9 @@ that covers a box that *changes size*; what it cannot be relied on to cover is a
 box that did not exist. `refit` is how the host says **the box is real now** — the
 same door VibrationView needed, for the same rule.
 
-Justifying this door by what a `ResizeObserver` does instead would put a
-library's behaviour into a contract, where it cannot be tested and cannot be
-depended on.
+Justifying this door by what the browser's box-watching machinery happens to do
+would put somebody else's behaviour inside this contract, where it cannot be
+tested and cannot be relied on.
 
 ### 8.4 The sealed layer — commands down, clicks up
 
@@ -669,8 +677,8 @@ data is how a drawing decision ends up in three places.
 colours as JavaScript values, so a chart cannot inherit them the way an element
 does — which is precisely how two tab controllers ended up carrying private copies
 of the same nine hex literals. The sealed layer reads **this module's own tokens**
-(§ 11.1) off its root and hands the library the answer, so the sheet stays the one
-source of truth for how the chart looks.
+(§ 11.1) off the module's own outermost element and hands the library the answer,
+so the sheet stays the one source of truth for how the chart looks.
 
 **`recolour` is the cheap door § 5.1 is about.** It exists so that the expensive
 one does not have to be called for a click.
@@ -679,8 +687,8 @@ one does not have to be called for a click.
 
 ## 9. How a spectrum gets drawn
 
-The sticks are the data. The envelope is a sum of Lorentzians, one per mode with
-an activity:
+The sticks are the data. The envelope is a sum of Lorentzians — the narrow peak
+with long tails that a real spectral line has — one per mode with an activity:
 
 ```
                               γ²
@@ -691,9 +699,10 @@ an activity:
 so each mode contributes a peak of height `A_i` at `x_i`, and the sum is what a
 measured spectrum looks like when lines have width.
 
-**Where the curve is sampled follows the width, not a fixed setting.** A fixed
-grid is either too coarse for a narrow line or wasteful for a broad one; the width
-is the only number that knows which. Two requirements say how far that goes, and
+**Where the curve is sampled follows the width, not a fixed setting.** The curve
+is worked out at a list of frequencies — the grid — and a fixed grid is either too
+coarse for a narrow line or wasteful for a broad one; the width is the only number
+that knows which. Two requirements say how far that goes, and
 they are stated as accuracy rather than as constants so a test can check the
 result instead of the arithmetic:
 
@@ -730,7 +739,7 @@ if (!chart.ok) showMessage(chart.error);   // the mode table still works without
 tab.chart = chart.ok ? chart : null;       // a dead handle is not kept (§ 7)
 
 // a result arrives
-tab.chart?.setModes(modes);
+tab.chart?.setModes(modes);      // `?.` = do nothing if there is no chart
 
 // the user clicks a stick, or a table row, or arrows through the list
 tab.selectMode = (index) => {
@@ -750,9 +759,11 @@ disagree with the viewer (§ 3).
 ## 11. The module owns its own stylesheet
 
 **A stylesheet is the seal written in another language.** The JavaScript half of
-this module is sealed at `mount`; the CSS half is sealed at its namespace. A page
-rule reaching at `spectrumchart-…` is the same category error as a script
-importing `_maths.js`, and it is caught the same way — by a guard, not by review.
+this module is sealed at `mount`; the CSS half is sealed by its names — every
+class it writes starts `spectrumchart-`, so nothing else on the page can mean the
+same thing by accident. A page rule reaching in at one of those names is the same
+mistake as a script importing `_maths.js`, and it is caught the same way: by a
+test whose only job is to fail when someone crosses the line.
 
 **It is a short sheet, and it should stay short.** A chart is a box with one
 drawing surface in it — there is no toolbar, no legend, no readout panel, no
@@ -768,8 +779,9 @@ tab's own vocabulary, where the rule is that *a page sheet may contain only T3*.
 
 **A module sheet is none of those tiers — it sits outside the page layer
 entirely**, which is exactly why that plan lists module sheets as out of its
-scope. It is its own miniature T0 + T3: its own tokens on its own root, then its
-own rules reading them.
+scope. It is its own miniature T0 + T3: its own **tokens** on its own root —
+a token being a named value written once, `--spectrumchart-pad: 12px`, that every
+rule below reads by name — and then its own rules reading them.
 
 ```
       THE PAGE LAYER                        THIS MODULE
@@ -810,14 +822,16 @@ That is the whole sheet. If a fourth block is ever proposed, the question to ask
 first is whether the module has genuinely grown a part — or whether something the
 plot should be drawing has been moved out into markup instead (§ 6.2).
 
-And the selectors stay flat, because specificity is a budget that can only be
-spent once:
+And the selectors stay simple. When two rules touch the same element the browser
+keeps the **stronger** one — and a rule counts as stronger the more ids, classes
+and tag names it piles up. A rule written strong can then only be beaten by one
+written stronger, which is how a sheet ends up in an arms race with itself. So:
 
 - **one class per rule**, nesting at most one level deep;
 - **no element selectors** — `div`, `p`, `svg` reach markup this module did not
   write, or markup the library owns and may change;
-- **no IDs** — one-use specificity nothing can later override without a second
-  hack;
+- **no IDs** — an id makes a rule so strong that nothing afterwards can adjust it
+  without a second hack on top;
 - **no `:nth-child()` standing in for a name** — it encodes the order the markup
   happens to have today, which is not a contract.
 
@@ -855,9 +869,9 @@ looks untidy:
 
 | Not allowed | What it really says |
 |---|---|
-| `!important` | this rule is winning an argument the cascade should not be having. The rule is in the wrong block, or it is fighting something outside the seal — and both are bugs one level up |
+| `!important` | this rule is forcing its way past the browser's ordinary which-rule-wins reckoning. It is in the wrong block, or it is fighting something outside the seal — and both are bugs one level up |
 | a rule that undoes another rule — a negative margin cancelling a margin, a reset of something this sheet set three rules earlier | the first rule was wrong. Two wrongs leave two things to maintain and no way to tell which is load-bearing |
-| anything that works only because of link order | this module links exactly one sheet, so order is never the answer. If it is, the specificity is wrong |
+| anything that works only because of the order sheets were loaded | this module loads exactly one sheet, so load order is never the answer. If it is, two rules are fighting and the fix is to stop them overlapping |
 | a page sheet styling `spectrumchart-*`, or this sheet styling anything outside its own markup | the seal, from each side |
 
 There is no rule here about `z-index` or about hiding, and that is deliberate: two
@@ -871,8 +885,8 @@ mistake as parts that do not exist.
 window tells this module how much room it has: the same chart can sit in a
 full-width panel, in a half-width tab, beside a sidebar that collapses, or in a
 tab that was hidden a moment ago. All four change the box while the window sits
-still. So a viewport media query is wrong here even on the day it appears to
-work.
+still. So a rule keyed to the window's size — a viewport media query — is wrong
+here even on the day it appears to work.
 
 **And responding is one thing: redraw at the box's size.** There is nothing to
 re-arrange — one surface filling one frame — so the sheet holds no rule that
@@ -881,18 +895,21 @@ Naming steps and writing queries for a layout of one element would be machinery
 with nothing to do.
 
 > If the module ever does grow a second part, the rule to reach for is a
-> **container query on the frame**, never a viewport one — and the container goes
-> on the frame because an element cannot query itself. That is not a preference;
-> it is the bug that made an earlier container query silently never match.
+> **container query** — a rule that reacts to the size of one chosen box on the
+> page instead of the size of the window — and it is declared **on the frame**,
+> because an element cannot ask about its own size that way. That is not a
+> preference: putting it on the element being measured is the bug that made an
+> earlier query silently never match, anywhere, ever.
 
 Three rules that do earn their place, each from a way a chart has actually broken:
 
 - **The frame states a height; the surface fills it.** Never `height: auto` on a
   box whose content is sized *from* the box — that is a definition in a circle,
   and it resolves to a ten-pixel strip.
-- **The drawing surface carries no padding.** The library measures `clientWidth`,
-  and `clientWidth` includes padding, so a padded surface draws wider than its
-  frame. The frame pads; the surface does not.
+- **The drawing surface carries no padding.** The library asks the element how
+  wide it is, and the browser's answer **counts the padding in** — so a surface
+  with 12 px of padding draws itself 24 px wider than the frame it sits in, and
+  spills out. The frame pads; the surface does not.
 - **Nothing here scrolls the page sideways.** Whatever cannot shrink scrolls
   inside its own box.
 
@@ -938,7 +955,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 2 — the tab keeps its own | the module contains no table, no filter, no CSV, no poller, and no form |
 | § 4 — self-contained | the module mounts given only a host element; it reads no global of the app's and writes none, and the only global name it reads at all is the library's, in the seal |
 | § 4 — nothing else is importable | the entry point exports exactly `mount` |
-| § 4 — no hatch | the handle's keys are enumerated **unfiltered**: no accessor reaches the drawing surface or the internal state |
+| § 4 — no hidden way in | list everything on the handle, hiding nothing: not one entry leads to the drawing surface or to the module's own state |
 | § 4 — the module brings what it needs | a page holding only a host element and one `import` draws a **styled** chart: no `<script>` and no `<link>` of its own, and mounting twice adds one link, not two |
 | § 4 — the library name appears once | `Plotly` occurs in exactly one file of the module, and nothing above that file names the library or a colour |
 | § 5.1 — the door says the cost | `setSelected` computes no curve and changes no axis; `setModes` does both |
@@ -958,7 +975,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.3 — a click lands on the nearest mode | for a spectrum with modes closer together than the broadening, every point in the plot resolves to the nearest mode; no two bands overlap at any width |
 | § 6.3 — the floor and the minimum are the stated numbers | at **any** broadening below 8 cm⁻¹, zero included, an isolated band is 8 cm⁻¹ half-wide; no clamp ever takes a band below 0.25 cm⁻¹ |
 | § 6.3 — the band bends, never the picture | at a broadening the floor or the clamp overrides, the envelope drawn is still the envelope for the width that was set |
-| § 6.3 — degenerate modes stay clickable | two modes at the same frequency each keep a band, rather than both collapsing to zero width |
+| § 6.3 — modes at the same frequency stay clickable | both keep a band, rather than clamping each other down to nothing |
 | § 6.4 — an imaginary mode is drawn and clickable | it appears at its own frequency and a click on it reports its index, exactly like any other mode |
 | § 6.4 — an imaginary mode is marked | it is drawn differently from an ordinary mode of the same height |
 | § 6.4 — an imaginary mode is not in the curve | adding one to a list leaves the envelope unchanged, in both pictures |
@@ -969,7 +986,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.2 — a host that is not an element is the one refusal | `mount(null)` and `mount("#chart")` each resolve with `ok === false` and a message, and neither throws |
 | § 8.2 — a mount option is the first write | `mount({ broadening: 20 })` and `mount()` then `setBroadening(20)` leave the chart in the same state, and no "initial" value survives a later write |
 | § 8.3 — one way in | the handle exposes no settable property and no options object; changing a fact is possible only by calling its door |
-| § 8.3 — nothing is read back | there is no `getModes`, `getSelected` or `getBroadening`, and no accessor returns any of them |
+| § 8.3 — nothing is read back | there is no `getModes`, `getSelected` or `getBroadening`, and nothing else hands those values back either |
 | § 8.3 — order does not matter | selecting before any modes exist, broadening an empty chart, and re-selecting the same index each leave a coherent chart and no error |
 | § 8.3 — the selection is recorded, not refused | `setSelected(3)` before any modes exist, followed by a `setModes` containing 3, draws 3 as chosen with no second call; an index no list ever holds highlights nothing and raises nothing |
 | § 8.3 — a new list keeps the recorded selection | `setModes` with a list that still holds the selected index leaves it drawn as chosen; with a list that does not, nothing is drawn as chosen and the recorded value stands |
@@ -991,7 +1008,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 11.2 — the sheet stays short | it styles the frame and the surface and nothing else: no rule names a part this contract does not describe |
 | § 11.3 — no magic numbers | every value in a rule is a `var()` or one of `0` · `100%` · `1fr` · `auto`: no colour, length, duration or font size appears as a literal outside the root block |
 | § 11.4 — nothing is patched | the sheet contains no `!important` and no negative margin, and no rule in it depends on the order sheets were linked |
-| § 11.5 — the chart responds to its own box | the sheet contains no viewport media query, and a box that changes size while the window does not causes a redraw at the new size |
+| § 11.5 — the chart responds to its own box | no rule in the sheet is keyed to the window's size, and a box that changes size while the window does not causes a redraw at the new size |
 | § 11.5 — the box traps | the frame declares a height and never `auto`; the drawing surface carries no padding; nothing in the module makes the page scroll sideways |
 | § 11.6 — the mount waits for the sheet | the first chart on a cold page draws with the token palette, not with fallback colours |
 
@@ -1036,8 +1053,8 @@ electronic-structure panel.
 module. It is a small figure belonging to the electronic-structure panel, with
 different data and a different job; it stays where it is.
 
-**Sequencing.** This extraction comes **before** the planned ESM conversion of
-`lib/spectra/core.js` (roadmap #102): converting first would convert the mess and
+**Sequencing.** This extraction comes **before** the planned conversion of
+`lib/spectra/core.js` into a module of its own (roadmap #102): converting first would convert the mess and
 then re-cut it, while extracting first leaves #102 a smaller file with its hardest
 part already sealed.
 
