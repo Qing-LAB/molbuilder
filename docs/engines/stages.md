@@ -159,6 +159,17 @@ validator is handed a whole config plus the stage's name as a label — never an
 overlay. The label travels beside `where`, never inside it
 (`science/validation.md § 4.1`).
 
+**R3 — the sequence is checked as well as its members.** R2 makes every stage
+individually sound and says nothing about the order they are in, yet the order is
+the whole point of having several. A ladder that *loosens* — stage 2 coarser than
+stage 1 — passes R2 twice and is almost certainly a mistake, because the second
+stage throws away what the first paid for. So a description is also read across
+its stages, and a finding about the sequence carries **no** stage label: it is a
+fact about the description, not about a member of it (the same rule that already
+governs a shared-config complaint, § 6.2). What the checks *are* — which
+parameters must not go backwards, and by how much — is `engines/tuning.md`'s to
+say, not this contract's.
+
 **An `error` in any stage blocks the whole produce**, not just its own deck.
 That is not a policy choice made here — it falls out of § 7.1: the folder appears
 whole or not at all, so there is no such thing as writing the stages that passed.
@@ -417,6 +428,14 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
 - **a run wrapper per deck**, built by the shipped builder
   (`job-contracts.md § 2.6`). A folder of decks with no wrappers is not something
   a user can run.
+- **a distinct trajectory-log basename per deck.** `job-contracts.md § 2.3` merges
+  a directory's `.molwatch.log` files in mtime order into one trajectory with a
+  boundary per stage — which is exactly the reading a folder of stages wants — but
+  it only works if each deck writes its *own* log. Two decks resolving to one
+  basename would interleave into a single file and the boundary would be lost.
+  The shipped basename is `<label>-stage<N>`, a hyphen and a **number**, while a
+  deck is `<label>_<name>`, an underscore and a **name**; reconciling those two is
+  a decision `job-contracts.md § 2.3` owns and has not yet made.
 
 **The test:** the decks are portable — an engine with no molbuilder present runs
 them correctly. The wrappers are not, and are not meant to be: they are baked for
@@ -440,6 +459,19 @@ verify, then `os.replace` (`job-contracts.md § 5.4`) — applied to a directory
 rather than a file. What it must **not** do is remove warm files that were already
 there; producing twice is `execution/run-identity.md § 6`, and those files are
 the point.
+
+**And a produce that replaces an earlier one must account for what it does not
+write.** Remove a stage from a description, or disable one, and the deck it
+produced last time is still in the folder — describing a calculation the
+description no longer contains, with a wrapper that still runs it. That breaks the
+premise every rule here rests on: that the folder's contents are what the
+description says they are.
+
+So a replacing produce reports the decks and wrappers it did **not** write this
+time, and the user decides. It does not delete them silently — an orphan may be
+the run they are halfway through — and it does not leave them unmentioned, which
+is how a folder stops meaning anything. The warm files are never in this set:
+they belong to the calculation, not to any one stage.
 
 ---
 
@@ -465,6 +497,21 @@ the point.
   concern** — [`execution/job-system.md`](?doc=execution/job-system.md). A
   JobSet export reads this file and asks for the one thing it does not carry
   (`on_nonconvergence`, § 3).
+- **Carrying a finished run into the next calculation** — the handoff bundle,
+  [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 5. It reads a
+  run directory and fuses the final coordinates with the labels from the script
+  that produced them, and a folder of stages is a run directory, so it works
+  unchanged.
+
+  > **One interaction to settle before this ships.** `job-contracts.md § 5.3`
+  > resolves *which* script to read when a directory holds several: **largest by
+  > atom count, ties broken lexicographically.** Every stage of one description has
+  > the same atoms, so every produce is a tie — and lexicographic order picks
+  > `_coarse` over `_tight`. The coordinates are right either way (they come from
+  > the one shared `.XV`), but `source_script` and the provenance it carries would
+  > name the stage that ran *first*. A folder of stages makes that the normal case
+  > rather than an edge one, so the tie-break needs an answer that knows about
+  > stages — most likely the last enabled one, which is the production stage.
 - **Phasing, status, and what is built when** —
   [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).

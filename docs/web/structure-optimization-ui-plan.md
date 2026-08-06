@@ -253,6 +253,12 @@ whole difference.
 
 **The action row** is Check and Generate, in that order, always visible.
 
+**And the page has to be reachable from an existing folder**, not only from a
+blank form — that is the *open* operation in § 7.3, and it is what makes the
+promoted set worth storing at all (`staged-runs-architecture.md § 5.2`). A user
+who ran a two-stage relaxation last week and wants a third stage should reopen the
+description, not rebuild it from a screenshot of the old one.
+
 ---
 
 ## 7. The hard part: which parameters vary, and who decides
@@ -321,6 +327,7 @@ its rule is not stated.
 | **reorder** | moves a stage | the files are written in order and `restart` reads that order, so this is a real edit, not a display preference |
 | **edit a cell** | sets one stage's value | nothing else moves. A cell equal to `base` is drawn quietly; one that differs is drawn plainly, so *progressive change is visible as a shape* |
 | **apply a row preset** | fills a column | a preset knows nine fields. If some are not promoted it **promotes them first** — a preset that half-applied would be worse than one that refused |
+| **open** an existing description | replaces the whole table from a folder's `stages.json` | it is a **load, not a merge**: values, promoted set, stages and order all come from the file, because a half-loaded description is one nobody can reason about. The id is read, never recomputed (`execution/run-identity.md § 3`), and the file goes through the same preflight as a fresh one — a description that has sat on disk is exactly the one whose schema may have moved |
 
 ### 7.4 The panel
 

@@ -174,6 +174,15 @@ whether it can be done correctly.** Neither guesses on the other's behalf — wh
 is why the description travels whole rather than as a diff, and why nothing the
 server derives is sent back for the browser to store.
 
+**One prerequisite falls out of that boundary and belongs to neither side.** A
+description *points at* a structure in the tree (`engines/stages.md § 6.3`), so
+the structure has to be in the tree before a description can name it. A geometry
+the user just loaded from their disk, or edited in the viewer, is not — it lives
+in the workspace. Saving it into `projects/<project>/structure/` is therefore a
+step of this workflow, not a thing that happens to have happened already, and the
+tab has to be able to say so rather than failing at produce with a path that does
+not resolve.
+
 The id is the case that tests the rule. `run-identity.md § 3` puts one normaliser
 in the system, and it is the server's — so **the tab shows the id the last check
 returned**, and an edit that would change it marks it stale until the next check
@@ -204,6 +213,21 @@ sequenceDiagram
 the same route with `dry_run` — the CLI's idiom already
 (`jobset submit --dry-run`) — which makes it impossible for a description that
 checks clean to then fail to produce.
+
+**And a fourth exchange, which the design has been assuming without naming:
+reopening.** `engines/stages.md § 6.2` justifies `varies` on the grounds that
+intent *"cannot be inferred"* from anything downstream — which is only worth
+anything if a description can be read back into the tab. So there is a **GET**
+that returns a stored `stages.json` for a folder, and the tab restores the values,
+the promoted set, the stages and their order from it. Without it the file is
+written and never read by the surface that wrote it, and `varies` is a field whose
+only reader is a future nobody scheduled.
+
+Two rules it inherits rather than invents: the reopened description goes through
+the same preflight (`engines/stages.md § 6.6`), because a file that has sat on
+disk is exactly the one whose schema may have moved; and the id is **not**
+recomputed — it is read (`run-identity.md § 3`, rule 1), or reopening a folder
+would rename it.
 
 ```jsonc
 {
@@ -339,16 +363,25 @@ is agreeing them and answering § 9.
    naming the repeat, and the artifact registry (`job-contracts.md § 6.1`) has its
    row. **One reader, used by both surfaces** (`engines/stages.md § 6.4`) — that
    is what makes item 8's byte comparison meaningful rather than a coincidence.
-7. **Per-stage validation on the resolved whole** (`engines/stages.md § 4`).
-   *Done when:* a description whose coarse stage is under-converged reports
-   against `coarse` alone, through the one renderer, with the stage beside
-   `where`.
-8. **The route.** *Done when:* a description posted to it writes the same bytes
-   the CLI writes for the same stages — compared file by file — and the folder
-   holds a **runnable wrapper per deck**, not decks alone.
-9. **`snapshot branch` over HTTP** (§ 3.1). *Done when:* the folder can be
-   branched from the browser, because that is what switching setups without
-   losing one requires.
+7. **Validation, per stage and across them** (`engines/stages.md § 4`). *Done
+   when:* a description whose coarse stage is under-converged reports against
+   `coarse` alone, through the one renderer, with the stage beside `where` — and a
+   ladder that *loosens* between stages reports once, with **no** stage label,
+   because that is a fact about the sequence rather than about a member of it
+   (R3).
+8. **The route, both directions.** *Done when:* a description posted to it writes
+   the same bytes the CLI writes for the same stages — compared file by file — the
+   folder holds a **runnable wrapper per deck**, not decks alone, and a **GET
+   returns a written description** such that reopening it and producing again
+   yields the identical folder (§ 5.2).
+9. **The second surface.** "One reader for both" (`engines/stages.md § 6.4`) needs
+   a CLI verb that writes and consumes a description, or item 8's byte comparison
+   has nothing to compare against. *Done when:* the same description produces the
+   same folder from a terminal and from the browser, and neither path has a
+   renderer the other lacks.
+10. **`snapshot branch` over HTTP** (§ 3.1). *Done when:* the folder can be
+    branched from the browser, because that is what switching setups without
+    losing one requires.
 
 **Step 3 — the surface.** The description model first (pure, tested), then the
 matrix view, then the subtabs.
@@ -393,12 +426,17 @@ what a user needs.
 7. **Is a description editable by hand?** It is JSON beside the decks, so it will
    be. If yes, the reader owes the same errors to a person as to the browser — an
    argument for the refusal rule being loud rather than tolerant.
-8. **The trajectory log's stage naming does not match the deck's.** A stage deck
-   is `<label>_<stagename>` — an underscore and a *name* — while the molwatch log
-   is `<label>-stage<N>`, a hyphen and a *number*, and the run decoder's stage
-   regex keys on that hyphen form (`job-contracts.md § 2.3`). User-named stages
-   cannot be expressed in a number. Either the log takes the name, or a name maps
-   to an index somewhere, and `job-contracts.md § 2.3` is where it is decided.
+8. **The trajectory log's stage naming does not match the deck's — and this one
+   blocks.** A stage deck is `<label>_<stagename>`, an underscore and a *name*;
+   the molwatch log is `<label>-stage<N>`, a hyphen and a *number*, and the run
+   decoder's stage regex keys on the hyphen form (`job-contracts.md § 2.3`).
+   User-named stages cannot be expressed in a number. **The consequence is not
+   cosmetic:** `job-contracts.md § 2.3` merges a directory's logs into one
+   trajectory with a boundary per stage — the exact reading a folder of stages
+   wants — and that only works while each deck writes its own. Two decks resolving
+   to one basename interleave into a single file and the boundary is gone. So this
+   is decided before decks are generated, not after, and `job-contracts.md § 2.3`
+   is where.
 9. **May two enabled stages be identical?** Nothing forbids it, and the answer is
    probably "warn": two decks differing in nothing but their name produce the
    same calculation twice into the same warm state.
