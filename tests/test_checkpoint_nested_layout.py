@@ -217,3 +217,79 @@ def test_flat_archive_written_before_the_change_still_restores(tmp_path):
     repo.checkpoint(message="clobbered")
     repo.restore(sha)
     assert (tmp_path / "job.DM").read_bytes() == original
+
+
+# ------------------------------------------------------------------ #
+#  L7 — a binary-only change still produces a checkpoint              #
+# ------------------------------------------------------------------ #
+
+
+def test_binary_only_change_produces_a_checkpoint(tmp_path):
+    """Big binaries are gitignored, so a change touching only them leaves
+    `git status` clean.  A checkpoint that trusted git would report "nothing to
+    commit" while the new bytes went into no snapshot at all."""
+    _seed_nested(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    repo.checkpoint(message="first")
+    before = repo.resolve_ref("HEAD")
+
+    # Exactly the realistic trigger: a density matrix copied in by hand to
+    # warm-start from.  No text changes at all.
+    (tmp_path / "coarse" / "job.DM").write_bytes(b"\x09" * 4096)
+
+    cp = repo.checkpoint(message="warm start from cluster DM")
+
+    assert cp is not None, (
+        "a binary-only change must still produce a checkpoint; git cannot see "
+        "the file, so trusting `git status` loses it silently")
+    after = repo.resolve_ref("HEAD")
+    assert after != before, "the new binary state needs its own commit sha"
+    assert _archived_keys(tmp_path, after) == {"coarse/job.DM", "tight/job.DM"}
+    archived = (tmp_path / ".binsnapshots" / after / "coarse" / "job.DM")
+    assert archived.read_bytes() == b"\x09" * 4096
+
+
+def test_binary_only_checkpoint_does_not_rewrite_the_previous_archive(tmp_path):
+    """The tempting shortcut -- archive under HEAD instead of committing --
+    would make a restore of HEAD return bytes it never held (I1)."""
+    _seed_nested(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    repo.checkpoint(message="first")
+    before = repo.resolve_ref("HEAD")
+    original = (tmp_path / ".binsnapshots" / before / "coarse" / "job.DM").read_bytes()
+
+    (tmp_path / "coarse" / "job.DM").write_bytes(b"\x09" * 4096)
+    repo.checkpoint(message="second")
+
+    assert (tmp_path / ".binsnapshots" / before / "coarse"
+            / "job.DM").read_bytes() == original, (
+        "the earlier checkpoint's archive must be untouched")
+
+
+def test_truly_clean_tree_still_reports_nothing_to_do(tmp_path):
+    """The freshness check must not make every call look like a change."""
+    _seed_nested(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    repo.checkpoint(message="first")
+
+    assert repo.checkpoint(message="again") is None
+
+
+def test_binary_free_project_still_gets_an_archive_directory(tmp_path):
+    """A missing archive must mean ONE thing -- the archive is lost -- so a
+    commit with no big binaries writes an empty one rather than none.  Before,
+    absence meant both that and "legitimately binary-free", which
+    `missing_archive_warning` had to guess between."""
+    (tmp_path / "job.py").write_text("JOB = 'job'\n")
+    repo = Repo(str(tmp_path))
+    repo.init(engine="pyscf")
+    repo.checkpoint(message="no binaries here")
+    sha = repo.resolve_ref("HEAD")
+
+    manifest = tmp_path / ".binsnapshots" / sha / "MANIFEST"
+    assert manifest.is_file(), "every commit gets an archive directory"
+    assert manifest.read_text() == "", "with an empty MANIFEST"
+    repo.restore(sha)          # and it verifies + restores without complaint

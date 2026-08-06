@@ -77,6 +77,15 @@ binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
 | **How it fails** | A file matching an archive glob that is *also* tracked puts a multi-gigabyte blob in git history forever. A file matching neither is in no snapshot at all — a restore silently does not bring it back |
 | **How to check** | For every file in a checkpointed directory: `matches_archive_glob(f) XOR git_tracked(f)` is true. Assert it over a fixture directory containing one of each engine's warm files plus a text log |
 
+**An archive is now always written, even with nothing to put in it.** A missing
+archive directory used to mean two things — *this commit had no big binaries* and
+*this commit's archive is lost* — which is why `missing_archive_warning` has to
+guess from whether **other** commits have archives, its docstring conceding that
+*"a lost archive cannot be proven"*. Every commit now gets a directory and a
+MANIFEST, empty when there was nothing to archive, so absence is evidence rather
+than a hint. (Repositories predating this have legitimately absent archives, so
+the warning stays a warning; promoting it to an error is a later step.)
+
 ### S1a — the ignore set is *derived* from `archive_globs`, never kept beside it
 
 *holds today — verified in the code, not inferred.*
@@ -467,10 +476,10 @@ One line each, for reading over a diff:
 | **L4** | molbuilder tags stage completions only | needs the layout |
 | **L5** | a checkpoint costs what changed, not what exists | **not held today** |
 | **L6** | a history can be verified without being restored | **not held today** |
-| **L7** | a binary-only change still produces a checkpoint | **not held today** |
+| **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
 
-**Twelve of the twenty-one can be asserted against the code as it stands.** One
-(**L2**) was broken and is now fixed, with tests. Three (**L5**, **L6**, **L7**)
+**Twelve of the twenty-one can be asserted against the code as it stands.** Two
+(**L2**, **L7**) were broken and are now fixed, with tests. Two (**L5**, **L6**)
 are not held and are work rather than checks; one (**L1**) is **blocked** by a
 deliberate guard whose rationale outlived its document.
 
@@ -491,7 +500,7 @@ deliberate guard whose rationale outlived its document.
 | **L5** | **broken** — no cross-checkpoint dedup; my "cheap" claim was false |
 | **L6** | **absent** — no way to verify a history without restoring it |
 | **L1** | **blocked** — `Repo.init` refuses a parent repo by design (`NestedRepoRefusedError`) |
-| **L7** | **absent** — a binary-only change leaves `git status` clean, so no checkpoint happens |
+| **L7** | was **absent** — a binary-only change left `git status` clean and nothing was checkpointed; fixed 2026-08-06 |
 
 **Fourteen of twenty-one read. Three were wrong as written**, and every one was
 wrong because a phrase in the guide was trusted over the code: *"nothing keeps

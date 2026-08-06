@@ -359,6 +359,13 @@ def _parse_canonical_manifest(raw: bytes,
     ``where`` is included in error messages so the user knows which
     archive directory to look at.
     """
+    # A ZERO-BYTE MANIFEST is the canonical "this commit archived nothing".
+    # Checked first: the trailing-LF rule below is about SEPARATING entries, and
+    # an empty file has none to separate.  Every commit gets an archive
+    # directory, so a missing one means the archive was LOST -- which is the
+    # ambiguity this shape exists to remove.
+    if raw == b"":
+        return {}
     # BOM rejection (before utf-8 decode so the message names the bytes).
     if raw.startswith(b"\xef\xbb\xbf"):
         raise CheckpointError(
@@ -387,9 +394,13 @@ def _parse_canonical_manifest(raw: bytes,
     if lines and lines[-1] == "":
         lines.pop()
     if not lines:
-        raise CheckpointError(
-            f"malformed MANIFEST in {where}: file is empty "
-            f"(§ 10.2 requires at least one entry per archive).")
+        # A ZERO-ENTRY MANIFEST IS LEGAL and means "this checkpoint archived
+        # nothing", which is different from "this checkpoint has no archive".
+        # Every commit gets an archive directory (``Repo.checkpoint``), so a
+        # MISSING directory is evidence of a lost archive rather than of a
+        # binary-free run -- the ambiguity ``missing_archive_warning`` has to
+        # guess around today.
+        return {}
     out: Dict[str, Tuple[str, int]] = {}
     seen_order: List[str] = []
     for idx, line in enumerate(lines, start=1):
@@ -505,10 +516,14 @@ def _atomic_write_text(target: Path, text: str) -> None:
 def _archive_binaries(path: Path, sha: str) -> int:
     """Copy big binaries from working dir into ``.binsnapshots/<sha>/``;
     write MANIFEST in canonical format (§ 10.2).  Returns total bytes
-    archived (0 if no binaries)."""
+    archived (0 if no binaries).
+
+    ALWAYS writes the directory and a MANIFEST, even with nothing to archive.
+    An empty MANIFEST says "this commit archived nothing"; a MISSING directory
+    then says "this commit's archive is lost".  Before, absence meant both, and
+    ``missing_archive_warning`` had to guess between them from whether OTHER
+    commits had archives (its docstring: "a lost archive cannot be proven")."""
     binaries = _list_big_binaries(path)
-    if not binaries:
-        return 0
     if not _SHA_DIR_RE.match(sha):
         raise CheckpointError(
             f"_archive_binaries: SHA dir name {sha!r} is not 40 "
@@ -574,10 +589,8 @@ def _verify_archived_binaries(path: Path, sha: str
     if not arch.is_dir() or not manifest.is_file():
         return {}
     expected = _parse_canonical_manifest(manifest.read_bytes(), where=str(arch))
-    if not expected:
-        raise CheckpointError(
-            f"archive at {arch}: canonical MANIFEST is present but "
-            f"contained zero entries (§ 10.2).")
+    # A zero-entry MANIFEST is a legitimate "this commit had no big binaries",
+    # written so that a MISSING archive is unambiguous.  Nothing to verify.
     for name, (want_sha256, want_size) in expected.items():
         src = arch / name
         if not src.is_file():
@@ -925,24 +938,37 @@ class Repo:
         _run_git(["add", "."], cwd=self.path)
         st = _run_git(["status", "--porcelain"], cwd=self.path,
                       check=False)
-        if not st.stdout.strip():
-            # Check unstaged big binaries separately -- they are
-            # gitignored so the status above is clean, but they might
-            # be new files that should appear in the archive.
-            head_sha = self._head_sha()
-            arch = _archive_dir(Path(self.path), head_sha)
-            if not arch.is_dir() and _list_big_binaries(Path(self.path)):
-                # Archive missing for current HEAD but binaries exist;
-                # create the archive so the user can restore.
-                _archive_binaries(Path(self.path), head_sha)
-                return self._checkpoint_from_sha(head_sha)
+        text_changed = bool(st.stdout.strip())
+
+        # BIG BINARIES ARE GITIGNORED, so `git status` above is blind to them.
+        # A run that rewrote only a .DM leaves the status clean, and a
+        # checkpoint that trusted it would report "nothing to commit" while the
+        # new density matrix went into no snapshot at all -- surfacing much
+        # later as a REFUSED restore ("uncommitted binary changes"), about work
+        # the user believed they had saved.  So ask the binaries directly, with
+        # the same comparison restore uses.  Only when git already has
+        # something to commit do we skip the hashing pass, since the archive is
+        # rewritten either way.
+        bins_changed = (not text_changed
+                        and bool(_working_binaries_dirty(Path(self.path),
+                                                         self._head_sha())))
+        if not text_changed and not bins_changed:
             return None
+
         if message is None:
             message = (
                 f"checkpoint "
                 f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}"
             )
-        _run_git(["commit", "-q", "-m", message], cwd=self.path)
+        commit_argv = ["commit", "-q", "-m", message]
+        if not text_changed:
+            # Nothing git can see changed, but the binary state did.  An empty
+            # commit gives that state its own sha to be archived under.  The
+            # alternative -- rewriting HEAD's archive in place -- would make a
+            # restore of HEAD return bytes it never held, which is exactly what
+            # an immutable checkpoint must not do.
+            commit_argv.insert(1, "--allow-empty")
+        _run_git(commit_argv, cwd=self.path)
         new_sha = self._head_sha()
         _archive_binaries(Path(self.path), new_sha)
         return self._checkpoint_from_sha(new_sha)

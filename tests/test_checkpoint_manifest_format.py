@@ -260,11 +260,12 @@ _MALFORMED_CASES = [
         "blank",
         id="single-blank-line",
     ),
-    pytest.param(
-        b"",
-        "missing final newline",
-        id="completely-empty",
-    ),
+    # NOTE: a COMPLETELY EMPTY MANIFEST is no longer malformed -- it is the
+    # canonical "this commit archived nothing", written so that a MISSING
+    # archive directory unambiguously means the archive was lost.  Its positive
+    # test is `test_empty_manifest_means_archived_nothing` below.  A file with
+    # a blank LINE is still malformed (`single-blank-line`, above): that is a
+    # separator with nothing to separate, which is a truncation signature.
     pytest.param(
         # Duplicate filename.
         (((("a" * 64) + "  " + "1024" + "  " + "alpha.DM\n") * 2)
@@ -273,6 +274,15 @@ _MALFORMED_CASES = [
         id="duplicate-filename",
     ),
 ]
+
+
+def test_empty_manifest_means_archived_nothing(tmp_path):
+    """A zero-byte MANIFEST parses to no entries rather than raising.
+
+    It is how a commit says "there were no big binaries here", which is what
+    lets a MISSING archive directory mean "the archive was lost" -- one signal,
+    one meaning (docs/execution/checkpointing.md, S1 and L7)."""
+    assert _parse_canonical_manifest(b"", where=str(tmp_path)) == {}
 
 
 @pytest.mark.parametrize("raw,reason_substr", _MALFORMED_CASES)
