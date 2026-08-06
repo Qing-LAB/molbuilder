@@ -190,7 +190,7 @@ appears on the handle. Inside this module the name `Plotly` occurs in exactly on
 file.
 
 **And the module brings what it needs.** Nothing else on the page loads Plotly and
-no template links a stylesheet: the sealed layer adds both at mount, once (§ 11.6).
+no template links a stylesheet: the sealed layer adds both at mount, once (§ 11).
 A dependency the host has to remember is a dependency some host will forget, and
 the result — an empty box or an unstyled one, no error, far from its cause — is
 found only by someone looking at the screen. If the library will not load, the
@@ -268,7 +268,7 @@ rather than the window — a panel opening beside it, a sidebar collapsing, a ta
 becoming visible: each changes the box while the window sits perfectly still.
 
 Three separate bugs came from breaking this rule, all on 2026-08-05. They are
-written down where they can be enforced, as the box rules in § 11.5.
+written down where they can be enforced, as the box rules in § 11.
 
 ---
 
@@ -677,7 +677,7 @@ data is how a drawing decision ends up in three places.
 colours as JavaScript values, so a chart cannot inherit them the way an element
 does — which is precisely how two tab controllers ended up carrying private copies
 of the same nine hex literals. The sealed layer reads **this module's own tokens**
-(§ 11.1) off the module's own outermost element and hands the library the answer,
+(§ 11) off the module's own outermost element and hands the library the answer,
 so the sheet stays the one source of truth for how the chart looks.
 
 **`recolour` is the cheap door § 5.1 is about.** It exists so that the expensive
@@ -756,178 +756,46 @@ disagree with the viewer (§ 3).
 
 ---
 
-## 11. The module owns its own stylesheet
+## 11. The module's own stylesheet
 
-**A stylesheet is the seal written in another language.** The JavaScript half of
-this module is sealed at `mount`; the CSS half is sealed by its names — every
-class it writes starts `spectrumchart-`, so nothing else on the page can mean the
-same thing by accident. A page rule reaching in at one of those names is the same
-mistake as a script importing `_maths.js`, and it is caught the same way: by a
-test whose only job is to fail when someone crosses the line.
+The module ships one stylesheet and links it itself at mount, once — the drawing
+library arrives the same way and for the same reason (§ 4), so a host provides one
+thing: an element. `mount` waits for the sheet to load, because the sealed layer
+reads the chart's colours out of it (§ 8.4) and a stylesheet loads asynchronously;
+appending it and carrying on would give the first chart fallback colours,
+invisibly, for exactly as long as the two agreed.
 
-**It is a short sheet, and it should stay short.** A chart is a box with one
-drawing surface in it — there is no toolbar, no legend, no readout panel, no
-banner (§ 5.3). What follows is a system for those few rules, not a licence to
-grow more of them. It stays a real `.css` file rather than a string inside
-JavaScript, so the repository's existing CSS audits can read it.
+Five rules, and they are the ones peculiar to *this* module:
 
-### 11.1 Where this sheet sits in the app's CSS system
+- **Its names are its own.** Every class starts `spectrumchart-`. Nothing else on
+  the page styles those names, and this sheet styles nothing else — the same
+  boundary as `mount`, in another language.
+- **Its values sit in one block at the top** — the colours, the spacing, the
+  type — and every rule below reads them by name. Changing how the chart looks is
+  changing that block, not hunting through the rules.
+- **It inherits nothing from the page.** Those values are the module's own, so
+  deleting every page stylesheet leaves the chart looking right. Light and dark
+  are the exception that proves it: the sheet answers the same theme signal the
+  app does, without reading a single one of the app's values.
+- **The frame states its size; the surface fills it and carries no padding.** Both
+  halves come from real breakage — a height that came from the plot being sized to
+  it collapsed to a ten-pixel strip, and a padded surface drew wider than its
+  frame, because the width the library asks for counts padding in.
+- **It reacts to its own box, never to the window.** The chart can sit in a
+  full-width panel, a half-width tab, or beside a sidebar that collapses; all
+  change the box while the window sits still. There are no size rules in the sheet
+  at all — one surface filling one frame has nothing to re-arrange, so responding
+  is one thing: redraw at the box's new size.
 
-The app's page CSS is a four-tier system ([`css-system-plan.md`](?doc=web/css-system-plan.md)):
-**T0** tokens · **T1** the bare document · **T2** shared components · **T3** one
-tab's own vocabulary, where the rule is that *a page sheet may contain only T3*.
+**The repository's CSS conventions apply here as they do everywhere else** — one
+class per rule, no ids, no `!important`, no value written twice — and they are
+*not* restated in this contract. They live in
+[`css-system-plan.md`](?doc=web/css-system-plan.md), which is also where the
+page-versus-module boundary is argued. A rule that would be true of any stylesheet
+in this repository does not belong in the design of a spectrum chart.
 
-**A module sheet is none of those tiers — it sits outside the page layer
-entirely**, which is exactly why that plan lists module sheets as out of its
-scope. It is its own miniature T0 + T3: its own **tokens** on its own root —
-a token being a named value written once, `--spectrumchart-pad: 12px`, that every
-rule below reads by name — and then its own rules reading them.
-
-```
-      THE PAGE LAYER                        THIS MODULE
-      ──────────────                        ───────────
-   T0  tokens.css        scales, palette
-   T1  page-shell.css    html, body, type      _style.css
-   T2  components        card, status, button    ├── its own root
-   T3  <page>/style.css  that tab's parts        ├── its own tokens
-                                                 └── its own rules
-              │                                        │
-              └──────────  ✗  no rule crosses  ✗ ──────┘
-       neither reads the other's names, and neither styles the other's markup
-```
-
-**Nothing is inherited across that line, and that is what makes § 4's test true.**
-The module's tokens are its own — not the page's tokens with a prefix, and not the
-page's values read at mount. Delete every page stylesheet in the app and this
-chart still looks right, because nothing it needs was ever over there.
-
-**The theme is followed, not copied.** Light and dark are the one thing the page
-and the module genuinely share, and they share the *signal*, not the values: the
-module's own tokens redefine themselves under the same theme condition the app
-uses. No second sheet, no colour set from JavaScript, and no reading of a page
-variable — so the chart matches the app without depending on it.
-
-### 11.2 The sheet has one shape, so every rule has one home
-
-Three blocks, in this order, and a rule that fits two of them belongs in the
-earlier one:
-
-```
-   1  the root      .spectrumchart { … }      every token this module has
-   2  the frame     the box the chart lives in, and how it fills its host
-   3  the surface   the element the drawing goes on
-```
-
-That is the whole sheet. If a fourth block is ever proposed, the question to ask
-first is whether the module has genuinely grown a part — or whether something the
-plot should be drawing has been moved out into markup instead (§ 6.2).
-
-And the selectors stay simple. When two rules touch the same element the browser
-keeps the **stronger** one — and a rule counts as stronger the more ids, classes
-and tag names it piles up. A rule written strong can then only be beaten by one
-written stronger, which is how a sheet ends up in an arms race with itself. So:
-
-- **one class per rule**, nesting at most one level deep;
-- **no element selectors** — `div`, `p`, `svg` reach markup this module did not
-  write, or markup the library owns and may change;
-- **no IDs** — an id makes a rule so strong that nothing afterwards can adjust it
-  without a second hack on top;
-- **no `:nth-child()` standing in for a name** — it encodes the order the markup
-  happens to have today, which is not a contract.
-
-### 11.3 No magic numbers
-
-**Every value a rule uses is a token declared in block 1.** A literal inside a
-rule is a defect even when it plainly works, because it is a number nobody can
-find later — and the second time it is needed it gets retyped, slightly
-different, and now the module has two of them.
-
-```css
-/*  NO — three literals; none can be found, none can be changed together  */
-.spectrumchart { padding: 12px; border: 1px solid #d4d4d8; border-radius: 6px; }
-
-/*  YES — the values live at the root; the rule reads them  */
-.spectrumchart {
-    padding:       var(--spectrumchart-pad);
-    border:        var(--spectrumchart-hairline) solid var(--spectrumchart-edge);
-    border-radius: var(--spectrumchart-radius);
-}
-```
-
-**A number that must be raw is still given a name.** The hairline above is
-`--spectrumchart-hairline: 1px`, not `1px` written wherever a border is needed —
-so one place says what it is and what it is for.
-
-**What is not a magic number:** `0`, `100%`, `1fr`, `auto`. These say *none*,
-*all* or *whatever fits* — they are structure, not measurements, and naming them
-would only add a word.
-
-### 11.4 Nothing is patched
-
-Every entry here is banned because of what its presence *means*, not because it
-looks untidy:
-
-| Not allowed | What it really says |
-|---|---|
-| `!important` | this rule is forcing its way past the browser's ordinary which-rule-wins reckoning. It is in the wrong block, or it is fighting something outside the seal — and both are bugs one level up |
-| a rule that undoes another rule — a negative margin cancelling a margin, a reset of something this sheet set three rules earlier | the first rule was wrong. Two wrongs leave two things to maintain and no way to tell which is load-bearing |
-| anything that works only because of the order sheets were loaded | this module loads exactly one sheet, so load order is never the answer. If it is, two rules are fighting and the fix is to stop them overlapping |
-| a page sheet styling `spectrumchart-*`, or this sheet styling anything outside its own markup | the seal, from each side |
-
-There is no rule here about `z-index` or about hiding, and that is deliberate: two
-elements that never overlap need no stacking order, and a module that hides
-nothing needs no way to hide it. Rules for parts that do not exist are the same
-mistake as parts that do not exist.
-
-### 11.5 The UI knows its own size
-
-**The chart responds to its own box, never to the window.** Nothing about the
-window tells this module how much room it has: the same chart can sit in a
-full-width panel, in a half-width tab, beside a sidebar that collapses, or in a
-tab that was hidden a moment ago. All four change the box while the window sits
-still. So a rule keyed to the window's size — a viewport media query — is wrong
-here even on the day it appears to work.
-
-**And responding is one thing: redraw at the box's size.** There is nothing to
-re-arrange — one surface filling one frame — so the sheet holds no rule that
-*changes with* the box, and the response lives where the box is watched (§ 5.4).
-Naming steps and writing queries for a layout of one element would be machinery
-with nothing to do.
-
-> If the module ever does grow a second part, the rule to reach for is a
-> **container query** — a rule that reacts to the size of one chosen box on the
-> page instead of the size of the window — and it is declared **on the frame**,
-> because an element cannot ask about its own size that way. That is not a
-> preference: putting it on the element being measured is the bug that made an
-> earlier query silently never match, anywhere, ever.
-
-Three rules that do earn their place, each from a way a chart has actually broken:
-
-- **The frame states a height; the surface fills it.** Never `height: auto` on a
-  box whose content is sized *from* the box — that is a definition in a circle,
-  and it resolves to a ten-pixel strip.
-- **The drawing surface carries no padding.** The library asks the element how
-  wide it is, and the browser's answer **counts the padding in** — so a surface
-  with 12 px of padding draws itself 24 px wider than the frame it sits in, and
-  spills out. The frame pads; the surface does not.
-- **Nothing here scrolls the page sideways.** Whatever cannot shrink scrolls
-  inside its own box.
-
-### 11.6 The module links it, and the mount waits for it
-
-**The module links the sheet, not the page**, at mount, once. No template names
-the file, so no page can forget it — the failure mode being an unstyled chart,
-with no error, far from its cause, found only by someone looking at the screen.
-The drawing library arrives the same way and for the same reason (§ 4), so a host
-provides one thing only: an element.
-
-**And `mount` waits for it to load**, because the sealed layer reads the palette
-out of it (§ 8.4) and a `<link>` loads asynchronously. Appending and carrying on
-gives the first mount fallback colours, invisibly, for exactly as long as the two
-agree — the same trap VibrationView documents, and the same fix. `mount` is
-asynchronous already (§ 7), so waiting costs a caller nothing.
-
----
+The sheet stays a real `.css` file rather than a string inside JavaScript, so the
+repository's existing CSS audits can read it.
 
 ## 12. How the tests are designed
 
@@ -996,21 +864,17 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.3 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
 | § 8.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
 | § 8.4 — a click comes up as a position | the seal reports where the click landed on the frequency axis and nothing more; a click in empty space beside a peak still reaches the handle |
-| § 8.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the module's own tokens (§ 11.1) — never from a page variable, never from a literal in the module |
+| § 8.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the module's own values (§ 11) — never from a page variable, never from a literal in the module |
 | § 9 — the envelope is the sum | the curve at a mode's frequency equals that mode's activity plus the tails of the others, computed independently of the implementation |
 | § 9 — the sum follows the picture | with strengths known, a mode without one adds nothing; with none known anywhere, every mode adds a peak of height one |
 | § 9 — a peak is smooth at every width | at any broadening, the narrowest peak drawn carries at least eight samples across its full width |
 | § 9 — the curve ends rather than being cut off | at any broadening, the envelope at both ends of the grid is below 1% of the tallest peak |
 | § 11 — one namespace | every class the module writes begins `spectrumchart-`, and no rule in the sheet selects anything else |
-| § 11.1 — nothing is inherited across the line | with every page stylesheet removed, the chart's tokens still resolve and the colours handed to the library are unchanged |
-| § 11.1 — the theme is followed, not copied | the sheet redefines its own tokens under the theme condition, and no page variable is named anywhere in the module |
-| § 11.2 — the selectors stay flat | the sheet contains no ID selector, no element selector and no `:nth-child()`, and nests at most one level |
-| § 11.2 — the sheet stays short | it styles the frame and the surface and nothing else: no rule names a part this contract does not describe |
-| § 11.3 — no magic numbers | every value in a rule is a `var()` or one of `0` · `100%` · `1fr` · `auto`: no colour, length, duration or font size appears as a literal outside the root block |
-| § 11.4 — nothing is patched | the sheet contains no `!important` and no negative margin, and no rule in it depends on the order sheets were linked |
-| § 11.5 — the chart responds to its own box | no rule in the sheet is keyed to the window's size, and a box that changes size while the window does not causes a redraw at the new size |
-| § 11.5 — the box traps | the frame declares a height and never `auto`; the drawing surface carries no padding; nothing in the module makes the page scroll sideways |
-| § 11.6 — the mount waits for the sheet | the first chart on a cold page draws with the token palette, not with fallback colours |
+| § 11 — the sheet inherits nothing from the page | with every page stylesheet removed, the chart's own values still resolve and the colours handed to the library are unchanged; no page variable is named anywhere in the module |
+| § 11 — the sheet stays this module's | every class it writes begins `spectrumchart-`, it styles the frame and the surface and nothing else, and its values are declared in one block rather than written into rules |
+| § 11 — the box traps | the frame declares a height and never `auto`; the drawing surface carries no padding; nothing in the module makes the page scroll sideways |
+| § 11 — the chart responds to its own box | no rule in the sheet is keyed to the window's size, and a box that changes size while the window does not causes a redraw at the new size |
+| § 11 — the mount waits for the sheet | the first chart on a cold page draws with its own colours, not with fallbacks |
 
 ---
 
@@ -1038,7 +902,7 @@ before anyone sizes the work from the line counts below:
 | the grid stated as accuracy: eight samples a peak, ends below 1% | § 9 |
 | the selection recorded rather than refused | § 8.3 |
 | a refused list emptying the chart | § 6.1 |
-| the module fetching its own library and sheet | § 4, § 11.6 |
+| the module fetching its own library and sheet | § 4, § 11 |
 
 **What comes out of the tab.** `renderSpectrumChart` (242 lines),
 `_lorentzianEnvelope` (37), `chartTheme` (22), `_watchChartWidth` (16),
