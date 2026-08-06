@@ -49,6 +49,7 @@ reads that document, not this one.**
 | what a stage is; the effective config; where a promoted field lands; `stages.json` and its preflight | [`engines/stages.md`](?doc=engines/stages.md) | the model, the file, the merge, the three destinations |
 | the run id, its normalisation, the folder name, the engine's identity group | [`execution/run-identity.md`](?doc=execution/run-identity.md) | what decides whether a calculation continues |
 | the run directory, filenames, the stage suffix, reserved script blocks, warm files, the project tree, the artifact registry | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) | the on-disk shapes — **unchanged by this work** |
+| what a checkpoint history must always hold: the separations, the immutabilities, the atomicity rules | [`execution/checkpointing.md`](?doc=execution/checkpointing.md) | the invariants to review backend behaviour against |
 | environments, activation, wrappers, `molbuilder.json`, watching a run, checkpoints | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) | how a run actually happens — **unchanged by this work** (§ 4) |
 | what *values* a stage should carry | [`engines/tuning.md`](?doc=engines/tuning.md) | the science of the dial |
 | findings: their shape, their one renderer, what blocks | [`science/validation.md`](?doc=science/validation.md) | delivery — a stage label travels beside `where`, never inside it |
@@ -415,10 +416,17 @@ is agreeing them and answering § 9.
     (`running-a-job.md § 6.2`: it is deliberately git-agnostic), so the finish is
     observed where the run is already watched.
 11. **The archive globs reach into the subdirectories**
-    (`engines/stages.md § 7.4`). *Done when:* a `<stage>/<id>.DM` is archived by
-    content rather than committed as a git blob — with the code, a test pinning
-    it, and `job-contracts.md` updated in the same commit, which its `§ 7`
-    requires.
+    (`engines/stages.md § 7.4`, `checkpointing.md § 5` P2). *Done when:* a
+    `<stage>/<id>.DM` is archived by content rather than committed as a git blob —
+    with the code, a test pinning it, and `job-contracts.md` updated in the same
+    commit, which its `§ 7` requires.
+12. **The checkpoint invariants become tests**
+    ([`checkpointing.md`](?doc=execution/checkpointing.md) § 6). *Done when:* each
+    of the sixteen has an assertion, and the two most valuable run over a real
+    produced folder rather than a fixture — **I2** (every MANIFEST entry matches
+    its file by name, size and sha256) and **S1** (tracked XOR archived, never
+    both, never neither), because those two are what a silent corruption and a
+    multi-gigabyte git blob respectively look like before anyone notices.
 
 **Step 3 — the surface.** The description model first (pure, tested), then the
 matrix view, then the subtabs.

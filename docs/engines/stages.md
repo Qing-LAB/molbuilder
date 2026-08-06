@@ -657,8 +657,10 @@ half of the naming question growth decides: it has to key on the name.
 
 ### 7.4 What the layout costs the checkpoint system
 
-The history in § 7.3 is `molbuilder snapshot`, which was designed against a
-**flat** run directory. Three things follow from pointing it at a tree, and each
+The history in § 7.3 is `molbuilder snapshot`, whose invariants —
+what must never change, and what must stay separate from what — are
+[`execution/checkpointing.md`](?doc=execution/checkpointing.md). It was designed
+against a **flat** run directory. Three things follow from pointing it at a tree, and each
 is a change to the checkpoint side rather than a compromise on this one.
 
 **The repository sits at the parent, not in each subdirectory.**
@@ -728,6 +730,10 @@ which is what happened.
   > name the stage that ran *first*. A folder of stages makes that the normal case
   > rather than an edge one, so the tie-break needs an answer that knows about
   > stages — most likely the last enabled one, which is the production stage.
+- **What a checkpoint history must always hold** —
+  [`execution/checkpointing.md`](?doc=execution/checkpointing.md). This contract
+  says *when* a checkpoint is taken and *what it is called*; that one says what
+  must be true of it afterwards, in a form a test can assert.
 - **Phasing, status, and what is built when** —
   [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).
