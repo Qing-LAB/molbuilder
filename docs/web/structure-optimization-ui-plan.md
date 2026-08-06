@@ -96,7 +96,7 @@ Every SIESTA field carries a `workflow_group`, and there are exactly three:
 |---|--:|---|---|
 | `profile` | 20 | the system and its physics | once per molecule |
 | `budget` | 9 | cores, memory, wall time, SCF ceiling | once per machine |
-| `stage` | 9 | convergence targets — mesh, tolerances, force, displacement | **once per step** |
+| `stage` | 9 | convergence targets — mesh, k-grid, DM tolerances, energy shift, force, displacement | **once per step** |
 
 That is not a UI invention: it is the grouping the config already carries, and
 it is what the stage preset already writes to. **The ladder's shape is in the
@@ -274,10 +274,11 @@ Three rules keep it honest:
 2. **`base` holds a value for every field, always**, including the promoted ones.
    A one-stage plan is then just `base`, which is what makes § 3.1 true: one
    script is a job set of one.
-3. **The default `varies` is a proposal, not a law.** It starts as the nine
-   fields the schema already tags `workflow_group: "stage"` — the ones the
-   preset writes to — because that is the useful default, not because it is
-   special.
+3. **The default `varies` is a proposal, not a law.** It starts as the fields
+   the schema already tags `workflow_group: "stage"` — the ones the preset writes
+   to — because that is the useful default, not because it is special. Two of
+   them today also exist on the stage type itself, which the architecture's
+   § 4.2 resolves by moving them here rather than keeping both.
 
 ### 7.3 The operations, and what each one must not lose
 

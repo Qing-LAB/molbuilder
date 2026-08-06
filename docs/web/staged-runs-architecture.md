@@ -58,7 +58,7 @@ flowchart LR
 
 ---
 
-## 3. What the model can express today — and the two gaps
+## 3. What the model can express today — three gaps and a duplication
 
 A stage is a typed object with **eight** settable fields:
 
@@ -68,8 +68,12 @@ name · enabled · relax_type · relax_steps · relax_force_tol
 ```
 
 Everything else in a stage's `.fdf` comes from the one shared config. That
-yields three gaps, and they are the reason this is a backend job before it is a
-UI job.
+yields three gaps and one duplication, and they are the reason this is a backend
+job before it is a UI job.
+
+**Gap 0 — two fields already vary in two places.** `relax_force_tol` and
+`relax_max_displ` sit on the shared config *and* on the stage spec (§ 4.2). Not a
+gap in what can be said, but in what can be said *once*.
 
 **Gap 1 — most parameters cannot vary at all.** The mesh cutoff, the energy
 shift and the DM tolerances live on the shared config, so every stage of a
@@ -91,7 +95,7 @@ has nowhere to live.
 
 ---
 
-## 4. What a stage gains: overrides, and an intent
+## 4. What a stage gains — and what it gives up
 
 > **Behaviour stays typed. Values become open.**
 >
@@ -136,6 +140,39 @@ The schema already knows which is which: a field carries an `engine_key` when it
 is a line in the deck, and a `workflow_group` that says whose decision it is. So
 the routing is derivable and must not be a second list someone maintains by
 hand.
+
+### 4.2 The spec shrinks, because two fields already live in two places
+
+Reading both ends of the model turned up a duplication that predates this plan:
+
+| Field | On the shared config | On `SiestaStageSpec` |
+|---|:--:|:--:|
+| `relax_force_tol` | **yes** — tagged `workflow_group: "stage"` | **yes** |
+| `relax_max_displ` | **yes** — same tag | **yes** |
+
+Two homes for one fact, and the tab's preset writes the *shared* one — so
+"Stage 2 — Medium" edits a value that a real ladder may never read, because each
+stage carries its own. Which of the two wins today is a question for step 2, and
+the answer does not change what should happen next.
+
+**`overrides` makes the duplication unnecessary, so the spec gets smaller rather
+than larger.** Applying § 4's own rule — typed *only* where the field changes
+what the chain does — leaves:
+
+| Stays typed | Why it must |
+|---|---|
+| `name`, `enabled` | the stage's identity and whether it exists at all |
+| `relax_type` | decides whether `.CG` may carry forward to the next stage |
+| `on_nonconvergence` | becomes the scheduler edge |
+| `starts_from` | derives the bound parameters *and* the carry list (§ 6.2) |
+
+and moves `relax_steps`, `relax_force_tol` and `relax_max_displ` into
+`overrides`, where they are ordinary promoted fields exactly like `mesh_cutoff`.
+The shared config keeps one value for each, which is what a single run uses and
+what a ladder starts from.
+
+So the net change to the type is **+2 fields, −3** — and one class of silent
+disagreement disappears with them.
 
 ---
 
@@ -772,25 +809,29 @@ to do at all:
    `job-contracts.md § 2.5` says where a bundle lives, and it is not a sentence
    this plan wrote.
 
-1. The **plan format and its reader** (§ 5), including the refusal of a key the
+1. **Settle which of the duplicated fields wins today** (§ 4.2) before anything
+   is moved. *Done when:* a test says what a ladder renders when the shared
+   `relax_force_tol` and a stage's disagree — because that answer is the
+   behaviour anyone relying on it has already built on.
+2. The **plan format and its reader** (§ 5), including the refusal of a key the
    schema does not know. *Done when:* a plan round-trips — read, rendered,
    re-read — and a plan naming a dead field fails with that field's name.
-2. `overrides` on the stage spec, and the merge that produces an effective
+3. `overrides` on the stage spec, and the merge that produces an effective
    config. *Done when:* a stage with `{mesh_cutoff: 300}` renders a `.fdf`
    carrying 300 while the shared config still says 150, and a stage with no
    overrides renders exactly what it renders today.
-3. **The engine group, derived from intent.** A stage says continue-or-clean;
+4. **The engine group, derived from intent.** A stage says continue-or-clean;
    the producer emits the engine's bound parameters *and* the carry entries from
    that one fact. *Done when:* a two-stage ladder whose second stage continues
    produces both the `UseSave*` settings and the carry list, and a stage set to
    start clean produces neither — asserted together, since the failure mode is
    that they disagree.
-4. Override routing for `budget` fields into job resources. *Done when:* a
+5. Override routing for `budget` fields into job resources. *Done when:* a
    two-stage plan asking for 8 ranks then 16 produces a JobSet whose two jobs
    differ in resources, with the `.fdf`s unchanged.
-5. Per-stage validation with the stage coordinate. *Done when:* a plan whose
+6. Per-stage validation with the stage coordinate. *Done when:* a plan whose
    stage 1 is under-converged reports against stage 1 alone.
-6. The bundle route. *Done when:* a plan posted to it writes the same bytes the
+7. The bundle route. *Done when:* a plan posted to it writes the same bytes the
    CLI writes for the same ladder — compared file by file, because "the web is
    additive on top of the CLI" is only true if the output is identical.
 
