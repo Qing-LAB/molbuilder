@@ -290,14 +290,16 @@ right thing, and this is the trap:
 > longer bear the name the engine looks for. Yet resuming *through* an edit is
 > the whole point of a ladder.
 
-So the id is built the other way round: **the user's words first, the pin
-second.**
+So the pin is not a hash of the plan, nor of the structure. It is a hash of
+**the ordered species — which atoms these coordinates are of** (§ 6.1), and the
+id is built the readable way round: **the user's words first,
+the pin second.**
 
 ```
    run.id  =  bdt_au_relax _ a41f9c
               └─────┬─────┘   └─┬──┘
-                    │           a fingerprint of what makes prior state
-                    │           valid to inherit (§ 6.1)
+                    │           a fingerprint of WHICH ATOMS these coordinates
+                    │           are of — the ordered species, nothing more (§ 6.1)
                     what the user called this experiment — readable,
                     greppable, theirs
 ```
@@ -323,27 +325,35 @@ user's words are normalised into that set — lowercased, spaces and punctuation
 to underscores, trimmed to a sane length — and the fingerprint appended. What a
 user types is never used raw, and the id in the file is what the engine sees.
 
-### 6.1 What the identity is tied to — and why that is a physics question
+### 6.1 What the identity is tied to — as little as possible
 
-The label keys the warm files, so the rule cannot be a naming convention. It has
-to be: **the label binds everything that makes prior state valid to inherit, and
-nothing that merely says how hard to push.**
+It is easy to overstate this, and overstating it is not a safe error: every
+extra thing in the pin is a case where a user tunes something reasonable and
+loses a geometry they should have kept.
 
-| Tier | Fields | In the label? | Because |
-|---|---|:--:|---|
-| **the system** | atoms, cell, species → pseudopotentials | **yes** | a `.XV` from different atoms is not a starting geometry, it is nonsense |
-| **the electronic description** | basis (PAO size/shift), spin polarisation, XC functional | **yes** | a `.DM` is written in the basis; a different basis or spin is a different *shape*, and a different functional is different physics wearing the same shape |
-| **the tightening** | mesh cutoff, DM and energy tolerances, force tol, max displacement, steps, relaxation algorithm | no | these are exactly what a ladder varies. A denser grid re-integrates from the same density matrix; a tighter tolerance resumes from the geometry already reached. Putting these in the identity would make every stage a cold start, which is the opposite of a ladder |
-| **the machine** | ranks, threads, wall time, GPU | no | how fast it runs says nothing about whether the answer may be continued |
+Start from what a run *produces*. **The result is a set of coordinates.** So:
 
-Change the tolerance, the mesh or the number of ranks and the label holds — the
-next stage resumes, which is what a ladder is. Change an atom, the basis, the
-spin or the functional and the label changes with it, so the engine looks for
-warm files under a name that does not exist and **starts cold because it should**.
+> **Coordinates cannot be in the identity.** They are the output. Bind them in
+> and the pin changes every time a stage succeeds — regenerate a plan from the
+> relaxed structure and it would orphan the very state it exists to continue
+> from. The identity would break precisely when the calculation worked.
 
-The correctness property comes out of that for free: *it is no longer possible
-to silently warm-start a calculation from state that belongs to a different
-one.* Today that depends on a user typing a different name, and nothing checks.
+What is left is what those coordinates are *of*:
+
+| Considered | In the pin? | Why |
+|---|:--:|---|
+| the ordered species — how many atoms, of which elements, in what order | **yes** | a `.XV` is a list of positions read *in that order*. Same count, different elements or a different order, and every coordinate lands on the wrong atom, silently |
+| the positions | no | the output (above) |
+| the cell | undecided (§ 10) | a `.XV` carries the cell too, so a changed cell is overridden on restart rather than mismatched — a different failure, and possibly not one the id should be solving |
+| basis, spin, XC | no | the geometry stays valid across all of them, and tuning the electronics while continuing is ordinary practice. A `.DM` of the wrong shape is caught by the engine — a failure it already reports, traded for one it cannot |
+| mesh, tolerances, force, steps, algorithm | no | exactly what a ladder varies |
+| ranks, threads, GPU | no | how fast it ran says nothing about whether the answer may be continued |
+
+So the pin covers one thing: **which atoms these coordinates belong to.** That is
+the smallest claim that closes a failure nothing else catches — same atom count,
+wrong elements, coordinates loaded without complaint into a calculation they do
+not belong to. A differing atom *count* the engine already refuses; a differing
+*element order* it cannot see.
 
 ### 6.2 The id is on screen, and its changes are visible
 
@@ -353,16 +363,16 @@ decides whether their run resumes. So the tab shows both, always:
 ```
    ┌────────────────────────────────────────────────────────────┐
    │  Job ID   bdt_au_relax_a41f9c                              │
-   │           the pin changes if you edit the structure, the    │
-   │           basis, the spin or the functional — and then a    │
-   │           run starts cold, because it is a different one    │
+   │           the pin says which atoms this is. It survives a    │
+   │           relaxation and every tuning; it changes only if    │
+   │           you load a different molecule                      │
    └────────────────────────────────────────────────────────────┘
 ```
 
 Two behaviours that make it worth showing rather than merely correct:
 
-- **When an identity-bearing field is edited, the pin visibly changes**, at the
-  moment of the edit. That is the UI saying *this has become a different
+- **When a different molecule is loaded, the pin visibly changes**, at that
+  moment. That is the UI saying *this has become a different
   calculation and it will start cold* — before a bundle is written, not after a
   run behaves oddly.
 - **When a run directory already holds warm files**, the tab can say whether
@@ -469,15 +479,11 @@ user needs.
    otherwise impossible to ask for.
 3. **How long is the pin?** Four hex characters read easily and collide once in
    65,000; six is safer and uglier. It only has to be unique within a directory.
-4. **Does the XC functional belong in the identity (§ 6.1)?** A `.DM` from
-   another functional is the right *shape* and the wrong *physics* — usable as a
-   guess, wrong as a continuation. Included here on the grounds that continuing a
-   relaxation across a functional change silently is a scientific error, but this
-   is a call for someone who does it.
-5. **What exactly is hashed for the system tier** — coordinates to full
-   precision, or a rounded form? Full precision means a geometry nudged by
-   10⁻⁶ Å is a different calculation, which is right in principle and may be
-   maddening in practice.
+4. **Does the cell belong in the pin?** A `.XV` carries the cell as well as the
+   positions, so a changed cell is *overridden* on restart rather than
+   mismatched. That is a real surprise — you asked for more vacuum and the
+   restart quietly kept the old box — but it may be the wrapper's to report
+   rather than the id's to prevent.
 6. **Is a plan editable by hand?** It is JSON beside a bundle, so it will be. If
    yes, the reader owes the same errors to a person as to the browser — which is
    an argument for the refusal rule in § 5.1 being loud rather than tolerant.
