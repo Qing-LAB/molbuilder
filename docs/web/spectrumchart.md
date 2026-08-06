@@ -410,16 +410,24 @@ pointer moves**, which is the band shown without drawing it: slide across a
 crowded region and the answer changes under you, and what you see is what you
 would get.
 
-Two rules keep it honest and cheap:
+**And a line of words says what you are near, at every position.** The highlight
+answers *what would a click take*, which has no answer in a wide gap; the words
+answer *what am I near*, which has one everywhere. So the readout names the
+nearest mode — its number, its frequency, its strength if there is one — whether
+or not a click there would take it, and it is drawn in the plot rather than
+beside it (§ 6.2).
+
+Three rules keep it honest and cheap:
 
 - **What you picked outranks what you are pointing at.** A chosen mode keeps its
   colour under the pointer, or a selection would appear to flicker away while you
   reach for something else.
-- **Nothing is redrawn until the answer changes**, and then only the colours
-  (§ 5.1). A pointer crossing the plot reports hundreds of times a second;
-  sliding along inside one band costs nothing, and hovering the mode that is
-  already chosen costs nothing either, because the picture would come out the
-  same.
+- **Nothing is redrawn until the answer changes**, and then only the part of it
+  that did (§ 5.1). A pointer crossing the plot reports hundreds of times a
+  second: sliding inside one band changes neither the colours nor the words and
+  costs nothing at all; crossing into a gap changes the words alone, and the
+  colours are not repainted to say so; pointing at the mode already chosen
+  changes the words alone as well, because chosen outranks hovered.
 
 ### 6.4 An imaginary mode is drawn, marked, and left out of the curve
 
@@ -649,7 +657,9 @@ tested and cannot be relied on.
 
 ```
 draw(picture)                   put this picture on the surface
-recolour(marks)                 change the colours already drawn — no rebuild
+recolour(marks, words)          change the colours already drawn, and the line
+                                naming what the pointer is near — either may be
+                                left out when it did not move; no rebuild
 resize()                        the box changed; fill it
 onClick(cb)                     the user clicked: hand up where it landed on
                                 the frequency axis, and what a pixel is worth there
@@ -668,6 +678,7 @@ picture = {
     curve:  { x: [...], y: [...] } | null,       // null when there is no curve
     xTitle, yTitle, xUnit,                        // the words on the axes
     note,                                         // one line inside the plot, or nothing
+    readout,                                      // the mode nearest the pointer
 }
 ```
 
@@ -928,7 +939,9 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.3 — the nearest band wins | where bands overlap, a click reports the mode whose frequency is closest to it |
 | § 6.3 — the band bends, never the picture | where the floor overrides, the envelope drawn is still the envelope for the width that was set |
 | § 6.3.1 — the pointer shows what a click would take | moving over a band recolours that mode, and only it |
-| § 6.3.1 — pointing costs nothing until the answer changes | sliding inside one band, and hovering the mode already chosen, each make no call at all |
+| § 6.3.1 — and says what it is near, everywhere | at any position, including a gap where a click would take nothing, the words name the nearest mode |
+| § 6.3.1 — the words are drawn in the plot | the module's markup is still a frame and a surface: no text node is added beside the chart |
+| § 6.3.1 — pointing costs only what changed | sliding inside one band makes no call at all; a move that changes the words alone does not repaint a colour |
 | § 6.3.1 — what you picked does not flicker | a chosen mode keeps its colour under the pointer |
 | § 8.4 — a drag is not a pick | a press and a release far apart report nothing; a click a pixel or two from the press still reports |
 | § 8.4 — the toolbar is not the picture | a click whose target is inside the library's toolbar reports nothing, wherever it sits |

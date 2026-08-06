@@ -80,6 +80,8 @@ export async function mount(host, options = {}) {
     let broadening = 0;
     let bands = [];                  // half-widths, one per mode, from the maths
     let painted = [];                // the states last handed down, to skip repeats
+    let readout = "";                // the line naming the mode nearest the pointer
+    let shown = "";                  // ... and the one the chart is already showing
     let disposed = false;
 
     /* Which picture the data puts us in (§ 6.2), decided here and never set. */
@@ -112,6 +114,7 @@ export async function mount(host, options = {}) {
                 state: modes.map((m) => stateOf(m, known)),
             },
             curve: envelope(modes, broadening),
+            readout,
             xTitle: "frequency (cm⁻¹)",
             xUnit: "cm⁻¹",
             yTitle: known ? "Raman activity (Å⁴/amu)" : "modes",
@@ -128,17 +131,23 @@ export async function mount(host, options = {}) {
         surface.draw(picture);
     };
 
-    /** § 5.1 — the cheap door: the same picture, with only its colours changed.
+    /** § 5.1 — the cheap door: the same picture, with only its colours and its
+     * readout changed.
      *
-     * And nothing at all when the colours would come out the same. Hovering the
-     * mode that is already chosen is the everyday case: the answer changes, the
+     * And nothing at all when neither would come out different. Hovering the mode
+     * that is already chosen is the everyday case: the answer changes, the
      * picture does not, and the cheapest call is the one not made. */
     const recolour = () => {
         const known = strengthsKnown();
         const states = modes.map((m) => stateOf(m, known));
-        if (states.length === painted.length && states.every((s, i) => s === painted[i])) return;
+        const same = states.length === painted.length && states.every((s, i) => s === painted[i]);
+        if (same && readout === shown) return;      // nothing on screen would differ
         painted = states;
-        surface.recolour(states);
+        shown = readout;
+        // `null` for the colours means "unchanged": moving the pointer inside one
+        // band changes the words alone, and repainting the same colours to say so
+        // would be work with nothing to show for it.
+        surface.recolour(same ? null : states, readout);
     };
 
     /** A position becomes a mode here, never below (§ 8.4).
@@ -160,6 +169,30 @@ export async function mount(host, options = {}) {
         return found;
     };
 
+    /** The mode nearest a position, whether or not a click there would take it.
+     *
+     * The readout answers "what am I near", which is a question with an answer
+     * everywhere on the plot; the highlight answers "what would a click take",
+     * which has none in a wide gap. Two questions, so two lookups. */
+    const nearestTo = (x) => {
+        let found = null;
+        let closest = Infinity;
+        for (const mode of modes) {
+            const away = Math.abs(x - mode.freq);
+            if (away < closest) { closest = away; found = mode; }
+        }
+        return found;
+    };
+
+    const readoutFor = (at) => {
+        if (at === null) return "";
+        const near = nearestTo(at.x);
+        if (!near) return "";
+        const strength = isFiniteNumber(near.activity)
+            ? `  ·  ${near.activity.toFixed(2)} Å⁴/amu` : "";
+        return `mode ${near.index}  ·  ${near.freq.toFixed(1)} cm⁻¹${strength}`;
+    };
+
     /* A band is invisible, so the mode a click would pick is a guess until the
      * chart says so: the one under the pointer lights up as you move.
      *
@@ -168,10 +201,9 @@ export async function mount(host, options = {}) {
      * cheap door). Sliding along inside one band costs nothing at all. */
     surface.onHover((at) => {
         if (disposed) return;
-        const next = at === null ? null : modeAt(at);
-        if (next === hovered) return;
-        hovered = next;
-        recolour();
+        hovered = at === null ? null : modeAt(at);
+        readout = readoutFor(at);
+        recolour();          // does nothing if neither the colours nor the words moved
     });
 
     surface.onClick((at) => {

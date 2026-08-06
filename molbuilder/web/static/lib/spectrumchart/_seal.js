@@ -118,6 +118,21 @@ export async function openSurface(host) {
 
     const palette = paletteOf(win, frame);
 
+    /* Everything the user reads is drawn IN the plot (§ 6.2): the pending note on
+     * the left, the pointer's readout on the right. Neither is a text node beside
+     * the chart, which is what keeps a chart one drawing surface. */
+    const annotationsFor = (note, readout) => {
+        const at = (text, x, anchor, colour) => ({
+            text, showarrow: false,
+            xref: "paper", yref: "paper", x, y: 1.04,
+            xanchor: anchor, font: { color: colour, size: 11 },
+        });
+        const out = [];
+        if (note) out.push(at(note, 0, "left", palette.pending));
+        out.push(at(readout || "", 1, "right", palette.ink));   // always present, may be empty
+        return out;
+    };
+
     const layoutFor = (picture) => ({
         paper_bgcolor: palette.bg,
         plot_bgcolor: palette.bg,
@@ -136,14 +151,7 @@ export async function openSurface(host) {
             zeroline: false,
             rangemode: "tozero",
         },
-        annotations: picture.note
-            ? [{
-                text: picture.note,
-                showarrow: false,
-                xref: "paper", yref: "paper", x: 0, y: 1.04,
-                xanchor: "left", font: { color: palette.pending, size: 11 },
-            }]
-            : [],
+        annotations: annotationsFor(picture.note, picture.readout),
     });
 
     const tracesFor = (picture) => {
@@ -198,6 +206,8 @@ export async function openSurface(host) {
     // Which trace the sticks are in depends on whether a curve is drawn, and
     // `recolour` has to reach the same one `draw` built.
     let stickTraceIndex = 0;
+    let lastReadout = null;
+    let readoutIndex = 0;   // where the readout sits: after the note, when there is one
     let disposed = false;
     let clicked = null;   // the handle's callback
 
@@ -306,6 +316,8 @@ export async function openSurface(host) {
             if (disposed) return;
             const traces = tracesFor(picture);
             stickTraceIndex = picture.curve ? 1 : 0;   // after the curve, before the pending marks
+            readoutIndex = picture.note ? 1 : 0;
+            lastReadout = picture.readout || "";
             Plotly.react(surface, traces, layoutFor(picture), {
                 displaylogo: false,
                 responsive: false,
@@ -314,13 +326,21 @@ export async function openSurface(host) {
         },
 
         /** The cheap door: colours only, no rebuild, no axis change (§ 5.1). */
-        recolour(states) {
+        recolour(states, readout) {
             if (disposed) return;
-            Plotly.restyle(
+            if (states) Plotly.restyle(
                 surface,
                 { "marker.color": [states.map((s) => colourFor(s, palette))] },
                 [stickTraceIndex],
             );
+
+            /* The words move with the colours: both belong to the pointer, and
+             * both are cheap. Only the text of one annotation changes, so this
+             * is a touch of the layout rather than a rebuild of it. */
+            if (readout !== undefined && readout !== lastReadout) {
+                lastReadout = readout;
+                Plotly.relayout(surface, { [`annotations[${readoutIndex}].text`]: readout || "" });
+            }
         },
 
         resize() {

@@ -45,6 +45,7 @@ globalThis.Plotly = {
         el._fullLayout = { xaxis: { range: [0, 1000] } };   // 1 px == 1 cm-1
     },
     restyle(el, update, indices) { PLOTLY_CALLS.push({ call: "restyle", update, indices }); },
+    relayout(el, patch) { PLOTLY_CALLS.push({ call: "relayout", patch }); },
     purge() { PLOTLY_CALLS.push({ call: "purge" }); },
     Plots: { resize() { PLOTLY_CALLS.push({ call: "resize" }); } },
 };
@@ -434,8 +435,9 @@ def test_the_mode_a_click_would_pick_lights_up_under_the_pointer():
         "__calls.length = 0;\n__move(host, 505);\n"
         "console.log(JSON.stringify(__calls));"
     )
-    assert [c["call"] for c in calls] == ["restyle"]
+    assert [c["call"] for c in calls] == ["restyle", "relayout"]
     assert calls[0]["update"]["marker.color"] == [["#3333ff", "#cccc00", "#3333ff"]]
+    assert "mode 2" in list(calls[1]["patch"].values())[0]
 
 
 def test_sliding_along_inside_one_band_costs_nothing():
@@ -454,16 +456,84 @@ def test_leaving_the_plot_puts_the_indicator_out():
     got = drive(
         "chart.setModes(MODES);\nchart.setBroadening(20);\n__move(host, 500);\n"
         "__calls.length = 0;\n__leave(host);\n"
-        "console.log(JSON.stringify(__calls.map(c => c.update['marker.color'][0])));"
+        "console.log(JSON.stringify(__calls));"
     )
-    assert got == [["#3333ff", "#3333ff", "#3333ff"]]
+    colours = [c["update"]["marker.color"][0] for c in got if c["call"] == "restyle"]
+    assert colours == [["#3333ff", "#3333ff", "#3333ff"]]
+    assert readouts(got) == [""]
 
 
 def test_what_you_picked_does_not_flicker_away_under_the_pointer():
-    """Chosen outranks hovered."""
+    """Chosen outranks hovered — so pointing at the mode you already picked
+    changes the words and not one colour, and no colour is repainted to say so."""
     got = drive(
         "chart.setModes(MODES);\nchart.setBroadening(20);\nchart.setSelected(2);\n"
         "__calls.length = 0;\n__move(host, 500);\n"
-        "console.log(JSON.stringify(__calls.length));"
+        "console.log(JSON.stringify(__calls));"
     )
-    assert got == 0
+    assert [c["call"] for c in got] == ["relayout"]
+    assert "mode 2" in list(got[0]["patch"].values())[0]
+
+
+# --- the readout: what am I near, at every moment -----------------------------
+
+def readouts(calls):
+    """Every line of text the chart put on screen, in order."""
+    out = []
+    for c in calls:
+        if c["call"] == "react":
+            notes = c["layout"]["annotations"]
+            out.append(notes[-1]["text"] if notes else "")
+        elif c["call"] == "relayout":
+            out.extend(v for k, v in c["patch"].items() if "text" in k)
+    return out
+
+
+def test_the_mode_nearest_the_pointer_is_named_at_every_position():
+    """Naming what you are near answers a question that has an answer everywhere
+    on the plot, unlike "what would a click take"."""
+    got = readouts(drive(
+        "chart.setModes(MODES);\nchart.setBroadening(20);\n__calls.length = 0;\n"
+        "__move(host, 100);\n__move(host, 300);\n__move(host, 880);\n"
+        "console.log(JSON.stringify(__calls));"
+    ))
+    # Three moves, two lines: 300 is a gap where mode 1 is still the nearest, so
+    # the words do not change and nothing is redrawn to repeat them.
+    assert got == [
+        "mode 1  ·  100.0 cm⁻¹  ·  4.00 Å⁴/amu",
+        "mode 3  ·  900.0 cm⁻¹  ·  2.00 Å⁴/amu",
+    ]
+
+
+def test_a_gap_names_the_nearest_without_lighting_anything_up():
+    """The two questions have different answers there, and the chart shows both:
+    the words say what is near, the colours say what a click would take."""
+    calls = drive(
+        "chart.setModes(MODES);\nchart.setBroadening(20);\n__calls.length = 0;\n"
+        "__move(host, 300);\n"
+        "console.log(JSON.stringify(__calls));"
+    )
+    # Nothing lights up — a click at 300 would take nothing — so no colours are
+    # repainted at all, and the only thing that happens is the words.
+    assert [c["call"] for c in calls] == ["relayout"]
+    assert "mode 1" in readouts(calls)[0]
+
+
+def test_leaving_the_plot_takes_the_words_with_it():
+    got = readouts(drive(
+        "chart.setModes(MODES);\nchart.setBroadening(20);\n__move(host, 100);\n"
+        "__calls.length = 0;\n__leave(host);\n"
+        "console.log(JSON.stringify(__calls));"
+    ))
+    assert got == [""]
+
+
+def test_the_readout_is_drawn_in_the_plot_not_beside_it():
+    """§ 6.2 — the module's markup is a frame and a surface; every word the user
+    reads is drawn on the surface."""
+    got = drive(
+        "chart.setModes(MODES);\n__move(host, 100);\n"
+        "console.log(JSON.stringify({ frame: host.children.map(c => c.className),"
+        " inside: host.children[0].children.map(c => c.className) }));"
+    )
+    assert got == {"frame": ["spectrumchart"], "inside": ["spectrumchart-surface"]}
