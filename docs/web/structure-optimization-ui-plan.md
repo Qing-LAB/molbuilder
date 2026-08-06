@@ -32,6 +32,13 @@ That would be forgivable if the word meant one thing. It means three:
 So the control reads as *make me stage 2 of a sequence* and delivers *one file
 with different numbers in it*.
 
+**This design collapses the first two.** The dropdown becomes a preset that fills
+a row of the stage table, and a row is a real stage that produces its own deck —
+so choosing "tight" and getting `<id>_tight.fdf` is one act rather than two
+unrelated ones. The third (`fdf --stage N`) is a CLI overlay under its own
+naming convention and stays where it is; `staged-runs-architecture.md § 13`
+records that the two conventions do not yet agree.
+
 **"The UI is very jammed."** One card carries the run directory, the restart
 policy, the stage preset, ~38 schema fields in seven sections, the engine
 switch, four action buttons, an issues list and a script preview — all at once,
@@ -202,7 +209,12 @@ like a sequence with one step rather than a script with some settings.
 the `workflow_group` axis where they disagree — four tabs, not seven:
 *System* (system, spin, XC, basis) · *Convergence* (the stage-group fields, for
 the selected stage) · *Resources* (compute and budget) · *Output* (output and
-positioning, run directory, restart).
+positioning, and the project and topic the folder goes under).
+
+> **The run directory is no longer typed.** The user picks the project and the
+> topic; the last segment is the id, derived and shown
+> (`staged-runs-architecture.md § 6.3`). One name fewer to keep in step, and a
+> folder listing that identifies what is in it.
 
 **The stage table** is the description. One row by default, and that row is
 today's behaviour. A row names itself (coarse / medium / tight / a name you
@@ -218,7 +230,7 @@ which is what the dropdown always did, now attached to the thing it fills.
 what will exist when you press the button, in the terms the folder actually uses:
 
 ```
-You will get:  2 decks in projects/BDT-Au/optimization/bdt-relax/
+You will get:  2 decks in projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
                bdt_au_relax_c6h4s2au38_coarse.fdf
                bdt_au_relax_c6h4s2au38_tight.fdf
                sharing one basename, so tight continues from coarse
@@ -363,7 +375,7 @@ The page's job ends at correct decks in a folder. Running them is the user's,
 and the tab should say how without pretending to do it:
 
 ```
-Written to  projects/BDT-Au/optimization/bdt-relax/
+Written to  projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
 
 Run one:    bash bdt_au_relax_c6h4s2au38_coarse.run.sh
 Then:       bash bdt_au_relax_c6h4s2au38_tight.run.sh     ← continues from the first
@@ -378,9 +390,11 @@ a page that led with it would be describing a system the user did not ask for.
 
 ## 9. Open decisions
 
-1. **Does one stage still emit a bare `<id>.fdf`, or `<id>_<name>.fdf`?**
-   Recommended: bare, matching today, so nobody's current workflow moves — and
-   the suffix appears the moment a second stage does.
+1. ~~**Does one stage still emit a bare `<id>.fdf`?**~~ **Answered** by
+   `staged-runs-architecture.md § 5.2`: a description with no `stages` key is one
+   parameter set and writes `<id>.fdf`, unsuffixed — today's behaviour, reachable
+   without understanding stages at all. The suffix appears the moment a second
+   stage does.
 2. **Do the four subtabs remember which was open?** The tab already persists form
    values in `sessionStorage`; the open subtab is the same kind of fact.
 3. **Does PySCF get the same treatment now or later?** Its staged relaxation runs

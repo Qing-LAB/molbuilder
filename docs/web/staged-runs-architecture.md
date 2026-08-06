@@ -60,32 +60,36 @@ time*. That is the entire model, and it makes the object small:
 
 ### 2.1 Why nothing else belongs on it
 
-The stage type ships with **eight** settable fields, and it is tempting to
-answer "which of them stay?" case by case. One rule answers all of them:
+The stage type ships with **eight** settable fields. Two questions, asked in
+order, decide all of them — and it matters that they are two, because one alone
+gives the wrong answer for the last row:
 
-> **A stage types only what a single run cannot mean.**
+> **1. Does this describe the calculation, or something that runs it?**
+> Only the first belongs here at all.
+>
+> **2. Of what is left: can a single run mean it?**
+> If yes it is an ordinary field of the shared schema, which a stage may
+> override like any other. **A stage types only what a single run cannot mean.**
 
-Everything a single run *can* mean is an ordinary field of the shared schema,
-which a stage may override like any other. Applied:
+| Field today | Describes the calculation? | Can a single run mean it? | Lands |
+|---|:--:|:--:|---|
+| `name` | yes | no — a single run is named by its id | **typed** |
+| `enabled` | yes | no — there is nothing to enable | **typed** |
+| `relax_type` | yes | yes | an override |
+| `relax_steps` | yes | yes | an override |
+| `relax_force_tol` | yes | yes | an override |
+| `relax_max_displ` | yes | yes | an override |
+| `on_nonconvergence` | **no** — it is what a scheduler should do next | — | **leaves entirely** |
+| `continue_retries` | **no** — it is how the wrapper reruns | — | **not a stage field** |
 
-| Field today | Can a single run mean it? | Lands |
-|---|:--:|---|
-| `name` | no — a single run is named by its id | **typed** |
-| `enabled` | no — there is nothing to enable | **typed** |
-| `relax_type` | yes | an override |
-| `relax_steps` | yes | an override |
-| `relax_force_tol` | yes | an override |
-| `relax_max_displ` | yes | an override |
-| `on_nonconvergence` | no — but see below | **leaves entirely** |
-| `continue_retries` | yes — `running-a-job.md § 3.5`: a single SIESTA run retries | **not a stage field** |
+The last two rows are worth reading twice.
 
-Two of those rows are worth reading twice.
-
-**`on_nonconvergence` leaves.** It was typed because it *becomes the scheduler
-edge* — `proceed → afterany`, `halt → afterok`
-(`job-system.md § 4.1`). There is no edge here, because there is no chain. The
-setting is real and keeps its home in `job-system.md`, where a JobSet is
-produced; it is not part of describing a calculation. § 11 is where it applies.
+**`on_nonconvergence` leaves** — and note it fails the *first* question, not the
+second. It was typed because it *becomes the scheduler edge* — `proceed →
+afterany`, `halt → afterok` (`job-system.md § 4.1`). There is no edge here,
+because there is no chain, and a setting whose only effect is on a scheduler is
+not part of describing a calculation. The setting is real and keeps its home in
+`job-system.md`; § 11 is where it applies.
 
 **`continue_retries` was never a stage field.** `running-a-job.md § 3.5` is
 explicit: a *single* SIESTA run whose wrapper was installed with a retry budget
@@ -94,9 +98,16 @@ is exactly why `job-system.md § 4.1` has to record that the SIESTA ladder does
 not implement it — the field is on the stage, and the stage is not what honours
 it. It moves to the wrapper layer, where it already works.
 
-So: **eight fields become two, plus the overlay.** The "which side of the line
-is this field on" question — a whole section of the previous draft — stops
-existing, because the line is now derivable rather than argued.
+So: **eight fields become two typed ones, plus the overlay.** The "which side of
+the line is this field on" question — a whole section of the previous draft —
+stops existing, because the line is derivable rather than argued.
+
+**One field arrives rather than leaves.** Whether a stage continues from what is
+already in the folder or starts clean has to be sayable, and by question 2 it is
+*not* a stage field: a single run can mean it too. So `restart`
+(`continue` | `clean`) joins the **shared schema**, a stage overrides it like
+anything else, and § 6.2 is where the generator turns that one word into every
+parameter the engine binds to it.
 
 ### 2.2 The stage does not survive generation
 
@@ -169,6 +180,11 @@ and what was written cannot come apart.
 Only the first is new. The second is a merge of a shipped dataclass; the third
 is what molbuilder already writes. The whole design is a bet that a description
 can produce the decks without changing what a deck means.
+
+**A fourth thing lands in the folder and is not a new object**: the run wrapper,
+one per deck, built by the shipped builder (`job-contracts.md § 2.6`). It is
+named here because a folder of decks with no wrappers is not something a user can
+run, and § 12.2's done-test says so.
 
 ```mermaid
 flowchart LR
@@ -271,10 +287,10 @@ it produced, it becomes the record of what was meant:
   "structure": { "source": "projects/BDT-Au/structure/bdt_au.xyz",
                  "formula": "C6H4S2Au38", "atoms": 46 },
 
-  // Every schema field, one value. A one-stage description is just this.
+  // Every schema field, one value. A one-stage description stops here (§ 5.2).
   "base": { "mesh_cutoff": 150, "relax_type": "CG", "restart": "clean", … },
 
-  // WHICH fields the user chose to tune. Intent — it cannot be inferred (§ 5.3).
+  // WHICH fields the user chose to tune. Intent — it cannot be inferred (§ 5.4).
   "varies": ["mesh_cutoff", "relax_force_tol", "relax_type", "restart"],
 
   "stages": [
@@ -293,8 +309,8 @@ it produced, it becomes the record of what was meant:
 
 **It names fields; it never defines them.** Every key in `base` and in an
 `overrides` map must resolve to a field the **shared** schema already declares —
-and never to one of the stage type's own two fields, which is the ambiguity that
-would let one fact have two homes again. A key the schema does not know is
+and never to `name` or `enabled`, the stage's own two typed fields, which is the
+ambiguity that would let one fact have two homes again. A key the schema does not know is
 **refused, not ignored**: an ignored key is a calculation quietly different from
 the one that was asked for. This is what keeps the file from becoming a second
 schema, which is how the idea fails.
@@ -314,7 +330,22 @@ message rather than mis-parsing"*, which is the behaviour this file wants. So
 `stages.json` joins the registry table rather than inventing a `format` key and
 an argument for why it needs no version.
 
-### 5.2 What the preflight checks, before anything is rendered
+### 5.2 One stage is no stages
+
+**`stages` may be absent, and absent means one.** A description with no `stages`
+key is a calculation with a single parameter set — `base`, exactly — and it
+produces one deck named `<id>.fdf`, with no stage suffix, which is what the tab
+writes today. Nothing about stages has to be understood to read or write it.
+
+Three things follow, and they are the same fact seen three times: the deck takes
+no suffix (`job-contracts.md § 2.3`'s `<label>_<stagename>` applies when there
+*are* stage names), findings carry no `stage` (§ 9), and `varies` is empty or
+absent because there is nothing to vary across.
+
+A description *with* `stages` has at least one — dropping the last is refused,
+because a description of no calculation is not a smaller description.
+
+### 5.3 What the preflight checks, before anything is rendered
 
 In order, and all of it up front rather than halfway through writing a folder:
 
@@ -347,7 +378,7 @@ per-field rows below it do that work. Carrying each promoted field's type and
 range alongside would be a witness to three fields while claiming to watch
 thirty-eight.
 
-### 5.3 What writing it down buys
+### 5.4 What writing it down buys
 
 - **One producer for both surfaces.** The CLI and the browser stop being two
   paths to a staged calculation: the browser writes a description, and the same
@@ -366,7 +397,7 @@ thirty-eight.
 so any deck in a project traces back to it, and a hand-edited deck can be told
 apart from one this file would reproduce.
 
-### 5.4 What it is not
+### 5.5 What it is not
 
 It is not an engine input format: no engine reads it. It is not a replacement
 for `SiestaConfig` — that dataclass remains the definition of what a field *is*.
@@ -406,7 +437,7 @@ An id derived from the description fixes both, and one rule decides every case:
 > **The id is built from inputs, never from anything a run produced.**
 >
 > It must be knowable *before* the calculation exists — it names the folder and
-> the basename of every file in it. An id that depended on a result would change
+> the basename of every file in it (§ 6.3). An id that depended on a result would change
 > the moment a stage succeeded, orphaning the state it exists to continue from.
 > So: no coordinates, no energies, no convergence status, nothing read back off
 > a `.XV`.
@@ -520,6 +551,22 @@ folder: `<id>.XV`, `<id>.DM`, `<id>_tight.fdf`. A name with a space or a slash
 in it breaks a shell line, a glob or a scheduler argument. So what the user
 types is **never used raw**.
 
+**It also names the folder.** `job-contracts.md § 2.1` Rule 1 says a directory
+holds one job, so the innermost segment of the tree and the calculation are the
+same thing — and giving them the same name means there is no second name to keep
+in step, and a directory listing identifies what is in it:
+
+```mermaid
+flowchart LR
+    P["<b>project</b><br/>the user picks"] --> T["<b>topic</b><br/>the user picks, one of the nine"] --> I["<b>id</b><br/>derived — and shown<br/>before anything is written"]
+```
+
+That is a stricter rule than the tree needs (`job-contracts.md § 2.5` only
+requires
+`[A-Za-z0-9_-]+` per segment) and it is the point: a folder whose name is not
+the id is a folder whose contents cannot be identified from outside it. § 13
+records the alternative.
+
 **The allowed set is not a new decision.** `job-contracts.md § 2.1` Rule 2 fixes
 it: the basename is a single token matching `[A-Za-z0-9_-]+`, rejected at the
 form/CLI boundary by `molbuilder/projects.py::_NAME_PATTERN`, with the wrapper
@@ -550,13 +597,19 @@ check** case-insensitive.
 ### 6.4 The id is on screen, and its changes are visible
 
 An identity the user cannot see is one they cannot reason about, and this one
-decides whether their run continues. So the tab shows both, always:
+decides whether their run continues. So the tab shows it, always:
 
 ```mermaid
 flowchart LR
     L["<b>Job ID</b>"] --- V["<b>bdt_au_relax_c6h4s2au38</b>"]
     V --- H["It says which atoms this is.<br/>It survives a relaxation and every parameter you tune.<br/>It changes only if you load a different molecule."]
 ```
+
+**How the tab knows it**, given that § 8.1 forbids the browser from deciding an
+id's final form: the id shown is the one the **last check returned** (§ 8.3), and
+an edit that would change it — a different molecule, a different name — marks it
+*stale* until the next check clears it. The browser never normalises; it displays
+and invalidates. That keeps one normaliser in the system, which is rule 1 above.
 
 Two behaviours make it worth showing rather than merely correct:
 
@@ -601,15 +654,15 @@ Two consequences:
 ## 7. The folder — what "switch" and "continue" mean on disk
 
 Nothing here is new. `job-contracts.md § 2.1` and `job-contracts.md § 2.3`
-already describe
-exactly this shape, and reading them as the design rather than as background is
-most of the work:
+already describe exactly this shape, and reading them as the design rather than
+as background is most of the work:
 
 > **Rule 1 — one job per directory.** A directory may hold *several inputs* (one
 > per stage of a staged relaxation) plus the engine's outputs and restart files,
 > but never inputs for a **different** job.
 
-What one folder holds, for `id = bdt_au_relax_c6h4s2au38`:
+What one folder holds — `projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/`,
+where the last segment is the id itself (§ 6.3):
 
 | | Named | Fixed by |
 |---|---|---|
@@ -730,7 +783,7 @@ sequenceDiagram
     Note over B: the description is edited here, and only here
 
     B->>S: POST the description — dry_run: true
-    S->>S: preflight (§ 5.2) · n effective configs · validate each whole (§ 3.3)
+    S->>S: preflight (§ 5.3) · n effective configs · validate each whole (§ 3.3)
     S-->>B: findings, each naming its stage · the id · what would be written
 
     B->>S: POST the same body — dry_run: false
@@ -749,7 +802,7 @@ that checks clean to then fail to produce.
 {
   "ok": true,
   "id": "bdt_au_relax_c6h4s2au38",
-  "written": { "folder": "projects/BDT-Au/optimization/bdt-relax/",
+  "written": { "folder": "projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/",
                "decks":  ["…_coarse.fdf", "…_tight.fdf"],
                "description": "…/stages.json" },
   "findings": [ /* warnings that did not block, each naming its stage */ ]
@@ -783,7 +836,7 @@ optional field beside `where`**, leaving the identifier untouched:
 
 ```
 { severity, message, where: "config.mesh_cutoff", workflow_group: "stage",
-  stage: "coarse" }        ← new, optional, absent for a single-stage description
+  stage: "coarse" }        ← new, optional, absent when there are no stages (§ 5.2)
 ```
 
 Three consequences, all inherited rather than invented:
@@ -893,7 +946,7 @@ browser rows can be built before any route exists.
 
 | Module | Today | What this needs | May assume nothing about |
 |---|---|---|---|
-| **config** | `SiestaConfig`; `SiestaStageSpec` (8 fields) | **stage spec → `{name, enabled, overrides}`**; the four value fields become ordinary shared-config fields; `continue_retries` moves to the wrapper layer; **+ a `restart` field** on the shared config | which surface set it |
+| **config** | `SiestaConfig`; `SiestaStageSpec` (8 fields) | **stage spec → `{name, enabled, overrides}`**; the four value fields become ordinary shared-config fields; `continue_retries` moves to the wrapper layer and `on_nonconvergence` to the JobSet producer's input; **+ a `restart` field** on the shared config | which surface set it |
 | **engine contract** (per engine) | the warm files, inventoried (`job-contracts.md § 4.2`) | **+ the identity literal and the parameters bound to it**, declared beside them as one group (§ 6.2) | the scheduler |
 | **description reader** (server) | — | **new**: read `molbuilder/stages@1` into a `SiestaConfig` plus stage specs, or refuse naming the key | how the description was produced |
 | **effective config** (server) | — | **new**: base ⊕ one stage's overrides → one config to validate *and* render from | which stage it is |
@@ -913,10 +966,13 @@ browser rows can be built before any route exists.
    `relax_max_displ` sit on the shared config *and* on the stage spec. *Done
    when:* a test says which value a staged render uses when the two disagree —
    because that is the behaviour anyone relying on it has already built on.
-2. **The stage spec shrinks to three fields**, the four value fields become
-   shared-config fields, `continue_retries` moves. *Done when:* a stage with no
-   overrides renders exactly what it renders today, and no field of the shared
-   schema has a second home.
+2. **The stage spec shrinks to three fields.** The four value fields become
+   ordinary shared-config fields; `continue_retries` moves to the wrapper-install
+   surface that already honours it; `on_nonconvergence` moves to the JobSet
+   producer's own input, since `stages_to_jobset` is its only reader (§ 11).
+   *Done when:* a stage with no overrides renders exactly what it renders today,
+   no field of the shared schema has a second home, and the ladder producer still
+   derives the same edges it derives now.
 3. **`overrides` and the merge.** *Done when:* a stage with `{mesh_cutoff: 300}`
    renders a deck carrying 300 while the shared config still says 150.
 4. **The `restart` field and the engine group.** *Done when:* a two-stage
@@ -960,38 +1016,45 @@ what a user needs.
    `STAGE-PLAN.md` the file, "Job-set plan" the registry label for
    `job-set.json`). *setup* is the user's own word for what one stage is, which
    argues against using it for the file that holds all of them.
-2. **Is the user's half of the id editable after the fact?** Renaming changes
+2. **Should the folder really be named by the id (§ 6.3)?** It removes a second
+   name and makes a directory listing self-describing, at the cost of a folder
+   called `bdt_au_relax_c6h4s2au38` where someone would have typed `bdt-relax`.
+   The alternative — the user names the folder, the id names the files — is one
+   more thing to keep in step and one more way for a listing to lie.
+3. **Is the user's half of the id editable after the fact?** Note this compounds
+   with the question above: if the folder carries the id, renaming moves the
+   folder as well as orphaning the warm files. Renaming changes
    the id and so orphans the warm files, which is right in principle and will
    surprise someone who meant to fix a typo. Deriving it makes it consistent;
    letting it be typed keeps a door open to deliberately continuing from an
    unrelated run's state, which is occasionally what a person wants and is
    otherwise impossible to ask for.
-3. **What are the "components" of a composite system?** A junction is a molecule
+4. **What are the "components" of a composite system?** A junction is a molecule
    *and* two electrodes; naming it by total formula loses that structure, and
    naming it by parts needs a convention for what a part is.
-4. **When does the readable id stop being enough?** A formula does not tell two
+5. **When does the readable id stop being enough?** A formula does not tell two
    isomers apart, and does not pin the *order* species are declared in — and a
    `.XV` read against a different order lands every coordinate on the wrong
    atom. The likely answer is a short pin appended when and only when the
    readable part cannot separate two things in the same project, so the ugly
    form appears where it earns its place rather than everywhere.
-5. **Do the cell *parameters* belong in the identity (§ 6.5)?** The vectors are
+6. **Do the cell *parameters* belong in the identity (§ 6.5)?** The vectors are
    generated, so they cannot be — but padding that changes the frame the atoms
    are written in makes a prior `.XV` continue from a different origin. Reporting
    it is cheap; putting it in the id would orphan a geometry every time somebody
    widened a box, which is the overstatement § 6.1 is about.
-6. **Is a description editable by hand?** It is JSON beside the decks, so it
+7. **Is a description editable by hand?** It is JSON beside the decks, so it
    will be. If yes, the reader owes the same errors to a person as to the
    browser — an argument for § 5.1's refusal rule being loud rather than
    tolerant.
-7. **The trajectory log's stage naming does not match the deck's.** A stage deck
+8. **The trajectory log's stage naming does not match the deck's.** A stage deck
    is `<label>_<stagename>` — an underscore and a *name* — while the molwatch log
    is `<label>-stage<N>`, a hyphen and a *number*, and the run decoder's stage
    regex keys on that hyphen form (`job-contracts.md § 2.3`). User-named stages
    cannot be expressed in a number. Either the log takes the name, or a name
    maps to an index somewhere, and whichever it is, `job-contracts.md § 2.3` is
    where it is decided.
-8. **May two enabled stages be identical?** Nothing above forbids it, and the
+9. **May two enabled stages be identical?** Nothing above forbids it, and the
    answer is probably "warn": two decks that differ in nothing but their name
    produce the same calculation twice into the same warm state.
 
