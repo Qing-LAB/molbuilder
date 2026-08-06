@@ -171,7 +171,7 @@ parameters must not go backwards, and by how much — is `engines/tuning.md`'s t
 say, not this contract's.
 
 **An `error` in any stage blocks the whole produce**, not just its own deck.
-That is not a policy choice made here — it falls out of § 7.1: the folder appears
+That is not a policy choice made here — it falls out of § 7.2: the folder appears
 whole or not at all, so there is no such thing as writing the stages that passed.
 
 ---
@@ -222,7 +222,7 @@ Two consequences:
   which happens after the decks are rendered, and § 6.6 deliberately does not
   duplicate it in the preflight. So the refusal arrives with some decks already
   written, which is why § 7 requires the whole folder to be produced
-  transactionally (§ 7.1).
+  transactionally (§ 7.2).
 
 ### 5.2 A deck line may depend on the launch
 
@@ -441,7 +441,67 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
 them correctly. The wrappers are not, and are not meant to be: they are baked for
 a target (§ 8).
 
-### 7.1 The folder appears whole, or not at all
+### 7.1 The layout: common above, per-stage below
+
+**Stages do not share a directory.** The folder is a parent holding what every
+stage shares, and one subdirectory per stage holding everything that stage
+produces:
+
+```
+projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
+├── stages.json                        ← the description
+├── Au.psml  S.psml  C.psml  H.psml    ← shared, stored ONCE
+├── mb_monitor.py                      ← shared
+├── <id>_coarse.fdf  <id>_coarse.run.sh
+├── <id>_tight.fdf   <id>_tight.run.sh ← decks + wrappers, rendered once
+├── coarse/
+│   ├── <id>_coarse.fdf → ../<id>_coarse.fdf
+│   ├── Au.psml → ../Au.psml  …        ← shared, linked in
+│   └── <id>.XV .DM .ANI .STRUCT_OUT   ← everything THIS stage produced
+└── tight/
+    ├── <id>_tight.fdf → ../<id>_tight.fdf
+    ├── <id>.XV → ../coarse/<id>.XV    ← carried; dangling until coarse runs
+    └── <id>.DM → ../coarse/<id>.DM
+```
+
+**This is not a new layout.** It is what `job-system.md § 5.2`'s `prep` already
+builds, and this contract reuses that materializer rather than writing a second
+one. Two of its properties are the reason:
+
+- **Shared files are stored once and linked in**, so a five-stage description
+  does not carry five copies of a pseudopotential, and the shared set is
+  obviously shared rather than coincidentally identical.
+- **Carried files are localized on run.** Before a stage starts, its wrapper
+  replaces an inherited symlink with a real local copy — *"without that, stage 2
+  writing to `bdt.XV` would write through the link and overwrite stage 1's
+  result."* That is the whole cross-contamination problem, closed by a rule that
+  already ships.
+
+**Why not one flat directory.** A flat folder was the earlier answer here, on the
+grounds that a shared basename makes continuing free (`job-contracts.md § 2.1`
+Rule 2). It does — and it also means every stage writes over the last one. The
+restart files are the obvious casualty, but they are not the worst: `.ANI`,
+`.STRUCT_OUT`, `.EIG` and every other engine output is keyed by `SystemLabel`,
+which is *identical* across stages by design. Run three stages flat and you keep
+one set of results — the last — plus three `.out` logs. For a framework whose
+purpose is managing a mission across several parameter sets, losing every
+intermediate result is not a trade, it is a defect.
+
+**What carry is, and is not.** Carry is a *layout* mechanism, not a scheduling
+one: it exists because the stages are in different directories, and it would be
+needed if no scheduler existed anywhere. The scheduling half of `job-system.md` —
+`depends_on`, `dep_kind`, the edges — stays outside this contract (§ 3). Which
+files carry is not a new decision either: `.XV` always, `.DM` when the config
+saves it, `.CG` only between stages using the same relaxation method, *"a CG
+state is meaningless to a Broyden stage"* (`job-system.md § 4.1`).
+
+**And `restart` gets sharper.** In one directory, *continue* could only mean
+"whatever ran here last" — order-of-execution dependent, and wrong if you re-ran
+an earlier stage. With a subdirectory each, **`continue` means: carry from the
+previous enabled stage**, which is a fact about the description rather than about
+what happened to run. `clean` carries nothing.
+
+### 7.2 The folder appears whole, or not at all
 
 Rendering a description can fail after it has started: a stage asks for an
 environment that is not installed (§ 5.1), a pseudopotential does not resolve, a
@@ -487,7 +547,7 @@ molbuilder writes into is a folder molbuilder can offer a history for.
 The warm files are never removed by any of this: they belong to the calculation,
 not to any one stage (`execution/run-identity.md § 6`).
 
-### 7.2 A description grows, and a stage that has run is a record
+### 7.3 A description grows, and a stage that has run is a record
 
 A description is not written once and produced once. The ordinary way a mission
 goes is **incremental**: run a stage, look at what came out, decide the next one
@@ -512,15 +572,22 @@ Two rules make growth safe, and both follow from one observation.
 outputs beside a deck were made by that deck as it was, so replacing it without
 keeping the old one leaves a folder whose results came from a file that no longer
 exists. That is not a reason to refuse the edit — redoing a stage is ordinary
-work. It is a reason for the history to exist, which § 7.1 already requires.
+work. It is a reason for the history to exist, which § 7.2 already requires.
 
 So the boundaries where a checkpoint is taken are exactly two, and both are
 molbuilder's rather than the engine's:
 
 | When | What it holds | Why there |
 |---|---|---|
-| **before a replacing produce** | the folder as the last produce left it | it is what makes rewriting a run stage safe rather than lossy (§ 7.1) |
-| **when a stage's run is seen to finish** | that stage's converged state, tagged with its name | it is the point a user will want to come back to and **branch from** — the next stage is a choice, and a choice wants somewhere to return to |
+| **before a replacing produce** | the folder as the last produce left it | it is what makes rewriting a run stage safe rather than lossy (§ 7.2) |
+| **when a stage's run finishes** | that stage's converged state, tagged with its name | it is the point a user will want to come back to and **branch from** — the next stage is a choice, and a choice wants somewhere to return to |
+
+**Both are automatic whenever the folder is under checkpoint.** Not offered, not
+a button: a folder that has a history keeps it, and a stage boundary that went
+unrecorded is one the user cannot return to precisely when they discover they
+want to. `snapshot init` remains explicit — putting a folder under version
+control is the user's decision — but once it is under one, molbuilder does not
+ask permission to write the history it exists for.
 
 **Neither is the wrapper's job.** `running-a-job.md § 6.2` records that the
 wrapper-bootstraps-git path was deliberately dropped — *"the wrapper is
@@ -548,6 +615,40 @@ number after it shifts — silently reassigning outputs that already exist to
 stages that did not produce them. **Names are stable; positions are not.** Where
 the shipped trajectory log uses `-stage<N>` (§ 7, the log bullet), that is the
 half of the naming question growth decides: it has to key on the name.
+
+### 7.4 What the layout costs the checkpoint system
+
+The history in § 7.3 is `molbuilder snapshot`, which was designed against a
+**flat** run directory. Three things follow from pointing it at a tree, and each
+is a change to the checkpoint side rather than a compromise on this one.
+
+**The repository sits at the parent, not in each subdirectory.**
+`job-system.md § 5.5` observes that each `point-<name>/` is a self-contained run
+directory and so *"can be checkpointed on its own"*. True, and not enough: a
+per-subdirectory repository cannot restore a shared file that lives **above** it,
+so restoring a stage would leave its linked-in pseudopotentials pointing at
+nothing. It also cannot express the operation this design turns on — *branch the
+workflow at stage 2* — because there is no repository that contains the workflow.
+One repository at the parent holds the shared files once, every stage's outputs,
+and the description, so a branch carries the whole tree as it was.
+
+**The archive globs have to become recursive.** `.mbcheckpoint.json`'s engine
+defaults are `*.DM`, `*.HSX`, `*.TSHS`, … (`running-a-job.md § 6.1`) — patterns
+written for files beside the config. In this layout the big binaries are at
+`<stage>/<id>.DM`, which `*.DM` does not match, so **every one of them would be
+committed to git as a blob** — the exact outcome the archive exists to prevent.
+The glob set must match at depth, and the seeded `.gitignore` with it. This is a
+change to the checkpoint contract, and it lands with its code and its test in one
+commit (`job-contracts.md § 7`).
+
+**A carried link is a dangling link until its producer runs, and that is
+correct.** Git stores a symlink as its target path, so a checkpoint taken between
+produce and run holds the dangling carry links, and a restore recreates them
+dangling — which is exactly the state that produce left. When the stage runs,
+localize-on-run replaces the link with a real file (§ 7.1) and the next
+checkpoint records a symlink becoming a regular file. Noisy in a diff, right in
+substance: the history says *this stage stopped inheriting and started owning*,
+which is what happened.
 
 ---
 

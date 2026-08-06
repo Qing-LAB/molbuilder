@@ -76,59 +76,67 @@ Three consequences shaped everything:
 - **The stage object is tiny** — a name, an enabled flag, an overlay. The
   eight-field type shrank because two questions sort every field, and neither
   question asks where the field ends up (`engines/stages.md § 3`).
-- **"Switch" and "continue" were already contractual.** `job-contracts.md § 2.1`
-  Rule 1 lets one directory hold several inputs; Rule 2 makes them share one
-  basename *"which is exactly what lets SIESTA pick up `<basename>.XV` / `.DM`
-  from the previous stage."* Continuing is what the **engine** does; molbuilder
-  makes the id right and puts the files where it will look
-  (`run-identity.md § 1`). No carry list, no symlinks, no dependency edge — those
-  exist in `job-system.md` only because its bundle splits stages across separate
-  folders.
+- **"Switch" and "continue" rest on one basename, not on one directory.**
+  `job-contracts.md § 2.1` Rule 2 keeps the basename identical across stages,
+  *"which is exactly what lets SIESTA pick up `<basename>.XV` / `.DM` from the
+  previous stage."* Continuing is what the **engine** does; molbuilder makes the
+  id right and puts the files where it will look (`run-identity.md § 1`). The
+  *layout* that puts them there is a stage per subdirectory with the shared files
+  above — `engines/stages.md § 7.1`, which is `job-system.md § 5.2`'s materializer
+  reused rather than a second one. What stays outside is the **scheduling** half:
+  edges, `dep_kind`, submission.
 - **Correctness is the deliverable, not a step.** Two gates, both in
   `engines/stages.md`: the deck is complete and stands alone
   (`engines/stages.md § 7`), and every config that will be rendered gets the full
   findings pass — *validated as a resolved whole, never as a diff*
   (`engines/stages.md § 4`, R2).
 
-### 3.1 The folder, and the one cost it carries
+### 3.1 The folder: common above, one subdirectory per stage
 
 ```mermaid
-flowchart LR
-    subgraph F["one folder = one calculation"]
-      direction LR
-      C["<b>…_coarse.fdf</b><br/>restart: clean"]
-      W[("<b>…XV · …DM · …CG</b><br/>one basename, unsuffixed")]
-      T["<b>…_tight.fdf</b><br/>restart: continue"]
+flowchart TB
+    subgraph P["the folder = one calculation"]
+      direction TB
+      SH["<b>shared, stored once</b><br/>pseudopotentials · the monitor<br/>the decks and their wrappers<br/>stages.json"]
+      subgraph C["coarse/"]
+        C1["links to the shared<br/>+ everything coarse produced<br/><b>…XV · …DM · …ANI · …STRUCT_OUT</b>"]
+      end
+      subgraph T["tight/"]
+        T1["links to the shared<br/>+ <b>carried</b> …XV · …DM from coarse<br/>localized before it runs"]
+      end
     end
-    C -->|"the engine writes"| W
-    W -->|"the engine reads,<br/>because the bound parameters are set"| T
-    T -->|"writes back over it"| W
+    SH --> C1
+    SH --> T1
+    C1 -->|"carry"| T1
 ```
 
-The warm files are unsuffixed and shared, so **running a second stage overwrites
-the first stage's restart state.** That is the same property that makes
-continuing free; it cannot be had one way only. The folder holds *the current
-state of one calculation*, not a history of every setup tried in it.
+**Every stage keeps its own results.** That is the whole reason for the shape,
+and it is the shipped `prep` layout (`job-system.md § 5.2`) reused rather than
+reinvented: shared files stored once and linked in, carried files **localized on
+run** so a stage never writes through a link into the stage before it.
 
-The answer already ships, and this design **builds on it rather than beside
-it**. `running-a-job.md § 6` puts a run directory under a git-backed checkpoint
-system — snapshot a converged state, tag it, **branch a what-if**, restore, with
-the small warm-restart files kept in the text history *"so a restore brings back
-a resumable state."*
+A flat directory was the earlier answer here and it was wrong. A shared basename
+does make continuing free — and it also means every stage overwrites the last.
+Not only the restart files: `.ANI`, `.STRUCT_OUT`, `.EIG` and every other engine
+output is keyed by `SystemLabel`, which is *identical* across stages by design.
+Three stages flat leaves one set of results. For a framework whose point is
+managing a mission across several parameter sets, that is a defect rather than a
+trade (`engines/stages.md § 7.1`).
 
-`engines/stages.md § 7.2` makes that automatic at the two boundaries that matter:
-**before a replacing produce**, so rewriting a stage that already ran is
-reversible rather than lossy; and **when a stage's run finishes**, tagged with the
-stage name, so it is a point to come back to. A folder then stops being *the
-current state of one calculation* and becomes a chain of states you can re-enter
-— branch at stage 2, try a different stage 3, keep both.
+**The history is `molbuilder snapshot`, and it is automatic.**
+`running-a-job.md § 6` already puts a run directory under git with the small
+`.XV`/`.CG` tracked as text *"so a restore brings back a resumable state"* and
+big binaries archived by content. `engines/stages.md § 7.3` takes a checkpoint at
+the two boundaries that matter — before a replacing produce, and when a stage's
+run finishes, tagged with its name — **automatically, whenever the folder is
+under checkpoint**. A folder then stops being a state and becomes a chain of
+states you can re-enter: branch at coarse, try a different tight, keep both.
 
-That is switching between setups in its strongest form, and it is why
-**`snapshot branch` having no HTTP route** (`running-a-job.md § 6.2`) is the most
-consequential gap in this design rather than a loose end. It is the operation the
-whole shape depends on.
-
----
+Which is why **`snapshot branch` having no HTTP route** (`running-a-job.md § 6.2`)
+is the most consequential gap in this design rather than a loose end, and why
+`engines/stages.md § 7.4` has to change the checkpoint side: its archive globs
+were written flat (`*.DM`), and in this layout the big binaries are one level
+down, where those patterns do not reach.
 
 ## 4. The environment: nothing here changes it
 
@@ -164,7 +172,7 @@ machinery above has to change for that to work.
   *wrapper* generation, which happens after the decks are rendered, so the failure
   arrives with files already made. That is why the produce is transactional:
   built elsewhere, moved into place only when every part succeeded
-  (`engines/stages.md § 7.1`). A folder that is only partly runnable is worse than
+  (`engines/stages.md § 7.2`). A folder that is only partly runnable is worse than
   one that was not written.
 
 ---
@@ -313,16 +321,24 @@ this framework does not:
 | The export needs | Where it comes from |
 |---|---|
 | `on_nonconvergence` per stage | **only the export.** It becomes the scheduler edge — `proceed → afterany`, `halt → afterok` — and there is no edge without a scheduler (`engines/stages.md § 3`) |
-| `Job.carry` per stage | **only the export.** Its `prep` lays out *separate folders* per job, so the warm files § 3.1 shares must be carried explicitly and localised on run |
+| `Job.carry` per stage | **already in the layout.** Carry is a *layout* mechanism, not a scheduling one — § 3.1 uses it — so the export inherits it rather than asking for it (`engines/stages.md § 7.1`) |
 | `Job.resources` per stage | **already in the description.** The export applies the translation `job-contracts.md § 6.2` already fixes, at its own boundary |
+
+Only the first describes *having something else run it* rather than the
+calculation, and it is the only thing the export has to ask for. The other two
+are already here — carry because the layout needs it whether or not a scheduler
+exists, resources because they change the deck (`engines/stages.md § 5`). The
+export threads edges through a tree this framework already built.
 
 Two facts to carry forward when it is built:
 
-- **The two directory shapes are not in conflict; they are two products.**
-  `job-contracts.md § 2.5`'s flat `<structure>/` is this framework's folder;
-  `job-system.md § 5.2`'s `point-<name>/` tree is a bundle. A bundle is not a run
-  directory — it is a directory *of* run directories, each obeying
-  `job-contracts.md § 2.1` exactly. Nothing needs to move.
+- **There is one directory shape, not two.** Earlier drafts read
+  `job-contracts.md § 2.5`'s flat `<structure>/` and `job-system.md § 5.2`'s
+  `point-<name>/` tree as rival layouts needing reconciliation. They are the same
+  layout at two levels: `<structure>/` is a directory **of** run directories, and
+  each per-stage subdirectory is the flat one-job-per-directory shape
+  `job-contracts.md § 2.1` describes. This framework and the export produce the
+  same tree; the export adds edges to it.
 - **`JobSet.name` should be the id**, and the submitter's `-J` should carry it.
   Today a ladder's scheduler name is the bare stage name
   (`job-contracts.md § 6.3`), so three concurrent ladders show
@@ -389,7 +405,7 @@ is agreeing them and answering § 9.
    same folder from a terminal and from the browser, and neither path has a
    renderer the other lacks.
 10. **Checkpoints at the two stage boundaries, and `branch` over HTTP**
-    (`engines/stages.md § 7.2`). *Done when:* a replacing produce leaves a commit
+    (`engines/stages.md § 7.3`). *Done when:* a replacing produce leaves a commit
     holding the folder as it was; a stage seen to finish leaves a commit tagged
     with its name; a folder molbuilder produces into is initialised if it was not
     already; and the browser can branch from either — which is what switching

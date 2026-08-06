@@ -251,6 +251,10 @@ It changes as rows come and go, so the connection between the stage list and the
 files is never in doubt. A one-stage description says `1 deck`, and that is the
 whole difference.
 
+Each stage gets its **own subdirectory**, so its results stay its own
+(`engines/stages.md § 7.1`) — and the outcome line should say so, because a user
+expecting one directory and finding three needs to have been told once.
+
 **The action row** is Check and Generate, in that order, always visible.
 
 **And the page has to be reachable from an existing folder**, not only from a
@@ -353,10 +357,11 @@ Three things the table has to get right:
   the **generator** expands it (`execution/run-identity.md § 4`); nothing asks
   anyone to keep three keys in step. It is drawn emphasised because it is the
   one row that decides whether the folder's shared warm files are read.
-- **It never names *which* stage to continue from.** The folder holds one set of
-  warm files under one basename, so "continue" means *whatever ran here last*.
-  Offering a choice of predecessor would imply a history the folder does not
-  keep.
+- **It never names *which* stage to continue from.** "Continue" means *from the
+  stage before this one* — a fact about the description, not about what happened
+  to run last (`engines/stages.md § 7.1`). Offering a choice of predecessor would
+  make the carry graph diverge from the stage order, which is the one thing a
+  single ordered list cannot express and should not learn to.
 - **Promotion happens where the parameter lives.** Every field in the other
   subtabs carries a "vary per stage" affordance; using it moves that field into
   this table. The alternative — a long "add a parameter" menu of all 38 — is a
@@ -402,8 +407,12 @@ and the tab should say how without pretending to do it:
 ```
 Written to  projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
 
-Run one:    bash bdt_au_relax_c6h4s2au38_coarse.run.sh
-Then:       bash bdt_au_relax_c6h4s2au38_tight.run.sh     ← continues from the first
+              coarse/  tight/           ← one subdirectory per stage
+              shared:  Au.psml  S.psml  …  mb_monitor.py
+
+Run one:    cd coarse && bash ../bdt_au_relax_c6h4s2au38_coarse.run.sh
+Then:       cd tight  && bash ../bdt_au_relax_c6h4s2au38_tight.run.sh
+                                       ← carries coarse's .XV/.DM, localized first
 ```
 
 Those wrappers exist because the server generated them, which means an activation
