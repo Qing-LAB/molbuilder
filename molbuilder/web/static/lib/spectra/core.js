@@ -232,7 +232,6 @@
         // the top level of `state` (not in any bucket) because it's a wrapper-managed
         // external resource.
         vib:            null,
-        chartResizeObserver: null,   // redraws the spectrum when its BOX changes
         esResizeObserver:    null,   // the same, for the level diagram
         modeTab:             "table", // which of the three views is on screen
         vibMounting:    false,   // one build per mount, not one per mode click
@@ -1847,10 +1846,10 @@
         _highlightActiveRow();
         renderESPanel();
         renderModeViewer();
-        // Also highlight the corresponding stick in the chart by
-        // re-rendering it (Plotly's selectedpoints API is per-trace,
-        // and we have three; cleanest is a full react()).
-        renderSpectrumChart((state.results.modes || []));
+        // The chart mirrors the selection through its cheap door: one mark
+        // recoloured, no curve recomputed, no axis moved (spectrumchart § 5.1).
+        // This used to redraw the whole spectrum for every click.
+        if (chart) chart.setSelected(state.selectedMode);
     }
 
     // ----- CSV export ------------------------------------------
@@ -2626,7 +2625,7 @@
      * two charts on this tab now: the spectrum and the level diagram.  One
      * observer each, installed once. */
     function _watchChartWidth(el, stateKey) {
-        const key = stateKey || "chartResizeObserver";
+        const key = stateKey || "esResizeObserver";
         const node = el || els.spectrumChart;
         if (state[key] || !node) return;
         if (typeof ResizeObserver === "undefined") return;
@@ -2952,353 +2951,65 @@
     // = False on the producing run) are shown at activity 0 with a
     // grey marker so the user sees the mode density but understands
     // there's no intensity data.
+    /* THE SPECTRUM CHART IS A MODULE NOW.
+     *
+     * Everything that used to be here -- the traces, the palette, the envelope,
+     * the click tolerance, the width watcher -- lives behind one door in
+     * lib/spectrumchart/, whose contract is docs/web/spectrumchart.md. What is
+     * left in this file is what the CONTRACT says belongs to a tab: the modes,
+     * the selection, and the broadening the user typed.
+     *
+     * The mount is asynchronous and happens once. `chartReady` is the promise of
+     * it, so callers can queue work against a chart that is still arriving
+     * without any of them having to know whether it has.
+     */
+    let chart = null;
+    let chartReady = null;
+
+    function _chartModes(modes) {
+        // The tab's record, in the four fields the chart takes (§ 6.1).
+        return (modes || []).map(m => ({
+            index:     m.index_1based,
+            freq:      m.frequency_cm1,
+            activity:  Number.isFinite(m.raman_activity_a4_amu)
+                ? m.raman_activity_a4_amu : null,
+            imaginary: !!m.has_imag,
+        }));
+    }
+
     function renderSpectrumChart(modes) {
         if (!els.spectrumChart) return;
-        // The palette, once, before anything that draws with it -- the stick
-        // colours below are chosen while building the traces.
-        const th = chartTheme();
-        if (typeof Plotly === "undefined") {
-            // Plotly is loaded via CDN; if a slow network hasn't
-            // delivered it yet the modes table still renders.  Show
-            // a one-line fallback rather than failing silently.
-            els.spectrumChart.innerHTML =
-                '<p class="status muted">Plotly not loaded; spectrum chart unavailable.</p>';
-            return;
-        }
-        if (!modes.length) {
-            Plotly.purge(els.spectrumChart);
-            els.spectrumChart.innerHTML =
-                '<p class="status muted">No modes yet.</p>';
-            return;
-        }
-
-        // Two display modes:
-        //
-        //   ACTIVITY MODE -- at least one mode has a Raman activity;
-        //     y-axis is the activity in Å⁴/amu.  Modes without
-        //     activity (partial L3) plot at y=0 with a "Raman not
-        //     yet computed" hover hint so the user knows what's
-        //     missing.
-        //
-        //   DENSITY MODE  -- no mode has a Raman activity yet (L2
-        //     done but L3 hasn't started, or compute_raman=False).
-        //     Every stick gets unit height so the frequency
-        //     distribution is visible; y-axis title tells the user
-        //     intensities are missing.  Otherwise the user just
-        //     sees a flat x-axis line with nothing on it.
-        const anyRaman   = modes.some(m =>
-            m.raman_activity_a4_amu !== null
-            && m.raman_activity_a4_amu !== undefined
-        );
-        const densityMode = !anyRaman;
-
-        // Bucket the modes into traces by real / imaginary so each
-        // gets its own hover + legend entry.  Modes pending Raman
-        // also get their own trace so the legend says "pending"
-        // explicitly rather than mixing into "Real" / "Imaginary".
-        const real    = { x: [], y: [], text: [], idx: [], color: [] };
-        const imag    = { x: [], y: [], text: [], idx: [], color: [] };
-        const pending = { x: [], y: [], text: [], idx: [] };
-        const sel     = state.selectedMode;
-        for (const m of modes) {
-            const f      = Number(m.frequency_cm1);
-            const hasIm  = !!m.has_imag || f < 0;
-            const raman  = m.raman_activity_a4_amu;
-            const isSel  = (m.index_1based === sel);
-            const ramanText = (raman === null || raman === undefined)
-                ? "Raman: not yet computed"
-                : "Raman = " + Number(raman).toFixed(2) + " Å⁴/amu";
-            const txt = "Mode " + m.index_1based
-                      + "<br>ω = " + f.toFixed(1) + " cm⁻¹"
-                      + "<br>" + ramanText;
-
-            if (raman === null || raman === undefined) {
-                if (densityMode) {
-                    // No intensity data anywhere -- show the stick
-                    // at unit height in the appropriate real/imag
-                    // bucket so the legend still works.
-                    if (hasIm) {
-                        imag.x.push(f); imag.y.push(1); imag.text.push(txt);
-                        imag.idx.push(m.index_1based);
-                        imag.color.push(isSel ? th.stickSel : th.stickImag);
-                    } else {
-                        real.x.push(f); real.y.push(1); real.text.push(txt);
-                        real.idx.push(m.index_1based);
-                        real.color.push(isSel ? th.stickSel : th.stick);
+        if (!chartReady) {
+            chartReady = import("/static/lib/spectrumchart/index.js")
+                .then(({ mount }) => mount(els.spectrumChart, {
+                    // A click enters the tab and comes back as setSelected;
+                    // the chart never highlights on its own.
+                    onSelect: (index) => selectMode(index),
+                }))
+                .then((handle) => {
+                    if (!handle.ok) {
+                        els.spectrumChart.innerHTML =
+                            '<p class="status muted">' + handle.error + '</p>';
+                        return null;
                     }
-                } else {
-                    // Partial L3 (some modes have activity, this one
-                    // doesn't yet) -- mark with a separate "pending"
-                    // trace so the user sees there are uncomputed
-                    // modes beyond the visible spectrum.
-                    pending.x.push(f);
-                    pending.y.push(0);
-                    pending.text.push(txt);
-                    pending.idx.push(m.index_1based);
-                }
-            } else if (hasIm) {
-                imag.x.push(f);
-                imag.y.push(Number(raman));
-                imag.text.push(txt);
-                imag.idx.push(m.index_1based);
-                // Highlight the selected stick by colour-overriding
-                // its bar in the per-point marker.color array.
-                imag.color.push(isSel ? th.stickSel : th.stickImag);
-            } else {
-                real.x.push(f);
-                real.y.push(Number(raman));
-                real.text.push(txt);
-                real.idx.push(m.index_1based);
-                real.color.push(isSel ? th.stickSel : th.stick);
-            }
-        }
-
-        const traces = [];
-        if (real.x.length) traces.push({
-            type:        "bar",
-            name:        densityMode ? "Real (freq only)" : "Real",
-            x:           real.x,
-            y:           real.y,
-            text:        real.text,
-            hoverinfo:   "text",
-            marker:      { color: real.color, line: { width: 0 } },
-            width:       6,
-            // Stash the mode-index list on the trace so the click
-            // handler can look up which mode was hit.
-            customdata:  real.idx,
-        });
-        if (imag.x.length) traces.push({
-            type:        "bar",
-            name:        densityMode ? "Imaginary (freq only)" : "Imaginary",
-            x:           imag.x,
-            y:           imag.y,
-            text:        imag.text,
-            hoverinfo:   "text",
-            marker:      { color: imag.color, line: { width: 0 } },
-            width:       6,
-            customdata:  imag.idx,
-        });
-        // Lorentzian-broadened envelope.  Active in activity mode
-        // (sticks visible) when FWHM > 0; rendered as a line trace
-        // overlaid on the sticks.  Sum of Lorentzians centered at
-        // each mode's frequency, normalised so peak height = the
-        // mode's Raman activity.
-        if (!densityMode && state.broadeningFWHM > 0) {
-            const envelope = _lorentzianEnvelope(
-                modes, state.broadeningFWHM
-            );
-            if (envelope.x.length) {
-                traces.push({
-                    type: "scatter",
-                    mode: "lines",
-                    name: `Lorentzian (FWHM ${state.broadeningFWHM} cm⁻¹)`,
-                    x:    envelope.x,
-                    y:    envelope.y,
-                    hoverinfo: "skip",
-                    line: { color: th.envelope, width: 1.5 },
-                    // Bars on top of the line.
+                    chart = handle;
+                    return handle;
+                })
+                .catch((err) => {
+                    els.spectrumChart.innerHTML =
+                        '<p class="status muted">spectrum chart unavailable: '
+                        + (err && err.message ? err.message : err) + '</p>';
+                    return null;
                 });
-            }
         }
-        /* PICKING A MODE WITHOUT HAVING TO HIT A LINE.
-         *
-         * A stick is one pixel wide.  Selecting a mode meant landing the pointer
-         * on that pixel, which is a test of aim rather than of intent -- and the
-         * peak a reader is aiming AT is not one pixel wide, it is as wide as the
-         * broadening says it is.
-         *
-         * So each mode gets an invisible band centred on it, and a click
-         * anywhere inside selects it.  The width is the Lorentzian FWHM already
-         * set above: the same number that decides how wide the peak is DRAWN
-         * decides how wide it is to click, so the target matches the picture.
-         * With broadening off there is no peak width to borrow, and the floor
-         * takes over -- enough to be clickable, tight enough that neighbouring
-         * modes in a crowded region stay distinguishable.
-         *
-         * Invisible, not faint: a visible band would be a second thing drawn per
-         * mode, and the chart's job is to show the spectrum.  `hoverinfo: none`
-         * rather than `skip`, because `skip` would drop the click event too.
-         */
-        /* AS TALL AS THE DATA, so a click lands anywhere up the peak -- and no
-         * taller, because a bar above the tallest stick would stretch the y axis
-         * and leave the spectrum squashed into the bottom of its own chart. */
-        const hitBarHeight = Math.max(
-            0, ...real.y.map(Number), ...imag.y.map(Number)) || 1;
-        const hits = modes.filter(m => isFinite(Number(m.frequency_cm1)));
-        if (hits.length) traces.push({
-            type:        "bar",
-            name:        "click target",
-            x:           hits.map(m => Number(m.frequency_cm1)),
-            y:           hits.map(() => hitBarHeight),
-            width:       _clickBandWidths(hits),
-            marker:      { color: "rgba(0,0,0,0)", line: { width: 0 } },
-            hoverinfo:   "none",
-            showlegend:  false,
-            customdata:  hits.map(m => m.index_1based),
-        });
-
-        if (pending.x.length) traces.push({
-            type:        "scatter",
-            mode:        "markers",
-            name:        "Raman pending",
-            x:           pending.x,
-            y:           pending.y,
-            text:        pending.text,
-            hoverinfo:   "text",
-            marker:      { color: th.dim, symbol: "x", size: 7 },
-            customdata:  pending.idx,
-        });
-
-        const layout = {
-            margin:    { t: 28, r: 16, b: 44, l: 56 },
-            xaxis:     {
-                title: "Frequency (cm⁻¹)",
-                zeroline: false,
-                gridcolor: th.grid,
-                color: th.ink,
-            },
-            yaxis:     {
-                title: "Raman activity (Å⁴/amu)",
-                rangemode: "tozero",
-                gridcolor: th.grid,
-                color: th.ink,
-            },
-            plot_bgcolor:  th.paper,
-            paper_bgcolor: th.paper,
-            font:          { color: th.ink },
-            barmode:       "overlay",
-            legend:        { orientation: "h", y: 1.12 },
-            height:        260,
-        };
-
-        const config = {
-            displaylogo: false,
-            // Follows the WINDOW.  It does not follow the container, which is
-            // the case that actually happens here -- see _watchChartWidth.
-            responsive:  true,
-            modeBarButtonsToRemove: [
-                "select2d", "lasso2d", "autoScale2d",
-            ],
-        };
-
-        Plotly.react(els.spectrumChart, traces, layout, config)
-            .then(() => {
-                // Wire (or re-wire) the click handler.  Plotly's
-                // .react() preserves event listeners across calls,
-                // but we attach idempotently for safety -- the .on()
-                // de-dupes on the same handler reference.
-                els.spectrumChart.removeAllListeners
-                    && els.spectrumChart.removeAllListeners("plotly_click");
-                els.spectrumChart.on("plotly_click", _onChartClick);
-                // Idempotent: only the first drawn chart installs it.
-                _watchChartWidth();
-            });
-    }
-
-    /* How far from a peak still counts as clicking it, in cm⁻¹.
-     *
-     * The broadening FWHM when there is one -- the width the peak is drawn at is
-     * the width a reader aims at.  Otherwise a floor, because a spectrum with
-     * broadening off is bare sticks and every one of them still has to be
-     * reachable. */
-    const CLICK_TOLERANCE_FLOOR_CM1 = 8;
-
-    function _clickTolerance() {
-        const fwhm = Number(state.broadeningFWHM);
-        return (isFinite(fwhm) && fwhm > 0)
-            ? Math.max(fwhm, CLICK_TOLERANCE_FLOOR_CM1)
-            : CLICK_TOLERANCE_FLOOR_CM1;
-    }
-
-    /* ONE BAND PER MODE, AND NO TWO OVERLAPPING.
-     *
-     * At ±8 cm⁻¹, ten of the thirty-five adjacent pairs in the benzene-dithiol
-     * spectrum are closer together than their bands are wide.  Where two bands
-     * overlap, the mode a click selects is whichever band happens to be drawn on
-     * top -- not the nearer one -- so the answer stops matching the pointer.
-     *
-     * So a band never crosses the midpoint to its neighbour: its half-width is
-     * the tolerance OR half the gap, whichever is smaller.  Every point in the
-     * plot then falls inside at most one band, and the band you are in is always
-     * the nearest mode.  A crowded region gets tighter targets, which is right --
-     * that is exactly where being off by one mode matters.
-     */
-    function _clickBandWidths(hits) {
-        const tol = _clickTolerance();
-        const f   = hits.map(m => Number(m.frequency_cm1));
-        const sorted = f.slice().sort((a, b) => a - b);
-        return f.map(v => {
-            const i = sorted.indexOf(v);
-            let gap = Infinity;
-            if (i > 0)                 gap = Math.min(gap, v - sorted[i - 1]);
-            if (i < sorted.length - 1) gap = Math.min(gap, sorted[i + 1] - v);
-            const half = isFinite(gap) ? Math.min(tol, gap / 2) : tol;
-            // Never zero: two modes at the same frequency would otherwise both
-            // become unclickable rather than merely ambiguous.
-            return Math.max(half, 0.25) * 2;
+        chartReady.then((handle) => {
+            if (!handle) return;
+            handle.setModes(_chartModes(modes));
+            handle.setBroadening(state.broadeningFWHM || 0);
+            handle.setSelected(state.selectedMode == null ? null : state.selectedMode);
         });
     }
 
-    function _onChartClick(ev) {
-        // Plotly's click event carries `points[]`; each point has
-        // `customdata` = our mode index for the clicked stick.
-        if (!ev || !ev.points || !ev.points.length) return;
-        const idx = ev.points[0].customdata;
-        if (idx != null) selectMode(Number(idx));
-    }
-
-    /* Sum-of-Lorentzians envelope for the spectrum chart.
-     *
-     * For each mode with finite raman_activity_a4_amu, adds a
-     * Lorentzian centered at its frequency, normalised so the
-     * peak value equals the mode's activity:
-     *
-     *     L_i(x) = A_i · γ² / ((x - x_i)² + γ²)
-     *
-     * where γ = FWHM / 2 is the half-width at half-maximum.
-     * Total spectrum is the sum of all L_i.
-     *
-     * Returns {x, y} arrays sampled on a grid that spans the mode
-     * range with a few-cm⁻¹ resolution.  Empty input -> empty
-     * arrays so the caller can skip the trace.
-     */
-    function _lorentzianEnvelope(modes, fwhm) {
-        const bright = modes.filter(m =>
-            m.raman_activity_a4_amu != null
-            && Number.isFinite(Number(m.raman_activity_a4_amu))
-        );
-        if (!bright.length || fwhm <= 0) return { x: [], y: [] };
-
-        const gamma = fwhm / 2;
-        // Grid: extend a few HWHMs past each end of the spectrum so
-        // the envelope returns to ~0 at the edges.  Sample density:
-        // ~0.2·FWHM, capped to >=1 cm⁻¹.
-        let xmin = Infinity, xmax = -Infinity;
-        for (const m of bright) {
-            const f = Number(m.frequency_cm1);
-            if (f < xmin) xmin = f;
-            if (f > xmax) xmax = f;
-        }
-        xmin -= 5 * gamma;
-        xmax += 5 * gamma;
-        const step = Math.max(1, Math.round(fwhm / 5));
-        const n = Math.max(1, Math.floor((xmax - xmin) / step) + 1);
-        const x = new Array(n);
-        const y = new Array(n).fill(0);
-        for (let k = 0; k < n; k++) {
-            x[k] = xmin + k * step;
-        }
-        const gamma2 = gamma * gamma;
-        for (const m of bright) {
-            const x0 = Number(m.frequency_cm1);
-            const A  = Number(m.raman_activity_a4_amu);
-            for (let k = 0; k < n; k++) {
-                const dx = x[k] - x0;
-                y[k] += A * gamma2 / (dx * dx + gamma2);
-            }
-        }
-        return { x: x, y: y };
-    }
 
     function onBroadeningChange() {
         const raw = parseFloat(els.broadeningFwhm.value);
@@ -3603,19 +3314,22 @@
                 try { state.vib.dispose(); } catch (_) {}
                 state.vib = null;
             }
-            /* BOTH charts, not just the spectrum.  The level diagram became a
-             * Plotly figure too, and a purged-but-still-observed node leaks an
-             * observer per mount -- the inspector is mounted and disposed every
-             * time the user switches result files. */
-            for (const [node, key] of [[els.spectrumChart, "chartResizeObserver"],
-                                       [els.esBarDiagram,  "esResizeObserver"]]) {
-                if (typeof Plotly !== "undefined" && node) {
-                    try { Plotly.purge(node); } catch (_) {}
-                }
-                if (state[key]) {
-                    try { state[key].disconnect(); } catch (_) {}
-                    state[key] = null;
-                }
+            /* The spectrum chart takes itself down: one call, and its surface,
+             * its box watcher and its markup go with it.  This tab neither
+             * purges it nor knows what it was drawn with. */
+            if (chart) { try { chart.dispose(); } catch (_) {} }
+            chart = null;
+            chartReady = null;
+            /* The level diagram is still this tab's own figure, and a
+             * purged-but-still-observed node leaks an observer per mount -- the
+             * inspector is mounted and disposed every time the user switches
+             * result files. */
+            if (typeof Plotly !== "undefined" && els.esBarDiagram) {
+                try { Plotly.purge(els.esBarDiagram); } catch (_) {}
+            }
+            if (state.esResizeObserver) {
+                try { state.esResizeObserver.disconnect(); } catch (_) {}
+                state.esResizeObserver = null;
             }
         },
         /**

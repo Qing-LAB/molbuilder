@@ -393,3 +393,22 @@ def test_the_host_is_never_resized_by_the_module():
         "console.log(JSON.stringify({ w: host.style.width || null, h: host.style.height || null }));"
     )
     assert got == {"w": None, "h": None}
+
+
+def test_the_entry_resolves_by_the_path_the_page_uses():
+    """§ 4 — one entry point, reached the way a browser reaches it.
+
+    The unit tests above import by file path; the Spectrum tab imports
+    "/static/lib/spectrumchart/index.js". This walks the real module graph
+    through that specifier, so a wrong relative import inside the package
+    fails here rather than in a browser.
+    """
+    static = Path(__file__).resolve().parents[2] / "molbuilder" / "web" / "static"
+    got = run_node(
+        [],
+        'const m = await import("/static/lib/spectrumchart/index.js");\n'
+        "console.log(JSON.stringify(Object.keys(m).sort()));",
+        globals_js=BROWSER,
+        static_root=static,
+    )
+    assert got == ["mount"]

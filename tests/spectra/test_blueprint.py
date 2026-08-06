@@ -431,35 +431,34 @@ class TestSpectraPage:
         except ImportError:
             assert r.status_code == 404
 
-    def test_core_js_has_chart_renderer(self, web_client):
-        """The chart-renderer function is in the inspector core and
-        builds traces for both display modes (activity / density)."""
+    def test_core_js_mounts_the_spectrum_chart_module(self, web_client):
+        """The spectrum is drawn by lib/spectrumchart, reached through its one
+        door.  The tab keeps what a tab owns: the modes, the selection, and the
+        broadening the user typed (docs/web/spectrumchart.md § 2, § 10)."""
         js = web_client.get("/static/lib/spectra/core.js").data.decode()
-        assert "renderSpectrumChart" in js
-        # Trace buckets present.
-        assert '"Real"'              in js
-        assert '"Imaginary"'         in js
-        # Density-mode names (used when no mode has a Raman activity
-        # -- partial L2-done / L3-not-yet runs).
-        assert '"Real (freq only)"'      in js
-        assert '"Imaginary (freq only)"' in js
-        # Partial-L3 marker.
-        assert '"Raman pending"'     in js
-        # Detection of density mode.
-        assert "densityMode"         in js
-        # Plotly entry point.
-        assert "Plotly.react" in js
+        assert 'import("/static/lib/spectrumchart/index.js")' in js
+        assert "onSelect" in js and "selectMode(index)" in js
+        for door in ("setModes", "setBroadening", "setSelected", "dispose"):
+            assert f".{door}(" in js, f"the tab never calls {door}"
 
-    def test_core_js_has_lorentzian_envelope(self, web_client):
-        """The Lorentzian broadening helper, the trace name, and the
-        FWHM input wiring are all in the inspector core."""
+    def test_core_js_no_longer_draws_the_spectrum_itself(self, web_client):
+        """What moved out has to be GONE, not shadowed: a second copy of the
+        envelope or the trace-building would be the drift the extraction was for.
+
+        The electronic-structure diagram is still this tab's own figure, so
+        Plotly still appears -- but only for that.
+        """
         js = web_client.get("/static/lib/spectra/core.js").data.decode()
-        assert "_lorentzianEnvelope" in js
-        # The trace name includes the FWHM value at render time.
-        assert "Lorentzian (FWHM" in js
-        # Input change handler.
+        for gone in ("_lorentzianEnvelope", "_clickBandWidths", "_clickTolerance",
+                     "_onChartClick", "densityMode", "Lorentzian (FWHM"):
+            assert gone not in js, f"{gone!r} survived the extraction"
+        assert "esBarDiagram" in js          # the ES figure is still drawn here
+
+    def test_the_tab_still_owns_the_broadening_control(self, web_client):
+        """§ 5.2 — the tab owns the input the user types into; the chart holds
+        the width it was last told."""
+        js = web_client.get("/static/lib/spectra/core.js").data.decode()
         assert "onBroadeningChange" in js
-        # State holds the current FWHM.
         assert "broadeningFWHM" in js
 
     def test_inspector_partial_has_mode_viewer(self, web_client):
@@ -611,7 +610,6 @@ class TestSpectraPage:
             "renderESPanel",         # MO bar diagram + summary
             "renderModesTable",      # sort + filter render
             "exportCSV",             # export button
-            "_onChartClick",         # plotly_click handler
             "EH_TO_EV",              # Hartree -> eV conversion constant
         ):
             # JS supports both function decls and assignments; the
@@ -731,8 +729,13 @@ class TestSpectraDisposeContract:
                 "+ the 3Dmol canvas; vibrationview.md)"),
             ("Plotly.purge(",
                 "the Plotly charts"),
-            ("els.spectrumChart",
-                "the spectrum chart, by name, in the teardown"),
+            ("chart.dispose()",
+                "the spectrum chart, which now takes ITSELF down: one call and "
+                "its surface, its box watcher and its markup go with it. This "
+                "used to name els.spectrumChart because the tab purged the "
+                "figure itself; since 2026-08-05 the chart is a sealed module "
+                "(docs/web/spectrumchart.md § 7) and a tab that reached in to "
+                "purge it would be reaching past `mount`"),
             ("els.esBarDiagram",
                 "the electronic-structure level diagram, by name, in the "
                 "teardown (it became a second Plotly figure on 2026-08-05 "
