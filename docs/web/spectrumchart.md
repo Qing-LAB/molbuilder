@@ -2,12 +2,13 @@
 
 **Role:** contract
 **Domain:** web
-**Companions:** [`vibrationview.md`](?doc=web/vibrationview.md) — its **sibling**,
-the module this one's design is derived from (VibrationView animates one mode;
-SpectrumChart shows them all and hands one back); [`spectra.md`](?doc=web/spectra.md)
-— the tab that drives both, where the modes come from and what a Raman activity
-means; [`overview.md`](?doc=web/overview.md) — the module registry and the seam
-doctrine.
+**Companions:** [`spectra.md`](?doc=web/spectra.md) — the Spectrum tab, which is
+what drives this chart: where the modes come from, what a Raman activity is, and
+what else on the page moves when a mode is picked;
+[`vibrationview.md`](?doc=web/vibrationview.md) — the viewer beside it on that
+same tab: the mode a click here selects is the mode it animates, and the two never
+speak to each other directly; [`overview.md`](?doc=web/overview.md) — the register
+of web modules.
 
 SpectrumChart is the one component in the browser that draws a vibrational
 spectrum. Hand it a list of modes and it draws them as sticks with an optional
@@ -157,9 +158,15 @@ asked what is drawn, what the axes are, or where a point landed on screen (§ 8.
 ## 4. SpectrumChart is a self-contained module
 
 **SpectrumChart is one module — one folder the browser loads by name — and it is
-sealed at every edge.** It is imported by name,
-it reaches nothing else in the app by name, and nothing in the app can reach
-inside it.
+sealed at every edge.** It is imported by name, it reaches nothing else in the app
+by name, and nothing in the app can reach inside it.
+
+**Why this module in particular has to say so.** The code it replaces lives inside
+a 3,671-line tab controller where the drawing, the selection, the mode table and
+the watch poller all reach into one another's variables — which is why selecting a
+mode currently redraws the whole spectrum (§ 5.1). Cutting 345 lines out of that
+is only worth doing if the cut holds, and a cut holds because the boundary is
+written down and tested, not because the files were moved to a new folder.
 
 **One entry point, and nothing else is importable.**
 
@@ -171,8 +178,7 @@ That is the whole surface. Every other file in the module is internal — the
 maths, the sealed layer, the stylesheet. A consumer that imports one of them
 directly has broken the module, not found a shortcut.
 
-**A directory is not a seal, so the concealment is made three ways** — the same
-three that hold VibrationView together, for the same reasons:
+**A folder is not a seal, so the boundary is made three ways:**
 
 - **The entry point exports one name.** Importing `index.js` hands back `mount`,
   and there is nothing else on it to find.
@@ -197,10 +203,6 @@ found only by someone looking at the screen. If the library will not load, the
 mount fails with a message (§ 7). And if it arrives as a script that publishes
 `window.Plotly`, that name is read in the one file already allowed to say it and
 nowhere else: no page put it there, and no page can rely on it being there.
-
-That is the practice MolView and VibrationView already follow with 3Dmol: each
-module seals the library for itself, because independence beat sharing. The rule
-is what the code complies with, not a description of what it currently does.
 
 **No special door for tests.** Tests import the module and drive the handle
 exactly as a page does (§ 12): there is nothing a test can reach that a page
@@ -641,8 +643,7 @@ tab is where the selection lives (§ 5.2).
 
 A chart in a hidden tab has no box. The module watches its own box (§ 5.4), and
 that covers a box that *changes size*; what it cannot be relied on to cover is a
-box that did not exist. `refit` is how the host says **the box is real now** — the
-same door VibrationView needed, for the same rule.
+box that did not exist. `refit` is how the host says **the box is real now**.
 
 Justifying this door by what the browser's box-watching machinery happens to do
 would put somebody else's behaviour inside this contract, where it cannot be
@@ -797,6 +798,8 @@ in this repository does not belong in the design of a spectrum chart.
 The sheet stays a real `.css` file rather than a string inside JavaScript, so the
 repository's existing CSS audits can read it.
 
+---
+
 ## 12. How the tests are designed
 
 **Every test is derived from this document, never from the source.** A test that
@@ -806,7 +809,7 @@ still says what it said.
 | Level | Runs | Derived from | Shows |
 |---|---|---|---|
 | **Behaviour, no browser** | node | § 6, § 9 | the envelope and the band widths — values in, values out |
-| **Boundary behaviour** | node, with a stand-in that obeys § 8.4 | § 5, § 8 | what each door costs, and that nothing above the seal names the library, a colour, or a pixel |
+| **Boundary behaviour** | node, with a stand-in that obeys § 8.4 | § 5, § 8 | what each door costs, and that nothing above the seal names the library or a colour |
 | **End to end** | a real page | § 1, § 6.3 | clicking beside a peak selects that mode; clicking in a gap reports nothing |
 
 **The stand-in replaces the drawing library, not a file of this module.** Nothing
@@ -825,7 +828,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 4 — nothing else is importable | the entry point exports exactly `mount` |
 | § 4 — no hidden way in | list everything on the handle, hiding nothing: not one entry leads to the drawing surface or to the module's own state |
 | § 4 — the module brings what it needs | a page holding only a host element and one `import` draws a **styled** chart: no `<script>` and no `<link>` of its own, and mounting twice adds one link, not two |
-| § 4 — the library name appears once | `Plotly` occurs in exactly one file of the module, and nothing above that file names the library or a colour |
+| § 4 — the library name appears once | `Plotly` occurs in exactly one file of the module, and no file above it names the library at all |
 | § 5.1 — the door says the cost | `setSelected` computes no curve and changes no axis; `setModes` does both |
 | § 5.1 — recolouring is not redrawing | after `setSelected`, the picture handed to the seal is the same picture, with only its colours changed |
 | § 5.2 — the selection is mirrored, not owned | a click emits `onSelect` and changes **nothing** on screen until `setSelected` is called; a chart mounted without `onSelect` still draws |
@@ -924,5 +927,4 @@ part already sealed.
 
 **No general charting layer.** `_seal.js` is this module's seal over Plotly, not a
 shared abstraction waiting for consumers. If another module ever needs the same
-seal it gets promoted then, with a real second caller rather than a guessed one —
-the same way MolView and VibrationView each kept their own.
+seal it gets promoted then, with a real second caller rather than a guessed one.
