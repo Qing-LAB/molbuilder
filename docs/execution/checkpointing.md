@@ -135,7 +135,10 @@ wrappers, links and outputs are derived from it.
 
 ### S5 — identity is calculation-level; the run index is invocation-level
 
-*holds today.*
+*holds today, trivially: nothing derives an identity from a run at all — the
+wrapper reads `SystemLabel` **out of the script** (`job-contracts.md § 4.3`),
+which is an input. The invariant exists to keep it that way once a description
+does.*
 
 The id names the calculation; `-run0`, `-run1` name invocations of it
 (`run-identity.md § 2`).
@@ -205,7 +208,9 @@ describes exactly what is in that archive.
 
 ### I3 — warm state is moved or restored, never incidentally lost
 
-*holds today.*
+*holds today — read against the code: the cold path is a `mv` into
+`<basename>-restart-aside-<UTC>/`, and the only `rm` in a generated wrapper
+targets the rank helper and the MPS pipe directory. One mover, no deleter.*
 
 `--cold` **moves warm files aside** into `<basename>-restart-aside-<UTC>/`; it
 does not delete them (`job-contracts.md § 4.1`). No operation *whose purpose is
@@ -322,13 +327,29 @@ the top of it.
 
 ### L2 — the archive globs match at depth
 
-Engine defaults are `*.DM`, `*.HSX`, … (`running-a-job.md § 6.1`) — written for a
-flat directory. In this layout the binaries are at `<stage>/<id>.DM`, which those
-patterns do not match, so **S1 breaks in the worst direction**: every large
-binary lands in git as a blob.
+*not held today, and the failure is silent data loss — read against the code.*
 
-*Check:* produce a two-stage folder, run both, checkpoint, and assert S1 over the
-whole tree. It fails today; that failure is the acceptance test.
+**The most serious finding in this document, and the opposite of what an earlier
+draft of it said.** I had written that a per-stage binary "lands in git as a
+blob". It does not. It lands nowhere.
+
+The two sides of S1's classification resolve depth **differently**:
+
+| | Pattern | Reaches `coarse/<id>.DM`? |
+|---|---|:--:|
+| `.gitignore`, from `_render_gitignore` | the raw glob, `*.DM` | **yes** — a gitignore pattern with no slash matches at every level |
+| the archive set, `_list_big_binaries` | `path.glob("*.DM")` | **no** — its own docstring says *"Top-level big binaries"* |
+
+So a stage's density matrix is **gitignored and unarchived** — excluded from the
+commit *and* absent from `.binsnapshots/`. It is in no snapshot at all, and a
+restore silently does not bring it back. That is S1's "never neither" branch, the
+one whose failure is losing data rather than wasting disk.
+
+| | |
+|---|---|
+| **How it fails** | Quietly, at the moment of maximum trust. The user restores a checkpoint expecting a resumable state and gets the geometry (`.XV` is text, so it is tracked) with no density matrix beside it. The run starts over and nothing says why |
+| **How to check** | Produce a two-stage folder, run both, checkpoint, assert S1 over the whole tree: every file is tracked or archived. It fails today, and that failure is the acceptance test |
+| **How to fix** | One list, resolved once, at one depth — either the archive walk becomes recursive (`rglob`) or both sides derive from a single matcher. That is S1a's rule (one list, one writer) extended from *which patterns* to *which paths* |
 
 ### L3 — every commit and tag names its calculation
 
@@ -409,21 +430,37 @@ One line each, for reading over a diff:
 | **L5** | a checkpoint costs what changed, not what exists | **not held today** |
 | **L6** | a history can be verified without being restored | **not held today** |
 
-**Eleven of the twenty can be asserted against the code as it stands**; two
-(L5, L6) are **not held today** and are work rather than checks.
+**Eleven of the twenty can be asserted against the code as it stands**; three
+(L2, L5, L6) are **not held today** and are work rather than checks.
 
-**Six have now been read against the code** rather than inferred from the guide:
-I4 (no wrapper invokes git — no hits), S1a (already enforced by a single write
-API that says so in its own docstring), S2 (whose check was blind to the big
-binaries until the restore path showed why), **I2** (implemented, but reachable
-only through restore — hence L6), **A1** (holds, and does three things this
-contract did not think to ask for) and **A2** (holds, in exactly the stated
-order, with four gates before the first mutation).
+### What has actually been read
 
-Of the six, **two were wrong as written and one was too weak** — which is the
-honest argument for reading code against a contract rather than only reading the
-contract. The remaining fourteen are still claims about behaviour nobody has run,
-and each invariant's marker says which kind it is.
+| Read against the code | Verdict |
+|---|---|
+| **S1a** | held — and my "drift hazard" was false; one write API renders both files |
+| **S2** | check was blind to the big binaries; both halves now |
+| **S5** | holds trivially — nothing derives an identity from a run at all |
+| **I1** | held, restated: content-for-a-sha, since re-archiving rebuilds the directory |
+| **I2** | implemented and correct — but reachable only through restore (→ L6) |
+| **I3** | held — one mover (`mv` to `-restart-aside-`), no deleter |
+| **I4** | held — no generated wrapper invokes git |
+| **A1** | held, and stronger than asked: sha-dir validation, source-vs-copy fidelity, `.tmp` cleanup on `BaseException` |
+| **A2** | held, in exactly the stated order — four gates before the first mutation |
+| **L2** | **broken, and losing data rather than wasting disk** |
+| **L5** | **broken** — no cross-checkpoint dedup; my "cheap" claim was false |
+| **L6** | **absent** — no way to verify a history without restoring it |
+
+**Twelve of twenty read. Three of the twelve were wrong as written**, and every
+one of the three was wrong because I trusted a phrase in the guide over the code:
+*"nothing keeps them in step"*, *"deduped by content"*, and *"lands in git as a
+blob"*.
+
+**Eight cannot be read yet, and that is not a gap in the reading.** S3, S4, S6,
+L1, L3, L4 describe the per-stage layout and the description, neither of which
+exists; A3 describes automatic checkpoints, which do not exist; S1 is the one
+that *could* be read and is best written as a test rather than a grep, because
+its answer depends on a produced folder rather than on a function. They stay
+claims until there is something to assert them against.
 
 ---
 
