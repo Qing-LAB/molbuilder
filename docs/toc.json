@@ -115,6 +115,9 @@
           "path": "execution/job-contracts.md"
         },
         {
+          "path": "execution/project-layout.md"
+        },
+        {
           "path": "execution/checkpointing.md"
         },
         {

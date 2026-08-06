@@ -23,7 +23,9 @@ Every one is written so a test can assert it; that is the point of the
 document.
 
 **This contract owns:** what must never change in a checkpointed run directory,
-and what information must be kept separate from what.
+and what information must be kept separate from what. Where the history sits in
+the project tree, and why it sits there, is
+[`execution/project-layout.md`](?doc=execution/project-layout.md) § 5.
 
 ---
 

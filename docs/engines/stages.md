@@ -465,7 +465,8 @@ projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
 ```
 
 **This is not a new layout.** It is what `job-system.md § 5.2`'s `prep` already
-builds, and this contract reuses that materializer rather than writing a second
+builds, and its place in the wider tree is
+[`execution/project-layout.md`](?doc=execution/project-layout.md), and this contract reuses that materializer rather than writing a second
 one. Two of its properties are the reason:
 
 - **Shared files are stored once and linked in**, so a five-stage description
