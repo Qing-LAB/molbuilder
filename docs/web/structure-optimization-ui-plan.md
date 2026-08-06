@@ -2,8 +2,13 @@
 
 **Role:** plan
 **Domain:** web
-**Companions:** [`staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
-— the model beneath this surface, and where the two disagree that one wins;
+**Companions — the contracts this surface is built against, and where the two
+disagree those win:** [`engines/stages.md`](?doc=engines/stages.md) — what a
+stage is, the effective config, `stages.json`;
+[`execution/run-identity.md`](?doc=execution/run-identity.md) — the id this page
+displays and the parameters that decide whether a stage continues;
+[`staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) — the plan
+that schedules both, and the order this page comes in;
 [`job-contracts.md`](?doc=execution/job-contracts.md) — what a stage *is* on disk
 (`job-contracts.md § 2.1` and `job-contracts.md § 2.3`);
 [`form-schema.md`](?doc=web/form-schema.md) — how this tab's fields get on
@@ -36,7 +41,7 @@ with different numbers in it*.
 a row of the stage table, and a row is a real stage that produces its own deck —
 so choosing "tight" and getting `<id>_tight.fdf` is one act rather than two
 unrelated ones. The third (`fdf --stage N`) is a CLI overlay under its own
-naming convention and stays where it is; `staged-runs-architecture.md § 13`
+naming convention and stays where it is; `staged-runs-architecture.md § 9`
 records that the two conventions do not yet agree.
 
 **"The UI is very jammed."** One card carries the run directory, the restart
@@ -77,8 +82,8 @@ the button row — sits below the longest thing on the page.
 
 A stage is molbuilder's own way of holding the parameters a mission tunes over
 the shared description of the system it does not
-([`staged-runs-architecture.md § 2`](?doc=web/staged-runs-architecture.md)). The engine has no
-such concept, so a one-stage description is not a degenerate case of anything —
+([`engines/stages.md § 1`](?doc=engines/stages.md)). The engine has no such
+concept, so a one-stage description is not a degenerate case of anything —
 it is the ordinary case, and it produces exactly the file the tab produces
 today.
 
@@ -109,7 +114,7 @@ it is what the stage preset already writes to.
 
 > **Those counts are today's.** This plan moves five fields off the stage type
 > into the shared schema and adds `restart`
-> (`staged-runs-architecture.md § 2.1`), so the groups grow. Nothing below depends
+> (`engines/stages.md § 3`), so the groups grow. Nothing below depends
 > on the totals — only on there being three groups and on `stage` being the useful
 > default.
 
@@ -219,7 +224,7 @@ positioning, and the project and topic the folder goes under).
 
 > **The run directory is no longer typed.** The user picks the project and the
 > topic; the last segment is the id, derived and shown
-> (`staged-runs-architecture.md § 6.3`). One name fewer to keep in step, and a
+> (`execution/run-identity.md § 3`). One name fewer to keep in step, and a
 > folder listing that identifies what is in it.
 
 **The stage table** is the description. One row by default, and that row is
@@ -296,7 +301,7 @@ Three rules keep it honest:
    vary across, so its overrides and `base` are the same thing.** The tab always
    shows at least one row, but a description with one row is written with no
    `stages` key at all and produces `<id>.fdf`
-   (`staged-runs-architecture.md § 5.2`). The suffix, and the `stages` key, appear
+   (`engines/stages.md § 6.3`). The suffix, and the `stages` key, appear
    together the moment a second row does.
 3. **The default `varies` is a proposal, not a law.** It starts as the fields the
    schema tags `workflow_group: "stage"` — the ones the preset writes to —
@@ -338,7 +343,7 @@ Three things the table has to get right:
 - **"Start from" is one control, and it is one field.** Saying a stage continues
   sets the engine's own restart parameters — for SIESTA, `DM.UseSaveDM`,
   `MD.UseSaveXV` and `MD.UseSaveCG` together. The user states the intent once and
-  the **generator** expands it (`staged-runs-architecture.md § 6.2`); nothing asks
+  the **generator** expands it (`execution/run-identity.md § 4`); nothing asks
   anyone to keep three keys in step. It is drawn emphasised because it is the
   one row that decides whether the folder's shared warm files are read.
 - **It never names *which* stage to continue from.** The folder holds one set of
@@ -355,7 +360,7 @@ Three things the table has to get right:
 The `budget` group looks like it belongs to the machine rather than the science,
 and mostly it does. Two of its fields do not, and the UI must not hide them
 behind a "resources" label that reads as *speed only*
-(`staged-runs-architecture.md § 4.1`):
+(`engines/stages.md § 5`):
 
 - **The eigensolver** (`Diag.Algorithm` — ScaLAPACK vs ELPA) is a line in the
   deck and a numerical choice, and it also decides which environment the wrapper
@@ -365,7 +370,7 @@ behind a "resources" label that reads as *speed only*
   wrapper.
 - **The rank count** feeds a deck line. `BlockSize` is derived from ranks and
   atom count, so varying `mpi_np` per stage changes each stage's deck, not only
-  its launch (`staged-runs-architecture.md § 4.2`).
+  its launch (`engines/stages.md § 5.2`).
 
 So the table above puts *MPI ranks* among the ordinary rows, and the Resources
 subtab should say plainly which of its fields reach the deck. A field that
@@ -375,7 +380,7 @@ changes the file is not a preference.
 
 A column is a config: `base` overlaid with that stage's `overrides`. So **n
 columns produce n decks**, written into one folder with one shared basename
-(`staged-runs-architecture.md § 7`) — and one column produces one deck with no
+(`job-contracts.md § 2.1` Rule 2) — and one column produces one deck with no
 suffix, because one column is `base` (§ 7.2). Nothing here invents a directory
 layout: it is `job-contracts.md § 2.1` Rule 1 and Rule 2, which is what makes
 continuing free.
@@ -394,8 +399,15 @@ Run one:    bash bdt_au_relax_c6h4s2au38_coarse.run.sh
 Then:       bash bdt_au_relax_c6h4s2au38_tight.run.sh     ← continues from the first
 ```
 
+Those wrappers exist because the server generated them, which means an activation
+was configured — `script_generation.activation` has no default and generation
+refuses without it (`running-a-job.md § 5.2`). That is the operator's setup, not
+the tab's, and this page neither asks for it nor works around it. On a machine
+with a `scheduler` block the same generate also writes `.sbatch` files
+(`running-a-job.md § 5.3`); the tab shows whichever it wrote.
+
 **Handing the sequence to a scheduler is a separate, later feature** — the
-JobSet export in `staged-runs-architecture.md § 11` — and it is gated on proving
+JobSet export in `staged-runs-architecture.md § 7` — and it is gated on proving
 the SIESTA ladder end-to-end on a real cluster first. It is not what this page
 is for, and a page that led with it would be describing a system the user did
 not ask for.
@@ -405,7 +417,7 @@ not ask for.
 ## 9. Open decisions
 
 1. ~~**Does one stage still emit a bare `<id>.fdf`?**~~ **Answered** by
-   `staged-runs-architecture.md § 5.2`: a description with no `stages` key is one
+   `engines/stages.md § 6.3`: a description with no `stages` key is one
    parameter set and writes `<id>.fdf`, unsuffixed — today's behaviour, reachable
    without understanding stages at all. The suffix appears the moment a second
    stage does.
@@ -441,4 +453,5 @@ It is **not** free of backend work, and saying otherwise would be the easy lie.
 The generator has to render from an effective config, expand `restart` into the
 engine's bound parameters, route a promoted `continue_retries` to that stage's
 wrapper, and derive `BlockSize` from that stage's rank count. Those are
-`staged-runs-architecture.md § 12`, and they come before any of this is drawn.
+`engines/stages.md` and `execution/run-identity.md`, scheduled by
+`staged-runs-architecture.md § 8`, and they come before any of this is drawn.

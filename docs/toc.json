@@ -98,6 +98,9 @@
         },
         {
           "path": "engines/tuning.md"
+        },
+        {
+          "path": "engines/stages.md"
         }
       ]
     },
@@ -113,6 +116,9 @@
         },
         {
           "path": "execution/running-a-job.md"
+        },
+        {
+          "path": "execution/run-identity.md"
         },
         {
           "path": "execution/job-system.md"
