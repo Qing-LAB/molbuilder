@@ -374,10 +374,15 @@ user aims at is the region they see. A tolerance set independently of the pictur
 would be a second fact about the same thing (§ 5.2), and it drifts the moment
 either is changed alone.
 
-**One thing bends that, and only upward.** Below **8 cm⁻¹** the band is wider
-than the curve, because a target that narrow cannot be hit with a mouse. What
-never happens is the picture being changed to match the band: the curve is the
-claim about the science, the band is only about aiming, and where they must
+**Two things bend that, and both only upward.** Below **8 cm⁻¹** the band is
+wider than the curve, because a target that narrow cannot be hit with a mouse.
+And no band is ever narrower **on screen** than **8 pixels**, whatever the axis
+is showing: twenty wavenumbers is a comfortable target across a wide panel and
+about a pixel and a half in a narrow one, so a width that is honest about the
+science is not by itself a target anyone can hit.
+
+What never happens is the picture being changed to match the band: the curve is
+the claim about the science, the band is only about aiming, and where they must
 differ it is the invisible one that gives way.
 
 **Bands overlap where modes crowd, and a click takes the nearest one.** That is
@@ -647,9 +652,9 @@ draw(picture)                   put this picture on the surface
 recolour(marks)                 change the colours already drawn — no rebuild
 resize()                        the box changed; fill it
 onClick(cb)                     the user clicked: hand up where it landed on
-                                the frequency axis, and nothing else
-onHover(cb)                     the pointer moved: the same number, continuously,
-                                or null over nowhere in particular
+                                the frequency axis, and what a pixel is worth there
+onHover(cb)                     the pointer moved: the same, continuously, or
+                                null over nowhere in particular
 purge()                         release the surface
 ```
 
@@ -714,6 +719,24 @@ library, and this is the file whose job is to know it.
 > the answer — and the handle's band lookup would be a rubber stamp. The division
 > this section states would be true on paper and false in the code. A raw
 > position keeps it true: the seal knows where, the handle knows which.
+
+**Two things a pointer does that are not a pick**, both learned from the built
+chart rather than from the design:
+
+- **A drag is a click.** The browser fires one whenever a press and a release
+  share an element, however far the pointer travelled — so the library's own
+  drag-to-zoom ends in one, and the chart would otherwise select whatever sat
+  under the release. A pick is a click that stayed within a few pixels of where
+  it went down.
+- **The library's toolbar is not the picture.** Pressing *zoom* must not select
+  the mode behind the button — and that is settled by **what** was clicked, never
+  by where it was. A button is a button wherever it sits.
+
+**Vertical position is never consulted.** A spectrum is picked by frequency, so
+every point at that frequency is the same request: level with a peak's tip,
+halfway down it, or beside the axis. Bounding the plot area vertically to keep
+the toolbar out was a real mistake in the built chart — it answered a question
+about *identity* with *geometry*, and made the tick-label strip dead.
 
 **The seal takes the library as it finds it, and never assumes it is ready.**
 Two consequences, both found by building against this contract rather than by
@@ -901,13 +924,16 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.3 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
 | § 6.3 — every mode keeps a full-size target | modes 1 cm⁻¹ apart each keep the whole band; no arrangement of neighbours shrinks one |
 | § 6.3 — the floor applies below it | at any broadening under 8 cm⁻¹, zero included, a band is 8 cm⁻¹ half-wide |
+| § 6.3 — a band is never a target too small to hit | where the axis is zoomed out enough that the width is worth less than 8 pixels, the band is 8 pixels instead |
 | § 6.3 — the nearest band wins | where bands overlap, a click reports the mode whose frequency is closest to it |
 | § 6.3 — the band bends, never the picture | where the floor overrides, the envelope drawn is still the envelope for the width that was set |
 | § 6.3.1 — the pointer shows what a click would take | moving over a band recolours that mode, and only it |
 | § 6.3.1 — pointing costs nothing until the answer changes | sliding inside one band, and hovering the mode already chosen, each make no call at all |
 | § 6.3.1 — what you picked does not flicker | a chosen mode keeps its colour under the pointer |
 | § 8.4 — a drag is not a pick | a press and a release far apart report nothing; a click a pixel or two from the press still reports |
-| § 8.4 — the toolbar and the labels are not the plot | a click above or below the plot area reports nothing, at any horizontal position |
+| § 8.4 — the toolbar is not the picture | a click whose target is inside the library's toolbar reports nothing, wherever it sits |
+| § 8.4 — vertical position is not consulted | clicks at one frequency and different heights — including beside the axis — all report the same number |
+| § 8.4 — the scale comes up with the position | what goes up says both where the pointer was and what one pixel is worth there |
 | § 6.4 — an imaginary mode is drawn and clickable | it appears at its own frequency and a click on it reports its index, exactly like any other mode |
 | § 6.4 — an imaginary mode is marked | it is drawn differently from an ordinary mode of the same height |
 | § 6.4 — an imaginary mode is not in the curve | adding one to a list leaves the envelope unchanged, in both pictures |
@@ -929,7 +955,6 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
 | § 8.4 — a picture carries words, never colours | the object handed down names states (`chosen`, `pending`, `imaginary`) and carries every axis title, unit and note; no colour and no mode index appears in it |
 | § 8.4 — a click asked for before the first draw still arrives | `onClick` then `draw` reports a click, in that order as well as the other |
-| § 8.4 — a click anywhere in the plot area is a position | a click over empty space, over the curve and over a stick each report the frequency under the pointer; a click in the margins reports nothing |
 | § 8.4 — a click comes up as a position | the seal reports where the click landed on the frequency axis and nothing more; a click in empty space beside a peak still reaches the handle |
 | § 8.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the module's own values (§ 11) — never from a page variable, never from a literal in the module |
 | § 9 — the envelope is the sum | the curve at a mode's frequency equals that mode's activity plus the tails of the others, computed independently of the implementation |
