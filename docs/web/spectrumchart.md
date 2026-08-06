@@ -36,9 +36,13 @@ tests are derived. It is not a tour of the current code; the code it replaces is
 > - **The band** — the invisible region around each stick within which a click
 >   counts as clicking that mode (§ 6.4). It is the reason picking a mode is not
 >   a test of aim.
-> - **Activity mode** and **density mode** — whether the run has Raman
->   intensities yet. With them, height means activity; without, every stick is
->   unit height and the chart is a frequency distribution (§ 6.3).
+> - **The two pictures** — a run works out frequencies before it works out
+>   strengths, so a spectrum arrives either with strengths or without. With them,
+>   a stick's height means its strength; without, every stick is the same height
+>   and the picture says so. Nothing chooses between them but the data (§ 6.3).
+> - **An imaginary mode** — a mode whose frequency came out imaginary, meaning
+>   the structure is not at rest. It is drawn and clickable, marked apart, and
+>   never part of the smooth curve (§ 6.5).
 
 ---
 
@@ -191,7 +195,7 @@ module seals the library for itself, because independence beat sharing. The rule
 is what the code complies with, not a description of what it currently does.
 
 **No test seam.** Tests import the module and drive the handle, exactly as a page
-does (§ 12).
+does (§ 13).
 
 **The test of all of this:** delete every other web module and SpectrumChart still
 loads, mounts, draws and reports clicks.
@@ -279,7 +283,7 @@ mode = {
 
 | Field | Required | Unit | Absent means | Refused when |
 |---|---|---|---|---|
-| `index` | **yes** | — | *(the record is refused)* | missing, or not a finite number |
+| `index` | **yes** | — | *(the record is refused)* | missing, not a finite number, or repeated within the list |
 | `freq` | **yes** | cm⁻¹ | *(the record is refused)* | missing, or not a finite number |
 | `activity` | no | Å⁴/amu | **not computed yet** — drawn as pending, never as zero (§ 6.3) | present but not a finite number |
 | `imaginary` | no | — | `false` | never — anything truthy is true |
@@ -291,10 +295,16 @@ malformed record has a bug one line earlier, and a chart that hides it is a char
 that helped.
 
 **`index` is the caller's numbering, carried and handed back untouched.** The
-chart does not renumber, sort or de-duplicate — it draws them in whatever order
-they arrive and hands back exactly what it was given. So a caller may use 1-based
-mode numbers, database ids, or anything else it can recognise later; the chart
-has no opinion, because the number means something only to whoever wrote it.
+chart does not renumber and does not sort — it draws the modes in whatever order
+they arrive and hands back exactly the number it was given. So a caller may use
+1-based mode numbers, row numbers, or any other finite number it can recognise
+later; the chart has no opinion about what the number means, because it means
+something only to whoever wrote it.
+
+**But the numbers must differ from each other.** A list carrying the same index
+twice is refused whole. `setSelected(22)` names one mode and a click hands one
+number back; with two modes numbered 22 neither sentence has an answer, and the
+chart would have to invent a tie-break no caller could predict.
 
 **Nothing else travels.** No structure, no eigenvector, no run metadata, no
 label, no colour. If a future need seems to want a fifth field, the question to
@@ -335,9 +345,14 @@ legitimately arrive with no activities at all:
               mistaken for silent
 ```
 
-**This is derived, never configured.** A flag would be a second place to believe
-something the data already says, and the failure mode is a flat axis with nothing
-on it and no explanation.
+**The right-hand picture is not a chart with nothing in it.** Every stick stands
+at height one, and the curve over them is the sum of those — so the picture
+answers *where are the modes, and where do they crowd together*, which is a real
+question and the only one the data can answer yet (§ 10).
+
+**Which picture you get is derived, never configured.** A flag would be a second
+place to believe something the data already says, and the failure mode is a flat
+axis with nothing on it and no explanation.
 
 ### 6.4 A click lands on a band, and no two bands overlap
 
@@ -345,10 +360,22 @@ Each mode gets an invisible band centred on it. Its half-width is the **broadeni
 width** — *the same number that draws the envelope*, so the region a user aims at
 is the region they see. A tolerance set independently of the picture would be a
 second fact about the same thing (§ 5.2), and it drifts the moment either is
-changed alone. A floor covers broadening being off, since bare sticks still have
-to be reachable.
+changed alone.
 
-**And each band is clamped to half the distance to its nearer neighbour.**
+**Four steps, in this order, give every band its half-width:**
+
+| | The step | The number | Why it is there |
+|---|---|---|---|
+| 1 | start at the broadening width | whatever was last set | the region you aim at is the region you see |
+| 2 | raise it to the **floor** if it is below | **8 cm⁻¹** | at zero broadening a stick is one pixel wide, and bare sticks still have to be reachable |
+| 3 | clamp it to half the gap to the nearer neighbour | — | so no two bands ever overlap |
+| 4 | raise it to the **minimum** if step 3 took it below | **0.25 cm⁻¹** | two modes at the same frequency would otherwise clamp each other to nothing |
+
+**The floor and the minimum are numbers this contract fixes, not preferences.** A
+click target whose size changes between builds is a click target nobody can test,
+and a rule that says only "a floor" cannot have a test derived from it at all.
+
+Step 3 is the one worth a picture:
 
 ```
   broadening 20 cm⁻¹, two modes 24 cm⁻¹ apart
@@ -372,9 +399,34 @@ drawn last, not the nearer one. Clamped, every point of the plot belongs to at m
 one band, so **the band you are in is always the nearest mode**, and crowded
 regions get tighter targets, which is exactly where being off by one mode matters.
 
-Two modes at the same frequency cannot be separated by any band. They keep a
-minimum width so both stay clickable rather than neither; telling them apart is
-the table's job.
+Two modes at the same frequency cannot be told apart by any band, which is what
+step 4 is for: both keep the minimum width, so both stay clickable rather than
+neither. Which of the two a click reports is then genuinely undefined — they are
+the same distance away — and separating them is the table's job, not the chart's.
+
+### 6.5 An imaginary mode is drawn, marked, and left out of the curve
+
+A mode can come back **imaginary**. That is not a very slow vibration: it means
+the structure is not sitting at rest, and the "vibration" is the direction it
+would fall away in. No measured spectrum contains such a line.
+
+So the chart does three separate things with one, and each is its own sentence of
+the contract:
+
+- **It is drawn**, at the frequency the caller gave, and it is **clickable like
+  any other mode** — an imaginary mode is very often the one the user opened the
+  result to look at.
+- **It is marked apart**, so it can never be read as an ordinary weak line. *How*
+  it is marked is the seal's business (§ 9.4); *that* it is marked is this
+  contract's.
+- **It never joins the envelope** (§ 10), because the envelope is what a
+  measurement would look like and no measurement contains this.
+
+**`imaginary` and a negative `freq` are two separate facts, and neither implies
+the other.** Runs differ over whether they report these frequencies as negative
+numbers. Which convention produced a number is science, and science belongs to the
+tab (§ 2): the chart draws the number it is handed and marks the mode the flag
+names, and it never infers one from the other.
 
 ---
 
@@ -416,6 +468,11 @@ the same reason: teardown must never have to ask whether setup worked.
 the mount resolves with `ok: false` and a message the tab can show — the mode
 table beside it still works, which is the behaviour the current code has and
 worth keeping.
+
+**The module owns the inside of its host, and nothing else about it.** `mount`
+empties the element it is given before it draws, so whatever was in there — a
+placeholder, a spinner, a chart from a previous result — is gone. The element
+itself, its size and its place on the page remain the host's (§ 5.4).
 
 `dispose()` releases the drawing surface, disconnects the box watcher and leaves
 the host element empty. Calling it twice is safe.
@@ -503,7 +560,7 @@ Data goes in one way; nothing comes back out but a click.
 
 | Door | Takes | Refuses | Returns |
 |---|---|---|---|
-| `setModes` | an array of mode records (§ 6.1). An empty array is legal and means *an empty chart* | anything that is not an array; a record missing `index` or `freq` — the whole call, with nothing drawn, rather than a chart quietly missing rows | nothing |
+| `setModes` | an array of mode records (§ 6.1). An empty array is legal and means *an empty chart* | anything that is not an array; a record missing `index` or `freq`; the same `index` twice — the whole call, with nothing drawn, rather than a chart quietly missing rows | nothing |
 | `setSelected` | one `index` that appeared in the current list, or `null` for *nothing chosen* | an index the current list does not contain — the drawn selection does not change, because the alternative is a highlight on nothing | nothing |
 | `setBroadening` | a width in cm⁻¹, `≥ 0`. Zero means *no curve*: bare sticks, and click bands at their floor (§ 6.4) | a negative number or a value that is not a number — the width already set stands, because substituting a default would hide a caller's bug | nothing |
 | `refit` | — | — | nothing |
@@ -531,8 +588,12 @@ for a figure nobody is meant to click.
 would otherwise get an endless round trip. Nothing the tab does to the chart ever
 comes back out of it.
 
-There is deliberately **no `getSelected`** and **no `getModes`**: the caller wrote
-both.
+**A click that lands in no band reports nothing at all.** `onSelect` is not
+called, and nothing on screen changes. It does not report `null`: the event means
+*the user picked a mode*, and there is no mode to name — a `null` would oblige
+every caller to handle a case whose meaning is "nothing happened". Whether an
+empty click should clear the selection is a decision about the whole tab, and the
+tab is where the selection lives (§ 5.2).
 
 **`refit` exists because of a rule, not because of a library's behaviour.**
 
@@ -600,8 +661,18 @@ past the outermost mode so the curve returns to zero at both ends rather than
 being cut off mid-peak. A fixed grid is either too coarse for a narrow line or
 wasteful for a broad one; the width is the only number that knows which.
 
-**Modes with no activity contribute nothing to the envelope** — not zero-height
-peaks. A mode whose intensity has not been computed is missing, not weak (§ 6.3).
+**What the sum runs over follows the picture you are in** (§ 6.3), because the sum
+has to mean the same thing the stick heights mean:
+
+- **Strengths known** — the sum runs over the modes that have one. A mode whose
+  strength has not been computed contributes **nothing**, not a zero-height peak:
+  it is missing, not weak.
+- **None known** — every mode contributes a peak of height one, and the curve is
+  a genuine frequency distribution: where it is high, modes are crowded. Drawing
+  unit sticks with no curve over them would leave exactly the barcode § 1 says
+  this component exists to avoid.
+
+**No imaginary mode is ever in the sum**, in either picture (§ 6.5).
 
 ---
 
@@ -635,9 +706,10 @@ disagree with the viewer (§ 3).
 
 **The stylesheet is sealed the way the JavaScript is:**
 
-- **One namespace.** Every class is `specchart-…`, so there is no bare name for a
-  page to collide with — and a page sheet reaching at one fails a guard, the same
-  way a script reaching past `mount` does.
+- **One namespace.** Every class is `spectrumchart-…` — the module's own name,
+  unabbreviated, so there is no bare name for a page to collide with and no second
+  spelling to remember. A page sheet reaching at one fails a guard, the same way a
+  script reaching past `mount` does.
 - **No value written twice.** Colours, spacing and type are tokens; the rules read
   them and carry no literals.
 - **The module links it, not the page**, at mount, once.
@@ -662,7 +734,12 @@ still says what it said.
 |---|---|---|---|
 | **Behaviour, no browser** | node | § 6, § 10 | the envelope and the band widths — values in, values out |
 | **Boundary behaviour** | node, with a stand-in that obeys § 9.4 | § 5, § 7, § 9 | what each door costs, and that each level refuses what its "never" column forbids |
-| **End to end** | a real page | § 1, § 6.4 | clicking beside a peak selects that mode; clicking in a gap selects nothing |
+| **End to end** | a real page | § 1, § 6.4 | clicking beside a peak selects that mode; clicking in a gap reports nothing |
+
+**The stand-in replaces the drawing library, not a file of this module.** Nothing
+inside the module is swappable, and no door exists for a test that does not exist
+for a page (§ 4). The stand-in stands where Plotly stands; the module cannot tell
+the difference, because § 9.4 is the whole of what it asks of that library.
 
 ### What each rule obliges a test to show
 
@@ -670,19 +747,32 @@ still says what it said.
 
 | The rule | A test must show |
 |---|---|
+| § 2 — the tab keeps its own | the module contains no table, no filter, no CSV, no poller, and no form |
 | § 4 — self-contained | the module mounts given only a host element; it reads no global and writes none |
 | § 4 — nothing else is importable | the entry point exports exactly `mount` |
 | § 4 — no hatch | the handle's keys are enumerated **unfiltered**: no accessor reaches the drawing surface or the internal state |
 | § 5.1 — the door says the cost | `setSelected` computes no curve and changes no axis; `setModes` does both |
 | § 5.1 — recolouring is not redrawing | after `setSelected`, the picture handed to the seal is the same picture, with only its colours changed |
 | § 5.2 — the selection is mirrored, not owned | a click emits `onSelect` and changes **nothing** on screen until `setSelected` is called; a chart mounted without `onSelect` still draws |
-| § 5.3 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
-| § 5.4 — no chrome | a mounted chart contains no heading, button, input or control of any kind |
+| § 5.3 — the library is invisible | no file above the seal names the drawing library, and nothing above it names a colour |
+| § 5.3 — no chrome | a mounted chart contains no heading, button, input or control of any kind |
 | § 5.4 — the host owns the box | the module sets no width or height on its host, at mount or ever; and a box that changes size redraws without the window moving |
 | § 6.1 — the two required fields | a record without `index`, or without `freq`, is refused |
 | § 6.1 — a refusal takes the whole call | one malformed record among many draws **nothing**, rather than a spectrum quietly missing that mode |
 | § 6.1 — absent is not zero | a mode with no `activity` field, and one with `activity: null`, are treated the same and neither is drawn as a strength of zero |
-| § 6.1 — the numbering is not interpreted | an unsorted list with non-contiguous indices draws in the order given and reports those indices back |
+| § 6.1 — the caller's numbering is carried, not interpreted | an unsorted, sparse, 1-based list draws in the order given, and the index a click reports is the index that was handed in |
+| § 6.1 — the indices must differ | a list containing the same index twice is refused whole, rather than resolved by a rule the caller cannot see |
+| § 6.3 — the picture is derived | a result with no activities anywhere draws every stick at height one, with a curve over them; one with some activities draws the rest as pending — and neither picture is reachable by a setting |
+| § 6.4 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
+| § 6.4 — a click lands on the nearest mode | for a spectrum with modes closer together than the broadening, every point in the plot resolves to the nearest mode; no two bands overlap at any width |
+| § 6.4 — the floor and the minimum are the stated numbers | at zero broadening every band is 8 cm⁻¹ half-wide; no clamp ever takes a band below 0.25 cm⁻¹ |
+| § 6.4 — degenerate modes stay clickable | two modes at the same frequency each keep a band, rather than both collapsing to zero width |
+| § 6.5 — an imaginary mode is drawn and clickable | it appears at its own frequency and a click on it reports its index, exactly like any other mode |
+| § 6.5 — an imaginary mode is marked | it is drawn differently from an ordinary mode of the same height |
+| § 6.5 — an imaginary mode is not in the curve | adding one to a list leaves the envelope unchanged, in both pictures |
+| § 6.5 — the flag and the sign are independent | a negative `freq` without the flag is drawn as an ordinary mode; the flag with a positive `freq` is drawn as imaginary |
+| § 8 — mount always resolves | a mount with no library still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
+| § 8 — the module owns the inside of its host | a host with content in it is empty of that content after mount, and empty again after `dispose`; the watcher stops (a resize after `dispose` draws nothing) and a second `dispose` neither acts nor throws |
 | § 9.2 — a mount option is the first write | `mount({ broadening: 20 })` and `mount()` then `setBroadening(20)` leave the chart in the same state, and no "initial" value survives a later write |
 | § 9.2 — the host is never resized | after mount and after every door, the host element carries no inline width or height the module wrote |
 | § 9.3 — one way in | the handle exposes no settable property and no options object; changing a fact is possible only by calling its door |
@@ -691,18 +781,17 @@ still says what it said.
 | § 9.3 — an unknown selection changes nothing | `setSelected` with an index the current list lacks leaves the drawn selection as it was |
 | § 9.3 — a bad width keeps the old one | a negative width, and a value that is not a number, each leave the width already set standing |
 | § 9.3 — an empty list is a state, not a failure | `setModes([])` draws an empty chart and does not error |
-| § 6.1 — the caller's numbering is carried | the index reported by a click is the index that was handed in, for a list that is unsorted, sparse and 1-based |
-| § 6.3 — the picture is derived | a result with no activities anywhere draws unit-height sticks; one with some activities draws the rest at zero, marked as pending — and neither is reachable by a setting |
-| § 6.4 — a click lands on the nearest mode | for a spectrum with modes closer together than the broadening, every point in the plot resolves to the nearest mode; no two bands overlap at any width |
-| § 6.4 — degenerate modes stay clickable | two modes at the same frequency each keep a band, rather than both collapsing to zero width |
-| § 8 — mount always resolves | a mount with no library still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
+| § 9.3 — an empty click is silent | a click landing in no band calls `onSelect` **not at all** — not with `null` — and changes nothing on screen |
 | § 9.3 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
 | § 9.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
 | § 9.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the document's tokens rather than from literals in the module |
 | § 10 — the envelope is the sum | the curve at a mode's frequency equals that mode's activity plus the tails of the others, computed independently of the implementation |
+| § 10 — the sum follows the picture | with strengths known, a mode without one adds nothing; with none known anywhere, every mode adds a peak of height one |
 | § 10 — the grid follows the width | the sampling step scales with the broadening, and the curve returns to near zero at both ends at every width |
-| § 10 — missing is not weak | a mode with no activity contributes nothing to the envelope |
-| § 2 — the tab keeps its own | the module contains no table, no filter, no CSV, no poller, and no form |
+| § 12 — the module links its own sheet | a chart mounted on a page whose template names no stylesheet is styled; mounting twice adds one link, not two |
+| § 12 — one namespace | every class the module writes begins `spectrumchart-` |
+| § 12 — no value written twice | the sheet carries no colour, spacing or type literal — every value is a token |
+| § 12 — the mount waits for the sheet | the first chart on a cold page draws with the token palette, not with fallback colours |
 
 ---
 
