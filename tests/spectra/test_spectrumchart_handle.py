@@ -73,14 +73,14 @@ globalThis.__host = function () {
 
 globalThis.__move = function (host, atCm1) {
     const el = host.children[0].children[0];
-    el.dispatch("mousemove", { clientX: atCm1, clientY: 100 });
+    el.dispatch("mousemove", { clientX: atCm1, clientY: 100, target: el });
 };
 globalThis.__leave = function (host) {
     host.children[0].children[0].dispatch("mouseleave", {});
 };
 globalThis.__click = function (host, atCm1) {
     const el = host.children[0].children[0];
-    el.dispatch("click", { clientX: atCm1, clientY: 100 });
+    el.dispatch("click", { clientX: atCm1, clientY: 100, target: el });
 };
 """
 

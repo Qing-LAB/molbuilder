@@ -17,6 +17,16 @@ import { openSurface } from "./_seal.js";
 /** A stick is a line, not a block: thin against whatever range is on screen. */
 const STICK_WIDTH_FRACTION = 400;
 
+/* HOW CLOSE COUNTS, AS A FLOOR IN PIXELS.
+ *
+ * The band is the Lorentz width, so what you aim at is what you see (§ 6.3) —
+ * but that is a width in cm⁻¹, and what it is worth on screen depends entirely
+ * on how much spectrum is in view. Twenty wavenumbers is a comfortable target
+ * across a wide panel and about a pixel and a half in a narrow one, which is a
+ * target nobody can hit. So a band is never narrower than this on screen,
+ * however far out the axis is zoomed. */
+const MIN_PICK_PX = 8;
+
 const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
 
 /** § 7 — failure is a handle carrying three keys and no others. */
@@ -131,13 +141,18 @@ export async function mount(host, options = {}) {
         surface.recolour(states);
     };
 
-    /** A position becomes a mode here, never below (§ 8.4). */
-    const modeAt = (x) => {
+    /** A position becomes a mode here, never below (§ 8.4).
+     *
+     * `perPixel` comes up with the position because the band has to be a target
+     * on a screen as well as a width in the science: whichever is wider, the
+     * Lorentz width or MIN_PICK_PX, is how close counts. */
+    const modeAt = (at) => {
+        const onScreen = MIN_PICK_PX * (at.perPixel || 0);
         let found = null;
         let closest = Infinity;
         modes.forEach((mode, i) => {
-            const away = Math.abs(x - mode.freq);
-            if (away <= bands[i] && away < closest) {
+            const away = Math.abs(at.x - mode.freq);
+            if (away <= Math.max(bands[i], onScreen) && away < closest) {
                 closest = away;
                 found = mode.index;
             }
@@ -151,17 +166,17 @@ export async function mount(host, options = {}) {
      * A pointer crossing the plot fires hundreds of times a second, so this
      * redraws only when the ANSWER changes -- and then only colours (§ 5.1's
      * cheap door). Sliding along inside one band costs nothing at all. */
-    surface.onHover((x) => {
+    surface.onHover((at) => {
         if (disposed) return;
-        const next = x === null ? null : modeAt(x);
+        const next = at === null ? null : modeAt(at);
         if (next === hovered) return;
         hovered = next;
         recolour();
     });
 
-    surface.onClick((x) => {
+    surface.onClick((at) => {
         if (disposed || !onSelect) return;
-        const index = modeAt(x);
+        const index = modeAt(at);
         // § 8.3 — a click in no band reports nothing at all, not null.
         if (index !== null) onSelect(index);
     });

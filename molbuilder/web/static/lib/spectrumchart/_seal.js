@@ -215,23 +215,65 @@ export async function openSurface(host) {
      */
     const plotArea = () => surface.querySelector && surface.querySelector(".nsewdrag");
 
+    /* WHERE THE POINTER IS, AND WHAT A PIXEL IS WORTH.
+     *
+     * The library reports a click only when the pointer is over one of its own
+     * points, so nothing it offers can hear a click in the empty space beside a
+     * peak — and that space is the whole purpose of the bands (§ 6.3). So the
+     * position is taken from the surface itself and converted here, against the
+     * axis the library is currently drawing.
+     *
+     * The SCALE goes up with it, because a band is a width in cm⁻¹ and the
+     * layer above has no way to know what that is worth on screen: twenty
+     * wavenumbers is a comfortable target across a wide panel and a pixel and a
+     * half in a narrow one. Both numbers are about where the pointer is; neither
+     * says anything about what is drawn.
+     *
+     * VERTICAL POSITION IS NOT CONSULTED. A spectrum is picked by frequency, so
+     * anywhere in the chart at that frequency means the same thing — clicking
+     * level with a peak's tip and clicking down near the axis are the same
+     * request. What is excluded is the library's own toolbar, and that is
+     * excluded by WHAT was clicked rather than by where: a button is a button
+     * wherever it sits.
+     */
+    const onToolbar = (event) => {
+        let node = event.target;
+        while (node && node !== surface) {
+            /* A class name is not one kind of value: HTML gives a string, SVG
+             * gives an object holding one, and either can be reached through the
+             * attribute instead. A plot is drawn in SVG inside an HTML box, so
+             * both turn up here. */
+            const raw = (node.getAttribute && node.getAttribute("class")) || node.className;
+            const cls = typeof raw === "string" ? raw : (raw && raw.baseVal) || "";
+            if (/\bmodebar/.test(cls)) return true;
+            node = node.parentNode;
+        }
+        return false;
+    };
+
     const positionOf = (event) => {
+        if (onToolbar(event)) return null;
         const area = plotArea();
         const axis = surface._fullLayout && surface._fullLayout.xaxis;
         if (!area || !axis || !Array.isArray(axis.range)) return null;
         const box = area.getBoundingClientRect();
-        if (!box.width || !box.height) return null;
-        /* BOTH axes, not just the one the answer comes from. The library's own
-         * toolbar sits above the plot and the axis labels below it, and both
-         * share the plot's horizontal span — so a check on x alone turns
-         * "zoom in" or a click on a tick label into "select the mode behind
-         * that button". */
-        const across = (event.clientX - box.left) / box.width;
-        const down = (event.clientY - box.top) / box.height;
-        if (across < 0 || across > 1 || down < 0 || down > 1) return null;
+        if (!box.width) return null;
         const [from, to] = axis.range;
-        return from + across * (to - from);
+        const perPixel = (to - from) / box.width;
+        return { x: from + (event.clientX - box.left) * perPixel, perPixel };
     };
+
+    let hovered = null;   // the handle's hover callback, if it asked for one
+    let pressedAt = null;
+
+    surface.addEventListener("mousemove", (event) => {
+        if (disposed || !hovered) return;
+        const at = positionOf(event);
+        hovered(at && Number.isFinite(at.x) ? at : null);
+    });
+    surface.addEventListener("mouseleave", () => {
+        if (!disposed && hovered) hovered(null);
+    });
 
     /* A DRAG IS NOT A PICK.
      *
@@ -241,29 +283,8 @@ export async function openSurface(host) {
      * select whatever mode happened to sit under the release. Looking at a peak
      * closely would keep changing the selection out from under the user.
      *
-     * A few pixels of travel is a shaky hand, not a gesture, so a click counts
-     * as a pick only if the pointer stayed within DRAG_SLOP of where it went
-     * down. */
+     * A few pixels of travel is a shaky hand, not a gesture. */
     const DRAG_SLOP_PX = 4;
-    let hovered = null;   // the handle's hover callback, if it asked for one
-    let pressedAt = null;
-
-    /* WHERE THE POINTER IS, continuously — the same conversion as a click.
-     *
-     * A band is invisible, so which mode a click would pick is a guess until
-     * something says so. Reporting the position under the pointer lets the layer
-     * above light up the mode it would choose, which is the band made visible
-     * without drawing it. `null` means the pointer is somewhere that would pick
-     * nothing. */
-    surface.addEventListener("mousemove", (event) => {
-        if (disposed || !hovered) return;
-        const x = positionOf(event);
-        hovered(x !== null && Number.isFinite(x) ? x : null);
-    });
-    surface.addEventListener("mouseleave", () => {
-        if (!disposed && hovered) hovered(null);
-    });
-
     surface.addEventListener("mousedown", (event) => {
         pressedAt = { x: event.clientX, y: event.clientY };
     });
@@ -276,8 +297,8 @@ export async function openSurface(host) {
             const travelled = Math.hypot(event.clientX - from.x, event.clientY - from.y);
             if (travelled > DRAG_SLOP_PX) return;       // a gesture, not a pick
         }
-        const x = positionOf(event);
-        if (x !== null && Number.isFinite(x)) clicked(x);
+        const at = positionOf(event);
+        if (at && Number.isFinite(at.x)) clicked(at);
     });
 
     return {
