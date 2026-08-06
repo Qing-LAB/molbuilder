@@ -51,15 +51,20 @@ projects/                                   the root (git-ignored)
             ├── 01_coarse/                  ④ a STAGE — one science setting, and a RUN
             │   ├── <id>_coarse.fdf → ../     its deck, linked up
             │   ├── Au.psml → ../             shared, linked up
-            │   ├── <id>.XV  <id>.DM          ⑤ what this stage produced
+            │   ├── <id>.XV  <id>.DM          what this stage produced
             │   ├── <id>_coarse-run0.out
-            │   └── bench-G1K2C5/           ⑥ a TRIAL — one resource setting, scratch
+            │   └── bench/                  ⑤ a BENCHMARK — self-contained, scratch
             │       ├── job-gpu.fdf           the stage's science, made measurable
-            │       └── job-gpu-run0.out
+            │       ├── job-cpu.fdf           its comparable CPU point
+            │       ├── job-gpu.run.sh        its own wrappers, pseudos, config
+            │       ├── bench-manifest.json  bench-result.json
+            │       ├── .mbscratch            "nothing below me is worth keeping"
+            │       └── point-G1K2C5/       ⑥ a TRIAL — one resource setting
+            │           └── job-gpu-run0.out
             │
             └── 02_tight/
                 ├── <id>.XV → ../01_coarse/   carried, localised before it runs
-                └── bench-G2K4C5/
+                └── bench/
 ```
 
 Two levels carry the weight.
@@ -81,7 +86,8 @@ level further down: a calculation is not a job, but a stage is.
 | ② **topic** | a **fixed set of nine** (`job-contracts.md § 2.5`) | nobody | calculations (run topics) or files (storage topics) |
 | ③ **calculation** | the run id (`run-identity.md § 3`) | **the producer**, in one transaction | decks, wrappers, the shared package, the description, derived files, the history |
 | ④ **stage** | `<seq>_<name>` (§ 4) | **prep** lays the links; then **the engine** | links up, this stage's outputs, its trials |
-| ⑥ **trial** | `bench-<knobs>` (§ 4) | the benchmark producer, then the engine | a transformed deck and one throwaway run |
+| ⑤ **benchmark** | `bench` | the benchmark producer | its own decks, wrappers, pseudos, config and results — a **self-contained bundle** |
+| ⑥ **trial** | `point-<knobs>` (§ 4.3) | the sweep script, then the engine | one throwaway run |
 
 Two rules, and everything else follows:
 
@@ -92,6 +98,14 @@ The producer never writes inside a stage directory; prep only puts symlinks
 there. The engine never writes above itself — the wrapper copies a carried file
 local before starting, precisely so a stage cannot write back through a link into
 the stage that produced it (`job-system.md § 5.2`).
+
+**A benchmark gets its own directory, and that is not tidiness.**
+`generate_bench_bundle` writes its own decks, wrappers, pseudopotential copies,
+`README.md` and `.molbuilder.json` — it owns a directory. Pointed at a stage
+directory it would put a second job's inputs beside the real run's, which
+`job-contracts.md § 2.1` Rule 1 forbids, and duplicate the pseudopotentials
+already linked from the parent. Pointed at `01_coarse/bench/` it needs **no
+change at all**: the bundle root moves, everything inside it stays as it ships.
 
 **Storage topics are flat and shared.** `structure/` and `pseudopotential/` hold
 files, not calculations. A calculation *points* at a structure and *copies* the
@@ -269,9 +283,10 @@ how a folder stops being trustworthy.
 | `stages.json` | ③ calculation | `molbuilder/stages@1` | **the science**: base settings, which vary, the stages |
 | `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the chain: jobs, edges, carried files, per-job resources |
 | `.mbcheckpoint.json` | ③ calculation | `molbuilder/checkpoint-config@1` | which patterns are big files |
-| `environment.json` | ④ stage | `molbuilder/environment@1` | the machine as detected when this stage was measured |
-| `bench-manifest.json` | ④ stage | `molbuilder/bench-manifest@2` | the two comparable points, and the source deck's hash |
-| `bench-result.json` | ④ stage | `molbuilder/bench-result@1` | every trial's timing, the winner, a recommendation |
+| `.molbuilder.json` | ⑤ benchmark bundle | same as project | **the activation the bundle carries to the target** — written by `_write_activation_config`, the single place that decision is persisted. A fourth scope in practice, and deliberate: the bundle must be runnable after `scp` |
+| `environment.json` | ⑤ benchmark bundle | `molbuilder/environment@1` | the machine as detected when this stage was measured |
+| `bench-manifest.json` | ⑤ benchmark bundle | `molbuilder/bench-manifest@2` | the two comparable points, and the source deck's hash |
+| `bench-result.json` | ⑤ benchmark bundle | `molbuilder/bench-result@1` | every trial's timing, the winner, a recommendation |
 
 **The split is strict, and it is why a calculation folder is portable**: the
 machine's knowledge lives in `molbuilder.json`, outside the calculation; the
@@ -279,7 +294,7 @@ science lives in `stages.json`, inside it. A calculation carries no walltime, no
 partition, no activation command. Copy it to another cluster and it still
 describes the same calculation (`job-system.md § 2`, decision 3).
 
-The benchmark files are the one deliberate exception, and they sit at **④, not
+The benchmark files are the one deliberate exception, and they sit at **⑤, not
 ③**: they are a measurement of *this machine* for *this stage*, so they are not
 portable and are not meant to be. Moving a calculation to a different cluster
 leaves them stale, which the recorded environment makes visible.
@@ -311,15 +326,25 @@ Three reasons it belongs at ③:
 - **Results are already separated by path**, so each stage's big files stay its
   own without a history of their own.
 
-**Trials are scratch and are not archived.** A five-iteration throwaway's `.DM`
-is worth nothing and can be large. What survives a trial is `bench-result.json`,
-a few kilobytes of text, which git tracks like any other text. So `bench-*/`
-directories are excluded from the big-file archive — the one place where what is
-kept differs by level rather than by pattern.
+**A benchmark is scratch and is not archived.** A five-iteration throwaway's
+`.DM` is worth nothing and can be large, and a sweep has twenty of them. What
+survives is `bench-result.json` — a few kilobytes of text, which git tracks like
+any other text.
+
+**This needs a mechanism the archive does not have.** `archive_globs` classifies
+by *pattern* (`*.DM`), not by location, so the recursive walk added on 2026-08-06
+picks up `01_coarse/bench/point-G1K2C5/job-gpu.DM` exactly as it picks up a real
+result — **verified, not assumed**. The proposal is a marker: a directory
+containing **`.mbscratch`** is skipped whole, and the benchmark producer drops one
+in the bundle it creates. It is self-describing (the thing that makes scratch says
+so), it is not name-matching (`bench` is a convention, not a rule), and it
+generalises to anything else that produces throwaway runs. Until it exists,
+invariant 16 is a statement of intent rather than of behaviour.
 
 **One thing stands in the way today.** The setup step refuses a folder whose
-subfolders contain a calculation file — and `01_coarse/<id>_coarse.fdf` is one,
-even as a symlink. So the folder the shipped code already produces cannot be put
+subfolders contain a calculation file, at **any** depth — and this tree has two
+such levels: `01_coarse/<id>_coarse.fdf` (a symlink, which the check follows) and
+`01_coarse/bench/job-gpu.fdf` (a real one). So the folder the shipped code already produces cannot be put
 under a history. The fix is for the producer, which just built the folder and
 knows it is one calculation, to say so (`checkpointing.md`, L1).
 
@@ -374,7 +399,9 @@ single history live in their own contracts and are cited, not repeated.
 15. **Every big regular file is either in git or in the archive, never both,
     never neither** (`checkpointing.md`, S1) — and after the 2026-08-06 fix that
     holds at every depth, so a stage's result is covered.
-16. **Trial directories are excluded from the archive** (§ 6).
+16. **Scratch directories are excluded from the archive** — a directory holding
+    `.mbscratch` is skipped whole (§ 6). **Not held today**: the walk classifies
+    by pattern and archives a trial's `.DM` like any other.
 
 ---
 

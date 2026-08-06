@@ -439,20 +439,26 @@ cannot.
     name proposed from the stage it forks. **The wrapper does none of it**
     (`running-a-job.md § 6.2`: it is deliberately git-agnostic), so the finish is
     observed where the run is already watched.
-12. ~~**The archive globs reach into the subdirectories**~~ — **done
+12. **Scratch directories stay out of the archive**
+    (`execution/project-layout.md` § 6). A benchmark under a stage produces a
+    `.DM` per trial, and the recursive walk archives every one — verified. *Done
+    when:* a directory holding `.mbscratch` is skipped whole, the benchmark
+    producer writes one, and a produced folder with a bench bundle archives the
+    stage's result and none of the trials'.
+13. ~~**The archive globs reach into the subdirectories**~~ — **done
     (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
     the walk is recursive and skips symlinks and dot-directories, a binary-only
     change now produces a checkpoint, and every commit gets an archive so a
     missing one is evidence rather than a hint. `job-contracts.md § 6.1` updated
     in the same commit; 119 checkpoint tests pass.
-13. **Repoint `checkpoint.py`'s dead doc references.** It cites
+14. **Repoint `checkpoint.py`'s dead doc references.** It cites
     `run-checkpoints.md` five times — a document the 2026-07 migration removed —
     and cites numbered principles from it that nothing now defines. *Done when:*
     each reference points at the section that owns it today
     ([`checkpointing.md`](?doc=execution/checkpointing.md) for the invariants,
     [`running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` for the workflow),
     and no docstring names a file that is not in the tree.
-14. **The checkpoint invariants become tests**
+15. **The checkpoint invariants become tests**
     ([`checkpointing.md`](?doc=execution/checkpointing.md) `§ 6`). Eighteen, of
     which **eleven can be asserted against the code as it stands** and need none
     of this project's other work. *Done when:* all eighteen have an assertion, and
