@@ -238,7 +238,7 @@ whole system is one sequence, and the rule that keeps it one is:
 | 3 | **2 + the user's name**, within 1's character set | the **id**, normalised once and then quoted by everything after | `run-identity.md § 2–3` |
 | 4 | the **schema** | which fields exist, their types, ranges and `engine_key`s | `web/form-schema.md` |
 | 5 | the **description** | values, which fields vary, the stages and their order | `engines/stages.md § 6` |
-| 6 | the **preflight** | whether this file can be read here at all | `engines/stages.md § 6.4` |
+| 6 | the **preflight** | whether this file can be read here at all | `engines/stages.md § 6.5` |
 | 7 | **validation** | whether it may be written: `error` blocks, per stage, on the resolved whole | `science/validation.md` |
 | 8 | the **generator** | the decks and their wrappers — the merge, the cell, the pseudos, the identity group, BENCH-MARKS | `engines/stages.md § 7` |
 | 9 | the **target's config** | the wrapper's shell: preamble and activation — and generation refuses without an activation, which has no default | `running-a-job.md § 5.2` |

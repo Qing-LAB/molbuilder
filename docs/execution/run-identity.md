@@ -105,7 +105,7 @@ What is left is what those coordinates are *of*:
 |---|:--:|---|
 | the molecule — its formula, or its named components | **yes** | a `.XV` is a list of positions for *these* atoms. Different atoms, and every coordinate lands somewhere it does not belong |
 | the positions | no | the output (above) |
-| the cell | **no — reported instead** (§ 5) | a `.XV` carries the cell too, so a changed cell is overridden on restart rather than mismatched |
+| the cell | **no — reported instead** (§ 5) | a `.XV` carries the cell too, so on a continue the saved cell **wins** and the new one is silently ignored. That is a fact to report, not a difference to pin |
 | basis, spin, XC | no | the geometry stays valid across all of them, and tuning the electronics while continuing is ordinary practice. A `.DM` of the wrong shape is caught by the engine — a failure it already reports, traded for one it cannot |
 | mesh, tolerances, force, steps, algorithm | no | exactly what a description's stages vary |
 | ranks, threads, GPU | no | how fast it ran says nothing about whether the answer may be continued |
@@ -139,8 +139,13 @@ script (`job-contracts.md § 4.3`). The project tree uses the same set per
 segment (`job-contracts.md § 2.5`).
 
 So the normalisation is: **anything outside `[A-Za-z0-9_-]` to `_`, runs
-collapsed, leading and trailing separators trimmed, length capped** with room for
-the suffixes the stages will add. There is **no lowercasing rule** — that would
+collapsed, leading and trailing separators trimmed, and length capped.**
+
+The cap is derived, not chosen: `<id>_<longest stage name>.<longest extension the
+run will write>` must fit the filesystem's name limit (255 bytes, in practice).
+Since rule 3 below **refuses** rather than truncating, the cap has to be checked
+where the id is made — a truncated id is a different calculation wearing the same
+name, which is the one failure this whole document exists to prevent. There is **no lowercasing rule** — that would
 make the id the one name in the system that forbids capitals. The
 case-insensitive-filesystem worry is handled where it actually bites, by making
 the **collision check** case-insensitive.
@@ -169,9 +174,18 @@ it.
 2. **The result is shown, not hidden.** A surface that hides it hides the thing
    that decides whether the next run continues.
 3. **A normalisation that loses the name is refused, not patched.** If what the
-   user typed reduces to nothing, or collides with another calculation in the
-   same project, say so and ask — never append a digit and carry on, which
-   produces `bdt_2` and no explanation of what it differs from.
+   user typed reduces to nothing, say so and ask — never append a digit and carry
+   on, which produces `bdt_2` and no explanation of what it differs from.
+
+**A "collision" is narrower than it sounds.** The folder is
+`<project>/<topic>/<id>/`, so two calculations collide only when they would
+occupy the *same topic*. The same id under `optimization/` and under `frequency/`
+is not a collision — it is the same system studied two ways, which is what the
+topic axis is for, and the warm files never meet because they are in different
+directories. A genuine collision is one folder, and it is the case
+§ 6 decides: **refuse unless told to overwrite.** The comparison is
+case-insensitive, which is where the case-insensitive-filesystem worry above is
+actually handled.
 
 ---
 
@@ -202,9 +216,10 @@ scheduler's business.
    files. *A new engine that cannot fill this in is a new engine whose restart
    behaviour nobody has thought about yet.*
 2. **The user says one thing; the generator sets the group.** `restart` is a
-   single field — `continue` or `clean` — and the renderer expands it into every
-   bound parameter for that engine. Nobody keeps three keys in step by hand, and
-   no description can carry them individually and disagree with itself.
+   single field — `continue` or `clean` — and the renderer expands it into
+   whatever that engine's group is: three declared keys for SIESTA, generated
+   control flow for PySCF. Nobody keeps a group in step by hand, and no
+   description can carry its members individually and disagree with itself.
 3. **It is per-stage, because it is an ordinary field.** A first stage is
    normally `clean` and everything after it `continue`. Nothing special is needed
    to say so.
@@ -227,15 +242,19 @@ An identity that tried to prevent every wrong continuation would have to include
 everything, and § 2.1 is about why that is worse. The cases below are real, and
 the answer to each is a message, not a wider pin.
 
-| Case | Why the id cannot fix it | What should be said |
+| Case | Why the id cannot fix it | Who says it, and what |
 |---|---|---|
-| **changed cell parameters** | the cell in the deck is *derived* from the parameters and the structure (`model/cell-plan.md`), and derived values cannot be in the id (§ 2). But a `.XV` holds coordinates in the frame the run wrote them in, so widening a vacuum moves the deck's atoms while the restart file's stay put | *state found, written under different cell parameters* |
-| **the structure moved under a saved description** | the description holds a reference plus a witness (`engines/stages.md § 6.2`), so the mismatch is detectable | *this description was written against a different structure* |
-| **prior state from another calculation** | same folder, different id — the engine will not load it, but the user should know it is there | *prior state found, but from a different calculation* |
-| **prior state that matches** | nothing is wrong; the user should still know before they start | *prior state found for this key — the next run continues* |
+| **changed cell parameters** | the cell in the deck is *derived* from the parameters and the structure (`model/cell-plan.md`), and derived values cannot be in the id (§ 2). And the hazard is not a mismatch — a `.XV` carries its own cell and its own frame, so on a continue it **wins**: widening the vacuum changes the deck and changes nothing about the run | the surface, at check time: *state found, written under different cell parameters — a continue will keep the saved cell* |
+| **the structure moved under a saved description** | the description holds a reference plus a witness (`engines/stages.md § 6.3`), so the mismatch is detectable | the **reader**, as a finding at preflight: *this description was written against a different structure* |
+| **prior state from another calculation** | same folder, different id — the engine will not load it, but the user should know it is there | the **surface** at check time, and the **wrapper banner** at run time: *prior state found, but from a different calculation* |
+| **prior state that matches** | nothing is wrong; the user should still know before they start | the **surface** at check time, and the **wrapper banner** at run time: *prior state found for this key — the next run continues* |
 
-The last two are the wrapper's banner (`job-contracts.md § 4.4`) moved to where
-the decision is being made. This is the shipped doctrine —
+**Two authors, on purpose.** The wrapper's banner (`job-contracts.md § 4.4`)
+already says the last two at run time, which is *after* the user committed. The
+surface says them at check time, which is when the choice is still open. Neither
+replaces the other, and neither may say something the other contradicts — the
+banner is the one that is always present, so it is the one that must never be
+weakened. This is the shipped doctrine —
 **molbuilder informs, and the user decides to continue** (`job-system.md § 2`,
 decision 5) — reaching a case it does not cover today: `WARM-RESTART (silent)`
 cannot tell you the state came from a different calculation, because nothing

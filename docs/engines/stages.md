@@ -36,11 +36,23 @@ anything preceded it. The word exists only inside molbuilder:
 The base is *what the system is*. A stage is *how we are approaching it this
 time*.
 
+**Scope: one deck per stage is SIESTA's shape.** `job-contracts.md § 2.3` names
+two multi-stage execution shapes, and only one of them is this. PySCF's staged
+relaxation runs **inside one Python process** writing a single unified log, so a
+three-stage PySCF calculation is one file, not three. This contract describes the
+per-deck shape; extending it to PySCF means first deciding whether its stages
+become a loop inside one script (what ships today) or genuinely separate files,
+and that decision is not made here.
+
 **A stage resolves completely at generate time.** What comes out is an ordinary,
-complete engine input that does not need molbuilder to be interpreted, does not
-refer to a stage it follows, and carries no marker a reader must first
-understand. Anything that would require a downstream reader to know the word
-"stage" is outside this contract.
+complete engine input that does not need molbuilder to be interpreted and does
+not refer to a stage it follows.
+
+Precisely: the stage name survives in the **filename**, `<id>_<name>.fdf`, as a
+label — and nothing has to interpret it to run the file. The deck's *content*
+carries no stage marker at all. Anything that would require a downstream reader
+to understand the word "stage" in order to act correctly is outside this
+contract.
 
 ---
 
@@ -55,7 +67,7 @@ understand. Anything that would require a downstream reader to know the word
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | `[A-Za-z0-9_]+` | becomes the deck's suffix, `<id>_<name>` (`job-contracts.md § 2.3`) |
+| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen** | becomes the deck's suffix, `<id>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is already the *other* stage separator: the molwatch log and the run decoder's stage regex use `-stage<N>` (`job-contracts.md § 2.3`), and a stage named `pre-tight` would put a second hyphen where that reader looks for one |
 | `enabled` | bool | whether this stage is rendered at all |
 | `overrides` | map | schema field name → that stage's value |
 
@@ -172,11 +184,13 @@ Two consequences:
   stage on ScaLAPACK and a tight stage on ELPA-GPU is an ordinary thing to want,
   and it works: routing is per script, so each deck's own wrapper activates its
   own environment. Nothing about the folder has to change.
-- **It is a correctness gate, not a preference.** If a stage opts into a build
+- **It is a correctness gate, and it fires late.** If a stage opts into a build
   whose environment is not installed, generation raises with an install hint
-  (`running-a-job.md § 2.3`) — and because a description is produced as a whole
-  (§ 6.4), one such stage refuses the whole generate rather than writing a folder
-  that is partly runnable.
+  (`running-a-job.md § 2.3`) — but that check belongs to *wrapper* generation,
+  which happens after the decks are rendered, and § 6.5 deliberately does not
+  duplicate it in the preflight. So the refusal arrives with some decks already
+  written, which is why § 7 requires the whole folder to be produced
+  transactionally (§ 7.1).
 
 ### 5.2 A deck line may depend on the launch
 
@@ -222,11 +236,11 @@ rather than inventing a second mechanism.
   "schema_fingerprint": "sha256:1f0c…",
 
   // What this is a calculation OF: a reference into the tree, plus a witness of
-  // what was there when it was written (§ 6.2).
+  // what was there when it was written (§ 6.3).
   "structure": { "source": "projects/BDT-Au/structure/bdt_au.xyz",
                  "formula": "C6H4S2Au38", "atoms": 46 },
 
-  // Every schema field, one value. A one-stage description stops here (§ 6.3).
+  // Every schema field, one value. A one-stage description stops here (§ 6.4).
   "base": { "mesh_cutoff": 150, "relax_type": "CG", "restart": "clean", … },
 
   // WHICH fields the user chose to tune. Intent — it cannot be inferred.
@@ -272,12 +286,18 @@ stage is indistinguishable from one that was never promoted. Every stage's
 `overrides` holds exactly the keys in `varies` — no more, so a demoted parameter
 cannot leave a value hiding in a stage nobody can see.
 
-`structure` is a **reference plus a witness**, never a copy. Coordinates are what
-runs produce; a description that embedded them would drift from the file the tree
-already holds. The formula and atom count are what the id was built from, so a
-description opened against a structure that has since changed can say so.
+### 6.3 `structure` is a reference plus a witness, never a copy
 
-### 6.3 One stage is no stages
+Coordinates are what runs *produce*; a description that embedded them would be a
+second copy of a file the tree already holds, drifting from it the moment either
+moved. So `source` points into the tree, and `formula` and `atoms` travel beside
+it as evidence of what was there when the description was written — which is what
+the id was built from (`execution/run-identity.md § 2`). A description opened
+against a structure that has since changed can therefore *say so*, rather than
+silently building a different calculation under the same id
+(`run-identity.md § 5`).
+
+### 6.4 One stage is no stages
 
 **`stages` may be absent, and absent means one.** A description with no `stages`
 key is a calculation with a single parameter set — `base`, exactly — and it
@@ -285,12 +305,13 @@ produces one deck named `<id>.fdf`, with no stage suffix. Nothing about stages
 has to be understood to read or write it.
 
 Three things follow, and they are one fact seen three times: the deck takes no
-suffix, findings carry no stage label (§ 4 R2), and `varies` is empty or absent
-because there is nothing to vary across.
+suffix, findings carry no stage label (§ 4 R2), and `varies` is **absent** —
+there is nothing to vary across, and an empty list would be a second way to spell
+the same state.
 
 A description *with* `stages` has at least one; removing the last is refused.
 
-### 6.4 The preflight
+### 6.5 The preflight
 
 In order, and all of it before anything is written:
 
@@ -345,6 +366,25 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
 **The test:** the decks are portable — an engine with no molbuilder present runs
 them correctly. The wrappers are not, and are not meant to be: they are baked for
 a target (§ 8).
+
+### 7.1 The folder appears whole, or not at all
+
+Rendering a description can fail after it has started: a stage asks for an
+environment that is not installed (§ 5.1), a pseudopotential does not resolve, a
+disk fills. **A half-written folder is worse than none**, because every rule in
+this contract about what a folder contains stops being true of it, and the run
+directory it half-occupies may already hold warm files from a previous
+calculation.
+
+So a produce is **transactional**: every deck, every wrapper and the description
+are built somewhere else and moved into place only when all of them succeeded. On
+failure nothing is moved, and the message names the stage that stopped it.
+
+This is the same discipline the sidecar and archive writers already use — build,
+verify, then `os.replace` (`job-contracts.md § 5.4`) — applied to a directory
+rather than a file. What it must **not** do is remove warm files that were already
+there; producing twice is `execution/run-identity.md § 6`, and those files are
+the point.
 
 ---
 

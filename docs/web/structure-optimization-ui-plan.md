@@ -301,7 +301,7 @@ Three rules keep it honest:
    vary across, so its overrides and `base` are the same thing.** The tab always
    shows at least one row, but a description with one row is written with no
    `stages` key at all and produces `<id>.fdf`
-   (`engines/stages.md § 6.3`). The suffix, and the `stages` key, appear
+   (`engines/stages.md § 6.4`). The suffix, and the `stages` key, appear
    together the moment a second row does.
 3. **The default `varies` is a proposal, not a law.** It starts as the fields the
    schema tags `workflow_group: "stage"` — the ones the preset writes to —
@@ -417,7 +417,7 @@ not ask for.
 ## 9. Open decisions
 
 1. ~~**Does one stage still emit a bare `<id>.fdf`?**~~ **Answered** by
-   `engines/stages.md § 6.3`: a description with no `stages` key is one
+   `engines/stages.md § 6.4`: a description with no `stages` key is one
    parameter set and writes `<id>.fdf`, unsuffixed — today's behaviour, reachable
    without understanding stages at all. The suffix appears the moment a second
    stage does.
