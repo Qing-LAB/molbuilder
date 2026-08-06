@@ -440,39 +440,52 @@ user still gets to say what it is called.
 
 ---
 
-### 6.4 The id is half of it — SIESTA decides the rest, in the deck
+### 6.4 Every engine has an internal identity, and parameters bound to it
 
-A warm start needs **two** things to agree, and only one of them is a name:
+The id is only half of a warm start, and this is not a SIESTA quirk — **every
+engine has its own internal notion of "which job is this, and may I continue
+it", and a set of parameters tied to that notion.** A design that names only the
+filename has described none of it.
 
-| | What it settles | Where it lives |
-|---|---|---|
-| the id (`SystemLabel`) | **which** files the engine looks for — `<id>.XV`, `<id>.DM`, `<id>.CG` | the deck's one identity literal |
-| `DM.UseSaveDM`, `MD.UseSaveXV`, `MD.UseSaveCG` | **whether** it honours them when it finds them | ordinary fields in the deck, written by the generator |
+Two things, per engine, always:
 
-*"SIESTA reads these itself when the matching `MD.UseSave*` / `DM.UseSaveDM`
-flags are set"* — so the switches are as much a part of restart behaviour as the
-name is, and they are **generated parameters like any other**. They belong in the
-schema, they can be promoted per stage (§ 4), and a ladder normally wants them
-differing across stages: a first stage that must start clean sets them off; every
-stage after it needs them on to inherit anything at all.
+| | What it settles | SIESTA | PySCF |
+|---|---|---|---|
+| **the engine's job identity** | which prior state belongs to this run | the `SystemLabel` literal | the `JOB = "…"` literal |
+| **the parameters bound to it** | whether that state is honoured when found | `DM.UseSaveDM`, `MD.UseSaveXV`, `MD.UseSaveCG` — the engine reads the files *only* when these are set | the resume branches the generated script carries: `mf.chkfile = JOB + ".chk"` with `init_guess = "chkfile"` when it exists, and `<JOB>_optimized.xyz` overriding the literal geometry |
 
-**And they have to agree with the carry list, which is a rule the user should
-never have to keep.** `Job.carry` puts `<id>.DM` into a stage's folder; the deck
-decides whether it is read. The two failure modes are opposite and both silent:
+Read across that table: the identity is the same *idea* in both columns and a
+different *mechanism*; the bound parameters are a declared flag family in one and
+generated control flow in the other. Neither is a filesystem fact, and neither
+is the scheduler's business.
 
-- **carried, not read** — the file arrives, `DM.UseSaveDM` is off, the stage
-  starts from scratch and looks like it resumed;
-- **read, not carried** — the flag is on, no file was placed, and SIESTA quietly
-  cold-starts because there is nothing to load.
+**So the design treats them as one named group per engine**, not as scattered
+fields that happen to matter:
 
-So the pair is **derived together, from one statement of intent**: a stage
-either continues from the one before it or it does not, and the producer emits
-the carry entry *and* the flags from that single fact. Neither is a field the
-user sets twice.
+1. **An engine declares its group.** Its identity literal, the parameters bound
+   to it, and the warm files they govern belong together in that engine's
+   contract — the same place `job-contracts.md § 4.2` already inventories the
+   files. A new engine that cannot fill this in is a new engine whose restart
+   behaviour nobody has thought about yet.
+2. **The group is set from intent, never field by field.** A stage either
+   continues from the one before it or it starts clean. From that one fact the
+   producer derives the whole group *and* the carry list, because they must
+   agree and the user cannot be the one keeping them in step.
+3. **The group is per-stage.** A ladder normally wants it differing: a first
+   stage that must start clean has it off; every stage after needs it on to
+   inherit anything at all.
 
-> This is the same shape as the policy that already becomes a scheduler edge
-> (§ 4): one scientific decision, two mechanical consequences, generated from
-> the decision rather than configured alongside it.
+**Why rule 2 is not tidiness.** The two ways the group and the carry list can
+disagree are both silent, and opposite:
+
+- **carried, not honoured** — the file arrives in the folder, the parameter is
+  off, and the stage starts from scratch while looking like it resumed;
+- **honoured, not carried** — the parameter is on, nothing was placed, and the
+  engine cold-starts because there is nothing to load.
+
+> The shape is one already in this system: a stage's non-convergence policy
+> *becomes* the scheduler edge (§ 4). One scientific decision, several mechanical
+> consequences, generated from the decision rather than configured beside it.
 
 ### 6.5 The cell is generated, not typed
 
