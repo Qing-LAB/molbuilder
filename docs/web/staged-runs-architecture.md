@@ -505,8 +505,15 @@ what a user needs.
 7. **Is a description editable by hand?** It is JSON beside the decks, so it will
    be. If yes, the reader owes the same errors to a person as to the browser — an
    argument for the refusal rule being loud rather than tolerant.
-8. **The trajectory log's stage naming does not match the deck's — and this one
-   blocks.** A stage deck is `<label>_<stagename>`, an underscore and a *name*;
+8. ~~**The trajectory log's stage naming does not match the deck's**~~ —
+   **answered** by `execution/project-layout.md § 4.1`: a stage carries a `seq`
+   assigned once and never reassigned, and that *is* the `N` in
+   `<label>-stage<N>`. The deck keeps the name, the log and the directory carry
+   the number, and because the number never moves, an output written under it
+   stays attached to the stage that produced it. What remains is the code change
+   in `job-contracts.md § 2.3`, not a decision.
+
+   *(The original wording, for the record:)* **the two conventions do not agree.** A stage deck is `<label>_<stagename>`, an underscore and a *name*;
    the molwatch log is `<label>-stage<N>`, a hyphen and a *number*, and the run
    decoder's stage regex keys on the hyphen form (`job-contracts.md § 2.3`).
    User-named stages cannot be expressed in a number. **The consequence is not
