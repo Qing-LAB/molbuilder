@@ -38,7 +38,10 @@ function loadStylesheet(doc) {
         link.href = STYLESHEET_URL;
         link.setAttribute("data-spectrumchart", "style");
         link.onload = () => resolve();
-        link.onerror = () => reject(new Error("the chart stylesheet could not be loaded"));
+        link.onerror = () => {
+            stylesheetOnce = null;   // a failure is not an answer to keep
+            reject(new Error("the chart stylesheet could not be loaded"));
+        };
         (doc.head || doc.documentElement).appendChild(link);
     });
     return stylesheetOnce;
@@ -56,7 +59,10 @@ function loadLibrary(win) {
         script.onload = () => (win.Plotly
             ? resolve(win.Plotly)
             : reject(new Error("the plotting library loaded but published nothing")));
-        script.onerror = () => reject(new Error("the plotting library could not be loaded"));
+        script.onerror = () => {
+            libraryOnce = null;      // ditto: a later mount may reach the server
+            reject(new Error("the plotting library could not be loaded"));
+        };
         (doc.head || doc.documentElement).appendChild(script);
     });
     return libraryOnce;
@@ -157,7 +163,7 @@ export async function openSurface(host) {
             y: sticks.y,
             width: sticks.width,
             marker: { color: sticks.state.map((s) => colourFor(s, palette)) },
-            hovertemplate: "%{x:.1f} cm⁻¹<extra></extra>",
+            hovertemplate: `%{x:.1f} ${picture.xUnit || ""}<extra></extra>`,
         });
         return traces;
     };
@@ -185,6 +191,7 @@ export async function openSurface(host) {
 
     return {
         draw(picture) {
+            if (disposed) return;
             const traces = tracesFor(picture);
             stickTraceIndex = traces.length - 1;
             Plotly.react(surface, traces, layoutFor(picture), {
@@ -197,6 +204,7 @@ export async function openSurface(host) {
 
         /** The cheap door: colours only, no rebuild, no axis change (§ 5.1). */
         recolour(states) {
+            if (disposed) return;
             Plotly.restyle(
                 surface,
                 { "marker.color": [states.map((s) => colourFor(s, palette))] },
@@ -205,6 +213,7 @@ export async function openSurface(host) {
         },
 
         resize() {
+            if (disposed) return;
             Plotly.Plots.resize(surface);
         },
 

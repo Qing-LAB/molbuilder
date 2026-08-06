@@ -660,6 +660,26 @@ onClick(cb)                     the user clicked: hand up where it landed on
 purge()                         release the surface
 ```
 
+**A picture is what goes down.** The handle hands the seal a plain object, and
+nothing in it is a colour or a mode:
+
+```js
+picture = {
+    sticks: { x: [...], y: [...], width: [...],
+              state: ["plain" | "chosen" | "pending" | "imaginary", …] },
+    curve:  { x: [...], y: [...] } | null,      // null when there is no curve
+    xTitle, yTitle, xUnit,                       // the words on the axes
+    note,                                        // one line inside the plot, or nothing
+}
+```
+
+**A state is a word, never a colour** — the layer above says a mark is *chosen*
+and the seal decides what chosen looks like (§ 5.1's cheap door hands down the
+same words and nothing else). **And every word the user reads comes down in the
+picture too**: the axis titles, the unit beside a hovered value, the "not
+computed" line. The seal writes none of them, because "cm⁻¹" is a fact about
+spectroscopy and this layer knows none.
+
 It answers **no** question about what is drawn, and it does not know what a mode
 is. **A click comes up as one number** — a position on the frequency axis — and
 the handle turns that into a mode through the bands (§ 6.3).
@@ -683,6 +703,21 @@ so the sheet stays the one source of truth for how the chart looks.
 
 **`recolour` is the cheap door § 5.1 is about.** It exists so that the expensive
 one does not have to be called for a click.
+
+**The seal takes the library as it finds it, and never assumes it is ready.**
+Two consequences, both found by building against this contract rather than by
+reading it:
+
+- **A page that already carries the library is used as it stands** — the Results
+  page loads Plotly for other figures — and only a page without it is served the
+  fetch. Either way one page holds one copy and one stylesheet link, however many
+  charts are mounted on it.
+- **A click asked for before the first draw must still arrive.** Plotly grows its
+  event machinery on an element only once something has been plotted there, so
+  wiring at the moment `onClick` is called would silently wire nothing. The seal
+  holds the callback and wires on the first draw — because § 8.3 promises any
+  door may be called in any order, and a promise the seal cannot keep is not a
+  promise the handle can make.
 
 ---
 
@@ -713,6 +748,16 @@ result instead of the arithmetic:
   outermost mode until the envelope has fallen below **1% of the tallest peak**.
 
 Both are consequences of the width alone, so neither is a number anyone tunes.
+
+**And the grid is a window around each mode, not one ruler laid end to end.**
+Both draw the same curve where a curve is worth drawing; the difference is what
+they cost. One ruler at a sharp broadening spends nearly all its points on empty
+space between modes — at 0.05 cm⁻¹ across a 3,000 cm⁻¹ spectrum that is millions
+of points and the browser stops — while windows cost about eighty points per
+mode at *every* width. The consequence worth stating: between two distant modes
+the curve is drawn as a straight line across a region where it is already near
+zero. That is a sampling choice, and it is the one place this module draws
+something it did not compute.
 
 **What the sum runs over follows the picture you are in** (§ 6.2), because the sum
 has to mean the same thing the stick heights mean:
@@ -868,11 +913,14 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.3 — an empty click is silent | a click landing in no band calls `onSelect` **not at all** — not with `null` — and changes nothing on screen |
 | § 8.3 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
 | § 8.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
+| § 8.4 — a picture carries words, never colours | the object handed down names states (`chosen`, `pending`, `imaginary`) and carries every axis title, unit and note; no colour and no mode index appears in it |
+| § 8.4 — a click asked for before the first draw still arrives | `onClick` then `draw` reports a click, in that order as well as the other |
 | § 8.4 — a click comes up as a position | the seal reports where the click landed on the frequency axis and nothing more; a click in empty space beside a peak still reaches the handle |
 | § 8.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the module's own values (§ 11) — never from a page variable, never from a literal in the module |
 | § 9 — the envelope is the sum | the curve at a mode's frequency equals that mode's activity plus the tails of the others, computed independently of the implementation |
 | § 9 — the sum follows the picture | with strengths known, a mode without one adds nothing; with none known anywhere, every mode adds a peak of height one |
 | § 9 — a peak is smooth at every width | at any broadening, the narrowest peak drawn carries at least eight samples across its full width |
+| § 9 — the grid is bounded by the modes, not by the width | a 36-mode spectrum at a 0.05 cm⁻¹ broadening draws from a grid of a few thousand points, not millions, and its peaks are still smooth |
 | § 9 — the curve ends rather than being cut off | at any broadening, the envelope at both ends of the grid is below 1% of the tallest peak |
 | § 11 — the sheet inherits nothing from the page | with every page stylesheet removed, the chart's own values still resolve and the colours handed to the library are unchanged; no page variable is named anywhere in the module |
 | § 11 — the values are declared, not sampled | every colour the seal hands the library was read from a `--spectrumchart-` value on the module's own element |

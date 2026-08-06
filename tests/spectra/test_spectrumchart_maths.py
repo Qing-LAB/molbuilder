@@ -189,3 +189,17 @@ def test_the_floor_widens_the_band_without_touching_the_curve():
     expected = 10.0 + 6.0 * (gamma**2 / (400.0**2 + gamma**2))
     i = min(range(len(drawn["x"])), key=lambda k: abs(drawn["x"][k] - 1000.0))
     assert drawn["y"][i] == pytest.approx(expected, rel=0.02)
+
+
+def test_a_very_narrow_line_does_not_ask_for_a_grid_nobody_can_draw():
+    """§ 9 — the accuracy rules bound the sampling near the modes; they must not
+    turn into millions of points across the empty space between them.
+
+    A benzene-dithiol-sized spectrum at a sharp broadening: one ruler laid from
+    end to end at this width is over two million points and the browser stops.
+    """
+    modes = [mode(i + 1, 300.0 + i * 80.0, 1.0 + i) for i in range(36)]
+    got = curve(modes, 0.05)
+    assert len(got["x"]) < 20000, f"{len(got['x'])} grid points"
+    near = [x for x in got["x"] if abs(x - 300.0) <= 0.025]
+    assert len(near) >= 8, "the peak is still smooth"

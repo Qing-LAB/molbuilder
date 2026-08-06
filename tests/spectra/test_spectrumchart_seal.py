@@ -228,6 +228,19 @@ class TestTheDoors:
         )
         assert got == [217.5]
 
+    def test_a_click_asked_for_before_the_first_draw_still_arrives(self):
+        """§ 8.4 — the library grows its event machinery only once something is
+        plotted, and § 8.3 promises any door may be called in any order."""
+        got = seal(
+            "const seen = [];\n"
+            "surface.onClick((x) => seen.push(x));\n"   # asked for FIRST
+            "surface.draw(picture);\n"
+            "const el = host.children[0].children[0];\n"
+            "el.dispatch('plotly_click', { points: [{ x: 100 }] });\n"
+            "console.log(JSON.stringify(seen));"
+        )
+        assert got == [100]
+
     def test_a_click_in_empty_space_still_reaches_the_handle(self):
         """§ 8.4 — the band a click lands in has no mark under it; a position always does."""
         got = seal(

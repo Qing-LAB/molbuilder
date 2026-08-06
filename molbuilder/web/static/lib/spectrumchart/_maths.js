@@ -113,7 +113,7 @@ export function envelope(modes, broadening) {
     // A single Lorentzian falls to TAIL_FRACTION of its height at γ√(1/f − 1);
     // where modes pile up the tails add, so extend until the curve itself is under.
     let pad = gamma * Math.sqrt(1 / TAIL_FRACTION - 1);
-    for (let i = 0; i < 20; i += 1) {
+    for (let i = 0; i < 8; i += 1) {
         const ends = Math.max(
             lorentzianAt(lo - pad, peaks, gamma),
             lorentzianAt(hi + pad, peaks, gamma),
@@ -122,11 +122,20 @@ export function envelope(modes, broadening) {
         pad *= 1.5;
     }
 
-    const x = [];
-    const y = [];
-    for (let v = lo - pad; v <= hi + pad + step / 2; v += step) {
-        x.push(v);
-        y.push(lorentzianAt(v, peaks, gamma));
+    /* The grid is a window around each mode rather than one ruler laid across the
+     * whole spectrum. Both give the same curve where the curve is worth drawing,
+     * but the work here scales with the NUMBER OF MODES instead of with how
+     * narrow the lines are: one ruler at a broadening of 0.01 cm-1 across a
+     * 3000 cm-1 spectrum is two million points, nearly all of them in empty
+     * space, and the browser stops. Windowed, a mode costs about 80 points at
+     * every width. */
+    const reach = Math.ceil(pad / step);
+    const marks = new Set();
+    for (const p of peaks) {
+        for (let k = -reach; k <= reach; k += 1) marks.add(p.freq + k * step);
     }
+
+    const x = Array.from(marks).sort((a, b) => a - b);
+    const y = x.map((v) => lorentzianAt(v, peaks, gamma));
     return { x, y };
 }
