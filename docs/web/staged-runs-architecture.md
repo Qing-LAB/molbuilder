@@ -425,16 +425,12 @@ is agreeing them and answering § 9.
     name proposed from the stage it forks. **The wrapper does none of it**
     (`running-a-job.md § 6.2`: it is deliberately git-agnostic), so the finish is
     observed where the run is already watched.
-12. **The archive globs reach into the subdirectories** (`checkpointing.md` L2).
-    **This is a data-loss defect, not a tidiness one, and it outranks everything
-    else in this list.** `.gitignore` gets the raw glob `*.DM`, which matches at
-    every depth; `_list_big_binaries` uses `path.glob`, which matches only the
-    top level. So a per-stage binary is **gitignored and unarchived** — in no
-    snapshot at all — and a restore returns a folder with the geometry and no
-    density matrix, silently. *Done when:* one matcher resolves both sides at one
-    depth, a produced two-stage folder passes S1 over its whole tree, and
-    `job-contracts.md` is updated in the same commit as the code and its test,
-    which its `§ 7` requires.
+12. ~~**The archive globs reach into the subdirectories**~~ — **done
+    (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
+    the walk is recursive and skips symlinks and dot-directories, a binary-only
+    change now produces a checkpoint, and every commit gets an archive so a
+    missing one is evidence rather than a hint. `job-contracts.md § 6.1` updated
+    in the same commit; 119 checkpoint tests pass.
 13. **Repoint `checkpoint.py`'s dead doc references.** It cites
     `run-checkpoints.md` five times — a document the 2026-07 migration removed —
     and cites numbered principles from it that nothing now defines. *Done when:*

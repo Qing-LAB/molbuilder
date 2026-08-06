@@ -64,13 +64,23 @@ that a change can be checked against them.
 
 ## 2. The separations — what must be kept apart
 
-### S1 — a file is git-tracked **or** content-archived, never both, never neither
+### S1 — a **regular file** is git-tracked **or** content-archived, never both, never neither
 
 *holds today.*
 
 `.mbcheckpoint.json`'s `archive_globs` classify a run directory's files: text
 (including the small warm-restart `.XV` / `.CG`) is committed to git; the large
 binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
+
+**Symlinks are outside this, and the word "regular" is load-bearing.** A carried
+restart file is a link to the stage that produced it, and a link has no content
+of its own — the producer's file is archived once, under its own key. Git ignores
+the link too (a gitignore pattern matches by name, not by file type), so a link
+is in *neither* set, and that is correct rather than a hole: the layout is
+reproducible from the description and the carry rules
+(`engines/stages.md § 7.1`), while the bytes are already archived once. Archiving
+the link as a second copy would duplicate content *and* restore a regular file
+where a link belongs — S3, from the other side.
 
 | | |
 |---|---|
@@ -413,7 +423,8 @@ becomes the reason the disk fills.
 
 | | |
 |---|---|
-| **How it fails** | Silently, and only at scale. Nothing errors; the archive simply grows linearly in checkpoints × binary size, and `prune` is listed as unbuilt (`running-a-job.md § 6.2`), so nothing reclaims it either |
+| **How it fails** | Silently, and only at scale. Nothing errors; the archive grows linearly in checkpoints × binary size, and `prune` is listed as unbuilt (`running-a-job.md § 6.2`), so nothing reclaims it either |
+| **Made worse by L7's fix** | Binary-only changes now produce commits that previously did not exist — correctly, since the alternative was losing them — and each one copies the full binary set again. Fixing the data-loss bug raised the disk cost, which is the right trade and a reason L5 should not wait |
 | **How to check** | Checkpoint a folder twice with the binaries untouched between them. The second checkpoint's *incremental* disk cost is near zero |
 | **How to fix** | Content-address the store: `.binsnapshots/by-content/<sha256>` holding each distinct blob once, with the per-commit MANIFEST referencing it (or hardlinks into the per-sha directory, which is a smaller change and works on one filesystem). This is what the shipped docs already *claim* — making I1's "identical content dedupes" true rather than aspirational |
 
@@ -456,7 +467,7 @@ One line each, for reading over a diff:
 
 | | Invariant | Assertable |
 |---|---|:--:|
-| **S1** | tracked XOR archived — never both, never neither | today |
+| **S1** | every **regular file** is tracked XOR archived — never both, never neither (symlinks are layout, not content) | today |
 | **S1a** | the git-ignore set is *derived* from `archive_globs`, never kept beside it | today |
 | **S2** | a stage writes only inside its own directory | needs the layout |
 | **S3** | inherited is a symlink; owned is a regular file | needs the layout |
