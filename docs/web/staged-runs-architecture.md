@@ -420,8 +420,11 @@ cannot.
    has nothing to compare against. *Done when:* the same description produces the
    same folder from a terminal and from the browser, and neither path has a
    renderer the other lacks.
-10. **Content-address the binary archive** (`checkpointing.md` L5) — **before**
-    item 11, because it gates it. The archive is keyed by commit sha and copies
+10. **Archive only what is new** (`checkpointing.md` L5) — **before** item 11,
+    because it gates it. Immutable attempts
+    (`execution/project-layout.md` § 1.2) make this structural: an archived
+    attempt cannot change, so a save stores the attempts that appeared since the
+    last one and references the rest. No content-addressed store needed. The archive is keyed by commit sha and copies
     every big binary on every checkpoint; automatic checkpoints fire twice per
     stage, and `prune` is unbuilt, so the two together grow the disk without
     bound. *Done when:* a second checkpoint with the binaries untouched costs
@@ -439,12 +442,17 @@ cannot.
     name proposed from the stage it forks. **The wrapper does none of it**
     (`running-a-job.md § 6.2`: it is deliberately git-agnostic), so the finish is
     observed where the run is already watched.
-12. **Scratch directories stay out of the archive**
-    (`execution/project-layout.md` § 6). A benchmark under a stage produces a
-    `.DM` per trial, and the recursive walk archives every one — verified. *Done
-    when:* a directory holding `.mbscratch` is skipped whole, the benchmark
-    producer writes one, and a produced folder with a bench bundle archives the
-    stage's result and none of the trials'.
+12. **The archive covers runs, not containers**
+    (`execution/project-layout.md` § 6.1). Every directory is one or the other,
+    so the classification is positional and needs no marker file: a flat root or
+    a stage's `run-N/` is archived; a benchmark's `point-*/`, two levels down, is
+    not. *Done when:* a produced folder with a bench bundle archives the stage's
+    results and none of the trials', and the rule is depth rather than a name.
+12a. **One run directory per attempt** (`project-layout.md` § 1.2). The wrapper
+    creates `run-<n>/`, links the deck and shared files in, carries and localises
+    the previous attempt's warm files, then runs. `--force` is retired. *Done
+    when:* two invocations leave two directories, the first byte-identical to
+    what it was, and a flat run directory behaves exactly as it does today.
 13. ~~**The archive globs reach into the subdirectories**~~ — **done
     (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
     the walk is recursive and skips symlinks and dot-directories, a binary-only

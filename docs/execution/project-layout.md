@@ -48,33 +48,74 @@ projects/                                   the root (git-ignored)
             ├── .mbcheckpoint.json
             ├── .git/  .binsnapshots/         the saved history (§ 6)
             │
-            ├── 01_coarse/                  ④ a STAGE — one science setting, and a RUN
+            ├── 01_coarse/                  ④ a STAGE — one science setting
             │   ├── <id>_coarse.fdf → ../     its deck, linked up
             │   ├── Au.psml → ../             shared, linked up
-            │   ├── <id>.XV  <id>.DM          what this stage produced
-            │   ├── <id>_coarse-run0.out
-            │   └── bench/                  ⑤ a BENCHMARK — self-contained, scratch
-            │       ├── job-gpu.fdf           the stage's science, made measurable
-            │       ├── job-cpu.fdf           its comparable CPU point
-            │       ├── job-gpu.run.sh        its own wrappers, pseudos, config
+            │   ├── run-0/                  ⑤ an ATTEMPT — a RUN, immutable
+            │   │   ├── <id>_coarse.fdf → ../   the deck, linked down
+            │   │   └── <id>.XV .DM .out        everything this attempt produced
+            │   ├── run-1/                    a second attempt, carrying run-0's state
+            │   └── bench/                    a BENCHMARK — its own container
+            │       ├── job-gpu.fdf  job-cpu.fdf    the science, made measurable
             │       ├── bench-manifest.json  bench-result.json
-            │       ├── .mbscratch            "nothing below me is worth keeping"
-            │       └── point-G1K2C5/       ⑥ a TRIAL — one resource setting
-            │           └── job-gpu-run0.out
+            │       └── point-G1K2C5/         its own runs
             │
             └── 02_tight/
-                ├── <id>.XV → ../01_coarse/   carried, localised before it runs
-                └── bench/
+                └── run-0/
+                    └── <id>.XV → ../../01_coarse/run-1/   carried, then localised
 ```
-
-Two levels carry the weight.
 
 **③ is a calculation** — one system studied one way. One identity, one saved
 history, one description. Everything above it is filing.
 
-**④ is a stage, and a stage *is* a run.** The directory holds one job, obeying
-`job-contracts.md § 2.1` exactly. That is why the real run lives here and not one
-level further down: a calculation is not a job, but a stage is.
+### 1.1 A directory is a container or a run, never both
+
+Every directory in this tree is one of two things:
+
+- a **container** — it holds setup and other directories. Decks, wrappers, the
+  description, links, the shared package. All text or small.
+- a **run** — one invocation of the engine. It holds what that invocation
+  produced, and nothing else holds that.
+
+A calculation is a container. A stage is a container. A benchmark bundle is a
+container. The leaves — `run-N/`, `point-<knobs>/` — are runs.
+
+**This is what makes everything downstream simple.** Setup is text, so git handles
+it entirely. Only a run holds anything big. There is no directory where the two
+are mixed and something has to tell them apart.
+
+> **A simple run stays simple.** A plain run directory does not grow a `run-0/`.
+> It **is** a run — a leaf with no container above it — which is exactly what a
+> hand-made directory with one `.fdf` in it already is. Nothing about the
+> straightforward case changes.
+
+### 1.2 An attempt is immutable
+
+**A run directory is written once and never modified.** Running a stage a second
+time — a `--continue`, a redo after a change — makes `run-1`, carrying what it
+needs from `run-0` and leaving `run-0` exactly as it was.
+
+That is the same carry mechanism stages already use between themselves
+(`job-system.md § 5.2`: link it in, localise it before starting), applied one
+level down.
+
+Three things follow:
+
+- **Warm restart becomes explicit.** Today "continue" means *the files happen to
+  be in this directory*. With one directory per attempt it means *carry from the
+  previous attempt* — visible on disk rather than implied by what is lying
+  around.
+- **The saved history becomes append-only.** No archived file ever changes, so a
+  new save point only has to store the attempts that appeared since the last one
+  (§ 6).
+- **`--force` is retired.** It exists to reset the run index to `-run0` and
+  overwrite it (`job-contracts.md § 2.6`). With a directory per attempt there is
+  nothing to overwrite: a redo is `run-2`. A flag whose only purpose is to
+  destroy a previous result has no place once results cannot collide.
+
+Immutability is a contract, not a filesystem permission — but it is **checkable**,
+and § 7 makes it an invariant: an attempt that has been saved must never differ
+afterwards. Nothing would notice today.
 
 ---
 
@@ -85,14 +126,15 @@ level further down: a calculation is not a job, but a stage is.
 | ① **project** | the user | nobody — it is a folder | topics, nothing else |
 | ② **topic** | a **fixed set of nine** (`job-contracts.md § 2.5`) | nobody | calculations (run topics) or files (storage topics) |
 | ③ **calculation** | the run id (`run-identity.md § 3`) | **the producer**, in one transaction | decks, wrappers, the shared package, the description, derived files, the history |
-| ④ **stage** | `<seq>_<name>` (§ 4) | **prep** lays the links; then **the engine** | links up, this stage's outputs, its trials |
-| ⑤ **benchmark** | `bench` | the benchmark producer | its own decks, wrappers, pseudos, config and results — a **self-contained bundle** |
-| ⑥ **trial** | `point-<knobs>` (§ 4.3) | the sweep script, then the engine | one throwaway run |
+| ④ **stage** | `<seq>_<name>` (§ 4) | **prep** lays the links | links up, and its attempts — **a container** |
+| ⑤ **attempt** | `run-<n>`, unpadded (§ 4.4) | the wrapper, once | everything one invocation produced — **a run, immutable** |
+| — **benchmark** | `bench` | the benchmark producer | its own decks, wrappers, config and results — a self-contained **container** |
+| — **trial** | `point-<knobs>` (§ 4.4) | the sweep script, then the engine | one throwaway **run** |
 
 Two rules, and everything else follows:
 
-> **The producer writes level ③ and nothing else. The engine writes the directory
-> it was launched in and nothing else.**
+> **The producer writes level ③ and nothing else. The engine writes the run
+> directory it was launched in, once, and nothing else ever writes there again.**
 
 The producer never writes inside a stage directory; prep only puts symlinks
 there. The engine never writes above itself — the wrapper copies a carried file
@@ -236,7 +278,21 @@ says something real — there was a stage there and it is switched off.
 output beside it, and in its checkpoint tags. Renaming one that has run orphans
 all of them, so it is a new stage (`engines/stages.md § 7.3`, R5).
 
-### 4.3 Trials name themselves by their settings
+### 4.3 An attempt is numbered, and the number is not padded
+
+`run-0`, `run-1`, `run-2`. Deliberately **unpadded**, where a stage is
+`01_coarse` — the two are different kinds of thing and the difference is worth
+seeing:
+
+- a **stage** number orders a sequence somebody designed, so it pads and sorts;
+- an **attempt** number counts invocations that happened, and it inherits the
+  shipped `-run0` / `-run1` output naming (`job-contracts.md § 2.6`) so the
+  connection between a directory and the outputs inside it stays visible.
+
+Attempts are assigned by the wrapper at launch: the next unused number, never
+reused. There is no `--force` to reset them (§ 1.2).
+
+### 4.4 Trials name themselves by their settings
 
 A sweep has no order — no trial follows another — so the name carries **what was
 tried**: `bench-G<gpus>K<ranks-per-gpu>C<cores-per-rank>`. That is the shipped
@@ -310,8 +366,9 @@ project.
 bdt_au_relax_c6h4s2au38/
 ├── .git/                       the text: decks, wrappers, stages.json, .XV, .CG
 ├── .binsnapshots/<save>/       the big files, by path:
-│   ├── 01_coarse/<id>.DM         ← coarse's density matrix
-│   ├── 02_tight/<id>.DM          ← tight's, kept separately
+│   ├── 01_coarse/run-0/<id>.DM   ← that attempt's density matrix
+│   ├── 01_coarse/run-1/<id>.DM   ← the retry's, kept separately
+│   ├── 02_tight/run-0/<id>.DM
 │   └── MANIFEST                  ← name, size, checksum for each
 └── .mbcheckpoint.json          which patterns count as big
 ```
@@ -323,28 +380,50 @@ Three reasons it belongs at ③:
   would have links pointing at nothing.
 - **Going back to a stage is a whole-calculation act.** Branching at *coarse* to
   try a different *tight* needs a history containing both.
-- **Results are already separated by path**, so each stage's big files stay its
+- **Results are already separated by path**, so each attempt's big files stay its
   own without a history of their own.
 
-**A benchmark is scratch and is not archived.** A five-iteration throwaway's
-`.DM` is worth nothing and can be large, and a sweep has twenty of them. What
-survives is `bench-result.json` — a few kilobytes of text, which git tracks like
-any other text.
+### 6.1 What the archive covers, in one rule
 
-**This needs a mechanism the archive does not have.** `archive_globs` classifies
-by *pattern* (`*.DM`), not by location, so the recursive walk added on 2026-08-06
-picks up `01_coarse/bench/point-G1K2C5/job-gpu.DM` exactly as it picks up a real
-result — **verified, not assumed**. The proposal is a marker: a directory
-containing **`.mbscratch`** is skipped whole, and the benchmark producer drops one
-in the bundle it creates. It is self-describing (the thing that makes scratch says
-so), it is not name-matching (`bench` is a convention, not a rule), and it
-generalises to anything else that produces throwaway runs. Until it exists,
-invariant 16 is a statement of intent rather than of behaviour.
+**Git tracks the containers. The archive covers the runs.**
 
-**One thing stands in the way today.** The setup step refuses a folder whose
-subfolders contain a calculation file, at **any** depth — and this tree has two
-such levels: `01_coarse/<id>_coarse.fdf` (a symlink, which the check follows) and
-`01_coarse/bench/job-gpu.fdf` (a real one). So the folder the shipped code already produces cannot be put
+That is the whole classification, and it needs no marker file, no config flag and
+no name matching — because § 1.1 already made every directory one thing or the
+other. A container holds setup: decks, wrappers, the description, links, the
+shared package. All text or small, all git's.
+
+**Which runs?** The ones this calculation owns: the calculation root itself when
+it is flat, otherwise each stage's `run-N/`. A benchmark's `point-*/` is a run of
+a **nested container**, one level deeper, and its `.DM` is a five-iteration
+throwaway — so the calculation's archive does not reach it. What survives a
+benchmark is `bench-result.json`, text, which git tracks wherever it sits.
+
+So the rule is about **depth, not names**: a run directory is a direct child of a
+stage, or the root of a flat calculation. Nothing below that is this history's
+binary business.
+
+### 6.2 Append-only, because attempts are immutable
+
+An attempt never changes after it is written (§ 1.2), so an archived file never
+changes either. A new save point stores the attempts that appeared since the last
+one and references the rest.
+
+**That is the disk-growth problem solved by structure rather than by hashing.**
+The archive copies every big file on every save today, and a five-stage mission
+with a 2 GB density matrix per stage pays for all of it every time. Immutable
+attempts make "archive what is new" both correct and obvious, where a
+content-addressed store would have been correct and hopeful.
+
+**And it makes a violation detectable.** Immutability is a contract, not a
+permission bit. But an attempt that was archived and then edited *differs from its
+recorded checksum*, which is precisely what I2 already checks per file. Nothing
+notices today; § 7 makes it an invariant.
+
+### 6.3 What still stands in the way
+
+The setup step refuses a folder whose subfolders contain a calculation file, at
+**any** depth — and this tree has three such levels now: a stage's linked deck,
+an attempt's linked deck, and the benchmark bundle's real one. So the folder the shipped code already produces cannot be put
 under a history. The fix is for the producer, which just built the folder and
 knows it is one calculation, to say so (`checkpointing.md`, L1).
 
@@ -365,7 +444,8 @@ single history live in their own contracts and are cited, not repeated.
    (`job-contracts.md § 2.1`, Rule 2). This is what makes warm restart work
    across stages without copying anything.
 4. **A stage's `seq` is assigned once and never reassigned**; stages append
-   (§ 4.2).
+   (§ 4.2). **An attempt's number likewise** — the next unused, never reused, and
+   nothing resets it (§ 1.2).
 5. **A trial never shares the calculation's identity.** Its deck is relabelled
    and forced cold, so it can neither read nor overwrite a stage's saved state
    (§ 3.2).
@@ -376,8 +456,11 @@ single history live in their own contracts and are cited, not repeated.
    engine writes only the directory it was launched in.
 7. **A shared file exists once, at ③**, and is linked into each stage. Never
    copied per stage.
-8. **A stage's results stay in its own directory**, and a trial's in its own.
-   Nothing a run writes appears above it.
+8. **Every directory is a container or a run, never both** (§ 1.1). A run's
+   output stays inside it; nothing a run writes appears above it.
+8a. **An attempt is immutable.** Once written it never changes, and once archived
+   it must never differ from its recorded checksum — which is
+   `checkpointing.md`'s I2 applied to a directory instead of a file (§ 6.2).
 9. **The description is the only source at ③.** No produce and no run modifies it
    (`checkpointing.md`, S4).
 
@@ -399,9 +482,12 @@ single history live in their own contracts and are cited, not repeated.
 15. **Every big regular file is either in git or in the archive, never both,
     never neither** (`checkpointing.md`, S1) — and after the 2026-08-06 fix that
     holds at every depth, so a stage's result is covered.
-16. **Scratch directories are excluded from the archive** — a directory holding
-    `.mbscratch` is skipped whole (§ 6). **Not held today**: the walk classifies
-    by pattern and archives a trial's `.DM` like any other.
+16. **The archive covers runs this calculation owns** — a flat root, or a
+    stage's `run-N/`. A nested container's runs (a benchmark's `point-*/`) are
+    not its business (§ 6.1). **Not held today**: the walk classifies by pattern
+    and archives a trial's `.DM` like any other.
+17. **A save stores only what is new** (§ 6.2). **Not held today**: every save
+    copies every big file.
 
 ---
 

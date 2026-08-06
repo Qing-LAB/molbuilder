@@ -74,6 +74,13 @@ that a change can be checked against them.
 (including the small warm-restart `.XV` / `.CG`) is committed to git; the large
 binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
 
+**Where a file sits decides whether it is ours.** `project-layout.md § 1.1`
+makes every directory a *container* (setup — text, git's) or a *run* (what one
+invocation produced). The archive covers the runs this calculation owns: a flat
+root, or a stage's `run-N/`. A nested container's runs — a benchmark's
+`point-*/`, two levels down — hold five-iteration throwaways and are not this
+history's business. **Depth, not names, and no marker file.**
+
 **No dotfiles either, and writer and reader must agree on that.** The MANIFEST
 parser rejects a dot-prefixed component anywhere in a key, so the archive walk
 must skip them at every level — basename included. It filtered only the parent
@@ -450,7 +457,18 @@ on what the automatic path emits, not on the total.
 
 ### L5 — a checkpoint's cost is bounded by what changed, not by what exists
 
-*needs work — the shipped archive does not hold this.*
+*needs work — but the layout now makes it structural rather than clever.*
+
+**Immutable attempts change the shape of this.** `project-layout.md § 1.2` gives
+every invocation its own directory, written once and never modified, so an
+archived file never changes. A save then stores the attempts that appeared since
+the last one and references the rest — *"archive what is new"*, correct by
+construction.
+
+That replaces the content-addressed store this invariant used to call for.
+Hashing every file to discover most are unchanged is the right answer when
+anything might have changed; when nothing inside an archived attempt can change,
+the cheaper answer is also the more obvious one.
 
 Automatic checkpoints (`engines/stages.md § 7.3`) fire twice per stage. If every
 one copies every big binary, a five-stage mission pays ten full copies of its
@@ -462,7 +480,20 @@ becomes the reason the disk fills.
 | **How it fails** | Silently, and only at scale. Nothing errors; the archive grows linearly in checkpoints × binary size, and `prune` is listed as unbuilt (`running-a-job.md § 6.2`), so nothing reclaims it either |
 | **Made worse by L7's fix** | Binary-only changes now produce commits that previously did not exist — correctly, since the alternative was losing them — and each one copies the full binary set again. Fixing the data-loss bug raised the disk cost, which is the right trade and a reason L5 should not wait |
 | **How to check** | Checkpoint a folder twice with the binaries untouched between them. The second checkpoint's *incremental* disk cost is near zero |
-| **How to fix** | Content-address the store: `.binsnapshots/by-content/<sha256>` holding each distinct blob once, with the per-commit MANIFEST referencing it (or hardlinks into the per-sha directory, which is a smaller change and works on one filesystem). This is what the shipped docs already *claim* — making I1's "identical content dedupes" true rather than aspirational |
+| **How to fix** | Store an attempt's files once and let later saves reference them; immutability makes that safe without hashing anything. (Content-addressing — `.binsnapshots/by-content/<sha256>` with the MANIFEST referencing it — stays the fallback if the layout ever admits mutable runs.) |
+
+### L8 — an archived attempt never differs afterwards
+
+*needs the layout — and it is I2 pointed at a directory.*
+
+An attempt is immutable by contract, not by permission bit
+(`project-layout.md § 1.2`). Nothing stops an edit; what matters is that an edit
+is **noticed**.
+
+| | |
+|---|---|
+| **How it fails** | Silently. Someone edits a file inside an attempt already saved, and every later save carries a history whose earlier points no longer describe what is on disk |
+| **How to check** | Re-hash an archived attempt's files against their MANIFEST entries — exactly I2, over a directory the layout says is frozen. A difference is reported, never merged |
 
 ### L7 — a change to a big binary alone leaves no checkpoint
 
@@ -524,6 +555,7 @@ One line each, for reading over a diff:
 | **L5** | a checkpoint costs what changed, not what exists | **not held today** |
 | **L6** | a history can be verified without being restored | **not held today** |
 | **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
+| **L8** | an archived attempt never differs afterwards | needs the layout |
 
 **Twelve of the twenty-one can be asserted against the code as it stands.** Two
 (**L2**, **L7**) were broken and are now fixed, with tests. Two (**L5**, **L6**)

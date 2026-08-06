@@ -278,6 +278,13 @@ The wrapper is **plain, readable bash**. Two properties are load-bearing:
   prior result. `--force` restarts the sequence at `-run0` (clobbering it);
   `--continue` warm-resumes into the next index (§ 4).
 
+  > **`--force` is retired under the staged layout** (proposed —
+  > [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.2).
+  > There, each invocation gets its own `run-<n>/` directory, immutable once
+  > written, so there is nothing for a reset to overwrite: a redo is `run-2`.
+  > A flag whose only purpose is to destroy a previous result has no place once
+  > results cannot collide. A flat run directory keeps today's behaviour.
+
 **Two-layer SLURM.** On a cluster the `.run.sh` is the *inner* launcher. The
 same `molbuilder run` also emits an outer `my-job.sbatch` — the `#SBATCH`
 resource header — which simply `bash`-execs the `.run.sh`. You submit the
