@@ -95,8 +95,11 @@ Every SIESTA field carries a `workflow_group`, and there are exactly three:
 
 That is not a UI invention: it is the grouping the config already carries, and
 it is what the stage preset already writes to. **The ladder's shape is in the
-data.** A step is an override of those nine fields and nothing else — which is
-also why a steps table can show a row per step without repeating the form.
+data**, and a step is small enough to be a row rather than a form.
+
+But those nine are a **default proposal, not the definition of a stage** — which
+parameters vary is the user's to choose, and that is the hard part of the design.
+§ 7 is about nothing else.
 
 ---
 
@@ -211,7 +214,127 @@ in doubt.
 
 ---
 
-## 7. Where the cluster comes in
+## 7. The hard part: which parameters vary, and who decides
+
+The layout above is the easy half. The real difficulty is that **the set of
+per-stage parameters cannot be fixed in advance**. One run wants the grid
+density to sharpen across stages; another wants the CPU or GPU budget to grow
+with the tightening; another wants only a convergence threshold to move. A
+design that ships one blessed list is wrong for every second user.
+
+### 7.1 What is already per-stage, and what is not
+
+Two facts to build on rather than around:
+
+- **A stage is already a typed object**, not a bag of numbers. `SiestaStageSpec`
+  carries its relaxation method, its step cap, its non-convergence policy and
+  its own resources — and `stages_to_jobset` says plainly that *"resources are
+  per-stage, defaulting to inherit the config's ranks/threads."* **The CPU/GPU
+  budget already varies per stage in the model; only the UI hides it.**
+- **Some of those fields are not values at all.** The non-convergence policy
+  *becomes the scheduler edge* (`proceed → afterany`, `halt → afterok`), and the
+  relaxation method *decides whether `.CG` carries forward* to the next stage — a
+  CG state is meaningless to a Broyden stage. Change one and the shape of the
+  chain changes with it.
+
+That gives the split the whole design hangs on:
+
+> **Behaviour stays typed; values are open.** The handful of per-stage settings
+> that *change what the chain does* keep their named fields. Everything else that
+> may differ between stages is an **override**, and which fields those are is the
+> user's to choose.
+
+### 7.2 The model
+
+```js
+plan = {
+    base:   { …every field in the schema, one value each… },  // the shared config
+    varies: ["mesh_cutoff", "force_tol", "mpi_ranks"],        // the promoted set
+    stages: [
+        { name: "coarse", enabled: true,  relaxation: "CG",      steps: 600,
+          onNonConvergence: "proceed",
+          overrides: { mesh_cutoff: 150, force_tol: 0.04, mpi_ranks:  8 } },
+        { name: "tight",  enabled: true,  relaxation: "Broyden", steps: 200,
+          onNonConvergence: "halt",
+          overrides: { mesh_cutoff: 300, force_tol: 0.01, mpi_ranks: 16 } },
+    ],
+}
+```
+
+Three rules keep it honest:
+
+1. **`varies` is the column set.** Every stage's `overrides` holds exactly those
+   keys — no more, so a demoted parameter cannot leave a value hiding in a stage
+   nobody can see.
+2. **`base` holds a value for every field, always**, including the promoted ones.
+   A one-stage plan is then just `base`, which is what makes § 3.1 true: one
+   script is a job set of one.
+3. **The default `varies` is a proposal, not a law.** It starts as the nine
+   fields the schema already tags `workflow_group: "stage"` — the ones the
+   preset writes to — because that is the useful default, not because it is
+   special.
+
+### 7.3 The operations, and what each one must not lose
+
+This is where the care goes: every one of these can silently destroy a value if
+its rule is not stated.
+
+| Operation | What it does | The rule that keeps it safe |
+|---|---|---|
+| **promote** a field | adds it to `varies` | **seeds every stage with the current base value**, so promoting changes nothing on screen. Promotion is a statement about *structure*, never about values |
+| **demote** a field | removes it from `varies` | the stages disagree and one value must survive: **the last enabled stage wins**, because that is the production stage and the value a single run would use. The UI says which value it kept, and says it *before* the click, not after |
+| **add a stage** | appends a step | **copies the previous stage's overrides**. A refinement starts from what came before; a stage that inherits nothing is a different calculation, not a next step |
+| **remove a stage** | drops a column | refused when it is the last one — a plan has at least one step |
+| **reorder** | moves a step | the chain is ordered and the carry-forward rules read that order, so this is a real edit, not a display preference |
+| **edit a cell** | sets one stage's value | nothing else moves. A cell equal to `base` is drawn quietly; one that differs is drawn plainly, so *progressive change is visible as a shape* |
+| **apply a preset** | fills a column | a preset knows nine fields. If some are not promoted it **promotes them first** — a preset that half-applied would be worse than one that refused |
+
+### 7.4 The panel
+
+One table, rows are parameters and columns are stages — the shape the data
+already has:
+
+```
+   PARAMETERS THAT VARY                stage 1     stage 2     stage 3
+   ────────────────────────────────────────────────────────────────────
+   mesh cutoff            Ry            150         300         300
+   force tolerance        eV/Å          0.04        0.02        0.01
+   MPI ranks              —             8           16          16
+   ────────────────────────────────────────────────────────────────────
+   relaxation                           CG          Broyden     Broyden
+   on non-convergence                   proceed     halt        halt
+   ────────────────────────────────────────────────────────────────────
+   [ + add a parameter ▾ ]        [ preset ▾ ]  [ + stage ]  [ remove ]
+
+   shared with every stage: 29 others   → System · Resources · Output
+```
+
+Two things that table has to get right:
+
+- **The typed rows sit below a rule**, separated from the open ones, because they
+  are the ones that change the chain rather than a number in a file.
+- **Promotion happens where the parameter lives.** Every field in the other
+  subtabs carries a "vary per stage" affordance; using it moves that field into
+  this table. The alternative — a long "add a parameter" menu of all 38 — is a
+  second place to find a field, and the wrong one to reach for.
+
+### 7.5 What gets written
+
+A column is a config: `base` overlaid with that stage's `overrides`, plus its
+typed fields. So **n columns produce n scripts**, and the ladder that already
+ships lays them out — `build_siesta_stage_bundle` for the bundle,
+`stages_to_jobset` for the chain, `jobset prep` for the per-stage folders and
+their wrappers.
+
+Nothing here invents a directory layout. Two shipped shapes exist and the
+difference matters: the in-place ladder keeps every stage in **one** directory
+with an unsuffixed `SystemLabel` so `.XV` / `.DM` / `.CG` transfer naturally,
+while `jobset prep` lays out **per-stage folders** and carries those files
+forward explicitly — `.XV` always, `.DM` when the config saves it, `.CG` only
+between stages using the same relaxation method. Asking for subdirectories is
+asking for the second, which is the JobSet path this whole plan is aimed at.
+
+## 8. Where the cluster comes in
 
 The browser can *produce* a bundle. It cannot `prep`, `plan` or `submit` one —
 that is Phase 2 of the migration, and the later phases are gated on proving the
@@ -231,7 +354,7 @@ A one-step generate ends as it does today: a file, a download, a save.
 
 ---
 
-## 8. Open decisions
+## 9. Open decisions
 
 1. **Does one step still emit a bare `.fdf`?** Recommended yes — the change
    stays additive and nobody's current workflow moves. The alternative (every
@@ -245,10 +368,20 @@ A one-step generate ends as it does today: a file, a download, a save.
 4. **Where do "Inspect structure" and "Analyze chemistry" go?** Untouched by
    this plan, but if the page is still jammed with card 3 tamed, they are the
    next candidates for folding.
+5. **Does demote really keep the last stage's value?** (§ 7.3) The alternative is
+   asking every time, which is safer and more tiring. A third option is to keep
+   the *first* stage's, on the grounds that it is the one a coarse single run
+   would want.
+6. **May a promoted parameter be left blank for a stage** — meaning "inherit
+   base" — or must every cell carry a value? Blank cells make a sparse ladder
+   readable (only two of five stages change the mesh) but add a second way to
+   say "same as base".
+7. **Is the promoted set saved with the project?** It is a description of intent,
+   not a value, and losing it on reload would be worse than losing a field.
 
 ---
 
-## 9. What this plan is not
+## 10. What this plan is not
 
 It does not change what a stage means on disk, the naming conventions, the
 JobSet model, or any producer. It reuses `build_siesta_stage_bundle` exactly as
