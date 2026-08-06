@@ -193,6 +193,9 @@
         },
         {
           "path": "web/spectrumchart.md"
+        },
+        {
+          "path": "web/structure-optimization-ui-plan.md"
         }
       ]
     },
