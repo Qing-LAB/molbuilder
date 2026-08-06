@@ -11,6 +11,11 @@
 before either end is written, and names the order the work goes in: this
 document, then the backend, then the surface.
 
+> **Reading the cross-references.** A bare `§ n` is a section of *this*
+> document. A section of another contract is always named with its file —
+> `job-contracts.md § 2.3` — because both documents number their sections and a
+> bare number would be ambiguous.
+
 **This is the spine.** The surface it describes the inside of is
 [`structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md);
 read that one for the panel and this one for what the panel is editing. § 7 is
@@ -32,7 +37,7 @@ Everything below is about where each part of that sentence lives.
 
 | Object | What it is | Who owns it | Lives where |
 |---|---|---|---|
-| **the plan** | `base` values + which fields `vary` + the stages | the browser | the tab, while you work |
+| **the plan** | the structure it is *of*, `base` values, which fields `vary`, and the stages | the browser while it is edited; the project once it is written | the tab, then `plan.json` beside the bundle (§ 5) |
 | **the config** | one `SiestaConfig` per stage: `base` overlaid with that stage's overrides | the server | per request |
 | **the JobSet** | jobs, dependency edges, carry-forward sets, resources | `stages_to_jobset` | in the bundle |
 | **the bundle** | scripts, wrappers, `job-set.json` | `build_siesta_stage_bundle` | the project directory |
@@ -86,21 +91,24 @@ has nowhere to live.
 
 ---
 
-## 4. The one change: a stage carries overrides
+## 4. What a stage gains: overrides, and an intent
 
 > **Behaviour stays typed. Values become open.**
 >
 > `SiestaStageSpec` keeps its eight fields, because each one changes what the
 > chain *does*: the policy becomes the scheduler edge, the relaxation method
 > decides whether `.CG` carries forward, `enabled` decides whether the stage
-> exists. It gains **one** new field:
+> exists. It gains **two**:
 >
 > ```python
-> overrides: Dict[str, Any] = field(default_factory=dict)
+> overrides:   Dict[str, Any] = field(default_factory=dict)   # § 3, gap 1 + 3
+> starts_from: str            = "previous"                    # or "clean" — gap 2
 > ```
 >
-> — a map from schema field name to that stage's value, applied over the shared
-> config when this stage is rendered.
+> `overrides` is a map from schema field name to that stage's value, applied over
+> the shared config when this stage is rendered. `starts_from` is the one fact
+> from which the engine's bound parameters *and* the carry list are both derived
+> (§ 6.2) — never set twice, and never allowed to disagree.
 
 Why not the alternatives:
 
@@ -545,8 +553,8 @@ Four names, four jobs, none of them new:
 
 | Name | What it identifies | Fixed by |
 |---|---|---|
-| **the id** | the calculation — becomes `SystemLabel` / `JOB`, keys every warm file | § 2.2 Rule 2, § 4.1 |
-| **the stage name** | one step — becomes `Job.name`, which is *both* its folder and its `squeue` name | job-system § 3 |
+| **the id** | the calculation — becomes `SystemLabel` / `JOB`, keys every warm file | `job-contracts.md § 2.2` Rule 2 and `§ 4.1` |
+| **the stage name** | one step — becomes `Job.name`, which is *both* its folder and its `squeue` name | `job-system.md § 3` |
 | **the script name** | `<id>_<stage>.fdf` | § 2.3 |
 | **the run index** | one invocation — `-run0`, `-run1` | § 4.4 |
 
@@ -562,7 +570,7 @@ segment matches `[A-Za-z0-9_-]+`.
 **And here the two shipped contracts disagree, which this plan cannot paper
 over.** `job-contracts.md § 2.5` says the innermost directory is *"exactly the
 flat one-job-per-directory shape — no sub-directories, no nesting of restart
-files"*, and § 2.1 says a directory may hold several inputs, one per stage.
+files"*, and `job-contracts.md § 2.1` says a directory may hold several inputs, one per stage.
 `job-system.md § 5.2` has `prep` lay out **per-job folders**, and the `Job.carry`
 list only makes sense across a boundary — files already sharing a directory need
 no carrying.
@@ -575,6 +583,32 @@ place documented as the first will look correct and be wrong.
 **This is the first thing to settle in step 2**, and it is a question for the
 contracts, not for this document. The likely answer is that a bundle is a fourth
 level under `<structure>/`, or a sibling of it, and § 2.5 says so.
+
+### 7.4 What this shape does not cover, and where it would break
+
+Three limits, stated because a plan that hides them is a plan someone will
+extend by accident.
+
+**A stage is a job — for SIESTA.** `job-contracts.md § 2.3` names two multi-stage
+execution shapes, and only one of them is this: SIESTA runs a stage per process,
+so *n* stages give *n* jobs, *n* decks and *n* dependency edges. **PySCF's
+in-script ladder is the other shape** — every stage runs inside one Python
+process, which writes a single unified log and produces **one** job. So a PySCF
+plan with three stages is not three jobs, and the mapping "a column is a job"
+that this document has assumed throughout is a SIESTA fact rather than a general
+one. Extending to PySCF means deciding whether its stages become a loop inside
+one script (what ships today) or genuinely separate jobs — a question this
+document should not answer for a tab it is not about.
+
+**This produces a ladder, never a sweep.** `JobSet.kind` allows both. A steps
+list is ordered and each step depends on the one before it, so it is always a
+ladder; a benchmark sweep is a different producer with a different UI, and
+nothing here should grow into it by adding a checkbox.
+
+**One parent, so no branches.** Design decision 6 permits a chain or an
+independent set, and a device workflow assembled from two separately-relaxed
+electrodes is a deferred extension. Nothing in the steps list can express a
+branch — deliberately, until the diamond case is real.
 
 ---
 
@@ -600,7 +634,7 @@ one that would have surfaced first in code.
 
 ```jsonc
 "structure": {
-    "source": "projects/BDT-Au/structure/bdt_au.xyz",   // in the tree (§ 2.5)
+    "source": "projects/BDT-Au/structure/bdt_au.xyz",   // in the tree (`job-contracts.md § 2.5`)
     "formula": "C6H4S2Au38",                            // what the id is built from
     "atoms": 46
 },
@@ -708,7 +742,7 @@ validation path.
 | Layer | Today | What this needs |
 |---|---|---|
 | config | `SiestaConfig`, `SiestaStageSpec` (8 fields) | **+ `overrides` map** and its merge; **+ a stage's restart intent** — continue, or start clean |
-| engine contract | the warm files, inventoried per engine (§ 4.2) | **+ the identity literal and the parameters bound to it**, declared beside them as one group (§ 6.2) |
+| engine contract | the warm files, inventoried per engine (`job-contracts.md § 4.2`) | **+ the identity literal and the parameters bound to it**, declared beside them as one group (§ 6.2) |
 | ladder | `render_siesta_stage_fdfs`, `stages_to_jobset` | renders from the *effective* config per stage; routes `budget` overrides into job resources |
 | bundle | `build_siesta_stage_bundle` | unchanged — it is already the seam § 8 named |
 | plan file | — | **new**: the `stage-plan` format, its reader, and the refusal of unknown keys |
@@ -798,7 +832,12 @@ user needs.
 6. **Is a plan editable by hand?** It is JSON beside a bundle, so it will be. If
    yes, the reader owes the same errors to a person as to the browser — which is
    an argument for the refusal rule in § 5.1 being loud rather than tolerant.
-7. **How strict is the engine-version check?** § 5.3 refuses on mismatch, which
+7. **What happens when a plan is produced twice into the same place?** The id is
+   stable by design, so a second produce targets the directory the first one
+   wrote. Overwrite it, refuse, or write beside it — and whichever it is, the
+   warm files already there are the *point* (they are what the next run resumes
+   from), so this cannot be answered by "make it unique".
+8. **How strict is the engine-version check?** § 5.3 refuses on mismatch, which
    is right for a major change and heavy-handed for a patch release. A range, or
    a "warn below, refuse across major", needs deciding by someone who knows what
    SIESTA changes between versions.
