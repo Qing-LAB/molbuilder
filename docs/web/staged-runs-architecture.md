@@ -440,6 +440,60 @@ user still gets to say what it is called.
 
 ---
 
+### 6.4 The id is half of it — SIESTA decides the rest, in the deck
+
+A warm start needs **two** things to agree, and only one of them is a name:
+
+| | What it settles | Where it lives |
+|---|---|---|
+| the id (`SystemLabel`) | **which** files the engine looks for — `<id>.XV`, `<id>.DM`, `<id>.CG` | the deck's one identity literal |
+| `DM.UseSaveDM`, `MD.UseSaveXV`, `MD.UseSaveCG` | **whether** it honours them when it finds them | ordinary fields in the deck, written by the generator |
+
+*"SIESTA reads these itself when the matching `MD.UseSave*` / `DM.UseSaveDM`
+flags are set"* — so the switches are as much a part of restart behaviour as the
+name is, and they are **generated parameters like any other**. They belong in the
+schema, they can be promoted per stage (§ 4), and a ladder normally wants them
+differing across stages: a first stage that must start clean sets them off; every
+stage after it needs them on to inherit anything at all.
+
+**And they have to agree with the carry list, which is a rule the user should
+never have to keep.** `Job.carry` puts `<id>.DM` into a stage's folder; the deck
+decides whether it is read. The two failure modes are opposite and both silent:
+
+- **carried, not read** — the file arrives, `DM.UseSaveDM` is off, the stage
+  starts from scratch and looks like it resumed;
+- **read, not carried** — the flag is on, no file was placed, and SIESTA quietly
+  cold-starts because there is nothing to load.
+
+So the pair is **derived together, from one statement of intent**: a stage
+either continues from the one before it or it does not, and the producer emits
+the carry entry *and* the flags from that single fact. Neither is a field the
+user sets twice.
+
+> This is the same shape as the policy that already becomes a scheduler edge
+> (§ 4): one scientific decision, two mechanical consequences, generated from
+> the decision rather than configured alongside it.
+
+### 6.5 The cell is generated, not typed
+
+SIESTA needs an explicit lattice. The UI holds **cell parameters** — the kind of
+cell, the vacuum padding, whatever the user actually reasons about — and the
+generator computes the explicit vectors from those parameters and the structure,
+shifting the atoms out of an origin-centred frame into the all-positive,
+right-handed one the deck must carry (`?doc=model/cell-plan.md`).
+
+Two consequences for everything above:
+
+- **The cell in the deck is derived, so it is not an input to the identity.**
+  What could be is the cell *parameters*, and § 11 keeps that open — but the
+  vectors themselves are output, and § 6 already refuses output in the id.
+- **The frame shift is why a `.XV` and a changed cell are worth a warning.** A
+  `.XV` holds coordinates in the frame the run wrote them in. Change the padding,
+  regenerate, and the deck's atoms move while the restart file's do not — the
+  engine will take the `.XV`, and the geometry it continues from is the old
+  frame. The id cannot prevent that (the atoms are the same atoms), so it is the
+  banner's to report: *state found, written under different cell parameters*.
+
 ---
 
 ## 7. Consolidation: saying it the way the shipped system says it
@@ -587,11 +641,11 @@ user needs.
    The likely answer is a short pin appended when and only when the readable
    part cannot separate two things in the same project, so the ugly form appears
    where it earns its place rather than everywhere. Agreed to be revisited.
-5. **Does the cell belong in the identity?** A `.XV` carries the cell as well as the
-   positions, so a changed cell is *overridden* on restart rather than
-   mismatched. That is a real surprise — you asked for more vacuum and the
-   restart quietly kept the old box — but it may be the wrapper's to report
-   rather than the id's to prevent.
+5. **Do the cell *parameters* belong in the identity (§ 6.5)?** The vectors are
+   generated, so they cannot be — but padding that changes the frame the atoms
+   are written in makes a prior `.XV` continue from a different origin. Reporting
+   it is cheap; putting it in the id would orphan a geometry every time somebody
+   widened a box, which is the overstatement § 6.2 is about.
 6. **Is a plan editable by hand?** It is JSON beside a bundle, so it will be. If
    yes, the reader owes the same errors to a person as to the browser — which is
    an argument for the refusal rule in § 5.1 being loud rather than tolerant.
