@@ -134,8 +134,8 @@ thing the generator reads:
   "engine":  { "name": "siesta", "version": "5.0", "requires": ["mpi", "netcdf"] },
 
   // What produced it, and what identifies the run it describes (§ 6).
-  "run":     { "name": "bdt au relax",             // what the user called it
-               "id":   "bdt_au_relax_a41f9c",       // that, normalised, + the pin
+  "run":     { "name": "BDT/Au relax",             // what the user typed, kept verbatim
+               "id":   "bdt_au_relax_c6h4s2au38",   // normalised once, then used as-is
                "created": "2026-08-06T22:14:03-07:00" },  // for tracing, not identity
 
   // Which schema the values were entered against. Not a definition — a witness,
@@ -299,7 +299,7 @@ made of things a person already knows:
 ```
    run.id  =  bdt_au_relax _ C6H4S2Au38
               └─────┬─────┘   └────┬────┘
-                    │              what the coordinates are OF: the molecule,
+                    │              what the coordinates are of: the molecule,
                     │              by formula or by named components
                     the project / experiment name — what the user calls it
 ```
@@ -308,7 +308,7 @@ A hash would be exact and unreadable. A formula is neither, and that is the
 trade being made on purpose: an id you can recognise in a directory listing, in
 a queue, and in a filename is worth more day to day than one that resolves every
 possible ambiguity. **This is a starting point, agreed as one**, and § 10 records
-what would force it to grow.
+what would force it to grow. What it may contain is not open, though: § 6.1.
 
 That one id **is** the `SystemLabel` / `JOB` literal. There is no second name.
 
@@ -324,14 +324,41 @@ each run carries an index (`-run0`, `-run1`, …), and `--force` resets it. That
 invocation-level bookkeeping and it exists; the id is calculation-level and does
 not need to repeat it.
 
-**The characters are constrained by the runtime, not by taste.** The wrapper
-reads the id back out of the script and sanitises it to `[A-Za-z0-9._-]` before
-using it in a shell (§ 4.3), and a stage name must match `[A-Za-z0-9_]+`. So the
-user's words are normalised into that set — lowercased, spaces and punctuation
-to underscores, trimmed to a sane length — and the fingerprint appended. What a
-user types is never used raw, and the id in the file is what the engine sees.
+### 6.1 The id is a filename, so it is normalised once and checked
 
-### 6.1 What the identity is tied to — as little as possible
+The id becomes the `SystemLabel` literal, and that literal becomes the stem of
+every file the run writes: `<id>.XV`, `<id>.DM`, `<id>_stage1.fdf`,
+`<id>-run0.molwatch.log`. A name with a space or a slash in it does not merely
+look untidy — it breaks a shell line, a glob, or a scheduler argument. So what
+the user types is **never used raw**.
+
+**What the allowed set is, and where it comes from** — none of it is taste:
+
+| Constraint | Set | Source |
+|---|---|---|
+| the wrapper reads the id back out of the script and interpolates it | `[A-Za-z0-9._-]` | § 4.3, where sanitising it is also what blocks shell injection from a hostile script |
+| a stage name is appended to it | `[A-Za-z0-9_]+` | the stage-name pattern in the config |
+| files land on disks that may not distinguish case | one case only | a `BDT.XV` and a `bdt.XV` are one file on macOS |
+
+So the normalisation is: **lowercase, anything outside `[a-z0-9_-]` to `_`,
+runs collapsed, leading and trailing separators trimmed, length capped** with
+room left for the suffixes the run will add.
+
+**Three rules keep it from becoming a source of surprise:**
+
+1. **It is normalised once, when the plan is written, and stored.** The id in the
+   plan is the id — nothing downstream re-derives it from the user's raw text,
+   because two components normalising slightly differently is a silent
+   divergence between what the browser shows and what the engine writes.
+2. **The result is shown, not hidden.** § 6.3 already puts the id on screen; a
+   user who types `BDT/Au relax` sees `bdt_au_relax_c6h4s2au38` and can object
+   there and then, rather than discovering it in a filename later.
+3. **A normalisation that loses the name is refused, not patched.** If what a
+   user typed reduces to nothing, or collides with another run in the same
+   project, the answer is to say so and ask — never to append a digit and carry
+   on, which produces `bdt_2` and no explanation of what it differs from.
+
+### 6.2 What the identity is tied to — as little as possible
 
 It is easy to overstate this, and overstating it is not a safe error: every
 extra thing in the pin is a case where a user tunes something reasonable and
@@ -365,14 +392,14 @@ separate two isomers, and does not pin the order the species are declared in —
 both of which a `.XV` is sensitive to. That is the known gap in the starting
 point, and § 10 is where it waits.
 
-### 6.2 The id is on screen, and its changes are visible
+### 6.3 The id is on screen, and its changes are visible
 
 An identity the user cannot see is one they cannot reason about, and this one
 decides whether their run resumes. So the tab shows both, always:
 
 ```
    ┌────────────────────────────────────────────────────────────┐
-   │  Job ID   bdt_au_relax_C6H4S2Au38                          │
+   │  Job ID   bdt_au_relax_c6h4s2au38     ← from "BDT/Au relax" │
    │           it says which atoms this is. It survives a         │
    │           relaxation and every tuning; it changes only if    │
    │           you load a different molecule                      │
