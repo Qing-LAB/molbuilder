@@ -950,16 +950,19 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 
 ## 13. The file map, and where the code stands
 
-Everything below lives under `lib/spectrumchart/`. **Nothing is built yet** — this
-document is the design, written before the code moves, so the door can be reviewed
-before anything depends on it.
+Everything below lives under `lib/spectrumchart/`. **It is built and the Spectrum
+tab draws through it** (2026-08-05). This document was written before any of it
+moved, so the door was reviewed before anything depended on it — and the build
+then found five things prose could not: § 8.4's picture shape, how the library
+arrives, that a click cannot be read off a mark, that the grid must be bounded by
+the modes rather than the width, and that this app has no theme signal to follow.
 
 | File | Holds | Status |
 |---|---|---|
-| `index.js` | the handle, the state, and every draw it causes | to build |
-| `_maths.js` | the envelope, the band widths — pure | starts from `spectra/core.js` (`_lorentzianEnvelope`, `_clickBandWidths`, `_clickTolerance`), **then satisfies rules those functions predate** |
-| `_seal.js` | the only file naming Plotly — it fetches the library, links the sheet, and reads the palette from the tokens | to move (`chartTheme`, the `Plotly.react` / `purge` / `Plots.resize` calls, `_watchChartWidth`), plus the two loaders, which are new |
-| `_style.css` | the module's own namespaced sheet | to write |
+| `index.js` | the handle, the state, and every draw it causes | **built** |
+| `_maths.js` | the envelope, the band widths — pure | **built**, from `spectra/core.js` (`_lorentzianEnvelope`, `_clickBandWidths`, `_clickTolerance`), **then satisfies rules those functions predate** |
+| `_seal.js` | the only file naming Plotly — it fetches the library, links the sheet, and reads the palette from the tokens | **built**, moving (`chartTheme`, the `Plotly.react` / `purge` / `Plots.resize` calls, `_watchChartWidth`), plus the two loaders, which are new |
+| `_style.css` | the module's own namespaced sheet | **built** |
 
 **Which parts of this are new specification, not relocation** — worth knowing
 before anyone sizes the work from the line counts below:
@@ -974,7 +977,8 @@ before anyone sizes the work from the line counts below:
 | a refused list emptying the chart | § 6.1 |
 | the module fetching its own library and sheet | § 4, § 11 |
 
-**What comes out of the tab.** `renderSpectrumChart` (242 lines),
+**What came out of the tab: 287 lines**, leaving `lib/spectra/core.js` at 3,384.
+`renderSpectrumChart` (242 lines),
 `_lorentzianEnvelope` (37), `chartTheme` (22), `_watchChartWidth` (16),
 `_clickBandWidths` (15), `_onChartClick` (7), `_clickTolerance` (6) — 345 lines of
 `lib/spectra/core.js`, which is 3,671 lines today.
@@ -982,6 +986,24 @@ before anyone sizes the work from the line counts below:
 **What stays.** The mode table, the filter, the CSV export, the selection and its
 consumers, the watch poller, the load path, the generator form, the
 electronic-structure panel.
+
+**What has been shown to work**, on the 36-mode benzene-dithiol result, in a real
+browser rather than against a stand-in:
+
+- the chart mounts, brings its own stylesheet, uses the Plotly the page already
+  carries, and draws the sticks and the envelope;
+- **a click 6 cm⁻¹ beside the 1131.8 peak — over empty space, on no mark —
+  selects mode 22**, which is § 6.3's whole purpose and the one thing a stand-in
+  could not have told us;
+- a click in a gap between bands changes nothing;
+- **a selection costs one recolour**, attributed per element: the spectrum is
+  never rebuilt to move a highlight. That is § 5.1, and it is what the extraction
+  was for — the old path recomputed an 806-point envelope from 36 Lorentzians,
+  29,016 terms, for every click;
+- the chart follows its own box: collapsing the panel beside it re-fits the
+  drawing, with the window never moving (§ 5.4, confirmed on screen — a
+  backgrounded tab gets no resize callbacks at all, so this one cannot be
+  measured from a driven page).
 
 **The electronic-structure level diagram is not part of this module** and is not a
 module. It is a small figure belonging to the electronic-structure panel, with
