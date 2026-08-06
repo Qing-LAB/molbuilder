@@ -181,14 +181,25 @@ three that hold VibrationView together, for the same reasons:
 - **A guard test asserts the boundary** — nothing outside the package may name any
   path inside it but `index.js`.
 
-**Nothing it needs comes from a global, and nothing it holds is published to one.**
-It does not read `window.molbuilder` and it does not write to it. A chart needs one
-thing at mount: an element to live in.
+**Nothing it needs comes from the app's globals, and nothing it holds is published
+to one.** It does not read `window.molbuilder` and it does not write to it. A chart
+needs one thing at mount: an element to live in.
+
+That rule is about *the app's* state. The drawing library is a separate matter: if
+it arrives as a script that publishes `window.Plotly`, that name is read in the
+one file already allowed to say it, and nowhere else — no page put it there and no
+page can rely on it being there.
 
 **Nothing leaks out.** No Plotly object, no DOM node, and no internal function ever
 appears on the handle. Inside this module the name `Plotly` occurs in exactly one
-file, which is also the only place that fails with a clear message when the
-library is missing.
+file.
+
+**And the module brings the library with it.** Nothing else on the page loads
+Plotly: the sealed layer adds it at mount, once, exactly as the stylesheet arrives
+(§ 12.6). A dependency the host has to remember is a dependency some host will
+forget, and the result — an empty box, no error, far from its cause — is the same
+failure the stylesheet rule exists to prevent. If the library will not load, the
+mount fails with a message (§ 8).
 
 That is the practice MolView and VibrationView already follow with 3Dmol: each
 module seals the library for itself, because independence beat sharing. The rule
@@ -289,10 +300,16 @@ mode = {
 | `imaginary` | no | — | `false` | never — anything truthy is true |
 
 **A record that must be refused takes the whole call with it.** `setModes` draws
-the list it was given or draws nothing; it never quietly skips the bad rows and
-renders a spectrum that is missing modes without saying so. A caller with one
+the list it was given or it draws none of it; it never quietly skips the bad rows
+and renders a spectrum missing modes without saying so. A caller with one
 malformed record has a bug one line earlier, and a chart that hides it is a chart
 that helped.
+
+**And a refused list leaves an empty chart, not the last one.** The old spectrum
+staying on screen is exactly the hiding this rule is against: the caller sees
+something plausible and never learns the call did nothing. So the chart empties —
+visible, on screen — and the reason for the refusal goes to the console, where a
+developer will look, because a caller's bug is not something a user can act on.
 
 **`index` is the caller's numbering, carried and handed back untouched.** The
 chart does not renumber and does not sort — it draws the modes in whatever order
@@ -350,6 +367,11 @@ legitimately arrive with no activities at all:
 at height one, and the curve over them is the sum of those — so the picture
 answers *where are the modes, and where do they crowd together*, which is a real
 question and the only one the data can answer yet (§ 10).
+
+**Both markings are drawn in the plot**, as the pictures show: the `×` on the
+axis, the words along the top. Neither is a label beside the chart or a banner
+above it — a chart made of one drawing surface stays a chart made of one drawing
+surface, and § 5.3's "no chrome" holds without an exception being carved for it.
 
 **Which picture you get is derived, never configured.** A flag would be a second
 place to believe something the data already says, and the failure mode is a flat
@@ -477,10 +499,11 @@ no `setSelected` that quietly does nothing. A caller that skipped the `ok` branc
 then fails at its first door, loudly and at the line that made the wrong
 assumption, instead of feeding data to a chart that was never there.
 
-**A missing library is a failed mount, not a broken page.** If Plotly is absent
-the mount resolves with `ok: false` and a message the tab can show — the mode
-table beside it still works, which is the behaviour the current code has and
-worth keeping.
+**A library that will not load is a failed mount, not a broken page.** The module
+fetches Plotly itself (§ 4); if that fails — offline, blocked, the file not
+there — the mount resolves with `ok: false` and a message the tab can show. The
+mode table beside it still works, which is the behaviour the current code has and
+is worth keeping.
 
 **The module owns the inside of its host, and nothing else about it.** `mount`
 empties the element it is given before it draws, so whatever was in there — a
@@ -515,21 +538,23 @@ const chart = await mount(document.getElementById("chart"), {
     onSelect: (index) => console.log("the user picked mode", index),
 });
 
-chart.setModes([
-    { index: 1, freq:  323.5, activity:  2.9, imaginary: false },
-    { index: 2, freq:  826.6, activity:  5.4, imaginary: false },
-    { index: 3, freq: 1131.8, activity: 12.9, imaginary: false },
-    { index: 4, freq: 3175.4, activity:  0.0, imaginary: false },
-]);
-chart.setBroadening(20);      // draw the curve 20 cm⁻¹ wide
-chart.setSelected(3);         // colour mode 3 as the chosen one
+if (chart.ok) {                   // the one branch every caller makes (§ 8)
+    chart.setModes([
+        { index: 1, freq:  323.5, activity:  2.9, imaginary: false },
+        { index: 2, freq:  826.6, activity:  5.4, imaginary: false },
+        { index: 3, freq: 1131.8, activity: 12.9, imaginary: false },
+        { index: 4, freq: 3175.4, activity:  0.0, imaginary: false },
+    ]);
+    chart.setBroadening(20);      // draw the curve 20 cm⁻¹ wide
+    chart.setSelected(3);         // colour mode 3 as the chosen one
+}
 </script>
 ```
 
-That is the whole surface: **five calls and one callback.** The page above styles
-a box, hands over four numbers per mode, and gets a spectrum it can click.
-It never mentions a drawing library, never reaches into the module, and would
-work on a page with nothing else on it.
+That is the whole surface: **five doors and one callback.** The page above styles
+a box, hands over four numbers per mode, and gets a spectrum it can click. There
+is no stylesheet `<link>` and no library `<script>` — the module brings both
+(§ 4) — so this really is the whole page.
 
 ### 9.2 What `mount` takes
 
@@ -578,7 +603,7 @@ Data goes in one way; nothing comes back out but a click.
 
 | Door | Takes | Refuses | Returns |
 |---|---|---|---|
-| `setModes` | an array of mode records (§ 6.1). An empty array is legal and means *an empty chart* | anything that is not an array; a record missing `index` or `freq`; the same `index` twice — the whole call, with nothing drawn, rather than a chart quietly missing rows | nothing |
+| `setModes` | an array of mode records (§ 6.1). An empty array is legal and means *an empty chart* | anything that is not an array; a record missing `index` or `freq`; the same `index` twice — the whole call, and **the chart empties** rather than leaving the last spectrum standing (§ 6.1) | nothing |
 | `setSelected` | one `index`, or `null` for *nothing chosen*. It is **remembered whether or not the current list holds it**, and drawn as soon as a list does | nothing — an index no list holds is not an error (below) | nothing |
 | `setBroadening` | a width in cm⁻¹, `≥ 0`. Zero means *no curve*: bare sticks, and click bands at their floor (§ 6.4) | a negative number or a value that is not a number — the width already set stands, because substituting a default would hide a caller's bug | nothing |
 | `refit` | — | — | nothing |
@@ -719,9 +744,10 @@ listens for clicks:
 
 ```js
 const chart = await mount(host, { onSelect: (index) => tab.selectMode(index) });
+if (!chart.ok) showMessage(chart.error);   // the mode table still works without it
 
 // a result arrives
-chart.setModes(modes);
+if (chart.ok) chart.setModes(modes);
 
 // the user clicks a stick, or a table row, or arrows through the list
 tab.selectMode = (index) => {
@@ -745,8 +771,10 @@ this module is sealed at `mount`; the CSS half is sealed at its namespace. A pag
 rule reaching at `spectrumchart-…` is the same category error as a script
 importing `_maths.js`, and it is caught the same way — by a guard, not by review.
 
-The sheet is a small system, not a handful of rules, and the five parts below are
-what makes it one. It stays a real `.css` file rather than a string inside
+**It is a short sheet, and it should stay short.** A chart is a box with one
+drawing surface in it — there is no toolbar, no legend, no readout panel, no
+banner (§ 5.3). What follows is a system for those few rules, not a licence to
+grow more of them. It stays a real `.css` file rather than a string inside
 JavaScript, so the repository's existing CSS audits can read it.
 
 ### 12.1 Where this sheet sits in the app's CSS system
@@ -786,15 +814,18 @@ variable — so the chart matches the app without depending on it.
 
 ### 12.2 The sheet has one shape, so every rule has one home
 
-Blocks in this order, and a rule that fits two of them belongs in the earlier one:
+Three blocks, in this order, and a rule that fits two of them belongs in the
+earlier one:
 
 ```
-   1  the root      .spectrumchart { … }     every token this module has
+   1  the root      .spectrumchart { … }      every token this module has
    2  the frame     the box the chart lives in, and how it fills its host
-   3  the parts     the drawing surface, the pending note, the failure message
-   4  the states    pending · failed · empty
-   5  the sizes     the container queries, and what each step changes
+   3  the surface   the element the drawing goes on
 ```
+
+That is the whole sheet. If a fourth block is ever proposed, the question to ask
+first is whether the module has genuinely grown a part — or whether something the
+plot should be drawing has been moved out into markup instead (§ 6.3).
 
 And the selectors stay flat, because specificity is a budget that can only be
 spent once:
@@ -816,19 +847,19 @@ different, and now the module has two of them.
 
 ```css
 /*  NO — three literals; none can be found, none can be changed together  */
-.spectrumchart-note { margin: 12px 0 0; font-size: 13px; color: #6b7280; }
+.spectrumchart { padding: 12px; border: 1px solid #d4d4d8; border-radius: 6px; }
 
 /*  YES — the values live at the root; the rule reads them  */
-.spectrumchart-note {
-    margin-block-start: var(--spectrumchart-gap);
-    font-size:          var(--spectrumchart-note-size);
-    color:              var(--spectrumchart-note-ink);
+.spectrumchart {
+    padding:       var(--spectrumchart-pad);
+    border:        var(--spectrumchart-hairline) solid var(--spectrumchart-edge);
+    border-radius: var(--spectrumchart-radius);
 }
 ```
 
-**A number that must be raw is still given a name.** A hairline border is
-`--spectrumchart-hairline: 1px`, not `1px` in four rules — so the one place says
-what it is and what it is for.
+**A number that must be raw is still given a name.** The hairline above is
+`--spectrumchart-hairline: 1px`, not `1px` written wherever a border is needed —
+so one place says what it is and what it is for.
 
 **What is not a magic number:** `0`, `100%`, `1fr`, `auto`. These say *none*,
 *all* or *whatever fits* — they are structure, not measurements, and naming them
@@ -843,42 +874,35 @@ looks untidy:
 |---|---|
 | `!important` | this rule is winning an argument the cascade should not be having. The rule is in the wrong block, or it is fighting something outside the seal — and both are bugs one level up |
 | a rule that undoes another rule — a negative margin cancelling a margin, a reset of something this sheet set three rules earlier | the first rule was wrong. Two wrongs leave two things to maintain and no way to tell which is load-bearing |
-| a `z-index` picked by trying numbers | stacking is a short named scale in block 1 or it is a defect. Trial numbers are how a ladder starts |
 | anything that works only because of link order | this module links exactly one sheet, so order is never the answer. If it is, the specificity is wrong |
 | a page sheet styling `spectrumchart-*`, or this sheet styling anything outside its own markup | the seal, from each side |
 
-**Hiding uses one mechanism, never two.** A class that sets `display` and the
-`hidden` attribute tie on specificity and are decided by source order — a race
-this repository has already been bitten by. So: **the module hides with the
-`hidden` attribute and no class in this sheet sets `display` on anything that can
-carry it.** One mechanism cannot disagree with itself.
+There is no rule here about `z-index` or about hiding, and that is deliberate: two
+elements that never overlap need no stacking order, and a module that hides
+nothing needs no way to hide it. Rules for parts that do not exist are the same
+mistake as parts that do not exist.
 
 ### 12.5 The UI knows its own size
 
-**The chart responds to its own box, never to the window.** A viewport query is
-wrong here even on the day it appears to work, because nothing about the window
-tells this module how much room it has: the same chart can sit in a full-width
-panel, in a half-width tab, beside a sidebar that collapses, or in a tab that was
-display:none a moment ago. All four change the box without touching the window.
+**The chart responds to its own box, never to the window.** Nothing about the
+window tells this module how much room it has: the same chart can sit in a
+full-width panel, in a half-width tab, beside a sidebar that collapses, or in a
+tab that was hidden a moment ago. All four change the box while the window sits
+still. So a viewport media query is wrong here even on the day it appears to
+work.
 
-So the size rules are container queries, and the container is **the frame** —
-because an element cannot query itself. That is not a style preference; it is the
-bug that made an earlier container query silently never match.
+**And responding is one thing: redraw at the box's size.** There is nothing to
+re-arrange — one surface filling one frame — so the sheet holds no rule that
+*changes with* the box, and the response lives where the box is watched (§ 5.4).
+Naming steps and writing queries for a layout of one element would be machinery
+with nothing to do.
 
-```
-   .spectrumchart              ← container-type declared HERE (the frame)
-      ├── .spectrumchart-surface     the drawing surface
-      └── .spectrumchart-note        ← the rules that respond live HERE
+> If the module ever does grow a second part, the rule to reach for is a
+> **container query on the frame**, never a viewport one — and the container goes
+> on the frame because an element cannot query itself. That is not a preference;
+> it is the bug that made an earlier container query silently never match.
 
-   narrow  ( < the step )   the note sits under the plot, on its own line
-   wide    ( ≥ the step )   the note sits in the plot's top corner
-
-   the step is a token, and this pair of lines is what "responsive" means for
-   this module — a named step with a stated consequence, not a bare number
-   inside a media query
-```
-
-Four more rules, each from a way a chart has actually broken:
+Four rules that do earn their place, each from a way a chart has actually broken:
 
 - **A box may legitimately be zero.** A chart in a hidden tab has no size; it
   draws nothing and waits to be told the box is real (§ 9.3). Zero is a state, not
@@ -897,6 +921,8 @@ Four more rules, each from a way a chart has actually broken:
 **The module links the sheet, not the page**, at mount, once. No template names
 the file, so no page can forget it — the failure mode being an unstyled chart,
 with no error, far from its cause, found only by someone looking at the screen.
+The drawing library arrives the same way and for the same reason (§ 4), so a host
+provides one thing only: an element.
 
 **And `mount` waits for it to load**, because the sealed layer reads the palette
 out of it (§ 9.4) and a `<link>` loads asynchronously. Appending and carrying on
@@ -933,9 +959,10 @@ the difference, because § 9.4 is the whole of what it asks of that library.
 | The rule | A test must show |
 |---|---|
 | § 2 — the tab keeps its own | the module contains no table, no filter, no CSV, no poller, and no form |
-| § 4 — self-contained | the module mounts given only a host element; it reads no global and writes none |
+| § 4 — self-contained | the module mounts given only a host element; it reads no global of the app's and writes none, and the only global name it reads at all is the library's, in the seal |
 | § 4 — nothing else is importable | the entry point exports exactly `mount` |
 | § 4 — no hatch | the handle's keys are enumerated **unfiltered**: no accessor reaches the drawing surface or the internal state |
+| § 4 — the module brings the library | a page holding only a host element and one `import` draws a chart: no `<script>` and no `<link>` of its own, and nothing outside the module names Plotly |
 | § 5.1 — the door says the cost | `setSelected` computes no curve and changes no axis; `setModes` does both |
 | § 5.1 — recolouring is not redrawing | after `setSelected`, the picture handed to the seal is the same picture, with only its colours changed |
 | § 5.2 — the selection is mirrored, not owned | a click emits `onSelect` and changes **nothing** on screen until `setSelected` is called; a chart mounted without `onSelect` still draws |
@@ -944,6 +971,8 @@ the difference, because § 9.4 is the whole of what it asks of that library.
 | § 5.4 — the host owns the box | the module sets no width or height on its host, at mount or ever; and a box that changes size redraws without the window moving |
 | § 6.1 — the two required fields | a record without `index`, or without `freq`, is refused |
 | § 6.1 — a refusal takes the whole call | one malformed record among many draws **nothing**, rather than a spectrum quietly missing that mode |
+| § 6.1 — a refused list empties the chart | after a refused `setModes`, the previous spectrum is gone from the screen rather than left standing as though the call had worked |
+| § 6.3 — the markings are in the plot | the pending marks and the "not computed" wording are drawn on the surface: the module's markup carries no label, banner or text node beside the chart |
 | § 6.1 — absent is not zero | a mode with no `activity` field, and one with `activity: null`, are treated the same and neither is drawn as a strength of zero |
 | § 6.1 — the caller's numbering is carried, not interpreted | an unsorted, sparse, 1-based list draws in the order given, and the index a click reports is the index that was handed in |
 | § 6.1 — the indices must differ | a list containing the same index twice is refused whole, rather than resolved by a rule the caller cannot see |
@@ -983,10 +1012,9 @@ the difference, because § 9.4 is the whole of what it asks of that library.
 | § 12.1 — the theme is followed, not copied | the sheet redefines its own tokens under the theme condition, and no page variable is named anywhere in the module |
 | § 12.2 — the selectors stay flat | the sheet contains no ID selector, no element selector and no `:nth-child()`, and nests at most one level |
 | § 12.3 — no magic numbers | every value in a rule is a `var()` or one of `0` · `100%` · `1fr` · `auto`: no colour, length, duration or font size appears as a literal outside the root block |
-| § 12.4 — nothing is patched | the sheet contains no `!important`, no negative margin and no `z-index` outside the named scale |
-| § 12.4 — one way to hide | no rule sets `display` on a class the module also toggles `hidden` on |
-| § 12.5 — the chart responds to its own box | the sheet contains no viewport media query; every size rule is inside a container query, and the container is declared on an ancestor of the rules that use it |
-| § 12.5 — the named step does what it says | at a box narrower than the step the note is on its own line, at or above it the note is in the plot's corner — driven by the box, with the window never changing |
+| § 12.4 — nothing is patched | the sheet contains no `!important` and no negative margin, and no rule in it depends on the order sheets were linked |
+| § 12.5 — the chart responds to its own box | the sheet contains no viewport media query, and a box that changes size while the window does not causes a redraw at the new size |
+| § 12.2 — the sheet stays short | it styles the frame and the surface and nothing else: no rule names a part this contract does not describe |
 | § 12.5 — the box traps | the frame declares a height and never `auto`; the drawing surface carries no padding; nothing in the module makes the page scroll sideways |
 | § 12.6 — the module links its own sheet | a chart mounted on a page whose template names no stylesheet is styled; mounting twice adds one link, not two |
 | § 12.6 — the mount waits for the sheet | the first chart on a cold page draws with the token palette, not with fallback colours |
@@ -1003,7 +1031,7 @@ before anything depends on it.
 |---|---|---|
 | `index.js` | the handle, the state, and every draw it causes | to build |
 | `_maths.js` | the envelope, the band widths — pure | to move from `spectra/core.js` (`_lorentzianEnvelope`, `_clickBandWidths`, `_clickTolerance`) |
-| `_seal.js` | the only file naming Plotly; the palette read from tokens | to move (`chartTheme`, the `Plotly.react` / `purge` / `Plots.resize` calls, `_watchChartWidth`) |
+| `_seal.js` | the only file naming Plotly — it fetches the library, links the sheet, and reads the palette from the tokens | to move (`chartTheme`, the `Plotly.react` / `purge` / `Plots.resize` calls, `_watchChartWidth`), plus the two loaders, which are new |
 | `_style.css` | the module's own namespaced sheet | to write |
 
 **What comes out of the tab.** `renderSpectrumChart` (242 lines),
