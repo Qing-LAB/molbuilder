@@ -460,18 +460,94 @@ rather than a file. What it must **not** do is remove warm files that were alrea
 there; producing twice is `execution/run-identity.md § 6`, and those files are
 the point.
 
-**And a produce that replaces an earlier one must account for what it does not
-write.** Remove a stage from a description, or disable one, and the deck it
-produced last time is still in the folder — describing a calculation the
-description no longer contains, with a wrapper that still runs it. That breaks the
-premise every rule here rests on: that the folder's contents are what the
-description says they are.
+**And a produce that replaces an earlier one may make the folder match the
+description exactly — because it checkpoints first.** Remove a stage, or disable
+one, and the deck it produced last time is still there, with a wrapper that still
+runs it, describing a calculation the description no longer contains. Left alone
+that breaks the premise every rule here rests on: that a folder's contents are
+what its description says they are.
 
-So a replacing produce reports the decks and wrappers it did **not** write this
-time, and the user decides. It does not delete them silently — an orphan may be
-the run they are halfway through — and it does not leave them unmentioned, which
-is how a folder stops meaning anything. The warm files are never in this set:
-they belong to the calculation, not to any one stage.
+The answer is not to tiptoe around the orphans. It is
+[`molbuilder snapshot`](?doc=execution/running-a-job.md) § 6, which already puts
+a run directory under a git-backed history — text tracked (including the small
+`.XV` / `.CG`, *"so a restore brings back a resumable state"*), large binaries
+archived by content and deduped:
+
+> **A replacing produce checkpoints the folder before it writes anything.**
+> Having done so, it removes what the description no longer contains, and the
+> folder is exactly the description again. Nothing is lost, because the prior
+> state is a commit — restore it, or branch from it.
+
+Two things make this cheap rather than heavy: a produce that only rewrites decks
+changes only text, and the binary archive is content-addressed, so unchanged
+`.DM`s and `.HSX`es are not copied again. If the folder is not under checkpoint
+yet, the produce initialises it (`snapshot init --engine <engine>`) — a folder
+molbuilder writes into is a folder molbuilder can offer a history for.
+
+The warm files are never removed by any of this: they belong to the calculation,
+not to any one stage (`execution/run-identity.md § 6`).
+
+### 7.2 A description grows, and a stage that has run is a record
+
+A description is not written once and produced once. The ordinary way a mission
+goes is **incremental**: run a stage, look at what came out, decide the next one
+from what you saw, run that. So the stage list **grows over time**, and a produce
+usually lands in a folder where earlier stages have already run.
+
+**There is no fixed number of stages.** `job-system.md § 4.1`'s three-rung ladder
+is a *default set* with three presets flipping its enable flags — a starting
+proposal, not a bound. A fourth and fifth stage decided next month are ordinary,
+and each continues from what is in the folder because `restart` means *whatever
+ran here last* (`execution/run-identity.md § 4`). That is the payoff of the
+identity being blind to everything a stage tunes: appending a stage does not
+change the id, so the state is still there to continue from.
+
+Two rules make growth safe, and both follow from one observation.
+
+> **A stage has run when the folder holds output keyed to its deck** —
+> `<id>_<name>-run0.out` and its trajectory log (`job-contracts.md § 2.6`). That
+> is a fact on disk, not a flag anybody maintains.
+
+**R4 — a stage that has run is a record, and the record is a checkpoint.** The
+outputs beside a deck were made by that deck as it was, so replacing it without
+keeping the old one leaves a folder whose results came from a file that no longer
+exists. That is not a reason to refuse the edit — redoing a stage is ordinary
+work. It is a reason for the history to exist, which § 7.1 already requires.
+
+So the boundaries where a checkpoint is taken are exactly two, and both are
+molbuilder's rather than the engine's:
+
+| When | What it holds | Why there |
+|---|---|---|
+| **before a replacing produce** | the folder as the last produce left it | it is what makes rewriting a run stage safe rather than lossy (§ 7.1) |
+| **when a stage's run is seen to finish** | that stage's converged state, tagged with its name | it is the point a user will want to come back to and **branch from** — the next stage is a choice, and a choice wants somewhere to return to |
+
+**Neither is the wrapper's job.** `running-a-job.md § 6.2` records that the
+wrapper-bootstraps-git path was deliberately dropped — *"the wrapper is
+deliberately git-agnostic, so init is CLI/UI-only"* — so the second boundary is
+observed where a run is already being watched: the decoded run reports `finished`
+(`running-a-job.md § 4.2`), and the surface or the CLI takes the checkpoint. A
+wrapper that committed to git would be a wrapper that needs git on the compute
+node, which is exactly what the standalone contract forbids.
+
+**What this buys is the thing a growing description most needs.** A tagged
+checkpoint per completed stage turns the folder from *the current state of one
+calculation* into a chain of states you can re-enter: `snapshot branch` at stage
+2 and try a different stage 3 without losing the first attempt. That is
+"switching between setups" in its strongest form, and it is why `branch` having
+no HTTP route (`running-a-job.md § 6.2`) is the most consequential gap in this
+whole design rather than a loose end.
+
+**R5 — a stage's name is its identity, and renaming is rewriting.** The name is
+in the deck's filename, in every output beside it, in the checkpoint tag, and in
+the detector above. Renaming a stage that has run moves all four at once, so it
+is an R4 event and takes an R4 checkpoint.
+This is also why the stage's position in the list must never appear in a
+filename: insert a stage at the front, or reorder two, and every positional
+number after it shifts — silently reassigning outputs that already exist to
+stages that did not produce them. **Names are stable; positions are not.** Where
+the shipped trajectory log uses `-stage<N>` (§ 7, the log bullet), that is the
+half of the naming question growth decides: it has to key on the name.
 
 ---
 

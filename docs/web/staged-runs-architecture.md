@@ -110,14 +110,23 @@ the first stage's restart state.** That is the same property that makes
 continuing free; it cannot be had one way only. The folder holds *the current
 state of one calculation*, not a history of every setup tried in it.
 
-The answer already ships. `running-a-job.md § 6` puts a run directory under a
-git-backed checkpoint system — snapshot a converged state, tag it, **branch a
-what-if**, restore, with the small warm-restart files kept in the text history
-*"so a restore brings back a resumable state."* That is switching between setups
-without losing one. **`snapshot branch` has no HTTP route**
-(`running-a-job.md § 6.2`), which
-makes it the most relevant missing piece for this framework — ahead of anything
-in the JobSet migration.
+The answer already ships, and this design **builds on it rather than beside
+it**. `running-a-job.md § 6` puts a run directory under a git-backed checkpoint
+system — snapshot a converged state, tag it, **branch a what-if**, restore, with
+the small warm-restart files kept in the text history *"so a restore brings back
+a resumable state."*
+
+`engines/stages.md § 7.2` makes that automatic at the two boundaries that matter:
+**before a replacing produce**, so rewriting a stage that already ran is
+reversible rather than lossy; and **when a stage's run finishes**, tagged with the
+stage name, so it is a point to come back to. A folder then stops being *the
+current state of one calculation* and becomes a chain of states you can re-enter
+— branch at stage 2, try a different stage 3, keep both.
+
+That is switching between setups in its strongest form, and it is why
+**`snapshot branch` having no HTTP route** (`running-a-job.md § 6.2`) is the most
+consequential gap in this design rather than a loose end. It is the operation the
+whole shape depends on.
 
 ---
 
@@ -379,9 +388,14 @@ is agreeing them and answering § 9.
    has nothing to compare against. *Done when:* the same description produces the
    same folder from a terminal and from the browser, and neither path has a
    renderer the other lacks.
-10. **`snapshot branch` over HTTP** (§ 3.1). *Done when:* the folder can be
-    branched from the browser, because that is what switching setups without
-    losing one requires.
+10. **Checkpoints at the two stage boundaries, and `branch` over HTTP**
+    (`engines/stages.md § 7.2`). *Done when:* a replacing produce leaves a commit
+    holding the folder as it was; a stage seen to finish leaves a commit tagged
+    with its name; a folder molbuilder produces into is initialised if it was not
+    already; and the browser can branch from either — which is what switching
+    between setups without losing one actually requires. **The wrapper does none
+    of it** (`running-a-job.md § 6.2`: it is deliberately git-agnostic), so the
+    finish is observed where the run is already watched.
 
 **Step 3 — the surface.** The description model first (pure, tested), then the
 matrix view, then the subtabs.
