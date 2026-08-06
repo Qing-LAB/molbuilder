@@ -448,11 +448,14 @@ cannot.
     a stage's `run-N/` is archived; a benchmark's `point-*/`, two levels down, is
     not. *Done when:* a produced folder with a bench bundle archives the stage's
     results and none of the trials', and the rule is depth rather than a name.
-12a. **One run directory per attempt** (`project-layout.md` § 1.2). The wrapper
-    creates `run-<n>/`, links the deck and shared files in, carries and localises
-    the previous attempt's warm files, then runs. `--force` is retired. *Done
-    when:* two invocations leave two directories, the first byte-identical to
-    what it was, and a flat run directory behaves exactly as it does today.
+12a. ~~**One run directory per attempt**~~ — **the wrapper half is done**
+    (2026-08-06). `render_run_wrapper(..., attempt_dirs=True)` resolves the next
+    attempt, builds `run-<n>/`, links inputs, copies the previous attempt's warm
+    state, and cds in; `--force` **refuses** rather than being ignored. Ten tests
+    run it for real against a fake engine that writes nothing, so a carried file
+    can only have been carried. A flat directory is untouched. **What remains:**
+    the producer passing the flag, and the run decoder learning that a stage's
+    attempts are `run-N/` rather than `-runN.out`.
 13. ~~**The archive globs reach into the subdirectories**~~ — **done
     (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
     the walk is recursive and skips symlinks and dot-directories, a binary-only

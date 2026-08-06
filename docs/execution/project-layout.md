@@ -117,6 +117,15 @@ Immutability is a contract, not a filesystem permission — but it is **checkabl
 and § 7 makes it an invariant: an attempt that has been saved must never differ
 afterwards. Nothing would notice today.
 
+**The wrapper half is built** (2026-08-06, `runwrap.py`, opt-in via
+`attempt_dirs`). It resolves the next attempt, creates `run-<n>/`, **links** the
+deck and shared package in, **copies** the previous attempt's warm files —
+copies, because a link would let the engine write back into the attempt that
+produced them — and cds in. Every later line of the wrapper is unchanged: the
+launch, the monitor, the SCF tee and the failure hints all work relative to the
+current directory, so they land in the attempt with no further edits. A flat run
+directory does not pass the flag and behaves exactly as it does today.
+
 ---
 
 ## 2. Who owns each level

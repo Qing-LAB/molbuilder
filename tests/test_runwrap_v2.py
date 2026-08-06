@@ -256,10 +256,24 @@ def test_write_run_wrapper_writes_chmod_x(sandbox, tmp_path):
 
 
 def test_log_filename_does_not_hardcode_directory(sandbox):
+    """The session log lands in the INVOCATION's directory, never in the one
+    the wrapper was generated in.
+
+    This used to assert the literal relative filename.  It now resolves through
+    ``$PWD``, which is the same directory -- ``$PWD`` is read before any ``cd``
+    -- and is required by attempt directories: with ``attempt_dirs=True`` the
+    wrapper cd's into ``run-<n>/`` after the log is opened, and a RELATIVE
+    ``$_runwrap_log`` would then resolve against the attempt, where the log is
+    not.  The failure-hint greps read ``"$_out_file" "$_runwrap_log"`` together,
+    so half their evidence would silently vanish.
+
+    What the original test was protecting -- no generation-time directory baked
+    into the text -- is what is asserted here.
+    """
     text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
-    # The log file name is relative -- the wrapper writes to cwd,
-    # which is whatever the caller cd'd into (or SLURM_SUBMIT_DIR).
-    # No absolute path or directory prefix on _runwrap_log.
-    assert '_runwrap_log="JOB.runwrap-$(date +%Y%m%d-%H%M%S).log"' in text
-    assert '_runwrap_log="/' not in text  # not an absolute path
-    assert '_runwrap_log="${' not in text  # not via an env-var prefix
+    assert 'JOB.runwrap-$(date +%Y%m%d-%H%M%S).log' in text
+    assert "/x/" not in text, "the generation-time directory must not be baked in"
+    assert '_runwrap_log="/' not in text, "not a literal absolute path"
+
+    # Resolved at RUN time, against the invocation's own directory.
+    assert '_runwrap_log="$PWD/JOB.runwrap-$(date +%Y%m%d-%H%M%S).log"' in text
