@@ -21,7 +21,7 @@ tests are derived. It is not a tour of the current code; the code it replaces is
 
 > **Words used in this document.**
 >
-> - **A chart** — one mounted SpectrumChart: one plotting surface and everything
+> - **A chart** — one mounted SpectrumChart: one drawing surface and everything
 >   it holds. Two on a page are two of these, sharing nothing.
 > - **The handle** — the object you get back from `mount`. It *is* the chart;
 >   there is no other way to reach one.
@@ -44,12 +44,54 @@ tests are derived. It is not a tour of the current code; the code it replaces is
 
 ## 1. The goal
 
-**One component that draws a spectrum honestly, and turns a click into a mode.**
+**One component that draws a spectrum, and turns a click into a mode.**
 
-A user opens a result and sees where the modes are and how strong they are. They
-broaden the sticks until the picture looks like the spectrum they would measure.
-They click at a peak — not on a one-pixel line, at the *peak* — and the rest of
-the tab follows to that mode.
+Here is the whole job in one picture. A calculation produces a list of **modes** —
+each one a way the molecule can vibrate, with a frequency and a strength. The
+chart draws each as a vertical line, a **stick**, at its frequency and as tall as
+its strength, then lays a smooth curve over them so the picture looks like a
+spectrum you would measure rather than a barcode:
+
+```
+  strength
+  (Å⁴/amu)
+      │                        ╭─╮  ← the smooth curve: what a real
+   14 │                       ╭╯ ╰╮    spectrum looks like, because
+      │        ╭╮             │   │    real lines have width
+   10 │       ╭╯╰╮            │ ┃ │
+      │       │  │           ╭╯ ┃ ╰╮
+    6 │      ╭╯  ╰╮      ╭─╮ │  ┃  │
+      │      │ ┃  │     ╭╯ ╰╮│  ┃  │
+    2 │     ╭╯ ┃  ╰╮   ╭╯ ┃ ╰╯  ┃  ╰╮
+      │  ╭──╯  ┃   ╰───╯  ┃     ┃   ╰──╮
+      └──┴─────┸──────────┸─────┸──────┴────────────▶  frequency (cm⁻¹)
+              323        826   1131
+                                ▲
+                                └── the selected mode, drawn in its own colour
+
+              each ┃ is one mode;  the curve is their sum
+```
+
+**And clicking it is not a test of aim.** A stick is one pixel wide. Around each
+one the chart keeps an invisible **band**, as wide as the curve you asked for, so
+a click anywhere inside it means *that* mode:
+
+```
+        the sticks               what you may click
+        ─────────                ──────────────────
+             ┃                     ▒▒▒▒▒┃▒▒▒▒▒
+             ┃                     ▒▒▒▒▒┃▒▒▒▒▒        ← invisible; the
+        ─────┸─────                ▒▒▒▒▒┸▒▒▒▒▒          user just finds
+                                                        the peak easy to hit
+```
+
+So: a user opens a result, sees where the modes are and how strong they are,
+broadens them until it looks like the spectrum they would measure, clicks at a
+peak, and the rest of the tab follows to that mode.
+
+**Drawing it honestly means one thing in particular:** nothing is invented. A mode
+whose strength has not been computed yet is shown as *not computed*, never as
+*weak* (§ 6.3).
 
 ---
 
@@ -84,14 +126,14 @@ flowchart TB
     TAB -->|"mode 22, please"| H
     H -->|"the user clicked mode 22"| TAB
     H -->|"what does the envelope look like?"| M
-    H -->|"draw these traces"| SEAL
+    H -->|"draw this picture"| SEAL
     SEAL -->|"a click, at this x"| H
 ```
 
 Four things to read off it:
 
 **A tab owns none of it.** A tab has a handle. It does not have the plotting
-surface, the traces, or a way to reach Plotly.
+surface, the marks on it, or a way to reach Plotly.
 
 **The selection is a loop through the tab, not a shortcut inside the chart.** A
 click goes *out* as an event and comes *back* as `setSelected`. The chart never
@@ -167,12 +209,12 @@ of work, so they are not the same call:
 
 ```
    setModes()      rare — you opened a different result
-                   → rebuild every trace, recompute the envelope,
-                     re-range both axes
+                   → redraw every mark, recompute the curve,
+                     and fit both axes to the new numbers
 
    setSelected()   often — you clicked another stick, or another table row
                    → recolour one mark, and nothing else
-                   → no envelope, no re-range, no re-fit
+                   → no curve, no axis change, no camera move
 ```
 
 **This is the rule the current code breaks, and the measurement is why the rule is
@@ -201,9 +243,9 @@ of a number the tab displays.
 
 Nothing above the sealed layer knows the chart is Plotly. And SpectrumChart draws
 **no controls** — no heading, no broadening box, no export button. It fills the
-element it was given with a spectrum. Plotly's own mode bar is the library's, not
-a control this module offers; what appears on it is decided in the sealed layer
-and nowhere else.
+element it was given with a spectrum. The drawing library brings a small toolbar
+of its own (zoom, reset, save); that is the library's, not a control this module
+offers, and what appears on it is decided in the sealed layer and nowhere else.
 
 ### 5.4 The host owns the box
 
@@ -255,14 +297,19 @@ A run computes frequencies before it computes intensities, so a result can
 legitimately arrive with no activities at all:
 
 ```
-   any activity present   →  ACTIVITY MODE
-                             height = activity, in Å⁴/amu
-                             modes still pending draw at zero, in their own
-                             trace, so "not computed" never reads as "not active"
+  SOME STRENGTHS KNOWN                  NONE KNOWN YET
+  height means strength                 height means nothing, and says so
 
-   none present           →  DENSITY MODE
-                             every stick unit height; the picture is where the
-                             modes ARE, and the axis says intensities are missing
+      │      ┃                              │  ┃ ┃    ┃  ┃ ┃   ┃
+      │      ┃   ┃                          │  ┃ ┃    ┃  ┃ ┃   ┃
+      │  ┃   ┃   ┃                          │  ┃ ┃    ┃  ┃ ┃   ┃
+      │  ┃   ┃   ┃  ×   ×                   │  ┃ ┃    ┃  ┃ ┃   ┃
+      └──┸───┸───┸──────────▶               └──┸─┸────┸──┸─┸───┸──▶
+                 ↑                           "strengths not computed"
+          × = computed as zero?
+              No — NOT COMPUTED, and
+              marked so it cannot be
+              mistaken for silent
 ```
 
 **This is derived, never configured.** A flag would be a second place to believe
@@ -278,8 +325,24 @@ second fact about the same thing (§ 5.2), and it drifts the moment either is
 changed alone. A floor covers broadening being off, since bare sticks still have
 to be reachable.
 
-**And each band is clamped to half the distance to its nearer neighbour.** Without
-that clamp, bands overlap wherever modes are dense — ten of the thirty-five
+**And each band is clamped to half the distance to its nearer neighbour.**
+
+```
+  broadening 20 cm⁻¹, two modes 24 cm⁻¹ apart
+
+  UNCLAMPED — the bands overlap        CLAMPED — they meet and stop
+  and the overlap belongs to           at the midpoint, so every point
+  whichever was drawn last             belongs to the nearer one
+
+     ▒▒▒▒▒▒▒┃▒▒▒▒▒▒▒                      ▒▒▒▒▒▒▒┃▒▒▒▒▒
+     ░░░░░▒▒▒█░░░░░░░░░                   ▒▒▒▒▒▒▒┃▒▒▒▒▒░░░░░░░░░░░
+        ░░░░░░┃░░░░░░░                          ░░░░░░┃░░░░░░
+              ↑                                       ↑
+        clicking HERE could                     clicking HERE is
+        select either one                       always the nearer
+```
+
+Without that clamp, bands overlap wherever modes are close together — ten of the thirty-five
 adjacent pairs in the benzene-dithiol spectrum are closer together than an
 unclamped band is wide — and in the overlap the mode you get is whichever band was
 drawn last, not the nearer one. Clamped, every point of the plot belongs to at most
@@ -296,16 +359,16 @@ the table's job.
 
 | Level | Knows about | Never |
 |---|---|---|
-| **the handle** (`index.js`) | the modes, the selection, the broadening, the box | Plotly, colours, trace shapes |
+| **the handle** (`index.js`) | the modes, the selection, the broadening, the box | the drawing library, colours, how a mark is shaped |
 | **the maths** (`_maths.js`) | numbers | the DOM, the library, the palette |
-| **the seal** (`_seal.js`) | Plotly, the palette, the axes, the mode bar | what a mode *is*, why one is selected |
+| **the seal** (`_seal.js`) | Plotly, the palette, the axes, its toolbar | what a mode *is*, why one is selected |
 
 ---
 
 ## 8. Making and tearing down a chart
 
 ```js
-const chart = await mount(hostEl, { onSelect: (index) => …, broadeningFWHM: 20 });
+const chart = await mount(hostEl, { onSelect: (index) => …, broadening: 20 });
 ```
 
 **`mount` is asynchronous and always resolves.** The handle it returns is live:
@@ -328,7 +391,7 @@ the mount resolves with `ok: false` and a message the tab can show — the mode
 table beside it still works, which is the behaviour the current code has and
 worth keeping.
 
-`dispose()` releases the plotting surface, disconnects the box watcher and leaves
+`dispose()` releases the drawing surface, disconnects the box watcher and leaves
 the host element empty. Calling it twice is safe.
 
 ---
@@ -343,12 +406,43 @@ import { mount } from "/static/lib/spectrumchart/index.js";
 
 One name. § 4.
 
+**And that name is all a page needs.** Here is a complete, standalone use — no
+framework, no tab, nothing else from this app:
+
+```html
+<div id="chart" style="width: 640px; height: 320px"></div>
+
+<script type="module">
+import { mount } from "/static/lib/spectrumchart/index.js";
+
+const chart = await mount(document.getElementById("chart"), {
+    onSelect: (index) => console.log("the user picked mode", index),
+});
+
+chart.setModes([
+    { index: 1, freq:  323.5, activity:  2.9, imaginary: false },
+    { index: 2, freq:  826.6, activity:  5.4, imaginary: false },
+    { index: 3, freq: 1131.8, activity: 12.9, imaginary: false },
+    { index: 4, freq: 3175.4, activity:  0.0, imaginary: false },
+]);
+chart.setBroadening(20);      // draw the curve 20 cm⁻¹ wide
+chart.setSelected(3);         // colour mode 3 as the chosen one
+</script>
+```
+
+That is the whole surface: **five calls and one callback.** The page above styles
+a box, hands over four numbers per mode, and gets a spectrum it can click.
+It never mentions a drawing library, never reaches into the module, and would
+work on a page with nothing else on it.
+
 ### 9.2 The handle — for a tab that wants a spectrum
 
 ```
-setModes(modes)              install a different result: rebuild, re-range (§ 5.1)
-setSelected(index | null)    recolour one mark — no rebuild, no re-range
-setBroadening(fwhm)          the envelope's width, and the click bands' (§ 5.3)
+setModes(modes)              a different result: redraw, refit the axes (§ 5.1)
+setSelected(index | null)    recolour one mark — nothing else moves
+setBroadening(width)         how wide to draw each line — and therefore how wide
+                             it is to click (§ 6.4).  In cm⁻¹, measured across
+                             the peak at half its height
 refit()                      re-measure the box and redraw at its size
 dispose()                    release, disconnect, empty
 ```
@@ -384,7 +478,7 @@ depended on.
 ### 9.3 The sealed layer — commands down, clicks up
 
 ```
-draw(traces, layout)            put this picture on the surface
+draw(picture)                   put this picture on the surface
 recolour(marks)                 change the colours already drawn — no rebuild
 resize()                        the box changed; fill it
 onClick(cb)                     a point was clicked: hand up the token the
@@ -393,9 +487,10 @@ purge()                         release the surface
 ```
 
 It answers **no** question about what is drawn, and it does not know what a mode
-is. A click hands back the **opaque token** the handle attached to that point;
-deciding the token means *mode 22* is the handle's job, because "mode" is domain
-vocabulary and this layer has none. What a selected stick *looks like*
+is. When the handle draws a mark it attaches a label of its own choosing; a click
+hands that label back, unread. The seal never learns that the label means
+*mode 22* — working that out is the handle's job, because "mode" is a word from
+chemistry and this layer knows none. What a selected stick *looks like*
 is decided here — the layer above says *which index is selected*, never what
 colour it should be. A colour riding on data is how a drawing decision ends up in
 three places.
@@ -419,15 +514,15 @@ an activity:
 
 ```
                               γ²
-     y(x)  =  Σ   A_i  ·  ───────────────         γ = FWHM / 2
+     y(x)  =  Σ   A_i  ·  ───────────────      γ = half the width you asked for
               i           (x − x_i)² + γ²
 ```
 
 so each mode contributes a peak of height `A_i` at `x_i`, and the sum is what a
 measured spectrum looks like when lines have width.
 
-**The grid is derived from the width, not fixed.** Sampling at a fraction of the
-FWHM keeps a peak smooth at any broadening, and the grid runs a few half-widths
+**Where the curve is sampled follows the width, not a fixed setting.** Taking
+points at a fraction of the width keeps a peak smooth however wide it is drawn, and the grid runs a few half-widths
 past the outermost mode so the curve returns to zero at both ends rather than
 being cut off mid-peak. A fixed grid is either too coarse for a narrow line or
 wasteful for a broad one; the width is the only number that knows which.
@@ -504,20 +599,20 @@ still says what it said.
 |---|---|
 | § 4 — self-contained | the module mounts given only a host element; it reads no global and writes none |
 | § 4 — nothing else is importable | the entry point exports exactly `mount` |
-| § 4 — no hatch | the handle's keys are enumerated **unfiltered**: no accessor reaches the plotting surface or the internal state |
-| § 5.1 — the door says the cost | `setSelected` issues no envelope computation and no re-range; `setModes` issues both |
-| § 5.1 — recolouring is not redrawing | after `setSelected`, the traces handed to the seal are the same objects, with only their colours changed |
+| § 4 — no hatch | the handle's keys are enumerated **unfiltered**: no accessor reaches the drawing surface or the internal state |
+| § 5.1 — the door says the cost | `setSelected` computes no curve and changes no axis; `setModes` does both |
+| § 5.1 — recolouring is not redrawing | after `setSelected`, the picture handed to the seal is the same picture, with only its colours changed |
 | § 5.2 — the selection is mirrored, not owned | a click emits `onSelect` and changes **nothing** on screen until `setSelected` is called; a chart mounted without `onSelect` still draws |
 | § 5.3 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
 | § 5.4 — no chrome | a mounted chart contains no heading, button, input or control of any kind |
 | § 5.4 — the host owns the box | the module sets no width or height on its host, at mount or ever; and a box that changes size redraws without the window moving |
 | § 6.1 — the caller's numbering is carried | the index reported by a click is the index that was handed in, for a list that is unsorted, sparse and 1-based |
-| § 6.3 — the picture is derived | a result with no activities anywhere draws unit-height sticks; one with some activities draws the rest at zero in a separate trace — and neither is reachable by a setting |
+| § 6.3 — the picture is derived | a result with no activities anywhere draws unit-height sticks; one with some activities draws the rest at zero, marked as pending — and neither is reachable by a setting |
 | § 6.4 — a click lands on the nearest mode | for a spectrum with modes closer together than the broadening, every point in the plot resolves to the nearest mode; no two bands overlap at any width |
 | § 6.4 — degenerate modes stay clickable | two modes at the same frequency each keep a band, rather than both collapsing to zero width |
 | § 8 — mount always resolves | a mount with no library still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
 | § 9.2 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
-| § 9.3 — the seal faces downward | the traces, the layout and the axis ranges cannot be read out of it |
+| § 9.3 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
 | § 9.3 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the document's tokens rather than from literals in the module |
 | § 10 — the envelope is the sum | the curve at a mode's frequency equals that mode's activity plus the tails of the others, computed independently of the implementation |
 | § 10 — the grid follows the width | the sampling step scales with the broadening, and the curve returns to near zero at both ends at every width |
