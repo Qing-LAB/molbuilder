@@ -293,7 +293,7 @@ answering the moot ones first buries the real message.
 - **Reopening a run restores intent.** A bundle can be re-read for its values,
   but nothing in it says *which parameters the user meant to vary* — a mesh
   cutoff that happens to be equal in all three stages is indistinguishable from
-  one never promoted. § 12's questions 1 and 4, answered: `varies` is in the file
+  one never promoted. § 13's questions 1 and 4, answered: `varies` is in the file
   because it cannot be inferred from anything else.
 - **A plan is reviewable.** It diffs. Two runs that differ can be compared as
   intent rather than by reading two directories of decks.
@@ -369,7 +369,7 @@ made of things a person already knows:
 A hash would be exact and unreadable. A formula is neither, and that is the
 trade being made on purpose: an id you can recognise in a directory listing, in
 a queue, and in a filename is worth more day to day than one that resolves every
-possible ambiguity. **This is a starting point, agreed as one**, and § 12 records
+possible ambiguity. **This is a starting point, agreed as one**, and § 13 records
 what would force it to grow. What it may contain is not open, though: § 6.1.
 
 That one id **is** the `SystemLabel` / `JOB` literal. There is no second name.
@@ -405,7 +405,7 @@ What is left is what those coordinates are *of*:
 |---|:--:|---|
 | the molecule — its formula, or its named components | **yes** | a `.XV` is a list of positions for *these* atoms. Different atoms, and every coordinate lands somewhere it does not belong |
 | the positions | no | the output (above) |
-| the cell | undecided (§ 12) | a `.XV` carries the cell too, so a changed cell is overridden on restart rather than mismatched — a different failure, and possibly not one the id should be solving |
+| the cell | undecided (§ 13) | a `.XV` carries the cell too, so a changed cell is overridden on restart rather than mismatched — a different failure, and possibly not one the id should be solving |
 | basis, spin, XC | no | the geometry stays valid across all of them, and tuning the electronics while continuing is ordinary practice. A `.DM` of the wrong shape is caught by the engine — a failure it already reports, traded for one it cannot |
 | mesh, tolerances, force, steps, algorithm | no | exactly what a ladder varies |
 | ranks, threads, GPU | no | how fast it ran says nothing about whether the answer may be continued |
@@ -418,7 +418,7 @@ cannot see.
 And it is deliberately the *readable* form of that claim. A formula does not
 separate two isomers, and does not pin the order the species are declared in —
 both of which a `.XV` is sensitive to. That is the known gap in the starting
-point, and § 12 is where it waits.
+point, and § 13 is where it waits.
 
 ### 6.2 Every engine has an internal identity, and parameters bound to it
 
@@ -554,7 +554,7 @@ right-handed one the deck must carry (`?doc=model/cell-plan.md`).
 Two consequences for everything above:
 
 - **The cell in the deck is derived, so it is not an input to the identity.**
-  What could be is the cell *parameters*, and § 12 keeps that open — but the
+  What could be is the cell *parameters*, and § 13 keeps that open — but the
   vectors themselves are output, and § 6 already refuses output in the id.
 - **The frame shift is why a `.XV` and a changed cell are worth a warning.** A
   `.XV` holds coordinates in the frame the run wrote them in. Change the padding,
@@ -758,23 +758,85 @@ Separable work, each with one thing it is responsible for:
 The seams are narrow on purpose: every row above can be built and tested against
 values alone, and the two browser rows can be built before any route exists.
 
-## 9. Validation has to name the stage
+## 9. Validation names the stage in a new field, not in `where`
 
-A findings list today points at a field. With a ladder, "mesh cutoff is too low
-for this basis" is true of *stage 1* and false of *stage 3*, and a finding that
-cannot say which is a finding a user cannot act on.
+A findings list points at a field. With a ladder, "mesh cutoff is too low for
+this basis" is true of *stage 1* and false of *stage 3*, and a finding that
+cannot say which is one a user cannot act on.
 
-So each stage's **effective** config — `base ⊕ overrides` — is validated as a
-config in its own right, and every finding carries the stage it came from in its
-`where`. One shared value producing the same complaint in three stages should
-say so once, not three times.
+**But it must not say so in `where`.** The delivery contract
+(`science/validation.md § 4.1`) fixes the shape: every finding is
+`{severity, message, where, workflow_group?}` from one serializer, and **`where`
+is the stable machine-readable identifier** — `config.mesh_cutoff`,
+`geometry.min_distance` — which *the UI binds behaviour to*. Writing
+`stage2.config.mesh_cutoff` would break that binding on purpose: the one client
+module routes on `where`, and an id it has never seen routes nowhere.
 
-This is the existing findings contract extended by a coordinate, not a second
-validation path.
+So the stage travels the way `workflow_group` already does — **as its own
+optional field beside `where`**, leaving the identifier untouched:
+
+```
+{ severity, message, where: "config.mesh_cutoff", workflow_group: "stage",
+  stage: "coarse" }        ← new, optional, absent for a single run
+```
+
+Three consequences worth stating, all of them inherited rather than invented:
+
+- **One channel still.** `lib/validation-findings.js` remains the only renderer;
+  it gains a column to route into, not a rival implementation (R2).
+- **`error` still blocks.** A stage that fails validation blocks the whole
+  produce, because severity means the same everywhere and no surface downgrades
+  one to keep a screen quiet (R4).
+- **One shared value, one complaint.** A base field that is wrong for three
+  stages says so once, with no `stage` — it is a fact about the shared config,
+  not about a stage.
 
 ---
 
-## 10. The module map
+## 10. The decision chain — who dictates what, in order
+
+Overlap between modules is fine. A **loop** is not: if two parties can each
+overrule the other, no one can predict the outcome and nobody can test it. So the
+whole system is one sequence, and the rule that keeps it one is:
+
+> **Each step decides within what the steps above it already fixed, and nothing
+> later rewrites something earlier.**
+
+| # | Who decides | What it fixes | And may not |
+|---|---|---|---|
+| 1 | the **project tree** | where anything may live: the nine topics, `[A-Za-z0-9_-]+` per segment | be widened by a plan or a route |
+| 2 | the **structure** | which atoms exist | be edited by the generator (it is an input, and the plan points at it) |
+| 3 | **1 + 2 + the user's name** | the **id** — normalised once, then quoted, never recomputed | be changed downstream: every later step reads it |
+| 4 | the **schema** | which fields exist, their types, ranges and `engine_key`s | be added to by a plan — a key it does not know is refused |
+| 5 | the **plan** | values, which fields vary, the stages, their order, and each one's `starts_from` | contradict 4, or invent a field |
+| 6 | the **preflight** | whether this plan can run *here*: engine, version, requirements, schema fingerprint | pass silently — it refuses, naming what it found |
+| 7 | **validation** | whether it may be written at all: `error` blocks | be downgraded by a surface to keep a screen quiet |
+| 8 | the **producer** | the decks — `base ⊕ overrides` per stage; the engine's bound parameters and the carry list, both from `starts_from` | set either of that pair independently |
+| 9 | **`stages_to_jobset`** | the chain: edges from each stage's policy, resources per job | invent an edge the policies did not imply |
+| 10 | **config files on the target** (`molbuilder.json`, then the project's, project wins) | the wrapper's shell: preamble, activation — and generation **refuses** without an activation, which has no default | be supplied from the browser: the machine's knowledge stays on the machine |
+| 11 | **`prep` / `submit`** on the target | the layout and the scheduler request | change a deck |
+| 12 | the **wrapper**, at run time | ranks, threads, GPU pinning, and the restart banner | override the engine's own bound parameters |
+| 13 | the **engine** | whether warm files are honoured, given those parameters | be second-guessed by anything above |
+
+Read it once downward and the entanglements disappear:
+
+- **The browser lives entirely in rows 3–5**, which is why § 8.1 can say it never
+  renders a deck or resolves a pseudopotential — those are rows 8 and 10.
+- **The id is fixed at row 3 and quoted by everything after it.** No later step
+  derives it again, which is why normalising once (§ 6.3) is a rule rather than
+  an optimisation.
+- **Two things decide a warm start, and they sit at 8 and 13** — the producer
+  writes the parameters, the engine honours them. Neither is at row 5, which is
+  why the *plan* says only `starts_from` and never the flags themselves.
+- **Nothing in rows 1–9 knows what a cluster is.** Target isolation is not a
+  policy anyone has to remember; it falls out of where row 10 sits.
+
+**Where an overlap is real and correct:** rows 6 and 7 both refuse things, and
+both belong — one asks "can this run here at all", the other "is this a sound
+calculation". They are ordered, so a plan aimed at the wrong engine never
+receives a lecture about its mesh cutoff (§ 5.3).
+
+## 11. The module map
 
 | Layer | Today | What this needs |
 |---|---|---|
@@ -796,10 +858,10 @@ renders it and nothing else.
 
 ---
 
-## 11. The order of work, and what "done" means
+## 12. The order of work, and what "done" means
 
 **Step 1 — this document.** Done when the shape is agreed and the open questions
-in § 12 are answered.
+in § 13 are answered.
 
 **Step 2 — the backend, tuned and validated.** Starting with § 7.3's question,
 because where a bundle may be written decides what the route in item 6 is allowed
@@ -846,7 +908,7 @@ user needs.
 
 ---
 
-## 12. Open questions this document cannot settle
+## 13. Open questions this document cannot settle
 
 1. **Does a stage's override of a `budget` field also change the wrapper it gets
    installed with**, or only the scheduler request?
