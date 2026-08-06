@@ -1875,7 +1875,12 @@
         // The chart mirrors the selection through its cheap door: one mark
         // recoloured, no curve recomputed, no axis moved (spectrumchart § 5.1).
         // This used to redraw the whole spectrum for every click.
-        if (chart) chart.setSelected(state.selectedMode);
+        //
+        // Queued on the mount rather than guarded by `if (chart)`: the mount is
+        // asynchronous, so a row clicked in the first moments after a result
+        // loads would otherwise move the table and the viewer while the chart
+        // kept the old highlight.
+        _withChart(c => c.setSelected(state.selectedMode));
     }
 
     // ----- CSV export ------------------------------------------
@@ -2999,6 +3004,12 @@
     let chart = null;
     let chartReady = null;
 
+    /* Do something with the chart once it exists, whether it exists yet or not. */
+    function _withChart(fn) {
+        if (chart) { fn(chart); return; }
+        if (chartReady) chartReady.then(handle => { if (handle) fn(handle); });
+    }
+
     function _chartModes(modes) {
         // The tab's record, in the four fields the chart takes (§ 6.1).
         return (modes || []).map(m => ({
@@ -3320,12 +3331,13 @@
     // but never disposes (the tab lives forever).
     return {
         /**
-         * Tear down every long-lived resource this mount created:
-         * the live-watch poller, the VibrationView mode viewer (its
-         * animation loop + canvas, via state.vib.dispose()), and Plotly's
-         * resize/event observers on the spectrum chart.  After dispose() the
-         * rootEl's contents are no longer owned by the inspector;
-         * caller may clear/replace freely.
+         * Tear down every long-lived resource this mount created: the
+         * live-watch poller, the VibrationView mode viewer (its animation
+         * loop + canvas, via state.vib.dispose()), the spectrum chart (which
+         * takes its own surface, watcher and markup down, via chart.dispose())
+         * and the level diagram's Plotly figure, which is this tab's own.
+         * After dispose() the rootEl's contents are no longer owned by the
+         * inspector; caller may clear/replace freely.
          */
         dispose() {
             // Walk listener teardowns in reverse so the most recent

@@ -9,36 +9,35 @@
  */
 
 /** How far from a peak still counts as clicking it, when the lines are drawn narrow. */
-export const BAND_FLOOR_CM1 = 8;
+const BAND_FLOOR_CM1 = 8;
 
 /** "A peak is smooth": samples across the full width of the narrowest peak (§ 9). */
-export const SAMPLES_ACROSS_PEAK = 8;
+const SAMPLES_ACROSS_PEAK = 8;
 
 /** "The curve ends": the grid runs until the envelope is under this share of the tallest peak (§ 9). */
-export const TAIL_FRACTION = 0.01;
+const TAIL_FRACTION = 0.01;
 
 const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
 
 /**
- * Half-width of every mode's click band, in cm⁻¹ — the broadening width, or the
- * floor if that is narrower (§ 6.3).
+ * How close to a mode still counts as clicking it, in cm⁻¹ — the broadening
+ * width, or the floor if that is narrower (§ 6.3).
  *
- * Every mode gets the same one. Bands overlap wherever modes are closer together
+ * ONE width, for every mode. Bands overlap wherever modes are closer together
  * than that, and the handle resolves an overlap by taking the NEAREST mode,
  * which is an answer that never needs a tie-break.
  *
- * They used to be clamped to half the gap to the nearer neighbour so that no two
- * could overlap. That was necessary while a click had to land on a drawn mark —
- * overlapping marks meant the answer depended on which was drawn last. Reading a
- * click as a position made "nearest" available, and the clamp then cost what it
- * was meant to protect: in a crowded region it shrank targets to a fraction of a
- * pixel, so some peaks were easy to click and others were nearly impossible.
+ * This used to answer per mode, because each band was clamped to half the gap to
+ * its nearer neighbour so that no two could overlap. That was necessary while a
+ * click had to land on a drawn mark — overlapping marks meant the answer
+ * depended on which was drawn last. Reading a click as a position made "nearest"
+ * available, and the clamp then cost what it was meant to protect: in a crowded
+ * region it shrank targets to a fraction of a pixel, so some peaks were easy to
+ * click and others were nearly impossible.
  */
-export function bandHalfWidths(freqs, broadening) {
-    if (!Array.isArray(freqs)) return [];
+export function bandHalfWidth(broadening) {
     const width = isFiniteNumber(broadening) && broadening > 0 ? broadening : 0;
-    const half = Math.max(width, BAND_FLOOR_CM1);
-    return freqs.map(() => half);
+    return Math.max(width, BAND_FLOOR_CM1);
 }
 
 /**

@@ -11,7 +11,7 @@
  * mount takes), § 8.3 (the doors), § 6 (the data), § 5.1 (what each door costs).
  */
 
-import { bandHalfWidths, envelope } from "./_maths.js";
+import { bandHalfWidth, envelope } from "./_maths.js";
 import { openSurface } from "./_seal.js";
 
 /** A stick is a line, not a block: thin against whatever range is on screen. */
@@ -78,7 +78,7 @@ export async function mount(host, options = {}) {
     let selected = null;
     let hovered = null;      // which mode a click would pick right now
     let broadening = 0;
-    let bands = [];                  // half-widths, one per mode, from the maths
+    let band = bandHalfWidth(0);     // how close counts, in cm⁻¹, from the maths
     let painted = [];                // the states last handed down, to skip repeats
     let readout = "";                // the line naming the mode nearest the pointer
     let shown = "";                  // ... and the one the chart is already showing
@@ -116,7 +116,6 @@ export async function mount(host, options = {}) {
             curve: envelope(modes, broadening),
             readout,
             xTitle: "frequency (cm⁻¹)",
-            xUnit: "cm⁻¹",
             yTitle: known ? "Raman activity (Å⁴/amu)" : "modes",
             note: known
                 ? (anyPending ? "× strengths not computed for these modes" : "")
@@ -125,7 +124,7 @@ export async function mount(host, options = {}) {
     };
 
     const redraw = () => {
-        bands = bandHalfWidths(modes.map((m) => m.freq), broadening);
+        band = bandHalfWidth(broadening);
         const picture = pictureNow();
         painted = picture.sticks.state;
         surface.draw(picture);
@@ -150,47 +149,42 @@ export async function mount(host, options = {}) {
         surface.recolour(same ? null : states, readout);
     };
 
+    /** The mode closest to a frequency, and how far off it was.
+     *
+     * One walk answers both questions the pointer asks — "what am I near", which
+     * has an answer everywhere, and "what would a click take", which has one only
+     * inside a band. They differ by the test applied to `away`, not by the search.
+     */
+    const nearest = (x) => {
+        let found = null;
+        let away = Infinity;
+        for (const mode of modes) {
+            const d = Math.abs(x - mode.freq);
+            if (d < away) { away = d; found = mode; }
+        }
+        return found && { mode: found, away };
+    };
+
     /** A position becomes a mode here, never below (§ 8.4).
      *
      * `perPixel` comes up with the position because the band has to be a target
      * on a screen as well as a width in the science: whichever is wider, the
      * Lorentz width or MIN_PICK_PX, is how close counts. */
     const modeAt = (at) => {
-        const onScreen = MIN_PICK_PX * (at.perPixel || 0);
-        let found = null;
-        let closest = Infinity;
-        modes.forEach((mode, i) => {
-            const away = Math.abs(at.x - mode.freq);
-            if (away <= Math.max(bands[i], onScreen) && away < closest) {
-                closest = away;
-                found = mode.index;
-            }
-        });
-        return found;
+        const near = nearest(at.x);
+        if (!near) return null;
+        const reach = Math.max(band, MIN_PICK_PX * (at.perPixel || 0));
+        return near.away <= reach ? near.mode.index : null;
     };
 
-    /** The mode nearest a position, whether or not a click there would take it.
-     *
-     * The readout answers "what am I near", which is a question with an answer
-     * everywhere on the plot; the highlight answers "what would a click take",
-     * which has none in a wide gap. Two questions, so two lookups. */
-    const nearestTo = (x) => {
-        let found = null;
-        let closest = Infinity;
-        for (const mode of modes) {
-            const away = Math.abs(x - mode.freq);
-            if (away < closest) { closest = away; found = mode; }
-        }
-        return found;
-    };
-
+    /** The words: what the pointer is near, whether or not a click would take it. */
     const readoutFor = (at) => {
-        if (at === null) return "";
-        const near = nearestTo(at.x);
+        const near = at === null ? null : nearest(at.x);
         if (!near) return "";
-        const strength = isFiniteNumber(near.activity)
-            ? `  ·  ${near.activity.toFixed(2)} Å⁴/amu` : "";
-        return `mode ${near.index}  ·  ${near.freq.toFixed(1)} cm⁻¹${strength}`;
+        const { mode } = near;
+        const strength = isFiniteNumber(mode.activity)
+            ? `  ·  ${mode.activity.toFixed(2)} Å⁴/amu` : "";
+        return `mode ${mode.index}  ·  ${mode.freq.toFixed(1)} cm⁻¹${strength}`;
     };
 
     /* A band is invisible, so the mode a click would pick is a guess until the

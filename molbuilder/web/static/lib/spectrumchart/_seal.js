@@ -137,9 +137,17 @@ export async function openSurface(host) {
         paper_bgcolor: palette.bg,
         plot_bgcolor: palette.bg,
         font: { color: palette.ink, size: 11 },
-        margin: { l: 52, r: 12, t: 12, b: 40 },
+        /* Room above the plot for the two lines that live there: the note on
+         * the left, the pointer's readout on the right (§ 6.2). At the 12px this
+         * used to be, both sat in the margin's edge and were clipped -- which is
+         * why the pending note had never once been seen. */
+        margin: { l: 52, r: 12, t: 30, b: 40 },
         showlegend: false,
-        hovermode: "closest",
+        /* No hover labels from the library. The chart carries its own readout,
+         * which names the nearest mode wherever the pointer is (§ 6.3.1) -- a
+         * tooltip that appears only when you are exactly on a stick would say
+         * less, and would need the aim the bands exist to make unnecessary. */
+        hovermode: false,
         xaxis: {
             title: { text: picture.xTitle || "" },
             gridcolor: palette.grid,
@@ -187,7 +195,7 @@ export async function openSurface(host) {
             y: drawn.y,
             width: drawn.width,
             marker: { color: drawn.colour },
-            hovertemplate: `%{x:.1f} ${picture.xUnit || ""}<extra></extra>`,
+            hoverinfo: "skip",
         });
 
         if (pending.length) {
@@ -197,7 +205,7 @@ export async function openSurface(host) {
                 x: pending,
                 y: pending.map(() => 0),
                 marker: { color: palette.pending, symbol: "x", size: 7 },
-                hovertemplate: `%{x:.1f} ${picture.xUnit || ""}<extra></extra>`,
+                hoverinfo: "skip",
             });
         }
         return traces;
@@ -211,18 +219,6 @@ export async function openSurface(host) {
     let disposed = false;
     let clicked = null;   // the handle's callback
 
-    /* WHERE A CLICK CAME FROM, IN THE UNITS OF THE PICTURE.
-     *
-     * The library reports a click only when the pointer is over one of its own
-     * points, so nothing it offers can hear a click in the empty space beside a
-     * peak — and that space is the whole purpose of the bands (§ 6.3). So the
-     * click is taken from the surface itself and converted here: where the
-     * pointer was, across the plot area, read against the axis range.
-     *
-     * This is the one place in the module that reads inside the library, and it
-     * is the file whose job is to know it (§ 8.4). Nothing above sees anything
-     * but a number, and which mode that number means is decided up there.
-     */
     const plotArea = () => surface.querySelector && surface.querySelector(".nsewdrag");
 
     /* WHERE THE POINTER IS, AND WHAT A PIXEL IS WORTH.
@@ -238,6 +234,10 @@ export async function openSurface(host) {
      * wavenumbers is a comfortable target across a wide panel and a pixel and a
      * half in a narrow one. Both numbers are about where the pointer is; neither
      * says anything about what is drawn.
+     *
+     * This is the one place in the module that reads inside the library, and it
+     * is the file whose job is to know it (§ 8.4): what goes up is two numbers,
+     * and which mode they mean is decided above.
      *
      * VERTICAL POSITION IS NOT CONSULTED. A spectrum is picked by frequency, so
      * anywhere in the chart at that frequency means the same thing — clicking
@@ -325,7 +325,10 @@ export async function openSurface(host) {
             });
         },
 
-        /** The cheap door: colours only, no rebuild, no axis change (§ 5.1). */
+        /** The cheap door: what the pointer changed, and nothing else (§ 5.1).
+         *
+         * Either half may be left out — `null` colours when only the words moved,
+         * an unchanged readout when only the colours did. No rebuild, no axis. */
         recolour(states, readout) {
             if (disposed) return;
             if (states) Plotly.restyle(

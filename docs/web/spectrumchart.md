@@ -387,7 +387,9 @@ differ it is the invisible one that gives way.
 
 **Bands overlap where modes crowd, and a click takes the nearest one.** That is
 the whole rule. "The nearest" is an answer that never needs a tie-break, so
-nothing has to be moved or shrunk to keep it unambiguous.
+nothing has to be moved or shrunk to keep it unambiguous — and because no band
+depends on its neighbours, there is **one width for the whole spectrum** rather
+than one per mode.
 
 > **This replaced a clamp, and the reason is worth keeping.** Each band used to
 > be cut back to half the distance to its nearer neighbour so that no two could
@@ -676,7 +678,7 @@ picture = {
     sticks: { x: [...], y: [...], width: [...],  // where and how tall each is drawn
               state: ["plain" | "chosen" | "hovered" | "pending" | "imaginary", …] },
     curve:  { x: [...], y: [...] } | null,       // null when there is no curve
-    xTitle, yTitle, xUnit,                        // the words on the axes
+    xTitle, yTitle,                               // the words on the axes
     note,                                         // one line inside the plot, or nothing
     readout,                                      // the mode nearest the pointer
 }
@@ -933,14 +935,15 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.2 — the picture is derived | a result with no activities anywhere draws every stick at height one, with a curve over them; one with some activities draws the rest as pending — and neither picture is reachable by a setting |
 | § 6.2 — the markings are in the plot | the pending marks and the "not computed" wording are drawn on the surface: the module's markup carries no label, banner or text node beside the chart |
 | § 6.3 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
-| § 6.3 — every mode keeps a full-size target | modes 1 cm⁻¹ apart each keep the whole band; no arrangement of neighbours shrinks one |
+| § 6.3 — every mode keeps a full-size target | the width does not take the frequencies as an argument at all, so no arrangement of neighbours can shrink one |
 | § 6.3 — the floor applies below it | at any broadening under 8 cm⁻¹, zero included, a band is 8 cm⁻¹ half-wide |
 | § 6.3 — a band is never a target too small to hit | where the axis is zoomed out enough that the width is worth less than 8 pixels, the band is 8 pixels instead |
 | § 6.3 — the nearest band wins | where bands overlap, a click reports the mode whose frequency is closest to it |
 | § 6.3 — the band bends, never the picture | where the floor overrides, the envelope drawn is still the envelope for the width that was set |
 | § 6.3.1 — the pointer shows what a click would take | moving over a band recolours that mode, and only it |
 | § 6.3.1 — and says what it is near, everywhere | at any position, including a gap where a click would take nothing, the words name the nearest mode |
-| § 6.3.1 — the words are drawn in the plot | the module's markup is still a frame and a surface: no text node is added beside the chart |
+| § 6.3.1 — the words are drawn in the plot | the module's markup is still a frame and a surface: no text node is added beside the chart, and the plot leaves room above itself for the line |
+| § 6.3.1 — one label, not two | the drawing library shows no hover label of its own: a tooltip needing exact aim would say less than the readout and undo what the bands are for |
 | § 6.3.1 — pointing costs only what changed | sliding inside one band makes no call at all; a move that changes the words alone does not repaint a colour |
 | § 6.3.1 — what you picked does not flicker | a chosen mode keeps its colour under the pointer |
 | § 8.4 — a drag is not a pick | a press and a release far apart report nothing; a click a pixel or two from the press still reports |

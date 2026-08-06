@@ -37,8 +37,8 @@ def call(expr: str, *, modes=None, freqs=None, broadening=None):
     return run_node([], snippet)
 
 
-def band(freqs, broadening):
-    return call("M.bandHalfWidths(freqs, w)", freqs=freqs, broadening=broadening)
+def band(broadening):
+    return call("M.bandHalfWidth(w)", broadening=broadening)
 
 
 def curve(modes, broadening):
@@ -54,31 +54,25 @@ def mode(index, freq, activity=None, imaginary=False):
 
 # --- § 6.3  the bands -------------------------------------------------------
 
-class TestBandWidths:
+class TestBandWidth:
     """§ 6.3 — one width for every mode, and the nearest one wins an overlap."""
 
     @pytest.mark.parametrize("broadening", [0, 0.5, 3, 7.99])
     def test_the_floor_applies_at_any_width_below_it(self, broadening):
         """§ 6.3 — a target narrower than this cannot be hit with a mouse."""
-        assert band([200.0, 1000.0, 3000.0], broadening) == [8, 8, 8]
+        assert band(broadening) == 8
 
     def test_above_the_floor_the_band_is_the_broadening_width(self):
         """§ 6.3 — the region you aim at is the region you see."""
-        assert band([200.0, 1000.0, 3000.0], 20) == [20, 20, 20]
+        assert band(20) == 20
 
-    def test_crowded_modes_keep_a_full_size_target(self):
-        """§ 6.3 — the reason the clamp was dropped. Two modes 1 cm-1 apart used
-        to get half a wavenumber each, which on a 3000 cm-1 axis is a fraction of
-        a pixel: some peaks were easy to click and others were not hittable."""
-        assert band([1130.0, 1131.0, 2000.0], 20) == [20, 20, 20]
-
-    def test_modes_at_the_same_frequency_keep_theirs_too(self):
-        """Neither can be told from the other by any band; both stay reachable
-        and which one a click reports is undefined (the table tells them apart)."""
-        assert band([1131.8, 1131.8], 20) == [20, 20]
-
-    def test_an_empty_spectrum_has_no_bands(self):
-        assert band([], 20) == []
+    def test_it_does_not_depend_on_where_the_modes_are(self):
+        """§ 6.3 — the reason this stopped answering per mode. Each band used to
+        be clamped to half the gap to its nearer neighbour, which in a crowded
+        region shrank targets to a fraction of a pixel: some peaks were easy to
+        click and others were not hittable. Nothing about the neighbours enters
+        it now, so there is no arrangement of modes that can shrink one."""
+        assert band(20) == 20        # the frequencies are not an argument at all
 
 
 # --- § 9  the envelope ------------------------------------------------------
@@ -156,7 +150,7 @@ class TestEnvelope:
 def test_the_floor_widens_the_band_without_touching_the_curve():
     """§ 6.3 — where the two must differ it is the invisible one that gives way."""
     modes = [mode(1, 1000.0, 10.0), mode(2, 1400.0, 6.0)]
-    assert band([1000.0, 1400.0], 3) == [8, 8]          # the band is widened to the floor
+    assert band(3) == 8                                  # the band is widened to the floor
     drawn = curve(modes, 3)
     gamma = 1.5                                          # ... and the curve is still 3 cm-1 wide
     expected = 10.0 + 6.0 * (gamma**2 / (400.0**2 + gamma**2))
