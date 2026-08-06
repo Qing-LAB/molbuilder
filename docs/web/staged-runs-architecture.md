@@ -120,7 +120,103 @@ hand.
 
 ---
 
-## 5. Validation has to name the stage
+## 5. The plan is a file
+
+The plan should not live only in a browser tab. Written down, it becomes the
+thing the generator reads:
+
+```jsonc
+{
+  "format": "molbuilder/stage-plan",
+  "version": 1,
+  "engine": "siesta",
+
+  // Every schema field, one value. A one-stage plan is just this.
+  "base": { "system_label": "bdt", "mesh_cutoff": 150, "mpi_ranks": 8, … },
+
+  // WHICH fields the user chose to vary. Intent, not values — this is the
+  // part no bundle on disk can recover once it is thrown away.
+  "varies": ["mesh_cutoff", "relax_force_tol", "mpi_ranks"],
+
+  "stages": [
+    { "name": "coarse", "enabled": true,
+      "relax_type": "CG",      "relax_steps": 600,
+      "on_nonconvergence": "proceed",
+      "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04, "mpi_ranks":  8 } },
+
+    { "name": "tight",  "enabled": true,
+      "relax_type": "Broyden", "relax_steps": 200,
+      "on_nonconvergence": "halt",
+      "overrides": { "mesh_cutoff": 300, "relax_force_tol": 0.01, "mpi_ranks": 16 } }
+  ]
+}
+```
+
+### 5.1 Three rules, and each one is load-bearing
+
+**It names fields; it never defines them.** Every key in `base`, `varies` and
+`overrides` must resolve to a field the schema already declares — with its type,
+its bounds, its help text and its `engine_key`. A plan carrying a key the schema
+does not know is **refused, not ignored**: an ignored key is a calculation
+quietly different from the one that was asked for. This is the rule that keeps
+the JSON from becoming a second schema, which is the way this idea fails.
+
+**It is parsed *into* the typed config, not around it.** The generator keeps
+rendering from a `SiestaConfig` and its stage specs; the file is how a plan
+travels and how it persists. The alternative — a generator that renders whatever
+keys the JSON happens to carry — throws away validation, defaulting and the
+`engine_key` mapping, and re-implements all three badly.
+
+**It is versioned**, because a plan outlives a schema. A plan naming a field
+that no longer exists fails to load and *says which field*, rather than dropping
+it: § 9's question 3, answered.
+
+### 5.2 What it buys
+
+- **One producer for both surfaces.** The CLI and the browser stop being two
+  paths to a ladder; the browser writes a plan, and the same reader turns it into
+  a bundle from either.
+- **Reopening a run restores intent.** A bundle can be re-read for its values,
+  but nothing in it says *which parameters the user meant to vary* — a mesh
+  cutoff that happens to be equal in all three stages is indistinguishable from
+  one never promoted. § 9's questions 1 and 4, answered: `varies` is in the file
+  because it cannot be inferred from anything else.
+- **A plan is reviewable.** It diffs. Two runs that differ can be compared as
+  intent rather than by reading two directories of decks.
+
+### 5.3 Where it sits among the artefacts
+
+One direction, no loops:
+
+```
+    plan.json          ← intent: what was asked for, including what may vary
+       │  (read once)
+       ▼
+    n effective configs → n scripts + wrappers      ← derived
+       │
+       ▼
+    job-set.json       ← the execution graph: jobs, edges, carry-forward
+```
+
+`job-set.json` is not a rival: it holds what the scheduler needs and nothing
+about promotion or intent. It is downstream, and it stays derived.
+
+**PROVENANCE stays exactly what it is** — a generator snapshot, not a config —
+and gains a use for a key it already reserves. `form-config-hash` becomes the
+hash of the plan that produced the script, so any deck in a project can be traced
+back to the plan it came from, and a deck edited by hand can be told apart from
+one a plan would reproduce.
+
+### 5.4 What this is not
+
+It is not an engine input format: no engine reads it. It is not a replacement
+for `SiestaConfig` — that dataclass remains the definition of what a field *is*.
+And it is not a new persistence layer for projects; it is one file written beside
+the bundle it produced.
+
+---
+
+## 6. Validation has to name the stage
 
 A findings list today points at a field. With a ladder, "mesh cutoff is too low
 for this basis" is true of *stage 1* and false of *stage 3*, and a finding that
@@ -136,13 +232,14 @@ validation path.
 
 ---
 
-## 6. The module map
+## 7. The module map
 
 | Layer | Today | What this needs |
 |---|---|---|
 | config | `SiestaConfig`, `SiestaStageSpec` (8 fields) | **+ `overrides` map**, and the merge that applies it |
 | ladder | `render_siesta_stage_fdfs`, `stages_to_jobset` | renders from the *effective* config per stage; routes `budget` overrides into job resources |
 | bundle | `build_siesta_stage_bundle` | unchanged — it is already the seam § 8 named |
+| plan file | — | **new**: the `stage-plan` format, its reader, and the refusal of unknown keys |
 | web API | `/api/build/*` renders one script | **+ one route** that takes a plan and writes a bundle |
 | validation | one config → findings | per-stage effective configs → findings **with a stage coordinate** |
 | browser | schema-driven form, one flat config | **+ the plan model**: pure data, pure operations (promote, demote, add, remove, reorder, apply preset) |
@@ -155,23 +252,26 @@ renders it and nothing else.
 
 ---
 
-## 7. The order of work, and what "done" means
+## 8. The order of work, and what "done" means
 
 **Step 1 — this document.** Done when the shape is agreed and the open questions
-in § 8 are answered.
+in § 9 are answered.
 
 **Step 2 — the backend, tuned and validated.** In order:
 
-1. `overrides` on the stage spec, and the merge that produces an effective
+1. The **plan format and its reader** (§ 5), including the refusal of a key the
+   schema does not know. *Done when:* a plan round-trips — read, rendered,
+   re-read — and a plan naming a dead field fails with that field's name.
+2. `overrides` on the stage spec, and the merge that produces an effective
    config. *Done when:* a stage with `{mesh_cutoff: 300}` renders a `.fdf`
    carrying 300 while the shared config still says 150, and a stage with no
    overrides renders exactly what it renders today.
-2. Override routing for `budget` fields into job resources. *Done when:* a
+3. Override routing for `budget` fields into job resources. *Done when:* a
    two-stage plan asking for 8 ranks then 16 produces a JobSet whose two jobs
    differ in resources, with the `.fdf`s unchanged.
-3. Per-stage validation with the stage coordinate. *Done when:* a plan whose
+4. Per-stage validation with the stage coordinate. *Done when:* a plan whose
    stage 1 is under-converged reports against stage 1 alone.
-4. The bundle route. *Done when:* a plan posted to it writes the same bytes the
+5. The bundle route. *Done when:* a plan posted to it writes the same bytes the
    CLI writes for the same ladder — compared file by file, because "the web is
    additive on top of the CLI" is only true if the output is identical.
 
@@ -186,15 +286,17 @@ user needs.
 
 ---
 
-## 8. Open questions this document cannot settle
+## 9. Open questions this document cannot settle
 
-1. **Is `varies` sent to the server at all?** It is a statement of intent, not a
-   value: the server could derive it from which keys appear in the overrides. But
-   then a parameter promoted and left identical across stages is indistinguishable
-   from one never promoted, and reopening the plan loses the user's intent.
-2. **Does a stage's override of a `budget` field also change the wrapper it gets
+1. **Does a stage's override of a `budget` field also change the wrapper it gets
    installed with**, or only the scheduler request?
-3. **What happens to a plan when the schema changes** — a field promoted last
-   month that no longer exists. Ignore it, or refuse to load and say so?
-4. **Does the plan persist in the project directory** beside the bundle, so
-   reopening a run restores what was intended rather than only what was written?
+2. **Is a plan editable by hand?** It is JSON beside a bundle, so it will be. If
+   yes, the reader owes the same errors to a person as to the browser — which is
+   an argument for the refusal rule in § 5.1 being loud rather than tolerant.
+3. **Does a plan pin the engine version it was written against?** `format` and
+   `version` describe the file; nothing yet describes the SIESTA it was aimed at.
+
+*Answered by § 5, which is why it was worth writing:* whether `varies` travels to
+the server (yes — it cannot be inferred), what happens when the schema moves on
+(refuse, and name the field), and whether the plan persists beside the bundle
+(yes — it is the only record of intent).
