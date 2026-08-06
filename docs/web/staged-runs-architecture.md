@@ -153,6 +153,12 @@ thing the generator reads:
   // so a disagreement between the browser and the backend is caught, not obeyed.
   "schema":  { "fingerprint": "sha256:1f0c…" },
 
+  // What this is a calculation OF. A reference into the tree, plus a witness
+  // of what was there when the plan was written (§ 8.2).
+  "structure": { "source": "projects/BDT-Au/structure/bdt_au.xyz",
+                 "formula": "C6H4S2Au38", "atoms": 46 },
+  "pseudos":   { "source": "project" },
+
   // Every schema field, one value. A one-stage plan is just this.
   "base": { "mesh_cutoff": 150, "mpi_np": 8, … },
 
@@ -242,7 +248,7 @@ answering the moot ones first buries the real message.
 - **Reopening a run restores intent.** A bundle can be re-read for its values,
   but nothing in it says *which parameters the user meant to vary* — a mesh
   cutoff that happens to be equal in all three stages is indistinguishable from
-  one never promoted. § 11's questions 1 and 4, answered: `varies` is in the file
+  one never promoted. § 12's questions 1 and 4, answered: `varies` is in the file
   because it cannot be inferred from anything else.
 - **A plan is reviewable.** It diffs. Two runs that differ can be compared as
   intent rather than by reading two directories of decks.
@@ -318,7 +324,7 @@ made of things a person already knows:
 A hash would be exact and unreadable. A formula is neither, and that is the
 trade being made on purpose: an id you can recognise in a directory listing, in
 a queue, and in a filename is worth more day to day than one that resolves every
-possible ambiguity. **This is a starting point, agreed as one**, and § 11 records
+possible ambiguity. **This is a starting point, agreed as one**, and § 12 records
 what would force it to grow. What it may contain is not open, though: § 6.1.
 
 That one id **is** the `SystemLabel` / `JOB` literal. There is no second name.
@@ -354,7 +360,7 @@ What is left is what those coordinates are *of*:
 |---|:--:|---|
 | the molecule — its formula, or its named components | **yes** | a `.XV` is a list of positions for *these* atoms. Different atoms, and every coordinate lands somewhere it does not belong |
 | the positions | no | the output (above) |
-| the cell | undecided (§ 11) | a `.XV` carries the cell too, so a changed cell is overridden on restart rather than mismatched — a different failure, and possibly not one the id should be solving |
+| the cell | undecided (§ 12) | a `.XV` carries the cell too, so a changed cell is overridden on restart rather than mismatched — a different failure, and possibly not one the id should be solving |
 | basis, spin, XC | no | the geometry stays valid across all of them, and tuning the electronics while continuing is ordinary practice. A `.DM` of the wrong shape is caught by the engine — a failure it already reports, traded for one it cannot |
 | mesh, tolerances, force, steps, algorithm | no | exactly what a ladder varies |
 | ranks, threads, GPU | no | how fast it ran says nothing about whether the answer may be continued |
@@ -367,7 +373,7 @@ cannot see.
 And it is deliberately the *readable* form of that claim. A formula does not
 separate two isomers, and does not pin the order the species are declared in —
 both of which a `.XV` is sensitive to. That is the known gap in the starting
-point, and § 11 is where it waits.
+point, and § 12 is where it waits.
 
 ### 6.2 Every engine has an internal identity, and parameters bound to it
 
@@ -503,7 +509,7 @@ right-handed one the deck must carry (`?doc=model/cell-plan.md`).
 Two consequences for everything above:
 
 - **The cell in the deck is derived, so it is not an input to the identity.**
-  What could be is the cell *parameters*, and § 11 keeps that open — but the
+  What could be is the cell *parameters*, and § 12 keeps that open — but the
   vectors themselves are output, and § 6 already refuses output in the id.
 - **The frame shift is why a `.XV` and a changed cell are worth a warning.** A
   `.XV` holds coordinates in the frame the run wrote them in. Change the padding,
@@ -570,7 +576,118 @@ place documented as the first will look correct and be wrong.
 contracts, not for this document. The likely answer is that a bundle is a fourth
 level under `<structure>/`, or a sibling of it, and § 2.5 says so.
 
-## 8. Validation has to name the stage
+---
+
+## 8. The two sides, what crosses between them, and who may do what
+
+### 8.1 The boundary, as a rule
+
+| | Owns | May **not** |
+|---|---|---|
+| **the browser** | the plan while it is being edited: values, which fields vary, the stages, their order and their intent | render a deck, resolve a pseudopotential, read or write the project tree, decide an id's final form |
+| **the server** | turning a plan into configs, validating them, resolving structure and pseudos, writing the bundle, deriving the JobSet | hold plan state between requests, or invent a value the plan did not carry |
+
+One sentence each: **the browser decides what is wanted; the server decides what
+that means and whether it can be done.** Neither guesses on the other's behalf,
+which is why the plan travels whole rather than as a diff, and why nothing the
+server derives is sent back for the browser to store.
+
+### 8.2 The plan needs a structure, and the plan did not have one
+
+A plan describes a calculation *of something*. Until now this document only
+described the parameters — which is a gap, not a simplification, and it is the
+one that would have surfaced first in code.
+
+```jsonc
+"structure": {
+    "source": "projects/BDT-Au/structure/bdt_au.xyz",   // in the tree (§ 2.5)
+    "formula": "C6H4S2Au38",                            // what the id is built from
+    "atoms": 46
+},
+"pseudos": { "source": "project" }                      // the project's own cache
+```
+
+Three rules, each of which keeps the plan a *description* rather than a copy:
+
+- **A plan points at a structure; it does not contain one.** Coordinates are the
+  thing runs produce (§ 6), and a plan that embedded them would be a second copy
+  of a file the tree already holds, drifting from it the moment either moved.
+- **The formula and atom count travel with the reference** — not as data, as a
+  **witness**. They are what the id was built from, so a plan opened against a
+  structure that has since changed can say *so* rather than silently building a
+  different calculation under the same id.
+- **Pseudopotentials are resolved, never carried.** The plan names where they
+  should come from; the server resolves them per species through the existing
+  pseudo path — the same one that already refuses a run on `xc_family_mismatch`
+  — and the resolved files land in the JobSet's `shared` list, stored once and
+  symlinked, as `job-system.md § 3` already specifies.
+
+### 8.3 What crosses, in both directions
+
+Three exchanges, and nothing else:
+
+```mermaid
+sequenceDiagram
+    participant B as browser
+    participant S as server
+    participant T as project tree
+
+    B->>S: GET the schema
+    S-->>B: fields, types, ranges, engine + version, a fingerprint
+    Note over B: the plan is edited here, and only here
+
+    B->>S: POST the plan — "check"
+    S->>S: preflight (§ 5.3) · n effective configs · validate each
+    S-->>B: findings, each carrying its stage · the id · what would be written
+
+    B->>S: POST the same plan — "produce"
+    S->>T: the bundle: decks, wrappers, job-set.json, the plan itself
+    S-->>B: the id · every path written · the handoff commands
+```
+
+**Check and produce take the identical body.** One is the other without the
+writing, so a plan that checks clean and then fails to produce is a bug rather
+than a difference of opinion between two endpoints.
+
+**What comes back from produce**, which nothing has said until now:
+
+```jsonc
+{
+  "ok": true,
+  "id": "bdt_au_relax_c6h4s2au38",
+  "written": { "bundle": "projects/BDT-Au/optimization/…/",
+               "decks": ["…_stage1.fdf", "…_stage2.fdf"],
+               "plan":  "…/plan.json",
+               "jobset": "…/job-set.json" },
+  "handoff": ["molbuilder jobset prep .", "molbuilder jobset plan .",
+              "molbuilder jobset submit ."],
+  "findings": [ /* warnings that did not block, each naming its stage */ ]
+}
+```
+
+The paths are returned because the browser cannot know them: the id's final form
+and the tree's layout are both the server's (§ 8.1). And a refusal comes back the
+same shape with `ok: false` and the findings that caused it — never a bare error
+string, because a preflight that names a field is worth nothing if the surface
+cannot show which field.
+
+### 8.4 The modules, and what each one may assume
+
+Separable work, each with one thing it is responsible for:
+
+| Module | Is given | Answers | May assume nothing about |
+|---|---|---|---|
+| **plan model** (browser, pure) | a plan and an operation | the plan after it | the DOM, the network, the engine |
+| **matrix view** (browser) | a plan | what the user did to it, via the model's operations | how a plan is stored or sent |
+| **plan reader** (server) | a plan document | a `SiestaConfig` plus stage specs, or a refusal naming the key | how the plan was produced |
+| **effective config** (server) | base + one stage | one config to render from | which stage it is |
+| **producer** (server) | n configs + intent | decks, the JobSet, the bundle | who asked |
+| **engine group** (per engine) | a stage's continue-or-clean | the bound parameters + the carry entries | the scheduler |
+
+The seams are narrow on purpose: every row above can be built and tested against
+values alone, and the two browser rows can be built before any route exists.
+
+## 9. Validation has to name the stage
 
 A findings list today points at a field. With a ladder, "mesh cutoff is too low
 for this basis" is true of *stage 1* and false of *stage 3*, and a finding that
@@ -586,7 +703,7 @@ validation path.
 
 ---
 
-## 9. The module map
+## 10. The module map
 
 | Layer | Today | What this needs |
 |---|---|---|
@@ -600,17 +717,18 @@ validation path.
 | browser | schema-driven form, one flat config | **+ the plan model**: pure data, pure operations (promote, demote, add, remove, reorder, apply preset) |
 | browser | — | **+ the matrix view**, which renders the plan and calls those operations |
 
-The last two are deliberately separate. The plan model is arithmetic on a data
-structure: no DOM, no fetch, testable as values in and values out — the same
+§ 8.4 states what each of these may assume, which is what makes them separable
+work rather than a list of names. The last two are deliberately separate: the
+plan model is arithmetic on a data structure: no DOM, no fetch, testable as values in and values out — the same
 split that made SpectrumChart's maths layer the easy part to trust. The view
 renders it and nothing else.
 
 ---
 
-## 10. The order of work, and what "done" means
+## 11. The order of work, and what "done" means
 
 **Step 1 — this document.** Done when the shape is agreed and the open questions
-in § 11 are answered.
+in § 12 are answered.
 
 **Step 2 — the backend, tuned and validated.** Starting with § 7.3's question,
 because where a bundle may be written decides what the route in item 6 is allowed
@@ -653,7 +771,7 @@ user needs.
 
 ---
 
-## 11. Open questions this document cannot settle
+## 12. Open questions this document cannot settle
 
 1. **Does a stage's override of a `budget` field also change the wrapper it gets
    installed with**, or only the scheduler request?
