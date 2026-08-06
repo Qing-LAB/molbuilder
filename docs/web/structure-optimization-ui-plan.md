@@ -107,6 +107,12 @@ Every SIESTA field carries a `workflow_group`, and there are exactly three:
 That is not a UI invention: it is the grouping the config already carries, and
 it is what the stage preset already writes to.
 
+> **Those counts are today's.** This plan moves five fields off the stage type
+> into the shared schema and adds `restart`
+> (`staged-runs-architecture.md § 2.1`), so the groups grow. Nothing below depends
+> on the totals — only on there being three groups and on `stage` being the useful
+> default.
+
 But those nine are a **default proposal, not the definition of a stage** — which
 parameters vary is the user's to choose, and that is the hard part of the
 design. § 7 is about nothing else.
@@ -285,7 +291,13 @@ Three rules keep it honest:
    keys — no more, so a demoted parameter cannot leave a value hiding in a stage
    nobody can see.
 2. **`base` holds a value for every field, always**, including the promoted ones.
-   A one-stage description is then just `base`, which is what makes § 3.1 true.
+   A one-stage description is then just `base`, which is what makes § 3.1 true —
+   and it is literally true on disk: **with a single stage there is nothing to
+   vary across, so its overrides and `base` are the same thing.** The tab always
+   shows at least one row, but a description with one row is written with no
+   `stages` key at all and produces `<id>.fdf`
+   (`staged-runs-architecture.md § 5.2`). The suffix, and the `stages` key, appear
+   together the moment a second row does.
 3. **The default `varies` is a proposal, not a law.** It starts as the fields the
    schema tags `workflow_group: "stage"` — the ones the preset writes to —
    because that is the useful default, not because they are special.
@@ -319,7 +331,7 @@ already has:
 | **start from** | | **clean** | **continue** | **continue** |
 | | | `+ add a parameter` | `row preset ▾` | `+ stage` · `remove` |
 
-*shared with every stage: 29 others → System · Resources · Output*
+*shared with every stage: everything else → System · Resources · Output*
 
 Three things the table has to get right:
 
@@ -327,8 +339,8 @@ Three things the table has to get right:
   sets the engine's own restart parameters — for SIESTA, `DM.UseSaveDM`,
   `MD.UseSaveXV` and `MD.UseSaveCG` together. The user states the intent once and
   the **generator** expands it (`staged-runs-architecture.md § 6.2`); nothing asks
-  three keys in step. It is drawn emphasised because it is the one row that
-  decides whether the folder's shared warm files are read.
+  anyone to keep three keys in step. It is drawn emphasised because it is the
+  one row that decides whether the folder's shared warm files are read.
 - **It never names *which* stage to continue from.** The folder holds one set of
   warm files under one basename, so "continue" means *whatever ran here last*.
   Offering a choice of predecessor would imply a history the folder does not
@@ -363,9 +375,10 @@ changes the file is not a preference.
 
 A column is a config: `base` overlaid with that stage's `overrides`. So **n
 columns produce n decks**, written into one folder with one shared basename
-(`staged-runs-architecture.md § 7`). Nothing here invents a directory layout — it
-is
-`job-contracts.md § 2.1` Rule 1 and Rule 2, which is what makes continuing free.
+(`staged-runs-architecture.md § 7`) — and one column produces one deck with no
+suffix, because one column is `base` (§ 7.2). Nothing here invents a directory
+layout: it is `job-contracts.md § 2.1` Rule 1 and Rule 2, which is what makes
+continuing free.
 
 ---
 
@@ -383,8 +396,9 @@ Then:       bash bdt_au_relax_c6h4s2au38_tight.run.sh     ← continues from the
 
 **Handing the sequence to a scheduler is a separate, later feature** — the
 JobSet export in `staged-runs-architecture.md § 11` — and it is gated on proving
-ladder end-to-end on a real cluster first. It is not what this page is for, and
-a page that led with it would be describing a system the user did not ask for.
+the SIESTA ladder end-to-end on a real cluster first. It is not what this page
+is for, and a page that led with it would be describing a system the user did
+not ask for.
 
 ---
 
@@ -419,7 +433,12 @@ a page that led with it would be describing a system the user did not ask for.
 
 ## 10. What this plan is not
 
-It does not change what a stage means on disk, the naming conventions, or any
-generator. It reuses the shipped run-directory contract exactly as the CLI does:
-one job per directory, several inputs allowed, one basename shared by all of
-them.
+It does not change what a stage means on disk, or the naming conventions. It
+reuses the shipped run-directory contract exactly as the CLI does: one job per
+directory, several inputs allowed, one basename shared by all of them.
+
+It is **not** free of backend work, and saying otherwise would be the easy lie.
+The generator has to render from an effective config, expand `restart` into the
+engine's bound parameters, route a promoted `continue_retries` to that stage's
+wrapper, and derive `BlockSize` from that stage's rank count. Those are
+`staged-runs-architecture.md § 12`, and they come before any of this is drawn.

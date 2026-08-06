@@ -64,14 +64,16 @@ The stage type ships with **eight** settable fields. Two questions, asked in
 order, decide all of them — and it matters that they are two, because one alone
 gives the wrong answer for the last row:
 
-> **1. Does this describe the calculation, or something that runs it?**
-> Only the first belongs here at all.
+> **1. Does it survive without a scheduler?**
+> A setting that means nothing until something else queues the work is not part
+> of describing a calculation, and § 11 owns it.
 >
 > **2. Of what is left: can a single run mean it?**
 > If yes it is an ordinary field of the shared schema, which a stage may
-> override like any other. **A stage types only what a single run cannot mean.**
+> override like any other — *wherever that field happens to land* (§ 4.1).
+> **A stage types only what a single run cannot mean.**
 
-| Field today | Describes the calculation? | Can a single run mean it? | Lands |
+| Field today | Survives without a scheduler? | Can a single run mean it? | Lands |
 |---|:--:|:--:|---|
 | `name` | yes | no — a single run is named by its id | **typed** |
 | `enabled` | yes | no — there is nothing to enable | **typed** |
@@ -79,28 +81,35 @@ gives the wrong answer for the last row:
 | `relax_steps` | yes | yes | an override |
 | `relax_force_tol` | yes | yes | an override |
 | `relax_max_displ` | yes | yes | an override |
-| `on_nonconvergence` | **no** — it is what a scheduler should do next | — | **leaves entirely** |
-| `continue_retries` | **no** — it is how the wrapper reruns | — | **not a stage field** |
+| `continue_retries` | yes — `running-a-job.md § 3.5` | yes | an override, routed to the **wrapper** (§ 4.1) |
+| `on_nonconvergence` | **no** — it *is* the scheduler edge | — | **leaves entirely** |
 
-The last two rows are worth reading twice.
+Two rows are worth reading twice, and they fail at different questions.
 
-**`on_nonconvergence` leaves** — and note it fails the *first* question, not the
-second. It was typed because it *becomes the scheduler edge* — `proceed →
-afterany`, `halt → afterok` (`job-system.md § 4.1`). There is no edge here,
-because there is no chain, and a setting whose only effect is on a scheduler is
-not part of describing a calculation. The setting is real and keeps its home in
-`job-system.md`; § 11 is where it applies.
+**`on_nonconvergence` leaves, at question 1.** It was typed because it *becomes*
+the edge — `proceed → afterany`, `halt → afterok` (`job-system.md § 4.1`). There
+is no edge here, because there is no chain, and a setting whose entire effect is
+on a queue describes nothing about the calculation. It is real and keeps its home
+in `job-system.md`; § 11 is where it applies.
 
-**`continue_retries` was never a stage field.** `running-a-job.md § 3.5` is
-explicit: a *single* SIESTA run whose wrapper was installed with a retry budget
-re-runs itself with `--continue`. It is a **wrapper-install** parameter, which
-is exactly why `job-system.md § 4.1` has to record that the SIESTA ladder does
-not implement it — the field is on the stage, and the stage is not what honours
-it. It moves to the wrapper layer, where it already works.
+**`continue_retries` passes both, and is still not a stage field.**
+`running-a-job.md § 3.5` is explicit: a *single* SIESTA run whose wrapper was
+installed with a retry budget re-runs itself with `--continue`. So it survives
+without a scheduler and a single run can mean it — an ordinary shared field. What
+made it look special is only *where it lands*: the wrapper, not the deck (§ 4.1).
+That is exactly why `job-system.md § 4.1` has to record that the SIESTA ladder
+never implemented it — the field sat on the stage, and the stage is not what
+honours it.
 
-So: **eight fields become two typed ones, plus the overlay.** The "which side of
-the line is this field on" question — a whole section of the previous draft —
-stops existing, because the line is derivable rather than argued.
+So: **eight fields become two typed ones, plus the overlay** — five fields move
+into it and one leaves the framework altogether. The "which side of the line is
+this field on" question — a whole section of the previous draft — stops existing,
+because the line is derivable rather than argued.
+
+Note what question 2 does *not* ask: where the field ends up. A promoted field
+may become a deck line, a wrapper setting or a scheduler request, and § 4.1 is
+where that is decided. Sorting fields by destination is what produced the eight
+in the first place.
 
 **One field arrives rather than leaves.** Whether a stage continues from what is
 already in the folder or starts clean has to be sayable, and by question 2 it is
@@ -140,22 +149,26 @@ needs:
   the vectors and shifts the atoms into the all-positive, right-handed frame the
   deck must carry (`?doc=model/cell-plan.md`, § 6.5).
 - **pseudopotentials resolved**, per species, through the path that already
-  refuses a run on `xc_family_mismatch` — and placed as
-  `job-contracts.md § 2.7` describes.
+  refuses a run on `xc_family_mismatch`, and written into the folder beside the
+  decks. `job-contracts.md § 2.7` says the layout does not *require*
+  co-location — putting them there anyway is what makes the test below pass.
 - **every field the schema declares**, with defaults resolved rather than
   omitted-and-hoped-for.
 - **the engine's identity group set as one** (§ 6.2), never key by key.
 - **the lines derived from a launch quantity, declared** in BENCH-MARKS so they
   can be re-derived if the launch changes under them (§ 4.2).
 
-The test is blunt: **copy the folder to a machine with no molbuilder on it and
-the engine must run it correctly.**
+The test is blunt: **copy the folder to a machine that has the engine's
+environment but no molbuilder, and it must run correctly.** That is
+`running-a-job.md § 2`'s contract for the wrapper — it reads no config and probes
+no toolchain at run time — held to the deck as well.
 
 ### 3.2 Scientific-level — the values are defensible
 
-Each stage gets the full findings pass, delivered through the one channel the
-validation contract fixes (§ 9). `error` blocks; nothing downstream downgrades a
-severity to keep a screen quiet.
+Every config that will be rendered gets the full findings pass — one per stage,
+or the single one when there are no stages (§ 5.2) — delivered through the one
+channel the validation contract fixes (§ 9). `error` blocks; nothing downstream
+downgrades a severity to keep a screen quiet.
 
 ### 3.3 The rule that makes per-stage validation honest
 
@@ -163,9 +176,10 @@ severity to keep a screen quiet.
 
 Two overrides can each be individually reasonable and jointly wrong: a mesh
 cutoff that is fine, a basis that is fine, and a pair that is under-converged
-together. So validation never sees the overlay. It sees `base ⊕ overrides` as
-one config — **the same object the deck is rendered from**, so what was checked
-and what was written cannot come apart.
+together. So the validator is never handed a diff. It is handed a whole config —
+**the same object the deck is rendered from** — plus the stage's name as a label
+to hang its findings on (§ 9). What was checked and what was written cannot come
+apart, and a finding can still say which stage it is about.
 
 ---
 
@@ -175,7 +189,7 @@ and what was written cannot come apart.
 |---|---|---|---|
 | **the description** | the structure it is *of*, the `base` values, which fields `vary`, and the stages | the browser while it is edited; the folder once written | the tab, then `stages.json` (§ 5) |
 | **the effective config** | one `SiestaConfig` per stage: `base` overlaid with that stage's overrides | the server | per request, never stored |
-| **the deck** | one complete engine input per enabled stage | the generator | the folder (§ 7) |
+| **the deck** | one complete engine input per enabled stage — or one, when there are no stages (§ 5.2) | the generator | the folder (§ 7) |
 
 Only the first is new. The second is a merge of a shipped dataclass; the third
 is what molbuilder already writes. The whole design is a bet that a description
@@ -205,7 +219,7 @@ subtly wrong for the machine they run on.
 |---|---|---|
 | an ordinary deck line | `mesh_cutoff` → `MeshCutoff` | the stage's deck, and nowhere else |
 | **a deck line that is also a resource decision** | `diag_algorithm` → `Diag.Algorithm`; `enable_gpu` | the deck **and** the wrapper's env routing **and** the scheduler's `--gres` |
-| a launch quantity | `mpi_np`, `omp_threads` | not the deck — the wrapper at run time, and a scheduler's `-n` / `-c` if one is asked |
+| a field the deck never carries | `mpi_np`, `omp_threads`, `time`, `mem`, `continue_retries` | the **wrapper** — baked at install (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` / `-t` / `--mem` if one is asked |
 
 The middle row is the one that matters, and the shipped contracts already
 describe it from two sides. `job-contracts.md § 6.2` lists the eigensolver as a
@@ -763,8 +777,8 @@ diff, and why nothing the server derives is sent back for the browser to store.
   calculation under the same id.
 - **Pseudopotentials are resolved, never carried.** The server resolves them per
   species through the existing path — the one that already refuses on
-  `xc_family_mismatch` — and places them as `job-contracts.md § 2.7` describes.
-  There is no field for this: the project's own `pseudopotential` cache is where
+  `xc_family_mismatch` — and writes them into the folder (§ 3.1). There is no
+  field for this: the project's own `pseudopotential` cache is where
   they come from, and a one-key object saying so would be a setting with one
   legal value.
 
@@ -787,7 +801,7 @@ sequenceDiagram
     S-->>B: findings, each naming its stage · the id · what would be written
 
     B->>S: POST the same body — dry_run: false
-    S->>T: the decks, stages.json, the resolved pseudos
+    S->>T: the decks, their wrappers, stages.json, the resolved pseudos
     S-->>B: the id · every path written · the findings that did not block
 ```
 
@@ -802,8 +816,9 @@ that checks clean to then fail to produce.
 {
   "ok": true,
   "id": "bdt_au_relax_c6h4s2au38",
-  "written": { "folder": "projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/",
-               "decks":  ["…_coarse.fdf", "…_tight.fdf"],
+  "written": { "folder":   "projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/",
+               "decks":    ["…_coarse.fdf", "…_tight.fdf"],
+               "wrappers": ["…_coarse.run.sh", "…_tight.run.sh"],
                "description": "…/stages.json" },
   "findings": [ /* warnings that did not block, each naming its stage */ ]
 }
@@ -927,8 +942,8 @@ carry forward when it is built:
   `job-contracts.md § 2.5`'s flat `<structure>/` is this framework's folder;
   `job-system.md § 5.2`'s `point-<name>/` tree is a bundle. A bundle is not a
   run directory — it is a directory *of* run directories, each obeying
-  `job-contracts.md § 2.1` exactly. Nothing needs to move, and the earlier reading of these as a
-  contradiction was wrong.
+  `job-contracts.md § 2.1` exactly. Nothing needs to move, and the earlier
+  reading of these as a contradiction was wrong.
 - **`JobSet.name` should be the id**, and the submitter's `-J` should carry it.
   Today a ladder's scheduler name is the bare stage name
   (`job-contracts.md § 6.3`), so three concurrent ladders show
@@ -946,7 +961,7 @@ browser rows can be built before any route exists.
 
 | Module | Today | What this needs | May assume nothing about |
 |---|---|---|---|
-| **config** | `SiestaConfig`; `SiestaStageSpec` (8 fields) | **stage spec → `{name, enabled, overrides}`**; the four value fields become ordinary shared-config fields; `continue_retries` moves to the wrapper layer and `on_nonconvergence` to the JobSet producer's input; **+ a `restart` field** on the shared config | which surface set it |
+| **config** | `SiestaConfig`; `SiestaStageSpec` (8 fields) | **stage spec → `{name, enabled, overrides}`**; five fields become ordinary shared-config fields (`continue_retries` among them — routed to the wrapper, § 4.1); `on_nonconvergence` moves to the JobSet producer's input; **+ a `restart` field** on the shared config | which surface set it |
 | **engine contract** (per engine) | the warm files, inventoried (`job-contracts.md § 4.2`) | **+ the identity literal and the parameters bound to it**, declared beside them as one group (§ 6.2) | the scheduler |
 | **description reader** (server) | — | **new**: read `molbuilder/stages@1` into a `SiestaConfig` plus stage specs, or refuse naming the key | how the description was produced |
 | **effective config** (server) | — | **new**: base ⊕ one stage's overrides → one config to validate *and* render from | which stage it is |
@@ -966,13 +981,14 @@ browser rows can be built before any route exists.
    `relax_max_displ` sit on the shared config *and* on the stage spec. *Done
    when:* a test says which value a staged render uses when the two disagree —
    because that is the behaviour anyone relying on it has already built on.
-2. **The stage spec shrinks to three fields.** The four value fields become
-   ordinary shared-config fields; `continue_retries` moves to the wrapper-install
-   surface that already honours it; `on_nonconvergence` moves to the JobSet
-   producer's own input, since `stages_to_jobset` is its only reader (§ 11).
-   *Done when:* a stage with no overrides renders exactly what it renders today,
-   no field of the shared schema has a second home, and the ladder producer still
-   derives the same edges it derives now.
+2. **The stage spec shrinks to three fields.** Five of the eight become ordinary
+   shared-config fields — the four relaxation values plus `continue_retries`,
+   which routes to the wrapper-install surface that already honours it (§ 4.1).
+   `on_nonconvergence` moves to the JobSet producer's own input, since
+   `stages_to_jobset` is its only reader (§ 11). *Done when:* a stage with no
+   overrides renders exactly what it renders today, no field of the shared schema
+   has a second home, a per-stage `continue_retries` reaches that stage's wrapper,
+   and the ladder producer still derives the same edges it derives now.
 3. **`overrides` and the merge.** *Done when:* a stage with `{mesh_cutoff: 300}`
    renders a deck carrying 300 while the shared config still says 150.
 4. **The `restart` field and the engine group.** *Done when:* a two-stage
