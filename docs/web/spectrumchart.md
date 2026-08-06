@@ -775,9 +775,10 @@ Five rules, and they are the ones peculiar to *this* module:
   type — and every rule below reads them by name. Changing how the chart looks is
   changing that block, not hunting through the rules.
 - **It inherits nothing from the page.** Those values are the module's own, so
-  deleting every page stylesheet leaves the chart looking right. Light and dark
-  are the exception that proves it: the sheet answers the same theme signal the
-  app does, without reading a single one of the app's values.
+  deleting every page stylesheet leaves the chart looking right. It matches the
+  app because its values were *chosen* to, not because it reads the app's — and
+  the app has one palette, with no light/dark switch to follow. If that ever
+  changes, what changes here is this one block.
 - **The frame states its size; the surface fills it, carries no padding, and
   never spills past it.** All three come from real breakage on one day: a height
   that came from the plot being sized to it collapsed to a ten-pixel strip; a
@@ -874,6 +875,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 9 — a peak is smooth at every width | at any broadening, the narrowest peak drawn carries at least eight samples across its full width |
 | § 9 — the curve ends rather than being cut off | at any broadening, the envelope at both ends of the grid is below 1% of the tallest peak |
 | § 11 — the sheet inherits nothing from the page | with every page stylesheet removed, the chart's own values still resolve and the colours handed to the library are unchanged; no page variable is named anywhere in the module |
+| § 11 — the values are declared, not sampled | every colour the seal hands the library was read from a `--spectrumchart-` value on the module's own element |
 | § 11 — the sheet stays this module's | every class it writes begins `spectrumchart-`, it styles the frame and the surface and nothing else, and its values are declared in one block rather than written into rules |
 | § 11 — the box traps | the frame declares a height and never `auto`; the drawing surface carries no padding; nothing it draws spills outside the frame or scrolls the page sideways |
 | § 11 — the chart responds to its own box | no rule in the sheet is keyed to the window's size, and a box that changes size while the window does not causes a redraw at the new size |

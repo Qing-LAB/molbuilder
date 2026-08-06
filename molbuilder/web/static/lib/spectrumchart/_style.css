@@ -1,0 +1,58 @@
+/* MODULE: spectrumchart — the module's own stylesheet.
+ * LOADED BY: spectrumchart/_seal.js at mount, once. No template names this file.
+ *
+ * Contract: docs/web/spectrumchart.md § 11. Three blocks, in this order — the
+ * root and its values, the frame, the surface. The repository's CSS conventions
+ * (docs/web/css-system-plan.md) apply here as everywhere else and are not
+ * restated. Nothing outside this module may style a `spectrumchart-` name, and
+ * nothing here styles anything else.
+ */
+
+/* --- 1. the root: every value this module has ---------------------------- */
+
+.spectrumchart {
+    /* Declared here, not read from the page: deleting every page stylesheet
+       leaves the chart looking right (§ 11). These were chosen to sit with the
+       app's palette; the app has one, so there is no theme switch to follow. */
+    --spectrumchart-bg:        #1d2128;
+    --spectrumchart-ink:       #c8ccd4;   /* axis labels, tick text */
+    --spectrumchart-grid:      #2b313b;
+    --spectrumchart-edge:      #2b313b;
+    --spectrumchart-stick:     #7f9cc0;
+    --spectrumchart-chosen:    #7cc4a4;   /* the selected mode */
+    --spectrumchart-curve:     #9aa6b8;
+    --spectrumchart-pending:   #6b7280;   /* strength not computed (§ 6.2) */
+    --spectrumchart-imaginary: #d98c7a;   /* not at rest (§ 6.4) */
+
+    --spectrumchart-hairline:  1px;
+    --spectrumchart-radius:    6px;
+    --spectrumchart-pad:       8px;
+    --spectrumchart-height:    clamp(220px, 34vh, 460px);
+}
+
+/* --- 2. the frame: the box the chart lives in ---------------------------- */
+
+.spectrumchart {
+    display: block;
+    width: 100%;
+    /* A height, never `auto`: the surface is sized FROM this box, so a box sized
+       from its content is a definition in a circle that resolves to a strip. */
+    height: var(--spectrumchart-height);
+    padding: var(--spectrumchart-pad);
+    border: var(--spectrumchart-hairline) solid var(--spectrumchart-edge);
+    border-radius: var(--spectrumchart-radius);
+    background: var(--spectrumchart-bg);
+    /* Nothing drawn inside may spill across whatever sits beside it. */
+    overflow: hidden;
+}
+
+/* --- 3. the surface: the element the drawing goes on --------------------- */
+
+.spectrumchart-surface {
+    width: 100%;
+    height: 100%;
+    /* No padding: the library asks this element how wide it is and the browser's
+       answer counts padding in, so a padded surface draws wider than its frame.
+       The frame pads; the surface does not. */
+    padding: 0;
+}
