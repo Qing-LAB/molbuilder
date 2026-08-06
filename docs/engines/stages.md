@@ -540,9 +540,7 @@ archived by content and deduped:
 
 Two things make this cheap rather than heavy: a produce that only rewrites decks
 changes only text, and the binary archive is content-addressed, so unchanged
-`.DM`s and `.HSX`es are not copied again. If the folder is not under checkpoint
-yet, the produce initialises it (`snapshot init --engine <engine>`) — a folder
-molbuilder writes into is a folder molbuilder can offer a history for.
+`.DM`s and `.HSX`es are not copied again.
 
 The warm files are never removed by any of this: they belong to the calculation,
 not to any one stage (`execution/run-identity.md § 6`).
@@ -585,9 +583,17 @@ molbuilder's rather than the engine's:
 **Both are automatic whenever the folder is under checkpoint.** Not offered, not
 a button: a folder that has a history keeps it, and a stage boundary that went
 unrecorded is one the user cannot return to precisely when they discover they
-want to. `snapshot init` remains explicit — putting a folder under version
-control is the user's decision — but once it is under one, molbuilder does not
-ask permission to write the history it exists for.
+want to. Once a folder is under checkpoint, molbuilder does not ask permission
+to write the history it exists for.
+
+**Who initialises, exactly.** A produce that *creates* the folder initialises it
+(`snapshot init --engine <engine>`) — molbuilder made the directory, so offering
+it a history costs the user nothing and asks them nothing. A produce into a
+folder that **already existed without a checkpoint** does not: that folder is
+someone's deliberate state, and putting it under version control is their call,
+not a side effect of generating a deck into it. The two rules together: *created
+here means initialised; already under checkpoint means kept; neither means left
+alone.*
 
 **Neither is the wrapper's job.** `running-a-job.md § 6.2` records that the
 wrapper-bootstraps-git path was deliberately dropped — *"the wrapper is

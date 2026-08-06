@@ -38,6 +38,25 @@ So this document is a list of things that must always be true, each with the
 failure it prevents and the check that catches it. It is the review sheet for the
 code, not a tour of the feature.
 
+### 1.1 What is shipped, and what this design changes
+
+The `Repo` core, the `molbuilder snapshot` CLI, the HTTP routes and the sidebar
+panel all ship (`running-a-job.md § 6`). Read this document as a statement of
+what that code must keep doing, plus four changes a staged folder needs:
+
+| | Shipped today | With a staged folder |
+|---|---|---|
+| **What it covers** | one flat run directory | a parent and its per-stage subdirectories — **one repository, at the parent** (P1) |
+| **Archive globs** | `*.DM`, `*.HSX`, … — matched beside the config | must match **at depth**; today's patterns miss `<stage>/<id>.DM` and every binary lands in git as a blob (P2) |
+| **When a checkpoint is taken** | when the user runs `snapshot checkpoint` | **automatically**, before a replacing produce and when a stage's run finishes (`engines/stages.md § 7.3`) |
+| **What it is called** | a free-text message; a tag name the user picks | the message carries the id and the stage; a stage completion is tagged `<id>/<stage>/<UTC>` (P3) |
+| **Who initialises** | `snapshot init`, always explicit | a produce that *creates* the folder initialises it; one writing into a folder that already existed without a checkpoint does not |
+| **`branch`** | CLI only — no HTTP route (`running-a-job.md § 6.2`) | the operation the staged design turns on, so the route is required rather than nice to have |
+
+Everything else — the text/binary split, the archive format, build-verify-swap,
+verify-before-restore — is unchanged, and §§ 2–4 exist to say so precisely enough
+that a change can be checked against them.
+
 ---
 
 ## 2. The separations — what must be kept apart
@@ -53,6 +72,19 @@ binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
 | **How it fails** | A file matching an archive glob that is *also* tracked puts a multi-gigabyte blob in git history forever. A file matching neither is in no snapshot at all — a restore silently does not bring it back |
 | **How to check** | For every file in a checkpointed directory: `matches_archive_glob(f) XOR git_tracked(f)` is true. Assert it over a fixture directory containing one of each engine's warm files plus a text log |
 
+**S1 rests on two lists agreeing, and nothing today keeps them in step.**
+`archive_globs` lives in `.mbcheckpoint.json`; what git ignores lives in
+`.gitignore`; `snapshot init` seeds both, and `snapshot config --set` edits the
+first (`running-a-job.md § 6.2`). If editing the globs does not rewrite the
+ignore file, a formerly-archived pattern starts being committed as a blob, or a
+newly-archived one keeps being tracked — S1 broken by a configuration change
+rather than by a bug.
+
+> **S1a — the ignore set is derived from `archive_globs`, never maintained
+> beside it.** One list, one writer. *Check:* `snapshot config --set` changes
+> `.gitignore` in the same operation, and a fixture whose two files disagree is
+> reported rather than obeyed.
+
 ### S2 — shared state lives above; a stage writes only inside its own directory
 
 A staged folder holds shared files once at the parent and one subdirectory per
@@ -62,7 +94,7 @@ separation exists to prevent.
 | | |
 |---|---|
 | **How it fails** | A stage writing through an inherited symlink overwrites the *producing* stage's result, and the history then records one stage's outputs replacing another's with no diff that says so |
-| **How to check** | After a stage runs, every file it created or modified is inside its own subdirectory. The shipped guard is localize-on-run — the wrapper replaces an inherited symlink with a real copy before the engine starts (`job-system.md § 5.2`) — so the direct assertion is: **no regular file outside a stage's subdirectory has an mtime inside that stage's run window** |
+| **How to check** | Checkpoint the folder, run one stage, and read `git status` at the parent: **every changed path is under that stage's subdirectory.** That is exact where an mtime window is not — no clock skew, no filesystem granularity, and it uses the history this document is about as its own detector. The shipped guard is localize-on-run: the wrapper replaces an inherited symlink with a real copy before the engine starts (`job-system.md § 5.2`) |
 
 ### S3 — inherited and owned are distinguishable on disk
 
@@ -94,18 +126,37 @@ The id names the calculation; `-run0`, `-run1` name invocations of it
 | **How it fails** | If anything about a run could change the id, the warm files it produced would be orphaned by the act of producing them |
 | **How to check** | No code path derives an id from a run's output, a timestamp, or a run index. `stages.json`'s `run.id` is read, never recomputed (`run-identity.md § 3`, rule 1) |
 
+### S6 — a restored folder is internally consistent
+
+`stages.json` is tracked text (S1), so it travels with the commit. Restoring a
+checkpoint therefore restores **the description together with the decks it
+produced** — the folder explains itself at every point in its history, not only
+at the tip.
+
+| | |
+|---|---|
+| **How it fails** | If the description were untracked or archived, a restore would give you last week's decks beside this week's description, and nothing would say which the results came from |
+| **How to check** | Restore any commit and re-run the produce with `dry_run`: it reports no change. That is the strongest form of the property — the description at that commit is exactly the one that would generate the decks at that commit |
+
 ---
 
 ## 3. The immutabilities — what must never change
 
-### I1 — a written checkpoint is never modified
+### I1 — a written archive's *content* is never modified
 
-Git commits are immutable by construction; the binary archive must be too.
+Git commits are immutable by construction; the archived bytes must be too.
+
+**One shipped command edits an archive and is not a violation.**
+`molbuilder snapshot migrate-manifest <ref>` rewrites a legacy 2-column MANIFEST
+into the canonical 3-column form (`running-a-job.md § 6.2`). That changes how the
+archive is *described*, never what is in it — so the invariant is about content,
+and the migration carries its own: **every `(name, sha256)` pair survives it, and
+the `bytes` column it adds agrees with the file on disk.**
 
 | | |
 |---|---|
-| **How it fails** | An archive directory rewritten in place means an old commit's binaries silently become a newer run's. Every restore before that point returns the wrong data, and nothing reports it |
-| **How to check** | `.binsnapshots/<sha>/` is created once and never written again. A second checkpoint whose binaries are identical **dedupes by content** rather than rewriting; a second checkpoint whose binaries differ writes a *new* directory |
+| **How it fails** | An archive directory whose *files* are rewritten in place means an old commit's binaries silently become a newer run's. Every restore before that point returns the wrong data, and nothing reports it |
+| **How to check** | `.binsnapshots/<sha>/`'s files are created once and never written again. A second checkpoint whose binaries are identical **dedupes by content** rather than rewriting; one whose binaries differ writes a *new* directory. For the migration specifically: diff the parsed MANIFEST before and after — the name→sha mapping is unchanged, and I2 passes afterwards |
 
 ### I2 — a MANIFEST is authoritative for its archive
 
@@ -117,17 +168,25 @@ describes exactly what is in that archive.
 | **How it fails** | A MANIFEST that names a file the archive lacks turns a restore into a partial one; a sha that does not match turns it into a silent corruption |
 | **How to check** | For every entry: the file exists, its size equals the recorded bytes, and its sha256 equals the recorded sha. Run it over every archive in a repository — this is the single most valuable test in the system |
 
-### I3 — molbuilder never deletes a warm-restart file
+### I3 — warm state is moved or restored, never incidentally lost
 
 `--cold` **moves warm files aside** into `<basename>-restart-aside-<UTC>/`; it
-does not delete them (`job-contracts.md § 4.1`). No other operation removes them —
-including a replacing produce, which may remove orphaned decks and wrappers but
-never state (`engines/stages.md § 7.2`).
+does not delete them (`job-contracts.md § 4.1`). No operation *whose purpose is
+something else* removes or overwrites them — in particular a replacing produce,
+which may remove orphaned decks and wrappers but never state
+(`engines/stages.md § 7.2`).
+
+**`restore` is the one exception, and it is not a leak.** Restoring an earlier
+checkpoint replaces the worktree, warm files included — that is precisely what
+the user asked for, it refuses on a dirty tree first (A2), and the state it
+overwrites is itself in a commit. The invariant is therefore about *incidental*
+loss: **exactly one operation may move warm state (`--cold`), exactly one may
+replace it (`restore`), and nothing else may touch it.**
 
 | | |
 |---|---|
 | **How it fails** | Hours of converged geometry destroyed by an operation whose job was to write an input file |
-| **How to check** | Grep the produce, the cold-restart path and the checkpoint code for any unlink or rmtree whose target can match a warm-file suffix. There should be exactly one mover and no deleter |
+| **How to check** | Grep every path that writes into a run directory for an unlink, an rmtree or a truncating open whose target can match a warm-file suffix. There should be exactly two hits — the cold move-aside and the restore — and no third |
 
 ### I4 — a generated wrapper contains no git
 
@@ -220,7 +279,9 @@ Pre-produce checkpoints are commits, reachable through `snapshot list`. Tagging
 them too would bury the points a user meant to reach among the ones they passed
 through.
 
-*Check:* the number of tags equals the number of observed stage completions.
+*Check:* **molbuilder** creates a tag only at a stage completion. A user tagging
+by hand is their own business — `snapshot tag` exists for it — so the assertion is
+on what the automatic path emits, not on the total.
 
 ---
 
@@ -235,9 +296,11 @@ One line each, for reading over a diff:
 | **S3** | inherited is a symlink; owned is a regular file |
 | **S4** | the description is never modified by a produce or a run |
 | **S5** | nothing a run produces can change the id |
+| **S6** | a restored folder explains itself: description and decks travel together |
+| **S1a** | the git-ignore set is *derived* from `archive_globs`, never kept beside it |
 | **I1** | a written archive is never rewritten; identical content dedupes |
 | **I2** | every MANIFEST entry matches the file: name, size, sha256 |
-| **I3** | warm files are moved aside, never deleted, by anything |
+| **I3** | exactly one operation moves warm state, exactly one replaces it, nothing else touches it |
 | **I4** | no generated wrapper contains git |
 | **A1** | archive: build, verify the copy, then swap |
 | **A2** | restore verifies the target archive before touching the worktree |
