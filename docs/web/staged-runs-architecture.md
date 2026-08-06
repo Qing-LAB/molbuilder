@@ -134,8 +134,9 @@ thing the generator reads:
   "engine":  { "name": "siesta", "version": "5.0", "requires": ["mpi", "netcdf"] },
 
   // What produced it, and what identifies the run it describes (§ 6).
-  "run":     { "experiment": "bdt-au-relax", "created": "2026-08-06T22:14:03-07:00",
-               "id": "bdt-au-relax-20260806-221403", "label": "bdt_au" },
+  "run":     { "name": "bdt au relax",             // what the user called it
+               "id":   "bdt_au_relax_a41f9c",       // that, normalised, + the pin
+               "created": "2026-08-06T22:14:03-07:00" },  // for tracing, not identity
 
   // Which schema the values were entered against. Not a definition — a witness,
   // so a disagreement between the browser and the backend is caught, not obeyed.
@@ -289,20 +290,38 @@ right thing, and this is the trap:
 > longer bear the name the engine looks for. Yet resuming *through* an edit is
 > the whole point of a ladder.
 
-So the plan carries **two names, for two questions**:
+So the id is built the other way round: **the user's words first, the pin
+second.**
 
-| | Answers | Derived from | Changes when |
-|---|---|---|---|
-| **`run.id`** | *which run is this?* | experiment name + timestamp | every generation |
-| **`run.label`** | *what state may it inherit?* | the experiment name, normalised | the user says it is a different experiment |
+```
+   run.id  =  bdt_au_relax _ a41f9c
+              └─────┬─────┘   └─┬──┘
+                    │           a fingerprint of what makes prior state
+                    │           valid to inherit (§ 6.1)
+                    what the user called this experiment — readable,
+                    greppable, theirs
+```
 
-`run.label` is what becomes `SystemLabel`. It stays constant across the stages
-of a ladder — which is already required, since the unsuffixed label is what lets
-`.XV` / `.DM` / `.CG` transfer between stages — and constant across the edits a
-user means to resume through. `run.id` never reaches the engine; it names the
-directory, the scheduler job and the record, so two runs of the same experiment
-are told apart everywhere except in the one place where being told apart would
-break the science.
+That one id **is** the `SystemLabel` / `JOB` literal. There is no second name.
+
+**The timestamp is recorded but is not part of it.** It lives in the plan as
+`run.created`, for tracing a directory back to the moment it was written — and
+it stays out of the id on purpose, because putting it in would make every
+regeneration a new identity, and therefore a cold start. Two generations of the
+same calculation *should* land on the same id: that is not a collision, it is
+the same calculation, and warm files being found is the right outcome.
+
+**What tells two invocations apart, then?** The run wrapper already does it —
+each run carries an index (`-run0`, `-run1`, …), and `--force` resets it. That is
+invocation-level bookkeeping and it exists; the id is calculation-level and does
+not need to repeat it.
+
+**The characters are constrained by the runtime, not by taste.** The wrapper
+reads the id back out of the script and sanitises it to `[A-Za-z0-9._-]` before
+using it in a shell (§ 4.3), and a stage name must match `[A-Za-z0-9_]+`. So the
+user's words are normalised into that set — lowercased, spaces and punctuation
+to underscores, trimmed to a sane length — and the fingerprint appended. What a
+user types is never used raw, and the id in the file is what the engine sees.
 
 ### 6.1 What the identity is tied to — and why that is a physics question
 
@@ -316,15 +335,6 @@ nothing that merely says how hard to push.**
 | **the electronic description** | basis (PAO size/shift), spin polarisation, XC functional | **yes** | a `.DM` is written in the basis; a different basis or spin is a different *shape*, and a different functional is different physics wearing the same shape |
 | **the tightening** | mesh cutoff, DM and energy tolerances, force tol, max displacement, steps, relaxation algorithm | no | these are exactly what a ladder varies. A denser grid re-integrates from the same density matrix; a tighter tolerance resumes from the geometry already reached. Putting these in the identity would make every stage a cold start, which is the opposite of a ladder |
 | **the machine** | ranks, threads, wall time, GPU | no | how fast it runs says nothing about whether the answer may be continued |
-
-So the label is `experiment` + a fingerprint of the first two tiers:
-
-```
-   run.label = "bdt_au_a41f"
-                └──┬───┘ └┬─┘
-                   │      the system + electronic description, hashed
-                   the experiment name, so a human can read it
-```
 
 Change the tolerance, the mesh or the number of ranks and the label holds — the
 next stage resumes, which is what a ladder is. Change an atom, the basis, the
@@ -342,20 +352,21 @@ decides whether their run resumes. So the tab shows both, always:
 
 ```
    ┌────────────────────────────────────────────────────────────┐
-   │  Job ID     bdt-au-relax-20260806-221403                   │
-   │  Warm key   bdt_au_a41f    ← changes if you edit the       │
-   │                              structure, basis, spin or XC   │
+   │  Job ID   bdt_au_relax_a41f9c                              │
+   │           the pin changes if you edit the structure, the    │
+   │           basis, the spin or the functional — and then a    │
+   │           run starts cold, because it is a different one    │
    └────────────────────────────────────────────────────────────┘
 ```
 
 Two behaviours that make it worth showing rather than merely correct:
 
-- **When an identity-bearing field is edited, the warm key visibly changes**, at
-  the moment of the edit. That is the UI saying *this has become a different
+- **When an identity-bearing field is edited, the pin visibly changes**, at the
+  moment of the edit. That is the UI saying *this has become a different
   calculation and it will start cold* — before a bundle is written, not after a
   run behaves oddly.
 - **When a run directory already holds warm files**, the tab can say whether
-  they match the current key: *"prior state found for this key — the next run
+  they match the current id: *"prior state found for this key — the next run
   resumes"*, or *"prior state found, but from a different calculation"*. That is
   the same sentence the wrapper's banner prints, moved to where the decision is
   actually being made.
@@ -450,23 +461,27 @@ user needs.
 
 1. **Does a stage's override of a `budget` field also change the wrapper it gets
    installed with**, or only the scheduler request?
-2. **Is `run.label` the user's to edit?** Deriving it makes it consistent;
+2. **Is the user's half of the id editable after the fact?** Renaming it changes
+   the id and so orphans the warm files, which is right in principle and will
+   surprise someone who meant only to fix a typo. Deriving it makes it consistent;
    letting it be typed keeps a door open to deliberately resuming from an
    unrelated run's state, which is occasionally what a person wants and is
    otherwise impossible to ask for.
-3. **Does the XC functional belong in the identity (§ 6.1)?** A `.DM` from
+3. **How long is the pin?** Four hex characters read easily and collide once in
+   65,000; six is safer and uglier. It only has to be unique within a directory.
+4. **Does the XC functional belong in the identity (§ 6.1)?** A `.DM` from
    another functional is the right *shape* and the wrong *physics* — usable as a
    guess, wrong as a continuation. Included here on the grounds that continuing a
    relaxation across a functional change silently is a scientific error, but this
    is a call for someone who does it.
-4. **What exactly is hashed for the system tier** — coordinates to full
+5. **What exactly is hashed for the system tier** — coordinates to full
    precision, or a rounded form? Full precision means a geometry nudged by
    10⁻⁶ Å is a different calculation, which is right in principle and may be
    maddening in practice.
-5. **Is a plan editable by hand?** It is JSON beside a bundle, so it will be. If
+6. **Is a plan editable by hand?** It is JSON beside a bundle, so it will be. If
    yes, the reader owes the same errors to a person as to the browser — which is
    an argument for the refusal rule in § 5.1 being loud rather than tolerant.
-6. **How strict is the engine-version check?** § 5.3 refuses on mismatch, which
+7. **How strict is the engine-version check?** § 5.3 refuses on mismatch, which
    is right for a major change and heavy-handed for a patch release. A range, or
    a "warn below, refuse across major", needs deciding by someone who knows what
    SIESTA changes between versions.
