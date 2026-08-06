@@ -729,13 +729,34 @@ class TestSpectraDisposeContract:
                 "VibrationView mode viewer (state.vib — the concealed "
                 "normal-mode animation package owns the vibration rAF "
                 "+ the 3Dmol canvas; vibrationview.md)"),
-            ("Plotly.purge(els.spectrumChart)",
-                "Plotly spectrum chart"),
+            ("Plotly.purge(",
+                "the Plotly charts"),
+            ("els.spectrumChart",
+                "the spectrum chart, by name, in the teardown"),
+            ("els.esBarDiagram",
+                "the electronic-structure level diagram, by name, in the "
+                "teardown (it became a second Plotly figure on 2026-08-05 "
+                "so its zoom/pan could come from the chart library rather "
+                "than from hand-rolled SVG)"),
+            (".disconnect()",
+                "the ResizeObserver each chart installs to follow its own "
+                "box (window-level `responsive` does not see a container "
+                "query flip or a sidebar collapse)"),
         ):
             assert needle in body, (
                 f"dispose() does not tear down {what} — searched for "
                 f"{needle!r} in the dispose body"
             )
+
+        # PINNED AS A SET, NOT AS CALL SITES.  This assertion used to name the
+        # exact string ``Plotly.purge(els.spectrumChart)``, which failed the day
+        # the two charts were torn down by one loop over both -- a strictly
+        # better teardown that the test called a regression.  What the contract
+        # actually owes is that every chart the mount created is purged, so what
+        # is pinned now is the pair of names and the call, not the syntax that
+        # joins them.
+        assert body.count("Plotly.purge(") >= 1, (
+            "dispose() must purge the Plotly figures it created")
 
     def test_all_element_listeners_route_through_on_helper(
             self, web_client):
@@ -970,16 +991,81 @@ class TestSpectraPartialHasNoDeadControls:
             "partial -- markup regex may be broken or the partial "
             "lost all controls (a regression bigger than this test)"
         )
-        orphans = []
-        for tag, ident in ids:
+        def _wired(ident):
             patterns = (
                 rf'\$\("{re.escape(ident)}"\)',
                 rf'getElementById\("{re.escape(ident)}"\)',
                 rf'querySelector\("#{re.escape(ident)}"\)',
                 rf'\bbuttonId:\s*"{re.escape(ident)}"',
             )
-            if not any(re.search(p, wired_sources) for p in patterns):
-                orphans.append(f"<{tag} id={ident!r}>")
+            return any(re.search(p, wired_sources) for p in patterns)
+
+        def _listens(ident):
+            """Does anything actually LISTEN on this element?
+
+            Not the same question as `_wired`, and the difference matters: an id
+            can be looked up to set `.hidden` or write text into, which is not a
+            listener and cannot give a descendant button behaviour.  Accepting a
+            mere lookup would let a dead control pass simply by sitting inside a
+            panel someone shows and hides -- `#es-panel` is exactly that, and it
+            wraps controls.
+            """
+            camel = re.sub(r"-(\w)", lambda m: m.group(1).upper(), ident)
+            patterns = (
+                rf'_on\(\s*els\.{re.escape(camel)}\b',
+                rf'_on\(\s*\$\("{re.escape(ident)}"\)',
+                rf'getElementById\("{re.escape(ident)}"\)\s*\.addEventListener',
+                rf'querySelector\("#{re.escape(ident)}"\)\s*\.addEventListener',
+            )
+            return any(re.search(p, wired_sources) for p in patterns)
+
+        def _delegating_ancestor(ident):
+            """The id of the nearest ancestor that is itself wired, if any.
+
+            EVENT DELEGATION IS WIRING.  A group of static sibling controls --
+            the three mode tabs, a toolbar, a set of radio chips -- is better
+            served by ONE listener on their container than by one listener each:
+            fewer registrations to tear down, and a control added later is live
+            without touching the wiring.  A test that only recognises
+            per-element binding would push every such group back to N listeners
+            purely to stay green, which is the test dictating the design.
+
+            So walk outwards from the control to the enclosing element ids and
+            ask whether any of THEM is wired.  A control inside a wired
+            container is a control with behaviour.
+            """
+            idx = partial.find(f'id="{ident}"')
+            if idx == -1:
+                return None
+            before = partial[:idx]
+            # Ancestors = tags opened before this point and not yet closed.
+            depth = {}
+            stack = []
+            for m in re.finditer(r'<(/?)(\w+)([^>]*)>', before):
+                closing, tag, attrs = m.group(1), m.group(2).lower(), m.group(3)
+                if tag in ("br", "img", "input", "meta", "link", "hr"):
+                    continue
+                if closing:
+                    for i in range(len(stack) - 1, -1, -1):
+                        if stack[i][0] == tag:
+                            del stack[i:]
+                            break
+                else:
+                    anc = re.search(r'id="([^"]+)"', attrs)
+                    stack.append((tag, anc.group(1) if anc else None))
+            for _tag, anc_id in reversed(stack):
+                if anc_id and _listens(anc_id):
+                    return anc_id
+            return None
+
+        orphans = []
+        for tag, ident in ids:
+            if _wired(ident):
+                continue
+            via = _delegating_ancestor(ident)
+            if via:
+                continue
+            orphans.append(f"<{tag} id={ident!r}>")
         assert not orphans, (
             "Interactive element(s) in the spectra inspector "
             "partial have NO handler binding in any loaded JS "
@@ -990,7 +1076,10 @@ class TestSpectraPartialHasNoDeadControls:
             "visual marker), drop the id.  If it's supposed to be "
             "wired, add the handler -- this is the class of bug "
             "where the wiring file was deleted but the markup "
-            "survived (today's #load-from-selection-btn case)."
+            "survived (today's #load-from-selection-btn case).\n\n"
+            "A control inside a container whose own id IS wired counts as "
+            "wired -- that is event delegation, and the three mode-detail "
+            "tabs use it (one listener on #mode-tabs)."
         )
 
 

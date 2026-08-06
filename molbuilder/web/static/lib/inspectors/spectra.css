@@ -17,11 +17,17 @@
 
 /* ---- Card / section model ----
  *
- * A `.card` is the column container; inside it, `.card-section`
- * blocks separate concerns (Structure, Parameters, Generate;
- * Issues, Generated script, Load, Results).  Sections use
+ * A `.card` is the column container; inside it,
+`.card-section`
+ * blocks separate concerns (Structure,
+Parameters,
+Generate;
+ * Issues,
+Generated script,
+Load,
+Results).  Sections use
  * consistent vertical rhythm (1.4rem gap between sections,
- * 0.7rem inside).
+* 0.7rem inside).
  */
 .card-section {
     padding: 0.8rem 0;
@@ -30,11 +36,13 @@
     border-top: 1px solid var(--border-soft);
 }
 .card-section:first-of-type { padding-top: 0.4rem; }
-.card-section:last-of-type  { padding-bottom: 0; }
+.card-section:last-of-type { padding-bottom: 0; }
 
-/* Section headers: consistent layout, one source of truth.
+/* Section headers: consistent layout,
+one source of truth.
  * Step-numbered for the left column (Structure / Parameters /
- * Generate), plain for the right column. */
+ * Generate),
+plain for the right column. */
 .section-header {
     display: flex;
     align-items: baseline;
@@ -58,7 +66,8 @@
     font-size: 0.82rem;
     color: var(--text-secondary);
 }
-/* Subsection heading inside a section (e.g. "Spectrum", "Modes"
+/* Subsection heading inside a section (e.g. "Spectrum",
+"Modes"
  * inside the Results section). */
 .subsection-h {
     margin: 1.1rem 0 0.5rem;
@@ -133,39 +142,32 @@
     min-width: 200px;
 }
 
-/* ---- The spectrum and the mode, side by side ---- */
-
-/* A CONTAINER query, not a page-width one.  This partial is mounted into the
-   /results inspector panel as well as onto its own page, and the sidebar
-   collapses -- so what decides the layout is how wide THIS box is, which a
-   media query cannot see. */
-.spectrum-and-mode {
-    container-type: inline-size;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);   /* stacked, until there is room */
-    gap: 0.7rem;
-    align-items: start;
-    margin: 0 0 0.6rem;
-}
-
-@container (min-width: 46rem) {
-    /* The chart gets the larger share: it carries every mode at once, while the
-       viewer shows one molecule and reads fine small. */
-    .spectrum-and-mode { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
-}
-
-.spectrum-pane { min-width: 0; }   /* let the grid shrink it; Plotly follows */
+/* ---- The spectrum,
+and the three views under it ----
+ *
+ * The chart used to share its row with the mode viewer (`.spectrum-and-mode`,
+* a two-column grid with a `.spectrum-pane`).  Both are gone: the three views
+ * of a selected mode are tabs below the full-width chart now,
+so there is no
+ * split to lay out and no pane to hold one side of it.  Their rules went with
+ * the markup rather than staying behind as selectors nothing can match. */
 
 .spectrum-chart {
     width: 100%;
     /* Scales with the box instead of sitting at one fixed height: tall enough
        to read on a wide screen, never taller than the viewport beside it. */
     height: clamp(240px, 34vh, 420px);
-    margin: 0 0 0.4rem;
+    margin: 0 0 var(--space-xs);
     background: var(--bg-card);
     border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    padding: 4px;
+    border-radius: var(--radius);
+    /* NO PADDING -- the same trap the level diagram fell into.  Plotly sizes
+       itself from the container's clientWidth, and clientWidth INCLUDES padding,
+       so every pixel of padding here is a pixel the chart draws past its own
+       right edge: the plot sits slightly wider than the frame around it.  The
+       plot's own margins already keep the axis labels off the border. */
+    padding: 0;
+    overflow: hidden;
 }
 .spectrum-chart:empty { height: 0; min-height: 0; padding: 0; border: 0; }
 /* ---- Modes table ---- */
@@ -183,7 +185,9 @@
 }
 
 .modes-table-wrap {
-    max-height: 360px;
+    /* Taller than the 360px it had as one band among several: it owns a tab
+       now, so the useful limit is the viewport rather than a share of a page. */
+    max-height: clamp(320px, 55vh, 760px);
     overflow: auto;
     border: 1px solid var(--border-soft);
     border-radius: 6px;
@@ -234,117 +238,122 @@
     outline-offset: -1px;
 }
 .modes-table tbody tr.mode-imag td:nth-child(2) { color: var(--ps-danger-fg); }
-/* ---- Mode-animation viewer (§ 9.2.3) ----
+/* ---- The mode viewer,
+in its own tab ----
  *
- * 3Dmol.js renders the equilibrium structure inside #mode-viewer;
- * the JS animates the selected mode's eigenvector sinusoidally.
- * The viewer is hidden until a mode is selected AND the geometry
- * is available. */
-/* ---- The mode viewer, as a card beside the chart ---- */
-
-/* It used to be a full-width band under the modes table, separated by a rule.
-   Beside the chart it is a card in its own right, so it carries a border rather
-   than a divider -- and it must be allowed to shrink, or the grid column it
-   sits in will refuse to narrow past its contents. */
-.mode-viewer-wrap {
-    min-width: 0;
-    padding: 0.5rem 0.6rem 0.6rem;
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: 6px;
-}
+ * VibrationView renders the equilibrium structure inside #mode-viewer and
+ * animates the selected mode; this sheet owns only the BOX it is given
+ * (vibrationview.md § 13) -- the module styles everything inside it.
+ *
+ * It has been three things: a full-width band under the modes table,
+then a
+ * bordered card beside the chart,
+now one of three tabs under it.  Each move
+ * left chrome behind that the next layout did not need -- the divider,
+then the
+ * card border -- which is why what is left here is almost nothing.
+ *
+ * ONE STEP DOWN THE TYPE SCALE,
+deliberately: this is a dense instrument panel,
+* not body copy,
+so its chrome sits at --text-2xs where the page reads at
+ * --text-base.  The sizes are token steps,
+not hand-picked decimals. */
+/* NO CARD CHROME.  A border,
+a background and a padding made this a card when
+   it sat inside the results section beside the chart.  It fills a tab panel
+   now,
+and a card drawn just inside a panel is a box around a box -- the 3-D
+   window below carries its own ground and its own edge,
+which is the boundary
+   that means something. */
+.mode-viewer-wrap { min-width: 0; }
 .mode-viewer-wrap[hidden] { display: none; }
 
-.mode-viewer-wrap > .section-header {
-    margin: 0 0 0.4rem;
-    gap: 0.5rem;
-}
-.mode-viewer-wrap > .section-header h3 { font-size: 0.9rem; margin: 0; }
-
-/* The sentence under the 3-D view: which elements carry the mode, how far
-   anything moves, and whether that size is real (spectra.md § 4.2).  A full line
-   of its own, because it IS a sentence -- in the header beside the title it was
-   squeezed to a fragment.  The margin shorthand also
-   clears the 4px left indent page-shell gives an inline `.status` -- that indent
-   is for a status trailing a button, not for a paragraph. */
+/* The sentence under the 3-D view: which elements carry the mode,
+how far
+   anything moves,
+and whether that size is real (spectra.md § 4.2).  A full line
+   of its own,
+because it IS a sentence -- in the header beside the title it was
+   squeezed to a fragment.  The margin shorthand also clears the left indent
+   page-shell gives an inline `.status`; that indent is for a status trailing a
+   button,
+not for a paragraph. */
 .mode-viewer-wrap .viewer-readout {
-    margin: 0.35rem 0 0;
-    font-size: 0.7rem;
-    line-height: 1.45;
+    margin: var(--space-xs) 0 0;
+    font-size: var(--text-2xs);
+    line-height: var(--line-snug);
 }
 
-/* COMPACT, so the controls read as part of the 3-D view rather than as a form
-   stacked on top of one.  Every size here is deliberately below the page's
-   default: this is a dense instrument panel, not body copy. */
+/* COMPACT,
+so the controls read as part of the 3-D view rather than as a form
+   stacked on top of one. */
 .mode-viewer-wrap .viewer-controls {
-    gap: 0.35rem 0.6rem;
-    margin: 0.3rem 0;
-    font-size: 0.72rem;
+    gap: var(--space-xs) var(--space-sm);
+    margin: var(--space-xs) 0;
+    font-size: var(--text-2xs);
 }
-.mode-viewer-wrap .viewer-controls .inline-label { gap: 0.3rem; }
+.mode-viewer-wrap .viewer-controls .inline-label { gap: var(--space-xs); }
 .mode-viewer-wrap .viewer-controls select,
 .mode-viewer-wrap .viewer-controls input[type="number"],
-.mode-viewer-wrap .viewer-controls input[type="text"] {
-    font-size: 0.72rem;
-    padding: 0.1rem 0.25rem;
-    line-height: 1.3;
+.mode-viewer-wrap .viewer-controls input[type="text"],
+.mode-viewer-wrap .viewer-controls button {
+    font-size: var(--text-2xs);
+    padding: 2px var(--space-xs);
+    line-height: var(--line-tight);
 }
 .mode-viewer-wrap .viewer-controls input[type="range"] { width: 6.5rem; }
-.mode-viewer-wrap .viewer-controls button {
-    font-size: 0.72rem;
-    padding: 0.15rem 0.5rem;
-    line-height: 1.3;
-}
-.mode-viewer-wrap .viewer-controls .unit { font-size: 0.7rem; }
-
-/* The hint is reference material, not a control: available on request, and
-   silent until then, so it never competes with the instrument above it.  Closed
-   it costs one line; open it explains what the amplitude choices mean. */
-.mode-viewer-wrap .viewer-hint {
-    font-size: 0.68rem;
-    line-height: 1.4;
-    margin: 0.4rem 0 0;
-    opacity: 0.75;
-}
+.mode-viewer-wrap .viewer-controls .unit { font-size: var(--text-2xs); }
 
 .amplitude-help {
-    margin: 0.4rem 0 0;
-    font-size: 0.68rem;
-    line-height: 1.45;
+    margin: var(--space-xs) 0 0;
+    font-size: var(--text-2xs);
+    line-height: var(--line-snug);
     color: var(--text-secondary);
 }
 .amplitude-help > summary {
     cursor: pointer;
-    padding: 0.15rem 0;
-    color: var(--text-secondary);
-    opacity: 0.85;
+    padding: 2px 0;
+    color: var(--text-muted);
 }
-.amplitude-help > summary:hover { opacity: 1; }
-.amplitude-help[open] > summary { margin-bottom: 0.3rem; }
+.amplitude-help > summary:hover { color: var(--text-secondary); }
+.amplitude-help[open] > summary { margin-bottom: var(--space-xs); }
 
-.amplitude-help-body p { margin: 0 0 0.45rem; }
-.amplitude-help-note { opacity: 0.8; }
+.amplitude-help-body p { margin: 0 0 var(--space-xs); }
+.amplitude-help-note { color: var(--text-muted); }
 
-/* NO RULES FOR TABLES OR CODE HERE ANY MORE, and that absence is the point: the
-   derivation, its constants and its tables of numbers live in docs/web/spectra.md
-   § 4.1, which the help links.  A panel this narrow could show a five-column
-   table of frequencies only by wrapping it into unreadability, and the same
+/* NO RULES FOR TABLES OR CODE HERE ANY MORE,
+and that absence is the point: the
+   derivation,
+its constants and its tables of numbers live in docs/web/spectra.md
+   § 4.1,
+which the help links.  A panel this narrow could show a five-column
+   table of frequencies only by wrapping it into unreadability,
+and the same
    sentence written in two places drifts.  The panel says what the three choices
-   mean; the doc says why, once. */
+   mean; the doc says why,
+once. */
 /* The BOX the mode viewer is given — its size and where it sits on the page,
- * which is all a host decides (vibrationview.md § 13).  What is inside it, its
- * ground and how its canvas is positioned, belongs to the module and is declared
- * module's own sheet, which the module links itself.
+* which is all a host decides (vibrationview.md § 13).  What is inside it,
+its
+ * ground and how its canvas is positioned,
+belongs to the module and is declared
+ * module's own sheet,
+which the module links itself.
  *
- * Two rules used to live here that did not belong: a `background`, which fought
+ * Two rules used to live here that did not belong: a `background`,
+which fought
  * the module's own scene ground on the same element and won or lost by load
  * order; and a `position: relative` carrying a comment about how the 3-D drawing
  * library lays out its canvas.  A page sheet knowing that is the seal leaking
  * into another language. */
 /* The BOX the module is given.  Smaller than it was: one molecule needs a
-   fraction of the width the full-page band used to take, and the height now
+   fraction of the width the full-page band used to take,
+and the height now
    tracks the box so the card stays square-ish beside a chart of the same
-   height (vibrationview.md § 13 -- the host sizes it, the module fills it). */
+   height (vibrationview.md § 13 -- the host sizes it,
+the module fills it). */
 .mode-viewer {
     width: 100%;
     height: clamp(200px, 26vh, 320px);
@@ -361,10 +370,12 @@
     font-size: 0.85rem;
 }
 /* A class that sets `display` ties with the browser's own
-   `[hidden] { display: none }` on specificity and wins on source order, so
+   `[hidden] { display: none }` on specificity and wins on source order,
+so
    `element.hidden = true` stops hiding anything -- the control stays in the
    layout as a ghost.  The Temperature row is toggled exactly that way (it
-   belongs to the thermal amplitude only), and it sat visible under
+   belongs to the thermal amplitude only),
+and it sat visible under
    "exaggerated" until this guard existed.  docs/process/code-audit.md. */
 .viewer-controls .inline-label[hidden] { display: none; }
 .viewer-controls .inline-label {
@@ -376,38 +387,164 @@
 .viewer-controls input[type="range"] {
     width: 9rem;
 }
-.viewer-hint {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    opacity: 0.85;
-    margin: 0.4rem 0 0;
-}
-/* ---- Electronic-structure panel (§ 9.2.4) ---- */
-
+/* ---- Electronic structure: the level diagram and its numbers ----
+ *
+ * ONE FIGURE,
+TWO HALVES.  The diagram shows the SHAPE of the change -- which
+ * way the frontier levels move as the molecule is pushed along the mode -- and
+ * the numbers give it MAGNITUDE.  They were stacked,
+so reading "the gap opens
+ * by 12 meV" meant scrolling away from the picture that showed it opening.
+ * Side by side they are one act of reading.
+ *
+ * Every length and colour below comes from lib/tokens.css.  The two exceptions
+ * are named here as this component's own tokens,
+because they are facts about
+ * THIS figure that the global scale has no opinion on. */
 .es-panel {
-    margin-top: 1.1rem;
-    padding-top: 0.9rem;
-    border-top: 1px solid var(--border-soft);
+    /* How narrow the numbers may get before wrapping inside their own rows --
+       set by the longest row: a label, a four-decimal value and a unit. */
+    --es-numbers-min: 11rem;
+
+    /* NO TOP RULE, NO TOP MARGIN.  Both were here to separate this panel from
+       the modes table that used to sit above it.  Inside its own tab there is
+       nothing above it to separate from, so the line drew a boundary around
+       nothing -- residue of the layout it was written for. */
 }
+
+.es-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);   /* stacked, until there is room */
+    gap: var(--space-sm);
+    align-items: start;
+    margin-top: var(--space-sm);
+}
+
+/* Queries `.results-summary` (declared above): the diagram stops being readable
+   below roughly 22rem and the numbers below --es-numbers-min,
+so 40rem is where
+   the two together stop fitting -- not a round number picked for looks.  A
+   container query condition cannot read a custom property,
+which is why this
+   one threshold is written out.
+   The figure takes what is left AFTER the numbers,
+rather than a share of the
+   whole: three columns of levels do not get more readable with more width,
+so
+   growing the box should not grow the plot without limit. */
+@container (min-width: 40rem) {
+    /* The figure takes everything the numbers do not.  It was capped,
+from when
+       it sat in a narrow column beside other things; in its own tab a cap just
+       leaves a hole to the right of the panel. */
+    .es-body {
+        grid-template-columns:
+            minmax(0, 1fr) minmax(var(--es-numbers-min), max-content);
+    }
+}
+
 .es-bar-diagram {
+    min-width: 0;
+    /* THE BOX MUST STATE ITS HEIGHT, and this is not a style choice.
+     *
+     * Each chart watches its own box and calls Plotly.Plots.resize, which sizes
+     * the plot FROM the container.  With height:auto the container's height is
+     * whatever the plot draws, so the first resize measured a box whose height
+     * came from a plot that was about to be resized to it: the two collapsed
+     * onto each other and left a 10px strip -- the padding and borders alone --
+     * with the plot's SVG overflowing across the numbers panel beside it.
+     *
+     * So the box leads and the plot follows.  Same rule as .spectrum-chart
+     * above, which has always carried an explicit height for the same reason.
+     * Shorter than the spectrum: this figure is three columns of levels, not a
+     * whole spectrum, and it sits beside a panel it should not tower over. */
+    height: clamp(220px, 34vh, 460px);
     background: var(--bg-card);
     border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    padding: 4px;
-    margin: 0.5rem 0;
+    border-radius: var(--radius);
+    /* NO PADDING.  Plotly sizes itself from the container's clientWidth, which
+       INCLUDES padding -- so every pixel of padding here is a pixel the figure
+       draws past its own right edge.  The plot's own margins already keep the
+       axis labels off the border, so the box gives it the whole content area. */
+    padding: 0;
+    /* A figure mid-resize must never paint over its neighbour. */
+    overflow: hidden;
 }
-.es-bar-diagram svg { display: block; max-width: 100%; }
-.es-bar-diagram p.status { padding: 0.8rem; }
+/* Plotly sizes its own <svg> and re-sizes it through Plotly.Plots.resize when
+   the box changes (core.js _watchChartWidth).  A width rule here would fight
+   that,
+so the sheet owns the BOX and the library owns what is inside it. */
+.es-bar-diagram p.status { padding: var(--space-md); margin: 0; }
+
+/* NO INK RULES HERE,
+and the absence is the record of a decision.
+ *
+ * This sheet used to colour a hand-rolled SVG level diagram: an axis,
+ticks,
+* level dashes and tie lines,
+each a class the renderer emitted.  The figure is
+ * now drawn by Plotly -- the same library as the spectrum above it -- because
+ * the shifts it exists to show are meV against an eV scale and cannot be seen
+ * without zoom,
+pan and a reset,
+all of which that library already has.
+ *
+ * Plotly takes colours as JavaScript values rather than inheriting CSS,
+so the
+ * palette moved to `chartTheme()` in lib/spectra/core.js,
+which READS these same
+ * tokens off the document.  The tokens are still the one source of truth; what
+ * changed is who asks them.  Leaving the old rules here would have been styling
+ * for markup nothing emits any more. */
+
+/* ---- The numbers beside it ---- */
+
+.es-numbers {
+    min-width: 0;
+    padding: var(--space-sm);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+}
+/* Each group says what it is; the panel needs no heading of its own. */
+.es-group-title {
+    margin: 0 0 var(--space-xs);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
 
 .es-summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: var(--line-snug);
+}
+
+
+
+/* label | value | unit -- three columns so the numbers form a straight edge and
+   the units line up beside them,
+instead of "-6.1234 eV" being one blob whose
+   digits never align between rows. */
+.es-group dl {
     display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 0.25rem 1rem;
-    font-size: 0.88rem;
+    grid-template-columns: 1fr max-content max-content;
+    gap: 2px var(--space-sm);
     margin: 0;
 }
-.es-summary dt { color: var(--text-secondary); }
-.es-summary dd { margin: 0; font-variant-numeric: tabular-nums; }
+.es-group dt { color: var(--text-secondary); white-space: nowrap; }
+.es-group dd { margin: 0; }
+.es-group .es-val {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+}
+.es-group .es-unit { color: var(--text-muted); }
 /* ---- Live-watch phase indicator ----
  *
  * Three chips that visualize the per-phase state (empty / running /
@@ -427,7 +564,8 @@
 }
 /* 2026-05-28 [hidden]-attribute audit: ``display: flex`` above ties
  * on specificity with the UA stylesheet's ``[hidden] { display: none
- * }`` rule and wins (author cascade), so #phase-indicator was
+ * }`` rule and wins (author cascade),
+so #phase-indicator was
  * VISIBLE at page load despite ``hidden=`` being set in the
  * template.  Same pattern as .ps-lock-banner.  Explicit guard wins. */
 .phase-indicator[hidden] { display: none; }
@@ -459,6 +597,7 @@
     box-shadow: inset 0 0 0 2px var(--bg-input);
 }
 @keyframes phase-pulse {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0.45; }
+    0%,
+100% { opacity: 1; }
+    50% { opacity: 0.45; }
 }

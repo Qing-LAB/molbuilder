@@ -351,6 +351,66 @@ button:disabled {
 .status.warn  { color: var(--warn-soft); }
 .status.muted { color: var(--text-secondary); opacity: 0.75; }
 
+/* ---- Tabs INSIDE a panel -------------------------------------
+ *
+ * Not the app's top navigation (lib/tabs.css) -- those are links to pages.
+ * These switch which of several views of the SAME data is on screen, without
+ * navigating: the Spectra results panel showing its modes table, its 3-D mode
+ * animation or its electronic structure, all following one selection.
+ *
+ * Declared here rather than in a component sheet because this is the second
+ * instance of the pattern: the Modify tab's init-source strip
+ * (`.modify-init-tab`, modify/style.css) is the same control with its own
+ * copy of the rules.  A third copy would have made it a habit.  Migrating
+ * Modify onto these names belongs to the CSS-system pass, not to the change
+ * that noticed it.
+ *
+ * The markup contract: a `role="tablist"` of `<button role="tab">` carrying
+ * `is-active` + `aria-selected`, and panels with `role="tabpanel"` shown and
+ * hidden through the `hidden` PROPERTY.  Which is why the panel rule below
+ * exists at all -- see the note on it. */
+.panel-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin: var(--space-md) 0 0;
+    border-bottom: 1px solid var(--border-soft);
+}
+.panel-tab {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    padding: var(--space-sm) var(--space-md);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    /* Sit ON the strip's bottom border so the active tab can erase it. */
+    margin-bottom: -1px;
+}
+.panel-tab:hover { color: var(--text-primary); }
+.panel-tab.is-active {
+    color: var(--text-primary);
+    background: var(--bg-card);
+    border-color: var(--border-soft);
+    /* The join: the active tab and its panel are one surface, so the line
+       between them is removed rather than drawn. */
+    border-bottom: 1px solid var(--bg-card);
+}
+.panel-tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.panel-tabpanel { padding-top: var(--space-md); }
+/* THE GUARD.  A class that sets `display` ties with the browser's own
+   `[hidden] { display: none }` and wins on source order, so `el.hidden = true`
+   would stop hiding the panel.  `.panel-tabpanel` sets no display today; this
+   rule is here so that adding one later (a grid, a flex row) cannot silently
+   leave every tab visible at once.  Same guard, same reason, as
+   `.modify-init-panel[hidden]`. */
+.panel-tabpanel[hidden] { display: none; }
+
 /* ---- Accessibility utility ----------------------------------- */
 
 /* Visually-hidden but still announced by screen readers.  Standard

@@ -135,15 +135,88 @@
           The split is a CONTAINER query, not a page-width one: this partial is
           mounted into the /results inspector panel as well as its own page, and
           what matters is how wide THIS box is, not the window. -#}
-      <div class="spectrum-and-mode">
-        <div class="spectrum-pane">
-          <div id="spectrum-chart" class="spectrum-chart"
-               aria-label="Raman spectrum (frequency vs activity)"></div>
+      {#- The spectrum, full width: every mode at once, and the place you
+          pick one from.  It used to share its row with the mode viewer,
+          which took two fifths of the width for one molecule. -#}
+        <div id="spectrum-chart" class="spectrum-chart"
+             aria-label="Raman spectrum (frequency vs activity)"></div>
+
+      {#- ONE SELECTION, THREE VIEWS.
+          The modes table, the 3-D animation and the electronic structure all
+          describe the SAME selected mode, and each used to occupy its own band
+          down the page -- so comparing what a mode looks like against what its
+          levels do meant scrolling between two places.  As tabs directly under
+          the spectrum they share one position on the page and one selection.
+          Clicking a stick never switches tab: it updates all three underneath,
+          and the reader stays where they were looking.
+          Pattern: lib/page-shell.css `.panel-tabs` (see the note there). -#}
+      <nav id="mode-tabs" class="panel-tabs" role="tablist"
+           aria-label="Mode detail views">
+        <button type="button" id="mode-tabbtn-table" class="panel-tab is-active"
+                role="tab" aria-selected="true" aria-controls="mode-tab-table"
+                data-mode-tab="table">Modes table</button>
+        <button type="button" id="mode-tabbtn-viewer" class="panel-tab"
+                role="tab" aria-selected="false" aria-controls="mode-tab-viewer"
+                data-mode-tab="viewer">Mode visualisation</button>
+        <button type="button" id="mode-tabbtn-es" class="panel-tab"
+                role="tab" aria-selected="false" aria-controls="mode-tab-es"
+                data-mode-tab="es">Electronic structure</button>
+      </nav>
+
+      <div id="mode-tab-table" class="panel-tabpanel" role="tabpanel"
+           aria-labelledby="mode-tabbtn-table">
+        <div class="modes-table-controls">
+          <input id="modes-filter" type="text"
+                 placeholder="Filter (matches any visible column)"
+                 aria-controls="modes-table">
+          <button id="modes-csv-btn" type="button">Export CSV</button>
+          <span id="modes-filter-count" class="status muted"></span>
         </div>
+        <div class="modes-table-wrap">
+          <table id="modes-table" class="modes-table" tabindex="0"
+                 aria-label="Vibrational modes (click row to select)">
+            <caption class="sr-only">
+              Vibrational modes table.  Sortable by column header
+              click.  Row click selects the mode and updates the
+              electronic-structure panel below.
+            </caption>
+            <thead>
+              <tr id="modes-thead-row">
+                <th data-col="index_1based"          data-numeric="1">#</th>
+                <th data-col="frequency_cm1"         data-numeric="1">ω (cm⁻¹)</th>
+                <th data-col="raman_activity_a4_amu" data-numeric="1">Raman (Å⁴/amu)</th>
+                <th data-col="has_imag">imag?</th>
+                <th data-col="has_es">ES?</th>
+                <th data-col="homo_eq_ev"   data-numeric="1" class="es-col">HOMO (eV)</th>
+                <th data-col="lumo_eq_ev"   data-numeric="1" class="es-col">LUMO (eV)</th>
+                <th data-col="gap_eq_ev"    data-numeric="1" class="es-col">Gap (eV)</th>
+                <th data-col="dgap_max_mev" data-numeric="1" class="es-col">ΔGap max (meV)</th>
+              </tr>
+            </thead>
+            <tbody id="modes-tbody"></tbody>
+          </table>
+        </div>
+        <!-- 3D structure + per-mode animation.  Visible whenever a
+             mode is selected AND the geometry is available (either
+             from the loaded spectra.json's equilibrium.elements/
+             positions_ang or from the structure text -- XYZ or PDB --
+             pasted in step 1).  -->
+        <!-- ES panel sits inside results-summary so it shares the
+             hidden-until-loaded state.  Internally toggles whether
+             the bar diagram or a "no ES for this mode" placeholder
+             is rendered. -->
+      </div>
+
+      {#- A 3-D canvas and a chart both size themselves from a box, and a box
+          in a hidden panel has no size.  core.js re-fits the viewer and
+          re-sizes the chart when its tab becomes visible (_activateModeTab). -#}
+      <div id="mode-tab-viewer" class="panel-tabpanel" role="tabpanel"
+           aria-labelledby="mode-tabbtn-viewer" hidden>
+        {#- NO HEADING HERE: the tab above is the heading, and which mode is
+            showing is written into the picture itself as its caption.  A card
+            titled "Mode visualisation" under a tab labelled "Mode visualisation"
+            says it twice and shows the molecule less. -#}
         <div id="mode-viewer-wrap" class="mode-viewer-wrap" hidden>
-          <header class="section-header subsection-h">
-            <h3>Mode visualisation</h3>
-          </header>
           <div class="viewer-controls">
             {#- HOW BIG the motion is, which is two different questions.
 
@@ -217,7 +290,7 @@
               its own line it can name the atom, the distance from rest, the bond
               it is a fraction of, and whether that is real or exaggerated, which
               is what the number is FOR.  Written by _reportSwing in
-              lib/spectra/core.js; the science is docs/web/spectra.md § 4.1. -#}
+              lib/spectra/core.js; the science is docs/web/spectra.md § 4.2. -#}
           <p id="viewer-status" class="status muted viewer-readout"
              aria-live="polite"></p>
           {#- Getting the animation out.  The three formats are not
@@ -289,57 +362,28 @@
         </div>
       </div>
 
-      <h3 class="subsection-h">Modes</h3>
-      <div class="modes-table-controls">
-        <input id="modes-filter" type="text"
-               placeholder="Filter (matches any visible column)"
-               aria-controls="modes-table">
-        <button id="modes-csv-btn" type="button">Export CSV</button>
-        <span id="modes-filter-count" class="status muted"></span>
-      </div>
-      <div class="modes-table-wrap">
-        <table id="modes-table" class="modes-table" tabindex="0"
-               aria-label="Vibrational modes (click row to select)">
-          <caption class="sr-only">
-            Vibrational modes table.  Sortable by column header
-            click.  Row click selects the mode and updates the
-            electronic-structure panel below.
-          </caption>
-          <thead>
-            <tr id="modes-thead-row">
-              <th data-col="index_1based"          data-numeric="1">#</th>
-              <th data-col="frequency_cm1"         data-numeric="1">ω (cm⁻¹)</th>
-              <th data-col="raman_activity_a4_amu" data-numeric="1">Raman (Å⁴/amu)</th>
-              <th data-col="has_imag">imag?</th>
-              <th data-col="has_es">ES?</th>
-              <th data-col="homo_eq_ev"   data-numeric="1" class="es-col">HOMO (eV)</th>
-              <th data-col="lumo_eq_ev"   data-numeric="1" class="es-col">LUMO (eV)</th>
-              <th data-col="gap_eq_ev"    data-numeric="1" class="es-col">Gap (eV)</th>
-              <th data-col="dgap_max_mev" data-numeric="1" class="es-col">ΔGap max (meV)</th>
-            </tr>
-          </thead>
-          <tbody id="modes-tbody"></tbody>
-        </table>
-      </div>
-
-      <!-- 3D structure + per-mode animation.  Visible whenever a
-           mode is selected AND the geometry is available (either
-           from the loaded spectra.json's equilibrium.elements/
-           positions_ang or from the structure text -- XYZ or PDB --
-           pasted in step 1).  -->
-
-      <!-- ES panel sits inside results-summary so it shares the
-           hidden-until-loaded state.  Internally toggles whether
-           the bar diagram or a "no ES for this mode" placeholder
-           is rendered. -->
-      <div id="es-panel" class="es-panel" hidden>
-        <header class="section-header subsection-h">
-          <h3>Electronic structure (mode <span id="es-mode-idx">?</span>)</h3>
-          <span id="es-mode-freq" class="status muted"></span>
-        </header>
-        <div id="es-bar-diagram" class="es-bar-diagram"
-             aria-label="MO energies at -A / 0 / +A for the selected mode">
+      <div id="mode-tab-es" class="panel-tabpanel" role="tabpanel"
+           aria-labelledby="mode-tabbtn-es" hidden>
+        <div id="es-panel" class="es-panel" hidden>
+          <header class="section-header subsection-h">
+            <h3>Mode <span id="es-mode-idx">?</span></h3>
+            <span id="es-mode-freq" class="status muted"></span>
+          </header>
+          {#- THE PICTURE AND ITS NUMBERS, side by side.  Stacked, "the gap opens
+              by 12 meV" sat a scroll away from the diagram showing it open.
+              One figure, two halves. -#}
+          <div class="es-body">
+            <div id="es-bar-diagram" class="es-bar-diagram"
+                 aria-label="Molecular-orbital energies at -A, equilibrium and +A
+                             for the selected mode. Scroll to zoom the energy
+                             axis, drag to pan, double-click to fit."></div>
+            {#- Filled by core.js with three grouped <dl>s (where the levels sit /
+                how the gap moves / coupling), which is why this is a plain
+                container: each group carries its own heading. -#}
+            <div class="es-numbers">
+              <div id="es-summary" class="es-summary"></div>
+            </div>
+          </div>
         </div>
-        <dl id="es-summary" class="es-summary"></dl>
       </div>
     </div>

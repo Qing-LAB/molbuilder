@@ -232,7 +232,9 @@
         // the top level of `state` (not in any bucket) because it's a wrapper-managed
         // external resource.
         vib:            null,
-        chartResizeObserver: null,   // redraws the chart when its BOX changes
+        chartResizeObserver: null,   // redraws the spectrum when its BOX changes
+        esResizeObserver:    null,   // the same, for the level diagram
+        modeTab:             "table", // which of the three views is on screen
         vibMounting:    false,   // one build per mount, not one per mode click
         vibStructure:   null,    // which structure the viewer holds (§ 5.1)
         animPaused:     false,   // the USER's intent, not the viewer's state
@@ -1915,12 +1917,27 @@
         }
         els.esPanel.hidden = false;
         els.esModeIdx.textContent  = String(m.index_1based);
-        els.esModeFreq.textContent =
-            Number(m.frequency_cm1).toFixed(1) + " cm⁻¹"
-            + (m.has_imag ? " (imaginary)" : "");
 
         const es = m.electronic_structure;
+
+        /* THE DISPLACEMENT THE LEVELS WERE COMPUTED AT belongs in the header,
+         * beside the mode it describes.  It was a row in the numbers list, where
+         * it read as a result among results -- it is the INPUT every number
+         * below depends on, and the one the coupling divides by.  Stated here it
+         * labels the whole panel, which is what "±A" in the diagram means. */
+        els.esModeFreq.textContent =
+            Number(m.frequency_cm1).toFixed(1) + " cm⁻¹"
+            + (m.has_imag ? " (imaginary)" : "")
+            + (es ? "  ·  A = " + es.amplitude_ang.toFixed(3) + " Å" : "");
         if (!es) {
+            /* PURGE BEFORE OVERWRITING.  A mode with no electronic structure
+             * replaces the figure with a sentence, and the node may be holding a
+             * Plotly figure from the previously selected mode -- clearing its
+             * innerHTML underneath the library leaves that figure's internal
+             * state attached to a node that no longer contains it. */
+            if (typeof Plotly !== "undefined") {
+                try { Plotly.purge(els.esBarDiagram); } catch (_) {}
+            }
             els.esBarDiagram.innerHTML =
                 '<p class="status muted">'
                 + 'No electronic-structure data for this mode.<br>'
@@ -1945,14 +1962,35 @@
         const pad = (up - lo) * 0.05 || 0.1;
         const yMin = lo - pad, yMax = up + pad;
 
-        els.esBarDiagram.innerHTML = _renderBarDiagramSVG({
+        /* THE FULL RANGE IS THE STARTING VIEW, not the only one: the user zooms
+         * from here.  Re-set on every mode change so switching modes always
+         * lands on the whole picture rather than inside the previous mode's
+         * zoom, which would show a different molecule's window without saying so. */
+        const fig = _renderLevelDiagram({
             minus: minus, eq: eq, plus: plus,
             homo_idx: hi, lumo_idx: li,
-            yMin: yMin, yMax: yMax,
-            amplitude: es.amplitude_ang,
         });
+        fig.layout.yaxis.range = [yMin, yMax];
+        if (typeof Plotly === "undefined") {
+            els.esBarDiagram.innerHTML =
+                '<p class="status muted">chart library unavailable on this page</p>';
+        } else {
+            Plotly.react(els.esBarDiagram, fig.traces, fig.layout, fig.config);
+            _watchChartWidth(els.esBarDiagram, "esResizeObserver");
+        }
 
-        // Summary dict: Gap @ eq / ±A, ΔGap, ES SCF energies.
+        /* THE NUMBERS, GROUPED BY THE QUESTION THEY ANSWER.
+         *
+         * They were ten flat rows in one list, which made the reader do the
+         * sorting: an equilibrium energy, a displaced gap and a coupling
+         * constant sat side by side looking equally important.  Three groups
+         * say what each number is FOR -- where the levels sit, how the gap
+         * moves when the molecule does, and how strongly this mode couples --
+         * and that is the order a reader asks them in.
+         *
+         * Value and unit are separate fields so the stylesheet can right-align
+         * the digits into a column; "−6.1234 eV" as one string cannot line up
+         * with "12.34 meV" below it. */
         const gap_eq    = eq[li]    - eq[hi];
         const gap_plus  = plus[li]  - plus[hi];
         const gap_minus = minus[li] - minus[hi];
@@ -1968,106 +2006,219 @@
         const g_HOMO_mev_A = ((plus[hi] - minus[hi]) / (2 * es.amplitude_ang)) * 1000;
         const g_LUMO_mev_A = ((plus[li] - minus[li]) / (2 * es.amplitude_ang)) * 1000;
 
-        const summary = [
-            ["Amplitude A",            es.amplitude_ang.toFixed(3) + " Å"],
-            ["HOMO @ eq",              eq[hi].toFixed(4)    + " eV"],
-            ["LUMO @ eq",              eq[li].toFixed(4)    + " eV"],
-            ["Gap @ eq",               gap_eq.toFixed(4)    + " eV"],
-            ["Gap @ +A",               gap_plus.toFixed(4)  + " eV"],
-            ["Gap @ −A",               gap_minus.toFixed(4) + " eV"],
-            ["ΔGap (+A)",              dgap_plus_mev.toFixed(2)  + " meV"],
-            ["ΔGap (−A)",              dgap_minus_mev.toFixed(2) + " meV"],
-            ["g_HOMO ≈ ΔE/(2A)",       g_HOMO_mev_A.toFixed(1) + " meV/Å"],
-            ["g_LUMO ≈ ΔE/(2A)",       g_LUMO_mev_A.toFixed(1) + " meV/Å"],
+        const groups = [
+            ["Where the levels sit", [
+                ["HOMO",       eq[hi].toFixed(4),  "eV"],
+                ["LUMO",       eq[li].toFixed(4),  "eV"],
+                ["Gap",        gap_eq.toFixed(4),  "eV"],
+            ]],
+            ["How the gap moves", [
+                ["at −A",      gap_minus.toFixed(4),      "eV"],
+                ["at +A",      gap_plus.toFixed(4),       "eV"],
+                ["change, −A", dgap_minus_mev.toFixed(2), "meV"],
+                ["change, +A", dgap_plus_mev.toFixed(2),  "meV"],
+            ]],
+            ["Coupling, ΔE/(2A)", [
+                ["HOMO",       g_HOMO_mev_A.toFixed(1), "meV/Å"],
+                ["LUMO",       g_LUMO_mev_A.toFixed(1), "meV/Å"],
+            ]],
         ];
-        els.esSummary.innerHTML = summary
-            .map(([k, v]) => "<dt>" + escapeHtml(String(k)) + "</dt>"
-                           + "<dd>" + escapeHtml(String(v)) + "</dd>")
-            .join("");
+
+        els.esSummary.innerHTML = groups.map(([title, rows]) =>
+            '<div class="es-group">'
+            + '<h4 class="es-group-title">' + escapeHtml(title) + "</h4>"
+            + "<dl>"
+            + rows.map(([k, v, u]) =>
+                  "<dt>" + escapeHtml(k) + "</dt>"
+                + '<dd class="es-val">'  + escapeHtml(v) + "</dd>"
+                + '<dd class="es-unit">' + escapeHtml(u) + "</dd>").join("")
+            + "</dl></div>"
+        ).join("");
     }
 
-    function _renderBarDiagramSVG(opts) {
-        // Three columns: -A, 0, +A.  Each column has horizontal
-        // bars for every MO energy.  HOMO/LUMO are coloured;
-        // others are grey lines.
-        const W = 520, H = 220;
-        const margin = { top: 20, right: 16, bottom: 36, left: 56 };
-        const innerW = W - margin.left - margin.right;
-        const innerH = H - margin.top  - margin.bottom;
-        const yScale = (e) =>
-            margin.top + innerH * (1 - (e - opts.yMin) / (opts.yMax - opts.yMin));
+    /* THE CHART PALETTE, READ FROM THE STYLESHEET.
+     *
+     * Plotly takes colours as JavaScript values, so a chart cannot inherit them
+     * the way an element does -- which is how both charts on this tab ended up
+     * carrying their own copies of #1d2128, #2c313a and #cfd3da.  Three
+     * literals, in two places, that a theme change would silently leave behind.
+     *
+     * The tokens are the source of truth (lib/tokens.css), so this asks the
+     * document for their computed values and hands Plotly the answer.  One read,
+     * cached: they cannot change without a reload.
+     */
+    let _theme = null;
+    function chartTheme() {
+        if (_theme) return _theme;
+        const css = getComputedStyle(document.documentElement);
+        const tok = (name, fallback) =>
+            (css.getPropertyValue(name) || "").trim() || fallback;
+        _theme = {
+            paper:  tok("--bg-card",         "#1d2128"),
+            grid:   tok("--border-soft",     "#2c313a"),
+            axis:   tok("--border-strong",   "#3a3f48"),
+            ink:    tok("--text-secondary",  "#a8aebb"),
+            dim:    tok("--text-muted",      "#6c7280"),
+            homo:   tok("--accent",          "#6ba6ff"),
+            lumo:   tok("--warn-soft",       "#d8a64b"),
+            // The spectrum's sticks: a real mode, an imaginary one, the
+            // selected one, and the envelope over them.
+            stick:     tok("--accent-strong", "#4a8de0"),
+            stickImag: tok("--error",         "#f87171"),
+            stickSel:  tok("--warning",       "#fbbf24"),
+            envelope:  tok("--accent-hover",  "#8ab8ff"),
+        };
+        return _theme;
+    }
 
+    /* THE LEVEL DIAGRAM, drawn by the same library as the spectrum above it.
+     *
+     * It was hand-rolled SVG, on the reasoning that a small static picture is
+     * easier to read as markup than a Plotly trace.  That held until the picture
+     * stopped being static: the level shifts this panel exists to show are tiny
+     * -- 0.018 meV against an 11.4 eV span in the BDT result, which is 1/4000 of
+     * a pixel -- so they cannot be seen without zooming, and zoom means pan,
+     * range memory, a reset control and a hover readout.  Writing all four by
+     * hand, next to a chart library already loaded on this very page and already
+     * drawing the spectrum, would be inventing a wheel in view of the wheel.
+     *
+     * WHAT IS FIXED AND WHAT MOVES.  The x axis is three geometries, not a
+     * quantity -- there is nothing between −A and eq -- so it is categorical and
+     * `fixedrange`, and dragging or scrolling only ever moves the ENERGY axis.
+     * That is the one axis worth exploring, and locking the other means a stray
+     * gesture cannot leave the figure in a state that has to be reasoned about.
+     *
+     * ONE TRACE PER ROLE, not per level: a scatter trace draws every segment it
+     * is given if the runs are separated by nulls, so the whole crowd of
+     * occupied levels is one trace, the tie lines another, and HOMO and LUMO
+     * carry their own so the legend can name them.
+     */
+    function _levelSegments(cols, index, centre, half) {
+        // The horizontal dash for one orbital, in each of the three columns.
+        const x = [], y = [];
+        cols.forEach((col, c) => {
+            if (index >= col.arr.length) return;
+            x.push(centre(c) - half, centre(c) + half, null);
+            y.push(col.arr[index],   col.arr[index],   null);
+        });
+        return { x: x, y: y };
+    }
+
+    function _tieSegments(cols, index, centre, half) {
+        // The bridge across each gap, joining one orbital to itself.
+        const x = [], y = [];
+        for (let c = 0; c < cols.length - 1; c++) {
+            if (index >= cols[c].arr.length || index >= cols[c + 1].arr.length) continue;
+            x.push(centre(c) + half, centre(c + 1) - half, null);
+            y.push(cols[c].arr[index], cols[c + 1].arr[index], null);
+        }
+        return { x: x, y: y };
+    }
+
+    function _renderLevelDiagram(opts) {
+        const th = chartTheme();
         const cols = [
-            { label: "−A", x: 0,            arr: opts.minus },
-            { label: "eq", x: innerW / 2,   arr: opts.eq    },
-            { label: "+A", x: innerW,       arr: opts.plus  },
+            { label: "−A", arr: opts.minus },
+            { label: "eq", arr: opts.eq    },
+            { label: "+A", arr: opts.plus  },
         ];
-        const barW = 80;
+        /* The three geometries sit at x = 0, 1, 2 and each level is drawn as a
+         * dash of ±HALF around its column.  HALF under 0.5 is what leaves a gap
+         * between columns for the tie lines to cross -- the columns are as wide
+         * as they are apart, so nothing is spread across empty space. */
+        const HALF   = 0.3;
+        const centre = (c) => c;
 
-        const svgParts = [
-            `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet"`,
-            ` width="100%" role="img" aria-label="MO energy bar diagram">`,
-            // y-axis line
-            `<line x1="${margin.left}" y1="${margin.top}"`,
-            `      x2="${margin.left}" y2="${margin.top + innerH}"`,
-            `      stroke="#3a3f48" />`,
-            `<text x="6" y="${margin.top + innerH / 2}"`,
-            `      transform="rotate(-90 6 ${margin.top + innerH / 2})"`,
-            `      fill="#cfd3da" font-size="11" text-anchor="middle">`,
-            `  Energy (eV)`,
-            `</text>`,
-        ];
+        const nLevels = Math.max(opts.eq.length, opts.minus.length, opts.plus.length);
+        const crowd = { x: [], y: [] }, ties = { x: [], y: [] };
+        const traces = [];
 
-        // y-axis ticks (5 even).
-        for (let i = 0; i <= 5; i++) {
-            const v = opts.yMin + (opts.yMax - opts.yMin) * i / 5;
-            const y = yScale(v);
-            svgParts.push(
-                `<line x1="${margin.left - 4}" y1="${y}"`,
-                `      x2="${margin.left}"     y2="${y}"`,
-                `      stroke="#3a3f48" />`,
-                `<text x="${margin.left - 8}" y="${y + 3}"`,
-                `      fill="#cfd3da" font-size="10" text-anchor="end">`,
-                `  ${v.toFixed(2)}`,
-                `</text>`
-            );
-        }
-
-        for (const col of cols) {
-            const cx = margin.left + col.x;
-            // x-axis label.
-            svgParts.push(
-                `<text x="${cx}" y="${margin.top + innerH + 20}"`,
-                `      fill="#cfd3da" font-size="11" text-anchor="middle">`,
-                `  ${col.label}</text>`
-            );
-            for (let i = 0; i < col.arr.length; i++) {
-                const y = yScale(col.arr[i]);
-                const isHomo = (i === opts.homo_idx);
-                const isLumo = (i === opts.lumo_idx);
-                const color = isHomo ? "#4a90d9"
-                            : isLumo ? "#e0a070"
-                            : "#666";
-                const sw    = (isHomo || isLumo) ? 2.5 : 1;
-                svgParts.push(
-                    `<line x1="${cx - barW / 2}" y1="${y}"`,
-                    `      x2="${cx + barW / 2}" y2="${y}"`,
-                    `      stroke="${color}" stroke-width="${sw}" />`
-                );
+        for (let i = 0; i < nLevels; i++) {
+            const seg = _levelSegments(cols, i, centre, HALF);
+            const tie = _tieSegments(cols, i, centre, HALF);
+            const frontier = (i === opts.homo_idx) ? "homo"
+                           : (i === opts.lumo_idx) ? "lumo" : null;
+            if (!frontier) {
+                crowd.x.push.apply(crowd.x, seg.x); crowd.y.push.apply(crowd.y, seg.y);
+                ties.x.push.apply(ties.x, tie.x);   ties.y.push.apply(ties.y, tie.y);
+                continue;
             }
+            /* TWO TRACES, NOT ONE, and the difference is the whole readability
+             * of the figure.  Drawn at the same weight, a level and its tie line
+             * merge into a single bar spanning the plot -- which is exactly what
+             * a mode with no shift looks like, so the reader cannot tell three
+             * levels joined from one line that never moved.  A thin connector
+             * between thick dashes keeps the three geometries legible, and a
+             * shift then reads as what it is: a sloping link. */
+            const colour = frontier === "homo" ? th.homo : th.lumo;
+            traces.push({
+                type: "scatter", mode: "lines", showlegend: false, hoverinfo: "skip",
+                x: tie.x, y: tie.y,
+                line: { color: colour, width: 1.1 }, opacity: 0.8,
+            });
+            traces.push({
+                type: "scatter", mode: "lines", name: frontier.toUpperCase(),
+                x: seg.x, y: seg.y,
+                line: { color: colour, width: 3 },
+                hovertemplate: frontier.toUpperCase() + ": %{y:.4f} eV<extra></extra>",
+            });
         }
 
-        // Legend.
-        svgParts.push(
-            `<g transform="translate(${margin.left + 12}, ${margin.top - 4})">`,
-            `  <line x1="0" y1="0" x2="14" y2="0" stroke="#4a90d9" stroke-width="2.5" />`,
-            `  <text x="18" y="3" fill="#cfd3da" font-size="10">HOMO</text>`,
-            `  <line x1="58" y1="0" x2="72" y2="0" stroke="#e0a070" stroke-width="2.5" />`,
-            `  <text x="76" y="3" fill="#cfd3da" font-size="10">LUMO</text>`,
-            `</g>`,
-            `</svg>`
+        // Behind the frontier pair: the tie lines, then the levels themselves.
+        traces.unshift(
+            { type: "scatter", mode: "lines", name: "other levels",
+              x: crowd.x, y: crowd.y,
+              line: { color: th.dim, width: 1.3 },
+              hovertemplate: "%{y:.4f} eV<extra></extra>" },
         );
-        return svgParts.join("\n");
+        traces.unshift(
+            { type: "scatter", mode: "lines", showlegend: false, hoverinfo: "skip",
+              x: ties.x, y: ties.y,
+              line: { color: th.axis, width: 1 }, opacity: 0.55 },
+        );
+
+        const layout = {
+            margin: { t: 8, r: 8, b: 30, l: 52 },
+            /* NO `height` HERE.  The box owns the height (spectra.css
+             * .es-bar-diagram) and the plot fills it, so the figure follows the
+             * layout rather than fighting it -- setting both means the CSS box
+             * and the library disagree about how tall the figure is. */
+            xaxis: {
+                // Three geometries, not a continuum: no grid, no zoom, and a
+                // little slack so the outer columns are not clipped.
+                tickmode: "array",
+                tickvals: cols.map((_, c) => centre(c)),
+                ticktext: cols.map(c => c.label),
+                range: [-0.5, cols.length - 0.5],
+                fixedrange: true,
+                zeroline: false, showgrid: false,
+                color: th.ink,
+            },
+            yaxis: {
+                title: { text: "Energy (eV)", font: { size: 11 } },
+                gridcolor: th.grid,
+                zeroline: false,
+                color: th.ink,
+                // THE POINT OF THE REWRITE: this axis is free.  Scroll to zoom,
+                // drag to pan, double-click to come back.
+                fixedrange: false,
+            },
+            plot_bgcolor: th.paper,
+            paper_bgcolor: th.paper,
+            font: { color: th.ink, size: 10 },
+            hovermode: "closest",
+            dragmode: "pan",
+            legend: { orientation: "h", y: 1.14, font: { size: 10 } },
+            showlegend: true,
+        };
+
+        const config = {
+            displaylogo: false,
+            responsive: true,
+            scrollZoom: true,          // wheel over the plot zooms the energy axis
+            modeBarButtonsToRemove: ["select2d", "lasso2d", "zoom2d", "toggleSpikelines"],
+        };
+        return { traces: traces, layout: layout, config: config };
     }
 
     // ----- Mode-animation viewer (§ 9.2.3) ---------------------
@@ -2466,8 +2617,18 @@
      * it was first drawn at and either overflowed its box or left a gap.
      *
      * One observer on the container, redrawing at its new size. */
-    function _watchChartWidth() {
-        if (state.chartResizeObserver || !els.spectrumChart) return;
+    /* Plotly's `responsive: true` listens to the WINDOW, and the window is not
+     * what changes here -- the sidebar collapses, the inspector panel resizes,
+     * the container query flips the layout, and the window never moves.  So each
+     * chart watches its own box.
+     *
+     * Takes the element and where to remember its observer, because there are
+     * two charts on this tab now: the spectrum and the level diagram.  One
+     * observer each, installed once. */
+    function _watchChartWidth(el, stateKey) {
+        const key = stateKey || "chartResizeObserver";
+        const node = el || els.spectrumChart;
+        if (state[key] || !node) return;
         if (typeof ResizeObserver === "undefined") return;
         let last = 0;
         const obs = new ResizeObserver(function (entries) {
@@ -2475,10 +2636,10 @@
             if (!w || Math.abs(w - last) < 1) return;   // ignore sub-pixel noise
             last = w;
             if (typeof Plotly === "undefined") return;
-            try { Plotly.Plots.resize(els.spectrumChart); } catch (_) {}
+            try { Plotly.Plots.resize(node); } catch (_) {}
         });
-        obs.observe(els.spectrumChart);
-        state.chartResizeObserver = obs;
+        obs.observe(node);
+        state[key] = obs;
     }
 
     /* ── Saving the animation (vibrationview.md § 12) ───────────────────────
@@ -2659,6 +2820,55 @@
         els.viewerStatus.title = why;
     }
 
+    /* THE THREE VIEWS OF ONE SELECTION.
+     *
+     * The modes table, the mode animation and the electronic structure all
+     * describe the same selected mode.  They used to be three bands stacked down
+     * the page, so comparing a mode's motion against its level shifts meant
+     * scrolling between two places and holding one in memory.  As tabs they
+     * share one position, and the selection is what moves.
+     *
+     * SELECTING A MODE DOES NOT SWITCH TAB.  All three update underneath; the
+     * reader stays where they were looking.  A click that yanks the view away is
+     * the same as losing your place.
+     *
+     * WHY THIS IS NOT JUST TOGGLING `hidden`.  A box inside a hidden panel has
+     * no size, and both a 3-D canvas and a Plotly figure take their size FROM
+     * their box.  Mounted or drawn while their tab was hidden, they come back
+     * with a zero-size drawing surface -- the same collapse that left the level
+     * diagram a 10px strip.  So becoming visible is an event, and each view is
+     * told to re-measure: the viewer re-fits its camera to the box
+     * (vibrationview.md § 8 `refit`), the chart re-runs Plotly's resize.
+     */
+    const MODE_TABS = ["table", "viewer", "es"];
+
+    function _activateModeTab(name) {
+        if (MODE_TABS.indexOf(name) === -1) return;
+        state.modeTab = name;
+        for (const t of MODE_TABS) {
+            const btn   = document.getElementById("mode-tabbtn-" + t);
+            const panel = document.getElementById("mode-tab-" + t);
+            const on    = (t === name);
+            if (btn) {
+                btn.classList.toggle("is-active", on);
+                btn.setAttribute("aria-selected", on ? "true" : "false");
+            }
+            if (panel) panel.hidden = !on;
+        }
+        // Now that the box has a size again, let what draws into it catch up.
+        if (name === "viewer" && state.vib) {
+            try { state.vib.refit(); } catch (_) {}
+        }
+        if (name === "es" && typeof Plotly !== "undefined" && els.esBarDiagram) {
+            try { Plotly.Plots.resize(els.esBarDiagram); } catch (_) {}
+        }
+    }
+
+    function onModeTabClick(ev) {
+        const btn = ev.target.closest ? ev.target.closest("[data-mode-tab]") : null;
+        if (btn) _activateModeTab(btn.dataset.modeTab);
+    }
+
     function _stopAnimation() {
         // Not the user's doing -- there is simply nothing to animate -- so the
         // Pause INTENT is left alone and the motion resumes when a mode returns.
@@ -2744,6 +2954,9 @@
     // there's no intensity data.
     function renderSpectrumChart(modes) {
         if (!els.spectrumChart) return;
+        // The palette, once, before anything that draws with it -- the stick
+        // colours below are chosen while building the traces.
+        const th = chartTheme();
         if (typeof Plotly === "undefined") {
             // Plotly is loaded via CDN; if a slow network hasn't
             // delivered it yet the modes table still renders.  Show
@@ -2807,11 +3020,11 @@
                     if (hasIm) {
                         imag.x.push(f); imag.y.push(1); imag.text.push(txt);
                         imag.idx.push(m.index_1based);
-                        imag.color.push(isSel ? "#ffd454" : "#e07070");
+                        imag.color.push(isSel ? th.stickSel : th.stickImag);
                     } else {
                         real.x.push(f); real.y.push(1); real.text.push(txt);
                         real.idx.push(m.index_1based);
-                        real.color.push(isSel ? "#ffd454" : "#4a90d9");
+                        real.color.push(isSel ? th.stickSel : th.stick);
                     }
                 } else {
                     // Partial L3 (some modes have activity, this one
@@ -2830,13 +3043,13 @@
                 imag.idx.push(m.index_1based);
                 // Highlight the selected stick by colour-overriding
                 // its bar in the per-point marker.color array.
-                imag.color.push(isSel ? "#ffd454" : "#e07070");
+                imag.color.push(isSel ? th.stickSel : th.stickImag);
             } else {
                 real.x.push(f);
                 real.y.push(Number(raman));
                 real.text.push(txt);
                 real.idx.push(m.index_1based);
-                real.color.push(isSel ? "#ffd454" : "#4a90d9");
+                real.color.push(isSel ? th.stickSel : th.stick);
             }
         }
 
@@ -2882,11 +3095,48 @@
                     x:    envelope.x,
                     y:    envelope.y,
                     hoverinfo: "skip",
-                    line: { color: "#8ab9e6", width: 1.5 },
+                    line: { color: th.envelope, width: 1.5 },
                     // Bars on top of the line.
                 });
             }
         }
+        /* PICKING A MODE WITHOUT HAVING TO HIT A LINE.
+         *
+         * A stick is one pixel wide.  Selecting a mode meant landing the pointer
+         * on that pixel, which is a test of aim rather than of intent -- and the
+         * peak a reader is aiming AT is not one pixel wide, it is as wide as the
+         * broadening says it is.
+         *
+         * So each mode gets an invisible band centred on it, and a click
+         * anywhere inside selects it.  The width is the Lorentzian FWHM already
+         * set above: the same number that decides how wide the peak is DRAWN
+         * decides how wide it is to click, so the target matches the picture.
+         * With broadening off there is no peak width to borrow, and the floor
+         * takes over -- enough to be clickable, tight enough that neighbouring
+         * modes in a crowded region stay distinguishable.
+         *
+         * Invisible, not faint: a visible band would be a second thing drawn per
+         * mode, and the chart's job is to show the spectrum.  `hoverinfo: none`
+         * rather than `skip`, because `skip` would drop the click event too.
+         */
+        /* AS TALL AS THE DATA, so a click lands anywhere up the peak -- and no
+         * taller, because a bar above the tallest stick would stretch the y axis
+         * and leave the spectrum squashed into the bottom of its own chart. */
+        const hitBarHeight = Math.max(
+            0, ...real.y.map(Number), ...imag.y.map(Number)) || 1;
+        const hits = modes.filter(m => isFinite(Number(m.frequency_cm1)));
+        if (hits.length) traces.push({
+            type:        "bar",
+            name:        "click target",
+            x:           hits.map(m => Number(m.frequency_cm1)),
+            y:           hits.map(() => hitBarHeight),
+            width:       _clickBandWidths(hits),
+            marker:      { color: "rgba(0,0,0,0)", line: { width: 0 } },
+            hoverinfo:   "none",
+            showlegend:  false,
+            customdata:  hits.map(m => m.index_1based),
+        });
+
         if (pending.x.length) traces.push({
             type:        "scatter",
             mode:        "markers",
@@ -2895,7 +3145,7 @@
             y:           pending.y,
             text:        pending.text,
             hoverinfo:   "text",
-            marker:      { color: "#888", symbol: "x", size: 7 },
+            marker:      { color: th.dim, symbol: "x", size: 7 },
             customdata:  pending.idx,
         });
 
@@ -2904,18 +3154,18 @@
             xaxis:     {
                 title: "Frequency (cm⁻¹)",
                 zeroline: false,
-                gridcolor: "#2c313a",
-                color: "#cfd3da",
+                gridcolor: th.grid,
+                color: th.ink,
             },
             yaxis:     {
                 title: "Raman activity (Å⁴/amu)",
                 rangemode: "tozero",
-                gridcolor: "#2c313a",
-                color: "#cfd3da",
+                gridcolor: th.grid,
+                color: th.ink,
             },
-            plot_bgcolor:  "#1d2128",
-            paper_bgcolor: "#1d2128",
-            font:          { color: "#cfd3da" },
+            plot_bgcolor:  th.paper,
+            paper_bgcolor: th.paper,
+            font:          { color: th.ink },
             barmode:       "overlay",
             legend:        { orientation: "h", y: 1.12 },
             height:        260,
@@ -2943,6 +3193,50 @@
                 // Idempotent: only the first drawn chart installs it.
                 _watchChartWidth();
             });
+    }
+
+    /* How far from a peak still counts as clicking it, in cm⁻¹.
+     *
+     * The broadening FWHM when there is one -- the width the peak is drawn at is
+     * the width a reader aims at.  Otherwise a floor, because a spectrum with
+     * broadening off is bare sticks and every one of them still has to be
+     * reachable. */
+    const CLICK_TOLERANCE_FLOOR_CM1 = 8;
+
+    function _clickTolerance() {
+        const fwhm = Number(state.broadeningFWHM);
+        return (isFinite(fwhm) && fwhm > 0)
+            ? Math.max(fwhm, CLICK_TOLERANCE_FLOOR_CM1)
+            : CLICK_TOLERANCE_FLOOR_CM1;
+    }
+
+    /* ONE BAND PER MODE, AND NO TWO OVERLAPPING.
+     *
+     * At ±8 cm⁻¹, ten of the thirty-five adjacent pairs in the benzene-dithiol
+     * spectrum are closer together than their bands are wide.  Where two bands
+     * overlap, the mode a click selects is whichever band happens to be drawn on
+     * top -- not the nearer one -- so the answer stops matching the pointer.
+     *
+     * So a band never crosses the midpoint to its neighbour: its half-width is
+     * the tolerance OR half the gap, whichever is smaller.  Every point in the
+     * plot then falls inside at most one band, and the band you are in is always
+     * the nearest mode.  A crowded region gets tighter targets, which is right --
+     * that is exactly where being off by one mode matters.
+     */
+    function _clickBandWidths(hits) {
+        const tol = _clickTolerance();
+        const f   = hits.map(m => Number(m.frequency_cm1));
+        const sorted = f.slice().sort((a, b) => a - b);
+        return f.map(v => {
+            const i = sorted.indexOf(v);
+            let gap = Infinity;
+            if (i > 0)                 gap = Math.min(gap, v - sorted[i - 1]);
+            if (i < sorted.length - 1) gap = Math.min(gap, sorted[i + 1] - v);
+            const half = isFinite(gap) ? Math.min(tol, gap / 2) : tol;
+            // Never zero: two modes at the same frequency would otherwise both
+            // become unclickable rather than merely ambiguous.
+            return Math.max(half, 0.25) * 2;
+        });
     }
 
     function _onChartClick(ev) {
@@ -3089,6 +3383,11 @@
         els.broadeningFwhm    = $("broadening-fwhm");
         // 3D mode-animation viewer.
         els.modeViewerWrap    = $("mode-viewer-wrap");
+        // The tab strip: one listener on the strip, not three on the buttons.
+        // Found by id like every other element here -- a class query would reach
+        // across the whole document, and this inspector is mounted INTO a page
+        // that may hold other panels.
+        els.modeTabs          = $("mode-tabs");
         els.modeViewer        = $("mode-viewer");
         els.viewerStatus      = $("viewer-status");
         els.animAmplitude     = $("anim-amplitude");
@@ -3199,6 +3498,7 @@
             _on(els.animExportCancel,   "click",  onExportCancel);
 
             // Mode-table interactions.
+            _on(els.modeTabs,      "click", onModeTabClick);
             _on(els.modesTheadRow, "click", onTableHeaderClick);
             _on(els.modesTbody,    "click", onTableRowClick);
             _on(els.modesFilter,   "input", onFilterInput);
@@ -3303,12 +3603,19 @@
                 try { state.vib.dispose(); } catch (_) {}
                 state.vib = null;
             }
-            if (typeof Plotly !== "undefined" && els.spectrumChart) {
-                try { Plotly.purge(els.spectrumChart); } catch (_) {}
-            }
-            if (state.chartResizeObserver) {
-                try { state.chartResizeObserver.disconnect(); } catch (_) {}
-                state.chartResizeObserver = null;
+            /* BOTH charts, not just the spectrum.  The level diagram became a
+             * Plotly figure too, and a purged-but-still-observed node leaks an
+             * observer per mount -- the inspector is mounted and disposed every
+             * time the user switches result files. */
+            for (const [node, key] of [[els.spectrumChart, "chartResizeObserver"],
+                                       [els.esBarDiagram,  "esResizeObserver"]]) {
+                if (typeof Plotly !== "undefined" && node) {
+                    try { Plotly.purge(node); } catch (_) {}
+                }
+                if (state[key]) {
+                    try { state[key].disconnect(); } catch (_) {}
+                    state[key] = null;
+                }
             }
         },
         /**

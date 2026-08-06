@@ -65,9 +65,49 @@ Below the chart is a **table of every vibrational mode** — its number,
 frequency, Raman activity, whether it's imaginary, and whether it carries
 excited-state data — that you can **sort and filter**, export to CSV, and click a
 row to select a mode. When the run also computed **excited states**, four more
-columns appear (HOMO, LUMO, gap, and the gap's shift), and a small bar panel
-draws the molecular-orbital levels. Those columns are always present in the
-header; their cells simply fill in once there's excited-state data.
+columns appear (HOMO, LUMO, gap, and the gap's shift). Those columns are always
+present in the header; their cells simply fill in once there's excited-state
+data.
+
+### 3.1 The level diagram — and why it has to zoom
+
+Under the table, a selected mode with excited-state data draws a **molecular
+orbital correlation diagram**: the same levels at three geometries — pushed to
+−A, at equilibrium, and pushed to +A — with **every orbital joined across the
+three**, so the eye follows one level rather than comparing three separate stacks
+of dashes.
+
+```
+        E ▲     ─────  ╲___  ─────      each dash is one orbital, in one geometry
+          │                              the joins are the same orbital, moving
+          │     ═════ ═════ ═════   ← LUMO
+          │
+          │     ═════ ═════ ═════   ← HOMO
+          │     ─────  ___╱  ─────
+          └──────  −A    eq    +A
+```
+
+**Zoom is not a convenience here, it is the point.** The shifts this panel exists
+to show are *small*: in the BDT result, mode 1's HOMO moves **0.018 meV** between
+−A and +A, against an 11.4 eV span of drawn levels. That is 1/4000 of a pixel —
+literally invisible at full scale. So the figure opens on the whole picture and
+then **scroll to zoom the energy axis, drag to pan, double-click to fit**. The
+energy axis is free; the horizontal axis is locked, because it is three
+geometries rather than a quantity and there is nothing between them.
+
+It is drawn by **Plotly**, the same library as the spectrum above it, and that
+choice replaced hand-rolled SVG on 2026-08-05. The SVG was right while the figure
+was static; once it needed zoom, pan, a reset and a hover readout, writing those
+four by hand beside a chart library already loaded on the page would have been
+inventing a wheel in view of the wheel. Plotly takes colours as values rather
+than inheriting CSS, so `chartTheme()` in `lib/spectra/core.js` reads the tokens
+off the document and hands them over — the tokens stay the one source of truth
+for both charts.
+
+Beside the diagram sits a **foldable panel of numbers**, grouped by the question
+each answers: where the levels sit, how the gap moves, and the electron–phonon
+coupling ΔE/(2A). The displacement A itself is in the panel header, since it is
+the input every number below depends on rather than a result among them.
 
 ## 4. Clicking a mode — the 3D animation
 

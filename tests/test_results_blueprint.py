@@ -752,6 +752,17 @@ class TestPartialSpectraInspectorEndpoint:
         "modes-filter",
         "modes-filter-count",
         "modes-csv-btn",
+        # The three views of one selection, as tabs under the spectrum
+        # (2026-08-05).  Both halves of each tab are pinned: the button the
+        # user clicks and the panel it controls, because `aria-controls` ties
+        # them by id and a rename of either alone breaks the pairing silently.
+        "mode-tabs",
+        "mode-tabbtn-table",
+        "mode-tab-table",
+        "mode-tabbtn-viewer",
+        "mode-tab-viewer",
+        "mode-tabbtn-es",
+        "mode-tab-es",
         # Mode viewer (3D animation)
         "mode-viewer-wrap",
         "mode-viewer",
