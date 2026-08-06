@@ -174,10 +174,10 @@ directly has broken the module, not found a shortcut.
 **A directory is not a seal, so the concealment is made three ways** — the same
 three that hold VibrationView together, for the same reasons:
 
+- **The entry point exports one name.** Importing `index.js` hands back `mount`,
+  and there is nothing else on it to find.
 - **Every internal file is underscore-prefixed** — `_maths.js`, `_seal.js`. An
   import of `_maths.js` reads as a violation where it is written.
-- **The module links its own stylesheet** (§ 12). No template names it, so no page
-  can forget it.
 - **A guard test asserts the boundary** — nothing outside the package may name any
   path inside it but `index.js`.
 
@@ -185,21 +185,18 @@ three that hold VibrationView together, for the same reasons:
 to one.** It does not read `window.molbuilder` and it does not write to it. A chart
 needs one thing at mount: an element to live in.
 
-That rule is about *the app's* state. The drawing library is a separate matter: if
-it arrives as a script that publishes `window.Plotly`, that name is read in the
-one file already allowed to say it, and nowhere else — no page put it there and no
-page can rely on it being there.
-
 **Nothing leaks out.** No Plotly object, no DOM node, and no internal function ever
 appears on the handle. Inside this module the name `Plotly` occurs in exactly one
 file.
 
-**And the module brings the library with it.** Nothing else on the page loads
-Plotly: the sealed layer adds it at mount, once, exactly as the stylesheet arrives
-(§ 12.6). A dependency the host has to remember is a dependency some host will
-forget, and the result — an empty box, no error, far from its cause — is the same
-failure the stylesheet rule exists to prevent. If the library will not load, the
-mount fails with a message (§ 8).
+**And the module brings what it needs.** Nothing else on the page loads Plotly and
+no template links a stylesheet: the sealed layer adds both at mount, once (§ 12.6).
+A dependency the host has to remember is a dependency some host will forget, and
+the result — an empty box or an unstyled one, no error, far from its cause — is
+found only by someone looking at the screen. If the library will not load, the
+mount fails with a message (§ 8). And if it arrives as a script that publishes
+`window.Plotly`, that name is read in the one file already allowed to say it and
+nowhere else: no page put it there, and no page can rely on it being there.
 
 That is the practice MolView and VibrationView already follow with 3Dmol: each
 module seals the library for itself, because independence beat sharing. The rule
@@ -669,19 +666,24 @@ depended on.
 draw(picture)                   put this picture on the surface
 recolour(marks)                 change the colours already drawn — no rebuild
 resize()                        the box changed; fill it
-onClick(cb)                     a point was clicked: hand up the token the
-                                handle attached to it
+onClick(cb)                     the user clicked: hand up where it landed on
+                                the frequency axis, and nothing else
 purge()                         release the surface
 ```
 
 It answers **no** question about what is drawn, and it does not know what a mode
-is. When the handle draws a mark it attaches a label of its own choosing; a click
-hands that label back, unread. The seal never learns that the label means
-*mode 22* — working that out is the handle's job, because "mode" is a word from
-chemistry and this layer knows none. What a selected stick *looks like*
-is decided here — the layer above says *which index is selected*, never what
-colour it should be. A colour riding on data is how a drawing decision ends up in
-three places.
+is. **A click comes up as one number** — a position on the frequency axis — and
+the handle turns that into a mode through the bands (§ 6.4).
+
+That is deliberately the only mechanism. A drawn mark carrying its own label back
+would be the obvious alternative and it cannot work here: the click a band exists
+to catch lands in *empty space* beside a peak, where there is no mark to have
+carried anything. So the seal reports a position, which is a number, and stays as
+ignorant of chemistry as before — "mode" is a word this layer never learns.
+
+What a selected stick *looks like* is decided here too. The layer above says
+*which mark* is the chosen one, never what colour it should be: a colour riding on
+data is how a drawing decision ends up in three places.
 
 **The palette is read from the stylesheet, not written in code.** Plotly takes
 colours as JavaScript values, so a chart cannot inherit them the way an element
@@ -972,11 +974,11 @@ the difference, because § 9.4 is the whole of what it asks of that library.
 | § 6.1 — the two required fields | a record without `index`, or without `freq`, is refused |
 | § 6.1 — a refusal takes the whole call | one malformed record among many draws **nothing**, rather than a spectrum quietly missing that mode |
 | § 6.1 — a refused list empties the chart | after a refused `setModes`, the previous spectrum is gone from the screen rather than left standing as though the call had worked |
-| § 6.3 — the markings are in the plot | the pending marks and the "not computed" wording are drawn on the surface: the module's markup carries no label, banner or text node beside the chart |
 | § 6.1 — absent is not zero | a mode with no `activity` field, and one with `activity: null`, are treated the same and neither is drawn as a strength of zero |
 | § 6.1 — the caller's numbering is carried, not interpreted | an unsorted, sparse, 1-based list draws in the order given, and the index a click reports is the index that was handed in |
 | § 6.1 — the indices must differ | a list containing the same index twice is refused whole, rather than resolved by a rule the caller cannot see |
 | § 6.3 — the picture is derived | a result with no activities anywhere draws every stick at height one, with a curve over them; one with some activities draws the rest as pending — and neither picture is reachable by a setting |
+| § 6.3 — the markings are in the plot | the pending marks and the "not computed" wording are drawn on the surface: the module's markup carries no label, banner or text node beside the chart |
 | § 6.4 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
 | § 6.4 — a click lands on the nearest mode | for a spectrum with modes closer together than the broadening, every point in the plot resolves to the nearest mode; no two bands overlap at any width |
 | § 6.4 — the floor and the minimum are the stated numbers | at **any** broadening below 8 cm⁻¹, zero included, an isolated band is 8 cm⁻¹ half-wide; no clamp ever takes a band below 0.25 cm⁻¹ |
@@ -988,8 +990,8 @@ the difference, because § 9.4 is the whole of what it asks of that library.
 | § 6.5 — the flag and the sign are independent | a negative `freq` without the flag is drawn as an ordinary mode; the flag with a positive `freq` is drawn as imaginary |
 | § 8 — mount always resolves | a mount with no library still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
 | § 8 — a failed handle has three keys | its keys are exactly `ok`, `error`, `dispose`: calling any other door throws rather than silently doing nothing |
-| § 9.2 — a host that is not an element is the one refusal | `mount(null)` and `mount("#chart")` each resolve with `ok === false` and a message, and neither throws |
 | § 8 — the module owns the inside of its host | a host with content in it is empty of that content after mount, and empty again after `dispose`; the watcher stops (a resize after `dispose` draws nothing) and a second `dispose` neither acts nor throws |
+| § 9.2 — a host that is not an element is the one refusal | `mount(null)` and `mount("#chart")` each resolve with `ok === false` and a message, and neither throws |
 | § 9.2 — a mount option is the first write | `mount({ broadening: 20 })` and `mount()` then `setBroadening(20)` leave the chart in the same state, and no "initial" value survives a later write |
 | § 9.2 — the host is never resized | after mount and after every door, the host element carries no inline width or height the module wrote |
 | § 9.3 — one way in | the handle exposes no settable property and no options object; changing a fact is possible only by calling its door |
@@ -1002,7 +1004,8 @@ the difference, because § 9.4 is the whole of what it asks of that library.
 | § 9.3 — an empty click is silent | a click landing in no band calls `onSelect` **not at all** — not with `null` — and changes nothing on screen |
 | § 9.3 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
 | § 9.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
-| § 9.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the document's tokens rather than from literals in the module |
+| § 9.4 — a click comes up as a position | the seal reports where the click landed on the frequency axis and nothing more; a click in empty space beside a peak still reaches the handle |
+| § 9.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the module's own tokens (§ 12.1) — never from a page variable, never from a literal in the module |
 | § 10 — the envelope is the sum | the curve at a mode's frequency equals that mode's activity plus the tails of the others, computed independently of the implementation |
 | § 10 — the sum follows the picture | with strengths known, a mode without one adds nothing; with none known anywhere, every mode adds a peak of height one |
 | § 10 — a peak is smooth at every width | at any broadening, the narrowest peak drawn carries at least eight samples across its full width |
@@ -1011,10 +1014,10 @@ the difference, because § 9.4 is the whole of what it asks of that library.
 | § 12.1 — nothing is inherited across the line | with every page stylesheet removed, the chart's tokens still resolve and the colours handed to the library are unchanged |
 | § 12.1 — the theme is followed, not copied | the sheet redefines its own tokens under the theme condition, and no page variable is named anywhere in the module |
 | § 12.2 — the selectors stay flat | the sheet contains no ID selector, no element selector and no `:nth-child()`, and nests at most one level |
+| § 12.2 — the sheet stays short | it styles the frame and the surface and nothing else: no rule names a part this contract does not describe |
 | § 12.3 — no magic numbers | every value in a rule is a `var()` or one of `0` · `100%` · `1fr` · `auto`: no colour, length, duration or font size appears as a literal outside the root block |
 | § 12.4 — nothing is patched | the sheet contains no `!important` and no negative margin, and no rule in it depends on the order sheets were linked |
 | § 12.5 — the chart responds to its own box | the sheet contains no viewport media query, and a box that changes size while the window does not causes a redraw at the new size |
-| § 12.2 — the sheet stays short | it styles the frame and the surface and nothing else: no rule names a part this contract does not describe |
 | § 12.5 — the box traps | the frame declares a height and never `auto`; the drawing surface carries no padding; nothing in the module makes the page scroll sideways |
 | § 12.6 — the module links its own sheet | a chart mounted on a page whose template names no stylesheet is styled; mounting twice adds one link, not two |
 | § 12.6 — the mount waits for the sheet | the first chart on a cold page draws with the token palette, not with fallback colours |
@@ -1030,9 +1033,22 @@ before anything depends on it.
 | File | Holds | Status |
 |---|---|---|
 | `index.js` | the handle, the state, and every draw it causes | to build |
-| `_maths.js` | the envelope, the band widths — pure | to move from `spectra/core.js` (`_lorentzianEnvelope`, `_clickBandWidths`, `_clickTolerance`) |
+| `_maths.js` | the envelope, the band widths — pure | starts from `spectra/core.js` (`_lorentzianEnvelope`, `_clickBandWidths`, `_clickTolerance`), **then satisfies rules those functions predate** |
 | `_seal.js` | the only file naming Plotly — it fetches the library, links the sheet, and reads the palette from the tokens | to move (`chartTheme`, the `Plotly.react` / `purge` / `Plots.resize` calls, `_watchChartWidth`), plus the two loaders, which are new |
 | `_style.css` | the module's own namespaced sheet | to write |
+
+**Which parts of this are new specification, not relocation** — worth knowing
+before anyone sizes the work from the line counts below:
+
+| New | Where |
+|---|---|
+| the four-step band rule, with the floor and the minimum as fixed numbers | § 6.4 |
+| the sum following the picture — unit heights when no strength is known | § 10 |
+| imaginary modes marked, and kept out of the envelope | § 6.5, § 10 |
+| the grid stated as accuracy: eight samples a peak, ends below 1% | § 10 |
+| the selection recorded rather than refused | § 9.3 |
+| a refused list emptying the chart | § 6.1 |
+| the module fetching its own library and sheet | § 4, § 12.6 |
 
 **What comes out of the tab.** `renderSpectrumChart` (242 lines),
 `_lorentzianEnvelope` (37), `chartTheme` (22), `_watchChartWidth` (16),
