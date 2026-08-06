@@ -200,12 +200,44 @@ _MALFORMED_CASES = [
         "dot",
         id="filename-dotfile",
     ),
+    # NOTE: a key CONTAINING a separator is now legal -- keys are repo-relative
+    # POSIX paths, because the archive walk must reach nested run folders (L2 in
+    # docs/execution/checkpointing.md).  What stays illegal is a key that could
+    # direct a restore out of the run directory or into git's own state:
     pytest.param(
-        # Filename containing path separator.
-        (("a" * 64) + "  " + "1024" + "  " + "sub/file.DM\n"
+        # Absolute path.
+        (("a" * 64) + "  " + "1024" + "  " + "/etc/passwd\n"
          ).encode("ascii"),
-        "path separator",
-        id="filename-slash",
+        "absolute",
+        id="filename-absolute",
+    ),
+    pytest.param(
+        # Parent-directory traversal.
+        (("a" * 64) + "  " + "1024" + "  " + "coarse/../../escape.DM\n"
+         ).encode("ascii"),
+        "parent-directory",
+        id="filename-traversal",
+    ),
+    pytest.param(
+        # Empty component (double separator).
+        (("a" * 64) + "  " + "1024" + "  " + "coarse//job.DM\n"
+         ).encode("ascii"),
+        "empty",
+        id="filename-empty-component",
+    ),
+    pytest.param(
+        # Dot-directory component -- would reach .git / .binsnapshots.
+        (("a" * 64) + "  " + "1024" + "  " + ".git/objects/x\n"
+         ).encode("ascii"),
+        "dot-prefixed component",
+        id="filename-dot-directory",
+    ),
+    pytest.param(
+        # Windows separator.
+        (("a" * 64) + "  " + "1024" + "  " + "coarse\\job.DM\n"
+         ).encode("ascii"),
+        "backslash",
+        id="filename-backslash",
     ),
     pytest.param(
         # MANIFEST self-reference.

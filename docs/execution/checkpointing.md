@@ -315,19 +315,41 @@ All four **need the layout**, and each follows from `engines/stages.md § 7.1`.
 
 ### L1 — one repository, at the parent
 
+*blocked: the shipped code refuses this, deliberately, and the decision is the
+user's rather than this document's.*
+
 `job-system.md § 5.5` observes that each per-stage directory is a self-contained
 run directory and so can be checkpointed alone. That stays true and is not enough:
 a per-subdirectory repository cannot restore a shared file that lives **above** it
 — a restored stage would have pseudopotential links pointing at nothing — and no
 such repository contains the workflow, so *branch at stage 2* cannot be
-expressed. **The repository is at the parent, and there is exactly one.**
+expressed. So this document wants one repository, at the parent.
 
-*Check:* exactly one `.git` and one `.mbcheckpoint.json` in a produced folder, at
-the top of it.
+**`Repo.init` refuses exactly that.** `_check_nested_working_dirs` walks for
+subdirectories containing a working-dir marker (`.fdf`, `.py`, `.run.sh`) and
+raises `NestedRepoRefusedError` — *"each lowest-directory must be its own
+checkpoint repo"* — citing a **P5** rule from `run-checkpoints.md`, a document
+the 2026-07 migration removed. So the guard is deliberate, tested, and its
+rationale is no longer readable anywhere.
+
+The likely reason is sound for the world it was written in: a parent holding
+several *independent* run directories would checkpoint unrelated jobs together,
+and restoring one would rewind the others. What a staged folder changes is the
+premise — its subdirectories are not independent jobs, they are stages of one
+calculation, which is exactly what makes the parent the right unit.
+
+**This is a decision, not a defect**, and it is not settled here. Whoever settles
+it should note that the two readings can coexist: the guard could ask whether the
+parent holds a **description** (`stages.json`) and treat that as the marker of
+one calculation rather than several.
+
+*Check, once decided:* exactly one `.git` and one `.mbcheckpoint.json` in a
+produced folder, at the top of it.
 
 ### L2 — the archive globs match at depth
 
-*not held today, and the failure is silent data loss — read against the code.*
+*HOLDS as of 2026-08-06 — this was broken, and fixing it is what prompted the
+rest of this section.*
 
 **The most serious finding in this document, and the opposite of what an earlier
 draft of it said.** I had written that a per-stage binary "lands in git as a
@@ -349,7 +371,7 @@ one whose failure is losing data rather than wasting disk.
 |---|---|
 | **How it fails** | Quietly, at the moment of maximum trust. The user restores a checkpoint expecting a resumable state and gets the geometry (`.XV` is text, so it is tracked) with no density matrix beside it. The run starts over and nothing says why |
 | **How to check** | Produce a two-stage folder, run both, checkpoint, assert S1 over the whole tree: every file is tracked or archived. It fails today, and that failure is the acceptance test |
-| **How to fix** | One list, resolved once, at one depth — either the archive walk becomes recursive (`rglob`) or both sides derive from a single matcher. That is S1a's rule (one list, one writer) extended from *which patterns* to *which paths* |
+| **Fixed by** | The archive walk is recursive and the MANIFEST key is a **repo-relative POSIX path** rather than a bare basename — so both sides resolve depth the same way. The key space *widened*: a basename is a valid relative path, so every archive written before it reads unchanged. Two consequences fell out and are part of the invariant: the walk **skips symlinks** (a carried restart file is inherited, not owned — S3 — and archiving the link would restore a regular file where a link belongs) and **skips dot-directories** (a recursive walk that forgot would archive the archive). Pinned by `tests/test_checkpoint_nested_layout.py` |
 
 ### L3 — every commit and tag names its calculation
 
@@ -385,6 +407,22 @@ becomes the reason the disk fills.
 | **How it fails** | Silently, and only at scale. Nothing errors; the archive simply grows linearly in checkpoints × binary size, and `prune` is listed as unbuilt (`running-a-job.md § 6.2`), so nothing reclaims it either |
 | **How to check** | Checkpoint a folder twice with the binaries untouched between them. The second checkpoint's *incremental* disk cost is near zero |
 | **How to fix** | Content-address the store: `.binsnapshots/by-content/<sha256>` holding each distinct blob once, with the per-commit MANIFEST referencing it (or hardlinks into the per-sha directory, which is a smaller change and works on one filesystem). This is what the shipped docs already *claim* — making I1's "identical content dedupes" true rather than aspirational |
+
+### L7 — a change to a big binary alone leaves no checkpoint
+
+*not held today — found by running L2's acceptance test.*
+
+`checkpoint()` runs `git add .`, then `git status --porcelain`; if the tree is
+clean it returns `None`. Big binaries are gitignored (S1), so **a change that
+touches only them leaves the status clean and produces no commit and no new
+archive.** The code half-anticipates this: if HEAD has *no* archive at all and
+binaries exist, it writes one. It does not notice that HEAD's archive is stale.
+
+| | |
+|---|---|
+| **How it fails** | A user re-runs a stage that rewrites its `.DM` and nothing else git can see, checkpoints, and is told the tree was clean. The new density matrix is in no snapshot. It surfaces later as a refused restore ("uncommitted binary changes"), which is the safe direction, but the checkpoint they asked for never happened |
+| **How to check** | Change only a big binary, checkpoint, and assert a new archive exists whose MANIFEST records the new sha |
+| **Note** | In a staged folder a run also writes text (`.out`, `.XV`), so the clean-status case is narrower than it looks — but "narrower" is not "absent", and `--force`-style re-runs hit it |
 
 ### L6 — a history can be verified without being restored
 
@@ -423,15 +461,18 @@ One line each, for reading over a diff:
 | **A1** | archive: build, verify the copy, then swap | today |
 | **A2** | restore verifies the target archive before touching the worktree | today |
 | **A3** | the checkpoint is committed before the mutation it protects | needs automatic checkpoints |
-| **L1** | one repository, at the parent | needs the layout |
-| **L2** | archive globs match at depth | needs the layout |
+| **L1** | one repository, at the parent | **blocked** — `init` refuses it by design |
+| **L2** | archive globs match at depth | **holds** (fixed 2026-08-06) |
 | **L3** | every commit and tag names its calculation | needs the layout |
 | **L4** | molbuilder tags stage completions only | needs the layout |
 | **L5** | a checkpoint costs what changed, not what exists | **not held today** |
 | **L6** | a history can be verified without being restored | **not held today** |
+| **L7** | a binary-only change still produces a checkpoint | **not held today** |
 
-**Eleven of the twenty can be asserted against the code as it stands**; three
-(L2, L5, L6) are **not held today** and are work rather than checks.
+**Twelve of the twenty-one can be asserted against the code as it stands.** One
+(**L2**) was broken and is now fixed, with tests. Three (**L5**, **L6**, **L7**)
+are not held and are work rather than checks; one (**L1**) is **blocked** by a
+deliberate guard whose rationale outlived its document.
 
 ### What has actually been read
 
@@ -446,14 +487,18 @@ One line each, for reading over a diff:
 | **I4** | held — no generated wrapper invokes git |
 | **A1** | held, and stronger than asked: sha-dir validation, source-vs-copy fidelity, `.tmp` cleanup on `BaseException` |
 | **A2** | held, in exactly the stated order — four gates before the first mutation |
-| **L2** | **broken, and losing data rather than wasting disk** |
+| **L2** | was **broken, losing data rather than wasting disk** — fixed 2026-08-06, pinned by tests |
 | **L5** | **broken** — no cross-checkpoint dedup; my "cheap" claim was false |
 | **L6** | **absent** — no way to verify a history without restoring it |
+| **L1** | **blocked** — `Repo.init` refuses a parent repo by design (`NestedRepoRefusedError`) |
+| **L7** | **absent** — a binary-only change leaves `git status` clean, so no checkpoint happens |
 
-**Twelve of twenty read. Three of the twelve were wrong as written**, and every
-one of the three was wrong because I trusted a phrase in the guide over the code:
-*"nothing keeps them in step"*, *"deduped by content"*, and *"lands in git as a
-blob"*.
+**Fourteen of twenty-one read. Three were wrong as written**, and every one was
+wrong because a phrase in the guide was trusted over the code: *"nothing keeps
+them in step"*, *"deduped by content"*, *"lands in git as a blob"*. Two more —
+**L1** and **L7** — were found only by *running* the checks rather than reading
+them, which is the argument for writing invariants as tests rather than as
+prose.
 
 **Eight cannot be read yet, and that is not a gap in the reading.** S3, S4, S6,
 L1, L3, L4 describe the per-stage layout and the description, neither of which

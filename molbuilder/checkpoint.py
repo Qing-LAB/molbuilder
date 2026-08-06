@@ -255,20 +255,55 @@ def _check_nested_working_dirs(path: Path) -> List[str]:
     return nested
 
 
+#: Directories the archive walk never descends into.  ``.binsnapshots`` would
+#: make the archive archive itself; ``.git`` holds packfiles that are git's own
+#: business.  Any other dot-directory is tooling scratch, not run state.
+_ARCHIVE_SKIP_DIRS = frozenset({".git", ".binsnapshots"})
+
+
+def _archive_key(root: Path, p: Path) -> str:
+    """The archive/MANIFEST key for a working-tree file: its path relative to
+    the repo root, POSIX separators.  A file at the top level keys as its bare
+    basename, which is what every archive written before nested run folders
+    existed contains -- so the key space WIDENED and old archives still read."""
+    return p.relative_to(root).as_posix()
+
+
 def _list_big_binaries(path: Path) -> List[Path]:
-    """Top-level big binaries per the repo's PERSISTED classification
-    (``.mbcheckpoint.json`` via ``_read_archive_globs`` -- engine-specific,
-    user-editable)."""
-    # Dedupe by basename: OVERLAPPING globs (e.g. "*.DM" and "*.D*") would
+    """Big binaries anywhere in the run tree, per the repo's PERSISTED
+    classification (``.mbcheckpoint.json`` via ``_read_archive_globs`` --
+    engine-specific, user-editable).
+
+    RECURSIVE, and it has to be.  ``.gitignore`` receives the raw globs
+    (``*.DM``), and a gitignore pattern with no slash matches at EVERY level --
+    so a nested ``coarse/job.DM`` is ignored by git.  A top-level-only archive
+    walk would then leave it ignored AND unarchived: in no snapshot at all,
+    silently absent after a restore.  Both sides of the classification resolve
+    depth the same way or the two disagree, and the disagreement loses data
+    (docs/execution/checkpointing.md, L2).
+
+    SYMLINKS ARE SKIPPED.  A carried restart file is a link to the stage that
+    produced it until localize-on-run replaces it with a real copy; the
+    producer's file is archived once, under its own key, and archiving the link
+    as a second copy would both duplicate content and restore a regular file
+    where a link belongs."""
+    root = Path(path)
+    # Dedupe by archive key: OVERLAPPING globs (e.g. "*.DM" and "*.D*") would
     # otherwise list the same file twice -> duplicate MANIFEST entries, which
-    # the strict parser REJECTS on restore (trapping the checkpoint).  The
-    # archive keys files by basename, so basename is the right dedupe key.
+    # the strict parser REJECTS on restore (trapping the checkpoint).
     found: List[Path] = []
     seen: set = set()
-    for pat in _read_archive_globs(path):
-        for p in path.glob(pat):
-            if p.is_file() and p.name not in seen:
-                seen.add(p.name)
+    for pat in _read_archive_globs(root):
+        for p in sorted(root.rglob(pat)):
+            rel = p.relative_to(root)
+            if any(part in _ARCHIVE_SKIP_DIRS or part.startswith(".")
+                   for part in rel.parts[:-1]):
+                continue
+            if p.is_symlink() or not p.is_file():
+                continue
+            key = rel.as_posix()
+            if key not in seen:
+                seen.add(key)
                 found.append(p)
     return found
 
@@ -406,16 +441,30 @@ def _parse_canonical_manifest(raw: bytes,
                 f"{name!r} contains non-printable or whitespace "
                 f"characters (§ 10.2 requires ASCII printable, no "
                 f"spaces).")
-        if "/" in name or name == "..":
+        # A key is a REPO-RELATIVE POSIX PATH.  A bare basename is one, which
+        # is why every archive written before nested run folders existed still
+        # parses.  Each component is validated separately: a traversal or a
+        # dot-directory in the middle would let a MANIFEST direct a restore
+        # outside the working tree or into .git/.binsnapshots.
+        if name.startswith("/") or "\\" in name:
             raise CheckpointError(
                 f"malformed MANIFEST in {where}: line {idx} filename "
-                f"{name!r} contains a path separator or parent "
-                f"reference (§ 10.2 requires bare basename only).")
-        if name.startswith("."):
-            raise CheckpointError(
-                f"malformed MANIFEST in {where}: line {idx} filename "
-                f"{name!r} starts with a dot; canonical archive does "
-                f"not contain dotfiles (§ 10.1).")
+                f"{name!r} is absolute or uses a backslash; keys are "
+                f"repo-relative POSIX paths (§ 10.2).")
+        parts = name.split("/")
+        for part in parts:
+            if part == "" or part == "." or part == "..":
+                raise CheckpointError(
+                    f"malformed MANIFEST in {where}: line {idx} filename "
+                    f"{name!r} has an empty, current- or parent-directory "
+                    f"component; a restore must not be able to escape the "
+                    f"run directory (§ 10.2).")
+            if part.startswith("."):
+                raise CheckpointError(
+                    f"malformed MANIFEST in {where}: line {idx} filename "
+                    f"{name!r} has a dot-prefixed component {part!r}; the "
+                    f"canonical archive contains no dotfiles or "
+                    f"dot-directories (§ 10.1).")
         if name == _MANIFEST_NAME:
             raise CheckpointError(
                 f"malformed MANIFEST in {where}: line {idx} lists the "
@@ -478,7 +527,9 @@ def _archive_binaries(path: Path, sha: str) -> int:
     total = 0
     try:
         for src in binaries:
-            dst = tmp / src.name
+            key = _archive_key(path, src)
+            dst = tmp / key
+            dst.parent.mkdir(parents=True, exist_ok=True)
             # Hash the SOURCE, copy, then re-hash the ARCHIVED copy and require
             # they match.  Deriving the MANIFEST sha from the copy alone would
             # make a silent copy corruption (disk error) self-consistent -- the
@@ -490,11 +541,11 @@ def _archive_binaries(path: Path, sha: str) -> int:
             dst_sha = hashlib.sha256(dst.read_bytes()).hexdigest()
             if dst_sha != src_sha:
                 raise CheckpointError(
-                    f"archive copy of {src.name!r} is corrupt: source sha256 "
+                    f"archive copy of {key!r} is corrupt: source sha256 "
                     f"{src_sha!r} != archived {dst_sha!r} (disk error?); the "
                     f"checkpoint was NOT safely archived.")
             size = dst.stat().st_size
-            entries.append((src_sha, size, src.name))
+            entries.append((src_sha, size, key))
             total += size
         _atomic_write_text(tmp / _MANIFEST_NAME,
                            _format_canonical_manifest(entries))
@@ -558,7 +609,9 @@ def _copy_archived_binaries(path: Path, sha: str,
     restored: List[str] = []
     for name in sorted(expected.keys()):
         try:
-            shutil.copy2(arch / name, path / name)
+            dst = path / name
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(arch / name, dst)
         except OSError as e:
             # Verified moments ago, so this is a TOCTOU/IO fault mid-copy.
             # Surface it clearly (the working tree may be partially restored)
@@ -600,10 +653,11 @@ def _working_binaries_dirty(path: Path, head_sha: str) -> List[str]:
                 f"corrupt; restore is unsafe until it is repaired.")
     dirty: List[str] = []
     for wb in _list_big_binaries(path):
-        want = expected.get(wb.name)
+        key = _archive_key(path, wb)
+        want = expected.get(key)
         actual = hashlib.sha256(wb.read_bytes()).hexdigest()
         if want is None or want[0] != actual:
-            dirty.append(wb.name)
+            dirty.append(key)
     return sorted(dirty)
 
 

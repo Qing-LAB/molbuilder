@@ -758,9 +758,24 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Benchmark result | `bench-result.json` | `molbuilder/bench-result@1` | `bench/result.py` | `points`, `choice`, `recommend` |
 | Job-set plan | `job-set.json` | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair, bare-int `schema_version` = 6)* | `bundle_writer.py`, `sidecars/molstruct.py` | geometry; `regions` / `frozen_atoms` / `structure_hash` |
-| Checkpoint archive | `.binsnapshots/<sha>/MANIFEST` | *(3-col `<sha256>  <bytes>  <name>`)* | `checkpoint.py` | — |
+| Checkpoint archive | `.binsnapshots/<sha>/MANIFEST` | *(3-col `<sha256>  <bytes>  <key>`)* | `checkpoint.py` | — |
 | Checkpoint config | `.mbcheckpoint.json` | `molbuilder/checkpoint-config@1` | `checkpoint.py` | `engine`, `archive_globs` |
 | Decoded run | *(served, not written to disk)* | bare-int `schema_version` | `parse/dirs/job.py` | see below |
+
+> **The MANIFEST's third column is a repo-relative path, not a basename**
+> (2026-08-06). It was a bare basename, and the parser rejected a separator. It
+> could not be: `.gitignore` receives the raw archive globs (`*.DM`), and a
+> gitignore pattern with no slash matches at **every** level, while the archive
+> walk matched only the top one — so a big binary in a subdirectory was
+> gitignored *and* unarchived, in no snapshot at all, and silently absent after a
+> restore. The key space **widened**: a bare basename is a valid relative path,
+> so every archive written before this reads unchanged. What stays rejected is
+> anything that could direct a restore out of the run directory — absolute paths,
+> `..` or `.` components, empty components, backslashes, and dot-prefixed
+> components (which would reach `.git` or `.binsnapshots`). Pinned by
+> `tests/test_checkpoint_nested_layout.py` and the parser cases in
+> `tests/test_checkpoint_manifest_format.py`; the reasoning is
+> [`execution/checkpointing.md`](?doc=execution/checkpointing.md), L2.
 
 > **The decoded run is not a file.** `decode_run_dir(run_dir)` returns an
 > in-memory `JobResult` dataclass served to the Results tab and consumed by
