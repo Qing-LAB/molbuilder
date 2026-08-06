@@ -165,7 +165,7 @@ at the tip.
 
 ### I1 — a written archive's *content* is never modified
 
-*holds today.*
+*holds today — read against the code.*
 
 Git commits are immutable by construction; the archived bytes must be too.
 
@@ -179,7 +179,17 @@ the `bytes` column it adds agrees with the file on disk.**
 | | |
 |---|---|
 | **How it fails** | An archive directory whose *files* are rewritten in place means an old commit's binaries silently become a newer run's. Every restore before that point returns the wrong data, and nothing reports it |
-| **How to check** | `.binsnapshots/<sha>/`'s files are created once and never written again. A second checkpoint whose binaries are identical **dedupes by content** rather than rewriting; one whose binaries differ writes a *new* directory. For the migration specifically: diff the parsed MANIFEST before and after — the name→sha mapping is unchanged, and I2 passes afterwards |
+| **How to check** | For a given commit sha, the archived bytes never change. Re-archiving the *same* sha rebuilds the directory (`_archive_binaries` removes and replaces it), which is legal only because the same commit implies the same tree — so the assertion is on **content for a sha**, not on the directory's mtime. For the migration specifically: diff the parsed MANIFEST before and after — the name→sha mapping is unchanged, and I2 passes afterwards |
+
+**One phrase in the shipped docs is misleading, and it misled me.**
+`running-a-job.md § 6.1` and `job-contracts.md § 6.1` both say the archive is
+*"deduped by content"*. Reading `checkpoint.py`, that describes deduping by
+**basename within one MANIFEST** — so that overlapping globs like `*.DM` and
+`*.D*` do not list a file twice and trap the strict parser. It is **not**
+storage dedup across checkpoints: `_archive_binaries` copies every big binary
+into `.binsnapshots/<commit-sha>/` on every checkpoint, with no hardlinking and
+no content-addressed store. Ten checkpoints of a folder holding a 2 GB `.DM`
+cost 20 GB. See L5.
 
 ### I2 — a MANIFEST is authoritative for its archive
 
@@ -235,7 +245,7 @@ CLI/UI-only."* A wrapper that committed would need git on the compute node, whic
 
 ### A1 — archiving is build, verify, then swap
 
-*holds today.*
+*holds today — read against the code, and it is stronger than this contract asked for.*
 
 The shipped sequence is: build into a `.tmp`, hash, copy, **re-hash and verify the
 copy**, write the MANIFEST, then `os.replace` (`running-a-job.md § 6.1`).
@@ -245,9 +255,18 @@ copy**, write the MANIFEST, then `os.replace` (`running-a-job.md § 6.1`).
 | **How it fails** | An interrupted archive leaves a directory that looks complete and is not, and I2's check would be the only thing that ever noticed |
 | **How to check** | Kill the process between each step of a checkpoint; afterwards the archive set is either the old one or the new one, never a mixture |
 
+The shipped implementation does three things this contract did not think to ask
+for, and each is worth keeping: it **validates the sha directory name** before
+writing anything; it hashes the **source**, copies, then re-hashes the **archived
+copy** and requires them equal — because deriving the MANIFEST sha from the copy
+alone would make a disk-corrupted copy *self-consistent*, later verifying against
+its own bad sha and being restored as truth; and it cleans up the `.tmp` on
+`BaseException`, so an interrupt leaves no stray directory. A change that
+simplifies any of the three is a regression.
+
 ### A2 — restore verifies before it mutates
 
-*holds today.*
+*holds today — read against the code, in exactly this order.*
 
 Restore refuses on a dirty text tree, refuses on dirty binaries (sha-compared
 against HEAD's archive), **verifies the target ref's archive before touching
@@ -257,6 +276,12 @@ anything**, and only then restores the worktree and copies binaries back.
 |---|---|
 | **How it fails** | A restore that half-completes leaves a worktree from one commit and binaries from another — a state no commit ever held, which nothing can diagnose afterwards |
 | **How to check** | Corrupt one byte of the target ref's archive and attempt a restore: it refuses, and the worktree is byte-identical to what it was |
+
+The shipped order is: refuse on dirty text (`git status --porcelain`), refuse on
+dirty **binaries** (shas compared against the head archive, since git cannot see
+them — S1 again), verify the *target* archive, only then `git restore`, only then
+copy the binaries back. Four gates before the first mutation. The invariant is
+that order, not merely the presence of the checks.
 
 ### A3 — the checkpoint precedes the mutation it protects
 
@@ -325,6 +350,36 @@ through.
 by hand is their own business — `snapshot tag` exists for it — so the assertion is
 on what the automatic path emits, not on the total.
 
+### L5 — a checkpoint's cost is bounded by what changed, not by what exists
+
+*needs work — the shipped archive does not hold this.*
+
+Automatic checkpoints (`engines/stages.md § 7.3`) fire twice per stage. If every
+one copies every big binary, a five-stage mission pays ten full copies of its
+`.DM` and `.HSX` set, and the folder this design exists to keep manageable
+becomes the reason the disk fills.
+
+| | |
+|---|---|
+| **How it fails** | Silently, and only at scale. Nothing errors; the archive simply grows linearly in checkpoints × binary size, and `prune` is listed as unbuilt (`running-a-job.md § 6.2`), so nothing reclaims it either |
+| **How to check** | Checkpoint a folder twice with the binaries untouched between them. The second checkpoint's *incremental* disk cost is near zero |
+| **How to fix** | Content-address the store: `.binsnapshots/by-content/<sha256>` holding each distinct blob once, with the per-commit MANIFEST referencing it (or hardlinks into the per-sha directory, which is a smaller change and works on one filesystem). This is what the shipped docs already *claim* — making I1's "identical content dedupes" true rather than aspirational |
+
+### L6 — a history can be verified without being restored
+
+*needs work — the capability exists but has no door.*
+
+`_verify_archived_binaries` already checks existence, size and sha256 against the
+MANIFEST and touches nothing (I2). It is called from exactly two places, both on
+the restore path. **So the only way to learn that an archive is intact is to
+attempt a restore** — which is the worst possible moment to find out it is not,
+and which a user will not do speculatively on a folder they are working in.
+
+| | |
+|---|---|
+| **How it fails** | A checkpoint taken onto a failing disk verifies at write time (A1) and is never looked at again until the day someone needs it |
+| **How to check** | A `snapshot verify [<ref>]` verb — CLI and HTTP — runs I2 over one archive or all of them and reports. It is a few lines over a helper that already exists, and it is the natural home for the most valuable test in this document |
+
 ---
 
 ## 6. The review sheet
@@ -351,19 +406,24 @@ One line each, for reading over a diff:
 | **L2** | archive globs match at depth | needs the layout |
 | **L3** | every commit and tag names its calculation | needs the layout |
 | **L4** | molbuilder tags stage completions only | needs the layout |
+| **L5** | a checkpoint costs what changed, not what exists | **not held today** |
+| **L6** | a history can be verified without being restored | **not held today** |
 
-**Eleven of the eighteen can be asserted against the code as it stands**, and two
-of those eleven are worth writing first: **I2**, because the failure it catches is
-silent corruption that nothing else notices, and **S1**, because the failure it
-catches is a multi-gigabyte blob in git history forever. Neither needs a line of
-new feature code to be useful.
+**Eleven of the twenty can be asserted against the code as it stands**; two
+(L5, L6) are **not held today** and are work rather than checks.
 
-**And three of the eleven have now been read against the code rather than
-inferred from the guide** — I4 (no wrapper invokes git: no hits), S1a (already
-enforced by a single write API that says so in its docstring), and S2, whose
-check was blind to the big binaries until the code's own restore path showed why.
-That ratio is the honest state of this document: most of it is still a claim
-about behaviour nobody has run, and the marker on each invariant says which.
+**Six have now been read against the code** rather than inferred from the guide:
+I4 (no wrapper invokes git — no hits), S1a (already enforced by a single write
+API that says so in its own docstring), S2 (whose check was blind to the big
+binaries until the restore path showed why), **I2** (implemented, but reachable
+only through restore — hence L6), **A1** (holds, and does three things this
+contract did not think to ask for) and **A2** (holds, in exactly the stated
+order, with four gates before the first mutation).
+
+Of the six, **two were wrong as written and one was too weak** — which is the
+honest argument for reading code against a contract rather than only reading the
+contract. The remaining fourteen are still claims about behaviour nobody has run,
+and each invariant's marker says which kind it is.
 
 ---
 

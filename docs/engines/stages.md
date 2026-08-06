@@ -538,9 +538,15 @@ archived by content and deduped:
 > folder is exactly the description again. Nothing is lost, because the prior
 > state is a commit — restore it, or branch from it.
 
-Two things make this cheap rather than heavy: a produce that only rewrites decks
-changes only text, and the binary archive is content-addressed, so unchanged
-`.DM`s and `.HSX`es are not copied again.
+A produce that only rewrites decks changes only text, so that half is cheap.
+**The binary half is not, today.** The archive is keyed by commit sha and copies
+every big binary on every checkpoint — the *"deduped by content"* in the shipped
+guide describes deduping basenames within one MANIFEST, not storage across
+checkpoints (`execution/checkpointing.md`, I1 and L5). Automatic checkpoints fire
+twice per stage, so a five-stage mission would pay ten full copies of its `.DM`
+set unless the store is content-addressed first. **L5 is therefore a prerequisite
+for § 7.3's automatic checkpoints, not a later optimisation** — and it is a small
+change to a system whose documentation already claims it.
 
 The warm files are never removed by any of this: they belong to the calculation,
 not to any one stage (`execution/run-identity.md § 6`).

@@ -407,7 +407,15 @@ is agreeing them and answering § 9.
    has nothing to compare against. *Done when:* the same description produces the
    same folder from a terminal and from the browser, and neither path has a
    renderer the other lacks.
-10. **Checkpoints at the two stage boundaries, and `branch` over HTTP**
+10. **Content-address the binary archive** (`checkpointing.md` L5) — **before**
+    item 11, because it gates it. The archive is keyed by commit sha and copies
+    every big binary on every checkpoint; automatic checkpoints fire twice per
+    stage, and `prune` is unbuilt, so the two together grow the disk without
+    bound. *Done when:* a second checkpoint with the binaries untouched costs
+    near-zero incremental disk, and the shipped guide's *"deduped by content"*
+    becomes true rather than aspirational. Add **`snapshot verify`** while there
+    (L6): the check already exists and is reachable only by attempting a restore.
+11. **Checkpoints at the two stage boundaries, and `branch` over HTTP**
     (`engines/stages.md § 7.3`). *Done when:* a replacing produce leaves a commit
     holding the folder as it was; a stage seen to finish leaves a commit **and a
     tag named `<id>/<stage>/<UTC>`**, with a message carrying the id, the stage
@@ -417,19 +425,19 @@ is agreeing them and answering § 9.
     name proposed from the stage it forks. **The wrapper does none of it**
     (`running-a-job.md § 6.2`: it is deliberately git-agnostic), so the finish is
     observed where the run is already watched.
-11. **The archive globs reach into the subdirectories**
+12. **The archive globs reach into the subdirectories**
     (`engines/stages.md § 7.4`, `checkpointing.md § 5` L2). *Done when:* a
     `<stage>/<id>.DM` is archived by content rather than committed as a git blob —
     with the code, a test pinning it, and `job-contracts.md` updated in the same
     commit, which its `§ 7` requires.
-12. **Repoint `checkpoint.py`'s dead doc references.** It cites
+13. **Repoint `checkpoint.py`'s dead doc references.** It cites
     `run-checkpoints.md` five times — a document the 2026-07 migration removed —
     and cites numbered principles from it that nothing now defines. *Done when:*
     each reference points at the section that owns it today
     ([`checkpointing.md`](?doc=execution/checkpointing.md) for the invariants,
     [`running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` for the workflow),
     and no docstring names a file that is not in the tree.
-13. **The checkpoint invariants become tests**
+14. **The checkpoint invariants become tests**
     ([`checkpointing.md`](?doc=execution/checkpointing.md) `§ 6`). Eighteen, of
     which **eleven can be asserted against the code as it stands** and need none
     of this project's other work. *Done when:* all eighteen have an assertion, and
