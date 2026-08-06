@@ -74,7 +74,15 @@ that a change can be checked against them.
 (including the small warm-restart `.XV` / `.CG`) is committed to git; the large
 binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
 
-**Symlinks are outside this, and the word "regular" is load-bearing.** A carried
+**No dotfiles either, and writer and reader must agree on that.** The MANIFEST
+parser rejects a dot-prefixed component anywhere in a key, so the archive walk
+must skip them at every level — basename included. It filtered only the parent
+directories until 2026-08-06, and pathlib's `*` matches a leading dot, so a file
+like `.hidden.DM` was archived under a key the parser refuses: **the archive wrote
+a MANIFEST its own reader could never accept**, making that checkpoint
+permanently unverifiable and unrestorable.
+
+**Symlinks are outside this too, and the word "regular" is load-bearing.** A carried
 restart file is a link to the stage that produced it, and a link has no content
 of its own — the producer's file is archived once, under its own key. Git ignores
 the link too (a gitignore pattern matches by name, not by file type), so a link
@@ -100,17 +108,25 @@ the warning stays a warning; promoting it to an error is a later step.)
 
 ### S1a — the ignore set is *derived* from `archive_globs`, never kept beside it
 
-*holds today — verified in the code, not inferred.*
+*HOLDS as of 2026-08-06 — it did not, and my earlier reading of it was half
+right.*
 
 S1 rests on two lists agreeing: `archive_globs` in `.mbcheckpoint.json`, and what
 git ignores in `.gitignore`. **One list, one writer**, or the agreement is a
 coincidence somebody has to maintain.
 
-The shipped code already does this. `init` resolves the globs once and renders
-both files from them; `set_archive_globs` is *"THE single write API (CLI + web
-share it)"* and regenerates the ignore section in the same call. Its own
-docstrings say the point out loud — *"derived from the same resolved globs, so
-they never drift"*.
+`set_archive_globs` was already that writer and says so — *"derived from the same
+resolved globs, so they never drift"*. **`init` was not.** It wrote `.gitignore`
+only `if not gi.exists()`, so a directory that already had one — every benchmark
+bundle, every directory anyone had worked in — kept an ignore file that said
+nothing about the archive set. The result is S1's *other* branch: the file
+archived **and** committed, a large blob in git history forever.
+
+Both now go through one writer that keeps a **marked section** and leaves
+everything outside it byte-for-byte. It also excises an unmarked block written
+before the markers existed — appending beside one would leave the old patterns in
+force, so narrowing the classification would leave a file ignored and no longer
+archived, which is the losing branch again.
 
 | | |
 |---|---|
@@ -203,7 +219,7 @@ the `bytes` column it adds agrees with the file on disk.**
 | | |
 |---|---|
 | **How it fails** | An archive directory whose *files* are rewritten in place means an old commit's binaries silently become a newer run's. Every restore before that point returns the wrong data, and nothing reports it |
-| **How to check** | For a given commit sha, the archived bytes never change. Re-archiving the *same* sha rebuilds the directory (`_archive_binaries` removes and replaces it), which is legal only because the same commit implies the same tree — so the assertion is on **content for a sha**, not on the directory's mtime. For the migration specifically: diff the parsed MANIFEST before and after — the name→sha mapping is unchanged, and I2 passes afterwards |
+| **How to check** | For a given commit sha, the archived bytes never change. Re-archiving the *same* sha rebuilds the directory — legal only because one commit implies one tree — so the assertion is on **content for a sha**, not on the directory's mtime. The rebuild moves the published archive **aside** before publishing the new one and deletes it only after (A1), so no window exists in which neither is present. For the migration specifically: diff the parsed MANIFEST before and after — the name→sha mapping is unchanged, and I2 passes afterwards |
 
 **One phrase in the shipped docs is misleading, and it misled me.**
 `running-a-job.md § 6.1` and `job-contracts.md § 6.1` both say the archive is
@@ -269,12 +285,19 @@ CLI/UI-only."* A wrapper that committed would need git on the compute node, whic
 
 ## 4. The atomicity rules — a mutation completes or does not happen
 
-### A1 — archiving is build, verify, then swap
+### A1 — archiving is build, verify, swap, then delete
 
 *holds today — read against the code, and it is stronger than this contract asked for.*
 
-The shipped sequence is: build into a `.tmp`, hash, copy, **re-hash and verify the
-copy**, write the MANIFEST, then `os.replace` (`running-a-job.md § 6.1`).
+The sequence is: build into a `.tmp`, hash, copy, **re-hash and verify the copy**,
+write the MANIFEST, move any published archive **aside**, `os.replace` the new one
+into place, then delete the aside.
+
+**The aside step was missing until 2026-08-06.** The code removed the published
+archive and *then* renamed the new one in, leaving a window in which neither
+existed — a crash there destroyed the archive that was already there and
+published nothing, which is the one outcome "complete archive or nothing" must not
+include. The worst case is now a stray `<sha>.old` beside a complete archive.
 
 | | |
 |---|---|

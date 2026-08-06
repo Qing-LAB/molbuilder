@@ -293,3 +293,143 @@ def test_binary_free_project_still_gets_an_archive_directory(tmp_path):
     assert manifest.is_file(), "every commit gets an archive directory"
     assert manifest.read_text() == "", "with an empty MANIFEST"
     repo.restore(sha)          # and it verifies + restores without complaint
+
+
+# ------------------------------------------------------------------ #
+#  S1a — one writer for the ignore set and the archive set            #
+# ------------------------------------------------------------------ #
+
+
+def test_init_regenerates_an_existing_gitignore(tmp_path):
+    """The hole in "one list, one writer".
+
+    `init` used to leave an existing .gitignore alone, so archive_globs said
+    `*.DM` while git happily tracked it -- the file archived AND committed, a
+    large blob in history forever (S1's "never both").  Every benchmark bundle
+    and every worked-in directory arrives with a .gitignore.
+    """
+    (tmp_path / "job.fdf").write_text("SystemLabel job\n")
+    (tmp_path / "job.DM").write_bytes(b"\x01" * 2048)
+    (tmp_path / ".gitignore").write_text("# mine\n*.log\n")
+
+    Repo(str(tmp_path)).init(engine="siesta")
+
+    gi = (tmp_path / ".gitignore").read_text()
+    assert "*.DM" in gi, "the archive set must be ignored, or it lands in git"
+    assert "*.log" in gi, "the user's own lines must survive"
+    tracked = _git_tracked(tmp_path)
+    assert "job.DM" not in tracked, "archived AND tracked is S1's worst branch"
+
+
+def test_set_archive_globs_preserves_user_lines(tmp_path):
+    """The same writer, from the other entry point."""
+    (tmp_path / "job.fdf").write_text("SystemLabel job\n")
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    gi = tmp_path / ".gitignore"
+    gi.write_text(gi.read_text() + "\n# added later\nscratch/\n")
+
+    repo.set_archive_globs(["*.HSX"])
+
+    after = gi.read_text()
+    assert "*.HSX" in after and "scratch/" in after
+    assert "*.DM" not in after, "the old classification must be gone, not merged"
+
+
+# ------------------------------------------------------------------ #
+#  The archive must not write a MANIFEST its own parser refuses       #
+# ------------------------------------------------------------------ #
+
+
+def test_dotfile_binary_is_not_archived(tmp_path):
+    """`.hidden.DM` matches `*.DM` (pathlib's `*` matches a leading dot), but
+    the MANIFEST parser rejects a dot-prefixed component anywhere in a key.
+    Archiving it would write a MANIFEST that could never be read back, making
+    that checkpoint permanently unverifiable."""
+    (tmp_path / "job.fdf").write_text("SystemLabel job\n")
+    (tmp_path / "job.DM").write_bytes(b"\x01" * 512)
+    (tmp_path / ".hidden.DM").write_bytes(b"\x02" * 512)
+
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    sha = repo.resolve_ref("HEAD")
+
+    assert _archived_keys(tmp_path, sha) == {"job.DM"}
+    repo.restore(sha)          # and the archive is readable, which is the point
+
+
+# ------------------------------------------------------------------ #
+#  Sizes are reported over the whole archive, not its top level       #
+# ------------------------------------------------------------------ #
+
+
+def test_nested_archive_reports_its_real_size(tmp_path):
+    """Keys are paths, so a nested archive has only a DIRECTORY at its top
+    level.  A top-level-only scan reported such an archive as empty and its
+    size as zero, while archive_total_bytes (recursive) disagreed."""
+    _seed_nested(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    sha = repo.resolve_ref("HEAD")
+
+    total = repo.archive_total_bytes()
+    assert total == 2 * 4096, f"expected both stages' binaries, got {total}"
+
+    cps = [c for c in repo.list_checkpoints() if c.sha == sha]
+    assert cps and cps[0].has_archive, "a nested archive is not empty"
+    assert cps[0].archive_bytes == total, (
+        f"list_checkpoints says {cps[0].archive_bytes}, "
+        f"archive_total_bytes says {total} -- two readers must agree")
+
+
+# ------------------------------------------------------------------ #
+#  Re-archiving must not destroy what is already published            #
+# ------------------------------------------------------------------ #
+
+
+def test_re_archiving_the_same_commit_keeps_a_readable_archive(tmp_path):
+    """`rmtree(final)` then `os.replace` left a window with NO archive at all.
+    A crash there destroyed the published one and published nothing."""
+    from molbuilder.checkpoint import _archive_binaries, _verify_archived_binaries
+
+    _seed_nested(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    sha = repo.resolve_ref("HEAD")
+
+    before = _verify_archived_binaries(tmp_path, sha)
+    _archive_binaries(tmp_path, sha)            # idempotent re-archive
+    after = _verify_archived_binaries(tmp_path, sha)
+
+    assert after == before, "a re-archive of one commit must be a no-op"
+    assert not list((tmp_path / ".binsnapshots").glob("*.old")), \
+        "the aside copy must be cleaned up on success"
+    assert not list((tmp_path / ".binsnapshots").glob("*.tmp")), \
+        "the build directory must be cleaned up on success"
+
+
+def test_a_pre_marker_block_is_excised_not_left_beside_the_new_one(tmp_path):
+    """The regression a careless fix would ship.
+
+    Repos initialised before the markers existed have an UNMARKED molbuilder
+    block.  Appending a new marked section beside it leaves the OLD patterns in
+    force -- so narrowing the classification would leave a file ignored by the
+    stale block and no longer archived: in NO snapshot at all, S1's data-losing
+    branch, reintroduced by the very fix meant to close it.
+    """
+    from molbuilder.checkpoint import _write_gitignore_section, _render_gitignore
+
+    gi = tmp_path / ".gitignore"
+    gi.write_text("# mine\n*.log\n\n"
+                  + _render_gitignore(("*.DM", "*.HSX"))
+                  + "\n# after\nscratch/\n")
+
+    _write_gitignore_section(gi, ("*.HSX",))
+
+    out = gi.read_text()
+    assert "*.log" in out and "scratch/" in out, "user lines survive"
+    assert "*.HSX" in out, "the new classification is in force"
+    assert "*.DM" not in out, (
+        "the stale pattern must be GONE -- left behind it would keep a file "
+        "ignored that is no longer archived, which is worse than the bug")
+    assert out.count("molbuilder checkpoint BEGIN") == 1, "exactly one section"

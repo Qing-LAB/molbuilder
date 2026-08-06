@@ -271,15 +271,34 @@ def test_default_gitignore_excludes_big_binaries(tmp_path):
         assert pat in body, f"{pat} missing from .gitignore"
 
 
-def test_user_supplied_gitignore_is_not_overwritten(tmp_path):
-    """If the user wrote a .gitignore before calling init, we don't
-    clobber it."""
+def test_user_supplied_gitignore_is_preserved_but_the_archive_set_is_added(
+        tmp_path):
+    """If the user wrote a .gitignore before calling init, their lines survive
+    -- AND molbuilder's big-binary section is still written.
+
+    This test used to assert byte-equality with the user's file, which pinned
+    a real defect: leaving the file untouched meant `archive_globs` claimed a
+    pattern that git did not ignore, so the file was archived AND committed --
+    a large blob in history forever (S1's "never both", checkpointing.md).
+    Every benchmark bundle and every worked-in directory arrives with a
+    .gitignore, so "untouched" was the common case, not the rare one.
+
+    The INTENT of the original test -- don't clobber the user's work -- is what
+    is asserted here; only the byte-equality is retired.
+    """
     custom = "*.foo\nmy-custom-pattern/\n"
     (tmp_path / ".gitignore").write_text(custom)
     _seed_working_dir(tmp_path)
     repo = Repo(str(tmp_path))
     repo.init()
-    assert (tmp_path / ".gitignore").read_text() == custom
+
+    after = (tmp_path / ".gitignore").read_text()
+    assert "*.foo" in after and "my-custom-pattern/" in after, (
+        "the user's own lines must survive init")
+    for pat in repo.archive_globs():
+        assert pat in after, (
+            f"{pat!r} is archived but not ignored -- it would be committed to "
+            f"git as well, which is exactly what the archive exists to avoid")
 
 
 # ----------------------------------------------------------------- #

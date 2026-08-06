@@ -97,6 +97,69 @@ def _render_gitignore(archive_globs) -> str:
     return head + "\n".join(archive_globs) + "\n\n" + _GITIGNORE_FIXED_TAIL
 
 
+#: Marks molbuilder's own region of a .gitignore.  Everything between the two
+#: lines is regenerated from ``archive_globs``; everything outside is the
+#: user's and is preserved byte-for-byte.
+#: The first line of a pre-marker generated block -- how one is recognised so
+#: it can be excised rather than left in force beside a new section.
+_GITIGNORE_LEGACY_HEAD = "# molbuilder run-checkpoints contract:"
+_GITIGNORE_BEGIN = "# === molbuilder checkpoint BEGIN ==="
+_GITIGNORE_END   = "# === molbuilder checkpoint END ==="
+
+
+def _write_gitignore_section(gi: Path, archive_globs) -> None:
+    """Write molbuilder's marked section into ``gi``, preserving the rest.
+
+    S1 ("a regular file is tracked XOR archived") rests on the ignore set and
+    the archive set agreeing, and S1a makes that safe by having ONE writer
+    derive both from one resolved list.  This is that writer: a directory that
+    already has a ``.gitignore`` -- which every benchmark bundle and every
+    worked-in directory does -- must still end up ignoring exactly what the
+    archive claims, or the two drift and a big binary lands in git as a blob.
+
+    Three cases, in order:
+
+    1. **An UNMARKED block from before the markers existed is excised first.**
+       Repos initialised earlier have one, and appending a new section beside it
+       would leave the OLD patterns in force.  Narrow the globs and a file would
+       then be ignored by the stale block but no longer archived -- in NO
+       snapshot at all, which is S1's data-losing branch.  The legacy block is
+       deterministic (a fixed header, a fixed tail), so it can be cut exactly.
+    2. **A marked section is replaced in place**, leaving everything outside it
+       byte-for-byte.
+    3. **Otherwise the section is appended.**
+    """
+    body = (_GITIGNORE_BEGIN + "\n"
+            + _render_gitignore(archive_globs).rstrip("\n") + "\n"
+            + _GITIGNORE_END + "\n")
+    if not gi.exists():
+        gi.write_text(body, encoding="utf-8")
+        return
+    text = gi.read_text(encoding="utf-8")
+
+    # 1. excise a pre-marker molbuilder block, if one is there.
+    if _GITIGNORE_LEGACY_HEAD in text and _GITIGNORE_FIXED_TAIL in text:
+        s = text.index(_GITIGNORE_LEGACY_HEAD)
+        e = text.index(_GITIGNORE_FIXED_TAIL, s) + len(_GITIGNORE_FIXED_TAIL)
+        if e > s:
+            text = text[:s] + text[e:]
+
+    # 2. replace a marked section -- ``end > begin`` so a hand-edit that
+    #    reversed or duplicated the markers cannot splice head and tail into
+    #    each other.
+    b = text.find(_GITIGNORE_BEGIN)
+    e = text.find(_GITIGNORE_END)
+    if b != -1 and e > b:
+        text = (text[:b] + body
+                + text[e + len(_GITIGNORE_END):].lstrip("\n"))
+    # 3. otherwise append.
+    elif text.strip():
+        text = text.rstrip("\n") + "\n\n" + body
+    else:
+        text = body
+    gi.write_text(text, encoding="utf-8")
+
+
 def _resolve_archive_globs(engine, archive_globs) -> tuple:
     """Init-time resolution: explicit ``archive_globs`` win; else the
     ``engine``'s built-in defaults; else (engine unspecified) the safe
@@ -296,8 +359,15 @@ def _list_big_binaries(path: Path) -> List[Path]:
     for pat in _read_archive_globs(root):
         for p in sorted(root.rglob(pat)):
             rel = p.relative_to(root)
+            # EVERY component, basename included.  Filtering only the parents
+            # let a file like `.hidden.DM` through -- pathlib's ``*`` matches a
+            # leading dot -- and the MANIFEST parser rejects a dot-prefixed
+            # component anywhere in a key.  The archive would then write a
+            # MANIFEST its own parser refuses, and that checkpoint could never
+            # be verified or restored again.  Writer and reader agree on the
+            # same rule or the archive traps itself.
             if any(part in _ARCHIVE_SKIP_DIRS or part.startswith(".")
-                   for part in rel.parts[:-1]):
+                   for part in rel.parts):
                 continue
             if p.is_symlink() or not p.is_file():
                 continue
@@ -306,6 +376,20 @@ def _list_big_binaries(path: Path) -> List[Path]:
                 seen.add(key)
                 found.append(p)
     return found
+
+
+def _archive_files(arch: Path) -> List[Path]:
+    """Every archived payload file under ``arch``, at any depth.
+
+    RECURSIVE.  Keys became repo-relative paths on 2026-08-06, so an archive
+    holding ``01_coarse/job.DM`` has nothing but a DIRECTORY at its top level --
+    a top-level-only scan reports such an archive as empty and its size as
+    zero, which is what ``list_checkpoints`` and ``_checkpoint_from_sha`` did
+    while ``archive_total_bytes`` (already ``rglob``) disagreed."""
+    if not arch.is_dir():
+        return []
+    return [p for p in sorted(arch.rglob("*"))
+            if p.is_file() and p.name not in (_MANIFEST_NAME, ".gitkeep")]
 
 
 def _archive_dir(path: Path, sha: str) -> Path:
@@ -564,9 +648,26 @@ def _archive_binaries(path: Path, sha: str) -> int:
             total += size
         _atomic_write_text(tmp / _MANIFEST_NAME,
                            _format_canonical_manifest(entries))
+        # RENAME ASIDE, PUBLISH, THEN DELETE.  `rmtree(final)` followed by
+        # `os.replace` leaves a window in which NEITHER archive exists: a crash
+        # there destroys the archive that was already there and publishes
+        # nothing, which is the one outcome "complete archive or nothing" must
+        # not include.  Moving it aside first means the worst case is a stray
+        # `.old` directory beside a complete archive.
+        old = None
         if final.exists():                     # idempotent re-archive
-            shutil.rmtree(final)
-        os.replace(tmp, final)                 # atomic: complete archive or nothing
+            old = final.parent / (sha + ".old")
+            if old.exists():
+                shutil.rmtree(old)
+            os.replace(final, old)
+        try:
+            os.replace(tmp, final)             # atomic publish
+        except BaseException:
+            if old is not None and not final.exists():
+                os.replace(old, final)         # put the previous one back
+            raise
+        if old is not None:
+            shutil.rmtree(old, ignore_errors=True)
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)  # never leave a stray .tmp
         raise
@@ -842,9 +943,16 @@ class Repo:
         _run_git(["config", "user.name", "molbuilder"], cwd=self.path)
         _run_git(["config", "commit.gpgsign", "false"], cwd=self.path)
 
-        gi = p / ".gitignore"
-        if not gi.exists():
-            gi.write_text(_render_gitignore(globs), encoding="utf-8")
+        # The big-binary section is REGENERATED even when a .gitignore already
+        # exists.  Leaving an existing file alone was the one hole in "one list,
+        # one writer": archive_globs would say *.DM while git happily tracked
+        # it, so the file was archived AND committed -- a large blob in history
+        # forever, S1's "never both".  Any directory a user has worked in, and
+        # every benchmark bundle, arrives with a .gitignore.
+        #
+        # Lines the user added are PRESERVED: only molbuilder's own section is
+        # rewritten, identified by the marker below.
+        _write_gitignore_section(p / ".gitignore", globs)
         # Persist the classification (git-tracked, written BEFORE the commit
         # so it lands in the initial commit and is present for the archive
         # step below).  The UNIFIED accessor for it is archive_globs() /
@@ -919,9 +1027,10 @@ class Repo:
         data["schema"] = _CHECKPOINT_CONFIG_SCHEMA
         data["archive_globs"] = cleaned
         persist.write_json(cfg, data)
-        # keep .gitignore's big-binary section consistent with the archive set.
-        (p / ".gitignore").write_text(_render_gitignore(cleaned),
-                                      encoding="utf-8")
+        # keep .gitignore's big-binary section consistent with the archive set,
+        # through the same single writer init uses -- and preserving whatever
+        # the user put outside molbuilder's section.
+        _write_gitignore_section(p / ".gitignore", cleaned)
         return cleaned
 
     # -- Phase 2: checkpoint -------------------------------------- #
@@ -1137,13 +1246,7 @@ class Repo:
         the list/detail route.
         """
         snaps = Path(self.path) / ".binsnapshots"
-        if not snaps.is_dir():
-            return 0
-        total = 0
-        for sub in snaps.rglob("*"):
-            if sub.is_file() and sub.name not in ("MANIFEST", ".gitkeep"):
-                total += sub.stat().st_size
-        return total
+        return sum(f.stat().st_size for f in _archive_files(snaps))
 
     # -- public ref + diff surface (callers shouldn't touch _-prefixed) #
 
@@ -1188,16 +1291,10 @@ class Repo:
             refs = [r.strip()
                     for r in refs_raw.split(",")
                     if r.strip()]
-            arch = _archive_dir(Path(self.path), sha)
-            has_arch = arch.is_dir() and any(
-                p.name != "MANIFEST" and p.name != ".gitkeep"
-                for p in arch.iterdir())
-            arch_bytes = (
-                sum(p.stat().st_size for p in arch.iterdir()
-                    if p.is_file() and p.name not in (
-                        "MANIFEST", ".gitkeep"))
-                if has_arch else None
-            )
+            files = _archive_files(_archive_dir(Path(self.path), sha))
+            has_arch = bool(files)
+            arch_bytes = (sum(f.stat().st_size for f in files)
+                          if has_arch else None)
             out.append(Checkpoint(
                 sha=sha, short_sha=short, summary=subject,
                 author_at=iso, refs=refs,
@@ -1237,15 +1334,10 @@ class Repo:
         parts = r.stdout.split("|||")
         refs = [t.strip() for t in parts[4].split(",") if t.strip()] \
             if len(parts) >= 5 else []
-        arch = _archive_dir(Path(self.path), sha)
-        has_arch = arch.is_dir() and any(
-            p.name != "MANIFEST" and p.name != ".gitkeep"
-            for p in arch.iterdir())
-        arch_bytes = (
-            sum(p.stat().st_size for p in arch.iterdir()
-                if p.is_file() and p.name not in ("MANIFEST", ".gitkeep"))
-            if has_arch else None
-        )
+        files = _archive_files(_archive_dir(Path(self.path), sha))
+        has_arch = bool(files)
+        arch_bytes = (sum(f.stat().st_size for f in files)
+                      if has_arch else None)
         return Checkpoint(
             sha=parts[0], short_sha=parts[1],
             summary=parts[3] if len(parts) >= 4 else "",
