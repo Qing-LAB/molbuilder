@@ -196,6 +196,9 @@
         },
         {
           "path": "web/structure-optimization-ui-plan.md"
+        },
+        {
+          "path": "web/staged-runs-architecture.md"
         }
       ]
     },
