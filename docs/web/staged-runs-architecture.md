@@ -128,15 +128,29 @@ thing the generator reads:
 ```jsonc
 {
   "format": "molbuilder/stage-plan",
-  "version": 1,
-  "engine": "siesta",
+
+  // What this plan is FOR, and what it needs to run. The backend checks these
+  // before it renders anything (§ 5.3).
+  "engine":  { "name": "siesta", "version": "5.0", "requires": ["mpi", "netcdf"] },
+
+  // What produced it, and what identifies the run it describes (§ 6).
+  "run":     { "experiment": "bdt-au-relax", "created": "2026-08-06T22:14:03-07:00",
+               "id": "bdt-au-relax-20260806-221403", "label": "bdt_au" },
+
+  // Which schema the values were entered against. Not a definition — a witness,
+  // so a disagreement between the browser and the backend is caught, not obeyed.
+  "schema":  { "fingerprint": "sha256:1f0c…" },
 
   // Every schema field, one value. A one-stage plan is just this.
-  "base": { "system_label": "bdt", "mesh_cutoff": 150, "mpi_ranks": 8, … },
+  "base": { "mesh_cutoff": 150, "mpi_ranks": 8, … },
 
-  // WHICH fields the user chose to vary. Intent, not values — this is the
-  // part no bundle on disk can recover once it is thrown away.
-  "varies": ["mesh_cutoff", "relax_force_tol", "mpi_ranks"],
+  // WHICH fields the user chose to vary, with the bounds the UI enforced when
+  // the values were typed. Intent plus evidence — neither is in a bundle.
+  "varies": [
+    { "field": "mesh_cutoff",     "type": "float", "min": 50, "max": 1000, "unit": "Ry" },
+    { "field": "relax_force_tol", "type": "float", "min": 0.001, "max": 1.0, "unit": "eV/Ang" },
+    { "field": "mpi_ranks",       "type": "int",   "min": 1,  "max": 256 }
+  ],
 
   "stages": [
     { "name": "coarse", "enabled": true,
@@ -155,23 +169,60 @@ thing the generator reads:
 ### 5.1 Three rules, and each one is load-bearing
 
 **It names fields; it never defines them.** Every key in `base`, `varies` and
-`overrides` must resolve to a field the schema already declares — with its type,
-its bounds, its help text and its `engine_key`. A plan carrying a key the schema
-does not know is **refused, not ignored**: an ignored key is a calculation
-quietly different from the one that was asked for. This is the rule that keeps
-the JSON from becoming a second schema, which is the way this idea fails.
+`overrides` must resolve to a field the schema already declares. A plan carrying
+a key the schema does not know is **refused, not ignored**: an ignored key is a
+calculation quietly different from the one that was asked for. This is the rule
+that keeps the JSON from becoming a second schema, which is how the idea fails.
+
+**The bounds it carries are a witness, not a law.** The UI validated those
+values against a schema that knows the engine; recording the type and range it
+enforced lets the backend check that it is looking at the same field it was —
+and *disagreement is an error, never a silent overwrite*. A plan saying
+`mesh_cutoff ≤ 1000` against a backend that now says `≤ 600` is a report about
+drift between two components, which is exactly the thing that otherwise goes
+unnoticed until a run behaves oddly. The **schema fingerprint** makes the common
+case one comparison instead of thirty-eight.
 
 **It is parsed *into* the typed config, not around it.** The generator keeps
 rendering from a `SiestaConfig` and its stage specs; the file is how a plan
-travels and how it persists. The alternative — a generator that renders whatever
-keys the JSON happens to carry — throws away validation, defaulting and the
-`engine_key` mapping, and re-implements all three badly.
+travels and how it persists. A generator that rendered whatever keys the JSON
+happened to carry would throw away validation, defaulting and the `engine_key`
+mapping, and re-implement all three badly.
 
-**It is versioned**, because a plan outlives a schema. A plan naming a field
-that no longer exists fails to load and *says which field*, rather than dropping
-it: § 9's question 3, answered.
+### 5.2 There is no format version, on purpose
 
-### 5.2 What it buys
+A version number is a promise that somebody will write migrations, and nobody
+does. It also buys nothing here that the content does not already buy: a reader
+that **refuses a key it does not know** fails safely on a file from the future,
+and names what it could not understand — which is the same outcome a version
+check gives, arrived at with more information.
+
+What *does* need checking is checked directly: **the engine and its version**,
+the requirements it declares, and the schema fingerprint. Those are real facts
+about whether this plan can run here. A number counting revisions of a file
+layout is not.
+
+The `format` name stays — one string, so a plan cannot be mistaken for some
+other JSON that happens to have a `stages` key.
+
+### 5.3 What the backend checks before it renders
+
+In order, and all of it up front rather than halfway through writing a bundle:
+
+| Check | On failure |
+|---|---|
+| `format` is a stage-plan | refuse — this is not a plan |
+| the engine is one this backend has | refuse, naming what it has |
+| the engine **version** satisfies the plan | refuse, naming both — a deck written for 5.0 keywords is not a 4.1 deck |
+| declared `requires` are present (MPI, NetCDF, a GPU) | refuse, naming what is missing |
+| the schema fingerprint matches | proceed, but report the fields that differ |
+| every named field exists | refuse, naming the field |
+| every value inside the schema's bounds | refuse, naming the field and both bounds |
+
+The order matters: an engine mismatch makes every field question moot, and
+answering the moot ones first buries the real message.
+
+### 5.4 What it buys
 
 - **One producer for both surfaces.** The CLI and the browser stop being two
   paths to a ladder; the browser writes a plan, and the same reader turns it into
@@ -179,12 +230,12 @@ it: § 9's question 3, answered.
 - **Reopening a run restores intent.** A bundle can be re-read for its values,
   but nothing in it says *which parameters the user meant to vary* — a mesh
   cutoff that happens to be equal in all three stages is indistinguishable from
-  one never promoted. § 9's questions 1 and 4, answered: `varies` is in the file
+  one never promoted. § 10's questions 1 and 4, answered: `varies` is in the file
   because it cannot be inferred from anything else.
 - **A plan is reviewable.** It diffs. Two runs that differ can be compared as
   intent rather than by reading two directories of decks.
 
-### 5.3 Where it sits among the artefacts
+### 5.5 Where it sits among the artefacts
 
 One direction, no loops:
 
@@ -207,7 +258,7 @@ hash of the plan that produced the script, so any deck in a project can be trace
 back to the plan it came from, and a deck edited by hand can be told apart from
 one a plan would reproduce.
 
-### 5.4 What this is not
+### 5.6 What this is not
 
 It is not an engine input format: no engine reads it. It is not a replacement
 for `SiestaConfig` — that dataclass remains the definition of what a field *is*.
@@ -216,7 +267,116 @@ the bundle it produced.
 
 ---
 
-## 6. Validation has to name the stage
+## 6. Identity: the run id, and the key warm restart turns on
+
+A generated script "declares its ID in one literal (`SystemLabel` / `JOB`)", and
+**that ID keys every warm file as `<ID>.<ext>`**. So the value a user types is
+what decides whether a run resumes from state already on disk. Two
+consequences, both real today:
+
+- two different calculations given the same label in one directory: the second
+  **silently warm-starts from the first's geometry**, and the banner says
+  `WARM-RESTART (silent)` because that is exactly what it is;
+- a label edited between runs: the warm files no longer match, and a run that
+  should have resumed starts cold instead.
+
+An id derived from the plan fixes both — but only if it is derived from the
+right thing, and this is the trap:
+
+> **A content-derived id and warm restart pull in opposite directions.** Hash the
+> plan and every edit changes the id, so tightening a tolerance and resuming
+> from the geometry you already reached becomes impossible — the warm files no
+> longer bear the name the engine looks for. Yet resuming *through* an edit is
+> the whole point of a ladder.
+
+So the plan carries **two names, for two questions**:
+
+| | Answers | Derived from | Changes when |
+|---|---|---|---|
+| **`run.id`** | *which run is this?* | experiment name + timestamp | every generation |
+| **`run.label`** | *what state may it inherit?* | the experiment name, normalised | the user says it is a different experiment |
+
+`run.label` is what becomes `SystemLabel`. It stays constant across the stages
+of a ladder — which is already required, since the unsuffixed label is what lets
+`.XV` / `.DM` / `.CG` transfer between stages — and constant across the edits a
+user means to resume through. `run.id` never reaches the engine; it names the
+directory, the scheduler job and the record, so two runs of the same experiment
+are told apart everywhere except in the one place where being told apart would
+break the science.
+
+### 6.1 What the identity is tied to — and why that is a physics question
+
+The label keys the warm files, so the rule cannot be a naming convention. It has
+to be: **the label binds everything that makes prior state valid to inherit, and
+nothing that merely says how hard to push.**
+
+| Tier | Fields | In the label? | Because |
+|---|---|:--:|---|
+| **the system** | atoms, cell, species → pseudopotentials | **yes** | a `.XV` from different atoms is not a starting geometry, it is nonsense |
+| **the electronic description** | basis (PAO size/shift), spin polarisation, XC functional | **yes** | a `.DM` is written in the basis; a different basis or spin is a different *shape*, and a different functional is different physics wearing the same shape |
+| **the tightening** | mesh cutoff, DM and energy tolerances, force tol, max displacement, steps, relaxation algorithm | no | these are exactly what a ladder varies. A denser grid re-integrates from the same density matrix; a tighter tolerance resumes from the geometry already reached. Putting these in the identity would make every stage a cold start, which is the opposite of a ladder |
+| **the machine** | ranks, threads, wall time, GPU | no | how fast it runs says nothing about whether the answer may be continued |
+
+So the label is `experiment` + a fingerprint of the first two tiers:
+
+```
+   run.label = "bdt_au_a41f"
+                └──┬───┘ └┬─┘
+                   │      the system + electronic description, hashed
+                   the experiment name, so a human can read it
+```
+
+Change the tolerance, the mesh or the number of ranks and the label holds — the
+next stage resumes, which is what a ladder is. Change an atom, the basis, the
+spin or the functional and the label changes with it, so the engine looks for
+warm files under a name that does not exist and **starts cold because it should**.
+
+The correctness property comes out of that for free: *it is no longer possible
+to silently warm-start a calculation from state that belongs to a different
+one.* Today that depends on a user typing a different name, and nothing checks.
+
+### 6.2 The id is on screen, and its changes are visible
+
+An identity the user cannot see is one they cannot reason about, and this one
+decides whether their run resumes. So the tab shows both, always:
+
+```
+   ┌────────────────────────────────────────────────────────────┐
+   │  Job ID     bdt-au-relax-20260806-221403                   │
+   │  Warm key   bdt_au_a41f    ← changes if you edit the       │
+   │                              structure, basis, spin or XC   │
+   └────────────────────────────────────────────────────────────┘
+```
+
+Two behaviours that make it worth showing rather than merely correct:
+
+- **When an identity-bearing field is edited, the warm key visibly changes**, at
+  the moment of the edit. That is the UI saying *this has become a different
+  calculation and it will start cold* — before a bundle is written, not after a
+  run behaves oddly.
+- **When a run directory already holds warm files**, the tab can say whether
+  they match the current key: *"prior state found for this key — the next run
+  resumes"*, or *"prior state found, but from a different calculation"*. That is
+  the same sentence the wrapper's banner prints, moved to where the decision is
+  actually being made.
+
+
+**And the hash still earns its place — as a report, not as a name.** The plan's
+content hash is recorded with the run. When warm files are found whose hash
+differs from the plan about to run, the banner can say *whose* state it is
+resuming rather than only that it is resuming. That is the existing doctrine
+applied to a case it does not yet cover: **molbuilder informs, and the user
+decides to continue.** Today `WARM-RESTART (silent)` cannot tell you that the
+state on disk came from a different calculation, because nothing recorded which
+calculation made it.
+
+What this replaces: a free-typed name doing three jobs at once — telling runs
+apart, keying warm files, and naming files on disk. Splitting it into a stable
+label and a unique id lets each be right.
+
+---
+
+## 7. Validation has to name the stage
 
 A findings list today points at a field. With a ladder, "mesh cutoff is too low
 for this basis" is true of *stage 1* and false of *stage 3*, and a finding that
@@ -232,7 +392,7 @@ validation path.
 
 ---
 
-## 7. The module map
+## 8. The module map
 
 | Layer | Today | What this needs |
 |---|---|---|
@@ -252,10 +412,10 @@ renders it and nothing else.
 
 ---
 
-## 8. The order of work, and what "done" means
+## 9. The order of work, and what "done" means
 
 **Step 1 — this document.** Done when the shape is agreed and the open questions
-in § 9 are answered.
+in § 10 are answered.
 
 **Step 2 — the backend, tuned and validated.** In order:
 
@@ -286,15 +446,30 @@ user needs.
 
 ---
 
-## 9. Open questions this document cannot settle
+## 10. Open questions this document cannot settle
 
 1. **Does a stage's override of a `budget` field also change the wrapper it gets
    installed with**, or only the scheduler request?
-2. **Is a plan editable by hand?** It is JSON beside a bundle, so it will be. If
+2. **Is `run.label` the user's to edit?** Deriving it makes it consistent;
+   letting it be typed keeps a door open to deliberately resuming from an
+   unrelated run's state, which is occasionally what a person wants and is
+   otherwise impossible to ask for.
+3. **Does the XC functional belong in the identity (§ 6.1)?** A `.DM` from
+   another functional is the right *shape* and the wrong *physics* — usable as a
+   guess, wrong as a continuation. Included here on the grounds that continuing a
+   relaxation across a functional change silently is a scientific error, but this
+   is a call for someone who does it.
+4. **What exactly is hashed for the system tier** — coordinates to full
+   precision, or a rounded form? Full precision means a geometry nudged by
+   10⁻⁶ Å is a different calculation, which is right in principle and may be
+   maddening in practice.
+5. **Is a plan editable by hand?** It is JSON beside a bundle, so it will be. If
    yes, the reader owes the same errors to a person as to the browser — which is
    an argument for the refusal rule in § 5.1 being loud rather than tolerant.
-3. **Does a plan pin the engine version it was written against?** `format` and
-   `version` describe the file; nothing yet describes the SIESTA it was aimed at.
+6. **How strict is the engine-version check?** § 5.3 refuses on mismatch, which
+   is right for a major change and heavy-handed for a patch release. A range, or
+   a "warn below, refuse across major", needs deciding by someone who knows what
+   SIESTA changes between versions.
 
 *Answered by § 5, which is why it was worth writing:* whether `varies` travels to
 the server (yes — it cannot be inferred), what happens when the schema moves on
