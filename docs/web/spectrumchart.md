@@ -17,7 +17,7 @@ which mode they meant.
 **This document is the design of that component** — what it is for, what it
 refuses to do, what it holds, how it is layered, what each API is for, and how its
 tests are derived. It is not a tour of the current code; the code it replaces is
-470 lines inside a 3,671-line tab controller. § 15 says which parts are built.
+345 lines inside a 3,671-line tab controller. § 14 says which parts are built.
 
 > **Words used in this document.**
 >
@@ -130,7 +130,7 @@ three that hold VibrationView together, for the same reasons:
 
 - **Every internal file is underscore-prefixed** — `_maths.js`, `_seal.js`. An
   import of `_maths.js` reads as a violation where it is written.
-- **The module links its own stylesheet** (§ 13). No template names it, so no page
+- **The module links its own stylesheet** (§ 12). No template names it, so no page
   can forget it.
 - **A guard test asserts the boundary** — nothing outside the package may name any
   path inside it but `index.js`.
@@ -140,11 +140,16 @@ It does not read `window.molbuilder` and it does not write to it. A chart needs 
 thing at mount: an element to live in.
 
 **Nothing leaks out.** No Plotly object, no DOM node, and no internal function ever
-appears on the handle. The name `Plotly` occurs in exactly one file, which is also
-the only place that fails with a clear message when the library is missing.
+appears on the handle. Inside this module the name `Plotly` occurs in exactly one
+file, which is also the only place that fails with a clear message when the
+library is missing.
+
+That is the practice MolView and VibrationView already follow with 3Dmol: each
+module seals the library for itself, because independence beat sharing. The rule
+is what the code complies with, not a description of what it currently does.
 
 **No test seam.** Tests import the module and drive the handle, exactly as a page
-does (§ 14).
+does (§ 12).
 
 **The test of all of this:** delete every other web module and SpectrumChart still
 loads, mounts, draws and reports clicks.
@@ -153,7 +158,7 @@ loads, mounts, draws and reports clicks.
 
 ## 5. The ideas everything else follows from
 
-Five of them. A design choice that breaks one is wrong no matter how convenient.
+Four of them. A design choice that breaks one is wrong no matter how convenient.
 
 ### 5.1 The door says the cost
 
@@ -187,14 +192,12 @@ step, and that mechanism is where they fall out of step.
 The **selection lives in the tab** and is mirrored here for drawing — one
 direction only, so "mirrored" stays true (§ 3).
 
-### 5.3 What is drawn is what can be clicked
+**The broadening is the same shape**: the tab owns the control the user types
+into, and the chart holds the width it was last told. The mirror is one-way for
+the same reason — a chart that changed the width itself would be a second author
+of a number the tab displays.
 
-The click bands are derived from the same broadening that draws the envelope, so
-the region a user aims at is the region they see. A tolerance set independently of
-the picture is a second fact about the same thing (§ 5.2), and it drifts the
-moment either is changed alone.
-
-### 5.4 The graphics library is invisible, and the controls are not ours
+### 5.3 The graphics library is invisible, and the controls are not ours
 
 Nothing above the sealed layer knows the chart is Plotly. And SpectrumChart draws
 **no controls** — no heading, no broadening box, no export button. It fills the
@@ -202,7 +205,7 @@ element it was given with a spectrum. Plotly's own mode bar is the library's, no
 a control this module offers; what appears on it is decided in the sealed layer
 and nowhere else.
 
-### 5.5 The host owns the box
+### 5.4 The host owns the box
 
 The host sizes the element; the chart fills whatever it is given. **This is the
 rule that three separate bugs came from breaking**, all on 2026-08-05: a figure
@@ -269,8 +272,11 @@ on it and no explanation.
 ### 6.4 A click lands on a band, and no two bands overlap
 
 Each mode gets an invisible band centred on it. Its half-width is the **broadening
-width** — the same number that draws the envelope (§ 5.3) — with a floor for when
-broadening is off, since bare sticks still have to be reachable.
+width** — *the same number that draws the envelope*, so the region a user aims at
+is the region they see. A tolerance set independently of the picture would be a
+second fact about the same thing (§ 5.2), and it drifts the moment either is
+changed alone. A floor covers broadening being off, since bare sticks still have
+to be reachable.
 
 **And each band is clamped to half the distance to its nearer neighbour.** Without
 that clamp, bands overlap wherever modes are dense — ten of the thirty-five
@@ -353,15 +359,27 @@ Five doors. Every one is behaviour; none is a way to read the module's insides.
 with no `onSelect` draws normally and reports nothing — a legitimate thing to be,
 for a figure nobody is meant to click.
 
+**`setSelected` never emits `onSelect`.** The event means *a user clicked*, not
+*the selection changed*; a caller that wires the two together in the obvious way
+would otherwise get an endless round trip. Nothing the tab does to the chart ever
+comes back out of it.
+
 There is deliberately **no `getSelected`** and **no `getModes`**: the caller wrote
 both.
 
-**`refit` exists because a box can change size while nothing is drawn.** A chart
-in a hidden tab has no box; when its tab opens, the box is real and the drawing
-must catch up. The module watches its own box (§ 5.5), but a watcher fires on a
-size *change* — going from "no box" to "a box" through a `hidden` toggle does not
-always produce one. `refit` is the door for that, and it is the same door
-VibrationView needed for the same reason.
+**`refit` exists because of a rule, not because of a library's behaviour.**
+
+> **The module never draws into a box it cannot measure**, and it cannot know on
+> its own when an unmeasurable box becomes real.
+
+A chart in a hidden tab has no box. The module watches its own box (§ 5.4), and
+that covers a box that *changes size*; what it cannot be relied on to cover is a
+box that did not exist. `refit` is how the host says **the box is real now** — the
+same door VibrationView needed, for the same rule.
+
+Justifying this door by what a `ResizeObserver` does instead would put a
+library's behaviour into a contract, where it cannot be tested and cannot be
+depended on.
 
 ### 9.3 The sealed layer — commands down, clicks up
 
@@ -369,11 +387,15 @@ VibrationView needed for the same reason.
 draw(traces, layout)            put this picture on the surface
 recolour(marks)                 change the colours already drawn — no rebuild
 resize()                        the box changed; fill it
-onClick(cb)                     a point was clicked: hand up its mode index
+onClick(cb)                     a point was clicked: hand up the token the
+                                handle attached to it
 purge()                         release the surface
 ```
 
-It answers **no** question about what is drawn. What a selected stick *looks like*
+It answers **no** question about what is drawn, and it does not know what a mode
+is. A click hands back the **opaque token** the handle attached to that point;
+deciding the token means *mode 22* is the handle's job, because "mode" is domain
+vocabulary and this layer has none. What a selected stick *looks like*
 is decided here — the layer above says *which index is selected*, never what
 colour it should be. A colour riding on data is how a drawing decision ends up in
 three places.
@@ -383,7 +405,7 @@ colours as JavaScript values, so a chart cannot inherit them the way an element
 does — which is precisely how two tab controllers ended up carrying private copies
 of the same nine hex literals. The sealed layer reads the tokens off the document
 and hands the library the answer, so the tokens stay the one source of truth
-(§ 13).
+(§ 12).
 
 **`recolour` is the cheap door § 5.1 is about.** It exists so that the expensive
 one does not have to be called for a click.
@@ -441,22 +463,7 @@ disagree with the viewer (§ 3).
 
 ---
 
-## 12. What this module does NOT take from the tab
-
-The tab keeps, and must keep:
-
-- **the mode table** — sorting, filtering, the CSV export;
-- **the selection** and every consumer of it;
-- **the broadening control** — the chart is *told* a width, it does not draw a box
-  to type one into (§ 5.4);
-- **the watch poller**, the load path, the generator form.
-
-If any of those move inside, this stops being a chart and becomes a second copy of
-the tab.
-
----
-
-## 13. The module owns its own stylesheet
+## 12. The module owns its own stylesheet
 
 **The stylesheet is sealed the way the JavaScript is:**
 
@@ -467,7 +474,7 @@ the tab.
   them and carry no literals.
 - **The module links it, not the page**, at mount, once.
 
-**What the host decides is the box**: how big it is and where it sits (§ 5.5).
+**What the host decides is the box**: how big it is and where it sits (§ 5.4).
 Everything inside it is the module's.
 
 **And the mount waits for the stylesheet**, because the sealed layer reads the
@@ -477,7 +484,7 @@ as the two agree — the same trap VibrationView documents, and the same fix.
 
 ---
 
-## 14. How the tests are designed
+## 13. How the tests are designed
 
 **Every test is derived from this document, never from the source.** A test that
 reads the implementation to build its assertion can only confirm that the code
@@ -503,7 +510,7 @@ still says what it said.
 | § 5.2 — the selection is mirrored, not owned | a click emits `onSelect` and changes **nothing** on screen until `setSelected` is called; a chart mounted without `onSelect` still draws |
 | § 5.3 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
 | § 5.4 — no chrome | a mounted chart contains no heading, button, input or control of any kind |
-| § 5.5 — the host owns the box | the module sets no width or height on its host, at mount or ever; and a box that changes size redraws without the window moving |
+| § 5.4 — the host owns the box | the module sets no width or height on its host, at mount or ever; and a box that changes size redraws without the window moving |
 | § 6.1 — the caller's numbering is carried | the index reported by a click is the index that was handed in, for a list that is unsorted, sparse and 1-based |
 | § 6.3 — the picture is derived | a result with no activities anywhere draws unit-height sticks; one with some activities draws the rest at zero in a separate trace — and neither is reachable by a setting |
 | § 6.4 — a click lands on the nearest mode | for a spectrum with modes closer together than the broadening, every point in the plot resolves to the nearest mode; no two bands overlap at any width |
@@ -515,11 +522,11 @@ still says what it said.
 | § 10 — the envelope is the sum | the curve at a mode's frequency equals that mode's activity plus the tails of the others, computed independently of the implementation |
 | § 10 — the grid follows the width | the sampling step scales with the broadening, and the curve returns to near zero at both ends at every width |
 | § 10 — missing is not weak | a mode with no activity contributes nothing to the envelope |
-| § 12 — the tab keeps its own | the module contains no table, no filter, no CSV, no poller, and no form |
+| § 2 — the tab keeps its own | the module contains no table, no filter, no CSV, no poller, and no form |
 
 ---
 
-## 15. The file map, and where the code stands
+## 14. The file map, and where the code stands
 
 Everything below lives under `lib/spectrumchart/`. **Nothing is built yet** — this
 document is the design, written before the code moves, so the door can be reviewed
@@ -541,19 +548,16 @@ before anything depends on it.
 consumers, the watch poller, the load path, the generator form, the
 electronic-structure panel.
 
-**The electronic-structure level diagram is not part of this module.** It is a
-second figure with different data (`_renderLevelDiagram`, 105 lines), and it is the
-natural *second* module — a decision to make with a second caller in hand, not by
-guessing now.
+**The electronic-structure level diagram is not part of this module** and is not a
+module. It is a small figure belonging to the electronic-structure panel, with
+different data and a different job; it stays where it is.
 
 **Sequencing.** This extraction comes **before** the planned ESM conversion of
 `lib/spectra/core.js` (roadmap #102): converting first would convert the mess and
 then re-cut it, while extracting first leaves #102 a smaller file with its hardest
 part already sealed.
 
-**A second consumer already exists.** `lib/trajectory/core.js` (3,129 lines) also
-names Plotly — eight sites, ten raw hex literals and its own `ResizeObserver` — so
-the concerns this module seals are currently solved twice, independently. That is
-an argument for the seal, **not** a reason to build a general charting layer now:
-if trajectory wants `_seal.js`, it gets promoted then, with a real second caller
-rather than a guessed one.
+**No general charting layer.** `_seal.js` is this module's seal over Plotly, not a
+shared abstraction waiting for consumers. If another module ever needs the same
+seal it gets promoted then, with a real second caller rather than a guessed one —
+the same way MolView and VibrationView each kept their own.
