@@ -145,7 +145,7 @@ export async function openSurface(host) {
     });
 
     const tracesFor = (picture) => {
-        const sticks = picture.sticks || { x: [], y: [], state: [], hit: [] };
+        const sticks = picture.sticks || { x: [], y: [], state: [] };
         const traces = [];
         if (picture.curve) {
             traces.push({
@@ -163,66 +163,59 @@ export async function openSurface(host) {
             y: sticks.y,
             width: sticks.width,
             marker: { color: sticks.state.map((s) => colourFor(s, palette)) },
-            hoverinfo: "skip",
-        });
-
-        /* THE BANDS ARE MARKS, because a click can only land on one.
-         *
-         * The library reports a click when the pointer is over a point of a
-         * trace and at no other time — so a stick a pixel wide is a target you
-         * have to hit, and a click in the space beside a peak reaches nothing at
-         * all. That space is the whole purpose of the band (§ 6.3), so the band
-         * is drawn: a bar as wide as the band, transparent, tall enough to cover
-         * the plot, and the only thing here a click can reach. What comes back is
-         * that bar's position, which is the mode's own frequency. */
-        const tallest = Math.max(
-            0,
-            ...(sticks.y || []),
-            ...((picture.curve && picture.curve.y) || []),
-        );
-        traces.push({
-            type: "bar",
-            x: sticks.x,
-            y: sticks.x.map(() => tallest || 1),
-            width: sticks.hit,
-            marker: { color: "rgba(0,0,0,0)" },
             hovertemplate: `%{x:.1f} ${picture.xUnit || ""}<extra></extra>`,
         });
         return traces;
     };
 
-    // `recolour` reaches the visible sticks, which sit between the curve (when
-    // there is one) and the bands.
+    // Which trace the sticks are in depends on whether a curve is drawn, and
+    // `recolour` has to reach the same one `draw` built.
     let stickTraceIndex = 0;
     let disposed = false;
-    let clicked = null;   // the handle's callback, kept until there is a plot
-    let wired = false;
+    let clicked = null;   // the handle's callback
 
-    /* The library grows its event emitter on the element only once something has
-     * been plotted on it, so a caller that asks for clicks before the first draw
-     * would otherwise wire nothing at all and never hear one. */
-    const wireClicks = () => {
-        if (wired || !clicked || typeof surface.on !== "function") return;
-        wired = true;
-        surface.on("plotly_click", (ev) => {
-            const point = ev && ev.points && ev.points[0];
-            if (!point) return;
-            const x = typeof point.x === "number" ? point.x : Number(point.x);
-            if (Number.isFinite(x)) clicked(x);
-        });
+    /* WHERE A CLICK CAME FROM, IN THE UNITS OF THE PICTURE.
+     *
+     * The library reports a click only when the pointer is over one of its own
+     * points, so nothing it offers can hear a click in the empty space beside a
+     * peak — and that space is the whole purpose of the bands (§ 6.3). So the
+     * click is taken from the surface itself and converted here: where the
+     * pointer was, across the plot area, read against the axis range.
+     *
+     * This is the one place in the module that reads inside the library, and it
+     * is the file whose job is to know it (§ 8.4). Nothing above sees anything
+     * but a number, and which mode that number means is decided up there.
+     */
+    const plotArea = () => surface.querySelector && surface.querySelector(".nsewdrag");
+
+    const positionOf = (event) => {
+        const area = plotArea();
+        const axis = surface._fullLayout && surface._fullLayout.xaxis;
+        if (!area || !axis || !Array.isArray(axis.range)) return null;
+        const box = area.getBoundingClientRect();
+        if (!box.width) return null;
+        const across = (event.clientX - box.left) / box.width;
+        if (across < 0 || across > 1) return null;          // outside the plot area
+        const [from, to] = axis.range;
+        return from + across * (to - from);
     };
+
+    surface.addEventListener("click", (event) => {
+        if (disposed || !clicked) return;
+        const x = positionOf(event);
+        if (x !== null && Number.isFinite(x)) clicked(x);
+    });
 
     return {
         draw(picture) {
             if (disposed) return;
             const traces = tracesFor(picture);
-            stickTraceIndex = traces.length - 2;   // the bands are last
+            stickTraceIndex = traces.length - 1;
             Plotly.react(surface, traces, layoutFor(picture), {
                 displaylogo: false,
                 responsive: false,
                 modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d"],
             });
-            wireClicks();
         },
 
         /** The cheap door: colours only, no rebuild, no axis change (§ 5.1). */
@@ -243,7 +236,6 @@ export async function openSurface(host) {
         /** One number goes up: where the click landed on the frequency axis. */
         onClick(cb) {
             clicked = cb;
-            wireClicks();
         },
 
         purge() {

@@ -666,7 +666,6 @@ nothing in it is a colour or a mode:
 ```js
 picture = {
     sticks: { x: [...], y: [...], width: [...],  // where and how tall each is drawn
-              hit:   [...],                       // the band it is clicked in (§ 6.3)
               state: ["plain" | "chosen" | "pending" | "imaginary", …] },
     curve:  { x: [...], y: [...] } | null,       // null when there is no curve
     xTitle, yTitle, xUnit,                        // the words on the axes
@@ -674,19 +673,9 @@ picture = {
 }
 ```
 
-**`hit` is there because a band has to be a mark.** The drawing library reports a
-click when the pointer is over one of its points and at no other time — so a
-stick a pixel wide is a target you must hit, and a click in the space *beside* a
-peak reaches nothing at all. That space is the whole purpose of § 6.3. So the
-seal draws each band: a transparent shape as wide as the band, tall enough to
-cover the plot, and the only thing on the surface a click can land on. The
-visible stick takes no clicks, or the band's width would be a lie.
-
-> Nothing above the seal changes for this. The handle already knows every band's
-> width — it asks the maths for them (§ 6.3) — and it still hears back a
-> position. What changed is one number in the picture, and the discovery that a
-> drawing library will not report a click over empty space no matter how the
-> contract above it is phrased.
+**Nothing in the picture says where a click may land**, and that is deliberate:
+the bands are not drawn and not handed down. § 8.4 says where they are used
+instead.
 
 **A state is a word, never a colour** — the layer above says a mark is *chosen*
 and the seal decides what chosen looks like (§ 5.1's cheap door hands down the
@@ -719,6 +708,20 @@ so the sheet stays the one source of truth for how the chart looks.
 **`recolour` is the cheap door § 5.1 is about.** It exists so that the expensive
 one does not have to be called for a click.
 
+**A click is read off the surface, not off a mark.** The drawing library reports
+a click only when the pointer is over one of *its own* points — so nothing it
+offers can hear a click in the empty space beside a peak, and that space is the
+whole purpose of a band. So the seal takes the click from the surface itself and
+converts it: where the pointer was, across the plot area, read against the axis
+range. That conversion is the one place in this module that reads inside the
+library, and this is the file whose job is to know it.
+
+> **Why not draw the bands as invisible marks instead?** Because then the *seal*
+> would be deciding which mode you clicked — the mark it reports would already be
+> the answer — and the handle's band lookup would be a rubber stamp. The division
+> this section states would be true on paper and false in the code. A raw
+> position keeps it true: the seal knows where, the handle knows which.
+
 **The seal takes the library as it finds it, and never assumes it is ready.**
 Two consequences, both found by building against this contract rather than by
 reading it:
@@ -727,12 +730,10 @@ reading it:
   page loads Plotly for other figures — and only a page without it is served the
   fetch. Either way one page holds one copy and one stylesheet link, however many
   charts are mounted on it.
-- **A click asked for before the first draw must still arrive.** Plotly grows its
-  event machinery on an element only once something has been plotted there, so
-  wiring at the moment `onClick` is called would silently wire nothing. The seal
-  holds the callback and wires on the first draw — because § 8.3 promises any
-  door may be called in any order, and a promise the seal cannot keep is not a
-  promise the handle can make.
+- **A click asked for before the first draw must still arrive**, because § 8.3
+  promises any door may be called in any order. Listening on the surface rather
+  than on the library's own event machinery is what makes that free: the surface
+  exists from the moment the chart is mounted, drawn on or not.
 
 ---
 
@@ -929,8 +930,8 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.3 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
 | § 8.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
 | § 8.4 — a picture carries words, never colours | the object handed down names states (`chosen`, `pending`, `imaginary`) and carries every axis title, unit and note; no colour and no mode index appears in it |
-| § 8.4 — a band is a mark | every mode's band is drawn as a transparent shape of its own width, hoverable, covering the plot's height; the visible stick takes no clicks |
 | § 8.4 — a click asked for before the first draw still arrives | `onClick` then `draw` reports a click, in that order as well as the other |
+| § 8.4 — a click anywhere in the plot area is a position | a click over empty space, over the curve and over a stick each report the frequency under the pointer; a click in the margins reports nothing |
 | § 8.4 — a click comes up as a position | the seal reports where the click landed on the frequency axis and nothing more; a click in empty space beside a peak still reaches the handle |
 | § 8.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the module's own values (§ 11) — never from a page variable, never from a literal in the module |
 | § 9 — the envelope is the sum | the curve at a mode's frequency equals that mode's activity plus the tails of the others, computed independently of the implementation |

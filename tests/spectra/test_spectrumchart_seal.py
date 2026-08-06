@@ -58,6 +58,15 @@ globalThis.Plotly = {
     react(el, traces, layout, config) {
         PLOTLY_CALLS.push({ call: "react", traces, layout, config });
         el.on = (type, fn) => el.addEventListener(type, fn);
+        /* What Plotly leaves on the graph element once it has drawn: the drag
+           layer covering exactly the plot area, and the range it drew against.
+           The seal reads both to turn a pointer position into a frequency. */
+        const area = document.createElement("div");
+        area.className = "nsewdrag";
+        area.getBoundingClientRect = () => ({ left: 100, width: 400, top: 0, height: 200 });
+        el.appendChild(area);
+        el.querySelector = (sel) => (sel === ".nsewdrag" ? area : null);
+        el._fullLayout = { xaxis: { range: [0, 4000] } };
     },
     restyle(el, update, indices) { PLOTLY_CALLS.push({ call: "restyle", update, indices }); },
     purge(el) { PLOTLY_CALLS.push({ call: "purge" }); },
@@ -87,7 +96,6 @@ globalThis.__host = function (values) {
 PICTURE = """
 const picture = {
     sticks: { x: [100, 200, 300], y: [1, 2, 3], width: [2, 2, 2],
-              hit: [16, 16, 16],
               state: ["plain", "chosen", "imaginary"] },
     curve: { x: [90, 100, 110], y: [0.1, 1.0, 0.1] },
     xTitle: "frequency (cm-1)", yTitle: "strength",
@@ -176,28 +184,51 @@ class TestTheDoors:
         calls = seal("surface.draw(picture);\nconsole.log(JSON.stringify(__calls));")
         assert [c["call"] for c in calls] == ["react"]
         traces = calls[0]["traces"]
-        assert [t["type"] for t in traces] == ["scatter", "bar", "bar"]
+        assert [t["type"] for t in traces] == ["scatter", "bar"]
         assert traces[1]["x"] == [100, 200, 300]
 
-    def test_the_band_is_drawn_because_only_a_mark_can_be_clicked(self):
-        """§ 6.3 / § 8.4 — the library reports a click over a point and at no
-        other time, so the space beside a peak is only reachable if the band is
-        itself a mark: as wide as the band, transparent, and hoverable."""
-        calls = seal("surface.draw(picture);\nconsole.log(JSON.stringify(__calls));")
-        bands = calls[0]["traces"][-1]
-        assert bands["x"] == [100, 200, 300]
-        assert bands["width"] == [16, 16, 16]         # the band, not the stick
-        assert bands["marker"]["color"] == "rgba(0,0,0,0)"
-        assert "hovertemplate" in bands               # `skip` would kill the click
-        assert bands["y"] == [3, 3, 3]                # tall enough to cover the plot
+    def test_a_click_anywhere_on_the_plot_comes_up_as_a_frequency(self):
+        """§ 8.4 — the seal reports WHERE the pointer was, in the units of the
+        picture. Nothing it can ask the library reports a click over empty space,
+        so the position is read off the surface and converted against the axis.
 
-    def test_the_visible_sticks_do_not_take_the_click(self):
-        """§ 6.3 — one target per mode: the band. A thin stick as a second
-        clickable mark would report the same mode from a smaller region and make
-        the band's width a lie."""
-        calls = seal("surface.draw(picture);\nconsole.log(JSON.stringify(__calls));")
-        sticks = calls[0]["traces"][1]
-        assert sticks["hoverinfo"] == "skip"
+        The stand-in draws over 400px starting at x=100, across a 0–4000 range:
+        a click a quarter of the way in is 1000 cm-1.
+        """
+        got = seal(
+            "const seen = [];\n"
+            "surface.onClick((x) => seen.push(x));\n"
+            "surface.draw(picture);\n"
+            "const el = host.children[0].children[0];\n"
+            "el.dispatch('click', { clientX: 200 });\n"     # 100px into 400
+            "console.log(JSON.stringify(seen));"
+        )
+        assert got == [1000]
+
+    def test_a_click_in_empty_space_reports_just_as_well_as_one_on_a_peak(self):
+        """§ 6.3 — the space beside a peak is the whole purpose of a band, and it
+        holds no mark for the library to report."""
+        got = seal(
+            "const seen = [];\n"
+            "surface.onClick((x) => seen.push(x));\n"
+            "surface.draw(picture);\n"
+            "const el = host.children[0].children[0];\n"
+            "el.dispatch('click', { clientX: 337.5 });\n"   # nothing drawn here
+            "console.log(JSON.stringify(seen));"
+        )
+        assert got == [2375]
+
+    def test_a_click_outside_the_plot_area_is_not_a_position(self):
+        """§ 8.4 — the margins are not the picture; a click there names nothing."""
+        got = seal(
+            "const seen = [];\n"
+            "surface.onClick((x) => seen.push(x));\n"
+            "surface.draw(picture);\n"
+            "const el = host.children[0].children[0];\n"
+            "el.dispatch('click', { clientX: 40 });\n"
+            "console.log(JSON.stringify(seen));"
+        )
+        assert got == []
 
     def test_a_state_becomes_a_colour_here_and_only_here(self):
         """§ 8.4 — the layer above says which mark is chosen, never what colour."""
@@ -236,43 +267,6 @@ class TestTheDoors:
         )
         assert [c["call"] for c in calls] == ["restyle"]
         assert calls[0]["update"]["marker.color"] == [["#00ff00", "#3333ff", "#3333ff"]]
-
-    def test_a_click_comes_up_as_a_position_and_nothing_else(self):
-        """§ 8.4 — the seal reports where the click landed on the frequency axis."""
-        got = seal(
-            "const seen = [];\n"
-            "surface.onClick((x) => seen.push(x));\n"
-            "surface.draw(picture);\n"
-            "const el = host.children[0].children[0];\n"
-            "el.dispatch('plotly_click', { points: [{ x: 217.5, y: 3, curveNumber: 1 }] });\n"
-            "console.log(JSON.stringify(seen));"
-        )
-        assert got == [217.5]
-
-    def test_a_click_asked_for_before_the_first_draw_still_arrives(self):
-        """§ 8.4 — the library grows its event machinery only once something is
-        plotted, and § 8.3 promises any door may be called in any order."""
-        got = seal(
-            "const seen = [];\n"
-            "surface.onClick((x) => seen.push(x));\n"   # asked for FIRST
-            "surface.draw(picture);\n"
-            "const el = host.children[0].children[0];\n"
-            "el.dispatch('plotly_click', { points: [{ x: 100 }] });\n"
-            "console.log(JSON.stringify(seen));"
-        )
-        assert got == [100]
-
-    def test_a_click_in_empty_space_still_reaches_the_handle(self):
-        """§ 8.4 — the band a click lands in has no mark under it; a position always does."""
-        got = seal(
-            "const seen = [];\n"
-            "surface.onClick((x) => seen.push(x));\n"
-            "surface.draw(picture);\n"
-            "const el = host.children[0].children[0];\n"
-            "el.dispatch('plotly_click', { points: [{ x: 1234.5 }] });\n"
-            "console.log(JSON.stringify(seen));"
-        )
-        assert got == [1234.5]
 
     def test_resize_fills_the_box_without_redrawing(self):
         """§ 8.4 — resize(): the box changed; fill it."""
