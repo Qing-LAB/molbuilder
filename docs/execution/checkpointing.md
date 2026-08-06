@@ -534,14 +534,15 @@ deliberate guard whose rationale outlived its document.
 
 | Read against the code | Verdict |
 |---|---|
-| **S1a** | held — and my "drift hazard" was false; one write API renders both files |
+| **S1** | **broken** — a dot-prefixed basename was archived under a key the parser refuses, so the archive wrote a MANIFEST it could never read back. Fixed 2026-08-06 |
+| **S1a** | **broken** — `set_archive_globs` was a single writer, `init` was not; "the hazard is false" was half a reading. Fixed 2026-08-06 |
 | **S2** | check was blind to the big binaries; both halves now |
 | **S5** | holds trivially — nothing derives an identity from a run at all |
-| **I1** | held, restated: content-for-a-sha, since re-archiving rebuilds the directory |
+| **I1** | held, restated: content-for-a-sha — and the rebuild now moves the published archive aside instead of deleting it first |
 | **I2** | implemented and correct — but reachable only through restore (→ L6) |
 | **I3** | held — one mover (`mv` to `-restart-aside-`), no deleter |
 | **I4** | held — no generated wrapper invokes git |
-| **A1** | held, and stronger than asked: sha-dir validation, source-vs-copy fidelity, `.tmp` cleanup on `BaseException` |
+| **A1** | strong in its three parts (sha-dir validation, source-vs-copy fidelity, `.tmp` cleanup) — **but the swap itself was not atomic**. Fixed 2026-08-06 |
 | **A2** | held, in exactly the stated order — four gates before the first mutation |
 | **L2** | was **broken, losing data rather than wasting disk** — fixed 2026-08-06, pinned by tests |
 | **L5** | **broken** — no cross-checkpoint dedup; my "cheap" claim was false |
@@ -549,19 +550,26 @@ deliberate guard whose rationale outlived its document.
 | **L1** | **blocked** — `Repo.init` refuses a parent repo by design (`NestedRepoRefusedError`) |
 | **L7** | was **absent** — a binary-only change left `git status` clean and nothing was checkpointed; fixed 2026-08-06 |
 
-**Fourteen of twenty-one read. Three were wrong as written**, and every one was
-wrong because a phrase in the guide was trusted over the code: *"nothing keeps
-them in step"*, *"deduped by content"*, *"lands in git as a blob"*. Two more —
-**L1** and **L7** — were found only by *running* the checks rather than reading
-them, which is the argument for writing invariants as tests rather than as
-prose.
+**Six defects found, all fixed.** Two (L2, L7) turned up by *running* the
+checks. **Four turned up by reading the module end to end** — `init` skipping an
+existing `.gitignore`, a dot-prefixed basename writing an unreadable MANIFEST,
+archive sizes counted only at the top level, and a swap that deleted the
+published archive before publishing its replacement.
 
-**Eight cannot be read yet, and that is not a gap in the reading.** S3, S4, S6,
-L1, L3, L4 describe the per-stage layout and the description, neither of which
-exists; A3 describes automatic checkpoints, which do not exist; S1 is the one
-that *could* be read and is best written as a test rather than a grep, because
-its answer depends on a produced folder rather than on a function. They stay
-claims until there is something to assert them against.
+**The four found by reading were invisible to the tests, which passed
+throughout.** That is the argument for reading a module in call order rather than
+probing it, and it is the opposite lesson from the one the first two taught.
+
+Three of my own invariants were wrong when written, each because a phrase in the
+guide was trusted over the code: *"nothing keeps them in step"*, *"deduped by
+content"*, *"lands in git as a blob"*. A fourth — the first fix for S1a — would
+have shipped a **worse** bug than the one it closed, and was caught by statically
+reviewing the patch rather than by its tests, which passed.
+
+**Six still cannot be read**: S3, S4, S6, L3, L4 describe the per-stage layout
+and the description, neither of which exists, and A3 describes automatic
+checkpoints, which do not. They stay claims until there is something to assert
+them against.
 
 ---
 
