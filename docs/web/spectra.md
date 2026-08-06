@@ -43,11 +43,29 @@ flowchart TD
 
 ## 2. The spectrum chart
 
+> **Where this is going.** The chart is drawn today by ~345 lines inside
+> `lib/spectra/core.js`, the tab controller. Its design as a sealed module —
+> one importable `mount`, one file naming Plotly, a click that leaves as an
+> event and returns as an instruction — is written in
+> [`spectrumchart.md`](?doc=web/spectrumchart.md). Nothing is built yet: the
+> contract was written first so the door could be reviewed before the code
+> moves. What this section describes is what the tab does now.
+
+
 The chart plots **frequency (cm⁻¹) on the x-axis against Raman activity
 (Å⁴/amu) on the y-axis**, one vertical stick per vibrational mode. A slider
 broadens each stick into a smooth **Lorentzian** peak (a single FWHM control,
 default 20 cm⁻¹) so overlapping modes read as one band — the broadened envelope
 is drawn over the sticks.
+
+**Picking a mode does not mean hitting the line.** Each mode carries an invisible
+band, as wide as the broadening you set (with a floor of 8 cm⁻¹ so bare sticks
+stay reachable), and a click anywhere inside it selects that mode. Each band is
+clamped to half the distance to its nearer neighbour, so no two overlap and the
+band you are in is always the *nearest* mode — crowded regions get tighter
+targets, which is where being off by one mode matters. Two modes at the same
+frequency (BDT's 31 and 32 are 0.011 cm⁻¹ apart) cannot be separated this way;
+that is what the table is for.
 
 Two special cases are worth knowing:
 
@@ -59,9 +77,19 @@ Two special cases are worth knowing:
   chart, the viewer draws every mode as a **unit-height stick** so you can still
   see *where* the frequencies are while the intensities are still being computed.
 
-## 3. The mode table and the excited-state panel
+## 3. The three views of one mode
 
-Below the chart is a **table of every vibrational mode** — its number,
+Under the chart sit **three tabs — Modes table, Mode visualisation, Electronic
+structure —** all describing the *same* selected mode. They were three bands
+stacked down the page, so comparing what a mode looks like against what its
+levels do meant scrolling between two places and holding one in memory.
+
+**Selecting a mode never switches tab.** All three update underneath and you stay
+where you were looking. Becoming visible is an event rather than a style change:
+a 3D canvas and a chart both take their size from a box, and a box in a hidden
+tab has none — so opening a tab re-fits the viewer and re-sizes the chart.
+
+The **Modes table** is a table of every vibrational mode — its number,
 frequency, Raman activity, whether it's imaginary, and whether it carries
 excited-state data — that you can **sort and filter**, export to CSV, and click a
 row to select a mode. When the run also computed **excited states**, four more
@@ -104,15 +132,15 @@ than inheriting CSS, so `chartTheme()` in `lib/spectra/core.js` reads the tokens
 off the document and hands them over — the tokens stay the one source of truth
 for both charts.
 
-Beside the diagram sits a **foldable panel of numbers**, grouped by the question
+Beside the diagram sits a **panel of numbers**, grouped by the question
 each answers: where the levels sit, how the gap moves, and the electron–phonon
 coupling ΔE/(2A). The displacement A itself is in the panel header, since it is
 the input every number below depends on rather than a result among them.
 
 ## 4. Clicking a mode — the 3D animation
 
-Click a stick in the chart or a row in the table and that **normal mode animates
-in 3D**: the atoms oscillate along the mode's displacement vectors so you can see
+Click a stick in the chart or a row in the table, open the **Mode visualisation**
+tab, and that **normal mode animates in 3D**: the atoms oscillate along the mode's displacement vectors so you can see
 which bonds stretch or bend. This 3D box is **not** MolView — it's the concealed
 **VibrationView** module ([`vibrationview.md`](?doc=web/vibrationview.md)), a
 self-contained viewer built for exactly this one job (it owns the oscillation loop

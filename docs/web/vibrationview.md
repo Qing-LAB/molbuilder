@@ -4,7 +4,9 @@
 **Domain:** web
 **Companions:** [`molview.md`](?doc=web/molview.md) — its **sibling** viewer, and the
 module this one's design is derived from (MolView never animates; VibrationView
-never selects or edits); [`spectra.md`](?doc=web/spectra.md) — the tab that drives
+never selects or edits); [`spectrumchart.md`](?doc=web/spectrumchart.md) — the
+**sibling derived from this one**: it draws the spectrum a mode is picked from,
+and hands the index that this module then animates; [`spectra.md`](?doc=web/spectra.md) — the tab that drives
 it, and where the modes come from and what the two normalizations mean;
 [`overview.md`](?doc=web/overview.md) — the module registry and the seam doctrine.
 
