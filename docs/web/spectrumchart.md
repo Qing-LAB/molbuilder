@@ -665,13 +665,28 @@ nothing in it is a colour or a mode:
 
 ```js
 picture = {
-    sticks: { x: [...], y: [...], width: [...],
+    sticks: { x: [...], y: [...], width: [...],  // where and how tall each is drawn
+              hit:   [...],                       // the band it is clicked in (§ 6.3)
               state: ["plain" | "chosen" | "pending" | "imaginary", …] },
-    curve:  { x: [...], y: [...] } | null,      // null when there is no curve
-    xTitle, yTitle, xUnit,                       // the words on the axes
-    note,                                        // one line inside the plot, or nothing
+    curve:  { x: [...], y: [...] } | null,       // null when there is no curve
+    xTitle, yTitle, xUnit,                        // the words on the axes
+    note,                                         // one line inside the plot, or nothing
 }
 ```
+
+**`hit` is there because a band has to be a mark.** The drawing library reports a
+click when the pointer is over one of its points and at no other time — so a
+stick a pixel wide is a target you must hit, and a click in the space *beside* a
+peak reaches nothing at all. That space is the whole purpose of § 6.3. So the
+seal draws each band: a transparent shape as wide as the band, tall enough to
+cover the plot, and the only thing on the surface a click can land on. The
+visible stick takes no clicks, or the band's width would be a lie.
+
+> Nothing above the seal changes for this. The handle already knows every band's
+> width — it asks the maths for them (§ 6.3) — and it still hears back a
+> position. What changed is one number in the picture, and the discovery that a
+> drawing library will not report a click over empty space no matter how the
+> contract above it is phrased.
 
 **A state is a word, never a colour** — the layer above says a mark is *chosen*
 and the seal decides what chosen looks like (§ 5.1's cheap door hands down the
@@ -914,6 +929,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.3 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
 | § 8.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
 | § 8.4 — a picture carries words, never colours | the object handed down names states (`chosen`, `pending`, `imaginary`) and carries every axis title, unit and note; no colour and no mode index appears in it |
+| § 8.4 — a band is a mark | every mode's band is drawn as a transparent shape of its own width, hoverable, covering the plot's height; the visible stick takes no clicks |
 | § 8.4 — a click asked for before the first draw still arrives | `onClick` then `draw` reports a click, in that order as well as the other |
 | § 8.4 — a click comes up as a position | the seal reports where the click landed on the frequency axis and nothing more; a click in empty space beside a peak still reaches the handle |
 | § 8.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the module's own values (§ 11) — never from a page variable, never from a literal in the module |

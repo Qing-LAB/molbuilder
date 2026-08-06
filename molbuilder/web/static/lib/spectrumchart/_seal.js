@@ -145,7 +145,7 @@ export async function openSurface(host) {
     });
 
     const tracesFor = (picture) => {
-        const sticks = picture.sticks || { x: [], y: [], state: [] };
+        const sticks = picture.sticks || { x: [], y: [], state: [], hit: [] };
         const traces = [];
         if (picture.curve) {
             traces.push({
@@ -163,13 +163,36 @@ export async function openSurface(host) {
             y: sticks.y,
             width: sticks.width,
             marker: { color: sticks.state.map((s) => colourFor(s, palette)) },
+            hoverinfo: "skip",
+        });
+
+        /* THE BANDS ARE MARKS, because a click can only land on one.
+         *
+         * The library reports a click when the pointer is over a point of a
+         * trace and at no other time — so a stick a pixel wide is a target you
+         * have to hit, and a click in the space beside a peak reaches nothing at
+         * all. That space is the whole purpose of the band (§ 6.3), so the band
+         * is drawn: a bar as wide as the band, transparent, tall enough to cover
+         * the plot, and the only thing here a click can reach. What comes back is
+         * that bar's position, which is the mode's own frequency. */
+        const tallest = Math.max(
+            0,
+            ...(sticks.y || []),
+            ...((picture.curve && picture.curve.y) || []),
+        );
+        traces.push({
+            type: "bar",
+            x: sticks.x,
+            y: sticks.x.map(() => tallest || 1),
+            width: sticks.hit,
+            marker: { color: "rgba(0,0,0,0)" },
             hovertemplate: `%{x:.1f} ${picture.xUnit || ""}<extra></extra>`,
         });
         return traces;
     };
 
-    // Which trace the sticks are in depends on whether a curve is drawn, and
-    // `recolour` has to reach the same one `draw` built.
+    // `recolour` reaches the visible sticks, which sit between the curve (when
+    // there is one) and the bands.
     let stickTraceIndex = 0;
     let disposed = false;
     let clicked = null;   // the handle's callback, kept until there is a plot
@@ -193,7 +216,7 @@ export async function openSurface(host) {
         draw(picture) {
             if (disposed) return;
             const traces = tracesFor(picture);
-            stickTraceIndex = traces.length - 1;
+            stickTraceIndex = traces.length - 2;   // the bands are last
             Plotly.react(surface, traces, layoutFor(picture), {
                 displaylogo: false,
                 responsive: false,
