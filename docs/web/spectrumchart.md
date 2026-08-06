@@ -15,9 +15,9 @@ broadened envelope over them — and when the user clicks near a peak, it says
 which mode they meant.
 
 **This document is the design of that component** — what it is for, what it
-refuses to do, what it holds, how it is layered, what each API is for, and how its
-tests are derived. It is not a tour of the current code; the code it replaces is
-345 lines inside a 3,671-line tab controller. § 13 says which parts are built.
+refuses to do, what it holds, what each API is for, and how its tests are derived.
+It is not a tour of the current code; the code it replaces is 345 lines inside a
+3,671-line tab controller. § 13 maps the parts to files and says which are built.
 
 > **Words used in this document.**
 >
@@ -350,7 +350,7 @@ question and the only one the data can answer yet (§ 9).
 **Both markings are drawn in the plot**, as the pictures show: the `×` on the
 axis, the words along the top. Neither is a label beside the chart or a banner
 above it — a chart made of one drawing surface stays a chart made of one drawing
-surface, and § 5.3's "no chrome" holds without an exception being carved for it.
+surface, and § 5.3's "no controls" holds without an exception carved for it.
 
 **Which picture you get is derived, never configured.** A flag would be a second
 place to believe something the data already says, and the failure mode is a flat
@@ -364,19 +364,21 @@ user aims at is the region they see. A tolerance set independently of the pictur
 would be a second fact about the same thing (§ 5.2), and it drifts the moment
 either is changed alone.
 
-**Two things bend that, and it is worth saying which way each bends.** Below
+**Three things bend that, and it is worth saying which way each bends.** Below
 8 cm⁻¹ the band is *wider* than the curve, because a 3 cm⁻¹ target cannot be hit
 with a mouse. Where modes crowd, it is *narrower*, because the alternative is
-handing back the wrong mode. What never happens is the picture being changed to
-match the band: the curve is the claim about the science, the band is only about
-aiming, and where they must differ it is the invisible one that gives way.
+handing back the wrong mode. And where two modes sit on top of each other it is
+wider again, because a band clamped to nothing is a mode nobody can reach. What
+never happens is the picture being changed to match the band: the curve is the
+claim about the science, the band is only about aiming, and where they must differ
+it is the invisible one that gives way.
 
 **Four steps, in this order, give every band its half-width:**
 
 | | The step | The number | Why it is there |
 |---|---|---|---|
 | 1 | start at the broadening width | whatever was last set | the region you aim at is the region you see |
-| 2 | raise it to the **floor** if it is below | **8 cm⁻¹** | at zero broadening a stick is one pixel wide, and bare sticks still have to be reachable |
+| 2 | raise it to the **floor** if it is below | **8 cm⁻¹** | a target narrower than this cannot be hit with a mouse — and at zero broadening a stick is one pixel wide |
 | 3 | clamp it to half the gap to the nearer neighbour | — | so no two bands ever overlap |
 | 4 | raise it to the **minimum** if step 3 took it below | **0.25 cm⁻¹** | two modes at the same frequency would otherwise clamp each other to nothing |
 
@@ -467,6 +469,12 @@ the same reason: teardown must never have to ask whether setup worked.
 no `setSelected` that quietly does nothing. A caller that skipped the `ok` branch
 then fails at its first door, loudly and at the line that made the wrong
 assumption, instead of feeding data to a chart that was never there.
+
+**What that costs a caller is one line, and the shape is worth naming:** keep the
+handle only if it is live — `this.chart = chart.ok ? chart : null` — and reach it
+with `?.` from then on (§ 10 shows it). The alternative, doors that accept every
+call and do nothing, would spread the same branch invisibly across the module and
+turn a dead chart into a silent one.
 
 **A library that will not load is a failed mount, not a broken page.** The module
 fetches Plotly itself (§ 4); if that fails — offline, blocked, the file not
@@ -719,15 +727,16 @@ listens for clicks:
 ```js
 const chart = await mount(host, { onSelect: (index) => tab.selectMode(index) });
 if (!chart.ok) showMessage(chart.error);   // the mode table still works without it
+tab.chart = chart.ok ? chart : null;       // a dead handle is not kept (§ 7)
 
 // a result arrives
-if (chart.ok) chart.setModes(modes);
+tab.chart?.setModes(modes);
 
 // the user clicks a stick, or a table row, or arrows through the list
 tab.selectMode = (index) => {
-    state.selected = index;      // ONE home for the fact (§ 5.2)
-    chart.setSelected(index);    // the chart mirrors it
-    viewer.showMode(…);          // and so does everything else
+    state.selected = index;          // ONE home for the fact (§ 5.2)
+    tab.chart?.setSelected(index);   // the chart mirrors it
+    viewer.showMode(…);              // and so does everything else
     renderEsPanel();
 };
 ```
@@ -935,7 +944,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 5.1 — the door says the cost | `setSelected` computes no curve and changes no axis; `setModes` does both |
 | § 5.1 — recolouring is not redrawing | after `setSelected`, the picture handed to the seal is the same picture, with only its colours changed |
 | § 5.2 — the selection is mirrored, not owned | a click emits `onSelect` and changes **nothing** on screen until `setSelected` is called; a chart mounted without `onSelect` still draws |
-| § 5.3 — no chrome | a mounted chart contains no heading, button, input or control of any kind |
+| § 5.3 — no controls | a mounted chart contains no heading, button, input or control of any kind |
 | § 5.4 — the host owns the box | the module writes no width or height onto its host — not at mount, not at any door — and a box that changes size redraws while the window sits still |
 | § 6.1 — the two required fields | a record without `index`, or without `freq`, is refused |
 | § 6.1 — a refusal takes the whole call | one malformed record among many draws **nothing**, rather than a spectrum quietly missing that mode |
