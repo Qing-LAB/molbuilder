@@ -1796,13 +1796,30 @@
             r.setAttribute("aria-selected", active ? "true" : "false");
             if (active) chosen = r;
         });
-        /* Bring the chosen row into view.  A click on the spectrum can pick a
-         * mode that is hundreds of rows down a filtered table, and a highlight
-         * you have to go looking for is not much of an answer.  `nearest` so a
-         * row already on screen does not jump under the pointer. */
-        if (chosen && typeof chosen.scrollIntoView === "function") {
-            chosen.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        }
+        _scrollRowToTop(chosen);
+    }
+
+    /* Put the chosen row at the top of the table, just under the header.
+     *
+     * A click on the spectrum can pick a mode hundreds of rows down, and a
+     * highlight you have to go looking for is not much of an answer.  The
+     * obvious `scrollIntoView({block: "nearest"})` is not enough here: the head
+     * is `position: sticky`, so "just in view" means the row sits UNDERNEATH it
+     * and is only technically visible.  Hence the arithmetic -- scroll by
+     * exactly the distance from the row to the top of the scroll box, less the
+     * head that covers it -- and hence the same place every time, so the
+     * selected mode is always where the eye already is. */
+    function _scrollRowToTop(row) {
+        if (!row) return;
+        const wrap = row.closest && row.closest(".modes-table-wrap");
+        if (!wrap || typeof wrap.scrollTo !== "function") return;
+        const head = wrap.querySelector("thead");
+        const headHeight = head ? head.getBoundingClientRect().height : 0;
+        const offset = row.getBoundingClientRect().top
+                     - wrap.getBoundingClientRect().top
+                     - headHeight;
+        if (Math.abs(offset) < 1) return;            // already there
+        wrap.scrollTo({ top: Math.max(0, wrap.scrollTop + offset), behavior: "smooth" });
     }
 
     function _updateSortIndicators() {
