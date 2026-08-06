@@ -10,6 +10,11 @@ and what the web is meant to produce (§ 8, Phase 1); [`job-contracts.md`](?doc=
 **Status: a proposal.** Nothing here is built. It offers three arrangements of
 one page and recommends one; the decisions still open are listed at the end.
 
+**This is the surface half.** The model beneath it — the plan file, the identity,
+what the backend must gain — is
+[`staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md), and where
+the two disagree that one wins.
+
 ---
 
 ## 1. The two complaints, stated exactly
@@ -372,10 +377,10 @@ A one-step generate ends as it does today: a file, a download, a save.
    asking every time, which is safer and more tiring. A third option is to keep
    the *first* stage's, on the grounds that it is the one a coarse single run
    would want.
-6. **May a promoted parameter be left blank for a stage** — meaning "inherit
-   base" — or must every cell carry a value? Blank cells make a sparse ladder
-   readable (only two of five stages change the mesh) but add a second way to
-   say "same as base".
+6. ~~**May a promoted parameter be left blank for a stage?**~~ **Answered** by
+   the architecture (§ 7.1): a resource left unset is already how the JobSet says
+   *inherit, resolve on the target*, so a blank cell means that and nothing new
+   is invented. For a `.fdf` field, blank means the shared value.
 7. **Is the promoted set saved with the project?** It is a description of intent,
    not a value, and losing it on reload would be worse than losing a field.
 

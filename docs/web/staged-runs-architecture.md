@@ -11,6 +11,12 @@
 before either end is written, and names the order the work goes in: this
 document, then the backend, then the surface.
 
+**This is the spine.** The surface it describes the inside of is
+[`structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md);
+read that one for the panel and this one for what the panel is editing. § 7 is
+the reconciliation with the shipped contracts, and § 7.3 names the one place
+where two of them disagree.
+
 ---
 
 ## 1. The one sentence
@@ -111,7 +117,7 @@ line in the script:
 | The field's group | Example | Where its override goes |
 |---|---|---|
 | `profile` / `stage` | mesh cutoff, DM tolerance | the stage's **`.fdf`**, via the same renderer as the shared value |
-| `budget` | MPI ranks, threads, wall time | the stage's **job** in the JobSet — its resources, its wrapper |
+| `budget` | `mpi_np`, `cpus_per_task`, `time`, `mem`, `gres`, `exclusive`, `domain` | the stage's **job** in the JobSet — `Job.resources`, in the scheduler's own vocabulary |
 
 The schema already knows which is which: a field carries an `engine_key` when it
 is a line in the deck, and a `workflow_group` that says whose decision it is. So
@@ -143,26 +149,26 @@ thing the generator reads:
   "schema":  { "fingerprint": "sha256:1f0c…" },
 
   // Every schema field, one value. A one-stage plan is just this.
-  "base": { "mesh_cutoff": 150, "mpi_ranks": 8, … },
+  "base": { "mesh_cutoff": 150, "mpi_np": 8, … },
 
   // WHICH fields the user chose to vary, with the bounds the UI enforced when
   // the values were typed. Intent plus evidence — neither is in a bundle.
   "varies": [
     { "field": "mesh_cutoff",     "type": "float", "min": 50, "max": 1000, "unit": "Ry" },
     { "field": "relax_force_tol", "type": "float", "min": 0.001, "max": 1.0, "unit": "eV/Ang" },
-    { "field": "mpi_ranks",       "type": "int",   "min": 1,  "max": 256 }
+    { "field": "mpi_np",          "type": "int",   "min": 1,  "max": 256 }
   ],
 
   "stages": [
     { "name": "coarse", "enabled": true,
       "relax_type": "CG",      "relax_steps": 600,
       "on_nonconvergence": "proceed",
-      "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04, "mpi_ranks":  8 } },
+      "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04, "mpi_np":  8 } },
 
     { "name": "tight",  "enabled": true,
       "relax_type": "Broyden", "relax_steps": 200,
       "on_nonconvergence": "halt",
-      "overrides": { "mesh_cutoff": 300, "relax_force_tol": 0.01, "mpi_ranks": 16 } }
+      "overrides": { "mesh_cutoff": 300, "relax_force_tol": 0.01, "mpi_np": 16 } }
   ]
 }
 ```
@@ -231,7 +237,7 @@ answering the moot ones first buries the real message.
 - **Reopening a run restores intent.** A bundle can be re-read for its values,
   but nothing in it says *which parameters the user meant to vary* — a mesh
   cutoff that happens to be equal in all three stages is indistinguishable from
-  one never promoted. § 10's questions 1 and 4, answered: `varies` is in the file
+  one never promoted. § 11's questions 1 and 4, answered: `varies` is in the file
   because it cannot be inferred from anything else.
 - **A plan is reviewable.** It diffs. Two runs that differ can be compared as
   intent rather than by reading two directories of decks.
@@ -307,7 +313,7 @@ made of things a person already knows:
 A hash would be exact and unreadable. A formula is neither, and that is the
 trade being made on purpose: an id you can recognise in a directory listing, in
 a queue, and in a filename is worth more day to day than one that resolves every
-possible ambiguity. **This is a starting point, agreed as one**, and § 10 records
+possible ambiguity. **This is a starting point, agreed as one**, and § 11 records
 what would force it to grow. What it may contain is not open, though: § 6.1.
 
 That one id **is** the `SystemLabel` / `JOB` literal. There is no second name.
@@ -377,7 +383,7 @@ What is left is what those coordinates are *of*:
 |---|:--:|---|
 | the molecule — its formula, or its named components | **yes** | a `.XV` is a list of positions for *these* atoms. Different atoms, and every coordinate lands somewhere it does not belong |
 | the positions | no | the output (above) |
-| the cell | undecided (§ 10) | a `.XV` carries the cell too, so a changed cell is overridden on restart rather than mismatched — a different failure, and possibly not one the id should be solving |
+| the cell | undecided (§ 11) | a `.XV` carries the cell too, so a changed cell is overridden on restart rather than mismatched — a different failure, and possibly not one the id should be solving |
 | basis, spin, XC | no | the geometry stays valid across all of them, and tuning the electronics while continuing is ordinary practice. A `.DM` of the wrong shape is caught by the engine — a failure it already reports, traded for one it cannot |
 | mesh, tolerances, force, steps, algorithm | no | exactly what a ladder varies |
 | ranks, threads, GPU | no | how fast it ran says nothing about whether the answer may be continued |
@@ -390,7 +396,7 @@ cannot see.
 And it is deliberately the *readable* form of that claim. A formula does not
 separate two isomers, and does not pin the order the species are declared in —
 both of which a `.XV` is sensitive to. That is the known gap in the starting
-point, and § 10 is where it waits.
+point, and § 11 is where it waits.
 
 ### 6.3 The id is on screen, and its changes are visible
 
@@ -434,7 +440,65 @@ user still gets to say what it is called.
 
 ---
 
-## 7. Validation has to name the stage
+---
+
+## 7. Consolidation: saying it the way the shipped system says it
+
+This plan sits on top of contracts that already name most of what it needs. Where
+they have a word, it uses that word.
+
+### 7.1 The six decisions, and how this honours them
+
+`job-system.md § 2` fixes six decisions. A design that quietly breaks one is
+wrong however good it looks:
+
+| Decision | What this plan does about it |
+|---|---|
+| **1. Work is data; the engine stays out of orchestration** | the plan file is *engine-specific* on purpose — it is a **producer input**, the layer above the JobSet. The JobSet it produces stays engine-agnostic, so `prep`/`plan`/`submit`/`status` never learn what SIESTA is |
+| **2. Reuse the single-job wrapper unchanged** | nothing here reaches inside a wrapper. A `budget` override becomes `Job.resources`, which the existing submitter already turns into scheduler flags |
+| **3. The machine's knowledge lives on the machine** | the plan carries no cluster facts. `Job.resources` fields left unset stay unset, and are resolved at `prep`/submit on the target — which is also the answer to "may a cell be blank": **blank means inherit**, and the model already spells that `None` |
+| **4. Fail early, never guess** | § 5.3's preflight, in that order, before anything is written |
+| **5. molbuilder informs; the user decides** | the id makes a wrong warm-start impossible, and the plan beside the bundle lets the banner name the state it is resuming. Neither auto-resumes anything |
+| **6. One parent; ladder or sweep** | a steps list is a **ladder**, which is exactly the shape decision 6 allows. Nothing in the UI can express a branch, and it should not until the diamond case is real |
+
+### 7.2 The names, normalised
+
+Four names, four jobs, none of them new:
+
+| Name | What it identifies | Fixed by |
+|---|---|---|
+| **the id** | the calculation — becomes `SystemLabel` / `JOB`, keys every warm file | § 2.2 Rule 2, § 4.1 |
+| **the stage name** | one step — becomes `Job.name`, which is *both* its folder and its `squeue` name | job-system § 3 |
+| **the script name** | `<id>_<stage>.fdf` | § 2.3 |
+| **the run index** | one invocation — `-run0`, `-run1` | § 4.4 |
+
+So this plan invents no directory naming and no job naming. It supplies an id
+and a list of stage names; everything downstream is already decided.
+
+### 7.3 Where a bundle lands — and the one thing that needs settling
+
+A run directory sits at `projects/<project>/<topic>/<structure>/`, where
+`<topic>` is one of nine canonical names (`optimization` for this tab), and each
+segment matches `[A-Za-z0-9_-]+`.
+
+**And here the two shipped contracts disagree, which this plan cannot paper
+over.** `job-contracts.md § 2.5` says the innermost directory is *"exactly the
+flat one-job-per-directory shape — no sub-directories, no nesting of restart
+files"*, and § 2.1 says a directory may hold several inputs, one per stage.
+`job-system.md § 5.2` has `prep` lay out **per-job folders**, and the `Job.carry`
+list only makes sense across a boundary — files already sharing a directory need
+no carrying.
+
+Both are true of something: the **in-place ladder** is flat, and the **JobSet
+bundle** is foldered. What is not written down anywhere is *which one a project
+directory is allowed to contain*, and a plan that produces the second into a
+place documented as the first will look correct and be wrong.
+
+**This is the first thing to settle in step 2**, and it is a question for the
+contracts, not for this document. The likely answer is that a bundle is a fourth
+level under `<structure>/`, or a sibling of it, and § 2.5 says so.
+
+## 8. Validation has to name the stage
 
 A findings list today points at a field. With a ladder, "mesh cutoff is too low
 for this basis" is true of *stage 1* and false of *stage 3*, and a finding that
@@ -450,7 +514,7 @@ validation path.
 
 ---
 
-## 8. The module map
+## 9. The module map
 
 | Layer | Today | What this needs |
 |---|---|---|
@@ -470,10 +534,10 @@ renders it and nothing else.
 
 ---
 
-## 9. The order of work, and what "done" means
+## 10. The order of work, and what "done" means
 
 **Step 1 — this document.** Done when the shape is agreed and the open questions
-in § 10 are answered.
+in § 11 are answered.
 
 **Step 2 — the backend, tuned and validated.** In order:
 
@@ -504,7 +568,7 @@ user needs.
 
 ---
 
-## 10. Open questions this document cannot settle
+## 11. Open questions this document cannot settle
 
 1. **Does a stage's override of a `budget` field also change the wrapper it gets
    installed with**, or only the scheduler request?
