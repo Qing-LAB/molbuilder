@@ -336,7 +336,8 @@ All four **need the layout**, and each follows from `engines/stages.md § 7.1`.
 
 *BLOCKS THE STAGED DESIGN. Verified: `Repo.init` on the layout
 `engines/stages.md § 7.1` specifies raises `NestedRepoRefusedError`. Until this
-is settled, a staged folder cannot be checkpointed at all — so § 7.3's automatic
+is settled, a staged folder cannot be checkpointed at all — so
+`engines/stages.md § 7.3`'s automatic
 history, the branch-from-a-stage story, and work items 10–11 are all
 unreachable.*
 
@@ -367,7 +368,7 @@ options are narrow enough to state:
 |---|---|
 | **Teach the guard about descriptions** — a parent holding `stages.json` is one calculation, so its subdirectories are stages rather than rival jobs, and init proceeds | the guard keeps its meaning for every folder that has no description; one condition, one test. **Recommended** |
 | **Repo per stage** — accept the guard, checkpoint each subdirectory | shared files above are outside every repo, so a restored stage's pseudopotential links dangle; and no repo contains the workflow, so *branch at stage 2* cannot be expressed. This is the option that made L1 exist |
-| **Flatten the layout again** | reintroduces the defect § 7.1 exists to fix: every stage overwriting the last's `.ANI`, `.STRUCT_OUT`, `.EIG` |
+| **Flatten the layout again** | reintroduces the defect `engines/stages.md § 7.1` exists to fix: every stage overwriting the last's `.ANI`, `.STRUCT_OUT`, `.EIG` |
 
 Whichever is chosen, **it is chosen before the checkpoint work rather than
 during it**, because the other two invariants in this section assume an answer.
