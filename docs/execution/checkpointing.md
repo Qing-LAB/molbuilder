@@ -49,10 +49,10 @@ what that code must keep doing, plus the six changes a staged folder needs:
 
 | | Shipped today | With a staged folder |
 |---|---|---|
-| **What it covers** | one flat run directory | a parent and its per-stage subdirectories — **one repository, at the parent** (P1) |
-| **Archive globs** | `*.DM`, `*.HSX`, … — matched beside the config | must match **at depth**; today's patterns miss `<stage>/<id>.DM` and every binary lands in git as a blob (P2) |
+| **What it covers** | one flat run directory | a parent and its per-stage subdirectories — **one repository, at the parent** (L1) |
+| **Archive globs** | `*.DM`, `*.HSX`, … — matched beside the config | must match **at depth**; today's patterns miss `<stage>/<id>.DM` and every binary lands in git as a blob (L2) |
 | **When a checkpoint is taken** | when the user runs `snapshot checkpoint` | **automatically**, before a replacing produce and when a stage's run finishes (`engines/stages.md § 7.3`) |
-| **What it is called** | a free-text message; a tag name the user picks | the message carries the id and the stage; a stage completion is tagged `<id>/<stage>/<UTC>` (P3) |
+| **What it is called** | a free-text message; a tag name the user picks | the message carries the id and the stage; a stage completion is tagged `<id>/<stage>/<UTC>` (L3) |
 | **Who initialises** | `snapshot init`, always explicit | a produce that *creates* the folder initialises it; one writing into a folder that already existed without a checkpoint does not |
 | **`branch`** | CLI only — no HTTP route (`running-a-job.md § 6.2`) | the operation the staged design turns on, so the route is required rather than nice to have |
 
@@ -79,17 +79,22 @@ binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
 
 ### S1a — the ignore set is *derived* from `archive_globs`, never kept beside it
 
-*holds today.*
+*holds today — verified in the code, not inferred.*
 
-S1 rests on two lists agreeing. `archive_globs` lives in `.mbcheckpoint.json`;
-what git ignores lives in `.gitignore`; `snapshot init` seeds both, and
-`snapshot config --set` edits the first (`running-a-job.md § 6.2`). One list, one
-writer, or the agreement is a coincidence somebody has to maintain.
+S1 rests on two lists agreeing: `archive_globs` in `.mbcheckpoint.json`, and what
+git ignores in `.gitignore`. **One list, one writer**, or the agreement is a
+coincidence somebody has to maintain.
+
+The shipped code already does this. `init` resolves the globs once and renders
+both files from them; `set_archive_globs` is *"THE single write API (CLI + web
+share it)"* and regenerates the ignore section in the same call. Its own
+docstrings say the point out loud — *"derived from the same resolved globs, so
+they never drift"*.
 
 | | |
 |---|---|
-| **How it fails** | Editing the globs without rewriting the ignore file makes a formerly-archived pattern start committing as a blob, or a newly-archived one keep being tracked — **S1 broken by a configuration change rather than by a bug**, which is the kind nobody thinks to test |
-| **How to check** | `snapshot config --set` changes `.gitignore` in the same operation. A fixture whose two files disagree is *reported*, not obeyed |
+| **How it fails** | A second writer. Any future path that edits `archive_globs` without going through that API, or hand-edits `.gitignore`, makes a formerly-archived pattern start committing as a blob or a newly-archived one keep being tracked — **S1 broken by a configuration change rather than by a bug**, which is the kind nobody thinks to test |
+| **How to check** | Grep for writers of `archive_globs` and of `.gitignore`: there is exactly one of each, and they are the same function. Then a regression test: `config --set` changes both files, and a fixture whose two disagree is *reported*, not obeyed |
 
 ### S2 — shared state lives above; a stage writes only inside its own directory
 
@@ -102,7 +107,7 @@ separation exists to prevent.
 | | |
 |---|---|
 | **How it fails** | A stage writing through an inherited symlink overwrites the *producing* stage's result, and the history then records one stage's outputs replacing another's with no diff that says so |
-| **How to check** | Checkpoint the folder, run one stage, and read `git status` at the parent: **every changed path is under that stage's subdirectory.** That is exact where an mtime window is not — no clock skew, no filesystem granularity, and it uses the history this document is about as its own detector. The shipped guard is localize-on-run: the wrapper replaces an inherited symlink with a real copy before the engine starts (`job-system.md § 5.2`) |
+| **How to check** | **Two halves, and one alone is worse than useless.** (a) Checkpoint the folder, run one stage, read `git status` at the parent: every changed path is under that stage's subdirectory. (b) **`git status` cannot see the big binaries** — they are gitignored, which is S1 working as designed — so compare each archived file's sha against the head archive's MANIFEST for the same thing. The shipped restore already needs exactly this and has the helper (`_working_binaries_dirty`), whose own comment says *"big binaries are gitignored, so `git status` cannot see them"*. Half (a) alone would pass while a stage overwrote another stage's `.DM` — the single most valuable file it could destroy. The shipped guard is localize-on-run: the wrapper replaces an inherited symlink with a real copy before the engine starts (`job-system.md § 5.2`) |
 
 ### S3 — inherited and owned are distinguishable on disk
 
@@ -271,7 +276,14 @@ is written (`engines/stages.md § 7.3`).
 
 All four **need the layout**, and each follows from `engines/stages.md § 7.1`.
 
-### P1 — one repository, at the parent
+> **Why `L` and not `P`.** `molbuilder/checkpoint.py`'s own comments cite
+> numbered principles — *"P3 (the user decides; the system never silently
+> discards binary work)"* — from a design document that no longer exists in the
+> tree. A second P-series in the same subsystem would make a code comment and a
+> contract row read as the same reference and mean different things. **L** is for
+> layout, which is what all four are about.
+
+### L1 — one repository, at the parent
 
 `job-system.md § 5.5` observes that each per-stage directory is a self-contained
 run directory and so can be checkpointed alone. That stays true and is not enough:
@@ -283,7 +295,7 @@ expressed. **The repository is at the parent, and there is exactly one.**
 *Check:* exactly one `.git` and one `.mbcheckpoint.json` in a produced folder, at
 the top of it.
 
-### P2 — the archive globs match at depth
+### L2 — the archive globs match at depth
 
 Engine defaults are `*.DM`, `*.HSX`, … (`running-a-job.md § 6.1`) — written for a
 flat directory. In this layout the binaries are at `<stage>/<id>.DM`, which those
@@ -293,7 +305,7 @@ binary lands in git as a blob.
 *Check:* produce a two-stage folder, run both, checkpoint, and assert S1 over the
 whole tree. It fails today; that failure is the acceptance test.
 
-### P3 — every commit and tag names its calculation
+### L3 — every commit and tag names its calculation
 
 The commit message carries the id and the stage; a finished stage is tagged
 `<id>/<stage>/<UTC>` (`engines/stages.md § 7.3`). A folder can be moved, copied
@@ -303,7 +315,7 @@ to a cluster, or opened a year later, and a history whose commits say only
 *Check:* every commit message contains the folder's `run.id`, and every tag parses
 into exactly three parts of which the first equals it.
 
-### P4 — the tag namespace is stage completions only
+### L4 — the tag namespace is stage completions only
 
 Pre-produce checkpoints are commits, reachable through `snapshot list`. Tagging
 them too would bury the points a user meant to reach among the ones they passed
@@ -335,16 +347,23 @@ One line each, for reading over a diff:
 | **A1** | archive: build, verify the copy, then swap | today |
 | **A2** | restore verifies the target archive before touching the worktree | today |
 | **A3** | the checkpoint is committed before the mutation it protects | needs automatic checkpoints |
-| **P1** | one repository, at the parent | needs the layout |
-| **P2** | archive globs match at depth | needs the layout |
-| **P3** | every commit and tag names its calculation | needs the layout |
-| **P4** | molbuilder tags stage completions only | needs the layout |
+| **L1** | one repository, at the parent | needs the layout |
+| **L2** | archive globs match at depth | needs the layout |
+| **L3** | every commit and tag names its calculation | needs the layout |
+| **L4** | molbuilder tags stage completions only | needs the layout |
 
 **Eleven of the eighteen can be asserted against the code as it stands**, and two
 of those eleven are worth writing first: **I2**, because the failure it catches is
 silent corruption that nothing else notices, and **S1**, because the failure it
 catches is a multi-gigabyte blob in git history forever. Neither needs a line of
 new feature code to be useful.
+
+**And three of the eleven have now been read against the code rather than
+inferred from the guide** — I4 (no wrapper invokes git: no hits), S1a (already
+enforced by a single write API that says so in its docstring), and S2, whose
+check was blind to the big binaries until the code's own restore path showed why.
+That ratio is the honest state of this document: most of it is still a claim
+about behaviour nobody has run, and the marker on each invariant says which.
 
 ---
 
