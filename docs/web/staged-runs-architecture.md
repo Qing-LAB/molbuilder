@@ -406,12 +406,19 @@ is agreeing them and answering § 9.
    renderer the other lacks.
 10. **Checkpoints at the two stage boundaries, and `branch` over HTTP**
     (`engines/stages.md § 7.3`). *Done when:* a replacing produce leaves a commit
-    holding the folder as it was; a stage seen to finish leaves a commit tagged
-    with its name; a folder molbuilder produces into is initialised if it was not
-    already; and the browser can branch from either — which is what switching
-    between setups without losing one actually requires. **The wrapper does none
-    of it** (`running-a-job.md § 6.2`: it is deliberately git-agnostic), so the
-    finish is observed where the run is already watched.
+    holding the folder as it was; a stage seen to finish leaves a commit **and a
+    tag named `<id>/<stage>/<UTC>`**, with a message carrying the id, the stage
+    and how the run went; `git tag --list '<id>/<stage>/*'` answers "every
+    checkpoint of this stage"; a folder molbuilder produces into is initialised
+    if it was not already; and the browser can branch from a tag, with the branch
+    name proposed from the stage it forks. **The wrapper does none of it**
+    (`running-a-job.md § 6.2`: it is deliberately git-agnostic), so the finish is
+    observed where the run is already watched.
+11. **The archive globs reach into the subdirectories**
+    (`engines/stages.md § 7.4`). *Done when:* a `<stage>/<id>.DM` is archived by
+    content rather than committed as a git blob — with the code, a test pinning
+    it, and `job-contracts.md` updated in the same commit, which its `§ 7`
+    requires.
 
 **Step 3 — the surface.** The description model first (pure, tested), then the
 matrix view, then the subtabs.

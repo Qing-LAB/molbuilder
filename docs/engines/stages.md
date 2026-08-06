@@ -597,6 +597,45 @@ observed where a run is already being watched: the decoded run reports `finished
 wrapper that committed to git would be a wrapper that needs git on the compute
 node, which is exactly what the standalone contract forbids.
 
+#### What each checkpoint is called
+
+A history is only worth taking if you can find the point you want in it, so both
+boundaries name themselves. `molbuilder snapshot` already gives three surfaces —
+a commit message, an annotated tag with a name, and a branch name
+(`running-a-job.md § 6.2`) — and each carries a different part of the identity:
+
+| | Form | Example |
+|---|---|---|
+| **commit message** (both boundaries) | `<id> · <stage or event> · <what happened>` | `bdt_au_relax_c6h4s2au38 · tight · relaxation converged, 41 steps` |
+| **tag** (a stage that finished) | `<id>/<stage>/<UTC timestamp>` | `bdt_au_relax_c6h4s2au38/tight/20260806T221403Z` |
+| **branch** (a user forking a what-if) | proposed as `<stage>-<what you are trying>`, and editable | `tight-tighter-mesh` |
+
+Four things make that work rather than merely look tidy:
+
+- **No new normalisation.** The id is `[A-Za-z0-9_-]+` and a stage name is
+  `[A-Za-z0-9_]+` (§ 2, `execution/run-identity.md § 3`) — both already
+  ref-safe, so the same set that was chosen to survive a filename survives a git
+  ref. The timestamp is compact UTC (`YYYYMMDDThhmmssZ`) for the same reason: the
+  ISO form's colons are not legal in a ref, and this matches the convention
+  `job-contracts.md § 4.1` already uses for `<basename>-restart-aside-<UTC>/`.
+- **The tag is hierarchical on purpose.** `git tag --list '<id>/tight/*'` is every
+  checkpoint of one stage, oldest to newest, which is the question a user
+  returning to a mission actually asks.
+- **The message says how it went, because something already knows.** The decoded
+  run reports `finished` / `failed` and its step counts
+  (`running-a-job.md § 4.2`); the checkpoint is taken by whatever observed that,
+  so it can say *converged* or *hit the step cap* rather than *stage 2 done*.
+- **Only stage completions are tagged.** A pre-produce checkpoint is a safety net,
+  reachable through `snapshot list`; a finished stage is a place you meant to
+  reach. Tagging both would bury the second in the first. And a tag that would
+  collide — two checkpoints of one stage inside the same second — is refused, not
+  suffixed, like every other name in this design.
+
+**The identity in every message is not decoration.** A folder can be moved,
+copied to a cluster, or opened a year later; a history whose commits say only
+*"stage 2 converged"* cannot tell you which calculation that was, and the id is
+the one thing that can (`execution/run-identity.md § 1`).
+
 **What this buys is the thing a growing description most needs.** A tagged
 checkpoint per completed stage turns the folder from *the current state of one
 calculation* into a chain of states you can re-enter: `snapshot branch` at stage

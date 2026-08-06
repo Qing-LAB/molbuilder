@@ -150,6 +150,14 @@ make the id the one name in the system that forbids capitals. The
 case-insensitive-filesystem worry is handled where it actually bites, by making
 the **collision check** case-insensitive.
 
+**And the same set is git-ref-safe**, which the checkpoint history depends on:
+`[A-Za-z0-9_-]+` contains none of the characters a ref forbids, so a commit,
+tag or branch naming a calculation and its stage needs no second normalisation
+(`engines/stages.md § 7.3`). That is not luck — a set narrow enough to survive a
+filename, a shell line and a scheduler argument was always going to survive a
+ref — but it is worth writing down, because the alternative is somebody
+inventing a second sanitiser for tags.
+
 **The id also names the folder.** `job-contracts.md § 2.1` Rule 1 says a
 directory holds one job, so the innermost segment of the project tree and the
 calculation are the same thing:
