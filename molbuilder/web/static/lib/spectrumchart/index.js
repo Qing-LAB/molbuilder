@@ -1,0 +1,211 @@
+/**
+ * MODULE: spectrumchart — the handle, and the only way in.
+ * CALLERS: any page that wants a vibrational spectrum. Today: the Spectrum tab.
+ *
+ * `mount` is the whole importable surface of this module. Everything else here
+ * is reached through the object it hands back: five doors in, one callback out.
+ * The modes, the selection and the broadening each live here once; the drawing
+ * library is not visible from this file at all.
+ *
+ * Contract: docs/web/spectrumchart.md — § 7 (mount and dispose), § 8.2 (what
+ * mount takes), § 8.3 (the doors), § 6 (the data), § 5.1 (what each door costs).
+ */
+
+import { bandHalfWidths, envelope } from "./_maths.js";
+import { openSurface } from "./_seal.js";
+
+/** A stick is a line, not a block: thin against whatever range is on screen. */
+const STICK_WIDTH_FRACTION = 400;
+
+const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
+
+/** § 7 — failure is a handle carrying three keys and no others. */
+const failedMount = (error) => ({ ok: false, error, dispose() {} });
+
+/**
+ * Every reason a list is refused, or null if it is good (§ 6.1).
+ *
+ * A record that must be refused takes the whole call with it, so this answers
+ * about the list rather than about a record: one bad row and nothing is drawn.
+ */
+function faultIn(list) {
+    if (!Array.isArray(list)) return "setModes takes an array of modes";
+    const seen = new Set();
+    for (const mode of list) {
+        if (!mode || typeof mode !== "object") return "each mode must be an object";
+        if (!isFiniteNumber(mode.index)) return `a mode has no usable index: ${JSON.stringify(mode)}`;
+        if (!isFiniteNumber(mode.freq)) return `mode ${mode.index} has no usable freq`;
+        if (mode.activity !== undefined && mode.activity !== null
+            && !isFiniteNumber(mode.activity)) {
+            return `mode ${mode.index} has an activity that is not a number`;
+        }
+        if (seen.has(mode.index)) return `two modes share the index ${mode.index}`;
+        seen.add(mode.index);
+    }
+    return null;
+}
+
+export async function mount(host, options = {}) {
+    // § 8.2 — the one thing mount refuses: somewhere to draw that is not an element.
+    if (!host || typeof host.appendChild !== "function") {
+        return failedMount("SpectrumChart needs an element to mount into");
+    }
+    host.replaceChildren();          // § 7 — the module owns the inside of its host
+
+    let surface;
+    try {
+        surface = await openSurface(host);
+    } catch (err) {
+        return failedMount(err && err.message ? err.message : String(err));
+    }
+
+    const onSelect = typeof options.onSelect === "function" ? options.onSelect : null;
+
+    /* ONE HOME EACH (§ 5.2). The selection is recorded whether or not a list
+     * holds it: what is DRAWN is derived from these three, never stored beside
+     * them. */
+    let modes = [];
+    let selected = null;
+    let broadening = 0;
+    let bands = [];                  // half-widths, one per mode, from the maths
+    let disposed = false;
+
+    /* Which picture the data puts us in (§ 6.2), decided here and never set. */
+    const strengthsKnown = () => modes.some((m) => isFiniteNumber(m.activity) && !m.imaginary);
+
+    const stateOf = (mode, known) => (
+        mode.index === selected ? "chosen"
+            : mode.imaginary ? "imaginary"
+                : (known && !isFiniteNumber(mode.activity)) ? "pending"
+                    : "plain"
+    );
+
+    const pictureNow = () => {
+        const known = strengthsKnown();
+        const span = modes.length > 1
+            ? Math.max(...modes.map((m) => m.freq)) - Math.min(...modes.map((m) => m.freq))
+            : 100;
+        const stickWidth = Math.max(span, 1) / STICK_WIDTH_FRACTION;
+        const anyPending = known && modes.some((m) => !m.imaginary && !isFiniteNumber(m.activity));
+
+        return {
+            sticks: {
+                x: modes.map((m) => m.freq),
+                y: modes.map((m) => (known ? (isFiniteNumber(m.activity) ? m.activity : 0) : 1)),
+                width: modes.map(() => stickWidth),
+                state: modes.map((m) => stateOf(m, known)),
+            },
+            curve: envelope(modes, broadening),
+            xTitle: "frequency (cm⁻¹)",
+            xUnit: "cm⁻¹",
+            yTitle: known ? "Raman activity (Å⁴/amu)" : "modes",
+            note: known
+                ? (anyPending ? "× strengths not computed for these modes" : "")
+                : "strengths not computed — height means nothing here",
+        };
+    };
+
+    const redraw = () => {
+        bands = bandHalfWidths(modes.map((m) => m.freq), broadening);
+        surface.draw(pictureNow());
+    };
+
+    /** § 5.1 — the cheap door: the same picture, with only its colours changed. */
+    const recolour = () => {
+        const known = strengthsKnown();
+        surface.recolour(modes.map((m) => stateOf(m, known)));
+    };
+
+    /** A position becomes a mode here, never below (§ 8.4). */
+    const modeAt = (x) => {
+        let found = null;
+        let closest = Infinity;
+        modes.forEach((mode, i) => {
+            const away = Math.abs(x - mode.freq);
+            if (away <= bands[i] && away < closest) {
+                closest = away;
+                found = mode.index;
+            }
+        });
+        return found;
+    };
+
+    surface.onClick((x) => {
+        if (disposed || !onSelect) return;
+        const index = modeAt(x);
+        // § 8.3 — a click in no band reports nothing at all, not null.
+        if (index !== null) onSelect(index);
+    });
+
+    /* § 5.4 — the module watches its own box, because a panel opening beside it
+     * changes the box while the window sits still. */
+    let watcher = null;
+    if (typeof globalThis.ResizeObserver === "function") {
+        watcher = new globalThis.ResizeObserver(() => {
+            if (!disposed) surface.resize();
+        });
+        watcher.observe(host);
+    }
+
+    const handle = {
+        ok: true,
+
+        setModes(list) {
+            if (disposed) return;
+            const fault = faultIn(list);
+            if (fault) {
+                // § 6.1 — the whole call, and the chart empties rather than leaving
+                // the last spectrum standing as though this had worked.
+                modes = [];
+                redraw();
+                console.warn(`SpectrumChart refused a mode list: ${fault}`);
+                return;
+            }
+            modes = list.map((m) => ({
+                index: m.index,
+                freq: m.freq,
+                activity: isFiniteNumber(m.activity) ? m.activity : null,
+                imaginary: Boolean(m.imaginary),
+            }));
+            redraw();
+        },
+
+        setSelected(index) {
+            if (disposed) return;
+            // Recorded whether or not the current list holds it; the highlight is
+            // derived, so a later setModes brings it back without a second call.
+            selected = index === null || index === undefined ? null : index;
+            recolour();
+        },
+
+        setBroadening(width) {
+            if (disposed) return;
+            // § 8.3 — a bad width leaves the one already set standing, because a
+            // substituted default would hide the caller's bug.
+            if (!isFiniteNumber(width) || width < 0) return;
+            broadening = width;
+            redraw();
+        },
+
+        refit() {
+            if (disposed) return;
+            surface.resize();
+        },
+
+        dispose() {
+            if (disposed) return;
+            disposed = true;
+            if (watcher) watcher.disconnect();
+            surface.purge();
+            host.replaceChildren();
+        },
+    };
+
+    // § 8.2 — a mount option is the first write through the door of the same name.
+    if (options.modes !== undefined) handle.setModes(options.modes);
+    if (options.selected !== undefined) handle.setSelected(options.selected);
+    if (options.broadening !== undefined) handle.setBroadening(options.broadening);
+    if (options.modes === undefined && options.broadening === undefined) redraw();
+
+    return handle;
+}

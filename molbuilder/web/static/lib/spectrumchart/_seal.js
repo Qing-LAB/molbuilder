@@ -157,14 +157,39 @@ export async function openSurface(host) {
                 hoverinfo: "skip",
             });
         }
+        /* A mode whose strength was never computed has no height to draw, and a
+         * bar of height zero is a mode that vanished. What "not computed" LOOKS
+         * like is this layer's to decide (§ 8.4), so it is drawn as a mark on the
+         * axis instead of a bar of nothing. */
+        const pending = [];
+        const drawn = { x: [], y: [], width: [], colour: [] };
+        sticks.x.forEach((x, i) => {
+            if (sticks.state[i] === "pending") { pending.push(x); return; }
+            drawn.x.push(x);
+            drawn.y.push(sticks.y[i]);
+            drawn.width.push(sticks.width[i]);
+            drawn.colour.push(colourFor(sticks.state[i], palette));
+        });
+
         traces.push({
             type: "bar",
-            x: sticks.x,
-            y: sticks.y,
-            width: sticks.width,
-            marker: { color: sticks.state.map((s) => colourFor(s, palette)) },
+            x: drawn.x,
+            y: drawn.y,
+            width: drawn.width,
+            marker: { color: drawn.colour },
             hovertemplate: `%{x:.1f} ${picture.xUnit || ""}<extra></extra>`,
         });
+
+        if (pending.length) {
+            traces.push({
+                type: "scatter",
+                mode: "markers",
+                x: pending,
+                y: pending.map(() => 0),
+                marker: { color: palette.pending, symbol: "x", size: 7 },
+                hovertemplate: `%{x:.1f} ${picture.xUnit || ""}<extra></extra>`,
+            });
+        }
         return traces;
     };
 
@@ -210,7 +235,7 @@ export async function openSurface(host) {
         draw(picture) {
             if (disposed) return;
             const traces = tracesFor(picture);
-            stickTraceIndex = traces.length - 1;
+            stickTraceIndex = picture.curve ? 1 : 0;   // after the curve, before the pending marks
             Plotly.react(surface, traces, layoutFor(picture), {
                 displaylogo: false,
                 responsive: false,
