@@ -85,9 +85,10 @@ Three consequences shaped everything:
   exist in `job-system.md` only because its bundle splits stages across separate
   folders.
 - **Correctness is the deliverable, not a step.** Two gates, both in
-  `engines/stages.md`: the deck is complete and stands alone (§ 7), and every
-  config that will be rendered gets the full findings pass — *validated as a
-  resolved whole, never as a diff* (§ 4 R2).
+  `engines/stages.md`: the deck is complete and stands alone
+  (`engines/stages.md § 7`), and every config that will be rendered gets the full
+  findings pass — *validated as a resolved whole, never as a diff*
+  (`engines/stages.md § 4`, R2).
 
 ### 3.1 The folder, and the one cost it carries
 
@@ -149,11 +150,13 @@ machinery above has to change for that to work.
 - **The deck is portable; the wrapper is baked.** A deck runs on any machine that
   has the engine. A wrapper carries one target's activation, which is why
   generation happens where that target's config is known.
-- **A stage that asks for an absent environment refuses the whole generate.** The
-  install-hint raise (`running-a-job.md § 2.3`) fires per script; a description
-  is produced as a
-  whole, so the alternative would be a folder that is only partly runnable —
-  worse than one that was not written.
+- **A stage that asks for an absent environment refuses the whole generate — but
+  it refuses late.** The install-hint raise (`running-a-job.md § 2.3`) belongs to
+  *wrapper* generation, which happens after the decks are rendered, so the failure
+  arrives with files already made. That is why the produce is transactional:
+  built elsewhere, moved into place only when every part succeeded
+  (`engines/stages.md § 7.1`). A folder that is only partly runnable is worse than
+  one that was not written.
 
 ---
 
@@ -332,8 +335,10 @@ is agreeing them and answering § 9.
    declaring it.
 6. **`stages.json`, its reader, and the preflight** (`engines/stages.md § 6`).
    *Done when:* a description round-trips — read, rendered, re-read — one naming
-   a dead field fails with that field's name, and the artifact registry
-   (`job-contracts.md § 6.1`) has its row.
+   a dead field fails with that field's name, one with a repeated stage name fails
+   naming the repeat, and the artifact registry (`job-contracts.md § 6.1`) has its
+   row. **One reader, used by both surfaces** (`engines/stages.md § 6.4`) — that
+   is what makes item 8's byte comparison meaningful rather than a coincidence.
 7. **Per-stage validation on the resolved whole** (`engines/stages.md § 4`).
    *Done when:* a description whose coarse stage is under-converged reports
    against `coarse` alone, through the one renderer, with the stage beside

@@ -208,7 +208,7 @@ Two consequences:
 - **It is a correctness gate, and it fires late.** If a stage opts into a build
   whose environment is not installed, generation raises with an install hint
   (`running-a-job.md § 2.3`) — but that check belongs to *wrapper* generation,
-  which happens after the decks are rendered, and § 6.5 deliberately does not
+  which happens after the decks are rendered, and § 6.6 deliberately does not
   duplicate it in the preflight. So the refusal arrives with some decks already
   written, which is why § 7 requires the whole folder to be produced
   transactionally (§ 7.1).
@@ -261,7 +261,7 @@ rather than inventing a second mechanism.
   "structure": { "source": "projects/BDT-Au/structure/bdt_au.xyz",
                  "formula": "C6H4S2Au38", "atoms": 46 },
 
-  // Every schema field, one value. A one-stage description stops here (§ 6.4).
+  // Every schema field, one value. A one-stage description stops here (§ 6.5).
   "base": { "mesh_cutoff": 150, "relax_type": "CG", "restart": "clean", … },
 
   // WHICH fields the user chose to tune. Intent — it cannot be inferred.
@@ -318,7 +318,27 @@ against a structure that has since changed can therefore *say so*, rather than
 silently building a different calculation under the same id
 (`run-identity.md § 5`).
 
-### 6.4 One stage is no stages
+### 6.4 What writing it down buys
+
+Three things, and the first is why the file exists at all rather than the
+description living only in a browser tab.
+
+- **One producer for both surfaces.** The CLI and the browser stop being two paths
+  to a staged calculation: each writes a description, and the same reader turns it
+  into decks from either. That is what makes "the web is additive on top of the
+  CLI" checkable — the two must produce the same bytes for the same description,
+  and a single reader is how.
+- **A deck can be traced back to what asked for it.** PROVENANCE
+  (`job-contracts.md § 3.2`) already reserves an optional `form-config-hash` key
+  and this is its use: the hash of the description that produced the deck. Any
+  deck in a project then names its origin, and a deck someone edited by hand can
+  be told apart from one the description would reproduce. PROVENANCE stays exactly
+  what it is — a generation snapshot, not a config.
+- **Descriptions diff.** Two calculations that differ can be compared as *intent*
+  — one file against one file — rather than by reading two directories of decks
+  and inferring what was deliberate.
+
+### 6.5 One stage is no stages
 
 **`stages` may be absent, and absent means one.** A description with no `stages`
 key is a calculation with a single parameter set — `base`, exactly — and it
@@ -332,7 +352,7 @@ the same state.
 
 A description *with* `stages` has at least one; removing the last is refused.
 
-### 6.5 The preflight
+### 6.6 The preflight
 
 In order, and all of it before anything is written:
 
