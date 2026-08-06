@@ -281,28 +281,34 @@ consequences, both real today:
 - a label edited between runs: the warm files no longer match, and a run that
   should have resumed starts cold instead.
 
-An id derived from the plan fixes both — but only if it is derived from the
-right thing, and this is the trap:
+An id derived from the plan fixes both, and one rule decides every case:
 
-> **A content-derived id and warm restart pull in opposite directions.** Hash the
-> plan and every edit changes the id, so tightening a tolerance and resuming
-> from the geometry you already reached becomes impossible — the warm files no
-> longer bear the name the engine looks for. Yet resuming *through* an edit is
-> the whole point of a ladder.
+> **The id is built from inputs, never from anything a run produced.**
+>
+> It has to be knowable *before* the calculation exists — it names the directory
+> the run will be written into and the job the scheduler will be handed. And an
+> id that depended on a result would change the moment a stage succeeded,
+> orphaning the state it exists to continue from. So: no coordinates, no
+> energies, no convergence status, nothing read back off a `.XV`.
 
-So the pin is not a hash of the plan, nor of the structure. It is a hash of
-**the ordered species — which atoms these coordinates are of** (§ 6.1), and the
-id is built the readable way round: **the user's words first,
-the pin second.**
+That leaves simple parameters, which is all it needs.
+
+So the id is **readable, not cryptographic** — a starting point deliberately
+made of things a person already knows:
 
 ```
-   run.id  =  bdt_au_relax _ a41f9c
-              └─────┬─────┘   └─┬──┘
-                    │           a fingerprint of WHICH ATOMS these coordinates
-                    │           are of — the ordered species, nothing more (§ 6.1)
-                    what the user called this experiment — readable,
-                    greppable, theirs
+   run.id  =  bdt_au_relax _ C6H4S2Au38
+              └─────┬─────┘   └────┬────┘
+                    │              what the coordinates are OF: the molecule,
+                    │              by formula or by named components
+                    the project / experiment name — what the user calls it
 ```
+
+A hash would be exact and unreadable. A formula is neither, and that is the
+trade being made on purpose: an id you can recognise in a directory listing, in
+a queue, and in a filename is worth more day to day than one that resolves every
+possible ambiguity. **This is a starting point, agreed as one**, and § 10 records
+what would force it to grow.
 
 That one id **is** the `SystemLabel` / `JOB` literal. There is no second name.
 
@@ -342,18 +348,22 @@ What is left is what those coordinates are *of*:
 
 | Considered | In the pin? | Why |
 |---|:--:|---|
-| the ordered species — how many atoms, of which elements, in what order | **yes** | a `.XV` is a list of positions read *in that order*. Same count, different elements or a different order, and every coordinate lands on the wrong atom, silently |
+| the molecule — its formula, or its named components | **yes** | a `.XV` is a list of positions for *these* atoms. Different atoms, and every coordinate lands somewhere it does not belong |
 | the positions | no | the output (above) |
 | the cell | undecided (§ 10) | a `.XV` carries the cell too, so a changed cell is overridden on restart rather than mismatched — a different failure, and possibly not one the id should be solving |
 | basis, spin, XC | no | the geometry stays valid across all of them, and tuning the electronics while continuing is ordinary practice. A `.DM` of the wrong shape is caught by the engine — a failure it already reports, traded for one it cannot |
 | mesh, tolerances, force, steps, algorithm | no | exactly what a ladder varies |
 | ranks, threads, GPU | no | how fast it ran says nothing about whether the answer may be continued |
 
-So the pin covers one thing: **which atoms these coordinates belong to.** That is
-the smallest claim that closes a failure nothing else catches — same atom count,
-wrong elements, coordinates loaded without complaint into a calculation they do
-not belong to. A differing atom *count* the engine already refuses; a differing
-*element order* it cannot see.
+So the id covers one thing beyond the user's own name for it: **which atoms
+these coordinates belong to.** A differing atom *count* the engine already
+refuses, so the id is not there for that; it is there for the cases the engine
+cannot see.
+
+And it is deliberately the *readable* form of that claim. A formula does not
+separate two isomers, and does not pin the order the species are declared in —
+both of which a `.XV` is sensitive to. That is the known gap in the starting
+point, and § 10 is where it waits.
 
 ### 6.2 The id is on screen, and its changes are visible
 
@@ -362,8 +372,8 @@ decides whether their run resumes. So the tab shows both, always:
 
 ```
    ┌────────────────────────────────────────────────────────────┐
-   │  Job ID   bdt_au_relax_a41f9c                              │
-   │           the pin says which atoms this is. It survives a    │
+   │  Job ID   bdt_au_relax_C6H4S2Au38                          │
+   │           it says which atoms this is. It survives a         │
    │           relaxation and every tuning; it changes only if    │
    │           you load a different molecule                      │
    └────────────────────────────────────────────────────────────┘
@@ -371,7 +381,7 @@ decides whether their run resumes. So the tab shows both, always:
 
 Two behaviours that make it worth showing rather than merely correct:
 
-- **When a different molecule is loaded, the pin visibly changes**, at that
+- **When a different molecule is loaded, the id visibly changes**, at that
   moment. That is the UI saying *this has become a different
   calculation and it will start cold* — before a bundle is written, not after a
   run behaves oddly.
@@ -382,18 +392,18 @@ Two behaviours that make it worth showing rather than merely correct:
   actually being made.
 
 
-**And the hash still earns its place — as a report, not as a name.** The plan's
-content hash is recorded with the run. When warm files are found whose hash
-differs from the plan about to run, the banner can say *whose* state it is
-resuming rather than only that it is resuming. That is the existing doctrine
-applied to a case it does not yet cover: **molbuilder informs, and the user
-decides to continue.** Today `WARM-RESTART (silent)` cannot tell you that the
-state on disk came from a different calculation, because nothing recorded which
-calculation made it.
+**The plan itself is the record, so nothing else needs hashing.** It is written
+beside the bundle (§ 5), which means the wrapper's banner can say *which plan*
+produced the state it is about to resume from, rather than only that it is
+resuming. That is the existing doctrine — **molbuilder informs, and the user
+decides to continue** — reaching a case it does not cover today: `WARM-RESTART
+(silent)` cannot tell you the state came from a different calculation, because
+nothing beside it recorded which one made it.
 
-What this replaces: a free-typed name doing three jobs at once — telling runs
-apart, keying warm files, and naming files on disk. Splitting it into a stable
-label and a unique id lets each be right.
+What this replaces: a free-typed name that had to do the job with no help — the
+user both inventing an identity and remembering to change it when the thing
+being calculated changed. The id now carries the two facts that matter, and the
+user still gets to say what it is called.
 
 ---
 
@@ -477,9 +487,16 @@ user needs.
    letting it be typed keeps a door open to deliberately resuming from an
    unrelated run's state, which is occasionally what a person wants and is
    otherwise impossible to ask for.
-3. **How long is the pin?** Four hex characters read easily and collide once in
-   65,000; six is safer and uglier. It only has to be unique within a directory.
-4. **Does the cell belong in the pin?** A `.XV` carries the cell as well as the
+3. **What are the "components" of a composite system?** A junction is a molecule
+   *and* two electrodes; naming it by total formula loses that structure, and
+   naming it by parts needs a convention for what a part is.
+4. **When does the readable id stop being enough?** A formula does not tell two
+   isomers apart, and does not pin the *order* species are declared in — and a
+   `.XV` read against a different order lands every coordinate on the wrong atom.
+   The likely answer is a short pin appended when and only when the readable
+   part cannot separate two things in the same project, so the ugly form appears
+   where it earns its place rather than everywhere. Agreed to be revisited.
+5. **Does the cell belong in the identity?** A `.XV` carries the cell as well as the
    positions, so a changed cell is *overridden* on restart rather than
    mismatched. That is a real surprise — you asked for more vacuum and the
    restart quietly kept the old box — but it may be the wrapper's to report
