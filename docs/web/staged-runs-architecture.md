@@ -353,6 +353,18 @@ Two facts to carry forward when it is built:
 and [`execution/run-identity.md`](?doc=execution/run-identity.md). What remains
 is agreeing them and answering § 9.
 
+**Step 1a — one blocking decision, before any code.** `Repo.init` refuses a
+directory whose subdirectories hold a working-dir marker
+(`NestedRepoRefusedError`, *"each lowest-directory must be its own checkpoint
+repo"*), and `engines/stages.md § 7.1`'s layout is exactly such a directory —
+**verified, not inferred**. So the folder this design specifies cannot be
+checkpointed at all, and every item below that touches history depends on the
+answer. `execution/checkpointing.md` L1 states the three options and recommends
+one: teach the guard that a parent holding a description is one calculation
+rather than several. *Done when:* a produced two-stage folder can be
+`snapshot init`-ed, and a folder holding two unrelated run directories still
+cannot.
+
 **Step 2 — the backend, built to those contracts.**
 
 1. **Settle which of the duplicated fields wins today.** `relax_force_tol` and
@@ -415,7 +427,8 @@ is agreeing them and answering § 9.
     near-zero incremental disk, and the shipped guide's *"deduped by content"*
     becomes true rather than aspirational. Add **`snapshot verify`** while there
     (L6): the check already exists and is reachable only by attempting a restore.
-11. **Checkpoints at the two stage boundaries, and `branch` over HTTP**
+11. **Checkpoints at the two stage boundaries, and `branch` over HTTP** — gated
+    on **step 1a**, without which none of it can run
     (`engines/stages.md § 7.3`). *Done when:* a replacing produce leaves a commit
     holding the folder as it was; a stage seen to finish leaves a commit **and a
     tag named `<id>/<stage>/<UTC>`**, with a message carrying the id, the stage

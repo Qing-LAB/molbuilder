@@ -586,6 +586,15 @@ molbuilder's rather than the engine's:
 | **before a replacing produce** | the folder as the last produce left it | it is what makes rewriting a run stage safe rather than lossy (§ 7.2) |
 | **when a stage's run finishes** | that stage's converged state, tagged with its name | it is the point a user will want to come back to and **branch from** — the next stage is a choice, and a choice wants somewhere to return to |
 
+> **This does not work yet, and the obstacle is not effort.** `Repo.init`
+> **refuses** a directory whose subdirectories contain a working-dir marker
+> (`.fdf`, `.py`, `.run.sh`) — `NestedRepoRefusedError`, *"each lowest-directory
+> must be its own checkpoint repo"*. § 7.1's layout is exactly such a directory,
+> so **the folder this contract specifies cannot be put under checkpoint at
+> all**, and every sentence below about automatic history is unreachable until
+> that guard is reconciled. It is `execution/checkpointing.md` L1, and it is the
+> first thing to settle — before the checkpoint work, not after it.
+
 **Both are automatic whenever the folder is under checkpoint.** Not offered, not
 a button: a folder that has a history keeps it, and a stage boundary that went
 unrecorded is one the user cannot return to precisely when they discover they
