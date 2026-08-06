@@ -55,56 +55,29 @@ def mode(index, freq, activity=None, imaginary=False):
 # --- § 6.3  the bands -------------------------------------------------------
 
 class TestBandWidths:
-    """§ 6.3 — four steps, in this order, give every band its half-width."""
+    """§ 6.3 — one width for every mode, and the nearest one wins an overlap."""
 
     @pytest.mark.parametrize("broadening", [0, 0.5, 3, 7.99])
-    def test_floor_applies_at_any_width_below_it_not_only_at_zero(self, broadening):
-        """§ 6.3 — at ANY broadening below 8 cm-1, zero included, an isolated band
-        is 8 cm-1 half-wide."""
+    def test_the_floor_applies_at_any_width_below_it(self, broadening):
+        """§ 6.3 — a target narrower than this cannot be hit with a mouse."""
         assert band([200.0, 1000.0, 3000.0], broadening) == [8, 8, 8]
 
     def test_above_the_floor_the_band_is_the_broadening_width(self):
-        """§ 6.3, step 1 — the region you aim at is the region you see."""
+        """§ 6.3 — the region you aim at is the region you see."""
         assert band([200.0, 1000.0, 3000.0], 20) == [20, 20, 20]
 
-    def test_clamped_to_half_the_gap_so_two_bands_meet_and_stop(self):
-        """§ 6.3, step 3 — the picture in the contract: broadening 20, modes 24 apart."""
-        assert band([1000.0, 1024.0], 20) == [12, 12]
+    def test_crowded_modes_keep_a_full_size_target(self):
+        """§ 6.3 — the reason the clamp was dropped. Two modes 1 cm-1 apart used
+        to get half a wavenumber each, which on a 3000 cm-1 axis is a fraction of
+        a pixel: some peaks were easy to click and others were not hittable."""
+        assert band([1130.0, 1131.0, 2000.0], 20) == [20, 20, 20]
 
-    def test_each_mode_is_clamped_by_its_own_nearer_neighbour(self):
-        """§ 6.3, step 3 — 'the nearer neighbour', so a crowded pair narrows and a
-        lone mode does not."""
-        assert band([1000.0, 1024.0, 2000.0], 20) == [12, 12, 20]
-
-    def test_modes_at_the_same_frequency_stay_clickable(self):
-        """§ 6.3, step 4 — both keep a band rather than clamping each other to nothing."""
-        assert band([1131.8, 1131.8], 20) == [0.25, 0.25]
-
-    def test_no_two_bands_overlap_at_any_width(self):
-        """§ 6.3 — every point of the plot belongs to at most one band."""
-        freqs = [212.0, 218.0, 400.0, 401.5, 402.0, 1130.0, 1131.0, 3100.0]
-        for width in (0, 1, 8, 20, 50, 200):
-            half = band(freqs, width)
-            spans = sorted(
-                (f - h, f + h) for f, h in zip(freqs, half)
-            )
-            # equal frequencies share a span by design (step 4); the rest must not overlap
-            for (lo1, hi1), (lo2, hi2) in zip(spans, spans[1:]):
-                if (lo1, hi1) == (lo2, hi2):
-                    continue
-                assert hi1 <= lo2 + 1e-9, f"bands overlap at broadening {width}"
-
-    def test_the_band_you_are_in_is_the_nearest_mode(self):
-        """§ 6.3 — a click inside a band always means the nearest mode."""
-        freqs = [1000.0, 1024.0, 2000.0]
-        half = band(freqs, 20)
-        for f, h in zip(freqs, half):
-            for probe in (f - h + 1e-6, f, f + h - 1e-6):
-                nearest = min(freqs, key=lambda g: abs(probe - g))
-                assert nearest == f
+    def test_modes_at_the_same_frequency_keep_theirs_too(self):
+        """Neither can be told from the other by any band; both stay reachable
+        and which one a click reports is undefined (the table tells them apart)."""
+        assert band([1131.8, 1131.8], 20) == [20, 20]
 
     def test_an_empty_spectrum_has_no_bands(self):
-        """§ 8.3 — an empty list is a state, not a failure."""
         assert band([], 20) == []
 
 

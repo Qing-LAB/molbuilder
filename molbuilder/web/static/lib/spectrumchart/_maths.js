@@ -8,11 +8,8 @@
  * and § 9 (the envelope).
  */
 
-/** Below this, a click target is too fine to hit with a mouse (§ 6.3, step 2). */
+/** How far from a peak still counts as clicking it, when the lines are drawn narrow. */
 export const BAND_FLOOR_CM1 = 8;
-
-/** No clamp may take a band under this, or a mode becomes unreachable (§ 6.3, step 4). */
-export const BAND_MIN_HALF_WIDTH_CM1 = 0.25;
 
 /** "A peak is smooth": samples across the full width of the narrowest peak (§ 9). */
 export const SAMPLES_ACROSS_PEAK = 8;
@@ -23,36 +20,25 @@ export const TAIL_FRACTION = 0.01;
 const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
 
 /**
- * Half-width of every mode's click band, in cm⁻¹, one per mode in the order given.
+ * Half-width of every mode's click band, in cm⁻¹ — the broadening width, or the
+ * floor if that is narrower (§ 6.3).
  *
- * Four steps, in the order § 6.3 states them:
- *   1. start at the broadening width;
- *   2. raise it to the floor if it is below;
- *   3. clamp it to half the gap to the nearer neighbour, so no two bands overlap;
- *   4. raise it to the minimum if step 3 took it below.
+ * Every mode gets the same one. Bands overlap wherever modes are closer together
+ * than that, and the handle resolves an overlap by taking the NEAREST mode,
+ * which is an answer that never needs a tie-break.
  *
- * Steps 2 and 4 widen, step 3 narrows. None of them touches the drawn curve:
- * the band is about aiming, the curve is the claim about the science.
+ * They used to be clamped to half the gap to the nearer neighbour so that no two
+ * could overlap. That was necessary while a click had to land on a drawn mark —
+ * overlapping marks meant the answer depended on which was drawn last. Reading a
+ * click as a position made "nearest" available, and the clamp then cost what it
+ * was meant to protect: in a crowded region it shrank targets to a fraction of a
+ * pixel, so some peaks were easy to click and others were nearly impossible.
  */
 export function bandHalfWidths(freqs, broadening) {
     if (!Array.isArray(freqs)) return [];
     const width = isFiniteNumber(broadening) && broadening > 0 ? broadening : 0;
-    const start = Math.max(width, BAND_FLOOR_CM1);          // steps 1 and 2
-
-    const sorted = freqs
-        .map((freq, i) => ({ freq, i }))
-        .sort((a, b) => a.freq - b.freq);
-
-    const half = new Array(freqs.length);
-    for (let k = 0; k < sorted.length; k += 1) {
-        const { freq, i } = sorted[k];
-        let gap = Infinity;                                  // step 3
-        if (k > 0) gap = Math.min(gap, freq - sorted[k - 1].freq);
-        if (k < sorted.length - 1) gap = Math.min(gap, sorted[k + 1].freq - freq);
-        const clamped = Math.min(start, gap / 2);
-        half[i] = Math.max(clamped, BAND_MIN_HALF_WIDTH_CM1); // step 4
-    }
-    return half;
+    const half = Math.max(width, BAND_FLOOR_CM1);
+    return freqs.map(() => half);
 }
 
 /**

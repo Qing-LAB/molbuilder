@@ -63,7 +63,7 @@ globalThis.Plotly = {
            The seal reads both to turn a pointer position into a frequency. */
         const area = document.createElement("div");
         area.className = "nsewdrag";
-        area.getBoundingClientRect = () => ({ left: 100, width: 400, top: 0, height: 200 });
+        area.getBoundingClientRect = () => ({ left: 100, width: 400, top: 50, height: 200 });
         el.appendChild(area);
         el.querySelector = (sel) => (sel === ".nsewdrag" ? area : null);
         el._fullLayout = { xaxis: { range: [0, 4000] } };
@@ -87,6 +87,7 @@ globalThis.__host = function (values) {
         "--spectrumchart-curve": "#999999",
         "--spectrumchart-pending": "#666666",
         "--spectrumchart-imaginary": "#ff0000",
+        "--spectrumchart-hovered": "#cccc00",
     };
     document.body.appendChild(host);
     return host;
@@ -200,7 +201,7 @@ class TestTheDoors:
             "surface.onClick((x) => seen.push(x));\n"
             "surface.draw(picture);\n"
             "const el = host.children[0].children[0];\n"
-            "el.dispatch('click', { clientX: 200 });\n"     # 100px into 400
+            "el.dispatch('click', { clientX: 200, clientY: 150 });\n"     # 100px into 400
             "console.log(JSON.stringify(seen));"
         )
         assert got == [1000]
@@ -213,10 +214,54 @@ class TestTheDoors:
             "surface.onClick((x) => seen.push(x));\n"
             "surface.draw(picture);\n"
             "const el = host.children[0].children[0];\n"
-            "el.dispatch('click', { clientX: 337.5 });\n"   # nothing drawn here
+            "el.dispatch('click', { clientX: 337.5, clientY: 150 });\n"   # nothing drawn here
             "console.log(JSON.stringify(seen));"
         )
         assert got == [2375]
+
+    def test_a_click_above_or_below_the_plot_is_not_a_position(self):
+        """§ 8.4 — the library's toolbar sits above the plot and the axis labels
+        below it, and both share its horizontal span. A check on x alone turns
+        "zoom in" into "select the mode behind that button"."""
+        got = seal(
+            "const seen = [];\n"
+            "surface.onClick((x) => seen.push(x));\n"
+            "surface.draw(picture);\n"
+            "const el = host.children[0].children[0];\n"
+            "el.dispatch('click', { clientX: 200, clientY: 20 });\n"    # above (toolbar)
+            "el.dispatch('click', { clientX: 200, clientY: 300 });\n"   # below (tick labels)
+            "el.dispatch('click', { clientX: 200, clientY: 150 });\n"   # inside
+            "console.log(JSON.stringify(seen));"
+        )
+        assert got == [1000]
+
+    def test_a_drag_does_not_pick_a_mode(self):
+        """§ 8.4 — the browser fires a click whenever a press and a release share
+        an element, however far the pointer travelled, so the library's own
+        drag-to-zoom would otherwise select whatever sat under the release."""
+        got = seal(
+            "const seen = [];\n"
+            "surface.onClick((x) => seen.push(x));\n"
+            "surface.draw(picture);\n"
+            "const el = host.children[0].children[0];\n"
+            "el.dispatch('mousedown', { clientX: 150, clientY: 150 });\n"
+            "el.dispatch('click',     { clientX: 300, clientY: 150 });\n"   # a zoom gesture
+            "console.log(JSON.stringify(seen));"
+        )
+        assert got == []
+
+    def test_a_shaky_hand_still_picks(self):
+        """A pixel or two of travel is a hand, not a gesture."""
+        got = seal(
+            "const seen = [];\n"
+            "surface.onClick((x) => seen.push(x));\n"
+            "surface.draw(picture);\n"
+            "const el = host.children[0].children[0];\n"
+            "el.dispatch('mousedown', { clientX: 200, clientY: 150 });\n"
+            "el.dispatch('click',     { clientX: 202, clientY: 151 });\n"
+            "console.log(JSON.stringify(seen));"
+        )
+        assert got == [pytest.approx(1020, abs=1)]
 
     def test_a_click_outside_the_plot_area_is_not_a_position(self):
         """§ 8.4 — the margins are not the picture; a click there names nothing."""
@@ -225,7 +270,7 @@ class TestTheDoors:
             "surface.onClick((x) => seen.push(x));\n"
             "surface.draw(picture);\n"
             "const el = host.children[0].children[0];\n"
-            "el.dispatch('click', { clientX: 40 });\n"
+            "el.dispatch('click', { clientX: 40, clientY: 150 });\n"
             "console.log(JSON.stringify(seen));"
         )
         assert got == []
@@ -287,9 +332,25 @@ class TestTheDoors:
         assert got == {"calls": ["purge"], "left": 0}
 
     def test_the_seal_answers_no_question_about_what_is_drawn(self):
-        """§ 8.4 — the seal faces downward: five doors, and nothing to read back."""
+        """§ 8.4 — the seal faces downward: six doors, and nothing to read back."""
         got = seal("console.log(JSON.stringify(Object.keys(surface).sort()));")
-        assert got == ["draw", "onClick", "purge", "recolour", "resize"]
+        assert got == ["draw", "onClick", "onHover", "purge", "recolour", "resize"]
+
+    def test_the_pointer_position_comes_up_continuously(self):
+        """§ 8.4 — the same conversion as a click, so the layer above can show
+        which mode a click would pick."""
+        got = seal(
+            "const seen = [];\n"
+            "surface.onHover((x) => seen.push(x));\n"
+            "surface.draw(picture);\n"
+            "const el = host.children[0].children[0];\n"
+            "el.dispatch('mousemove', { clientX: 200, clientY: 150 });\n"
+            "el.dispatch('mousemove', { clientX: 300, clientY: 150 });\n"
+            "el.dispatch('mousemove', { clientX: 200, clientY: 20 });\n"   # over the toolbar
+            "el.dispatch('mouseleave', {});\n"
+            "console.log(JSON.stringify(seen));"
+        )
+        assert got == [1000, 2000, None, None]
 
     def test_the_frame_and_the_surface_are_the_only_markup(self):
         """§ 11 — the sheet styles the frame and the surface and nothing else."""

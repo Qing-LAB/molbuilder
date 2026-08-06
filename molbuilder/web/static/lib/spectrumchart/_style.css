@@ -23,6 +23,7 @@
     --spectrumchart-curve:     #9aa6b8;
     --spectrumchart-pending:   #6b7280;   /* strength not computed (§ 6.2) */
     --spectrumchart-imaginary: #d98c7a;   /* not at rest (§ 6.4) */
+    --spectrumchart-hovered:   #b9c8dc;   /* the mode a click would pick right now */
 
     --spectrumchart-hairline:  1px;
     --spectrumchart-radius:    6px;

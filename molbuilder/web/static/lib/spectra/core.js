@@ -1789,11 +1789,20 @@
 
     function _highlightActiveRow() {
         const rows = els.modesTbody.querySelectorAll("tr");
+        let chosen = null;
         rows.forEach(r => {
             const active = Number(r.dataset.mode) === state.selectedMode;
             r.classList.toggle("active", active);
             r.setAttribute("aria-selected", active ? "true" : "false");
+            if (active) chosen = r;
         });
+        /* Bring the chosen row into view.  A click on the spectrum can pick a
+         * mode that is hundreds of rows down a filtered table, and a highlight
+         * you have to go looking for is not much of an answer.  `nearest` so a
+         * row already on screen does not jump under the pointer. */
+        if (chosen && typeof chosen.scrollIntoView === "function") {
+            chosen.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }
     }
 
     function _updateSortIndicators() {
@@ -1901,6 +1910,79 @@
     // We deliberately use plain SVG (no Plotly) for the bar diagram:
     // it's a small static-ish picture and the SVG markup is easier
     // to read in the page source than a Plotly trace soup.
+    /* ---- the level diagram's own helpers ---------------------------------
+     *
+     * Both of these served two figures until the spectrum became a module of
+     * its own (docs/web/spectrumchart.md), which took its palette and its box
+     * watcher with it.  What is left serves the electronic-structure diagram
+     * alone, so it lives beside the diagram and is named for it.
+     */
+    /* THE CHART PALETTE, READ FROM THE STYLESHEET.
+     *
+     * Plotly takes colours as JavaScript values, so a chart cannot inherit them
+     * the way an element does -- which is how both charts on this tab ended up
+     * carrying their own copies of #1d2128, #2c313a and #cfd3da.  Three
+     * literals, in two places, that a theme change would silently leave behind.
+     *
+     * The tokens are the source of truth (lib/tokens.css), so this asks the
+     * document for their computed values and hands Plotly the answer.  One read,
+     * cached: they cannot change without a reload.
+     */
+    let _theme = null;
+    function _esTheme() {
+        if (_theme) return _theme;
+        const css = getComputedStyle(document.documentElement);
+        const tok = (name, fallback) =>
+            (css.getPropertyValue(name) || "").trim() || fallback;
+        _theme = {
+            paper:  tok("--bg-card",         "#1d2128"),
+            grid:   tok("--border-soft",     "#2c313a"),
+            axis:   tok("--border-strong",   "#3a3f48"),
+            ink:    tok("--text-secondary",  "#a8aebb"),
+            dim:    tok("--text-muted",      "#6c7280"),
+            homo:   tok("--accent",          "#6ba6ff"),
+            lumo:   tok("--warn-soft",       "#d8a64b"),
+            // The spectrum's sticks: a real mode, an imaginary one, the
+            // selected one, and the envelope over them.
+            stick:     tok("--accent-strong", "#4a8de0"),
+            stickImag: tok("--error",         "#f87171"),
+            stickSel:  tok("--warning",       "#fbbf24"),
+            envelope:  tok("--accent-hover",  "#8ab8ff"),
+        };
+        return _theme;
+    }
+
+    /* Plotly's `responsive: true` listens to the WINDOW, and the window is not
+     * what changes.  This chart lives in a grid that reflows when the box it is
+     * in gets wider or narrower -- the projects sidebar collapsing, the results
+     * panel resizing, the mode viewer moving from beside the chart to below it
+     * -- and none of those resize the window.  So the chart kept whatever width
+     * it was first drawn at and either overflowed its box or left a gap.
+     *
+     * One observer on the container, redrawing at its new size. */
+    /* Plotly's `responsive: true` listens to the WINDOW, and the window is not
+     * what changes here -- the sidebar collapses, the inspector panel resizes,
+     * the container query flips the layout, and the window never moves.  So each
+     * chart watches its own box.
+     *
+     * One observer, installed once, for the one figure this tab still draws. */
+    function _watchEsWidth(el) {
+        const key = "esResizeObserver";
+        const node = el;
+        if (state[key] || !node) return;
+        if (typeof ResizeObserver === "undefined") return;
+        let last = 0;
+        const obs = new ResizeObserver(function (entries) {
+            const w = entries[0] && entries[0].contentRect.width;
+            if (!w || Math.abs(w - last) < 1) return;   // ignore sub-pixel noise
+            last = w;
+            if (typeof Plotly === "undefined") return;
+            try { Plotly.Plots.resize(node); } catch (_) {}
+        });
+        obs.observe(node);
+        state[key] = obs;
+    }
+
     function renderESPanel() {
         if (!els.esPanel) return;
         if (!state.results || state.selectedMode == null) {
@@ -1975,7 +2057,7 @@
                 '<p class="status muted">chart library unavailable on this page</p>';
         } else {
             Plotly.react(els.esBarDiagram, fig.traces, fig.layout, fig.config);
-            _watchChartWidth(els.esBarDiagram, "esResizeObserver");
+            _watchEsWidth(els.esBarDiagram);
         }
 
         /* THE NUMBERS, GROUPED BY THE QUESTION THEY ANSWER.
@@ -2035,40 +2117,6 @@
         ).join("");
     }
 
-    /* THE CHART PALETTE, READ FROM THE STYLESHEET.
-     *
-     * Plotly takes colours as JavaScript values, so a chart cannot inherit them
-     * the way an element does -- which is how both charts on this tab ended up
-     * carrying their own copies of #1d2128, #2c313a and #cfd3da.  Three
-     * literals, in two places, that a theme change would silently leave behind.
-     *
-     * The tokens are the source of truth (lib/tokens.css), so this asks the
-     * document for their computed values and hands Plotly the answer.  One read,
-     * cached: they cannot change without a reload.
-     */
-    let _theme = null;
-    function chartTheme() {
-        if (_theme) return _theme;
-        const css = getComputedStyle(document.documentElement);
-        const tok = (name, fallback) =>
-            (css.getPropertyValue(name) || "").trim() || fallback;
-        _theme = {
-            paper:  tok("--bg-card",         "#1d2128"),
-            grid:   tok("--border-soft",     "#2c313a"),
-            axis:   tok("--border-strong",   "#3a3f48"),
-            ink:    tok("--text-secondary",  "#a8aebb"),
-            dim:    tok("--text-muted",      "#6c7280"),
-            homo:   tok("--accent",          "#6ba6ff"),
-            lumo:   tok("--warn-soft",       "#d8a64b"),
-            // The spectrum's sticks: a real mode, an imaginary one, the
-            // selected one, and the envelope over them.
-            stick:     tok("--accent-strong", "#4a8de0"),
-            stickImag: tok("--error",         "#f87171"),
-            stickSel:  tok("--warning",       "#fbbf24"),
-            envelope:  tok("--accent-hover",  "#8ab8ff"),
-        };
-        return _theme;
-    }
 
     /* THE LEVEL DIAGRAM, drawn by the same library as the spectrum above it.
      *
@@ -2115,7 +2163,7 @@
     }
 
     function _renderLevelDiagram(opts) {
-        const th = chartTheme();
+        const th = _esTheme();
         const cols = [
             { label: "−A", arr: opts.minus },
             { label: "eq", arr: opts.eq    },
@@ -2608,38 +2656,6 @@
         return out;
     }
 
-    /* Plotly's `responsive: true` listens to the WINDOW, and the window is not
-     * what changes.  This chart lives in a grid that reflows when the box it is
-     * in gets wider or narrower -- the projects sidebar collapsing, the results
-     * panel resizing, the mode viewer moving from beside the chart to below it
-     * -- and none of those resize the window.  So the chart kept whatever width
-     * it was first drawn at and either overflowed its box or left a gap.
-     *
-     * One observer on the container, redrawing at its new size. */
-    /* Plotly's `responsive: true` listens to the WINDOW, and the window is not
-     * what changes here -- the sidebar collapses, the inspector panel resizes,
-     * the container query flips the layout, and the window never moves.  So each
-     * chart watches its own box.
-     *
-     * Takes the element and where to remember its observer, because there are
-     * two charts on this tab now: the spectrum and the level diagram.  One
-     * observer each, installed once. */
-    function _watchChartWidth(el, stateKey) {
-        const key = stateKey || "esResizeObserver";
-        const node = el || els.spectrumChart;
-        if (state[key] || !node) return;
-        if (typeof ResizeObserver === "undefined") return;
-        let last = 0;
-        const obs = new ResizeObserver(function (entries) {
-            const w = entries[0] && entries[0].contentRect.width;
-            if (!w || Math.abs(w - last) < 1) return;   // ignore sub-pixel noise
-            last = w;
-            if (typeof Plotly === "undefined") return;
-            try { Plotly.Plots.resize(node); } catch (_) {}
-        });
-        obs.observe(node);
-        state[key] = obs;
-    }
 
     /* ── Saving the animation (vibrationview.md § 12) ───────────────────────
      *

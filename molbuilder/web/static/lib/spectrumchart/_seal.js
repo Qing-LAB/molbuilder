@@ -81,6 +81,7 @@ function paletteOf(win, frame) {
         curve: read("--spectrumchart-curve"),
         pending: read("--spectrumchart-pending"),
         imaginary: read("--spectrumchart-imaginary"),
+        hovered: read("--spectrumchart-hovered"),
     };
 }
 
@@ -88,9 +89,10 @@ function paletteOf(win, frame) {
  * here and nowhere else. The layer above never names a colour. */
 const colourFor = (state, palette) => (
     state === "chosen" ? palette.chosen
-        : state === "imaginary" ? palette.imaginary
-            : state === "pending" ? palette.pending
-                : palette.stick
+        : state === "hovered" ? palette.hovered
+            : state === "imaginary" ? palette.imaginary
+                : state === "pending" ? palette.pending
+                    : palette.stick
 );
 
 /**
@@ -218,15 +220,62 @@ export async function openSurface(host) {
         const axis = surface._fullLayout && surface._fullLayout.xaxis;
         if (!area || !axis || !Array.isArray(axis.range)) return null;
         const box = area.getBoundingClientRect();
-        if (!box.width) return null;
+        if (!box.width || !box.height) return null;
+        /* BOTH axes, not just the one the answer comes from. The library's own
+         * toolbar sits above the plot and the axis labels below it, and both
+         * share the plot's horizontal span — so a check on x alone turns
+         * "zoom in" or a click on a tick label into "select the mode behind
+         * that button". */
         const across = (event.clientX - box.left) / box.width;
-        if (across < 0 || across > 1) return null;          // outside the plot area
+        const down = (event.clientY - box.top) / box.height;
+        if (across < 0 || across > 1 || down < 0 || down > 1) return null;
         const [from, to] = axis.range;
         return from + across * (to - from);
     };
 
+    /* A DRAG IS NOT A PICK.
+     *
+     * The browser fires `click` whenever a press and a release share an element,
+     * however far the pointer travelled between them — so the library's own
+     * drag-to-zoom and drag-to-pan each end in a click, and the chart would
+     * select whatever mode happened to sit under the release. Looking at a peak
+     * closely would keep changing the selection out from under the user.
+     *
+     * A few pixels of travel is a shaky hand, not a gesture, so a click counts
+     * as a pick only if the pointer stayed within DRAG_SLOP of where it went
+     * down. */
+    const DRAG_SLOP_PX = 4;
+    let hovered = null;   // the handle's hover callback, if it asked for one
+    let pressedAt = null;
+
+    /* WHERE THE POINTER IS, continuously — the same conversion as a click.
+     *
+     * A band is invisible, so which mode a click would pick is a guess until
+     * something says so. Reporting the position under the pointer lets the layer
+     * above light up the mode it would choose, which is the band made visible
+     * without drawing it. `null` means the pointer is somewhere that would pick
+     * nothing. */
+    surface.addEventListener("mousemove", (event) => {
+        if (disposed || !hovered) return;
+        const x = positionOf(event);
+        hovered(x !== null && Number.isFinite(x) ? x : null);
+    });
+    surface.addEventListener("mouseleave", () => {
+        if (!disposed && hovered) hovered(null);
+    });
+
+    surface.addEventListener("mousedown", (event) => {
+        pressedAt = { x: event.clientX, y: event.clientY };
+    });
+
     surface.addEventListener("click", (event) => {
+        const from = pressedAt;
+        pressedAt = null;
         if (disposed || !clicked) return;
+        if (from) {
+            const travelled = Math.hypot(event.clientX - from.x, event.clientY - from.y);
+            if (travelled > DRAG_SLOP_PX) return;       // a gesture, not a pick
+        }
         const x = positionOf(event);
         if (x !== null && Number.isFinite(x)) clicked(x);
     });
@@ -261,6 +310,11 @@ export async function openSurface(host) {
         /** One number goes up: where the click landed on the frequency axis. */
         onClick(cb) {
             clicked = cb;
+        },
+
+        /** The same number, continuously, or null over nowhere in particular. */
+        onHover(cb) {
+            hovered = cb;
         },
 
         purge() {

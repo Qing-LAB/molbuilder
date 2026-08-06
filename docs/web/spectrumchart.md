@@ -366,64 +366,55 @@ surface, and § 5.3's "no controls" holds without an exception carved for it.
 place to believe something the data already says, and the failure mode is a flat
 axis with nothing on it and no explanation.
 
-### 6.3 A click lands on a band, and no two bands overlap
+### 6.3 A click lands on a band, and the nearest band wins
 
-Each mode gets an invisible band centred on it, and its half-width comes from the
+Each mode gets an invisible band centred on it, and its half-width is the
 **broadening width** — *the same number that draws the envelope*, so the region a
 user aims at is the region they see. A tolerance set independently of the picture
 would be a second fact about the same thing (§ 5.2), and it drifts the moment
 either is changed alone.
 
-**Three things bend that, and it is worth saying which way each bends.** Below
-8 cm⁻¹ the band is *wider* than the curve, because a 3 cm⁻¹ target cannot be hit
-with a mouse. Where modes crowd, it is *narrower*, because the alternative is
-handing back the wrong mode. And where two modes sit on top of each other it is
-wider again, because a band clamped to nothing is a mode nobody can reach. What
+**One thing bends that, and only upward.** Below **8 cm⁻¹** the band is wider
+than the curve, because a target that narrow cannot be hit with a mouse. What
 never happens is the picture being changed to match the band: the curve is the
-claim about the science, the band is only about aiming, and where they must differ
-it is the invisible one that gives way.
+claim about the science, the band is only about aiming, and where they must
+differ it is the invisible one that gives way.
 
-**Four steps, in this order, give every band its half-width:**
+**Bands overlap where modes crowd, and a click takes the nearest one.** That is
+the whole rule. "The nearest" is an answer that never needs a tie-break, so
+nothing has to be moved or shrunk to keep it unambiguous.
 
-| | The step | The number | Why it is there |
-|---|---|---|---|
-| 1 | start at the broadening width | whatever was last set | the region you aim at is the region you see |
-| 2 | raise it to the **floor** if it is below | **8 cm⁻¹** | a target narrower than this cannot be hit with a mouse — and at zero broadening a stick is one pixel wide |
-| 3 | clamp it to half the gap to the nearer neighbour | — | so no two bands ever overlap |
-| 4 | raise it to the **minimum** if step 3 took it below | **0.25 cm⁻¹** | two modes at the same frequency would otherwise clamp each other to nothing |
+> **This replaced a clamp, and the reason is worth keeping.** Each band used to
+> be cut back to half the distance to its nearer neighbour so that no two could
+> ever overlap. That was necessary while a click had to land on a *drawn mark* —
+> two marks over the same spot meant the answer depended on which was drawn last.
+> Reading a click as a position (§ 8.4) made "nearest" available, and the clamp
+> then cost exactly what it was meant to protect: in a crowded region it shrank
+> targets to a fraction of a pixel, so some peaks were easy to click and others
+> could not be hit at all. A rule that survives a change of mechanism should be
+> re-argued, not inherited.
 
-**The floor and the minimum are numbers this contract fixes, not preferences.** A
-click target whose size changes between builds is a click target nobody can test,
-and a rule that says only "a floor" cannot have a test derived from it at all.
+**Two modes at the same frequency** cannot be told apart by any band. Both keep
+theirs, so both stay reachable; which of the two a click reports is undefined —
+they are the same distance away — and separating them is the table's job.
 
-Step 3 is the one worth a picture:
+### 6.3.1 The band, made visible
 
-```
-  broadening 20 cm⁻¹, two modes 24 cm⁻¹ apart
+An invisible target is a guess. So **the mode a click would pick lights up as the
+pointer moves**, which is the band shown without drawing it: slide across a
+crowded region and the answer changes under you, and what you see is what you
+would get.
 
-  UNCLAMPED — the bands overlap        CLAMPED — they meet and stop
-  and the overlap belongs to           at the midpoint, so every point
-  whichever was drawn last             belongs to the nearer one
+Two rules keep it honest and cheap:
 
-     ▒▒▒▒▒▒▒┃▒▒▒▒▒▒▒                      ▒▒▒▒▒▒▒┃▒▒▒▒▒
-     ░░░░░▒▒▒█░░░░░░░░░                   ▒▒▒▒▒▒▒┃▒▒▒▒▒░░░░░░░░░░░
-        ░░░░░░┃░░░░░░░                          ░░░░░░┃░░░░░░
-              ↑                                       ↑
-        clicking HERE could                     clicking HERE is
-        select either one                       always the nearer
-```
-
-Without that clamp, bands overlap wherever modes are close together — ten of the thirty-five
-adjacent pairs in the benzene-dithiol spectrum are closer together than an
-unclamped band is wide — and in the overlap the mode you get is whichever band was
-drawn last, not the nearer one. Clamped, every point of the plot belongs to at most
-one band, so **the band you are in is always the nearest mode**, and crowded
-regions get tighter targets, which is exactly where being off by one mode matters.
-
-Two modes at the same frequency cannot be told apart by any band, which is what
-step 4 is for: both keep the minimum width, so both stay clickable rather than
-neither. Which of the two a click reports is then genuinely undefined — they are
-the same distance away — and separating them is the table's job, not the chart's.
+- **What you picked outranks what you are pointing at.** A chosen mode keeps its
+  colour under the pointer, or a selection would appear to flicker away while you
+  reach for something else.
+- **Nothing is redrawn until the answer changes**, and then only the colours
+  (§ 5.1). A pointer crossing the plot reports hundreds of times a second;
+  sliding along inside one band costs nothing, and hovering the mode that is
+  already chosen costs nothing either, because the picture would come out the
+  same.
 
 ### 6.4 An imaginary mode is drawn, marked, and left out of the curve
 
@@ -657,6 +648,8 @@ recolour(marks)                 change the colours already drawn — no rebuild
 resize()                        the box changed; fill it
 onClick(cb)                     the user clicked: hand up where it landed on
                                 the frequency axis, and nothing else
+onHover(cb)                     the pointer moved: the same number, continuously,
+                                or null over nowhere in particular
 purge()                         release the surface
 ```
 
@@ -666,7 +659,7 @@ nothing in it is a colour or a mode:
 ```js
 picture = {
     sticks: { x: [...], y: [...], width: [...],  // where and how tall each is drawn
-              state: ["plain" | "chosen" | "pending" | "imaginary", …] },
+              state: ["plain" | "chosen" | "hovered" | "pending" | "imaginary", …] },
     curve:  { x: [...], y: [...] } | null,       // null when there is no curve
     xTitle, yTitle, xUnit,                        // the words on the axes
     note,                                         // one line inside the plot, or nothing
@@ -708,7 +701,7 @@ so the sheet stays the one source of truth for how the chart looks.
 **`recolour` is the cheap door § 5.1 is about.** It exists so that the expensive
 one does not have to be called for a click.
 
-**A click is read off the surface, not off a mark.** The drawing library reports
+**A click, and the pointer, are read off the surface rather than off a mark.** The drawing library reports
 a click only when the pointer is over one of *its own* points — so nothing it
 offers can hear a click in the empty space beside a peak, and that space is the
 whole purpose of a band. So the seal takes the click from the surface itself and
@@ -906,10 +899,15 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.2 — the picture is derived | a result with no activities anywhere draws every stick at height one, with a curve over them; one with some activities draws the rest as pending — and neither picture is reachable by a setting |
 | § 6.2 — the markings are in the plot | the pending marks and the "not computed" wording are drawn on the surface: the module's markup carries no label, banner or text node beside the chart |
 | § 6.3 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
-| § 6.3 — a click lands on the nearest mode | for a spectrum with modes closer together than the broadening, every point in the plot resolves to the nearest mode; no two bands overlap at any width |
-| § 6.3 — the floor and the minimum are the stated numbers | at **any** broadening below 8 cm⁻¹, zero included, an isolated band is 8 cm⁻¹ half-wide; no clamp ever takes a band below 0.25 cm⁻¹ |
-| § 6.3 — the band bends, never the picture | at a broadening the floor or the clamp overrides, the envelope drawn is still the envelope for the width that was set |
-| § 6.3 — modes at the same frequency stay clickable | both keep a band, rather than clamping each other down to nothing |
+| § 6.3 — every mode keeps a full-size target | modes 1 cm⁻¹ apart each keep the whole band; no arrangement of neighbours shrinks one |
+| § 6.3 — the floor applies below it | at any broadening under 8 cm⁻¹, zero included, a band is 8 cm⁻¹ half-wide |
+| § 6.3 — the nearest band wins | where bands overlap, a click reports the mode whose frequency is closest to it |
+| § 6.3 — the band bends, never the picture | where the floor overrides, the envelope drawn is still the envelope for the width that was set |
+| § 6.3.1 — the pointer shows what a click would take | moving over a band recolours that mode, and only it |
+| § 6.3.1 — pointing costs nothing until the answer changes | sliding inside one band, and hovering the mode already chosen, each make no call at all |
+| § 6.3.1 — what you picked does not flicker | a chosen mode keeps its colour under the pointer |
+| § 8.4 — a drag is not a pick | a press and a release far apart report nothing; a click a pixel or two from the press still reports |
+| § 8.4 — the toolbar and the labels are not the plot | a click above or below the plot area reports nothing, at any horizontal position |
 | § 6.4 — an imaginary mode is drawn and clickable | it appears at its own frequency and a click on it reports its index, exactly like any other mode |
 | § 6.4 — an imaginary mode is marked | it is drawn differently from an ordinary mode of the same height |
 | § 6.4 — an imaginary mode is not in the curve | adding one to a list leaves the envelope unchanged, in both pictures |

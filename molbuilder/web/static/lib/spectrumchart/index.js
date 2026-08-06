@@ -66,18 +66,24 @@ export async function mount(host, options = {}) {
      * them. */
     let modes = [];
     let selected = null;
+    let hovered = null;      // which mode a click would pick right now
     let broadening = 0;
     let bands = [];                  // half-widths, one per mode, from the maths
+    let painted = [];                // the states last handed down, to skip repeats
     let disposed = false;
 
     /* Which picture the data puts us in (§ 6.2), decided here and never set. */
     const strengthsKnown = () => modes.some((m) => isFiniteNumber(m.activity) && !m.imaginary);
 
     const stateOf = (mode, known) => (
+        // Chosen outranks hovered: what you picked should not flicker away under
+        // the pointer. Hovered outranks the rest, and only while the pointer is
+        // there.
         mode.index === selected ? "chosen"
-            : mode.imaginary ? "imaginary"
-                : (known && !isFiniteNumber(mode.activity)) ? "pending"
-                    : "plain"
+            : mode.index === hovered ? "hovered"
+                : mode.imaginary ? "imaginary"
+                    : (known && !isFiniteNumber(mode.activity)) ? "pending"
+                        : "plain"
     );
 
     const pictureNow = () => {
@@ -107,13 +113,22 @@ export async function mount(host, options = {}) {
 
     const redraw = () => {
         bands = bandHalfWidths(modes.map((m) => m.freq), broadening);
-        surface.draw(pictureNow());
+        const picture = pictureNow();
+        painted = picture.sticks.state;
+        surface.draw(picture);
     };
 
-    /** § 5.1 — the cheap door: the same picture, with only its colours changed. */
+    /** § 5.1 — the cheap door: the same picture, with only its colours changed.
+     *
+     * And nothing at all when the colours would come out the same. Hovering the
+     * mode that is already chosen is the everyday case: the answer changes, the
+     * picture does not, and the cheapest call is the one not made. */
     const recolour = () => {
         const known = strengthsKnown();
-        surface.recolour(modes.map((m) => stateOf(m, known)));
+        const states = modes.map((m) => stateOf(m, known));
+        if (states.length === painted.length && states.every((s, i) => s === painted[i])) return;
+        painted = states;
+        surface.recolour(states);
     };
 
     /** A position becomes a mode here, never below (§ 8.4). */
@@ -129,6 +144,20 @@ export async function mount(host, options = {}) {
         });
         return found;
     };
+
+    /* A band is invisible, so the mode a click would pick is a guess until the
+     * chart says so: the one under the pointer lights up as you move.
+     *
+     * A pointer crossing the plot fires hundreds of times a second, so this
+     * redraws only when the ANSWER changes -- and then only colours (§ 5.1's
+     * cheap door). Sliding along inside one band costs nothing at all. */
+    surface.onHover((x) => {
+        if (disposed) return;
+        const next = x === null ? null : modeAt(x);
+        if (next === hovered) return;
+        hovered = next;
+        recolour();
+    });
 
     surface.onClick((x) => {
         if (disposed || !onSelect) return;
@@ -195,6 +224,7 @@ export async function mount(host, options = {}) {
         dispose() {
             if (disposed) return;
             disposed = true;
+            hovered = null;
             if (watcher) watcher.disconnect();
             surface.purge();
             host.replaceChildren();

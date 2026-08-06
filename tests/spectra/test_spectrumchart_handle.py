@@ -65,14 +65,22 @@ globalThis.__host = function () {
         "--spectrumchart-grid": "#222222", "--spectrumchart-stick": "#3333ff",
         "--spectrumchart-chosen": "#00ff00", "--spectrumchart-curve": "#999999",
         "--spectrumchart-pending": "#666666", "--spectrumchart-imaginary": "#ff0000",
+        "--spectrumchart-hovered": "#cccc00",
     };
     document.body.appendChild(host);
     return host;
 };
 
+globalThis.__move = function (host, atCm1) {
+    const el = host.children[0].children[0];
+    el.dispatch("mousemove", { clientX: atCm1, clientY: 100 });
+};
+globalThis.__leave = function (host) {
+    host.children[0].children[0].dispatch("mouseleave", {});
+};
 globalThis.__click = function (host, atCm1) {
     const el = host.children[0].children[0];
-    el.dispatch("click", { clientX: atCm1 });
+    el.dispatch("click", { clientX: atCm1, clientY: 100 });
 };
 """
 
@@ -186,11 +194,13 @@ def test_the_selection_is_recorded_before_any_modes_exist():
 
 
 def test_an_index_no_list_holds_highlights_nothing_and_raises_nothing():
+    """§ 8.3 — and it costs nothing either: no colour changes, so no call is
+    made. What is asserted is the state on screen, not the traffic."""
     calls = drive(
-        "chart.setModes(MODES);\nchart.setSelected(99);\n"
+        "chart.setModes(MODES);\n__calls.length = 0;\nchart.setSelected(99);\n"
         "console.log(JSON.stringify(__calls));"
     )
-    assert calls[-1]["update"]["marker.color"] == [["#3333ff", "#3333ff", "#3333ff"]]
+    assert calls == []
 
 
 def test_a_bad_width_leaves_the_one_already_set_standing():
@@ -412,3 +422,48 @@ def test_the_entry_resolves_by_the_path_the_page_uses():
         static_root=static,
     )
     assert got == ["mount"]
+
+
+# --- the hover indicator: the band, made visible -----------------------------
+
+def test_the_mode_a_click_would_pick_lights_up_under_the_pointer():
+    """A band is invisible, so which mode a click would take is a guess until the
+    chart says so."""
+    calls = drive(
+        "chart.setModes(MODES);\nchart.setBroadening(20);\n"
+        "__calls.length = 0;\n__move(host, 505);\n"
+        "console.log(JSON.stringify(__calls));"
+    )
+    assert [c["call"] for c in calls] == ["restyle"]
+    assert calls[0]["update"]["marker.color"] == [["#3333ff", "#cccc00", "#3333ff"]]
+
+
+def test_sliding_along_inside_one_band_costs_nothing():
+    """§ 5.1 — a pointer fires hundreds of times a second; the chart redraws only
+    when the ANSWER changes."""
+    got = drive(
+        "chart.setModes(MODES);\nchart.setBroadening(20);\n"
+        "__move(host, 495);\n__calls.length = 0;\n"
+        "for (const x of [496, 498, 500, 502, 505]) __move(host, x);\n"
+        "console.log(JSON.stringify(__calls.length));"
+    )
+    assert got == 0
+
+
+def test_leaving_the_plot_puts_the_indicator_out():
+    got = drive(
+        "chart.setModes(MODES);\nchart.setBroadening(20);\n__move(host, 500);\n"
+        "__calls.length = 0;\n__leave(host);\n"
+        "console.log(JSON.stringify(__calls.map(c => c.update['marker.color'][0])));"
+    )
+    assert got == [["#3333ff", "#3333ff", "#3333ff"]]
+
+
+def test_what_you_picked_does_not_flicker_away_under_the_pointer():
+    """Chosen outranks hovered."""
+    got = drive(
+        "chart.setModes(MODES);\nchart.setBroadening(20);\nchart.setSelected(2);\n"
+        "__calls.length = 0;\n__move(host, 500);\n"
+        "console.log(JSON.stringify(__calls.length));"
+    )
+    assert got == 0
