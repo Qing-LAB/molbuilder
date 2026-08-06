@@ -147,7 +147,7 @@ does this broadening make, and how wide may each band be — with numbers, for
 anyone who asks.
 
 **Nothing flows back up past the seal** except a click. The sealed layer is never
-asked what is drawn, what the axes are, or where a point landed on screen (§ 9.3).
+asked what is drawn, what the axes are, or where a point landed on screen (§ 9.4).
 
 ---
 
@@ -264,20 +264,43 @@ tab becoming visible all change a box without the window moving.
 
 ## 6. The data a chart holds
 
-### 6.1 The shapes
+### 6.1 The one shape a caller must know
+
+Everything the chart draws comes from a list of these, and nothing else:
 
 ```js
 mode = {
-    index:     22,          // the mode's 1-based number — what a click reports
-    freq:      1131.8,      // cm⁻¹; may be negative
-    activity:  12.86,       // Å⁴/amu, or null when not computed yet
-    imaginary: false,       // a saddle point, not a small number
+    index:     22,          // required — the caller's own number for this mode
+    freq:      1131.8,      // required — cm⁻¹, may be negative
+    activity:  12.86,       // optional — Å⁴/amu; null or absent = not computed
+    imaginary: false,       // optional — default false
 }
 ```
 
-`index` is **the caller's numbering**, carried and handed back untouched. The
-chart does not renumber, sort or de-duplicate: what comes out of a click is what
-went in.
+| Field | Required | Unit | Absent means | Refused when |
+|---|---|---|---|---|
+| `index` | **yes** | — | *(the record is refused)* | missing, or not a finite number |
+| `freq` | **yes** | cm⁻¹ | *(the record is refused)* | missing, or not a finite number |
+| `activity` | no | Å⁴/amu | **not computed yet** — drawn as pending, never as zero (§ 6.3) | present but not a finite number |
+| `imaginary` | no | — | `false` | never — anything truthy is true |
+
+**A record that must be refused takes the whole call with it.** `setModes` draws
+the list it was given or draws nothing; it never quietly skips the bad rows and
+renders a spectrum that is missing modes without saying so. A caller with one
+malformed record has a bug one line earlier, and a chart that hides it is a chart
+that helped.
+
+**`index` is the caller's numbering, carried and handed back untouched.** The
+chart does not renumber, sort or de-duplicate — it draws them in whatever order
+they arrive and hands back exactly what it was given. So a caller may use 1-based
+mode numbers, database ids, or anything else it can recognise later; the chart
+has no opinion, because the number means something only to whoever wrote it.
+
+**Nothing else travels.** No structure, no eigenvector, no run metadata, no
+label, no colour. If a future need seems to want a fifth field, the question to
+ask first is whether it is a fact about *the picture* or about *the science* —
+the second belongs to the tab, and this list is how the boundary in § 2 stays
+real rather than aspirational.
 
 ### 6.2 What a chart holds, and what it does not
 
@@ -371,6 +394,9 @@ the table's job.
 const chart = await mount(hostEl, { onSelect: (index) => …, broadening: 20 });
 ```
 
+The options are written out in § 9.2; this section is about what `mount` *gives
+back* and how it ends.
+
 **`mount` is asynchronous and always resolves.** The handle it returns is live:
 the surface is built, and every door works from the first call. There is no
 readiness flag — a chart that is not ready yet is a state a caller can get wrong,
@@ -435,19 +461,66 @@ a box, hands over four numbers per mode, and gets a spectrum it can click.
 It never mentions a drawing library, never reaches into the module, and would
 work on a page with nothing else on it.
 
-### 9.2 The handle — for a tab that wants a spectrum
+### 9.2 What `mount` takes
+
+```js
+mount(host, options) -> Promise<handle>
+```
+
+| | What it is | Required | Default |
+|---|---|---|---|
+| `host` | the element the chart lives in. The **host sizes it** (§ 5.4); the module never writes a width or a height onto it | yes | — |
+| `options.onSelect` | `(index) => void`, called when a **user** clicks a mode. Never called by anything the tab does (§ 9.4) | no | nothing is reported |
+| `options.modes` | the first mode list, exactly as `setModes` takes it | no | empty — an empty chart, not an error |
+| `options.selected` | the index drawn as chosen | no | none chosen |
+| `options.broadening` | line width in cm⁻¹, exactly as `setBroadening` takes it | no | `0` — bare sticks, no curve |
+
+**A mount option is the first write through the door of the same name, not a
+second way to hold the fact.** `mount({ broadening: 20 })` and
+`setBroadening(20)` reach the same one place; there is no separate "initial"
+value kept anywhere, so nothing can disagree with anything (§ 5.2).
+
+Everything else about the chart — its size, its position, when it is visible — is
+the host's, and is expressed in CSS rather than passed here.
+
+### 9.3 The handle — the only way data goes in
 
 ```
-setModes(modes)              a different result: redraw, refit the axes (§ 5.1)
+setModes(list)               a different result: redraw, refit the axes (§ 5.1)
 setSelected(index | null)    recolour one mark — nothing else moves
-setBroadening(width)         how wide to draw each line — and therefore how wide
-                             it is to click (§ 6.4).  In cm⁻¹, measured across
-                             the peak at half its height
+setBroadening(width)         how wide to draw each line, in cm⁻¹ — and therefore
+                             how wide it is to click (§ 6.4)
 refit()                      re-measure the box and redraw at its size
 dispose()                    release, disconnect, empty
 ```
 
-Five doors. Every one is behaviour; none is a way to read the module's insides.
+Five doors, and **every fact the chart holds arrives through exactly one of
+them.** There is no property to assign, no options object to mutate after the
+fact, no global to publish into, and no second path that "also" sets something.
+Data goes in one way; nothing comes back out but a click.
+
+**Each door, precisely:**
+
+| Door | Takes | Refuses | Returns |
+|---|---|---|---|
+| `setModes` | an array of mode records (§ 6.1). An empty array is legal and means *an empty chart* | anything that is not an array; a record missing `index` or `freq` — the whole call, with nothing drawn, rather than a chart quietly missing rows | nothing |
+| `setSelected` | one `index` that appeared in the current list, or `null` for *nothing chosen* | an index the current list does not contain — the drawn selection does not change, because the alternative is a highlight on nothing | nothing |
+| `setBroadening` | a width in cm⁻¹, `≥ 0`. Zero means *no curve*: bare sticks, and click bands at their floor (§ 6.4) | a negative number or a value that is not a number — the width already set stands, because substituting a default would hide a caller's bug | nothing |
+| `refit` | — | — | nothing |
+| `dispose` | — | — | nothing; safe to call twice |
+
+**Order does not matter.** Any door may be called before any other, any number of
+times, in any order: selecting before there are modes, broadening an empty chart,
+re-selecting the same index. Each call writes one fact and redraws what that fact
+affects. A caller that has to remember a sequence is a caller that will get it
+wrong.
+
+**Nothing is read back.** There is deliberately no `getModes`, no `getSelected`,
+no `getBroadening` and no accessor of any kind: every one of those values was
+written by the caller, so a second copy inside the module would be a second place
+to believe something (§ 5.2). What the module knows that the caller does not is
+*where the marks landed on screen*, and that is the seal's business and never
+leaves it (§ 9.4).
 
 **`onSelect` is given once, at mount.** It is how a click leaves (§ 3). A chart
 with no `onSelect` draws normally and reports nothing — a legitimate thing to be,
@@ -475,7 +548,7 @@ Justifying this door by what a `ResizeObserver` does instead would put a
 library's behaviour into a contract, where it cannot be tested and cannot be
 depended on.
 
-### 9.3 The sealed layer — commands down, clicks up
+### 9.4 The sealed layer — commands down, clicks up
 
 ```
 draw(picture)                   put this picture on the surface
@@ -573,7 +646,7 @@ disagree with the viewer (§ 3).
 Everything inside it is the module's.
 
 **And the mount waits for the stylesheet**, because the sealed layer reads the
-palette out of it (§ 9.3) and a `<link>` loads asynchronously. Appending and
+palette out of it (§ 9.4) and a `<link>` loads asynchronously. Appending and
 carrying on gives the first mount fallback colours, invisibly, for exactly as long
 as the two agree — the same trap VibrationView documents, and the same fix.
 
@@ -588,7 +661,7 @@ still says what it said.
 | Level | Runs | Derived from | Shows |
 |---|---|---|---|
 | **Behaviour, no browser** | node | § 6, § 10 | the envelope and the band widths — values in, values out |
-| **Boundary behaviour** | node, with a stand-in that obeys § 9.3 | § 5, § 7, § 9 | what each door costs, and that each level refuses what its "never" column forbids |
+| **Boundary behaviour** | node, with a stand-in that obeys § 9.4 | § 5, § 7, § 9 | what each door costs, and that each level refuses what its "never" column forbids |
 | **End to end** | a real page | § 1, § 6.4 | clicking beside a peak selects that mode; clicking in a gap selects nothing |
 
 ### What each rule obliges a test to show
@@ -606,14 +679,26 @@ still says what it said.
 | § 5.3 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
 | § 5.4 — no chrome | a mounted chart contains no heading, button, input or control of any kind |
 | § 5.4 — the host owns the box | the module sets no width or height on its host, at mount or ever; and a box that changes size redraws without the window moving |
+| § 6.1 — the two required fields | a record without `index`, or without `freq`, is refused |
+| § 6.1 — a refusal takes the whole call | one malformed record among many draws **nothing**, rather than a spectrum quietly missing that mode |
+| § 6.1 — absent is not zero | a mode with no `activity` field, and one with `activity: null`, are treated the same and neither is drawn as a strength of zero |
+| § 6.1 — the numbering is not interpreted | an unsorted list with non-contiguous indices draws in the order given and reports those indices back |
+| § 9.2 — a mount option is the first write | `mount({ broadening: 20 })` and `mount()` then `setBroadening(20)` leave the chart in the same state, and no "initial" value survives a later write |
+| § 9.2 — the host is never resized | after mount and after every door, the host element carries no inline width or height the module wrote |
+| § 9.3 — one way in | the handle exposes no settable property and no options object; changing a fact is possible only by calling its door |
+| § 9.3 — nothing is read back | there is no `getModes`, `getSelected` or `getBroadening`, and no accessor returns any of them |
+| § 9.3 — order does not matter | selecting before any modes exist, broadening an empty chart, and re-selecting the same index each leave a coherent chart and no error |
+| § 9.3 — an unknown selection changes nothing | `setSelected` with an index the current list lacks leaves the drawn selection as it was |
+| § 9.3 — a bad width keeps the old one | a negative width, and a value that is not a number, each leave the width already set standing |
+| § 9.3 — an empty list is a state, not a failure | `setModes([])` draws an empty chart and does not error |
 | § 6.1 — the caller's numbering is carried | the index reported by a click is the index that was handed in, for a list that is unsorted, sparse and 1-based |
 | § 6.3 — the picture is derived | a result with no activities anywhere draws unit-height sticks; one with some activities draws the rest at zero, marked as pending — and neither is reachable by a setting |
 | § 6.4 — a click lands on the nearest mode | for a spectrum with modes closer together than the broadening, every point in the plot resolves to the nearest mode; no two bands overlap at any width |
 | § 6.4 — degenerate modes stay clickable | two modes at the same frequency each keep a band, rather than both collapsing to zero width |
 | § 8 — mount always resolves | a mount with no library still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
-| § 9.2 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
-| § 9.3 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
-| § 9.3 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the document's tokens rather than from literals in the module |
+| § 9.3 — refit redraws at the box's size | a chart whose box was zero-sized when drawn fills its box after `refit`, with no other call |
+| § 9.4 — the seal faces downward | what is drawn, how it is laid out and what the axes span cannot be read out of it |
+| § 9.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the document's tokens rather than from literals in the module |
 | § 10 — the envelope is the sum | the curve at a mode's frequency equals that mode's activity plus the tails of the others, computed independently of the implementation |
 | § 10 — the grid follows the width | the sampling step scales with the broadening, and the curve returns to near zero at both ends at every width |
 | § 10 — missing is not weak | a mode with no activity contributes nothing to the envelope |
