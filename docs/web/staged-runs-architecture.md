@@ -532,22 +532,21 @@ appear together, which is exactly where a person should be looking.
    has nothing to compare against. *Done when:* the same description produces the
    same folder from a terminal and from the browser, and neither path has a
    renderer the other lacks.
-10. **Archive only what is new** (`checkpointing.md` L5) — **before** item 11,
-    because it gates it. Today the archive is keyed by commit sha and copies
-    every big binary on every checkpoint; automatic checkpoints fire twice per
-    stage and `prune` is unbuilt, so the two together grow the disk without
-    bound. **In the hierarchical shape this is structural**: an archived attempt
-    cannot change (`project-layout.md § 1.5`), so a save stores the attempts that
-    appeared since the last one and references the rest — no content-addressed
-    store needed. **In the flat shape it does not apply and must not be forced**:
-    one `<id>.DM` is overwritten every stage, so the path is stable while its
-    contents are not, and a fresh copy is correct rather than wasteful
-    (`project-layout.md § 6.2`). *Done when:* in a hierarchical folder, a second
-    checkpoint with the attempts untouched costs near-zero incremental disk; in a
-    flat one, a changed binary is copied and nothing pretends otherwise; and the
-    shipped guide's *"deduped by content"* becomes true rather than aspirational.
-    Add **`snapshot verify`** while there (L6): the check already exists and is
-    reachable only by attempting a restore.
+10. ~~**Archive only what is new**~~ — **done (2026-08-06)**,
+    `checkpointing.md` L5. Content already in the archive is **hard-linked**
+    rather than copied, so a checkpoint of unchanged binaries costs no disk: the
+    test that pins it went from 800 KB of growth to under 10 KB on the same
+    fixture. Nothing downstream changed — the archive still holds a real file at
+    `<sha>/<key>`, so restore, verify and the MANIFEST format are untouched and
+    no existing archive needs migrating. **Reuse is by content**, which is what
+    makes one mechanism serve both directory shapes: a hierarchical attempt is
+    immutable and links forever, a flat `<id>.DM` overwritten each stage
+    genuinely differs and is copied. Three guard tests stop the cure being worse
+    than the disease — a changed binary is stored again, two checkpoints never
+    alias different content, and a rotted candidate is copied past rather than
+    linked to. The shipped guide's *"deduped by content"* is now true rather
+    than aspirational. **Still open: `snapshot verify`** (L6) — the check exists
+    and is reachable only by attempting a restore.
 11. **Checkpoints at the two stage boundaries, and `branch` over HTTP.**
     ~~Gated on step 1a~~ — **unblocked 2026-08-06**: a calculation root carrying
     its description can now be initialised, so `engines/stages.md § 7.3`'s

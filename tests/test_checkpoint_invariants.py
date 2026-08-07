@@ -183,7 +183,7 @@ def test_A1_a_failure_mid_archive_leaves_the_old_archive_whole(tmp_path,
     (root / "job.HSX").write_bytes(b"hsx" * 200)
     (root / "job.out").write_text("Job completed 2\n")
 
-    with pytest.raises(Exception):
+    with pytest.raises(OSError, match="simulated interruption"):
         repo.checkpoint("this one is interrupted")
 
     monkeypatch.undo()
@@ -237,28 +237,76 @@ def test_I4_no_generated_wrapper_invokes_git(tmp_path):
 _WARM_SUFFIXES = (".XV", ".DM", ".CG", ".chk")
 
 
-def test_I3_only_two_code_paths_can_remove_warm_state():
-    """Exactly two operations may displace warm state — the `--cold`
-    move-aside and a restore — and there must be no third.
+def _warm_destroying_lines(text: str):
+    """Lines that delete or truncate something whose name looks like warm state.
 
-    A third would be a *silent* loss: the user asked for neither, so nothing
-    reports it, and the absence surfaces as an unexplained cold start hours
-    later.  The contract asks for a grep over every path that writes into a run
-    directory; this is that grep, over the module that owns them.
+    Covers the three shapes the contract names: an ``unlink``, an ``rmtree``, and
+    a **truncating open** — `open(p, "w")` on a `.DM` empties it just as surely
+    as removing it, and is the one a reviewer's eye slides over.
+    """
+    out = []
+    for n, line in enumerate(text.splitlines(), 1):
+        bare = line.split("#", 1)[0]
+        destroys = (re.search(r"\b(unlink|rmtree)\s*\(", bare)
+                    or re.search(r"\bopen\s*\([^)]*[\"']w[b+]*[\"']", bare))
+        if not destroys:
+            continue
+        if any(suf in bare for suf in _WARM_SUFFIXES) or \
+           re.search(r"warm|restart", bare, re.I):
+            out.append((n, line.strip()))
+    return out
+
+
+def test_I3_the_detector_can_actually_fire():
+    """A positive control, because the assertion below is that a search finds
+    NOTHING — and a search that can never find anything passes forever while
+    proving nothing.  This is what makes the next test falsifiable.
+
+    **What it cannot see, stated rather than implied.** The detector is
+    line-local: it recognises a deletion only when the same line also names a
+    warm suffix or says "warm"/"restart".  A deletion whose target was bound
+    three lines earlier, or whose only clue is a comment, passes it.  So this
+    is a tripwire for the obvious shapes, not a proof of absence — the
+    invariant's real guarantee is the design (one mover, no deleter), and this
+    catches a regression that walks into it.
+    """
+    planted = [
+        'os.unlink(run_dir / f"{label}.DM")',
+        'shutil.rmtree(warm_dir)',
+        'open(path / "job.XV", "w").close()',
+        'shutil.rmtree(self.restart_dir)',
+    ]
+    for line in planted:
+        assert _warm_destroying_lines(line), f"detector missed: {line!r}"
+    for benign in ['open(log, "r")', 'shutil.copy2(src, dst)',
+                   'out.unlink()  # the rendered wrapper']:
+        assert not _warm_destroying_lines(benign), f"false positive: {benign!r}"
+
+
+def test_I3_no_python_path_destroys_warm_state():
+    """Warm state is **moved** (`--cold`, to `<basename>-restart-aside-<UTC>/`)
+    or **replaced wholesale** (a restore, via git checkout and the archive).
+    Nothing deletes or truncates it.
+
+    A third path would be a *silent* loss: the user asked for neither operation,
+    so nothing reports it, and the absence surfaces as an unexplained cold start
+    hours later.
+
+    **Scope, stated because it is narrower than the invariant.** The contract's
+    check is "exactly two hits and no third" over every path that writes into a
+    run directory.  Neither of those two is a Python call — the move-aside is
+    `mv` in the rendered wrapper (covered by the next test) and the restore goes
+    through git and the archive — so over `molbuilder/` the correct count is
+    **zero**, and that is what is asserted here.
     """
     hits = []
     for src in sorted(_SRC.rglob("*.py")):
-        for n, line in enumerate(src.read_text().splitlines(), 1):
-            bare = line.split("#", 1)[0]
-            if not re.search(r"\b(unlink|rmtree)\s*\(", bare):
-                continue
-            if any(suf in bare for suf in _WARM_SUFFIXES) or \
-               re.search(r"warm|restart", bare, re.I):
-                hits.append(f"{src.relative_to(_SRC)}:{n}: {line.strip()}")
+        for n, line in _warm_destroying_lines(src.read_text()):
+            hits.append(f"{src.relative_to(_SRC)}:{n}: {line}")
 
     assert not hits, (
-        "a code path removes warm state directly; warm files are moved aside "
-        "or restored, never deleted:\n  " + "\n  ".join(hits))
+        "a Python path removes or truncates warm state; it is moved aside or "
+        "replaced, never destroyed:\n  " + "\n  ".join(hits))
 
 
 def test_I3_cold_restart_moves_warm_files_aside_rather_than_deleting(tmp_path):
@@ -287,8 +335,15 @@ def test_S5_no_identity_is_derived_from_a_run(tmp_path):
     derive it from a run's output, a timestamp, or a run index — an id that
     depended on a result would change exactly when the calculation worked.
 
-    Checked where it would actually go wrong: the run index advances across
-    invocations while the basename every warm file is keyed by does not.
+    **This asserts the shipped half only, and the other half cannot be tested
+    yet.** The contract's check is two claims: *no code path derives an id from
+    a run*, and *`stages.json`'s `run.id` is read, never recomputed*. The second
+    has nothing to test against — `stages.json` and its reader are proposed, not
+    built (`engines/stages.md § 6`) — so what is pinned here is the first, at
+    the place it would actually go wrong today: the run index advances across
+    invocations while the basename every warm file is keyed by does not, and no
+    warm filename carries the index. When the reader lands, item 6 of the plan
+    owes this invariant its second assertion.
     """
     from molbuilder.runwrap import render_run_wrapper
 
@@ -324,3 +379,116 @@ def test_S5_the_id_is_read_from_the_deck_not_recomputed(tmp_path):
         return set(re.findall(r"\bbdt\b", t))
     assert basenames(a) == basenames(b)
     assert "bdt" in a
+
+
+# ------------------------------------------------------------------ #
+#  L5 — a checkpoint costs what changed, not what exists              #
+# ------------------------------------------------------------------ #
+
+def _du(root: Path) -> int:
+    """Disk actually consumed, counting a hard-linked file once — which is the
+    number L5 is about.  Summing `st_size` would count every link in full and
+    report no saving at all."""
+    seen, total = set(), 0
+    for f in root.rglob("*"):
+        if f.is_file():
+            st = f.stat()
+            if st.st_ino in seen:
+                continue
+            seen.add(st.st_ino)
+            total += st.st_size
+    return total
+
+
+def test_L5_a_second_checkpoint_of_unchanged_binaries_costs_near_zero(tmp_path):
+    """Checkpoint a folder twice with the binaries untouched between them; the
+    second checkpoint's *incremental* disk cost is near zero.
+
+    This is the contract's own check, verbatim.  Automatic checkpoints fire
+    twice per stage, so without it a five-stage mission pays ten full copies of
+    its `.DM` set and the folder this design exists to keep manageable becomes
+    the reason the disk fills.
+    """
+    root = _run_dir(tmp_path / "calc")
+    big = b"x" * 400_000
+    (root / "job.DM").write_bytes(big)
+    (root / "job.HSX").write_bytes(big + b"y")
+
+    repo = Repo(str(root))
+    repo.init(engine="siesta")
+    after_first = _du(root / ".binsnapshots")
+    assert after_first > 700_000, "the fixture's binaries were not archived"
+
+    # Text changes; the binaries do not.
+    (root / "job.out").write_text("Job completed, again\n")
+    assert repo.checkpoint("second") is not None
+    after_second = _du(root / ".binsnapshots")
+
+    growth = after_second - after_first
+    assert growth < 10_000, (
+        f"the second checkpoint cost {growth} bytes of disk for binaries that "
+        f"did not change; L5 requires near zero")
+
+
+def test_L5_a_changed_binary_is_stored_again(tmp_path):
+    """The other half, and it is not a defect: in a flat directory one
+    `<id>.DM` is overwritten every stage, so its content genuinely differs and
+    a fresh copy is correct (`project-layout.md § 6.2`).  Reuse is by CONTENT,
+    so this needs no special case for the directory shape."""
+    root = _run_dir(tmp_path / "calc")
+    (root / "job.DM").write_bytes(b"a" * 300_000)
+    repo = Repo(str(root))
+    repo.init(engine="siesta")
+    after_first = _du(root / ".binsnapshots")
+
+    (root / "job.DM").write_bytes(b"b" * 300_000)      # a real change
+    repo.checkpoint("stage 2 overwrote it")
+    growth = _du(root / ".binsnapshots") - after_first
+
+    assert growth > 250_000, (
+        "a changed binary must be stored, not silently aliased to the old one")
+
+
+def test_L5_reuse_never_aliases_different_content(tmp_path):
+    """The failure that would make L5 worse than the disk it saves: two
+    different results sharing one archived copy.  Each checkpoint's archive must
+    restore its OWN bytes."""
+    root = _run_dir(tmp_path / "calc")
+    (root / "job.DM").write_bytes(b"first" * 50_000)
+    repo = Repo(str(root))
+    repo.init(engine="siesta")
+    first = repo.list_checkpoints()[0]
+
+    (root / "job.DM").write_bytes(b"secnd" * 50_000)
+    repo.checkpoint("second")
+
+    a = (root / ".binsnapshots" / first.sha / "job.DM").read_bytes()
+    assert a == b"first" * 50_000, "the first archive was overwritten by reuse"
+
+    repo.restore(first.sha)
+    assert (root / "job.DM").read_bytes() == b"first" * 50_000
+
+
+def test_L5_does_not_link_against_a_rotted_candidate(tmp_path):
+    """The index knows only what a MANIFEST *claims*.  If an archived file has
+    rotted, linking to it would record a sha its bytes do not have — turning a
+    cheap save into a corrupt one.  A candidate is hashed before it is trusted,
+    so a damaged one is copied past rather than reused."""
+    root = _run_dir(tmp_path / "calc")
+    payload = b"z" * 200_000
+    (root / "job.DM").write_bytes(payload)
+    repo = Repo(str(root))
+    repo.init(engine="siesta")
+    first = repo.list_checkpoints()[0]
+
+    # Rot the archived copy without touching its MANIFEST.
+    rotted = root / ".binsnapshots" / first.sha / "job.DM"
+    rotted.write_bytes(b"q" * 200_000)
+
+    (root / "job.out").write_text("again\n")
+    second = repo.checkpoint("second")
+    assert second is not None
+
+    fresh = root / ".binsnapshots" / second.sha / "job.DM"
+    assert fresh.read_bytes() == payload, (
+        "the new archive linked to rotted bytes instead of copying the source")

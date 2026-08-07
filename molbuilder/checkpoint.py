@@ -625,6 +625,88 @@ def _atomic_write_text(target: Path, text: str) -> None:
     os.replace(tmp, target)
 
 
+def _published_archive_index(path: Path) -> Dict[str, Path]:
+    """``{sha256: an existing archived file with that content}``, read from the
+    MANIFESTs of every published archive.
+
+    Only real published archives are indexed -- a directory name must be 40 hex
+    chars, so the transient ``<sha>.tmp`` and ``<sha>.old`` of an in-flight
+    publish can never be linked against.
+
+    The MANIFEST is trusted for *which* sha a file claims; the claim is verified
+    before anything links to it (see ``_link_or_copy``).  Reading the MANIFESTs
+    is cheap: they are small text files, one per checkpoint.
+    """
+    index: Dict[str, Path] = {}
+    root = path / ".binsnapshots"
+    if not root.is_dir():
+        return index
+    for arch in sorted(root.iterdir()):
+        if not arch.is_dir() or not _SHA_DIR_RE.match(arch.name):
+            continue
+        manifest = arch / _MANIFEST_NAME
+        if not manifest.is_file():
+            continue
+        try:
+            entries = _parse_canonical_manifest(manifest.read_bytes(),
+                                                where=str(arch))
+        except CheckpointError:
+            continue                      # a damaged MANIFEST indexes nothing
+        for key, (entry_sha, _size) in entries.items():
+            if entry_sha in index:
+                continue
+            cand = arch / key
+            if cand.is_file():
+                index[entry_sha] = cand
+    return index
+
+
+def _link_or_copy(src: Path, dst: Path, src_sha: str,
+                  index: Dict[str, Path], verified: Dict[str, bool]) -> bool:
+    """Put ``src``'s content at ``dst``, reusing an identical archived copy when
+    one exists.  Returns True if it was reused (hard link), False if copied.
+
+    **This is L5.** An archived file is never rewritten (I1), so a file whose
+    content is already in the archive does not need storing twice -- a hard link
+    is a directory entry, and the second checkpoint of an unchanged binary costs
+    no disk. Everything downstream is untouched: the archive still has a real
+    file at ``<sha>/<key>``, so restore, verify and the MANIFEST format do not
+    know the difference.
+
+    **It serves both directory shapes with one rule, which is why it is by
+    content rather than by "the attempt did not change".** In the hierarchical
+    shape an attempt is immutable, so its files link forever after the first
+    save. In the flat shape one ``<id>.DM`` is overwritten every stage, so its
+    content differs and it is copied -- correct rather than wasteful
+    (``project-layout.md § 6.2``), and nothing has to special-case which shape
+    it is in.
+
+    **The candidate is verified before it is trusted.** The index knows only
+    what a MANIFEST *claims*; linking to a file that had rotted would record a
+    sha the bytes do not have, turning a cheap save into a corrupt one. So the
+    candidate is hashed once per checkpoint (memoised in ``verified``) and
+    rejected if it does not match. That is one read where a copy would have
+    done a read *and* a write, so the I/O is lower too.
+    """
+    cand = index.get(src_sha)
+    if cand is not None and cand.is_file():
+        ok = verified.get(src_sha)
+        if ok is None:
+            try:
+                ok = hashlib.sha256(cand.read_bytes()).hexdigest() == src_sha
+            except OSError:
+                ok = False
+            verified[src_sha] = ok
+        if ok:
+            try:
+                os.link(cand, dst)
+                return True
+            except OSError:
+                pass                      # cross-device, or links unsupported
+    shutil.copy2(src, dst)
+    return False
+
+
 def _archive_binaries(path: Path, sha: str) -> int:
     """Copy big binaries from working dir into ``.binsnapshots/<sha>/``;
     write MANIFEST in canonical format (§ 10.2).  Returns total bytes
@@ -652,6 +734,10 @@ def _archive_binaries(path: Path, sha: str) -> int:
     tmp.mkdir(parents=True)
     entries: List[Tuple[str, int, str]] = []
     total = 0
+    # L5: what is already archived is not archived again.  Built once per
+    # checkpoint, BEFORE the publish, so it never sees this archive's own .tmp.
+    index = _published_archive_index(path)
+    verified: Dict[str, bool] = {}
     try:
         for src in binaries:
             key = _archive_key(path, src)
@@ -664,13 +750,19 @@ def _archive_binaries(path: Path, sha: str) -> int:
             # restored as truth.  Verify FIDELITY (source == archive) at save
             # time so a corrupt copy fails loudly here, not silently on restore.
             src_sha = hashlib.sha256(src.read_bytes()).hexdigest()
-            shutil.copy2(src, dst)
-            dst_sha = hashlib.sha256(dst.read_bytes()).hexdigest()
-            if dst_sha != src_sha:
-                raise CheckpointError(
-                    f"archive copy of {key!r} is corrupt: source sha256 "
-                    f"{src_sha!r} != archived {dst_sha!r} (disk error?); the "
-                    f"checkpoint was NOT safely archived.")
+            reused = _link_or_copy(src, dst, src_sha, index, verified)
+            if not reused:
+                # Only a real copy can be corrupted in transit.  A reused entry
+                # was hashed before it was linked, and a hard link is the same
+                # inode -- re-reading it would cost a full read to confirm what
+                # was just confirmed, which is exactly the cost L5 exists to
+                # remove.
+                dst_sha = hashlib.sha256(dst.read_bytes()).hexdigest()
+                if dst_sha != src_sha:
+                    raise CheckpointError(
+                        f"archive copy of {key!r} is corrupt: source sha256 "
+                        f"{src_sha!r} != archived {dst_sha!r} (disk error?); "
+                        f"the checkpoint was NOT safely archived.")
             size = dst.stat().st_size
             entries.append((src_sha, size, key))
             total += size

@@ -525,8 +525,11 @@ flowchart TD
 - **Text is git-tracked**, including small warm-restart files (`.XV`, `.CG`) so
   a restore brings back a resumable state; big binaries are **gitignored** and
   archived under `.binsnapshots/<full-sha>/` with a `MANIFEST`
-  (`<sha256>  <bytes>  <name>`, 3-column, deduped by content — see
-  [`job-contracts § 6.1`](?doc=execution/job-contracts.md)).
+  (`<sha256>  <bytes>  <name>`, 3-column — see
+  [`job-contracts.md § 6.1`](?doc=execution/job-contracts.md)). **Content
+  already archived is hard-linked rather than copied**, so checkpointing a
+  folder whose binaries did not change costs no disk
+  ([`checkpointing.md`](?doc=execution/checkpointing.md) L5).
 - **Checkpoint** = `git add .` → commit → atomically archive the current
   binaries (build in a `.tmp`, hash, copy, re-hash and *verify the copy*, write
   MANIFEST, then `os.replace`).

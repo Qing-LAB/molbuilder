@@ -564,30 +564,44 @@ on what the automatic path emits, not on the total.
 
 ### L5 — a checkpoint's cost is bounded by what changed, not by what exists
 
-*needs work — but the layout now makes it structural rather than clever.*
+*HOLDS as of 2026-08-06 — `tests/test_checkpoint_invariants.py`.*
 
-**Immutable attempts change the shape of this.** `project-layout.md § 1.5` gives
-every invocation its own directory, written once and never modified, so an
-archived file never changes. A save then stores the attempts that appeared since
-the last one and references the rest — *"archive what is new"*, correct by
-construction.
+**What is already archived is not archived again.** An archived file is never
+rewritten (I1), so when a binary's content is already in the archive the new
+checkpoint gets a **hard link** to it rather than a second copy. A hard link is
+a directory entry: the second checkpoint of an unchanged 2 GB density matrix
+costs no disk.
 
-That replaces the content-addressed store this invariant used to call for.
-Hashing every file to discover most are unchanged is the right answer when
-anything might have changed; when nothing inside an archived attempt can change,
-the cheaper answer is also the more obvious one.
+**Nothing downstream knows the difference.** The archive still has a real file
+at `<sha>/<key>`, so restore, `_verify_archived_binaries` and the MANIFEST
+format are untouched — no new directory, no format change, no migration of
+archives that already exist.
 
-Automatic checkpoints (`engines/stages.md § 7.3`) fire twice per stage. If every
-one copies every big binary, a five-stage mission pays ten full copies of its
-`.DM` and `.HSX` set, and the folder this design exists to keep manageable
-becomes the reason the disk fills.
+**Reuse is by content, and that is what makes it serve both directory shapes.**
+In the hierarchical shape an attempt is immutable, so its files link forever
+after their first save. In the flat shape one `<id>.DM` is overwritten every
+stage, so its content genuinely differs and it is copied — correct rather than
+wasteful (`project-layout.md § 6.2`). Neither case is special-cased; the content
+decides.
+
+**A candidate is verified before it is trusted.** The index of what is already
+archived is read from MANIFESTs, which record only what a file *claims*. Linking
+to a file that had rotted would record a sha its bytes do not have — turning a
+cheap save into a corrupt one. So a candidate is hashed once per checkpoint and
+copied past if it does not match. That is one read where a copy would have done
+a read *and* a write, so the I/O falls too.
+
+**Why not content-addressing.** `.binsnapshots/by-content/<sha256>` was the
+fallback this invariant used to call for. It would change the archive layout and
+need every existing archive migrated, to buy the same saving; hard links get
+there without touching the format. The fallback stays available if the archive
+ever needs to be shared across repositories, where links cannot reach.
 
 | | |
 |---|---|
-| **How it fails** | Silently, and only at scale. Nothing errors; the archive grows linearly in checkpoints × binary size, and `prune` is listed as unbuilt (`running-a-job.md § 6.2`), so nothing reclaims it either |
-| **Made worse by L7's fix** | Binary-only changes now produce commits that previously did not exist — correctly, since the alternative was losing them — and each one copies the full binary set again. Fixing the data-loss bug raised the disk cost, which is the right trade and a reason L5 should not wait |
-| **How to check** | Checkpoint a folder twice with the binaries untouched between them. The second checkpoint's *incremental* disk cost is near zero |
-| **How to fix** | Store an attempt's files once and let later saves reference them; immutability makes that safe without hashing anything. (Content-addressing — `.binsnapshots/by-content/<sha256>` with the MANIFEST referencing it — stays the fallback if the layout ever admits mutable runs.) |
+| **How it fails** | Silently, and only at scale. Nothing errors; the archive grows linearly in checkpoints × binary size, and `prune` is unbuilt (`running-a-job.md § 6.2`), so nothing reclaims it either. Automatic checkpoints (`engines/stages.md § 7.3`) fire twice per stage, so a five-stage mission paid ten full copies of its `.DM` and `.HSX` set |
+| **Made worse by L7's fix** | Binary-only changes now produce commits that previously did not exist — correctly, since the alternative was losing them — and each one used to copy the full binary set again. Fixing the data-loss bug raised the disk cost, which is why L5 followed it rather than waiting |
+| **How to check** | Checkpoint a folder twice with the binaries untouched between them; the second checkpoint's *incremental* disk cost is near zero. Measured by inode so a hard-linked file counts once — summing `st_size` counts every link in full and would report no saving at all. Then the three that stop the cure being worse than the disease: a **changed** binary is stored again, two checkpoints never **alias** different content, and a **rotted** candidate is copied past rather than linked to |
 
 ### L6 — a history can be verified without being restored
 
@@ -665,15 +679,15 @@ One line each, for reading over a diff:
 | **L2** | archive globs match at depth | **holds** (fixed 2026-08-06) |
 | **L3** | every commit and tag names its calculation | needs the layout |
 | **L4** | molbuilder tags stage completions only | needs the layout |
-| **L5** | a checkpoint costs what changed, not what exists | **not held today** |
+| **L5** | a checkpoint costs what changed, not what exists | **HOLDS** (2026-08-06) — `test_checkpoint_invariants.py` |
 | **L6** | a history can be verified without being restored | **not held today** |
 | **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
 | **L8** | an archived attempt never differs afterwards | needs the layout — **hierarchical only** (`project-layout.md § 6.2`) |
 
-**Twelve of the twenty-two can be asserted against the code as it stands, and
-all twelve now have a test.**
-Three (**L1**, **L2**, **L7**) were broken and are now fixed, with tests. Two
-(**L5**, **L6**) are not held and are work rather than checks.
+**Thirteen of the twenty-two can be asserted against the code as it stands, and
+all thirteen have a test.** Four (**L1**, **L2**, **L5**, **L7**) were broken
+and are now fixed, with tests. One (**L6**) is not held and is work rather than
+a check.
 
 ### What has actually been read
 
@@ -690,7 +704,7 @@ Three (**L1**, **L2**, **L7**) were broken and are now fixed, with tests. Two
 | **A1** | strong in its three parts (sha-dir validation, source-vs-copy fidelity, `.tmp` cleanup) — **but the swap itself was not atomic**. Fixed 2026-08-06 |
 | **A2** | held, in exactly the stated order — four gates before the first mutation |
 | **L2** | was **broken, losing data rather than wasting disk** — fixed 2026-08-06, pinned by tests |
-| **L5** | **broken** — no cross-checkpoint dedup; my "cheap" claim was false |
+| **L5** | was **broken** — no cross-checkpoint dedup; fixed 2026-08-06 by hard-linking content already archived |
 | **L6** | **absent** — no way to verify a history without restoring it |
 | **L1** | **held** — a root carrying its description owns its subdirectories; a directory declaring nothing, and any nested repository, are still refused |
 | **L7** | was **absent** — a binary-only change left `git status` clean and nothing was checkpointed; fixed 2026-08-06 |
