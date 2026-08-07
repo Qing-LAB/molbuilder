@@ -385,17 +385,16 @@ Two facts to carry forward when it is built:
 and [`execution/run-identity.md`](?doc=execution/run-identity.md). What remains
 is agreeing them and answering § 9.
 
-**Step 1a — one blocking decision, before any code.** `Repo.init` refuses a
-directory whose subdirectories hold a working-dir marker
-(`NestedRepoRefusedError`, *"each lowest-directory must be its own checkpoint
-repo"*), and `engines/stages.md § 7.1`'s layout is exactly such a directory —
-**verified, not inferred**. So the folder this design specifies cannot be
-checkpointed at all, and every item below that touches history depends on the
-answer. `execution/checkpointing.md` L1 states the three options and recommends
-one: teach the guard that a parent holding a description is one calculation
-rather than several. *Done when:* a produced two-stage folder can be
-`snapshot init`-ed, and a folder holding two unrelated run directories still
-cannot.
+**Step 1a — the repo-scope blocker.** ~~`Repo.init` refuses a directory whose
+subdirectories hold a working-dir marker, and the staged layout is exactly such a
+directory~~ — **fixed 2026-08-06** (`execution/checkpointing.md` L1). A root
+carrying its description (`stages.json`, `job-set.json`, `bench-manifest.json`)
+now owns its subdirectories; a directory declaring nothing is still refused, and
+a subdirectory that is already a repository is refused in either case. The fix
+also unblocked something already shipped: `jobset prep` bundles had never been
+checkpointable. Eight tests in `tests/test_checkpoint_repo_scope.py`, including a
+hierarchical round-trip — init, checkpoint, change a later stage, restore, and
+the first stage's `.DM` two levels down comes back.
 
 **Step 1c — the commands, which fall out of the workflow.**
 `project-layout.md` § 2 puts the boundary between what a laptop can know and what
@@ -465,12 +464,12 @@ start until these are answered, and they are decisions rather than research:
 
 | # | Question | Where | Blocks |
 |---|---|---|---|
-| 1 | **The repo-scope axiom** — `Repo.init` refuses this tree's shape | `checkpointing.md` L1, step 1a above | 11, and every history item |
-| 2 | **The command shapes** — stage as positional, `jobset` vs a `stage` group, and whether `molbuilder run` keeps a name that does not run | step 1c above | **12a** — retiring the shell block removes the only way to run a stage by hand |
-| 3 | **Is `stages.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
+| 1 | **The command shapes** — stage as positional, `jobset` vs a `stage` group, and whether `molbuilder run` keeps a name that does not run | step 1c above | **12a** — retiring the shell block removes the only way to run a stage by hand |
+| 2 | **Is `stages.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
 
-Question 2 was *what is the entry point at all* until § 2.1 answered it; what is
-left is only how it is spelled.
+Question 1 was *what is the entry point at all* until § 2.1 answered it; what is
+left is only how it is spelled. The repo-scope blocker that led this table is
+**gone** — fixed in step 1a rather than decided.
 
 **Step 2 — the backend, built to those contracts.**
 

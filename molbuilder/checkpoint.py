@@ -292,30 +292,58 @@ def _run_git(argv: List[str], cwd: str, *,
         ) from e
 
 
-def _check_nested_working_dirs(path: Path) -> List[str]:
-    """Walk ``path``'s subdirectories; return relative paths of any
-    sub-dir that contains a working-dir marker (``.fdf``, ``.py``,
-    ``.run.sh``).  Empty list means safe to init here per P5."""
-    nested: List[str] = []
-    for sub in path.rglob("*"):
-        if not sub.is_dir():
+#: A directory holding one of these declares itself **one unit of work whose
+#: subdirectories are its own parts** -- a staged calculation's stages, a
+#: job-set's job directories, a benchmark's trials.  Each is already an entry in
+#: the persisted-artifact registry (job-contracts.md § 6.1), so this reuses the
+#: system's existing self-description instead of inventing a marker file.
+_BUNDLE_DESCRIPTORS = ("stages.json", "job-set.json", "bench-manifest.json")
+
+
+def _is_bundle_root(path: Path) -> bool:
+    """Does ``path`` declare itself the root of one multi-directory unit of
+    work?  See :data:`_BUNDLE_DESCRIPTORS`."""
+    return any((path / name).is_file() for name in _BUNDLE_DESCRIPTORS)
+
+
+def _scan_subtree(path: Path) -> Tuple[List[str], List[str]]:
+    """One pruned walk returning ``(working_dirs, git_repos)`` beneath
+    ``path``, both as relative POSIX-ish paths.
+
+    * ``working_dirs`` -- subdirectories holding a working-dir marker
+      (``.fdf`` / ``.py`` / ``.run.sh``).  Symlinked decks count, because a
+      prepped job directory links its deck in rather than copying it.
+    * ``git_repos`` -- subdirectories that are themselves repositories.  The
+      walk does **not** descend into one: what is inside another repository is
+      that repository's business.
+
+    Dot-directories are skipped entirely.  Before, only ``.git`` and
+    ``.binsnapshots`` were -- so a ``.venv/`` beside a run (full of ``.py``)
+    read as a nested working directory and blocked ``init`` for a reason that
+    had nothing to do with calculations.
+    """
+    working: List[str] = []
+    repos: List[str] = []
+    stack: List[Path] = [path]
+    while stack:
+        try:
+            entries = sorted(stack.pop().iterdir())
+        except OSError:                       # unreadable dir: not our problem
             continue
-        if sub == path:
-            continue
-        # Don't walk into our own .binsnapshots or .git.
-        if any(p.name in (".git", ".binsnapshots")
-               for p in sub.relative_to(path).parents):
-            continue
-        if sub.name in (".git", ".binsnapshots"):
-            continue
-        # Does this subdir contain a working-dir marker?
-        for entry in sub.iterdir():
-            if entry.is_file() and any(
-                    entry.name.endswith(m)
-                    for m in _NESTED_WORKING_DIR_MARKERS):
-                nested.append(str(sub.relative_to(path)))
-                break
-    return nested
+        for entry in entries:
+            if entry.is_symlink() or not entry.is_dir():
+                continue
+            if entry.name.startswith("."):    # .git, .binsnapshots, .venv, …
+                continue
+            rel = str(entry.relative_to(path))
+            if (entry / ".git").is_dir():
+                repos.append(rel)
+                continue                      # never descend into another repo
+            if any(f.is_file() and f.name.endswith(_NESTED_WORKING_DIR_MARKERS)
+                   for f in entry.iterdir()):
+                working.append(rel)
+            stack.append(entry)
+    return sorted(working), sorted(repos)
 
 
 #: Directories the archive walk never descends into.  ``.binsnapshots`` would
@@ -913,8 +941,24 @@ class Repo:
     def init(self, engine: Optional[str] = None,
              archive_globs: Optional[List[str]] = None) -> None:
         """Initialise the working dir as a git repository.  Idempotent
-        (no-op if already initialised).  Refuses if the directory
-        contains nested working dirs (P5).
+        (no-op if already initialised).
+
+        **Scope.** A repository covers one calculation, in either directory
+        shape (``execution/project-layout.md`` § 1):
+
+        * **flat** -- one directory, no subdirectories to worry about;
+        * **hierarchical** -- a calculation root whose subdirectories are its
+          own stages, attempts and benchmark.  Permitted because the root
+          carries a description saying they are one unit of work
+          (:data:`_BUNDLE_DESCRIPTORS`).
+
+        Two things are refused, for reasons that differ:
+
+        * **a subdirectory that is already a repository** -- a history inside a
+          history has no consistent restore;
+        * **nested working dirs with nothing declaring them one calculation** --
+          that is several independent calculations, and one history over them
+          would rewind all of them together.
 
         ``engine`` (``"siesta"`` / ``"pyscf"``) selects the built-in
         big-binary classification seeded into the persisted config
@@ -927,12 +971,33 @@ class Repo:
         p = Path(self.path)
         if self.initialized:
             return
-        nested = _check_nested_working_dirs(p)
-        if nested:
+
+        working, inner_repos = _scan_subtree(p)
+
+        # A repository inside a repository has no consistent restore -- the
+        # outer one cannot rewind files the inner one owns.  Refused in EITHER
+        # shape, bundle root or not.
+        if inner_repos:
             raise NestedRepoRefusedError(
-                f"{self.path}: cannot init -- nested working dirs "
-                f"present: {nested}.  Each lowest-directory must be "
-                f"its own checkpoint repo (run-checkpoints.md § P5).")
+                f"{self.path}: cannot init -- these subdirectories are "
+                f"already checkpoint repositories: {inner_repos}.  A history "
+                f"inside a history cannot be restored consistently; "
+                f"checkpoint them where they are, or move them aside first.")
+
+        # Nested working dirs are fine WHEN THEY ARE THIS CALCULATION'S OWN.
+        # A bundle root says so by holding its description; anything else is
+        # several independent calculations, and one history over them would
+        # rewind all of them together (execution/project-layout.md § 6).
+        if working and not _is_bundle_root(p):
+            raise NestedRepoRefusedError(
+                f"{self.path}: cannot init -- nested working dirs present: "
+                f"{working}, and nothing here says they belong to one "
+                f"calculation.  Initialising would put several independent "
+                f"calculations in one history, so a restore would rewind all "
+                f"of them.  Run `snapshot init` inside each instead -- or, if "
+                f"these really are one calculation's stages, its root should "
+                f"carry the description that says so "
+                f"({', '.join(_BUNDLE_DESCRIPTORS)}).")
 
         globs = _resolve_archive_globs(engine, archive_globs)
 

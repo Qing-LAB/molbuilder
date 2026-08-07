@@ -954,13 +954,29 @@ check still catches an edit to an archived file; what it cannot do is call it a
 violation, because there the file is expected to move on. Nothing notices today;
 § 7 makes it an invariant for the shape where it means something.
 
-### 6.3 What still stands in the way
+### 6.3 Both shapes can be checkpointed — fixed 2026-08-06
 
-The setup step refuses a folder whose subfolders contain a calculation file, at
-**any** depth — and this tree has three such levels now: a stage's linked deck,
-an attempt's linked deck, and the benchmark bundle's real one. So the folder the shipped code already produces cannot be put
-under a history. The fix is for the producer, which just built the folder and
-knows it is one calculation, to say so (`checkpointing.md`, L1).
+The setup step used to refuse any folder whose subfolders held a calculation
+file, at **any** depth — and this tree has three such levels: a stage's deck, an
+attempt's linked deck, and the benchmark bundle's own. So the folder could not be
+put under a history at all. **Nor could the one the shipped `jobset prep` already
+produces** — a bundle with `point-stage1/` and `point-stage2/` was refused too,
+which meant a staged job-set had never been checkpointable.
+
+**A directory that carries its description owns its subdirectories.** Holding
+`stages.json`, `job-set.json` or `bench-manifest.json` is what says *these are my
+stages, not somebody else's calculations* — each already an artifact this system
+persists, so nothing new had to be invented. The old rule still applies to a
+directory that declares nothing: a topic folder holding two unrelated
+calculations is still refused, and now says why.
+
+Separately and in both shapes, **a subdirectory that is already a repository is
+refused** — a history inside a history cannot be restored consistently.
+
+`checkpointing.md` L1 holds the invariant and names the tests, including the one
+that matters most: a hierarchical folder round-trips, so a `.DM` two levels down
+is archived, survives a later stage, and comes back on restore. An `init` that
+succeeds and then loses results would be worse than one that refuses.
 
 ---
 

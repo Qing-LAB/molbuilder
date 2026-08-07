@@ -51,7 +51,7 @@ what that code must keep doing, plus the six changes a staged folder needs:
 
 | | Shipped today | With a staged folder |
 |---|---|---|
-| **What it covers** | one flat run directory | a parent and its per-stage subdirectories — **one repository, at the parent** (L1) |
+| **What it covers** | one flat run directory | the calculation root and every stage beneath it — **one repository per calculation** (L1) |
 | **Archive globs** | `*.DM`, `*.HSX`, … — matched beside the config | must match **at depth**; today's patterns miss `<stage>/<id>.DM` and every binary lands in git as a blob (L2) |
 | **When a checkpoint is taken** | when the user runs `snapshot checkpoint` | **automatically**, before a replacing produce and when a stage's run finishes (`engines/stages.md § 7.3`) |
 | **What it is called** | a free-text message; a tag name the user picks | the message carries the id and the stage; a stage completion is tagged `<id>/<stage>/<UTC>` (L3) |
@@ -459,49 +459,57 @@ All four **need the layout**, and each follows from `engines/stages.md § 7.1`.
 > contract row read as the same reference and mean different things. **L** is for
 > layout, which is what all four are about.
 
-### L1 — one repository, at the parent
+### L1 — one repository per calculation, in either shape
 
-*BLOCKS THE STAGED DESIGN. Verified: `Repo.init` on the layout
-`engines/stages.md § 7.1` specifies raises `NestedRepoRefusedError`. Until this
-is settled, a staged folder cannot be checkpointed at all — so
-`engines/stages.md § 7.3`'s automatic
-history, the branch-from-a-stage story, and work items 10–11 are all
-unreachable.*
+*HOLDS as of 2026-08-06. This was the blocking defect; the recommended option
+below was taken.*
 
-`job-system.md § 5.5` observes that each per-stage directory is a self-contained
-run directory and so can be checkpointed alone. That stays true and is not enough:
-a per-subdirectory repository cannot restore a shared file that lives **above** it
-— a restored stage would have pseudopotential links pointing at nothing — and no
-such repository contains the workflow, so *branch at stage 2* cannot be
-expressed. So this document wants one repository, at the parent.
+**One repository covers one calculation** — the whole of it. In the flat shape
+that is the single directory. In the hierarchical shape it is the calculation
+root, **not** each stage: a per-stage repository cannot restore a shared file
+that lives above it (a restored stage's pseudopotential links would dangle), and
+no such repository contains the workflow, so *branch at stage 2* cannot be
+expressed.
 
-**`Repo.init` refuses exactly that.** `_check_nested_working_dirs` walks for
-subdirectories containing a working-dir marker (`.fdf`, `.py`, `.run.sh`) and
-raises `NestedRepoRefusedError` — *"each lowest-directory must be its own
-checkpoint repo"* — citing a **P5** rule from `run-checkpoints.md`, a document
-the 2026-07 migration removed. So the guard is deliberate, tested, and its
-rationale is no longer readable anywhere.
+**What was wrong.** `Repo.init` walked for subdirectories containing a
+working-dir marker (`.fdf`, `.py`, `.run.sh`) and refused if it found any. The
+rule was sound for the world it was written in — a parent holding several
+*independent* run directories would checkpoint unrelated jobs together, and
+restoring one would rewind the others. It could not tell that apart from *the
+stages of one calculation*, which is the case where the parent is exactly the
+right unit.
 
-The likely reason is sound for the world it was written in: a parent holding
-several *independent* run directories would checkpoint unrelated jobs together,
-and restoring one would rewind the others. What a staged folder changes is the
-premise — its subdirectories are not independent jobs, they are stages of one
-calculation, which is exactly what makes the parent the right unit.
+**It was not only the proposed layout that this blocked.** Verified against the
+shipped `jobset prep` output: a bundle with `point-stage1/` and `point-stage2/`
+holding linked decks was refused, so a staged job-set could not be checkpointed
+at all. The guard had been closing a shipped path.
 
-**This is a decision, not a defect** — but it is a *blocking* one, and the
-options are narrow enough to state:
+**The fix asks a different question.** A directory holding one of the recognised
+descriptions — `stages.json`, `job-set.json`, `bench-manifest.json` — has
+declared itself **one unit of work whose subdirectories are its own parts**.
+That is not a new marker file: each is already in the artifact registry
+(`job-contracts.md § 6.1`), and it is the same file that makes the folder a
+calculation in the first place. So:
 
-| Option | What it costs |
+| The directory | Nested working dirs | Result |
+|---|---|---|
+| carries a description | its own stages | **init proceeds** |
+| carries none | several independent calculations | refused, with the reason |
+| any | a subdirectory that is **already a repository** | refused, in both cases |
+
+The last row is new and is not the same rule. A history inside a history has no
+consistent restore — the outer cannot rewind files the inner owns — so it is
+refused even in a bundle root, where nested working dirs are otherwise fine.
+
+| | |
 |---|---|
-| **Teach the guard about descriptions** — a parent holding `stages.json` is one calculation, so its subdirectories are stages rather than rival jobs, and init proceeds | the guard keeps its meaning for every folder that has no description; one condition, one test. **Recommended** |
-| **Repo per stage** — accept the guard, checkpoint each subdirectory | shared files above are outside every repo, so a restored stage's pseudopotential links dangle; and no repo contains the workflow, so *branch at stage 2* cannot be expressed. This is the option that made L1 exist |
-| **Flatten the layout again** | reintroduces the defect `engines/stages.md § 7.1` exists to fix: every stage overwriting the last's `.ANI`, `.STRUCT_OUT`, `.EIG` |
+| **How it fails** | Two ways, opposite in shape. Too narrow: a calculation cannot be checkpointed at all, and the flat shape's only route back to an earlier state does not exist (§ 5.0). Too wide: one history spans several unrelated calculations, and restoring one rewinds work nobody meant to touch |
+| **How to check** | `tests/test_checkpoint_repo_scope.py` — a bundle root with linked decks initialises; a topic directory holding two independent calculations is refused **and names both**; a nested repository is refused even under a description; and a hierarchical folder round-trips, so a `.DM` two levels down is archived, survives a later stage, and returns on restore. That last one matters most: an `init` that succeeds and then loses results is worse than one that refuses |
 
-Whichever is chosen, **it is chosen before the checkpoint work rather than
-during it**, because the other two invariants in this section assume an answer.
-
-*Check, once decided:* exactly one `.git` and one `.mbcheckpoint.json` in a
-produced folder, at the top of it.
+> **A dot-directory is no longer a working directory.** The old walk skipped only
+> `.git` and `.binsnapshots`, so a `.venv/` beside a run — full of `.py` — read
+> as a nested working dir and blocked `init` for a reason with nothing to do with
+> calculations. All dot-directories are skipped now.
 
 ### L2 — the archive globs match at depth
 
@@ -649,19 +657,18 @@ One line each, for reading over a diff:
 | **A1** | archive: build, verify the copy, then swap | today |
 | **A2** | restore verifies the target archive before touching the worktree | today |
 | **A3** | the checkpoint is committed before the mutation it protects | needs automatic checkpoints |
-| **L1** | one repository, at the parent | **blocked** — `init` refuses it by design |
+| **L1** | one repository per calculation, in either shape | **HOLDS** (2026-08-06) — `tests/test_checkpoint_repo_scope.py` |
 | **L2** | archive globs match at depth | **holds** (fixed 2026-08-06) |
 | **L3** | every commit and tag names its calculation | needs the layout |
 | **L4** | molbuilder tags stage completions only | needs the layout |
 | **L5** | a checkpoint costs what changed, not what exists | **not held today** |
 | **L6** | a history can be verified without being restored | **not held today** |
 | **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
-| **L8** | an archived attempt never differs afterwards | needs the layout |
+| **L8** | an archived attempt never differs afterwards | needs the layout — **hierarchical only** (§ 6.2 there) |
 
-**Twelve of the twenty-one can be asserted against the code as it stands.** Two
-(**L2**, **L7**) were broken and are now fixed, with tests. Two (**L5**, **L6**)
-are not held and are work rather than checks; one (**L1**) is **blocked** by a
-deliberate guard whose rationale outlived its document.
+**Thirteen of the twenty-one can be asserted against the code as it stands.**
+Three (**L1**, **L2**, **L7**) were broken and are now fixed, with tests. Two
+(**L5**, **L6**) are not held and are work rather than checks.
 
 ### What has actually been read
 
@@ -680,11 +687,12 @@ deliberate guard whose rationale outlived its document.
 | **L2** | was **broken, losing data rather than wasting disk** — fixed 2026-08-06, pinned by tests |
 | **L5** | **broken** — no cross-checkpoint dedup; my "cheap" claim was false |
 | **L6** | **absent** — no way to verify a history without restoring it |
-| **L1** | **blocked** — `Repo.init` refuses a parent repo by design (`NestedRepoRefusedError`) |
+| **L1** | **held** — a root carrying its description owns its subdirectories; a directory declaring nothing, and any nested repository, are still refused |
 | **L7** | was **absent** — a binary-only change left `git status` clean and nothing was checkpointed; fixed 2026-08-06 |
 
-**Six defects found, all fixed.** Two (L2, L7) turned up by *running* the
-checks. **Four turned up by reading the module end to end** — `init` skipping an
+**Seven defects found, all fixed.** Three (L1, L2, L7) turned up by *running* the
+checks — L1 by building the shipped `jobset prep` shape and watching `init`
+refuse it. **Four turned up by reading the module end to end** — `init` skipping an
 existing `.gitignore`, a dot-prefixed basename writing an unreadable MANIFEST,
 archive sizes counted only at the top level, and a swap that deleted the
 published archive before publishing its replacement.
