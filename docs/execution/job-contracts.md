@@ -949,20 +949,103 @@ The `jobset.Resources` dataclass holds exactly **seven** fields — `domain`,
 from `domain` by the submit engine. `dep_kind` is a per-**job** edge field, not
 a resource.
 
-### 6.3 Identifier & path conventions
+### 6.3 Identifier & path conventions — every name in the system
 
-| Convention | Form | Used for |
+**This table is the cross-layer authority.** Other documents explain *why* a
+name is shaped as it is; if any of them disagrees with a row here, this row wins
+and the other is a bug.
+
+#### The four separators, and what each one means
+
+Read a molbuilder filename left to right and the punctuation tells you the
+structure. That is not decoration — it is what lets a reader (or a glob, or a
+parser) split a name without knowing what is in it.
+
+| | Means | Example |
+|:-:|---|---|
+| `_` | **joins parts of one name.** Neither side names the thing on its own | `bdt_au_relax`, `<id>_<stage>`, `01_coarse` |
+| `-` | **attaches a counter or qualifier** to a name that stands alone without it | `run-0`, `bench-G1K4C6`, `<id>-restart-aside-<UTC>` |
+| `.` | **introduces a type suffix** — what the file *is* | `.fdf`, `.XV`, `.molwatch.log`, `.fdf.template` |
+| `/` | **separates levels** — of a path, or of a history ref | `01_coarse/run-0/`, `<id>/<stage>/<UTC>` |
+
+**This is why a stage name may not contain a hyphen** (`engines/stages.md § 2`):
+a hyphen announces *"a counter follows"*, so one inside a name makes it
+impossible to tell where the name ends. Names use `_`; the system uses `-` to
+append to them.
+
+#### Character sets
+
+| What | Set | Fixed by |
 |---|---|---|
-| **Project ID** | `SystemLabel` (SIESTA) / `JOB = "…"` (PySCF) | keys warm-restart files `<ID>.<ext>` (§ 4); also the basis for the SLURM `-J` name (row below) |
-| **Warm-restart files** | `<ID>.XV`/`.DM`/`.CG` (SIESTA); `<ID>.chk`/`<ID>_optimized.xyz` (PySCF) | engine-native resume (§ 4.2) |
-| **Per-job directory** | `point-<name>/` | benchmark `point-G<g>K<k>C<c>/`; stage ladder `point-stage<N>/` |
-| **SLURM job name** | a directly-submitted `.sbatch` carries `-J <script-stem>` (= the Project ID only when `SystemLabel == basename`); via `jobset submit` the engine **overrides** it on the command line with `-J <job-name>` — a ladder job is the bare stage name (`stage1`), a bench point is `job-gpu-G<g>K<k>C<c>` / `job-cpu` | `squeue` differentiation |
-| **Dependency kind** | `afterok` / `afterany` | stage chaining (§ `execution/job-system.md`) |
+| **run id** | `[A-Za-z0-9_-]+`, single token | `run-identity.md § 3` — normalised **once**, refused rather than truncated |
+| **stage name** | `[A-Za-z0-9_]+` — **no hyphen** | `engines/stages.md § 2` |
+| **project-tree path segment** | `[A-Za-z0-9_-]+`, topic from the fixed nine | § 2.5 |
+| **basename the wrapper accepts** | `[A-Za-z0-9._-]+` — wider, because a `SystemLabel` may carry a dot; sanitising here also blocks shell injection | § 4.3 |
 
-The `point-<name>/` directory naming, the sweep/ladder identifiers, and
-`dep_kind` are produced by the JobSet framework (`jobset/materialize.py`,
-`jobset/model.py`, `bench/adapters.py`) — `execution/job-system.md` is where
-they are used in anger.
+#### Files
+
+| What | Flat | Hierarchical |
+|---|---|---|
+| **description** | `stages.json` | `stages.json` (at the calculation root) |
+| **deck template** | `<id>.fdf.template` | `<id>.fdf.template` (at the root) |
+| **deck** | `<id>_<stage>.fdf` | `<id>.fdf` — inside `<seq>_<stage>/` |
+| **wrapper** | `<id>_<stage>.run.sh` / `.sbatch` | `<id>.run.sh` / `.sbatch` |
+| **stdout** | `<id>_<stage>-run<N>.out` | `<id>.out` — inside `run-<n>/` |
+| **trajectory log** | `<id>_<stage>.molwatch.log` | `<id>.molwatch.log` |
+| **warm-restart state** | `<id>.XV` `.DM` `.CG` — **shared, unsuffixed** | `<id>.XV` `.DM` `.CG` — inside the attempt |
+| **launch record** | — | `run.json` — inside the attempt |
+
+**One rule generates the whole right-hand column: a name says what its location
+does not.** In the hierarchy the directory already names the stage, so the deck
+does not repeat it; flat has no such directory, so the suffix carries it. **The
+trajectory log takes the deck's basename in both shapes**, which is why it needs
+no convention of its own.
+
+#### Directories
+
+| What | Form | Why that shape |
+|---|---|---|
+| **calculation** | `<id>/` | the folder *is* the id, so a listing identifies its contents (`run-identity.md § 3`) |
+| **stage** *(hierarchical)* | `<seq>_<stage>` — zero-padded to two digits | `seq` **orders**, so it pads and sorts; assigned once and never reassigned (`project-layout.md § 4.2`) |
+| **attempt** *(hierarchical)* | `run-<n>` — **not** padded | a counter of invocations that happened, not a designed sequence; `run-` is reserved and its members are numbers, full stop |
+| **benchmark** | `bench/` inside the stage it measures | a benchmark nests in what it measures (`project-layout.md § 3`) |
+| **trial** | `bench-G<gpus>K<ranks-per-gpu>C<cores>` | a sweep has no order, so the name carries **what was tried** — which is what lets `summarize` map a directory back to its point |
+| **warm state moved aside** | `<id>-restart-aside-<UTC>/` | `--cold` moves, never deletes (`checkpointing.md` I3) |
+
+#### History
+
+| What | Form | Example |
+|---|---|---|
+| **commit message** | `<id> · <stage> · <what happened>` | `bdt_au · tight · relaxation converged, 41 steps` |
+| **stage-completion tag** | `<id>/<stage>/<UTC>` | `bdt_au/tight/20260806T221403Z` |
+| **UTC stamp** | `YYYYMMDDThhmmssZ` — compact, because a ref forbids colons | `20260806T221403Z` |
+
+The id's character set was chosen to survive a filename, a shell line and a
+scheduler argument — and **it is therefore already git-ref-safe**, so no second
+sanitiser exists for tags (`run-identity.md § 3`).
+
+#### Scheduler
+
+| What | Form |
+|---|---|
+| **SLURM job name** | a directly-submitted `.sbatch` carries `-J <script-stem>`; via the submit engine it is **overridden** per job on the command line — a stage is its bare stage name, a trial is `job-gpu-G<g>K<k>C<c>` / `job-cpu` |
+| **Dependency kind** | `afterok` / `afterany` (`execution/job-system.md`) |
+
+#### Persisted-file schema strings
+
+`molbuilder/<name>@<major>`, checked **major-only** through `molbuilder/persist.py`
+— a reader meeting a newer major refuses rather than mis-parsing (§ 6.1, § 6.2).
+
+> **Two rows corrected 2026-08-07.** This table used to give the per-job
+> directory as `point-<name>/` for everything — *"benchmark `point-G<g>K<k>C<c>/`;
+> stage ladder `point-stage<N>/`"*. Both are now wrong. A stage directory is
+> `<seq>_<stage>` (`01_coarse`), because a stage is ordered and a sweep point is
+> not, and the two should not share a shape that hides the difference. And the
+> trial prefix is **`bench-`**, not `point-`: a trial belongs to a benchmark, and
+> *point* is grid vocabulary that names nothing a user would recognise in a
+> directory listing. Both are renames with a parser cost — `summarize` maps trial
+> directories back to their settings — and both are worth it, because this table
+> is what other layers copy from.
 
 ---
 

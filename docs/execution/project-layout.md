@@ -1003,6 +1003,12 @@ continues from the real run's state — never from a trial's.
 
 ## 4. Naming, and why the two levels name differently
 
+> **Every form in this section is tabulated once, for all layers, in
+> [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3** — including the
+> four separators and what each one means. This section explains *why* the two
+> levels differ; that table is what other layers copy from, and it wins if the
+> two ever disagree.
+
 ### 4.1 A stage is identified by its name; a stage *directory* also carries a number
 
 **A stage has exactly one identifier: its `name`** — what the user typed
@@ -1116,9 +1122,14 @@ guess it for you.
 ### 4.4 Trials name themselves by their settings
 
 A sweep has no order — no trial follows another — so the name carries **what was
-tried**: `bench-G<gpus>K<ranks-per-gpu>C<cores-per-rank>`. That is the shipped
-`point-G<g>K<k>C<c>` convention, and it is what lets `summarize` map a directory
-back to its point.
+tried**: `bench-G<gpus>K<ranks-per-gpu>C<cores-per-rank>`, which is what lets
+`summarize` map a directory back to its point.
+
+The **shape** is the shipped `point-G<g>K<k>C<c>` convention; the **prefix
+changes** (2026-08-07). `point` is grid vocabulary — it names nothing a person
+would recognise in a directory listing — while `bench-` says what the directory
+belongs to. It is a rename with a parser cost, taken because the alternative is
+two names for one idea across layers (`job-contracts.md § 6.3`).
 
 > **Ordered levels carry position; unordered levels carry settings.** One naming
 > rule each, matching what the level actually is.

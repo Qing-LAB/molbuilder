@@ -232,6 +232,12 @@ Walk through it with the *why* for each piece:
 - **`Job.name`** does double duty: it is the job's folder (`point-<name>/`) *and*
   its scheduler job name (`-J`), so a `squeue` listing reads the way the layout
   does. **`Job.script`** is the input file inside that folder.
+
+  > **`point-<name>/` is today's naming for every job, and it splits.** A sweep
+  > point keeps a settings-based name; a **stage** becomes `<seq>_<stage>`
+  > (`01_coarse`), because a stage is ordered and a sweep point is not, and one
+  > shape for both hides the difference. The full table, for every layer, is
+  > [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3.
 - **`Job.depends_on` + `Job.dep_kind`** are the single-parent edge (decision #6).
   `dep_kind` is `afterok` ("run me only if my parent **succeeded**") or
   `afterany` ("run me once my parent **finished**, pass or fail"). This is how a
