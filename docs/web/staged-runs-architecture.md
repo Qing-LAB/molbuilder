@@ -730,6 +730,17 @@ appear together, which is exactly where a person should be looking.
     rather than at rendered bash, and the two that assert wrapper text retire
     with the block.
 
+    ✅ **And it is the only thing in the system that breaks a rule everything
+    else holds** (2026-08-07). Both launchers put the engine in its directory the
+    same way — the workstation path runs `.run.sh` with the working directory set
+    to the job's, the SLURM path runs `sbatch` from it so the job lands in
+    `SLURM_SUBMIT_DIR` — and **neither the wrapper nor the engine ever
+    navigates**. The generated wrapper states it in its own header: *"this wrapper
+    does NOT change cwd… the caller's cwd is the contract."* This block `cd`s into
+    an attempt it created, which is that rule broken in exactly one place. So
+    retiring it is not tidying — **it restores an invariant the rest of the system
+    already keeps** (`job-contracts.md § 2.1`).
+
     ✅ **Nothing calls it** (verified 2026-08-07). `attempt_dirs` defaults to
     `False` and **no production caller passes `True`** — the only callers are its
     own eleven tests. So the ~130 lines of generated bash are dead in every folder

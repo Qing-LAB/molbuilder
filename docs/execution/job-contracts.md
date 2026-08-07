@@ -68,7 +68,59 @@ Two conventions bind everything below and are stated once here:
 
 ## 2. The run directory
 
-### 2.1 The two rules
+### 2.1 What the engine assumes, and the two rules that serve it
+
+Both rules below are consequences of one premise, so it is worth stating first.
+Everything molbuilder does around a run exists to make it true.
+
+> **The engine runs inside one directory, and that directory is its whole world.**
+> It needs the right environment and every file it will read to be reachable from
+> there. It has **no knowledge of how the directory came to be** — no notion of a
+> stage, a description, a benchmark, a checkpoint or a previous run — and it does
+> not care. It reads what is there and writes its output beside it.
+
+Three things follow immediately, and each is a rule elsewhere in these documents:
+
+| Because the engine… | …molbuilder must |
+|---|---|
+| has no notion of a **stage** | resolve every stage parameter **before** the deck is written. A deck that needed a reader to understand the word "stage" would not run (`engines/stages.md § 1`) |
+| cannot fetch anything | put **everything the run will read in place before it starts** — which is why a carried restart file is copied at prep rather than resolved later (`project-layout.md § 1.6`) |
+| assumes the environment is already correct | give the wrapper exactly two jobs — **activate, then exec** — and do every decision and arrangement in Python beforehand (`running-a-job.md § 2.2a`) |
+
+**"Reachable from there" is the precise word, not "physically present."** A
+symlink to `../Au.psml` opens as a real file from inside the directory, and the
+engine cannot tell the difference — so sharing one copy of a large
+pseudopotential across stages is invisible to it, and legitimate.
+
+> ⚠ **Which is why the transportable unit is the calculation folder, not the run
+> directory.** Completeness here is a property of *what resolves*, not of what
+> sits in the directory. Archive a lone `run-0/` and its links to the deck and
+> the shared package dangle — it was never self-contained, only self-contained
+> *in place*. Move the whole calculation folder and every link stays inside it.
+
+**Who puts the engine in that directory: the launcher, and only the launcher.**
+Both deployment paths do the same one thing, and neither the wrapper nor the
+engine ever navigates:
+
+| Path | How the directory is established |
+|---|---|
+| **workstation** | the launcher runs `<id>.run.sh` **with its working directory set to the job's directory** |
+| **SLURM** | the launcher runs `sbatch` **from** that directory, and SLURM lands the job in `SLURM_SUBMIT_DIR` — the same place |
+
+So one rule covers both: **the caller's working directory is the contract.** The
+wrapper inherits it and changes it for nothing; outputs land where the wrapper
+was invoked. A wrapper that navigated would break the property the engine depends
+on — that *here* is where everything is — and it would break it differently under
+the two launchers, which is worse than breaking it consistently.
+
+This is not a rule the design is asking for. It is how the shipped submit path
+already works, in one line per mode, and the generated wrapper says so in its own
+header: *"this wrapper does NOT change cwd… the caller's cwd is the contract."*
+It is written down here because it was true everywhere and stated nowhere — and
+because the one place it is currently broken (a rendered block that `cd`s into an
+attempt it created) is being retired for exactly this reason
+([`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
+item 12a).
 
 **Rule 1 — one job per directory.** Every job lives in its own directory. A
 directory may hold *several inputs* (one per stage of a staged relaxation,
