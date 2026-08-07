@@ -255,6 +255,143 @@ be known, names unique, `dep_kind` valid, and every `depends_on` / `from_job`
 must point at a **job listed earlier** — which guarantees the graph is ordered
 and has no cycles.
 
+### 3.1 A real `job-set.json`, field by field
+
+Descriptions of a format are easy to nod along to and hard to check. Here is an
+actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
+
+```jsonc
+{
+  "schema": "molbuilder/job-set@1",   // versioned: a reader refuses a major it
+                                      // does not know, rather than guessing
+  "name":   "bdt_au",                 // the calculation's id — also the SIESTA
+                                      // SystemLabel every deck shares
+  "engine": "siesta",
+  "kind":   "ladder",                 // "ladder" = a chain; "sweep" = independent
+
+  "shared": ["C.psml", "H.psml", "S.psml", "Au.psml", "mb_monitor.py"],
+                                      // stored ONCE in the bundle root and
+                                      // symlinked into every job's folder
+
+  "jobs": [
+    {
+      "name":   "coarse",             // → folder point-coarse/ AND squeue -J name
+      "script": "bdt_au_coarse.fdf",  // the deck, living in the bundle root
+      "resources": {                  // ALL seven fields are always written,
+        "domain":        null,        // nulls included — see the note below
+        "time":          "04:00:00",
+        "exclusive":     null,
+        "mem":           null,
+        "gres":          null,
+        "mpi_np":        8,
+        "cpus_per_task": 4
+      },
+      "depends_on": null,             // nothing before it
+      "dep_kind":   "afterok",
+      "carry":      []                // starts from the .fdf's own coordinates
+    },
+    {
+      "name":   "tight",
+      "script": "bdt_au_tight.fdf",
+      "resources": {
+        "domain":        null,
+        "time":          "24:00:00",
+        "exclusive":     null,
+        "mem":           null,
+        "gres":          "gpu:a100:1",
+        "mpi_np":        32,          // 4× the ranks: the tight stage is the
+        "cpus_per_task": 4            // expensive one, and per-job resources
+      },                              // are the whole reason they are per-job
+      "depends_on": "coarse",
+      "dep_kind":   "afterok",        // only if coarse actually converged
+      "carry": [
+        { "pattern": "bdt_au.XV", "from_job": "coarse" },   // relaxed geometry
+        { "pattern": "bdt_au.DM", "from_job": "coarse" }    // density matrix
+      ]
+    }
+  ]
+}
+```
+
+*(Produced by building that `JobSet` and dumping `to_dict()`, so the shape and
+the key order are the real ones, not a sketch.)*
+
+> **`null` is a value here, and it does not mean "zero" or "off".** It means
+> **"not decided yet — resolve it at submit"**. A `mem` of `null` lets the
+> scheduler config's default apply; a `mem` of `"0"` is SLURM's *"give me the
+> whole node's memory"*. The fields are written out even when null so the file
+> shows you the complete set of questions that will be answered, rather than
+> hiding the ones nobody answered yet. This is the *assistant, not nanny* rule in
+> file form: molbuilder does not quietly pick a node size for you.
+
+**What that file becomes on disk.** `molbuilder jobset prep` reads it and lays
+out the tree. Every arrow below is a **symlink**, which is the point: nothing is
+copied, so a 4 GB pseudopotential set exists once no matter how many jobs there
+are.
+
+```
+bdt_au-bundle/                       ← the bundle root: the real files live here
+├── job-set.json                     the description above
+├── bdt_au_coarse.fdf                the two decks
+├── bdt_au_tight.fdf
+├── C.psml  H.psml  S.psml  Au.psml  the shared package
+├── mb_monitor.py
+├── bdt_au_coarse.run.sh  .sbatch    wrappers, rendered once per distinct deck
+├── bdt_au_tight.run.sh   .sbatch
+├── STAGE-PLAN.md                    a human-readable review of the chain
+│
+├── point-coarse/                    ← one folder per job
+│   ├── bdt_au_coarse.fdf   → ../bdt_au_coarse.fdf
+│   ├── C.psml              → ../C.psml          (and the other three)
+│   ├── mb_monitor.py       → ../mb_monitor.py
+│   └── bdt_au_coarse.run.sh → ../bdt_au_coarse.run.sh
+│
+└── point-tight/
+    ├── bdt_au_tight.fdf    → ../bdt_au_tight.fdf
+    ├── C.psml              → ../C.psml          (and the other three)
+    ├── bdt_au.XV           → ../point-coarse/bdt_au.XV   ← the carry
+    └── bdt_au.DM           → ../point-coarse/bdt_au.DM   ← the carry
+```
+
+**The two carry links point at files that do not exist yet, and that is
+deliberate.** `prep` runs before anything has been computed, so
+`point-coarse/bdt_au.XV` has not been written. The link dangles until the coarse
+stage runs, and resolves the moment it does. What makes that safe is the
+dependency: `point-tight` is submitted with `afterok:<coarse job id>`, so the
+scheduler will not start it until coarse has finished successfully — by which
+time the link points at a real file.
+
+**One more step happens at run time, and it exists to protect the coarse stage.**
+The tight stage does not read through the symlink; the wrapper first replaces
+each carried link with a **real local copy** (`carry_deref`). Without that, SIESTA
+would open `bdt_au.DM` for writing, follow the link, and overwrite the coarse
+stage's density matrix — destroying the result you would want to go back to.
+
+```mermaid
+sequenceDiagram
+    participant P as jobset prep
+    participant C as point-coarse/
+    participant T as point-tight/
+    participant S as SLURM
+    P->>C: link deck + shared package
+    P->>T: link deck + shared package
+    P->>T: link bdt_au.XV, bdt_au.DM → ../point-coarse/  (dangling)
+    P->>S: submit coarse, then tight with afterok:coarse
+    S->>C: run coarse
+    C-->>C: writes bdt_au.XV, bdt_au.DM
+    Note over T: the links now resolve
+    S->>T: coarse succeeded → start tight
+    T-->>T: carry_deref: replace each link with a real COPY
+    Note over T,C: so writing bdt_au.DM cannot reach back into point-coarse/
+    T-->>T: run tight from the copied state
+```
+
+> **This chained form is what ships today, and it is being narrowed** — see the
+> notice in § 1. In the staged-runs design each stage is prepped and submitted on
+> its own, so the carry becomes a plain copy made at prep, and neither the
+> dangling link nor `carry_deref` is part of that story. Both stay for the
+> chained ladder and for benchmark sweeps.
+
 A complete 2-stage ladder `job-set.json`:
 
 ```json

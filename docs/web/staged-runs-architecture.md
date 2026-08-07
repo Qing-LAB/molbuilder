@@ -505,6 +505,19 @@ appear together, which is exactly where a person should be looking.
    no field of the shared schema has a second home, a per-stage
    `continue_retries` reaches that stage's wrapper, and the ladder producer still
    derives the same edges.
+
+   ⚠ **`continue_retries` is not merely unrouted — it is silently dropped, and
+   everything upstream validates** (found 2026-08-07, § 8a D). The field is on
+   `SiestaStageSpec`, defaults to 1 and is range-checked 1..5
+   (`config/siesta.py:1304, :1401`), and `runwrap.py` **does** implement the
+   SIESTA retry loop. But `stages_to_jobset` never reads the field, `Resources`
+   has no slot for it, and `prep_jobset` never passes it — so on the ladder path
+   every stage renders with no retry loop and **nothing reports the loss**. Set
+   three retries on the tight stage; the form accepts it, the description
+   round-trips it, and the run gets none. So the routing has a prerequisite:
+   `Resources` must be able to carry it, or a stage needs a different road to its
+   wrapper. *Also done when:* a stage asking for retries renders a wrapper that
+   has them, asserted on the rendered text rather than on the object.
 3. **`overrides` and the effective-config merge** (`engines/stages.md § 4`).
    *Done when:* a stage with `{mesh_cutoff: 300}` renders a deck carrying 300
    while the shared config still says 150, and the object validated is the object
@@ -674,8 +687,17 @@ appear together, which is exactly where a person should be looking.
     is set up and submitted on its own, after the user has looked at the previous
     one. A stage is a long job, and a chain that continues by itself can spend a
     week computing from a geometry you would have rejected in a minute.
+    ⚠ **Widened 2026-08-07 — there are TWO chaining producers, not one** (§ 8a B).
+    This item was written against `stages_to_jobset` alone. The flat path chains
+    too, and more tightly: `render_siesta_stages_runner` emits a bash `for` loop
+    that runs every stage back to back **in one invocation**, with no pause and no
+    separate submission. That is the path the web UI ships today, so removing only
+    the JobSet edges would leave the rejected behaviour standing in the more
+    common case. **The rule reaches both producers or it has not landed.**
+
     So `stages_to_jobset` stops emitting `depends_on` and `Carry` edges between
-    stages. When you set up the next stage, **the run it continues from has
+    stages, **and the flat runner stops being a ladder driver** — it runs the one
+    stage it was asked for. When you set up the next stage, **the run it continues from has
     already finished** — you just looked at it and named it — so its files are
     **copied in, for real, then**. Nothing points at a file that does not exist;
     nothing has to be swapped at run time; `carry_deref` is no longer part of
@@ -720,6 +742,35 @@ appear together, which is exactly where a person should be looking.
     both surfaces read it, and a test adds a suffix to it and sees both behaviours
     change. Also rename `_SIESTA_WARM_SUFFIX_FILES` and `_PYSCF_WARM_FILES` if
     they survive — they are functions wearing constant names.
+12d. **The producer must be told which shape, and emit one** (§ 8a A–C).
+    `build_siesta_stage_bundle` currently returns the flat decks, the flat
+    runner **and** a hierarchical JobSet, all at once, so the shape is decided by
+    whichever command the user types next. That is not a choice made at `prep`;
+    it is no choice at all. It also means `on_nonconvergence` is read twice —
+    once into a SLURM dependency kind, once into bash — with the two disagreeing
+    about whether the last stage force-halts (the bash runner does it, and is
+    right; the JobSet producer has no equivalent).
+    *Done when:* the producer takes the shape as an input and emits the artifacts
+    for **that shape only**; a bundle never contains both a flat runner and a
+    `job-set.json`; `on_nonconvergence` is read in one place, with the
+    last-stage force-halt applying whichever shape is chosen; and a produced
+    folder can be told apart by looking at it rather than by remembering what was
+    typed.
+    ⛔ Gated by the same decision as 12b: **how a user asks for the shape**
+    (step 1b question 2). Until that is answered the producer has nothing to be
+    told.
+12e. **The checkpoint panel appears at a fixed depth instead of where a
+    repository is** (§ 8a F). `checkpoint.js`'s `_isRunDir` requires depth
+    **exactly** 3 below the projects root. Under L1 the repository sits at a
+    calculation root that *has* subdirectories, so browsing into `01_coarse/`
+    (depth 4) or `run-0/` (depth 5) makes the panel disappear — in the shape
+    where a checkpoint is load-bearing, at the moment you are looking at results
+    and might want one. The flat shape is unaffected, which is why it went
+    unnoticed: there, the calculation is the leaf.
+    *Done when:* the panel is offered for any directory **inside** a checkpoint
+    repository rather than at a fixed depth, and it names the repository root it
+    acts on, so a user standing in a stage knows the checkpoint covers the whole
+    calculation and not just the folder they can see.
 13. ~~**The archive globs reach into the subdirectories**~~ — **done
     (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
     the walk is recursive and skips symlinks and dot-directories, a binary-only
@@ -842,6 +893,143 @@ or the UI will be designed around what the model happens to allow rather than
 what a user needs.
 
 ---
+
+## 8a. The code audit — this plan read against what is actually built
+
+*2026-08-07. Every claim below was checked by reading the module, and each names
+the file and the function so it can be checked again.*
+
+The plan held up on the things it already tracked. It missed one thing entirely,
+and that miss is the most important item on this page.
+
+### A. One producer emits two incompatible execution models, and nothing chooses
+
+`build_siesta_stage_bundle` (`molbuilder/siesta/stages.py`) returns **both
+layouts in one object**, and both are produced by default:
+
+| What it returns | Which shape it is | How it runs the stages |
+|---|---|---|
+| `fdf_files` = `{<label>_<stage>.fdf: text}` + `runner_text` = `<label>.run.sh` | **flat** — every stage in one directory, all sharing `cfg.system_label` so `.XV` is found automatically | a bash `for` loop over `STAGES=(…)`, **one stage straight after the next, in one process** |
+| `jobset` = a `ladder` JobSet | **hierarchical** — `materialize` gives each stage `point-<name>/` and symlinks the carry across | the **scheduler**, via `depends_on` + `Carry` |
+
+So a produced bundle contains, side by side: N decks named for the flat shape, a
+runner that runs them all flat, and a `job-set.json` saying each stage has its own
+directory. **Which shape you are in is decided by which command you happen to type
+next** — `bash <label>.run.sh` or `molbuilder jobset prep`. Nothing records the
+choice, nothing warns, and the two disagree about where a stage's output lives.
+
+`project-layout.md § 1` says the shape is **chosen at `prep`**. It is not. It is
+chosen implicitly, after the fact, by the user's next keystroke, and the producer
+has already committed to both.
+
+### B. Both models chain automatically — and this plan only noticed one of them
+
+This is the miss. **Item 12b says stages must stop chaining, and addresses only
+the JobSet edges.** The flat runner chains too, and harder:
+
+```bash
+for i in "${!STAGES[@]}"; do          # _STAGES_RUNNER_TEMPLATE
+    stage="${STAGES[$i]}"             # …runs every stage back to back
+```
+
+There is no pause, no look, no separate submission — the whole ladder runs in one
+invocation. That is *exactly* the thing this design rejects, in the path the web
+UI ships today, and item 12b as written would leave it standing. **The rule has
+to reach both producers or it has not landed.**
+
+### C. `on_nonconvergence` is implemented twice, in two languages
+
+| Where | What it becomes |
+|---|---|
+| `stages.py::_dep_kind` | a SLURM dependency kind — `proceed` → `afterany`, else `afterok` |
+| `_STAGES_RUNNER_TEMPLATE` | bash control flow over an `ON_NONCONV=(…)` array |
+
+One policy field, two independent readings, no shared code. They also **disagree
+on one rule**: the bash runner force-halts the last enabled stage regardless of
+what the spec said (*"the final tier of any ladder is the publishable result;
+falling through silently is a bug"* — a good rule), and the JobSet producer has no
+equivalent. The rule is right; having it in only one of the two is the defect.
+
+### D. A per-stage `continue_retries` is silently dropped on the ladder path
+
+The worst kind of bug, because everything upstream validates:
+
+```
+SiestaStageSpec.continue_retries   exists, defaults to 1, validated 1..5
+        │                          (config/siesta.py:1304, :1401)
+        ▼
+stages_to_jobset(...)              never reads it
+        ▼
+Resources                          has no field for it — mpi_np, cpus_per_task,
+        │                          time, mem, gres, exclusive, domain, and that is all
+        ▼
+prep_jobset → write_run_wrapper(   passes 8 arguments, not this one
+        ▼
+rendered wrapper                   continue_retries=None → NO retry loop
+```
+
+`runwrap.py` **does** implement the SIESTA retry loop (`_siesta_retry_max`, and
+the retry block around line 2904) — it is reached by the single-job
+wrapper-install path (`/api/run/install-wrapper`) and never by the ladder. So the
+user sets three retries on the tight stage, the form accepts it, the description
+round-trips, and the stage runs with none. **Nothing anywhere reports the loss.**
+
+This is item 2's *"a per-stage `continue_retries` reaches that stage's wrapper"*,
+and it is now specific: the gap is that `Resources` cannot carry it, so it has
+nowhere to ride between the producer and the wrapper.
+
+### E. Item 12a's claim, confirmed against both sides
+
+`prep_jobset` (`jobset/prep.py`) already does, in Python: create each job's
+directory, link the shared package in, link the script, link `mb_monitor.py`,
+render the wrapper. `_attempt_dir_block` (`runwrap.py`) emits bash that creates a
+directory, links the script, links `mb_monitor.py`, links the pseudopotentials and
+copies the warm files. **Same job, two languages, two layers** — the plan's
+description of it as *"`materialize.py` written a second time in bash"* is
+accurate, and reading both confirmed it rather than softened it.
+
+### F. The browser panel's activation gate contradicts the new repository scope
+
+`checkpoint.js:121` — `_isRunDir` — accepts a directory only when its depth below
+the projects root is **exactly** 3:
+
+```js
+const RUN_DIR_DEPTH = 3;
+return rel.split("/").filter(Boolean).length === RUN_DIR_DEPTH;
+```
+
+That was right when a run directory was always a leaf. Under L1 a repository now
+sits at a **calculation root whose subdirectories are its own stages**, so
+`…/bdt_au/01_coarse/` is depth 4 and `…/01_coarse/run-0/` is depth 5. Browse into
+either — which is exactly where you go to look at a stage's results — and **the
+checkpoint panel vanishes**, with nothing saying a repository exists above you.
+
+In the flat shape it works, because the calculation *is* the leaf. So the gate
+silently supports one of the two shapes. *Done when:* the panel is offered for a
+directory that is inside a checkpoint repository, not for one at a fixed depth,
+and it names the repository root it is acting on so a user in `01_coarse/` knows
+the checkpoint covers the whole calculation.
+
+### G. Two claims this plan makes that the code confirms
+
+- **No web route drives a JobSet.** Verified by search: the only occurrence of
+  `jobset` anywhere under `molbuilder/web/` is a comment in `trajectory/core.js`.
+  The current→target picture in `overview.md` is honest.
+- **`branch` has no control in the browser.** `checkpoint.js` mentions branches
+  only when *drawing* the commit graph; the panel's buttons are Init, Commit, Tag
+  and Restore. That matches item 11's open ⬜ rather than contradicting it.
+
+### Where these land
+
+| Finding | Disposition |
+|---|---|
+| **A** two shapes emitted at once | **new item 12d** — the producer must be told which shape, and emit one |
+| **B** the flat runner also chains | **item 12b is widened** — the rule reaches both producers |
+| **C** `on_nonconvergence` twice | folds into 12d: one reading, and the last-stage force-halt applies to both |
+| **D** `continue_retries` dropped | sharpens item 2 — `Resources` needs the field, or the stage needs another route to the wrapper |
+| **E** attempt-dir duplication | confirms item 12a; no change |
+| **F** the panel's depth gate | **new item 12e** |
+| **G** the two honest claims | none — recorded so a later reader need not re-check |
 
 ## 9. Open questions
 
