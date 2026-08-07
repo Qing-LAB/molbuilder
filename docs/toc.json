@@ -127,6 +127,9 @@
           "path": "execution/run-identity.md"
         },
         {
+          "path": "execution/worked-example.md"
+        },
+        {
           "path": "execution/job-system.md"
         }
       ]

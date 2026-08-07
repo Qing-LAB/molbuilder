@@ -60,6 +60,13 @@ reads that document, not this one.**
 This plan owns only what is left: why the shape is this shape, the order the work
 goes in, and what is still undecided.
 
+**To see it whole rather than layer by layer**,
+[`execution/worked-example.md`](?doc=execution/worked-example.md) follows one
+molecule from a structure file to a published geometry — describe, generate,
+benchmark, run, checkpoint, branch. It is where items 12b and 16–18 below came
+from: five of the seven gaps it found are **joins between parts that each work**,
+which is what a table of layers cannot show you.
+
 ---
 
 ## 3. Why a stage is ours, not the engine's
@@ -456,6 +463,25 @@ cannot.
     can only have been carried. A flat directory is untouched. **What remains:**
     the producer passing the flag, and the run decoder learning that a stage's
     attempts are `run-N/` rather than `-runN.out`.
+12b. **The carry has to survive attempt directories — a regression, so it goes
+    first.** ⚠ Found by walking the workflow end to end
+    ([`worked-example.md`](?doc=execution/worked-example.md) § 6). `materialize`
+    writes a stage's carry as a symlink to `../<producer>/<id>.XV`, which is
+    where a stage's output lived until 12a moved it into `run-N/`. The link now
+    dangles, and *which* attempt is the right one cannot be known when `prep`
+    runs, because the runs have not happened. **The fix is a stable name:** the
+    wrapper writes `latest -> run-<n>` in the stage directory when an attempt
+    finishes, and the carry targets `../<producer>/latest/<id>.XV` — resolvable
+    at prep time, correct at run time, no hashing and no registry. It pays twice:
+    the viewer and the status roll-up both currently have to guess which attempt
+    is current. **Fold gap 6 into the same change**, since it is the same
+    expression: `materialize.job_dir_name` returns `point-<name>` for every job,
+    so a ladder gets the sweep's naming — it must branch on `JobSet.kind`
+    (`project-layout.md` § 4.4). *Done when:* a two-stage folder prepped before
+    either stage runs, then run in order, starts the second stage from the first
+    stage's geometry; the stage directories are `01_<name>`/`02_<name>`; a
+    benchmark's points still read `point-*`; and re-running the first stage
+    repoints `latest` without touching the attempt that used to hold it.
 13. ~~**The archive globs reach into the subdirectories**~~ — **done
     (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
     the walk is recursive and skips symlinks and dot-directories, a binary-only
@@ -478,6 +504,28 @@ cannot.
     sha256) and **S1** (tracked XOR archived, never both, never neither).
     Worth starting **before** step 2 rather than after it: they are the check that
     tells you whether items 10 and 11 broke anything.
+
+16. **Saving a structure into the project tree.** The description *points at* a
+    structure (`engines/stages.md § 6.3`), so a geometry that only exists in the
+    workspace cannot be described — and today no surface owns putting it
+    somewhere with a path, which makes it the first wall a user hits
+    ([`worked-example.md`](?doc=execution/worked-example.md) § 2). *Done when:*
+    a loaded or edited structure can be written to
+    `<project>/structure/<name>.xyz` with its sidecar, and the description form
+    can pick it without the user typing a path.
+17. **Connect a benchmark to the stage it measures.** Every part exists —
+    `bench generate` takes a deck and an output directory — but nothing composes
+    them, records which stage a bundle measures, or notices when the pairing is
+    wrong. *Done when:* one command derives a stage's benchmark into
+    `<stage>/bench/` from that stage's own deck, and the bundle names the stage
+    it came from.
+18. **The measured answer reaches the description, not just a script.** The
+    shipped chain stops one step short: `bench summarize` writes
+    `bench-result.json` and `bench prep-run` turns it into `run-production.sh`,
+    but `stages.json` never learns — so the next `generate`, which rebuilds
+    everything from the description, silently reverts to the defaults. *Done
+    when:* a benchmark verdict can be written back as that stage's resource
+    overrides, and re-producing keeps the measured configuration.
 
 **Step 3 — the surface.** The description model first (pure, tested), then the
 matrix view, then the subtabs.
@@ -543,3 +591,10 @@ what a user needs.
 9. **May two enabled stages be identical?** Nothing forbids it, and the answer is
    probably "warn": two decks differing in nothing but their name produce the
    same calculation twice into the same warm state.
+10. **Who creates the stage containers when the host and the target are the same
+    machine?** The producer writes the calculation level; `prep` lays out the
+    per-stage directories — but `prep` is a *target-side* verb, meant to run
+    after the folder is copied to a cluster. On a workstation there is no copy,
+    and nothing says whether generate should have done it already
+    ([`worked-example.md`](?doc=execution/worked-example.md) § 4). One sentence
+    either way; it is unstated rather than contested.
