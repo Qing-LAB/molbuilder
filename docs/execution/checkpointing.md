@@ -515,6 +515,17 @@ refused even in a bundle root, where nested working dirs are otherwise fine.
 > as a nested working dir and blocked `init` for a reason with nothing to do with
 > calculations. All dot-directories are skipped now.
 
+> **The description is consulted for its existence, not its contents** (read
+> 2026-08-07). `_is_bundle_root` asks only whether one of the three files is
+> *there*; it never opens it. A root whose `stages.json` names `coarse` and
+> `tight`, with an unrelated calculation copied in beside them, initialises one
+> history over all three — the too-wide failure above, reached through the door
+> the fix opened. It is narrow in practice: a produced folder contains what the
+> producer put there. But the check that would close it is cheap — read the
+> description, and refuse a nested working dir it does not name — and it should be
+> written when the producer exists and there is a real description to read
+> against, not guessed at now. Recorded rather than fixed, deliberately.
+
 ### L2 — the archive globs match at depth
 
 *HOLDS as of 2026-08-06 — this was broken, and fixing it is what prompted the
@@ -601,6 +612,20 @@ to a file that had rotted would record a sha its bytes do not have — turning a
 cheap save into a corrupt one. So a candidate is hashed once per checkpoint and
 copied past if it does not match. That is one read where a copy would have done
 a read *and* a write, so the I/O falls too.
+
+**What is saved is not yet what is reported.** `archive_bytes` per checkpoint and
+`archive_total_bytes` for the repository both sum `st_size`, which counts every
+hard link in full. So the second checkpoint of an unchanged 2 GB density matrix
+costs nothing and is still displayed as 2 GB — by `snapshot list`, by
+`snapshot init`, and by the sidebar panel. Nothing is *wrong*: per checkpoint that
+sum is the honest answer to *"how much comes back if I restore this"*. But
+`archive_total_bytes` is presented as what the folder occupies, and after L5 it no
+longer is. The whole user-visible benefit is currently invisible, and the one
+number that should show it contradicts it. Reporting is a separate fix from
+storing, which is why L5 is marked as holding — the disk saving is real and
+measured. See
+[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
+item 10a.
 
 **Why not content-addressing.** `.binsnapshots/by-content/<sha256>` was the
 fallback this invariant used to call for. It would change the archive layout and
@@ -695,10 +720,19 @@ One line each, for reading over a diff:
 | **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
 | **L8** | an archived attempt never differs afterwards | needs the layout — **hierarchical only** (`project-layout.md § 6.2`) |
 
-**Thirteen of the twenty-two can be asserted against the code as it stands, and
-all thirteen have a test.** Four (**L1**, **L2**, **L5**, **L7**) were broken
+**Fifteen of the twenty-two can be asserted against the code as it stands, and
+all fifteen have a test** — nine (**S5 I2 I3 I4 A1 A2 L3 L4 L5**) in
+`test_checkpoint_invariants.py`, five (**S1 S1a I1 L2 L7**) in
+`test_checkpoint_nested_layout.py`, and **L1** in
+`test_checkpoint_repo_scope.py`. Four (**L1**, **L2**, **L5**, **L7**) were broken
 and are now fixed, with tests. One (**L6**) is not held and is work rather than
 a check.
+
+> It was thirteen until 2026-08-06, when **L3** and **L4** stopped needing the
+> layout: naming a checkpoint and naming a stage tag are pure functions of an id,
+> a stage and a clock, so the *forms* could be built and asserted while the
+> *triggers* still wait for the producer. The count moved because half of two
+> invariants became reachable, not because anything was reclassified.
 
 ### What has actually been read
 
@@ -737,10 +771,35 @@ content"*, *"lands in git as a blob"*. A fourth — the first fix for S1a — wo
 have shipped a **worse** bug than the one it closed, and was caught by statically
 reviewing the patch rather than by its tests, which passed.
 
-**Six still cannot be read**: S3, S4, S6, L3, L4 describe the per-stage layout
-and the description, neither of which exists, and A3 describes automatic
-checkpoints, which do not. They stay claims until there is something to assert
-them against.
+**Four still cannot be read**: S3, S4 and S6 describe the per-stage layout and
+the description, neither of which exists, and A3 describes automatic checkpoints,
+which do not. They stay claims until there is something to assert them against.
+It was six until L3 and L4 split — their *forms* are pure functions and are now
+asserted; only their *triggers* wait.
+
+### The 2026-08-07 cross-check — reading the module against this document
+
+A second pass, this time reading the document and the code against **each other**
+rather than either alone. It found no new defect in what the invariants govern,
+which is the useful result: the four fixes of 2026-08-06 survived a hostile
+re-read. What it did find is that **the module's own citations no longer resolve**
+and that **one of the fixes is not visible where it counts**.
+
+| Found | Where it goes |
+|---|---|
+| `checkpoint.py` cites `run-checkpoints.md`, a document the 2026-07 migration removed, and cites its section numbers on **48 lines** — 33 of them `§ 10.1`–`§ 10.4`, the rest `§ 9`, `§ 11 decision 1/3`, `P3`, `P5`. **Twenty-one sit inside error messages a user reads.** A malformed MANIFEST is explained by pointing at a section of nothing | `staged-runs-architecture.md` item 14, whose scope was understated fivefold |
+| L5's saving is real on disk and invisible in every surface that displays archive size | L5 above, and item 10a |
+| `_is_bundle_root` never opens the description it checks for | L1 above |
+| This file's own count said *thirteen* after L3 and L4 made it fifteen | fixed above |
+| `test_checkpoint_invariants.py`'s header says I1 is pinned in `test_checkpoint_manifest_format.py`; it is pinned in `test_checkpoint_nested_layout.py`, and the header still describes a twelve-invariant split that L3/L4/L5 have since outgrown | item 14 |
+
+**The pattern in all five is the same one this document keeps re-learning**: a
+statement that was true when written, left in place while the thing it describes
+moved. The section numbers were correct until the doc they indexed was deleted;
+the count was correct until two invariants graduated; the header was correct until
+three tests were added to the file it describes. None of them could fail a test,
+because none of them is executable — which is precisely why they need a reading
+pass rather than a suite.
 
 ---
 

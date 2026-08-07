@@ -553,7 +553,7 @@ molbuilder snapshot migrate-manifest <ref>          # legacy 2-col -> canonical 
 ```
 
 The same operations are exposed over HTTP (`/api/checkpoint/*`: `state`, `list`,
-`diff`, `config` GET; `init`, `config`, `commit`, `tag`, `restore`,
+`diff`, `config` GET; `init`, `config`, `commit`, `tag`, `branch`, `restore`,
 `migrate-manifest` POST) and in the projects-sidebar run-history panel.
 
 > **Current status.** The `Repo` core, the `molbuilder snapshot` CLI (including

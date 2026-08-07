@@ -6,8 +6,10 @@
 into and read from `molview.data`; [`workspace.md`](?doc=web/workspace.md) — a
 different thing (auto-saving in-progress edits, not files). `web-api.md` — the
 `/api/files/*`, `/api/build/load`, `/api/structure/save`, and `/api/checkpoint/*`
-routes this module calls (web wave); the run-checkpoints and Modify-Save docs
-own the checkpoint panel and the structure Save panel this doc only points at.
+routes this module calls (web wave);
+[`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` and the
+Modify-Save doc own the checkpoint panel and the structure Save panel this doc
+only points at.
 
 The **projects sidebar** is the file browser pinned to the left of every tab. It
 lists your project tree, remembers **where you are working and what you have
@@ -205,8 +207,10 @@ touch it. The parts:
   `projects/PROJECT/TOPIC/RUN`), a checkpoint panel appears with git-snapshot
   controls: a status pill, the checkpoint list, a **commit-graph viewer**, and
   Checkpoint-now / Tag / Restore. It refreshes only when asked (no polling). Its
-  behavior is owned by the run-checkpoints doc; this doc just notes the panel
-  exists.
+  behavior is owned by
+  [`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` (the
+  workflow) and [`execution/checkpointing.md`](?doc=execution/checkpointing.md)
+  (the invariants); this doc just notes the panel exists.
 - **Layout** — a drag handle resizes the sidebar (double-click resets), a toggle
   collapses it on desktop, and on a narrow screen it becomes a drawer. A lock
   banner covers the sidebar while an operation is in flight.

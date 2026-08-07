@@ -436,8 +436,10 @@ auth routes.
 | POST `/api/run/install-wrapper` | install the run-wrapper script into a run dir (optional `continue_retries` 1–5 bakes the SIESTA warm-retry budget — `?doc=execution/running-a-job.md` § 3.5) |
 | POST `/api/siesta/install-pseudos` | install SIESTA pseudopotentials |
 
-**Checkpoint** — the run-history panel (its behavior is the run-checkpoints
-doc; the routes are `GET /api/checkpoint/{state,list,diff,config}` and
+**Checkpoint** — the run-history panel (its behavior is
+[`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6`, its
+invariants [`execution/checkpointing.md`](?doc=execution/checkpointing.md);
+the routes are `GET /api/checkpoint/{state,list,diff,config}` and
 `POST /api/checkpoint/{init,config,commit,tag,branch,restore,migrate-manifest}`).
 
 **System** — `GET /api/system/load` → `{ ok, data: { cpu, ram, gpu, … } }`, the

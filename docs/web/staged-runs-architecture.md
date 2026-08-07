@@ -412,8 +412,13 @@ answered it; what is left is how it is spelled. Question 2 is new — it did not
 exist until the shape became a choice made at `prep` rather than a consequence of
 how many stages you wrote.
 
-**None of them block the checkpoint work.** Items 10, 11 and 15 are unblocked and
-can start now; the three above gate 12a–12c and step 3.
+**None of them blocked the checkpoint work, and that work is now done.** Items 10
+and 15 are complete, and item 11's two buildable parts landed on 2026-08-06 — the
+naming and `branch` over HTTP. What is left of 11 needs the producer, not a
+decision. So the three questions above are the *only* thing between here and
+12a–12c, and answering them is the next move. Items 10a, 12c, 14 and 14a are
+unblocked cleanup found by the 2026-08-07 cross-check and can be taken in any
+order.
 
 **Step 1c — the commands, which fall out of the workflow.**
 `project-layout.md` § 2 puts the boundary between what a laptop can know and what
@@ -547,6 +552,34 @@ appear together, which is exactly where a person should be looking.
     linked to. The shipped guide's *"deduped by content"* is now true rather
     than aspirational. **Still open: `snapshot verify`** (L6) — the check exists
     and is reachable only by attempting a restore.
+10a. **What item 10 saves, nothing reports** (found 2026-08-07). `archive_bytes`
+    and `archive_total_bytes` both sum `st_size`, so a hard link counts in full.
+    The second checkpoint of an unchanged 2 GB density matrix costs nothing and is
+    still displayed as 2 GB — by `snapshot list`, by `snapshot init`, and by the
+    sidebar panel. The whole user-visible point of item 10 is currently invisible,
+    and the number presented as *what this folder occupies* is the one that
+    contradicts it. Not a defect in the saving: the disk measurement is real and
+    tested by inode, which is how the gap was noticed at all — the test knows
+    about links and the accessor does not.
+
+    The two are not one fix, because they answer different questions. Per
+    checkpoint, `archive_bytes` should stay a **logical** size: *"how much comes
+    back if I restore this"* is what a person reading a history wants, and it must
+    not change when a neighbouring checkpoint is deleted. `archive_total_bytes` is
+    the one that is now wrong — it is presented as disk occupancy, so it should
+    count each inode once. *Done when:* the repository total counts by inode,
+    per-checkpoint size keeps its present meaning and the surface says which it
+    is, and a folder with ten checkpoints of one unchanged binary reports a total
+    near that binary's size rather than ten times it.
+
+    ⚠ Two older faults to fix in the same pass, both predating this branch: the
+    wire field `archive_total_bytes` in `_serialise_state` is **structurally
+    always zero** — `state()` deliberately leaves it at its default to keep the
+    directory-enter read cheap (`running-a-job.md § 6`), and nothing on the
+    frontend reads it, so it is a field that has never once carried a value; and
+    `missing_archive_warning` names `.DM/.HSX/.TSHS` in its message whatever the
+    engine, so a PySCF repository is warned about files it was never going to
+    have, while the `.chk` that actually went missing is not mentioned.
 11. **Checkpoints at the two stage boundaries, and `branch` over HTTP.**
     **Two of the four parts are done (2026-08-06); the two that remain are the
     triggers, and they are the part that needs the producer.**
@@ -609,6 +642,14 @@ appear together, which is exactly where a person should be looking.
     *outcomes on disk*, so most survive re-pointing at the Python entry point
     rather than at rendered bash, and the two that assert wrapper text retire
     with the block.
+
+    ✅ **Nothing calls it** (verified 2026-08-07). `attempt_dirs` defaults to
+    `False` and **no production caller passes `True`** — the only callers are its
+    own eleven tests. So the ~130 lines of generated bash are dead in every folder
+    a user has, and retiring them cannot regress a shipped path. That does not
+    make the gate below moot: the gate is about what replaces the *capability*,
+    not about protecting the current callers, of which there are none.
+
     ⛔ **Gated, and this is the sequencing that matters:** retiring the block
     removes the only way to run a stage by hand, and nothing replaces it yet.
     `project-layout.md` § 8 question 4 — what the entry point is, and where
@@ -640,25 +681,115 @@ appear together, which is exactly where a person should be looking.
     `01_<name>`/`02_<name>` while a benchmark's points still read `point-*`; no
     stage job carries a `depends_on`; and no directory in a produced tree
     contains a dangling symlink.
+12c. **One warm-file inventory per engine, not two** (found 2026-08-07 — and the
+    finding is a comment of mine that says the opposite of what the code does).
+    `_SIESTA_WARM_SUFFIXES` was added on this branch with the note *"the SAME
+    inventory the `--cold` move-aside covers — one list, so a new warm hook cannot
+    be carried without also being moved aside, or vice versa."* It is not one
+    list. `_cold_restart_aside_block` keeps its own hardcoded copy, and so does
+    the PySCF branch beside `_PYSCF_WARM_FILES`:
+
+    | Engine | Carried into the next attempt | Moved aside on `--cold` |
+    |---|---|---|
+    | SIESTA | `_SIESTA_WARM_SUFFIXES` — 13 suffixes | `exts = ("DM", "CG", …)` — the same 13, without dots |
+    | PySCF | `_PYSCF_WARM_FILES` — 5 names | `suffixes = (".chk", …)` — the same 5 |
+
+    **They agree today and nothing keeps them agreeing.** This is S1a's failure
+    mode — *derived, never kept beside* — in a second module: add a warm hook to
+    the carry list alone and a `--cold` run silently warm-starts from it, which is
+    a contaminated calculation that reports success. Add it to the aside list
+    alone and an attempt loses state it should have inherited, which is merely
+    slow. The first is the one that matters, and it is the direction a person
+    fixing a carry bug would naturally take.
+
+    ⚠ **Do not fix this by deleting the carry lists**: they belong to the
+    `attempt_dirs` block that 12a retires, so the two interact. Retire 12a first
+    and the SIESTA/PySCF carry constants go with it, leaving one list per engine
+    by subtraction. Only if 12a's replacement in Python still needs a carry
+    inventory does this become a real extraction — and then it is one list in
+    Python that both the mover and the carrier read, not two tuples in two
+    functions. *Done when:* there is exactly one warm-file inventory per engine,
+    both surfaces read it, and a test adds a suffix to it and sees both behaviours
+    change. Also rename `_SIESTA_WARM_SUFFIX_FILES` and `_PYSCF_WARM_FILES` if
+    they survive — they are functions wearing constant names.
 13. ~~**The archive globs reach into the subdirectories**~~ — **done
     (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
     the walk is recursive and skips symlinks and dot-directories, a binary-only
     change now produces a checkpoint, and every commit gets an archive so a
     missing one is evidence rather than a hint. `job-contracts.md § 6.1` updated
     in the same commit; 119 checkpoint tests pass.
-14. **Repoint `checkpoint.py`'s dead doc references.** It cites
-    `run-checkpoints.md` five times — a document the 2026-07 migration removed —
-    and cites numbered principles from it that nothing now defines. *Done when:*
-    each reference points at the section that owns it today
-    ([`checkpointing.md`](?doc=execution/checkpointing.md) for the invariants,
-    [`running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` for the workflow),
-    and no docstring names a file that is not in the tree.
+14. **Repoint the checkpoint subsystem's dead doc references — five times bigger
+    than this item said** (re-counted 2026-08-07). `run-checkpoints.md` was
+    removed by the 2026-07 migration, and the subsystem still cites it and, worse,
+    still cites **its section numbers**.
+
+    | Where | Live `run-checkpoints.md` refs | Dead `§` numbers |
+    |---|--:|---|
+    | `molbuilder/checkpoint.py` | 5 | **48 lines** — 33 citing `§ 10.1`–`§ 10.4`, 14 citing `§ 9` / `§ 11 decision 1/3` / `§ 4.5` / `§ 4.6` / `§ 5.2` / `§ 6.2` / `P3` / `P5` |
+    | `molbuilder/cli.py` | 5 | `§ P5`, `§ 9`, `§ 4.5`, `§ 10.4` |
+    | `molbuilder/web/blueprints/checkpoint.py` | 3 | `§ 6.2`, `§ 9`, `§ 11 decision 7` |
+    | `molbuilder/web/static/lib/projects/checkpoint.js` | 5 | `§ 6.1`, `§ 6.2`, `§ 8`, `§ 11.7` |
+    | `tests/` (3 files) | ~13 | `§ 5.2`, `§ 10.2`, `§ 10.4`, `§ 10.5`, `§ 12` |
+    | `docs/web/web-api.md`, `docs/web/projects.md` | 3 | — |
+
+    **Twenty-one of `checkpoint.py`'s are inside error messages a user reads.**
+    Hand a malformed MANIFEST to the parser and it explains itself by citing
+    § 10.2 of a document that is not in the tree — the citation was added
+    precisely so the user could go read the rule, and that is the one thing it can
+    no longer do.
+
+    ⚠ **One string that looks like a reference must not be touched.**
+    `_GITIGNORE_LEGACY_HEAD = "# molbuilder run-checkpoints contract:"` is not a
+    citation — it is the **marker this module greps for in a user's existing
+    `.gitignore`** to excise a pre-marker block. Renaming it means the old block
+    is no longer recognised, so it is left in force beside the new section, and
+    S1a's data-losing branch opens: a file ignored by the stale block and no
+    longer archived is in no snapshot at all. The same words in
+    `_render_gitignore`'s emitted header are likewise format, not prose.
+
+    *Done when:* each reference points at the section that owns it today —
+    [`checkpointing.md`](?doc=execution/checkpointing.md) for the invariants,
+    [`job-contracts.md`](?doc=execution/job-contracts.md) `§ 6.1` for the MANIFEST
+    columns and `.mbcheckpoint.json`,
+    [`running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` for the workflow
+    and the CLI — no docstring or error message names a file that is not in the
+    tree, and the two live docs stop routing readers to a deleted one.
+
+14a. **The module's own hygiene, found by the same pass.** All predate this branch
+    except the last; none is urgent and all are one-liners.
+    * `checkpoint.py:1272` annotates `data: Dict[str, Any]` and **`Any` is not
+      imported** — pyflakes reports an undefined name. It cannot raise today,
+      because a local variable annotation is never evaluated, which is exactly why
+      it survived: it is a real error that no test can reach.
+    * `dataclasses.field` is imported and unused; `state()` binds `p` and never
+      uses it.
+    * `__all__` lists eight names and omits the four public ones added on
+      2026-08-06 — `utc_stamp`, `checkpoint_message`, `stage_completion_tag`,
+      `parse_stage_completion_tag`. They are the naming API L3/L4 rest on, so a
+      star-import of the module gets everything *except* the part item 11 added.
+    * `tests/test_checkpoint_invariants.py`'s header names the wrong file for I1
+      (`manifest_format`, actually `nested_layout`) and still describes a
+      twelve-invariant split that L3, L4 and L5 have outgrown.
+    * `list_checkpoints` and `_checkpoint_from_sha` each split the same
+      `%H|||%h|||%aI|||%s|||%D` line and each recompute archive size the same way
+      — two copies of one `Checkpoint`-from-git-log builder, differing only in
+      that one tolerates a short field list and the other does not. One builder
+      taking the log line, with **the strict field handling**, is the fix.
+    * While in there: `list_checkpoints` walks and stats *every* commit's archive
+      to fill `archive_bytes`, so listing 50 checkpoints is 50 `rglob`s over
+      `.binsnapshots/`. That is the sidebar's list path, and item 10a is about to
+      change what that number means anyway — worth resolving both at once, rather
+      than leaving a size pass that is both duplicated and eagerly recomputed.
 15. **The checkpoint invariants become tests**
     ([`checkpointing.md`](?doc=execution/checkpointing.md) `§ 6`). **Twenty-two**,
-    of which **thirteen can be asserted against the code as it stands** and need
-    none of this project's other work. Three are already pinned — **L1** by
-    `tests/test_checkpoint_repo_scope.py`, **L2** and **L7** by the fixes that
-    landed with them. *Done when:* all twenty-two have an assertion; **each one
+    of which **fifteen can be asserted against the code as it stands** and need
+    none of this project's other work — **and all fifteen now have one**
+    (2026-08-06): nine in `tests/test_checkpoint_invariants.py`, five in
+    `tests/test_checkpoint_nested_layout.py`, **L1** in
+    `tests/test_checkpoint_repo_scope.py`. It was thirteen until **L3** and **L4**
+    split: their *forms* are pure functions of an id, a stage and a clock, so they
+    became assertable while their *triggers* still wait for the producer.
+    *Done when:* all twenty-two have an assertion; **each one
     names the shape it holds in** (`project-layout.md § 7` marks them `[both]` or
     `[hierarchical]`), because a check written for one shape that fails the other
     is worse than no check — it fails a directory that is working correctly; and
