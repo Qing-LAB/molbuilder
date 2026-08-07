@@ -229,7 +229,9 @@ A staged relaxation (coarse → tight) keeps its stages together, and the
 and the codebase uses **two distinct suffix conventions** for two different
 paths — do not conflate them:
 
-- **The staged ladder** — the `cfg.stages` ladder rendered by
+- **The staged ladder** — the `cfg.stages` ladder (⚠ `cfg.stages` is being
+  removed: a stage list is not a property of an engine config, and moves to
+  `task.json` — [`engines/stages.md`](?doc=engines/stages.md) § 1.1) rendered by
   `siesta/input.py::render_siesta_stage_fdfs` plus its `.run.sh` stage runner,
   and the `stages_to_jobset` JobSet producer — names each stage's input `.fdf`
   and stdout `.out` **`<label>_<stagename>`**: an **underscore** plus the

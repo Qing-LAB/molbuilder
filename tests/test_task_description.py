@@ -229,12 +229,20 @@ def test_overrides_must_hold_exactly_the_keys_in_varies(example):
     assert "relax_steps" in str(e.value)
 
 
-def test_a_stage_missing_a_varied_key_is_refused(example):
+def test_a_stage_may_omit_a_varied_key_and_that_means_base(example):
+    """§ 6.2, corrected 2026-08-07: `overrides` is a SUBSET of `varies`.
+
+    An absent key means *this stage uses base's value* -- a real state, and
+    the one § 6 of the tab plan draws as a quiet cell.  This replaces a test
+    that required equality; equality both made `varies` redundant (derivable
+    as any stage's key set) and forced every cell to be filled with a copy
+    of base, which is the table design it was supposed to serve.
+    """
     del example["stages"][0]["overrides"]["relax_type"]
-    with pytest.raises(ValueError) as e:
-        Task.from_dict(example)
-    assert "relax_type" in str(e.value)
-    assert "coarse" in str(e.value)
+    task = Task.from_dict(example)
+    assert "relax_type" not in task.stages[0].overrides
+    assert "relax_type" in task.varies          # still a column
+    assert task.base["relax_type"] == "CG"      # and this is what it resolves to
 
 
 # --------------------------------------------------------------------- #

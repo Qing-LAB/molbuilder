@@ -540,8 +540,26 @@ and the findings contract (facts in, findings out; `where` is the stable id).
    Decide which **before** writing either.
 4. `on_nonconvergence` moves to the producer's own input (it is a scheduler
    edge, not a stage property).
+4a. **`base` ↔ `SiestaConfig`, and the fingerprint that comes with it.** Nothing
+   in the tree serialises a config to a plain dict or back — the only `asdict` is
+   local to `spectra/pyscf_script.py` — yet `task.json`'s `base` **is** exactly
+   that: one value per schema field. ⚠ **Reuse, do not write a second codec**:
+   `dataclass_to_form_schema` already walks the class and `coerce_to_field_type`
+   already turns wire values into typed ones, which is the same job from the same
+   schema. **The same step computes `schema_fingerprint`** — `base` and the
+   fingerprint are one act, since both are "this schema, right now", and the
+   preflight's only non-refusal row has had a reader and no writer since it was
+   written (`stages.md § 6.6`).
+
 5. `effective_config(base, stage) -> SiestaConfig` — **one function, one place**,
    and the object it returns is the object that gets validated *and* rendered.
+   A stage that omits a varied key resolves to `base`'s value for it (§ 6.2's
+   subset rule), which is what makes `base` complete rather than half-shadowed.
+
+   ⚠ **This unit must land before, or with, unit 2** — not after. Unit 2 deletes
+   the field every current consumer reads, and `effective_config` is what they
+   read instead. The plan's original 2→5 order left a window with no resolver,
+   which the review caught before it was built.
 6. Validation across stages: a per-stage finding carries the stage in `where`; a
    finding about the *sequence* (a ladder that loosens) carries **no** stage
    label, because it is not a fact about a member of it.
@@ -560,8 +578,32 @@ and the findings contract (facts in, findings out; `where` is the stable id).
    over the resolved pair**, so comparing `overrides` alone is the wrong test and
    would flag the legitimate case.
 
-**Subtracts:** the `dataclasses.replace` block in `render_siesta_stage_fdfs`
-(the four-value pseudo-override); the duplicated homes of the relaxation fields.
+**Subtracts — and this moved here from P5, because deleting the field forces
+it.** `SiestaConfig.stages` is what mechanisms **1–5 all write**, so they cannot
+outlive it by four phases the way the plan used to schedule:
+
+| Gone in P2 | Why it cannot wait for P5 |
+|---|---|
+| `--stage N` (the flag; **the presets stay** — the tier values are real science, and become the default *selection*) | `apply_siesta_stage` writes `cfg.stages` |
+| `--stage-strategy` | `cli.py:795` assigns `cfg.stages` |
+| `--stages-json` | `cli.py:788` assigns `cfg.stages` |
+| `--stage-resources` | its only consumer is the ladder path these feed |
+| `SiestaStageSpec` + `cfg.stages` (mechanism 5) | the field itself |
+| `_stagespec_to_field_schemas` | it exists only to publish that class's fields as columns |
+| the `dataclasses.replace` block in `render_siesta_stage_fdfs` | replaced by `effective_config` |
+
+**The staged `/api/build` path goes with them** — `coerce_to_field_type`
+(`_shared.py:1071`) turns a wire `stages` list into `SiestaStageSpec` objects and
+`build.py:234` mirrors the validator. Both are removed rather than adapted; the
+browser regains a staged path at P10, writing a description instead
+(see *What this phase costs the browser* below).
+
+> **This was a finding, not a plan change made for its own sake.** The plan
+> scheduled these five subtractions at P5 while P2 deleted the field underneath
+> them. Found by the review on 2026-08-07, verified against `cli.py:788,795` and
+> `_shared.py:1071` rather than assumed. **P5 narrows accordingly** — it keeps
+> the flat runner, `build_siesta_stage_bundle` and the shape decision, which is
+> what *one shape in, one shape out* was always about.
 
 **Milestone M2.** `{mesh_cutoff: 300}` on the tight stage renders a deck
 carrying 300 while the shared config still says 150. The object validated **is**
@@ -575,6 +617,22 @@ starts clean.
 **This milestone is the gate the whole design named**: the backend can render a
 stage that overrides a parameter the stage type never carried. Nothing on a
 surface may be drawn before it.
+
+### What this phase costs the browser, said out loud
+
+Two capabilities leave the tab at P2, and neither is an accident:
+
+- **The stage table goes**, because the table *was* the fault — it published a
+  Python class's field list as the set of things a user may vary
+  (`stages.md § 1.2`). It returns at **P10/P11**, fed by the user's selection
+  instead. **Between P2 and P10 a staged calculation is CLI-only.** That is eight
+  phases, and it is the price of not rebuilding the surface twice.
+- **`on_nonconvergence` stops being a per-stage column the browser can set.**
+  It is not a field of the shared schema (§ 3: its whole effect is the scheduler
+  edge), so it is not in `task.json` and no description can carry it. It is set
+  where the JobSet is produced — the terminal. That follows from *the browser
+  describes and observes, the terminal acts*, but until this note nothing said
+  the capability had moved, and it is a control a user has today.
 
 **Reviews:** 1 · 2 · 3 · **4** (do the tier values keep their justification when
 they become shared-config defaults?).
@@ -713,16 +771,23 @@ bootstrap, not a program**).
 4. The produce is transactional: built elsewhere, moved into place only when
    every deck, wrapper and description succeeded.
 
-**Subtracts — the big one.** Ten mechanisms become the agreed set, per § 8
-item 2a: `--stage N` (the flag goes, **the presets stay** as the defaults a new
-stage is created with — the tier values are real science); `--stage-strategy`;
-`--stages-json`; `--stage-resources`; the flat runner. PySCF's `StageSpec`
-**stays as it is** — its ladder runs inside one process, so it is genuinely a
-different shape; it should read the same description, not the same runner. The
-`stage-table` field kind (mechanism 10) **also stays and is not P5's business**:
-it is a widget, not a way of describing a calculation, and P11 asks the only
-question about it that matters — whether it can be fed a `task.json` instead of a
-schema default without being rewritten.
+**Subtracts — narrowed 2026-08-07, and the reason is worth keeping.** This
+used to claim all ten mechanisms. It cannot: **mechanisms 1–5 all write
+`SiestaConfig.stages`, and P2 deletes that field**, so they die there or the tree
+does not import. What is genuinely *this* phase's is what survives P2 and is
+about the **shape**:
+
+| Gone here | Why it is P5's and not P2's |
+|---|---|
+| the flat runner (`render_siesta_stages_runner`, mechanism 6's second half) | it is a *producer* decision — the argument for deleting it is that giving it activation, ranks, a monitor and a log makes it the wrapper |
+| `build_siesta_stage_bundle`'s **both-shapes** behaviour | it renders flat decks *and* a hierarchical JobSet in one call, so `shape` never chooses; that is exactly *one shape in, one shape out* |
+
+PySCF's `StageSpec` **stays as it is** — its ladder runs inside one process, so
+it is genuinely a different shape; it should read the same description, not the
+same runner. The `stage-table` field kind (mechanism 10) **also stays**, now
+serving PySCF only, and P11 asks the one question about it that matters —
+whether it can be fed a `task.json` instead of a schema default without being
+rewritten.
 
 **Milestone M5.** A bundle never contains both a flat runner and a
 `job-set.json`. A produced folder can be told apart **by looking at it** rather
@@ -1066,10 +1131,10 @@ flowchart TB
 |---|---|---|
 | M0 | everything after it is measurable | — (installs all four) |
 | M1 | M2, and the second surface's byte comparison | — |
-| **M2** | **all UI work**, M4, M5 | — |
+| **M2** | **all UI work**, M4, M5 | **1** — one vocabulary |
 | M3 | continuing at all | — |
 | M4 | the Results tab seeing a staged run | **2** — the name survives |
-| M5 | M6, M7 | **1** and **3** — one vocabulary, everything through the wrapper |
+| M5 | M6, M7 | **3** — everything through the wrapper. (**Guard 1** moved to M2, which is where the field they all write is deleted) |
 | M6 | M7, and a measurement that lasts | — |
 | M7 | M8 | **4** — nothing chains |
 | M8 | trusting the history | — |
@@ -1094,12 +1159,12 @@ are that command's output on **2026-08-07**, kept so a later review can diff.
 
 | Measure | 2026-08-07 | Target | Phase |
 |---|--:|--:|---|
-| ways to say "stage" | 10 | the agreed set | P5 |
+| ways to say "stage" | 10 → **11 after P1** | the agreed set | **P2** (was P5 — see P2's *Subtracts*) |
 | emitted names keyed on a position | 2 | 0 | P4 |
 | generated scripts invoking an engine directly | 1 | 0 | P5 |
 | producers that chain stages | 2 | 0 | P7 |
 | checkpoint invariants with an assertion | 15 / 22 | 22 / 22 | P8 |
-| readers of a stage description | 2 formats | 1 | P5 |
+| readers of a stage description | 2 formats | 1 | **P2** |
 
 > **Row 2 replaced *"filename conventions for a stage: 3 → 1"*, and the two say
 > the same thing from opposite ends.** § 8b counted **conventions** and found

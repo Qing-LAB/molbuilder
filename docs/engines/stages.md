@@ -151,7 +151,11 @@ Question 2 deliberately does **not** ask where the field ends up. A promoted
 field may become a deck line, a wrapper setting, or a scheduler request; sorting
 fields by destination is what produces stage types that grow without limit.
 
-Worked against the fields the shipped `SiestaStageSpec` carries:
+Worked against the fields the shipped `SiestaStageSpec` carries — **the class
+is being deleted (§ 1.1), and the exercise is why**: sorting its eight fields by
+these two questions leaves exactly two on the stage, which is the same answer as
+*a stage is not a property of a calculation*. The table is the derivation, not a
+description of something that will still exist.
 
 | Field | Survives without a scheduler? | Can a single run mean it? | Lands |
 |---|:--:|:--:|---|
@@ -371,13 +375,39 @@ is not a promise that somebody writes migrations — it is *"refuses with a clea
 message rather than mis-parsing"*, which is the behaviour this file wants. The
 artifact registry gains its row when the reader lands.
 
-### 6.2 `varies`, and why it cannot be inferred
+### 6.2 `varies` declares the columns; `overrides` fills the cells it chooses to
 
-`varies` is the set of fields the user chose to tune. It is intent, and no
-artefact downstream records it: a mesh cutoff that happens to be equal in every
-stage is indistinguishable from one that was never promoted. Every stage's
-`overrides` holds exactly the keys in `varies` — no more, so a demoted parameter
-cannot leave a value hiding in a stage nobody can see.
+`varies` is the set of fields the user chose to tune — the **columns** of the
+table (`web/task-setup-plan.md § 6`). It is intent, and no artefact downstream
+records it: a mesh cutoff that happens to be equal in every stage is
+indistinguishable, in the decks, from one that was never promoted.
+
+**A stage's `overrides` is a subset of `varies`, never a superset.**
+
+- **No key outside `varies`.** A field nobody promoted must not carry a per-stage
+  value, or a demoted parameter leaves a value hiding in a stage nobody can see.
+- **A key may be absent**, and absent means **"this stage uses `base`'s value"**.
+  That is a real state a user asks for: a column exists because *some* stage
+  varies it, and the stages that do not are simply at the shared value.
+
+> **Corrected 2026-08-07.** This section used to require *exactly* the keys in
+> `varies`, and that had two faults. It made `varies` **redundant** — with
+> equality, `varies` is just the key set of any stage's overrides, derivable from
+> the file, so the sentence above defending it as un-inferable was arguing about
+> *decks* while stating a rule about *this file*. And it made the table's own
+> design unbuildable: § 6 of the tab plan draws **a cell equal to `base` quietly**
+> so that progressive tightening reads as a shape, which requires a way to *be* at
+> base — and equality forbade it, forcing every cell to be filled with a copy.
+>
+> The subset rule fixes both. `varies` becomes load-bearing rather than a
+> duplicate: it is the one place the column set is stated, and it cannot be
+> recovered from the cells once a stage is allowed to leave one empty.
+
+**This is also what makes `base` complete rather than half-dead.** `base` carries
+a value for **every** schema field, including the varied ones — and those entries
+are not spare copies waiting to disagree with something. They are what a stage
+resolves to when it does not override the field. Remove them and a stage that
+omits a varied key would have nothing to fall back on.
 
 ### 6.3 `structure` is a reference plus a witness, never a copy
 
@@ -456,6 +486,22 @@ In order, and all of it before anything is written:
 written against a different schema*; it cannot say which fields moved. The
 per-field rows do that work.
 
+> **And it needs a writer, not only a reader** (noted 2026-08-07). Nothing in the
+> tree computes a schema fingerprint today, so a check with no producer either
+> never fires or always complains. **Whatever serialises `base` computes it**, in
+> the same step and from the same schema — they are one act, since `base` is
+> exactly "one value per field of that schema". A description whose
+> `schema_fingerprint` is absent is read without the warning rather than refused:
+> the row above is the only non-refusal in the preflight, and it stays that way.
+>
+> **The browser cannot compute it**, which decides where it comes from: the
+> fingerprint is over a *Python* dataclass, and the tab has only the schema JSON.
+> So **the server sends it with the schema** (`GET /api/build/schema/<engine>`)
+> and the browser echoes it back into the description unchanged. That keeps one
+> producer for both surfaces — the CLI computes it directly, the browser is
+> handed the same value — rather than a second implementation in JavaScript that
+> would have to agree byte-for-byte with the first.
+
 **Why two of those rows are about names.** A stage name becomes a filename
 (§ 2), so a name outside the set or repeated between stages produces two decks
 that collide — the second silently overwriting the first, in a folder whose whole
@@ -520,6 +566,16 @@ they never asked for, which `project-layout.md § 8` had already rejected. A
 *surface* may propose a value (and should, so nobody faces an empty choice), but
 the file itself carries what was chosen. That is the same rule as `varies`
 (§ 6.2): intent is recorded, never reconstructed.
+
+**Not every engine can offer both, and that is a refusal rather than an
+exemption** (2026-08-07). `shape` describes how a calculation's files are kept
+apart on disk, and that question is meaningful for every engine — but an engine
+whose ladder runs **inside one process** writes one directory and one log, so
+**`flat` is the only shape it can honour**. PySCF is that case (§ 1). Its
+descriptions still carry the key, still say `flat`, and a PySCF description
+asking for `hierarchical` is **refused naming the engine**, not quietly
+downgraded. The alternative — making the field optional for some engines — would
+put a hole in the one key `prep` is guaranteed to be able to read.
 
 **It is fixed once the calculation has produced.** The shape decides where every
 deck, output and warm file lives, so changing it after a stage has run orphans

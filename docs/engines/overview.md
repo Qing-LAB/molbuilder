@@ -172,6 +172,14 @@ same cross-engine shape (`config/siesta.py::SiestaStageSpec`,
 `config/pyscf.py::StageSpec`): a `name`, an `enabled` flag, engine-specific
 convergence knobs, and a shared **non-convergence policy**.
 
+> **The two halves are separating** (2026-08-07). A stage is not a property of a
+> calculation, so an engine config carries no stage list: `SiestaStageSpec` and
+> `SiestaConfig.stages` are **removed**, and the SIESTA ladder moves to
+> `task.json` ([`engines/stages.md`](?doc=engines/stages.md) § 1.1). **PySCF
+> keeps its `StageSpec`** — its ladder runs inside one process, so the list is
+> also engine behaviour there. So this section describes a symmetry that is
+> ending on purpose, and the parity tests it motivated go with the SIESTA half.
+
 - **The tier *values*** (algorithm, steps, force / `gmax`, per stage) are owned by
   **[`tuning.md`](?doc=engines/tuning.md) § 4** — the single value table both emitters
   and this contract defer to.

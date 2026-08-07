@@ -24,12 +24,14 @@ which already has the schema in hand:
 
   here    the schema string's major · ``shape`` present and legal · stage names
           in ``[A-Za-z0-9_]+`` and unique case-insensitively · no ``overrides``
-          key naming a stage field · ``overrides`` keys equal to ``varies`` ·
+          key naming a stage field · ``overrides`` a SUBSET of ``varies`` ·
           unknown keys refused by name
   P2      the engine has a generator · the schema fingerprint matches · every
           named field exists in the schema · every value is inside its bounds ·
-          and § 6.6a's warning for two stages that RESOLVE identically, since
-          resolving is P2's verb
+          ``shape: "hierarchical"`` on an engine whose ladder runs in ONE
+          process (§ 6.7 — PySCF; refused naming the engine) · and § 6.6a's
+          warning for two stages that RESOLVE identically, since resolving is
+          P2's verb
 
 WHY THE MESSAGES NAME THINGS.  A description is JSON sitting beside the decks,
 and as of 2026-08-07 editing it by hand is **supported** (the plan's decision 3).
@@ -306,19 +308,20 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
                     f"exactly {', '.join(STAGE_FIELDS)}; an override may not "
                     "redefine one (engines/stages.md 2)", where=where)
 
-    # § 6.2 -- exactly the keys in `varies`, no more and no fewer.  "No more"
-    # is the load-bearing half: a demoted parameter must not leave a value
-    # hiding in a stage nobody can see.
+    # § 6.2 -- a SUBSET of `varies`, never a superset.
+    #
+    # No key outside `varies`: a demoted parameter must not leave a value
+    # hiding in a stage nobody can see.  But a varied key may be ABSENT, and
+    # absent means "this stage uses base's value" -- a real state, and the one
+    # the table draws as a quiet cell.  Requiring equality (as this did until
+    # 2026-08-07) both made `varies` redundant -- derivable as the key set of
+    # any stage -- and forced every cell to be filled with a copy of base.
     extra = sorted(set(overrides) - set(varies))
     if extra:
         _refuse(f"override(s) {', '.join(repr(k) for k in extra)} not listed "
-                "in 'varies'. Every stage's overrides holds exactly the varied "
-                "keys, so a demoted parameter cannot leave a value hiding "
+                "in 'varies'. A stage may only override a field the user "
+                "promoted, or a demoted parameter leaves a value hiding "
                 "(engines/stages.md 6.2)", where=where)
-    missing = sorted(set(varies) - set(overrides))
-    if missing:
-        _refuse(f"missing override(s) {', '.join(repr(k) for k in missing)} "
-                "listed in 'varies'", where=where)
 
     return Stage(name=name, enabled=bool(obj.get("enabled", True)),
                  overrides=overrides)
