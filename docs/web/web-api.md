@@ -11,10 +11,11 @@ the **shared contract** those routes obey and the one **complete catalogue**.
 
 The molbuilder web app is a single server process that serves the tab pages and
 a set of `/api/*` JSON routes the browser modules call. This doc has three
-jobs: the **conventions** every route obeys (§ 1–2), the **complete route
-catalogue** (§ 3, cross-linking each route's owner doc), and the **full request
-/ response shapes** for the routes that have no module-doc home (§ 4). It closes
-with a worked round-trip (§ 5) and a list of removed routes (§ 6).
+jobs: the **conventions** every route obeys (§ 1) and the **security posture**
+they are served under (§ 2), the **complete route catalogue** (§ 3–4,
+cross-linking each route's owner doc), and the **full request / response shapes**
+for the routes that have no module-doc home (§ 5). It closes with a worked
+round-trip (§ 6) and a list of removed routes (§ 7).
 
 ## 1. The response envelope
 
@@ -237,7 +238,7 @@ cases the current designs need, and the answer for each is part of the contract:
 |---|---|
 | **a new kind of per-atom fact** | added to the **structure**, in the one place its codec lives (`to_dict` + the two metadata methods) — and it is then on the wire, in the sidecar and through every edit, with no door touched. What the envelope does *not* do is carry a field the structure does not model: `apply_metadata_dict` checks against `METADATA_FIELDS` and **REFUSES** an unrecognised key, naming it. *(This said "dropped" until 2026-08-04, and the code said refuse — changed for #41, where a key that was dropped rather than refused is how frozen atoms vanished from a real run. A fact worth surviving a round trip is a fact worth the structure knowing about; a fact the structure does not know about is worth saying so about, not swallowing.)* |
 | **part of a structure** — a partial translate or rotate, where the edit routes act on the whole structure they are given | an envelope may describe a **subset**, with `source_index` giving each atom's number in the structure it came from. The receiver answers about the subset; the caller maps the coordinates back. Without this the caller sends a bare document and re-checks element-by-element that nothing was reordered, which is what the previous implementation had to do |
-| **one frame, or many** | `positions` is **one frame** — the one the user is looking at (§ 5.1). A trajectory is not a wire concern: its frames come from a run file the tab owns, and what leaves a viewer is the frame that was chosen. A door that ever needs many is a new door, not a wider envelope |
+| **one frame, or many** | `positions` is **one frame** — the one the user is looking at (§ 6). A trajectory is not a wire concern: its frames come from a run file the tab owns, and what leaves a viewer is the frame that was chosen. A door that ever needs many is a new door, not a wider envelope |
 | **where a structure lives** | **not in the envelope.** A path is an argument to the call — `save` takes one, `load` takes one — because the envelope describes a *structure*, never a location. A structure that carries its own path is one that can be saved to the wrong place by being copied |
 | **what the server wants to say** | `notices` beside `ok` — `{level, message, where, about}` rows (`where` is the stable finding id; `about` is the subject that decides where it is shown) the door produces about the structure it is answering with: a box that no longer contains its atoms, a corner that had to be worked out because none was stored. Nothing is corrected, so a notice never reports a repair. They belong to the *call*, not to the structure, so they never ride inside it |
 
@@ -353,18 +354,17 @@ Set on every response by an `after_request` hook (`app.py`):
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
-## 2. Endpoint index — all 79 routes
+## 3. Endpoint index — all 80 routes
 
-The application currently has 78 non-static Flask routes. Section 3 groups the
-full catalogue by owner and purpose; update this count whenever a route is added
-or removed. (The count — pinned by `test_http_status_contract.py` — is taken
+Section 4 groups the full catalogue by owner and purpose; update this count
+whenever a route is added or removed. (The count — pinned by `test_http_status_contract.py` — is taken
 with the rate limiter disabled, the test-config default; a production config
 with rate limiting on registers a few additional admin/auth routes.)
 
-## 3. The route catalogue
+## 4. The route catalogue
 
 Every route, grouped by domain. Routes with a module-doc home link to it; the
-rest are documented in full in § 4.
+rest are documented in full in § 5.
 
 **Structure + edits** — return the canonical structure envelope (§ 1);
 owned by [`molview.md`](?doc=web/molview.md):
@@ -408,18 +408,19 @@ tabs (their docs, this wave):
 | POST `/api/spectra/{render,load}` | Spectrum plot data |
 | POST `/api/transport/render` | Generate transport script/data |
 
-**No module-doc home — documented in full in § 4:** the app-level routes
+**No module-doc home — documented in full in § 5:** the app-level routes
 (`/api/health`, `/api/backends`, the tab pages), the build env/script routes
 (`/api/build/{fdf,pyscf,preflight}`, `/api/structure/{analyze,periodicity}`,
 `/api/run/install-wrapper`, `/api/siesta/install-pseudos`), `/api/checkpoint/*`,
 `/api/system/load`, `/api/docs/*`, `/api/admin/rate_limit/*`, and the optional
 auth routes.
 
-## 4. Full reference — the un-owned routes
+## 5. Full reference — the un-owned routes
 
 **App-level** — `GET /` (redirect to the landing tab); `GET /molbuilder`,
-`/structure-optimization`, `/transport-calculation`, `/documents`,
-`/molview-demo` (tab pages); `GET /api/health` → `{ ok, version }`;
+`/structure-optimization`, `/spectrum-calculation`, `/transport-calculation`,
+`/results`, `/documents`, `/molview-demo` (tab pages);
+`GET /api/health` → `{ ok, version }`;
 `GET /api/backends` → `{ ok, available, auto_name }`;
 `GET /vendor/plotly.min.js` (the Plotly bundle, 404 if absent).
 
@@ -475,7 +476,7 @@ top-level `admin.emails` list, and **absent or empty means anyone who can sign i
 `/login/<provider>`, `/oauth-callback/<provider>`, `/cas-callback/<provider>`,
 `/logout`. Deployment concern; see the auth/deployment doc.
 
-## 5. How it fits together — and one round-trip
+## 6. How it fits together — and one round-trip
 
 ```mermaid
 flowchart LR
@@ -509,7 +510,7 @@ missing file → 404 `no such file: <path>`, a parse/sidecar fault → 400. (The
 same route also accepts a multipart `file=` upload or a raw
 `{ text, format, filename?, sidecar? }` body.)
 
-## 6. Removed routes
+## 7. Removed routes
 
 So a reader of older code or bookmarked URLs isn't lost, these routes are
 **gone**:

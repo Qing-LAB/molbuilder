@@ -306,10 +306,17 @@ class TestKnownServerFaultSitesAreHTTP500:
 
 
 class TestRouteCountDocMatchesReality:
-    """The ``## 2. Endpoint index — all NN routes`` header in
+    """The ``## 3. Endpoint index — all NN routes`` header in
     web-api.md must reflect what Flask's URL map actually has —
     otherwise the doc silently goes stale every time a route is
     added or removed.
+
+    2026-08-07: the heading moved from ``## 2.`` to ``## 3.``.  The doc had
+    TWO sections numbered 2 — "Security posture" was inserted without
+    shifting anything below it — and three disagreeing route counts: the
+    heading said 79, the paragraph under it said 78, and the app had 80.
+    The regex now anchors on the heading text rather than its number, so a
+    future renumber does not break the test that catches the count.
     """
 
     def test_route_count_in_section_2_header_matches_app(self):
@@ -324,11 +331,11 @@ class TestRouteCountDocMatchesReality:
         )
         text = WEB_API_MD.read_text()
         m = re.search(
-            r"## 2\.\s+Endpoint index\s+—\s+all\s+(\d+)\s+routes",
+            r"##\s+\d+\.\s+Endpoint index\s+—\s+all\s+(\d+)\s+routes",
             text,
         )
         assert m is not None, (
-            "could not locate '## 2. Endpoint index — all NN routes' header "
+            "could not locate the 'Endpoint index — all NN routes' header "
             "in docs/web/web-api.md.  Did the heading rename?  Update "
             "this test's regex to match."
         )
@@ -336,6 +343,6 @@ class TestRouteCountDocMatchesReality:
         assert doc_count == actual, (
             f"docs/web/web-api.md says {doc_count} routes; "
             f"Flask's URL map has {actual}.  Update the heading to "
-            f"'## 2. Endpoint index — all {actual} routes' and verify "
+            f"'## 3. Endpoint index — all {actual} routes' and verify "
             f"any new routes are documented in the section bodies."
         )
