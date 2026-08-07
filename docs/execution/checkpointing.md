@@ -131,11 +131,10 @@ description, while the bytes are already stored once. Archiving a link as a
 second copy would duplicate content *and* restore a regular file where a link
 belongs.
 
-> **This paragraph used to be about carried restart files**, which arrived as
-> symlinks into the producing stage while stages were chained. They no longer
-> are: whatever a run continues from is **copied in as a real file** before it
-> starts (`project-layout.md § 1.6`), so it is an ordinary archived binary like
-> any other. The rule is unchanged; only its example moved.
+> **A file a stage continues from is not a link.** It is copied in as a real
+> file before the run starts (`project-layout.md § 1.6`), so it is an ordinary
+> archived binary like any other — the link rule above is about the deck and the
+> shared package, which are the links a checkpointed tree actually contains.
 
 | | |
 |---|---|
@@ -521,9 +520,9 @@ refused even in a bundle root, where nested working dirs are otherwise fine.
 *HOLDS as of 2026-08-06 — this was broken, and fixing it is what prompted the
 rest of this section.*
 
-**The most serious finding in this document, and the opposite of what an earlier
-draft of it said.** I had written that a per-stage binary "lands in git as a
-blob". It does not. It lands nowhere.
+**The failure mode is worse than the obvious one, and the obvious one is what
+most readers will assume.** A big binary that the archive misses does not "land
+in git as a blob" — it lands **nowhere**.
 
 The two sides of S1's classification resolve depth **differently**:
 
@@ -669,7 +668,7 @@ One line each, for reading over a diff:
 | **L5** | a checkpoint costs what changed, not what exists | **not held today** |
 | **L6** | a history can be verified without being restored | **not held today** |
 | **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
-| **L8** | an archived attempt never differs afterwards | needs the layout — **hierarchical only** (§ 6.2 there) |
+| **L8** | an archived attempt never differs afterwards | needs the layout — **hierarchical only** (`project-layout.md § 6.2`) |
 
 **Thirteen of the twenty-two can be asserted against the code as it stands.**
 Three (**L1**, **L2**, **L7**) were broken and are now fixed, with tests. Two

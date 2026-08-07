@@ -285,14 +285,14 @@ of it is in place before the engine sees the directory:
 **A flat run directory is untouched.** It *is* a run (§ 1.4), so `bash job.run.sh`
 in it behaves exactly as it does today.
 
-> ⚠ **A first attempt at this was built in the wrong place** (2026-08-06,
-> `runwrap.py`'s `attempt_dirs` prologue): ~50 lines of shell that scanned for
-> run directories, created one, symlinked the deck and package in, and copied
-> warm files. That is `jobset/materialize.py` rewritten in bash, one level down,
-> inside the one layer kept free of filesystem logic
-> (`running-a-job.md § 2.2a`). It is to be retired, not extended — including the
-> guard it needed against being run from inside an attempt, which stops being a
-> hazard once the caller decides the directory.
+> ⚠ **One violation is live.** `runwrap.py`'s `attempt_dirs` prologue creates
+> and arranges an attempt in shell — scanning for run directories, making one,
+> symlinking the deck and package in, copying warm files. That is
+> `jobset/materialize.py`'s job, one level down, in the layer
+> `running-a-job.md § 2.2a` keeps free of filesystem logic. It is to be retired
+> rather than extended, together with the guard it needed against being run from
+> inside an attempt — which stops being a hazard once the caller decides the
+> directory (invariant 6a).
 
 ### 1.6 Stages do not chain, and what that simplifies
 

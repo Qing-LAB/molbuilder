@@ -51,7 +51,7 @@ reads that document, not this one.**
 | the run directory, filenames, the stage suffix, reserved script blocks, warm files, the artifact registry | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) | the on-disk shapes — **unchanged by this work** |
 | the project tree: its four levels, who writes at each, how stages and benchmarks compose, where the history sits | [`execution/project-layout.md`](?doc=execution/project-layout.md) | the whole picture the rest of this plan sits inside |
 | what a checkpoint history must always hold: the separations, the immutabilities, the atomicity rules | [`execution/checkpointing.md`](?doc=execution/checkpointing.md) | the invariants to review backend behaviour against |
-| environments, activation, wrappers, `molbuilder.json`, watching a run, checkpoints | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) | how a run actually happens. The environment half is **unchanged by this work** (§ 4); § 2.2a there is new — **what a wrapper may do**, and why everything else is Python |
+| environments, activation, wrappers, `molbuilder.json`, watching a run, checkpoints | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) | how a run actually happens. The environment half is **unchanged by this work** (§ 4); `running-a-job.md § 2.2a` is new — **what a wrapper may do**, and why everything else is Python |
 | what *values* a stage should carry | [`engines/tuning.md`](?doc=engines/tuning.md) | the science of the dial |
 | findings: their shape, their one renderer, what blocks | [`science/validation.md`](?doc=science/validation.md) | delivery — a stage label travels beside `where`, never inside it |
 | the dependency chain, carry-forward, scheduler resources | [`execution/job-system.md`](?doc=execution/job-system.md) | the optional export (§ 7) |
@@ -365,13 +365,13 @@ export threads edges through a tree this framework already built.
 
 Two facts to carry forward when it is built:
 
-- **There is one directory shape, not two.** Earlier drafts read
-  `job-contracts.md § 2.5`'s flat `<structure>/` and `job-system.md § 5.2`'s
-  `point-<name>/` tree as rival layouts needing reconciliation. They are the same
-  layout at two levels: `<structure>/` is a directory **of** run directories, and
-  each per-stage subdirectory is the flat one-job-per-directory shape
-  `job-contracts.md § 2.1` describes. This framework and the export produce the
-  same tree; the export adds edges to it.
+- **The hierarchy is the flat shape nested, not a rival to it.**
+  `job-contracts.md § 2.5`'s `<structure>/` and `job-system.md § 5.2`'s
+  `point-<name>/` tree are the same layout at two levels: each leaf is the
+  one-job-per-directory shape `job-contracts.md § 2.1` describes, and the tree is
+  a directory *of* those. `project-layout.md § 1` makes the choice between them
+  explicit; nothing about the export changes which one you are in. This framework
+  and the export produce the same tree — the export adds edges to it.
 - **`JobSet.name` should be the id**, and the submitter's `-J` should carry it.
   Today a ladder's scheduler name is the bare stage name
   (`job-contracts.md § 6.3`), so three concurrent ladders show
@@ -613,7 +613,7 @@ appear together, which is exactly where a person should be looking.
     `submit` resolves **one** attempt for the stage it is starting: next unused
     number, create, link the deck and package, copy what was named, launch there.
     **Gap 6 rides along** — `materialize.job_dir_name` returns `point-<name>` for
-    every job and must branch on `JobSet.kind` (§ 4.4 there).
+    every job and must branch on `JobSet.kind` (`project-layout.md § 4.4`).
     *Done when:* setting up the tight stage against a named coarse run puts real
     files in its attempt, not links; the stage directories are
     `01_<name>`/`02_<name>` while a benchmark's points still read `point-*`; no
@@ -713,31 +713,19 @@ what a user needs.
    be. If yes, the reader owes the same errors to a person as to the browser — an
    argument for the refusal rule being loud rather than tolerant.
 8. ~~**The trajectory log's stage naming does not match the deck's**~~ —
-   **answered** by `execution/project-layout.md § 4.1`: a stage carries a `seq`
-   assigned once and never reassigned, and that *is* the `N` in
-   `<label>-stage<N>`. The deck keeps the name, the log and the directory carry
-   the number, and because the number never moves, an output written under it
-   stays attached to the stage that produced it. What remains is the code change
-   in `job-contracts.md § 2.3`, not a decision.
+   **answered.** A stage carries a `seq` assigned once and never reassigned
+   (`project-layout.md § 4.1`), and that *is* the `N` in `<label>-stage<N>`. The
+   deck keeps the name, the log and the directory carry the number, and because
+   the number never moves, an output written under it stays attached to the stage
+   that produced it.
 
-   **Reopened in part (2026-08-06), and smaller than before.** The deck is now
-   rendered *into its own stage directory* rather than beside its siblings
-   (`project-layout.md § 2.2`), so the directory already says which stage it is
-   and the deck can simply be `<id>.fdf` — no suffix, and the per-stage
-   trajectory separation comes free instead of being carried by filenames. That
-   is `project-layout.md § 8` question 3, and it is to **verify against the run
-   decoder**, which reads those names, rather than to decide.
-
-   *(The original wording, for the record:)* **the two conventions do not agree.** A stage deck is `<label>_<stagename>`, an underscore and a *name*;
-   the molwatch log is `<label>-stage<N>`, a hyphen and a *number*, and the run
-   decoder's stage regex keys on the hyphen form (`job-contracts.md § 2.3`).
-   User-named stages cannot be expressed in a number. **The consequence is not
-   cosmetic:** `job-contracts.md § 2.3` merges a directory's logs into one
-   trajectory with a boundary per stage — the exact reading a folder of stages
-   wants — and that only works while each deck writes its own. Two decks resolving
-   to one basename interleave into a single file and the boundary is gone. So this
-   is decided before decks are generated, not after, and `job-contracts.md § 2.3`
-   is where.
+   **What remains is smaller, and is verification rather than a decision.** The
+   deck is now rendered into its own stage directory (`project-layout.md § 2.2`),
+   so the directory already says which stage it is and the deck can simply be
+   `<id>.fdf` — no suffix, and the per-stage trajectory separation comes free
+   instead of being carried by filenames. The run decoder's stage regex reads
+   those names (`job-contracts.md § 2.3`), so that is to check against the
+   decoder. `project-layout.md § 8` q3.
 9. **May two enabled stages be identical?** Nothing forbids it, and the answer is
    probably "warn": two decks differing in nothing but their name produce the
    same calculation twice into the same warm state.
