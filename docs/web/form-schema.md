@@ -16,6 +16,26 @@ hand**. They are **generated from the Python config object**. This module,
 `form-schema`, is what does the generating: it fetches a form's shape from the
 server, draws the form, and reads the filled-in values back.
 
+> **Where this generator stops, and why it matters** (2026-08-07). It answers
+> exactly one question: *what settings does this engine have, and how is each one
+> drawn?* It does **not** answer *which of those settings the user wants to vary
+> across stages* — that is the user's choice, made in the UI and recorded in
+> `task.json` (`engines/stages.md § 1.2`).
+>
+> The two got fused. `stages` was made a field of `SiestaConfig`, so this
+> generator walked into it and emitted one table column per field of
+> `SiestaStageSpec` — answering the *selection* question with the *catalogue*
+> machinery, and thereby fixing in a Python class the set of things a user is
+> allowed to vary. That is the whole reason a stage can vary four values today.
+>
+> **An engine config carries no stage list**, so the generator never meets a
+> stage and the `stage-table` field kind is not reachable from an engine schema.
+> The per-stage grid is the shared Task Setup tab's
+> ([`task-setup-plan.md`](?doc=web/task-setup-plan.md) § 6), fed by two inputs
+> from two sources: the **catalogue** from here, the **selection** from
+> `task.json`. PySCF still has a `stages` field and is a deliberate exception
+> until the SIESTA path works.
+
 ## 1. The one idea: the config is the source of truth
 
 There is a Python dataclass for each engine's settings — `SiestaConfig`,
@@ -89,8 +109,7 @@ warning), so an un-mapped field never silently disappears.
    `formSchema.fetchSchema("siesta")`.
 2. The server walks `SiestaConfig`, turns each sectioned field into a small
    description (mesh cutoff → a number input; the k-grid `Tuple[int,int,int]` →
-   three linked inputs; the relaxation stages `List[SiestaStageSpec]` → a
-   stage table), and returns them grouped by section.
+   three linked inputs), and returns them grouped by section.
 3. `renderForm` draws exactly those controls — so the form shows the SIESTA
    options **because `SiestaConfig` has those fields**, not because someone
    wrote a SIESTA form.

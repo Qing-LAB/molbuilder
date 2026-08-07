@@ -568,7 +568,7 @@ appear together, which is exactly where a person should be looking.
    | `--stage-strategy` | **retire.** A named set of enable flags is three lines of a description |
    | `--stages-json` | **becomes** `task.json` (item 6) |
    | `--stage-resources` | **folds into** `task.json` |
-   | `SiestaStageSpec` | **shrinks** to name/enabled/overrides (item 2) |
+   | `SiestaStageSpec` | **deleted** (item 2, corrected 2026-08-07) — the stage list moves to `task.json`; an engine config is one parameter set |
    | flat `render_siesta_stage_fdfs` + `..._runner` | **the runner goes** (12f); the deck renderer stays, rendering from the effective config |
    | `stages_to_jobset` | **stays**, minus the inter-stage edges (12b) |
    | PySCF `StageSpec` | **stays as it is.** PySCF's ladder runs inside one process, so it is genuinely a different shape — `stages.md` already says so. It should read the same description, not the same runner |
@@ -1206,7 +1206,7 @@ not just the ones the plan already named. It changed what several items mean.*
 
 | The design says | The code has |
 |---|---|
-| A stage is **three fields** — name, enabled, `overrides` | `SiestaStageSpec` has **eight**, and **`overrides` does not exist in any form**. A stage can vary exactly four values (`relax_type`, `relax_steps`, `relax_force_tol`, `relax_max_displ`), hard-coded as a `dataclasses.replace` in `render_siesta_stage_fdfs`. There is no path by which a stage varies `mesh_cutoff` |
+| A stage is **three fields** — name, enabled, `overrides` — and lives in `task.json`, never in an engine config | `SiestaConfig` **has a `stages` field**, so the engine config carries the ladder. `SiestaStageSpec` has **eight** fields and **`overrides` does not exist in any form**. A stage can vary exactly four values (`relax_type`, `relax_steps`, `relax_force_tol`, `relax_max_displ`), hard-coded as a `dataclasses.replace` in `render_siesta_stage_fdfs`. There is no path by which a stage varies `mesh_cutoff` — **and the four are four because they are the fields somebody typed into that class**, which the web form then re-published as the columns a user may vary (`stages.md § 1.2`) |
 | `task.json` (`molbuilder/task@1`), unknown keys **refused rather than ignored** | **No such file.** But **`--stages-json` ships** — a JSON list-of-dicts of `SiestaStageSpec` fields, accepted as a literal *or a path*, and its help text says **"Unknown keys ignored"** |
 | Per-stage resources ride in the description | a **second** file, `--stage-resources`, `{stage_name: {…}}` |
 | **One reader, used by both surfaces** | no reader at all: the CLI parses `--stages-json` inline, the browser assembles `params` in JavaScript |
@@ -1227,7 +1227,7 @@ than a migration — molbuilder does not carry compatibility shims across a rena
 | 2 | `--stage-strategy` | named presets over the *enable* flags | `cli.py` |
 | 3 | `--stages-json` | the whole ladder, from a file | `cli.py` |
 | 4 | `--stage-resources` | per-stage scheduler asks, a second file | `cli.py` |
-| 5 | `cfg.stages` / `SiestaStageSpec` | the in-memory model 1–4 all feed | `config/siesta.py` |
+| 5 | `cfg.stages` / `SiestaStageSpec` | the in-memory model 1–4 all feed — **deleted, not reshaped** (`stages.md § 1.1`) | `config/siesta.py` |
 | 6 | `render_siesta_stage_fdfs` + `..._runner` | **flat** — decks + a bash loop | `siesta/input.py` |
 | 7 | `stages_to_jobset` | **hierarchical** — a ladder JobSet | `siesta/stages.py` |
 | 8 | PySCF `StageSpec` | an in-script Python loop, **one file** | `config/pyscf.py` |

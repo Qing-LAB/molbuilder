@@ -338,6 +338,17 @@ env, keep ELPA recent.
 A single CLI call can emit one `.fdf` per relaxation **stage** plus a
 `<basename>.run.sh` runner that walks the ladder — mirroring PySCF's staged-opt.
 
+> **This section describes what ships, and all of it is being replaced.**
+> `SiestaConfig.stages` and `SiestaStageSpec` are **removed**, not reshaped: a
+> stage is not a property of a calculation, so an engine config carries no stage
+> list. The list moves to `task.json` (`molbuilder/task.py`), and the four
+> relaxation values below stop being a privileged set — any field of the shared
+> schema can be varied, chosen by the user rather than fixed by a class.
+> [`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2 is the contract;
+> [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+> P2 is the order. **PySCF's ladder is deliberately untouched** — it runs inside
+> one process, so its stage list is also engine behaviour.
+
 - **Data model** `SiestaStageSpec` (`config/siesta.py:1235`): `name` (→ the
   `<basename>_<name>.fdf` suffix), `enabled`, `relax_type` ∈ {CG, Broyden, FIRE}
   (the geometry-relaxation algorithms — conjugate-gradient / quasi-Newton /

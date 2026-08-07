@@ -54,6 +54,61 @@ carries no stage marker at all. Anything that would require a downstream reader
 to understand the word "stage" in order to act correctly is outside this
 contract.
 
+### 1.1 No engine config carries a stage list
+
+*Stated 2026-08-07 (user), because the shipped code does the opposite and § 4
+only implied it.*
+
+**An engine config is one parameter set.** `SiestaConfig` describes a single
+calculation — a mesh cutoff, a basis, one relaxation tolerance. It has no
+`stages` field, and the emitter that reads it never learns the word.
+
+**The stage list lives in `task.json`, and nowhere else** (§ 6). It is not a
+field of an engine's config, because a stage is not a property of a calculation
+— it is a record of the user's intention to tune some parameters across a
+sequence of them.
+
+> **This is the sentence the shipped code contradicts.** `SiestaConfig.stages`
+> is a `List[SiestaStageSpec]`, so the engine config carries a list of stages,
+> and § 4's *"the effective config is an ordinary instance of the engine's
+> config dataclass"* cannot be true of it: resolving a stage would produce a
+> config that still contained the whole ladder. `SiestaStageSpec` is therefore
+> **removed**, not reshaped. `Task.stages` (`molbuilder/task.py`) is the model,
+> and it is engine-agnostic by construction.
+>
+> PySCF is a deliberate exception **for now**: its ladder runs inside one
+> process, so its stage list has a second life as engine behaviour. It is left
+> alone until the SIESTA path works.
+
+### 1.2 Which parameters may vary is the user's choice, not a class's
+
+**The catalogue and the selection come from different places, and fusing them
+is what limited a stage to four values.**
+
+| | Question | Who answers |
+|---|---|---|
+| the **catalogue** | *What settings exist? What type, unit, range and label does each carry?* | **the engine's config class**, through the generated form schema (`web/form-schema.md`) — it writes the deck, so it defines what is legal |
+| the **selection** | *Which of those settings vary per stage?* | **the user**, in the UI, recorded as `varies` in `task.json` (§ 6.2) |
+
+Today's four relaxation values are a **default selection** over that catalogue —
+a sensible starting point because we already know what the tab lists — and not a
+privileged class of parameter. Any field of the shared schema can be selected.
+
+**So the stage setting is a contract between the UI and `prep`, and the engine
+sits downstream of both.** The browser asks the user which parameters to vary
+and writes the answer down; `prep` reads it and resolves each stage into one
+ordinary config; the emitter renders that config and never sees a stage. Because
+the mechanism is *catalogue × selection*, it is engine-agnostic without being
+written twice: every tab already has a schema, so every tab gets this.
+
+> **What went wrong, named so it is not rebuilt.** `stages` was made a *field*
+> of `SiestaConfig`, so the form generator walked into it and answered the
+> **selection** question with the **catalogue** machinery — listing
+> `SiestaStageSpec`'s own fields as the columns a user may vary. That is why a
+> stage can vary exactly four things: they are the four somebody typed into a
+> Python class. A generator that reads an engine class to discover *what the
+> user is allowed to choose* has the arrow backwards.
+
 ---
 
 ## 2. The object

@@ -98,13 +98,21 @@ closure variables that nothing wrote down
 ([`modify-persistency-investigation.md`](?doc=web/modify-persistency-investigation.md)).
 **A tab whose truth is entirely on disk cannot have that problem.**
 
-### 3.2 Its columns come from the schema, never from a list
+### 3.2 Its columns are the user's selection; the schema only says how to draw them
 
-The table's rows are parameters. Which parameters, and what each one is called,
-what unit it carries, what values it accepts — **all of that is read from the
-generated form schema** (`form-schema.md`: the config form is built from the
-Python dataclass, and every field carries its label, help, choices and
-`workflow_group`).
+The table's rows are parameters. **Which** parameters is read from `varies` in
+the description — the user picked them. What each one is **called**, what unit it
+carries, what values it accepts, is read from the generated form schema
+(`form-schema.md`: the config form is built from the Python dataclass, and every
+field carries its label, help, choices and `workflow_group`).
+
+> **Corrected 2026-08-07 (user).** This section used to say *"which parameters …
+> all of that is read from the generated form schema"*, fusing two questions that
+> have different answers — and it is the same fusion that limited a stage to four
+> values in the shipped code (`engines/stages.md § 1.2`). The schema is the
+> **catalogue** a user chooses from and the instructions for rendering each
+> choice. It is not the choice. Had this sentence survived, the new tab would
+> have inherited the bug it was written to remove.
 
 **This is the single rule that keeps the tab general while only one producer
 exists.** Read the columns from the schema and the tab is engine-agnostic without
