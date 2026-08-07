@@ -283,11 +283,8 @@ The wrapper is **plain, readable bash**. Two properties are load-bearing:
   > There, each invocation gets its own `run-<n>/` directory, immutable once
   > written, so there is nothing for a reset to overwrite: a redo is `run-2`.
   >
-  > **`run-` becomes a reserved directory prefix there**, with exactly two kinds
-  > of member: `run-<n>` attempts, and the optional `run-latest`, a symlink
-  > naming the one that currently counts (§ 1.3 there). The scan that assigns a
-  > number takes all-digit suffixes only, so the word member can never be
-  > counted as an attempt. Anything else under `run-` is unclaimed.
+  > **`run-` becomes a reserved directory prefix there**, and its members are
+  > numbers. Nothing else lives under it.
   >
   > **The attempt directory is created by `submit`, in Python** — not by the
   > wrapper (§ 1.3 there). The wrapper is launched *inside* it and is otherwise

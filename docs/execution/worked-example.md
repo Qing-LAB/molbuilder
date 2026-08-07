@@ -212,64 +212,45 @@ flowchart TB
     L -.->|"Python links these in<br/>before the wrapper starts"| O
 ```
 
-It converges. Now the tight stage — and it must start from the geometry coarse
-reached.
+It converges. **Now you look at it** — the trajectory, the final forces, whether
+the geometry is sane — and only then set up tight.
 
-⛔ **Gap 5 — and this one is new, and mine.** It cannot. `prep` creates the
-carry as a symlink to `../<producer>/<id>.XV`, which is where a stage's output
-used to live. Since attempts got their own directories, coarse's geometry is at
-`run-0/<id>.XV` inside the stage, and **the link points at nothing.** Worse,
-*which* attempt is the good one is not knowable when `prep` runs — the runs have
-not happened yet. Coarse converged first time here, but had it needed three
-tries, the answer would be `run-2`.
+That pause is the design, not a missing feature. A stage is a long job; a chain
+that continued on its own could spend a week refining a geometry you would have
+thrown away in a minute. So **stages are not chained**: each one is set up and
+started separately, after you have seen the last (`project-layout.md § 1.3`).
 
-⛔ **Gap 6, in the same line of code.** That link also has the wrong folder name.
+Which makes the hand-off simple. When you set tight up, coarse's `.XV` is
+**already on disk** — you just looked at it — so it is **copied** into tight's
+run directory:
+
+```
+02_tight/run-0/<id>.XV      a real copy of 01_coarse/run-0/<id>.XV
+```
+
+Copied and not linked, because tight writes to that same filename and would
+otherwise overwrite coarse's result. And **you say which run** it comes from:
+continuing from `run-0` and continuing from `run-2` are different scientific
+choices.
+
+⛔ **Gap 5.** `materialize` still writes that hand-off as a symlink to
+`../<producer>/<id>.XV`, and `stages_to_jobset` still builds a chained ladder —
+`depends_on` on the previous stage, plus `.XV`/`.DM`/`.CG` carry edges. Since
+attempts moved outputs into `run-N/`, that link dangles. The fix is not a better
+link: the stage producer stops emitting a chain, and the copy happens when you
+set the stage up. (The chaining machinery itself stays — `jobset` is still the
+right tool for a benchmark sweep.)
+
+⛔ **Gap 6, in the same code.** The folder name is wrong too.
 `materialize.job_dir_name` returns `point-<name>` for every job, so today the
-stage directory is `point-coarse/`, not `01_coarse/`. The layout contract already
-specifies the fix — branch on `JobSet.kind`, so a **ladder** job becomes
-`<seq>_<name>` and a **sweep** point keeps its knobs — but it is not written yet.
-Name and depth are both wrong, in one expression.
+stage directory is `point-coarse/`, not `01_coarse/`. The layout contract
+specifies the fix — branch on `JobSet.kind` — but it is not written yet.
 
-**And the way I first tried to fix gap 5 was wrong too**, which is worth saying
-because it is the more useful lesson. I put the attempt-directory logic in the
-wrapper: fifty lines of shell that scan for run directories, create one, link the
-deck in and copy warm files. That is `jobset/materialize.py` rewritten in bash,
-one level down — a second implementation of code that already existed, in the one
-layer deliberately kept free of filesystem logic.
-
-The fix is not a cleverer link — it is a **later moment**, now specified in
-[`project-layout.md`](?doc=execution/project-layout.md) § 1.3. `submit` already
-chooses each job's working directory. If it resolves the attempt too, it knows
-**both** attempt directories before either process exists, and writes the
-consumer's carry as a concrete path:
-
-```
-02_tight/run-0/<id>.XV -> ../../01_coarse/run-0/<id>.XV
-```
-
-A real link to a real place, laid at the moment the answer became knowable —
-which prep could not do (the attempts did not exist) and the wrapper cannot do
-(it only sees its own stage).
-
-The link is still **dangling when it is laid** — under SLURM the whole chain is
-submitted at once, so coarse has not run yet. It resolves when coarse writes, and
-the wrapper's existing **localize-on-run** step replaces it with a real local copy
-before tight starts, so tight cannot write back through it into coarse's result.
-That step is bash and stays bash: it is the only moment that exists *after* the
-producer finished and *before* this engine starts, and it happens on a compute
-node where there is no Python.
-
-Three things fall out. **Numbering becomes deterministic**: a SLURM ladder is
-submitted all at once, and two jobs scanning `run-*/` whenever they happen to
-wake can give the same answer twice. **No Python is needed on the compute node** —
-which matters, because `molbuilder-siesta` has no interpreter at all. And **the
-wrapper gets smaller**: it localizes its carry, activates an environment, and
-execs an engine. Everything else is Python
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a).
-
-`run-latest` survives this as a **handle rather than a mechanism** — the Results
-tab, `jobset status` and a person typing `cd` still want to name a stage's
-current result without scanning. It just stops being what makes carry work.
+**And the way I first tried to fix gap 5 was wrong**, which is the more useful
+lesson. I put attempt-directory logic in the wrapper: fifty lines of shell that
+scan for run directories, create one, link the deck in and copy files. That is
+`jobset/materialize.py` rewritten in bash, one level down, in the one layer kept
+free of filesystem work.
 
 **If you have to re-run a stage**, you do not overwrite anything — each
 invocation gets `run-1`, then `run-2`, carrying the previous attempt's warm state
@@ -348,22 +329,25 @@ document was written.
 ### The one to fix first
 
 **Gap 5**, because it is a regression rather than a missing feature: staged runs
-carried correctly before attempt directories existed, and now they do not.
+handed geometry across correctly before attempt directories existed, and now they
+do not.
 
-The fix is the one in § 6 — `submit` resolves the attempt, so it can write a
-concrete carry link ([`project-layout.md`](?doc=execution/project-layout.md)
-§ 1.3). **Gap 6 rides along**, being the same expression. And the shell block
-that caused the regression is **retired rather than repaired**: its
-from-inside-an-attempt guard, its `$PWD` logical-vs-physical bug, and its
-`--force` refusal all stop existing once the caller decides the directory.
+The fix is the one in § 6, and it removes machinery rather than adding it: stages
+stop being chained, so the hand-off becomes a plain file copy made when you set
+the next stage up (`project-layout.md` § 1.3). **Gap 6 rides along**, being the
+same code. And the shell block that caused the regression is **retired rather
+than repaired** — its guard against being run from inside an attempt, its `$PWD`
+bug, and its `--force` refusal all stop existing once Python decides the
+directory.
 
 **The lesson is worth more than the fix.** The system was already built the right
 way — `materialize` lays out directories and links, `submit` picks the working
 directory and launches, and the wrapper activates and execs. I added a second
-layout implementation in bash without checking whether one existed. The rule is
-now written down where it can be pointed at
-([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a): **the wrapper
-activates and execs; every directory and every link is Python's.**
+layout implementation in bash without checking whether one existed, then designed
+an elaborate way to make a chained hand-off work when the answer was not to
+chain. Both rules are now written where they can be pointed at:
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a and
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.3.
 
 ### What the shape of this list says
 

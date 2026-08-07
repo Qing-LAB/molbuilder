@@ -67,12 +67,14 @@ benchmark, run, checkpoint, branch. It is where items 12b and 16–18 below came
 from: five of the seven gaps it found are **joins between parts that each work**,
 which is what a table of layers cannot show you.
 
-**One rule cuts across every item below**, and it is stated once in
-[`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a rather than repeated:
+**Two rules cut across every item below.** Stated once each, not repeated:
 **the wrapper activates an environment and execs an engine; every directory and
-every link is made by Python.** The system was already built that way —
-`materialize` lays the directories and links, `submit` picks the working
-directory and launches — and item 12a is the one place that drifted.
+every link is made by Python** ([`running-a-job.md`](?doc=execution/running-a-job.md)
+§ 2.2a) — the system was already built that way, and item 12a is where it
+drifted. And **stages do not chain** — each is set up and submitted on its own,
+after you have looked at the last one
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.3), which is § 1
+above taken literally.
 
 ---
 
@@ -118,18 +120,24 @@ flowchart TB
         C1["links to the shared<br/>+ everything coarse produced<br/><b>…XV · …DM · …ANI · …STRUCT_OUT</b>"]
       end
       subgraph T["tight/"]
-        T1["links to the shared<br/>+ <b>carried</b> …XV · …DM from coarse<br/>localized before it runs"]
+        T1["links to the shared<br/>+ …XV · …DM <b>copied in</b> from the coarse<br/>run you chose, when you set this up"]
       end
     end
     SH --> C1
     SH --> T1
-    C1 -->|"carry"| T1
+    C1 -.->|"you look, then choose"| T1
 ```
 
 **Every stage keeps its own results.** That is the whole reason for the shape,
 and it is the shipped `prep` layout (`job-system.md § 5.2`) reused rather than
-reinvented: shared files stored once and linked in, carried files **localized on
-run** so a stage never writes through a link into the stage before it.
+reinvented: shared files stored once and linked in.
+
+What differs from that layout is the **carry**. `prep` lays a link into the
+producer's directory because it expects the whole chain to be submitted at once.
+Here nothing is chained: you set up the tight stage *after* looking at coarse, so
+the file you want is already sitting there and gets **copied in** — a real file,
+put there when you chose it (`project-layout.md § 1.3`). Nothing points at a
+result that does not exist yet, so nothing has to be repaired later.
 
 A flat directory was the earlier answer here and it was wrong. A shared basename
 does make continuing free — and it also means every stage overwrites the last.
@@ -387,11 +395,10 @@ start until these are answered, and they are decisions rather than research:
 |---|---|---|---|
 | 1 | **The repo-scope axiom** — `Repo.init` refuses this tree's shape | `checkpointing.md` L1, step 1a above | 11, and every history item |
 | 2 | **The hand-run entry point for one stage**, and where `--cold` goes once it stops being a wrapper flag | `project-layout.md` § 8 q4 | **12a** — retiring the shell block removes the only manual path |
-| 3 | **Who writes `run-latest` under SLURM**, when nothing watches the exit and `runstatus.py` is read-only by design | `project-layout.md` § 8 q5 | 12c |
 | 4 | **Is `stages.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
 
-Two are new (2 and 3) and both came from writing the contract rather than from
-using it — which is the point of writing it first.
+Question 2 is new, and it came from writing the contract rather than from using
+it — which is the point of writing it first.
 
 **Step 2 — the backend, built to those contracts.**
 
@@ -494,49 +501,31 @@ using it — which is the point of writing it first.
     `--cold` goes once it stops being a wrapper flag — **must be answered first**,
     or this step breaks the manual path with nothing behind it. Answer, then
     12b, then this.
-12b. **Attempt resolution moves into submit; the carry becomes concrete.**
+12b. **Attempt resolution moves into submit — and the chain goes away.**
     ⚠ The regression that exposed all of this: `materialize` writes a stage's
     carry as a symlink to `../<producer>/<id>.XV`, which is where a stage's
-    output lived until 12a moved it into `run-N/`. The link dangles, and at
-    `prep` time *which* attempt is right cannot be known, because nothing has
-    run. **The answer is not a cleverer link — it is a later moment**
-    ([`project-layout.md`](?doc=execution/project-layout.md) § 1.3): `submit`
-    already picks each job's working directory (`subprocess.run(cmd, cwd=…)`,
-    and `sbatch` from the same place). Resolving the attempt there means submit
-    knows **both** attempt directories before either process exists, so it lays
-    the consumer's carry against a concrete `../../01_coarse/run-3/<id>.XV`
-    instead of a stage directory. Three things fall out: numbering becomes
-    **deterministic** (a queued ladder no longer has two jobs scanning the same
-    directory whenever they happen to wake); **no Python is needed on the compute
-    node** — which matters, because `molbuilder-siesta` has none; and the
-    from-inside-an-attempt guard and its logical-vs-physical `$PWD` bug both
-    **cease to exist**, because the caller decides the directory.
-    **The carry stays a symlink, and localize-on-run stays bash** — a review of
-    this item caught the error: under SLURM the producer has *not run* at submit
-    time, so submit can lay the link but cannot copy the file. Replacing it with
-    a real copy has to happen after the producer finished and before this engine
-    starts, which is a moment that exists only on the compute node. The shipped
-    `carry_deref` block already does exactly that and is the one piece of shell
-    that survives (`running-a-job.md § 2.2a`, exception 3). Only the *previous
-    attempt of the same stage* can be copied at submit, because a redo implies
-    that attempt already finished. **Gap 6 rides along**, being the same expression:
-    `materialize.job_dir_name` returns `point-<name>` for every job, so a ladder
-    gets the sweep's naming — it must branch on `JobSet.kind` (§ 4.4 there).
-    *Done when:* a two-stage folder prepped before either stage runs, then run in
-    order, starts the second stage from the first stage's geometry; the stage
-    directories are `01_<name>`/`02_<name>` and a benchmark's points still read
-    `point-*`; two jobs submitted together get distinct attempt numbers decided
-    at submit; a dry run reports the attempt each job *would* get; and no shell
-    in the tree creates a directory.
-12c. **`run-latest`, demoted to a handle.** Once 12b lands, the carry no longer
-    needs it — this is a correction to the 2026-08-06 draft that made it
-    load-bearing. What remains is worth building but is smaller: the Results tab,
-    `jobset status` and a person typing `cd` all want to name a stage's current
-    result without scanning. Rules in `project-layout.md` § 1.3 (relative target,
-    moves only on exit 0, absent when nothing has completed, derived and
-    deletable). **Blocked on open question 5 there** — under SLURM nobody watches
-    the exit, and the natural writer is `runstatus.py`, which is deliberately
-    read-only today.
+    output lived until 12a moved it into `run-N/`. But the fix is not a better
+    link. **Stages do not chain**
+    ([`project-layout.md`](?doc=execution/project-layout.md) § 1.3, and § 1 of
+    this plan, which said so from the start and which I drifted from): each stage
+    is set up and submitted on its own, after the user has looked at the previous
+    one. A stage is a long job, and a chain that continues by itself can spend a
+    week computing from a geometry you would have rejected in a minute.
+    So `stages_to_jobset` stops emitting `depends_on` and `Carry` edges between
+    stages. When you set up the next stage, **the run it continues from has
+    already finished** — you just looked at it and named it — so its files are
+    **copied in, for real, then**. Nothing points at a file that does not exist;
+    nothing has to be swapped at run time; `carry_deref` is no longer part of
+    this story (it stays for the chained ladder `jobset` can still build).
+    `submit` resolves **one** attempt for the stage it is starting: next unused
+    number, create, link the deck and package, copy what was named, launch there.
+    **Gap 6 rides along** — `materialize.job_dir_name` returns `point-<name>` for
+    every job and must branch on `JobSet.kind` (§ 4.4 there).
+    *Done when:* setting up the tight stage against a named coarse run puts real
+    files in its attempt, not links; the stage directories are
+    `01_<name>`/`02_<name>` while a benchmark's points still read `point-*`; no
+    stage job carries a `depends_on`; and no directory in a produced tree
+    contains a dangling symlink.
 13. ~~**The archive globs reach into the subdirectories**~~ — **done
     (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
     the walk is recursive and skips symlinks and dot-directories, a binary-only

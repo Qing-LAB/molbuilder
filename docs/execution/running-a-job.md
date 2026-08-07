@@ -112,11 +112,11 @@ clean-shell bootstrap, then launches the engine.
 inside a clean-shell bootstrap, **then launches the engine**. That is the whole
 job, and it is worth stating as a rule because it is easy to break by accretion.
 
-> **The wrapper makes the environment right and execs — plus one filesystem step
-> that only it can do, because only it happens at the right moment. Everything
-> else belongs to Python, on the host, before the wrapper is ever invoked.**
+> **The wrapper does two things: it makes the environment right, and it execs.
+> Everything else belongs to Python, on the host, before the wrapper is ever
+> invoked.**
 
-**Why bash at all**, and why only these three:
+**Why bash at all**, and why only these two:
 
 - **Activation mutates the shell's own environment.** `conda activate` /
   `module load` change `PATH` and friends *in the calling process*. A Python
@@ -124,31 +124,23 @@ job, and it is worth stating as a rule because it is easy to break by accretion.
 - **The launcher must be the shell's direct child.** `mpirun` / `srun` want to
   inherit the activated environment and sit in the process tree where signals
   and scheduler accounting expect them.
-- **Localize-on-run is the one filesystem exception, and it is forced by
-  timing.** A job that inherits restart files from an earlier stage gets them as
-  symlinks into the producer's directory, and they must become real local copies
-  *after* the producer finished and *before* this engine starts — or this job
-  writes back through the link and destroys the result it started from. Under
-  SLURM the whole chain is submitted at once, so that moment exists **only on the
-  compute node**, and there is no Python there. `runwrap.py`'s `carry_deref`
-  block is that step; its own comment names the reason — *"ordering (SLURM
-  dependency / sequential direct) guarantees the producer has finished."*
-
 Everything else — resolving which directory to run in, creating it, arranging
 files, recording what happened — is **decision and arrangement**, and none of it
-needs the activated environment or the compute node's timing. It is Python's.
+needs the activated environment. It is Python's.
 
-**The test, when adding to a wrapper**, in this order:
+**The test, when adding to a wrapper:** *does this need the activated shell?* If
+it computes, decides, or arranges files, the answer is no and it belongs upstream.
 
-1. *Does it need the activated shell?* Activation and the launch do.
-2. *Could it only be known here — after something else finished, on this node?*
-   Localize-on-run is the one case, and it is worth being suspicious of a second.
-3. Otherwise it computes, decides, or arranges files, and it belongs upstream.
-
-The distinction between 2 and 3 is what separates the one surviving filesystem
-step from the block being retired below: **the carry cannot move because of
-*when* it must happen; creating a directory can move, because nothing about it
-has to wait.**
+> **One block looks like an exception and no longer is.** `runwrap.py`'s
+> `carry_deref` replaces an inherited restart-file symlink with a real local copy
+> at run start. That exists because `jobset` can submit a whole chain at once, in
+> which case the producer has not run when the links are laid, and the only
+> moment to make them real is on the compute node. It stays for that path. But
+> the staged framework **does not submit chains** — each stage is set up
+> separately, after the previous one finished
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 1.3) — so its files
+> are copied for real at setup, and nothing needs swapping later. The exception
+> belongs to the chained ladder, not to this design.
 
 **This is forced, not stylistic.** Two facts make the compute node the wrong
 place for logic:

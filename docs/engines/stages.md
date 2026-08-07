@@ -460,8 +460,8 @@ projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
 │   └── <id>.XV .DM .ANI .STRUCT_OUT   ← everything THIS stage produced
 └── tight/
     ├── <id>_tight.fdf → ../<id>_tight.fdf
-    ├── <id>.XV → ../coarse/<id>.XV    ← carried; dangling until coarse runs
-    └── <id>.DM → ../coarse/<id>.DM
+    ├── <id>.XV                        ← a real copy of the coarse run you chose
+    └── <id>.DM
 ```
 
 **This is not a new layout.** It is what `job-system.md § 5.2`'s `prep` already
@@ -472,11 +472,11 @@ one. Two of its properties are the reason:
 - **Shared files are stored once and linked in**, so a five-stage description
   does not carry five copies of a pseudopotential, and the shared set is
   obviously shared rather than coincidentally identical.
-- **Carried files are localized on run.** Before a stage starts, its wrapper
-  replaces an inherited symlink with a real local copy — *"without that, stage 2
-  writing to `bdt.XV` would write through the link and overwrite stage 1's
-  result."* That is the whole cross-contamination problem, closed by a rule that
-  already ships.
+- **What a stage continues from is copied, not linked.** Stage 2 writes to
+  `<id>.XV` itself; a link would send that write straight through into stage 1's
+  directory and destroy the result it started from. A real copy closes it.
+  `prep` links instead, because it expects a whole chain submitted at once —
+  **which this contract does not do** (below).
 
 **Why not one flat directory.** A flat folder was the earlier answer here, on the
 grounds that a shared basename makes continuing free (`job-contracts.md § 2.1`
@@ -488,13 +488,20 @@ one set of results — the last — plus three `.out` logs. For a framework whos
 purpose is managing a mission across several parameter sets, losing every
 intermediate result is not a trade, it is a defect.
 
-**What carry is, and is not.** Carry is a *layout* mechanism, not a scheduling
-one: it exists because the stages are in different directories, and it would be
-needed if no scheduler existed anywhere. The scheduling half of `job-system.md` —
-`depends_on`, `dep_kind`, the edges — stays outside this contract (§ 3). Which
-files carry is not a new decision either: `.XV` always, `.DM` when the config
-saves it, `.CG` only between stages using the same relaxation method, *"a CG
-state is meaningless to a Broyden stage"* (`job-system.md § 4.1`).
+**Stages are not chained, and this is the load-bearing decision.** Each stage is
+set up and started on its own, *after* you have looked at the one before it
+(`project-layout.md § 7.1`). A stage is a long job; a chain that continues by
+itself can spend a week refining a geometry you would have rejected in a minute.
+So no `depends_on`, no queued follow-on, and no file pointing at a result that
+does not exist yet. When you set the next stage up, the run it continues from
+**has already finished** — you just looked at it and named it — so its files are
+copied in there and then.
+
+Which files: `.XV` always, `.DM` when the config saves it, `.CG` only between
+stages using the same relaxation method, *"a CG state is meaningless to a
+Broyden stage"* (`job-system.md § 4.1`). The scheduling machinery —
+`depends_on`, `dep_kind`, the edges — stays outside this contract (§ 3) and
+remains the right tool for a benchmark sweep.
 
 **And `restart` gets sharper.** In one directory, *continue* could only mean
 "whatever ran here last" — order-of-execution dependent, and wrong if you re-ran
@@ -704,14 +711,13 @@ The glob set must match at depth, and the seeded `.gitignore` with it. This is a
 change to the checkpoint contract, and it lands with its code and its test in one
 commit (`job-contracts.md § 7`).
 
-**A carried link is a dangling link until its producer runs, and that is
-correct.** Git stores a symlink as its target path, so a checkpoint taken between
-produce and run holds the dangling carry links, and a restore recreates them
-dangling — which is exactly the state that produce left. When the stage runs,
-localize-on-run replaces the link with a real file (§ 7.1) and the next
-checkpoint records a symlink becoming a regular file. Noisy in a diff, right in
-substance: the history says *this stage stopped inheriting and started owning*,
-which is what happened.
+**Nothing in a checkpointed tree points at a file that does not exist.**
+Because stages are not chained (§ 7.1), whatever a stage continues from was
+copied in as a real file when you set that stage up. So a checkpoint taken at
+any moment holds real files, a restore brings back real files, and there is no
+state where the history records a link that resolves to nothing. That is one
+less thing the archive and the restore have to reason about, and it came free
+from not chaining rather than from any checkpoint work.
 
 ---
 

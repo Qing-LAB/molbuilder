@@ -62,7 +62,7 @@ projects/                                   the root (git-ignored)
             │
             └── 02_tight/
                 └── run-0/
-                    └── <id>.XV → ../../01_coarse/run-1/   carried, then localised
+                    └── <id>.XV                     copied from 01_coarse/run-1/
 ```
 
 **③ is a calculation** — one system studied one way. One identity, one saved
@@ -95,9 +95,8 @@ are mixed and something has to tell them apart.
 time — a `--continue`, a redo after a change — makes `run-1`, carrying what it
 needs from `run-0` and leaving `run-0` exactly as it was.
 
-That is the same carry mechanism stages already use between themselves
-(`job-system.md § 5.2`: link it in, localise it before starting), applied one
-level down.
+You say which attempt it continues from, and its files are copied in — the same
+explicit step you take when moving from one stage to the next (§ 1.3).
 
 Three things follow:
 
@@ -134,15 +133,14 @@ That is how `jobset submit` already works one level up: it runs
 same `cwd` for SLURM, which lands the job in `SLURM_SUBMIT_DIR`. Choosing the
 attempt instead of the container is a change in the caller, not in the wrapper.
 
-**Everything the attempt needs is put there before the wrapper starts** — with
-one exception, the last row, whose timing forbids it:
+**Everything the attempt needs is put there before the wrapper starts**, and all
+of it is in place before the engine sees the directory:
 
-| | How | When | Why |
-|---|---|---|---|
-| the deck, the monitor, the pseudopotentials | **linked** from the container | submit | five attempts share one copy of each |
-| the previous attempt's warm files | **copied** | submit | that attempt has finished — a redo implies it — and a link would let this engine write back into it |
-| everything the run writes | created in place | run | it is already the working directory |
-| a carry from the **previous stage** | **linked**, then localized to a copy | link at submit, **copy at run** | under SLURM the producer has not run when the chain is submitted, so the copy can only happen once it has — on the compute node (§ 1.3) |
+| | How | Why |
+|---|---|---|
+| the deck, the monitor, the pseudopotentials | **linked** from the container | five attempts share one copy of each |
+| whatever this run continues from | **copied** | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
+| everything the run writes | created in place | it is already the working directory |
 
 **A flat run directory is untouched.** It *is* a run (§ 1.1), so `bash job.run.sh`
 in it behaves exactly as it does today.
@@ -156,170 +154,90 @@ in it behaves exactly as it does today.
 > guard it needed against being run from inside an attempt, which stops being a
 > hazard once the caller decides the directory.
 
-### 1.3 Who creates an attempt, and when
+### 1.3 Stages do not chain, and what that simplifies
 
-An attempt directory is **created by molbuilder, in Python, at the moment a run
-is launched or submitted** — not by the wrapper, and not at prep. This section
-says why that moment, and what it makes possible.
+**Each stage is prepped and submitted on its own.** Nothing links coarse to
+tight; no scheduler dependency, no queued follow-on, no automatic hand-off of
+files. When coarse finishes you look at what it produced, decide, and then set up
+tight.
 
-#### The rule
+That is § 1's rule — *this framework writes correct files; it does not run
+things* — applied to the one place it was easiest to forget. It is also the only
+sane default when **a stage is a long job**: a chain that continues on its own
+can spend a week computing from a geometry you would have rejected in a minute.
 
-> **Python resolves the attempt, creates it, arranges its files, and hands the
-> wrapper a directory to run in. The wrapper activates the environment and execs
-> the engine, in whatever directory it was given.**
+> **The decision to continue is the user's, made after looking. molbuilder's job
+> is to make continuing correct once that decision is taken.**
 
-That is `running-a-job.md § 2.2a` applied to this layout, and it puts the work in
-the layer that already does it: `jobset/materialize.py` creates job directories
-and lays relative symlinks; `jobset/submit.py` already chooses the working
-directory (`subprocess.run(cmd, cwd=…)`) for both the SLURM and the local path.
-Resolving an attempt is the same operation one level down, in the same module.
+#### Who makes the attempt directory
 
-#### Why at submit, and not at run time
+**Python, at submit.** The wrapper is launched inside a directory that already
+exists and already holds its inputs; it activates the environment and execs the
+engine (`running-a-job.md § 2.2a`).
 
-The wrapper *could* resolve its own attempt — it is the last moment before the
-engine starts. Three things make submit the better moment, and the first is
-correctness rather than taste.
+That is where the work already lives: `jobset/materialize.py` creates job
+directories and lays relative symlinks, and `jobset/submit.py` already chooses
+each job's working directory (`subprocess.run(cmd, cwd=…)`, and `sbatch` from the
+same place). Resolving an attempt is the same operation one level down.
 
-**Numbering becomes deterministic.** A SLURM ladder is submitted all at once with
-`--dependency`; the jobs start whenever the queue lets them. A wrapper that scans
-`run-*/` when it wakes up gives two jobs the same answer if they wake together,
-and gives *nobody* a predictable answer. Resolved at submit, the producer is told
-`run-3` and the consumer `run-0`, decided before either process exists.
+For each submission: **resolve** the next `run-<n>` (highest plus one, or
+`run-0`); **create** it, refusing if it somehow exists; **link** the deck, the
+monitor and the shared package in; **copy** anything this run continues from;
+**launch** with that directory as the working directory.
 
-**The carry stops needing a moving target.** Submit knows both attempt
-directories, so it writes the consumer's carry as a concrete
-`../01_coarse/run-3/<id>.XV` — a real link to a real place, laid at the moment
-the answer became knowable. Prep could not do this (the attempts did not exist);
-the wrapper cannot do it (it only sees its own stage).
+#### Continuing from an earlier run is a copy, not a link
 
-**No Python is needed on the compute node.** `molbuilder-siesta` has no `python`
-at all (`running-a-job.md § 2.2a`), so logic placed there is either shell or
-broken. Placed at submit it runs on the host, where molbuilder lives, as ordinary
-importable code with ordinary tests.
-
-```mermaid
-flowchart LR
-    P["<b>prep</b> — Python<br/>stage containers, shared links,<br/>wrappers rendered once"]
-    S["<b>submit</b> — Python<br/>resolve run-N, create it,<br/>link deck + package,<br/>copy the previous attempt's warm state,<br/>link the cross-stage carry"]
-    W["<b>wrapper</b> — bash<br/>localize the carry, activate, exec"]
-    E["<b>engine</b><br/>writes inside run-N"]
-    P --> S --> W --> E
-```
-
-#### What submit does, in order
-
-For each job, before launching it:
-
-1. **Resolve** the next attempt: the highest existing `run-<n>` plus one, or
-   `run-0`. Never reused, never reset.
-2. **Create** `run-<n>/` and refuse if it already exists — that means the scan
-   and the filesystem disagree, and guessing would overwrite a result.
-3. **Link** the deck, the monitor and the shared package in, relatively.
-4. **Handle the two carries**, which are not the same problem:
-   - **From the previous attempt of this same stage** (a redo): that attempt has
-     finished — it is why there is a redo — so its files exist now. **Copy them**,
-     never link: the engine writes to them, and a link would reach back into the
-     attempt that produced them.
-   - **From the previous stage**: under SLURM the producer has **not run yet** —
-     the whole chain is submitted at once with `--dependency`. So submit can only
-     **lay a symlink**, now pointing at a concrete attempt
-     (`../../01_coarse/run-3/<id>.XV`) instead of a stage directory. It dangles
-     until the producer writes, exactly as `materialize` intends today.
-5. **Launch** with the attempt as the working directory, exactly as
-   `submit.py` already launches with the job directory as one.
-
-Steps 2–4 are what `materialize()` already does for a job directory. This is the
-same code, one level down — not a second implementation of it.
-
-> **And this is why one piece of shell survives.** A cross-stage carry arrives as
-> a symlink into the producer's attempt, and something must replace it with a
-> real local copy *after* the producer finished and *before* this engine starts.
-> That moment exists only on the compute node, where there is no Python
-> (`running-a-job.md § 2.2a`). The wrapper's shipped **localize-on-run** block
-> (`runwrap.py`'s `carry_deref`, `job-system.md § 5.2`) is exactly that, it
-> already works, and it stays. Its own comment names the reason: *"ordering
-> (SLURM dependency / sequential direct) guarantees the producer has finished."*
-
-#### What happens to `--cold`
-
-It moves, and it gets simpler. Today `--cold` is a wrapper flag that **moves warm
-files aside** into `<basename>-restart-aside-<UTC>/` because the run directory is
-reused and the old state is sitting in it (`job-contracts.md § 4`).
-
-With an attempt per invocation there is nothing to move aside: a fresh attempt is
-empty until submit puts something in it. So `--cold` becomes **an instruction to
-submit** — *skip step 4's copy* — and the attempt simply starts bare. The
-move-aside machinery, and the `job-contracts.md § 4` safety property that its
-glob must cover every file the warm branch reads, stay exactly as they are **for
-the flat case**, which still reuses one directory.
-
-That is a surface change as well as a layout one: `--cold` stops being something
-you pass to `bash job.run.sh` in a staged calculation and becomes something you
-pass to whatever launches it. It belongs with the open question below.
-
-#### Running a stage by hand
-
-The flat case is untouched: a plain run directory *is* a run (§ 1.1), so
-`bash job.run.sh` in it behaves exactly as it does today, filename-indexed
-outputs and all.
-
-For a **staged** calculation the entry point is a molbuilder command rather than
-the wrapper, because the wrapper no longer knows how to make itself a directory —
-which is the point. Invoking it directly in a stage container runs the engine in
-the container, and § 1.1 forbids that: a container never holds run output.
-
-> **Open.** Whether that entry point is `molbuilder jobset submit --only <stage>`,
-> a new `molbuilder run <stage>`, or both. It is a surface question, not a layout
-> one, and § 8 carries it.
-
-#### `run-latest` — a handle, not a mechanism
-
-The container may hold `run-latest`, a relative symlink to the attempt that
-currently counts:
+Because stages are set up one at a time, **the run you continue from has already
+finished** — that is what you just looked at. Its files are sitting on disk when
+you prep the next stage, so they are **copied**, as real files, then and there.
 
 ```
-01_coarse/
-├── run-0/            ← converged
-├── run-1/            ← a redo that crashed
-└── run-latest -> run-0
+02_tight/run-0/<id>.XV     a real copy of 01_coarse/run-0/<id>.XV
 ```
 
-**It is a convenience, and this is a correction.** An earlier draft of this
-section made it load-bearing — the thing that let a carry laid at prep time find
-a result that did not exist yet. Once submit resolves both attempts and writes a
-concrete carry link, that job is gone. What remains is worth keeping but is
-smaller: the Results tab, `jobset status` and a person typing `cd` all want to
-name a stage's current result without scanning.
+Copied and not linked for the same reason as always: the engine writes to that
+filename, and writing through a link would destroy the result you started from.
 
-The rules, for when it is written:
+**Which run you continue from is something you say, not something molbuilder
+guesses.** Continuing from `01_coarse/run-0` and continuing from `01_coarse/run-2`
+are different scientific choices, and the folder names make the choice visible
+afterwards.
 
-1. **`run-latest`, in the container, a relative symlink to a sibling attempt** —
-   a bare `run-<n>`, never a path. An absolute target breaks when the folder is
-   copied to a cluster, which this layout exists to survive.
-2. **It moves only when an attempt's engine exits 0**, and a failed attempt
-   leaves it where it was: it means *the newest attempt that produced usable
-   state*, not the newest directory.
-3. **Exit 0 is the bar, not convergence.** A relaxation that hits its step cap
-   exits 0 and is exactly the thing you continue from. Convergence is the
-   decoder's judgement and belongs in the checkpoint message (§ 6).
-4. **A stage with no completed attempt has none.** Absent is the honest answer;
-   consumers must handle it.
-5. **It is derived** — recomputable by scanning — so deleting it loses nothing.
-6. **Written in Python**, by whoever observes the exit: `submit` in local mode,
-   which already has the return code (`submit.py`'s `_run_direct`). Under SLURM
-   nobody is watching at exit, so it is written by the status reader when it next
-   decodes the stage — which is `runstatus.py`'s existing job, and read-only
-   today, so this is the one place the design gains a write.
+This is the same shape one level down: a redo of a stage — `run-1` after
+`run-0` — copies from the attempt you name, for the same reason.
 
-**Why the name.** `run-` is a prefix this layout already owns (§ 4.3), so the
-pointer adds no new reserved word, sorts beside what it points at, and is
-excluded from any all-digit attempt scan by construction. A bare `latest` is
-unnamespaced; a `.mb`-prefixed name would hide a handle whose whole purpose is
-being typed.
+> **What this removes.** Nothing has to point at a file that does not exist yet,
+> so there are no dangling links to resolve, no question of *which attempt will
+> the producer use*, and nothing to swap at run time. Those problems only arise
+> when a whole chain is submitted at once, which is exactly what this does not
+> do. A design that never creates the problem beats one that solves it.
 
-**No archive rule is needed.** The walk skips symlinks (`checkpoint.py`), so the
-pointer is git's — container state, one line of text, restored with everything it
-links to. Invariant 15's *tracked XOR archived* speaks of regular files.
+#### What is not touched
+
+**The flat case.** A plain run directory *is* a run (§ 1.1), so `bash job.run.sh`
+in it behaves exactly as it does today.
+
+**The shipped chained ladder.** `jobset` can thread SLURM dependencies and carry
+files between queued jobs, and `stages_to_jobset` currently builds exactly that
+(`depends_on=prev.name`, plus `.XV`/`.DM`/`.CG` carries). That machinery stays —
+it is the right answer for a benchmark sweep, and for anyone who wants a chain
+with their eyes open. **The staged-science producer stops emitting one**, which
+is a change to what it builds, not a removal of what `jobset` can do.
+
+#### `--cold`, and running a stage by hand
+
+`--cold` means *start this run clean*. Today it moves warm files aside because
+the run directory is reused; with a directory per attempt there is nothing to
+move — a fresh attempt is empty unless something is copied in. So `--cold`
+becomes simply *skip the copy*, and it moves to whatever command starts the run.
+The move-aside machinery, and its `job-contracts.md § 4` requirement that the
+glob cover every file the warm branch reads, stay as they are **for the flat
+case**, which still reuses one directory.
+
+> **Open** (§ 8): what you type to set up and start one stage. It has to name the
+> stage, optionally name the run to continue from, and accept `--cold`. It must
+> exist before the wrapper's directory-making prologue is retired, or the manual
+> path breaks with nothing behind it.
 
 ---
 
@@ -348,9 +266,9 @@ enforced:
 > (`running-a-job.md § 2.2a`).
 
 The producer never writes inside a stage directory; prep only puts symlinks
-there. The engine never writes above itself — the wrapper copies a carried file
-local before starting, precisely so a stage cannot write back through a link into
-the stage that produced it (`job-system.md § 5.2`).
+there. The engine never writes above itself — and whatever a run continues from
+is a real copy put there before it starts (§ 1.3), so a stage cannot write back
+into the run that produced it.
 
 **A benchmark gets its own directory, and that is not tidiness.**
 `generate_bench_bundle` writes its own decks, wrappers, pseudopotential copies,
@@ -503,12 +421,10 @@ seeing:
 Attempts are assigned **at submit, in Python** (§ 1.3): the next unused number,
 never reused. There is no `--force` to reset them (§ 1.2).
 
-**`run-` is a reserved prefix, and one member of it is not a number.**
-`run-latest` is the optional symlink naming the attempt that currently counts
-(§ 1.3). Numbers and that one word are the whole namespace; anything else under
-`run-` is unclaimed and should stay that way. The scan that assigns a number
-takes all-digit suffixes only, so a non-numeric member can never be counted as an
-attempt — which is what makes extending the prefix safe rather than clever.
+**`run-` is a reserved prefix and its members are numbers, full stop.** A
+`run-latest` pointer was considered and dropped: with each stage set up
+separately, you name the run you continue from, so nothing needs a symlink to
+guess it for you.
 
 ### 4.4 Trials name themselves by their settings
 
@@ -555,7 +471,7 @@ how a folder stops being trustworthy.
 | `molbuilder.json` | outside the tree — cwd or `$XDG_CONFIG_HOME` | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
 | `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | machine settings for this project |
 | `stages.json` | ③ calculation | `molbuilder/stages@1` | **the science**: base settings, which vary, the stages |
-| `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the chain: jobs, edges, carried files, per-job resources |
+| `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.3); the edge fields serve the benchmark sweep |
 | `.mbcheckpoint.json` | ③ calculation | `molbuilder/checkpoint-config@1` | which patterns are big files |
 | `.molbuilder.json` | ⑤ benchmark bundle | same as project | **the activation the bundle carries to the target** — written by `_write_activation_config`, the single place that decision is persisted. A fourth scope in practice, and deliberate: the bundle must be runnable after `scp` |
 | `environment.json` | ⑤ benchmark bundle | `molbuilder/environment@1` | the machine as detected when this stage was measured |
@@ -620,13 +536,6 @@ So the rule is about **depth, not names**: a run directory is a direct child of 
 stage, or the root of a flat calculation. Nothing below that is this history's
 binary business.
 
-**`run-latest` needs no rule of its own.** It is a symlink, and the archive walk
-skips symlinks (`checkpoint.py`, the `p.is_symlink()` test) — so it is git's,
-which is right: it is container state, it is one line of text, and restoring a
-calculation restores the pointer along with everything else it links to.
-Invariant 15's *tracked XOR archived* is not at risk, because it speaks of
-regular files and a symlink is not one.
-
 ### 6.2 Append-only, because attempts are immutable
 
 An attempt never changes after it is written (§ 1.2), so an archived file never
@@ -671,10 +580,11 @@ single history live in their own contracts and are cited, not repeated.
 4. **A stage's `seq` is assigned once and never reassigned**; stages append
    (§ 4.2). **An attempt's number likewise** — the next unused, never reused, and
    nothing resets it (§ 1.2).
-4a. **`run-latest`, when present, is a relative symlink to a sibling attempt
-   whose engine exited 0** (§ 1.3). Never a real directory, never an absolute or
-   multi-segment target, never moved by a failed attempt. Absence is valid.
-   **Not held today**: nothing writes it.
+4a. **No directory in this tree points at a file that does not exist yet.**
+   Stages are set up one at a time, after the previous one finished, so
+   everything a run continues from is a real file copied in before it starts
+   (§ 1.3). A dangling link means something was chained that should not have
+   been.
 5. **A trial never shares the calculation's identity.** Its deck is relabelled
    and forced cold, so it can neither read nor overwrite a stage's saved state
    (§ 3.2).
@@ -684,14 +594,11 @@ single history live in their own contracts and are cited, not repeated.
 6. **The producer writes only at level ③**; prep adds only symlinks at ④; submit
    creates and arranges ⑤ (§ 1.3); the engine writes only the directory it was
    launched in.
-6a. **Every directory and every link in this tree is made by Python**, with one
-   exemption: **localize-on-run**, which replaces an inherited carry symlink with
-   a real copy and cannot move, because the only moment it is possible — after
-   the producer finished, before this engine starts — exists on the compute node
-   (`running-a-job.md § 2.2a`). Otherwise the wrapper activates an environment
-   and execs an engine in a directory it was handed. **Not held today**:
-   `runwrap.py`'s `attempt_dirs` prologue creates and arranges an attempt in
-   shell.
+6a. **Every directory and every link in this tree is made by Python.** The
+   wrapper activates an environment and execs an engine in a directory it was
+   handed, and does nothing else (`running-a-job.md § 2.2a`). **Not held
+   today**: `runwrap.py`'s `attempt_dirs` prologue creates and arranges an
+   attempt in shell.
 7. **A shared file exists once, at ③**, and is linked into each stage. Never
    copied per stage.
 8. **Every directory is a container or a run, never both** (§ 1.1). A run's
@@ -711,8 +618,9 @@ single history live in their own contracts and are cited, not repeated.
     different launch.** Neither mechanism is used for the other's job.
 12. **Derived files can be deleted and regenerated** from `stages.json` plus the
     machine's config, byte-identical except for the provenance timestamp.
-13. **Warm restart flows down the stage axis only.** Stage *n* continues from
-    stage *n−1*; nothing continues from a trial.
+13. **Warm restart flows down the stage axis only, and never on its own.** A
+    stage continues from an earlier stage's run that the **user named**, never
+    from a trial, and never because something finished (§ 1.3).
 
 **History**
 
@@ -752,9 +660,3 @@ single history live in their own contracts and are cited, not repeated.
    staged calculation. A surface question, but it must be answered **before** the
    wrapper's prologue is retired, or the manual path breaks with nothing to
    replace it.
-5. **Who writes `run-latest` under SLURM?** (§ 1.3, rule 6.) Local mode has the
-   return code in hand. Under SLURM nothing is watching when the job ends, so the
-   natural writer is the status reader the next time it decodes the stage — but
-   `runstatus.py` is deliberately read-only today, and making it write is a real
-   change to what that module is. The alternative is leaving the pointer absent
-   until someone asks for status, which is honest but surprising.
