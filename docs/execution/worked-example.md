@@ -232,15 +232,25 @@ specifies the fix — branch on `JobSet.kind`, so a **ladder** job becomes
 `<seq>_<name>` and a **sweep** point keeps its knobs — but it is not written yet.
 Name and depth are both wrong, in one expression.
 
-The fix that suggests itself is a stable name for "this stage's current result":
+The fix is a stable name for "this stage's current result", now specified in
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.3:
 
 ```
-01_coarse/latest -> run-0        updated when an attempt finishes
+01_coarse/run-latest -> run-0     repointed when an attempt exits 0
 ```
 
-Then the carry is `../01_coarse/latest/<id>.XV`, which is resolvable at prep time
-and correct at run time. It also gives the viewer and the status roll-up
+Then the carry is `../01_coarse/run-latest/<id>.XV`, which is resolvable at prep
+time and correct at run time. It also gives the viewer and the status roll-up
 something to point at without knowing attempt numbers.
+
+**Why `run-latest` and not `latest`:** `run-` is a prefix this layout already
+owns, so the pointer adds no new reserved word, sorts beside what it points at,
+and is already filtered out of the wrapper's attempt scan — which requires an
+all-digit suffix and was written before this existed.
+
+**A failed attempt does not move it.** Had `run-1` above crashed at iteration 3,
+`run-latest` would still say `run-0`, because what the next stage needs is the
+newest attempt that produced *usable* state — not the newest directory.
 
 Note what this does *not* need: no content hashing, no attempt registry, no
 lookup table. One symlink, written by the wrapper it already belongs to.
@@ -320,8 +330,13 @@ document was written.
 
 **Gap 5**, because it is a regression rather than a missing feature: staged runs
 carried correctly before attempt directories existed, and now they do not. The
-`latest ->` pointer in § 6 fixes it and pays for itself twice — the viewer and
-the status roll-up both currently have to guess which attempt is the current one.
+`run-latest` pointer in § 6 fixes it — now a contract,
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.3 — and pays for
+itself twice, since the viewer and the status roll-up both currently have to
+guess which attempt is the current one. It also exposed a guard weakness worth
+fixing first: the wrapper refuses to run from inside an attempt by matching
+`${PWD##*/}`, which is the *logical* path, so entering through **any** symlink
+defeats the refusal.
 **Gap 6 is one line away from it**, in the same function, and should land in the
 same change rather than touching that expression twice.
 

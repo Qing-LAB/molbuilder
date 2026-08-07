@@ -153,6 +153,94 @@ launch, the monitor, the SCF tee and the failure hints all work relative to the
 current directory, so they land in the attempt with no further edits. A flat run
 directory does not pass the flag and behaves exactly as it does today.
 
+### 1.3 The current attempt has a stable name: `run-latest`
+
+Immutable attempts create one problem, and this closes it. **Every consumer of a
+stage's result needs to name that result, and none of them can know an attempt
+number.** The consumers are:
+
+| Who | When it needs the name | Why the number is unavailable |
+|---|---|---|
+| the next stage's carry | at **prep** time | the runs have not happened yet |
+| the Results tab | while browsing | it would have to scan and rank |
+| `jobset status` | on every roll-up | same |
+| a person | `cd` | they would have to look first |
+
+So the container holds one symlink to the attempt that currently counts:
+
+```
+01_coarse/
+├── run-0/          ← the attempt that converged
+├── run-1/          ← a redo that crashed at iteration 3
+└── run-latest -> run-0
+```
+
+and the carry becomes `../01_coarse/run-latest/<id>.XV` — a path that resolves at
+prep time, stays correct at run time, and needs no hashing, no registry and no
+scan.
+
+#### The rules
+
+1. **The name is `run-latest`, in the container, always a symlink to a sibling
+   attempt.** It is never a real directory and never points outside its own
+   container.
+1a. **The target is relative — a bare `run-<n>`, never a path.** An absolute
+   target would break the moment the folder was copied to a cluster, which is
+   the thing this whole layout is built to survive (§ 5); it would also leak the
+   host's directory structure into a file git tracks. This is the same rule the
+   deck and pseudopotential links already follow (`ln -sfn "../$f"`).
+2. **It moves when an attempt's engine exits 0**, written by the wrapper as its
+   last act. Not on launch — an attempt that dies mid-run must not become the one
+   the next stage continues from.
+3. **A failed attempt leaves it where it was.** `run-1` crashing above does not
+   disturb `run-0`, which is the whole point: the pointer means *the newest
+   attempt that produced usable state*, not the newest directory.
+4. **Exit 0 is the bar, not convergence.** A relaxation that hits its step cap
+   exits 0 and is a perfectly good thing to continue from — continuing is exactly
+   what you do with an unconverged geometry. Convergence is the decoder's
+   judgement and belongs in the checkpoint message (§ 6), not in this pointer.
+5. **It is derived**, so deleting it loses nothing: the newest attempt with a
+   zero exit can be recomputed by scanning. It exists to spare every consumer
+   that scan, not to hold unique information.
+6. **A stage with no completed attempt has no `run-latest`.** A dangling or
+   absent pointer is the honest answer — better than pointing at a crashed
+   attempt — and a consumer must handle its absence.
+7. **It is written with `ln -sfn`.** Without `-n` the second write lands *inside*
+   the existing link (`run-latest/run-1`) instead of replacing it.
+
+#### Why this name and not `latest`
+
+`run-` is a namespace this layout already owns (§ 4.3), so the pointer
+introduces **no new reserved word** — it extends one. Three things follow that a
+bare `latest` would not give:
+
+- **It cannot be mistaken for an attempt.** The wrapper's scan already skips any
+  `run-<suffix>` whose suffix is not all digits (`runwrap.py`, the
+  `''|*[!0-9]*) continue` case), so `run-latest` is filtered out by code that
+  was written before this existed.
+- **It sorts and reads beside what it points at.** `ls` puts it under `run-0`,
+  `run-1`, with `ls -l` showing the arrow.
+- **It cannot collide.** A bare `latest` is a word an engine or a user could
+  plausibly write; `run-latest` is inside a prefix molbuilder has claimed.
+
+Nor is it `.mb`-prefixed like `.mbcheckpoint.json` or `.mb-rank-launch-*`. That
+family is molbuilder's **private** state, hidden on purpose. This is a **public
+handle** — the point is that a person types `cd run-latest` — so hiding it would
+defeat it.
+
+#### One guard has to be fixed first
+
+⚠ The wrapper refuses to run from inside an attempt by matching
+`${PWD##*/}` against `run-[0-9]*` (§ 1.2). `$PWD` is the **logical** path, so
+after `cd run-latest` the basename reads `run-latest`, the guard does not fire,
+and the wrapper nests `run-0/` inside the attempt — the exact accident the guard
+exists to prevent. **Verified, not inferred.**
+
+The fix is to test the **physical** path — `$(pwd -P)` resolves the symlink and
+reports `run-0` — and it is worth making regardless of this pointer: *any*
+symlink route into an attempt defeats the logical form, and `run-latest` merely
+guarantees one exists.
+
 ---
 
 ## 2. Who owns each level
@@ -328,6 +416,13 @@ seeing:
 Attempts are assigned by the wrapper at launch: the next unused number, never
 reused. There is no `--force` to reset them (§ 1.2).
 
+**`run-` is a reserved prefix, and one member of it is not a number.**
+`run-latest` is the symlink naming the attempt that currently counts (§ 1.3).
+Numbers and that one word are the whole namespace; anything else under `run-` is
+unclaimed and should stay that way. The wrapper's attempt scan already requires
+an all-digit suffix, so a non-numeric member cannot be counted as an attempt —
+which is what makes extending the prefix safe rather than clever.
+
 ### 4.4 Trials name themselves by their settings
 
 A sweep has no order — no trial follows another — so the name carries **what was
@@ -438,6 +533,13 @@ So the rule is about **depth, not names**: a run directory is a direct child of 
 stage, or the root of a flat calculation. Nothing below that is this history's
 binary business.
 
+**`run-latest` needs no rule of its own.** It is a symlink, and the archive walk
+skips symlinks (`checkpoint.py`, the `p.is_symlink()` test) — so it is git's,
+which is right: it is container state, it is one line of text, and restoring a
+calculation restores the pointer along with everything else it links to.
+Invariant 15's *tracked XOR archived* is not at risk, because it speaks of
+regular files and a symlink is not one.
+
 ### 6.2 Append-only, because attempts are immutable
 
 An attempt never changes after it is written (§ 1.2), so an archived file never
@@ -482,6 +584,11 @@ single history live in their own contracts and are cited, not repeated.
 4. **A stage's `seq` is assigned once and never reassigned**; stages append
    (§ 4.2). **An attempt's number likewise** — the next unused, never reused, and
    nothing resets it (§ 1.2).
+4a. **`run-latest` is a symlink to a sibling attempt whose engine exited 0**, or
+   it is absent (§ 1.3). Never a real directory, never pointing outside its
+   container, never moved by a failed attempt. **Not held today**: nothing
+   writes it yet, and the wrapper's from-inside-an-attempt guard reads the
+   logical path, so entering through it defeats the refusal.
 5. **A trial never shares the calculation's identity.** Its deck is relabelled
    and forced cold, so it can neither read nor overwrite a stage's saved state
    (§ 3.2).

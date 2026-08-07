@@ -469,19 +469,28 @@ cannot.
     writes a stage's carry as a symlink to `../<producer>/<id>.XV`, which is
     where a stage's output lived until 12a moved it into `run-N/`. The link now
     dangles, and *which* attempt is the right one cannot be known when `prep`
-    runs, because the runs have not happened. **The fix is a stable name:** the
-    wrapper writes `latest -> run-<n>` in the stage directory when an attempt
-    finishes, and the carry targets `../<producer>/latest/<id>.XV` — resolvable
-    at prep time, correct at run time, no hashing and no registry. It pays twice:
-    the viewer and the status roll-up both currently have to guess which attempt
-    is current. **Fold gap 6 into the same change**, since it is the same
-    expression: `materialize.job_dir_name` returns `point-<name>` for every job,
-    so a ladder gets the sweep's naming — it must branch on `JobSet.kind`
-    (`project-layout.md` § 4.4). *Done when:* a two-stage folder prepped before
-    either stage runs, then run in order, starts the second stage from the first
-    stage's geometry; the stage directories are `01_<name>`/`02_<name>`; a
-    benchmark's points still read `point-*`; and re-running the first stage
-    repoints `latest` without touching the attempt that used to hold it.
+    runs, because the runs have not happened. **The fix is a stable name, now
+    specified** — [`project-layout.md`](?doc=execution/project-layout.md) § 1.3:
+    the wrapper writes `run-latest -> run-<n>` in the container as its last act,
+    **only when the engine exits 0**, and the carry targets
+    `../<producer>/run-latest/<id>.XV`. Resolvable at prep time, correct at run
+    time, no hashing and no registry, and a crashed attempt leaves the pointer
+    where it was. It pays twice: the viewer and the status roll-up both currently
+    have to guess which attempt is current. **Two things ride along.** First,
+    gap 6, because it is the same expression: `materialize.job_dir_name` returns
+    `point-<name>` for every job, so a ladder gets the sweep's naming — it must
+    branch on `JobSet.kind` (§ 4.4 there). Second, ⚠ **the from-inside-an-attempt
+    guard has to move to the physical path first** (§ 1.3, *One guard has to be
+    fixed first*): it matches `${PWD##*/}` against `run-[0-9]*`, and `$PWD` is
+    logical, so `cd run-latest` defeats it and the wrapper nests `run-0/` inside
+    the attempt — **verified, not inferred**. `$(pwd -P)` fixes it, and is worth
+    it regardless: any symlink route in defeats the logical form. *Done when:* a
+    two-stage folder prepped before either stage runs, then run in order, starts
+    the second stage from the first stage's geometry; the stage directories are
+    `01_<name>`/`02_<name>`; a benchmark's points still read `point-*`; a failed
+    attempt does not move the pointer; a stage with no completed attempt has none;
+    and running the wrapper from inside `run-latest/` exits 2 like running it
+    from inside `run-0/`.
 13. ~~**The archive globs reach into the subdirectories**~~ — **done
     (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
     the walk is recursive and skips symlinks and dot-directories, a binary-only
