@@ -190,3 +190,19 @@ def test_failure_hints_can_still_read_the_session_log_after_the_cd(tmp_path):
     text = render_run_wrapper(tmp_path / "job.fdf", mpi_np=1, attempt_dirs=True)
     assert '_runwrap_log="$PWD/' in text, (
         "must be absolute, because the wrapper cd's after opening it")
+
+
+def test_refuses_to_run_from_inside_an_attempt(tmp_path):
+    """The wrapper runs in the CONTAINER -- the stage directory.  Invoked from
+    inside an attempt it would nest run-0/run-0/, and the inner one would carry
+    from nothing."""
+    env = _fake_engine(tmp_path)
+    w = _wrapper(tmp_path, attempt_dirs=True)
+    _run(tmp_path, w, env)
+
+    r = subprocess.run(["bash", "../job.run.sh"], cwd=tmp_path / "run-0",
+                       env=env, capture_output=True, text=True)
+
+    assert r.returncode == 2
+    assert "STAGE directory" in r.stderr
+    assert not (tmp_path / "run-0" / "run-0").exists()

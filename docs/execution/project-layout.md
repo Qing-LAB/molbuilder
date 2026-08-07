@@ -117,6 +117,33 @@ Immutability is a contract, not a filesystem permission — but it is **checkabl
 and § 7 makes it an invariant: an attempt that has been saved must never differ
 afterwards. Nothing would notice today.
 
+#### Where the wrapper is invoked
+
+**In the container — the stage directory, or the calculation root for a
+single-stage run. Never inside an attempt**, because the attempt does not exist
+until the wrapper creates it.
+
+```
+cd 01_coarse && bash ../<id>_coarse.run.sh      → builds 01_coarse/run-0/
+```
+
+That keeps the shipped invocation unchanged: `jobset submit` already does
+`cd <job dir> && bash …run.sh`, and a `.sbatch` inherits the directory it was
+submitted from. Nothing about how a run is launched moves — only what the
+wrapper does in its first ten lines.
+
+The wrapper **refuses** (exit 2) if its working directory is itself a
+`run-<n>/`, naming the mistake and what to do. Without that it would happily
+nest `run-0/run-0/`, and the second attempt would carry from nothing.
+
+**Everything the attempt needs, the wrapper puts there:**
+
+| | How | Why |
+|---|---|---|
+| the deck, the monitor, the pseudopotentials | **linked** from the container | five attempts share one copy of each |
+| the previous attempt's warm files | **copied** | the engine writes to them; a link would write back into the attempt that produced them, and immutability is the whole point |
+| everything the run writes | created in place | it is already the working directory |
+
 **The wrapper half is built** (2026-08-06, `runwrap.py`, opt-in via
 `attempt_dirs`). It resolves the next attempt, creates `run-<n>/`, **links** the
 deck and shared package in, **copies** the previous attempt's warm files —

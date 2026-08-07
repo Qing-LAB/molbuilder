@@ -101,6 +101,19 @@ def _attempt_dir_block(basename: str, *, ext: str = ".out",
         f"# (project-layout.md § 1.2).  Re-running NEVER overwrites a prior\n"
         f"# result -- there is nothing to overwrite -- so there is no --force.\n"
         f"#\n"
+        f"# WHERE THIS RUNS: the CONTAINER -- the stage directory, or the\n"
+        f"# calculation root for a single-stage run.  NEVER inside an attempt:\n"
+        f"# the attempt does not exist until this block creates it.  Invoked\n"
+        f"# from inside one by mistake it would nest run-0/run-0/, so refuse.\n"
+        f'case "${{PWD##*/}}" in\n'
+        f"    run-[0-9]*)\n"
+        f'        echo "[molbuilder] run this from the STAGE directory, not '
+        f'from inside an attempt.  You are in ${{PWD##*/}}/ -- cd .. and '
+        f're-run." >&2\n'
+        f"        exit 2\n"
+        f"        ;;\n"
+        f"esac\n"
+        f"\n"
         f"# --force is REFUSED rather than ignored.  Its whole purpose is to\n"
         f"# reset the sequence and clobber a previous result; silently doing\n"
         f"# something else would leave a user who asked for a reset believing\n"
