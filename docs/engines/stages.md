@@ -441,28 +441,44 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
 them correctly. The wrappers are not, and are not meant to be: they are baked for
 a target (§ 8).
 
-### 7.1 The layout: common above, per-stage below
+### 7.1 The layout: portable above, machine-specific below
 
-**Stages do not share a directory.** The folder is a parent holding what every
-stage shares, and one subdirectory per stage holding everything that stage
-produces:
+**Stages do not share a directory.** The parent holds what every stage shares
+*and what any machine can read*; each stage's subdirectory holds the deck
+rendered for **this** machine, and everything that stage produced:
 
 ```
 projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
-├── stages.json                        ← the description
+├── <id>.template.fdf                  ← the science backbone
+├── stages.json                        ← what each stage tunes
 ├── Au.psml  S.psml  C.psml  H.psml    ← shared, stored ONCE
-├── mb_monitor.py                      ← shared
-├── <id>_coarse.fdf  <id>_coarse.run.sh
-├── <id>_tight.fdf   <id>_tight.run.sh ← decks + wrappers, rendered once
-├── coarse/
-│   ├── <id>_coarse.fdf → ../<id>_coarse.fdf
+├── mb_monitor.py
+├── 01_coarse/                         ← written by `prep`, on the target
+│   ├── <id>.fdf                       ← template ⊕ coarse ⊕ this machine
+│   ├── <id>.run.sh                    ← its wrapper, for this machine
 │   ├── Au.psml → ../Au.psml  …        ← shared, linked in
-│   └── <id>.XV .DM .ANI .STRUCT_OUT   ← everything THIS stage produced
-└── tight/
-    ├── <id>_tight.fdf → ../<id>_tight.fdf
-    ├── <id>.XV                        ← a real copy of the coarse run you chose
-    └── <id>.DM
+│   └── run-0/  run-1/                 ← what each attempt produced
+└── 02_tight/
+    ├── <id>.fdf
+    └── run-0/
+        ├── <id>.XV                    ← a real copy of the coarse run you chose
+        └── <id>.DM
 ```
+
+**The deck is rendered where the machine is known, and that is not deferral for
+its own sake.** Some of what goes *inside* a `.fdf` is a fact about the hardware:
+`_auto_block_size(n_atoms, mpi_np, gpu_mode)` derives `BlockSize` from the rank
+count and whether there is a GPU, and `Diag.Algorithm` picks both the numerics
+and the conda environment the wrapper activates (§ 5). A deck finished on a
+laptop is either wrong for the cluster or guessing. So the parent carries a
+**template** and `prep` completes it — the same shape `bench prep` already ships,
+where the bundle is portable until the target formats it
+(`project-layout.md § 2.2`).
+
+**The template is not a fill-in-the-blanks file.** It is the effective config
+rendered with the machine-dependent keys left out; `prep` renders the stage's
+deck from the same renderer with those keys resolved. One renderer, two moments —
+not a text-substitution language.
 
 **This is not a new layout.** It is what `job-system.md § 5.2`'s `prep` already
 builds, and its place in the wider tree is

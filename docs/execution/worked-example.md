@@ -104,30 +104,36 @@ stage it is about. Then **Generate**:
 
 ```
 projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
-├── stages.json                     what was asked for — the only source
-├── <id>_coarse.fdf                 rendered from base ⊕ coarse
-├── <id>_tight.fdf                  rendered from base ⊕ tight
-├── <id>_coarse.run.sh  .sbatch     one wrapper per deck
-├── <id>_tight.run.sh   .sbatch
+├── <id>.template.fdf               the science, minus what a stage varies
+│                                   and minus what the hardware decides
+├── stages.json                     what each stage tunes, + resource intent
 ├── Au.psml  S.psml  C.psml  H.psml the shared package, once
-├── mb_monitor.py
-├── job-set.json                    the chain, derived
-├── 01_coarse/                      a container: links up, and its attempts
-└── 02_tight/
+└── mb_monitor.py
 ```
 
-**Two decks, not one template.** A stage's values are baked into its own file,
-because a parameter change alters what the engine computes and must be in the
-file the engine reads.
+**Nothing here names a machine** — no walltime, no partition, no activation
+command, no rank count. Copy this folder to any cluster and it still describes
+the same calculation. There are no stage directories yet either; those appear
+when you prep a stage on the machine that will run it.
+
+**A template, not finished decks.** The browser writes the science backbone and
+`stages.json`; the actual `.fdf` for each stage is rendered later, on the machine
+that will run it. That is not deferral for its own sake — `BlockSize` is computed
+from the rank count and whether there is a GPU
+(`siesta/input.py::_auto_block_size`) and goes *inside* the deck, and the
+eigensolver choice changes both the deck and which conda environment the wrapper
+activates. A deck finished on a laptop would be guessing at both
+(`project-layout.md § 2.2`).
 
 **One basename everywhere.** Every deck says `SystemLabel bdt_au_relax_c6h4s2au38`.
-That is not cosmetic: it is why a later stage finds the earlier stage's `.XV`.
+That is not cosmetic: it is why a later stage can pick up an earlier one's `.XV`.
 
-⛔ **Gap 2.** Who creates `01_coarse/` and `02_tight/`? The producer writes the
-calculation root; `prep` lays out the per-stage containers — but `prep` is a
-*target-side* verb, meant to run on the cluster after you copy the folder. When
-host and target are the same machine (the common case for a workstation user),
-nothing says whether generate should have done it already.
+⛔ **Gap 2.** Today the producer renders both decks here and `prep` lays out the
+stage directories for the whole bundle at once. Neither matches the above: the
+decks have to move down into their stage directories and be rendered on the
+target, and `prep` has to become per-stage. `bench prep` already works this way
+— detect the machine, format the scripts for it — so the shape exists; the
+staged path does not use it yet.
 
 ---
 

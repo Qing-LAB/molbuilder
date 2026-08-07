@@ -76,13 +76,14 @@ which is what a table of layers cannot show you.
 - **Stages do not chain** — each is set up and submitted on its own, after you
   have looked at the last ([`project-layout.md`](?doc=execution/project-layout.md)
   § 1.3). That is § 1 above taken literally.
-- **The surface changes between "the files are ready" and "start it"**
-  (`project-layout.md` § 2.1). Saving a structure, describing, generating,
-  preparing a stage, and setting up its wrapper and save history are the **UI's**
-  — all five are design, and you need to see them. **Submitting is the CLI's**,
-  because it is an act on a particular machine and the browser is very often not
-  on it. Every step still has a CLI equivalent through the shared API
-  (`conventions.md § 3`); what changes is which surface is primary.
+- **The browser writes a portable package; the target machine finishes it**
+  (`project-layout.md` § 2). Data files, a deck template, `stages.json` and
+  resource intent — none of it naming a machine. `prep`, on the machine that will
+  run it, renders the deck and wrapper and builds the run directory, because
+  `BlockSize` comes from the rank count and the eigensolver picks the conda
+  environment: a deck finished on a laptop is guessing. **And `prep` is a hub you
+  return to** — for a benchmark, for the real run using what it measured, for a
+  redo, for the next stage — which is where the user does the joining.
 
 ---
 
@@ -396,51 +397,68 @@ rather than several. *Done when:* a produced two-stage folder can be
 `snapshot init`-ed, and a folder holding two unrelated run directories still
 cannot.
 
-**Step 1c — the commands, which fall out of the workflow.** `project-layout.md`
-§ 2.1's seven steps map onto verbs that mostly exist already. The gap is that
-`prep` and `submit` are bundle-wide, and there is no way to say *this stage*.
+**Step 1c — the commands, which fall out of the workflow.**
+`project-layout.md` § 2 puts the boundary between what a laptop can know and what
+only the target machine can. The browser writes a **portable package** — data
+files, a deck template, `stages.json`, resource intent, and nothing that names a
+machine. Everything after that is `prep` on the target, and `prep` is a **hub you
+return to**, not step four of a line.
 
-| Step | Command | Status |
+| | Command | Status |
 |---|---|---|
-| 3 · generate | `molbuilder fdf … --jobset` | ships |
-| 4 · prepare one stage | `molbuilder jobset prep <stage> [--from <stage>[/<run>]] [--cold]` | **`prep` ships; the stage argument, `--from` and `--cold` are new** |
-| 5 · set up execution | `molbuilder run <deck>` (the wrapper) + `molbuilder snapshot init` | both ship |
-| 6 · submit or execute | `molbuilder jobset submit <stage> --mode direct\|submit` | **`submit` ships; the stage argument is new** |
-| 7 · look | `molbuilder jobset status` · `molbuilder snapshot checkpoint` | both ship |
+| write the portable package | the tab, or `molbuilder fdf …` | ships (renders finished decks today — that moves) |
+| **prep a benchmark** for a stage | `molbuilder jobset prep <stage> --bench` | `bench generate`/`prep` ship; the wiring is new |
+| **prep the real run** with what you measured | `molbuilder jobset prep <stage> --bench-result <path>` | new |
+| **prep a redo** | `molbuilder jobset prep <stage> --from run-0` | new |
+| **prep the next stage** | `molbuilder jobset prep <stage> --from 01_coarse/run-0` | new |
+| run it | `molbuilder jobset submit <stage> --mode direct\|submit` | `submit` ships; the stage argument is new |
+| look | `molbuilder jobset status` · `molbuilder snapshot checkpoint` | ship |
 
-A session, run from inside the calculation folder:
+**Those four preps are one command because they are one act** — *assemble a
+runnable directory from a template, a source of earlier results, and this
+machine's resolved parameters*. `--from run-0` and `--from 01_coarse/run-0` are
+the same instruction pointing at different directories; `--bench-result` is the
+same kind of input as `--from`, carrying numbers instead of a geometry. Four
+commands would be four spellings of one thing.
+
+What `prep` does that nothing does today: **render the stage's deck**, because
+`BlockSize` comes from the rank count and the eigensolver picks the conda
+environment, so the deck is not finishable until the machine is known
+(`project-layout.md § 2.2`). `bench prep` already has this shape — detect the
+target, write `environment.json`, format the scripts for it — and the staged path
+should use it rather than growing a second one.
+
+A session, from inside the calculation folder on the target:
 
 ```
-molbuilder jobset prep coarse
-    01_coarse/run-0/  ready   deck + 4 pseudopotentials linked, nothing carried in
-molbuilder jobset submit coarse --mode direct
-molbuilder jobset status
-    1  coarse  finished  run-0   converged, 41 steps
-    2  tight   not-started
-molbuilder jobset prep tight --from coarse
+molbuilder jobset prep tight --bench          # measure first
+molbuilder jobset submit tight --mode direct
+molbuilder bench summarize --bundle 02_tight/bench
+
+molbuilder jobset prep tight --bench-result 02_tight/bench/bench-result.json \
+                            --from 01_coarse/run-0
     reading from 01_coarse/run-0  (finished, converged)
-    02_tight/run-0/  ready   copied in: <id>.XV  <id>.DM
+    resources  elpa · G=1 K=4 C=6 · mem 96G     (measured here, 2026-08-06)
+    02_tight/<id>.fdf   rendered   BlockSize 256, Diag.Algorithm elpa
+    02_tight/run-0/     ready      copied in: <id>.XV  <id>.DM
 molbuilder jobset submit tight --mode submit --domain public
-    [submitted] tight  job 481923
 ```
 
-**`--from coarse` resolves to that stage's newest finished run and says which**,
-so the convenient form is still checkable; `--from coarse/run-0` names it
-outright. Prepare printing what it chose is what makes submit a plain *yes* —
-which is the whole reason the two are separate steps.
+**Prep printing what it resolved is what makes submit a plain yes** — and it is
+the only place the measured numbers, the chosen geometry and the rendered deck
+appear together, which is exactly where a person should be looking.
 
-**Three shapes still open**, all cosmetic but all worth settling before code:
+**Three shapes still open**, all cosmetic:
 
-1. **Stage as the positional** (`jobset prep tight`, folder defaults to cwd) or
-   folder positional with `--stage`? The stage is what varies now; the folder is
-   almost always where you are standing. Pre-1.0, so changing it is allowed.
-2. **`jobset` or a `stage` group?** `molbuilder stage prep tight` reads closer to
-   how you think. Recommendation: keep `jobset` — the same code serves benchmark
-   sweeps, whose members are points rather than stages, and a second command group
-   over one mechanism is duplication.
-3. **`molbuilder run` does not run** — it writes the wrapper, which is step 5. The
-   name was harmless while nothing else started jobs; with `jobset submit` it is a
-   trap. Renaming is churn nobody asked for, but it will confuse someone.
+1. **Stage as the positional** (`jobset prep tight`, folder defaults to cwd), or
+   folder positional with `--stage`? Pre-1.0, so changing it is allowed.
+2. **`jobset`, or promote `prep` to top level?** It is no longer really about job
+   *sets* — it is the one verb of the execution loop, and `molbuilder prep tight`
+   reads like what it is. Against: `jobset` also serves benchmark sweeps, and a
+   second surface over one mechanism is duplication.
+3. **`molbuilder run` does not run** — it writes a wrapper, which `prep` now
+   subsumes for staged calculations. It stays for the flat single-job path, but
+   the name will confuse someone.
 
 **Step 1b — the questions that gate code, in one place.** Items 12a–12c cannot
 start until these are answered, and they are decisions rather than research:

@@ -37,24 +37,28 @@ projects/                                   the root (git-ignored)
     │   └── Au.psml  S.psml  C.psml  H.psml
     └── optimization/                       ② a RUN topic — one of nine fixed names
         └── bdt_au_relax_c6h4s2au38/        ③ a CALCULATION — one system, one identity
-            ├── stages.json                   the description: what was asked for
-            ├── <id>_coarse.fdf               one deck per stage, rendered from it
-            ├── <id>_tight.fdf
-            ├── <id>_coarse.run.sh .sbatch    one wrapper per deck
-            ├── <id>_tight.run.sh  .sbatch
+            │                                 ── written by the browser, and
+            │                                    naming no machine anywhere ──
+            ├── <id>.template.fdf             the science backbone: everything
+            │                                 fixed, nothing a stage varies and
+            │                                 nothing the hardware decides
+            ├── stages.json                   what each stage tunes + resource intent
             ├── Au.psml  S.psml               the shared package, stored once
             ├── mb_monitor.py
-            ├── job-set.json  STAGE-PLAN.md   derived
             ├── .mbcheckpoint.json
             ├── .git/  .binsnapshots/         the saved history (§ 6)
             │
-            ├── 01_coarse/                  ④ a STAGE — one science setting
-            │   ├── <id>_coarse.fdf → ../     its deck, linked up
+            ├── 01_coarse/                  ④ a STAGE — written by `prep`, on the
+            │   │                              machine that will run it
+            │   ├── <id>.fdf                  THE DECK: template ⊕ coarse's values
+            │   │                             ⊕ this machine's BlockSize, solver, ranks
+            │   ├── <id>.run.sh  .sbatch      its wrapper, for this machine
             │   ├── Au.psml → ../             shared, linked up
             │   ├── run-0/                  ⑤ an ATTEMPT — a RUN, immutable
-            │   │   ├── <id>_coarse.fdf → ../   the deck, linked down
+            │   │   ├── <id>.fdf → ../          the deck, linked down
+            │   │   ├── run.json                how it was launched, what it continued from
             │   │   └── <id>.XV .DM .out        everything this attempt produced
-            │   ├── run-1/                    a second attempt, carrying run-0's state
+            │   ├── run-1/                    a redo, continuing from run-0
             │   └── bench/                    a BENCHMARK — its own container
             │       ├── job-gpu.fdf  job-cpu.fdf    the science, made measurable
             │       ├── bench-manifest.json  bench-result.json
@@ -62,7 +66,7 @@ projects/                                   the root (git-ignored)
             │
             └── 02_tight/
                 └── run-0/
-                    └── <id>.XV                     copied from 01_coarse/run-1/
+                    └── <id>.XV                     copied from 01_coarse/run-0/
 ```
 
 **③ is a calculation** — one system studied one way. One identity, one saved
@@ -278,93 +282,114 @@ case**, which still reuses one directory.
 
 ## 2. Who does what — the workflow, and each level's owner
 
-### 2.1 The seven steps, and where the surface changes
+### 2.1 The browser writes a portable package; the terminal makes it runnable
 
-A calculation is designed in the browser and started from a terminal. The
-handover happens at one point and for one reason.
+The split is not "design versus execution". It is **what a laptop can know versus
+what only the target machine can**.
 
-| | Step | What it writes | Surface |
-|---|---|---|---|
-| 1 | **Save the structure** into the tree | `structure/<name>.xyz` + sidecar | **UI** |
-| 2 | **Describe** the calculation | `stages.json` — the science | **UI** |
-| 3 | **Generate** the files | the decks, the shared package, the stage containers | **UI** |
-| 4 | **Prepare one stage** to run | its attempt directory, the links, whatever it continues from | **UI** |
-| 5 | **Set up execution and the save history** | the wrapper for this machine; `snapshot init` | **UI** |
-| 6 | **Submit or execute** | — it starts | **CLI** |
-| 7 | **Watch, save, decide** | a checkpoint; then back to step 4 for the next stage | CLI, with the UI for looking at results |
+**The browser writes four things, and none of them mention a machine:**
 
-**Every step has a CLI equivalent, and both surfaces call the same function.**
-`conventions.md § 3` already fixes this — the CLI is a thin shell over the API the
-blueprints use, never a private copy — so a user on a cluster with no browser can
-do 1–5 from a terminal. What the table says is which surface is *primary*, not
-which is possible. Step 6 is the exception: it has no UI yet.
+| | What | Why it is portable |
+|---|---|---|
+| the **data files** | pseudopotentials, the structure | they are the same everywhere |
+| the **deck template** | the science backbone — everything the calculation fixes and no stage varies | it is physics |
+| **`stages.json`** | the variables each stage tunes | it is the mission |
+| the **resource intent** | *use a GPU · this is a big job · aim for this scale* | a wish, not a number |
 
-### 2.2 Why the handover is between 5 and 6
+**The terminal — `prep`, on the machine that will run it — turns that into a
+runnable directory**, because only there do you know:
 
-Not taste, and not "the UI is for easy things."
+- workstation or SLURM;
+- how conda or mamba is installed here, and whether activation is
+  `conda activate` or `source activate` (`molbuilder.json`);
+- what the hardware actually is, and what a benchmark measured on it.
 
-**Steps 1–5 are design.** You look, you check, you change your mind, you look
-again. Nothing is running and nothing is expensive. A browser — where you can see
-the structure, read the findings, compare two stages side by side — is the right
-place for that, and it is why check-then-produce is one route with a flag
-(`web/staged-runs-architecture.md § 5.2`) rather than a fire-and-forget button.
+Then it **renders the final deck** — template ⊕ this stage's variables ⊕ this
+machine's resolved parameters — writes the wrapper, builds the run directory, and
+brings in whatever you told it to continue from.
 
-**Step 6 is an act on a particular machine.** The machine that runs the
-calculation is very often not the machine running the browser: you design on a
-laptop and submit from a cluster login node over ssh. A browser cannot `sbatch`
-into a queue it is not on.
+### 2.2 Why the deck cannot be finished in the browser
 
-So the boundary is not "UI does the simple half". It is:
+Because some of what goes *inside* the deck is a fact about the machine.
 
-> **Everything up to *the files are ready and correct* is design, and belongs to
-> the surface where you can see them. Starting the job is an act on a specific
-> machine, and belongs to the terminal on that machine.**
+`BlockSize` is the clearest case: `siesta/input.py`'s `_auto_block_size(n_atoms,
+mpi_np, gpu_mode)` derives it from **the rank count and whether there is a GPU**,
+and the answer is written into the `.fdf`. The eigensolver is another — ScaLAPACK
+or ELPA changes both the deck *and* which conda environment the wrapper
+activates. A deck rendered on a laptop is either wrong for the cluster or a
+guess.
 
-That is also why step 6 is CLI **for now** rather than forever. Run
-`molbuilder serve` on the login node and the machine question disappears; the
-boundary would move because the reason for it moved, not because the rule
-changed.
+So the parent holds a **template**, and the final `.fdf` is produced where its
+last unknowns are known. This is the same shape the benchmark already ships:
+`bench prep` runs on the target, detects the machine, writes `environment.json`,
+and formats the scripts for it — *"the user never hand-edits a queue name or a
+core count; this is what makes the bundle portable."* The staged path reuses that
+shape rather than inventing a second one.
 
-### 2.3 Why 4 and 5 are separate steps
+> **A folder that carries no machine knowledge can be copied to any machine. A
+> folder whose decks were finished on a laptop can only be copied to that
+> laptop.**
 
-They answer to different configuration, and one is portable while the other is
-not (§ 5).
+### 2.3 `prep` is the hub, not step four of a line
 
-- **Step 4 writes the science.** Which deck, what it continues from — all of it
-  comes from `stages.json` and from the run you picked. It carries no walltime,
-  no partition, no activation, so the folder means the same thing on any machine.
-- **Step 5 writes the machine's half.** The wrapper's environment activation, its
-  rank count, its scheduler header — from `molbuilder.json`, and from a benchmark
-  result if you measured one. None of it is portable, and all of it is
-  re-derivable.
-
-Keeping them apart is what lets you re-do either alone: change the science and
-regenerate without re-answering the hardware question, or move the folder to a
-different cluster and redo only step 5. **It is also where a measured benchmark
-answer belongs** — the sweep tunes the machine, so its verdict lands in the
-execution setup, not in the description.
-
-The save history is set up here too, for the same reason: which files count as
-big binaries is a storage decision about this machine's copy, not a statement
-about the science.
-
-### 2.4 The loop
-
-Steps 4–7 repeat, once per stage, and the loop closes through a person.
+This is the part a linear list gets wrong. **You come back to `prep` every time,
+and it is where every join is made:**
 
 ```mermaid
 flowchart LR
-    G["3 · generate<br/><i>all stages at once</i>"] --> P["4 · prepare one stage"]
-    P --> X["5 · set up execution<br/>+ save history"]
-    X --> S["6 · submit or execute<br/><b>CLI</b>"]
-    S --> W["7 · watch · save · <b>look</b>"]
-    W -->|"you decide the next stage<br/>is worth running"| P
+    UI["<b>browser</b><br/>data files · deck template<br/>stages.json · resource intent"]
+    P{"<b>prep</b><br/>on the target machine"}
+    B["benchmark<br/>runs"]
+    R["a run<br/>runs"]
+
+    UI --> P
+    P -->|"--bench"| B
+    B -->|"the measured answer"| P
+    P -->|"a run directory"| R
+    R -->|"its results, and what you learned"| P
 ```
 
-**Nothing advances that loop except a person.** Stages are not chained
-(§ 1.3): the arrow back to step 4 is a decision, made after looking at what step 7
-showed you. A stage is a long job, and that pause is the point of the whole
-design.
+Four different jobs, one verb, because they are the same act — *assemble a
+runnable directory from a template, a source of earlier results, and this
+machine's parameters*:
+
+| You are doing | You give `prep` |
+|---|---|
+| measuring, before committing | the stage, and *benchmark this* |
+| the real run, using what you measured | the stage, and the benchmark result |
+| a redo of that run | the stage, and `run-0` to continue from |
+| the next stage | that stage, and the previous stage's run to continue from |
+
+**Nothing distinguishes those four in the machinery.** "Continue from `run-0`"
+and "continue from `01_coarse/run-0`" are the same instruction pointing at
+different directories; "use this benchmark result" is the same kind of input as
+"use this geometry". That is why it is one command with arguments rather than
+four commands.
+
+And it is where **you** are in the loop. Every arrow back into `prep` is a
+decision made after looking at what came out — which is the whole reason stages
+do not chain (§ 1.3).
+
+### 2.4 The steps, and which surface
+
+| | Step | Surface |
+|---|---|---|
+| 1 | save the structure into the tree | **browser** |
+| 2 | describe the calculation — the template and `stages.json` | **browser** |
+| 3 | write the portable package into the calculation folder | **browser** |
+| 4 | **`prep`** — resolve this machine, render the deck and wrapper, build the run directory | **CLI** |
+| 5 | submit or execute | **CLI** |
+| 6 | look at what happened; save a checkpoint | CLI, with the browser for viewing results |
+| ↻ | back to 4, for a benchmark, a redo, or the next stage | |
+
+**Every step has a CLI equivalent** — `conventions.md § 3` makes the CLI a thin
+shell over the same functions the blueprints call, so a user with no browser can
+do 1–3 from a terminal. Steps 4 and 5 have no browser equivalent, and that is the
+real boundary rather than a gap: they need the target machine.
+
+The save history is set up at step 4 for the same reason everything else is:
+which files count as big binaries depends on this machine's copy of the tree, not
+on the science.
 
 ### 2.5 Who owns each level of the tree
 
@@ -372,28 +397,24 @@ design.
 |---|---|---|---|
 | ① **project** | the user | nobody — it is a folder | topics, nothing else |
 | ② **topic** | a **fixed set of nine** (`job-contracts.md § 2.5`) | nobody | calculations (run topics) or files (storage topics) |
-| ③ **calculation** | the run id (`run-identity.md § 3`) | **generate** (step 3), in one transaction | decks, wrappers, the shared package, the description, derived files, the history |
-| ④ **stage** | `<seq>_<name>` (§ 4) | **generate** creates it; **prepare** (step 4) fills it | links up, and its attempts — **a container** |
-| ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **prepare** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable** |
-| — **benchmark** | `bench` | the benchmark producer | its own decks, wrappers, config and results — a self-contained **container** |
+| ③ **calculation** | the run id (`run-identity.md § 3`) | **the browser** (step 3), in one transaction | the template, `stages.json`, the shared package, the history |
+| ④ **stage** | `<seq>_<name>` (§ 4) | **`prep`** — the rendered deck and wrapper land here | its deck, its wrapper, its attempts — **a container** |
+| ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **`prep`** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable** |
+| — **benchmark** | `bench` | `prep --bench` | its own decks, wrappers, config and results — a self-contained **container** |
 | — **trial** | `point-<knobs>` (§ 4.4) | the sweep script, then the engine | one throwaway **run** |
 
 Three rules, and everything else follows:
 
-> **Generate writes level ③ and nothing else. Prepare writes level ⑤ and nothing
-> else. The engine writes the directory it was launched in, once, and nothing
-> ever writes there again.**
-
-And a third that names the language, because it decides where the others are
-enforced:
+> **The browser writes level ③ and nothing else, and writes nothing that names a
+> machine. `prep` writes ④ and ⑤. The engine writes the directory it was launched
+> in, once, and nothing ever writes there again.**
 
 > **Every directory and every link in this tree is made by Python. The wrapper
 > activates an environment and execs an engine, in a directory it was handed**
 > (`running-a-job.md § 2.2a`).
 
-Generate never writes inside a stage directory beyond creating it; prepare only
-works inside one attempt. The engine never writes above itself — whatever a run
-continues from is a real copy put there before it starts (§ 1.3).
+The engine never writes above itself — whatever a run continues from is a real
+copy put there before it starts (§ 1.3).
 
 **A benchmark gets its own directory, and that is not tidiness.**
 `generate_bench_bundle` writes its own decks, wrappers, pseudopotential copies,
@@ -435,10 +456,14 @@ measurement belongs to the stage that was measured.
 ### 3.1 Why the mechanisms differ
 
 A parameter change alters *what the engine computes*, so it has to be in the file
-the engine reads — hence one deck per stage. A resource change alters *how the
-work spreads over hardware*, and the scheduler takes that on the command line —
-which is what lets a twenty-point sweep share one rendered wrapper instead of
-writing twenty.
+the engine reads — hence a deck per stage, rendered into that stage's directory
+when it is prepped (§ 2.1). A resource change alters *how the work spreads over
+hardware*, and the scheduler takes most of that on the command line — which is
+what lets a twenty-point sweep share one rendered wrapper instead of writing
+twenty.
+
+But **not all of it**, and the exceptions below are exactly why the deck cannot
+be finished before the machine is known (§ 2.2).
 
 Three settings are both, and they are the reason neither mechanism is *the*
 mechanism:
@@ -595,7 +620,9 @@ how a folder stops being trustworthy.
 |---|---|---|---|
 | `molbuilder.json` | outside the tree — cwd or `$XDG_CONFIG_HOME` | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
 | `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | machine settings for this project |
-| `stages.json` | ③ calculation | `molbuilder/stages@1` | **the science**: base settings, which vary, the stages |
+| `<id>.template.fdf` | ③ calculation | engine deck, incomplete | **the science backbone** — everything fixed, nothing a stage varies, nothing the hardware decides |
+| `stages.json` | ③ calculation | `molbuilder/stages@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
+| `<id>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
 | `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.3); the edge fields serve the benchmark sweep |
 | `.mbcheckpoint.json` | ③ calculation | `molbuilder/checkpoint-config@1` | which patterns are big files |
 | `.molbuilder.json` | ⑤ benchmark bundle | same as project | **the activation the bundle carries to the target** — written by `_write_activation_config`, the single place that decision is persisted. A fourth scope in practice, and deliberate: the bundle must be runnable after `scp` |
@@ -773,11 +800,19 @@ single history live in their own contracts and are cited, not repeated.
    sweeps. In practice a user measures one representative stage and reuses the
    answer for the rest. The layout allows both; nothing says which is expected,
    or how a stage records *"resources measured on 02_tight"*.
-3. **May one calculation folder hold two ladders?** Nothing forbids two
+3. **Does the deck still need the stage in its filename?** The old layout put
+   every deck in one directory, so they had to be `<id>_coarse.fdf`,
+   `<id>_tight.fdf` — and `job-contracts.md § 2.3`'s stage-suffix convention and
+   the decoder's regex both exist for that. Now each deck is rendered *into its
+   own stage directory*, so the directory already says which stage it is and the
+   deck can simply be `<id>.fdf`. That is simpler and it makes the per-stage
+   trajectory separation free rather than something the filenames have to carry —
+   but the decoder reads those names, so it is a change to verify, not to assume.
+4. **May one calculation folder hold two ladders?** Nothing forbids two
    descriptions side by side, and the layout would allow it, but the id names the
    folder and warm files are shared, so a second ladder would continue from the
    first's state. Probably refuse; not yet stated.
-4. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
+5. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
    (§ 2.1): preparing and submitting are separate steps, each naming its stage —
    `jobset prep <stage>` then `jobset submit <stage>`, with `--cold` on prepare
    because skipping the copy is a setup decision. The exact spelling is in
