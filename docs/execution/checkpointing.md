@@ -121,9 +121,9 @@ bdt_au_relax_c6h4s2au38/
 ├── stages.json                        ┐
 ├── bdt_au_relax_c6h4s2au38.fdf.template │ tracked by git —
 ├── 01_coarse/                         │ text, diffable
-│   ├── bdt_au_relax_c6h4s2au38_coarse.fdf
-│   └── run-0/
-│       ├── bdt_au_relax_c6h4s2au38_coarse.out
+│   ├── bdt_au_relax_c6h4s2au38.fdf    │ ← no stage suffix: the DIRECTORY
+│   └── run-0/                         │   already says which stage
+│       ├── bdt_au_relax_c6h4s2au38.out
 │       ├── bdt_au_relax_c6h4s2au38.XV      ← small: git
 │       ├── run.json                        ┘
 │       └── bdt_au_relax_c6h4s2au38.DM      ← large: gitignored, in the archive

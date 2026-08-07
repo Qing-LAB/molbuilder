@@ -490,11 +490,11 @@ should use it rather than growing a second one.
 A session, from inside the calculation folder on the target:
 
 ```
-molbuilder jobset prep tight --bench          # measure first
+molbuilder jobset prep bench tight            # measure first
 molbuilder jobset submit tight --mode direct
 molbuilder bench summarize --bundle 02_tight/bench
 
-molbuilder jobset prep tight --bench-result 02_tight/bench/bench-result.json \
+molbuilder jobset prep run tight \
                             --from 01_coarse/run-0
     reading from 01_coarse/run-0  (finished, converged)
     resources  elpa · G=1 K=4 C=6 · mem 96G     (measured here, 2026-08-06)
@@ -1061,7 +1061,9 @@ directory. **Which shape you are in is decided by which command you happen to ty
 next** — `bash <label>.run.sh` or `molbuilder jobset prep`. Nothing records the
 choice, nothing warns, and the two disagree about where a stage's output lives.
 
-`project-layout.md § 1` says the shape is **chosen at `prep`**. It is not. It is
+`project-layout.md § 1` says the shape is **declared in the description**
+(`engines/stages.md § 6.7`, decided 2026-08-07). Today it is neither declared nor
+chosen — it is
 chosen implicitly, after the fact, by the user's next keystroke, and the producer
 has already committed to both.
 

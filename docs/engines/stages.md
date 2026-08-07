@@ -525,7 +525,8 @@ portable and the deck disposable.
 
 **How that separation is realised is not this contract's to say** — it is
 [`project-layout.md`](?doc=execution/project-layout.md) § 1, which defines two
-shapes and says the choice is made at `prep`. In the **flat** shape stages do
+shapes; which one a calculation uses is the `shape` field of its description
+(§ 6.7). In the **flat** shape stages do
 share a directory and are told apart by a filename suffix; in the
 **hierarchical** shape each gets a subdirectory. Both satisfy the requirement
 above; they differ in where the history lives, not in what a stage is.

@@ -135,7 +135,7 @@ That is not cosmetic: it is why a later stage can pick up an earlier one's `.XV`
 > the calculation passed through stays visible on disk.
 >
 > **It is not the one that ships.** A project directory is *flat* or
-> *hierarchical* and the choice is made at `prep`
+> *hierarchical*, and which one is a field in the description you wrote in § 3
 > ([`project-layout.md`](?doc=execution/project-layout.md) § 1); flat is what the
 > UI produces today. The same two stages, flat:
 >

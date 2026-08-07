@@ -260,7 +260,9 @@ whole difference.
 > list to the files they will get.
 >
 > Nor may it promise a subdirectory per stage. **That is one of the two shapes**,
-> and the choice is made at `prep`, on the target (`project-layout.md` § 1) — a
+> and the choice is a **field in the description** (`engines/stages.md § 6.7`),
+> which this page is what writes — so the tab must ask for it (`project-layout.md`
+> § 1). A
 > flat calculation keeps every stage in one directory, told apart by the
 > filename suffix. A page that draws three directories has picked a shape it does
 > not get to pick. What it can honestly say is *what will be produced*: one deck

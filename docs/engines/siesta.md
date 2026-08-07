@@ -386,6 +386,15 @@ tab can render the structure before SIESTA produces any output. The stage-aware
 name is `<basename>-stage<N>.molwatch.log`. The `.molwatch.log` format itself is
 engine-agnostic and specified in `pyscf.md`.
 
+> **This naming is changing, and this document is downstream of the change.**
+> The trajectory log will take **the deck's basename** rather than a
+> `-stage<N>` infix — `<id>_<stage>.molwatch.log` when stages share a
+> directory, `<id>.molwatch.log` when each has its own. One rule, derived
+> from the deck rather than declared separately. The table for every name
+> in the system is [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
+> § 6.3; the reasoning is [`engines/stages.md`](?doc=engines/stages.md) § 7.
+> Until it lands, what is written above is what the files are called.
+
 When the resolved charge ≠ 0, `convert()` also drops a `makov_payne_correction.py`
 script next to the `.fdf` (returned as `summary["makov_payne_script"]`, § 4). And
 each per-stage `.molwatch.log` carries `# stage: <name>` + `# convergence.<key>:

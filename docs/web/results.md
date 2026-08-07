@@ -157,6 +157,17 @@ Two rules keep this from hiding anything:
 > satellites means stripping the `-stage<N>` overlay suffix first
 > (`execution/job-contracts.md § 2.3`).
 
+> **⚠ This module is the consumer of that name, and it is changing.** The
+> trajectory log will be named for **the deck that produced it** —
+> `<id>_<stage>.molwatch.log`, or `<id>.molwatch.log` where each stage has its
+> own directory — instead of carrying a `-stage<N>` infix
+> ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6.3).
+> **What that costs here:** the run decoder's stage regex keys on the hyphen
+> form, so it changes with the rename, and anything that groups a staged run's
+> logs by parsing `N` out of the filename must instead read the stage from the
+> deck's name or its directory. Worth knowing before building on the current
+> shape.
+
 - **A file-selected event is the single source of truth.** When you choose from
   the dropdown, it fires a `fileSelected` event that the controller listens for.
 - **Refresh re-scans the folder, and tells a live viewer to re-fetch its data

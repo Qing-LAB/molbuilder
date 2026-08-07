@@ -197,15 +197,18 @@ of a calculation, on disk, in a history, and to the engine. For
 ```text
 projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/   ← the folder IS the id
 ├── bdt_au_relax_c6h4s2au38.fdf.template
-├── 01_coarse/
-│   ├── bdt_au_relax_c6h4s2au38_coarse.fdf              ← <id>_<name>
-│   └── run-0/
-│       ├── bdt_au_relax_c6h4s2au38_coarse.out
-│       ├── bdt_au_relax_c6h4s2au38_coarse.molwatch.log
-│       ├── bdt_au_relax_c6h4s2au38.XV                  ← <id> alone: the engine's
-│       └── bdt_au_relax_c6h4s2au38.DM                     warm files, unsuffixed
-└── 02_tight/…
+├── bdt_au_relax_c6h4s2au38_coarse.fdf        ┐ what a STAGE produced
+├── bdt_au_relax_c6h4s2au38_tight.fdf         │ carries the stage: <id>_<stage>
+├── bdt_au_relax_c6h4s2au38_coarse-run0.out   ┘
+├── bdt_au_relax_c6h4s2au38.XV                ┐ what the ENGINE resumes from
+└── bdt_au_relax_c6h4s2au38.DM                ┘ carries the id ALONE
 ```
+
+That is the **flat** shape, chosen here because it is where the id has to do all
+the work — nothing but the filename separates one stage from another. The
+**hierarchical** shape makes the same separation with directories
+(`01_coarse/<id>.fdf`), so its names are shorter; the rule generating both is
+`job-contracts.md § 6.3` — *a name says what its location does not*.
 
 and in the history:
 
@@ -219,9 +222,18 @@ tag     bdt_au_relax_c6h4s2au38/tight/20260806T221403Z
 § 3's character set buys, and it is why no second sanitiser exists anywhere.
 
 Note which files carry the stage and which do not: **anything a stage produced**
-carries `_<name>`, and **anything the engine warm-restarts from** carries the
+carries `_<stage>`, and **anything the engine warm-restarts from** carries the
 bare id. That asymmetry is not cosmetic — it is exactly what lets the next stage
-find the previous stage's state without being told where it is (§ 4).
+find the previous stage's state without being told where it is (§ 4). SIESTA
+looks for `<SystemLabel>.XV`; the file sitting there is the one the last stage
+left, and no instruction passes between them.
+
+**In the hierarchical shape the same separation exists, expressed differently.**
+There every name is the bare id and the *directory* says which stage — so the
+warm files a stage resumes from are the ones `prep` copied into its attempt
+(`project-layout.md § 2.3.4`), rather than the ones the previous stage happened
+to leave in a shared directory. Same outcome, and it is the flat shape that makes
+the id's role visible, which is why the example above is flat.
 
 **Three rules keep normalisation from becoming a source of surprise:**
 

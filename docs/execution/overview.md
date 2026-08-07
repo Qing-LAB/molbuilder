@@ -212,7 +212,9 @@ is a thinner history. **In the flat shape it is a state that no longer exists
 anywhere** — which is why `checkpointing.md` matters far more than a
 convenience feature normally would, and why the checkpoint work was done first.
 
-**Neither shape is wrong, and the choice is made at `prep`** — on the machine
+**Neither shape is wrong, and the choice is a field in the description**
+(`engines/stages.md § 6.7`) — declared when you describe the calculation, read by
+`prep` on the machine
 that will run the job, not in the browser. `project-layout.md` § 1 is the
 contract for both; `checkpointing.md` marks every invariant `[both]` or
 `[hierarchical]`, because a check written for one shape that fails the other is
