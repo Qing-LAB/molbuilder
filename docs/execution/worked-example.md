@@ -118,22 +118,51 @@ when you prep a stage on the machine that will run it.
 
 **A template, not finished decks.** The browser writes the science backbone and
 `stages.json`; the actual `.fdf` for each stage is rendered later, on the machine
-that will run it. That is not deferral for its own sake — `BlockSize` is computed
-from the rank count and whether there is a GPU
-(`siesta/input.py::_auto_block_size`) and goes *inside* the deck, and the
-eigensolver choice changes both the deck and which conda environment the wrapper
-activates. A deck finished on a laptop would be guessing at both
-(`project-layout.md § 2.2`).
+that will run it. That is not deferral for its own sake: **a deck carries values
+that depend on how it will be launched** — a block size derived from the rank
+count and the GPU, written *inside* the deck, and an eigensolver choice that
+changes both the deck and which environment the wrapper activates. **A parameter
+that depends on the launch cannot be decided before the launch is known**, so a
+deck finished on a laptop is guessing at both (`project-layout.md § 2.2`).
 
 **One basename everywhere.** Every deck says `SystemLabel bdt_au_relax_c6h4s2au38`.
 That is not cosmetic: it is why a later stage can pick up an earlier one's `.XV`.
+
+> ### Which shape this walkthrough follows
+>
+> **From here on this walk uses the hierarchical shape** — a directory per stage,
+> a subdirectory per attempt. It is the clearer one to read, because every state
+> the calculation passed through stays visible on disk.
+>
+> **It is not the one that ships.** A project directory is *flat* or
+> *hierarchical* and the choice is made at `prep`
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 1); flat is what the
+> UI produces today. The same two stages, flat:
+>
+> ```text
+> bdt_au_relax_c6h4s2au38/
+> ├── bdt_au_relax_c6h4s2au38_coarse.fdf     stages told apart by the suffix
+> ├── bdt_au_relax_c6h4s2au38_tight.fdf
+> ├── bdt_au_relax_c6h4s2au38_coarse-run0.out   attempts by an output index
+> ├── bdt_au_relax_c6h4s2au38.XV             ← SHARED and unsuffixed: this is
+> ├── bdt_au_relax_c6h4s2au38.DM                what lets tight find coarse's
+> └── Au.psml  S.psml  C.psml  H.psml           geometry — and what overwrites it
+> ```
+>
+> **Everything this walkthrough says still happens** — the same stages, the same
+> measuring, the same continuing, the same checkpoints. What changes is what is
+> left on disk afterwards, and § 7 is where that difference stops being cosmetic.
 
 ⛔ **Gap 2.** Today the producer renders both decks here and `prep` lays out the
 stage directories for the whole bundle at once. Neither matches the above: the
 decks have to move down into their stage directories and be rendered on the
 target, and `prep` has to become per-stage. `bench prep` already works this way
 — detect the machine, format the scripts for it — so the shape exists; the
-staged path does not use it yet.
+staged path does not use it yet. And read the relationship the right way round:
+**`prep` is the framework and benchmarking is one thing you prep**
+(`project-layout.md § 2.3.1a`) — the benchmark is simply where that framework got
+built first, so the general part needs lifting out rather than the staged path
+borrowing from a special case.
 
 ---
 
@@ -298,6 +327,35 @@ is anything with a container below it, a run is a leaf. That is the whole rule,
 and it is why the benchmark's `point-*/` — two levels down, inside a container
 that is itself inside a stage — falls out on the right side without anyone
 saying so.
+
+> ### The same checkpoint means two different things
+>
+> This is the one place the shape choice (§ 4) stops being cosmetic, and it is
+> worth stopping on because it changes what a mistake costs.
+>
+> In the **hierarchical** walk above, `01_coarse/run-0/` is still sitting on
+> disk. The checkpoint is a convenience — somewhere to branch from, a way to see
+> what changed. Skip one and you have a thinner history beside a folder that
+> still holds everything.
+>
+> In the **flat** shape there is one `<id>.XV` and one `<id>.DM`, and the tight
+> stage **overwrote** them. The coarse geometry is not on disk anywhere. So:
+>
+> | | hierarchical | flat |
+> |---|---|---|
+> | after tight runs, coarse's geometry is | on disk, openable | **only in the checkpoint** |
+> | a checkpoint is | insurance | **the mechanism** |
+> | a missed checkpoint is | a thinner history | **a state that no longer exists anywhere** |
+>
+> That is why `checkpointing.md` is a contract with invariants rather than a
+> description of a feature, and why *"take a checkpoint before each stage"* is
+> not housekeeping in the flat shape — it is **the save point**
+> ([`checkpointing.md`](?doc=execution/checkpointing.md) § 5.0).
+>
+> It also changes what *restore* means to you. In the hierarchy you can open an
+> old attempt and copy something out of it. In flat there is nothing to open:
+> **restore is a rewind, not a fetch** — it puts the whole folder back to an
+> earlier moment, and anything newer that was not checkpointed goes with it.
 
 Two weeks later you want a third stage — finer k-grid, from tight's result.
 
