@@ -547,6 +547,219 @@ And it is where **you** are in the loop. Every arrow back into `prep` is a
 decision made after looking at what came out — which is the whole reason stages
 do not chain (§ 1.6).
 
+#### 2.3.1 What `prep` does, every time
+
+Whatever job you are asking for, `prep` runs the same five steps in the same
+order. Only the **inputs** differ.
+
+```mermaid
+flowchart TB
+    subgraph inputs["What prep is given"]
+      D["the description<br/>stages.json + the deck template"]
+      S["which stage"]
+      F["a source of earlier results<br/>(optional: a finished run,<br/>or a benchmark verdict)"]
+    end
+    subgraph steps["The five steps, always in this order"]
+      direction TB
+      S1["<b>1. Resolve the machine</b><br/>detect cores, GPUs, scheduler, conda<br/>→ environment.json"]
+      S2["<b>2. Resolve the parameters</b><br/>base ⊕ this stage's overrides<br/>⊕ what the benchmark measured"]
+      S3["<b>3. Render the deck</b><br/>the template becomes a real .fdf —<br/>BlockSize, Diag.Algorithm, everything"]
+      S4["<b>4. Render the wrapper</b><br/>activation baked in verbatim"]
+      S5["<b>5. Build the run directory</b><br/>create it, link the inputs,<br/><b>copy in what you named</b>"]
+      S1 --> S2 --> S3 --> S4 --> S5
+    end
+    R["a directory you can submit<br/>+ a printed report of what was resolved"]
+    D & S & F --> S1
+    S5 --> R
+```
+
+**Why the order is forced, not chosen.** Step 3 cannot precede step 1, because a
+deck carries values that *depend on how it will be launched* — a block size
+derived from the rank count, an eigensolver that also decides which environment
+the wrapper must activate. **A parameter that depends on the launch cannot be
+decided before the launch is known.** Any deck written before step 1 has guessed
+at them. That is § 2.2 restated as a sequencing rule, and it is the whole reason
+`prep` is a step of its own rather than something the browser finishes.
+
+Step 4 follows step 3 for the same reason one level up: the wrapper's environment
+is chosen by a value the deck decides.
+
+#### 2.3.1a `prep` is the framework; benchmarking is one thing you prep
+
+The four jobs in the table above are not four features. **They are one framework
+with different inputs**, and it is worth naming which part is general and which
+is specific, because the boundary is where new work will attach.
+
+| The framework — the same for every job | The specialisation — what differs |
+|---|---|
+| resolve this machine | — |
+| resolve the effective parameters | *where the parameter values come from* |
+| render the deck(s) from the template | *how many decks, and at what settings* |
+| render the wrapper | — |
+| build the run directory, copy in what was named | *what gets copied in* |
+
+**Benchmarking is `prep` whose parameters are a set rather than a point.** A
+normal prep resolves one configuration and renders one deck. A benchmark prep
+resolves a *grid* of configurations and renders one deck per point, into a
+subdirectory of the stage. Everything else — machine detection, activation, the
+directory build — is the framework doing exactly what it does for a real run.
+
+> **Read the existing `bench prep` this way round.** It is the one place this
+> framework is already built, and it was built inside the benchmark because that
+> is where the need appeared first. So it is not that the staged path *borrows
+> from* benchmarking; it is that **benchmarking is prep, specialised**, and the
+> general part needs lifting out of it. Which of the two directions the code is
+> refactored in is an implementation matter — but the design reads only one way,
+> and stating it the other way round would make the general case look like a
+> special case of the special case.
+
+The same reading settles a question that would otherwise recur: *what happens
+when a third kind of prep appears* — a convergence study, a set of trial
+geometries, a restart sweep? It is the framework again, with a different answer
+to "how many decks, at what settings". Nothing new is needed at the top.
+
+#### 2.3.2 Job one — measure before you commit
+
+You are about to spend a week of wall-clock on the tight stage. First find out
+what this machine is actually fastest at.
+
+```
+molbuilder jobset prep tight --bench
+```
+
+`prep` does what it always does, with the parameter step answering *a grid* — the
+same deck at different rank/GPU/core combinations, one per trial, into
+`02_tight/bench/`. The trials differ from the real run in exactly one way that
+matters: their step count is cut to a handful, because **you are timing the
+machine, not relaxing the molecule**.
+
+> **The benchmark cannot damage the real run**, and this is structural rather
+> than careful. Its decks are **relabelled**, so their warm files are keyed to a
+> different `SystemLabel` and SIESTA will not read them into the real stage; and
+> they are **forced cold**, so they cannot pick anything up either. See § 4.
+
+You submit them, then `bench summarize` reads the timings and writes
+`bench-result.json` — a recommendation, not a decision:
+
+```jsonc
+{ "choice": { "mpi_np": 32, "cpus_per_task": 4, "gpu_mode": "mps",
+              "diag_algorithm": "elpa" },
+  "recommend": "elpa · G=1 K=4 C=6 · 2.3× faster than the ScaLAPACK baseline" }
+```
+
+**You read it. You decide.** Nothing acts on it until you hand it back.
+
+#### 2.3.3 Job two — the real run, with what you measured
+
+```
+molbuilder jobset prep tight --bench-result 02_tight/bench/bench-result.json
+```
+
+Now step 2 has a third input, and it wins over the defaults. The measured rank
+count flows into step 3, where it changes `BlockSize`; the measured eigensolver
+changes `Diag.Algorithm`, which in step 4 changes **which environment the wrapper
+activates**. One measurement, three destinations — which is why resources are not
+"just scheduler flags" here (`engines/stages.md § 5`).
+
+`prep` prints what it resolved, and that report is the point:
+
+```
+  reading      02_tight/bench/bench-result.json  (measured here, 2026-08-06)
+  resources    elpa · G=1 K=4 C=6 · mem 96G
+  02_tight/bdt_au.fdf   rendered   BlockSize 256, Diag.Algorithm elpa
+  02_tight/run-0/       ready      (nothing carried — cold start)
+```
+
+**Printing what it resolved is what makes `submit` a plain yes.** It is the only
+place the measured numbers, the chosen geometry and the rendered deck appear
+together, which is exactly where a person should be looking before spending a
+week.
+
+#### 2.3.4 Job three — continuing from an earlier run
+
+This is the one worth reading slowly, because it is where the design differs
+most from what people expect.
+
+**A stage does not "connect" to the one before it. You hand it a file.**
+
+```
+molbuilder jobset prep tight --from 01_coarse/run-0
+```
+
+`--from` names **a run that has already finished** — you just looked at it, which
+is why you are willing to build on it. So step 5 copies its warm files into the
+new attempt, for real, right then:
+
+| File | What it carries | Copied when |
+|---|---|---|
+| `bdt_au.XV` | the **relaxed coordinates** (and the cell) | always — this is the point of continuing |
+| `bdt_au.DM` | the converged **density matrix**, so the first SCF starts warm | when the description says to reuse it |
+| `bdt_au.CG` | the optimiser's own history | **only if both stages use the same algorithm** — CG history means nothing to Broyden |
+
+```mermaid
+flowchart LR
+    A["01_coarse/run-0/<br/>bdt_au.XV<br/>bdt_au.DM"]
+    P{"prep tight<br/>--from 01_coarse/run-0"}
+    B["02_tight/run-0/<br/><b>bdt_au.XV</b> (a real copy)<br/><b>bdt_au.DM</b> (a real copy)<br/>bdt_au.fdf → ../bdt_au.fdf"]
+    A -->|"copied, at prep time"| P --> B
+```
+
+**Three things about that copy, each load-bearing:**
+
+**It is a copy, not a link.** The engine *writes* to these files. Writing through
+a link would reach back into `01_coarse/run-0` and overwrite the very result you
+decided to build on — destroying the thing you would want to return to if the
+tight stage went wrong.
+
+**It happens now, not at launch.** This follows from stages not chaining (§ 1.6)
+rather than being a separate choice: if the source run must already have finished
+before you can name it, then its files exist at the moment you name them, so
+there is nothing to defer. Nothing dangles in the meantime, nothing has to be
+swapped at run time, and no half-resolved directory ever sits on a queue.
+
+> A design that *does* chain has the opposite problem and needs the opposite
+> machinery — links laid before the producer runs, made real on the compute node.
+> That belongs to a chained ladder, and this design is not one. Keeping the two
+> apart is the point: the run-time swap is not a fallback for this path, it is a
+> mechanism this path does not need.
+
+**Nothing after the copy has to be told.** Once `bdt_au.XV` is in the attempt
+directory, SIESTA finds it **by itself**, because it looks for warm files keyed
+to its `SystemLabel` — and every stage of one calculation shares that label by
+design (`run-identity.md`). *Continuing is not something molbuilder does; it is
+what the engine does when it finds state under the name it was given.* All
+molbuilder contributes is putting the right file in the right place under the
+right name.
+
+> **A redo is the same instruction.** `--from run-0` inside the *same* stage
+> re-runs it starting from where the last attempt reached — the coordinates it
+> got to, not the ones it started from. `prep` cannot tell that apart from
+> continuing to the next stage, and does not need to: both are *"copy this
+> finished run's warm files into a new attempt"*.
+
+#### 2.3.5 What goes in, what comes out
+
+| Input | Where it comes from | What it decides |
+|---|---|---|
+| the description (`stages.json`) | the browser, or a terminal | which stages exist, their overrides, the shape |
+| the deck template | the browser | everything about the system that does not depend on the machine |
+| **which stage** | you, on the command line | which overrides apply |
+| **the machine** | detected, here, now | ranks, GPUs, scheduler, activation → `environment.json` |
+| a benchmark verdict *(optional)* | `bench summarize` | rank count, eigensolver, memory → the deck **and** the wrapper's env |
+| a finished run *(optional)* | you name it | which coordinates and density matrix the run starts from |
+
+| Output | What it is |
+|---|---|
+| `<NN>_<stage>/<id>.fdf` | the deck, finally real — every value resolved |
+| `<NN>_<stage>/<id>.run.sh` (+ `.sbatch`) | the wrapper, activation baked in |
+| `<NN>_<stage>/run-<n>/` | a fresh attempt, inputs linked, warm files copied in |
+| `run.json` | what this attempt is: its mode, its command, and **what it continued from** |
+| the printed report | what was resolved, measured and copied — the thing you check before submitting |
+
+**Re-running `prep` is safe until the run is launched.** It rebuilds the attempt
+from the same inputs. Once something has been submitted into it, that attempt is
+finished with (§ 1.5) and the next `prep` makes a new one.
+
 ### 2.4 The whole sequence, once through
 
 ```mermaid
