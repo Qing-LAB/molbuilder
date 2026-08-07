@@ -518,10 +518,62 @@ appear together, which is exactly where a person should be looking.
    `Resources` must be able to carry it, or a stage needs a different road to its
    wrapper. *Also done when:* a stage asking for retries renders a wrapper that
    has them, asserted on the rendered text rather than on the object.
+2a. **Retire the redundant ways to say "stage" — the subtraction this plan was
+   missing** (§ 8b). Nine mechanisms exist; this design adds a tenth and the plan
+   retired none. Each is listed with a proposed disposition, because *"keep it,
+   it is still useful"* is how nine happened:
+
+   | Mechanism | Proposal |
+   |---|---|
+   | `--stage N` overlay + `SIESTA_STAGE_PRESETS` | **keep the presets, retire the flag.** The tier *values* are real science (`tuning.md § 2.3.1`) and become the defaults a new stage is created with; the one-shot flag is `stages.json` with one stage |
+   | `--stage-strategy` | **retire.** A named set of enable flags is three lines of a description |
+   | `--stages-json` | **becomes** `stages.json` (item 6) |
+   | `--stage-resources` | **folds into** `stages.json` |
+   | `SiestaStageSpec` | **shrinks** to name/enabled/overrides (item 2) |
+   | flat `render_siesta_stage_fdfs` + `..._runner` | **the runner goes** (12f); the deck renderer stays, rendering from the effective config |
+   | `stages_to_jobset` | **stays**, minus the inter-stage edges (12b) |
+   | PySCF `StageSpec` | **stays as it is.** PySCF's ladder runs inside one process, so it is genuinely a different shape — `stages.md` already says so. It should read the same description, not the same runner |
+   | the browser's `p-stage-preset` → a number | **retire the number** (item 2b) |
+
+   *Done when:* one description format, one model, one deck renderer, one
+   producer per shape — and `grep -rn "stage" molbuilder/` reads like one idea
+   rather than nine.
+   ⛔ Gated by 6 and 3: nothing can be retired until the thing replacing it can
+   express what it expressed.
+2b. **A stage's position must stop reaching filenames** (§ 8b). The browser writes
+   `<label>-stage<N>.fdf`, with N from a preset dropdown — and it *already has
+   names*, because the presets are literally *coarse*, *medium* and *tight*. It
+   throws them away in favour of the position, which `stages.md` forbids for a
+   concrete reason: insert a stage and every later file silently renames, so
+   outputs that already exist are reassigned to a stage that did not produce
+   them.
+   There is a second half. Three conventions are live at once — the flat ladder
+   writes `bdt_au_coarse.fdf`/`.out` (`_` + name), the browser writes
+   `bdt_au-stage1.fdf` (`-stage` + number), and `trajectory_log/format.py` writes
+   `bdt_au-stage1.molwatch.log` (`-stage` + number). **So in a ladder run a
+   stage's deck and its own log cannot be matched by name.**
+   *Done when:* one convention, keyed on the **name**, used by the deck, the
+   output and the log; and inserting a stage renames nothing that already exists.
 3. **`overrides` and the effective-config merge** (`engines/stages.md § 4`).
    *Done when:* a stage with `{mesh_cutoff: 300}` renders a deck carrying 300
    while the shared config still says 150, and the object validated is the object
    rendered.
+
+   ⚠ **`overrides` does not exist in any form today** (found 2026-08-07, § 8b) —
+   this is not a widening of something partial. A stage can vary exactly four
+   values, and they are not a mechanism but a literal `dataclasses.replace` in
+   `render_siesta_stage_fdfs`:
+   ```python
+   staged_cfg = dataclasses.replace(cfg,
+       relax_type=stage.relax_type, relax_steps=stage.relax_steps,
+       relax_force_tol=stage.relax_force_tol,
+       relax_max_displ=stage.relax_max_displ)
+   ```
+   So `mesh_cutoff: 300` on a stage has **nowhere to be written and nothing that
+   would read it**. That is also why the plan's gate between step 2 and step 3
+   matters as much as it does: *the backend must be able to render a stage that
+   overrides a parameter the stage type never carried* — today it cannot render
+   one that overrides anything but those four.
 4. **`restart` and the engine identity group** (`run-identity.md § 4`). *Done
    when:* a two-stage description whose second stage continues renders every
    bound parameter set, and a stage set to `clean` renders none — asserted
@@ -535,6 +587,20 @@ appear together, which is exactly where a person should be looking.
    whose `BlockSize` came from *that* stage's rank count, with BENCH-MARKS
    declaring it.
 6. **`stages.json`, its reader, and the preflight** (`engines/stages.md § 6`).
+
+   ⚠ **This is a replacement, not an addition** (found 2026-08-07, § 8b). Two
+   files already ship for this job: **`--stages-json`** (the whole ladder, a JSON
+   list-of-dicts, accepted as a literal *or a path*) and **`--stage-resources`**
+   (`{stage_name: {…}}`, the per-stage scheduler asks). So item 6 is *fold two
+   files into one and reverse their unknown-key rule* — `--stages-json`'s help
+   says **"Unknown keys ignored"**, and the design says **refused**. Pre-1.0 that
+   is a clean break, not a migration. The new file must also carry the two things
+   neither of the old ones can: **which directory shape** the calculation uses,
+   and a per-stage `continue_retries` that reaches the wrapper (item 2).
+   Note also that `checkpoint.py`'s `_is_bundle_root` **already looks for
+   `stages.json`** and finds nothing, because no producer writes one — that arm
+   stays dead until this item lands.
+
    *Done when:* a description round-trips — read, rendered, re-read — one naming
    a dead field fails with that field's name, one with a repeated stage name fails
    naming the repeat, and the artifact registry (`job-contracts.md § 6.1`) has its
@@ -771,6 +837,26 @@ appear together, which is exactly where a person should be looking.
     repository rather than at a fixed depth, and it names the repository root it
     acts on, so a user standing in a stage knows the checkpoint covers the whole
     calculation and not just the folder they can see.
+12f. **The flat ladder runner bypasses the wrapper contract entirely** (§ 8b).
+    `render_siesta_stages_runner` emits `siesta < "$fdf" > "$log"` — the engine
+    called directly. The template contains **no** `conda activate`, no
+    `source activate`, no `module load`, no `.run.sh`, no `mb_monitor`, no
+    `.molwatch.log`. So a ladder run gets no environment (and `siesta` is not on
+    a clean `PATH` — it lives in `molbuilder-siesta`, so this fails on stage 1),
+    no rank clamp, no GPU pinning, no `--cold`/`--continue`, no retry budget, and
+    **the Results tab and trajectory viewer see nothing**, because nothing writes
+    the log they read.
+    This contradicts `job-system.md`'s decision #2 — *reuse the single-job
+    wrapper unchanged* — and `running-a-job.md § 2.2a` — *bash is a bootstrap,
+    not a program*. It also explains why the flat shape has looked cheap: **its
+    runner does almost nothing.** Give it activation, rank resolution, a monitor
+    and a trajectory log and it *is* the wrapper, which is the argument for
+    deleting it rather than teaching it.
+    *Done when:* no generated script invokes an engine directly — a stage runs
+    through the same `.run.sh` every other job uses, and a ladder run appears in
+    the Results tab like any other run. Most likely this item **disappears into
+    12d**: once the producer emits one shape and stages no longer chain, there is
+    nothing left for a ladder runner to do.
 13. ~~**The archive globs reach into the subdirectories**~~ — **done
     (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
     the walk is recursive and skips symlinks and dot-directories, a binary-only
@@ -1030,6 +1116,166 @@ the checkpoint covers the whole calculation.
 | **E** attempt-dir duplication | confirms item 12a; no change |
 | **F** the panel's depth gate | **new item 12e** |
 | **G** the two honest claims | none — recorded so a later reader need not re-check |
+
+## 8b. The design against the code, element by element
+
+*2026-08-07, second pass — this time reading every mechanism the design touches,
+not just the ones the plan already named. It changed what several items mean.*
+
+### What the design specifies, and what is actually there
+
+| The design says | The code has |
+|---|---|
+| A stage is **three fields** — name, enabled, `overrides` | `SiestaStageSpec` has **eight**, and **`overrides` does not exist in any form**. A stage can vary exactly four values (`relax_type`, `relax_steps`, `relax_force_tol`, `relax_max_displ`), hard-coded as a `dataclasses.replace` in `render_siesta_stage_fdfs`. There is no path by which a stage varies `mesh_cutoff` |
+| `stages.json` (`molbuilder/stages@1`), unknown keys **refused rather than ignored** | **No such file.** But **`--stages-json` ships** — a JSON list-of-dicts of `SiestaStageSpec` fields, accepted as a literal *or a path*, and its help text says **"Unknown keys ignored"** |
+| Per-stage resources ride in the description | a **second** file, `--stage-resources`, `{stage_name: {…}}` |
+| **One reader, used by both surfaces** | no reader at all: the CLI parses `--stages-json` inline, the browser assembles `params` in JavaScript |
+| **Names are stable, positions are not — a stage's position must never reach a filename** | the browser writes **`<label>-stage<N>.fdf`**, N from a preset dropdown |
+| `checkpoint.py` treats `stages.json` as a bundle descriptor | **that arm is dead** — nothing in the tree writes one, so today only `job-set.json` and `bench-manifest.json` reach it |
+
+**Item 6 is therefore not "add a file". It is "replace two shipped files with
+one, and reverse their unknown-key rule."** That is a bigger, and better-defined,
+piece of work than the plan described, and pre-1.0 it is a clean break rather
+than a migration — molbuilder does not carry compatibility shims across a rename
+([`process/conventions.md`](?doc=process/conventions.md)).
+
+### There are already nine ways to say "stage". The design adds a tenth.
+
+| # | Mechanism | Shape | Where |
+|--:|---|---|---|
+| 1 | `--stage N` single-shot overlay | one deck, tier values from `SIESTA_STAGE_PRESETS` | `config/siesta.py` |
+| 2 | `--stage-strategy` | named presets over the *enable* flags | `cli.py` |
+| 3 | `--stages-json` | the whole ladder, from a file | `cli.py` |
+| 4 | `--stage-resources` | per-stage scheduler asks, a second file | `cli.py` |
+| 5 | `cfg.stages` / `SiestaStageSpec` | the in-memory model 1–4 all feed | `config/siesta.py` |
+| 6 | `render_siesta_stage_fdfs` + `..._runner` | **flat** — decks + a bash loop | `siesta/input.py` |
+| 7 | `stages_to_jobset` | **hierarchical** — a ladder JobSet | `siesta/stages.py` |
+| 8 | PySCF `StageSpec` | an in-script Python loop, **one file** | `config/pyscf.py` |
+| 9 | the browser's `p-stage-preset` | a stage **number**, into a filename | `structure-optimization/viewer.js` |
+
+Nine mechanisms, one word. The design's `stages.json` + `overrides` would be the
+tenth, **and the plan currently retires none of them.** That is the single
+largest thing missing from this document: not a feature, a subtraction.
+
+The code even says so itself. `config/siesta.py` on mechanism 1: *"This overlay
+is the minimum-viable precursor… **Do NOT delete the overlay** during the #542
+refactor."* That instruction was right when written and is the reason nine
+survive.
+
+### Three filename conventions, all live
+
+| Producer | Emits | Convention |
+|---|---|---|
+| flat ladder (`render_siesta_stage_fdfs`) | `bdt_au_coarse.fdf`, `bdt_au_coarse.out` | `_` + **name** |
+| the browser tab | `bdt_au-stage1.fdf` | `-stage` + **number** |
+| the trajectory log (`trajectory_log/format.py`) | `bdt_au-stage1.molwatch.log` | `-stage` + **number** |
+
+So in the flat ladder a stage's **deck and its own log cannot be matched by
+name** — one is `_coarse`, the other `-stage1`. And the browser, which already
+*has* names (its presets are literally *coarse*, *medium*, *tight*), throws them
+away in favour of the position — the exact thing `stages.md` forbids, because
+inserting a stage then silently reassigns outputs that already exist.
+
+### The flat ladder runner bypasses the wrapper contract entirely
+
+This is the most serious finding of the pass, and nothing in this plan had it.
+
+`render_siesta_stages_runner` emits a bash script whose loop body is:
+
+```bash
+fdf="${BASENAME}_${stage}.fdf"
+log="${BASENAME}_${stage}.out"
+if ! siesta < "$fdf" > "$log"; then      # ← siesta_cmd, injected as "siesta"
+```
+
+It calls the engine **directly**. A grep of the whole template for
+`conda activate`, `source activate`, `module load`, `run.sh`, `mb_monitor` or
+`molwatch` returns **zero hits**. So this runner has:
+
+| | |
+|---|---|
+| **no environment activation** | `siesta` must already be on `PATH`. It normally is not — it lives in the `molbuilder-siesta` conda env — so on a clean shell this script fails on stage 1 |
+| **no wrapper** | none of `running-a-job.md`'s runtime resolution: no MPI rank clamp, no OMP/BLAS setting, no GPU pinning, no `--cold`/`--continue`, no retry budget |
+| **no monitor, no `.molwatch.log`** | so the Results tab and the trajectory viewer see **nothing** from a ladder run |
+
+That directly contradicts `job-system.md`'s decision #2 — *"Reuse the single-job
+wrapper unchanged… everything true of a single run is automatically true of every
+job in a batch"* — and `running-a-job.md § 2.2a`, *"bash is a bootstrap, not a
+program."* This runner is a program, and it is not bootstrapped.
+
+It also explains something the design has been circling: **the flat shape looks
+cheap because its runner does almost nothing.** Once it activates an environment,
+resolves ranks, starts a monitor and writes a trajectory log, it is the wrapper —
+which is the argument for deleting it rather than fixing it.
+
+## 8c. What is missing, and the order to finish it
+
+Reading the above together, the design is **further from done than the item list
+suggested**, and the remaining work has a shape: it is mostly *removal*, and it
+is gated on one decision.
+
+### The one decision that unblocks the most
+
+> **How does a user ask for flat or hierarchical?**
+
+It already gated 12b and 12d. It also gates 6 (the description must record the
+shape), 12a (what replaces the shell block depends on which tree it builds) and
+step 3 (the tab must offer it). **Five items behind one unanswered question**, and
+it is a design choice rather than research. Three candidates, and the plan's own
+reasoning already leans:
+
+| Option | For | Against |
+|---|---|---|
+| **A field in the description** | it travels with the calculation; `prep` on any machine reads the same answer; it is a fact *about* the work | one more field to explain |
+| `--flat` / `--hierarchical` at `prep` | explicit, per-invocation | the same folder can be prepped twice, differently — two shapes in one history |
+| infer it from the stage count | nothing to ask | **judged wrong already** (`project-layout.md § 8` q5): it hands someone a directory tree they never asked for |
+
+### The critical path
+
+```mermaid
+flowchart TB
+    Q["DECIDE: how a user asks for the shape"]
+    subgraph sub["Then, in this order"]
+      direction TB
+      I6["6 — stages.json replaces<br/>--stages-json + --stage-resources<br/>(one reader, keys refused, shape recorded)"]
+      I3["3 — overrides + the effective config<br/>(a stage can vary any field, not four)"]
+      I12d["12d — the producer emits ONE shape"]
+      I12b["12b — neither producer chains"]
+      I12f["12f — the flat runner goes through the wrapper<br/>(or goes away)"]
+      I12a["12a — attempt resolution moves to Python"]
+      I11["11 — the checkpoint triggers"]
+    end
+    Q --> I6 --> I3 --> I12d --> I12b --> I12f --> I12a --> I11
+    style Q fill:#fee,stroke:#c00,stroke-width:2px
+```
+
+**Why that order.** `stages.json` comes first because everything downstream reads
+it — the shape, the overrides, the resources and the per-stage retry budget all
+need somewhere to live, and today they live in four different places. `overrides`
+comes next because item 12d's producer has to render *from* an effective config.
+The three producer items follow. **The checkpoint triggers are last** because they
+fire on a produce and a stage finishing, and until there is one producer emitting
+one shape there is no single moment to hang them on.
+
+### Unblocked now, in parallel with all of that
+
+**14** and **14a** (dead citations and module hygiene), **10a** (archive size
+reporting), **12c** (the warm-file lists), **12e** (the panel's depth gate), and
+**16** (saving a structure into the tree — the first wall a user actually hits).
+None of them touches the gated path.
+
+### What "done" would look like
+
+A reader should be able to check the design landed with four questions:
+
+1. **Is there one way to say "stage"?** `grep -rn "stage" molbuilder/` should find
+   one description format, one model, one producer per shape — not nine.
+2. **Does a stage's name survive?** No file anywhere is named by a stage's
+   *position*; deck, output and log all agree.
+3. **Does everything run through the wrapper?** No generated script invokes an
+   engine directly.
+4. **Does each stage start because someone said so?** No `depends_on` between
+   stages, no loop over stages in a runner.
 
 ## 9. Open questions
 
