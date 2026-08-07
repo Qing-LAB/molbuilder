@@ -67,8 +67,15 @@ _PY_DETECTORS = (
         r'@click\.option\(\s*"(--[a-z0-9-]*stage[a-z0-9-]*)"')),
     ("class", re.compile(r'^class\s+(\w*[Ss]tage\w*)\b', re.M)),
     ("function", re.compile(r'^def\s+(\w*stage\w*)\s*\(', re.M)),
-    ("constant", re.compile(r'^([A-Z][A-Z0-9_]*STAGE[A-Z0-9_]*)\s*[:=]', re.M)),
+    ("constant", re.compile(r'^([A-Z][A-Z0-9_]*)\s*[:=]', re.M)),
 )
+
+#: Applied to the constant detector only: the other three already carry the
+#: word in their pattern.  Written as a filter rather than baked into the
+#: regex because ``^[A-Z][A-Z0-9_]*STAGE`` demanded a character BEFORE
+#: "STAGE" and so missed ``STAGE_FIELDS`` outright -- caught 2026-08-07 when
+#: P1 added two of them.
+_CONSTANT_IS_STAGEY = lambda name: "STAGE" in name  # noqa: E731
 
 # symbol -> (mechanism number per architecture § 8b, or None; where; role)
 #
@@ -94,6 +101,9 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         2, "molbuilder/config/siesta.py", "applies them"),
     "apply_stage_strategy": (
         2, "molbuilder/config/pyscf.py", "the same road for PySCF"),
+    "STAGE_STRATEGY_PRESETS": (
+        2, "molbuilder/config/pyscf.py",
+        "PySCF's own copy of the strategy presets"),
     "--stages-json": (
         3, "molbuilder/cli.py",
         "the whole ladder from a file; its help says 'Unknown keys ignored', "
@@ -119,6 +129,10 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "flat -- the bash loop; questions 3 and 4 both point here"),
     "_enabled_stages": (
         6, "molbuilder/siesta/input.py", "what both of those iterate"),
+    "STAGES": (
+        6, "molbuilder/siesta/input.py",
+        "the bash array in the emitted runner's template -- stage vocabulary "
+        "in generated TEXT, which is where questions 3 and 4 both look"),
     "stages_to_jobset": (
         7, "molbuilder/siesta/stages.py",
         "hierarchical -- a ladder JobSet, wired stage-to-stage"),
@@ -137,6 +151,19 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         10, "molbuilder/web/blueprints/_shared.py",
         "the Python end of the generic stage-table: any List[<dataclass>] "
         "becomes a per-stage grid"),
+
+    "Stage": (
+        11, "molbuilder/task.py",
+        "THE DESIGN'S OWN: a stage in task.json -- name, enabled, overrides, "
+        "and no others.  This is the one P5 keeps; the other ten are what it "
+        "measures itself against"),
+    "_stage_from_obj": (
+        11, "molbuilder/task.py", "parses one, refusing by name"),
+    "STAGE_FIELDS": (
+        11, "molbuilder/task.py", "the three fields § 2 allows"),
+    "STAGE_NAME_RE": (
+        11, "molbuilder/task.py",
+        "the filename-safe set § 6.6 requires of a stage name"),
 
     # -- not a way of expressing a stage -------------------------------
     "stage_completion_tag": (
@@ -183,7 +210,10 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
         None, "molviewer-window-stage is a CSS layer -- unrelated role"),
 }
 
-MECHANISM_COUNT = 10
+#: Eleven since 2026-08-07, and it went UP on purpose: P1 added task.json's
+#: own stage without retiring anything, which the plan calls "the one phase
+#: that deliberately raises the mechanism count".  P5 is where it falls.
+MECHANISM_COUNT = 11
 
 
 def _py_sources() -> list[Path]:
@@ -201,9 +231,12 @@ def detect_py_symbols() -> dict[str, set[str]]:
     for path in _py_sources():
         src = path.read_text(encoding="utf-8", errors="replace")
         rel = path.relative_to(REPO).as_posix()
-        for _kind, rx in _PY_DETECTORS:
+        for kind, rx in _PY_DETECTORS:
             for m in rx.finditer(src):
-                found.setdefault(m.group(1), set()).add(rel)
+                name = m.group(1)
+                if kind == "constant" and not _CONSTANT_IS_STAGEY(name):
+                    continue
+                found.setdefault(name, set()).add(rel)
     return found
 
 

@@ -74,13 +74,21 @@ _REGISTER_CALL_RE = re.compile(
 # the global it adapted.  Requiring a registration that nothing can produce
 # tests the architecture that was replaced, not the one that shipped.
 #
-# What is left is what a consumer actually waits on.  Every ``whenReady`` call
-# under static/ names ``projects`` (8 call sites) or ``viewer`` (1) -- so those
-# two are the contract, and the rest of the ``structure.*`` family registers
-# without anyone waiting on it.
+# 2026-08-07: ``viewer`` is RETIRED for the same reason, one rework later.
+# Nothing under static/ registers it and -- checked, not assumed -- NO
+# ``whenReady("viewer")`` call survives anywhere; every remaining whenReady
+# names ``projects``.  The viewer's page-level singleton went when the embed
+# moved inside the concealed MolView module, which is a full ESM and registers
+# nothing at all: a consumer reaches a viewer through the handle mounting
+# returns (``molview.md`` § 5.6), not by waiting on a global.  The strings
+# ``"viewer"`` still in the tree are spectra's MODE_TABS -- the same word, a
+# different role.
+#
+# What is left is what a consumer actually waits on: ``projects``.  The rest of
+# the ``structure.*`` family registers without anyone waiting on it, which is
+# why it is discovered but not required.
 _REQUIRED_REGISTRATIONS = sorted([
     "projects",
-    "viewer",
 ])
 
 
