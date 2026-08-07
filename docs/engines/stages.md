@@ -375,7 +375,7 @@ In order, and all of it before anything is written:
 
 | Check | On failure |
 |---|---|
-| the schema string is `molbuilder/stages@<known major>` | refuse — not a description, or not one this reader knows |
+| the schema string is `molbuilder/task@<known major>` | refuse — not a description, or not one this reader knows |
 | the engine is one this backend has a generator for | refuse, naming what it has |
 | the schema fingerprint matches | proceed, and say plainly it was written against a different schema |
 | every named field exists in the shared schema | refuse, naming the field |
@@ -405,9 +405,33 @@ per-field rows do that work.
 (§ 2), so a name outside the set or repeated between stages produces two decks
 that collide — the second silently overwriting the first, in a folder whose whole
 premise is that every file in it is accounted for. Refusing costs a message;
-allowing it costs a calculation nobody knows is missing. (Two stages that are
-*identical in value* but differently named is a separate question, and a warning
-rather than a refusal — the plan records it.)
+allowing it costs a calculation nobody knows is missing.
+
+### 6.6a Two stages that resolve to the same thing
+
+*Decided 2026-08-07 (user). This used to be an open question pointing at the
+plan; it is now a rule, and it is not the blanket warning the question expected.*
+
+**Two enabled stages may resolve to identical settings, and that is allowed.**
+Refusing would break a workflow people actually want: `tight` followed by
+`tight` where the second **continues** is simply *more steps at these settings* —
+the honest way to say *keep going* after a stage ran out of its step budget.
+Forbid it and someone invents a token difference to get past the check, which is
+worse than the thing being prevented.
+
+**Warn on exactly one case: the later stage resolves identically *and* starts
+`clean`.** Then it recomputes what the stage before it just produced and throws
+that result away — always a mistake, and an expensive one.
+
+> **What separates them is `start from`, not the overrides.** So the comparison
+> is over the **resolved pair**: two stages whose effective configs are equal
+> *and* whose second says `clean`. Comparing overrides alone would flag the
+> legitimate case and miss nothing, which is how a warning becomes noise people
+> learn to click through.
+>
+> This is a **warning, not a preflight row.** § 6.6's table is refusals, all of
+> them before anything is written; this one says *this is probably not what you
+> meant* and proceeds if it is.
 
 ---
 

@@ -52,8 +52,8 @@ Two failures follow directly from getting it wrong, and both are real today:
 
 > **The id is built from inputs, never from anything a run produced.**
 
-It must be knowable *before* the calculation exists: it names the folder and the
-basename of every file in it. An id that depended on a result would change the
+It must be knowable *before* the calculation exists: it is the basename of every
+file in the folder. An id that depended on a result would change the
 moment a stage succeeded, orphaning the state it exists to continue from — the
 identity would break precisely when the calculation worked.
 
@@ -67,7 +67,7 @@ knows:
 flowchart LR
     U["what the user calls it<br/><b>BDT/Au relax</b>"] --> N["normalise once<br/>§ 3"]
     M["what the coordinates are of<br/>the molecule, by formula<br/>or by named components<br/><b>C6H4S2Au38</b>"] --> N
-    N --> I["<b>bdt_au_relax_c6h4s2au38</b><br/>= the SystemLabel literal<br/>= the basename of every file<br/>= the folder"]
+    N --> I["<b>bdt_au_relax_c6h4s2au38</b><br/>= the SystemLabel literal<br/>= the basename of every file"]
 ```
 
 A hash would be exact and unreadable. A formula is neither, and that is the trade
@@ -158,19 +158,57 @@ filename, a shell line and a scheduler argument was always going to survive a
 ref — but it is worth writing down, because the alternative is somebody
 inventing a second sanitiser for tags.
 
-**The id also names the folder.** `job-contracts.md § 2.1` Rule 1 says a
-directory holds one job, so the innermost segment of the project tree and the
-calculation are the same thing:
+### 3.0 Which directory level this is about
+
+*"The folder" is five different things in this tree, and only one of them is
+named by a person. Naming the level is the difference between a rule and a
+guess.*
+
+| # | Level | Example | Who names it | The rule, and where it lives |
+|--:|---|---|---|---|
+| ① | **project** | `BDT-Au` | **the user types it** | `[A-Za-z0-9_-]+` per segment — `job-contracts.md § 2.5` |
+| ② | **topic** | `optimization` | **the user picks** one of a fixed nine | `job-contracts.md § 2.5` |
+| ③ | **calculation** — `job-contracts.md § 2.5` calls this segment `<structure>/`, the *one-job directory* | `bdt-relax` | **the user types it** *(decided 2026-08-07 — this row is what changed)* | `[A-Za-z0-9_-]+`. This is the level that holds `task.json`, and `task.json` is what makes it a calculation rather than a directory — `checkpointing.md` **L1** |
+| ④ | **stage** *(hierarchical only)* | `01_coarse` | **derived** — `<seq>_<name>`, `seq` assigned once by the produce that creates it | `project-layout.md § 4.1`. A flat calculation has no level ④ at all |
+| ⑤ | **attempt** *(hierarchical only)* | `run-0` | **derived** — a counter | `project-layout.md § 2.2`. Flat separates attempts by an output index instead, `-run0.out` |
+
+**Levels ④ and ⑤ are derived and this section does not touch them.** A stage
+directory legitimately carries a *number* alongside its name, which is the one
+place a number belongs (`project-layout.md § 4.1`) — and everything § 7.3 R5 says
+about positions never reaching a **filename** is still in force.
+
+**Level ③ is the one this rule is about, and the id no longer names it.**
 
 ```mermaid
 flowchart LR
-    P["<b>project</b><br/>the user picks"] --> T["<b>topic</b><br/>the user picks, one of the nine"] --> I["<b>id</b><br/>derived — and shown<br/>before anything is written"]
+    P["① <b>project</b><br/>typed"] --> T["② <b>topic</b><br/>picked, one of nine"] --> F["③ <b>calculation</b><br/>typed<br/><i>bdt-relax</i>"] --> I["<b>id</b><br/>derived, stored in task.json,<br/>the stem of every file inside"]
 ```
 
-That is stricter than the tree requires (`job-contracts.md § 2.5` only asks for
-`[A-Za-z0-9_-]+` per segment), and the strictness is the point: a folder whose
-name is not the id is a folder whose contents cannot be identified from outside
-it.
+> **Decided 2026-08-07 (user), reversing this section for level ③.** It used to
+> read *"the id also names the folder"*, and argued the strictness was the point —
+> *a folder whose name is not the id is a folder whose contents cannot be
+> identified from outside it.*
+>
+> **That premise was removed by the design's own progress.** When it was written,
+> nothing inside a calculation declared what it was, so the level-③ name was the
+> only handle. `task.json` now declares the id in the one place that travels with
+> the work (`engines/stages.md § 6`), and `checkpoint.py`'s `_is_bundle_root`
+> already finds a calculation by looking for that file rather than by reading a
+> name. Level ③ no longer has to carry information its own *contents* carry
+> better.
+>
+> **And the strict rule cost something real.** The id is built from the label, the
+> purpose and the formula — it does not encode the functional, the basis or the
+> pseudopotential set. So *the same system studied two ways in one topic* derives
+> **one id**: `bdt-relax-pbe/` and `bdt-relax-blyp/` are the obvious level-③ names
+> for that work, and under the old rule they were a collision one of them had to
+> escape by inventing a fake label. The id's job was never to separate those —
+> § 1's two failure modes are both about **one directory**, and both still hold.
+
+**What this costs, stated plainly:** an `ls` of a topic no longer tells you what
+each calculation computes. `task.json` does, and every surface that lists
+calculations reads it — but the bare listing is now one step short, and that is
+the trade.
 
 ### 3.1 Normalisation, worked
 
@@ -195,7 +233,8 @@ of a calculation, on disk, in a history, and to the engine. For
 `bdt_au_relax_c6h4s2au38`, in the hierarchical shape:
 
 ```text
-projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/   ← the folder IS the id
+projects/BDT-Au/optimization/bdt-relax/     ← the folder is what the user typed
+├── task.json                                  ← and this says the id
 ├── bdt_au_relax_c6h4s2au38.fdf.template
 ├── bdt_au_relax_c6h4s2au38_coarse.fdf        ┐ what a STAGE produced
 ├── bdt_au_relax_c6h4s2au38_tight.fdf         │ carries the stage: <id>_<stage>
@@ -248,15 +287,19 @@ the id's role visible, which is why the example above is flat.
    user typed reduces to nothing, say so and ask — never append a digit and carry
    on, which produces `bdt_2` and no explanation of what it differs from.
 
-**A "collision" is narrower than it sounds.** The folder is
-`<project>/<topic>/<id>/`, so two calculations collide only when they would
-occupy the *same topic*. The same id under `optimization/` and under `frequency/`
-is not a collision — it is the same system studied two ways, which is what the
-topic axis is for, and the warm files never meet because they are in different
-directories. A genuine collision is one folder, and it is the case
-§ 6 decides: **refuse unless told to overwrite.** The comparison is
-case-insensitive, which is where the case-insensitive-filesystem worry above is
-actually handled.
+**A "collision" is narrower than it sounds, and since 2026-08-07 it is narrower
+still.** Two calculations collide when they would occupy the **same level-③
+directory** — not when they merely derive the same id. The same id under
+`optimization/` and under `frequency/` is not a collision (different ②), and
+neither is the same id in `bdt-relax-pbe/` and `bdt-relax-blyp/` (different ③):
+in both cases the warm files never meet, because they are in different
+directories, and *that* is what the rule protects. A genuine collision is one
+level-③ directory, and it is the case § 6 decides: **refuse unless told to
+overwrite.**
+
+The comparison is on the **level-③ path**, case-insensitively — which is where
+the case-insensitive-filesystem worry above is actually handled, and it is now
+handled where it belongs, since the filesystem is what the check is about.
 
 ---
 
@@ -334,10 +377,17 @@ closes that.
 
 ---
 
-## 6. Producing twice into the same folder
+## 6. Producing twice into the same level-③ directory
 
-The id is stable by design, so a second generate targets the folder the first one
-wrote. **Refuse unless the user says overwrite, and never rename.**
+A second generate targets **the directory it is pointed at** — since 2026-08-07
+that is the level-③ name the user typed, not a location the id derives (§ 3.0).
+**Refuse unless the user says overwrite, and never rename.**
+
+> The rule did not change, only what makes two produces meet. It used to be *the
+> id is stable, so the second generate lands where the first one did*. It is now
+> *the second generate lands where you sent it*. Deriving the same id twice is no
+> longer enough to collide, and pointing at the same directory twice was always
+> the thing that mattered.
 
 That is the rule the handoff writer already applies (`job-contracts.md § 5.4`:
 it raises unless `overwrite=True`, and *"a UI that writes a handoff SHOULD warn
