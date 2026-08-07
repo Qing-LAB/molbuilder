@@ -51,7 +51,7 @@ reads that document, not this one.**
 | the run directory, filenames, the stage suffix, reserved script blocks, warm files, the artifact registry | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) | the on-disk shapes — **unchanged by this work** |
 | the project tree: its four levels, who writes at each, how stages and benchmarks compose, where the history sits | [`execution/project-layout.md`](?doc=execution/project-layout.md) | the whole picture the rest of this plan sits inside |
 | what a checkpoint history must always hold: the separations, the immutabilities, the atomicity rules | [`execution/checkpointing.md`](?doc=execution/checkpointing.md) | the invariants to review backend behaviour against |
-| environments, activation, wrappers, `molbuilder.json`, watching a run, checkpoints | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) | how a run actually happens — **unchanged by this work** (§ 4) |
+| environments, activation, wrappers, `molbuilder.json`, watching a run, checkpoints | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) | how a run actually happens. The environment half is **unchanged by this work** (§ 4); § 2.2a there is new — **what a wrapper may do**, and why everything else is Python |
 | what *values* a stage should carry | [`engines/tuning.md`](?doc=engines/tuning.md) | the science of the dial |
 | findings: their shape, their one renderer, what blocks | [`science/validation.md`](?doc=science/validation.md) | delivery — a stage label travels beside `where`, never inside it |
 | the dependency chain, carry-forward, scheduler resources | [`execution/job-system.md`](?doc=execution/job-system.md) | the optional export (§ 7) |
@@ -66,6 +66,13 @@ molecule from a structure file to a published geometry — describe, generate,
 benchmark, run, checkpoint, branch. It is where items 12b and 16–18 below came
 from: five of the seven gaps it found are **joins between parts that each work**,
 which is what a table of layers cannot show you.
+
+**One rule cuts across every item below**, and it is stated once in
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a rather than repeated:
+**the wrapper activates an environment and execs an engine; every directory and
+every link is made by Python.** The system was already built that way —
+`materialize` lays the directories and links, `submit` picks the working
+directory and launches — and item 12a is the one place that drifted.
 
 ---
 
@@ -373,6 +380,19 @@ rather than several. *Done when:* a produced two-stage folder can be
 `snapshot init`-ed, and a folder holding two unrelated run directories still
 cannot.
 
+**Step 1b — the questions that gate code, in one place.** Items 12a–12c cannot
+start until these are answered, and they are decisions rather than research:
+
+| # | Question | Where | Blocks |
+|---|---|---|---|
+| 1 | **The repo-scope axiom** — `Repo.init` refuses this tree's shape | `checkpointing.md` L1, step 1a above | 11, and every history item |
+| 2 | **The hand-run entry point for one stage**, and where `--cold` goes once it stops being a wrapper flag | `project-layout.md` § 8 q4 | **12a** — retiring the shell block removes the only manual path |
+| 3 | **Who writes `run-latest` under SLURM**, when nothing watches the exit and `runstatus.py` is read-only by design | `project-layout.md` § 8 q5 | 12c |
+| 4 | **Is `stages.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
+
+Two are new (2 and 3) and both came from writing the contract rather than from
+using it — which is the point of writing it first.
+
 **Step 2 — the backend, built to those contracts.**
 
 1. **Settle which of the duplicated fields wins today.** `relax_force_tol` and
@@ -455,42 +475,68 @@ cannot.
     a stage's `run-N/` is archived; a benchmark's `point-*/`, two levels down, is
     not. *Done when:* a produced folder with a bench bundle archives the stage's
     results and none of the trials', and the rule is depth rather than a name.
-12a. ~~**One run directory per attempt**~~ — **the wrapper half is done**
-    (2026-08-06). `render_run_wrapper(..., attempt_dirs=True)` resolves the next
-    attempt, builds `run-<n>/`, links inputs, copies the previous attempt's warm
-    state, and cds in; `--force` **refuses** rather than being ignored. Ten tests
-    run it for real against a fake engine that writes nothing, so a carried file
-    can only have been carried. A flat directory is untouched. **What remains:**
-    the producer passing the flag, and the run decoder learning that a stage's
-    attempts are `run-N/` rather than `-runN.out`.
-12b. **The carry has to survive attempt directories — a regression, so it goes
-    first.** ⚠ Found by walking the workflow end to end
-    ([`worked-example.md`](?doc=execution/worked-example.md) § 6). `materialize`
-    writes a stage's carry as a symlink to `../<producer>/<id>.XV`, which is
-    where a stage's output lived until 12a moved it into `run-N/`. The link now
-    dangles, and *which* attempt is the right one cannot be known when `prep`
-    runs, because the runs have not happened. **The fix is a stable name, now
-    specified** — [`project-layout.md`](?doc=execution/project-layout.md) § 1.3:
-    the wrapper writes `run-latest -> run-<n>` in the container as its last act,
-    **only when the engine exits 0**, and the carry targets
-    `../<producer>/run-latest/<id>.XV`. Resolvable at prep time, correct at run
-    time, no hashing and no registry, and a crashed attempt leaves the pointer
-    where it was. It pays twice: the viewer and the status roll-up both currently
-    have to guess which attempt is current. **Two things ride along.** First,
-    gap 6, because it is the same expression: `materialize.job_dir_name` returns
-    `point-<name>` for every job, so a ladder gets the sweep's naming — it must
-    branch on `JobSet.kind` (§ 4.4 there). Second, ⚠ **the from-inside-an-attempt
-    guard has to move to the physical path first** (§ 1.3, *One guard has to be
-    fixed first*): it matches `${PWD##*/}` against `run-[0-9]*`, and `$PWD` is
-    logical, so `cd run-latest` defeats it and the wrapper nests `run-0/` inside
-    the attempt — **verified, not inferred**. `$(pwd -P)` fixes it, and is worth
-    it regardless: any symlink route in defeats the logical form. *Done when:* a
-    two-stage folder prepped before either stage runs, then run in order, starts
-    the second stage from the first stage's geometry; the stage directories are
-    `01_<name>`/`02_<name>`; a benchmark's points still read `point-*`; a failed
-    attempt does not move the pointer; a stage with no completed attempt has none;
-    and running the wrapper from inside `run-latest/` exits 2 like running it
-    from inside `run-0/`.
+12a. **One run directory per attempt — built in the wrong layer, and being
+    moved.** `render_run_wrapper(..., attempt_dirs=True)` (2026-08-06) resolves
+    the attempt, creates `run-<n>/`, links inputs, copies warm state and cds in —
+    all in shell, inside the wrapper. That is `jobset/materialize.py` written a
+    second time in bash, one level down, in the layer that
+    [`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a keeps free of
+    filesystem logic. **It is retired, not extended.** The behaviour it
+    established is right and stays: an attempt per invocation, immutable once
+    written, inputs linked, the previous attempt's warm state copied, `--force`
+    gone. Only the address changes. Its eleven tests move with it — they assert
+    *outcomes on disk*, so most survive re-pointing at the Python entry point
+    rather than at rendered bash, and the two that assert wrapper text retire
+    with the block.
+    ⛔ **Gated, and this is the sequencing that matters:** retiring the block
+    removes the only way to run a stage by hand, and nothing replaces it yet.
+    `project-layout.md` § 8 question 4 — what the entry point is, and where
+    `--cold` goes once it stops being a wrapper flag — **must be answered first**,
+    or this step breaks the manual path with nothing behind it. Answer, then
+    12b, then this.
+12b. **Attempt resolution moves into submit; the carry becomes concrete.**
+    ⚠ The regression that exposed all of this: `materialize` writes a stage's
+    carry as a symlink to `../<producer>/<id>.XV`, which is where a stage's
+    output lived until 12a moved it into `run-N/`. The link dangles, and at
+    `prep` time *which* attempt is right cannot be known, because nothing has
+    run. **The answer is not a cleverer link — it is a later moment**
+    ([`project-layout.md`](?doc=execution/project-layout.md) § 1.3): `submit`
+    already picks each job's working directory (`subprocess.run(cmd, cwd=…)`,
+    and `sbatch` from the same place). Resolving the attempt there means submit
+    knows **both** attempt directories before either process exists, so it lays
+    the consumer's carry against a concrete `../../01_coarse/run-3/<id>.XV`
+    instead of a stage directory. Three things fall out: numbering becomes
+    **deterministic** (a queued ladder no longer has two jobs scanning the same
+    directory whenever they happen to wake); **no Python is needed on the compute
+    node** — which matters, because `molbuilder-siesta` has none; and the
+    from-inside-an-attempt guard and its logical-vs-physical `$PWD` bug both
+    **cease to exist**, because the caller decides the directory.
+    **The carry stays a symlink, and localize-on-run stays bash** — a review of
+    this item caught the error: under SLURM the producer has *not run* at submit
+    time, so submit can lay the link but cannot copy the file. Replacing it with
+    a real copy has to happen after the producer finished and before this engine
+    starts, which is a moment that exists only on the compute node. The shipped
+    `carry_deref` block already does exactly that and is the one piece of shell
+    that survives (`running-a-job.md § 2.2a`, exception 3). Only the *previous
+    attempt of the same stage* can be copied at submit, because a redo implies
+    that attempt already finished. **Gap 6 rides along**, being the same expression:
+    `materialize.job_dir_name` returns `point-<name>` for every job, so a ladder
+    gets the sweep's naming — it must branch on `JobSet.kind` (§ 4.4 there).
+    *Done when:* a two-stage folder prepped before either stage runs, then run in
+    order, starts the second stage from the first stage's geometry; the stage
+    directories are `01_<name>`/`02_<name>` and a benchmark's points still read
+    `point-*`; two jobs submitted together get distinct attempt numbers decided
+    at submit; a dry run reports the attempt each job *would* get; and no shell
+    in the tree creates a directory.
+12c. **`run-latest`, demoted to a handle.** Once 12b lands, the carry no longer
+    needs it — this is a correction to the 2026-08-06 draft that made it
+    load-bearing. What remains is worth building but is smaller: the Results tab,
+    `jobset status` and a person typing `cd` all want to name a stage's current
+    result without scanning. Rules in `project-layout.md` § 1.3 (relative target,
+    moves only on exit 0, absent when nothing has completed, derived and
+    deletable). **Blocked on open question 5 there** — under SLURM nobody watches
+    the exit, and the natural writer is `runstatus.py`, which is deliberately
+    read-only today.
 13. ~~**The archive globs reach into the subdirectories**~~ — **done
     (2026-08-06)**, together with L7. The MANIFEST key is a repo-relative path,
     the walk is recursive and skips symlinks and dot-directories, a binary-only

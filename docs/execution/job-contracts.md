@@ -284,10 +284,17 @@ The wrapper is **plain, readable bash**. Two properties are load-bearing:
   > written, so there is nothing for a reset to overwrite: a redo is `run-2`.
   >
   > **`run-` becomes a reserved directory prefix there**, with exactly two kinds
-  > of member: `run-<n>` attempts, and `run-latest`, a symlink naming the one
-  > that currently counts (§ 1.3 there). The wrapper's attempt scan requires an
-  > all-digit suffix, so the word member can never be counted as an attempt.
-  > Anything else under `run-` is unclaimed.
+  > of member: `run-<n>` attempts, and the optional `run-latest`, a symlink
+  > naming the one that currently counts (§ 1.3 there). The scan that assigns a
+  > number takes all-digit suffixes only, so the word member can never be
+  > counted as an attempt. Anything else under `run-` is unclaimed.
+  >
+  > **The attempt directory is created by `submit`, in Python** — not by the
+  > wrapper (§ 1.3 there). The wrapper is launched *inside* it and is otherwise
+  > unchanged: it activates an environment and execs an engine in whatever
+  > directory it was handed, which is what
+  > [`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a states in
+  > general.
   > A flag whose only purpose is to destroy a previous result has no place once
   > results cannot collide. A flat run directory keeps today's behaviour.
 

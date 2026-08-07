@@ -15,7 +15,7 @@ fit when nobody is looking at them one at a time, and — because a walkthrough
 touches every seam — to **find the places where they do not fit yet**. § 8 is
 that list, and it is the more valuable half.
 
-**Status: the story is the target. Six of its steps do not work today**, and each
+**Status: the story is the target. Eight of its steps do not work today**, and each
 is marked ⛔ where it appears, with the whole list in § 8.
 
 ---
@@ -192,10 +192,13 @@ everything from the description — quietly reverts to the defaults.
 ## 6. The official run
 
 ```
-cd 01_coarse && bash ../<id>_coarse.run.sh
+molbuilder jobset submit . --mode direct
 ```
 
-The wrapper runs **in the stage directory** and builds the attempt below it:
+**Molbuilder makes the attempt; the wrapper runs in it.** Python resolves
+`run-0`, creates it, links the deck and the shared package in, copies any warm
+state, and launches there. The wrapper's whole job is to activate the environment
+and exec SIESTA.
 
 ```mermaid
 flowchart TB
@@ -206,16 +209,11 @@ flowchart TB
         O["the deck, linked in<br/>&lt;id&gt;.XV · &lt;id&gt;.DM · &lt;id&gt;.out<br/>the session log"]
       end
     end
-    L -.->|"linked in"| O
+    L -.->|"Python links these in<br/>before the wrapper starts"| O
 ```
 
-It converges. Now the tight stage:
-
-```
-cd 02_tight && bash ../<id>_tight.run.sh
-```
-
-and it must start from the geometry coarse reached.
+It converges. Now the tight stage — and it must start from the geometry coarse
+reached.
 
 ⛔ **Gap 5 — and this one is new, and mine.** It cannot. `prep` creates the
 carry as a symlink to `../<producer>/<id>.XV`, which is where a stage's output
@@ -232,37 +230,57 @@ specifies the fix — branch on `JobSet.kind`, so a **ladder** job becomes
 `<seq>_<name>` and a **sweep** point keeps its knobs — but it is not written yet.
 Name and depth are both wrong, in one expression.
 
-The fix is a stable name for "this stage's current result", now specified in
-[`project-layout.md`](?doc=execution/project-layout.md) § 1.3:
+**And the way I first tried to fix gap 5 was wrong too**, which is worth saying
+because it is the more useful lesson. I put the attempt-directory logic in the
+wrapper: fifty lines of shell that scan for run directories, create one, link the
+deck in and copy warm files. That is `jobset/materialize.py` rewritten in bash,
+one level down — a second implementation of code that already existed, in the one
+layer deliberately kept free of filesystem logic.
+
+The fix is not a cleverer link — it is a **later moment**, now specified in
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.3. `submit` already
+chooses each job's working directory. If it resolves the attempt too, it knows
+**both** attempt directories before either process exists, and writes the
+consumer's carry as a concrete path:
 
 ```
-01_coarse/run-latest -> run-0     repointed when an attempt exits 0
+02_tight/run-0/<id>.XV -> ../../01_coarse/run-0/<id>.XV
 ```
 
-Then the carry is `../01_coarse/run-latest/<id>.XV`, which is resolvable at prep
-time and correct at run time. It also gives the viewer and the status roll-up
-something to point at without knowing attempt numbers.
+A real link to a real place, laid at the moment the answer became knowable —
+which prep could not do (the attempts did not exist) and the wrapper cannot do
+(it only sees its own stage).
 
-**Why `run-latest` and not `latest`:** `run-` is a prefix this layout already
-owns, so the pointer adds no new reserved word, sorts beside what it points at,
-and is already filtered out of the wrapper's attempt scan — which requires an
-all-digit suffix and was written before this existed.
+The link is still **dangling when it is laid** — under SLURM the whole chain is
+submitted at once, so coarse has not run yet. It resolves when coarse writes, and
+the wrapper's existing **localize-on-run** step replaces it with a real local copy
+before tight starts, so tight cannot write back through it into coarse's result.
+That step is bash and stays bash: it is the only moment that exists *after* the
+producer finished and *before* this engine starts, and it happens on a compute
+node where there is no Python.
 
-**A failed attempt does not move it.** Had `run-1` above crashed at iteration 3,
-`run-latest` would still say `run-0`, because what the next stage needs is the
-newest attempt that produced *usable* state — not the newest directory.
+Three things fall out. **Numbering becomes deterministic**: a SLURM ladder is
+submitted all at once, and two jobs scanning `run-*/` whenever they happen to
+wake can give the same answer twice. **No Python is needed on the compute node** —
+which matters, because `molbuilder-siesta` has no interpreter at all. And **the
+wrapper gets smaller**: it localizes its carry, activates an environment, and
+execs an engine. Everything else is Python
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a).
 
-Note what this does *not* need: no content hashing, no attempt registry, no
-lookup table. One symlink, written by the wrapper it already belongs to.
+`run-latest` survives this as a **handle rather than a mechanism** — the Results
+tab, `jobset status` and a person typing `cd` still want to name a stage's
+current result without scanning. It just stops being what makes carry work.
 
-**If you have to re-run a stage**, you do not overwrite anything:
+**If you have to re-run a stage**, you do not overwrite anything — each
+invocation gets `run-1`, then `run-2`, carrying the previous attempt's warm state
+unless you ask for a cold start. `run-0` is byte-identical afterwards. There is
+no `--force`, because there is nothing to reset.
 
-```
-cd 01_coarse && bash ../<id>_coarse.run.sh        →  run-1/, carrying run-0's state
-cd 01_coarse && bash ../<id>_coarse.run.sh --cold →  run-2/, starting clean
-```
-
-`run-0` is byte-identical afterwards. There is no `--force` and nothing to reset.
+⛔ **Gap 7.** How you re-run *one* stage by hand is unstated. Since the wrapper
+no longer makes its own directory, a single stage needs a molbuilder command in
+front of it — `jobset submit --only <stage>`, a new `molbuilder run <stage>`, or
+both. Unanswered, and it has to be answered before the shell block is retired or
+the manual path breaks (`project-layout.md` § 8, question 4).
 
 ---
 
@@ -304,7 +322,7 @@ be coarser, and it runs from where tight left off. Numbering it `03` is the
 truth. That also means an attempt's outputs stay attached to the stage that
 produced them, forever.
 
-⛔ **Gap 7.** The history cannot exist yet. The checkpoint setup **refuses** a
+⛔ **Gap 8.** The history cannot exist yet. The checkpoint setup **refuses** a
 folder with calculation files in its subdirectories — which this tree has at
 three levels — so none of § 7 runs. Checkpoints are also user-triggered only, and
 `snapshot branch` has no web route.
@@ -313,7 +331,7 @@ three levels — so none of § 7 runs. Checkpoints are also user-triggered only,
 
 ## 8. What this walkthrough found
 
-Seven gaps, in the order a user meets them. Three were on no list before this
+Eight gaps, in the order a user meets them. Four were on no list before this
 document was written.
 
 | # | Gap | Severity |
@@ -322,27 +340,34 @@ document was written.
 | 2 | **Produce/prep boundary is undefined locally.** Nothing says who creates the stage containers when host and target are the same machine | design decision, one sentence |
 | 3 | **Nothing connects a benchmark to the stage it measures.** The parts compose by hand and getting it wrong is silent | small |
 | 4 | **The measured answer reaches a script, never the description.** `bench prep-run` writes `run-production.sh`; `stages.json` never learns, so the next `generate` reverts to defaults | medium — it is the point of measuring |
-| 5 | **Stage-to-stage carry is broken.** ⚠ `materialize` links `../<stage>/<id>.XV`; attempts moved outputs to `../<stage>/run-N/<id>.XV`, so the link dangles — and *which* N is unknowable at prep time | **serious, and newly introduced by the attempt-directory change** |
+| 5 | **Stage-to-stage carry is broken.** ⚠ `materialize` links `../<stage>/<id>.XV`; attempts moved outputs into `run-N/`, so the link dangles — and *which* N is unknowable at prep time. Fixed by resolving the attempt at **submit**, which knows both | **serious, and newly introduced by the attempt-directory change** |
 | 6 | **Stage directories are named `point-<name>`.** `job_dir_name` does not branch on `JobSet.kind` yet, so the ladder gets the sweep's naming | small, and in the same expression as #5 |
-| 7 | **The history cannot be created.** Checkpoint init refuses this shape; no automatic checkpoints; no branch route | **blocking** — § 7 does not run at all |
+| 7 | **No hand-run entry point for one stage.** The wrapper no longer makes its own directory, so running a single stage needs a molbuilder command that does not exist yet | must be answered before the shell block is retired |
+| 8 | **The history cannot be created.** Checkpoint init refuses this shape; no automatic checkpoints; no branch route | **blocking** — § 7 does not run at all |
 
 ### The one to fix first
 
 **Gap 5**, because it is a regression rather than a missing feature: staged runs
-carried correctly before attempt directories existed, and now they do not. The
-`run-latest` pointer in § 6 fixes it — now a contract,
-[`project-layout.md`](?doc=execution/project-layout.md) § 1.3 — and pays for
-itself twice, since the viewer and the status roll-up both currently have to
-guess which attempt is the current one. It also exposed a guard weakness worth
-fixing first: the wrapper refuses to run from inside an attempt by matching
-`${PWD##*/}`, which is the *logical* path, so entering through **any** symlink
-defeats the refusal.
-**Gap 6 is one line away from it**, in the same function, and should land in the
-same change rather than touching that expression twice.
+carried correctly before attempt directories existed, and now they do not.
+
+The fix is the one in § 6 — `submit` resolves the attempt, so it can write a
+concrete carry link ([`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.3). **Gap 6 rides along**, being the same expression. And the shell block
+that caused the regression is **retired rather than repaired**: its
+from-inside-an-attempt guard, its `$PWD` logical-vs-physical bug, and its
+`--force` refusal all stop existing once the caller decides the directory.
+
+**The lesson is worth more than the fix.** The system was already built the right
+way — `materialize` lays out directories and links, `submit` picks the working
+directory and launches, and the wrapper activates and execs. I added a second
+layout implementation in bash without checking whether one existed. The rule is
+now written down where it can be pointed at
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a): **the wrapper
+activates and execs; every directory and every link is Python's.**
 
 ### What the shape of this list says
 
-Five of the seven are **joins, not parts**. Structure→description, produce→prep,
+Five of the eight are **joins, not parts**. Structure→description, produce→prep,
 stage→benchmark, benchmark→description, stage→stage: every one is a handoff
 between two things that each work. That is the expected result of building
 bottom-up, and it is why walking the story end to end finds what reviewing a

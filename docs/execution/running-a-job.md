@@ -106,6 +106,69 @@ clean-shell bootstrap, then launches the engine.
   missing GPU env, for instance, raises at generate time with an install hint
   rather than silently degrading.
 
+### 2.2a What the wrapper may do — bash is a bootstrap, not a program
+
+§ 2.1 already says it in passing: the wrapper emits the activation form verbatim
+inside a clean-shell bootstrap, **then launches the engine**. That is the whole
+job, and it is worth stating as a rule because it is easy to break by accretion.
+
+> **The wrapper makes the environment right and execs — plus one filesystem step
+> that only it can do, because only it happens at the right moment. Everything
+> else belongs to Python, on the host, before the wrapper is ever invoked.**
+
+**Why bash at all**, and why only these three:
+
+- **Activation mutates the shell's own environment.** `conda activate` /
+  `module load` change `PATH` and friends *in the calling process*. A Python
+  child cannot do that for its parent, so this genuinely has to be shell.
+- **The launcher must be the shell's direct child.** `mpirun` / `srun` want to
+  inherit the activated environment and sit in the process tree where signals
+  and scheduler accounting expect them.
+- **Localize-on-run is the one filesystem exception, and it is forced by
+  timing.** A job that inherits restart files from an earlier stage gets them as
+  symlinks into the producer's directory, and they must become real local copies
+  *after* the producer finished and *before* this engine starts — or this job
+  writes back through the link and destroys the result it started from. Under
+  SLURM the whole chain is submitted at once, so that moment exists **only on the
+  compute node**, and there is no Python there. `runwrap.py`'s `carry_deref`
+  block is that step; its own comment names the reason — *"ordering (SLURM
+  dependency / sequential direct) guarantees the producer has finished."*
+
+Everything else — resolving which directory to run in, creating it, arranging
+files, recording what happened — is **decision and arrangement**, and none of it
+needs the activated environment or the compute node's timing. It is Python's.
+
+**The test, when adding to a wrapper**, in this order:
+
+1. *Does it need the activated shell?* Activation and the launch do.
+2. *Could it only be known here — after something else finished, on this node?*
+   Localize-on-run is the one case, and it is worth being suspicious of a second.
+3. Otherwise it computes, decides, or arranges files, and it belongs upstream.
+
+The distinction between 2 and 3 is what separates the one surviving filesystem
+step from the block being retired below: **the carry cannot move because of
+*when* it must happen; creating a directory can move, because nothing about it
+has to wait.**
+
+**This is forced, not stylistic.** Two facts make the compute node the wrong
+place for logic:
+
+- **molbuilder is not installed there.** The wrapper is self-contained at run
+  time by design (§ 2).
+- **There may be no Python at all.** `molbuilder-siesta` declares
+  `siesta`, `numactl`, `git` and nothing else — verified: the env has no
+  `python`. Any logic written to run there is either shell, or a shipped
+  stdlib-only file, or broken. `mb_monitor.py` is the one deliberate exception —
+  it is a *subprocess of the running job*, watching output from inside, so it has
+  nowhere else to live. That is why it is stdlib-only, and it is not a pattern to
+  copy for anything that could run on the host instead.
+
+**One violation is live and is being retired.** `runwrap.py`'s `attempt_dirs`
+prologue (2026-08-06) scans for run directories, creates one, symlinks the deck
+and shared package in, and copies warm files — a second implementation of
+`jobset/materialize.py` in shell, one level down. It moves to Python; see
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.3.
+
 ### 2.3 Env routing
 
 The wrapper routes to a conda env by the script's extension, resolved at
