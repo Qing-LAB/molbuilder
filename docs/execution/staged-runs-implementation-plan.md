@@ -540,6 +540,17 @@ and the findings contract (facts in, findings out; `where` is the stable id).
    Decide which **before** writing either.
 4. `on_nonconvergence` moves to the producer's own input (it is a scheduler
    edge, not a stage property).
+2b. **`restart` arrives as a shared-schema field.** `stages.md § 3` ends *"One
+   field arrives"* — `restart` (`continue` | `clean`), because whether a stage
+   starts from what is in the folder has to be sayable and a single run can mean
+   it too. **`SiestaConfig` has no such field**, and no phase added it: the
+   contract's own worked example in § 6 lists `"restart": "clean"` in `base` and
+   in `varies`, so **the example would fail the very preflight P2 builds** (*every
+   named field exists in the shared schema*). Found by the third review pass,
+   2026-08-07. It lands here because it is an ordinary shared field, and P3 unit 4
+   — which turns it into SIESTA's `DM.UseSaveDM` / `MD.UseSaveXV` / `MD.UseSaveCG`
+   trio — depends on it existing.
+
 4a. **`base` ↔ `SiestaConfig`, and the fingerprint that comes with it.** Nothing
    in the tree serialises a config to a plain dict or back — the only `asdict` is
    local to `spectra/pyscf_script.py` — yet `task.json`'s `base` **is** exactly
@@ -1222,6 +1233,9 @@ open.
 | 9 | **When does the readable id stop being enough?** A formula does not tell two isomers apart, and does not pin the *order* species are declared in — and a `.XV` read against a different order lands every coordinate on the wrong atom | P3, if it lands here at all |
 | 11 | ~~**What happens to the Build tab's stage table when a stage becomes three fields?**~~ — **dissolved 2026-08-07: the question was malformed.** All four options were ways to cope with `stages` being a field of `SiestaConfig`. It is not one: the stage list lives in `task.json`, the form generator never meets a stage, and `_stagespec_to_field_schemas` is deleted rather than patched (`stages.md § 1.1`–`1.2`) | ~~P2~~ |
 | 10 | **What are the "components" of a composite system?** A junction is a molecule *and* two electrodes; naming it by total formula loses that structure | P3, same |
+
+| 12 | **Does the `.fdf.template` survive, and if so what may it contain?** `stages.md § 7.1` describes it as *"the science backbone — functional · basis · k-grid, everything no stage varies"*, and `task.json`'s `base` holds **one value for every schema field** — so every non-varied field is in **both**, with nothing saying which `prep` uses. That is two homes for one fact, which § 2 refuses for stage fields. It matters because it decides what `prep` is a function of. **(a)** Narrow the template to what `base` *cannot* express — the coordinate/cell/species blocks and unmodelled engine keywords — and take every schema value from `base ⊕ overrides`. **(b) (recommended)** **Delete the template.** The folder already carries the structure as a data file with its own codec, so `prep` renders the deck from `task.json` + that file and there is no third format to keep in step; an unmodelled keyword rides the deck's existing USER-CUSTOM reserved block (`job-contracts.md § 3`) | **P2**, and it reaches P5/P6 |
+| 13 | **Is the P2→P6 window acceptable?** P2 deletes `--stage`, `--stage-strategy`, `--stages-json` and `--stage-resources` because they all write the field it removes — but nothing consumes a `task.json` until **P6**'s `prep`. So for four phases **neither surface can create a staged run**, where today the CLI can. Options: **(a)** accept it and say so in the release notes; **(b)** pull a minimal *produce from a description* into P2 so a hand-written `task.json` works immediately (decision 3 already made hand-editing supported, so this is small); **(c)** keep `--stages-json` at P2 pointed at the new file, retired at P9 — not a compat shim, the same flag aimed at the new target | **P2** |
 
 **Already decided, recorded so they are not reopened:** the shape is a required
 field in the description (`stages.md § 6.7`); the id is fixed once and a later
