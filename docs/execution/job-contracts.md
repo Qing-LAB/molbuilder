@@ -122,6 +122,38 @@ attempt it created) is being retired for exactly this reason
 ([`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
 item 12a).
 
+#### The third party in the directory: the monitor observes, and only observes
+
+A wrapper activates and execs. An engine reads and writes. There is one more
+thing in that directory, and it has the narrowest job of all.
+
+**`mb_monitor.py` runs beside the engine and watches it.** It is backgrounded by
+the wrapper at low priority, follows the launcher's **PID** — so it knows
+authoritatively when the run ended, rather than guessing from output markers —
+parses the run's artifacts as they grow, and appends what it learns to a log
+beside them. It carries a **notifier hook** (`register_notifier`, or a webhook
+via `MB_NOTIFY_URL`), which is the deliberate customization point: what should
+happen when something notable occurs is the user's to decide, not molbuilder's.
+
+**That hook is why nobody has to be at the cluster.** A run that ends at 3am can
+say so.
+
+> **And the boundary that makes it safe: the monitor observes and notifies. It
+> never decides, and never mutates the calculation.**
+>
+> This is the same rule the wrapper has — activate and exec, nothing more — one
+> layer further out, and the reason is the same. A compute node is where work
+> happens, not where decisions are made. So the monitor does not take
+> checkpoints, does not prepare the next stage, does not retry, and does not edit
+> the description, even where it is the only thing present and would technically
+> be able to. Something that both watches and acts would be deciding on your
+> behalf, on a machine you are not at, about a calculation whose worth only you
+> can judge.
+>
+> Three parties, three verbs: **the wrapper activates and execs, the engine reads
+> and writes, the monitor watches and tells.** Everything that *decides* runs
+> where the user is (`checkpointing.md § 4.1`).
+
 **Rule 1 — one job per directory.** Every job lives in its own directory. A
 directory may hold *several inputs* (one per stage of a staged relaxation,
 § 2.3) plus the engine's outputs and restart files, but never inputs for a

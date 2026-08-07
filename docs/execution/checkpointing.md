@@ -481,13 +481,25 @@ it starts something new.
 permanent rather than provisional: nothing about the wrapper needs to change,
 because the wrapper was never going to be the answer.
 
-**What this deletes.** The earlier model needed *an observer* — something present
-at the moment a run finished, to notice and commit. On a workstation that is
-plausible; on a cluster it is not, because the job may end at 3am with nothing
-local watching, and it is not solvable by watching harder. **Asking at the next
-prep needs no observer at all**, because the state a finished run left is still
-intact right up until the next prep touches it — which is exactly when the
-question gets asked.
+**There is already an observer, and it is not this.** `mb_monitor.py` runs
+beside the job on the node it runs on: it watches the launcher's PID, so it knows
+authoritatively when the run ended, it parses the outputs, so it knows how it
+went, and it carries a **registered notifier hook** (`register_notifier`,
+`MB_NOTIFY_URL`) so a user can be told — webhook, email, whatever they wire in.
+Nobody has to sit at the cluster at 3am.
+
+**What the monitor must not do is act.** It observes and it notifies; it never
+decides and never mutates the calculation. That is the same boundary the wrapper
+has — activate and exec, nothing more (`running-a-job.md § 2.2a`) — applied one
+layer out, and it is why the monitor is not where a checkpoint comes from even
+though it is the thing that knows. Taking one would need git on the compute node
+(I4), and more importantly it would be the wrong party: saving is a decision, and
+decisions are the user's.
+
+**So the two halves are separate, and each is where it belongs.** The monitor
+tells you a run finished and how. The next `prep` asks whether to save before it
+changes anything. Nothing needs to observe *and* act, which is what made this look
+harder than it is.
 
 | | |
 |---|---|

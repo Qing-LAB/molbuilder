@@ -1014,26 +1014,25 @@ appear together, which is exactly where a person should be looking.
     when:* a benchmark verdict can be written back as that stage's resource
     overrides, and re-producing keeps the measured configuration.
 
-19. **The return leg — the half of the workflow nothing owns.** ⛔ **A decision,
-    not a task**, and the largest gap found in this design
-    ([`project-layout.md`](?doc=execution/project-layout.md) § 2.7).
-    Every file movement in these documents points **outward** — *scp the run dir
-    to the target*, *scp the bundle to the cluster*. There is no inward
-    counterpart anywhere, and four promises quietly assume there is one: `prep`
-    is *"a hub you return to"* (you return over ssh); the checkpoint is *"the
-    only way back"* (the history is created on the machine that ran it, so your
-    local copy is a different folder with no history); a stage finishing leaves a
-    commit *"observed where the run is already watched"* (SLURM ran it — nobody
-    local watched); and a benchmark's verdict must reach a description that lives
-    wherever the browser opened it.
-    **The one-machine case hides all of it**, which is why it went unnoticed:
-    run on a workstation and every arrow is a no-op.
-    Two candidate answers, and they are different designs rather than two
-    spellings — *the folder is the truth wherever it is* (the checkpoint is a git
-    repository, so **fetch** is a real answer, not a metaphor) versus *the project
-    tree is the truth and the target is scratch*. Take this **alongside** the
-    shape question, not after it: it can change what `prep` and the checkpoint
-    triggers are for.
+19. ~~**The return leg**~~ — **withdrawn 2026-08-07. The premise was wrong.**
+    This item claimed the design had "no inward boundary" and listed four
+    promises it supposedly broke when the run happened on another machine. Three
+    were false and the fourth was already settled:
+    * the checkpoint history **does** travel — `.git` is a directory *in* the
+      calculation folder, so copying the folder copies the history;
+    * a benchmark verdict travels for the same reason — it is written inside the
+      stage it measured;
+    * *"prep is a hub you return to"* is satisfied by returning to it over ssh,
+      which is how people who run on clusters already work;
+    * *"who notices a run finished"* had shipped before the question was asked:
+      **`mb_monitor.py`** follows the launcher's PID, parses the outputs, and
+      carries a user-registered notifier hook precisely so a finish can reach you
+      (`job-contracts.md § 2.1`).
+    The error was treating a technical fact — two copies of a folder exist — as a
+    user problem, for a user who dispatched the job and knows where it ran. What
+    survives is one paragraph, not an item:
+    [`project-layout.md`](?doc=execution/project-layout.md) § 2.7 — the folder is
+    the unit of transport in both directions, and everything is inside it.
 
 **Step 3 — the surface.** The description model first (pure, tested), then the
 matrix view, then the subtabs.
