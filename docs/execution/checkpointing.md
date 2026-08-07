@@ -73,7 +73,7 @@ structure, and most of the invariants below are consequences of it:
 flowchart TB
     subgraph TREE["a calculation folder"]
       direction LR
-      C["<b>containers</b><br/>template · stages.json<br/>rendered decks · wrappers<br/>links · bench-result.json"]
+      C["<b>containers</b><br/>template · task.json<br/>rendered decks · wrappers<br/>links · bench-result.json"]
       R["<b>runs</b> — run-N/<br/>.DM · .HSX · .TSHS<br/>the big binaries"]
       SM["small run files<br/>.XV · .CG · run.json"]
     end
@@ -87,7 +87,7 @@ flowchart TB
 
 | | goes to | why |
 |---|---|---|
-| decks, wrappers, `stages.json`, links | **git** | text — a diff is meaningful and the cost is nothing |
+| decks, wrappers, `task.json`, links | **git** | text — a diff is meaningful and the cost is nothing |
 | `.XV`, `.CG`, `run.json` | **git** | small, and *"a restore brings back a resumable state"* |
 | `.DM`, `.HSX`, `.TSHS` | **the archive** | large and binary — git would store every version whole |
 | a benchmark's trial output | **neither** | a five-iteration throwaway is not a result |
@@ -118,7 +118,7 @@ bdt_au_relax_c6h4s2au38/
 │       │                                                   costing no disk (L5)
 │       ├── 02_tight/run-0/bdt_au_relax_c6h4s2au38.DM
 │       └── MANIFEST
-├── stages.json                        ┐
+├── task.json                        ┐
 ├── bdt_au_relax_c6h4s2au38.fdf.template │ tracked by git —
 ├── 01_coarse/                         │ text, diffable
 │   ├── bdt_au_relax_c6h4s2au38.fdf    │ ← no stage suffix: the DIRECTORY
@@ -275,7 +275,7 @@ files came from, or absent when the run started from the structure.
 
 *needs the description (`engines/stages.md § 6`).*
 
-`stages.json` is written by the user's surface and read by the generator. Decks,
+`task.json` is written by the user's surface and read by the generator. Decks,
 wrappers, links and outputs are derived from it.
 
 | | |
@@ -296,13 +296,13 @@ The id names the calculation; `-run0`, `-run1` name invocations of it
 | | |
 |---|---|
 | **How it fails** | If anything about a run could change the id, the warm files it produced would be orphaned by the act of producing them |
-| **How to check** | No code path derives an id from a run's output, a timestamp, or a run index. `stages.json`'s `run.id` is read, never recomputed (`run-identity.md § 3`, rule 1) |
+| **How to check** | No code path derives an id from a run's output, a timestamp, or a run index. `task.json`'s `run.id` is read, never recomputed (`run-identity.md § 3`, rule 1) |
 
 ### S6 — a restored folder is internally consistent
 
 *needs the description.*
 
-`stages.json` is tracked text (S1), so it travels with the commit. Restoring a
+`task.json` is tracked text (S1), so it travels with the commit. Restoring a
 checkpoint therefore restores **the description together with the decks it
 produced** — the folder explains itself at every point in its history, not only
 at the tip.
@@ -599,7 +599,7 @@ holding linked decks was refused, so a staged job-set could not be checkpointed
 at all. The guard had been closing a shipped path.
 
 **The fix asks a different question.** A directory holding one of the recognised
-descriptions — `stages.json`, `job-set.json`, `bench-manifest.json` — has
+descriptions — `task.json`, `job-set.json`, `bench-manifest.json` — has
 declared itself **one unit of work whose subdirectories are its own parts**.
 That is not a new marker file: each is already in the artifact registry
 (`job-contracts.md § 6.1`), and it is the same file that makes the folder a
@@ -770,7 +770,7 @@ ever needs to be shared across repositories, where links cannot reach.
 
 | | |
 |---|---|
-| **How it fails** | Silently, and only at scale. Nothing errors; the archive grows linearly in checkpoints × binary size, and `prune` is unbuilt (`running-a-job.md § 6.2`), so nothing reclaims it either. Automatic checkpoints (`engines/stages.md § 7.3`) fire twice per stage, so a five-stage mission paid ten full copies of its `.DM` and `.HSX` set |
+| **How it fails** | Silently, and only at scale. Nothing errors; the archive grows linearly in checkpoints × binary size, and `prune` is unbuilt (`running-a-job.md § 6.2`), so nothing reclaims it either. A mission checkpointed at both boundaries `engines/stages.md § 7.3` names — before a replacing produce and when a stage finishes — pays two full copies of its `.DM` and `.HSX` set per stage, so a careful five-stage run paid ten |
 | **Made worse by L7's fix** | Binary-only changes now produce commits that previously did not exist — correctly, since the alternative was losing them — and each one used to copy the full binary set again. Fixing the data-loss bug raised the disk cost, which is why L5 followed it rather than waiting |
 | **How to check** | Checkpoint a folder twice with the binaries untouched between them; the second checkpoint's *incremental* disk cost is near zero. Measured by inode so a hard-linked file counts once — summing `st_size` counts every link in full and would report no saving at all. Then the three that stop the cure being worse than the disease: a **changed** binary is stored again, two checkpoints never **alias** different content, and a **rotted** candidate is copied past rather than linked to |
 

@@ -85,11 +85,11 @@ authoritative.
 > and the workflow), [`engines/stages.md`](?doc=engines/stages.md) (what a stage
 > is), [`execution/run-identity.md`](?doc=execution/run-identity.md) (the id) and
 > [`execution/checkpointing.md`](?doc=execution/checkpointing.md) (the history)
-> before building any of the phases below. The order of work, what is done and
-> what is blocked is
-> [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) —
-> **its § 8c is the critical path**, and several phases below sit behind one
-> unanswered question there.
+> before building any of this. The design and each item's *"done when"* is
+> [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md);
+> **the order, the milestones and the reviews are
+> [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)**,
+> which is the one build order for this workstream.
 
 ### Vocabulary (defined once, used throughout)
 
@@ -114,15 +114,20 @@ authoritative.
 
 ### Phasing
 
+**The SIESTA half of this workstream is planned in one place:**
+[`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+— thirteen milestones bottom-up, from `task.json` to the two web tabs. What this
+workstream still owns *beyond* that plan is the two other engines and the gate
+between:
+
 ```mermaid
 flowchart LR
-    P1["Phase 1 — keystone<br/>Web SIESTA bundle producer<br/>+ activation warning (D10)"]:::keystone
-    P2["Phase 2<br/>Web Plan + Status (read-only)<br/>+ checkpoint-branch control (D9)"]
-    GATE{{"D7 GATE<br/>Prove the ladder loop<br/>on a real cluster"}}:::gate
-    P3["Phase 3<br/>Transport bundle mode<br/>(bias scan)"]
-    P4["Phase 4<br/>PySCF / spectra bundle mode"]
+    IMP["The implementation plan<br/>M0 → M11<br/>(description → … → the two web tabs)"]:::keystone
+    GATE{{"D7 GATE<br/>Prove the loop<br/>on a real cluster"}}:::gate
+    P3["Transport bundle mode<br/>(bias scan)"]
+    P4["PySCF / spectra bundle mode"]
 
-    P1 --> P2 --> GATE
+    IMP --> GATE
     GATE --> P3
     GATE --> P4
 
@@ -130,44 +135,48 @@ flowchart LR
     classDef gate fill:#fdecea,stroke:#c0392b,stroke-width:2px;
 ```
 
-**Phase 1 — the keystone.** Make the existing stage-table widget real:
-wire it to the shared SIESTA producer so "Generate" produces a runnable
-bundle, with the exact deploy commands shown. Add the activation warning
-(D10): on a workstation, detect the conda activation and persist it into
-the bundle; on HPC, warn if it is unset. This is the parked task #98.
+**D7 gate — prove it before expanding.** Before building any more producers, run
+the full SIESTA loop end-to-end on a real cluster: produce → prep → submit →
+monitor. This gate exists because the other engines' producers are cheap to add
+but expensive to debug remotely; we validate the pattern once on the engine that
+is furthest along. In the implementation plan it sits after **M9** (the command
+surface), which is the first point at which the whole loop can be driven from a
+terminal.
 
-**Phase 2 — see the plan and the run.** Read-only web views: render the
-`job-set.json` plan, and show per-stage run status in the Results tab
-(reusing the existing directory decoder `decode_run_dir`, no new parser).
-Add a browser control for checkpoint *branching* (explore an alternative
-tail without losing the converged path). **The route landed 2026-08-06**
-(`POST /api/checkpoint/branch`); what remains is the sidebar affordance and
-the name it proposes — `<stage>-<what you are trying>`, editable (D9).
+**Transport (gated on D7).** A `transport` producer and a transport-tab mode.
+This is also how the transport **bias scan** (workstream 2) ships: one `.fdf`
+per bias point plus its plan, produced by the framework rather than hand-rolled.
+Its tab writes a template plus a description like every other generating tab, and
+feeds the **same shared Task Setup tab** — which is why M11's columns are read
+from the schema rather than from a list. A bias scan is a **sweep** rather than a
+ladder — one deck per bias point, all independent — and `task.json` already
+expresses that: one member per voltage, each saying `restart: clean`. What the
+transport tab owes is a producer, not a new format.
 
-**D7 gate — prove it before expanding.** Before building any more
-producers, run the full SIESTA ladder loop end-to-end on a real cluster:
-produce → prep → submit → monitor. This gate exists because the other
-engines' producers are cheap to add but expensive to debug remotely; we
-validate the pattern once on the engine that is furthest along.
+**PySCF / spectra (gated on D7).** `pyscf` and `spectra` producers with their tab
+mirrors, plus PySCF's big-binary globs for the checkpoint system. ⚠ PySCF's
+ladder runs **inside one process**, so it is genuinely a different shape — it
+reads the same description, not the same runner (`engines/stages.md`).
 
-**Phase 3 — transport (gated on D7).** A `transport --jobset` producer and
-a transport-tab bundle mode. This is also how the transport **bias scan**
-(workstream 2) ships: one `.fdf` per bias point plus the chaining plan,
-produced by the framework rather than hand-rolled.
-
-**Phase 4 — PySCF / spectra (gated on D7).** `pyscf --jobset` and
-`spectra --jobset` producers with their tab mirrors, plus PySCF's
-big-binary globs for the checkpoint system.
+**Two decisions this workstream contributed, carried into the plan.** **D10 —
+the activation warning**: on a workstation, detect the conda activation and
+persist it; on HPC, warn if it is unset (the parked task #98; it lands with the
+plan's P5/P6, where the wrapper's environment is resolved). **D9 — the
+checkpoint-branch control**: the route landed 2026-08-06
+(`POST /api/checkpoint/branch`), and what remains is the sidebar affordance and
+the name it proposes — `<stage>-<what you are trying>`, editable (the plan's
+P8).
 
 **Out of scope (D8).** Automated host → target file shipping (scp/rsync).
 Bundles are produced where the app runs; a co-located target needs no
 copy, and a split host is covered by a manual `scp` the deploy panel spells
 out.
 
-**Test-pin shape.** A web-produced SIESTA bundle is byte-identical to the
-CLI `--jobset` output for the same inputs; the stage table no longer drops
-its POST; a single-deck "Generate" warns when more than one stage is
-enabled.
+**Test-pin shape.** A web-produced SIESTA folder matches the CLI's for the same
+description, file by file — **excluding PROVENANCE's `generated-at`**, which
+stamps generation time and so differs between any two produces; that is the only
+legitimate exclusion, and it is the plan's **M10**. The stage table no longer
+drops its POST.
 
 ---
 

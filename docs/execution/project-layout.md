@@ -13,7 +13,7 @@ history must always hold;
 calculation's files share.
 
 **Status: mostly shipped, described here for the first time as one picture.**
-Every level below exists in code today except `stages.json`, its reader, and the
+Every level below exists in code today except `task.json`, its reader, and the
 stage-directory naming in § 4. What this document adds is the *whole*: which
 directory owns what, how parameter tuning and resource tuning nest, and where the
 saved history sits.
@@ -46,19 +46,19 @@ paired `.run.sh` straight into one directory, and you run them there. Everything
 in the flat column below is describing working software, not a plan.
 
 **What changes, and it is the one real migration.** Today the UI writes the
-*finished* deck. Under this design it writes a **template plus `stages.json`**,
+*finished* deck. Under this design it writes a **template plus `task.json`**,
 and `prep` renders the deck — into one directory for the flat shape, or into
 stage directories for the hierarchical one. The UI stops producing the last
 file in the chain and starts producing the second-to-last.
 
 **One package, two layouts, and you choose.** The browser always writes the same
-thing — a deck template, `stages.json`, the data files, none of it naming a
+thing — a deck template, `task.json`, the data files, none of it naming a
 machine. `prep`, on the machine that will run it, translates that into a runnable
 directory **in whichever shape you ask for**.
 
 ```mermaid
 flowchart LR
-    UI["<b>the browser</b><br/>fdf.template · stages.json<br/>data files<br/><i>always the same output</i>"]
+    UI["<b>the browser</b><br/>fdf.template · task.json<br/>data files<br/><i>always the same output</i>"]
     P{"<b>prep</b><br/>on the target machine"}
     F["<b>flat</b><br/>one directory<br/>suffixes keep stages apart"]
     H["<b>hierarchical</b><br/>directories keep them apart"]
@@ -97,7 +97,7 @@ exactly why stage 2 overwrites them.
 ```
 bdt_au_relax_c6h4s2au38/            the CALCULATION
 ├── <id>.fdf.template               ─┐ written by the browser
-├── stages.json                      │ portable: names no machine
+├── task.json                      │ portable: names no machine
 ├── Au.psml  S.psml  mb_monitor.py  ─┘
 │
 ├── 01_coarse/                       a STAGE — written by `prep`
@@ -118,7 +118,7 @@ bdt_au_relax_c6h4s2au38/            the CALCULATION
 ```mermaid
 flowchart TB
     subgraph CALC["<b>the calculation</b> — portable, names no machine"]
-      T["fdf.template · stages.json<br/>pseudopotentials · monitor"]
+      T["fdf.template · task.json<br/>pseudopotentials · monitor"]
     end
     subgraph ST["<b>a stage</b> — one science setting, built by prep"]
       D["the rendered deck · its wrapper<br/>links up to the shared package"]
@@ -426,7 +426,7 @@ what only the target machine can**.
 |---|---|---|
 | the **data files** | pseudopotentials, the structure | they are the same everywhere |
 | the **deck template** | the science backbone — everything the calculation fixes and no stage varies | it is physics |
-| **`stages.json`** | the variables each stage tunes | it is the mission |
+| **`task.json`** | the variables each stage tunes | it is the mission |
 | the **resource intent** | *use a GPU · this is a big job · aim for this scale* | a wish, not a number |
 
 **The terminal — `prep`, on the machine that will run it — turns that into a
@@ -460,7 +460,7 @@ last unknowns are known.
 ```mermaid
 flowchart LR
     T["<b>fdf.template</b><br/>the science that never varies<br/><i>the browser · portable</i>"]
-    S["<b>stages.json</b><br/>this stage's values<br/><i>the browser · portable</i>"]
+    S["<b>task.json</b><br/>this stage's values<br/><i>the browser · portable</i>"]
     M["<b>molbuilder.json</b><br/>activation · scheduler · env names<br/><i>this machine · outside the tree</i>"]
     B["<b>bench-result.json</b><br/>ranks · solver · GPU · memory<br/><i>measured here, optional</i>"]
     D["<b>&lt;id&gt;.fdf</b><br/>the deck the engine reads"]
@@ -479,7 +479,7 @@ until you are standing on the machine.
 | Input | Comes from | Decides |
 |---|---|---|
 | `fdf.template` | the browser | the physics: functional, basis, k-grid, everything no stage touches |
-| `stages.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type |
+| `task.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type |
 | `molbuilder.json` | this machine, outside the tree | how to activate an environment, which queue, what a walltime looks like |
 | `bench-result.json` | measured on this machine, optional | rank count → `BlockSize`; solver → `Diag.Algorithm` **and** which conda env |
 
@@ -492,7 +492,7 @@ until you are standing on the machine.
 | `Diag.Algorithm` | ScaLAPACK | ELPA |
 | env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` |
 | the wrapper | `mpirun -np 8` | `#SBATCH` header + `srun` |
-| **`fdf.template` and `stages.json`** | **byte-identical** | **byte-identical** |
+| **`fdf.template` and `task.json`** | **byte-identical** | **byte-identical** |
 
 The last row is the point. The portable half did not move; only what the machine
 decided did.
@@ -514,7 +514,7 @@ and it is where every join is made:**
 
 ```mermaid
 flowchart LR
-    UI["<b>browser</b><br/>data files · deck template<br/>stages.json · resource intent"]
+    UI["<b>browser</b><br/>data files · deck template<br/>task.json · resource intent"]
     P{"<b>prep</b><br/>on the target machine"}
     B["benchmark<br/>runs"]
     R["a run<br/>runs"]
@@ -555,7 +555,7 @@ order. Only the **inputs** differ.
 ```mermaid
 flowchart TB
     subgraph inputs["What prep is given"]
-      D["the description<br/>stages.json + the deck template"]
+      D["the description<br/>task.json + the deck template"]
       S["which stage"]
       F["a source of earlier results<br/>(optional: a finished run,<br/>or a benchmark verdict)"]
     end
@@ -754,7 +754,7 @@ right name.
 
 | Input | Where it comes from | What it decides |
 |---|---|---|
-| the description (`stages.json`) | the browser, or a terminal | which stages exist, their overrides, the shape |
+| the description (`task.json`) | the browser, or a terminal | which stages exist, their overrides, the shape |
 | the deck template | the browser | everything about the system that does not depend on the machine |
 | **which stage** | you, on the command line | which overrides apply |
 | **the machine** | detected, here, now | ranks, GPUs, scheduler, activation → `environment.json` |
@@ -785,7 +785,7 @@ sequenceDiagram
     participant E as the engine
 
     U->>B: pick a structure, describe the stages
-    B->>T: fdf.template · stages.json · pseudopotentials
+    B->>T: fdf.template · task.json · pseudopotentials
     Note over T: portable — names no machine
 
     U->>C: prep tight --bench
@@ -817,7 +817,7 @@ its own, which is § 1.6 drawn rather than stated.
 | | Step | Surface |
 |---|---|---|
 | 1 | save the structure into the tree | **browser** |
-| 2 | describe the calculation — the template and `stages.json` | **browser** |
+| 2 | describe the calculation — the template and `task.json` | **browser** |
 | 3 | write the portable package into the calculation folder | **browser** |
 | 4 | **`prep`** — resolve this machine, render the deck and wrapper, build the run directory | **CLI** |
 | 5 | submit or execute | **CLI** |
@@ -839,7 +839,7 @@ on the science.
 |---|---|---|---|
 | ① **project** | the user | nobody — it is a folder | topics, nothing else |
 | ② **topic** | a **fixed set of nine** (`job-contracts.md § 2.5`) | nobody | calculations (run topics) or files (storage topics) |
-| ③ **calculation** | the run id (`run-identity.md § 3`) | **the browser** (step 3), in one transaction | the template, `stages.json`, the shared package, the history |
+| ③ **calculation** | the run id (`run-identity.md § 3`) | **the browser** (step 3), in one transaction | the template, `task.json`, the shared package, the history |
 | ④ **stage** | `<seq>_<name>` (§ 4) | **`prep`** — the rendered deck and wrapper land here | its deck, its wrapper, its attempts — **a container** |
 | ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **`prep`** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable** |
 | — **benchmark** | `bench` | `prep --bench` | its own decks, wrappers, config and results — a self-contained **container** |
@@ -890,7 +890,7 @@ beside its inputs. So the folder that comes back holds:
 | the outputs | `<stage>/run-N/` — written where the engine ran |
 | the checkpoint history | `.git/` and `.binsnapshots/`, at the calculation root |
 | a benchmark's verdict | `<stage>/bench/bench-result.json`, inside the stage it measured |
-| the description it was run from | `stages.json`, unchanged |
+| the description it was run from | `task.json`, unchanged |
 
 **Copy the folder back and you have all of it.** There is no reconciliation step
 to design, because there is nothing to reconcile: the history is a directory in
@@ -1150,7 +1150,7 @@ how a folder stops being trustworthy.
 
 | File | Kind | Written by | If you delete it |
 |---|---|---|---|
-| `stages.json` | **source** | the user's surface | the calculation cannot be regenerated or reopened |
+| `task.json` | **source** | the user's surface | the calculation cannot be regenerated or reopened |
 | `<id>_<name>.fdf` | derived | the producer, from the source | regenerate |
 | `<id>_<name>.run.sh` / `.sbatch` | derived | prep, from the deck + the machine's config | re-prep |
 | `job-set.json`, `STAGE-PLAN.md` | derived | the producer / prep | regenerate |
@@ -1159,7 +1159,7 @@ how a folder stops being trustworthy.
 | stage outputs (④) | **result** | the engine | gone — this is what the history is for |
 | trial outputs (⑥) | **scratch** | the engine | nothing lost; `bench-result.json` is the answer |
 
-> **One source, everything else derived.** `stages.json` is the only file at the
+> **One source, everything else derived.** `task.json` is the only file at the
 > calculation level that cannot be reconstructed from the others. That is what
 > makes reopening a calculation possible, and why no produce and no run may write
 > to it (`checkpointing.md`, S4).
@@ -1171,7 +1171,7 @@ how a folder stops being trustworthy.
 | `molbuilder.json` | outside the tree — cwd or `$XDG_CONFIG_HOME` | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
 | `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | machine settings for this project |
 | `<id>.fdf.template` | ③ calculation | engine deck, incomplete | **the science backbone** — everything fixed, nothing a stage varies, nothing the hardware decides |
-| `stages.json` | ③ calculation | `molbuilder/stages@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
+| `task.json` | ③ calculation | `molbuilder/task@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
 | `<id>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
 | `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6); the edge fields serve the benchmark sweep |
 | `.mbcheckpoint.json` | ③ calculation | `molbuilder/checkpoint-config@1` | which patterns are big files |
@@ -1182,7 +1182,7 @@ how a folder stops being trustworthy.
 
 **The split is strict, and it is why a calculation folder is portable**: the
 machine's knowledge lives in `molbuilder.json`, outside the calculation; the
-science lives in `stages.json`, inside it. A calculation carries no walltime, no
+science lives in `task.json`, inside it. A calculation carries no walltime, no
 partition, no activation command. Copy it to another cluster and it still
 describes the same calculation (`job-system.md § 2`, decision 3).
 
@@ -1212,7 +1212,7 @@ anyway and the history is a safety net. Same machinery, different weight — and
 
 ```
 bdt_au_relax_c6h4s2au38/
-├── .git/                       the text: decks, wrappers, stages.json, .XV, .CG
+├── .git/                       the text: decks, wrappers, task.json, .XV, .CG
 ├── .binsnapshots/<save>/       the big files, by path:
 │   ├── 01_coarse/run-0/<id>.DM   ← that attempt's density matrix
 │   ├── 01_coarse/run-1/<id>.DM   ← the retry's, kept separately
@@ -1298,7 +1298,7 @@ produces** — a bundle with `point-stage1/` and `point-stage2/` was refused too
 which meant a staged job-set had never been checkpointable.
 
 **A directory that carries its description owns its subdirectories.** Holding
-`stages.json`, `job-set.json` or `bench-manifest.json` is what says *these are my
+`task.json`, `job-set.json` or `bench-manifest.json` is what says *these are my
 stages, not somebody else's calculations* — each already an artifact this system
 persists, so nothing new had to be invented. The old rule still applies to a
 directory that declares nothing: a topic folder holding two unrelated
@@ -1374,7 +1374,7 @@ than no invariant, because it fails a directory that is working correctly.
     Benchmark files are the deliberate exception and sit at ④.
 11. **A parameter difference is a different deck; a resource difference is a
     different launch.** Neither mechanism is used for the other's job.
-12. **Derived files can be deleted and regenerated** from `stages.json` plus the
+12. **Derived files can be deleted and regenerated** from `task.json` plus the
     machine's config, byte-identical except for the provenance timestamp.
 13. **[hierarchical] Warm restart flows down the stage axis only, and never on its own.** A
     stage continues from an earlier stage's run that the **user named**, never

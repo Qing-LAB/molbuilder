@@ -14,7 +14,7 @@ around.
 
 ## 1. The map — which doc to open
 
-Eight documents live here, and they come in **three kinds**. Knowing which kind
+Nine documents live here, and they come in **three kinds**. Knowing which kind
 you are reading tells you how much to trust it and what to do when two disagree.
 
 - A **contract** says what a thing *is*. It is the authority. When a contract and
@@ -46,8 +46,16 @@ you are reading tells you how much to trust it and what to do when two disagree.
 
 | You want to know… | Open |
 |---|---|
-| The order of work, what is done, what is blocked and on which decision | **[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)** |
-| What the Structure-optimization tab will look like | **[`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)** |
+| **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)** |
+| The design behind that work, the code audit that grades it, and each item's *"done when"* | **[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)** |
+| What the Structure-optimization tab will look like — the page that **writes** a description | **[`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)** |
+| The shared tab that **finishes** one — starts from a folder, fills in the per-stage values | **[`web/task-setup-plan.md`](?doc=web/task-setup-plan.md)** |
+
+The first two are a pair, and the split is deliberate: the architecture document
+says **what the design is** and what is wrong with the code today; the
+implementation plan says **in what order it gets fixed and how each step is
+verified**. Neither repeats the other — the plan cites § 8's acceptance criteria
+rather than copying them.
 
 ### How they stack
 
@@ -57,8 +65,10 @@ reaches past it. Arrows point from a document to the ones it depends on.
 ```mermaid
 flowchart TB
     subgraph plans["Plans — not built yet"]
-      SRA["staged-runs-architecture.md<br/>the order of work"]
-      UIP["structure-optimization-ui-plan.md<br/>the tab"]
+      IMP["staged-runs-implementation-plan.md<br/>the order + the gates"]
+      SRA["staged-runs-architecture.md<br/>the design + the audit"]
+      UIP["structure-optimization-ui-plan.md<br/>writes a description"]
+      TSP["task-setup-plan.md<br/>finishes one — shared"]
     end
     subgraph guides["Guides — how to do it today"]
       RAJ["running-a-job.md<br/>ONE job"]
@@ -73,6 +83,8 @@ flowchart TB
       JC["job-contracts.md<br/>the file formats"]
     end
     UIP --> SRA
+    TSP --> SRA & ST
+    IMP --> SRA & ST & PL & CP & RI
     SRA --> ST & RI & PL
     WE --> PL & CP
     JS --> JC
@@ -108,14 +120,18 @@ executed, and the whole `execution/` domain is shaped by it:
   and HPC adds scheduler headers, dependency chains, and the question of how many
   GPUs/cores actually run fastest. The **JobSet framework** answers all of that —
   and it is **shipped on the CLI today**.
-- **Where it's going: the job system in the browser.** The target is to bring
-  batches, staged ladders, HPC deployment, and benchmarking into the web UI, so
-  the browser moves beyond a single task. That work is planned but **not built
-  yet**.
+- **Where it's going — and it is narrower than it used to be** (decided
+  2026-08-07). The browser gets to **describe a staged calculation and observe
+  one**; it does not get to run one. **The browser describes and observes; the
+  terminal acts.** That is not a limitation of the UI, it is
+  `project-layout.md § 2.2`: a deck carries values that depend on how it will be
+  launched, so it cannot be finished before the machine is known. Two tabs are
+  planned — a generating tab that writes the description, and one **shared** tab
+  that starts from a folder and fills in each stage's values. Neither is built.
 
 So the honest one-line status of the whole domain: **single-task works
-everywhere; the job system works from the command line; the job system in the
-browser is the target.**
+everywhere; the job system works from the command line; the browser's half of it
+is describing and observing, and it is the target.**
 
 ```mermaid
 flowchart TB
@@ -184,7 +200,7 @@ a subdirectory inside it, so nothing overwrites anything.
 ```
 FLAT (ships today)                    HIERARCHICAL (proposed)
 bdt_au/                               bdt_au/
-├── bdt_au_stage1.fdf                 ├── stages.json
+├── bdt_au_stage1.fdf                 ├── task.json
 ├── bdt_au_stage2.fdf                 ├── bdt_au.psml
 ├── bdt_au-run0.out   ← stage 1       ├── 01_coarse/
 ├── bdt_au-run1.out   ← stage 2       │   ├── bdt_au.fdf

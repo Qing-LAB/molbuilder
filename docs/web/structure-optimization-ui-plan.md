@@ -1,10 +1,10 @@
-# The Structure-optimization tab — one page for one parameter set and for several
+# The Structure-optimization tab — writing the description
 
 **Role:** plan
 **Domain:** web
 **Companions — the contracts this surface is built against, and where the two
 disagree those win:** [`engines/stages.md`](?doc=engines/stages.md) — what a
-stage is, the effective config, `stages.json`;
+stage is, the effective config, `task.json`;
 [`execution/run-identity.md`](?doc=execution/run-identity.md) — the id this page
 displays and the parameters that decide whether a stage continues;
 [`staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) — the plan
@@ -12,10 +12,31 @@ that schedules both, and the order this page comes in;
 [`job-contracts.md`](?doc=execution/job-contracts.md) — what a stage *is* on disk
 (`job-contracts.md § 2.1` and `job-contracts.md § 2.3`);
 [`form-schema.md`](?doc=web/form-schema.md) — how this tab's fields get on
-screen at all.
+screen at all;
+[`task-setup-plan.md`](?doc=web/task-setup-plan.md) — **the shared tab this one
+hands off to**.
 
-**Status: a proposal.** Nothing here is built. It offers three arrangements of
-one page and recommends one; the decisions still open are listed at the end.
+**Status: a proposal.** Nothing here is built.
+
+> **The page was split in two (user decision, 2026-08-07), and this document is
+> now the first half.** Collecting the physics and deciding which parameters vary
+> is one job; giving those parameters their per-stage values, days later, having
+> seen how the first stage went, is another. They shared a card because they
+> happen in one sitting the first time — not because they are one job.
+>
+> **This tab writes a description. [`Task Setup`](?doc=web/task-setup-plan.md)
+> finishes it.** The line falls where `task.json` already draws it: `varies` is
+> the column set and `overrides` are the cells, so **this page defines the
+> columns and the shared tab fills them** (`engines/stages.md § 6.2`).
+>
+> Everything about the stage table, the seven operations that can silently
+> destroy a value, and what a promoted resource field means has moved to that
+> document — one place, not two. What stays here is the page that collects the
+> physics, decides what varies, and writes the folder.
+>
+> **A one-stage calculation never leaves this tab**
+> (`engines/stages.md § 6.5`: one stage is no stages), so today's whole workflow
+> is untouched by the split.
 
 ---
 
@@ -37,17 +58,21 @@ That would be forgivable if the word meant one thing. It means three:
 So the control reads as *make me stage 2 of a sequence* and delivers *one file
 with different numbers in it*.
 
-**This design collapses the first two.** The dropdown becomes a preset that fills
-a row of the stage table, and a row is a real stage that produces its own deck —
-so choosing "tight" and getting `<id>_tight.fdf` is one act rather than two
-unrelated ones. The third (`fdf --stage N`) is a CLI overlay under its own
-naming convention and stays where it is; `staged-runs-architecture.md § 9`
-records that the two conventions do not yet agree.
+**This design collapses the first two.** The dropdown becomes the act of naming
+a stage, and a named stage is a real one that produces its own deck — so choosing
+"tight" and getting `<id>_tight.fdf` is one act rather than two unrelated ones.
+The third (`fdf --stage N`) retires: the implementation plan's P5 keeps the tier
+*values* as the defaults a new stage is created with and drops the one-shot flag.
 
 **"The UI is very jammed."** One card carries the run directory, the restart
 policy, the stage preset, ~38 schema fields in seven sections, the engine
 switch, four action buttons, an issues list and a script preview — all at once,
 all always.
+
+**The split answers the second complaint by subtraction.** Half of that card is
+not this page's work at all: the per-stage values belong to a page you open on a
+folder, not to the form where you chose the functional. What is left here fits in
+one column.
 
 ---
 
@@ -97,7 +122,8 @@ Parameters can hide behind tabs because you visit them once and leave. The
 stages and the actions cannot: they are the reason the page exists, and a button
 you have to go looking for is a button that gets missed.
 
-So the page splits in two, and only the first half is tabbed.
+So the fields are tabbed and nothing else is: the stage names, the shape, the
+outcome line and the action row all stay on screen.
 
 ### 3.3 The schema already knows which fields a stage usually tunes
 
@@ -119,98 +145,43 @@ it is what the stage preset already writes to.
 > default.
 
 But those nine are a **default proposal, not the definition of a stage** — which
-parameters vary is the user's to choose, and that is the hard part of the
-design. § 7 is about nothing else.
+parameters vary is the user's to choose, and choosing is this page's job (§ 7).
+What those parameters are *set to*, per stage, is
+[`task-setup-plan.md`](?doc=web/task-setup-plan.md).
 
 ---
 
-## 4. Three arrangements
+## 4. The layout, now that half the content left
 
-All three keep card 1 and card 2 as they are. All three replace card 3.
+Three arrangements of one card were proposed here — subtabs above with the stage
+list below, a two-column split, and the stage list as the page's spine. **All
+three are withdrawn**, because they were solving the jamming complaint by
+*folding* content, and the split solves it by *removing* content. Half the card
+went to [`Task Setup`](?doc=web/task-setup-plan.md).
 
-### Option A — Subtabs above, stages below
+What is left is one column, in reading order:
 
 ```mermaid
 flowchart TB
-    subgraph card["3 · Generate input"]
+    subgraph card["3 · Describe the calculation"]
       direction TB
       T["System · Convergence · Resources · Output"]
-      P["only that group's fields"]
-      S["<b>STAGES</b><br/>1 · coarse — mesh 150 Ry · force 0.04<br/>2 · tight — mesh 300 Ry · force 0.01<br/>+ add a stage"]
-      A["<b>You will get: 2 decks in one folder</b><br/>Check · Generate"]
-      I["issues · preview · where it was written"]
-      T --> P --> S --> A --> I
+      P["only that group's fields, each with<br/>a <i>vary per stage</i> affordance"]
+      S["<b>the stages, as names only</b><br/>coarse · tight &nbsp;&nbsp; + add"]
+      SH["<b>how results are kept</b> — one folder, or a folder per stage"]
+      A["<b>You will get: …</b><br/>Check · Write description"]
+      I["issues · what was written · open it in Task Setup"]
+      T --> P --> S --> SH --> A --> I
     end
 ```
 
-*For it:* smallest change from today; one column, so it survives a narrow panel;
-the reading order is still top-to-bottom.
-*Against it:* the stage list scrolls away while you edit parameters — the thing
-you are building is out of sight exactly when you are changing it.
+**The stage list here is names, not values.** Naming the rungs is part of saying
+what the mission is; giving them numbers is the other tab's job, and it is the
+job you come back to. A row here carries a name, and nothing else.
 
-### Option B — Settings left, stages right
-
-```mermaid
-flowchart LR
-    subgraph card["3 · Generate input"]
-      direction LR
-      subgraph L["settings"]
-        direction TB
-        T["System · Convergence · Resources · Output"]
-        P["only that group's fields"]
-        T --> P
-      end
-      subgraph R["always on screen"]
-        direction TB
-        S["<b>STAGES</b><br/>1 · coarse<br/>2 · tight<br/>+ add a stage"]
-        A["<b>2 decks in one folder</b><br/>Check · Generate"]
-        I["issues"]
-        S --> A --> I
-      end
-    end
-```
-
-*For it:* the stage list never leaves the screen; editing a convergence field
-and watching the row change is one glance.
-*Against it:* needs width, and this tab already competes with the projects
-sidebar; below about 900 px it falls back to Option A's stacking anyway.
-
-### Option C — The stage list is the spine
-
-```mermaid
-flowchart TB
-    subgraph card["3 · Generate input"]
-      direction TB
-      SH["<b>SHARED</b> — System · Resources · Output"]
-      SF["fields shared by every stage"]
-      ST["<b>STAGES</b> — 1 coarse · 2 tight · + &nbsp;&nbsp;← tabs too"]
-      SP["the nine convergence fields for THIS stage"]
-      A["<b>2 decks in one folder</b> — Check · Generate"]
-      SH --> SF --> ST --> SP --> A
-    end
-```
-
-*For it:* the clearest statement of what a stage *is* — shared settings above,
-per-stage settings below, and the difference visible in the layout itself.
-*Against it:* two tab strips on one card is a lot of chrome, and the one-stage
-case — today's whole workflow — pays for machinery it does not use.
-
----
-
-## 5. The recommendation
-
-**Option A, with B's split adopted as a container query when the box is wide
-enough.** They are the same content; B is A after a `@container` flip, so this
-is one layout with a width rule rather than two designs.
-
-And **Option C's insight without its second tab strip**: the stage table shows
-each stage's promoted values *inline and editable* in the row. A stage is small
-enough to be a row — a handful of numbers — so it does not need a panel of its
-own. The "Convergence" subtab then edits the *selected* row, and the table is
-both the list and the summary.
-
-Why not C proper: the one-stage case is the common case, and C makes it look
-like a sequence with one step rather than a script with some settings.
+**One column survives a narrow panel**, which matters because this tab already
+competes with the projects sidebar for width — and the two-column arrangement
+fell back to one below about 900 px anyway.
 
 ---
 
@@ -227,15 +198,26 @@ positioning, and the project and topic the folder goes under).
 > (`execution/run-identity.md § 3`). One name fewer to keep in step, and a
 > folder listing that identifies what is in it.
 
-**The stage table** is the description. One row by default, and that row is
-today's behaviour. A row names itself (coarse / medium / tight / a name you
-type), shows its promoted values, and can be removed. The presets fill a row —
-which is what the dropdown always did, now attached to the thing it fills.
+**The stage list** is names only. One row by default, and that row is today's
+behaviour. A row names itself — *coarse* / *medium* / *tight*, or a name you type
+— and can be removed. Naming the rungs is part of saying what the mission is;
+**giving them values is [`Task Setup`](?doc=web/task-setup-plan.md)'s job**, and
+it is the job you come back to days later with a finished stage to look at.
 
-> **Two different things are called a preset.** The shipped *strategy* preset
+> **The row presets keep their names but not their old job.** Choosing *tight*
+> here creates a stage called `tight`; it does not fill nine convergence fields
+> into the form, which is what the dropdown does today and what made it
+> confusing. Filling a stage's values happens where the values live.
+>
+> **And two different things are called a preset.** The shipped *strategy* preset
 > (`--stage-strategy loose-only | publishable | vib-quality`) chooses **which
 > stages are enabled**; the row preset (coarse / medium / tight) fills **one
 > stage's values**. The UI should not use one word for both.
+
+**How results are kept** — flat or hierarchical — is asked here, because
+`shape` is required with no default (`engines/stages.md § 6.7`) and this page is
+what writes the file first. It is phrased as what it does rather than by its
+name: *everything in one folder*, or *a folder for each stage*.
 
 **The outcome line** is the sentence that fixes the original complaint. It says
 what will exist when you press the button, in the terms the folder actually uses:
@@ -252,7 +234,7 @@ files is never in doubt. A one-stage description says `1 deck`, and that is the
 whole difference.
 
 > **What the outcome line may promise, and what it may not** (corrected
-> 2026-08-07 — see § 8). The page writes a **template plus `stages.json`**, not
+> 2026-08-07 — see § 8). The page writes a **template plus `task.json`**, not
 > the rendered decks: a deck cannot be finished until the machine is known
 > (`project-layout.md` § 2.2). So the deck names above are what **`prep` will
 > produce**, and the line should say that rather than implying the files appear
@@ -272,7 +254,8 @@ whole difference.
 **The action row** is Check and Generate, in that order, always visible.
 
 **And the page has to be reachable from an existing folder**, not only from a
-blank form — that is the *open* operation in § 7.3, and it is what makes the
+blank form — that is the *open* operation in
+[`task-setup-plan.md`](?doc=web/task-setup-plan.md) § 7, and it is what makes the
 promoted set worth storing at all (`staged-runs-architecture.md § 5.2`). A user
 who ran a two-stage relaxation last week and wants a third stage should reopen the
 description, not rebuild it from a screenshot of the old one.
@@ -287,99 +270,35 @@ density to sharpen across stages; another wants the compute budget to grow with
 the tightening; another wants only a convergence threshold to move. A design
 that ships one blessed list is wrong for every second user.
 
-### 7.1 What a stage is, on this page
+### 7.1 What this page decides, and what it does not
 
-The architecture settles it (§ 2): **a stage is a name, whether it gets written,
-and an overlay.** Everything a single run can also mean is an ordinary field of
-the shared schema, which a stage may override like any other.
+The architecture settles what a stage is (§ 2): **a name, whether it gets
+written, and an overlay.** Everything a single run can also mean is an ordinary
+field of the shared schema, which a stage may override like any other. So there
+is no second class of per-stage setting to find a different control for.
 
-That is what makes the table below possible. There is no second class of
-per-stage setting to find a different control for — a promoted field looks the
-same in the table whatever group it came from.
+**This page owns the column set.** Every field in the four subtabs carries a
+*vary per stage* affordance; using it moves that field into the description's
+`varies` list. The alternative — a long "add a parameter" menu of all 38 — is a
+second place to find a field, and the wrong one to reach for.
 
-### 7.2 The model
+Its default is the fields the schema tags `workflow_group: "stage"`, because
+that is the useful starting point, not because those nine are special.
 
-```js
-description = {
-    base:   { …every field in the schema, one value each… },   // the shared system
-    varies: ["mesh_cutoff", "relax_force_tol", "relax_type", "restart"],
-    stages: [
-        { name: "coarse", enabled: true,
-          overrides: { mesh_cutoff: 150, relax_force_tol: 0.04,
-                       relax_type: "CG",      restart: "clean"    } },
-        { name: "tight",  enabled: true,
-          overrides: { mesh_cutoff: 300, relax_force_tol: 0.01,
-                       relax_type: "Broyden", restart: "continue" } },
-    ],
-}
-```
+**It does not own the values.** The model, the per-stage table, and the seven
+operations that can each silently destroy a value are
+[`task-setup-plan.md`](?doc=web/task-setup-plan.md) § 5–§ 7 — one place, because
+a rule stated twice is a rule that will disagree with itself.
 
-Three rules keep it honest:
+Two of those operations are performed *here*, since promotion happens where the
+parameter lives:
 
-1. **`varies` is the column set.** Every stage's `overrides` holds exactly those
-   keys — no more, so a demoted parameter cannot leave a value hiding in a stage
-   nobody can see.
-2. **`base` holds a value for every field, always**, including the promoted ones.
-   A one-stage description is then just `base`, which is what makes § 3.1 true —
-   and it is literally true on disk: **with a single stage there is nothing to
-   vary across, so its overrides and `base` are the same thing.** The tab always
-   shows at least one row, but a description with one row is written with no
-   `stages` key at all and produces `<id>.fdf`
-   (`engines/stages.md § 6.4`). The suffix, and the `stages` key, appear
-   together the moment a second row does.
-3. **The default `varies` is a proposal, not a law.** It starts as the fields the
-   schema tags `workflow_group: "stage"` — the ones the preset writes to —
-   because that is the useful default, not because they are special.
-
-### 7.3 The operations, and what each one must not lose
-
-This is where the care goes: every one of these can silently destroy a value if
-its rule is not stated.
-
-| Operation | What it does | The rule that keeps it safe |
-|---|---|---|
-| **promote** a field | adds it to `varies` | **seeds every stage with the current base value**, so promoting changes nothing on screen. Promotion is a statement about *structure*, never about values |
-| **demote** a field | removes it from `varies` | the stages disagree and one value must survive: **the last enabled stage wins**, because that is the production stage and the value a single run would use. The UI says which value it kept, and says it *before* the click, not after |
-| **add a stage** | appends a row | **copies the previous stage's overrides**. A refinement starts from what came before; a stage that inherits nothing is a different calculation, not a next step |
-| **remove a stage** | drops a column | refused when it is the last one — a description has at least one stage |
-| **reorder** | moves a stage | the files are written in order and `restart` reads that order, so this is a real edit, not a display preference |
-| **edit a cell** | sets one stage's value | nothing else moves. A cell equal to `base` is drawn quietly; one that differs is drawn plainly, so *progressive change is visible as a shape* |
-| **apply a row preset** | fills a column | a preset knows nine fields. If some are not promoted it **promotes them first** — a preset that half-applied would be worse than one that refused |
-| **open** an existing description | replaces the whole table from a folder's `stages.json` | it is a **load, not a merge**: values, promoted set, stages and order all come from the file, because a half-loaded description is one nobody can reason about. The id is read, never recomputed (`execution/run-identity.md § 3`), and the file goes through the same preflight as a fresh one — a description that has sat on disk is exactly the one whose schema may have moved |
-
-### 7.4 The panel
-
-One table, rows are parameters and columns are stages — the shape the data
-already has:
-
-| Parameter | | coarse | tight | final |
-|---|---|---|---|---|
-| mesh cutoff | Ry | 150 | 300 | 300 |
-| force tolerance | eV/Å | 0.04 | 0.02 | 0.01 |
-| relaxation | | CG | Broyden | Broyden |
-| MPI ranks | | 8 | 16 | 16 |
-| **start from** | | **clean** | **continue** | **continue** |
-| | | `+ add a parameter` | `row preset ▾` | `+ stage` · `remove` |
-
-*shared with every stage: everything else → System · Resources · Output*
-
-Three things the table has to get right:
-
-- **"Start from" is one control, and it is one field.** Saying a stage continues
-  sets the engine's own restart parameters — for SIESTA, `DM.UseSaveDM`,
-  `MD.UseSaveXV` and `MD.UseSaveCG` together. The user states the intent once and
-  the **generator** expands it (`execution/run-identity.md § 4`); nothing asks
-  anyone to keep three keys in step. It is drawn emphasised because it is the
-  one row that decides whether the folder's shared warm files are read.
-- **It never names *which* stage to continue from.** "Continue" means *from the
-  stage before this one* — a fact about the description, not about what happened
-  to run last (`engines/stages.md § 7.1`). Offering a choice of predecessor would
-  make the carry graph diverge from the stage order, which is the one thing a
-  single ordered list cannot express and should not learn to.
-- **Promotion happens where the parameter lives.** Every field in the other
-  subtabs carries a "vary per stage" affordance; using it moves that field into
-  this table. The alternative — a long "add a parameter" menu of all 38 — is a
-  second place to find a field, and the wrong one to reach for.
+- **promote** — **seeds every stage with the current base value**, so promoting
+  changes nothing on screen. It is a statement about *structure*, never about
+  values.
+- **demote** — the stages disagree and one value must survive: **the last enabled
+  stage wins**, because that is the production stage and the value a single run
+  would use. The page says which value it kept, and says it *before* the click.
 
 ### 7.5 Resources are not only a budget
 
@@ -407,7 +326,8 @@ changes the file is not a preference.
 A column is a config: `base` overlaid with that stage's `overrides`. So **n
 columns produce n decks**, written into one folder with one shared basename
 (`job-contracts.md § 2.1` Rule 2) — and one column produces one deck with no
-suffix, because one column is `base` (§ 7.2). Nothing here invents a directory
+suffix, because one column is `base` (`task-setup-plan.md` § 5). Nothing here
+invents a directory
 layout: it is `job-contracts.md § 2.1` Rule 1 and Rule 2, which is what makes
 continuing free.
 
@@ -436,15 +356,16 @@ So the page writes what any machine can read, and stops:
 Written to  projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
 
     bdt_au_relax_c6h4s2au38.fdf.template   the science backbone
-    stages.json                            what each stage tunes
+    task.json                            what each stage tunes
     Au.psml  S.psml  C.psml  H.psml        the data files
     mb_monitor.py
 
-Next, on the machine that will run it:
+Then, in Task Setup, give each stage its values.
+Then, on the machine that will run it:
 
-    molbuilder jobset prep coarse          resolves this machine, renders the
+    molbuilder jobset prep run coarse      resolves this machine, renders the
                                            deck and wrapper, builds the attempt
-    molbuilder jobset submit coarse
+    molbuilder jobset submit run coarse
 ```
 
 **What `prep` adds is the whole second half**, and none of it is the tab's: it
@@ -498,13 +419,14 @@ would be describing a system the user did not ask for.
 4. **Where do "Inspect structure" and "Analyze chemistry" go?** Untouched by this
    plan, but if the page is still jammed with card 3 tamed, they are the next
    candidates for folding.
-5. **Does demote really keep the last stage's value?** (§ 7.3) The alternative is
+5. **Does demote really keep the last stage's value?** (§ 7.1) The alternative is
    asking every time, which is safer and more tiring. A third option is keeping
    the *first* stage's, on the grounds that it is what a coarse single run wants.
-6. **Is the promoted set saved with the project?** It is a description of intent,
-   not a value, and losing it on reload would be worse than losing a field.
-   (The architecture answers the *file* half — `varies` is in `stages.json`
-   because it cannot be inferred. This is about the tab between reloads.)
+6. ~~**Is the promoted set saved with the project?**~~ **Answered by the split.**
+   It is written to `task.json` when the description is written, and the tab
+   holds nothing across reloads that the folder does not — the same rule
+   [`task-setup-plan.md`](?doc=web/task-setup-plan.md) § 3.1 states for the
+   shared tab, and for the same reason.
 7. **How does the tab show that two stages need different environments?** § 7.5
    makes it possible; a folder whose decks activate two different conda envs is
    correct but surprising if nothing says so.
@@ -521,5 +443,7 @@ It is **not** free of backend work, and saying otherwise would be the easy lie.
 The generator has to render from an effective config, expand `restart` into the
 engine's bound parameters, route a promoted `continue_retries` to that stage's
 wrapper, and derive `BlockSize` from that stage's rank count. Those are
-`engines/stages.md` and `execution/run-identity.md`, scheduled by
-`staged-runs-architecture.md § 8`, and they come before any of this is drawn.
+`engines/stages.md` and `execution/run-identity.md`, and they come before any of
+this is drawn — milestone **M2** of
+[`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md),
+which is the gate that plan puts in front of every UI item.

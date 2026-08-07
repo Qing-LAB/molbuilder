@@ -106,7 +106,7 @@ stage it is about. Then **Generate**:
 projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
 ├── <id>.fdf.template               the science, minus what a stage varies
 │                                   and minus what the hardware decides
-├── stages.json                     what each stage tunes, + resource intent
+├── task.json                     what each stage tunes, + resource intent
 ├── Au.psml  S.psml  C.psml  H.psml the shared package, once
 └── mb_monitor.py
 ```
@@ -117,7 +117,7 @@ the same calculation. There are no stage directories yet either; those appear
 when you prep a stage on the machine that will run it.
 
 **A template, not finished decks.** The browser writes the science backbone and
-`stages.json`; the actual `.fdf` for each stage is rendered later, on the machine
+`task.json`; the actual `.fdf` for each stage is rendered later, on the machine
 that will run it. That is not deferral for its own sake: **a deck carries values
 that depend on how it will be launched** — a block size derived from the rank
 count and the GPU, written *inside* the deck, and an eigensolver choice that
@@ -218,7 +218,7 @@ measures that stage, and getting it wrong is silent.
 ⛔ **Gap 4.** The answer reaches a script but not the description. The shipped
 chain works — `bench summarize` writes `bench-result.json`, and `bench prep-run`
 turns it into `run-production.sh`, re-resolving the portable choice for whatever
-machine you are on. What it never touches is `stages.json`. So the resource
+machine you are on. What it never touches is `task.json`. So the resource
 answer lives only in a generated script, and the next `generate` — which rebuilds
 everything from the description — quietly reverts to the defaults.
 
@@ -318,7 +318,7 @@ The message carries the id, the stage and **how it went** — the run decoder
 already knows *converged* from *hit the step cap*, so the history can say it.
 
 **What is stored where.** Git takes the containers: decks, wrappers,
-`stages.json`, the links, `bench-result.json` — all text. The archive takes the
+`task.json`, the links, `bench-result.json` — all text. The archive takes the
 runs: `01_coarse/run-0/<id>.DM` and its siblings, by path, with checksums. The
 benchmark's throwaways are not this history's business.
 
@@ -389,7 +389,7 @@ document was written.
 | 1 | **Saving the structure into the tree is a step nobody owns.** The description points at a path; a workspace geometry has none | small, but it is the first thing a user hits |
 | 2 | **Produce/prep boundary is undefined locally.** Nothing says who creates the stage containers when host and target are the same machine | design decision, one sentence |
 | 3 | **Nothing connects a benchmark to the stage it measures.** The parts compose by hand and getting it wrong is silent | small |
-| 4 | **The measured answer reaches a script, never the description.** `bench prep-run` writes `run-production.sh`; `stages.json` never learns, so the next `generate` reverts to defaults | medium — it is the point of measuring |
+| 4 | **The measured answer reaches a script, never the description.** `bench prep-run` writes `run-production.sh`; `task.json` never learns, so the next `generate` reverts to defaults | medium — it is the point of measuring |
 | 5 | **Stage-to-stage carry is broken.** ⚠ `materialize` links `../<stage>/<id>.XV`; attempts moved outputs into `run-N/`, so the link dangles — and *which* N is unknowable at prep time. Fixed by resolving the attempt at **submit**, which knows both | **serious, and newly introduced by the attempt-directory change** |
 | 6 | **Stage directories are named `point-<name>`.** `job_dir_name` does not branch on `JobSet.kind` yet, so the ladder gets the sweep's naming | small, and in the same expression as #5 |
 | 7 | **No hand-run entry point for one stage.** The wrapper no longer makes its own directory, so running a single stage needs a molbuilder command that does not exist yet | must be answered before the shell block is retired |

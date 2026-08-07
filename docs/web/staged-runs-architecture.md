@@ -12,7 +12,7 @@ pointers below say which module each one touches.
 
 **Companions:** the two contracts this plan exists to schedule —
 [`engines/stages.md`](?doc=engines/stages.md) (what a stage is, the effective
-config, `stages.json`) and
+config, `task.json`) and
 [`execution/run-identity.md`](?doc=execution/run-identity.md) (the id, and the
 engine parameters that decide whether a stage continues);
 [`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)
@@ -54,7 +54,7 @@ reads that document, not this one.**
 
 | Layer | Sole source of truth | What it fixes |
 |---|---|---|
-| what a stage is; the effective config; where a promoted field lands; `stages.json` and its preflight | [`engines/stages.md`](?doc=engines/stages.md) | the model, the file, the merge, the three destinations |
+| what a stage is; the effective config; where a promoted field lands; `task.json` and its preflight | [`engines/stages.md`](?doc=engines/stages.md) | the model, the file, the merge, the three destinations |
 | the run id, its normalisation, the folder name, the engine's identity group | [`execution/run-identity.md`](?doc=execution/run-identity.md) | what decides whether a calculation continues |
 | the run directory, filenames, the stage suffix, reserved script blocks, warm files, the artifact registry | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) | the on-disk shapes — **unchanged by this work** |
 | the project tree: its four levels, who writes at each, how stages and benchmarks compose, where the history sits | [`execution/project-layout.md`](?doc=execution/project-layout.md) | the whole picture the rest of this plan sits inside |
@@ -85,7 +85,7 @@ which is what a table of layers cannot show you.
   have looked at the last ([`project-layout.md`](?doc=execution/project-layout.md)
   § 1.3). That is § 1 above taken literally.
 - **The browser writes a portable package; the target machine finishes it**
-  (`project-layout.md` § 2). Data files, a deck template, `stages.json` and
+  (`project-layout.md` § 2). Data files, a deck template, `task.json` and
   resource intent — none of it naming a machine. `prep`, on the machine that will
   run it, renders the deck and wrapper and builds the run directory, because
   `BlockSize` comes from the rank count and the eigensolver picks the conda
@@ -132,7 +132,7 @@ Three consequences shaped everything:
 flowchart TB
     subgraph P["the folder = one calculation"]
       direction TB
-      SH["<b>shared, stored once</b><br/>pseudopotentials · the monitor<br/>the decks and their wrappers<br/>stages.json"]
+      SH["<b>shared, stored once</b><br/>pseudopotentials · the monitor<br/>the decks and their wrappers<br/>task.json"]
       subgraph C["coarse/"]
         C1["links to the shared<br/>+ everything coarse produced<br/><b>…XV · …DM · …ANI · …STRUCT_OUT</b>"]
       end
@@ -164,14 +164,15 @@ Three stages flat leaves one set of results. For a framework whose point is
 managing a mission across several parameter sets, that is a defect rather than a
 trade (`engines/stages.md § 7.1`).
 
-**The history is `molbuilder snapshot`, and it is automatic.**
+**The history is `molbuilder snapshot`, and it is explicit.**
 `running-a-job.md § 6` already puts a run directory under git with the small
 `.XV`/`.CG` tracked as text *"so a restore brings back a resumable state"* and
-big binaries archived by content. `engines/stages.md § 7.3` takes a checkpoint at
-the two boundaries that matter — before a replacing produce, and when a stage's
-run finishes, tagged with its name — **automatically, whenever the folder is
-under checkpoint**. A folder then stops being a state and becomes a chain of
-states you can re-enter: branch at coarse, try a different tight, keep both.
+big binaries archived by content. `engines/stages.md § 7.3` names the two
+boundaries that matter — before a replacing produce, and when a stage's run
+finishes — and **`prep`, running interactively, asks at each of them**, showing
+the message it would write. molbuilder never takes one on its own
+(`checkpointing.md § 4.1`). A folder then stops being a state and becomes a chain
+of states you can re-enter: branch at coarse, try a different tight, keep both.
 
 Which is why **`snapshot branch` having no HTTP route** (`running-a-job.md § 6.2`)
 is the most consequential gap in this design rather than a loose end, and why
@@ -263,8 +264,9 @@ sequenceDiagram
     S-->>B: findings, each naming its stage · the id · what would be written
 
     B->>S: POST the same body — dry_run: false
-    S->>T: the decks, their wrappers, stages.json, the resolved pseudos
+    S->>T: the deck TEMPLATE, task.json, the resolved pseudos
     S-->>B: the id · every path written · the findings that did not block
+    Note over B,T: no deck and no wrapper — neither can be finished<br/>before the machine is known (project-layout.md § 2.2)
 ```
 
 **One route, one flag.** Check and produce take the identical body, so they are
@@ -276,7 +278,7 @@ checks clean to then fail to produce.
 reopening.** `engines/stages.md § 6.2` justifies `varies` on the grounds that
 intent *"cannot be inferred"* from anything downstream — which is only worth
 anything if a description can be read back into the tab. So there is a **GET**
-that returns a stored `stages.json` for a folder, and the tab restores the values,
+that returns a stored `task.json` for a folder, and the tab restores the values,
 the promoted set, the stages and their order from it. Without it the file is
 written and never read by the surface that wrote it, and `varies` is a field whose
 only reader is a future nobody scheduled.
@@ -291,10 +293,10 @@ would rename it.
 {
   "ok": true,
   "id": "bdt_au_relax_c6h4s2au38",
-  "written": { "folder":   "projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/",
-               "decks":    ["…_coarse.fdf", "…_tight.fdf"],
-               "wrappers": ["…_coarse.run.sh", "…_tight.run.sh"],
-               "description": "…/stages.json" },
+  "written": { "folder":      "projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/",
+               "template":    "…/bdt_au_relax_c6h4s2au38.fdf.template",
+               "description": "…/task.json",
+               "data":        ["Au.psml", "S.psml", "C.psml", "H.psml"] },
   "findings": [ /* warnings that did not block, each naming its stage */ ]
 }
 ```
@@ -387,7 +389,15 @@ Two facts to carry forward when it is built:
 
 ---
 
-## 8. The order of work
+## 8. The work, item by item
+
+> **The *order* moved out of this section on 2026-08-07.** It lives in
+> [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+> — the phases, the milestones, the gates, and the three reviews at each one.
+> **What stays here is each item's *"Done when:"* sentence**, which the plan
+> cites rather than copies, and the audit evidence in § 8a–8b that produced the
+> items. Read this section to know *what an item is and when it is finished*;
+> read the plan to know *when it gets built and how it is checked*.
 
 **Step 1 — the two contracts.** Done: [`engines/stages.md`](?doc=engines/stages.md)
 and [`execution/run-identity.md`](?doc=execution/run-identity.md). What remains
@@ -396,7 +406,7 @@ is agreeing them and answering § 9.
 **Step 1a — the repo-scope blocker.** ~~`Repo.init` refuses a directory whose
 subdirectories hold a working-dir marker, and the staged layout is exactly such a
 directory~~ — **fixed 2026-08-06** (`execution/checkpointing.md` L1). A root
-carrying its description (`stages.json`, `job-set.json`, `bench-manifest.json`)
+carrying its description (`task.json`, `job-set.json`, `bench-manifest.json`)
 now owns its subdirectories; a directory declaring nothing is still refused, and
 a subdirectory that is already a repository is refused in either case. The fix
 also unblocked something already shipped: `jobset prep` bundles had never been
@@ -410,28 +420,29 @@ rather than research, and each names what it holds up:
 | # | Question | Where | Blocks |
 |---|---|---|---|
 | 1 | ~~**The command shapes**~~ — **decided 2026-08-07**, step 1c. One group (`jobset`), one grammar (`<verb> <kind> [<stage>]`), and `molbuilder bench` folds in | step 1c below | ~~12a~~ — unblocked |
-| 2 | **How you ask for the shape** — `--flat`, a field in the description, or inferred | `project-layout.md § 8` q5 | **12b** — `prep` cannot build a tree without knowing which |
-| 3 | **Is `stages.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
+| 2 | ~~**How you ask for the shape**~~ — **decided 2026-08-07: a required field in the description**, never inferred, fixed once the calculation has produced. A shape chosen at the first `prep` and not written down is one the second `prep` cannot know | `engines/stages.md § 6.7` | ~~12b, 12d~~ — unblocked |
+| 3 | **Is `task.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
 
-**Two of the three are smaller than they were, and one is gone.** The repo-scope
-blocker that used to lead this table was **fixed rather than decided** (step 1a).
+**One was fixed rather than decided, one is answered, and one is left.** The
+repo-scope blocker that used to lead this table was **fixed** (step 1a).
 Question 1 was *what is the entry point at all* until `project-layout.md § 2`
-answered it; what is left is how it is spelled. Question 2 is new — it did not
-exist until the shape became a choice made at `prep` rather than a consequence of
-how many stages you wrote.
+answered it; what is left is how it is spelled (step 1c). Question 2 — how a
+user asks for the shape — was, for a day, the single decision holding up five
+items; it is answered, and the answer is the smallest one available: **the
+description carries it**, because the description is the one artifact every
+`prep` reads.
 
 **None of them blocked the checkpoint work, and that work is now done.** Items 10
 and 15 are complete, and item 11's two buildable parts landed on 2026-08-06 — the
 naming and `branch` over HTTP. What is left of 11 needs the producer, not a
-decision. So the three questions above are the *only* thing between here and
-12a–12c, and answering them is the next move. Items 10a, 12c, 14 and 14a are
-unblocked cleanup found by the 2026-08-07 cross-check and can be taken in any
-order.
+decision. Items 10a, 12c, 14 and 14a are unblocked cleanup found by the
+2026-08-07 cross-check and can be taken in any order — they are Track Z of the
+implementation plan.
 
 **Step 1c — the commands, which fall out of the workflow.**
 `project-layout.md` § 2 puts the boundary between what a laptop can know and what
 only the target machine can. The browser writes a **portable package** — data
-files, a deck template, `stages.json`, resource intent, and nothing that names a
+files, a deck template, `task.json`, resource intent, and nothing that names a
 machine. Everything after that is `prep` on the target, and `prep` is a **hub you
 return to**, not step four of a line.
 
@@ -553,10 +564,10 @@ appear together, which is exactly where a person should be looking.
 
    | Mechanism | Proposal |
    |---|---|
-   | `--stage N` overlay + `SIESTA_STAGE_PRESETS` | **keep the presets, retire the flag.** The tier *values* are real science (`tuning.md § 2.3.1`) and become the defaults a new stage is created with; the one-shot flag is `stages.json` with one stage |
+   | `--stage N` overlay + `SIESTA_STAGE_PRESETS` | **keep the presets, retire the flag.** The tier *values* are real science (`tuning.md § 2.3.1`) and become the defaults a new stage is created with; the one-shot flag is `task.json` with one stage |
    | `--stage-strategy` | **retire.** A named set of enable flags is three lines of a description |
-   | `--stages-json` | **becomes** `stages.json` (item 6) |
-   | `--stage-resources` | **folds into** `stages.json` |
+   | `--stages-json` | **becomes** `task.json` (item 6) |
+   | `--stage-resources` | **folds into** `task.json` |
    | `SiestaStageSpec` | **shrinks** to name/enabled/overrides (item 2) |
    | flat `render_siesta_stage_fdfs` + `..._runner` | **the runner goes** (12f); the deck renderer stays, rendering from the effective config |
    | `stages_to_jobset` | **stays**, minus the inter-stage edges (12b) |
@@ -614,7 +625,7 @@ appear together, which is exactly where a person should be looking.
    activating different environments; and a stage varying `mpi_np` renders a deck
    whose `BlockSize` came from *that* stage's rank count, with BENCH-MARKS
    declaring it.
-6. **`stages.json`, its reader, and the preflight** (`engines/stages.md § 6`).
+6. **`task.json`, its reader, and the preflight** (`engines/stages.md § 6`).
 
    ⚠ **This is a replacement, not an addition** (found 2026-08-07, § 8b). Two
    files already ship for this job: **`--stages-json`** (the whole ladder, a JSON
@@ -626,7 +637,7 @@ appear together, which is exactly where a person should be looking.
    neither of the old ones can: **which directory shape** the calculation uses,
    and a per-stage `continue_retries` that reaches the wrapper (item 2).
    Note also that `checkpoint.py`'s `_is_bundle_root` **already looks for
-   `stages.json`** and finds nothing, because no producer writes one — that arm
+   `task.json`** and finds nothing, because no producer writes one — that arm
    stays dead until this item lands.
 
    *Done when:* a description round-trips — read, rendered, re-read — one naming
@@ -718,7 +729,7 @@ appear together, which is exactly where a person should be looking.
     the job ends at 3am with nothing local watching. Asking at the next prep needs
     no observer, because a finished run's state stays intact until prep touches
     it, which is exactly when the question is asked
-    (`checkpointing.md § 4.1`). Still needs `stages.json` and the producer, but
+    (`checkpointing.md § 4.1`). Still needs `task.json` and the producer, but
     for the *message* — knowing which stage, and how the run went — not for a
     trigger.
 
@@ -728,7 +739,7 @@ appear together, which is exactly where a person should be looking.
     clearly.
 
 11a. **A checkpoint before each stage, in the flat shape, is not the same
-    feature.** Item 11 is about a *staged* folder's automatic history. The flat
+    feature.** Item 11 is about a *staged* folder's history. The flat
     shape needs the same trigger for a different reason: it is the **only** way
     back to a previous state, because each stage overwrites the last's warm files
     (`checkpointing.md § 5.0`). A missed checkpoint there is not a thinner history
@@ -998,7 +1009,7 @@ appear together, which is exactly where a person should be looking.
 18. **The measured answer reaches the description, not just a script.** The
     shipped chain stops one step short: `bench summarize` writes
     `bench-result.json` and `bench prep-run` turns it into `run-production.sh`,
-    but `stages.json` never learns — so the next `generate`, which rebuilds
+    but `task.json` never learns — so the next `generate`, which rebuilds
     everything from the description, silently reverts to the defaults. *Done
     when:* a benchmark verdict can be written back as that stage's resource
     overrides, and re-producing keeps the measured configuration.
@@ -1023,12 +1034,22 @@ appear together, which is exactly where a person should be looking.
     [`project-layout.md`](?doc=execution/project-layout.md) § 2.7 — the folder is
     the unit of transport in both directions, and everything is inside it.
 
-**Step 3 — the surface.** The description model first (pure, tested), then the
-matrix view, then the subtabs.
-[`structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)
-§ 7 specifies the first, and it stays a **plan** rather than a contract until
-step 2 is done — a module contract is written when the module is about to be
-built, the way [`spectrumchart.md`](?doc=web/spectrumchart.md) was.
+**Step 3 — the surface, which is two tabs and not one** (user decision,
+2026-08-07). Collecting the physics and deciding what varies is one job; giving
+those parameters their per-stage values, days later, having seen how the first
+stage went, is another.
+
+- a **generating tab per engine** writes the description — the physics, the
+  column set, the shape, the stage names:
+  [`structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md);
+- **one shared tab** starts from a folder and fills the cells:
+  [`task-setup-plan.md`](?doc=web/task-setup-plan.md). Its columns are read from
+  the form schema rather than from a list, which is what lets one implementation
+  serve every producer.
+
+Both stay **plans** rather than contracts until step 2 is done — a module
+contract is written when the module is about to be built, the way
+[`spectrumchart.md`](?doc=web/spectrumchart.md) was.
 
 **The gate between 2 and 3:** the backend must be able to render a stage that
 overrides a parameter the stage type never carried, before any of it is drawn —
@@ -1186,11 +1207,11 @@ not just the ones the plan already named. It changed what several items mean.*
 | The design says | The code has |
 |---|---|
 | A stage is **three fields** — name, enabled, `overrides` | `SiestaStageSpec` has **eight**, and **`overrides` does not exist in any form**. A stage can vary exactly four values (`relax_type`, `relax_steps`, `relax_force_tol`, `relax_max_displ`), hard-coded as a `dataclasses.replace` in `render_siesta_stage_fdfs`. There is no path by which a stage varies `mesh_cutoff` |
-| `stages.json` (`molbuilder/stages@1`), unknown keys **refused rather than ignored** | **No such file.** But **`--stages-json` ships** — a JSON list-of-dicts of `SiestaStageSpec` fields, accepted as a literal *or a path*, and its help text says **"Unknown keys ignored"** |
+| `task.json` (`molbuilder/task@1`), unknown keys **refused rather than ignored** | **No such file.** But **`--stages-json` ships** — a JSON list-of-dicts of `SiestaStageSpec` fields, accepted as a literal *or a path*, and its help text says **"Unknown keys ignored"** |
 | Per-stage resources ride in the description | a **second** file, `--stage-resources`, `{stage_name: {…}}` |
 | **One reader, used by both surfaces** | no reader at all: the CLI parses `--stages-json` inline, the browser assembles `params` in JavaScript |
 | **Names are stable, positions are not — a stage's position must never reach a filename** | the browser writes **`<label>-stage<N>.fdf`**, N from a preset dropdown |
-| `checkpoint.py` treats `stages.json` as a bundle descriptor | **that arm is dead** — nothing in the tree writes one, so today only `job-set.json` and `bench-manifest.json` reach it |
+| `checkpoint.py` treats `task.json` as a bundle descriptor | **that arm is dead** — nothing in the tree writes one, so today only `job-set.json` and `bench-manifest.json` reach it |
 
 **Item 6 is therefore not "add a file". It is "replace two shipped files with
 one, and reverse their unknown-key rule."** That is a bigger, and better-defined,
@@ -1212,7 +1233,7 @@ than a migration — molbuilder does not carry compatibility shims across a rena
 | 8 | PySCF `StageSpec` | an in-script Python loop, **one file** | `config/pyscf.py` |
 | 9 | the browser's `p-stage-preset` | a stage **number**, into a filename | `structure-optimization/viewer.js` |
 
-Nine mechanisms, one word. The design's `stages.json` + `overrides` would be the
+Nine mechanisms, one word. The design's `task.json` + `overrides` would be the
 tenth, **and the plan currently retires none of them.** That is the single
 largest thing missing from this document: not a feature, a subtraction.
 
@@ -1267,61 +1288,28 @@ cheap because its runner does almost nothing.** Once it activates an environment
 resolves ranks, starts a monitor and writes a trajectory log, it is the wrapper —
 which is the argument for deleting it rather than fixing it.
 
-## 8c. What is missing, and the order to finish it
+## 8c. What is missing, and what "done" means
 
-Reading the above together, the design is **further from done than the item list
-suggested**, and the remaining work has a shape: it is mostly *removal*, and it
-is gated on one decision.
+Reading § 8a and § 8b together, the design is **further from done than the item
+list suggested**, and the remaining work has a shape: **it is mostly removal.**
 
-### The one decision that unblocks the most
+**The decision that used to lead this section is answered.** *How does a user ask
+for flat or hierarchical?* held up five items for a day. The answer is a
+**required field in the description** (`engines/stages.md § 6.7`) — it travels
+with the calculation, every `prep` on every machine reads the same value, and it
+is a fact about the work rather than about a machine. The two rejected options
+each fail on one sentence: a `--flat` flag at `prep` lets the same folder be
+prepped twice differently, putting two layouts in one history; and inferring it
+from the stage count hands somebody a directory tree they never asked for.
 
-> **How does a user ask for flat or hierarchical?**
-
-It already gated 12b and 12d. It also gates 6 (the description must record the
-shape), 12a (what replaces the shell block depends on which tree it builds) and
-step 3 (the tab must offer it). **Five items behind one unanswered question**, and
-it is a design choice rather than research. Three candidates, and the plan's own
-reasoning already leans:
-
-| Option | For | Against |
-|---|---|---|
-| **A field in the description** | it travels with the calculation; `prep` on any machine reads the same answer; it is a fact *about* the work | one more field to explain |
-| `--flat` / `--hierarchical` at `prep` | explicit, per-invocation | the same folder can be prepped twice, differently — two shapes in one history |
-| infer it from the stage count | nothing to ask | **judged wrong already** (`project-layout.md § 8` q5): it hands someone a directory tree they never asked for |
-
-### The critical path
-
-```mermaid
-flowchart TB
-    Q["DECIDE: how a user asks for the shape"]
-    subgraph sub["Then, in this order"]
-      direction TB
-      I6["6 — stages.json replaces<br/>--stages-json + --stage-resources<br/>(one reader, keys refused, shape recorded)"]
-      I3["3 — overrides + the effective config<br/>(a stage can vary any field, not four)"]
-      I12d["12d — the producer emits ONE shape"]
-      I12b["12b — neither producer chains"]
-      I12f["12f — the flat runner goes through the wrapper<br/>(or goes away)"]
-      I12a["12a — attempt resolution moves to Python"]
-      I11["11 — the checkpoint triggers"]
-    end
-    Q --> I6 --> I3 --> I12d --> I12b --> I12f --> I12a --> I11
-    style Q fill:#fee,stroke:#c00,stroke-width:2px
-```
-
-**Why that order.** `stages.json` comes first because everything downstream reads
-it — the shape, the overrides, the resources and the per-stage retry budget all
-need somewhere to live, and today they live in four different places. `overrides`
-comes next because item 12d's producer has to render *from* an effective config.
-The three producer items follow. **The checkpoint triggers are last** because they
-fire on a produce and a stage finishing, and until there is one producer emitting
-one shape there is no single moment to hang them on.
-
-### Unblocked now, in parallel with all of that
-
-**14** and **14a** (dead citations and module hygiene), **10a** (archive size
-reporting), **12c** (the warm-file lists), **12e** (the panel's depth gate), and
-**16** (saving a structure into the tree — the first wall a user actually hits).
-None of them touches the gated path.
+**The order in which the remaining items get built, the milestones, and the
+review at each one are** [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md).
+Its § 5 carries the milestone map, its § 4 the phases, and its Track Z the five
+items that are gated by nothing — **14** and **14a** (dead citations and module
+hygiene), **10a** (archive size reporting), **12c** (the warm-file lists),
+**12e** (the panel's depth gate) — plus **16** (saving a structure into the
+tree), which the plan pulls to the front of the web phase because it is the first
+wall a user actually hits.
 
 ### What "done" would look like
 
@@ -1338,7 +1326,7 @@ A reader should be able to check the design landed with four questions:
 
 ## 9. Open questions
 
-1. **Is `stages.json` the right name?** It sidesteps the four-way collision the
+1. **Is `task.json` the right name?** It sidesteps the four-way collision the
    word *plan* already has in this domain (`jobset plan` the verb,
    `STAGE-PLAN.md` the file, "Job-set plan" the registry label for
    `job-set.json`).

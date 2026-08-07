@@ -986,7 +986,7 @@ append to them.
 
 | What | Flat | Hierarchical |
 |---|---|---|
-| **description** | `stages.json` | `stages.json` (at the calculation root) |
+| **description** | `task.json` | `task.json` (at the calculation root) |
 | **deck template** | `<id>.fdf.template` | `<id>.fdf.template` (at the root) |
 | **deck** | `<id>_<stage>.fdf` | `<id>.fdf` — inside `<seq>_<stage>/` |
 | **wrapper** | `<id>_<stage>.run.sh` / `.sbatch` | `<id>.run.sh` / `.sbatch` |

@@ -20,7 +20,7 @@ are in the plan, not here (R3).
 
 **This contract owns:** what a stage is, which fields are a stage's and which are
 the shared schema's, how an effective config is formed, where a promoted field
-lands, and the shape of `stages.json`.
+lands, and the shape of `task.json`.
 
 ---
 
@@ -250,11 +250,11 @@ rather than inventing a second mechanism.
 
 ---
 
-## 6. `stages.json` — the description on disk
+## 6. `task.json` — the description on disk
 
 ```jsonc
 {
-  "schema": "molbuilder/stages@1",
+  "schema": "molbuilder/task@1",
 
   "engine": { "name": "siesta" },
 
@@ -538,7 +538,7 @@ ever disagree that one wins.
 ```
 projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
 ├── <id>.fdf.template                  ← the science backbone
-├── stages.json                        ← what each stage tunes
+├── task.json                        ← what each stage tunes
 ├── Au.psml  S.psml  C.psml  H.psml    ← shared, stored ONCE
 ├── mb_monitor.py
 ├── 01_coarse/                         ← written by `prep`, on the target
@@ -558,7 +558,7 @@ projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
 ```mermaid
 flowchart LR
     T["<b>&lt;id&gt;.fdf.template</b><br/>functional · basis · k-grid<br/>everything no stage varies"]
-    J["<b>stages.json</b><br/>coarse: mesh 150, tol 0.04<br/>tight:  mesh 300, tol 0.01"]
+    J["<b>task.json</b><br/>coarse: mesh 150, tol 0.04<br/>tight:  mesh 300, tol 0.01"]
     M["<b>this machine</b><br/>ranks · solver · GPU"]
     DC["<b>01_coarse/&lt;id&gt;.fdf</b>"]
     DT["<b>02_tight/&lt;id&gt;.fdf</b>"]
@@ -675,11 +675,12 @@ A produce that only rewrites decks changes only text, so that half is cheap.
 **The binary half is not, today.** The archive is keyed by commit sha and copies
 every big binary on every checkpoint — the *"deduped by content"* in the shipped
 guide describes deduping basenames within one MANIFEST, not storage across
-checkpoints (`execution/checkpointing.md`, I1 and L5). Automatic checkpoints fire
-twice per stage, so a five-stage mission would pay ten full copies of its `.DM`
-set unless the store is content-addressed first. **L5 is therefore a prerequisite
-for § 7.3's automatic checkpoints, not a later optimisation** — and it is a small
-change to a system whose documentation already claims it.
+checkpoints (`execution/checkpointing.md`, I1 and L5). A mission checkpointed at
+both of § 7.3's boundaries pays two full copies of its `.DM` set per stage, so a
+careful five-stage run would pay ten unless the store is content-addressed first.
+**L5 was therefore a prerequisite for § 7.3 rather than a later optimisation**,
+and it landed on 2026-08-06: content already in the archive is hard-linked, so a
+checkpoint of unchanged binaries costs no disk.
 
 The warm files are never removed by any of this: they belong to the calculation,
 not to any one stage (`execution/run-identity.md § 6`).
@@ -728,15 +729,26 @@ molbuilder's rather than the engine's:
 > directory whose subdirectories held a working-dir marker — and § 7.1's layout
 > is exactly such a directory, so the folder this contract specifies could not be
 > put under checkpoint at all. It now permits them when the root carries its
-> description (`stages.json`), which is what says the subdirectories are this
+> description (`task.json`), which is what says the subdirectories are this
 > calculation's stages rather than rival jobs; a directory that declares nothing
 > is still refused. See `execution/checkpointing.md` L1.
 
-**Both are automatic whenever the folder is under checkpoint.** Not offered, not
-a button: a folder that has a history keeps it, and a stage boundary that went
-unrecorded is one the user cannot return to precisely when they discover they
-want to. Once a folder is under checkpoint, molbuilder does not ask permission
-to write the history it exists for.
+**Both are asked for, never taken** (corrected 2026-08-07 — this paragraph used
+to say the opposite, and `execution/checkpointing.md § 4.1` is the decision).
+molbuilder never takes a checkpoint on its own. What these two boundaries are is
+the two moments where **`prep`, running interactively, asks** — showing the
+message it would write and the tag if a stage finished.
+
+**Why asking is not weaker than doing.** The automatic version needed something
+to *observe* a run finishing, which is unachievable on a cluster: the job ends at
+3am with nothing local watching. Asking at the next `prep` needs no observer,
+because a finished run's state stays intact until `prep` touches it — and that is
+exactly the moment the question is worth asking. The trigger was not weakened; it
+was moved to the only place it can be honoured.
+
+**Never at run or submit time.** That may be a scheduled job, and blocking a
+queue to ask is the wrong party at the wrong moment. A non-interactive `prep`
+proceeds without a checkpoint **and says that it did**.
 
 **Who initialises, exactly.** A produce that *creates* the folder initialises it
 (`snapshot init --engine <engine>`) — molbuilder made the directory, so offering
