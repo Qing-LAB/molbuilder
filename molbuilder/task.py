@@ -108,9 +108,14 @@ class Stage:
 class Task:
     """One calculation.
 
-    ``stages`` and ``varies`` are ``None`` together, never empty: a
-    description with no stages **is** a single-parameter-set calculation
-    (§ 6.5), and an empty list would be a second way to spell that."""
+    ``stages`` and ``varies`` are ``None`` **together**: a description with
+    no stages *is* a single-parameter-set calculation (§ 6.5), and an empty
+    ``stages`` would be a second way to spell that.
+
+    ``varies`` may be empty while ``stages`` is not, and that is a different
+    state rather than a loophole — several stages differing in nothing but
+    their name, which § 6.6a allows (they are the honest way to say *keep
+    going* when each continues from the last)."""
     engine: str
     shape: str
     run: Run
@@ -119,6 +124,26 @@ class Task:
     varies: Optional[Tuple[str, ...]] = None
     stages: Optional[Tuple[Stage, ...]] = None
     schema_fingerprint: str = ""
+
+    def __post_init__(self) -> None:
+        """§ 6.5 holds for the object too, not only for the file.
+
+        Without this, ``Task(varies=(...), stages=None)`` is constructible
+        and ``to_dict`` drops the ``varies`` silently -- a round-trip that
+        loses intent, which is the one thing ``varies`` exists to carry
+        (§ 6.2).  The two are absent together or present together, and
+        ``stages`` is never an empty tuple: that would be the second
+        spelling of "one stage" § 6.5 rules out."""
+        if (self.varies is None) != (self.stages is None):
+            raise ValueError(
+                "task: 'varies' and 'stages' are absent together or present "
+                f"together (varies={self.varies!r}, stages={self.stages!r}). "
+                "A description with no stages is one parameter set, and there "
+                "is nothing to vary across (engines/stages.md 6.5)")
+        if self.stages is not None and not self.stages:
+            raise ValueError(
+                "task: 'stages' is present but empty. Omit it entirely for a "
+                "single parameter set (engines/stages.md 6.5)")
 
     # ----- persistence (task@1) -------------------------------------- #
     # ``to_dict`` / ``from_dict`` are the house names for a dataclass<->JSON
@@ -250,8 +275,12 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                       "become filenames (engines/stages.md 6.6)")
         seen[low] = st.name
 
+    # ``varies`` stays a tuple here even when empty: it travels WITH
+    # ``stages``, and an empty one is a real state -- several stages that
+    # differ in nothing but their name.  (``None`` is reserved for the
+    # no-stages case above, which § 6.5 spells by omitting both keys.)
     return Task(engine=engine, shape=shape, run=run, structure=structure,
-                base=base, varies=varies or None, stages=stages,
+                base=base, varies=varies, stages=stages,
                 schema_fingerprint=str(obj.get("schema_fingerprint", "")))
 
 

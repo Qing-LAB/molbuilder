@@ -402,3 +402,41 @@ def test_a_non_object_overrides_says_so(example):
     with pytest.raises(ValueError) as e:
         Task.from_dict(example)
     assert "overrides" in str(e.value) and "expected an object" in str(e.value)
+
+
+def test_a_task_cannot_hold_varies_without_stages():
+    """§ 6.5 holds for the OBJECT, not only for the file.  Without this
+    check ``to_dict`` drops the varies silently, losing the one thing
+    varies exists to carry (§ 6.2)."""
+    with pytest.raises(ValueError) as e:
+        Task(engine="siesta", shape="flat",
+             run=Run(name="x", id="x"), structure=StructureRef(source="x.xyz"),
+             base={"mesh_cutoff": 150}, varies=("mesh_cutoff",), stages=None)
+    assert "varies" in str(e.value) and "stages" in str(e.value)
+
+
+def test_a_task_cannot_hold_an_empty_stage_tuple():
+    with pytest.raises(ValueError) as e:
+        Task(engine="siesta", shape="flat",
+             run=Run(name="x", id="x"), structure=StructureRef(source="x.xyz"),
+             base={}, varies=(), stages=())
+    assert "empty" in str(e.value)
+
+
+def test_stages_with_nothing_varying_is_legal(example, tmp_path):
+    """§ 6.5 spells 'one parameter set' by omitting BOTH keys, so a
+    present-but-empty ``varies`` is not that second spelling -- it is
+    several stages that differ in nothing but their name, which § 6.6a
+    (2026-08-07) explicitly allows.  The object invariant must not
+    mistake one for the other."""
+    example["varies"] = []
+    for s in example["stages"]:
+        s["overrides"] = {}
+    task = Task.from_dict(example)
+    assert task.varies == ()
+    assert [s.name for s in task.stages] == ["coarse", "tight"]
+
+    p = tmp_path / FILENAME
+    write_task(p, task)
+    assert read_task(p) == task
+    assert json.loads(p.read_text())["varies"] == []
