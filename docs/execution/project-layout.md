@@ -132,31 +132,57 @@ flowchart TB
     ST -.-> BN
 ```
 
-### 1.2 The trade, stated once
+### 1.2 The trade, stated once — and why flat needs checkpoints
 
 Put the two side by side on the question that actually matters — *what do you
 still have after three stages have run?*
 
 | After stage 1, 2 and 3 have all run | Flat | Hierarchical |
 |---|---|---|
-| stage 1's relaxed geometry | **gone** — stage 2 overwrote `.XV` | `01_coarse/run-0/<id>.XV` |
-| stage 2's density matrix | **gone** — stage 3 overwrote `.DM` | `02_tight/run-0/<id>.DM` |
-| every stage's stdout | kept — the suffix saved them | kept |
-| which run produced the current `.XV` | **unanswerable** | `run.json` says |
-| go back and re-run stage 3 from stage 1 | **impossible** — that geometry is gone | name it and prep |
+| every stage's stdout | on disk — the suffix saved them | on disk |
+| the **current** `.XV` / `.DM` | on disk — stage 3's | on disk, per stage and per attempt |
+| stage 1's relaxed geometry | **in the checkpoint** — not on disk | on disk, always |
+| going back to it | **restore** that checkpoint | open the other directory |
+| having both at once | no — one state at a time | yes |
+| which run produced the current `.XV` | the checkpoint's message and tag | `run.json` says, without leaving the tree |
 
-> **Flat: continuing means *whatever is lying in this directory*.**
-> **Hierarchical: continuing means *this run, which I named*.**
+**The two shapes keep history in different dimensions.** Hierarchical spreads it
+across the *filesystem*: every stage and attempt sits there simultaneously, and
+going back is just reading a different directory. Flat keeps one state on disk
+and spreads its history through *time*: earlier states live in the checkpoint,
+and going back means rewinding.
 
-Neither is wrong. If you are doing one relaxation and only the final geometry
-matters, the flat shape's overwriting is not a loss — it is the point, and it
-costs you nothing to operate. If you are tuning a mission across parameter sets,
-comparing, or benchmarking, then losing every intermediate result is the defect
-the hierarchy exists to prevent.
+```mermaid
+flowchart LR
+    subgraph FL["<b>flat</b> — history in time"]
+      direction LR
+      F1["checkpoint<br/>after stage 1"] --> F2["checkpoint<br/>after stage 2"] --> F3["the directory<br/><i>now</i>"]
+    end
+    subgraph HI["<b>hierarchical</b> — history in space"]
+      direction LR
+      H1["01_coarse/run-0"]
+      H2["02_tight/run-0"]
+      H3["03_finer/run-0"]
+    end
+```
 
-**One constraint, and it is not a preference.** A description whose stages you
-mean to *compare* cannot be prepped flat, because there will be nothing left to
-compare. Prep will still do it if you ask — that is your call — but it says so.
+> **This is why the checkpoint is not optional for the flat shape.** It is the
+> only thing standing between *"stage 2 overwrote stage 1's geometry"* and
+> *"stage 1's geometry is gone."* In the hierarchical shape the checkpoint is
+> insurance; in the flat shape it is **the mechanism** — the sole way to get back
+> to a previous run and continue from there.
+
+**And restore is a rewind, not a fetch.** It returns the whole directory to how
+it was, text and binaries together (`checkpointing.md`, S6). So going back in the
+flat shape means: checkpoint what you have now, restore the earlier one, run from
+there. Skip the first step and the current state is what you lose. Hierarchical
+never poses that question, because nothing had to be overwritten to begin with.
+
+**Neither shape is wrong.** For one relaxation where only the final geometry
+matters, overwriting is the point and flat costs nothing to operate. For a
+mission tuned across parameter sets — compared, benchmarked, revisited — having
+every state at once is worth the directories, and you stop having to think about
+what a restore would cost you.
 
 ### 1.3 The same contract, read against both shapes
 
@@ -835,8 +861,20 @@ leaves them stale, which the recorded environment makes visible.
 
 ## 6. Where the saved history sits
 
-**One saved history per calculation, at level ③.** Not per stage, not per
-project.
+**One saved history per calculation** — and in the flat shape the calculation
+*is* the directory, so the same sentence covers both.
+
+| | Flat | Hierarchical |
+|---|---|---|
+| the repository sits at | the run directory | the calculation, level ③ |
+| it covers | that directory | the calculation and every stage beneath it |
+| **what it is for** | **the only way back** to an earlier state (§ 1.2) | insurance, and a place to branch from |
+
+**In the flat shape the checkpoint is not optional.** The warm files are shared
+by design, so each stage overwrites the last, and a state that was not
+checkpointed is simply gone. In the hierarchical shape every state is on disk
+anyway and the history is a safety net. Same machinery, different weight — and
+`checkpointing.md § 5` states the invariants for both.
 
 ```
 bdt_au_relax_c6h4s2au38/
@@ -849,7 +887,10 @@ bdt_au_relax_c6h4s2au38/
 └── .mbcheckpoint.json          which patterns count as big
 ```
 
-Three reasons it belongs at ③:
+*(A flat directory's archive is the same thing one level shallower —
+`.binsnapshots/<save>/<id>.DM`.)*
+
+Three reasons the repository belongs at ③ **when there is a hierarchy**:
 
 - **The shared package is above the stages.** A history rooted inside `01_coarse/`
   cannot restore a pseudopotential that lives one level up, so a restored stage
@@ -878,22 +919,40 @@ So the rule is about **depth, not names**: a run directory is a direct child of 
 stage, or the root of a flat calculation. Nothing below that is this history's
 binary business.
 
-### 6.2 Append-only, because attempts are immutable
+### 6.2 Append-only — in the hierarchical shape only
 
-An attempt never changes after it is written (§ 1.5), so an archived file never
-changes either. A new save point stores the attempts that appeared since the last
-one and references the rest.
+**Hierarchical.** An attempt never changes after it is written (§ 1.5), so an
+archived file at that path never changes either. A new save point stores the
+attempts that appeared since the last one and references the rest.
 
-**That is the disk-growth problem solved by structure rather than by hashing.**
-The archive copies every big file on every save today, and a five-stage mission
-with a 2 GB density matrix per stage pays for all of it every time. Immutable
-attempts make "archive what is new" both correct and obvious, where a
-content-addressed store would have been correct and hopeful.
+That is the disk-growth problem solved by structure rather than by hashing. The
+archive copies every big file on every save today, and a five-stage mission with
+a 2 GB density matrix per stage pays for all of it every time. Immutable attempts
+make *"archive what is new"* both correct and obvious, where a content-addressed
+store would have been correct and hopeful.
 
-**And it makes a violation detectable.** Immutability is a contract, not a
-permission bit. But an attempt that was archived and then edited *differs from its
-recorded checksum*, which is precisely what I2 already checks per file. Nothing
-notices today; § 7 makes it an invariant.
+**Flat, and this is the honest asymmetry.** There is one `<id>.DM`, and every
+stage overwrites it. The path is stable while its contents are not, so a save
+point genuinely *has* to store a new copy — there is nothing to reference. **The
+optimisation above does not apply, and that is not a defect to fix**: it is what
+you buy with the flat shape's convenience, and it is the same trade as § 1.2, in
+bytes rather than in geometry.
+
+| | Flat | Hierarchical |
+|---|---|---|
+| the archived path `…/<id>.DM` | one path, new contents each save | a new path per attempt |
+| a second save costs | a full copy of what changed | nothing for what already existed |
+| growth over five stages | five copies | five copies — but each is a *different* result you can still open |
+
+The row that matters is the last one. Both store five density matrices; the
+hierarchical shape can hand you any of them without a restore.
+
+**Immutability is detectable, in both.** It is a contract, not a permission bit —
+but an attempt that was archived and then edited *differs from its recorded
+checksum*, which is exactly what I2 checks per file. In the flat shape the same
+check still catches an edit to an archived file; what it cannot do is call it a
+violation, because there the file is expected to move on. Nothing notices today;
+§ 7 makes it an invariant for the shape where it means something.
 
 ### 6.3 What still stands in the way
 
@@ -910,6 +969,10 @@ knows it is one calculation, to say so (`checkpointing.md`, L1).
 Each is written so a test can assert it. Rules about a single run directory or a
 single history live in their own contracts and are cited, not repeated.
 
+**Which shape each holds in** is marked where it matters: **[both]** unless the
+rule is about the hierarchy. An invariant tested against the wrong shape is worse
+than no invariant, because it fails a directory that is working correctly.
+
 **Naming and identity**
 
 1. **Every path segment matches `[A-Za-z0-9_-]+`**, and a topic is one of the
@@ -922,7 +985,7 @@ single history live in their own contracts and are cited, not repeated.
 4. **A stage's `seq` is assigned once and never reassigned**; stages append
    (§ 4.2). **An attempt's number likewise** — the next unused, never reused, and
    nothing resets it (§ 1.5).
-4a. **No directory in this tree points at a file that does not exist yet.**
+4a. **[hierarchical] No directory in this tree points at a file that does not exist yet.**
    Stages are set up one at a time, after the previous one finished, so
    everything a run continues from is a real file copied in before it starts
    (§ 1.6). A dangling link means something was chained that should not have
@@ -933,7 +996,7 @@ single history live in their own contracts and are cited, not repeated.
 
 **Ownership**
 
-6. **Generate writes only level ③** (§ 2.1 step 3); **prepare writes only one
+6. **[hierarchical] Generate writes only level ③** (§ 2.5 step 3); **prepare writes only one
    attempt at ⑤** (step 4); the engine writes only the directory it was launched
    in.
 6a. **Every directory and every link in this tree is made by Python.** The
@@ -941,11 +1004,11 @@ single history live in their own contracts and are cited, not repeated.
    handed, and does nothing else (`running-a-job.md § 2.2a`). **Not held
    today**: `runwrap.py`'s `attempt_dirs` prologue creates and arranges an
    attempt in shell.
-7. **A shared file exists once, at ③**, and is linked into each stage. Never
+7. **[hierarchical] A shared file exists once, at ③**, and is linked into each stage. Never
    copied per stage.
 8. **Every directory is a container or a run, never both** (§ 1.4). A run's
    output stays inside it; nothing a run writes appears above it.
-8a. **An attempt is immutable.** Once written it never changes, and once archived
+8a. **[hierarchical] An attempt is immutable.** Once written it never changes, and once archived
    it must never differ from its recorded checksum — which is
    `checkpointing.md`'s I2 applied to a directory instead of a file (§ 6.2).
 9. **The description is the only source at ③.** No produce and no run modifies it
@@ -960,21 +1023,24 @@ single history live in their own contracts and are cited, not repeated.
     different launch.** Neither mechanism is used for the other's job.
 12. **Derived files can be deleted and regenerated** from `stages.json` plus the
     machine's config, byte-identical except for the provenance timestamp.
-13. **Warm restart flows down the stage axis only, and never on its own.** A
+13. **[hierarchical] Warm restart flows down the stage axis only, and never on its own.** A
     stage continues from an earlier stage's run that the **user named**, never
     from a trial, and never because something finished (§ 1.6).
 
 **History**
 
-14. **One history per calculation, rooted at ③** (§ 6).
-15. **Every big regular file is either in git or in the archive, never both,
+14. **[both] One history per calculation** — rooted at ③ where there is a
+    hierarchy, and at the run directory itself when it is flat (§ 6).
+15. **[both] Every big regular file is either in git or in the archive, never both,
     never neither** (`checkpointing.md`, S1) — and after the 2026-08-06 fix that
     holds at every depth, so a stage's result is covered.
-16. **The archive covers runs this calculation owns** — a flat root, or a
+16. **[both] The archive covers runs this calculation owns** — a flat root, or a
     stage's `run-N/`. A nested container's runs (a benchmark's `point-*/`) are
     not its business (§ 6.1). **Not held today**: the walk classifies by pattern
     and archives a trial's `.DM` like any other.
-17. **A save stores only what is new** (§ 6.2). **Not held today**: every save
+17. **[hierarchical] A save stores only what is new** (§ 6.2) — in a flat directory
+    the same path's contents change every stage, so a fresh copy is correct rather
+    than wasteful. **Not held today**: every save
     copies every big file.
 
 ---

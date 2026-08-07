@@ -403,7 +403,52 @@ is written (`engines/stages.md § 7.3`).
 
 ---
 
-## 5. What a staged folder adds
+## 5. Both directory shapes, and why flat needs this most
+
+`project-layout.md § 1` defines two shapes — **flat** (one directory, stages told
+apart by filename suffix, warm files shared) and **hierarchical** (a directory
+per stage, a directory per attempt). **Every invariant above holds in both.**
+What differs is how much work they are doing.
+
+| | **Flat** | **Hierarchical** |
+|---|---|---|
+| What the repository covers | the one directory | the calculation, all stages beneath it |
+| What git tracks | decks, wrappers, the small warm files | the same, spread over containers |
+| What the archive covers | the big binaries in that directory | the big binaries in every `run-N/` |
+| How the two are told apart | by **pattern** (`archive_globs`) | by pattern, at any depth (L2) |
+| **What a checkpoint is for** | **the only way back to an earlier state** | insurance, and a branch point |
+
+**The classification rule is the same sentence in both**: a big binary matching
+`archive_globs` goes to the archive, wherever it sits; everything else is git's.
+The hierarchical shape needs that walk to be **recursive**, which is L2 — and
+that recursion costs the flat shape nothing, because it has only one level.
+
+### 5.0 Why the flat shape depends on this more than the staged one
+
+In the hierarchical shape every stage and attempt is on disk simultaneously.
+Going back to stage 1's geometry means opening `01_coarse/run-0/`. The checkpoint
+is protection against loss and a way to branch — valuable, not load-bearing.
+
+**In the flat shape it is load-bearing.** The warm files are unsuffixed and
+shared *by design* — that is exactly what lets stage 2 continue from stage 1 —
+and it means stage 2 overwrites them. So:
+
+> **Without a checkpoint, a flat directory can only move forward.** With one, it
+> can go back to any state it was checkpointed in and continue from there. That
+> is not a convenience on top of the flat shape; it is what makes the flat shape
+> usable for iterative work at all.
+
+Two consequences worth stating:
+
+- **A checkpoint before each stage is not optional housekeeping in a flat
+  directory** — it is the save point. Miss one and that state is unrecoverable,
+  because nothing else on disk holds it.
+- **Restore is a rewind, not a fetch** (S6): it returns the whole directory to a
+  past state. Going back therefore means *checkpoint what you have, then restore
+  the earlier one*. Skipping the first step loses the present. The hierarchical
+  shape never poses that question, because it never had to overwrite anything.
+
+### 5.1 What a staged folder adds
 
 All four **need the layout**, and each follows from `engines/stages.md § 7.1`.
 
@@ -539,6 +584,12 @@ becomes the reason the disk fills.
 An attempt is immutable by contract, not by permission bit
 (`project-layout.md § 1.5`). Nothing stops an edit; what matters is that an edit
 is **noticed**.
+
+**Hierarchical only.** A flat directory's `<id>.DM` is *expected* to change —
+every stage overwrites it, which is the shape working as designed
+(`project-layout.md § 6.2`). The same re-hash still runs there and still
+reports a difference; what changes is that the difference is news rather than a
+violation. Do not let a check written for one shape fail the other.
 
 | | |
 |---|---|
