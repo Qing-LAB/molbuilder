@@ -53,7 +53,7 @@ what that code must keep doing, plus the six changes a staged folder needs:
 |---|---|---|
 | **What it covers** | one flat run directory | the calculation root and every stage beneath it — **one repository per calculation** (L1) |
 | **Archive globs** | `*.DM`, `*.HSX`, … — matched beside the config | must match **at depth**; today's patterns miss `<stage>/<id>.DM` and every binary lands in git as a blob (L2) |
-| **When a checkpoint is taken** | when the user runs `snapshot checkpoint` | **automatically**, before a replacing produce and when a stage's run finishes (`engines/stages.md § 7.3`) |
+| **When a checkpoint is taken** | when the user runs `snapshot checkpoint` | still **only when the user says so** — but `prep` **asks**, when it is about to change a directory that already holds results (§ 4.1) |
 | **What it is called** | a free-text message; a tag name the user picks | the message carries the id and the stage; a stage completion is tagged `<id>/<stage>/<UTC>` (L3) |
 | **Who initialises** | `snapshot init`, always explicit | a produce that *creates* the folder initialises it; one writing into a folder that already existed without a checkpoint does not |
 | **`branch`** | CLI **and** `POST /api/checkpoint/branch` (added 2026-08-06) | the operation the staged design turns on — the browser could report a stage finished and not let you fork from it |
@@ -447,7 +447,7 @@ that order, not merely the presence of the checks.
 
 ### A3 — the checkpoint precedes the mutation it protects
 
-*needs automatic checkpoints (`engines/stages.md § 7.3`).*
+*needs the prep prompt (§ 4.1).*
 
 A pre-produce checkpoint is committed **before** the first file of the new produce
 is written (`engines/stages.md § 7.3`).
@@ -456,6 +456,52 @@ is written (`engines/stages.md § 7.3`).
 |---|---|
 | **How it fails** | Taken afterwards, it records the state it was supposed to preserve a way back to |
 | **How to check** | Interrupt a produce after the checkpoint and before the swap: the commit exists and **`git status` is clean** — no new file reached the folder. That is the same assertion as `engines/stages.md § 7.2`'s transactional rule seen from the history's side, and like S4's check it uses git rather than an mtime comparison, which clock skew and filesystem granularity both defeat |
+
+### 4.1 Who takes a checkpoint, and when they are asked
+
+*Decided 2026-08-07. This replaces an earlier plan for **automatic** checkpoints,
+and the change is a simplification: it deletes a problem rather than solving it.*
+
+> **A checkpoint is always an explicit act. molbuilder never takes one on its
+> own.** What it does is **ask**, at the one moment where not having asked would
+> cost something — and then do what it is told.
+
+**The moment is interactive `prep`, because prep is the mutation.** A3 says the
+checkpoint precedes the mutation it protects, and `prep` *is* that mutation: it
+is what rewrites a stage's deck, replaces a produce, or builds the next attempt.
+So when prep is about to change a directory that already holds results, it says
+so and offers to save first. The user answers.
+
+**Never at run or submit time.** That run may be a scheduled job — a prompt would
+block a queue, and a checkpoint taken there would be taken by the wrong party at
+the wrong moment. Submitting is not a mutation of anything that already exists;
+it starts something new.
+
+**And never on the compute node**, which is I4, and which this decision makes
+permanent rather than provisional: nothing about the wrapper needs to change,
+because the wrapper was never going to be the answer.
+
+**What this deletes.** The earlier model needed *an observer* — something present
+at the moment a run finished, to notice and commit. On a workstation that is
+plausible; on a cluster it is not, because the job may end at 3am with nothing
+local watching, and it is not solvable by watching harder. **Asking at the next
+prep needs no observer at all**, because the state a finished run left is still
+intact right up until the next prep touches it — which is exactly when the
+question gets asked.
+
+| | |
+|---|---|
+| **Where the prompt fires** | interactive `prep`, when the target directory already holds results |
+| **What it says** | what is about to change, and that saving now is the way back |
+| **Who decides** | the user, every time |
+| **Non-interactive prep** (a script, `--yes`) | proceeds **without** a checkpoint and **says so in its output**. It may not silently decide either way: blocking automation is wrong, and quietly taking or skipping a save is worse |
+| **The last stage** | nothing prompts, because nothing follows. Saving the final state is the user's explicit act — and a surface showing a finished, unsaved run should say it is unsaved |
+
+**Why asking is cheap enough to be worth it.** Before L5 a checkpoint copied
+every large binary again, so offering one at every prep would have been offering
+a real cost. Now a checkpoint stores what changed, so the honest answer to *"is
+it worth saving?"* is almost always yes — and the prompt is a decision about
+intent rather than about disk.
 
 ---
 
@@ -612,8 +658,8 @@ one whose failure is losing data rather than wasting disk.
 ### L3 — every commit and tag names its calculation
 
 *The naming HOLDS as of 2026-08-06 (`checkpoint.py`, `test_checkpoint_invariants.py`).
-What still needs the layout is the automatic **trigger** — something that
-notices a stage finished and calls it.*
+What still needs building is the **prompt** that offers it — nothing "notices" a
+stage finished, and under § 4.1 nothing has to.*
 
 The commit message carries the id and the stage; a finished stage is tagged
 `<id>/<stage>/<UTC>` (`engines/stages.md § 7.3`). A folder can be moved, copied
@@ -636,9 +682,10 @@ Pre-produce checkpoints are commits, reachable through `snapshot list`. Tagging
 them too would bury the points a user meant to reach among the ones they passed
 through.
 
-*Check:* **molbuilder** creates a tag only at a stage completion. A user tagging
-by hand is their own business — `snapshot tag` exists for it — so the assertion is
-on what the automatic path emits, not on the total.
+*Check:* the tag molbuilder **offers** is offered only at a stage completion. A
+user tagging by hand is their own business — `snapshot tag` exists for it — so the
+assertion is on what the offered path emits, not on the total. Under § 4.1 the
+user still says yes; this invariant governs what is proposed, not who decides.
 
 ### L5 — a checkpoint's cost is bounded by what changed, not by what exists
 
@@ -788,11 +835,11 @@ One line each, for reading over a diff:
 | **I4** | no generated wrapper invokes git | today — `test_checkpoint_invariants.py` |
 | **A1** | archive: build, verify the copy, then swap | today — `test_checkpoint_invariants.py` |
 | **A2** | restore verifies the target archive before touching the worktree | today — `test_checkpoint_invariants.py` |
-| **A3** | the checkpoint is committed before the mutation it protects | needs automatic checkpoints |
+| **A3** | the checkpoint is committed before the mutation it protects | needs the prep prompt (§ 4.1) |
 | **L1** | one repository per calculation, in either shape | **HOLDS** (2026-08-06) — `tests/test_checkpoint_repo_scope.py`; its *"the description must be read, not merely found"* clause **does not** — it needs a producer to write one |
 | **L2** | archive globs match at depth | **holds** (fixed 2026-08-06) |
-| **L3** | every commit and tag names its calculation | **the naming HOLDS** (2026-08-06) — `test_checkpoint_invariants.py`; the automatic *trigger* still needs the layout |
-| **L4** | molbuilder tags stage completions only | **the tag form HOLDS** (2026-08-06) — hierarchical, globbable, collisions refused; the automatic *trigger* still needs the layout |
+| **L3** | every commit and tag names its calculation | **the naming HOLDS** (2026-08-06) — `test_checkpoint_invariants.py`; what still needs building is the *prompt* that offers it (§ 4.1) |
+| **L4** | molbuilder tags stage completions only | **the tag form HOLDS** (2026-08-06) — hierarchical, globbable, collisions refused; what still needs building is the *prompt* that offers it (§ 4.1) |
 | **L5** | a checkpoint costs what changed, not what exists | **the storage HOLDS** (2026-08-06) — `test_checkpoint_invariants.py`; the **reported** cost does **not** — every surface still shows what exists |
 | **L6** | a history can be verified without being restored | **not held today** |
 | **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
@@ -859,8 +906,8 @@ have shipped a **worse** bug than the one it closed, and was caught by staticall
 reviewing the patch rather than by its tests, which passed.
 
 **Four still cannot be read**: S3, S4 and S6 describe the per-stage layout and
-the description, neither of which exists, and A3 describes automatic checkpoints,
-which do not. They stay claims until there is something to assert them against.
+the description, neither of which exists, and A3 needs the prep prompt (§ 4.1),
+which is not built. They stay claims until there is something to assert them against.
 It was six until L3 and L4 split — their *forms* are pure functions and are now
 asserted; only their *triggers* wait.
 

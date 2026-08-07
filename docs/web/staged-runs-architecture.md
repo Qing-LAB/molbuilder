@@ -688,13 +688,22 @@ appear together, which is exactly where a person should be looking.
     user picked it and can pick another; uncommitted work carries onto the
     branch, which is git's default and what lets someone branch mid-edit.
 
-    ⬜ **The triggers**, which need `stages.json` and the producer: a replacing
-    produce leaves a commit holding the folder as it was; a stage seen to finish
-    leaves a commit **and** its tag, with a message saying how the run went (the
-    decoder already knows *converged* from *hit the step cap*); and a folder
-    molbuilder produces into is initialised if it was not already. **The wrapper
-    does none of it** (`running-a-job.md § 6.2`: it is deliberately
-    git-agnostic), so the finish is observed where the run is already watched.
+    ⬜ **The prompt** (was "the triggers" — **user decision 2026-08-07**, and it
+    is a subtraction). A checkpoint stays an **explicit act**; molbuilder never
+    takes one on its own. What it gains is a **question at interactive `prep`**,
+    when prep is about to change a directory that already holds results — with
+    the message it would write, and the tag if a stage finished. Never at run or
+    submit time: that may be a scheduled job, and blocking a queue to ask is the
+    wrong party at the wrong moment. Non-interactive prep proceeds without one
+    and **says so**.
+    This **deletes** the hard part rather than solving it. The old wording needed
+    something to *observe* a run finishing, which is unachievable on a cluster —
+    the job ends at 3am with nothing local watching. Asking at the next prep needs
+    no observer, because a finished run's state stays intact until prep touches
+    it, which is exactly when the question is asked
+    (`checkpointing.md § 4.1`). Still needs `stages.json` and the producer, but
+    for the *message* — knowing which stage, and how the run went — not for a
+    trigger.
 
     ⬜ **The branch-name proposal.** `stages.md § 7.3` proposes
     `<stage>-<what you are trying>`, editable. That is the tab's to offer; the
