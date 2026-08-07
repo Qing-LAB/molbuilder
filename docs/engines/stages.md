@@ -258,6 +258,10 @@ rather than inventing a second mechanism.
 
   "engine": { "name": "siesta" },
 
+  // How the calculation's files are kept apart on disk (§ 6.7).
+  // Required, and never inferred.
+  "shape": "hierarchical",              // or "flat"
+
   // What identifies this calculation, and what the user called it.
   // The rules are execution/run-identity.md.
   "run": { "name": "BDT/Au relax",                    // typed, kept verbatim
@@ -291,25 +295,6 @@ rather than inventing a second mechanism.
   ]
 }
 ```
-
-> **This example is complete except for one key that is not yet decided, and the
-> gap is deliberate.** Nothing above records **which directory shape** the
-> calculation uses — flat or hierarchical
-> ([`project-layout.md`](?doc=execution/project-layout.md) § 1). That is not an
-> oversight in the spec; it is the one open question the design has not answered,
-> and inventing a field before the question is settled would be the wrong order.
->
-> **But the spec cannot stay silent about it either,** because the shape has to
-> be recorded *somewhere*: `project-layout.md` § 2 says it is chosen at `prep`,
-> and `prep` is a hub you return to. A choice made at the first prep and not
-> written down is a choice the second prep cannot know — and two preps
-> disagreeing would put two layouts in one calculation, which no invariant
-> further down could then hold. So **this file is where it lands**, as a
-> top-level key beside `engine`, when the question in
-> [`staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) step 1b
-> is answered. Until then a reader should treat the spec above as *complete for
-> everything except the shape*.
-
 
 ### 6.1 Three rules
 
@@ -423,6 +408,45 @@ premise is that every file in it is accounted for. Refusing costs a message;
 allowing it costs a calculation nobody knows is missing. (Two stages that are
 *identical in value* but differently named is a separate question, and a warning
 rather than a refusal — the plan records it.)
+
+---
+
+### 6.7 `shape` — which layout the calculation uses
+
+**`shape` is `"flat"` or `"hierarchical"`, it is required, and it is never
+inferred.** It says how this calculation's files are kept apart on disk:
+`"flat"` puts every stage in one directory, told apart by the filename suffix,
+with the warm files shared; `"hierarchical"` gives each stage a directory and
+each attempt a subdirectory. Neither is wrong, and the difference is not
+cosmetic — it decides whether an earlier stage's state still exists on disk after
+a later one has run ([`project-layout.md`](?doc=execution/project-layout.md) § 1).
+
+**Why it lives here rather than being a `prep` flag.** `prep` is a hub you return
+to — to measure, to run, to redo, to start the next stage
+(`project-layout.md` § 2.3). A shape chosen at the first prep and not written
+down is a shape the second prep cannot know, and two preps disagreeing would put
+two layouts inside one calculation, which no invariant below could then hold.
+**A field is what makes every prep agree**, and it is the only place that can:
+the description is the one artifact all of them read.
+
+**And it is portable, which is why it does not break § 7.1's rule.** The
+description names no machine — but the shape is not a fact about a machine. It is
+a fact about *how you want your results kept*, and it travels with the
+calculation exactly like the stage list does. `prep` **reads** it; it does not
+decide it.
+
+**Required, with no default, on purpose.** Inferring the shape — from the stage
+count, or from what is already on disk — would hand somebody a directory tree
+they never asked for, which `project-layout.md § 8` had already rejected. A
+*surface* may propose a value (and should, so nobody faces an empty choice), but
+the file itself carries what was chosen. That is the same rule as `varies`
+(§ 6.2): intent is recorded, never reconstructed.
+
+**It is fixed once the calculation has produced.** The shape decides where every
+deck, output and warm file lives, so changing it after a stage has run orphans
+all of them. Before the first produce it is free to change; after, it is a
+different calculation. Whether an existing folder can be *converted* is a
+separate question and still open (`project-layout.md § 8`).
 
 ---
 
