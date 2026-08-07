@@ -548,17 +548,39 @@ appear together, which is exactly where a person should be looking.
     than aspirational. **Still open: `snapshot verify`** (L6) — the check exists
     and is reachable only by attempting a restore.
 11. **Checkpoints at the two stage boundaries, and `branch` over HTTP.**
-    ~~Gated on step 1a~~ — **unblocked 2026-08-06**: a calculation root carrying
-    its description can now be initialised, so `engines/stages.md § 7.3`'s
-    automatic history is reachable. *Done when:* a replacing produce leaves a
-    commit holding the folder as it was; a stage seen to finish leaves a commit
-    **and a tag named `<id>/<stage>/<UTC>`**, with a message carrying the id, the
-    stage and how the run went; `git tag --list '<id>/<stage>/*'` answers "every
-    checkpoint of this stage"; a folder molbuilder produces into is initialised
-    if it was not already; and the browser can branch from a tag, with the branch
-    name proposed from the stage it forks. **The wrapper does none of it**
-    (`running-a-job.md § 6.2`: it is deliberately git-agnostic), so the finish is
-    observed where the run is already watched.
+    **Two of the four parts are done (2026-08-06); the two that remain are the
+    triggers, and they are the part that needs the producer.**
+
+    ✅ **The naming.** `checkpoint_message()` and `stage_completion_tag()` in
+    `checkpoint.py` produce `<id> · <stage> · <what happened>` and
+    `<id>/<stage>/<UTC>`, matching `engines/stages.md § 7.3`'s worked examples
+    byte for byte — the document's own strings are the test fixture, so the two
+    cannot drift. Names are **refused rather than normalised**, tags are
+    hierarchical and sort oldest-to-newest under
+    `git tag --list '<id>/tight/*'` (asserted against real git), a collision
+    inside one second is refused, and a hand-made tag is not mistaken for an
+    automatic one. `checkpointing.md` L3/L4.
+
+    ✅ **`branch` over HTTP.** `POST /api/checkpoint/branch` — the CLI has had
+    `Repo.branch` since Phase 4, so the browser was the only surface that could
+    tell you a stage finished and not let you fork from it. An existing name is
+    a **bucket-B advisory** (HTTP 200 + `ok:false`, `where: "name"`), because the
+    user picked it and can pick another; uncommitted work carries onto the
+    branch, which is git's default and what lets someone branch mid-edit.
+
+    ⬜ **The triggers**, which need `stages.json` and the producer: a replacing
+    produce leaves a commit holding the folder as it was; a stage seen to finish
+    leaves a commit **and** its tag, with a message saying how the run went (the
+    decoder already knows *converged* from *hit the step cap*); and a folder
+    molbuilder produces into is initialised if it was not already. **The wrapper
+    does none of it** (`running-a-job.md § 6.2`: it is deliberately
+    git-agnostic), so the finish is observed where the run is already watched.
+
+    ⬜ **The branch-name proposal.** `stages.md § 7.3` proposes
+    `<stage>-<what you are trying>`, editable. That is the tab's to offer; the
+    route deliberately takes the name it is given and only refuses a bad one
+    clearly.
+
 11a. **A checkpoint before each stage, in the flat shape, is not the same
     feature.** Item 11 is about a *staged* folder's automatic history. The flat
     shape needs the same trigger for a different reason: it is the **only** way

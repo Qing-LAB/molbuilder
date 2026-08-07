@@ -116,8 +116,9 @@ the bundle; on HPC, warn if it is unset. This is the parked task #98.
 `job-set.json` plan, and show per-stage run status in the Results tab
 (reusing the existing directory decoder `decode_run_dir`, no new parser).
 Add a browser control for checkpoint *branching* (explore an alternative
-tail without losing the converged path) — `/api/checkpoint/branch` plus a
-sidebar affordance (D9).
+tail without losing the converged path). **The route landed 2026-08-06**
+(`POST /api/checkpoint/branch`); what remains is the sidebar affordance and
+the name it proposes — `<stage>-<what you are trying>`, editable (D9).
 
 **D7 gate — prove it before expanding.** Before building any more
 producers, run the full SIESTA ladder loop end-to-end on a real cluster:

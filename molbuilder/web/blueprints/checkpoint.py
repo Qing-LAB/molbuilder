@@ -384,6 +384,45 @@ def api_checkpoint_tag():
     return jsonify({"ok": True, "label": label, "at": at})
 
 
+@bp.post("/api/checkpoint/branch")
+def api_checkpoint_branch():
+    """Phase 4 -- fork a branch to explore an alternative, and switch to it.
+
+    The operation the staged design turns on: a tagged stage completion is a
+    place you meant to reach, and branching from it is how a *what-if* gets its
+    own history instead of overwriting the one you have
+    (`engines/stages.md § 7.3`).  The CLI has had this since Phase 4; the
+    browser had no route, which made the branch-from-a-stage story unreachable
+    from the surface that tells you a stage finished.
+
+    The branch NAME is the caller's.  `stages.md § 7.3` proposes
+    `<stage>-<what you are trying>` and says it is editable, so the proposal is
+    the tab's to make and this route's job is only to refuse a bad one clearly.
+    """
+    body = _get_body()
+    try:
+        path = _resolve_path(body.get("path"))
+    except ValueError as exc:
+        return _protocol_error(str(exc))
+    name = (body.get("name") or "").strip()
+    if not name:
+        return _protocol_error("missing required parameter: name")
+    repo = Repo(str(path))
+    if not repo.initialized:
+        return _protocol_error(
+            "not a checkpoint repo; run init first", code=409)
+    try:
+        repo.branch(name)
+    except CheckpointError as exc:
+        # git's own message -- "already exists", "not a valid branch name".
+        # A bucket-B advisory: the user picked a name and can pick another.
+        return _advisory(str(exc), where="name")
+    except Exception as exc:                       # noqa: BLE001
+        _log.exception("checkpoint branch failed")
+        return _server_fault(f"{type(exc).__name__}: {exc}")
+    return jsonify({"ok": True, "name": name})
+
+
 @bp.post("/api/checkpoint/restore")
 def api_checkpoint_restore():
     """Phase 5 -- rewind text + binaries to ``ref``.

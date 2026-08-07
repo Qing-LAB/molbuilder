@@ -558,9 +558,9 @@ The same operations are exposed over HTTP (`/api/checkpoint/*`: `state`, `list`,
 
 > **Current status.** The `Repo` core, the `molbuilder snapshot` CLI (including
 > `branch`), the HTTP routes, and the sidebar panel — with its lazy-loaded
-> commit-graph viewer — are shipped and tested. A **web checkpoint-branch
-> control** is planned ([`roadmap.md`](?doc=roadmap.md) workstream 1, Phase 2):
-> `branch` exists as a CLI command but has no HTTP route yet. A few items from
+> commit-graph viewer — are shipped and tested. `branch` gained its HTTP route on 2026-08-06
+> (`POST /api/checkpoint/branch`); the **control that drives it** is still the
+> tab's to build ([`roadmap.md`](?doc=roadmap.md) workstream 1, Phase 2). A few items from
 > the original design remain **unbuilt**: archive pruning (`prune`), a
 > `snapshot diff` *CLI* face (`diff` exists in Python and over HTTP, just not as
 > a subcommand), the wrapper-auto-bootstraps-git "Path B" (dropped — the wrapper

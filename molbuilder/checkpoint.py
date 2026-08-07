@@ -437,6 +437,100 @@ def _archive_dir(path: Path, sha: str) -> Path:
 _SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 _SIZE_INT_RE   = re.compile(r"^(0|[1-9][0-9]*)$")
 _FILENAME_RE   = re.compile(r"^[!-~]+$")    # ASCII printable, no spaces
+# --------------------------------------------------------------------- #
+#  Naming — every checkpoint says which calculation it belongs to       #
+#  (checkpointing.md L3/L4, engines/stages.md § 7.3)                     #
+# --------------------------------------------------------------------- #
+
+#: The separator in a commit message.  A middle dot rather than a colon or a
+#: slash: both of those already mean something in a ref or a path, and a
+#: message is read by people.
+_MSG_SEP = " · "
+
+#: An id and a stage name are already ref-safe -- the id is ``[A-Za-z0-9_-]+``
+#: (``run-identity.md § 3``) and a stage is ``[A-Za-z0-9_]+`` (``stages.md § 2``)
+#: -- so the set chosen to survive a filename survives a git ref unchanged.
+#: **Nothing here normalises.** A name that would need fixing is refused, because
+#: silently rewriting an id would decouple the history's name from the folder's.
+_REF_SAFE_ID    = re.compile(r"^[A-Za-z0-9_-]+$")
+_REF_SAFE_STAGE = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def utc_stamp(when: Optional[datetime] = None) -> str:
+    """Compact UTC, ``YYYYMMDDThhmmssZ``.
+
+    Compact because the ISO form's colons are not legal in a git ref, and this
+    is the convention ``job-contracts.md § 4.1`` already uses for
+    ``<basename>-restart-aside-<UTC>/``.
+    """
+    when = when or datetime.now(timezone.utc)
+    return when.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def checkpoint_message(run_id: str, event: str, what_happened: str) -> str:
+    """``<id> · <stage or event> · <what happened>``.
+
+    The id is not decoration (L3). A folder can be moved, copied to a cluster or
+    opened a year later, and a history whose commits say only *"stage 2
+    converged"* cannot say which calculation that was.
+
+    ``what_happened`` is expected to be specific — *"relaxation converged, 41
+    steps"* rather than *"done"* — because whatever takes the checkpoint has just
+    decoded the run and already knows (`running-a-job.md § 4.2`).
+    """
+    if not _REF_SAFE_ID.match(run_id or ""):
+        raise CheckpointError(
+            f"run id {run_id!r} is not [A-Za-z0-9_-]+; it is used verbatim in "
+            f"commit messages and tags and is never rewritten "
+            f"(run-identity.md § 3).")
+    for part, label in ((event, "event"), (what_happened, "description")):
+        if not (part or "").strip():
+            raise CheckpointError(f"checkpoint message {label} must be non-empty")
+    return _MSG_SEP.join((run_id, event.strip(), what_happened.strip()))
+
+
+def stage_completion_tag(run_id: str, stage: str,
+                         when: Optional[datetime] = None) -> str:
+    """``<id>/<stage>/<UTC>`` — the name of a finished stage.
+
+    **Hierarchical on purpose**: ``git tag --list '<id>/tight/*'`` is every
+    checkpoint of one stage, oldest to newest, which is the question a user
+    returning to a mission actually asks.
+
+    Only stage *completions* are tagged (L4). A pre-produce checkpoint is a
+    safety net reachable through ``snapshot list``; a finished stage is a place
+    you meant to reach, and tagging both would bury the second among the first.
+    """
+    if not _REF_SAFE_ID.match(run_id or ""):
+        raise CheckpointError(
+            f"run id {run_id!r} is not [A-Za-z0-9_-]+ (run-identity.md § 3).")
+    if not _REF_SAFE_STAGE.match(stage or ""):
+        raise CheckpointError(
+            f"stage name {stage!r} is not [A-Za-z0-9_]+ (stages.md § 2); it is "
+            f"used verbatim in the tag and is never rewritten.")
+    return f"{run_id}/{stage}/{utc_stamp(when)}"
+
+
+def parse_stage_completion_tag(tag: str) -> Optional[Tuple[str, str, str]]:
+    """``(run_id, stage, stamp)`` for a tag this module would have written, or
+    ``None`` for anything else — a hand-made tag is the user's business (L4).
+
+    L3's check reads back through here: every automatic tag parses into exactly
+    three parts, of which the first is the folder's id.
+    """
+    parts = tag.split("/")
+    if len(parts) != 3:
+        return None
+    run_id, stage, stamp = parts
+    if not (_REF_SAFE_ID.match(run_id) and _REF_SAFE_STAGE.match(stage)):
+        return None
+    try:
+        datetime.strptime(stamp, "%Y%m%dT%H%M%SZ")
+    except ValueError:
+        return None
+    return run_id, stage, stamp
+
+
 _MANIFEST_NAME = "MANIFEST"
 _MANIFEST_TMP  = "MANIFEST.tmp"
 _SHA_DIR_RE    = re.compile(r"^[0-9a-f]{40}$")

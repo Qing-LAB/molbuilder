@@ -56,7 +56,7 @@ what that code must keep doing, plus the six changes a staged folder needs:
 | **When a checkpoint is taken** | when the user runs `snapshot checkpoint` | **automatically**, before a replacing produce and when a stage's run finishes (`engines/stages.md § 7.3`) |
 | **What it is called** | a free-text message; a tag name the user picks | the message carries the id and the stage; a stage completion is tagged `<id>/<stage>/<UTC>` (L3) |
 | **Who initialises** | `snapshot init`, always explicit | a produce that *creates* the folder initialises it; one writing into a folder that already existed without a checkpoint does not |
-| **`branch`** | CLI only — no HTTP route (`running-a-job.md § 6.2`) | the operation the staged design turns on, so the route is required rather than nice to have |
+| **`branch`** | CLI **and** `POST /api/checkpoint/branch` (added 2026-08-06) | the operation the staged design turns on — the browser could report a stage finished and not let you fork from it |
 
 Everything else — the text/binary split, the archive format, build-verify-swap,
 verify-before-restore — is unchanged, and §§ 2–4 exist to say so precisely enough
@@ -544,13 +544,24 @@ one whose failure is losing data rather than wasting disk.
 
 ### L3 — every commit and tag names its calculation
 
+*The naming HOLDS as of 2026-08-06 (`checkpoint.py`, `test_checkpoint_invariants.py`).
+What still needs the layout is the automatic **trigger** — something that
+notices a stage finished and calls it.*
+
 The commit message carries the id and the stage; a finished stage is tagged
 `<id>/<stage>/<UTC>` (`engines/stages.md § 7.3`). A folder can be moved, copied
 to a cluster, or opened a year later, and a history whose commits say only
 *"stage 2 converged"* cannot say which calculation that was.
 
-*Check:* every commit message contains the folder's `run.id`, and every tag parses
-into exactly three parts of which the first equals it.
+**Nothing is normalised.** The id is `[A-Za-z0-9_-]+` and a stage is
+`[A-Za-z0-9_]+`, both already ref-safe, so a name that would need repairing is
+**refused** rather than rewritten — silently fixing an id would decouple the
+history's name from the folder's, which is the one thing the name exists to tie
+together.
+
+*Check:* every commit message contains the folder's `run.id`, and every tag
+parses into exactly three parts of which the first equals it — read back through
+the same parser that writes them, so the two cannot drift.
 
 ### L4 — the tag namespace is stage completions only
 
@@ -677,8 +688,8 @@ One line each, for reading over a diff:
 | **A3** | the checkpoint is committed before the mutation it protects | needs automatic checkpoints |
 | **L1** | one repository per calculation, in either shape | **HOLDS** (2026-08-06) — `tests/test_checkpoint_repo_scope.py` |
 | **L2** | archive globs match at depth | **holds** (fixed 2026-08-06) |
-| **L3** | every commit and tag names its calculation | needs the layout |
-| **L4** | molbuilder tags stage completions only | needs the layout |
+| **L3** | every commit and tag names its calculation | **the naming HOLDS** (2026-08-06) — `test_checkpoint_invariants.py`; the automatic *trigger* still needs the layout |
+| **L4** | molbuilder tags stage completions only | **the tag form HOLDS** (2026-08-06) — hierarchical, globbable, collisions refused; the automatic *trigger* still needs the layout |
 | **L5** | a checkpoint costs what changed, not what exists | **HOLDS** (2026-08-06) — `test_checkpoint_invariants.py` |
 | **L6** | a history can be verified without being restored | **not held today** |
 | **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |

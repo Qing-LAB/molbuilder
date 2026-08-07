@@ -492,3 +492,111 @@ def test_L5_does_not_link_against_a_rotted_candidate(tmp_path):
     fresh = root / ".binsnapshots" / second.sha / "job.DM"
     assert fresh.read_bytes() == payload, (
         "the new archive linked to rotted bytes instead of copying the source")
+
+
+# ------------------------------------------------------------------ #
+#  L3 — every commit and tag names its calculation                    #
+#  L4 — the tag namespace is stage completions only                   #
+# ------------------------------------------------------------------ #
+
+from datetime import datetime, timezone            # noqa: E402
+from molbuilder.checkpoint import (                # noqa: E402
+    checkpoint_message, stage_completion_tag, parse_stage_completion_tag,
+    utc_stamp,
+)
+
+_WHEN = datetime(2026, 8, 6, 22, 14, 3, tzinfo=timezone.utc)
+
+
+def test_L3_the_forms_match_the_contract_examples():
+    """`engines/stages.md § 7.3` gives a worked example of each form.  If the
+    code and the document disagree, one of them is wrong and a reader cannot
+    tell which — so the document's own strings are the fixture."""
+    assert checkpoint_message(
+        "bdt_au_relax_c6h4s2au38", "tight", "relaxation converged, 41 steps"
+    ) == "bdt_au_relax_c6h4s2au38 · tight · relaxation converged, 41 steps"
+
+    assert stage_completion_tag("bdt_au_relax_c6h4s2au38", "tight", _WHEN) == \
+        "bdt_au_relax_c6h4s2au38/tight/20260806T221403Z"
+
+
+def test_L3_a_tag_parses_into_three_parts_led_by_the_id():
+    """The contract's check, verbatim: every tag parses into exactly three
+    parts of which the first equals the folder's id."""
+    tag = stage_completion_tag("bdt_au", "coarse", _WHEN)
+    parsed = parse_stage_completion_tag(tag)
+    assert parsed is not None
+    assert parsed[0] == "bdt_au" and parsed[1] == "coarse"
+    assert len(tag.split("/")) == 3
+
+
+def test_L3_names_are_refused_rather_than_normalised():
+    """A name that is not ref-safe is refused, **not rewritten**.  Silently
+    normalising would decouple the history's name from the folder's — and the
+    id is chosen from a set that already survives both a filename and a git ref
+    (`run-identity.md § 3`), so a name needing repair is a bug upstream."""
+    for bad in ("bdt au", "bdt/au", "bdt.au", "", "bdt:au"):
+        with pytest.raises(CheckpointError):
+            stage_completion_tag(bad, "tight", _WHEN)
+        with pytest.raises(CheckpointError):
+            checkpoint_message(bad, "tight", "converged")
+    for bad_stage in ("tight run", "tight/er", "", "tight-er"):
+        with pytest.raises(CheckpointError):
+            stage_completion_tag("bdt_au", bad_stage, _WHEN)
+
+
+def test_L3_the_timestamp_is_ref_legal():
+    """The ISO form's colons are not legal in a git ref, which is why the stamp
+    is compact.  A ref with a colon is not a cosmetic problem — git refuses it."""
+    stamp = utc_stamp(_WHEN)
+    assert stamp == "20260806T221403Z"
+    assert ":" not in stamp and " " not in stamp
+
+
+def test_L4_a_hand_made_tag_is_not_mistaken_for_an_automatic_one():
+    """Only stage completions are tagged by molbuilder; a user tagging by hand
+    is their own business.  The parser must therefore recognise *its own* form
+    and decline everything else, or a roll-up of "every checkpoint of this
+    stage" would sweep in tags nobody meant that way."""
+    for hand in ("v1", "before-the-rewrite", "bdt_au/tight",
+                 "bdt_au/tight/not-a-time", "a/b/c/d",
+                 "bdt_au/tight/20260806T221403"):        # missing the Z
+        assert parse_stage_completion_tag(hand) is None
+
+
+def test_L4_stage_tags_are_hierarchical_and_globbable(tmp_path):
+    """`git tag --list '<id>/tight/*'` must answer "every checkpoint of one
+    stage, oldest to newest" — the question a user returning to a mission
+    actually asks.  Asserted against real git, not string manipulation."""
+    root = _run_dir(tmp_path / "calc")
+    repo = Repo(str(root))
+    repo.init(engine="siesta")
+
+    made = []
+    for stage, second in (("coarse", 1), ("tight", 2), ("tight", 3)):
+        when = _WHEN.replace(second=second)
+        label = stage_completion_tag("bdt_au", stage, when)
+        repo.tag(label, message=checkpoint_message("bdt_au", stage, "converged"))
+        made.append(label)
+
+    out = subprocess.run(["git", "tag", "--list", "bdt_au/tight/*"],
+                         cwd=str(root), capture_output=True, text=True).stdout
+    listed = out.split()
+    assert listed == sorted(listed), "the stamp must sort oldest to newest"
+    assert len(listed) == 2, f"expected only tight's tags, got {listed}"
+    assert all(t.startswith("bdt_au/tight/") for t in listed)
+
+
+def test_L4_a_colliding_stage_tag_is_refused_not_suffixed(tmp_path):
+    """Two checkpoints of one stage inside the same second collide, and the
+    contract says that is **refused, not suffixed** — like every other name in
+    this design.  A silently suffixed tag would make the roll-up above return
+    something the user never created."""
+    root = _run_dir(tmp_path / "calc")
+    repo = Repo(str(root))
+    repo.init(engine="siesta")
+
+    label = stage_completion_tag("bdt_au", "tight", _WHEN)
+    repo.tag(label, message=checkpoint_message("bdt_au", "tight", "converged"))
+    with pytest.raises(CheckpointError):
+        repo.tag(label, message=checkpoint_message("bdt_au", "tight", "again"))

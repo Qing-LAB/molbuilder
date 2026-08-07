@@ -559,3 +559,78 @@ def test_config_set_rejects_empty_as_advisory(client, tmp_path):
                     json={"path": str(tmp_path), "archive_globs": []})
     body = r.get_json()
     assert body["ok"] is False and "cannot be empty" in (body.get("error") or "")
+
+
+# ----------------------------------------------------------------- #
+#  POST /api/checkpoint/branch                                       #
+#                                                                    #
+#  The operation the staged design turns on: a tagged stage          #
+#  completion is a place you meant to reach, and branching from it   #
+#  is how a what-if gets its own history instead of overwriting the  #
+#  one you have (engines/stages.md § 7.3).  The CLI has had it since #
+#  Phase 4; the browser had no route, so the branch-from-a-stage     #
+#  story was unreachable from the surface that reports the finish.   #
+# ----------------------------------------------------------------- #
+
+
+def test_branch_creates_and_switches_to_the_new_branch(client, tmp_path):
+    from molbuilder.checkpoint import Repo
+    _seed(tmp_path)
+    Repo(str(tmp_path)).init()
+
+    r = client.post("/api/checkpoint/branch",
+                    json={"path": str(tmp_path), "name": "tight-tighter-mesh"})
+    assert r.status_code == 200
+    assert r.get_json() == {"ok": True, "name": "tight-tighter-mesh"}
+
+    head = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                          cwd=str(tmp_path), capture_output=True,
+                          text=True).stdout.strip()
+    assert head == "tight-tighter-mesh", "branch must be checked out, not just created"
+
+
+def test_branch_carries_uncommitted_work_onto_the_branch(client, tmp_path):
+    """`Repo.branch` documents git's default — a user can branch mid-edit,
+    before an experiment.  If that changed, someone would lose work they had
+    not committed yet."""
+    from molbuilder.checkpoint import Repo
+    _seed(tmp_path)
+    Repo(str(tmp_path)).init()
+    (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\nMeshCutoff 400 Ry\n")
+
+    r = client.post("/api/checkpoint/branch",
+                    json={"path": str(tmp_path), "name": "what-if"})
+    assert r.status_code == 200
+    assert "MeshCutoff 400 Ry" in (tmp_path / "siesta-test.fdf").read_text()
+
+
+def test_branch_on_an_existing_name_is_an_advisory_not_a_fault(client, tmp_path):
+    """Bucket B (web-api.md § 1.6): the user picked a name and can pick another,
+    so it is HTTP 200 + ok:false with the reason, never a 500."""
+    from molbuilder.checkpoint import Repo
+    _seed(tmp_path)
+    Repo(str(tmp_path)).init()
+    client.post("/api/checkpoint/branch",
+                json={"path": str(tmp_path), "name": "taken"})
+
+    r = client.post("/api/checkpoint/branch",
+                    json={"path": str(tmp_path), "name": "taken"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is False
+    assert body["errors_only"] and body["errors_only"][0]["where"] == "name"
+
+
+def test_branch_requires_a_name(client, tmp_path):
+    _seed(tmp_path)
+    r = client.post("/api/checkpoint/branch", json={"path": str(tmp_path)})
+    assert r.status_code == 400
+    assert "name" in r.get_json()["error"]
+
+
+def test_branch_on_an_uninitialised_dir_says_so(client, tmp_path):
+    _seed(tmp_path)
+    r = client.post("/api/checkpoint/branch",
+                    json={"path": str(tmp_path), "name": "x"})
+    assert r.status_code == 409
+    assert "init" in r.get_json()["error"]
