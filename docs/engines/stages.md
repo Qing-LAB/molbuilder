@@ -443,9 +443,21 @@ a target (§ 8).
 
 ### 7.1 The layout: portable above, machine-specific below
 
-**Stages do not share a directory.** The parent holds what every stage shares
-*and what any machine can read*; each stage's subdirectory holds the deck
-rendered for **this** machine, and everything that stage produced:
+**What this contract requires of a layout, in either shape:** what every stage
+shares *and any machine can read* is written once and kept apart from what one
+stage produced **for one machine**. That separation is what makes the description
+portable and the deck disposable.
+
+**How that separation is realised is not this contract's to say** — it is
+[`project-layout.md`](?doc=execution/project-layout.md) § 1, which defines two
+shapes and says the choice is made at `prep`. In the **flat** shape stages do
+share a directory and are told apart by a filename suffix; in the
+**hierarchical** shape each gets a subdirectory. Both satisfy the requirement
+above; they differ in where the history lives, not in what a stage is.
+
+The tree below is the **hierarchical** case, drawn here only because § 7.2–7.4
+refer to it. `project-layout.md` § 1 is the authority for both, and if the two
+ever disagree that one wins.
 
 ```
 projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
@@ -613,9 +625,14 @@ change the id, so the state is still there to continue from.
 
 Two rules make growth safe, and both follow from one observation.
 
-> **A stage has run when the folder holds output keyed to its deck** —
-> `<id>_<name>-run0.out` and its trajectory log (`job-contracts.md § 2.6`). That
-> is a fact on disk, not a flag anybody maintains.
+> **A stage has run when the folder holds output keyed to its deck** — the run's
+> stdout and its trajectory log (`job-contracts.md § 2.6`). That is a fact on
+> disk, not a flag anybody maintains.
+>
+> *Keyed to* is the load-bearing part, and it is deliberately not a filename.
+> The two shapes key it differently — flat by a suffix in the name, hierarchical
+> by the directory the output sits in (`project-layout.md § 1`) — so a rule
+> written around either spelling would be false in the other half of the design.
 
 **R4 — a stage that has run is a record, and the record is a checkpoint.** The
 outputs beside a deck were made by that deck as it was, so replacing it without
@@ -722,38 +739,19 @@ half of the naming question growth decides: it has to key on the name.
 
 ### 7.4 What the layout costs the checkpoint system
 
-The history in § 7.3 is `molbuilder snapshot`, whose invariants —
-what must never change, and what must stay separate from what — are
-[`execution/checkpointing.md`](?doc=execution/checkpointing.md). It was designed
-against a **flat** run directory. Three things follow from pointing it at a tree, and each
-is a change to the checkpoint side rather than a compromise on this one.
+*Settled 2026-08-06. This section proposed three changes to the checkpoint side;
+two were made and one came free. It is kept as a pointer rather than a proposal.*
 
-**The repository sits at the parent, not in each subdirectory.**
-`job-system.md § 5.5` observes that each `point-<name>/` is a self-contained run
-directory and so *"can be checkpointed on its own"*. True, and not enough: a
-per-subdirectory repository cannot restore a shared file that lives **above** it,
-so restoring a stage would leave its linked-in pseudopotentials pointing at
-nothing. It also cannot express the operation this design turns on — *branch the
-workflow at stage 2* — because there is no repository that contains the workflow.
-One repository at the parent holds the shared files once, every stage's outputs,
-and the description, so a branch carries the whole tree as it was.
+| What this layout needed | Where it now lives |
+|---|---|
+| **the repository at the parent**, not in each subdirectory — a per-stage repository cannot restore a shared file above it, and cannot express *branch the workflow at stage 2*, because no repository contains the workflow | [`checkpointing.md`](?doc=execution/checkpointing.md) **L1** |
+| **archive globs that match at depth** — `*.DM` does not match `<stage>/<id>.DM`, so every big binary would have gone into git as a blob, the exact outcome the archive exists to prevent | [`checkpointing.md`](?doc=execution/checkpointing.md) **L2** |
+| **nothing points at a file that does not exist** — this came free from stages not chaining (§ 7.1): whatever a stage continues from was copied in as a real file when that stage was set up, so a checkpoint always holds real files | [`project-layout.md`](?doc=execution/project-layout.md) § 1.6, invariant 4a |
 
-**The archive globs have to become recursive.** `.mbcheckpoint.json`'s engine
-defaults are `*.DM`, `*.HSX`, `*.TSHS`, … (`running-a-job.md § 6.1`) — patterns
-written for files beside the config. In this layout the big binaries are at
-`<stage>/<id>.DM`, which `*.DM` does not match, so **every one of them would be
-committed to git as a blob** — the exact outcome the archive exists to prevent.
-The glob set must match at depth, and the seeded `.gitignore` with it. This is a
-change to the checkpoint contract, and it lands with its code and its test in one
-commit (`job-contracts.md § 7`).
-
-**Nothing in a checkpointed tree points at a file that does not exist.**
-Because stages are not chained (§ 7.1), whatever a stage continues from was
-copied in as a real file when you set that stage up. So a checkpoint taken at
-any moment holds real files, a restore brings back real files, and there is no
-state where the history records a link that resolves to nothing. That is one
-less thing the archive and the restore have to reason about, and it came free
-from not chaining rather than from any checkpoint work.
+**The general rule this leaves behind**, which is what belongs in *this* contract:
+a layout decision is not finished when the folder is right. It has to be carried
+to whatever reads the folder — here the checkpoint system, whose glob defaults
+were written for a flat directory and would silently have lost data in a tree.
 
 ---
 
