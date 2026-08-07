@@ -501,6 +501,16 @@ and the findings contract (facts in, findings out; `where` is the stable id).
    is what anyone relying on it has already built on.
 2. `SiestaStageSpec` shrinks to **name / enabled / overrides**. The four
    relaxation values become ordinary shared-config fields.
+
+   ⛔ **This unit breaks the shipped Build tab, and the plan did not say so.**
+   Verified by running it, not inferred: `_stagespec_to_field_schemas`
+   (`web/blueprints/_shared.py`) supports **bool / int / float / str** and
+   **raises `TypeError` on anything else**, so a stage carrying
+   `overrides: Dict[str, Any]` makes `GET /api/build/schema/siesta` throw and
+   the SIESTA config form 500s. Today that emitter renders eight columns —
+   `name · enabled · relax_type · relax_steps · relax_force_tol ·
+   relax_max_displ · on_nonconvergence · continue_retries`. **Decision 11 in
+   § 8 owns it, and this unit does not start until it is answered.**
 3. `continue_retries` gets a road to the wrapper. ⚠ It is not merely unrouted —
    it is **silently dropped while everything upstream validates** (§ 8a D): the
    field range-checks 1..5, `runwrap.py` implements the retry loop, and
@@ -1124,6 +1134,7 @@ open.
 | 8a | **The shared tab's name.** *Task Setup* is the working name. Not *Task Prep* — `prep` is the verb it does not do. *Job* is taken twice (a `Job` in a `JobSet`; the scheduler's word). *Calculation* names the unit and covers a sweep as well as a ladder | P11 |
 | 8b | ~~**The description file's name**~~ — **decided 2026-08-07: `task.json`** (`molbuilder/task@1`). The file describes one **task**, and the stage list is how that task is broken up; the `stages` key inside it is unchanged, because a stage is established vocabulary and only the file needed a name that covers a sweep as well as a ladder | ~~P1~~ |
 | 9 | **When does the readable id stop being enough?** A formula does not tell two isomers apart, and does not pin the *order* species are declared in — and a `.XV` read against a different order lands every coordinate on the wrong atom | P3, if it lands here at all |
+| 11 | **What happens to the Build tab's stage table when a stage becomes three fields?** `_stagespec_to_field_schemas` renders one column per stage field and **raises on any type outside bool/int/float/str**, so `overrides: Dict` 500s the SIESTA schema route. Three answers, and they differ in what they cost: **(a)** the emitter skips `overrides` and the table keeps `name`/`enabled` only — smallest change, but the tab silently loses the ability to set relaxation per stage until P11; **(b)** pull the P11 widget forward so rows become the *varied parameters* (what `task-setup-plan.md § 6` actually wants) — right end state, but it is surface work and *the surfaces are last* is this plan's load-bearing order; **(c)** the generating tab stops offering per-stage relaxation at all and the shared tab owns it, which is the two-tab split arriving one phase early | **P2** |
 | 10 | **What are the "components" of a composite system?** A junction is a molecule *and* two electrodes; naming it by total formula loses that structure | P3, same |
 
 **Already decided, recorded so they are not reopened:** the shape is a required
