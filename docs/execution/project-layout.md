@@ -26,61 +26,73 @@ restate the rules inside a single run directory — those are `job-contracts.md`
 
 ## 1. Two shapes, and how to choose
 
-A project directory is one of exactly two shapes. **Both are supported, neither
-is a degraded version of the other**, and most of this document is about telling
-you which rules apply to which.
+A project directory is one of exactly two shapes. **Both hold several stages and
+several attempts** — they differ in *how those are kept apart*, and everything
+else follows from that one choice.
+
+| | **Flat** | **Hierarchical** |
+|---|---|---|
+| **Stages are separated by** | a **filename suffix** — `<id>_stage1.fdf`, `<id>_stage2.fdf` | a **directory** — `01_coarse/`, `02_tight/` |
+| **Attempts are separated by** | an **output index** — `-run0.out`, `-run1.out` | a **directory** — `run-0/`, `run-1/` |
+| **Warm files** (`.XV` `.DM` `.CG`) | **one shared set**, unsuffixed | one set per attempt |
+| **Continuing** | free — the next stage finds them lying there | you **name** the run, and its files are copied in |
+| **What survives** | the **latest** state only | every stage's, every attempt's |
+| **Depth** | 1 | 3 |
+| **Chosen** | at `prep` | at `prep` |
+| **Status** | **ships today** | **proposed** |
+
+**Flat is what the UI ships today.** The Build tab writes a `.fdf` and its
+paired `.run.sh` straight into one directory, and you run them there. Everything
+in the flat column below is describing working software, not a plan.
+
+**What changes, and it is the one real migration.** Today the UI writes the
+*finished* deck. Under this design it writes a **template plus `stages.json`**,
+and `prep` renders the deck — into one directory for the flat shape, or into
+stage directories for the hierarchical one. The UI stops producing the last
+file in the chain and starts producing the second-to-last.
 
 **One package, two layouts, and you choose.** The browser always writes the same
 thing — a deck template, `stages.json`, the data files, none of it naming a
 machine. `prep`, on the machine that will run it, translates that into a runnable
 directory **in whichever shape you ask for**.
 
-| | **Flat** | **Hierarchical** |
-|---|---|---|
-| **What it is** | one directory holding one job | a calculation folder holding stage directories, each holding attempt directories |
-| **Ask for it when** | one parameter set, run once or twice, nothing to compare | you are tuning through several parameter sets, benchmarking, or want a save point per stage |
-| **Depth** | 1 | 3 (calculation → stage → attempt) |
-| **A re-run** | a new output file, `job-run1.out` beside `job-run0.out` | a new directory, `run-1/` beside `run-0/` |
-| **Chosen** | at `prep` | at `prep` |
-| **Costs you** | nothing to learn | naming the stage, and what it continues from |
-
-**The one constraint:** a description with several enabled stages cannot be
-prepped flat — the stages would overwrite each other, which is the defect the
-hierarchy exists to prevent (§ 3). A single-stage description preps either way.
-
 ```mermaid
 flowchart LR
     UI["<b>the browser</b><br/>template.fdf · stages.json<br/>data files<br/><i>always the same output</i>"]
     P{"<b>prep</b><br/>on the target machine"}
-    F["<b>flat</b><br/>one directory"]
-    H["<b>hierarchical</b><br/>stages · attempts"]
+    F["<b>flat</b><br/>one directory<br/>suffixes keep stages apart"]
+    H["<b>hierarchical</b><br/>directories keep them apart"]
     UI --> P
-    P -->|"one stage, keep it simple"| F
-    P -->|"several stages, or benchmarking"| H
+    P -->|"you want it simple, and<br/>only the latest state matters"| F
+    P -->|"you need to compare, go back,<br/>or benchmark"| H
 ```
 
 ### 1.1 What each one looks like
 
-**Flat** — `prep` renders the deck and wrapper beside the package, and the runs
-happen right there:
+**Flat** — this is what ships today, and it already does stages:
 
 ```
-au_bdt_scf/
-├── <id>.template.fdf           ─┐ the package, from the browser
-├── stages.json                  │ (one stage, so one deck comes out)
-├── Au.psml  S.psml             ─┘
-├── <id>.fdf                    the deck  — rendered by prep, for this machine
-├── <id>.run.sh                 its wrapper —      "
-├── <id>-run0.out               the first run's output
-├── <id>-run1.out               the second run's
-├── <id>.XV  <id>.DM            warm state — whatever the LAST run left
-└── <id>.molwatch.log           the trajectory
+au_bdt_relax/
+├── <id>_stage1.fdf              coarse   ─┐ the decks: one per stage,
+├── <id>_stage2.fdf              tight     │ told apart by SUFFIX
+├── <id>_stage1.run.sh                    ─┘
+├── <id>_stage2.run.sh
+├── <id>_stage1-run0.out         stage 1, first attempt   ─┐ told apart
+├── <id>_stage1-run1.out         stage 1, a redo           │ by INDEX
+├── <id>_stage2-run0.out         stage 2, first attempt   ─┘
+│
+├── <id>.XV   <id>.DM   <id>.CG  ⚠ ONE shared set, UNSUFFIXED
+├── <id>.STRUCT_OUT              ⚠ one, overwritten by each stage
+└── <id>.ANI  <id>.EIG           ⚠ likewise
 ```
 
-Everything in one place, which is exactly what makes it easy — and, further
-down, exactly what it costs.
+**The unsuffixed warm files are the whole design, good and bad.** They are
+unsuffixed *on purpose* — that is exactly what lets stage 2 pick up stage 1's
+geometry with no instruction from anyone (`job-contracts.md § 2.3`:
+`MD.UseSaveXV`, `DM.UseSaveDM`, `MD.UseSaveCG` just find them). And it is
+exactly why stage 2 overwrites them.
 
-**Hierarchical** — the same files, sorted by *which stage* and *which attempt*:
+**Hierarchical** — the same stages and attempts, kept apart by directory:
 
 ```
 bdt_au_relax_c6h4s2au38/            the CALCULATION
@@ -93,9 +105,8 @@ bdt_au_relax_c6h4s2au38/            the CALCULATION
 │   ├── <id>.run.sh                  its wrapper
 │   ├── Au.psml → ../Au.psml         shared, linked up
 │   ├── run-0/                       an ATTEMPT
-│   │   ├── <id>.fdf → ../           the deck, linked down
 │   │   ├── run.json                 how it was launched, what it continued from
-│   │   └── <id>.XV .DM .out         everything this attempt produced
+│   │   └── <id>.XV .DM .out         this attempt's own everything
 │   ├── run-1/                       a redo — run-0 is untouched
 │   └── bench/                       a BENCHMARK — its own little world
 │
@@ -121,36 +132,53 @@ flowchart TB
     ST -.-> BN
 ```
 
-### 1.2 The same contract, read against both shapes
+### 1.2 The trade, stated once
 
-Every rule in this document holds in both shapes. Where they differ, it is
-because *depth* differs — never because the rule does.
+Put the two side by side on the question that actually matters — *what do you
+still have after three stages have run?*
 
-| Rule | Flat | Hierarchical |
+| After stage 1, 2 and 3 have all run | Flat | Hierarchical |
 |---|---|---|
-| **A directory is a container or a run, never both** (§ 1.3) | the directory is a **run** — it is a leaf | calculation and stage are **containers**; `run-N/` is a **run** |
-| **A result is never overwritten** | outputs are indexed: `-run0`, `-run1` | attempts are separated: `run-0/`, `run-1/` |
-| **Every file shares one basename** — the id | yes | yes, and every stage shares it too, which is what lets one continue from another |
-| **Where the deck comes from** | `prep` renders it beside the package | `prep` renders it into the stage's directory | 
-| | *both from template ⊕ the stage's values ⊕ this machine (§ 2.2)* | |
-| **Where the wrapper runs** | in the directory | in the attempt directory, which `prep` made |
-| **Continuing from earlier work** | the warm files are already lying there | you **name** the run to continue from, and its files are copied in (§ 1.5) |
-| **git tracks / the archive covers** | the same directory is both — classified by pattern | containers are git's, runs are the archive's — classified by **depth** (§ 6.1) |
-| **`--force`** | still there: it resets the index and overwrites | **retired** — nothing can collide, so nothing needs resetting |
-
-**The one rule that reads differently in the two shapes** is warm state, and it
-is worth being explicit because it is where the flat shape's simplicity costs
-something:
+| stage 1's relaxed geometry | **gone** — stage 2 overwrote `.XV` | `01_coarse/run-0/<id>.XV` |
+| stage 2's density matrix | **gone** — stage 3 overwrote `.DM` | `02_tight/run-0/<id>.DM` |
+| every stage's stdout | kept — the suffix saved them | kept |
+| which run produced the current `.XV` | **unanswerable** | `run.json` says |
+| go back and re-run stage 3 from stage 1 | **impossible** — that geometry is gone | name it and prep |
 
 > **Flat: continuing means *whatever is lying in this directory*.**
 > **Hierarchical: continuing means *this run, which I named*.**
 
-In a flat directory the second run picks up the first run's `.XV` because it is
-there. That is convenient and it is also why you cannot tell, six months later,
-which run a result came from — and why a third run cannot go back to the first
-one's geometry. The hierarchy costs you one argument and buys back both.
+Neither is wrong. If you are doing one relaxation and only the final geometry
+matters, the flat shape's overwriting is not a loss — it is the point, and it
+costs you nothing to operate. If you are tuning a mission across parameter sets,
+comparing, or benchmarking, then losing every intermediate result is the defect
+the hierarchy exists to prevent.
 
-### 1.3 A directory is a container or a run, never both
+**One constraint, and it is not a preference.** A description whose stages you
+mean to *compare* cannot be prepped flat, because there will be nothing left to
+compare. Prep will still do it if you ask — that is your call — but it says so.
+
+### 1.3 The same contract, read against both shapes
+
+Every rule in this document holds in both shapes. Where they read differently it
+is because *depth* differs — never because the rule does.
+
+| Rule | Flat | Hierarchical |
+|---|---|---|
+| **A directory is a container or a run, never both** (§ 1.4) | the directory is a **run** — it is a leaf | calculation and stage are **containers**; `run-N/` is a **run** |
+| **A result is never overwritten** | holds for *stdout* (`-run0`, `-run1`); **does not hold for warm files**, which are shared by design | holds for everything — an attempt is immutable (§ 1.5) |
+| **Every file shares one basename** — the id | yes; only decks and stdout take a stage suffix | yes, and across stages too |
+| **Where the deck comes from** | `prep` renders it beside the package | `prep` renders it into the stage's directory |
+| | *both from template ⊕ the stage's values ⊕ this machine (§ 2.2)* | |
+| **Where the wrapper runs** | in the directory | in the attempt directory `prep` made |
+| **git tracks / the archive covers** | one directory is both — classified by **pattern** | containers are git's, runs are the archive's — by **depth** (§ 6.1) |
+| **`--force`** | still there: it resets the index and overwrites | **retired** — nothing can collide |
+
+The second row is the one to read twice. *"A result is never overwritten"* is a
+rule the flat shape keeps for the files it can and breaks for the files it must —
+and it is the same break that makes continuing free.
+
+### 1.4 A directory is a container or a run, never both
 
 
 Every directory in this tree is one of two things:
@@ -172,14 +200,14 @@ are mixed and something has to tell them apart.
 > hand-made directory with one `.fdf` in it already is. Nothing about the
 > straightforward case changes.
 
-### 1.4 An attempt is immutable
+### 1.5 An attempt is immutable
 
 **A run directory is written once and never modified.** Running a stage a second
 time — a `--continue`, a redo after a change — makes `run-1`, carrying what it
 needs from `run-0` and leaving `run-0` exactly as it was.
 
 You say which attempt it continues from, and its files are copied in — the same
-explicit step you take when moving from one stage to the next (§ 1.5).
+explicit step you take when moving from one stage to the next (§ 1.6).
 
 Three things follow:
 
@@ -202,7 +230,7 @@ afterwards. Nothing would notice today.
 #### Where a run happens
 
 **Inside the attempt directory**, which was created and filled when you prepared
-the stage (§ 1.5, and § 2.5 step 4). By the time anything is launched it already
+the stage (§ 1.6, and § 2.5 step 4). By the time anything is launched it already
 holds its inputs. The wrapper is invoked there; it activates and execs, and every
 later line of it — the launch, the monitor, the SCF tee, the failure hints —
 works relative to the current directory, so everything lands in the attempt with
@@ -228,7 +256,7 @@ of it is in place before the engine sees the directory:
 | whatever this run continues from | **copied** | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
 | everything the run writes | created in place | it is already the working directory |
 
-**A flat run directory is untouched.** It *is* a run (§ 1.3), so `bash job.run.sh`
+**A flat run directory is untouched.** It *is* a run (§ 1.4), so `bash job.run.sh`
 in it behaves exactly as it does today.
 
 > ⚠ **A first attempt at this was built in the wrong place** (2026-08-06,
@@ -240,7 +268,7 @@ in it behaves exactly as it does today.
 > guard it needed against being run from inside an attempt, which stops being a
 > hazard once the caller decides the directory.
 
-### 1.5 Stages do not chain, and what that simplifies
+### 1.6 Stages do not chain, and what that simplifies
 
 **Each stage is prepped and submitted on its own.** Nothing links coarse to
 tight; no scheduler dependency, no queued follow-on, no automatic hand-off of
@@ -279,7 +307,7 @@ operation in the same module.
 **Preparing again is safe until the run has been launched.** Otherwise splitting
 the two steps leaks directories — prepare, change your mind, prepare again, and
 an empty `run-3` sits there forever. A run becomes untouchable once it has *run*
-(§ 1.4); before that, re-preparing is just changing your mind about the setup,
+(§ 1.5); before that, re-preparing is just changing your mind about the setup,
 which is the entire reason the step is separate.
 
 #### The one file the split needs
@@ -332,7 +360,7 @@ This is the same shape one level down: a redo of a stage — `run-1` after
 
 #### What is not touched
 
-**The flat case.** A plain run directory *is* a run (§ 1.3), so `bash job.run.sh`
+**The flat case.** A plain run directory *is* a run (§ 1.4), so `bash job.run.sh`
 in it behaves exactly as it does today.
 
 **The shipped chained ladder.** `jobset` can thread SLURM dependencies and carry
@@ -491,7 +519,7 @@ four commands.
 
 And it is where **you** are in the loop. Every arrow back into `prep` is a
 decision made after looking at what came out — which is the whole reason stages
-do not chain (§ 1.5).
+do not chain (§ 1.6).
 
 ### 2.4 The whole sequence, once through
 
@@ -530,7 +558,7 @@ sequenceDiagram
 ```
 
 **Every arrow into `prep` starts with you.** Nothing in the diagram advances on
-its own, which is § 1.5 drawn rather than stated.
+its own, which is § 1.6 drawn rather than stated.
 
 ### 2.5 The steps, and which surface
 
@@ -576,7 +604,7 @@ Three rules, and everything else follows:
 > (`running-a-job.md § 2.2a`).
 
 The engine never writes above itself — whatever a run continues from is a real
-copy put there before it starts (§ 1.5).
+copy put there before it starts (§ 1.6).
 
 **A benchmark gets its own directory, and that is not tidiness.**
 `generate_bench_bundle` writes its own decks, wrappers, pseudopotential copies,
@@ -730,8 +758,8 @@ seeing:
   shipped `-run0` / `-run1` output naming (`job-contracts.md § 2.6`) so the
   connection between a directory and the outputs inside it stays visible.
 
-Attempts are assigned **when a stage is prepared, in Python** (§ 1.5): the next
-unused number, never reused. There is no `--force` to reset them (§ 1.4).
+Attempts are assigned **when a stage is prepared, in Python** (§ 1.6): the next
+unused number, never reused. There is no `--force` to reset them (§ 1.5).
 
 **`run-` is a reserved prefix and its members are numbers, full stop.** A
 `run-latest` pointer was considered and dropped: with each stage set up
@@ -785,7 +813,7 @@ how a folder stops being trustworthy.
 | `<id>.template.fdf` | ③ calculation | engine deck, incomplete | **the science backbone** — everything fixed, nothing a stage varies, nothing the hardware decides |
 | `stages.json` | ③ calculation | `molbuilder/stages@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
 | `<id>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
-| `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.5); the edge fields serve the benchmark sweep |
+| `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6); the edge fields serve the benchmark sweep |
 | `.mbcheckpoint.json` | ③ calculation | `molbuilder/checkpoint-config@1` | which patterns are big files |
 | `.molbuilder.json` | ⑤ benchmark bundle | same as project | **the activation the bundle carries to the target** — written by `_write_activation_config`, the single place that decision is persisted. A fourth scope in practice, and deliberate: the bundle must be runnable after `scp` |
 | `environment.json` | ⑤ benchmark bundle | `molbuilder/environment@1` | the machine as detected when this stage was measured |
@@ -836,7 +864,7 @@ Three reasons it belongs at ③:
 **Git tracks the containers. The archive covers the runs.**
 
 That is the whole classification, and it needs no marker file, no config flag and
-no name matching — because § 1.3 already made every directory one thing or the
+no name matching — because § 1.4 already made every directory one thing or the
 other. A container holds setup: decks, wrappers, the description, links, the
 shared package. All text or small, all git's.
 
@@ -852,7 +880,7 @@ binary business.
 
 ### 6.2 Append-only, because attempts are immutable
 
-An attempt never changes after it is written (§ 1.4), so an archived file never
+An attempt never changes after it is written (§ 1.5), so an archived file never
 changes either. A new save point stores the attempts that appeared since the last
 one and references the rest.
 
@@ -893,11 +921,11 @@ single history live in their own contracts and are cited, not repeated.
    across stages without copying anything.
 4. **A stage's `seq` is assigned once and never reassigned**; stages append
    (§ 4.2). **An attempt's number likewise** — the next unused, never reused, and
-   nothing resets it (§ 1.4).
+   nothing resets it (§ 1.5).
 4a. **No directory in this tree points at a file that does not exist yet.**
    Stages are set up one at a time, after the previous one finished, so
    everything a run continues from is a real file copied in before it starts
-   (§ 1.5). A dangling link means something was chained that should not have
+   (§ 1.6). A dangling link means something was chained that should not have
    been.
 5. **A trial never shares the calculation's identity.** Its deck is relabelled
    and forced cold, so it can neither read nor overwrite a stage's saved state
@@ -915,7 +943,7 @@ single history live in their own contracts and are cited, not repeated.
    attempt in shell.
 7. **A shared file exists once, at ③**, and is linked into each stage. Never
    copied per stage.
-8. **Every directory is a container or a run, never both** (§ 1.3). A run's
+8. **Every directory is a container or a run, never both** (§ 1.4). A run's
    output stays inside it; nothing a run writes appears above it.
 8a. **An attempt is immutable.** Once written it never changes, and once archived
    it must never differ from its recorded checksum — which is
@@ -934,7 +962,7 @@ single history live in their own contracts and are cited, not repeated.
     machine's config, byte-identical except for the provenance timestamp.
 13. **Warm restart flows down the stage axis only, and never on its own.** A
     stage continues from an earlier stage's run that the **user named**, never
-    from a trial, and never because something finished (§ 1.5).
+    from a trial, and never because something finished (§ 1.6).
 
 **History**
 

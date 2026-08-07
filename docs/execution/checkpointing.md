@@ -184,7 +184,7 @@ separation exists to prevent.
 | | |
 |---|---|
 | **How it fails** | A stage writing through an inherited symlink overwrites the *producing* stage's result, and the history then records one stage's outputs replacing another's with no diff that says so |
-| **How to check** | **Two halves, and one alone is worse than useless.** (a) Checkpoint the folder, run one stage, read `git status` at the parent: every changed path is under that stage's subdirectory. (b) **`git status` cannot see the big binaries** — they are gitignored, which is S1 working as designed — so compare each archived file's sha against the head archive's MANIFEST for the same thing. The shipped restore already needs exactly this and has the helper (`_working_binaries_dirty`), whose own comment says *"big binaries are gitignored, so `git status` cannot see them"*. Half (a) alone would pass while a stage overwrote another stage's `.DM` — the single most valuable file it could destroy. The guard is that nothing is inherited by reference at all: whatever a stage continues from is **copied** into its run directory before it starts (`project-layout.md § 1.5`), so there is no link to write through. The shipped chained ladder still relies on localize-on-run for the same protection (`job-system.md § 5.2`); the staged path removes the hazard instead of guarding it |
+| **How to check** | **Two halves, and one alone is worse than useless.** (a) Checkpoint the folder, run one stage, read `git status` at the parent: every changed path is under that stage's subdirectory. (b) **`git status` cannot see the big binaries** — they are gitignored, which is S1 working as designed — so compare each archived file's sha against the head archive's MANIFEST for the same thing. The shipped restore already needs exactly this and has the helper (`_working_binaries_dirty`), whose own comment says *"big binaries are gitignored, so `git status` cannot see them"*. Half (a) alone would pass while a stage overwrote another stage's `.DM` — the single most valuable file it could destroy. The guard is that nothing is inherited by reference at all: whatever a stage continues from is **copied** into its run directory before it starts (`project-layout.md § 1.6`), so there is no link to write through. The shipped chained ladder still relies on localize-on-run for the same protection (`job-system.md § 5.2`); the staged path removes the hazard instead of guarding it |
 
 ### S3 — a run records what it started from
 
@@ -197,12 +197,12 @@ meanings, and a year later nobody can say which run a published number came from
 **This invariant survived a design change and its mechanism did not.** When
 stages were chained, an inherited file arrived as a *symlink* and became a
 regular file when the wrapper localised it — the type change on disk *was* the
-record. Stages no longer chain (`project-layout.md § 1.5`): whatever a run
+record. Stages no longer chain (`project-layout.md § 1.6`): whatever a run
 continues from is copied in as a real file before it starts, so there is no type
 change left to read.
 
 The record is now explicit instead of incidental: **`run.json`'s
-`continued_from`** (`project-layout.md § 1.5`), naming the run directory the
+`continued_from`** (`project-layout.md § 1.6`), naming the run directory the
 files came from, or absent when the run started from the structure.
 
 | | |
@@ -509,7 +509,7 @@ on what the automatic path emits, not on the total.
 
 *needs work — but the layout now makes it structural rather than clever.*
 
-**Immutable attempts change the shape of this.** `project-layout.md § 1.4` gives
+**Immutable attempts change the shape of this.** `project-layout.md § 1.5` gives
 every invocation its own directory, written once and never modified, so an
 archived file never changes. A save then stores the attempts that appeared since
 the last one and references the rest — *"archive what is new"*, correct by
@@ -537,7 +537,7 @@ becomes the reason the disk fills.
 *needs the layout — and it is I2 pointed at a directory.*
 
 An attempt is immutable by contract, not by permission bit
-(`project-layout.md § 1.4`). Nothing stops an edit; what matters is that an edit
+(`project-layout.md § 1.5`). Nothing stops an edit; what matters is that an edit
 is **noticed**.
 
 | | |
