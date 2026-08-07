@@ -89,7 +89,29 @@ file closed**.
 ### The rhythm inside a phase
 
 One unit at a time: **contract → obligations → tests → code → run only those
-tests**. The full suite runs at the **milestone**, not per unit.
+tests**.
+
+**At a milestone, run the phase's own tests plus every test that touches what
+the phase touched** — found by grepping for the moved names, not guessed. Not
+the full suite.
+
+> **Corrected 2026-08-07 (user), after P1 proved the old rule wrong by
+> obeying it.** This used to say *"the full suite runs at the milestone"*. P1
+> added **one** module that nothing yet imports, and verifying it cost a
+> **fifty-minute** 6037-test run — which then found two failures, one of them
+> already red on `HEAD` and unrelated. That is not verification, it is a toll.
+>
+> **The full suite runs at three points, and they are the ones where a whole
+> surface moves:** **P5** (the big subtraction — ten mechanisms become the
+> agreed set, and the blast radius is every producer), **P9** (the CLI
+> grammar), and **P11** (the end). A phase may also call for one if its own
+> reviews turn up a reason, and it says why.
+>
+> Everywhere else the honest check is narrow and immediate: the unit's tests,
+> then `grep` for each name the phase moved and run what comes back. P1's two
+> real breakages — `test_layering` and `test_checkpoint_repo_scope` — were both
+> in that set and were both found in seconds, long before the full run reached
+> them.
 
 - Tests are run through `tools/testrun.py` (`run none2e`, `run lf`,
   `status --fails`), under `/home/qqing/miniconda3/envs/molbuilder/bin/python`.
