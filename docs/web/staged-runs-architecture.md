@@ -67,14 +67,22 @@ benchmark, run, checkpoint, branch. It is where items 12b and 16–18 below came
 from: five of the seven gaps it found are **joins between parts that each work**,
 which is what a table of layers cannot show you.
 
-**Two rules cut across every item below.** Stated once each, not repeated:
-**the wrapper activates an environment and execs an engine; every directory and
-every link is made by Python** ([`running-a-job.md`](?doc=execution/running-a-job.md)
-§ 2.2a) — the system was already built that way, and item 12a is where it
-drifted. And **stages do not chain** — each is set up and submitted on its own,
-after you have looked at the last one
-([`project-layout.md`](?doc=execution/project-layout.md) § 1.3), which is § 1
-above taken literally.
+**Three rules cut across every item below.** Stated once each, not repeated:
+
+- **The wrapper activates an environment and execs an engine; every directory and
+  every link is made by Python**
+  ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a). The system was
+  already built that way, and item 12a is where it drifted.
+- **Stages do not chain** — each is set up and submitted on its own, after you
+  have looked at the last ([`project-layout.md`](?doc=execution/project-layout.md)
+  § 1.3). That is § 1 above taken literally.
+- **The surface changes between "the files are ready" and "start it"**
+  (`project-layout.md` § 2.1). Saving a structure, describing, generating,
+  preparing a stage, and setting up its wrapper and save history are the **UI's**
+  — all five are design, and you need to see them. **Submitting is the CLI's**,
+  because it is an act on a particular machine and the browser is very often not
+  on it. Every step still has a CLI equivalent through the shared API
+  (`conventions.md § 3`); what changes is which surface is primary.
 
 ---
 
@@ -388,17 +396,63 @@ rather than several. *Done when:* a produced two-stage folder can be
 `snapshot init`-ed, and a folder holding two unrelated run directories still
 cannot.
 
+**Step 1c — the commands, which fall out of the workflow.** `project-layout.md`
+§ 2.1's seven steps map onto verbs that mostly exist already. The gap is that
+`prep` and `submit` are bundle-wide, and there is no way to say *this stage*.
+
+| Step | Command | Status |
+|---|---|---|
+| 3 · generate | `molbuilder fdf … --jobset` | ships |
+| 4 · prepare one stage | `molbuilder jobset prep <stage> [--from <stage>[/<run>]] [--cold]` | **`prep` ships; the stage argument, `--from` and `--cold` are new** |
+| 5 · set up execution | `molbuilder run <deck>` (the wrapper) + `molbuilder snapshot init` | both ship |
+| 6 · submit or execute | `molbuilder jobset submit <stage> --mode direct\|submit` | **`submit` ships; the stage argument is new** |
+| 7 · look | `molbuilder jobset status` · `molbuilder snapshot checkpoint` | both ship |
+
+A session, run from inside the calculation folder:
+
+```
+molbuilder jobset prep coarse
+    01_coarse/run-0/  ready   deck + 4 pseudopotentials linked, nothing carried in
+molbuilder jobset submit coarse --mode direct
+molbuilder jobset status
+    1  coarse  finished  run-0   converged, 41 steps
+    2  tight   not-started
+molbuilder jobset prep tight --from coarse
+    reading from 01_coarse/run-0  (finished, converged)
+    02_tight/run-0/  ready   copied in: <id>.XV  <id>.DM
+molbuilder jobset submit tight --mode submit --domain public
+    [submitted] tight  job 481923
+```
+
+**`--from coarse` resolves to that stage's newest finished run and says which**,
+so the convenient form is still checkable; `--from coarse/run-0` names it
+outright. Prepare printing what it chose is what makes submit a plain *yes* —
+which is the whole reason the two are separate steps.
+
+**Three shapes still open**, all cosmetic but all worth settling before code:
+
+1. **Stage as the positional** (`jobset prep tight`, folder defaults to cwd) or
+   folder positional with `--stage`? The stage is what varies now; the folder is
+   almost always where you are standing. Pre-1.0, so changing it is allowed.
+2. **`jobset` or a `stage` group?** `molbuilder stage prep tight` reads closer to
+   how you think. Recommendation: keep `jobset` — the same code serves benchmark
+   sweeps, whose members are points rather than stages, and a second command group
+   over one mechanism is duplication.
+3. **`molbuilder run` does not run** — it writes the wrapper, which is step 5. The
+   name was harmless while nothing else started jobs; with `jobset submit` it is a
+   trap. Renaming is churn nobody asked for, but it will confuse someone.
+
 **Step 1b — the questions that gate code, in one place.** Items 12a–12c cannot
 start until these are answered, and they are decisions rather than research:
 
 | # | Question | Where | Blocks |
 |---|---|---|---|
 | 1 | **The repo-scope axiom** — `Repo.init` refuses this tree's shape | `checkpointing.md` L1, step 1a above | 11, and every history item |
-| 2 | **The hand-run entry point for one stage**, and where `--cold` goes once it stops being a wrapper flag | `project-layout.md` § 8 q4 | **12a** — retiring the shell block removes the only manual path |
-| 4 | **Is `stages.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
+| 2 | **The command shapes** — stage as positional, `jobset` vs a `stage` group, and whether `molbuilder run` keeps a name that does not run | step 1c above | **12a** — retiring the shell block removes the only way to run a stage by hand |
+| 3 | **Is `stages.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
 
-Question 2 is new, and it came from writing the contract rather than from using
-it — which is the point of writing it first.
+Question 2 was *what is the entry point at all* until § 2.1 answered it; what is
+left is only how it is spelled.
 
 **Step 2 — the backend, built to those contracts.**
 

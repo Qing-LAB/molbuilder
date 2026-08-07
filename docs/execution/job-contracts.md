@@ -776,6 +776,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Job-set plan | `job-set.json` | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair, bare-int `schema_version` = 6)* | `bundle_writer.py`, `sidecars/molstruct.py` | geometry; `regions` / `frozen_atoms` / `structure_hash` |
 | Checkpoint archive | `.binsnapshots/<sha>/MANIFEST` | *(3-col `<sha256>  <bytes>  <key>`)* | `checkpoint.py` | — |
+| Run launch record | `<attempt>/run.json` | `molbuilder/run-launch@1` | *(proposed — `project-layout.md` § 1.3)* | `mode`, `command`, `job_id`, `launched_at`, `continued_from` |
 | Checkpoint config | `.mbcheckpoint.json` | `molbuilder/checkpoint-config@1` | `checkpoint.py` | `engine`, `archive_globs` |
 | Decoded run | *(served, not written to disk)* | bare-int `schema_version` | `parse/dirs/job.py` | see below |
 

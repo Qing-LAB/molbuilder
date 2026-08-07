@@ -191,14 +191,20 @@ everything from the description — quietly reverts to the defaults.
 
 ## 6. The official run
 
+Two steps, and the split is the point. **Prepare** it in the tab — the run folder
+is made, the deck and pseudopotentials linked in, nothing carried because coarse
+starts from the structure. It tells you what it did. Then, on the machine that
+will run it:
+
 ```
-molbuilder jobset submit . --mode direct
+molbuilder jobset submit coarse --mode direct
 ```
 
-**Molbuilder makes the attempt; the wrapper runs in it.** Python resolves
-`run-0`, creates it, links the deck and the shared package in, copies any warm
-state, and launches there. The wrapper's whole job is to activate the environment
-and exec SIESTA.
+**Why the terminal for that half.** Everything up to *the files are ready* is
+design — you look, you check, you change your mind — and the browser is where you
+can see it. Starting the job is an act on one particular machine, and that
+machine is very often not the one running the browser
+(`project-layout.md § 2.2`).
 
 ```mermaid
 flowchart TB

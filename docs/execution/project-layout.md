@@ -118,20 +118,23 @@ afterwards. Nothing would notice today.
 
 #### Where a run happens
 
-**Inside the attempt directory**, which molbuilder creates and hands over
-(§ 1.3). The wrapper is invoked there; it activates and execs, and every later
-line of it — the launch, the monitor, the SCF tee, the failure hints — works
-relative to the current directory, so everything lands in the attempt with no
-change to the wrapper at all.
+**Inside the attempt directory**, which was created and filled when you prepared
+the stage (§ 1.3, and § 2.1 step 4). By the time anything is launched it already
+holds its inputs. The wrapper is invoked there; it activates and execs, and every
+later line of it — the launch, the monitor, the SCF tee, the failure hints —
+works relative to the current directory, so everything lands in the attempt with
+no change to the wrapper at all.
 
 ```
-molbuilder resolves 01_coarse/run-0/, arranges it, launches there
+prepare  →  01_coarse/run-0/ exists, deck linked, inputs copied
+submit   →  launched there
 ```
 
-That is how `jobset submit` already works one level up: it runs
-`subprocess.run(cmd, cwd=<job dir>)` for the local path and `sbatch` with the
-same `cwd` for SLURM, which lands the job in `SLURM_SUBMIT_DIR`. Choosing the
-attempt instead of the container is a change in the caller, not in the wrapper.
+Launching in a chosen directory is what `jobset submit` already does one level
+up: `subprocess.run(cmd, cwd=<job dir>)` for the local path, and `sbatch` from
+the same place for SLURM, which lands the job in `SLURM_SUBMIT_DIR`. Pointing it
+at the attempt instead of the container is a change in the caller, not in the
+wrapper.
 
 **Everything the attempt needs is put there before the wrapper starts**, and all
 of it is in place before the engine sees the directory:
@@ -171,19 +174,51 @@ can spend a week computing from a geometry you would have rejected in a minute.
 
 #### Who makes the attempt directory
 
-**Python, at submit.** The wrapper is launched inside a directory that already
-exists and already holds its inputs; it activates the environment and execs the
+**Python, when you prepare the stage** — step 4 of § 2.1, not when you submit and
+not by the wrapper. By the time anything is launched the directory already exists
+and already holds its inputs; the wrapper activates the environment and execs the
 engine (`running-a-job.md § 2.2a`).
 
-That is where the work already lives: `jobset/materialize.py` creates job
-directories and lays relative symlinks, and `jobset/submit.py` already chooses
-each job's working directory (`subprocess.run(cmd, cwd=…)`, and `sbatch` from the
-same place). Resolving an attempt is the same operation one level down.
+Preparing does five things: **resolve** the next `run-<n>` (highest plus one, or
+`run-0`); **create** it; **link** the deck, the monitor and the shared package in;
+**copy** whatever this run continues from; and **report** what it did, so you can
+read it before committing a week of cluster time.
 
-For each submission: **resolve** the next `run-<n>` (highest plus one, or
-`run-0`); **create** it, refusing if it somehow exists; **link** the deck, the
-monitor and the shared package in; **copy** anything this run continues from;
-**launch** with that directory as the working directory.
+That last one is why this belongs to prepare rather than submit. Preparing is
+still design — you are arranging files and can look at the result — and the split
+between preparing and starting is what gives you somewhere to look. Submitting is
+then a plain "yes, that one."
+
+That is also where the work already lives: `jobset/materialize.py` creates job
+directories and lays relative symlinks. Doing it one level down is the same
+operation in the same module.
+
+**Preparing again is safe until the run has been launched.** Otherwise splitting
+the two steps leaks directories — prepare, change your mind, prepare again, and
+an empty `run-3` sits there forever. A run becomes untouchable once it has *run*
+(§ 1.2); before that, re-preparing is just changing your mind about the setup,
+which is the entire reason the step is separate.
+
+#### The one file the split needs
+
+*Has this been launched?* has no honest answer from the directory alone. A queued
+cluster job has produced nothing yet, so "no output" and "not started" look
+identical — and re-preparing would quietly rewrite the setup under a job already
+in the queue.
+
+So **submitting writes one small file into the attempt**, `run.json`
+(`molbuilder/run-launch@1`): how it was launched, the exact command, the
+scheduler's job id, when, and **what it continued from**.
+
+It earns its place three times over: preparing reads it and refuses to reuse a
+launched attempt; `status` can say *queued as job 481923* instead of guessing
+from an absence; and the last field is the run's provenance — *this geometry came
+from `01_coarse/run-0`* — which is worth recording whether or not anything reads
+it back. Nothing persists a job id today; `submit_jobset` returns one and the CLI
+prints it.
+
+It is written **after** the launch succeeds, so a failed submission leaves the
+attempt exactly as prepare left it — still safe to prepare again.
 
 #### Continuing from an earlier run is a copy, not a link
 
@@ -241,34 +276,124 @@ case**, which still reuses one directory.
 
 ---
 
-## 2. Who owns each level
+## 2. Who does what — the workflow, and each level's owner
+
+### 2.1 The seven steps, and where the surface changes
+
+A calculation is designed in the browser and started from a terminal. The
+handover happens at one point and for one reason.
+
+| | Step | What it writes | Surface |
+|---|---|---|---|
+| 1 | **Save the structure** into the tree | `structure/<name>.xyz` + sidecar | **UI** |
+| 2 | **Describe** the calculation | `stages.json` — the science | **UI** |
+| 3 | **Generate** the files | the decks, the shared package, the stage containers | **UI** |
+| 4 | **Prepare one stage** to run | its attempt directory, the links, whatever it continues from | **UI** |
+| 5 | **Set up execution and the save history** | the wrapper for this machine; `snapshot init` | **UI** |
+| 6 | **Submit or execute** | — it starts | **CLI** |
+| 7 | **Watch, save, decide** | a checkpoint; then back to step 4 for the next stage | CLI, with the UI for looking at results |
+
+**Every step has a CLI equivalent, and both surfaces call the same function.**
+`conventions.md § 3` already fixes this — the CLI is a thin shell over the API the
+blueprints use, never a private copy — so a user on a cluster with no browser can
+do 1–5 from a terminal. What the table says is which surface is *primary*, not
+which is possible. Step 6 is the exception: it has no UI yet.
+
+### 2.2 Why the handover is between 5 and 6
+
+Not taste, and not "the UI is for easy things."
+
+**Steps 1–5 are design.** You look, you check, you change your mind, you look
+again. Nothing is running and nothing is expensive. A browser — where you can see
+the structure, read the findings, compare two stages side by side — is the right
+place for that, and it is why check-then-produce is one route with a flag
+(`web/staged-runs-architecture.md § 5.2`) rather than a fire-and-forget button.
+
+**Step 6 is an act on a particular machine.** The machine that runs the
+calculation is very often not the machine running the browser: you design on a
+laptop and submit from a cluster login node over ssh. A browser cannot `sbatch`
+into a queue it is not on.
+
+So the boundary is not "UI does the simple half". It is:
+
+> **Everything up to *the files are ready and correct* is design, and belongs to
+> the surface where you can see them. Starting the job is an act on a specific
+> machine, and belongs to the terminal on that machine.**
+
+That is also why step 6 is CLI **for now** rather than forever. Run
+`molbuilder serve` on the login node and the machine question disappears; the
+boundary would move because the reason for it moved, not because the rule
+changed.
+
+### 2.3 Why 4 and 5 are separate steps
+
+They answer to different configuration, and one is portable while the other is
+not (§ 5).
+
+- **Step 4 writes the science.** Which deck, what it continues from — all of it
+  comes from `stages.json` and from the run you picked. It carries no walltime,
+  no partition, no activation, so the folder means the same thing on any machine.
+- **Step 5 writes the machine's half.** The wrapper's environment activation, its
+  rank count, its scheduler header — from `molbuilder.json`, and from a benchmark
+  result if you measured one. None of it is portable, and all of it is
+  re-derivable.
+
+Keeping them apart is what lets you re-do either alone: change the science and
+regenerate without re-answering the hardware question, or move the folder to a
+different cluster and redo only step 5. **It is also where a measured benchmark
+answer belongs** — the sweep tunes the machine, so its verdict lands in the
+execution setup, not in the description.
+
+The save history is set up here too, for the same reason: which files count as
+big binaries is a storage decision about this machine's copy, not a statement
+about the science.
+
+### 2.4 The loop
+
+Steps 4–7 repeat, once per stage, and the loop closes through a person.
+
+```mermaid
+flowchart LR
+    G["3 · generate<br/><i>all stages at once</i>"] --> P["4 · prepare one stage"]
+    P --> X["5 · set up execution<br/>+ save history"]
+    X --> S["6 · submit or execute<br/><b>CLI</b>"]
+    S --> W["7 · watch · save · <b>look</b>"]
+    W -->|"you decide the next stage<br/>is worth running"| P
+```
+
+**Nothing advances that loop except a person.** Stages are not chained
+(§ 1.3): the arrow back to step 4 is a decision, made after looking at what step 7
+showed you. A stage is a long job, and that pause is the point of the whole
+design.
+
+### 2.5 Who owns each level of the tree
 
 | Level | Named by | Written by | May contain |
 |---|---|---|---|
 | ① **project** | the user | nobody — it is a folder | topics, nothing else |
 | ② **topic** | a **fixed set of nine** (`job-contracts.md § 2.5`) | nobody | calculations (run topics) or files (storage topics) |
-| ③ **calculation** | the run id (`run-identity.md § 3`) | **the producer**, in one transaction | decks, wrappers, the shared package, the description, derived files, the history |
-| ④ **stage** | `<seq>_<name>` (§ 4) | **prep** lays the links | links up, and its attempts — **a container** |
-| ⑤ **attempt** | `run-<n>`, unpadded (§ 4.4) | **submit** creates and arranges it (§ 1.3); the engine then fills it | everything one invocation produced — **a run, immutable** |
+| ③ **calculation** | the run id (`run-identity.md § 3`) | **generate** (step 3), in one transaction | decks, wrappers, the shared package, the description, derived files, the history |
+| ④ **stage** | `<seq>_<name>` (§ 4) | **generate** creates it; **prepare** (step 4) fills it | links up, and its attempts — **a container** |
+| ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **prepare** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable** |
 | — **benchmark** | `bench` | the benchmark producer | its own decks, wrappers, config and results — a self-contained **container** |
 | — **trial** | `point-<knobs>` (§ 4.4) | the sweep script, then the engine | one throwaway **run** |
 
-Two rules, and everything else follows:
+Three rules, and everything else follows:
 
-> **The producer writes level ③ and nothing else. The engine writes the run
-> directory it was launched in, once, and nothing else ever writes there again.**
+> **Generate writes level ③ and nothing else. Prepare writes level ⑤ and nothing
+> else. The engine writes the directory it was launched in, once, and nothing
+> ever writes there again.**
 
-And a third that names the language, because it decides where the other two are
+And a third that names the language, because it decides where the others are
 enforced:
 
 > **Every directory and every link in this tree is made by Python. The wrapper
 > activates an environment and execs an engine, in a directory it was handed**
 > (`running-a-job.md § 2.2a`).
 
-The producer never writes inside a stage directory; prep only puts symlinks
-there. The engine never writes above itself — and whatever a run continues from
-is a real copy put there before it starts (§ 1.3), so a stage cannot write back
-into the run that produced it.
+Generate never writes inside a stage directory beyond creating it; prepare only
+works inside one attempt. The engine never writes above itself — whatever a run
+continues from is a real copy put there before it starts (§ 1.3).
 
 **A benchmark gets its own directory, and that is not tidiness.**
 `generate_bench_bundle` writes its own decks, wrappers, pseudopotential copies,
@@ -418,8 +543,8 @@ seeing:
   shipped `-run0` / `-run1` output naming (`job-contracts.md § 2.6`) so the
   connection between a directory and the outputs inside it stays visible.
 
-Attempts are assigned **at submit, in Python** (§ 1.3): the next unused number,
-never reused. There is no `--force` to reset them (§ 1.2).
+Attempts are assigned **when a stage is prepared, in Python** (§ 1.3): the next
+unused number, never reused. There is no `--force` to reset them (§ 1.2).
 
 **`run-` is a reserved prefix and its members are numbers, full stop.** A
 `run-latest` pointer was considered and dropped: with each stage set up
@@ -591,9 +716,9 @@ single history live in their own contracts and are cited, not repeated.
 
 **Ownership**
 
-6. **The producer writes only at level ③**; prep adds only symlinks at ④; submit
-   creates and arranges ⑤ (§ 1.3); the engine writes only the directory it was
-   launched in.
+6. **Generate writes only level ③** (§ 2.1 step 3); **prepare writes only one
+   attempt at ⑤** (step 4); the engine writes only the directory it was launched
+   in.
 6a. **Every directory and every link in this tree is made by Python.** The
    wrapper activates an environment and execs an engine in a directory it was
    handed, and does nothing else (`running-a-job.md § 2.2a`). **Not held
@@ -652,11 +777,8 @@ single history live in their own contracts and are cited, not repeated.
    descriptions side by side, and the layout would allow it, but the id names the
    folder and warm files are shared, so a second ladder would continue from the
    first's state. Probably refuse; not yet stated.
-4. **What is the hand-run entry point for one stage, and where do its flags go?**
-   (§ 1.3.) Since the wrapper no longer makes its own directory, running a single
-   stage by hand needs a molbuilder command in front of it —
-   `jobset submit --only <stage>`, a new `molbuilder run <stage>`, or both. The
-   same command has to accept `--cold`, which stops being a wrapper flag in a
-   staged calculation. A surface question, but it must be answered **before** the
-   wrapper's prologue is retired, or the manual path breaks with nothing to
-   replace it.
+4. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
+   (§ 2.1): preparing and submitting are separate steps, each naming its stage —
+   `jobset prep <stage>` then `jobset submit <stage>`, with `--cold` on prepare
+   because skipping the copy is a setup decision. The exact spelling is in
+   `web/staged-runs-architecture.md § 8`, step 1c; only cosmetic choices remain.
