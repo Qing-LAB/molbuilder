@@ -650,16 +650,16 @@ One line each, for reading over a diff:
 | **S1** | every **regular file** is tracked XOR archived — never both, never neither (symlinks are layout, not content) | today |
 | **S1a** | the git-ignore set is *derived* from `archive_globs`, never kept beside it | today |
 | **S2** | a stage writes only inside its own directory | needs the layout |
-| **S3** | inherited is a symlink; owned is a regular file | needs the layout |
+| **S3** | a run records what it started from (`run.json`'s `continued_from`) | needs the layout |
 | **S4** | the description is never modified by a produce or a run | needs the description |
-| **S5** | nothing a run produces can change the id | today |
+| **S5** | nothing a run produces can change the id | today — `test_checkpoint_invariants.py` |
 | **S6** | a restored folder explains itself: description and decks travel together | needs the description |
 | **I1** | a written archive's *content* is never rewritten; identical content dedupes | today |
-| **I2** | every MANIFEST entry matches its file: name, size, sha256 | today |
-| **I3** | exactly one operation moves warm state, exactly one replaces it, nothing else touches it | today |
-| **I4** | no generated wrapper invokes git | today |
-| **A1** | archive: build, verify the copy, then swap | today |
-| **A2** | restore verifies the target archive before touching the worktree | today |
+| **I2** | every MANIFEST entry matches its file: name, size, sha256 | today — `test_checkpoint_invariants.py` |
+| **I3** | exactly one operation moves warm state, exactly one replaces it, nothing else touches it | today — `test_checkpoint_invariants.py` |
+| **I4** | no generated wrapper invokes git | today — `test_checkpoint_invariants.py` |
+| **A1** | archive: build, verify the copy, then swap | today — `test_checkpoint_invariants.py` |
+| **A2** | restore verifies the target archive before touching the worktree | today — `test_checkpoint_invariants.py` |
 | **A3** | the checkpoint is committed before the mutation it protects | needs automatic checkpoints |
 | **L1** | one repository per calculation, in either shape | **HOLDS** (2026-08-06) — `tests/test_checkpoint_repo_scope.py` |
 | **L2** | archive globs match at depth | **holds** (fixed 2026-08-06) |
@@ -670,7 +670,8 @@ One line each, for reading over a diff:
 | **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
 | **L8** | an archived attempt never differs afterwards | needs the layout — **hierarchical only** (`project-layout.md § 6.2`) |
 
-**Thirteen of the twenty-two can be asserted against the code as it stands.**
+**Twelve of the twenty-two can be asserted against the code as it stands, and
+all twelve now have a test.**
 Three (**L1**, **L2**, **L7**) were broken and are now fixed, with tests. Two
 (**L5**, **L6**) are not held and are work rather than checks.
 
