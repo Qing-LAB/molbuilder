@@ -372,7 +372,39 @@ deliberately — does it fail, and for the right reason?).
 
 ---
 
-### P1 — The description: `task.json` and its one reader
+### P1 — The description: `task.json` and its one reader ✅ **landed 2026-08-07**
+
+> **`molbuilder/task.py`** — `Run` / `StructureRef` / `Stage` / `Task`,
+> `to_dict` / `from_dict`, `read_task` / `write_task`, with
+> `tests/test_task_description.py` reading § 6's own jsonc block as its fixture.
+> **Four things went differently from the units below**, each for a reason worth
+> keeping:
+>
+> 1. **The module is `task.py`, not the candidate `stages.py`.** `siesta/stages.py`
+>    already exists, and R5 forbids the collision; the file is `task.json`, so the
+>    module takes its name. `test_layering.py` places it at **L1** — it imports
+>    `persist` and nothing else.
+> 2. **The § 6.6 preflight is split, and the split is the point.** Four rows are
+>    answerable from the file alone and land here. The other four — the engine has
+>    a generator, the fingerprint matches, every field exists, every value is in
+>    bounds — need the engine's field schema, and importing an engine into an L1
+>    codec is exactly what `test_layering.py` prevents. **They move to P2**, which
+>    holds the schema already. Written into the module docstring so the gap is a
+>    decision on the record, not an omission found later.
+> 3. **§ 6.6a's identical-stage warning moves to P2 as well** — the contract says
+>    the comparison is over the **resolved** pair, and resolving is P2's verb.
+> 4. **M1's "imported by both surfaces" became a source-text guard.** An import
+>    nothing calls is dead code, and it would not have stopped a second codec
+>    appearing beside the first. The test instead asserts that **no module other
+>    than `task.py` knows the filename** (`checkpoint.py` excepted: it *detects*
+>    the file, never parses it). Same intent, and it actually holds the line.
+>
+> **Two code corrections came out of it**, both found by a test rather than by
+> reading: `persist.schema_major` did not do what `job-contracts § 6.1` says
+> ("tolerating same-major minor bumps" — it compared the whole post-`@` token, so
+> `@1.4` was refused against `@1`), and `_BUNDLE_DESCRIPTORS` moved onto
+> `task.json`, making that arm live for the first time.
+
 
 **Re-anchor:** [`engines/stages.md`](?doc=engines/stages.md) **§ 6 entire** —
 6.2 (`varies`: intent recorded, never reconstructed), 6.3 (it *points at* a
@@ -414,9 +446,9 @@ second reader in the meantime.
 
 **Milestone M1.** A description round-trips read → write → read, byte-identical.
 The three refusal cases fail with the offending name in the message. **One
-reader**, imported by both `cli.py` and the web blueprint — even though neither
-uses it yet, because that import is what makes "the web writes the same bytes as
-the CLI" checkable later rather than coincidental.
+reader**, and the test that pins it asserts *no second module knows the
+filename* rather than asserting an import — see point 4 above for why the
+weaker form was replaced.
 
 **Fixture:** `engines/stages.md § 6`'s own jsonc block, parsed out of the
 document.
@@ -460,6 +492,20 @@ and the findings contract (facts in, findings out; `where` is the stable id).
 6. Validation across stages: a per-stage finding carries the stage in `where`; a
    finding about the *sequence* (a ladder that loosens) carries **no** stage
    label, because it is not a fact about a member of it.
+7. **The half of § 6.6's preflight P1 could not reach**, handed over because this
+   phase is the first that holds a field schema. Four refusals — the engine is
+   one this backend has a generator for; the schema fingerprint matches; every
+   name in `base` and every `overrides` key exists in the shared schema; every
+   value is inside its bounds — each **naming what it refused**, and all of them
+   before anything is written. `molbuilder/task.py`'s docstring carries the same
+   split so the two halves cannot quietly diverge.
+8. **§ 6.6a's warning**, which needs resolution and so could not live in the
+   codec either: two enabled stages whose **effective configs are equal** *and*
+   whose later one starts `clean` recompute the earlier one and discard it. Warn,
+   never refuse — where the later stage **continues**, identical settings are the
+   honest way to say *keep going* after a step budget ran out. **The comparison is
+   over the resolved pair**, so comparing `overrides` alone is the wrong test and
+   would flag the legitimate case.
 
 **Subtracts:** the `dataclasses.replace` block in `render_siesta_stage_fdfs`
 (the four-value pseudo-override); the duplicated homes of the relaxation fields.
@@ -468,7 +514,10 @@ and the findings contract (facts in, findings out; `where` is the stable id).
 carrying 300 while the shared config still says 150. The object validated **is**
 the object rendered (assert identity, not equality). A stage asking for three
 retries renders a wrapper whose **text** contains the loop. A ladder that
-loosens between stages reports once, with no stage label.
+loosens between stages reports once, with no stage label. **A description naming
+a field the schema does not have is refused, by name** — the half of the
+preflight P1 handed over — and two identical stages warn only when the later one
+starts clean.
 
 **This milestone is the gate the whole design named**: the backend can render a
 stage that overrides a parameter the stage type never carried. Nothing on a
