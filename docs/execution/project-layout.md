@@ -1024,12 +1024,36 @@ description does not carry it, and nothing needs it to identify a stage.
 That division is why nothing else needs the number, and § 4.1's table below is
 short as a result.
 
-| Where | Form | Example |
+**One rule decides every name below: say what the level does not already say.**
+
+| Where | Flat | Hierarchical |
 |---|---|---|
-| stage directory | `<seq>_<name>`, zero-padded to two digits | `01_coarse`, `02_tight` |
-| deck | `<id>_<name>.fdf` | `bdt_au_relax_c6h4s2au38_tight.fdf` |
-| trajectory log | `<id>_<name>` | `bdt_au…_tight.molwatch.log` — **named for the deck that produced it** (`stages.md § 7`), so it needs no convention of its own |
-| checkpoint tag | `<id>/<name>/<UTC>` | you return to a stage by *name*, not by position |
+| stage directory | — *(there are none)* | `<seq>_<name>` — `01_coarse`, `02_tight` |
+| deck | `<id>_<name>.fdf` — the suffix is the **only** thing telling two stages apart | `<id>.fdf` **inside `01_coarse/`** — the directory already said which stage, so the deck does not repeat it |
+| trajectory log | `<id>_<name>.molwatch.log` | `<id>.molwatch.log`, beside the deck |
+| checkpoint tag | `<id>/<name>/<UTC>` | `<id>/<name>/<UTC>` — the history has no directories, so it names the stage in both |
+
+**The log is named for the deck that produced it, in either shape** — so it
+needs no convention of its own, and it lands wherever the deck's name is already
+correct. That is one rule, not two, and it is why the deck's name being
+shape-dependent costs nothing downstream.
+
+> **Corrected 2026-08-07.** This table used to give the deck as `<id>_<name>.fdf`
+> in both shapes, which contradicted `stages.md § 7.1`'s tree — where a
+> hierarchical deck is plainly `01_coarse/<id>.fdf`. The tree was right. Repeating
+> the stage in a filename *inside a directory named for that stage* says nothing
+> and invites the two to disagree.
+>
+> It also shrank a complaint I had built on the wrong row. I had written that the
+> shipped log name `<id>-stage<N>` "cannot be read back to its stage without
+> opening the description". In the hierarchy that is simply false — the path says
+> it. And in the flat shape the **default stage names are `stage1` / `stage2` /
+> `stage3`** (`job-contracts.md § 2.3`), so the deck is `<id>_stage1.fdf` and the
+> shipped log is `<id>-stage1.molwatch.log`: **the same information, differing by
+> one character.** What remains is worth fixing and is small — a user who names
+> stages `coarse` and `tight` gets a deck saying `coarse` and a log saying
+> `stage1` — but it is a separator and a default, not the three-way problem I
+> described.
 
 The deck does not carry the number: names are unique, so it would add nothing,
 and a deck's filename is quoted in the wrapper, the log and the outputs.

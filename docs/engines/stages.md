@@ -493,15 +493,20 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   `<id>_<name>.molwatch.log` beside `<id>_<name>.fdf`. One naming, derived rather
   than declared, so there is nothing to keep in step.
 
-  That replaces a second convention rather than reconciling with it. Today the
-  log basename is `<label>-stage<N>` — a hyphen and a **number** — while the deck
-  is `<label>_<name>` — an underscore and a **name** (`job-contracts.md § 2.3`
-  records both). Two conventions for one stage is one too many, and the number is
-  the wrong half to keep: **every other artifact of a stage keys on the name** —
-  the deck, its stdout, its checkpoint tag — so the log is the only one you
-  cannot read back to a stage without opening the description. *"Which stage is
-  `bdt_au-stage2.molwatch.log`?"* should not be a question that needs a second
-  file to answer.
+  That is one rule instead of two, and it is a **small** correction — smaller
+  than an earlier draft of this section claimed. Today the log basename is
+  `<label>-stage<N>` while the deck is `<label>_<name>` (`job-contracts.md § 2.3`
+  records both). Two spellings of one idea is one too many, but note how close
+  they already are:
+
+  | | |
+  |---|---|
+  | **In the hierarchical shape it does not bite at all** | the log sits in `01_coarse/run-0/`, so the path says which stage it is. Nothing needs to be looked up |
+  | **With default stage names it barely bites** | the defaults are `stage1` / `stage2` / `stage3`, so the deck is `<id>_stage1.fdf` and the log `<id>-stage1.molwatch.log` — the same information, differing by one character |
+  | **It bites when a user names their stages** | call them `coarse` and `tight` and the deck says `coarse` while the log says `stage1`. That is the case worth fixing |
+
+  So the rule is worth adopting for consistency and for the third row, not
+  because anything is currently unreadable.
 
   **Cost, stated rather than hidden:** the run decoder's stage regex keys on the
   `-stage<N>` form, so it changes with this. That is code following a contract,
