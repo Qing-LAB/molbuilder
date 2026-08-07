@@ -556,12 +556,26 @@ _HOST = Recipe(
         # actually do at runtime.
         "numactl",
         # Git is required by the run-checkpoints subsystem
-        # (docs/execution/running-a-job.md § 6).  Declared in
-        # EVERY env so the wrapper bootstrap prologue ("if no .git,
-        # git init + commit initial state") works regardless of which
-        # env activates the script.  HPC sites have inconsistent
-        # system git versions; the conda env's git takes precedence
-        # via PATH ordering and is the only version we control.
+        # (docs/execution/running-a-job.md § 6).
+        #
+        # DECLARED IN EVERY ENV, deliberately and uniformly, so there is
+        # nothing to remember: no env is the "one with git", and no
+        # future need has to re-litigate which list to add it to.  It
+        # costs a few MB.
+        #
+        # Uniform AVAILABILITY is not permission to USE it.  Checkpoints
+        # are taken by the CLI / web surface (which run in THIS env), as
+        # an explicit user action at prep -- never on a compute node, and
+        # NO GENERATED WRAPPER MAY INVOKE GIT.  That rule is enforced
+        # where rules belong, by a test that greps rendered wrappers for
+        # git as a command word (checkpointing.md I4), not by leaving the
+        # package out of a list -- absence enforces nothing anyway, since
+        # a system git on PATH would satisfy a wrapper regardless.
+        # See checkpointing.md § 4.1 for who takes a checkpoint and when.
+        #
+        # HPC sites have inconsistent system git versions; the conda
+        # env's git takes precedence via PATH ordering and is the only
+        # version we control.
         "git",
     ),
     pip_packages=("PeptideBuilder", "pubchempy"),
@@ -587,7 +601,8 @@ _PYSCF = Recipe(
         # Python invocation cleanly.  Not yet auto-wired by molbuilder
         # for PySCF jobs but present so future tuning has the tool.
         "numactl",
-        # run-checkpoints subsystem -- see _HOST recipe for the rationale.
+        # git: uniform across every env -- see _HOST for why, and for
+        # what may not use it.
         "git",
     ),
     # GPU support: gpu4pyscf + cupy ship via PyPI (not conda-forge for
@@ -647,7 +662,7 @@ _SIESTA = Recipe(
     # ``runwrap.write_run_wrapper`` gates env presence at script-
     # generation time so a missing GPU env is caught before run time.
     conda_packages=("siesta=5.4.2=mpi_openmpi_*", "numactl",
-                    # run-checkpoints subsystem -- see _HOST recipe.
+                    # git: uniform across every env -- see _HOST.
                     "git"),
     verify_argv=("siesta", "--version"),
     verify_expect_contains="siesta",
@@ -661,7 +676,9 @@ _MDTOOLS = Recipe(
     # dacase channel takes priority over conda-forge (which lags at
     # ambertools=24.8 with conflicting pins).
     channels=("dacase", "conda-forge"),
-    conda_packages=("python=3.12", "dacase::ambertools-dac=26"),
+    # git: uniform across every env -- see the _HOST recipe for why it is
+    # everywhere and what may NOT use it.
+    conda_packages=("python=3.12", "dacase::ambertools-dac=26", "git"),
     # tleap -f /dev/null prints its banner and exits 1 (no script to
     # source); the banner "Welcome to LEaP!" is the proof the binary
     # in this env launched.  See `verify_ignore_exit_code` docstring.
