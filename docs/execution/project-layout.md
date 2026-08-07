@@ -1365,11 +1365,14 @@ than no invariant, because it fails a directory that is working correctly.
 
 ## 8. What is not settled
 
-1. **Does a trial's answer feed the stage automatically?** `bench-result.json`
-   sits beside the stage that was measured, and its recorded choice is portable —
-   the concrete rank and core counts are re-resolved per machine. Whether the tab
-   offers *"use the measured resources"*, and what it does when the environment or
-   the source deck has since changed, is a surface decision.
+1. ~~**Does a trial's answer feed the stage automatically?**~~ **Answered
+   2026-08-07: no — `prep run <stage>` asks.** `bench-result.json` sits beside
+   the stage that was measured, so prep can always *find* one; finding is not
+   permission. It reports the verdict and waits, because you measured it in order
+   to look at it (§ 2.3.3). What a *surface* does with the same information — how
+   it shows a verdict whose environment or source deck has since changed — is
+   still the surface's to decide, but the rule underneath is settled: explicit,
+   every time.
 2. **Must every stage be measured?** Measuring each of five stages costs five
    sweeps. In practice a user measures one representative stage and reuses the
    answer for the rest. The layout allows both; nothing says which is expected,
@@ -1386,13 +1389,14 @@ than no invariant, because it fails a directory that is working correctly.
    descriptions side by side, and the layout would allow it, but the id names the
    folder and warm files are shared, so a second ladder would continue from the
    first's state. Probably refuse; not yet stated.
-5. **How does a user ask for the shape?** § 1 makes flat-versus-hierarchical a
-   choice made at `prep`, and nothing here says how it is spelled: a `--flat`
-   flag, a field in the description, or inferred from how many stages are
-   enabled. **Inference is tempting and probably wrong** — it would hand a
-   two-stage description the hierarchy without anyone asking for it, and the
-   whole point of the two shapes is that the trade in § 1.2 is the user's to
-   make.
+5. ~~**How does a user ask for the shape?**~~ **Answered 2026-08-07: a
+   required field in the description**, `"shape": "flat" | "hierarchical"`
+   (`engines/stages.md § 6.7`). Not a `prep` flag, because prep is a hub you
+   return to and a shape chosen at the first prep and not written down is one the
+   second prep cannot know — two preps disagreeing would put two layouts in one
+   calculation. Not inferred either: deriving it from the stage count would hand
+   a two-stage description the hierarchy without anyone asking, and the trade in
+   § 1.2 is the user's to make.
 6. **Can a flat directory become hierarchical later?** Someone runs two stages
    flat, then wants to keep every stage's results after all. Every part exists —
    the checkpoint holds the earlier states (§ 1.2), and `prep` can build the tree
