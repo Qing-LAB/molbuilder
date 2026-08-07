@@ -81,6 +81,15 @@ _L1_MODULES = {
     "persist",           # versioned-document helpers (@major schema check +
                          # JSON IO); pure stdlib, no domain deps -- bench +
                          # jobset persisted artifacts share it.
+    "task",              # the task.json codec (engines/stages.md 6) -- one
+                         # calculation's description: engine name, shape,
+                         # base, varies, stages.  L1 because it imports only
+                         # ``persist``, and that is load-bearing rather than
+                         # incidental: BOTH surfaces must read a description
+                         # through this one module, so it has to sit below
+                         # the engines rather than beside one.  The half of
+                         # the 6.6 preflight that needs an engine's field
+                         # schema belongs to resolution, not here.
     "reload_protocol",   # the two constants the supervisor and its child agree
                          # on (exit code + env flag).  L1 for a reason the
                          # design depends on: the SUPERVISOR reads them, and it

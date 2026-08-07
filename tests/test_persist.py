@@ -18,6 +18,22 @@ def test_schema_major_extracts_major_or_empty():
     assert persist.schema_major(None) == ""
 
 
+def test_schema_major_ignores_a_minor_component():
+    """job-contracts.md § 6.1: 'checked major-only, TOLERATING same-major
+    minor bumps, rejecting a different major.'
+
+    Until 2026-08-07 the whole post-@ token was compared, so ``@1.4`` was
+    rejected against ``@1`` with a message claiming the major differed when
+    it did not.  Nothing shipped carried a minor, so nothing had exercised
+    it; ``molbuilder/task@1``'s reader is the first that did.
+    """
+    assert persist.schema_major("molbuilder/task@1.4") == "1"
+    assert persist.schema_major("molbuilder/task@2.0.1") == "2"
+    persist.check_schema_major("molbuilder/task@1.4", "molbuilder/task@1")
+    with pytest.raises(ValueError):
+        persist.check_schema_major("molbuilder/task@2.0", "molbuilder/task@1")
+
+
 def test_check_schema_major_accepts_same_major():
     # same major -> OK.  Minors aren't encoded in the string: the convention
     # is a single integer major (@1) that STAYS PUT when fields are added, so

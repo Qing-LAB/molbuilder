@@ -47,7 +47,7 @@ The shared "nouns" and the cross-engine chemistry:
 ### Execution + job harness → [`execution/`](?doc=execution/overview.md)
 
 - **`cli.py`** — the `molbuilder` command (§3 of [`conventions.md`](?doc=process/conventions.md)).
-- **`runwrap.py`** (the `.run.sh` wrapper), **`monitor.py`** (background job monitor), **`checkpoint.py`** (git run-checkpoints), **`persist.py`** (the `name@major` versioned-doc IO), **`trajectory_log/`** (the `.molwatch.log` writer).
+- **`runwrap.py`** (the `.run.sh` wrapper), **`monitor.py`** (background job monitor), **`checkpoint.py`** (git run-checkpoints), **`persist.py`** (the `name@major` versioned-doc IO), **`task.py`** (the `task.json` codec — **the one reader both surfaces use**, [`stages.md § 6`](?doc=engines/stages.md)), **`trajectory_log/`** (the `.molwatch.log` writer).
 - **`jobset/`** — the declarative JobSet framework ([`job-system.md`](?doc=execution/job-system.md)); **`bench/`** — the SIESTA benchmark harness.
 
 ### Ops → [`ops/`](?doc=ops/installation.md)

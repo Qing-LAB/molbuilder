@@ -70,7 +70,7 @@ def _staged_calculation(root: Path, label: str = "bdt_au") -> Path:
     """The proposed hierarchical shape: a description at the root, a directory
     per stage, a directory per attempt."""
     root.mkdir(parents=True, exist_ok=True)
-    (root / "stages.json").write_text('{"schema": "molbuilder/stages@1"}\n')
+    (root / "task.json").write_text('{"schema": "molbuilder/task@1"}\n')
     (root / f"{label}.template.fdf").write_text(f"SystemLabel {label}\n")
     for seq, name in ((1, "coarse"), (2, "tight")):
         stage = root / f"0{seq}_{name}"

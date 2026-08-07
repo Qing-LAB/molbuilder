@@ -20,9 +20,23 @@ from typing import Any
 def schema_major(schema: str) -> str:
     """The major token of a ``molbuilder/<name>@<major>`` string, or ``""``
     when there is no ``@`` (so a bare/garbage value never matches a real
-    major)."""
+    major).
+
+    A dotted version keeps only what precedes the first dot, so ``@1.4``
+    has major ``1``.  ``job-contracts.md`` § 6.1 states the rule the whole
+    convention rests on -- *"checked major-only, tolerating same-major minor
+    bumps, rejecting a different major"* -- and until 2026-08-07 this
+    function did not implement its first half: it compared the entire token,
+    so ``@1.4`` was rejected against ``@1`` with a message saying the major
+    differed when it did not.  Nothing shipped had a minor, so nothing had
+    exercised it; ``task@1`` is the first artifact whose reader tests the
+    claim.  The change only ever widens acceptance -- no string that passed
+    before can fail now.
+    """
     s = str(schema or "")
-    return s.rsplit("@", 1)[-1] if "@" in s else ""
+    if "@" not in s:
+        return ""
+    return s.rsplit("@", 1)[-1].split(".", 1)[0]
 
 
 def check_schema_major(got: str, want: str, *, label: str = "") -> None:

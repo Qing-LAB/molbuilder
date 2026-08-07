@@ -131,6 +131,9 @@
         },
         {
           "path": "execution/job-system.md"
+        },
+        {
+          "path": "execution/staged-runs-implementation-plan.md"
         }
       ]
     },
@@ -214,6 +217,9 @@
         },
         {
           "path": "web/staged-runs-architecture.md"
+        },
+        {
+          "path": "web/task-setup-plan.md"
         }
       ]
     },

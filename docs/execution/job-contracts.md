@@ -872,6 +872,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Benchmark manifest | `bench-manifest.json` | `molbuilder/bench-manifest@2` | `bench/generate.py` | `points.{cpu,gpu}` |
 | Benchmark result | `bench-result.json` | `molbuilder/bench-result@1` | `bench/result.py` | `points`, `choice`, `recommend` |
 | Job-set plan | `job-set.json` | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
+| Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `base`, `varies`, `stages[]` |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair, bare-int `schema_version` = 6)* | `bundle_writer.py`, `sidecars/molstruct.py` | geometry; `regions` / `frozen_atoms` / `structure_hash` |
 | Checkpoint archive | `.binsnapshots/<sha>/MANIFEST` | *(3-col `<sha256>  <bytes>  <key>`)* | `checkpoint.py` | — |
 | Run launch record | `<attempt>/run.json` | `molbuilder/run-launch@1` | *(proposed — `project-layout.md` § 1.6)* | `mode`, `command`, `job_id`, `launched_at`, `continued_from` |
