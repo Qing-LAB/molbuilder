@@ -265,17 +265,19 @@ rather than inventing a second mechanism.
            "created": "2026-08-06T22:14:03-07:00" },  // for tracing, not identity
 
   // Which schema the values were entered against — a witness, not a definition.
-  "schema_fingerprint": "sha256:1f0c…",
+  "schema_fingerprint": "sha256:1f0c9a3b7e2d4c5f6081a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
 
   // What this is a calculation OF: a reference into the tree, plus a witness of
   // what was there when it was written (§ 6.3).
   "structure": { "source": "projects/BDT-Au/structure/bdt_au.xyz",
                  "formula": "C6H4S2Au38", "atoms": 46 },
 
-  // Every schema field, one value. A one-stage description stops here (§ 6.5).
-  "base": { "mesh_cutoff": 150, "relax_type": "CG", "restart": "clean", … },
+  // Every schema field, one value. Abridged here — a real file lists them all,
+  // and a one-stage description stops at this key (§ 6.5).
+  "base": { "mesh_cutoff": 150, "relax_type": "CG", "relax_force_tol": 0.04,
+            "relax_steps": 600, "restart": "clean" },
 
-  // WHICH fields the user chose to tune. Intent — it cannot be inferred.
+  // WHICH fields the user chose to tune. Intent — it cannot be inferred (§ 6.2).
   "varies": ["mesh_cutoff", "relax_force_tol", "relax_type", "restart"],
 
   "stages": [
@@ -289,6 +291,25 @@ rather than inventing a second mechanism.
   ]
 }
 ```
+
+> **This example is complete except for one key that is not yet decided, and the
+> gap is deliberate.** Nothing above records **which directory shape** the
+> calculation uses — flat or hierarchical
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 1). That is not an
+> oversight in the spec; it is the one open question the design has not answered,
+> and inventing a field before the question is settled would be the wrong order.
+>
+> **But the spec cannot stay silent about it either,** because the shape has to
+> be recorded *somewhere*: `project-layout.md` § 2 says it is chosen at `prep`,
+> and `prep` is a hub you return to. A choice made at the first prep and not
+> written down is a choice the second prep cannot know — and two preps
+> disagreeing would put two layouts in one calculation, which no invariant
+> further down could then hold. So **this file is where it lands**, as a
+> top-level key beside `engine`, when the question in
+> [`staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) step 1b
+> is answered. Until then a reader should treat the spec above as *complete for
+> everything except the shape*.
+
 
 ### 6.1 Three rules
 

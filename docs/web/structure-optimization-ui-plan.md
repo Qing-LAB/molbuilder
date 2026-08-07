@@ -251,9 +251,21 @@ It changes as rows come and go, so the connection between the stage list and the
 files is never in doubt. A one-stage description says `1 deck`, and that is the
 whole difference.
 
-Each stage gets its **own subdirectory**, so its results stay its own
-(`engines/stages.md § 7.1`) — and the outcome line should say so, because a user
-expecting one directory and finding three needs to have been told once.
+> **What the outcome line may promise, and what it may not** (corrected
+> 2026-08-07 — see § 8). The page writes a **template plus `stages.json`**, not
+> the rendered decks: a deck cannot be finished until the machine is known
+> (`project-layout.md` § 2.2). So the deck names above are what **`prep` will
+> produce**, and the line should say that rather than implying the files appear
+> now. Naming them is still worth doing — it is how a user connects the stage
+> list to the files they will get.
+>
+> Nor may it promise a subdirectory per stage. **That is one of the two shapes**,
+> and the choice is made at `prep`, on the target (`project-layout.md` § 1) — a
+> flat calculation keeps every stage in one directory, told apart by the
+> filename suffix. A page that draws three directories has picked a shape it does
+> not get to pick. What it can honestly say is *what will be produced*: one deck
+> per enabled stage, sharing one basename so a later stage can continue from an
+> earlier one.
 
 **The action row** is Check and Generate, in that order, always visible.
 
@@ -399,34 +411,72 @@ continuing free.
 
 ---
 
-## 8. Where the cluster comes in — later, and optionally
+## 8. Where the machine comes in — not here, and that is the design
 
-The page's job ends at correct decks in a folder. Running them is the user's,
-and the tab should say how without pretending to do it:
+> **Rewritten 2026-08-07.** This section described the page writing finished
+> decks, per-stage subdirectories and wrappers, and a second stage that
+> *"carries coarse's `.XV`/`.DM`, localized first"*. All three were overtaken by
+> [`project-layout.md`](?doc=execution/project-layout.md) § 2, and this document's
+> own header says the contracts win. Corrected below.
 
-```
+**The page's job ends at a portable package — not at runnable decks.** That is
+not a limitation of the tab; it is a boundary the science puts there. A deck
+carries values that depend on *how it will be launched* — a block size derived
+from the rank count, an eigensolver that also decides which environment the
+wrapper activates — and **a parameter that depends on the launch cannot be
+decided before the launch is known** (`project-layout.md` § 2.2). A browser on a
+laptop does not know the machine, so a deck it "finished" would be full of
+guesses.
+
+So the page writes what any machine can read, and stops:
+
+```text
 Written to  projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
 
-              coarse/  tight/           ← one subdirectory per stage
-              shared:  Au.psml  S.psml  …  mb_monitor.py
+    bdt_au_relax_c6h4s2au38.template.fdf   the science backbone
+    stages.json                            what each stage tunes
+    Au.psml  S.psml  C.psml  H.psml        the data files
+    mb_monitor.py
 
-Run one:    cd coarse && bash ../bdt_au_relax_c6h4s2au38_coarse.run.sh
-Then:       cd tight  && bash ../bdt_au_relax_c6h4s2au38_tight.run.sh
-                                       ← carries coarse's .XV/.DM, localized first
+Next, on the machine that will run it:
+
+    molbuilder jobset prep coarse          resolves this machine, renders the
+                                           deck and wrapper, builds the attempt
+    molbuilder jobset submit coarse
 ```
 
-Those wrappers exist because the server generated them, which means an activation
-was configured — `script_generation.activation` has no default and generation
-refuses without it (`running-a-job.md § 5.2`). That is the operator's setup, not
-the tab's, and this page neither asks for it nor works around it. On a machine
-with a `scheduler` block the same generate also writes `.sbatch` files
-(`running-a-job.md § 5.3`); the tab shows whichever it wrote.
+**What `prep` adds is the whole second half**, and none of it is the tab's: it
+detects the target, renders `<id>_<name>.fdf` with the machine's numbers in it,
+renders the wrapper with the activation baked in, creates the stage directory and
+the attempt, and copies in whatever the user named to continue from
+(`project-layout.md` § 2.3).
 
-**Handing the sequence to a scheduler is a separate, later feature** — the
-JobSet export in `staged-runs-architecture.md § 7` — and it is gated on proving
-the SIESTA ladder end-to-end on a real cluster first. It is not what this page
-is for, and a page that led with it would be describing a system the user did
-not ask for.
+**Three specific corrections, because each was a real claim:**
+
+| The old text said | What the contracts say |
+|---|---|
+| the page writes `coarse/` and `tight/` subdirectories | **`prep` creates stage directories**, named `<seq>_<name>` — `01_coarse`, not `coarse` (`project-layout.md` § 4.1) |
+| the page writes a `.run.sh` per stage | a wrapper is baked for **a target**, so it cannot exist before the target is known (`project-layout.md` § 2.2) |
+| run tight after coarse; it *"carries coarse's `.XV`/`.DM`, localized first"* | **stages do not chain** (`project-layout.md` § 1.6). Each is prepped and submitted on its own, *after you have looked at the previous one*, and what it continues from is a **real file copied in at prep** — there is nothing to localize at run time |
+
+**Why the last one matters to this page in particular.** The tab is where a user
+would most naturally expect a "run all stages" button, and the design deliberately
+does not have one: a stage is a long job, and a chain that continues by itself can
+spend a week refining a geometry you would have rejected in a minute. **The page
+should not offer what the design removed on purpose** — what it can offer is the
+next single command, which is what the block above shows.
+
+**Handing a sequence to a scheduler remains a separate, later feature** — the
+JobSet export in `staged-runs-architecture.md` § 7 — and it is gated on proving
+the SIESTA ladder end-to-end on a real cluster first. A page that led with it
+would be describing a system the user did not ask for.
+
+> **Still open, and it reaches this page:** where the results come back to. Every
+> file movement in the design points *outward*, and `prep` is a hub you return to
+> — over ssh, on the target, not in this tab
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 2.7). Until that is
+> decided, this page cannot honestly promise to show a run's results when the run
+> happened somewhere else.
 
 ---
 
