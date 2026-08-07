@@ -378,3 +378,27 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
     p = write_task(tmp_path / FILENAME, task)
     assert read_task(p) == task
     assert task.to_dict()["schema"] == SCHEMA
+
+
+@pytest.mark.parametrize("key,value", [
+    ("engine", "siesta"),
+    ("run", "bdt-relax"),
+    ("structure", ["projects/x/structure/h2.xyz"]),
+    ("base", 3),
+])
+def test_a_non_object_where_an_object_belongs_says_so(example, key, value):
+    """Decision 3 again.  Before the type guard, ``"engine": "siesta"``
+    was refused with ``unknown key 's'`` -- the key check had iterated the
+    string's characters.  A refusal that teaches nothing is barely one."""
+    example[key] = value
+    with pytest.raises(ValueError) as e:
+        Task.from_dict(example)
+    msg = str(e.value)
+    assert key in msg and "expected an object" in msg
+
+
+def test_a_non_object_overrides_says_so(example):
+    example["stages"][0]["overrides"] = ["mesh_cutoff"]
+    with pytest.raises(ValueError) as e:
+        Task.from_dict(example)
+    assert "overrides" in str(e.value) and "expected an object" in str(e.value)

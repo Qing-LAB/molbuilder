@@ -145,6 +145,18 @@ def _refuse(msg: str, *, where: str = "") -> NoReturn:
     raise ValueError(f"{FILENAME}{': ' + where if where else ''}: {msg}")
 
 
+def _as_object(value: Any, *, where: str) -> Mapping[str, Any]:
+    """Refuse a non-object where § 6 specifies one, *saying* so.
+
+    Without this the key check below iterates a string's characters and
+    reports ``unknown key 's'`` for ``"engine": "siesta"`` — technically a
+    refusal, but a person hand-editing the file (the plan's decision 3)
+    learns nothing from it."""
+    if not isinstance(value, Mapping):
+        _refuse(f"expected an object, got {type(value).__name__}", where=where)
+    return value
+
+
 def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
                 where: str) -> None:
     """§ 6.1 rule 1 — an unknown key is refused, not ignored, because an
@@ -179,7 +191,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     check_schema_major(str(obj.get("schema") or ""), SCHEMA, label=FILENAME)
     _check_keys(obj, _TOP_KEYS, where="")
 
-    engine_obj = _require(obj, "engine", where="")
+    engine_obj = _as_object(_require(obj, "engine", where=""), where="engine")
     _check_keys(engine_obj, ("name",), where="engine")
     engine = str(_require(engine_obj, "name", where="engine"))
 
@@ -190,20 +202,21 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 "hand you a directory tree you did not ask for "
                 "(engines/stages.md 6.7)")
 
-    run_obj = _require(obj, "run", where="")
+    run_obj = _as_object(_require(obj, "run", where=""), where="run")
     _check_keys(run_obj, _RUN_KEYS, where="run")
     run = Run(name=str(_require(run_obj, "name", where="run")),
               id=str(_require(run_obj, "id", where="run")),
               created=str(run_obj.get("created", "")))
 
-    struct_obj = _require(obj, "structure", where="")
+    struct_obj = _as_object(_require(obj, "structure", where=""),
+                            where="structure")
     _check_keys(struct_obj, _STRUCTURE_KEYS, where="structure")
     structure = StructureRef(
         source=str(_require(struct_obj, "source", where="structure")),
         formula=str(struct_obj.get("formula", "")),
         atoms=int(struct_obj.get("atoms", 0)))
 
-    base = dict(_require(obj, "base", where=""))
+    base = dict(_as_object(_require(obj, "base", where=""), where="base"))
 
     has_stages = "stages" in obj
     has_varies = "varies" in obj
@@ -245,8 +258,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
                     index: int) -> Stage:
     where = f"stage {index}"
-    if not isinstance(obj, Mapping):
-        _refuse(f"expected an object, got {type(obj).__name__}", where=where)
+    _as_object(obj, where=where)
 
     name = str(obj.get("name", ""))
     where = f"stage {name!r}" if name else where
@@ -257,7 +269,8 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
         _refuse(f"stage name {name!r} must match [A-Za-z0-9_]+ -- it becomes "
                 "a filename (engines/stages.md 6.6)")
 
-    overrides = dict(obj.get("overrides") or {})
+    overrides = dict(_as_object(obj.get("overrides") or {},
+                                where=f"{where} overrides"))
     for key in overrides:
         if key in STAGE_FIELDS:
             _refuse(f"override {key!r} names a stage field. A stage has "
