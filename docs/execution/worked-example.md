@@ -206,11 +206,10 @@ will run it:
 molbuilder jobset submit coarse --mode direct
 ```
 
-**Why the terminal for that half.** Everything up to *the files are ready* is
-design — you look, you check, you change your mind — and the browser is where you
-can see it. Starting the job is an act on one particular machine, and that
-machine is very often not the one running the browser
-(`project-layout.md § 2.2`).
+**Why the terminal for this half.** The browser writes a package that names no
+machine; everything that depends on *which* machine — the rank count, the
+eigensolver, the queue, the activation command — is resolved here, where the
+answers exist (`project-layout.md § 2.1`).
 
 ```mermaid
 flowchart TB
@@ -230,7 +229,7 @@ the geometry is sane — and only then set up tight.
 That pause is the design, not a missing feature. A stage is a long job; a chain
 that continued on its own could spend a week refining a geometry you would have
 thrown away in a minute. So **stages are not chained**: each one is set up and
-started separately, after you have seen the last (`project-layout.md § 1.3`).
+started separately, after you have seen the last (`project-layout.md § 1.5`).
 
 Which makes the hand-off simple. When you set tight up, coarse's `.XV` is
 **already on disk** — you just looked at it — so it is **copied** into tight's
@@ -346,7 +345,7 @@ do not.
 
 The fix is the one in § 6, and it removes machinery rather than adding it: stages
 stop being chained, so the hand-off becomes a plain file copy made when you set
-the next stage up (`project-layout.md` § 1.3). **Gap 6 rides along**, being the
+the next stage up (`project-layout.md` § 1.5). **Gap 6 rides along**, being the
 same code. And the shell block that caused the regression is **retired rather
 than repaired** — its guard against being run from inside an attempt, its `$PWD`
 bug, and its `--force` refusal all stop existing once Python decides the
@@ -359,7 +358,7 @@ layout implementation in bash without checking whether one existed, then designe
 an elaborate way to make a chained hand-off work when the answer was not to
 chain. Both rules are now written where they can be pointed at:
 [`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a and
-[`project-layout.md`](?doc=execution/project-layout.md) § 1.3.
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.5.
 
 ### What the shape of this list says
 

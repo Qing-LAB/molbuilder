@@ -66,6 +66,39 @@ that a change can be checked against them.
 
 ## 2. The separations — what must be kept apart
 
+**Two stores, and every file is in exactly one of them.** That is the whole data
+structure, and most of the invariants below are consequences of it:
+
+```mermaid
+flowchart TB
+    subgraph TREE["a calculation folder"]
+      direction LR
+      C["<b>containers</b><br/>template · stages.json<br/>rendered decks · wrappers<br/>links · bench-result.json"]
+      R["<b>runs</b> — run-N/<br/>.DM · .HSX · .TSHS<br/>the big binaries"]
+      SM["small run files<br/>.XV · .CG · run.json"]
+    end
+    G[("<b>git</b><br/>.git/<br/>text, diffable, cheap")]
+    A[("<b>the archive</b><br/>.binsnapshots/&lt;sha&gt;/<br/>copies + a MANIFEST of sha256")]
+    C --> G
+    SM --> G
+    R --> A
+    G -.->|"the commit sha names<br/>the archive beside it"| A
+```
+
+| | goes to | why |
+|---|---|---|
+| decks, wrappers, `stages.json`, links | **git** | text — a diff is meaningful and the cost is nothing |
+| `.XV`, `.CG`, `run.json` | **git** | small, and *"a restore brings back a resumable state"* |
+| `.DM`, `.HSX`, `.TSHS` | **the archive** | large and binary — git would store every version whole |
+| a benchmark's trial output | **neither** | a five-iteration throwaway is not a result |
+
+**S1 is that picture stated as a rule**: never both, never neither. Both halves
+fail silently — a big binary in git bloats the repository until a clone is
+impossible, and one in neither store is *gone* after a restore, with nothing
+saying so.
+
+
+
 ### S1 — a **regular file** is git-tracked **or** content-archived, never both, never neither
 
 *holds today.*
@@ -151,19 +184,36 @@ separation exists to prevent.
 | | |
 |---|---|
 | **How it fails** | A stage writing through an inherited symlink overwrites the *producing* stage's result, and the history then records one stage's outputs replacing another's with no diff that says so |
-| **How to check** | **Two halves, and one alone is worse than useless.** (a) Checkpoint the folder, run one stage, read `git status` at the parent: every changed path is under that stage's subdirectory. (b) **`git status` cannot see the big binaries** — they are gitignored, which is S1 working as designed — so compare each archived file's sha against the head archive's MANIFEST for the same thing. The shipped restore already needs exactly this and has the helper (`_working_binaries_dirty`), whose own comment says *"big binaries are gitignored, so `git status` cannot see them"*. Half (a) alone would pass while a stage overwrote another stage's `.DM` — the single most valuable file it could destroy. The shipped guard is localize-on-run: the wrapper replaces an inherited symlink with a real copy before the engine starts (`job-system.md § 5.2`) |
+| **How to check** | **Two halves, and one alone is worse than useless.** (a) Checkpoint the folder, run one stage, read `git status` at the parent: every changed path is under that stage's subdirectory. (b) **`git status` cannot see the big binaries** — they are gitignored, which is S1 working as designed — so compare each archived file's sha against the head archive's MANIFEST for the same thing. The shipped restore already needs exactly this and has the helper (`_working_binaries_dirty`), whose own comment says *"big binaries are gitignored, so `git status` cannot see them"*. Half (a) alone would pass while a stage overwrote another stage's `.DM` — the single most valuable file it could destroy. The guard is that nothing is inherited by reference at all: whatever a stage continues from is **copied** into its run directory before it starts (`project-layout.md § 1.5`), so there is no link to write through. The shipped chained ladder still relies on localize-on-run for the same protection (`job-system.md § 5.2`); the staged path removes the hazard instead of guarding it |
 
-### S3 — inherited and owned are distinguishable on disk
+### S3 — a run records what it started from
 
 *needs the layout.*
 
-A carried file is a **symlink** until its producer has run and the consumer
-localizes it; after that it is a **regular file** the consumer owns.
+You must be able to tell a stage that **inherited** a geometry from one that
+**computed** it. Otherwise a checkpoint records the same bytes with two different
+meanings, and a year later nobody can say which run a published number came from.
+
+**This invariant survived a design change and its mechanism did not.** When
+stages were chained, an inherited file arrived as a *symlink* and became a
+regular file when the wrapper localised it — the type change on disk *was* the
+record. Stages no longer chain (`project-layout.md § 1.5`): whatever a run
+continues from is copied in as a real file before it starts, so there is no type
+change left to read.
+
+The record is now explicit instead of incidental: **`run.json`'s
+`continued_from`** (`project-layout.md § 1.5`), naming the run directory the
+files came from, or absent when the run started from the structure.
 
 | | |
 |---|---|
-| **How it fails** | If the distinction is lost, nothing can tell a stage that inherited a geometry from one that computed it, and a checkpoint records the same bytes with two different meanings |
-| **How to check** | Before a stage runs, its carried entries are symlinks (possibly dangling — that is correct, `engines/stages.md § 7.4`). After it runs, they are regular files. The checkpoint diff across a run shows a type change, and that type change is the record |
+| **How it fails** | Two runs hold byte-identical `.XV` files. One computed it; one was handed it. With nothing recording which, a history of five stages cannot be read backwards, and "where did this geometry come from" has no answer |
+| **How to check** | Prepare a stage from a named earlier run: its `run.json` names that run. Prepare one from the structure: the field is absent, not empty. Then the useful assertion — for every run in a finished tree, `continued_from` either names a directory that exists in the same tree or is absent; it never names something that has been deleted or was never there |
+
+> **An explicit record is better than the one it replaced**, quite apart from the
+> design change. A symlink becoming a file says *something was inherited here*;
+> it does not say **which run**, and with several attempts per stage that is the
+> question you actually have.
 
 ### S4 — the description is input; everything else in the folder is derived
 
@@ -459,7 +509,7 @@ on what the automatic path emits, not on the total.
 
 *needs work — but the layout now makes it structural rather than clever.*
 
-**Immutable attempts change the shape of this.** `project-layout.md § 1.2` gives
+**Immutable attempts change the shape of this.** `project-layout.md § 1.4` gives
 every invocation its own directory, written once and never modified, so an
 archived file never changes. A save then stores the attempts that appeared since
 the last one and references the rest — *"archive what is new"*, correct by
@@ -487,7 +537,7 @@ becomes the reason the disk fills.
 *needs the layout — and it is I2 pointed at a directory.*
 
 An attempt is immutable by contract, not by permission bit
-(`project-layout.md § 1.2`). Nothing stops an edit; what matters is that an edit
+(`project-layout.md § 1.4`). Nothing stops an edit; what matters is that an edit
 is **noticed**.
 
 | | |

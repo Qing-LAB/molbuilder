@@ -24,55 +24,134 @@ restate the rules inside a single run directory — those are `job-contracts.md`
 
 ---
 
-## 1. The shape
+## 1. Two shapes, and how to choose
 
-Six levels, and each one means something different.
+A project directory is one of exactly two shapes. **Both are supported, neither
+is a degraded version of the other**, and most of this document is about telling
+you which rules apply to which.
 
-```
-projects/                                   the root (git-ignored)
-└── BDT-Au/                                 ① a PROJECT — a body of work
-    ├── structure/                          ② a STORAGE topic
-    │   └── bdt_au.xyz  bdt_au.molstruct.json
-    ├── pseudopotential/                    ② a STORAGE topic
-    │   └── Au.psml  S.psml  C.psml  H.psml
-    └── optimization/                       ② a RUN topic — one of nine fixed names
-        └── bdt_au_relax_c6h4s2au38/        ③ a CALCULATION — one system, one identity
-            │                                 ── written by the browser, and
-            │                                    naming no machine anywhere ──
-            ├── <id>.template.fdf             the science backbone: everything
-            │                                 fixed, nothing a stage varies and
-            │                                 nothing the hardware decides
-            ├── stages.json                   what each stage tunes + resource intent
-            ├── Au.psml  S.psml               the shared package, stored once
-            ├── mb_monitor.py
-            ├── .mbcheckpoint.json
-            ├── .git/  .binsnapshots/         the saved history (§ 6)
-            │
-            ├── 01_coarse/                  ④ a STAGE — written by `prep`, on the
-            │   │                              machine that will run it
-            │   ├── <id>.fdf                  THE DECK: template ⊕ coarse's values
-            │   │                             ⊕ this machine's BlockSize, solver, ranks
-            │   ├── <id>.run.sh  .sbatch      its wrapper, for this machine
-            │   ├── Au.psml → ../             shared, linked up
-            │   ├── run-0/                  ⑤ an ATTEMPT — a RUN, immutable
-            │   │   ├── <id>.fdf → ../          the deck, linked down
-            │   │   ├── run.json                how it was launched, what it continued from
-            │   │   └── <id>.XV .DM .out        everything this attempt produced
-            │   ├── run-1/                    a redo, continuing from run-0
-            │   └── bench/                    a BENCHMARK — its own container
-            │       ├── job-gpu.fdf  job-cpu.fdf    the science, made measurable
-            │       ├── bench-manifest.json  bench-result.json
-            │       └── point-G1K2C5/         its own runs
-            │
-            └── 02_tight/
-                └── run-0/
-                    └── <id>.XV                     copied from 01_coarse/run-0/
+**One package, two layouts, and you choose.** The browser always writes the same
+thing — a deck template, `stages.json`, the data files, none of it naming a
+machine. `prep`, on the machine that will run it, translates that into a runnable
+directory **in whichever shape you ask for**.
+
+| | **Flat** | **Hierarchical** |
+|---|---|---|
+| **What it is** | one directory holding one job | a calculation folder holding stage directories, each holding attempt directories |
+| **Ask for it when** | one parameter set, run once or twice, nothing to compare | you are tuning through several parameter sets, benchmarking, or want a save point per stage |
+| **Depth** | 1 | 3 (calculation → stage → attempt) |
+| **A re-run** | a new output file, `job-run1.out` beside `job-run0.out` | a new directory, `run-1/` beside `run-0/` |
+| **Chosen** | at `prep` | at `prep` |
+| **Costs you** | nothing to learn | naming the stage, and what it continues from |
+
+**The one constraint:** a description with several enabled stages cannot be
+prepped flat — the stages would overwrite each other, which is the defect the
+hierarchy exists to prevent (§ 3). A single-stage description preps either way.
+
+```mermaid
+flowchart LR
+    UI["<b>the browser</b><br/>template.fdf · stages.json<br/>data files<br/><i>always the same output</i>"]
+    P{"<b>prep</b><br/>on the target machine"}
+    F["<b>flat</b><br/>one directory"]
+    H["<b>hierarchical</b><br/>stages · attempts"]
+    UI --> P
+    P -->|"one stage, keep it simple"| F
+    P -->|"several stages, or benchmarking"| H
 ```
 
-**③ is a calculation** — one system studied one way. One identity, one saved
-history, one description. Everything above it is filing.
+### 1.1 What each one looks like
 
-### 1.1 A directory is a container or a run, never both
+**Flat** — `prep` renders the deck and wrapper beside the package, and the runs
+happen right there:
+
+```
+au_bdt_scf/
+├── <id>.template.fdf           ─┐ the package, from the browser
+├── stages.json                  │ (one stage, so one deck comes out)
+├── Au.psml  S.psml             ─┘
+├── <id>.fdf                    the deck  — rendered by prep, for this machine
+├── <id>.run.sh                 its wrapper —      "
+├── <id>-run0.out               the first run's output
+├── <id>-run1.out               the second run's
+├── <id>.XV  <id>.DM            warm state — whatever the LAST run left
+└── <id>.molwatch.log           the trajectory
+```
+
+Everything in one place, which is exactly what makes it easy — and, further
+down, exactly what it costs.
+
+**Hierarchical** — the same files, sorted by *which stage* and *which attempt*:
+
+```
+bdt_au_relax_c6h4s2au38/            the CALCULATION
+├── <id>.template.fdf               ─┐ written by the browser
+├── stages.json                      │ portable: names no machine
+├── Au.psml  S.psml  mb_monitor.py  ─┘
+│
+├── 01_coarse/                       a STAGE — written by `prep`
+│   ├── <id>.fdf                     the deck, rendered for THIS machine
+│   ├── <id>.run.sh                  its wrapper
+│   ├── Au.psml → ../Au.psml         shared, linked up
+│   ├── run-0/                       an ATTEMPT
+│   │   ├── <id>.fdf → ../           the deck, linked down
+│   │   ├── run.json                 how it was launched, what it continued from
+│   │   └── <id>.XV .DM .out         everything this attempt produced
+│   ├── run-1/                       a redo — run-0 is untouched
+│   └── bench/                       a BENCHMARK — its own little world
+│
+└── 02_tight/
+    └── run-0/
+        └── <id>.XV                  a real copy of 01_coarse/run-0's
+```
+
+```mermaid
+flowchart TB
+    subgraph CALC["<b>the calculation</b> — portable, names no machine"]
+      T["template.fdf · stages.json<br/>pseudopotentials · monitor"]
+    end
+    subgraph ST["<b>a stage</b> — one science setting, built by prep"]
+      D["the rendered deck · its wrapper<br/>links up to the shared package"]
+      subgraph AT["<b>an attempt</b> — one invocation, never modified"]
+        O["run.json · the engine's output<br/>.XV · .DM · .out"]
+      end
+      BN["<b>bench/</b> — trials that measure this stage"]
+    end
+    CALC --> ST
+    D --> AT
+    ST -.-> BN
+```
+
+### 1.2 The same contract, read against both shapes
+
+Every rule in this document holds in both shapes. Where they differ, it is
+because *depth* differs — never because the rule does.
+
+| Rule | Flat | Hierarchical |
+|---|---|---|
+| **A directory is a container or a run, never both** (§ 1.3) | the directory is a **run** — it is a leaf | calculation and stage are **containers**; `run-N/` is a **run** |
+| **A result is never overwritten** | outputs are indexed: `-run0`, `-run1` | attempts are separated: `run-0/`, `run-1/` |
+| **Every file shares one basename** — the id | yes | yes, and every stage shares it too, which is what lets one continue from another |
+| **Where the deck comes from** | `prep` renders it beside the package | `prep` renders it into the stage's directory | 
+| | *both from template ⊕ the stage's values ⊕ this machine (§ 2.2)* | |
+| **Where the wrapper runs** | in the directory | in the attempt directory, which `prep` made |
+| **Continuing from earlier work** | the warm files are already lying there | you **name** the run to continue from, and its files are copied in (§ 1.5) |
+| **git tracks / the archive covers** | the same directory is both — classified by pattern | containers are git's, runs are the archive's — classified by **depth** (§ 6.1) |
+| **`--force`** | still there: it resets the index and overwrites | **retired** — nothing can collide, so nothing needs resetting |
+
+**The one rule that reads differently in the two shapes** is warm state, and it
+is worth being explicit because it is where the flat shape's simplicity costs
+something:
+
+> **Flat: continuing means *whatever is lying in this directory*.**
+> **Hierarchical: continuing means *this run, which I named*.**
+
+In a flat directory the second run picks up the first run's `.XV` because it is
+there. That is convenient and it is also why you cannot tell, six months later,
+which run a result came from — and why a third run cannot go back to the first
+one's geometry. The hierarchy costs you one argument and buys back both.
+
+### 1.3 A directory is a container or a run, never both
+
 
 Every directory in this tree is one of two things:
 
@@ -93,14 +172,14 @@ are mixed and something has to tell them apart.
 > hand-made directory with one `.fdf` in it already is. Nothing about the
 > straightforward case changes.
 
-### 1.2 An attempt is immutable
+### 1.4 An attempt is immutable
 
 **A run directory is written once and never modified.** Running a stage a second
 time — a `--continue`, a redo after a change — makes `run-1`, carrying what it
 needs from `run-0` and leaving `run-0` exactly as it was.
 
 You say which attempt it continues from, and its files are copied in — the same
-explicit step you take when moving from one stage to the next (§ 1.3).
+explicit step you take when moving from one stage to the next (§ 1.5).
 
 Three things follow:
 
@@ -123,7 +202,7 @@ afterwards. Nothing would notice today.
 #### Where a run happens
 
 **Inside the attempt directory**, which was created and filled when you prepared
-the stage (§ 1.3, and § 2.1 step 4). By the time anything is launched it already
+the stage (§ 1.5, and § 2.5 step 4). By the time anything is launched it already
 holds its inputs. The wrapper is invoked there; it activates and execs, and every
 later line of it — the launch, the monitor, the SCF tee, the failure hints —
 works relative to the current directory, so everything lands in the attempt with
@@ -149,7 +228,7 @@ of it is in place before the engine sees the directory:
 | whatever this run continues from | **copied** | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
 | everything the run writes | created in place | it is already the working directory |
 
-**A flat run directory is untouched.** It *is* a run (§ 1.1), so `bash job.run.sh`
+**A flat run directory is untouched.** It *is* a run (§ 1.3), so `bash job.run.sh`
 in it behaves exactly as it does today.
 
 > ⚠ **A first attempt at this was built in the wrong place** (2026-08-06,
@@ -161,7 +240,7 @@ in it behaves exactly as it does today.
 > guard it needed against being run from inside an attempt, which stops being a
 > hazard once the caller decides the directory.
 
-### 1.3 Stages do not chain, and what that simplifies
+### 1.5 Stages do not chain, and what that simplifies
 
 **Each stage is prepped and submitted on its own.** Nothing links coarse to
 tight; no scheduler dependency, no queued follow-on, no automatic hand-off of
@@ -178,7 +257,7 @@ can spend a week computing from a geometry you would have rejected in a minute.
 
 #### Who makes the attempt directory
 
-**Python, when you prepare the stage** — step 4 of § 2.1, not when you submit and
+**Python, when you prepare the stage** — step 4 of § 2.5, not when you submit and
 not by the wrapper. By the time anything is launched the directory already exists
 and already holds its inputs; the wrapper activates the environment and execs the
 engine (`running-a-job.md § 2.2a`).
@@ -200,7 +279,7 @@ operation in the same module.
 **Preparing again is safe until the run has been launched.** Otherwise splitting
 the two steps leaks directories — prepare, change your mind, prepare again, and
 an empty `run-3` sits there forever. A run becomes untouchable once it has *run*
-(§ 1.2); before that, re-preparing is just changing your mind about the setup,
+(§ 1.4); before that, re-preparing is just changing your mind about the setup,
 which is the entire reason the step is separate.
 
 #### The one file the split needs
@@ -253,7 +332,7 @@ This is the same shape one level down: a redo of a stage — `run-1` after
 
 #### What is not touched
 
-**The flat case.** A plain run directory *is* a run (§ 1.1), so `bash job.run.sh`
+**The flat case.** A plain run directory *is* a run (§ 1.3), so `bash job.run.sh`
 in it behaves exactly as it does today.
 
 **The shipped chained ladder.** `jobset` can thread SLURM dependencies and carry
@@ -320,11 +399,55 @@ activates. A deck rendered on a laptop is either wrong for the cluster or a
 guess.
 
 So the parent holds a **template**, and the final `.fdf` is produced where its
-last unknowns are known. This is the same shape the benchmark already ships:
-`bench prep` runs on the target, detects the machine, writes `environment.json`,
-and formats the scripts for it — *"the user never hand-edits a queue name or a
-core count; this is what makes the bundle portable."* The staged path reuses that
-shape rather than inventing a second one.
+last unknowns are known.
+
+**Four inputs meet, and they arrive from four different places:**
+
+```mermaid
+flowchart LR
+    T["<b>template.fdf</b><br/>the science that never varies<br/><i>the browser · portable</i>"]
+    S["<b>stages.json</b><br/>this stage's values<br/><i>the browser · portable</i>"]
+    M["<b>molbuilder.json</b><br/>activation · scheduler · env names<br/><i>this machine · outside the tree</i>"]
+    B["<b>bench-result.json</b><br/>ranks · solver · GPU · memory<br/><i>measured here, optional</i>"]
+    D["<b>&lt;id&gt;.fdf</b><br/>the deck the engine reads"]
+    W["<b>&lt;id&gt;.run.sh</b><br/>the wrapper"]
+    T --> D
+    S --> D
+    M --> W
+    B --> D
+    B --> W
+```
+
+Read the arrows: **the first two are portable and the last two are not.** That is
+the whole reason the deck is finished here — two of its four inputs do not exist
+until you are standing on the machine.
+
+| Input | Comes from | Decides |
+|---|---|---|
+| `template.fdf` | the browser | the physics: functional, basis, k-grid, everything no stage touches |
+| `stages.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type |
+| `molbuilder.json` | this machine, outside the tree | how to activate an environment, which queue, what a walltime looks like |
+| `bench-result.json` | measured on this machine, optional | rank count → `BlockSize`; solver → `Diag.Algorithm` **and** which conda env |
+
+**A worked instance.** The same description, prepped on two machines:
+
+| | workstation | cluster |
+|---|---|---|
+| ranks | 8 | 64 |
+| `BlockSize` in the deck | 8 | 256 |
+| `Diag.Algorithm` | ScaLAPACK | ELPA |
+| env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` |
+| the wrapper | `mpirun -np 8` | `#SBATCH` header + `srun` |
+| **`template.fdf` and `stages.json`** | **byte-identical** | **byte-identical** |
+
+The last row is the point. The portable half did not move; only what the machine
+decided did.
+
+This is the same shape the benchmark already ships: `bench prep` runs on the
+target, detects the machine, writes `environment.json`, and formats the scripts
+for it — *"the user never hand-edits a queue name or a core count; this is what
+makes the bundle portable."* The staged path reuses that shape rather than
+inventing a second one.
 
 > **A folder that carries no machine knowledge can be copied to any machine. A
 > folder whose decks were finished on a laptop can only be copied to that
@@ -368,9 +491,48 @@ four commands.
 
 And it is where **you** are in the loop. Every arrow back into `prep` is a
 decision made after looking at what came out — which is the whole reason stages
-do not chain (§ 1.3).
+do not chain (§ 1.5).
 
-### 2.4 The steps, and which surface
+### 2.4 The whole sequence, once through
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as you
+    participant B as browser
+    participant T as the tree
+    participant C as CLI (on the target)
+    participant E as the engine
+
+    U->>B: pick a structure, describe the stages
+    B->>T: template.fdf · stages.json · pseudopotentials
+    Note over T: portable — names no machine
+
+    U->>C: prep tight --bench
+    C->>T: bench/ — decks made measurable
+    U->>C: submit
+    C->>E: run the trials
+    E-->>T: timings
+    U->>C: bench summarize
+    C->>T: bench-result.json
+
+    Note over U: you read it and decide
+
+    U->>C: prep tight --bench-result … --from 01_coarse/run-0
+    C->>T: 02_tight/<id>.fdf · run-0/ · copied .XV
+    C-->>U: what it resolved, and what it copied
+    U->>C: submit tight
+    C->>E: run it
+    E-->>T: .XV .DM .out
+
+    U->>C: status · snapshot checkpoint
+    Note over U,C: look, decide, and go back to prep
+```
+
+**Every arrow into `prep` starts with you.** Nothing in the diagram advances on
+its own, which is § 1.5 drawn rather than stated.
+
+### 2.5 The steps, and which surface
 
 | | Step | Surface |
 |---|---|---|
@@ -391,7 +553,7 @@ The save history is set up at step 4 for the same reason everything else is:
 which files count as big binaries depends on this machine's copy of the tree, not
 on the science.
 
-### 2.5 Who owns each level of the tree
+### 2.6 Who owns each level of the tree
 
 | Level | Named by | Written by | May contain |
 |---|---|---|---|
@@ -414,7 +576,7 @@ Three rules, and everything else follows:
 > (`running-a-job.md § 2.2a`).
 
 The engine never writes above itself — whatever a run continues from is a real
-copy put there before it starts (§ 1.3).
+copy put there before it starts (§ 1.5).
 
 **A benchmark gets its own directory, and that is not tidiness.**
 `generate_bench_bundle` writes its own decks, wrappers, pseudopotential copies,
@@ -445,7 +607,7 @@ inside the other.**
 | Identity | shares the calculation's id, so it warm-starts from the stage before | **its own throwaway label** — `job-gpu` / `job-cpu` |
 | Ordered? | **yes** — each continues the one before | **no** — trials are independent and can all queue at once |
 | Outcome | a result you keep | a number; the run is thrown away |
-| Produced by | `render_siesta_stage_fdfs` + `stages_to_jobset` | `generate_bench_bundle` + `sweep_to_jobset` |
+| Produced by | `prep`, from the template + this stage's values | `generate_bench_bundle` + `sweep_to_jobset` |
 
 **Why trials nest under a stage rather than beside the calculation.** The best
 rank count depends on the science: mesh cutoff changes the grid, basis size
@@ -568,8 +730,8 @@ seeing:
   shipped `-run0` / `-run1` output naming (`job-contracts.md § 2.6`) so the
   connection between a directory and the outputs inside it stays visible.
 
-Attempts are assigned **when a stage is prepared, in Python** (§ 1.3): the next
-unused number, never reused. There is no `--force` to reset them (§ 1.2).
+Attempts are assigned **when a stage is prepared, in Python** (§ 1.5): the next
+unused number, never reused. There is no `--force` to reset them (§ 1.4).
 
 **`run-` is a reserved prefix and its members are numbers, full stop.** A
 `run-latest` pointer was considered and dropped: with each stage set up
@@ -623,7 +785,7 @@ how a folder stops being trustworthy.
 | `<id>.template.fdf` | ③ calculation | engine deck, incomplete | **the science backbone** — everything fixed, nothing a stage varies, nothing the hardware decides |
 | `stages.json` | ③ calculation | `molbuilder/stages@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
 | `<id>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
-| `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.3); the edge fields serve the benchmark sweep |
+| `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.5); the edge fields serve the benchmark sweep |
 | `.mbcheckpoint.json` | ③ calculation | `molbuilder/checkpoint-config@1` | which patterns are big files |
 | `.molbuilder.json` | ⑤ benchmark bundle | same as project | **the activation the bundle carries to the target** — written by `_write_activation_config`, the single place that decision is persisted. A fourth scope in practice, and deliberate: the bundle must be runnable after `scp` |
 | `environment.json` | ⑤ benchmark bundle | `molbuilder/environment@1` | the machine as detected when this stage was measured |
@@ -674,7 +836,7 @@ Three reasons it belongs at ③:
 **Git tracks the containers. The archive covers the runs.**
 
 That is the whole classification, and it needs no marker file, no config flag and
-no name matching — because § 1.1 already made every directory one thing or the
+no name matching — because § 1.3 already made every directory one thing or the
 other. A container holds setup: decks, wrappers, the description, links, the
 shared package. All text or small, all git's.
 
@@ -690,7 +852,7 @@ binary business.
 
 ### 6.2 Append-only, because attempts are immutable
 
-An attempt never changes after it is written (§ 1.2), so an archived file never
+An attempt never changes after it is written (§ 1.4), so an archived file never
 changes either. A new save point stores the attempts that appeared since the last
 one and references the rest.
 
@@ -731,11 +893,11 @@ single history live in their own contracts and are cited, not repeated.
    across stages without copying anything.
 4. **A stage's `seq` is assigned once and never reassigned**; stages append
    (§ 4.2). **An attempt's number likewise** — the next unused, never reused, and
-   nothing resets it (§ 1.2).
+   nothing resets it (§ 1.4).
 4a. **No directory in this tree points at a file that does not exist yet.**
    Stages are set up one at a time, after the previous one finished, so
    everything a run continues from is a real file copied in before it starts
-   (§ 1.3). A dangling link means something was chained that should not have
+   (§ 1.5). A dangling link means something was chained that should not have
    been.
 5. **A trial never shares the calculation's identity.** Its deck is relabelled
    and forced cold, so it can neither read nor overwrite a stage's saved state
@@ -753,7 +915,7 @@ single history live in their own contracts and are cited, not repeated.
    attempt in shell.
 7. **A shared file exists once, at ③**, and is linked into each stage. Never
    copied per stage.
-8. **Every directory is a container or a run, never both** (§ 1.1). A run's
+8. **Every directory is a container or a run, never both** (§ 1.3). A run's
    output stays inside it; nothing a run writes appears above it.
 8a. **An attempt is immutable.** Once written it never changes, and once archived
    it must never differ from its recorded checksum — which is
@@ -772,7 +934,7 @@ single history live in their own contracts and are cited, not repeated.
     machine's config, byte-identical except for the provenance timestamp.
 13. **Warm restart flows down the stage axis only, and never on its own.** A
     stage continues from an earlier stage's run that the **user named**, never
-    from a trial, and never because something finished (§ 1.3).
+    from a trial, and never because something finished (§ 1.5).
 
 **History**
 

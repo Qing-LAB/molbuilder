@@ -124,6 +124,7 @@ job, and it is worth stating as a rule because it is easy to break by accretion.
 - **The launcher must be the shell's direct child.** `mpirun` / `srun` want to
   inherit the activated environment and sit in the process tree where signals
   and scheduler accounting expect them.
+
 Everything else — resolving which directory to run in, creating it, arranging
 files, recording what happened — is **decision and arrangement**, and none of it
 needs the activated environment. It is Python's.
@@ -138,7 +139,7 @@ it computes, decides, or arranges files, the answer is no and it belongs upstrea
 > moment to make them real is on the compute node. It stays for that path. But
 > the staged framework **does not submit chains** — each stage is set up
 > separately, after the previous one finished
-> ([`project-layout.md`](?doc=execution/project-layout.md) § 1.3) — so its files
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 1.5) — so its files
 > are copied for real at setup, and nothing needs swapping later. The exception
 > belongs to the chained ladder, not to this design.
 
@@ -159,7 +160,7 @@ place for logic:
 prologue (2026-08-06) scans for run directories, creates one, symlinks the deck
 and shared package in, and copies warm files — a second implementation of
 `jobset/materialize.py` in shell, one level down. It moves to Python; see
-[`project-layout.md`](?doc=execution/project-layout.md) § 1.3.
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.5.
 
 ### 2.3 Env routing
 

@@ -465,6 +465,27 @@ projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
         └── <id>.DM
 ```
 
+**One template, one deck per stage, and the fan-out happens at prep:**
+
+```mermaid
+flowchart LR
+    T["<b>&lt;id&gt;.template.fdf</b><br/>functional · basis · k-grid<br/>everything no stage varies"]
+    J["<b>stages.json</b><br/>coarse: mesh 150, tol 0.04<br/>tight:  mesh 300, tol 0.01"]
+    M["<b>this machine</b><br/>ranks · solver · GPU"]
+    DC["<b>01_coarse/&lt;id&gt;.fdf</b>"]
+    DT["<b>02_tight/&lt;id&gt;.fdf</b>"]
+    T --> DC
+    T --> DT
+    J -->|"coarse's row"| DC
+    J -->|"tight's row"| DT
+    M --> DC
+    M --> DT
+```
+
+Two decks come out, as before — what changed is **who renders them and when**.
+The template is written once by the browser; each deck is produced by `prep`, in
+its own stage directory, on the machine that will run it.
+
 **The deck is rendered where the machine is known, and that is not deferral for
 its own sake.** Some of what goes *inside* a `.fdf` is a fact about the hardware:
 `_auto_block_size(n_atoms, mpi_np, gpu_mode)` derives `BlockSize` from the rank
