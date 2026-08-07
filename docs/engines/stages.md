@@ -407,6 +407,17 @@ rather than a refusal — the plan records it.)
 
 ## 7. What the generator must produce
 
+> **Scope, so this section does not drift into its neighbours' territory.** What
+> a produce must *emit per stage* — decks, wrappers, the description, and the
+> transactional rule that they all appear or none does — is this contract's, and
+> that is § 7 proper and § 7.2. **Where those files land is not**: the levels of
+> the tree, how each is named, and who may write at each one belong to
+> [`project-layout.md`](?doc=execution/project-layout.md), which § 7.1 defers to.
+> **Nor is the saved history**: [`checkpointing.md`](?doc=execution/checkpointing.md)
+> owns it, and § 7.4 is a pointer rather than a specification. What stays here in
+> § 7.3 is only the part that is about a *stage* — that a stage's name is its
+> identity, and what follows from a description that grows.
+
 A folder whose decks are correct on their own. Concretely, per rendered stage:
 
 - **the cell, explicit** — the description holds cell *parameters*; the generator

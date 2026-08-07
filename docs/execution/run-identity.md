@@ -172,6 +172,57 @@ That is stricter than the tree requires (`job-contracts.md § 2.5` only asks for
 name is not the id is a folder whose contents cannot be identified from outside
 it.
 
+### 3.1 Normalisation, worked
+
+Each row shows one rule doing its job. The right-hand column is what the surface
+must display back **before** anything is written.
+
+| What the user types | Id | Which rule fired |
+|---|---|---|
+| `BDT/Au relax` + `C6H4S2Au38` | `bdt_au_relax_c6h4s2au38` | `/` and the space are outside the set → `_` |
+| `BDT  --  Au` | `bdt_au` | runs of separators collapse to one |
+| `_relax_` | `relax` | leading and trailing separators trimmed |
+| `Relax.v2` | `relax_v2` | the dot is outside the id's set (the *wrapper* tolerates a dot in a `SystemLabel`; the id does not mint one) |
+| `BDT-Au` | `bdt-au` | hyphens are **kept** — they are in the set |
+| `Über` | `_ber`, then **refused** | a leading separator trims to `ber`, which is not what was asked for → rule 3 refuses rather than guessing |
+| `///` | **refused** | reduces to nothing; say so and ask |
+| a 300-character name | **refused** | over the derived cap — a truncated id is a different calculation wearing the same name |
+
+### 3.2 One id, and everywhere it lands
+
+The point of the rule is that a *single* token is enough to identify every file
+of a calculation, on disk, in a history, and to the engine. For
+`bdt_au_relax_c6h4s2au38`, in the hierarchical shape:
+
+```text
+projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/   ← the folder IS the id
+├── bdt_au_relax_c6h4s2au38.template.fdf
+├── 01_coarse/
+│   ├── bdt_au_relax_c6h4s2au38_coarse.fdf              ← <id>_<name>
+│   └── run-0/
+│       ├── bdt_au_relax_c6h4s2au38_coarse.out
+│       ├── bdt_au_relax_c6h4s2au38_coarse.molwatch.log
+│       ├── bdt_au_relax_c6h4s2au38.XV                  ← <id> alone: the engine's
+│       └── bdt_au_relax_c6h4s2au38.DM                     warm files, unsuffixed
+└── 02_tight/…
+```
+
+and in the history:
+
+```text
+commit  bdt_au_relax_c6h4s2au38 · tight · relaxation converged, 41 steps
+tag     bdt_au_relax_c6h4s2au38/tight/20260806T221403Z
+```
+
+**Three different naming systems — a filesystem, a git ref, and SIESTA's
+`SystemLabel` — and the id passes through all three unchanged.** That is what
+§ 3's character set buys, and it is why no second sanitiser exists anywhere.
+
+Note which files carry the stage and which do not: **anything a stage produced**
+carries `_<name>`, and **anything the engine warm-restarts from** carries the
+bare id. That asymmetry is not cosmetic — it is exactly what lets the next stage
+find the previous stage's state without being told where it is (§ 4).
+
 **Three rules keep normalisation from becoming a source of surprise:**
 
 1. **It happens once, when the description is written, and the result is

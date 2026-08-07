@@ -1066,9 +1066,11 @@ directories are produced, not when the rows are typed.
 **Gaps are honest.** Disable stage 2 and the tree shows `01_` and `03_`. The gap
 says something real — there was a stage there and it is switched off.
 
-**Renaming is not a rename.** A stage's name is in its deck's filename, in every
-output beside it, and in its checkpoint tags. Renaming one that has run orphans
-all of them, so it is a new stage (`engines/stages.md § 7.3`, R5).
+**Renaming is not a rename** — a stage's name is its identity, so renaming one
+that has run is creating a different stage. The rule and its reasoning are
+[`stages.md § 7.3`](?doc=engines/stages.md) R5, because a name is a property of a
+stage rather than of the tree; what this contract adds is only the consequence
+for numbering, which is that the new stage takes the next `seq` like any other.
 
 ### 4.3 An attempt is numbered, and the number is not padded
 

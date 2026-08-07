@@ -97,6 +97,58 @@ fail silently — a big binary in git bloats the repository until a clone is
 impossible, and one in neither store is *gone* after a restore, with nothing
 saying so.
 
+### 2.1 The two stores, on disk
+
+The same picture as files, after two checkpoints of a two-stage calculation. This
+is what every invariant below is talking about:
+
+```text
+bdt_au_relax_c6h4s2au38/
+├── .git/                              ← store 1: the text history
+├── .gitignore                         ← generated: ignores exactly what the
+│                                         archive claims (S1a)
+├── .mbcheckpoint.json                 ← which patterns count as "big" here
+├── .binsnapshots/                     ← store 2: the content archive
+│   ├── 4f9c…a71/                        one directory per commit sha
+│   │   ├── 01_coarse/run-0/bdt_au_relax_c6h4s2au38.DM
+│   │   └── MANIFEST
+│   └── b2e0…33d/
+│       ├── 01_coarse/run-0/bdt_au_relax_c6h4s2au38.DM   ← same content as
+│       │                                                   above: a hard link,
+│       │                                                   costing no disk (L5)
+│       ├── 02_tight/run-0/bdt_au_relax_c6h4s2au38.DM
+│       └── MANIFEST
+├── stages.json                        ┐
+├── bdt_au_relax_c6h4s2au38.template.fdf │ tracked by git —
+├── 01_coarse/                         │ text, diffable
+│   ├── bdt_au_relax_c6h4s2au38_coarse.fdf
+│   └── run-0/
+│       ├── bdt_au_relax_c6h4s2au38_coarse.out
+│       ├── bdt_au_relax_c6h4s2au38.XV      ← small: git
+│       ├── run.json                        ┘
+│       └── bdt_au_relax_c6h4s2au38.DM      ← large: gitignored, in the archive
+└── 02_tight/…
+```
+
+And one `MANIFEST`, which is the whole format — three columns, two spaces
+between, sorted by the third:
+
+```text
+7ef4c6452a48e8625b612ee830dd7554959b03b23df81867e38edc6d8bb1344a  8388608  01_coarse/run-0/bdt_au_relax_c6h4s2au38.DM
+36c543955301c21a0ca61358275551df1ba4837a2c9fd93bd6c185f67409a572  8388608  02_tight/run-0/bdt_au_relax_c6h4s2au38.DM
+```
+
+**Read the key column and the design is visible.** It is a path *relative to the
+calculation root*, not a bare filename — which is what lets one archive hold a
+`.DM` from every stage without them colliding (L2). Every component is checked so
+a restore cannot be steered out of the folder: no leading `/`, no `..`, no
+dot-prefixed component that would reach `.git` or `.binsnapshots`.
+
+**And the sha column is why the same content is stored once.** Two commits that
+both contain an unchanged `.DM` record the same sha, so the second archive links
+to the first's file instead of copying it (L5) — the archive still holds a real
+file at that path, so nothing reading it can tell the difference.
+
 ### S1 — a **regular file** is git-tracked **or** content-archived, never both, never neither
 
 *holds today.*
