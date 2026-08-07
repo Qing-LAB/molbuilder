@@ -67,7 +67,7 @@ contract.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen** | becomes the deck's suffix, `<id>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is already the *other* stage separator: the molwatch log and the run decoder's stage regex use `-stage<N>` (`job-contracts.md § 2.3`), and a stage named `pre-tight` would put a second hyphen where that reader looks for one |
+| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen** | becomes the deck's suffix, `<id>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a checkpoint tag is `<id>/<name>/<UTC>`. A name free of hyphens means any of those can be split on one without knowing what it contains |
 | `enabled` | bool | whether this stage is rendered at all |
 | `overrides` | map | schema field name → that stage's value |
 
@@ -433,9 +433,23 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   boundary per stage — which is exactly the reading a folder of stages wants — but
   it only works if each deck writes its *own* log. Two decks resolving to one
   basename would interleave into a single file and the boundary would be lost.
-  The shipped basename is `<label>-stage<N>`, a hyphen and a **number**, while a
-  deck is `<label>_<name>`, an underscore and a **name**; reconciling those two is
-  a decision `job-contracts.md § 2.3` owns and has not yet made.
+  **The rule: a run's log is named for the deck that produced it** —
+  `<id>_<name>.molwatch.log` beside `<id>_<name>.fdf`. One naming, derived rather
+  than declared, so there is nothing to keep in step.
+
+  That replaces a second convention rather than reconciling with it. Today the
+  log basename is `<label>-stage<N>` — a hyphen and a **number** — while the deck
+  is `<label>_<name>` — an underscore and a **name** (`job-contracts.md § 2.3`
+  records both). Two conventions for one stage is one too many, and the number is
+  the wrong half to keep: **every other artifact of a stage keys on the name** —
+  the deck, its stdout, its checkpoint tag — so the log is the only one you
+  cannot read back to a stage without opening the description. *"Which stage is
+  `bdt_au-stage2.molwatch.log`?"* should not be a question that needs a second
+  file to answer.
+
+  **Cost, stated rather than hidden:** the run decoder's stage regex keys on the
+  `-stage<N>` form, so it changes with this. That is code following a contract,
+  which is the direction that is allowed.
 
 **The test:** the decks are portable — an engine with no molbuilder present runs
 them correctly. The wrappers are not, and are not meant to be: they are baked for

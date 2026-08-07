@@ -1005,24 +1005,50 @@ continues from the real run's state — never from a trial's.
 
 ## 4. Naming, and why the two levels name differently
 
-### 4.1 A stage carries a sequence number
+### 4.1 A stage is identified by its name; a stage *directory* also carries a number
 
-A stage has two identifiers doing two jobs:
+**A stage has exactly one identifier: its `name`** — what the user typed
+(`coarse`, `tight`), unique within the calculation, matching `[A-Za-z0-9_]+`.
+`engines/stages.md § 2` says a stage has *"three fields, and no others"* — name,
+enabled, overrides — and that is right.
 
-- **`name`** — what the user typed (`coarse`, `tight`). Identifies it. Unique
-  within the calculation, matching `[A-Za-z0-9_]+` (`engines/stages.md § 2`).
-- **`seq`** — a number assigned when the stage is created. **Orders** it. Never
-  reused, never reassigned.
+**`seq` is not a fourth field.** It is the ordinal of a stage **directory**,
+assigned by the produce that creates it so a listing sorts in the order the work
+happens. It is read off the directory name and stored nowhere else — the
+description does not carry it, and nothing needs it to identify a stage.
+
+> **[hierarchical] `seq` exists only where stage directories do.** A flat
+> calculation has no stage directories, so there is nothing to number and no
+> `seq` at all; the order of the work is the order of the list in the
+> description. A rule about `seq` is a rule about one shape, and § 7 marks it as
+> one.
+
+That division is why nothing else needs the number, and § 4.1's table below is
+short as a result.
 
 | Where | Form | Example |
 |---|---|---|
 | stage directory | `<seq>_<name>`, zero-padded to two digits | `01_coarse`, `02_tight` |
 | deck | `<id>_<name>.fdf` | `bdt_au_relax_c6h4s2au38_tight.fdf` |
-| trajectory log | `<id>-stage<seq>` | `…-stage2.molwatch.log` — the shipped convention, with `N` finally **defined** as `seq` |
+| trajectory log | `<id>_<name>` | `bdt_au…_tight.molwatch.log` — **named for the deck that produced it** (`stages.md § 7`), so it needs no convention of its own |
 | checkpoint tag | `<id>/<name>/<UTC>` | you return to a stage by *name*, not by position |
 
 The deck does not carry the number: names are unique, so it would add nothing,
 and a deck's filename is quoted in the wrapper, the log and the outputs.
+
+> **`seq` orders; `name` identifies — and only one of them belongs in a file.**
+> The stage directory is the single place both appear, because a directory
+> listing is the one view where *order* is what you want to see. Everywhere else
+> — deck, stdout, trajectory log, checkpoint tag — keys on the **name**, so
+> every artifact of a stage can be read back to that stage without opening the
+> description to look a number up.
+>
+> This corrects a real disagreement between the contracts (found 2026-08-07):
+> this table used to give the log as `<id>-stage<seq>`, adopted from the shipped
+> convention, while `stages.md § 7.3` says the naming *"has to key on the name"*
+> and `stages.md § 7` said the question was still open. Three positions on one
+> question. The name wins for the reason above, and it wins on subtraction — one
+> convention replaces two.
 
 ### 4.2 Numbers are assigned once — stages append
 
@@ -1073,10 +1099,12 @@ back to its point.
 > **Ordered levels carry position; unordered levels carry settings.** One naming
 > rule each, matching what the level actually is.
 
-**In code:** `materialize.job_dir_name` returns `point-<name>` for everything
-today. It branches on `JobSet.kind` — a **ladder** job becomes `<seq>_<name>`, a
-**sweep** point keeps `bench-<knobs>`. One function, one condition, and the
-JobSet already carries `kind`.
+**Whatever names a directory must therefore know which kind of level it is
+naming** — and it always does, because a set of jobs is either ordered or it is
+not, and that is a property of the set rather than something to infer per
+directory. *(How that reaches the code is scheduling, not contract:
+[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
+item 12b.)*
 
 ---
 
@@ -1269,14 +1297,17 @@ than no invariant, because it fails a directory that is working correctly.
 3. **Every file a stage reads or writes shares one basename** — the id
    (`job-contracts.md § 2.1`, Rule 2). This is what makes warm restart work
    across stages without copying anything.
-4. **A stage's `seq` is assigned once and never reassigned**; stages append
-   (§ 4.2). **An attempt's number likewise** — the next unused, never reused, and
-   nothing resets it (§ 1.5).
+4. **[hierarchical] A stage directory's `seq` is assigned once and never reassigned**;
+   stages append (§ 4.2). Flat has no stage directories and so no `seq` — its
+   order is the description's list order (§ 4.1).
 4a. **[hierarchical] No directory in this tree points at a file that does not exist yet.**
    Stages are set up one at a time, after the previous one finished, so
    everything a run continues from is a real file copied in before it starts
    (§ 1.6). A dangling link means something was chained that should not have
    been.
+4b. **[both] An attempt's number is the next unused, never reused, and nothing
+   resets it** (§ 1.5) — a directory `run-<n>` in the hierarchy, an output index
+   `-run<n>` when flat, but the same rule: a number that has been used is spent.
 5. **A trial never shares the calculation's identity.** Its deck is relabelled
    and forced cold, so it can neither read nor overwrite a stage's saved state
    (§ 3.2).

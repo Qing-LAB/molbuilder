@@ -166,6 +166,17 @@ paths — do not conflate them:
   stage)` → `<label>-stage<N>.molwatch.log`. The run decoder's stage regex
   (`parse/dirs/job.py::_STAGE_RE`) keys on this hyphen `-stage<N>` form.
 
+  > **This second convention is being retired, not reconciled** (decided
+  > 2026-08-07). **A run's log takes the basename of the deck that produced it** —
+  > `<label>_<name>.molwatch.log` — so there is one naming instead of two and
+  > nothing to keep in step. The number is the wrong half to keep: every other
+  > artifact of a stage keys on the *name*, so the log is the only one that
+  > cannot be read back to its stage without opening the description. The
+  > reasoning is [`engines/stages.md`](?doc=engines/stages.md) § 7; the naming
+  > table is [`execution/project-layout.md`](?doc=execution/project-layout.md)
+  > § 4.1. `_STAGE_RE` changes with it. Until that lands, what is written above
+  > is what the files are called.
+
 **Two multi-stage execution shapes exist, deliberately:**
 
 - **Per-stage processes (SIESTA run stage-by-stage, and the PySCF `cfg.stage`
