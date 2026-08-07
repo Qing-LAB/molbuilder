@@ -1,7 +1,15 @@
 # Staged runs — one system, several parameter sets, one folder
 
 **Role:** plan
-**Domain:** web
+**Domain:** web — **but the work it schedules is mostly not**. It began as the
+backend behind one tab and grew into the plan for the whole staged-runs feature,
+so its items now reach across three domains: `web/` (the tab, the routes),
+`execution/` (the folder, the checkpoint module, the wrapper) and `engines/` (the
+stage and its description). It stays here because the tab is what motivates it
+and because moving it would break every inbound link; **read the domain label as
+where the file lives, not as the boundary of what it covers.** The per-item
+pointers below say which module each one touches.
+
 **Companions:** the two contracts this plan exists to schedule —
 [`engines/stages.md`](?doc=engines/stages.md) (what a stage is, the effective
 config, `stages.json`) and

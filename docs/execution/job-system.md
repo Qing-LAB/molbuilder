@@ -1,16 +1,17 @@
 # The job system — batches, ladders, and HPC deployment
 
-> **Role:** guide · **Domain:** `execution/`
->
-> **Companions:** [`execution/running-a-job.md`](?doc=execution/running-a-job.md)
-> — the single-job wrapper this framework runs many of;
-> [`execution/job-contracts.md`](?doc=execution/job-contracts.md) — the run-dir
-> layout, the wrapper files, and the `job-set.json` / parameter vocabulary this
-> framework produces;
-> [`execution/overview.md`](?doc=execution/overview.md) — the execution-domain
-> map and the current → target status picture;
-> [`engines/tuning.md`](?doc=engines/tuning.md) — the scientific *values* behind
-> the staged ladders (this page covers only how they are *scheduled*).
+**Role:** guide
+**Domain:** execution
+
+**Companions:** [`execution/running-a-job.md`](?doc=execution/running-a-job.md)
+— the single-job wrapper this framework runs many of;
+[`execution/job-contracts.md`](?doc=execution/job-contracts.md) — the run-dir
+layout, the wrapper files, and the `job-set.json` / parameter vocabulary this
+framework produces;
+[`execution/overview.md`](?doc=execution/overview.md) — the execution-domain
+map and the current → target status picture;
+[`engines/tuning.md`](?doc=engines/tuning.md) — the scientific *values* behind
+the staged ladders (this page covers only how they are *scheduled*).
 
 ---
 
@@ -87,6 +88,47 @@ stage 1; stage 2 starts automatically only if stage 1 converged, reusing stage
 > whole benchmark workflow — works today from a terminal. The **web UI does not
 > drive any of it yet**; it still generates and runs one task at a time. Moving
 > the job system into the browser is the target migration, laid out in § 8.
+
+> ### ⚠ Automatic stage-to-stage chaining is being retired for staged calculations
+>
+> **This affects the ladder only, and only the *automatic* part of it.** Read this
+> before building on `depends_on` or `Carry`.
+>
+> Everything below describes a ladder as a **chain**: stage 2 is a separate job
+> that `depends_on` stage 1, the scheduler starts it automatically when stage 1
+> succeeds, and a `Carry` edge hands stage 1's relaxed geometry across. That is
+> what `stages_to_jobset` builds today and what SLURM submits.
+>
+> **The staged-runs design removes that for a staged calculation.** The reason is
+> not technical — it is that *a stage is a long job*:
+>
+> > A chain that continues by itself can spend a week computing from a geometry
+> > you would have rejected in a minute.
+>
+> So each stage becomes **its own prep and its own submission**, done after you
+> have looked at the previous one. Whatever a run continues from is a **real file
+> copied in at prep time**, and *which* run it comes from is something **you
+> say** — by then it has already finished, so there is nothing to resolve later
+> and nothing to point at that does not yet exist.
+>
+> | | Ladder as a chain (this document) | Staged calculation (the new design) |
+> |---|---|---|
+> | Who starts stage 2 | the scheduler, automatically | **you**, after looking |
+> | How stage 1's geometry arrives | a `Carry` edge resolved at run time | a **file copy**, made at prep |
+> | `Job.depends_on` between stages | set | **not emitted** |
+> | If stage 1 converged to something wrong | stage 2 is already running | you never started it |
+>
+> **The mechanism is not being deleted.** `JobSet`, `depends_on`, `Carry` and
+> `carry_deref` all stay, and `jobset` can still build a chained ladder — a
+> benchmark sweep and an explicitly-chained workflow both still want them. What
+> changes is that **`stages_to_jobset` stops emitting those edges between the
+> stages of one calculation.**
+>
+> Not done yet: this is item 12b in
+> [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md), and
+> the contract is
+> [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.
+> Until it lands, what this document describes is what the code does.
 
 ---
 

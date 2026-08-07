@@ -1,14 +1,15 @@
 # Running a job — the usable single-job path
 
-> **Role:** guide · **Domain:** `execution/`
->
-> **Companions:** [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
-> — the on-disk formats this guide operates (the run directory, the wrapper
-> files, warm/cold restart, the config vocabulary);
-> [`execution/job-system.md`](?doc=execution/job-system.md) — the JobSet
-> framework that runs **batches** of jobs on top of this same wrapper;
-> [`execution/overview.md`](?doc=execution/overview.md) — the map and the
-> current → target status picture.
+**Role:** guide
+**Domain:** execution
+
+**Companions:** [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
+— the on-disk formats this guide operates (the run directory, the wrapper
+files, warm/cold restart, the config vocabulary);
+[`execution/job-system.md`](?doc=execution/job-system.md) — the JobSet
+framework that runs **batches** of jobs on top of this same wrapper;
+[`execution/overview.md`](?doc=execution/overview.md) — the map and the
+current → target status picture.
 
 **This is the path that works today.** The web UI generates and installs a
 run wrapper for **one** task at a time; the CLI does the same with

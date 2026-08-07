@@ -1,26 +1,27 @@
 # Job contracts — the on-disk formats and shared vocabulary
 
-> **Role:** contract · **Domain:** `execution/`
->
-> **Companions:**
-> [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — how you
-> actually run and watch **one** job today (the run wrapper, `molbuilder.json`,
-> checkpoints, the decoded-run view);
-> [`execution/job-system.md`](?doc=execution/job-system.md) — the JobSet batch /
-> staged / HPC framework;
-> [`execution/overview.md`](?doc=execution/overview.md) — the map plus the
-> current → target status picture.
->
-> **Settled contracts this doc leans on:**
-> [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) (the
-> `.molstruct.json` sidecar it round-trips with),
-> [`model/structure-annotations.md`](?doc=model/structure-annotations.md)
-> (`regions` / `frozen_atoms` / annotation channels),
-> [`model/overview.md`](?doc=model/overview.md) (the 0-based-internal /
-> 1-based-user atom-index rule), and
-> [`engines/overview.md`](?doc=engines/overview.md) (the UI → config → script
-> boundary contract and the script-wrapper contract that this doc's script
-> blocks physically implement).
+**Role:** contract
+**Domain:** execution
+
+**Companions:**
+[`execution/running-a-job.md`](?doc=execution/running-a-job.md) — how you
+actually run and watch **one** job today (the run wrapper, `molbuilder.json`,
+checkpoints, the decoded-run view);
+[`execution/job-system.md`](?doc=execution/job-system.md) — the JobSet batch /
+staged / HPC framework;
+[`execution/overview.md`](?doc=execution/overview.md) — the map plus the
+current → target status picture.
+
+**Settled contracts this doc leans on:**
+[`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) (the
+`.molstruct.json` sidecar it round-trips with),
+[`model/structure-annotations.md`](?doc=model/structure-annotations.md)
+(`regions` / `frozen_atoms` / annotation channels),
+[`model/overview.md`](?doc=model/overview.md) (the 0-based-internal /
+1-based-user atom-index rule), and
+[`engines/overview.md`](?doc=engines/overview.md) (the UI → config → script
+boundary contract and the script-wrapper contract that this doc's script
+blocks physically implement).
 
 This document is the sole source of truth for the **stable on-disk shapes**
 that every other part of molbuilder rests on: where a run's files live and

@@ -1,12 +1,7 @@
 # Execution — running jobs, from one task to a job system
 
-> **Role:** overview · **Domain:** `execution/`
->
-> **The docs this maps:**
-> [`job-contracts.md`](?doc=execution/job-contracts.md) — the stable on-disk
-> formats + shared vocabulary; [`running-a-job.md`](?doc=execution/running-a-job.md)
-> — how you run and watch **one** job today; [`job-system.md`](?doc=execution/job-system.md)
-> — the JobSet framework for running **many** jobs and deploying them to HPC.
+**Role:** overview
+**Domain:** execution
 
 This is the **start-here map** for everything about turning a generated input
 into a finished result: where a run's files live, how the wrapper runs and
@@ -19,16 +14,84 @@ around.
 
 ## 1. The map — which doc to open
 
+Eight documents live here, and they come in **three kinds**. Knowing which kind
+you are reading tells you how much to trust it and what to do when two disagree.
+
+- A **contract** says what a thing *is*. It is the authority. When a contract and
+  anything else disagree, the contract wins and the other is a bug.
+- A **guide** says how you *do* it with what exists today. It describes shipped
+  behaviour and points at the contract for the rules.
+- A **plan** says what we will *build*, and in what order. It is the only kind
+  that is allowed to describe something that does not exist yet.
+
+### Contracts — what things are
+
+| You want to know… | Open |
+|---|---|
+| Where a run's files go, what they are named, what a `.fdf`'s reserved comment blocks are, what warm/cold restart means, or what any persisted file's format is | **[`job-contracts.md`](?doc=execution/job-contracts.md)** |
+| What a whole project directory looks like — the **two shapes** (flat and hierarchical), what `prep` does, and why the browser cannot finish a deck | **[`project-layout.md`](?doc=execution/project-layout.md)** |
+| Why a calculation's files all share one name, and what actually makes a run *continue* from an earlier one | **[`run-identity.md`](?doc=execution/run-identity.md)** |
+| What a saved history must always guarantee — the 22 invariants behind `molbuilder snapshot` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
+| What a **stage** is (it is molbuilder's idea, not the engine's) and the file that describes one | **[`engines/stages.md`](?doc=engines/stages.md)** — in `engines/`, because a stage is about parameters |
+
+### Guides — how you do it today
+
 | You want to… | Open |
 |---|---|
-| Know where a run's files go, what they're named, or what a `.fdf`'s reserved comment blocks / the handoff bundle / the config vocabulary *are* | **[`job-contracts.md`](?doc=execution/job-contracts.md)** (the formats) |
-| Actually run **one** job — the wrapper, MPI/GPU resolution, `molbuilder.json`, checkpoints, watching a run | **[`running-a-job.md`](?doc=execution/running-a-job.md)** (the single-job guide) |
-| Run **many** jobs — a staged ladder, a parameter sweep, an HPC deployment, a benchmark | **[`job-system.md`](?doc=execution/job-system.md)** (the JobSet framework) |
+| Run **one** job: the wrapper, MPI/GPU resolution, `molbuilder.json`, watching it, checkpointing it | **[`running-a-job.md`](?doc=execution/running-a-job.md)** |
+| Run **many** jobs: a staged ladder, a parameter sweep, an HPC deployment, a benchmark | **[`job-system.md`](?doc=execution/job-system.md)** |
+| See the whole design done once, with a real molecule, in the order a person actually works | **[`worked-example.md`](?doc=execution/worked-example.md)** |
 
-The three build on each other bottom-up: the **formats** are the ground both
-surfaces rest on; **running one job** is the primitive; the **job system** runs
-many of that primitive. Nothing in the job system replaces the single-job
-wrapper — it orchestrates around it.
+### Plans — what is being built
+
+| You want to know… | Open |
+|---|---|
+| The order of work, what is done, what is blocked and on which decision | **[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)** |
+| What the Structure-optimization tab will look like | **[`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)** |
+
+### How they stack
+
+Everything rests on the formats; each layer uses the one below and never
+reaches past it. Arrows point from a document to the ones it depends on.
+
+```mermaid
+flowchart TB
+    subgraph plans["Plans — not built yet"]
+      SRA["staged-runs-architecture.md<br/>the order of work"]
+      UIP["structure-optimization-ui-plan.md<br/>the tab"]
+    end
+    subgraph guides["Guides — how to do it today"]
+      RAJ["running-a-job.md<br/>ONE job"]
+      JS["job-system.md<br/>MANY jobs"]
+      WE["worked-example.md<br/>one walk-through"]
+    end
+    subgraph contracts["Contracts — the authority"]
+      PL["project-layout.md<br/>the whole folder"]
+      CP["checkpointing.md<br/>the history"]
+      RI["run-identity.md<br/>the name"]
+      ST["engines/stages.md<br/>a stage"]
+      JC["job-contracts.md<br/>the file formats"]
+    end
+    UIP --> SRA
+    SRA --> ST & RI & PL
+    WE --> PL & CP
+    JS --> JC
+    RAJ --> JC
+    PL --> JC & RI & CP & ST
+    CP --> JC
+    RI --> JC
+    ST --> JC
+```
+
+**Read the arrows as *"is defined in terms of"*.** `job-contracts.md` has no
+outgoing arrow, which is what makes it the ground: it defines the file formats in
+terms of nothing but themselves. Nothing points *down* from a contract into a
+plan — a contract that needed a plan to be true would not be a contract.
+
+**The three guides build on each other bottom-up**: the formats are the ground
+both surfaces rest on, running one job is the primitive, and the job system runs
+many of that primitive. Nothing in the job system replaces the single-job wrapper
+— it orchestrates around it.
 
 ---
 
@@ -96,6 +159,64 @@ Two facts keep the picture honest:
 - **"A ladder scheduled as dependent jobs" is SIESTA-only today.** PySCF's
   staged relaxation runs as an in-script loop, not a JobSet; PySCF/transport
   producers are planned. (Details in `job-system.md § 4`.)
+
+### 2.1 The second transition — one folder shape becomes a choice of two
+
+The status matrix above is about *which surface* can run a job. There is a second
+change in flight, about *what the folder looks like*, and it is the reason four of
+the eight documents here were written in August 2026.
+
+**What ships today is the flat shape.** One directory holds everything. Several
+stages live side by side, told apart by a suffix in the filename
+(`job_stage1.fdf`, `job_stage2.fdf`); several attempts at one stage are told apart
+by a number in the output name (`job-run0.out`, `job-run1.out`); and the warm
+files a run continues from — `job.XV`, `job.DM` — carry **no suffix at all** and
+are shared by every stage.
+
+That sharing is the shape's whole design, good and bad at once. It is what lets
+stage 2 pick up stage 1's geometry with nobody instructing it: SIESTA looks for
+`job.XV`, and there it is. It is *also* exactly why stage 2 overwrites stage 1 —
+same filename, same directory.
+
+**The proposed hierarchical shape** gives each stage a directory and each attempt
+a subdirectory inside it, so nothing overwrites anything.
+
+```
+FLAT (ships today)                    HIERARCHICAL (proposed)
+bdt_au/                               bdt_au/
+├── bdt_au_stage1.fdf                 ├── stages.json
+├── bdt_au_stage2.fdf                 ├── bdt_au.psml
+├── bdt_au-run0.out   ← stage 1       ├── 01_coarse/
+├── bdt_au-run1.out   ← stage 2       │   ├── bdt_au.fdf
+├── bdt_au.XV     ← SHARED, and       │   └── run-0/
+├── bdt_au.DM        overwritten      │       ├── bdt_au.out
+└── bdt_au.psml      every stage      │       └── bdt_au.XV
+                                      └── 02_tight/
+                                          ├── bdt_au.fdf
+                                          └── run-0/
+                                              └── bdt_au.out
+```
+
+**The question that decides between them is not which is tidier.** It is: *after
+three stages have run, what do you still have?*
+
+| | Flat | Hierarchical |
+|---|---|---|
+| Stage 1's converged geometry, after stage 3 | **gone from disk** — overwritten | on disk, openable |
+| Where the history lives | **in time** — only in the checkpoint | in space — in the folder |
+| A checkpoint is… | **the mechanism.** The only way back | insurance. Useful, not load-bearing |
+| Continuing to the next stage | free — the engine just finds the file | a deliberate copy you asked for |
+
+So a missed checkpoint means two different things. In the hierarchical shape it
+is a thinner history. **In the flat shape it is a state that no longer exists
+anywhere** — which is why `checkpointing.md` matters far more than a
+convenience feature normally would, and why the checkpoint work was done first.
+
+**Neither shape is wrong, and the choice is made at `prep`** — on the machine
+that will run the job, not in the browser. `project-layout.md` § 1 is the
+contract for both; `checkpointing.md` marks every invariant `[both]` or
+`[hierarchical]`, because a check written for one shape that fails the other is
+worse than no check: it fails a directory that is working correctly.
 
 ---
 
