@@ -196,7 +196,7 @@ of a calculation, on disk, in a history, and to the engine. For
 
 ```text
 projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/   ← the folder IS the id
-├── bdt_au_relax_c6h4s2au38.template.fdf
+├── bdt_au_relax_c6h4s2au38.fdf.template
 ├── 01_coarse/
 │   ├── bdt_au_relax_c6h4s2au38_coarse.fdf              ← <id>_<name>
 │   └── run-0/

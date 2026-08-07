@@ -119,7 +119,7 @@ bdt_au_relax_c6h4s2au38/
 │       ├── 02_tight/run-0/bdt_au_relax_c6h4s2au38.DM
 │       └── MANIFEST
 ├── stages.json                        ┐
-├── bdt_au_relax_c6h4s2au38.template.fdf │ tracked by git —
+├── bdt_au_relax_c6h4s2au38.fdf.template │ tracked by git —
 ├── 01_coarse/                         │ text, diffable
 │   ├── bdt_au_relax_c6h4s2au38_coarse.fdf
 │   └── run-0/

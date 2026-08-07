@@ -531,7 +531,7 @@ ever disagree that one wins.
 
 ```
 projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
-├── <id>.template.fdf                  ← the science backbone
+├── <id>.fdf.template                  ← the science backbone
 ├── stages.json                        ← what each stage tunes
 ├── Au.psml  S.psml  C.psml  H.psml    ← shared, stored ONCE
 ├── mb_monitor.py
@@ -551,7 +551,7 @@ projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
 
 ```mermaid
 flowchart LR
-    T["<b>&lt;id&gt;.template.fdf</b><br/>functional · basis · k-grid<br/>everything no stage varies"]
+    T["<b>&lt;id&gt;.fdf.template</b><br/>functional · basis · k-grid<br/>everything no stage varies"]
     J["<b>stages.json</b><br/>coarse: mesh 150, tol 0.04<br/>tight:  mesh 300, tol 0.01"]
     M["<b>this machine</b><br/>ranks · solver · GPU"]
     DC["<b>01_coarse/&lt;id&gt;.fdf</b>"]

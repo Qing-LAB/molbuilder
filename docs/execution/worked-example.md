@@ -104,7 +104,7 @@ stage it is about. Then **Generate**:
 
 ```
 projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
-├── <id>.template.fdf               the science, minus what a stage varies
+├── <id>.fdf.template               the science, minus what a stage varies
 │                                   and minus what the hardware decides
 ├── stages.json                     what each stage tunes, + resource intent
 ├── Au.psml  S.psml  C.psml  H.psml the shared package, once

@@ -409,7 +409,7 @@ rather than research, and each names what it holds up:
 
 | # | Question | Where | Blocks |
 |---|---|---|---|
-| 1 | **The command shapes** — stage as positional, `jobset` vs promoting `prep` to top level, and whether `molbuilder run` keeps a name that does not run | step 1c below | **12a** — retiring the shell block removes the only way to run a stage by hand |
+| 1 | ~~**The command shapes**~~ — **decided 2026-08-07**, step 1c. One group (`jobset`), one grammar (`<verb> <kind> [<stage>]`), and `molbuilder bench` folds in | step 1c below | ~~12a~~ — unblocked |
 | 2 | **How you ask for the shape** — `--flat`, a field in the description, or inferred | `project-layout.md § 8` q5 | **12b** — `prep` cannot build a tree without knowing which |
 | 3 | **Is `stages.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
 
@@ -437,13 +437,41 @@ return to**, not step four of a line.
 
 | | Command | Status |
 |---|---|---|
-| write the portable package | the tab, or `molbuilder fdf …` | ships (renders finished decks today — that moves) |
-| **prep a benchmark** for a stage | `molbuilder jobset prep <stage> --bench` | `bench generate`/`prep` ship; the wiring is new |
-| **prep the real run** with what you measured | `molbuilder jobset prep <stage> --bench-result <path>` | new |
-| **prep a redo** | `molbuilder jobset prep <stage> --from run-0` | new |
-| **prep the next stage** | `molbuilder jobset prep <stage> --from 01_coarse/run-0` | new |
-| run it | `molbuilder jobset submit <stage> --mode direct\|submit` | `submit` ships; the stage argument is new |
-| look | `molbuilder jobset status` · `molbuilder snapshot checkpoint` | ship |
+| write the portable package | `molbuilder jobset describe` | **new** — the verb `stages.md § 6.4`'s *one producer for both surfaces* requires, finally named |
+| **prep a benchmark** for a stage | `molbuilder jobset prep bench <stage>` | absorbs `bench generate` + `bench prep` |
+| **run it** | `molbuilder jobset submit bench <stage>` | `submit` ships; the grammar is new |
+| **read the timings** | `molbuilder jobset summarize bench <stage>` | absorbs `bench summarize` |
+| **prep the real run** | `molbuilder jobset prep run <stage>` | absorbs `bench prep-run`; **asks** whether to use the stage's benchmark verdict |
+| **prep a redo / the next stage** | `molbuilder jobset prep run <stage> --from <run>` | new |
+| run it | `molbuilder jobset submit run <stage> --mode direct\|submit` | `submit` ships |
+| look | `molbuilder jobset status [<stage>]` · `molbuilder snapshot …` | ship |
+
+**One group, one grammar: `jobset <verb> <kind> [<stage>]`.** `describe` and
+`status` take no kind, because they are about the calculation rather than one run
+of it. Everything else names the verb, then what is being prepped or submitted,
+then which stage.
+
+**`bench` stops being a top-level group**, and that is the point rather than a
+side effect. Four of its six verbs fold into the table above — and one of them,
+`bench prep-run` (*"bench-result.json → production run-script for this machine"*),
+**is `jobset prep run` written a second time**. Two names for one act is what the
+old split cost. `probe-scheduler` is a config helper rather than part of this
+loop and stays outside it; `siesta-gpu` needs its own decision.
+
+**Why the kind is a positional and not `--bench`.** A flag makes benchmarking a
+*modifier* of the real thing. It is not: `prep bench` and `prep run` are peers,
+because measuring and running are the same act over different parameters
+(`project-layout.md § 2.3.1a`). The grammar should say so.
+
+**`summarize` is a verb of its own** because it *writes a file* — the verdict —
+and because you are meant to read that verdict and decide. Folding it into
+`status` would make it a display; it is a step.
+
+**`prep run` asks rather than reading the verdict silently.** A benchmark lives
+inside the stage it measured, so prep can always *find* one — but finding is not
+permission. It says a verdict exists and waits, the same way it asks before
+changing a directory that already holds results (`checkpointing.md § 4.1`).
+Explicit over implicit, every time.
 
 **Those four preps are one command because they are one act** — *assemble a
 runnable directory from a template, a source of earlier results, and this

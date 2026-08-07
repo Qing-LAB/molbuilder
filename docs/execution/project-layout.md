@@ -58,7 +58,7 @@ directory **in whichever shape you ask for**.
 
 ```mermaid
 flowchart LR
-    UI["<b>the browser</b><br/>template.fdf · stages.json<br/>data files<br/><i>always the same output</i>"]
+    UI["<b>the browser</b><br/>fdf.template · stages.json<br/>data files<br/><i>always the same output</i>"]
     P{"<b>prep</b><br/>on the target machine"}
     F["<b>flat</b><br/>one directory<br/>suffixes keep stages apart"]
     H["<b>hierarchical</b><br/>directories keep them apart"]
@@ -96,7 +96,7 @@ exactly why stage 2 overwrites them.
 
 ```
 bdt_au_relax_c6h4s2au38/            the CALCULATION
-├── <id>.template.fdf               ─┐ written by the browser
+├── <id>.fdf.template               ─┐ written by the browser
 ├── stages.json                      │ portable: names no machine
 ├── Au.psml  S.psml  mb_monitor.py  ─┘
 │
@@ -118,7 +118,7 @@ bdt_au_relax_c6h4s2au38/            the CALCULATION
 ```mermaid
 flowchart TB
     subgraph CALC["<b>the calculation</b> — portable, names no machine"]
-      T["template.fdf · stages.json<br/>pseudopotentials · monitor"]
+      T["fdf.template · stages.json<br/>pseudopotentials · monitor"]
     end
     subgraph ST["<b>a stage</b> — one science setting, built by prep"]
       D["the rendered deck · its wrapper<br/>links up to the shared package"]
@@ -459,7 +459,7 @@ last unknowns are known.
 
 ```mermaid
 flowchart LR
-    T["<b>template.fdf</b><br/>the science that never varies<br/><i>the browser · portable</i>"]
+    T["<b>fdf.template</b><br/>the science that never varies<br/><i>the browser · portable</i>"]
     S["<b>stages.json</b><br/>this stage's values<br/><i>the browser · portable</i>"]
     M["<b>molbuilder.json</b><br/>activation · scheduler · env names<br/><i>this machine · outside the tree</i>"]
     B["<b>bench-result.json</b><br/>ranks · solver · GPU · memory<br/><i>measured here, optional</i>"]
@@ -478,7 +478,7 @@ until you are standing on the machine.
 
 | Input | Comes from | Decides |
 |---|---|---|
-| `template.fdf` | the browser | the physics: functional, basis, k-grid, everything no stage touches |
+| `fdf.template` | the browser | the physics: functional, basis, k-grid, everything no stage touches |
 | `stages.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type |
 | `molbuilder.json` | this machine, outside the tree | how to activate an environment, which queue, what a walltime looks like |
 | `bench-result.json` | measured on this machine, optional | rank count → `BlockSize`; solver → `Diag.Algorithm` **and** which conda env |
@@ -492,7 +492,7 @@ until you are standing on the machine.
 | `Diag.Algorithm` | ScaLAPACK | ELPA |
 | env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` |
 | the wrapper | `mpirun -np 8` | `#SBATCH` header + `srun` |
-| **`template.fdf` and `stages.json`** | **byte-identical** | **byte-identical** |
+| **`fdf.template` and `stages.json`** | **byte-identical** | **byte-identical** |
 
 The last row is the point. The portable half did not move; only what the machine
 decided did.
@@ -624,7 +624,7 @@ You are about to spend a week of wall-clock on the tight stage. First find out
 what this machine is actually fastest at.
 
 ```
-molbuilder jobset prep tight --bench
+molbuilder jobset prep bench tight
 ```
 
 `prep` does what it always does, with the parameter step answering *a grid* — the
@@ -638,7 +638,8 @@ machine, not relaxing the molecule**.
 > different `SystemLabel` and SIESTA will not read them into the real stage; and
 > they are **forced cold**, so they cannot pick anything up either. See § 4.
 
-You submit them, then `bench summarize` reads the timings and writes
+You submit them with `jobset submit bench tight`, then
+`jobset summarize bench tight` reads the timings and writes
 `bench-result.json` — a recommendation, not a decision:
 
 ```jsonc
@@ -652,14 +653,26 @@ You submit them, then `bench summarize` reads the timings and writes
 #### 2.3.3 Job two — the real run, with what you measured
 
 ```
-molbuilder jobset prep tight --bench-result 02_tight/bench/bench-result.json
+molbuilder jobset prep run tight
+
+  a benchmark result exists for this stage:
+      elpa · G=1 K=4 C=6 · mem 96G     (measured here, 2026-08-06)
+  use it?  [y/N]
 ```
 
-Now step 2 has a third input, and it wins over the defaults. The measured rank
-count flows into step 3, where it changes `BlockSize`; the measured eigensolver
-changes `Diag.Algorithm`, which in step 4 changes **which environment the wrapper
-activates**. One measurement, three destinations — which is why resources are not
-"just scheduler flags" here (`engines/stages.md § 5`).
+**It asks; it does not just take it.** A benchmark lives inside the stage it
+measured, so prep can always *find* one — but finding is not permission. You
+measured it in order to look at it, and a prep that silently applied a verdict
+from three weeks ago on a different node would be deciding the thing you asked
+to be shown. Same rule as the checkpoint question
+([`checkpointing.md`](?doc=execution/checkpointing.md) § 4.1): explicit, every
+time.
+
+Say yes and step 2 has a third input, which wins over the defaults. The measured
+rank count flows into step 3, where it changes `BlockSize`; the measured
+eigensolver changes `Diag.Algorithm`, which in step 4 changes **which environment
+the wrapper activates**. One measurement, three destinations — which is why
+resources are not "just scheduler flags" here (`engines/stages.md § 5`).
 
 `prep` prints what it resolved, and that report is the point:
 
@@ -683,7 +696,7 @@ most from what people expect.
 **A stage does not "connect" to the one before it. You hand it a file.**
 
 ```
-molbuilder jobset prep tight --from 01_coarse/run-0
+molbuilder jobset prep run tight --from 01_coarse/run-0
 ```
 
 `--from` names **a run that has already finished** — you just looked at it, which
@@ -745,7 +758,7 @@ right name.
 | the deck template | the browser | everything about the system that does not depend on the machine |
 | **which stage** | you, on the command line | which overrides apply |
 | **the machine** | detected, here, now | ranks, GPUs, scheduler, activation → `environment.json` |
-| a benchmark verdict *(optional)* | `bench summarize` | rank count, eigensolver, memory → the deck **and** the wrapper's env |
+| a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | rank count, eigensolver, memory → the deck **and** the wrapper's env |
 | a finished run *(optional)* | you name it | which coordinates and density matrix the run starts from |
 
 | Output | What it is |
@@ -772,7 +785,7 @@ sequenceDiagram
     participant E as the engine
 
     U->>B: pick a structure, describe the stages
-    B->>T: template.fdf · stages.json · pseudopotentials
+    B->>T: fdf.template · stages.json · pseudopotentials
     Note over T: portable — names no machine
 
     U->>C: prep tight --bench
@@ -780,7 +793,7 @@ sequenceDiagram
     U->>C: submit
     C->>E: run the trials
     E-->>T: timings
-    U->>C: bench summarize
+    U->>C: jobset summarize bench tight
     C->>T: bench-result.json
 
     Note over U: you read it and decide
@@ -1137,7 +1150,7 @@ how a folder stops being trustworthy.
 |---|---|---|---|
 | `molbuilder.json` | outside the tree — cwd or `$XDG_CONFIG_HOME` | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
 | `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | machine settings for this project |
-| `<id>.template.fdf` | ③ calculation | engine deck, incomplete | **the science backbone** — everything fixed, nothing a stage varies, nothing the hardware decides |
+| `<id>.fdf.template` | ③ calculation | engine deck, incomplete | **the science backbone** — everything fixed, nothing a stage varies, nothing the hardware decides |
 | `stages.json` | ③ calculation | `molbuilder/stages@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
 | `<id>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
 | `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6); the edge fields serve the benchmark sweep |
@@ -1403,7 +1416,7 @@ than no invariant, because it fails a directory that is working correctly.
    most people's default rather than after.
 7. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
    (§ 2.3, § 2.5): preparing and submitting are separate steps, each naming its
-   stage — `jobset prep <stage>` then `jobset submit <stage>`, with `--cold` on
+   stage — `jobset prep run <stage>` then `jobset submit run <stage>`, with `--cold` on
    prepare because skipping the copy is a setup decision. The exact spelling is
    in `web/staged-runs-architecture.md § 8`, step 1c; only cosmetic choices
    remain.
