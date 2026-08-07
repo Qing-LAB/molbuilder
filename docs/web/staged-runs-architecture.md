@@ -396,6 +396,25 @@ checkpointable. Eight tests in `tests/test_checkpoint_repo_scope.py`, including 
 hierarchical round-trip — init, checkpoint, change a later stage, restore, and
 the first stage's `.DM` two levels down comes back.
 
+**Step 1b — the questions that gate code, in one place.** These are decisions
+rather than research, and each names what it holds up:
+
+| # | Question | Where | Blocks |
+|---|---|---|---|
+| 1 | **The command shapes** — stage as positional, `jobset` vs promoting `prep` to top level, and whether `molbuilder run` keeps a name that does not run | step 1c below | **12a** — retiring the shell block removes the only way to run a stage by hand |
+| 2 | **How you ask for the shape** — `--flat`, a field in the description, or inferred | `project-layout.md § 8` q5 | **12b** — `prep` cannot build a tree without knowing which |
+| 3 | **Is `stages.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
+
+**Two of the three are smaller than they were, and one is gone.** The repo-scope
+blocker that used to lead this table was **fixed rather than decided** (step 1a).
+Question 1 was *what is the entry point at all* until `project-layout.md § 2`
+answered it; what is left is how it is spelled. Question 2 is new — it did not
+exist until the shape became a choice made at `prep` rather than a consequence of
+how many stages you wrote.
+
+**None of them block the checkpoint work.** Items 10, 11 and 15 are unblocked and
+can start now; the three above gate 12a–12c and step 3.
+
 **Step 1c — the commands, which fall out of the workflow.**
 `project-layout.md` § 2 puts the boundary between what a laptop can know and what
 only the target machine can. The browser writes a **portable package** — data
@@ -459,18 +478,6 @@ appear together, which is exactly where a person should be looking.
    subsumes for staged calculations. It stays for the flat single-job path, but
    the name will confuse someone.
 
-**Step 1b — the questions that gate code, in one place.** Items 12a–12c cannot
-start until these are answered, and they are decisions rather than research:
-
-| # | Question | Where | Blocks |
-|---|---|---|---|
-| 1 | **The command shapes** — stage as positional, `jobset` vs a `stage` group, and whether `molbuilder run` keeps a name that does not run | step 1c above | **12a** — retiring the shell block removes the only way to run a stage by hand |
-| 2 | **Is `stages.json` the right name**, and **is the folder named by the id** | § 9 q1–q2 | 6, 8 |
-
-Question 1 was *what is the entry point at all* until § 2.1 answered it; what is
-left is only how it is spelled. The repo-scope blocker that led this table is
-**gone** — fixed in step 1a rather than decided.
-
 **Step 2 — the backend, built to those contracts.**
 
 1. **Settle which of the duplicated fields wins today.** `relax_force_tol` and
@@ -526,27 +533,42 @@ left is only how it is spelled. The repo-scope blocker that led this table is
    same folder from a terminal and from the browser, and neither path has a
    renderer the other lacks.
 10. **Archive only what is new** (`checkpointing.md` L5) — **before** item 11,
-    because it gates it. Immutable attempts
-    (`execution/project-layout.md` § 1.2) make this structural: an archived
-    attempt cannot change, so a save stores the attempts that appeared since the
-    last one and references the rest. No content-addressed store needed. The archive is keyed by commit sha and copies
+    because it gates it. Today the archive is keyed by commit sha and copies
     every big binary on every checkpoint; automatic checkpoints fire twice per
-    stage, and `prune` is unbuilt, so the two together grow the disk without
-    bound. *Done when:* a second checkpoint with the binaries untouched costs
-    near-zero incremental disk, and the shipped guide's *"deduped by content"*
-    becomes true rather than aspirational. Add **`snapshot verify`** while there
-    (L6): the check already exists and is reachable only by attempting a restore.
-11. **Checkpoints at the two stage boundaries, and `branch` over HTTP** — gated
-    on **step 1a**, without which none of it can run
-    (`engines/stages.md § 7.3`). *Done when:* a replacing produce leaves a commit
-    holding the folder as it was; a stage seen to finish leaves a commit **and a
-    tag named `<id>/<stage>/<UTC>`**, with a message carrying the id, the stage
-    and how the run went; `git tag --list '<id>/<stage>/*'` answers "every
+    stage and `prune` is unbuilt, so the two together grow the disk without
+    bound. **In the hierarchical shape this is structural**: an archived attempt
+    cannot change (`project-layout.md § 1.5`), so a save stores the attempts that
+    appeared since the last one and references the rest — no content-addressed
+    store needed. **In the flat shape it does not apply and must not be forced**:
+    one `<id>.DM` is overwritten every stage, so the path is stable while its
+    contents are not, and a fresh copy is correct rather than wasteful
+    (`project-layout.md § 6.2`). *Done when:* in a hierarchical folder, a second
+    checkpoint with the attempts untouched costs near-zero incremental disk; in a
+    flat one, a changed binary is copied and nothing pretends otherwise; and the
+    shipped guide's *"deduped by content"* becomes true rather than aspirational.
+    Add **`snapshot verify`** while there (L6): the check already exists and is
+    reachable only by attempting a restore.
+11. **Checkpoints at the two stage boundaries, and `branch` over HTTP.**
+    ~~Gated on step 1a~~ — **unblocked 2026-08-06**: a calculation root carrying
+    its description can now be initialised, so `engines/stages.md § 7.3`'s
+    automatic history is reachable. *Done when:* a replacing produce leaves a
+    commit holding the folder as it was; a stage seen to finish leaves a commit
+    **and a tag named `<id>/<stage>/<UTC>`**, with a message carrying the id, the
+    stage and how the run went; `git tag --list '<id>/<stage>/*'` answers "every
     checkpoint of this stage"; a folder molbuilder produces into is initialised
     if it was not already; and the browser can branch from a tag, with the branch
     name proposed from the stage it forks. **The wrapper does none of it**
     (`running-a-job.md § 6.2`: it is deliberately git-agnostic), so the finish is
     observed where the run is already watched.
+11a. **A checkpoint before each stage, in the flat shape, is not the same
+    feature.** Item 11 is about a *staged* folder's automatic history. The flat
+    shape needs the same trigger for a different reason: it is the **only** way
+    back to a previous state, because each stage overwrites the last's warm files
+    (`checkpointing.md § 5.0`). A missed checkpoint there is not a thinner history
+    — it is a state that no longer exists anywhere. *Done when:* the same
+    boundary that triggers a checkpoint in a staged folder triggers one in a flat
+    one, and the surface says plainly that this is the save point rather than
+    housekeeping.
 12. **The archive covers runs, not containers**
     (`execution/project-layout.md` § 6.1). Every directory is one or the other,
     so the classification is positional and needs no marker file: a flat root or
@@ -611,12 +633,17 @@ left is only how it is spelled. The repo-scope blocker that led this table is
     [`running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` for the workflow),
     and no docstring names a file that is not in the tree.
 15. **The checkpoint invariants become tests**
-    ([`checkpointing.md`](?doc=execution/checkpointing.md) `§ 6`). Eighteen, of
-    which **eleven can be asserted against the code as it stands** and need none
-    of this project's other work. *Done when:* all eighteen have an assertion, and
-    the two that catch silent failures run over a real produced folder rather than
-    a fixture — **I2** (every MANIFEST entry matches its file by name, size and
-    sha256) and **S1** (tracked XOR archived, never both, never neither).
+    ([`checkpointing.md`](?doc=execution/checkpointing.md) `§ 6`). **Twenty-two**,
+    of which **thirteen can be asserted against the code as it stands** and need
+    none of this project's other work. Three are already pinned — **L1** by
+    `tests/test_checkpoint_repo_scope.py`, **L2** and **L7** by the fixes that
+    landed with them. *Done when:* all twenty-two have an assertion; **each one
+    names the shape it holds in** (`project-layout.md § 7` marks them `[both]` or
+    `[hierarchical]`), because a check written for one shape that fails the other
+    is worse than no check — it fails a directory that is working correctly; and
+    the two that catch silent failures run over a real produced folder rather
+    than a fixture — **I2** (every MANIFEST entry matches its file by name, size
+    and sha256) and **S1** (tracked XOR archived, never both, never neither).
     Worth starting **before** step 2 rather than after it: they are the check that
     tells you whether items 10 and 11 broke anything.
 
@@ -693,6 +720,14 @@ what a user needs.
    stays attached to the stage that produced it. What remains is the code change
    in `job-contracts.md § 2.3`, not a decision.
 
+   **Reopened in part (2026-08-06), and smaller than before.** The deck is now
+   rendered *into its own stage directory* rather than beside its siblings
+   (`project-layout.md § 2.2`), so the directory already says which stage it is
+   and the deck can simply be `<id>.fdf` — no suffix, and the per-stage
+   trajectory separation comes free instead of being carried by filenames. That
+   is `project-layout.md § 8` question 3, and it is to **verify against the run
+   decoder**, which reads those names, rather than to decide.
+
    *(The original wording, for the record:)* **the two conventions do not agree.** A stage deck is `<label>_<stagename>`, an underscore and a *name*;
    the molwatch log is `<label>-stage<N>`, a hyphen and a *number*, and the run
    decoder's stage regex keys on the hyphen form (`job-contracts.md § 2.3`).
@@ -706,10 +741,16 @@ what a user needs.
 9. **May two enabled stages be identical?** Nothing forbids it, and the answer is
    probably "warn": two decks differing in nothing but their name produce the
    same calculation twice into the same warm state.
-10. **Who creates the stage containers when the host and the target are the same
-    machine?** The producer writes the calculation level; `prep` lays out the
-    per-stage directories — but `prep` is a *target-side* verb, meant to run
-    after the folder is copied to a cluster. On a workstation there is no copy,
-    and nothing says whether generate should have done it already
-    ([`worked-example.md`](?doc=execution/worked-example.md) § 4). One sentence
-    either way; it is unstated rather than contested.
+10. ~~**Who creates the stage containers when host and target are the same
+    machine?**~~ — **answered** (`project-layout.md § 2.1`). **`prep` does,
+    always, on the machine that will run it.** The question only looked open
+    while "produce" and "prep" were both thought of as writing directories. They
+    are not: the browser writes a portable package that names no machine, and
+    `prep` turns it into a runnable tree — on a workstation that machine simply
+    happens to be the same one. There is no copy step to hang the boundary on
+    because the boundary was never about copying.
+11. **The two directory shapes have their own open questions**, and they live
+    with the contract that owns them rather than here: how a user asks for the
+    shape, and whether a flat directory can become hierarchical later —
+    `execution/project-layout.md § 8`, questions 5 and 6. Both are listed in
+    step 1b above because they gate item 12b.

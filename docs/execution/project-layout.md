@@ -1084,8 +1084,22 @@ than no invariant, because it fails a directory that is working correctly.
    descriptions side by side, and the layout would allow it, but the id names the
    folder and warm files are shared, so a second ladder would continue from the
    first's state. Probably refuse; not yet stated.
-5. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
-   (§ 2.1): preparing and submitting are separate steps, each naming its stage —
-   `jobset prep <stage>` then `jobset submit <stage>`, with `--cold` on prepare
-   because skipping the copy is a setup decision. The exact spelling is in
-   `web/staged-runs-architecture.md § 8`, step 1c; only cosmetic choices remain.
+5. **How does a user ask for the shape?** § 1 makes flat-versus-hierarchical a
+   choice made at `prep`, and nothing here says how it is spelled: a `--flat`
+   flag, a field in the description, or inferred from how many stages are
+   enabled. **Inference is tempting and probably wrong** — it would hand a
+   two-stage description the hierarchy without anyone asking for it, and the
+   whole point of the two shapes is that the trade in § 1.2 is the user's to
+   make.
+6. **Can a flat directory become hierarchical later?** Someone runs two stages
+   flat, then wants to keep every stage's results after all. Every part exists —
+   the checkpoint holds the earlier states (§ 1.2), and `prep` can build the tree
+   — but nothing joins them, and *"re-run everything"* is not an answer when a
+   stage is a week of cluster time. Worth settling **before** the flat shape is
+   most people's default rather than after.
+7. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
+   (§ 2.3, § 2.5): preparing and submitting are separate steps, each naming its
+   stage — `jobset prep <stage>` then `jobset submit <stage>`, with `--cold` on
+   prepare because skipping the copy is a setup decision. The exact spelling is
+   in `web/staged-runs-architecture.md § 8`, step 1c; only cosmetic choices
+   remain.

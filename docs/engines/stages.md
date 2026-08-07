@@ -527,7 +527,7 @@ intermediate result is not a trade, it is a defect.
 
 **Stages are not chained, and this is the load-bearing decision.** Each stage is
 set up and started on its own, *after* you have looked at the one before it
-(`project-layout.md § 7.1`). A stage is a long job; a chain that continues by
+(`project-layout.md § 1.6`). A stage is a long job; a chain that continues by
 itself can spend a week refining a geometry you would have rejected in a minute.
 So no `depends_on`, no queued follow-on, and no file pointing at a result that
 does not exist yet. When you set the next stage up, the run it continues from

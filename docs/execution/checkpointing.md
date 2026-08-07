@@ -25,7 +25,7 @@ document.
 **This contract owns:** what must never change in a checkpointed run directory,
 and what information must be kept separate from what. Where the history sits in
 the project tree, and why it sits there, is
-[`execution/project-layout.md`](?doc=execution/project-layout.md) § 5.
+[`execution/project-layout.md`](?doc=execution/project-layout.md) § 6.
 
 ---
 
@@ -97,8 +97,6 @@ fail silently — a big binary in git bloats the repository until a clone is
 impossible, and one in neither store is *gone* after a restore, with nothing
 saying so.
 
-
-
 ### S1 — a **regular file** is git-tracked **or** content-archived, never both, never neither
 
 *holds today.*
@@ -107,7 +105,7 @@ saying so.
 (including the small warm-restart `.XV` / `.CG`) is committed to git; the large
 binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
 
-**Where a file sits decides whether it is ours.** `project-layout.md § 1.1`
+**Where a file sits decides whether it is ours.** `project-layout.md § 1.4`
 makes every directory a *container* (setup — text, git's) or a *run* (what one
 invocation produced). The archive covers the runs this calculation owns: a flat
 root, or a stage's `run-N/`. A nested container's runs — a benchmark's
@@ -122,15 +120,22 @@ like `.hidden.DM` was archived under a key the parser refuses: **the archive wro
 a MANIFEST its own reader could never accept**, making that checkpoint
 permanently unverifiable and unrestorable.
 
-**Symlinks are outside this too, and the word "regular" is load-bearing.** A carried
-restart file is a link to the stage that produced it, and a link has no content
-of its own — the producer's file is archived once, under its own key. Git ignores
-the link too (a gitignore pattern matches by name, not by file type), so a link
-is in *neither* set, and that is correct rather than a hole: the layout is
-reproducible from the description and the carry rules
-(`engines/stages.md § 7.1`), while the bytes are already archived once. Archiving
-the link as a second copy would duplicate content *and* restore a regular file
-where a link belongs — S3, from the other side.
+**Symlinks are outside this too, and the word "regular" is load-bearing.** A
+stage links its deck and the shared pseudopotentials up to the calculation root,
+and an attempt links the deck down from its stage — so a checkpointed tree is
+full of links. A link has no content of its own: the real file is tracked or
+archived once, wherever it actually lives. Git ignores the link as well (a
+gitignore pattern matches by name, not by file type), so a link is in *neither*
+set, and that is correct rather than a hole — the layout is reproducible from the
+description, while the bytes are already stored once. Archiving a link as a
+second copy would duplicate content *and* restore a regular file where a link
+belongs.
+
+> **This paragraph used to be about carried restart files**, which arrived as
+> symlinks into the producing stage while stages were chained. They no longer
+> are: whatever a run continues from is **copied in as a real file** before it
+> starts (`project-layout.md § 1.6`), so it is an ordinary archived binary like
+> any other. The rule is unchanged; only its example moved.
 
 | | |
 |---|---|
@@ -585,6 +590,39 @@ becomes the reason the disk fills.
 | **How to check** | Checkpoint a folder twice with the binaries untouched between them. The second checkpoint's *incremental* disk cost is near zero |
 | **How to fix** | Store an attempt's files once and let later saves reference them; immutability makes that safe without hashing anything. (Content-addressing — `.binsnapshots/by-content/<sha256>` with the MANIFEST referencing it — stays the fallback if the layout ever admits mutable runs.) |
 
+### L6 — a history can be verified without being restored
+
+*needs work — the capability exists but has no door.*
+
+`_verify_archived_binaries` already checks existence, size and sha256 against the
+MANIFEST and touches nothing (I2). It is called from exactly two places, both on
+the restore path. **So the only way to learn that an archive is intact is to
+attempt a restore** — which is the worst possible moment to find out it is not,
+and which a user will not do speculatively on a folder they are working in.
+
+| | |
+|---|---|
+| **How it fails** | A checkpoint taken onto a failing disk verifies at write time (A1) and is never looked at again until the day someone needs it |
+| **How to check** | A `snapshot verify [<ref>]` verb — CLI and HTTP — runs I2 over one archive or all of them and reports. It is a few lines over a helper that already exists, and it is the natural home for the most valuable test in this document |
+
+---
+
+### L7 — a change to a big binary alone leaves no checkpoint
+
+*not held today — found by running L2's acceptance test.*
+
+`checkpoint()` runs `git add .`, then `git status --porcelain`; if the tree is
+clean it returns `None`. Big binaries are gitignored (S1), so **a change that
+touches only them leaves the status clean and produces no commit and no new
+archive.** The code half-anticipates this: if HEAD has *no* archive at all and
+binaries exist, it writes one. It does not notice that HEAD's archive is stale.
+
+| | |
+|---|---|
+| **How it fails** | A user re-runs a stage that rewrites its `.DM` and nothing else git can see, checkpoints, and is told the tree was clean. The new density matrix is in no snapshot. It surfaces later as a refused restore ("uncommitted binary changes"), which is the safe direction, but the checkpoint they asked for never happened |
+| **How to check** | Change only a big binary, checkpoint, and assert a new archive exists whose MANIFEST records the new sha |
+| **Note** | In a staged folder a run also writes text (`.out`, `.XV`), so the clean-status case is narrower than it looks — but "narrower" is not "absent", and `--force`-style re-runs hit it |
+
 ### L8 — an archived attempt never differs afterwards
 
 *needs the layout — and it is I2 pointed at a directory.*
@@ -603,39 +641,6 @@ violation. Do not let a check written for one shape fail the other.
 |---|---|
 | **How it fails** | Silently. Someone edits a file inside an attempt already saved, and every later save carries a history whose earlier points no longer describe what is on disk |
 | **How to check** | Re-hash an archived attempt's files against their MANIFEST entries — exactly I2, over a directory the layout says is frozen. A difference is reported, never merged |
-
-### L7 — a change to a big binary alone leaves no checkpoint
-
-*not held today — found by running L2's acceptance test.*
-
-`checkpoint()` runs `git add .`, then `git status --porcelain`; if the tree is
-clean it returns `None`. Big binaries are gitignored (S1), so **a change that
-touches only them leaves the status clean and produces no commit and no new
-archive.** The code half-anticipates this: if HEAD has *no* archive at all and
-binaries exist, it writes one. It does not notice that HEAD's archive is stale.
-
-| | |
-|---|---|
-| **How it fails** | A user re-runs a stage that rewrites its `.DM` and nothing else git can see, checkpoints, and is told the tree was clean. The new density matrix is in no snapshot. It surfaces later as a refused restore ("uncommitted binary changes"), which is the safe direction, but the checkpoint they asked for never happened |
-| **How to check** | Change only a big binary, checkpoint, and assert a new archive exists whose MANIFEST records the new sha |
-| **Note** | In a staged folder a run also writes text (`.out`, `.XV`), so the clean-status case is narrower than it looks — but "narrower" is not "absent", and `--force`-style re-runs hit it |
-
-### L6 — a history can be verified without being restored
-
-*needs work — the capability exists but has no door.*
-
-`_verify_archived_binaries` already checks existence, size and sha256 against the
-MANIFEST and touches nothing (I2). It is called from exactly two places, both on
-the restore path. **So the only way to learn that an archive is intact is to
-attempt a restore** — which is the worst possible moment to find out it is not,
-and which a user will not do speculatively on a folder they are working in.
-
-| | |
-|---|---|
-| **How it fails** | A checkpoint taken onto a failing disk verifies at write time (A1) and is never looked at again until the day someone needs it |
-| **How to check** | A `snapshot verify [<ref>]` verb — CLI and HTTP — runs I2 over one archive or all of them and reports. It is a few lines over a helper that already exists, and it is the natural home for the most valuable test in this document |
-
----
 
 ## 6. The review sheet
 
@@ -666,7 +671,7 @@ One line each, for reading over a diff:
 | **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
 | **L8** | an archived attempt never differs afterwards | needs the layout — **hierarchical only** (§ 6.2 there) |
 
-**Thirteen of the twenty-one can be asserted against the code as it stands.**
+**Thirteen of the twenty-two can be asserted against the code as it stands.**
 Three (**L1**, **L2**, **L7**) were broken and are now fixed, with tests. Two
 (**L5**, **L6**) are not held and are work rather than checks.
 
