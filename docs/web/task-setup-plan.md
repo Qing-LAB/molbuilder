@@ -248,6 +248,23 @@ Four things the table has to get right:
   for both: the *strategy* preset chooses **which stages are enabled**; the *row*
   preset fills **one stage's values**.
 
+> **Most of this table already exists, and it is generic.** `form-schema.js`'s
+> `stage-table` field kind renders any `List[<dataclass>]` field as exactly this
+> orientation — rows the per-stage parameters, columns the stages — with a preset
+> dropdown over the enable flags; the Python end (`_field_to_schema` →
+> `_stagespec_to_field_schemas`) already emits the per-column field shape, and
+> [`web/form-schema.md`](?doc=web/form-schema.md) contracts it as one of the field
+> kinds. Found by P0's mechanical count, recorded as mechanism 10 in
+> [`staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) § 8b.
+>
+> **The gap is the data source, not the layout.** That widget lays out a schema's
+> `default`; this tab lays out a `task.json` read off a folder, and the two
+> differ on three of the four bullets above — the quiet-vs-plain drawing of a cell
+> that equals `base`, the *start from* row, and the column headers, which the
+> widget deliberately takes from the index rather than the stage's name. So the
+> first thing this tab does is ask whether the widget can be fed a description
+> without being rewritten — and if it cannot, say why in writing.
+
 ### 6.1 What has already run
 
 Beside each column, what the folder says: whether that stage has outputs, how many

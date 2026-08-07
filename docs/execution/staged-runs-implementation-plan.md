@@ -59,7 +59,7 @@ and choosing between them is the first thing a phase does:
 - proposing a mechanism the contract never names;
 - citing a function as the *reason* for a design (`_auto_block_size` does it this
   way, so…) — that is the past arguing with the plan;
-- *"keep it, it is still useful"* — how nine ways to say "stage" happened;
+- *"keep it, it is still useful"* — how ten ways to say "stage" happened;
 - a passing test outranking an invariant.
 
 ---
@@ -219,7 +219,7 @@ Checklist:
 
 ### Review 2 — What should be gone, and is it?
 
-*Subtraction. The lens this project has needed most* — nine ways to say "stage"
+*Subtraction. The lens this project has needed most* — ten ways to say "stage"
 exist because every previous pass only added.
 
 **Method:** work from the phase's *Subtracts* list. For each name: find its
@@ -327,17 +327,19 @@ regression is caught by a test rather than by the next fresh-eyes review — and
 it gives the subtraction reviews something to point at instead of an opinion.
 
 **Re-anchor before writing any code:**
-`staged-runs-architecture.md` § 8b (the nine mechanisms, the three filename
+`staged-runs-architecture.md` § 8b (the ten mechanisms, the three filename
 conventions) and § 8c (*what "done" would look like*) ·
 [`process/testing.md`](?doc=process/testing.md) (the source-text-invariant
 pattern) · [`checkpointing.md`](?doc=execution/checkpointing.md) § 6.
 
 **Units:**
 
-1. `tests/test_stage_vocabulary.py` — an **allowlist** of the nine live
-   mechanisms by name and location. Removing one is a one-line edit; adding one
-   fails. (Same shape as the CSS duplicate-selector guard already in the tree —
-   reuse its harness rather than writing a second one.)
+1. `tests/test_stage_vocabulary.py` — an **allowlist** of the live mechanisms by
+   name and location. Removing one is a one-line edit; adding one fails. (Same
+   shape as the CSS duplicate-selector guard already in the tree — reuse its
+   harness rather than writing a second one.) It counts **ten**, not the nine
+   § 8b listed by hand: the mechanical pass added the `stage-table` field kind,
+   and § 8b now records both the row and why the first reading missed it.
 2. A guard for question 2 (no stage *position* in an emitted filename) and one
    for question 3 (no direct engine invocation in a generated script). **Both
    fail today**; both are `xfail(strict=True)` naming P4 and P5.
@@ -582,12 +584,16 @@ bootstrap, not a program**).
 4. The produce is transactional: built elsewhere, moved into place only when
    every deck, wrapper and description succeeded.
 
-**Subtracts — the big one.** Nine mechanisms become the agreed set, per § 8
+**Subtracts — the big one.** Ten mechanisms become the agreed set, per § 8
 item 2a: `--stage N` (the flag goes, **the presets stay** as the defaults a new
 stage is created with — the tier values are real science); `--stage-strategy`;
 `--stages-json`; `--stage-resources`; the flat runner. PySCF's `StageSpec`
 **stays as it is** — its ladder runs inside one process, so it is genuinely a
-different shape; it should read the same description, not the same runner.
+different shape; it should read the same description, not the same runner. The
+`stage-table` field kind (mechanism 10) **also stays and is not P5's business**:
+it is a widget, not a way of describing a calculation, and P11 asks the only
+question about it that matters — whether it can be fed a `task.json` instead of a
+schema default without being rewritten.
 
 **Milestone M5.** A bundle never contains both a flat runner and a
 `job-set.json`. A produced folder can be told apart **by looking at it** rather
@@ -855,6 +861,16 @@ come from**) · `checkpointing.md` L1 (what makes a directory a calculation root
    relaxation tab, and Transport needs a second copy. Nothing is added for
    producers that do not exist — a `kind` field with one legal value is the
    speculative generality Review 3 says to delete.
+
+   ⚠ **Start by reading `form-schema.js`'s `stage-table`, because most of this
+   table already exists** — P0's mechanical count found it (`staged-runs-architecture.md`
+   § 8b, mechanism 10). It is generic over any `List[<dataclass>]`, and it already
+   lays out **rows as the per-stage parameters, columns as the stages**, which is
+   the orientation `task-setup-plan.md § 6` asks for. The gap is the data source:
+   it renders a schema's `default`, and this tab renders a `task.json` read off a
+   folder. **The first unit is answering whether it can be fed one without being
+   rewritten** — and if the answer is no, saying why in writing, because
+   "I rebuilt the grid" is exactly what Review 2 exists to catch.
 4. **What has already run**, read from the folder — no target machine needed.
    Without it you cannot decide what the next stage should be, which is the tab's
    whole purpose.
@@ -942,7 +958,7 @@ runs; the "today" column is `staged-runs-architecture.md § 8b`'s count at
 
 | Measure | 2026-08-07 | Target | Phase |
 |---|--:|--:|---|
-| ways to say "stage" | 9 | the agreed set | P5 |
+| ways to say "stage" | 10 | the agreed set | P5 |
 | filename conventions for a stage | 3 | 1 | P4 |
 | generated scripts invoking an engine directly | 1 | 0 | P5 |
 | producers that chain stages | 2 | 0 | P7 |

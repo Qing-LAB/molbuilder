@@ -1219,7 +1219,7 @@ piece of work than the plan described, and pre-1.0 it is a clean break rather
 than a migration — molbuilder does not carry compatibility shims across a rename
 ([`process/conventions.md`](?doc=process/conventions.md)).
 
-### There are already nine ways to say "stage". The design adds a tenth.
+### There are already ten ways to say "stage". The design adds an eleventh.
 
 | # | Mechanism | Shape | Where |
 |--:|---|---|---|
@@ -1232,10 +1232,43 @@ than a migration — molbuilder does not carry compatibility shims across a rena
 | 7 | `stages_to_jobset` | **hierarchical** — a ladder JobSet | `siesta/stages.py` |
 | 8 | PySCF `StageSpec` | an in-script Python loop, **one file** | `config/pyscf.py` |
 | 9 | the browser's `p-stage-preset` | a stage **number**, into a filename | `structure-optimization/viewer.js` |
+| 10 | the `stage-table` field kind | a **generic** per-stage grid, from any `List[<dataclass>]` | `web/blueprints/_shared.py` → `static/lib/form-schema.js` |
 
-Nine mechanisms, one word. The design's `task.json` + `overrides` would be the
-tenth, **and the plan currently retires none of them.** That is the single
+Ten mechanisms, one word. The design's `task.json` + `overrides` would be the
+eleventh, **and the plan currently retires none of them.** That is the single
 largest thing missing from this document: not a feature, a subtraction.
+
+> **Corrected 2026-08-07 (P0 of the implementation plan), and the correction is
+> good news.** This table said *nine* until P0 counted mechanically instead of by
+> hand — scanning for every click option, class, module function and constant
+> whose name carries *stage*, then attributing each hit. The pass added **row 10**,
+> which the first reading missed because it lives in the form builder rather than
+> anywhere the word *ladder* appears: `_field_to_schema` turns any
+> `List[<dataclass>]` field into `kind: "stage-table"`, and `form-schema.js`
+> renders it as a grid whose **rows are the per-stage parameters and whose columns
+> are the stages** — with a preset dropdown over the enable flags. It is already
+> contracted, in [`web/form-schema.md`](?doc=web/form-schema.md)'s field-kind list.
+>
+> That orientation is the panel [`task-setup-plan.md`](?doc=web/task-setup-plan.md)
+> § 6 describes, which changes what P11 is: **the shared tab's grid mostly exists
+> already, in the one place general enough to serve every engine.** What it does
+> not have is the tab's data source — it lays out a schema's `default`, not a
+> `task.json` read off a folder — so P11's real question is whether that widget can
+> be fed from a description without being rewritten. Answering it is P11's first
+> unit, not a foregone conclusion.
+>
+> The same pass found two *false* hits worth naming, because both are the
+> keyword-matching trap: `DIAG_1STAGE` / `DIAG_2STAGE` (`bench/__init__.py`) and
+> `ELPA-1STAGE` (the browser) are **SIESTA diagonalisation** stages, and
+> `molviewer-window-stage` is a CSS layer. Same word, unrelated role.
+
+**`build_siesta_stage_bundle` is not an eleventh mechanism, and is worse than
+one.** It is a *composition* of rows 6 and 7 that calls **both** — emitting flat
+decks with a flat bash runner *and* a hierarchical ladder JobSet from one
+invocation, so the shape is never actually chosen. `engines/stages.md § 6.7` makes
+`shape` a required field precisely so that something decides; this is the code
+that decides by not deciding. P5 (*one shape in, one shape out*) is where it is
+resolved.
 
 The code even says so itself. `config/siesta.py` on mechanism 1: *"This overlay
 is the minimum-viable precursor… **Do NOT delete the overlay** during the #542
