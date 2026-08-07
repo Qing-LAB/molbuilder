@@ -934,6 +934,22 @@ them; within a layer, one concept has exactly one name.
 | GPU request | `enable_gpu` + `diag_algorithm` | `gres` → `--gres` | derived from `.fdf` + GPU type |
 | Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
 | Non-convergence policy | `on_nonconvergence` (`proceed`/`continue`/`halt`) | `dep_kind` (`afterany`/`afterok`) | `stages_to_jobset` |
+| Warm-retry budget | `continue_retries` (1–5) | `continue_retries` — **not a SLURM flag** | `stages_to_jobset` |
+
+> **One row in this table becomes no scheduler flag at all, and it is not an
+> oversight.** `continue_retries` rides `jobset.Resources` because that is the
+> road every *"field the deck never carries"* already rides
+> (`engines/stages.md § 5`, third row, which groups it with `mpi_np` and
+> `omp_threads`) — but where those two resolve to `-n` and `-c`, this one is
+> **baked into the wrapper at install time** (`running-a-job.md § 3.5`) and
+> never reaches an `sbatch` line.
+>
+> Decided 2026-08-07. The alternative was a second road from a stage to its
+> wrapper, which would have meant two ways for a per-job value to travel and a
+> mapping maintained by hand — the thing § 5's *"the routing is derivable, never
+> a second list"* exists to prevent. Written down here **and** in `Resources`'
+> docstring, because a field sitting in a class called *a per-job scheduler ask*
+> is otherwise an invitation to render it into a directive.
 
 **The translation rule:** persisted/exchange files use the exchange name; a
 *producer* maps config → exchange at its boundary (e.g. `stages_to_jobset`
