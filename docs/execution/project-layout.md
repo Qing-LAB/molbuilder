@@ -647,6 +647,64 @@ self-contained when moved to a cluster.
 
 ---
 
+### 2.7 The return leg — the half of the workflow nothing owns
+
+*Not designed. Found 2026-08-07 by reading the workflow as a whole rather than
+step by step, and it is the largest gap in this document.*
+
+**Every file movement in this design points one way.** § 2.1 sends a portable
+package *to* the target; `running-a-job.md` says *"`scp -r my-job/` to a
+cluster"*; `job-system.md` says *"you `scp` the bundle to the cluster"*. Search
+the execution docs for the opposite direction and there is nothing. The design
+has a carefully-argued outward boundary and **no inward one at all**.
+
+That is not a missing convenience. Four things this document already promises
+quietly assume the results are where the browser is:
+
+| What the design says | What the second machine does to it |
+|---|---|
+| **`prep` is a hub you return to** (§ 2.3) — you look at the last run, then set up the next stage | you return to it **over ssh**, on the cluster. The browser this is being built for is not in that loop |
+| **The checkpoint is the save point** (`checkpointing.md § 5.0`) — in the flat shape, the only way back | the history is created where the run happened. Your local `projects/` copy is a *different folder with no history* — two divergent copies of one calculation |
+| **A stage finishing leaves a commit and a tag** (item 11) — *"observed where the run is already watched"* | SLURM ran it. Nobody local watched it. **The trigger has no observer on the machine where the folder lives** |
+| **A benchmark's verdict reaches the description** (item 18) | `bench-result.json` is written on the target; the description it must update is wherever the browser opened it |
+
+**The one-machine case hides this completely,** which is why it went unnoticed:
+run on your workstation and "the target" and "where the browser looks" are the
+same directory, so every arrow above is a no-op.
+
+**What has to be decided, before any of it is built:**
+
+1. **Where is the calculation's home?** Two candidates, and they are genuinely
+   different designs, not two spellings.
+   - *The folder is the truth, wherever it is.* The browser opens whatever is in
+     front of it; the cluster copy and the local copy are both real, and the
+     checkpoint history is the thing that reconciles them (it is already a git
+     repository, so *fetch* is a real answer rather than a metaphor).
+   - *The project tree is the truth and the target is scratch.* A run is
+     dispatched, and its results are brought back into `projects/`; the cluster
+     copy is disposable.
+2. **Who notices a run finished on another machine?** Nothing does today.
+   `jobset status` asks a scheduler, from the target. Either something polls
+   across the boundary, or the checkpoint trigger fires on the target and travels
+   with the history.
+3. **Does the id survive the round trip, and does anything check?**
+   `run-identity.md` says the id is knowable before the calculation exists, which
+   is exactly what makes it usable as the thing that says *these two folders are
+   the same calculation*. Nothing currently makes that check.
+
+**Until this is decided, the honest statement of scope is:** this design is
+complete for a calculation that is prepped, run, checkpointed and read **in one
+place**, and the *portable package* boundary of § 2.1 is the only part of the
+two-machine story that exists. Everything after "you scp it" is a person with a
+terminal, and the documents should not imply otherwise.
+
+> Recorded as item 19 in
+> [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md).
+> It is deliberately **not** slotted into the critical path there: it is a
+> question about what the system *is*, and answering it may change what `prep`
+> and the checkpoint triggers are for. That makes it a decision to take
+> alongside the shape question, not after it.
+
 ## 3. Two kinds of tuning, nested
 
 There are two things a user varies. They vary for different reasons, they need

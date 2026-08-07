@@ -966,6 +966,27 @@ appear together, which is exactly where a person should be looking.
     when:* a benchmark verdict can be written back as that stage's resource
     overrides, and re-producing keeps the measured configuration.
 
+19. **The return leg — the half of the workflow nothing owns.** ⛔ **A decision,
+    not a task**, and the largest gap found in this design
+    ([`project-layout.md`](?doc=execution/project-layout.md) § 2.7).
+    Every file movement in these documents points **outward** — *scp the run dir
+    to the target*, *scp the bundle to the cluster*. There is no inward
+    counterpart anywhere, and four promises quietly assume there is one: `prep`
+    is *"a hub you return to"* (you return over ssh); the checkpoint is *"the
+    only way back"* (the history is created on the machine that ran it, so your
+    local copy is a different folder with no history); a stage finishing leaves a
+    commit *"observed where the run is already watched"* (SLURM ran it — nobody
+    local watched); and a benchmark's verdict must reach a description that lives
+    wherever the browser opened it.
+    **The one-machine case hides all of it**, which is why it went unnoticed:
+    run on a workstation and every arrow is a no-op.
+    Two candidate answers, and they are different designs rather than two
+    spellings — *the folder is the truth wherever it is* (the checkpoint is a git
+    repository, so **fetch** is a real answer, not a metaphor) versus *the project
+    tree is the truth and the target is scratch*. Take this **alongside** the
+    shape question, not after it: it can change what `prep` and the checkpoint
+    triggers are for.
+
 **Step 3 — the surface.** The description model first (pure, tested), then the
 matrix view, then the subtabs.
 [`structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)

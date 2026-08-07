@@ -70,8 +70,26 @@ local `bash` execution and SLURM submission with dependency chaining), the
 SIESTA stage producer, and the SIESTA host producer (`molbuilder fdf …
 --jobset`). What is missing is the **web front-end** onto that framework —
 the setup tabs cannot yet produce a bundle, show its plan, or report its
-run status. Details of what is built live in the staged-execution contract
-(migrating to `execution/`); its § 1 status table is authoritative.
+run status. What is built lives in
+[`execution/job-system.md`](?doc=execution/job-system.md) (the JobSet framework
+and its CLI verbs); the current→target status matrix is
+[`execution/overview.md`](?doc=execution/overview.md) § 2, which is
+authoritative.
+
+> **The staged design has moved on since this workstream was written.** Four
+> contracts now own what the old staged-execution document described, and one of
+> them changes this workstream's shape: **stages no longer chain**, so "produce a
+> bundle, submit the chain" is being replaced by *prep and submit one stage at a
+> time, after looking at the last one*. Read
+> [`execution/project-layout.md`](?doc=execution/project-layout.md) (the folder
+> and the workflow), [`engines/stages.md`](?doc=engines/stages.md) (what a stage
+> is), [`execution/run-identity.md`](?doc=execution/run-identity.md) (the id) and
+> [`execution/checkpointing.md`](?doc=execution/checkpointing.md) (the history)
+> before building any of the phases below. The order of work, what is done and
+> what is blocked is
+> [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) —
+> **its § 8c is the critical path**, and several phases below sit behind one
+> unanswered question there.
 
 ### Vocabulary (defined once, used throughout)
 
@@ -85,8 +103,14 @@ run status. Details of what is built live in the staged-execution contract
   emits.
 - **Ladder** — a set of related jobs run in sequence, each starting from
   the previous one's result (e.g. coarse → medium → fine relaxation).
-- **D-numbers** (D7, D9, D10, …) — the design decisions resolved in the
-  staged-execution contract § 13 / § 15. Kept here as stable references.
+- **D-numbers** (D7, D9, D10, …) — design decisions from the staged-execution
+  contract, which the 2026-07 migration retired; it survives only at
+  `docs/archive/old_docs/protocols/staged-execution.md`. The numbers are kept as
+  stable references so older notes still resolve, but **the archive is not the
+  authority** — for anything still open, the live owners are
+  [`engines/stages.md`](?doc=engines/stages.md),
+  [`execution/project-layout.md`](?doc=execution/project-layout.md) and
+  [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md).
 
 ### Phasing
 
