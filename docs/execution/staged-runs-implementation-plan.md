@@ -319,7 +319,17 @@ diff.
 
 ---
 
-### P0 — Ground: make "done" executable
+### P0 — Ground: make "done" executable ✅ **landed 2026-08-07**
+
+> **All four questions are now one command** — `python -m tests.test_stage_vocabulary`
+> from the repository root — and `tests/test_stage_vocabulary.py` asserts them,
+> three as `xfail(strict=True)` naming P4, P5 and P7. The measured baseline is
+> § 6. Two things came out of the phase that were not in it: the mechanism count
+> is **ten**, not nine (the mechanical pass found the `stage-table` field kind,
+> which changes P11's first unit — see `staged-runs-architecture.md § 8b`), and
+> question 2's guard had to be written against `project-layout.md § 4.1` rather
+> than § 8c's one-line summary, because a stage **directory** legitimately
+> carries a number.
 
 **Why first.** Every later phase is graded by the four questions above, and
 three of the four answers are wrong today. Making them mechanical *now* means a
@@ -540,6 +550,23 @@ and *a name says what its location does not*) · `engines/stages.md § 7` ·
 
 **Subtracts:** the `-stage<N>` filename convention, everywhere — emitter,
 browser, log, decoder.
+
+> **Three green tests pin the convention this phase removes, listed by P0 so
+> the phase does not meet them under pressure.** They are *not* failures to work
+> around: each is a correct test of today's behaviour, and each is retired or
+> rewritten in the same commit that changes the behaviour, per
+> [`process/testing.md`](?doc=process/testing.md) — a test serves the contract,
+> and when the contract moves the test moves with it.
+>
+> | Test | What it pins |
+> |---|---|
+> | `test_trajectory_log_stage_targets.py::test_multi_stage_cli_emits_per_stage_molwatch_logs` | `JOB-stage1/2/3.molwatch.log` from `--stage-strategy` — and `--stage-strategy` is itself P5's subtraction, so check the order |
+> | `test_smiles_and_siesta.py` (`assert f"-stage{stage}" in text`) | that `--stage N` **propagates the suffix into the rendered deck** |
+> | `test_pyscf.py::…molwatch_emitter…` | the emitted PySCF script writing `JOB + "-stage2.molwatch.log"` |
+>
+> Two more mention the token and are **incidental** — `test_results_file_picker_js.py`
+> and `test_runwrap_cold_restart.py` use it only as a fixture filename, and they
+> need nothing but a rename.
 
 **Milestone M4.** For one description, the deck, the output, the log and the
 directory all agree on the stage's **name**. Inserting a stage renames nothing
@@ -952,18 +979,38 @@ flowchart TB
 
 ## 6. The baseline, dated
 
-Recorded at P0 so a later review diffs rather than re-counts. Filled in when P0
-runs; the "today" column is `staged-runs-architecture.md § 8b`'s count at
-2026-08-07.
+Recorded at P0 so a later review diffs rather than re-counts. **The first four
+rows are no longer a table somebody maintains** — they are printed by
+
+```bash
+python -m tests.test_stage_vocabulary     # from the repository root
+```
+
+and asserted by `tests/test_stage_vocabulary.py`, three of them as
+`xfail(strict=True)` naming the phase that turns each green. The numbers below
+are that command's output on **2026-08-07**, kept so a later review can diff.
 
 | Measure | 2026-08-07 | Target | Phase |
 |---|--:|--:|---|
 | ways to say "stage" | 10 | the agreed set | P5 |
-| filename conventions for a stage | 3 | 1 | P4 |
+| emitted names keyed on a position | 2 | 0 | P4 |
 | generated scripts invoking an engine directly | 1 | 0 | P5 |
 | producers that chain stages | 2 | 0 | P7 |
 | checkpoint invariants with an assertion | 15 / 22 | 22 / 22 | P8 |
 | readers of a stage description | 2 formats | 1 | P5 |
+
+> **Row 2 replaced *"filename conventions for a stage: 3 → 1"*, and the two say
+> the same thing from opposite ends.** § 8b counted **conventions** and found
+> three: the flat ladder's `<id>_<name>` (correct), the browser's `-stage<N>`,
+> and the trajectory log's `-stage<N>`. The guard counts **offenders** — the two
+> that key on a position — because that is the number a test can drive to zero.
+> Two offenders plus one correct convention is three conventions; when the
+> offenders reach 0 the conventions reach 1.
+>
+> The measure is *"keyed on a position"*, not *"contains a number"*, because
+> `project-layout.md § 4.1` settles the one place a number belongs: a stage
+> **directory** is `<seq>_<name>` — number *and* name, assigned once at produce
+> and never reassigned. `01_coarse/JOB.fdf` is correct and the guard passes it.
 
 ---
 
