@@ -1355,11 +1355,20 @@ A reader should be able to check the design landed with four questions:
    removes a second name and makes a directory listing self-describing, at the
    cost of a folder called `bdt_au_relax_c6h4s2au38` where someone would have
    typed `bdt-relax`.
-3. **Is the user's half of the id editable after the fact?** Renaming orphans the
-   warm files, which is right in principle and will surprise someone who meant to
-   fix a typo — and if question 2 is yes, it moves the folder too. Letting it be
-   typed keeps a door open to deliberately continuing from an unrelated run's
-   state, which is occasionally what a person wants.
+3. ~~**Is the user's half of the id editable after the fact?**~~ **Answered
+   2026-08-07: it is set once, and after that changing it makes a new job set.**
+   The reason is the engine's, not a policy: the id keys every warm file, so a
+   calculation continues **only** while the name stays put. Edit it and the engine
+   stops finding the state it was going to resume from — the calculation does not
+   fail, it silently starts over. So the id is editable **once**, before anything
+   has run, and a later change is not a rename but a different calculation, which
+   is what the surface should say when asked.
+
+   That also removes the temptation in the old wording. "Letting it be typed keeps
+   a door open to deliberately continuing from an unrelated run's state" — that
+   door leads somewhere bad: it is how you get a run that warm-starts from a
+   geometry belonging to a different system, with nothing reporting it
+   (`job-contracts.md § 4.4` calls that case `WARM-RESTART (silent)`).
 4. **What are the "components" of a composite system?** A junction is a molecule
    *and* two electrodes; naming it by total formula loses that structure, and
    naming it by parts needs a convention for what a part is.
@@ -1368,9 +1377,14 @@ A reader should be able to check the design landed with four questions:
    `.XV` read against a different order lands every coordinate on the wrong atom.
    The likely answer is a short pin appended when and only when the readable part
    cannot separate two things in the same project.
-6. **Do the cell *parameters* belong in the identity?** `run-identity.md § 5`
-   says report rather than pin. Putting them in the id would orphan a geometry
-   every time somebody widened a box.
+6. ~~**Do the cell *parameters* belong in the identity?**~~ **Answered
+   2026-08-07: no — putting them there would be an illusion of control.** The
+   cell is already written in the deck and carried in the results, and on a
+   continue the saved `.XV`'s cell is the one that wins. So an id that named the
+   cell would look like it governed something it does not: the number in the
+   identity and the box the calculation actually used could differ, and the id
+   would be quietly wrong rather than protective. Report it instead
+   (`run-identity.md § 5`), which is what the design already does.
 7. **Is a description editable by hand?** It is JSON beside the decks, so it will
    be. If yes, the reader owes the same errors to a person as to the browser — an
    argument for the refusal rule being loud rather than tolerant.

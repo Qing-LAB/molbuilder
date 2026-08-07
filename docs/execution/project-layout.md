@@ -1397,12 +1397,18 @@ than no invariant, because it fails a directory that is working correctly.
    calculation. Not inferred either: deriving it from the stage count would hand
    a two-stage description the hierarchy without anyone asking, and the trade in
    § 1.2 is the user's to make.
-6. **Can a flat directory become hierarchical later?** Someone runs two stages
-   flat, then wants to keep every stage's results after all. Every part exists —
-   the checkpoint holds the earlier states (§ 1.2), and `prep` can build the tree
-   — but nothing joins them, and *"re-run everything"* is not an answer when a
-   stage is a week of cluster time. Worth settling **before** the flat shape is
-   most people's default rather than after.
+6. ~~**Can a flat directory become hierarchical later?**~~ **Answered
+   2026-08-07: no, and it is not a missing feature.** The flat shape exists for
+   **a simple run on a workstation**, and it stays that way on purpose. It is not
+   a lesser version of the hierarchy that a calculation graduates out of; it is
+   the right shape for work you are doing in one directory, in front of you, and
+   converting it later is not a workflow anybody needs.
+
+   Which also settles what the two shapes *are*. They are not a beginner mode and
+   an advanced one — they are **a small local run** and **a long staged mission**,
+   and you know which you are doing when you describe the calculation. That is why
+   `shape` is a field you set once (`engines/stages.md § 6.7`) rather than a
+   property the folder drifts into.
 7. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
    (§ 2.3, § 2.5): preparing and submitting are separate steps, each naming its
    stage — `jobset prep run <stage>` then `jobset submit run <stage>`, with `--cold` on
