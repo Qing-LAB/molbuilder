@@ -667,34 +667,23 @@ appear together, which is exactly where a person should be looking.
     linked to. The shipped guide's *"deduped by content"* is now true rather
     than aspirational. **Still open: `snapshot verify`** (L6) — the check exists
     and is reachable only by attempting a restore.
-10a. **What item 10 saves, nothing reports** (found 2026-08-07). `archive_bytes`
-    and `archive_total_bytes` both sum `st_size`, so a hard link counts in full.
-    The second checkpoint of an unchanged 2 GB density matrix costs nothing and is
-    still displayed as 2 GB — by `snapshot list`, by `snapshot init`, and by the
-    sidebar panel. The whole user-visible point of item 10 is currently invisible,
-    and the number presented as *what this folder occupies* is the one that
-    contradicts it. Not a defect in the saving: the disk measurement is real and
-    tested by inode, which is how the gap was noticed at all — the test knows
-    about links and the accessor does not.
-
-    The two are not one fix, because they answer different questions. Per
-    checkpoint, `archive_bytes` should stay a **logical** size: *"how much comes
-    back if I restore this"* is what a person reading a history wants, and it must
-    not change when a neighbouring checkpoint is deleted. `archive_total_bytes` is
-    the one that is now wrong — it is presented as disk occupancy, so it should
-    count each inode once. *Done when:* the repository total counts by inode,
-    per-checkpoint size keeps its present meaning and the surface says which it
-    is, and a folder with ten checkpoints of one unchanged binary reports a total
-    near that binary's size rather than ten times it.
-
-    ⚠ Two older faults to fix in the same pass, both predating this branch: the
-    wire field `archive_total_bytes` in `_serialise_state` is **structurally
-    always zero** — `state()` deliberately leaves it at its default to keep the
-    directory-enter read cheap (`running-a-job.md § 6`), and nothing on the
-    frontend reads it, so it is a field that has never once carried a value; and
-    `missing_archive_warning` names `.DM/.HSX/.TSHS` in its message whatever the
-    engine, so a PySCF repository is warned about files it was never going to
-    have, while the `.chk` that actually went missing is not mentioned.
+10a. **A display prints a number that is not true** — small, and smaller than an
+    earlier draft of this item claimed. `archive_bytes` and `archive_total_bytes`
+    sum file sizes, counting every hard link in full, so ten checkpoints of an
+    unchanged 2 GB binary read as 20 GB while the disk holds 2.
+    **Who needs the number?** Nobody anyone could name. It appears in five places
+    — three CLI lines, two in the sidebar — and feeds no decision: the only one it
+    could feed is *"delete some old checkpoints"*, and there is **no `prune`
+    verb**. *Done when:* it stops claiming what it cannot support — either drop
+    the display, or make the repository total count each inode once so it matches
+    `du`. **Not** the two-number scheme this item used to propose (a *logical*
+    per-checkpoint size and a *physical* folder total, each with its own
+    explanation); that was inventing vocabulary for a readout nobody reads.
+    ⚠ Two older faults to fix if this is touched at all: the wire field
+    `archive_total_bytes` in `_serialise_state` is **structurally always zero**
+    (`state()` leaves it at its default and nothing on the frontend reads it), and
+    `missing_archive_warning` names `.DM/.HSX/.TSHS` whatever the engine, so a
+    PySCF repository is warned about files it never had.
 11. **Checkpoints at the two stage boundaries, and `branch` over HTTP.**
     **Two of the four parts are done (2026-08-06); the two that remain are the
     triggers, and they are the part that needs the producer.**
