@@ -515,16 +515,20 @@ refused even in a bundle root, where nested working dirs are otherwise fine.
 > as a nested working dir and blocked `init` for a reason with nothing to do with
 > calculations. All dot-directories are skipped now.
 
-> **The description is consulted for its existence, not its contents** (read
-> 2026-08-07). `_is_bundle_root` asks only whether one of the three files is
-> *there*; it never opens it. A root whose `stages.json` names `coarse` and
-> `tight`, with an unrelated calculation copied in beside them, initialises one
-> history over all three — the too-wide failure above, reached through the door
-> the fix opened. It is narrow in practice: a produced folder contains what the
-> producer put there. But the check that would close it is cheap — read the
-> description, and refuse a nested working dir it does not name — and it should be
-> written when the producer exists and there is a real description to read
-> against, not guessed at now. Recorded rather than fixed, deliberately.
+> **The description must be read, not merely found** — *not held today.*
+> A root's description says which subdirectories are this calculation's own, so
+> **a nested working directory the description does not name is refused**, exactly
+> as it would be under a root that declares nothing. Otherwise the rule degrades
+> from *"these are one calculation's parts"* to *"somebody put a JSON file here"*,
+> and one history spans work nobody meant to join — the too-wide failure above,
+> reached through the door the fix opened.
+>
+> Today `_is_bundle_root` asks only whether one of the three files **exists**; it
+> never opens it. Copy an unrelated calculation in beside `coarse` and `tight`
+> and `init` takes all three. The check that closes it is cheap, and it becomes
+> assertable when a producer writes a real description to read against — which is
+> when it should be written, not guessed at now. Until then this clause is a
+> claim, like S3 and S4, and it is listed as one.
 
 ### L2 — the archive globs match at depth
 
@@ -586,7 +590,17 @@ on what the automatic path emits, not on the total.
 
 ### L5 — a checkpoint's cost is bounded by what changed, not by what exists
 
-*HOLDS as of 2026-08-06 — `tests/test_checkpoint_invariants.py`.*
+*Storage: **HOLDS** as of 2026-08-06 — `tests/test_checkpoint_invariants.py`.
+Reported cost: **does NOT hold.** See "what is saved is not what is reported"
+below.*
+
+> **The verdict was overstated when first written (corrected 2026-08-07).** This
+> invariant says **cost**, and the cost a user is *shown* is still bounded by what
+> exists, not by what changed. The first version of this section marked L5 as
+> simply HOLDS and filed the reporting failure as "a separate fix" — which let a
+> passing test decide the verdict instead of the sentence at the top of this
+> section. A checkpoint whose cost is invisible is not a checkpoint whose cost is
+> bounded, as far as anyone using it can tell.
 
 **What is already archived is not archived again.** An archived file is never
 rewritten (I1), so when a binary's content is already in the archive the new
@@ -613,19 +627,31 @@ cheap save into a corrupt one. So a candidate is hashed once per checkpoint and
 copied past if it does not match. That is one read where a copy would have done
 a read *and* a write, so the I/O falls too.
 
-**What is saved is not yet what is reported.** `archive_bytes` per checkpoint and
-`archive_total_bytes` for the repository both sum `st_size`, which counts every
-hard link in full. So the second checkpoint of an unchanged 2 GB density matrix
-costs nothing and is still displayed as 2 GB — by `snapshot list`, by
-`snapshot init`, and by the sidebar panel. Nothing is *wrong*: per checkpoint that
-sum is the honest answer to *"how much comes back if I restore this"*. But
-`archive_total_bytes` is presented as what the folder occupies, and after L5 it no
-longer is. The whole user-visible benefit is currently invisible, and the one
-number that should show it contradicts it. Reporting is a separate fix from
-storing, which is why L5 is marked as holding — the disk saving is real and
-measured. See
-[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
-item 10a.
+**What is saved is not what is reported — so this invariant is half held.**
+`archive_bytes` per checkpoint and `archive_total_bytes` for the repository both
+sum `st_size`, which counts every hard link in full. The second checkpoint of an
+unchanged 2 GB density matrix costs nothing and is displayed as 2 GB — by
+`snapshot list`, by `snapshot init`, and by the sidebar panel. Ten of them cost
+2 GB and are reported as 20 GB.
+
+**A cost nobody can see is not a bounded cost.** This invariant is not *"the
+bytes on disk are bounded"* — that would be a statement about `du`, and no user
+runs `du` on `.binsnapshots`. It is about what a checkpoint costs the person
+taking one, and that person reads the number the surface shows them. Today that
+number says the saving did not happen.
+
+**What each surface should say, and why they differ.** Per checkpoint,
+`archive_bytes` answers *"how much comes back if I restore this"* — a logical
+size, which must not change when a neighbouring checkpoint is deleted.
+`archive_total_bytes` answers *"what does this folder occupy"* — a physical size,
+which must count each inode once. They are two different questions and the code
+currently gives the same answer to both.
+
+> This is stated as a **requirement on the surfaces**, not as an excuse for them.
+> Until they meet it, L5's title is not true of the system a user experiences,
+> and the row in § 6 says so. The work is
+> [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
+> item 10a.
 
 **Why not content-addressing.** `.binsnapshots/by-content/<sha256>` was the
 fallback this invariant used to call for. It would change the archive layout and
@@ -711,11 +737,11 @@ One line each, for reading over a diff:
 | **A1** | archive: build, verify the copy, then swap | today — `test_checkpoint_invariants.py` |
 | **A2** | restore verifies the target archive before touching the worktree | today — `test_checkpoint_invariants.py` |
 | **A3** | the checkpoint is committed before the mutation it protects | needs automatic checkpoints |
-| **L1** | one repository per calculation, in either shape | **HOLDS** (2026-08-06) — `tests/test_checkpoint_repo_scope.py` |
+| **L1** | one repository per calculation, in either shape | **HOLDS** (2026-08-06) — `tests/test_checkpoint_repo_scope.py`; its *"the description must be read, not merely found"* clause **does not** — it needs a producer to write one |
 | **L2** | archive globs match at depth | **holds** (fixed 2026-08-06) |
 | **L3** | every commit and tag names its calculation | **the naming HOLDS** (2026-08-06) — `test_checkpoint_invariants.py`; the automatic *trigger* still needs the layout |
 | **L4** | molbuilder tags stage completions only | **the tag form HOLDS** (2026-08-06) — hierarchical, globbable, collisions refused; the automatic *trigger* still needs the layout |
-| **L5** | a checkpoint costs what changed, not what exists | **HOLDS** (2026-08-06) — `test_checkpoint_invariants.py` |
+| **L5** | a checkpoint costs what changed, not what exists | **the storage HOLDS** (2026-08-06) — `test_checkpoint_invariants.py`; the **reported** cost does **not** — every surface still shows what exists |
 | **L6** | a history can be verified without being restored | **not held today** |
 | **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
 | **L8** | an archived attempt never differs afterwards | needs the layout — **hierarchical only** (`project-layout.md § 6.2`) |
@@ -724,9 +750,18 @@ One line each, for reading over a diff:
 all fifteen have a test** — nine (**S5 I2 I3 I4 A1 A2 L3 L4 L5**) in
 `test_checkpoint_invariants.py`, five (**S1 S1a I1 L2 L7**) in
 `test_checkpoint_nested_layout.py`, and **L1** in
-`test_checkpoint_repo_scope.py`. Four (**L1**, **L2**, **L5**, **L7**) were broken
-and are now fixed, with tests. One (**L6**) is not held and is work rather than
-a check.
+`test_checkpoint_repo_scope.py`. Four (**L1**, **L2**, **L5**, **L7**) were found
+broken; **L2 and L7 are fully fixed**, and **L1 and L5 are fixed in the half that
+had a mechanism** — L1's repository scope holds while *"the description must be
+read, not merely found"* waits for a producer to write one, and L5's storage holds
+while the **cost every surface reports** is still the old, unbounded number.
+
+**So three of the twenty-two are not held**: **L6** entirely (verification has no
+door), and the second halves of **L1** and **L5**. Three more — **L3**, **L4** and
+L1's clause — are held in form and wait on the producer for their trigger.
+"Assertable" counts an invariant whose *stated* requirement has a test; it does
+not promise the whole requirement passes, and where it does not, the row above
+says which half fails.
 
 > It was thirteen until 2026-08-06, when **L3** and **L4** stopped needing the
 > layout: naming a checkpoint and naming a stage tag are pure functions of an id,
@@ -749,7 +784,7 @@ a check.
 | **A1** | strong in its three parts (sha-dir validation, source-vs-copy fidelity, `.tmp` cleanup) — **but the swap itself was not atomic**. Fixed 2026-08-06 |
 | **A2** | held, in exactly the stated order — four gates before the first mutation |
 | **L2** | was **broken, losing data rather than wasting disk** — fixed 2026-08-06, pinned by tests |
-| **L5** | was **broken** — no cross-checkpoint dedup; fixed 2026-08-06 by hard-linking content already archived |
+| **L5** | was **broken** — no cross-checkpoint dedup; the storage was fixed 2026-08-06 by hard-linking content already archived, and the **reported** cost was left behind. Re-read 2026-08-07: the first verdict said HOLDS, which let a passing test outrank the invariant's own sentence |
 | **L6** | **absent** — no way to verify a history without restoring it |
 | **L1** | **held** — a root carrying its description owns its subdirectories; a directory declaring nothing, and any nested repository, are still refused |
 | **L7** | was **absent** — a binary-only change left `git status` clean and nothing was checkpointed; fixed 2026-08-06 |
@@ -800,6 +835,23 @@ the count was correct until two invariants graduated; the header was correct unt
 three tests were added to the file it describes. None of them could fail a test,
 because none of them is executable — which is precisely why they need a reading
 pass rather than a suite.
+
+### The correction that pass itself needed
+
+**Two of the entries written on 2026-08-07 let the code set the verdict, which is
+the inversion this document exists to prevent.** Caught 2026-08-07 on being
+asked the direct question, *did you twist the document to fit the code?*
+
+| What was written | Why it was wrong |
+|---|---|
+| L5 marked **HOLDS**, with the reporting failure filed as *"a separate fix from storing"* | The invariant's own sentence says **cost**, and the cost a user is shown is still unbounded. A passing test was allowed to outrank the sentence at the top of the section. Worse, the excuse invented a design decision on the spot — *"per checkpoint that sum is the honest answer"* — with no prior basis, purely to shrink the failing surface from two numbers to one |
+| L1's new clause written as *"recorded rather than fixed, deliberately"* | That is a note about the code's state sitting in a contract. A contract states the requirement — *a nested working dir the description does not name is refused* — and then reports it as not held. The requirement and its status are two different sentences, and only the second may mention what the code does today |
+
+**The rule this restores:** a section of this document is written from what must
+be true, and the *status line* is the only place the code gets a vote. When they
+disagree the status line changes, never the requirement. A verdict of HOLDS
+belongs to the invariant as stated, not to whichever part of it happens to have a
+test.
 
 ---
 
