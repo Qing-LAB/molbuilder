@@ -20,23 +20,30 @@ want; what is never legitimate is doing it *without being told* that the
 geometry the last stage produced will not be found. So this says exactly which
 files stop matching, and gets out of the way.
 
-**Why the inventory is imported rather than listed.** Four inventories already
-exist in this tree and they do not agree: ``runwrap``'s thirteen SIESTA
-suffixes (the ``--cold`` move-aside glob, which `job-contracts.md § 4.2` calls
-the authority), two inline copies inside the bash ``runwrap`` emits, and
-``jobset/runstatus._WARM_FILES``, which lists three. A fifth copy here would be
-the worst of all possible additions. ``runstatus``' shorter list is not
-necessarily wrong — it answers *"can this stage resume"*, a narrower question
-than *"what does this id key"* — but its citation points at
-``script-execution.md``, which no longer exists, so which question it means is
-no longer written down anywhere. Recorded, not fixed here: reconciling them is
-its own change with its own review.
+**No inventory of engine outputs, and that is the design** (decided
+2026-08-08 — `job-contracts.md § 4.2`). SIESTA's output set depends on its
+version and on which options are on, so a list is a snapshot of one build
+pretending to be a rule, and its failure is silent: a file nobody listed is a
+file nobody sees. :func:`warm_files_present` therefore asks the question by
+**subtraction** — anything named after the id that molbuilder did not write
+came from the run. That inversion works because the two halves are not
+symmetric: we cannot know what an engine produces, and we always know what we
+produced (``identity.OUR_FILE_PATTERNS``).
+
+**One function here still uses a list, on purpose.** :func:`_foreign_state`
+asks a different question — *are there restart files belonging to some other
+calculation* — and answering it needs some notion of what engine state looks
+like, since a stranger's file is not named after our id. An incomplete list
+there under-reports a **warning**, which is mild; an incomplete list in
+`warm_files_present` would have wrongly said *nothing has run*, which is the
+dangerous direction. Same shape of imperfection, opposite consequence.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Callable, Dict, List, Sequence
 
+from ..identity import is_ours
 from ..issues import Issue
 from ..runwrap import _PYSCF_WARM_FILES, _SIESTA_WARM_SUFFIX_FILES
 
@@ -52,28 +59,39 @@ _INVENTORY: Dict[str, Callable[[str], Sequence[str]]] = {
 }
 
 
-def warm_files_present(directory, run_id: str, engine: str) -> List[str]:
-    """The files in *directory* that are keyed by *run_id*, sorted.
+def warm_files_present(directory, run_id: str, engine: str = "") -> List[str]:
+    """What the **engine** left in *directory* under *run_id*, sorted.
 
-    This is the *"has anything run"* question, asked the way the contract
-    frames it: **not** whether an output exists, but whether state exists that
-    the id names. § 1's failure mode is precisely that — an edited label leaves
-    those files behind, matching nothing.
+    *"Has anything run here?"* — answered **by name, not by enumeration**
+    (`job-contracts.md § 4.2`, decided 2026-08-08). Anything named after the id
+    that molbuilder did not itself write came from the run, whatever version of
+    the engine produced it and whichever options were on.
+
+    > **This replaced a per-engine list, and the reasoning behind that list was
+    > wrong in a way worth keeping visible.** It named thirteen SIESTA suffixes
+    > and I chose it over a shorter one *deliberately*, on the grounds that a
+    > directory holding only a `.TSHS` has state the id keys. That was true. The
+    > premise underneath it was not: **completeness was never purchasable**,
+    > because the file set depends on the engine's version and options. A list
+    > can only ever be a snapshot of one build's behaviour, and the failure is
+    > silent — a file nobody listed is a file nobody sees.
+
+    ``engine`` is accepted and ignored, kept only so callers need not change;
+    the question stopped being per-engine when it stopped being a list. It is
+    scheduled for removal with the last caller that passes it.
 
     Symlinks are followed and a dangling one is not counted: a carried restart
-    file that no longer resolves is not state this calculation can continue
-    from, and ``runstatus`` already reads them the same way.
-
-    An unknown engine yields ``[]`` rather than raising. Whether the engine is
-    one this backend supports is `stages.md § 6.6`'s first check and belongs to
-    the preflight; answering it a second time here would put the same refusal
-    in two places and let them disagree.
+    file that does not resolve is not state to continue from, and ``runstatus``
+    reads them the same way.
     """
-    names = _INVENTORY.get(engine)
-    if not names or not run_id:
+    if not run_id:
         return []
     d = Path(directory)
-    return sorted(n for n in names(run_id) if (d / n).is_file())
+    if not d.is_dir():
+        return []
+    return sorted(
+        p.name for p in d.glob(f"{run_id}*")
+        if p.is_file() and not is_ours(p.name, run_id))
 
 
 def check_id_change(directory, old_id: str, new_id: str,

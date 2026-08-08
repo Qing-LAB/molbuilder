@@ -116,22 +116,57 @@ def test_a_dangling_carry_symlink_is_not_state(calc):
     assert warm_files_present(calc, ID, "siesta") == []
 
 
-def test_pyscf_has_its_own_inventory_and_it_is_used(calc):
-    """§ 4.2 gives PySCF five files, not SIESTA's thirteen. The per-engine
-    split is the point -- `run-identity.md § 4` is an entire section on the
-    two engines meaning the same thing by different mechanisms."""
+def test_the_question_is_no_longer_per_engine(calc):
+    """**Retired and replaced 2026-08-08.** This used to assert that a `.chk`
+    counted for PySCF and not for SIESTA — a real property of the per-engine
+    lists, and one that stopped being true when the lists went away.
+
+    *"Has anything run here"* is now answered by name, so a file named after
+    the id counts no matter which engine is named. The engine argument is
+    vestigial and the assertion says so, rather than being deleted quietly."""
     (calc / f"{ID}.chk").write_text("scf guess\n")
     assert warm_files_present(calc, ID, "pyscf") == [f"{ID}.chk"]
-    assert warm_files_present(calc, ID, "siesta") == []
+    assert warm_files_present(calc, ID, "siesta") == [f"{ID}.chk"]
+    assert warm_files_present(calc, ID) == [f"{ID}.chk"]
+
+
+def test_a_file_no_list_ever_named_is_still_detected(calc):
+    """**The whole reason for the change** (`job-contracts.md § 4.2`,
+    2026-08-08). SIESTA's output set depends on its version and its options,
+    so any enumeration is a snapshot of one build. Here is a suffix that
+    appears in none of this project's four inventories: under a list it was
+    invisible, and 'nothing has run here' would have been the answer while a
+    finished calculation sat in the folder."""
+    (calc / f"{ID}.SOMETHING_NEW_IN_SIESTA_6").write_text("state\n")
+    assert warm_files_present(calc, ID) == [
+        f"{ID}.SOMETHING_NEW_IN_SIESTA_6"]
+
+
+@pytest.mark.parametrize("name", [
+    f"{ID}.fdf", f"{ID}_coarse.fdf", f"{ID}.fdf.template",
+    f"{ID}.run.sh", f"{ID}.sbatch", f"{ID}.molwatch.log",
+    f"{ID}-run0.out", f"{ID}_tight-run2.out", f"{ID}.log",
+])
+def test_what_molbuilder_wrote_is_never_mistaken_for_engine_state(calc, name):
+    """The other half of the inversion, and the half that has to be exact.
+
+    We cannot enumerate what an engine writes, but we always know what **we**
+    wrote — so the subtraction is only as good as this list. Two kinds of
+    mistake live here: counting our own deck as leftover state (which would
+    say a fresh folder has run), and counting the run-indexed `.out` files,
+    which are **history a user goes back to read**, not leftovers."""
+    (calc / name).write_text("ours\n")
+    assert warm_files_present(calc, ID) == []
 
 
 def test_an_unknown_engine_is_not_refused_a_second_time(calc):
     """Whether the engine is supported is `stages.md § 6.6`'s first check and
     belongs to the preflight. Refusing again here would put one rule in two
-    places and let them drift apart."""
+    places and let them drift apart -- and now that the answer is by name, an
+    unknown engine's files are found like any other."""
     (calc / f"{ID}.XV").write_text("x\n")
-    assert warm_files_present(calc, ID, "vasp") == []
-    assert check_id_change(calc, ID, "other", "vasp") == []
+    assert warm_files_present(calc, ID, "vasp") == [f"{ID}.XV"]
+    assert len(check_id_change(calc, ID, "other", "vasp")) == 1
 
 
 # --------------------------------------------------------------------- #

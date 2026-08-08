@@ -107,6 +107,47 @@ _STAGE_BUDGET = 32
 MAX_ID_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
 
 
+#: Glob patterns, keyed on the id, for **the files molbuilder itself writes**
+#: into a run directory — from `job-contracts.md § 2.2`'s catalogue.
+#:
+#: **This is the list that can be complete, and that is the whole point.** An
+#: engine's output set depends on its version and on which options are on, so
+#: enumerating *that* is a snapshot pretending to be a rule. What we write is
+#: knowable, because we write it. So every question of the form *"did the
+#: engine leave something here"* is answered by subtraction: anything named
+#: after the id that is **not** on this list came from the run.
+#:
+#: Ordered as § 2.2 lists them — inputs, wrapper, the canonical trajectory,
+#: then the run-indexed logs, which are **history and not state**: they are
+#: what a user goes back to read, and nothing here may treat them as leftovers.
+OUR_FILE_PATTERNS: Sequence[str] = (
+    # inputs we generated
+    "{id}.fdf", "{id}_*.fdf", "{id}.fdf.template",
+    "{id}.py", "{id}_*.py",
+    # the wrapper and its scheduler header
+    "{id}.run.sh", "{id}_*.run.sh",
+    "{id}.sbatch", "{id}_*.sbatch",
+    # the canonical trajectory -- written before the engine even starts
+    "{id}.molwatch.log", "{id}_*.molwatch.log",
+    # engine stdout, one file per run index -- the run's history
+    "{id}-run*.out", "{id}_*-run*.out",
+    "{id}-run*.pyscf.log", "{id}_*-run*.pyscf.log",
+    # geomeTRIC's own optimizer log
+    "{id}.log", "{id}_geom_*.log",
+)
+
+
+def is_ours(name: str, run_id: str) -> bool:
+    """Did **molbuilder** write this file, rather than an engine?
+
+    The inversion `job-contracts.md § 4.2` rests on: we cannot enumerate what
+    SIESTA produces, but we always know what we produced.
+    """
+    import fnmatch
+    return any(fnmatch.fnmatchcase(name, p.format(id=run_id))
+               for p in OUR_FILE_PATTERNS)
+
+
 def normalise_id(raw: str, *, stage_names: Sequence[str] = ()) -> str:
     """§ 3's normalisation, and its three rules. Refuses rather than guessing.
 
@@ -194,4 +235,5 @@ def run_id(label: str, formula: str = "", *,
     return normalise_id(joined, stage_names=stage_names)
 
 
-__all__ = ["MAX_ID_BYTES", "RestartGroup", "normalise_id", "run_id"]
+__all__ = ["MAX_ID_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "is_ours",
+           "normalise_id", "run_id"]
