@@ -529,6 +529,55 @@ would decouple the history's name from the folder's.
 through `snapshot list`. Tagging them too would bury the points you meant to
 reach among the ones you passed through. A hand-made tag is your own business.
 
+### The folder is also a real git repository
+
+*Found by a fresh workflow read, 2026-08-08. These are the rules that were
+never written because the document assumed molbuilder's verbs are the only
+door into the folder. They are not — the folder is a git repository, and the
+people using it know git.*
+
+**S7 — a file that changes category is removed from the store it left.**
+Nothing untracks a file that becomes large, so it ends up **tracked *and*
+archived**: S1's other losing branch, and a large blob committed on every save
+from then on.
+
+This was rare while the classification was a list of names — it took somebody
+editing the list. **With the size gate it is ordinary**, because files grow: an
+`.EIG` at 8 MB last save and 12 MB this one crosses the line by itself, with
+nobody deciding anything.
+
+- **Fails as:** git history grows a multi-gigabyte blob that no S1 walk of the
+  *current* tree will notice, because the current tree is classified correctly.
+- **Test:** save a file just under the limit, grow it past the limit, save
+  again — assert it is archived **and no longer tracked**. Then the same in
+  reverse: a file that shrinks below the limit is tracked and dropped from the
+  archive.
+
+**S8 — using git directly must not silently desynchronise the two stores.**
+`.binsnapshots/` is gitignored, so `git checkout <older-commit>` in a
+calculation folder rewinds the text and **leaves every big file exactly where it
+was**. The result is a folder no save ever produced: inputs from one point,
+density matrix from another.
+
+Nothing reports it, and the person who did it has no reason to suspect: they used
+a command that works correctly everywhere else.
+
+- **Fails as:** the run that follows uses last week's inputs with this week's
+  state, converges, and is believed.
+- **Test:** `git checkout` an older commit by hand, then ask molbuilder for the
+  folder's state — it says the binaries do not match the checked-out commit, and
+  says which. It may not simply refuse the next operation with a message about a
+  dirty tree, which is what happens today and explains nothing.
+
+**S9 — two saves of one folder cannot interleave.** There is no lock. Git
+serialises its own index, but the archive's build-verify-swap does not — and
+two `prep` runs, or a CLI and the browser, can reach it at once.
+
+- **Fails as:** two processes build `.binsnapshots/<same-sha>.tmp` and race the
+  swap. A1's atomicity holds for one writer and says nothing about two.
+- **Test:** two concurrent checkpoints of the same folder; afterwards exactly one
+  archive exists for that commit and it verifies (I2).
+
 ### Depth, and both folder shapes
 
 **L1 — one repository per calculation**, covering the root and every stage
@@ -575,7 +624,29 @@ conclude there is nothing to do.
 | **L3** | every commit and tag names its calculation | ✅ |
 | **L4** | tags are stage completions only | ✅ |
 | **L7** | a big-file-only change still saves | ⛔ |
+| **S7** | a file that changes category leaves the store it came from | ⛔ nothing untracks; **routine once the gate is a size**, because files grow |
+| **S8** | using git directly does not silently desynchronise the two stores | ⛔ `git checkout` rewinds text and leaves every big file |
+| **S9** | two saves of one folder cannot interleave | ⛔ there is no lock |
 | **L8** | a saved attempt never differs afterwards | needs the layout |
+
+### What cannot be proved, and is flagged instead
+
+**A lost archive cannot be detected, only suspected — and the code already says
+so where this document did not.** Big files are gitignored, so **git records
+nothing about what a commit *should* have contained.** If an archive directory
+goes missing, there is no list anywhere saying it ever existed.
+
+`Repo.missing_archive_warning` is the honest response: if you restore a commit
+with no archive *and* the folder plainly uses big files — there are some on
+disk, or other commits have archives — it says so loudly rather than returning
+text-only and looking fine. It cannot distinguish "the archive was lost" from
+"this commit legitimately had no binaries", and it does not pretend to.
+
+**Archives are never reclaimed.** Delete a branch, or leave a commit
+unreachable, and its `.binsnapshots/<sha>/` stays on disk forever. There is no
+`prune` verb. Not a correctness problem — nothing is lost, which is the
+direction this system errs in on purpose — but it means the archive only ever
+grows.
 
 ### Two things that are not rules
 
