@@ -728,6 +728,36 @@ and it would have been none of those four things but the last.
 > one-liner. A format that keyed on "one line per setting" could not have carried
 > those at all.
 
+**Two things this format still has to decide**, both found on 2026-08-07 by
+measuring `SiestaConfig` against this section rather than by re-reading it:
+
+1. **`engine_key` is not an anchor for every field.** § 3.3's `anchor=` is *"the
+   literal token a parser greps for"*, and the table above assumes one field maps
+   to one of them. Four fields do not: `relax_steps` carries *"MD.NumCGsteps
+   (universal for CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)"* — an
+   **alternation** chosen by another field's value — and `spin_total` carries
+   *"Spin.Fix + Spin.Total"*, a **conjunction** where one value writes two lines.
+   Eight more exposed fields carry a parenthesised note because they reach no
+   deck line at all (`mpi_np`, `psml_lib`, `restart`, `continue_retries`, …).
+   So the declaration needs either a real `anchor=` distinct from `engine_key`,
+   or a way to say *"this item has no single site"*.
+
+2. **Ten exposed fields are conditionally emitted.** At their defaults the deck
+   has **no line** — `net_charge` when it is 0, `spin_polarized` when false,
+   `diag_algorithm` unless a GPU run. That puts property 1 (*"the payload is
+   exactly what lands in the deck"*) against property 4 (*"every allowed item
+   has a place in the file"*): the block must exist and its payload must be
+   nothing.
+
+   > **The reading that fits both, offered rather than assumed:** an **empty
+   > payload means the declaration's `default`**. It is the same rule as
+   > `overrides ⊆ varies`'s quiet cell, one level down — absent means *this is
+   > at the backbone value* — and the declaration already carries `default=`,
+   > which the table above says is what tells the user's value from the
+   > untouched one. It also answers the *"how is a derived default spelled"*
+   > question the same way: `default=derived`, payload absent until `prep`
+   > writes it.
+
 **How a stage's override lands:** `prep` resolves the effective config
 (`stages.md § 4`), and for each item the stage overrode, **replaces that block's
 payload** with the resolved value's rendering. Blocks no stage touched are copied

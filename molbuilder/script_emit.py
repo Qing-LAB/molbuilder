@@ -75,8 +75,18 @@ def end_marker(name: str) -> str:
 
 # Regex matching either marker for any block.  Group 1: block name;
 # group 2: BEGIN | END.
+#
+# The name is one lowercase word (``header``, ``bench-marks``) OR two words
+# (``item mesh_cutoff``) -- the second form is job-contracts.md § 3.7's item
+# block, whose marker carries the FIELD's name.  That is what lets prep walk
+# a template and rebuild a config without an .fdf parser, so the name has to
+# reach the marker; underscores are allowed there because field names have
+# them.  Every consumer already filters on ``group(1) != BLOCK_<x>``, so
+# widening the name pattern cannot make an item block look like a reserved
+# one (checked across all six consumers, 2026-08-07).
 MARKER_RE = re.compile(
-    r"^#\s*===\s+molbuilder\s+([a-z-]+)\s+(BEGIN|END)\s+===\s*$"
+    r"^#\s*===\s+molbuilder\s+([a-z-]+(?:\s+[A-Za-z0-9_]+)?)"
+    r"\s+(BEGIN|END)\s+===\s*$"
 )
 
 
@@ -85,19 +95,66 @@ MARKER_RE = re.compile(
 # --------------------------------------------------------------------- #
 
 
+#: The declaration line's ``type`` vocabulary.
+#:
+#: § 3.3 defined five for BENCH-MARKS, whose override surface is numeric.
+#: § 3.7 reuses the same grammar for a TEMPLATE's item blocks -- and a config
+#: is wider than a benchmark's knobs, so three names were missing.  Measured
+#: against ``SiestaConfig``'s 39 exposed fields on 2026-08-07: 7 booleans, 1
+#: integer triple (``kgrid``) and 1 optional boolean had no type at all.
+#:
+#: ``pow2`` stays BENCH-MARKS-only: it is a constraint a benchmark puts on an
+#: override, not a type any config field has.
+DECL_TYPES = ("int", "float", "str", "bool", "int3", "enum", "pow2")
+
+
 @dataclass(frozen=True)
 class BenchField:
-    """Declaration of one bench-overridable parameter.
+    """Declaration of one overridable parameter — `job-contracts.md § 3.3`.
 
-    Per the contract: tools may override this field; the anchor
-    locates the override site in ENGINE BODY by greping for the start
-    of a code line.
+    Per the contract: tools may override this field; the anchor locates the
+    override site in ENGINE BODY by greping for the start of a code line.
+
+    **The same shape serves a template's item blocks** (§ 3.7), which is why
+    the last three fields exist. § 3.7 is explicit that its declaration is
+    *"the grammar § 3.3 already defines … extended with ``group=`` and
+    ``choices=``. Not a parallel notation: the same shape, in the same file,
+    parsed the same way."* So it is one class, not two.
+
+    ``optional`` marks a field whose **unset** state is real and distinct from
+    every value it could hold (``Optional[int]`` and friends — 11 of them on
+    ``SiestaConfig``). Without it a reader cannot tell "the user left this
+    alone" from "the user chose the default", and those mean different things
+    to an engine that omits the line entirely for the first.
     """
     name: str                                 # human-readable label
-    anchor: str                               # what bench greps for in engine body
-    type_: str                                # "int" | "float" | "str" | "pow2"
+    anchor: str                               # what a tool greps for in engine body
+    type_: str                                # one of DECL_TYPES
     range_: Optional[Tuple[float, float]] = None
     unit: Optional[str] = None
+    group: Optional[str] = None               # workflow_group (§ 3.7)
+    choices: Optional[Tuple[str, ...]] = None  # the enum's members (§ 3.7)
+    optional: bool = False                    # unset is a distinct state
+
+    def __post_init__(self) -> None:
+        if self.type_ not in DECL_TYPES:
+            raise ValueError(
+                f"field {self.name!r}: type {self.type_!r} is not one of "
+                f"{', '.join(DECL_TYPES)} (job-contracts.md 3.3). A field "
+                "whose type has no name cannot be read back, so the type is "
+                "added to the grammar rather than left off the declaration.")
+        # NOT checked here: ``type=enum`` with no ``choices``.  § 3.7 adds
+        # ``choices=`` and an item block needs it -- a reader cannot validate
+        # an enum whose members it was not told -- but § 3.3's BENCH-MARKS
+        # shipped without it, and ``SIESTA_BENCH_FIELDS``' own
+        # ``Diag.Algorithm`` is exactly that case.  So the rule is enforced
+        # where the contract states it (the item-block emitter) rather than
+        # here, where it would refuse a block that ships today.
+        #
+        # ⚠ That shipped block IS thin: a bench tool reading it learns the
+        # field is an enum and not which values are legal.  Recorded
+        # 2026-08-07 rather than fixed, because changing an emitted artifact
+        # is not this unit's business.
 
 
 # Static field list for SIESTA .fdf.  PySCF and future engines get
