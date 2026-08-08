@@ -512,6 +512,53 @@ something is.
   *record* as what failed. For `.gitignore`, edit inside the marked section as
   well as outside — anyone who knows about the markers will edit inside them.
 
+#### Where the MANIFEST's digest lives: the commit message
+
+**A trailer line on the commit that names the archive**, lowercase hex, matching
+the convention the MANIFEST and the archive directory already use:
+
+```text
+Manifest-SHA256: 7ef4c645…344a
+```
+
+**Why the commit and not a tag or a note: the commit sha covers the message.**
+Tamper with the digest and you get a different commit — which orphans
+`.binsnapshots/<the old sha>/` *and* leaves the new commit with no archive, so
+the edit announces itself twice. The anchor inherits git's own hashing instead of
+needing protection of its own. A tag can be moved or deleted; a git note lives on
+a mutable ref and can be rewritten in place leaving nothing behind; a record
+chained into the next checkpoint needs a next checkpoint, and the last save of a
+project never gets one.
+
+**The ordering that makes it possible.** A MANIFEST's content — `sha256  bytes
+key`, three columns — contains no commit sha, so it is fully known before
+anything is committed:
+
+```text
+hash the big files → build the MANIFEST text → sha256 that text
+  → commit, carrying the digest
+  → publish the archive at .binsnapshots/<the new sha>/
+```
+
+Nothing is circular: the digest goes in before the commit exists, the archive
+goes out after. *(This was written down once as an open problem — "the anchor
+must be created after the archive is published" — which was simply wrong. The
+digest is of content, and the content is knowable early.)*
+
+**Only the digest, never the record.** Git would hold the whole MANIFEST
+comfortably — messages are compressed blobs with no practical size limit, and a
+500-file archive is ~45 KB — but a second copy of a record is a second thing that
+can disagree with the first. One digest says *the MANIFEST I published had
+exactly this content*, which is all this rule asks.
+
+**Absent is not the same as wrong.** Archives written before this carry no
+trailer, and `snapshot migrate-manifest` rewrites a legacy MANIFEST's bytes
+without being able to rewrite the commit that anchors it. So verification has
+three outcomes, not two: **anchored and matching** passes, **anchored and
+different** is a hard refusal naming the record, and **unanchored** is reported
+as unanchored. Treating the third as tampering would condemn every archive
+predating the rule, and I1 already holds that migration is legal.
+
 > **Records are named so nobody mistakes one for a setting.** `MANIFEST` looks
 > like a file a person may reasonably adjust; `MANIFEST.do_not_edit` does not.
 > This buys nothing against deliberate tampering — that is the digest's job — and
@@ -765,7 +812,7 @@ conclude there is nothing to do.
 | **I1** | archived content is never modified | ✅ |
 | **I2** | a MANIFEST is authoritative | ✅ |
 | **I2a** | a restore replays the save, and consults nothing | ✅ |
-| **I2b** | the records themselves are tamper-evident | ⛔ neither is |
+| **I2b** | the records themselves are tamper-evident | ⛔ neither is — the anchor is decided (a `Manifest-SHA256:` commit trailer), not built |
 | **I2c** | the restore's gate reads the record, not the config | ⛔ the gate derives from the glob list; the copy derives from the MANIFEST |
 | **I3** | one mover, one replacer, no third | ✅ |
 | **I4** | no git in a generated wrapper | ✅ |
