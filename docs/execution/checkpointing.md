@@ -151,7 +151,23 @@ file at that path, so nothing reading it can tell the difference.
 
 ### S1 — a **regular file** is git-tracked **or** content-archived, never both, never neither
 
-*holds today.*
+***DOES NOT HOLD.** Found 2026-08-08; it said "holds today" and had not been
+checked against the ignore list. See "The third bucket" below.*
+
+> **What a checkpoint is for, stated before the mechanism, because reading it
+> the other way round is what produced the defect below.**
+>
+> **A checkpoint saves the whole directory. It chooses *how* to store a file,
+> never *whether* to.**
+>
+> Membership is not a decision this module gets to make: it is not designed for
+> a particular set of files, it is designed for a directory, and the promise it
+> exists to keep is that **the state of a run can always be returned** — before
+> a cold start, before a warm one, before anything that overwrites. Selecting
+> a mechanism per file is an implementation detail and is allowed; git is bad
+> at multi-gigabyte binaries, so those go to a content-addressed store instead.
+> Selecting *members* is a different act wearing the same clothes, and it is
+> how a result stops being saved.
 
 `.mbcheckpoint.json`'s `archive_globs` classify a run directory's files: text
 (including the small warm-restart `.XV` / `.CG`) is committed to git; the large
@@ -188,10 +204,43 @@ belongs.
 > archived binary like any other — the link rule above is about the deck and the
 > shared package, which are the links a checkpointed tree actually contains.
 
+#### The third bucket — and the one rule that governs it
+
+S1 is written as a binary, and the code has a **third** state it never named:
+ignored by git *and* matched by no archive glob. `_GITIGNORE_FIXED_TAIL` is a
+hand-kept list of such patterns, sitting directly beneath the generated section
+under a comment promising the two lists "never drift apart".
+
+A third bucket is not automatically wrong — a lock file or an editor swap file
+is genuinely not part of the calculation. But it needs a rule, and until
+2026-08-08 it had none, so nothing stopped a *result* from being put in it.
+
+> **A file may be in neither store only if losing it loses nothing:** it is
+> **regenerable** from something that *is* stored, or it is **not the
+> calculation's** at all.
+>
+> **A result may never be there.** If a run produced it and it cannot be
+> recomputed from what a checkpoint holds, it is tracked or it is archived.
+> "Too large for git" selects the *archive*; it never selects the exit.
+
+Against that rule, the shipped list divides cleanly:
+
+| Pattern | Verdict |
+|---|---|
+| `*.ion.nc`, `*.ion.xml` | **regenerable** — deterministic from the `.psml` |
+| `fdf.*.log`, `WORK_*`, `INPUT_TMP.*` | **scratch** — SIESTA's working files, meaningless after the run |
+| `*.swp`, `*~` | **not ours** — editor noise |
+| `.binsnapshots/` | **the store itself** — archiving the archive |
+| **`*.MD`, `*.MD_CAR`** | ⛔ **results.** Ignored *because they are large* — which is the argument for archiving them, and instead they are in no snapshot at all. A restored MD calculation comes back without its trajectory, silently |
+
+`*.MD` is S1's losing branch in the **shipped default**, not in some
+misconfigured directory: large enough to be worth ignoring, and nothing ever
+asked where it went instead.
+
 | | |
 |---|---|
 | **How it fails** | A file matching an archive glob that is *also* tracked puts a multi-gigabyte blob in git history forever. A file matching neither is in no snapshot at all — a restore silently does not bring it back |
-| **How to check** | For every file in a checkpointed directory: `matches_archive_glob(f) XOR git_tracked(f)` is true. Assert it over a fixture directory containing one of each engine's warm files plus a text log |
+| **How to check** | For every file in a checkpointed directory: `matches_archive_glob(f) XOR git_tracked(f)` is true, **or** the file matches a pattern in the ignore set that the rule above admits. Assert it over a fixture containing one of each engine's warm files, a text log, an MD trajectory and a scratch file — and assert the ignore set itself contains **no pattern that is neither regenerable nor foreign**, which is the check nobody ran |
 
 **An archive is now always written, even with nothing to put in it.** A missing
 archive directory used to mean two things — *this commit had no big binaries* and
@@ -204,8 +253,21 @@ the warning stays a warning; promoting it to an error is a later step.)
 
 ### S1a — the ignore set is *derived* from `archive_globs`, never kept beside it
 
-*HOLDS as of 2026-08-06 — it did not, and my earlier reading of it was half
-right.*
+*HOLDS for the **derived** section as of 2026-08-06. **It does not hold for the
+file as a whole** — found 2026-08-08.*
+
+> **The generated block is not the whole ignore set.** `_GITIGNORE_FIXED_TAIL`
+> is a second list, written by the same function but **not derived from
+> anything**, and it sits immediately below a comment stating that the archive
+> section is generated "so git-ignore and sha-archive never drift apart". The
+> sentence is true of the block above it and false of the block below it, which
+> is the most expensive shape a comment can have.
+>
+> One writer was necessary and is not sufficient: what S1a is actually after is
+> **one *source*.** A hand-kept tail cannot drift from `archive_globs` by being
+> edited elsewhere — it starts already independent of it, and the patterns in it
+> answer to no invariant at all. That is how `*.MD` came to be ignored without
+> anyone deciding where it should be stored instead (S1's third bucket).
 
 S1 rests on two lists agreeing: `archive_globs` in `.mbcheckpoint.json`, and what
 git ignores in `.gitignore`. **One list, one writer**, or the agreement is a
@@ -832,8 +894,8 @@ One line each, for reading over a diff:
 
 | | Invariant | Assertable |
 |---|---|:--:|
-| **S1** | every **regular file** is tracked XOR archived — never both, never neither (symlinks are layout, not content) | today |
-| **S1a** | the git-ignore set is *derived* from `archive_globs`, never kept beside it | today |
+| **S1** | every **regular file** is tracked XOR archived — never both, never neither (symlinks are layout, not content); a file in **neither** store only if losing it loses nothing, and **never a result** | today — ⛔ **and it fails**: `*.MD` / `*.MD_CAR` are ignored and unarchived |
+| **S1a** | the git-ignore set is *derived* from `archive_globs`, never kept beside it | today — ⛔ **and it fails** for `_GITIGNORE_FIXED_TAIL`, which is hand-kept beside the generated block |
 | **S2** | a stage writes only inside its own directory | needs the layout |
 | **S3** | a run records what it started from (`run.json`'s `continued_from`) | needs the layout |
 | **S4** | the description is never modified by a produce or a run | needs the description |
