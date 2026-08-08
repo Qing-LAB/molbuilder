@@ -111,6 +111,25 @@ form):
 > each engine, beside the fields themselves, in the one place that already knows
 > what a field *is*. No engine needs code in the shared machinery, and a new
 > engine gets a working default by tagging its own fields.
+>
+> ⚠ **The tag is a default, never a restriction.** Any field of the shared schema
+> may be promoted, whatever group it carries — § 1.2's rule stands. The group only
+> decides what is *already ticked* when the tab opens.
+>
+> **And the selection is made in place, one checkbox per parameter** (user,
+> 2026-08-07) — **not** a separate list of stage-able settings anywhere. The form
+> already lists every parameter; each one carries a *vary per stage* checkbox
+> beside it, and what is ticked **is** `varies`. A second list would be a second
+> copy of the field set, drifting from the first — the same duplication this whole
+> correction removed. `web/task-setup-plan.md § 3.2` and
+> `web/structure-optimization-ui-plan.md` carry the surface detail.
+>
+> **`relax_type` is tagged `profile` and that tag is wrong** (user, 2026-08-07,
+> and it is a scientific call, not a naming one): a ladder deliberately changes
+> the optimizer between stages — CG to warm up, Broyden once the geometry is
+> close — so it belongs in the `stage` group. Correcting the tag is a one-line
+> change with `engines/tuning.md`'s reasoning behind it. It also demonstrates the
+> rule above: even had the tag stayed wrong, a user could tick the box.
 
 **The four hard-coded values are historical residue, and the tagging proves it**
 (2026-08-07). Of the four that `render_siesta_stage_fdfs` can vary, **two are not
@@ -148,6 +167,21 @@ on the resolved config.** That is what R2 already requires — a stage is valida
 as a resolved whole, never as a diff — and it is why the split works: by the time
 an engine's validator is asked anything, it is looking at an ordinary complete
 config of its own type, exactly as it would for a single run.
+
+> **The science validator is the one that already ships, not a new one**
+> (2026-08-07). `molbuilder/validation/` registers a validator **per config
+> class** (`_register_engine_validator`) and exposes one door,
+> `validate(struct, cfg)`. It is already both of the things a stage needs:
+> **the gate before a script is written** — `siesta/input.py`, `pyscf/input.py`
+> and `cli.py` all call it — **and the live advice in the tab**, through the web
+> blueprints. Per-stage validation is therefore *that same call, once per
+> resolved stage*, and nothing engine-specific is added to the staged machinery.
+>
+> **This also decides an argument elsewhere.** `validate` takes a **config
+> object**. Any design in which a stage is resolved by rewriting lines of deck
+> text has nothing to hand it, and would lose both R1/R2 *and* the live advice a
+> user gets today — which is why the effective config must be a real config
+> (§ 4).
 
 **So the stage setting is a contract between the UI and `prep`, and the engine
 sits downstream of both.** The browser asks the user which parameters to vary

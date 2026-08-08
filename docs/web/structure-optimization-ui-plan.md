@@ -333,6 +333,40 @@ continuing free.
 
 ---
 
+## 7.6 How a parameter is promoted: a checkbox, in place
+
+*User decision, 2026-08-07.* **There is no separate list of stage-able
+settings anywhere in the UI.** The form already lists every parameter this
+engine has; each one carries a **"vary per stage" checkbox beside it**, and what
+is ticked **is** `varies` in the description.
+
+Three things follow, and they are why this is the shape rather than a panel:
+
+- **No second copy of the field set.** A curated list of "settings you may vary"
+  would be the field list written twice, drifting from the first the moment
+  anyone adds a parameter — the exact duplication that limited a stage to four
+  values (`engines/stages.md § 1.2`).
+- **The default is what is pre-ticked, not what is offered.** The engine's
+  `workflow_group: "stage"` group starts checked; every other parameter is
+  checked-able. Nothing is withheld.
+- **Selection happens where the value already is.** The user is looking at
+  `mesh_cutoff` when they decide it should vary, so the control belongs there —
+  not on another screen that names it a second time.
+
+```text
+    Mesh cutoff        [ 300 ] Ry        [x] vary per stage
+    Basis size         [ DZP ▾]          [x] vary per stage
+    XC functional      [ GGA ▾]          [ ] vary per stage
+    Relaxation         [ CG  ▾]          [x] vary per stage
+```
+
+The tab writes the ticked names into `varies` and the stage list into
+`task.json`; the per-stage **values** are given in Task Setup
+([`task-setup-plan.md`](?doc=web/task-setup-plan.md)), whose columns are exactly
+these ticks.
+
+---
+
 ## 8. Where the machine comes in — not here, and that is the design
 
 > **Rewritten 2026-08-07.** This section described the page writing finished

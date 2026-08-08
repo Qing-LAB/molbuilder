@@ -545,11 +545,13 @@ and the findings contract (facts in, findings out; `where` is the stable id).
    > invention: delete the hard-coded four, read the group. A new engine then
    > gets a working default by tagging its own fields and writing no shared code.
    >
-   > ⚠ **Check the two demotions against the science before shipping them**
-   > (Review 4). Varying `relax_type` between stages is what today's ladder does
-   > — CG warm-up then Broyden — and the tag says `profile`. Either the tag is
-   > wrong or the ladder is; `engines/tuning.md` owns that answer, and this unit
-   > does not guess it.
+   > **The two demotions are answered** (user, 2026-08-07). **`relax_type` stays
+   > varyable — the tag is what is wrong**, and it is a scientific call: a ladder
+   > changes the optimizer on purpose, CG to warm up and Broyden once the geometry
+   > is close. Retag it `stage`, one line. `relax_steps` stays in `budget`; a step
+   > budget is a resource, and nothing wants it to differ per stage today — but
+   > **the tag restricts nothing either way**, since any parameter can be ticked
+   > (`stages.md § 1.3`).
 3. `continue_retries` gets a road to the wrapper. ⚠ It is not merely unrouted —
    it is **silently dropped while everything upstream validates** (§ 8a D): the
    field range-checks 1..5, `runwrap.py` implements the retry loop, and

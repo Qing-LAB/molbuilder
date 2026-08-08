@@ -192,7 +192,10 @@ Three rules keep it honest:
    `stages` key appear together, the moment a second stage does.
 3. **The default `varies` is a proposal, not a law.** It starts as the fields the
    schema tags `workflow_group: "stage"` because that is the useful starting
-   point, not because those nine are special.
+   point, not because those are special — and the generating tab lets the user
+   tick any parameter at all, in place, beside its value
+   (`structure-optimization-ui-plan.md § 7.6`). **This tab does not choose the
+   columns; it renders the ones already chosen.**
 
 `task.json`'s keys then split cleanly between the two tabs, and the line falls
 where the file already draws it: **`varies` is the column set, `overrides` are
