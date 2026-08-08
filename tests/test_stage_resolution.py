@@ -184,6 +184,51 @@ def test_a_stage_may_vary_a_field_from_any_section(h2):
 
 
 # --------------------------------------------------------------------- #
+#  § 4 R1 -- the object validated IS the object rendered                #
+# --------------------------------------------------------------------- #
+
+def test_the_validator_sees_each_stages_resolved_config(h2, monkeypatch):
+    """**R1, asserted rather than assumed.**  M2's wording is *assert
+    identity, not equality*: what was checked and what was written cannot
+    come apart.
+
+    It holds by construction -- ``render_fdf`` calls the validator on the
+    very object it then renders, and ``render_siesta_stage_fdfs`` hands it
+    ``effective_config``'s result -- but "by construction" is exactly the
+    kind of claim that stops being true during a refactor and takes a while
+    to notice.  So: spy on the validator, render a two-stage ladder whose
+    stages disagree, and assert the validator saw each stage's OWN resolved
+    values rather than the template's.
+
+    Before ``overrides`` existed this could only have been asked about the
+    privileged four; the point of the gate is that it is now askable about
+    any field, so it is asked about ``mesh_cutoff``."""
+    import molbuilder.validation as mv
+
+    # ``render_fdf`` imports ``validate`` from the package inside the
+    # function body, so the package attribute is the seam to spy on.
+    seen = []
+    real = mv.validate
+
+    def _spy(struct, cfg, **kw):
+        seen.append(cfg)
+        return real(struct, cfg, **kw)
+
+    monkeypatch.setattr(mv, "validate", _spy)
+
+    cfg = _tpl(mesh_cutoff=150)
+    render_siesta_stage_fdfs(h2, cfg, [
+        Stage(name="coarse", overrides={"mesh_cutoff": 150}),
+        Stage(name="tight", overrides={"mesh_cutoff": 300})])
+
+    assert [c.mesh_cutoff for c in seen] == [150, 300], (
+        "the validator saw the template's value, not each stage's -- so a "
+        "stage could be checked as one thing and written as another")
+    # and none of them is the template object itself
+    assert all(c is not cfg for c in seen)
+
+
+# --------------------------------------------------------------------- #
 #  What a ladder must refuse                                            #
 # --------------------------------------------------------------------- #
 

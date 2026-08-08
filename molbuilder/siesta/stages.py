@@ -85,23 +85,6 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
     ]
 
 
-def default_siesta_varies() -> List[str]:
-    """The fields the shipped ladder varies, in first-seen order.
-
-    This is what ``task.json``'s ``varies`` lists for the default ladder.
-    **Derived from the overrides, never a second list** — § 6.2's subset
-    rule is then checked against exactly the thing it was computed from,
-    so the two cannot disagree.
-    """
-    from ..config.siesta import SIESTA_STAGE_PRESETS
-    seen: List[str] = []
-    for tier in sorted(SIESTA_STAGE_PRESETS):
-        for k in SIESTA_STAGE_PRESETS[tier]:
-            if k not in seen:
-                seen.append(k)
-    return seen
-
-
 def _dep_kind(prev_policy: str) -> str:
     """SLURM dependency kind for the edge OUT of a stage with the given
     ``on_nonconvergence`` policy (§ 5).  ``proceed`` lets the next stage run
@@ -305,5 +288,5 @@ def build_siesta_stage_bundle(
 
 
 __all__ = ["DEFAULT_NONCONVERGENCE", "default_siesta_stages",
-           "default_siesta_varies", "stages_to_jobset", "StageBundle",
+           "stages_to_jobset", "StageBundle",
            "build_siesta_stage_bundle"]

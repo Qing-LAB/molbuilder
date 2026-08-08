@@ -855,6 +855,31 @@ bootstrap, not a program**).
 2. `on_nonconvergence` is read in **one** place. It is read twice today, and the
    two disagree about whether the last stage force-halts (the bash runner does
    it and is right; the JobSet producer has no equivalent).
+
+   > **Half-closed by P2 unit 4, and the remaining half turns out to be
+   > vacuous** (verified 2026-08-07 by the phase's own Review 3). Both
+   > producers now read the *same* object — the policy mapping passed as the
+   > producer's input (§ 3) — so there is one source rather than two fields.
+   > And `stages_to_jobset` consults a stage's policy only when that stage is
+   > some other stage's predecessor, so the **last** stage's policy is
+   > structurally unreachable there: there is nothing for it to disagree
+   > about. What is left for P5 is the shape decision, not this.
+2a. **A promoted `enable_gpu` reaches the deck and stops there** — found
+   2026-08-07 by P2's Review 3, recorded rather than fixed because it is this
+   phase's, not P2's. `stages.md § 5`'s second row says a GPU decision lands in
+   the deck **and** the wrapper's env routing **and** a scheduler's `--gres`;
+   `stages_to_jobset` sets `gres=None` unconditionally, and `submit.py` reads
+   `gpu = bool(job.resources.gres)`. So a ladder renders a GPU deck and asks
+   for no GPU.
+
+   > **P2 did not cause this — it was already true when `enable_gpu` was a
+   > shared field — but P2 widened who can hit it**, because a stage can now
+   > promote `enable_gpu` and have two stages disagree about it. The
+   > derivation `job-contracts.md § 6.2` names (*"derived from `.fdf` + GPU
+   > type"*) exists in `bench/to_jobset.py` and has no counterpart in the
+   > ladder producer. Whoever writes unit 1 owns it, since it is the same
+   > question as *what does this producer emit*.
+
 3. **The flat ladder runner is deleted, not taught.** It emits
    `siesta < "$fdf" > "$log"` — no activation (so it fails on stage 1, since
    `siesta` lives in `molbuilder-siesta` and is not on a clean `PATH`), no rank

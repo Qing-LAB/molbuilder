@@ -40,7 +40,6 @@ from molbuilder.config.siesta import (
 from molbuilder.siesta.stages import (
     DEFAULT_NONCONVERGENCE,
     default_siesta_stages,
-    default_siesta_varies,
 )
 from molbuilder.task import Stage
 
@@ -131,22 +130,22 @@ def test_a_stage_has_exactly_the_three_fields_of_section_2():
         "name", "enabled", "overrides"]
 
 
-def test_default_varies_is_the_union_of_the_ladders_override_keys():
-    """§ 6.2: ``overrides ⊆ varies``.  ``varies`` for the shipped ladder is
-    derived from it, never a second list to keep in step."""
-    varies = default_siesta_varies()
-    for stage in default_siesta_stages("vib-quality"):
-        assert set(stage.overrides) <= set(varies)
-    assert varies == ["relax_type", "relax_steps",
-                      "relax_force_tol", "relax_max_displ"]
-
-
-def test_every_varied_field_exists_in_the_shared_schema():
+def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
     """The preflight's rule, applied to what molbuilder itself ships: a
-    ladder naming a field the schema does not have would be refused, so
-    the default must not be one."""
+    ladder naming a field the schema does not have is refused, so the
+    default must not be one.
+
+    ``varies`` is DERIVED from the overrides, here as everywhere -- § 6.2's
+    subset rule is then checked against the thing it was computed from, so
+    the two cannot disagree.  There is deliberately no shipped helper that
+    computes it: nothing in the backend needs one, and the surface that
+    writes ``task.json`` (P10) will know better what shape it wants."""
     known = {f.name for f in dataclasses.fields(SiestaConfig)}
-    assert set(default_siesta_varies()) <= known
+    varied = {k for s in default_siesta_stages("vib-quality")
+              for k in s.overrides}
+    assert varied <= known
+    assert varied == {"relax_type", "relax_steps",
+                      "relax_force_tol", "relax_max_displ"}
 
 
 # --------------------------------------------------------------------- #
