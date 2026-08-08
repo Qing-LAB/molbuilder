@@ -1792,9 +1792,28 @@ def effective_config(template: "SiestaConfig", stage) -> "SiestaConfig":
             f"(engines/stages.md 1.2, 6.6)."
         )
 
+    # An override that arrived from JSON carries JSON's types, and JSON has
+    # one number.  ``{"mesh_cutoff": 150}`` is an int where the field declares
+    # float, which renders ``MeshCutoff 150 Ry`` where the same value written
+    # ``150.0`` renders ``MeshCutoff 150.0 Ry`` -- the same number, a different
+    # deck.  Widening int -> float is lossless, so it is done here and the deck
+    # reads the same however the description spelled it.
+    #
+    # NOTHING ELSE is coerced.  ``float -> int`` would silently truncate
+    # ``relax_steps: 100.7`` to 100, and a string would quietly parse; both are
+    # the caller's mistake and are refused BY NAME in the preflight
+    # (``validation/task.py``), which is where a wrong value belongs.  Found by
+    # the M2 seam walk, 2026-08-07.
+    declared = {f.name: f.type for f in dataclasses.fields(type(template))}
+    widened = {
+        k: (float(v) if declared.get(k) in ("float", float)
+            and isinstance(v, int) and not isinstance(v, bool) else v)
+        for k, v in overrides.items()
+    }
+
     # ``replace`` builds a NEW object, so the template is untouched and every
     # stage resolves against the same backbone regardless of order.
-    return dataclasses.replace(template, **overrides)
+    return dataclasses.replace(template, **widened)
 
 
 def render_siesta_stage_fdfs(

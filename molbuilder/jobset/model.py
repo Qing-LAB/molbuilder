@@ -187,7 +187,10 @@ class JobSet:
     def validate(self) -> List[str]:
         """Return human-readable structural errors (empty == OK).  Checks
         the invariants the engines can't recover from -- exactly the same
-        discipline as ``validate_stages`` / ``validate_siesta_stages``:
+        discipline as PySCF's ``validate_stages``.  (It used to name SIESTA's
+        alongside it; that one was deleted with ``SiestaStageSpec`` in P2, and
+        the ladder-level checks it made now live at
+        ``siesta/input.py::_enabled_stages``.)
 
           * non-empty; ``kind`` known;
           * unique job names (the dir + ``-J`` collide otherwise);

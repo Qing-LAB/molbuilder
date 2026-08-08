@@ -299,3 +299,51 @@ def test_pyscf_gets_the_same_treatment_as_siesta():
                              stages=(Stage(name="a"),)),
                        config_cls=PySCFConfig)
     assert _wheres(issues) == ["task.varies"]
+
+
+# --------------------------------------------------------------------- #
+#  Row 4a — a value the field can actually hold                         #
+#  (found by the M2 seam walk, 2026-08-07)                              #
+# --------------------------------------------------------------------- #
+
+def test_a_fractional_value_for_a_counting_field_is_refused():
+    """**The defect the seam walk found.**  ``relax_steps`` is declared
+    ``int`` and 100.7 is inside its range, so the bounds row passed it and it
+    reached the deck as ``MD.NumCGsteps 100.7``.  Neither side could see it:
+    ``task.py`` has no schema, and ``effective_config`` had no reason to think
+    a value might not be one the field can hold."""
+    [issue] = preflight(_staged({"relax_steps": 100.7}))
+    assert issue.severity == "error" and issue.where == "config.relax_steps"
+    assert "100.7" in issue.message and "whole number" in issue.message
+
+
+def test_a_whole_valued_float_is_accepted_for_a_counting_field():
+    """``100.0`` IS an integer.  Refusing it would reject a description JSON
+    round-tripping had every right to produce."""
+    assert preflight(_staged({"relax_steps": 100.0})) == []
+
+
+def test_an_int_is_accepted_for_a_float_field():
+    """JSON has one number, so ``150`` for a float field is the same value
+    written differently -- widened on resolve, never refused."""
+    assert preflight(_staged({"mesh_cutoff": 150})) == []
+
+
+def test_a_string_is_refused_for_a_number():
+    """A quoting slip is a mistake, not a value: coercing it would make the
+    slip invisible."""
+    assert _errors(preflight(_staged({"mesh_cutoff": "300"})))
+
+
+def test_a_bool_is_refused_for_a_number():
+    """``bool`` is a subclass of ``int`` in Python, so ``True`` would slide
+    into a numeric field as 1 without this."""
+    assert _errors(preflight(_staged({"relax_steps": True})))
+
+
+def test_a_number_is_refused_for_a_boolean_field():
+    assert _errors(preflight(_staged({"spin_polarized": 1})))
+
+
+def test_a_legal_boolean_is_accepted():
+    assert preflight(_staged({"spin_polarized": True})) == []

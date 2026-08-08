@@ -52,7 +52,7 @@ That would be forgivable if the word meant one thing. It means three:
 | Where | What "stage" means there |
 |---|---|
 | this dropdown | a preset that bulk-fills nine fields |
-| `cfg.stages` | a real step with its own deck, named `<label>_<stagename>` — ⚠ **being removed**; the list moves to `task.json` (`stages.md § 1.1`) |
+| a stage of the ladder | a real step with its own deck, named `<label>_<stagename>`. It lives in `task.json`, never in the engine config — `cfg.stages` was **deleted** 2026-08-07 (`stages.md § 1.1`) |
 | `fdf --stage N` | emit one step's file alone, under a *different* naming convention (`<label>-stage<N>`) |
 
 So the control reads as *make me stage 2 of a sequence* and delivers *one file

@@ -864,8 +864,8 @@ bootstrap, not a program**).
    > some other stage's predecessor, so the **last** stage's policy is
    > structurally unreachable there: there is nothing for it to disagree
    > about. What is left for P5 is the shape decision, not this.
-2a. **A promoted `enable_gpu` reaches the deck and stops there** — found
-   2026-08-07 by P2's Review 3, recorded rather than fixed because it is this
+2a. **A promoted `enable_gpu` reaches the deck and stops there** — M2 review
+   finding 6 (2026-08-07), deferred here rather than fixed because it is this
    phase's, not P2's. `stages.md § 5`'s second row says a GPU decision lands in
    the deck **and** the wrapper's env routing **and** a scheduler's `--gres`;
    `stages_to_jobset` sets `gres=None` unconditionally, and `submit.py` reads
@@ -1260,6 +1260,54 @@ flowchart TB
 | M9 | the D7 gate, then other engines | — |
 | M10 | M11, and a single-stage user's whole workflow in the browser | — |
 | M11 | **every later engine** — Transport and Spectra inherit this tab rather than copying it | — |
+
+---
+
+## 5b. M2 — the milestone review, 2026-08-07
+
+All four lenses over the whole of P2 (units 1–8), run after unit 8 rather than
+per unit: Review 3's job is the **seams between** units, which a per-unit review
+structurally cannot reach — and it is the lens that found the only real defect.
+
+**Method note.** Review 1 was run as written — governing sections read and
+obligations listed *before* the diff was opened. Three separate times during
+this review a claim I was about to file was checked and turned out to be false;
+each is recorded as **withdrawn** below rather than quietly dropped, because a
+review that only reports what survived teaches nothing about its own accuracy.
+
+| # | Lens | What is wrong | Evidence | Disposition |
+|---|---|---|---|---|
+| 1 | R2 | `tuning.md § 4` cited `config/siesta.py::_default_siesta_stages` as where the shipped ladder lives — a **deleted** function, stated as current fact | `docs/engines/tuning.md:324` | **Fixed** — rewritten to `siesta/stages.py::default_siesta_stages`, and the § 3 note on where the policy lives added while there |
+| 2 | R2 | `JobSet.validate`'s docstring cited `validate_siesta_stages` as a live example of "the same discipline" | `molbuilder/jobset/model.py:190` | **Fixed** — names PySCF's, and says where SIESTA's ladder checks went |
+| 3 | R2 | Two docs still said the removal was **pending** (*"`cfg.stages` is being removed"*) after it had happened | `job-contracts.md:232`, `structure-optimization-ui-plan.md:55` | **Fixed** — both now past tense with the date |
+| 4 | **R3** | **A stage override is not coerced to its field's declared type.** `relax_steps` is declared `int`; `{"relax_steps": 100.7}` is inside its range, passed every check, and reached the deck as `MD.NumCGsteps 100.7`. Separately `{"mesh_cutoff": 150}` (JSON has one number) rendered `MeshCutoff 150 Ry` where `150.0` rendered `150.0 Ry` — the same value, two decks | the seam walk; reproduced directly | **Fixed** — `effective_config` widens `int → float` (lossless, so the deck reads the same however the description spelled it) and the preflight gained a **declared-type row** that refuses everything else by name. Coercing `100.7 → 100` was rejected: it would silently run a different calculation from the one described |
+| 5 | R1 | § 4's *"an error in any stage blocks the whole produce"* had **no test** | — | **Fixed** — `test_an_error_in_any_stage_blocks_the_whole_produce`, with the error injected rather than provoked (see withdrawn #2) |
+| 6 | R1 | § 5's second row — a GPU decision lands in the deck **and** the wrapper **and** `--gres` — is unmet: `stages_to_jobset` sets `gres=None` unconditionally | `siesta/stages.py::_res`; `submit.py:162` reads `bool(resources.gres)` | **Deferred → P5 unit 1.** Pre-existing (true while `enable_gpu` was shared), but P2 **widened who can hit it**, since a stage can now promote `enable_gpu`. Recorded in P5 as unit 2a |
+| 7 | R2 | The shipped BENCH-MARKS block declares `Diag.Algorithm` an `enum` with no members, so a bench tool cannot validate an override against it | `SIESTA_BENCH_FIELDS` | **Deferred** — § 3.3's block shipped that way and changing an emitted artifact is not this phase's business. The § 3.7 emitter *does* enforce it |
+| 8 | R2 | `molbuilder/template.py` was added without a row in the layer table | `tests/test_layering.py` | **Fixed** in unit 7 — and it was the **guard** that caught it, not me; I added a top-level module without running the test that governs them |
+
+**Withdrawn — three claims that did not survive checking:**
+
+1. *"§ 4 R1 (one object validated **and** rendered) is unimplemented."* **False.**
+   `render_fdf` calls the validator on the very object it renders
+   (`siesta/input.py:511`), so a staged render validates the resolved config by
+   construction. I had grepped `siesta/stages.py` and concluded from its absence
+   there. What was actually missing was the *test*, added in `e244767f`.
+2. *"An error in one stage does not block the produce."* **False, and my first
+   two probes were the problem** — neither `xc_functional: "NOTREAL"` nor a bad
+   `spin_total` produced an error-severity finding at all, so "it rendered
+   anyway" showed nothing. Injecting an error proved the rule holds.
+3. *"`DEFAULT_NONCONVERGENCE` is broken for a custom ladder"* — the CLI passes
+   it even when `--stages-json` supplies stages it does not name, so every edge
+   becomes `afterok`. **Withdrawn: that is the documented rule** (*a stage the
+   mapping does not name gets `halt`*) and halt is the safe reading of silence.
+
+**Lens 4 (science) came back clean.** The tier values kept their `tuning.md`
+trail; a stage is judged as a resolved whole; per-stage derived values derive
+from *that stage's* numbers (`_res` reads `resolved[name]`, and `render_fdf`
+receives the resolved config); and unit 6 checks only the four parameters
+`tuning.md` gives an explicit tier table for, with a test pinning the absence of
+the other two so it reads as a decision.
 
 ---
 

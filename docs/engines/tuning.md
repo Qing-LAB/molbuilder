@@ -321,11 +321,22 @@ For users who know one engine and want the other's equivalent.
 
 ## 4. The shipped stage ladders
 
-Both engines ship a three-stage default ladder (`config/siesta.py::_default_siesta_stages`,
-`config/pyscf.py::_default_stages`). Stage 3 is **disabled by default**. The
-per-stage non-convergence policy (`proceed` / `continue` / `halt`) is a shared
-cross-engine contract — see [`siesta.md`](?doc=engines/siesta.md) /
-[`pyscf.md`](?doc=engines/pyscf.md).
+Both engines ship a three-stage default ladder. Stage 3 is **disabled by
+default**.
+
+- **SIESTA:** `siesta/stages.py::default_siesta_stages(strategy)` builds it —
+  one `task.Stage` per tier, that tier's values as its `overrides`. The values
+  come from `config/siesta.py::SIESTA_STAGE_PRESETS`, which `--stage {1,2,3}`
+  also reads, so a one-shot tier-N deck and stage N of the ladder cannot drift.
+- **PySCF:** `config/pyscf.py::_default_stages`, still a field of the config —
+  its ladder runs inside one process ([`stages.md § 1.1`](?doc=engines/stages.md)).
+
+The non-convergence policy (`proceed` / `continue` / `halt`) is **not a stage
+field** for SIESTA: its whole effect is the edge between one attempt and the
+next, so it is the JobSet producer's own input
+([`stages.md § 3`](?doc=engines/stages.md); the shipped default is
+`siesta/stages.py::DEFAULT_NONCONVERGENCE`). PySCF's in-script loop still
+carries it per stage, because there the loop *is* the scheduler.
 
 | Stage (tier) | SIESTA | PySCF |
 |---|---|---|

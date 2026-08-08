@@ -195,6 +195,10 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "runner, plus a hierarchical JobSet whenever emit_jobset, which "
         "defaults true.  Not an eleventh mechanism: the code that decides "
         "the shape by not deciding it.  P5"),
+    "check_identical_stages": (
+        None, "molbuilder/validation/stages.py",
+        "§ 6.6a's check that a stage does not recompute the one before it -- "
+        "a question ABOUT a ladder, not a way of expressing one"),
     "DIAG_1STAGE": (
         None, "molbuilder/bench/__init__.py",
         "SIESTA *diagonalisation*, unrelated role -- same word"),

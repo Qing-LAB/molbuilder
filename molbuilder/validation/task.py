@@ -93,6 +93,10 @@ def preflight(task, config_cls=None, *,
     out.extend(_names_exist(task, cls, fields))
 
     # -- 4. every value is inside the schema's bounds ---------------------
+    #  ...which begins with being a value that field can HOLD.  Found by the
+    #  M2 seam walk (2026-08-07): `relax_steps: 100.7` is inside its range and
+    #  is not an integer, and reached the deck as `MD.NumCGsteps 100.7`.
+    out.extend(_values_are_the_declared_type(task, fields))
     out.extend(_values_in_bounds(task, fields))
     return out
 
@@ -161,6 +165,54 @@ def _no_such_field(name, fields, cls, lead) -> str:
     hint = f" -- did you mean {near[0]!r}?" if near else ""
     return (f"{lead} {name!r}, which is not a field of "
             f"{cls.__name__}{hint}")
+
+
+def _values_are_the_declared_type(task, fields) -> List[Issue]:
+    """An override's value must be one the field can actually hold.
+
+    **Refused rather than coerced**, and the two halves of that decision are
+    deliberate. ``effective_config`` widens ``int -> float`` because JSON has
+    one number and ``150`` for a float field is the same value written
+    differently — lossless, so silence is honest. Everything else is the
+    caller's mistake: coercing ``relax_steps: 100.7`` to 100 would silently
+    run a different calculation from the one described, and parsing ``"150"``
+    would make a quoting slip invisible.
+
+    Found by the M2 seam walk. Neither side could see it alone — ``task.py``
+    has no schema to check a type against, and ``effective_config`` had no
+    reason to think a value might not be one.
+    """
+    out: List[Issue] = []
+    for st in (task.stages or ()):
+        for key, value in st.overrides.items():
+            f = fields.get(key)
+            if f is None:
+                continue                    # already reported by _names_exist
+            bad = _type_complaint(f.type, value)
+            if bad:
+                out.append(Issue(
+                    "error",
+                    f"stage {st.name!r} sets {key} = {value!r}, {bad}",
+                    where=f"config.{key}", stage=st.name))
+    return out
+
+
+def _type_complaint(declared, value) -> Optional[str]:
+    """Why *value* cannot be this field's, or ``None`` if it can."""
+    is_bool = isinstance(value, bool)
+    if declared in ("int", int) and "Optional" not in str(declared):
+        if is_bool or not isinstance(value, (int, float)):
+            return "which is not a whole number"
+        if isinstance(value, float) and not value.is_integer():
+            return (f"which is not a whole number -- this field counts "
+                    f"things, so {value!r} would have to be rounded and the "
+                    f"run would not be the one described")
+    elif declared in ("float", float) and "Optional" not in str(declared):
+        if is_bool or not isinstance(value, (int, float)):
+            return "which is not a number"
+    elif declared in ("bool", bool) and not is_bool:
+        return "which is not true or false"
+    return None
 
 
 def _values_in_bounds(task, fields) -> List[Issue]:

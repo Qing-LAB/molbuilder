@@ -53,6 +53,22 @@ def _invoke(*args):
     return CliRunner().invoke(cli, list(args), catch_exceptions=False)
 
 
+def _value(deck: str, key: str) -> str:
+    """The value an fdf key carries, read off the deck.
+
+    Deliberately a value reader and not a substring search: a stage's number
+    survives resolution as a *number*, and how the emitter spells it is the
+    emitter's business.  Its twin lives in ``test_stage_resolution.py`` --
+    same gate, reached through the renderer instead of the CLI -- and the
+    duplication is the lesser evil against a test module importing another.
+    """
+    for line in deck.splitlines():
+        parts = line.split()
+        if parts and parts[0] == key:
+            return parts[1]
+    raise AssertionError(f"{key!r} not in the deck:\n{deck}")
+
+
 # --------------------------------------------------------------------- #
 #  Multi-stage branch entry                                              #
 # --------------------------------------------------------------------- #
@@ -137,8 +153,15 @@ def test_stages_json_can_vary_a_field_no_stage_type_ever_carried(xyz, tmp_path):
     assert r.exit_code == 0, r.output
     coarse = (tmp_path / "JOB_coarse.fdf").read_text()
     tight = (tmp_path / "JOB_tight.fdf").read_text()
-    assert "MeshCutoff 150 Ry" in coarse
-    assert "MeshCutoff 300 Ry" in tight
+    # NOT the deck text.  ``mesh_cutoff`` is a float field and JSON has one
+    # number, so the payload above writes ``150`` and resolution widens it to
+    # 150.0 -- the deck reads the same however the description spelled it.
+    # Pinning "MeshCutoff 150 Ry" pinned the inconsistency the M2 fix removed
+    # (one value, two decks), and this assertion outlived its twin in
+    # test_stage_resolution.py because that grep was never widened past one
+    # file.  2026-08-07.
+    assert float(_value(coarse, "MeshCutoff")) == 150
+    assert float(_value(tight, "MeshCutoff")) == 300
 
 
 def test_stages_json_refuses_an_unknown_field_by_name(xyz, tmp_path):

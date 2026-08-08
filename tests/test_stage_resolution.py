@@ -158,8 +158,13 @@ def test_a_stage_can_vary_a_parameter_the_stage_type_never_carried(h2):
         Stage(name="coarse", overrides={"mesh_cutoff": 150}),
         Stage(name="tight", overrides={"mesh_cutoff": 300}),
     ]
-    assert _value(_deck(h2, cfg, "coarse", ladder), "MeshCutoff") == "150"
-    assert _value(_deck(h2, cfg, "tight", ladder), "MeshCutoff") == "300"
+    # Compared as NUMBERS.  ``mesh_cutoff`` is declared float, and an override
+    # written ``150`` (JSON has one number) is widened to 150.0 on resolve, so
+    # the deck reads the same however the description spelled it -- found by
+    # the M2 seam walk, 2026-08-07.  Pinning the text here would pin the
+    # inconsistency that fix removed.
+    assert _same(_value(_deck(h2, cfg, "coarse", ladder), "MeshCutoff"), 150)
+    assert _same(_value(_deck(h2, cfg, "tight", ladder), "MeshCutoff"), 300)
 
 
 def test_a_stage_may_vary_a_field_from_any_section(h2):
@@ -358,3 +363,30 @@ def test_a_stage_field_name_in_overrides_is_refused():
         effective_config(_template(), Stage(name="tight",
                                             overrides={"enabled": False}))
     assert "enabled" in str(e.value)
+
+
+def test_an_error_in_any_stage_blocks_the_whole_produce(h2, monkeypatch):
+    """§ 4's last line, which had no test until the M2 review looked for one.
+
+    *"An `error` in any stage blocks the whole produce, not just its own
+    deck"* — it falls out of § 7.2: the folder appears whole or not at all, so
+    there is no such thing as writing the stages that passed.
+
+    The error is INJECTED rather than provoked with a real bad config.  Two
+    attempts to provoke one during the review produced no error-severity
+    finding at all and so proved nothing either way; what is under test is the
+    mechanism — one stage failing aborts the call — not which configs happen
+    to be invalid today.
+    """
+    import molbuilder.validation as mv
+    from molbuilder.issues import Issue, ValidationError
+
+    real = mv.validate
+    monkeypatch.setattr(mv, "validate", lambda st, cfg, **kw: (
+        [Issue("error", "injected", "config.mesh_cutoff")]
+        if cfg.mesh_cutoff == 999.0 else real(st, cfg, **kw)))
+
+    with pytest.raises(ValidationError):
+        render_siesta_stage_fdfs(h2, _tpl(), [
+            Stage(name="ok"),
+            Stage(name="bad", overrides={"mesh_cutoff": 999.0})])
