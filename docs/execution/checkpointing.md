@@ -431,6 +431,36 @@ describes exactly what is in that archive.
 | **How it fails** | A MANIFEST that names a file the archive lacks turns a restore into a partial one; a sha that does not match turns it into a silent corruption |
 | **How to check** | For every entry: the file exists, its size equals the recorded bytes, and its sha256 equals the recorded sha. Run it over every archive in a repository — this is the single most valuable test in the system |
 
+### I2a — a restore is decided by what the **save** recorded, never by configuration
+
+*holds today — read against the code 2026-08-08: `Repo.restore`,
+`_copy_archived_binaries` and `_verify_archived_binaries` contain **no** read of
+`archive_globs`, `.mbcheckpoint.json`, or an engine name.*
+
+**Restore replays what the save wrote down. It does not re-derive, re-classify,
+or consult a setting.** Which files were archived is a fact the MANIFEST records
+(I2); which were tracked is a fact the commit records. A restore reads those two
+and puts the bytes back. There is no third input, and there is no trick.
+
+> **This is the invariant that lets the classification be changed at all.** The
+> rule for *which store a file goes to* is going to move — out of the repository
+> and into molbuilder's own configuration, with a generic default and per-engine
+> hints (`running-a-job.md § 6`). Every archive written before that change stays
+> restorable, because none of them will be re-read through the new rule: they
+> are restored through the record they were written with.
+>
+> Without this, changing the classification would be a migration of every
+> archive in existence. With it, it is an edit to one file.
+
+**The saved state is therefore final at save time.** Nothing that happens
+afterwards — editing the config, deleting it, moving it, running a different
+engine, upgrading molbuilder — can change what a given checkpoint gives back.
+
+| | |
+|---|---|
+| **How it fails** | A restore that consulted the *current* classification would return a different tree depending on when it ran. A file archived under yesterday's rule and no longer matching today's would be looked for in git, not found, and silently skipped — the folder comes back short, and the checkpoint that "worked" last week is the one blamed |
+| **How to check** | Checkpoint a folder. Then change the classification as violently as the config allows — different engine, empty glob list, delete `.mbcheckpoint.json` outright — and restore. The restored tree is byte-identical to the one produced by restoring before the change. Run it for a folder holding both a tracked text file and an archived binary, so both halves of the record are exercised |
+
 ### I3 — warm state is moved or restored, never incidentally lost
 
 *holds today — read against the code: the cold path is a `mv` into
@@ -909,6 +939,7 @@ One line each, for reading over a diff:
 |---|---|:--:|
 | **S1** | every **regular file** is tracked XOR archived — never both, never neither (symlinks are layout, not content); a file in **neither** store only if losing it loses nothing, and **never a result** | today — ⛔ **and it fails**: `*.MD` / `*.MD_CAR` are ignored and unarchived |
 | **S1a** | the git-ignore set is *derived* from `archive_globs`, never kept beside it | today — ⛔ **and it fails** for `_GITIGNORE_FIXED_TAIL`, which is hand-kept beside the generated block |
+| **I2a** | a restore is decided by what the **save** recorded, never by configuration — so the classification can change without migrating a single archive | today — read against the code; wants the config-change-then-restore test |
 | **S2** | a stage writes only inside its own directory | needs the layout |
 | **S3** | a run records what it started from (`run.json`'s `continued_from`) | needs the layout |
 | **S4** | the description is never modified by a produce or a run | needs the description |
