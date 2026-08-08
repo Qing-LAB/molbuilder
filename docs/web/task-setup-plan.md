@@ -102,9 +102,17 @@ closure variables that nothing wrote down
 
 The table's rows are parameters. **Which** parameters is read from `varies` in
 the description — the user picked them. What each one is **called**, what unit it
-carries, what values it accepts, is read from the generated form schema
-(`form-schema.md`: the config form is built from the Python dataclass, and every
-field carries its label, help, choices and `workflow_group`).
+carries, what values it accepts, is read from the item's own declaration in the
+**template** (`job-contracts.md § 3.7`: each block carries
+`field <name> type=… range=… unit=… default=… group=…`, the same grammar
+BENCH-MARKS uses), which is itself generated from the Python dataclass
+(`form-schema.md`).
+
+> **So this tab needs the folder and nothing else** — it does not have to ask a
+> server what a field is. The template that travels with the calculation carries
+> its own catalogue, which is what makes § 3.1's *"it holds no state of its own"*
+> reach all the way down: the truth is on disk, including the truth about what
+> the fields **are**.
 
 > **Corrected 2026-08-07 (user).** This section used to say *"which parameters …
 > all of that is read from the generated form schema"*, fusing two questions that

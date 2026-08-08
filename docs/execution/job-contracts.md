@@ -634,13 +634,38 @@ in markers, with its explanation beside it.**
 
 ```fdf
 # === molbuilder item mesh_cutoff BEGIN ===
+#   field mesh_cutoff  anchor=MeshCutoff  type=float  unit=Ry
+#                      range=[50,2000]  default=300.0  group=stage
 #   Mesh cutoff — the real-space integration grid, in Ry.  Higher is finer
 #   and slower; convergence is checked, not assumed.
-#   Range 50–2000.  Tier ladder: 150 screening · 300 publishable · 500 tight.
-#   Varies per stage: ticked by default (workflow_group "stage").
+#   Tier ladder: 150 screening · 300 publishable · 500 tight.
 MeshCutoff   300.0 Ry
 # === molbuilder item mesh_cutoff END ===
 ```
+
+**Each block carries a `field` declaration line and then prose**, and the
+declaration is **the grammar § 3.3 already defines** — `field <name>
+anchor=… type=… range=[a,b] unit=… default=…`, `type ∈ {int, float, str, pow2,
+enum}` — extended with `group=` (the `workflow_group`) and `choices=` for enums.
+Not a parallel notation: the same shape, in the same file, parsed the same way.
+
+**That declaration is what makes the template enough on its own.** A surface
+holding this file needs nothing else to work:
+
+| From the declaration | What it lets a surface do |
+|---|---|
+| `type`, `choices` | pick the control — number box, dropdown, checkbox |
+| `range`, `unit` | bound it and label it |
+| `default` | show what "untouched" means, and **tell whether the payload is the user's or the default** — they are the same value or they are not, so no extra marker is needed |
+| `group` | decide whether the *vary per stage* box starts ticked |
+| `anchor` | **find the substitution site** when a stage overrides the item — anchor-based, not line-number-based, so it survives layout drift above it (§ 3.3's own rationale) |
+
+**So constructing `task.json` from the UI needs only the template.** When a user
+ticks an item, the tab already knows its type, its bounds and its default from
+the block itself — enough to render the per-stage cells and to validate what is
+typed into them, without asking the server what the field is. That is what makes
+the whole package portable in the sense `project-layout.md § 2.1` means: the
+calculation travels with its own catalogue.
 
 Four properties, and each buys something specific:
 
@@ -698,6 +723,18 @@ means the block is copied as it stands.
 > - **Items the schema does not model.** A user adds a legitimate SIESTA keyword
 >   molbuilder has no field for. Does it get an unnamed block, or does it belong
 >   in USER-CUSTOM (§ 3.5), which exists for exactly that?
+> - **A user-set value that equals the default** is indistinguishable from an
+>   untouched one, because the test is *payload vs `default=`*. Nothing about
+>   rendering or running cares. Provenance might — *which fields did they
+>   actually consider?* — and if it turns out to, that wants an explicit mark
+>   rather than a second copy of the value.
+>
+> **And one relationship to keep straight:** these item blocks and BENCH-MARKS
+> (§ 3.3) share a grammar and answer different questions. The item blocks live in
+> the **template** and declare **every** field. BENCH-MARKS lives in a
+> **generated deck** and declares the subset a *tool* may override. **Both must be
+> emitted from the same field metadata** (`web/form-schema.md § 1a`) — two hand-
+> maintained copies of `default=` would drift, and the drift would be silent.
 
 ### 3.6 Versioning and what a tool may assume
 
