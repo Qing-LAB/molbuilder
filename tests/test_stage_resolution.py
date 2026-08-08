@@ -160,3 +160,107 @@ def test_a_stage_can_vary_a_parameter_the_stage_type_never_carried(h2):
     cfg.stages[1].overrides = {"mesh_cutoff": 300}      # type: ignore[attr-defined]
     assert _value(_deck(h2, cfg, "coarse"), "MeshCutoff") == "150"
     assert _value(_deck(h2, cfg, "tight"), "MeshCutoff") == "300"
+
+
+# --------------------------------------------------------------------- #
+#  Unit 5 — effective_config, the one place a stage is resolved         #
+# --------------------------------------------------------------------- #
+#
+# engines/stages.md § 4:
+#
+#   effective config = the template's values ⊕ that stage's `overrides`
+#
+#   R1  one object is validated AND rendered — what was checked and what
+#       was written cannot come apart.
+#   R2  a stage is validated as a resolved WHOLE, never as a diff.
+#
+# § 6.2's subset rule decides the fallback: a stage may omit a varied key,
+# and omitting it means "use the template's value".
+
+from molbuilder.task import Stage                                   # noqa: E402
+from molbuilder.siesta.input import effective_config                # noqa: E402
+
+
+def _template() -> SiestaConfig:
+    """The backbone: every field, with values.  What the generating tab
+    wrote and what a stage overlays."""
+    return SiestaConfig(system_label="JOB", mesh_cutoff=150.0,
+                        relax_type="CG", relax_force_tol=0.05,
+                        restart="clean")
+
+
+def test_an_override_wins_over_the_template():
+    cfg = effective_config(_template(),
+                           Stage(name="tight",
+                                 overrides={"mesh_cutoff": 300.0}))
+    assert cfg.mesh_cutoff == 300.0
+
+
+def test_a_field_the_stage_does_not_name_keeps_the_templates_value():
+    """§ 6.2's subset rule: absent means 'use the template's value'."""
+    cfg = effective_config(_template(),
+                           Stage(name="tight",
+                                 overrides={"mesh_cutoff": 300.0}))
+    assert cfg.relax_type == "CG"
+    assert cfg.relax_force_tol == 0.05
+
+
+def test_it_returns_an_ordinary_config_of_the_engines_own_type():
+    """§ 4: 'an ordinary instance of the engine's config dataclass — a
+    SiestaConfig, not a new type'.  Which is what lets the SHIPPED
+    validator and the SHIPPED emitter take it unchanged."""
+    cfg = effective_config(_template(), Stage(name="tight"))
+    assert type(cfg) is SiestaConfig
+
+
+def test_the_template_is_not_mutated():
+    """R1's precondition.  Resolving stage 2 must not disturb what stage 3
+    resolves against, or the ladder depends on the order it was resolved
+    in — a bug that would only appear with three stages."""
+    tpl = _template()
+    before = dataclasses.asdict(tpl)
+    effective_config(tpl, Stage(name="tight", overrides={"mesh_cutoff": 300.0}))
+    assert dataclasses.asdict(tpl) == before
+
+
+def test_two_stages_resolve_independently():
+    tpl = _template()
+    coarse = effective_config(tpl, Stage(name="coarse",
+                                         overrides={"mesh_cutoff": 150.0}))
+    tight = effective_config(tpl, Stage(name="tight",
+                                        overrides={"mesh_cutoff": 300.0}))
+    assert (coarse.mesh_cutoff, tight.mesh_cutoff) == (150.0, 300.0)
+
+
+def test_a_stage_may_override_ANY_field_not_a_privileged_four():
+    """**The gate.**  `mesh_cutoff` was unreachable before; so were
+    `basis_size` and `kgrid`.  Nothing about them is special now — they are
+    fields of the shared schema like any other."""
+    cfg = effective_config(_template(), Stage(name="tight", overrides={
+        "mesh_cutoff": 400.0, "basis_size": "TZP", "kgrid": (2, 2, 2),
+        "relax_type": "Broyden", "restart": "continue"}))
+    assert cfg.mesh_cutoff == 400.0
+    assert cfg.basis_size == "TZP"
+    assert tuple(cfg.kgrid) == (2, 2, 2)
+    assert cfg.relax_type == "Broyden"
+    assert cfg.restart == "continue"
+
+
+def test_an_unknown_field_is_refused_by_name():
+    """P1's codec cannot check this — it has no schema.  P2 can, and § 6.6
+    says the refusal names the field."""
+    with pytest.raises(ValueError) as e:
+        effective_config(_template(), Stage(name="tight",
+                                            overrides={"mesh_cutof": 300.0}))
+    assert "mesh_cutof" in str(e.value)
+    assert "tight" in str(e.value)
+
+
+def test_a_stage_field_name_in_overrides_is_refused():
+    """§ 2: a stage has three fields and an override may not redefine one.
+    P1 refuses this structurally; here it would also not be a schema field,
+    so the message must still be the useful one."""
+    with pytest.raises(ValueError) as e:
+        effective_config(_template(), Stage(name="tight",
+                                            overrides={"enabled": False}))
+    assert "enabled" in str(e.value)

@@ -463,10 +463,14 @@ class SiestaConfig:
     # FDF's verbose comments.
     relax_type: str = field(default="CG", metadata={
         "section": "Compute & budget",
-        # Profile-level: relax/MD algorithm family (CG / Broyden /
-        # FIRE / Verlet / Nose) is a run-shape identity choice,
-        # parallel to PySCF's ``optimizer`` (also profile).
-        "workflow_group": "profile",
+        # 2026-08-07: was ``workflow_group="profile"``, on the reasoning that
+        # the relax/MD algorithm family is a run-shape identity choice.  It is
+        # not: a LADDER CHANGES THE OPTIMIZER ON PURPOSE -- CG to warm up, then
+        # Broyden once the geometry is close -- so the `profile` card's own
+        # claim, "doesn't change between stages", is false for this field.
+        # Retagged `stage`, which also puts its "vary per stage" box among the
+        # ones ticked by default (engines/stages.md § 1.3).
+        "workflow_group": "stage",
         "label": "MD.TypeOfRun",
         "engine_key":  'MD.TypeOfRun',
         "id_suffix": "relax",
@@ -658,6 +662,39 @@ class SiestaConfig:
     })
 
     # SCF / MD continuation flags (free insurance for restartable jobs)
+    # ``restart`` is the ONE field a user sets; the three ``use_save_*``
+    # flags below are what it expands into (docs/execution/run-identity.md
+    # § 4).  Nobody is asked to keep three engine keys in step -- they state
+    # the intent once and the generator does the rest.
+    #
+    # It is a shared-schema field, not a stage field: engines/stages.md § 3
+    # ("One field arrives") -- a SINGLE run can mean "continue from what is
+    # in this folder" too, which is question 2's test.  A stage may promote
+    # it like any other field, and the stage table draws it as the
+    # "start from" row (web/task-setup-plan.md § 6).
+    restart: str = field(default="clean", metadata={
+        "section": "Compute & budget",
+        "workflow_group": "stage",
+        "label": "Start from",
+        "choices": ("clean", "continue"),
+        "id_suffix": "restart",
+        "tier": "advanced",
+        "engine_key": ("(molbuilder: expands to DM.UseSaveDM / MD.UseSaveXV / "
+                       "MD.UseSaveCG; not a single .fdf key)"),
+        "help": (
+            "Whether this run starts from what is already in the folder.\n"
+            "  clean     -- ignore any .XV/.DM/.CG left there and start over.\n"
+            "  continue  -- read them, warm-starting from the previous run's "
+            "geometry and density.\n"
+            "In a staged ladder the first stage is normally 'clean' and the "
+            "rest 'continue', which is what makes a ladder a ladder rather "
+            "than three unrelated runs.  See docs/execution/run-identity.md "
+            "§ 4 -- continuing works because the engine finds warm files "
+            "keyed by the SystemLabel it was given, so nothing is copied or "
+            "pointed at."
+        ),
+    })
+
     use_save_dm: bool = field(default=True, metadata={
         "help": "read .DM from a prior run if present (free warm-start)",
             "engine_key":  'DM.UseSaveDM',

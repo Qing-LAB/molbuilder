@@ -1723,6 +1723,59 @@ def _enabled_stages(cfg: "SiestaConfig") -> List:
     return enabled
 
 
+def effective_config(template: "SiestaConfig", stage) -> "SiestaConfig":
+    """Resolve one stage against the backbone: **the one place this happens.**
+
+    ``engines/stages.md`` § 4::
+
+        effective config = the template's values ⊕ that stage's ``overrides``
+
+    ``template`` is the science backbone — every field, with the value the
+    user set or the default they did not touch.  ``stage`` is a
+    :class:`molbuilder.task.Stage`: a name, an enabled flag, and the cells
+    that differ.
+
+    Two rules from § 4 shape what this returns, and both are about keeping a
+    stage from becoming a special case:
+
+    **R1 — one object is validated and rendered.**  What comes back is an
+    ordinary ``SiestaConfig``, so the shipped validator (``validation.validate``)
+    and the shipped emitter (``render_fdf``) both take it unchanged.  Nothing
+    downstream learns the word "stage".
+
+    **R2 — a stage is validated as a resolved whole, never as a diff.**  Two
+    overrides can each be reasonable and jointly wrong, so the caller hands
+    the validator *this object*, with the stage's name only as a label.
+
+    **A stage may name ANY field of the shared schema** (§ 1.2).  It is not a
+    privileged four: ``mesh_cutoff``, ``basis_size`` and ``kgrid`` were
+    unreachable before this function existed, and nothing about them is
+    special now.  An override naming a field the schema does not have is
+    refused **by name**, which is the half of § 6.6's preflight that
+    ``molbuilder/task.py`` could not reach — it has no schema.
+
+    A varied field the stage does *not* name keeps the template's value
+    (§ 6.2's subset rule): omitting a key means "this stage is at the
+    backbone value", which is what the table draws as a quiet cell.
+    """
+    known = {f.name for f in dataclasses.fields(type(template))}
+    overrides = dict(getattr(stage, "overrides", None) or {})
+
+    unknown = sorted(k for k in overrides if k not in known)
+    if unknown:
+        raise ValueError(
+            f"stage {getattr(stage, 'name', '?')!r}: override(s) "
+            f"{', '.join(repr(k) for k in unknown)} name no field of "
+            f"{type(template).__name__}. A stage may override any field of "
+            f"the shared schema, but only a field of it "
+            f"(engines/stages.md 1.2, 6.6)."
+        )
+
+    # ``replace`` builds a NEW object, so the template is untouched and every
+    # stage resolves against the same backbone regardless of order.
+    return dataclasses.replace(template, **overrides)
+
+
 def render_siesta_stage_fdfs(
     struct: Structure,
     config: Optional["SiestaConfig"] = None,
