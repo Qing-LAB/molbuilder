@@ -438,10 +438,12 @@ describes exactly what is in that archive.
 | **How it fails** | A MANIFEST that names a file the archive lacks turns a restore into a partial one; a sha that does not match turns it into a silent corruption |
 | **How to check** | For every entry: the file exists, its size equals the recorded bytes, and its sha256 equals the recorded sha. Run it over every archive in a repository — this is the single most valuable test in the system |
 
-### I2b — the record itself is sha256-protected, not only the files it lists
+### I2b — every record the history depends on is tamper-evident
 
 ***DOES NOT HOLD.** Required 2026-08-08 (user): "it should be sha256 protected —
-the save record should not be messed up before restore tries to work on that."*
+the save record should not be messed up before restore tries to work on that",
+and "the `.gitignore` would need similar check — this is where user could mess
+up".*
 
 I2 makes the MANIFEST authoritative. **Nothing makes the MANIFEST itself
 tamper-evident**, and authority without integrity is the worst combination of
@@ -458,6 +460,47 @@ The chain of custody has exactly one unprotected link:
 `.binsnapshots/` is gitignored (S1), so the entire archive sits outside git's
 protection. The commit sha *names* the archive directory; it attests nothing
 about its contents.
+
+#### `.gitignore` is the second record, and it fails the other way
+
+The MANIFEST decides what a **restore** returns. `.gitignore` decides what the
+**next save** even sees — so an edit there corrupts a checkpoint that has not
+been taken yet, which is harder to notice and impossible to spot afterwards.
+
+Add `*.XV` to it by hand and the next checkpoint tracks no `.XV`. They are not
+archived either, since they are not large. They land in S1's losing branch —
+**in no store at all** — and the resulting checkpoint looks perfectly healthy.
+
+**Its integrity does not need a sha, and should not use one.** The ignore set is
+*derived* from the classification (S1a), so the correct content is **computable
+at any moment**: regenerate it and compare. That is strictly better than a
+digest, which can only say *something changed* — regeneration says *this line
+should not be here*, and can offer to put it right.
+
+> The two records therefore get different mechanisms for a real reason, not for
+> convenience: **a MANIFEST records facts that cannot be recomputed** (what was
+> archived, and its bytes), so it needs a digest anchored outside itself.
+> **`.gitignore` records a derivation**, so the derivation is the check.
+
+#### Records are named so nobody mistakes one for a setting
+
+*User, 2026-08-08: "if we want to make it explicit, we can add a `.do_not_edit`
+suffix to all save records."*
+
+A file called `MANIFEST` looks like something a person may reasonably open and
+adjust. A file called **`MANIFEST.do_not_edit`** does not. This buys nothing
+against deliberate tampering — that is what the digest is for — and it is aimed
+at the far commoner case: somebody tidying a directory, or fixing what looks
+like a typo, without knowing they have rewritten what a restore will believe.
+
+**`.gitignore` cannot take the suffix** — git requires that exact name — which
+is the more reason for the marked, regenerable section it already carries to
+say plainly what it is.
+
+⚠ **A rename is an archive-format change and needs the reader to accept both
+names**, or every archive written before it becomes unreadable — which would
+break I2a on the day it shipped. `snapshot migrate-manifest` is the precedent
+and the place for it.
 
 **What an edited MANIFEST does, and none of it is loud:**
 
@@ -482,8 +525,8 @@ about its contents.
 
 | | |
 |---|---|
-| **How it fails** | Silently and in the direction that matters: a restore that reports success and returns different data than was saved. Every other invariant in this document is guarding data that this one lets be rewritten underneath them |
-| **How to check** | Checkpoint a folder. Edit the MANIFEST three ways — delete a line, alter one sha, alter a sha *and* the file to match — and assert restore **refuses** in all three, naming the record as the thing that failed rather than the file. The third case is the test that matters; the first two are the easy ones |
+| **How it fails** | Silently and in the direction that matters: a restore that reports success and returns different data than was saved, or a checkpoint that looks healthy and quietly stored nothing. Every other invariant in this document is guarding data that this one lets be rewritten underneath them |
+| **How to check** | **The MANIFEST:** checkpoint a folder, then edit it three ways — delete a line, alter one sha, alter a sha *and* the file to match — and assert restore **refuses** all three, naming the record as what failed rather than the file. The third is the test that matters; the first two are the easy ones. **`.gitignore`:** add `*.XV` to it by hand, then checkpoint, and assert the checkpoint **refuses or repairs** rather than producing a snapshot with no `.XV` in either store. Assert it for a pattern added *inside* the marked section and one added outside it, since a reader who knows about the markers will edit inside them |
 
 ### I2a — a restore is decided by what the **save** recorded, never by configuration
 
