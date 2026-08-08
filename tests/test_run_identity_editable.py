@@ -132,3 +132,139 @@ def test_an_unknown_engine_is_not_refused_a_second_time(calc):
     (calc / f"{ID}.XV").write_text("x\n")
     assert warm_files_present(calc, ID, "vasp") == []
     assert check_id_change(calc, ID, "other", "vasp") == []
+
+
+# --------------------------------------------------------------------- #
+#  P3 unit 5 — § 5: reported rather than pinned                         #
+# --------------------------------------------------------------------- #
+#
+# § 5's table has four rows and a "who says it" column.  Three name the
+# surface at check time and are asserted here; the fourth names the READER at
+# preflight and is deliberately not this function's -- see the last test.
+
+from molbuilder.validation.identity import check_prior_state       # noqa: E402
+
+
+def _by_where(issues):
+    return {i.where: i for i in issues}
+
+
+def test_a_clean_directory_reports_nothing(calc):
+    """Every row of § 5 is about state that exists. A first run in a fresh
+    folder is the common path and must be silent, or the report becomes
+    something users learn to dismiss."""
+    assert check_prior_state(calc, ID, "siesta") == []
+
+
+def test_matching_state_is_reported_as_info_because_nothing_is_wrong(calc):
+    """§ 5's fourth row: *nothing is wrong; the user should still know before
+    they start.* ``info`` is what says both halves at once."""
+    (calc / f"{ID}.XV").write_text("coords\n")
+    found = _by_where(check_prior_state(calc, ID, "siesta"))
+    assert found["identity.prior_state"].severity == "info"
+    assert f"{ID}.XV" in found["identity.prior_state"].message
+
+
+def test_state_from_another_calculation_is_reported_and_warns(calc):
+    """§ 5's third row, and the one the wrapper banner **cannot** say:
+    `WARM-RESTART (silent)` has nothing beside it recording which run made
+    the files. Warned rather than noted because one directory is meant to
+    hold one job (`job-contracts.md § 2.1` Rule 1)."""
+    (calc / "someone_else.XV").write_text("not ours\n")
+    (calc / "someone_else.DM").write_text("not ours\n")
+    found = _by_where(check_prior_state(calc, ID, "siesta"))
+    assert found["identity.foreign_state"].severity == "warn"
+    assert "someone_else.XV" in found["identity.foreign_state"].message
+    # ...and it is NOT reported as this calculation's own state.
+    assert "identity.prior_state" not in found
+
+
+def test_the_two_kinds_of_state_are_told_apart_in_one_directory(calc):
+    """Both rows at once -- ours to resume from, and a stranger's beside it.
+    Reporting either alone would describe half the folder."""
+    (calc / f"{ID}.XV").write_text("ours\n")
+    (calc / "someone_else.XV").write_text("theirs\n")
+    found = _by_where(check_prior_state(calc, ID, "siesta"))
+    assert set(found) == {"identity.prior_state", "identity.foreign_state"}
+
+
+def test_pyscf_foreign_state_is_found_by_its_own_suffixes(calc):
+    """The suffixes are subtracted from the shipped inventory's filenames
+    rather than listed again, which is what keeps this right for PySCF --
+    where a 'suffix' is ``_optimized.xyz``, not an extension."""
+    (calc / "other_job_optimized.xyz").write_text("coords\n")
+    found = _by_where(check_prior_state(calc, ID, "pyscf"))
+    assert "other_job_optimized.xyz" in found["identity.foreign_state"].message
+
+
+# -- § 5's first row: a changed cell is a NO-OP, not a mismatch --------- #
+
+_CELL = [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]
+
+
+def _write_xv(path, cell_ang):
+    """A minimal .XV: three cell rows in BOHR, then an atom line."""
+    bohr = 1.8897261254578281
+    rows = "".join(
+        f"  {v[0]*bohr:.9f} {v[1]*bohr:.9f} {v[2]*bohr:.9f}  0.0 0.0 0.0\n"
+        for v in cell_ang)
+    path.write_text(rows + "     1\n  1  1   0.0 0.0 0.0  0.0 0.0 0.0\n")
+
+
+def test_a_cell_that_matches_says_nothing_extra(calc):
+    _write_xv(calc / f"{ID}.XV", _CELL)
+    found = _by_where(check_prior_state(calc, ID, "siesta", cell=_CELL))
+    assert "identity.saved_cell" not in found
+
+
+def test_a_changed_cell_is_reported_as_the_no_op_it_is(calc):
+    """§ 5: *a `.XV` carries its own cell and **wins*** -- so widening the
+    vacuum changes the deck and changes nothing about the run. The message
+    has to say that, not 'mismatch', or the user reads it as an error and
+    goes looking for the wrong thing."""
+    _write_xv(calc / f"{ID}.XV", _CELL)
+    wider = [[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]]
+    msg = _by_where(check_prior_state(calc, ID, "siesta",
+                                      cell=wider))["identity.saved_cell"]
+    assert msg.severity == "warn"
+    assert "the saved one wins" in msg.message
+    assert "start this stage clean" in msg.message
+
+
+def test_an_unreadable_xv_is_not_turned_into_a_cell_finding(calc):
+    """This row exists to explain a silent no-op. Inventing a second failure
+    out of a parse problem would be worse than staying quiet, and the bundle
+    parsers already report unreadable files where that is their job."""
+    (calc / f"{ID}.XV").write_text("not a real XV\n")
+    found = _by_where(check_prior_state(calc, ID, "siesta", cell=_CELL))
+    assert "identity.saved_cell" not in found
+    assert "identity.prior_state" in found       # the file still IS state
+
+
+def test_the_cell_row_needs_state_to_be_about(calc):
+    """No .XV, nothing was written under any cell -- so there is nothing to
+    report, however different the deck's cell is."""
+    assert check_prior_state(calc, ID, "siesta", cell=_CELL) == []
+
+
+def test_the_structure_witness_row_is_deliberately_not_here():
+    """§ 5's second row -- *the structure moved under a saved description* --
+    names **the reader, at preflight** in its 'who says it' column, not the
+    surface. It is answered from the description's own witness
+    (`stages.md § 6.3`: a reference plus formula + atom count), never from
+    what happens to be lying in a directory.
+
+    Pinned behaviourally rather than by grepping the source -- the first
+    version of this test inspected the text and failed on the docstring that
+    *explains* the absence, which is the brittleness such a test is made of.
+    What actually holds is a namespace rule: everything this reports is an
+    ``identity.*`` finding, so it cannot quietly grow a rule whose author is
+    someone else."""
+    import tempfile
+    from pathlib import Path as _P
+    with tempfile.TemporaryDirectory() as d:
+        for name in (f"{ID}.XV", f"{ID}.DM", "someone_else.XV"):
+            (_P(d) / name).write_text("state\n")
+        wheres = {i.where for i in check_prior_state(_P(d), ID, "siesta")}
+    assert wheres, "the fixture should have produced findings"
+    assert all(w.startswith("identity.") for w in wheres), wheres

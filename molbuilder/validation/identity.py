@@ -112,4 +112,121 @@ def check_id_change(directory, old_id: str, new_id: str,
         where="run.id")]
 
 
-__all__ = ["check_id_change", "warm_files_present"]
+def check_prior_state(directory, run_id: str, engine: str,
+                      *, cell=None) -> List[Issue]:
+    """§ 5 — the cases answered with a message rather than a wider pin.
+
+    § 5's table has four rows and a *"who says it"* column; this is **the
+    surface's half**, called at check time, when the choice is still open.
+    Three rows name the surface:
+
+    - *prior state that matches* — nothing is wrong, and the user should still
+      know before they start, so ``info``;
+    - *prior state from another calculation* — the engine will not load it, but
+      a one-job directory holding a second job's restart files is
+      `job-contracts.md § 2.1` Rule 1 being broken, so ``warn``;
+    - *changed cell parameters* — the deck's cell was rebuilt and the run will
+      ignore it, so ``warn``: an intent silently discarded is worse than one
+      refused.
+
+    The fourth row, *the structure moved under a saved description*, is
+    **deliberately not here**. Its author in that column is *the reader, at
+    preflight* — it is answered from the description's own witness
+    (`stages.md § 6.3`), not from what is lying in a directory, and putting it
+    here would give one rule two homes.
+
+    **This never contradicts the wrapper banner, and cannot weaken it.** § 5's
+    two authors say the same things at different times: the banner at run time,
+    after the user committed, and this at check time, before. The banner is
+    always present, so it is the one that must never be weakened — this only
+    ever *adds* a message earlier, and the one thing the banner cannot say
+    (that state came from a different calculation, because nothing beside it
+    records which run made it) is exactly the row this can.
+    """
+    out: List[Issue] = []
+    mine = warm_files_present(directory, run_id, engine)
+    if mine:
+        out.append(Issue(
+            "info",
+            f"prior state found for this key: {', '.join(mine)}. A stage set "
+            f"to continue will resume from it; one set to clean will not look "
+            f"at it, and will leave it where it is",
+            where="identity.prior_state"))
+        out.extend(_cell_row(directory, run_id, engine, cell))
+
+    foreign = _foreign_state(directory, run_id, engine)
+    if foreign:
+        out.append(Issue(
+            "warn",
+            f"this directory also holds restart state from a different "
+            f"calculation: {', '.join(foreign)}. {engine} keys its warm files "
+            f"on the run id, so it will not read them -- but one directory is "
+            f"meant to hold one job (job-contracts.md § 2.1 Rule 1), and a "
+            f"second job's files here is usually a sign something was written "
+            f"in the wrong place",
+            where="identity.foreign_state"))
+    return out
+
+
+def _cell_row(directory, run_id: str, engine: str, cell) -> List[Issue]:
+    """§ 5's first row. **A changed cell is a no-op, not a mismatch.**
+
+    A ``.XV`` carries its own cell *and its own frame*, and on a continue the
+    saved one **wins**. So widening the vacuum changes the deck and changes
+    nothing about the run — which is precisely why the cell cannot be in the id
+    (it is derived, § 2) and why this is reported instead.
+    """
+    if cell is None or engine != "siesta":
+        return []
+    xv = Path(directory) / f"{run_id}.XV"
+    if not xv.is_file():
+        return []
+    try:
+        import numpy as np
+
+        from ..parse.coords.siesta_xv import _read_xv_cell
+        saved = _read_xv_cell(xv)
+        if saved is None:
+            return []                       # unreadable is bundle.py's to say
+        if np.allclose(np.asarray(cell, dtype=float), saved,
+                       rtol=1e-6, atol=1e-6):
+            return []
+    except Exception:
+        # A cell we cannot read is not a finding.  This row exists to explain
+        # a silent no-op; inventing a second failure out of a parse problem
+        # would be worse than staying quiet, and the parsers already report
+        # unreadable files where that is their job.
+        return []
+    return [Issue(
+        "warn",
+        f"{xv.name} was written under different cell parameters. A .XV "
+        f"carries its own cell, and on a continue the saved one wins -- so "
+        f"the cell in the new deck will be ignored and this run will use the "
+        f"saved one. To actually change the cell, start this stage clean",
+        where="identity.saved_cell")]
+
+
+def _foreign_state(directory, run_id: str, engine: str) -> List[str]:
+    """Restart files in *directory* keyed by some id other than *run_id*.
+
+    The suffixes are derived by subtracting the id from the shipped inventory's
+    own filenames rather than listed again — which keeps this correct for
+    PySCF, where a "suffix" is ``_optimized.xyz`` rather than an extension.
+    """
+    names = _INVENTORY.get(engine)
+    if not names:
+        return []
+    d = Path(directory)
+    if not d.is_dir():
+        return []
+    suffixes = [n[len(run_id):] for n in names(run_id)] if run_id else []
+    found = set()
+    for suffix in suffixes:
+        for p in d.glob(f"*{suffix}"):
+            stem = p.name[:-len(suffix)] if suffix else p.name
+            if stem and stem != run_id and p.is_file():
+                found.add(p.name)
+    return sorted(found)
+
+
+__all__ = ["check_id_change", "check_prior_state", "warm_files_present"]
