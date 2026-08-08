@@ -623,6 +623,21 @@ molbuilder does not validate its contents (engine-invalid text there will be
 rejected by the engine, not by molbuilder). The block may be missing; on
 regenerate an empty one is emitted.
 
+### 3.6 Versioning and what a tool may assume
+
+Each structured block versions **independently**: BENCH-MARKS carries
+`version v1`, ATOM-METADATA carries `format: molstruct-json/v4`, PROVENANCE is
+additive-keys-only (no tag), HEADER is free-form prose. There is **no
+autodetection and no silent upgrade** — a parser reads the version tag and
+either handles it or refuses, pointing the user at "regenerate with the
+current molbuilder". Given a conforming file, a tool may assume: PROVENANCE
+answers who/when/what-defaults; BENCH-MARKS lists the overridable fields and
+their bounds; ATOM-METADATA round-trips (its dict feeds the same
+`apply_to_structure` path the sidecar uses); USER-CUSTOM survives
+regeneration.
+
+---
+
 ### 3.7 The template's item blocks — one file that is both the reference and the source
 
 *Specified by the user, 2026-08-07.* The **template** (`engines/stages.md § 4`)
@@ -685,6 +700,17 @@ Four properties, and each buys something specific:
 4. **Every allowed, validated item has a place in the file** — not only the ones
    a user touched. The template is the engine's whole surface, instantiated.
 
+   > **This is the premise, not an aspiration, and it settles a class of
+   > question before it is asked.** The template is built from what molbuilder
+   > *knows*: every field the engine's config declares, every one validated, each
+   > with what we have learned about it. There is no "what about a keyword we do
+   > not model" case to design for — a keyword molbuilder does not model is
+   > **work not done yet**, and the answer is to model it, not to invent a slot
+   > for it. § 3.5's USER-CUSTOM is not that slot either: it is a zone copied
+   > **byte-for-byte and never validated**, for a user's own text.
+
+
+
 **So one artifact serves four readers.** A person opens it and learns the
 calculation *and* the reasoning. The UI renders it. `prep` extracts the deck.
 The validator gets a real config out of it. That is why it is worth being a
@@ -708,7 +734,7 @@ payload** with the resolved value's rendering. Blocks no stage touched are copie
 through untouched. That is `overrides ⊆ varies` seen on disk — an absent key
 means the block is copied as it stands.
 
-> **Three things this format leaves to be decided when it is built**, recorded
+> **Two things this format leaves to be decided when it is built**, recorded
 > rather than guessed:
 >
 > - **Items whose default is *derived*, not literal.** Some defaults come from
@@ -733,9 +759,6 @@ means the block is copied as it stands.
 >   meant to be edited; someone will change `MeshCutoff 300.0` to `400.0` by
 >   hand. Reading the value back out is what makes that work — but it also means
 >   the payload, not the metadata, is the authority. Worth stating explicitly.
-> - **Items the schema does not model.** A user adds a legitimate SIESTA keyword
->   molbuilder has no field for. Does it get an unnamed block, or does it belong
->   in USER-CUSTOM (§ 3.5), which exists for exactly that?
 > - ~~**A user-set value that equals the default** is indistinguishable from an
 >   untouched one~~ — **closed, no consequence** (user, 2026-08-07). **Every item
 >   is explicitly instantiated**: § 7 of [`engines/stages.md`](?doc=engines/stages.md)
@@ -758,21 +781,6 @@ means the block is copied as it stands.
 > **generated deck** and declares the subset a *tool* may override. **Both must be
 > emitted from the same field metadata** (`web/form-schema.md § 1a`) — two hand-
 > maintained copies of `default=` would drift, and the drift would be silent.
-
-### 3.6 Versioning and what a tool may assume
-
-Each structured block versions **independently**: BENCH-MARKS carries
-`version v1`, ATOM-METADATA carries `format: molstruct-json/v4`, PROVENANCE is
-additive-keys-only (no tag), HEADER is free-form prose. There is **no
-autodetection and no silent upgrade** — a parser reads the version tag and
-either handles it or refuses, pointing the user at "regenerate with the
-current molbuilder". Given a conforming file, a tool may assume: PROVENANCE
-answers who/when/what-defaults; BENCH-MARKS lists the overridable fields and
-their bounds; ATOM-METADATA round-trips (its dict feeds the same
-`apply_to_structure` path the sidecar uses); USER-CUSTOM survives
-regeneration.
-
----
 
 ## 4. Warm & cold restart
 
