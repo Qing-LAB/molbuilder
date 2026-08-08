@@ -229,4 +229,43 @@ def _foreign_state(directory, run_id: str, engine: str) -> List[str]:
     return sorted(found)
 
 
-__all__ = ["check_id_change", "check_prior_state", "warm_files_present"]
+def check_overwrite(directory, run_id: str, engine: str,
+                    *, overwrite: bool = False) -> List[Issue]:
+    """§ 6 — producing twice into the same level-③ directory.
+
+    *"Refuse unless the user says overwrite, and never rename."*
+
+    **What this protects is not the files.** Rewriting decks does not touch the
+    warm files — § 6 says so, and that is the point: they are what the next run
+    continues from, and "make the name unique" would throw them away. What it
+    protects is the user from replacing the decks of a calculation that is
+    already underway without noticing.
+
+    Since 2026-08-07 the trigger is *pointing at the same directory twice*, not
+    *deriving the same id twice*: the level-③ folder is a name the user types
+    (§ 3.0), so `bdt-relax-pbe/` and `bdt-relax-blyp/` deriving one id is no
+    longer a collision, and never should have been.
+
+    ``error`` rather than a warning, and it is the one refusal in this module:
+    everything else here is § 5's *report and get out of the way*, but this is
+    about to write over inputs. :func:`refuse_on_error` turns it into the
+    exception, which is the shape `job-contracts.md § 5.4`'s handoff writer
+    already has — *it raises unless* ``overwrite=True``.
+    """
+    if overwrite:
+        return []
+    existing = warm_files_present(directory, run_id, engine)
+    if not existing:
+        return []
+    return [Issue(
+        "error",
+        f"this directory already holds a calculation under way: "
+        f"{', '.join(existing)}. Producing again would replace its decks. "
+        f"Pass overwrite to do it anyway -- the restart files are NOT touched "
+        f"either way, so the next run still continues from them; nothing is "
+        f"renamed to make room",
+        where="identity.produce_target")]
+
+
+__all__ = ["check_id_change", "check_overwrite", "check_prior_state",
+           "warm_files_present"]
