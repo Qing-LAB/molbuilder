@@ -560,6 +560,26 @@ and the findings contract (facts in, findings out; `where` is the stable id).
    Decide which **before** writing either.
 4. `on_nonconvergence` moves to the producer's own input (it is a scheduler
    edge, not a stage property).
+2c. **What P2 does about the field tags: exactly one retag, and nothing else.**
+   The full vocabulary — all fifteen keys, what each means and who reads it — is
+   [`web/form-schema.md`](?doc=web/form-schema.md) § 1a, written 2026-08-07
+   because no document owned it.
+
+   | Tag | P2 |
+   |---|---|
+   | `workflow_group: "stage"` | **acquires a second job** — it becomes the default `varies` selection, the set whose *vary per stage* boxes start ticked. No code change here: P2 stops hard-coding four fields, and the group is what the surface reads instead (P10) |
+   | `relax_type` | **retagged `profile` → `stage`**, one line. It is a scientific call (a ladder changes the optimizer on purpose) and the current tag's own subtitle — *"doesn't change between stages"* — is false for it |
+   | `profile`, `budget` | **untouched.** They place a field in a card and route its advice there; both are surface concerns, and P2 is a model phase |
+   | every other key | untouched |
+
+   > **Why `profile` gets no treatment here, since it comes up constantly in the
+   > reasoning:** it is not a model input. Nothing in resolution, rendering or
+   > validation reads it — it decides which card a field is drawn in and where a
+   > finding lands. So the answer to *"what does P2 do about `profile`"* is
+   > **nothing, deliberately**, and the same timing rule applies as to the CLI
+   > flags: change the model when the model changes, the surface when the surface
+   > changes. Anything the tags need is P10's.
+
 2b. **`restart` arrives as a shared-schema field.** `stages.md § 3` ends *"One
    field arrives"* — `restart` (`continue` | `clean`), because whether a stage
    starts from what is in the folder has to be sayable and a single run can mean

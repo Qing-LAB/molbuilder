@@ -46,6 +46,75 @@ the form it belongs in. **The form is built from that class.** Add a field to
 SIESTA form automatically — nobody edits any HTML. Remove it, and it's gone.
 There is no second copy of the option list to keep in sync.
 
+## 1a. The field-metadata vocabulary — every tag, and the rule for adding one
+
+*Written 2026-08-07 (user rule): **every tag this system uses must have a stated
+meaning, function and reader in a contract**, so that expanding the data set has
+rules rather than precedents.* Fifteen keys are in use across the four engine
+configs; this is all of them.
+
+> **The rule for a new tag, before the table:** a tag earns its place only if
+> something **reads** it. A key nothing consumes is a comment wearing metadata's
+> clothes — put it in the field's `help` instead. And a tag names *how a field is
+> handled*, never *what it means scientifically*; that belongs in `help` and in
+> [`engines/tuning.md`](?doc=engines/tuning.md).
+
+| Key | What it says | Who reads it |
+|---|---|---|
+| **`label`** | the field's display name | the form builder; falls back to the field name |
+| **`help`** | one sentence of guidance, shown beside the control | the form builder, and the CLI's `--help` |
+| **`section`** | which fieldset it belongs to — **and whether it is exposed at all.** A field with no `section` is internal and no surface renders it | `dataclass_to_form_schema`; the CLI option generator |
+| **`workflow_group`** | which of the three cards — `profile` / `stage` / `budget` — and therefore **where a finding about it appears** | `form-schema.js` (card order), `validation-findings.js` (finding placement), `_shared.py::resolve_workflow_group` (wire enrichment) |
+| **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s *"(molbuilder: .run.sh `mpirun -np N` only; not in .fdf)"* | the emitters; BENCH-MARKS; anything tracing a value to the file it lands in |
+| **`tier`** | CLI exposure level — a `--tier` filter shows only matching fields | `cli.py`'s option generator |
+| **`skip_cli`** | this field has no command-line option | `cli.py` |
+| **`range`** | `(min, max)`, inclusive | the form builder → the control's bounds; validators |
+| **`choices`** | the legal values of an enum → a dropdown | the form builder |
+| **`unit`** | the unit shown beside the control (`Ry`, `eV/Å`) | the form builder. **Display only** — it never converts anything |
+| **`step`** | the numeric input's step; `"any"` for free floats | the form builder |
+| **`pattern`** | a regex the value must match | the form builder → the control's `pattern` |
+| **`null_label`** | what the *unset* option is called on an optional field — `"(default)"`, `"(auto)"` | the form builder's tri-select |
+| **`id_suffix`** | overrides the DOM id derived from the field name, where the derived one would collide or read badly | `_shared.py`'s schema emitter |
+| **`triple_labels`** | the three labels of an `int-triple` (`kx`/`ky`/`kz`) | the form builder |
+
+### The rules a new field must satisfy
+
+1. **`section` and `workflow_group` move together.** A field exposed in the form
+   with no group renders bare after the three cards and its findings fall to a
+   residual panel instead of beside the field — a half-integrated field. A group
+   with no `section` is a tag nothing can read. **Guarded:**
+   `tests/test_issues_workflow_group.py::TestEveryExposedFieldIsTagged`.
+2. **`workflow_group` is a default and a placement, never a restriction.** It
+   decides which card a field is drawn in, where its advice lands, and — for
+   `stage` — whether its *vary per stage* box starts ticked. It does **not**
+   decide what a user may vary: any field can be promoted
+   ([`engines/stages.md`](?doc=engines/stages.md) § 1.2–1.3).
+3. **The groups may overlap in meaning, and nothing downstream reads them to
+   decide anything.** They serve user clarity and finding placement. A field can
+   belong to a run's identity *and* be something a user steps.
+4. **`engine_key` is always present**, even when the field never reaches the
+   deck — the parenthesised form is how a reader learns *that*, rather than
+   finding a missing key and guessing.
+
+### What each `workflow_group` means
+
+| | | |
+|---|---|---|
+| **`profile`** | *what you are computing* — identity and physical character: label, functional, charge, spin, pseudopotentials | set once for a run **in the ordinary case**. That is a claim about typical use, not a rule: a user may still vary any of it |
+| **`stage`** | *the convergence targets a sequence tightens* — cutoffs, tolerances, k-grid | **the default `varies` selection**: these boxes start ticked |
+| **`budget`** | *how much compute you are willing to spend* — ranks, threads, memory, iteration caps, GPU | — |
+
+> **Where the three cards came from.** They were introduced 2026-06-13 to fix a
+> reported bug: the form mixed stage, budget and system fields inside the same
+> fieldsets, so **switching the stage preset silently rewrote budget and system
+> fields too**. The cards made *"the stage selector touches the stage card only"*
+> visible. The per-parameter checkbox
+> ([`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)
+> § 7.6) removes the preset that caused it, so the grouping now stands on its two
+> remaining jobs: reading the form, and placing advice.
+
+---
+
 ## 2. The round-trip
 
 ```mermaid
