@@ -1174,6 +1174,62 @@ flowchart TB
 
 ---
 
+## 5a. Where the code actually is — verified 2026-08-07
+
+Not the plan's own markers: each row was **checked against the code** by
+importing the module and asking. Re-run the checks rather than trusting this
+table when it matters.
+
+| Phase | Unit | State | Evidence |
+|---|---|:--:|---|
+| **P0** | the four-question guard | ✅ | `tests/test_stage_vocabulary.py` — 3 pass, 3 `xfail(strict)`; count = **11** |
+| **P1** | `molbuilder/task.py`, L1 | ✅ | imports `persist` + stdlib only |
+| P1 | `base` gone from the description | ✅ | not a field of `Task`, not in `_TOP_KEYS` |
+| P1 | `overrides ⊆ varies` | ✅ | a missing key parses; an extra one is refused by name |
+| P1 | `_BUNDLE_DESCRIPTORS` | ✅ | `("task.json", "job-set.json", "bench-manifest.json")` |
+| P1 | `persist` tolerates a minor bump | ✅ | `schema_major("…@1.4") == "1"` |
+| **P2** | 1 · pin resolution | ✅ | `tests/test_stage_resolution.py` — 7 pass, 1 `xfail` (the gate) |
+| P2 | 2 · `SiestaConfig.stages` deleted | ❌ | still a field |
+| P2 | 2 · `SiestaStageSpec` deleted | ❌ | still in `config/siesta.py` |
+| P2 | 2 · the stage-table emitter deleted | ❌ | `_stagespec_to_field_schemas` still in `_shared.py` |
+| P2 | 2 · CLI stage flags gone | ❌ | `--stage-strategy`, `--stages-json`, `--stage-resources` all still registered |
+| P2 | 2b · `restart` is a shared field | ❌ | not a field of `SiestaConfig` |
+| P2 | 3 · `Resources.continue_retries` | ❌ | not a field of `Resources` |
+| P2 | 4a/5 · template → config | ⛔ | **blocked — see below** |
+
+### ⛔ The template has no producer, and cannot be read back
+
+Two facts, both checked rather than assumed:
+
+1. **Nothing writes an `<id>.fdf.template`.** The only mention of the string in
+   the package is `task.py`'s own docstring. No phase of this plan owns writing
+   one either.
+2. **Nothing can read one back into a config.** The three fdf readers that exist
+   are narrow and none reconstructs a `SiestaConfig`: `parse_fdf_params`
+   (`transport/preflight.py`) returns a handful of transport keys,
+   `read_fdf_initial_coords` returns a `Structure`, `parse_fdf_mem_inputs`
+   returns memory-estimate inputs.
+
+**So `effective_config(template, stage) -> SiestaConfig` cannot be implemented as
+written**, and P2 cannot be finished until this is settled.
+
+> **This is a consequence of removing `base`, and the removal was still right.**
+> `base` did duplicate the template — but it was also the only *machine-readable*
+> home for the non-varying values, and deleting it left the effective config with
+> no source. Three ways out, and the choice belongs to whoever owns the design:
+>
+> | | | Cost |
+> |---|---|---|
+> | **(a)** | **The template is the non-varying config, stored machine-readably** — its own file, separate from `task.json`, exactly as the split requires. `prep` resolves it with the stage's `overrides` into one `SiestaConfig` and calls the **existing** `render_fdf`. | The name `.fdf.template` becomes wrong: it is a config, not an fdf. Everything else survives — one artifact for what does not change, no duplication, **R1 and R2 both hold**, and the rendering path is the shipped one. |
+> | **(b)** | **Textual substitution.** `prep` rewrites the lines a stage overrides, in the fdf text. | No parser needed, but there is no config object — so **R1 and R2 cannot hold**, and per-stage science validation has nothing to validate. |
+> | **(c)** | **Write an fdf → config reader.** | Large, and fdf is a loose format; a reader that silently mis-reads a deck is worse than none. |
+>
+> **(a) is the recommendation.** It is what `base` was *for*, moved to where the
+> split says it belongs — its own artifact, holding only what does not vary —
+> rather than a second copy inside the description.
+
+---
+
 ## 6. The baseline, dated
 
 Recorded at P0 so a later review diffs rather than re-counts. **The first four
