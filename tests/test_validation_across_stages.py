@@ -22,6 +22,7 @@ from molbuilder.issues import Issue
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
 from molbuilder.validation.stages import (
+    check_identical_stages,
     check_ladder_does_not_loosen,
     validate_ladder,
 )
@@ -255,3 +256,88 @@ def issues_to_json_single():
 def test_issue_still_defaults_its_stage_to_none():
     assert Issue("info", "m").stage is None
     assert "stage" in {f.name for f in dataclasses.fields(Issue)}
+
+
+# --------------------------------------------------------------------- #
+#  § 6.6a — two stages that resolve to the same thing                   #
+# --------------------------------------------------------------------- #
+
+def _pair(a_restart, b_restart, **b_over):
+    return [("first", SiestaConfig(restart=a_restart)),
+            ("second", SiestaConfig(restart=b_restart, **b_over))]
+
+
+def test_identical_stages_are_allowed_when_the_later_one_continues():
+    """**The case the rule exists to protect.**  `tight` then `tight` where
+    the second continues is *more steps at these settings* — the honest way to
+    say keep going after a stage ran out of its step budget.  Refusing it
+    would make someone invent a token difference to get past the check, which
+    is worse than the thing being prevented."""
+    assert check_identical_stages(_pair("clean", "continue")) == []
+
+
+def test_identical_stages_warn_when_the_later_one_starts_clean():
+    """It recomputes what the stage before just produced and throws that
+    result away — always a mistake, and an expensive one."""
+    [issue] = check_identical_stages(_pair("clean", "clean"))
+    assert issue.severity == "warn"
+    assert issue.where == "stages.recomputes_previous"
+
+
+def test_it_warns_when_an_earlier_stage_continued_and_the_later_cleans():
+    """``restart`` is the DISCRIMINATOR, so it is not part of the equality
+    test.  Reading § 6.6a the other way — equality including ``restart`` —
+    would make its second clause redundant and would miss this, which is a
+    real recompute: the second stage redoes the first from scratch."""
+    assert check_identical_stages(_pair("continue", "clean"))
+
+
+def test_stages_that_differ_in_any_setting_do_not_warn():
+    assert check_identical_stages(_pair("clean", "clean",
+                                        mesh_cutoff=999.0)) == []
+
+
+def test_the_comparison_is_over_the_RESOLVED_pair_not_the_overrides(h2, tpl):
+    """Comparing overrides would flag the legitimate case and miss nothing —
+    which is how a warning becomes noise people learn to click through.  Here
+    the two stages carry DIFFERENT override maps and resolve to the same
+    thing, so an overrides-based test would stay silent where this one
+    speaks."""
+    issues = validate_ladder(h2, SiestaConfig(system_label="JOB",
+                                              mesh_cutoff=300.0,
+                                              restart="clean"), _ladder(
+        ("a", {"mesh_cutoff": 300.0}),      # restates the template's value
+        ("b", {"restart": "clean"})))       # a different map, same result
+    assert "stages.recomputes_previous" in [i.where for i in _seq(issues)]
+
+
+def test_only_ADJACENT_stages_are_compared():
+    """*"the stage before it"*.  Two identical stages with a different one
+    between them do not recompute each other's output."""
+    assert check_identical_stages([
+        ("a", SiestaConfig(restart="clean")),
+        ("b", SiestaConfig(restart="clean", mesh_cutoff=999.0)),
+        ("c", SiestaConfig(restart="clean")),
+    ]) == []
+
+
+def test_the_warning_carries_no_stage_label():
+    """A fact about a PAIR is not a fact about a member of it — the same rule
+    § 4 R3 gives the loosening check."""
+    [issue] = check_identical_stages(_pair("clean", "clean"))
+    assert issue.stage is None
+
+
+def test_the_warning_says_what_to_do_about_it():
+    """It is *"this is probably not what you meant"*, and the repair is one
+    field, so the message names it."""
+    [issue] = check_identical_stages(_pair("clean", "clean"))
+    assert "continue" in issue.message
+    assert "first" in issue.message and "second" in issue.message
+
+
+def test_it_never_refuses():
+    """§ 6.6a: *"a warning, not a preflight row"* — § 6.6's table is refusals
+    before anything is written; this one proceeds if it was meant."""
+    assert all(i.severity != "error"
+               for i in check_identical_stages(_pair("clean", "clean")))

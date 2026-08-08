@@ -1308,7 +1308,7 @@ table when it matters.
 > matters — Review 3's question 3 (*"does anything exist only to serve a later
 > phase? delete it"*) already deleted `default_siesta_varies`, which duplicated
 > a one-line derivation. This is the unit's stated deliverable.
-| P2 | 8 · § 6.6a's identical-stage warning | ⬜ | — |
+| P2 | 8 · § 6.6a's identical-stage warning | ✅ | `validation/stages.py::check_identical_stages`, wired into `validate_ladder`. Adjacent pairs, over the **resolved** configs, `restart` excluded from the equality test because it is the discriminator — the reading is now written into § 6.6a rather than left in code |
 
 > **One plan row was wrong, and the code is what corrected it.**
 > `_stagespec_to_field_schemas` is listed under *deleted in P2*, and it is

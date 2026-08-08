@@ -740,6 +740,22 @@ that result away — always a mistake, and an expensive one.
 > This is a **warning, not a preflight row.** § 6.6's table is refusals, all of
 > them before anything is written; this one says *this is probably not what you
 > meant* and proceeds if it is.
+>
+> **`restart` is the discriminator, so it is not part of the equality test**
+> (settled while implementing this, 2026-08-07). A field cannot both separate
+> two stages and be part of the test for whether they are the same. Read the
+> other way, the second clause would be redundant — equal configs already agree
+> about `restart` — and one real recompute would slip through: an earlier stage
+> that **continues** followed by an identical one that **cleans**, which redoes
+> the first from scratch. So: equal *in every field but `restart`*, and the
+> later one says `clean`.
+>
+> **Adjacent pairs only** — *"the stage before it"*. Two identical stages with
+> a different one between them do not recompute each other's output.
+>
+> Implemented at `validation/stages.py::check_identical_stages`; the finding
+> carries **no stage label**, by § 4 R3's rule — it is a fact about a pair, not
+> about a member of it.
 
 ---
 

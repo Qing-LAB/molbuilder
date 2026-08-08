@@ -123,6 +123,70 @@ def _loosens(prev: float, cur: float, direction: str) -> bool:
 
 
 # --------------------------------------------------------------------- #
+#  § 6.6a — two stages that resolve to the same thing                   #
+# --------------------------------------------------------------------- #
+
+#: The field that says whether a stage starts from what is in the folder.
+#: **Excluded from the equality test on purpose** — see below.
+_RESTART = "restart"
+
+
+def check_identical_stages(resolved: Sequence[Tuple[str, Any]]) -> List[Issue]:
+    """§ 6.6a. Warn where a stage recomputes the one before it and discards it.
+
+    **Two enabled stages may resolve to identical settings, and that is
+    allowed.** `tight` followed by `tight` where the second *continues* is
+    simply *more steps at these settings* — the honest way to say *keep going*
+    after a stage ran out of its step budget. Refusing it would make someone
+    invent a token difference to get past the check, which is worse than the
+    thing being prevented.
+
+    **Exactly one case warns: the later stage resolves identically *and*
+    starts `clean`.** Then it recomputes what the stage before it just
+    produced and throws that result away.
+
+    **Why ``restart`` is not part of the comparison.** § 6.6a says *"what
+    separates them is `start from`, not the overrides"* — so it is the
+    **discriminator**, and a field cannot both distinguish two stages and be
+    part of the test for whether they are the same. Read the other way the
+    second clause would be redundant (equal configs already agree about
+    `restart`), and the case where an earlier stage *continues* and a later
+    identical one *cleans* — a real recompute — would slip through.
+
+    Adjacent pairs only: *"the stage before it"*. Two identical stages with a
+    different one between them do not recompute each other's output.
+
+    Comparison is over the **resolved** pair, never the overrides: comparing
+    overrides would flag the legitimate case, which is how a warning becomes
+    noise people learn to click through.
+    """
+    out: List[Issue] = []
+    for (a_name, a_cfg), (b_name, b_cfg) in zip(resolved, resolved[1:]):
+        if getattr(b_cfg, _RESTART, None) != "clean":
+            continue
+        if not _same_but_for_restart(a_cfg, b_cfg):
+            continue
+        out.append(Issue(
+            "warn",
+            f"stage {b_name!r} resolves to the same settings as "
+            f"{a_name!r} and starts clean, so it recomputes what "
+            f"{a_name!r} just produced and discards that result. If you "
+            f"meant *more steps at these settings*, set this stage's "
+            f"restart to 'continue'",
+            where="stages.recomputes_previous",
+        ))
+    return out
+
+
+def _same_but_for_restart(a, b) -> bool:
+    fa = {f.name: getattr(a, f.name) for f in dataclasses.fields(a)
+          if f.name != _RESTART}
+    fb = {f.name: getattr(b, f.name) for f in dataclasses.fields(b)
+          if f.name != _RESTART}
+    return fa == fb
+
+
+# --------------------------------------------------------------------- #
 #  R2 + R3 together                                                     #
 # --------------------------------------------------------------------- #
 
@@ -172,6 +236,7 @@ def validate_ladder(
             # the validator's list.
             out.append(_stamped(issue, name))
     out.extend(check_ladder_does_not_loosen(resolved))
+    out.extend(check_identical_stages(resolved))
     return out
 
 
@@ -179,4 +244,5 @@ def _stamped(issue: Issue, stage: str) -> Issue:
     return dataclasses.replace(issue, stage=stage)
 
 
-__all__ = ["check_ladder_does_not_loosen", "validate_ladder"]
+__all__ = ["check_ladder_does_not_loosen", "check_identical_stages",
+           "validate_ladder"]
