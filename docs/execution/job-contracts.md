@@ -84,13 +84,46 @@ Three things follow immediately, and each is a rule elsewhere in these documents
 | Because the engine… | …molbuilder must |
 |---|---|
 | has no notion of a **stage** | resolve every stage parameter **before** the deck is written. A deck that needed a reader to understand the word "stage" would not run (`engines/stages.md § 1`) |
-| cannot fetch anything | put **everything the run will read in place before it starts** — which is why a carried restart file is copied at prep rather than resolved later (`project-layout.md § 1.6`) |
+| cannot fetch anything | put **everything the run will read in place before it starts** — which is why a carried restart file is copied at prep rather than resolved later (`project-layout.md § 1.6`), and why a stage may **declare** what it needs (below) |
 | assumes the environment is already correct | give the wrapper exactly two jobs — **activate, then exec** — and do every decision and arrangement in Python beforehand (`running-a-job.md § 2.2a`) |
 
 **"Reachable from there" is the precise word, not "physically present."** A
 symlink to `../Au.psml` opens as a real file from inside the directory, and the
 engine cannot tell the difference — so sharing one copy of a large
 pseudopotential across stages is invisible to it, and legitimate.
+
+#### A stage may declare what it needs: `required`
+
+*Added 2026-08-08 (user).* Continuing a relaxation implies a known set —
+`.XV`, `.DM`, `.CG` — because that is what *continuing* means. Some runs need
+something else: a TranSIESTA scattering calculation cannot start without the
+`.TSHS` an electrode run produced, and nothing about `restart: continue` says so.
+
+**`required` is an ordinary config field**, so a stage sets it through
+`overrides` like `mesh_cutoff`, and `stages.md § 2`'s *"a stage is a name, an
+enabled flag, and the cells that differ — and no others"* stays exactly as it
+was. No new stage mechanism, no fourth key in the description.
+
+```jsonc
+{ "name": "scattering",
+  "overrides": { "restart": "continue", "required": [".TSHS", ".TSDE"] } }
+```
+
+Extensions, not filenames: molbuilder prepends the run id, so a stage cannot
+name another calculation's file by accident — which is the mixing this document
+spends § 2.1 Rule 1 preventing.
+
+**It is a claim, not an instruction**, and that is the whole reason it is worth
+having. *"Carry this for me"* can only be obeyed; *"this stage cannot run
+without this"* can be **checked** — see § 4.4, which is the only place with a
+definite answer.
+
+> **What it does NOT change.** In the flat shape nothing is carried at all: every
+> stage shares one directory, so a declared file is either there or it is not.
+> In the hierarchical shape `prep` links it in beside the standard set. Same
+> declaration, two different pieces of work behind it, and the *check* is
+> identical in both — which is what makes it a property of the stage rather than
+> of a layout.
 
 > ⚠ **Which is why the transportable unit is the calculation folder, not the run
 > directory.** Completeness here is a property of *what resolves*, not of what
@@ -961,6 +994,34 @@ the same thing for SIESTA and PySCF):
 
 (The flag spellings: `--continue` / `-c`; `--force` / `-f` resets the run
 index to `-run0`; `--cold` / `--from-scratch`.)
+
+#### The required-file check, beside the banner
+
+*Added 2026-08-08 (user): **"based on how the job is run inside the stage run
+subdir, that's where the check is done."*** A stage's `required` list (§ 2.1) is
+verified **in the directory the job runs in, immediately before the engine
+starts** — the same moment and the same place the MODE line above is computed.
+
+**Why not earlier, stated so nobody moves it:**
+
+| when | why not |
+|---|---|
+| at produce | the files do not exist yet, and a `.TSHS` may arrive from a different calculation entirely — so *"does an earlier stage produce this?"* is unanswerable and is deliberately not asked |
+| at prep | `Carry`'s symlink is laid **before** the producer runs and is *meant* to dangle until the file appears (`job-system.md` D1). Prep has nothing to check |
+| **in the run directory** | **a definite answer, at the last moment before cluster time is spent** |
+
+**It reuses the shipped pattern rather than adding one.** `_warm_check` in the
+staged runner already does exactly this class of thing — it notices a stray
+`.XV` that does not match the `SystemLabel`, says SIESTA will silently
+re-initialise from the deck instead, offers an abort, and honours
+`MOLBUILDER_FORCE=1` for unattended runs. `required` extends that check to
+declared files. **Warn by name, offer abort, `MOLBUILDER_FORCE=1` to proceed:**
+a missing `.TSHS` is the same kind of problem the existing prompt exists for —
+the run starts, and produces something wrong.
+
+Both emitters carry it, because both put a job in a directory: the staged
+runner for the flat shape, and the per-job wrapper for the hierarchical one
+(which already reads the `SystemLabel` and computes the MODE line there).
 
 ---
 

@@ -432,6 +432,14 @@ scheduler's business.
 3. **It is per-stage, because it is an ordinary field.** A first stage is
    normally `clean` and everything after it `continue`. Nothing special is needed
    to say so.
+4. **What `continue` implies is a short fixed set; what a stage needs *beyond*
+   it is declared.** `restart: continue` means the geometry, the density and the
+   optimizer's history — `.XV`, `.DM`, `.CG` — because that is what continuing a
+   relaxation *is*. A run needing something else says so with `required`
+   (`job-contracts.md § 2.1`), and that declaration is checked where the job runs
+   (§ 4.4 there), not here. *Added 2026-08-08: the set used to be three suffixes
+   written into the producer, which meant a TranSIESTA ladder could not express
+   its `.TSHS` dependency without changing molbuilder's code.*
 
 **Why rule 2 is not tidiness.** The two ways the group can be wrong are both
 silent, and opposite:

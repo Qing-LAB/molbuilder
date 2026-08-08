@@ -442,11 +442,34 @@ decks that are subtly wrong for the machine they run on.
 > wins, and both are available at that moment
 > (`job-contracts.md § 3.7`).
 | a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at install (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
+| **a field that is a claim about the run directory** | `required` | **the check the wrapper runs in the directory the job runs in**, immediately before the engine starts — and nowhere else (`job-contracts.md § 2.1`, § 4.4) |
+
+> **Why the fourth row is not the third one wearing a hat** *(added 2026-08-08)*.
+> The third row's fields are **values the wrapper uses**: a rank count becomes an
+> `mpirun -np`, a retry budget becomes a loop. `required` is not a value the
+> wrapper uses — it is a **statement about the world** that the wrapper *checks*,
+> and the only place with a definite answer is the run directory at run time.
+>
+> Not at produce: the files do not exist yet, and a `.TSHS` may legitimately
+> arrive from a different calculation the user copies in, so *"does an earlier
+> stage produce this?"* is unanswerable and is deliberately not asked. **Not at
+> prep either** — `Carry`'s symlink is laid *before* the producer runs and is
+> *meant* to dangle until the file appears (`job-system.md` D1), so prep has
+> nothing to check.
+>
+> This is also why `required` is phrased as a **claim** rather than an
+> instruction. *"Carry this file for me"* can only be obeyed; *"this stage
+> cannot run without this file"* can be verified, and the shipped
+> `_warm_check` in the staged runner already verifies exactly this class of
+> thing — warn by name, offer abort, `MOLBUILDER_FORCE=1` to proceed
+> unattended. `required` extends that check to declared files rather than
+> adding a mechanism beside it.
 
 **The routing is derivable, never a second list.** A field carries an
 `engine_key` when it is a line in the deck; the config ↔ exchange translation for
 the third row is already fixed by `job-contracts.md § 6.2` and applied by the
-producer at its boundary. Nobody maintains a mapping table by hand.
+producer at its boundary. The fourth row needs no translation at all — the
+value is read where it is checked. Nobody maintains a mapping table by hand.
 
 **Walltime, memory and partition are deliberately absent from that table.** They
 are not fields of the shared schema: `running-a-job.md § 5.3` puts `time` and
