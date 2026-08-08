@@ -132,6 +132,35 @@ form):
 > stages"* — a claim about typical use, and **false for `relax_type`**, which is
 > why that field is mis-tagged rather than the rule being wrong.
 >
+> **The groups may overlap, and that is not a defect** (user, 2026-08-07). They
+> serve **user clarity and where a validation finding appears** — not a partition
+> of the model. A field can belong to the run's identity *and* be something a user
+> steps; `relax_type` is exactly that. Nothing breaks when the sets intersect,
+> because nothing downstream reads the tag to decide anything.
+>
+> **Two decisions, and they are orthogonal:**
+>
+> | Question | Decided by | When | By whom |
+> |---|---|---|---|
+> | **where a value lives** — template only, or template + `task.json` | **the checkbox** | per calculation | the **user** |
+> | **how a field is presented, and where its advice lands** | **the tag** | per engine, once | **us** |
+>
+> So `profile` does not mean *template-only*, and asking which file it "belongs
+> to" is the wrong question. A `profile` field a user ticks simply gains a stage
+> column, like any other.
+>
+> **Which is how the tag earns its keep under the rule that a tag must be
+> meaningful structurally or functionally: it is functional, and it is not
+> structural — and it does not need to be.** Its jobs are real and one of them is
+> pinned by a wire-contract test.
+>
+> ⚠ **The genuine gap is the untagged fields, not the tag.** Nine fields on each
+> engine carry no `workflow_group`, so they render bare after the three cards and
+> **their findings fall to a residual panel instead of sitting beside the field
+> they concern**. If the tag's job is clarity and routing, an untagged science
+> field is a hole in that job. Closing it belongs to **P10**, where the form is
+> rebuilt — not to a model phase.
+>
 > **And the selection is made in place, one checkbox per parameter** (user,
 > 2026-08-07) — **not** a separate list of stage-able settings anywhere. The form
 > already lists every parameter; each one carries a *vary per stage* checkbox
