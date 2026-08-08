@@ -81,6 +81,12 @@ _L1_MODULES = {
     "persist",           # versioned-document helpers (@major schema check +
                          # JSON IO); pure stdlib, no domain deps -- bench +
                          # jobset persisted artifacts share it.
+    "identity",          # the run id: normalise once, build from inputs
+                         # (execution/run-identity.md 2-3).  L1 on stdlib
+                         # alone, and that is load-bearing: the CLI, the web
+                         # tab and the codec must all reach ONE normaliser or
+                         # the id a surface shows differs from the one the
+                         # engine writes -- 3's rule 1.
     "task",              # the task.json codec (engines/stages.md 6) -- one
                          # calculation's description: engine name, shape,
                          # base, varies, stages.  L1 because it imports only

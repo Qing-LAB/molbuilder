@@ -39,6 +39,7 @@ from pathlib import Path
 
 import pytest
 
+from molbuilder.identity import run_id
 from molbuilder.task import (
     SCHEMA,
     FILENAME,
@@ -102,7 +103,13 @@ def test_the_contracts_own_example_is_a_valid_description(example):
     task = Task.from_dict(example)
     assert task.engine == "siesta"
     assert task.shape == "hierarchical"
-    assert task.run.id == "bdt_au_relax_c6h4s2au38"
+    # Derived, not retyped.  The id in § 6's example is what
+    # `run-identity.md § 2` builds from the run's name and the structure's
+    # formula, and asserting it as a literal is how this test went red on
+    # 2026-08-08 when the id became case-preserving (§ 8 #14) -- a fixture
+    # parsed from one document and compared to a constant copied out of
+    # another is only half the pattern.
+    assert task.run.id == run_id(task.run.name, task.structure.formula)
     assert [s.name for s in task.stages] == ["coarse", "tight"]
     assert task.varies == ("mesh_cutoff", "relax_force_tol",
                            "relax_type", "restart")
