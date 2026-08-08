@@ -723,11 +723,21 @@ means the block is copied as it stands.
 > - **Items the schema does not model.** A user adds a legitimate SIESTA keyword
 >   molbuilder has no field for. Does it get an unnamed block, or does it belong
 >   in USER-CUSTOM (§ 3.5), which exists for exactly that?
-> - **A user-set value that equals the default** is indistinguishable from an
->   untouched one, because the test is *payload vs `default=`*. Nothing about
->   rendering or running cares. Provenance might — *which fields did they
->   actually consider?* — and if it turns out to, that wants an explicit mark
->   rather than a second copy of the value.
+> - ~~**A user-set value that equals the default** is indistinguishable from an
+>   untouched one~~ — **closed, no consequence** (user, 2026-08-07). **Every item
+>   is explicitly instantiated**: § 7 of [`engines/stages.md`](?doc=engines/stages.md)
+>   already requires *every value the description determined, written rather than
+>   left to an engine default*, and § 3.7 extends that to the whole surface — every
+>   allowed item has a block, with a payload. So a deliberate `300.0` and an
+>   untouched `300.0` produce **the same bytes** in the deck. There is nothing for
+>   the distinction to change.
+>
+>   **And the payload being the authority makes that hold over time, too.** If a
+>   molbuilder release changes a field's default, an existing calculation
+>   regenerates from *its template's payload*, not from the new schema — so the
+>   number a user saw is the number they keep. A design where the deck was rebuilt
+>   from defaults would have made this distinction load-bearing and dangerous;
+>   this one makes it moot.
 >
 > **And one relationship to keep straight:** these item blocks and BENCH-MARKS
 > (§ 3.3) share a grammar and answer different questions. The item blocks live in
