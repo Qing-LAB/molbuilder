@@ -28,6 +28,7 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..identity import RestartGroup
 from .siesta import _validate_basename     # shared with SiestaConfig
 
 
@@ -315,6 +316,33 @@ def validate_stages(stages: List[StageSpec]) -> List[str]:
 # these to the canonical _default_stages() ladder so the user gets the
 # same behavior across surfaces.  The values are 0-indexed booleans
 # aligned to stages[0..N-1]; a stage index past the end is ignored.
+#: § 4 rule 1 — PySCF's identity group.
+#:
+#: Read across from ``SIESTA_RESTART_GROUP`` and the contract's point is
+#: visible: the identity is the same *idea* in both engines and a different
+#: *mechanism*. SIESTA declares three keys; PySCF carries generated control
+#: flow, so ``keys`` is empty and ``mechanism`` says what actually happens.
+#: An empty tuple alone would read as "nothing is bound", which is the
+#: opposite of true.
+#:
+#: ⚠ **Rule 2 is not satisfied here yet, and this is the honest place to say
+#: so.** PySCF has no ``restart`` field: the resume branches are gated on
+#: ``chkfile`` and ``save_optimized_xyz``, which are *write* flags doubling as
+#: read gates (``pyscf/input.py`` says so at the ``_optimized.xyz`` branch).
+#: So "write a checkpoint but do not resume from one" — which is exactly what
+#: ``restart='clean'`` means on a rerun — cannot be expressed. Separating the
+#: read gate from the write gate changes emitted-script behaviour and needs
+#: its own science review, so it is P4's, and
+#: ``tests/test_restart_group.py`` carries a strict xfail naming it.
+PYSCF_RESTART_GROUP = RestartGroup(
+    literal="JOB",
+    keys=(),
+    mechanism="generated control flow: mf.chkfile + init_guess='chkfile' "
+              "when the file exists, and <JOB>_optimized.xyz overriding the "
+              "literal geometry",
+)
+
+
 STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
     "publishable": (True,  True,  False),   # stage1 loose + stage2 publishable
     "loose-only":  (True,  False, False),   # stage1 only (cheap warm-up)

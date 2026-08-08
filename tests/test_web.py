@@ -566,7 +566,6 @@ def test_string_typed_numeric_params_coerced_to_field_types(web_client, peptide_
             "max_scf_iter": "1000",
             "kgrid":        ["4", "4", "1"],
             "relax_type":   "none",
-            "use_save_dm":  "false",
         },
     })
     body = r.get_json()

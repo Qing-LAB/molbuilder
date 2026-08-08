@@ -178,11 +178,12 @@
             <strong>Important:</strong> SIESTA restart-from-folder behavior
           </summary>
           <div style="margin-top: 0.4em;">
-            With the default continuation flags
-            (<code>MD.UseSaveXV</code> /
+            When <strong>Start from</strong> is set to
+            <em>continue</em> &mdash; which emits
+            <code>MD.UseSaveXV</code> /
             <code>DM.UseSaveDM</code> /
-            <code>MD.UseSaveCG</code> all
-            <em>on</em>), SIESTA <strong>silently overrides</strong> the
+            <code>MD.UseSaveCG</code> together, as one group &mdash;
+            SIESTA <strong>silently overrides</strong> the
             <code>AtomicCoordinatesAndAtomicSpecies</code> block in
             the generated FDF when a
             <code>&lt;name&gt;.XV</code> file exists in the run
@@ -193,12 +194,13 @@
             FDF can carry stage 1&apos;s input coords and SIESTA still
             picks up stage 1&apos;s converged geometry.
             <br><br>
-            <strong>For a clean fresh start</strong>, either run in
-            an empty directory, delete
+            <strong>For a clean fresh start</strong>, leave
+            <strong>Start from</strong> on <em>clean</em> &mdash; the
+            default, and none of the three flags is written, so SIESTA
+            never looks. Running in an empty directory or deleting
             <code>&lt;name&gt;.XV</code> / <code>.DM</code> /
-            <code>.CG</code> first, or change SystemLabel.
-            SIESTA falls back to the FDF coordinates silently
-            when none of those files exist.
+            <code>.CG</code> works too. SIESTA falls back to the FDF
+            coordinates silently when none of those files exist.
           </div>
         </details>
       </fieldset>

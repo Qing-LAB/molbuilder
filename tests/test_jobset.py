@@ -216,8 +216,14 @@ def test_stages_to_jobset_carries_cg_when_neither_stage_overrides_it():
     from molbuilder.siesta.stages import stages_to_jobset
     from molbuilder.task import Stage
 
+    # `b` must SAY it continues.  Before P3 unit 4 a bare stage carried state
+    # anyway, because the carry keyed on the template's use_save_dm, which
+    # defaulted True -- so this fixture used to pass without stating the one
+    # thing it depends on.  The optimizer inheritance under test is unchanged:
+    # neither stage overrides relax_type.
     js = stages_to_jobset(SiestaConfig(relax_type="Broyden"),
-                          [Stage(name="a"), Stage(name="b")])
+                          [Stage(name="a"),
+                           Stage(name="b", overrides={"restart": "continue"})])
     assert "siesta.CG" in [c.pattern for c in js.jobs[1].carry]
 
 

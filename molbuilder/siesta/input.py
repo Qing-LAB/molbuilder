@@ -297,6 +297,24 @@ def copy_pseudopotentials(species: Sequence[str], lib: Path,
 # --------------------------------------------------------------------- #
 
 
+def _continues(cfg) -> bool:
+    """§ 4 rule 2 — the ONE field, read wherever a group member is emitted.
+
+    ``restart`` is a single ``clean`` / ``continue`` choice and the renderer
+    expands it; nobody keeps ``DM.UseSaveDM``, ``MD.UseSaveCG`` and
+    ``MD.UseSaveXV`` in step by hand. Both emission sites in this module call
+    *this*, rather than each testing a boolean of its own — which is the
+    concrete form of *"one group"*, since the members are written into two
+    different parts of the deck and could otherwise disagree.
+
+    ``getattr`` with a default rather than ``cfg.restart``: this is also
+    reached with a template-shaped object during stage resolution, and a
+    missing field means *clean*, which is the safe reading of silence — the
+    dangerous direction is resuming when nobody asked.
+    """
+    return getattr(cfg, "restart", "clean") == "continue"
+
+
 def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, cell: Optional[np.ndarray] = None) -> str:
     """Format a Structure as SIESTA .fdf text.
@@ -815,11 +833,12 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     ]
     out.append(f"ElectronicTemperature {cfg.electronic_temperature} K")
 
-    if cfg.use_save_dm:
+    if _continues(cfg):
         if v: out += [
             "",
-            "# DM.UseSaveDM: read .DM from previous run if present.  Free",
-            "# warm-start; SIESTA silently ignores if no file exists.",
+            "# DM.UseSaveDM: read the .DM this SystemLabel names, if present.",
+            "# Emitted because this run's 'start from' is 'continue'; a run",
+            "# set to 'clean' carries none of this group (run-identity.md § 4).",
         ]
         out.append("DM.UseSaveDM      .true.")
 
@@ -1210,17 +1229,30 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             ]
             out.append(f"MD.LengthTimeStep {cfg.md_length_timestep} fs")
 
-        if cfg.use_save_cg or cfg.use_save_xv:
+        if _continues(cfg):
             if v: out += [
                 "",
-                "# MD.UseSaveCG / UseSaveXV: read .CG / .XV from previous run",
-                "# if present.  Restart-friendly for long jobs.",
+                "# MD.UseSaveCG / UseSaveXV: read the .CG / .XV this",
+                "# SystemLabel names.  Same group as DM.UseSaveDM above and",
+                "# the same one field decides all of it (run-identity.md § 4).",
             ]
-            if cfg.use_save_cg and not is_md:
-                # MD.UseSaveCG is CG-only; Broyden / FIRE / dynamics modes
-                # ignore it.  Only emit when meaningful.
+            if not is_md:
+                # Emitted for every RELAXATION (CG, Broyden, FIRE) and not for
+                # the dynamics modes, which is what ``is_md`` means here --
+                # ``relax_kind in ("VERLET", "NOSE")``.
+                #
+                # ⚠ The comment this replaces said "MD.UseSaveCG is CG-only;
+                # Broyden / FIRE / dynamics modes ignore it", which the
+                # condition beside it has never implemented.  P3 unit 4 changed
+                # WHEN the group is emitted (on `restart`) and deliberately did
+                # not touch WHICH optimizers get this member: that is a SIESTA
+                # semantics question, it wants the manual and a science review,
+                # and quietly narrowing it while fixing something else is how a
+                # deck changes for a reason nobody recorded.  The comment is
+                # corrected to describe the code; whether the CODE is right is
+                # open.
                 out.append("MD.UseSaveCG      .true.")
-            if cfg.use_save_xv: out.append("MD.UseSaveXV      .true.")
+            out.append("MD.UseSaveXV      .true.")
         out.append("")
 
     # Output

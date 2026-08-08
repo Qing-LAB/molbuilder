@@ -275,9 +275,8 @@ class TestEveryExposedFieldIsTagged:
     answer different questions:
 
       ``section``         is this field in the form at all?  A field without
-                          one is deliberately internal (``use_save_dm``,
-                          ``species_order``, ``copy_psml``) and the form
-                          never shows it.
+                          one is deliberately internal (``species_order``,
+                          ``copy_psml``) and the form never shows it.
       ``workflow_group``  WHICH card, and therefore where a finding about it
                           appears (``web/ui-contract.md`` Rule 2).
 

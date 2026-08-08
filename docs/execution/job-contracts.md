@@ -854,6 +854,17 @@ Every file below is in that engine's `--cold` move-aside glob.
 when the matching `MD.UseSave*` / `DM.UseSaveDM` flags are set; the wrapper
 only moves them aside for `--cold`.
 
+**Those three flags are one group, and one field sets them.** A description
+carries `restart` — `clean` or `continue` — and the renderer expands it into
+`DM.UseSaveDM` / `MD.UseSaveCG` / `MD.UseSaveXV` together
+(`run-identity.md § 4` rule 2). They are not individually settable, because the
+two ways they can disagree with each other are both silent: the deck claiming a
+resume the engine will not perform, and warm files sitting unread beside a run
+that was told to start clean. The group is declared in code as
+`config/siesta.py::SIESTA_RESTART_GROUP`, and PySCF's counterpart —
+same idea, generated control flow instead of declared keys — as
+`config/pyscf.py::PYSCF_RESTART_GROUP`.
+
 **PySCF (5 files):** `<JOB>.chk` (SCF init guess), `<JOB>_optimized.xyz`
 (latest converged geometry), `<JOB>_geom_optim.xyz` (geomeTRIC trajectory),
 `<JOB>_geom_optim.tmp`, `<JOB>_geom.tmp` (geomeTRIC temporaries). Unlike

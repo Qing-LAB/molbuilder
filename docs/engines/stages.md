@@ -162,7 +162,7 @@ form):
 >
 > | | |
 > |---|---|
-> | `section` | *is this field in the form at all?* A field without one is deliberately internal — `use_save_dm`, `species_order`, `copy_psml` — and never rendered |
+> | `section` | *is this field in the form at all?* A field without one is deliberately internal — `species_order`, `copy_psml` — and never rendered |
 > | `workflow_group` | *which card*, and therefore where a finding about it appears |
 >
 > **They move together.** A field with a `section` and no `workflow_group` renders

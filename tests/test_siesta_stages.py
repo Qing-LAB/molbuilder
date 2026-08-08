@@ -109,7 +109,15 @@ def test_each_stages_overrides_are_exactly_that_tiers_preset(tier):
     ladder overrides with the same dict.  One table, two readers — so a
     tier value can be changed in exactly one place."""
     stage = default_siesta_stages("vib-quality")[tier - 1]
-    assert stage.overrides == SIESTA_STAGE_PRESETS[tier]
+    # Split deliberately: the tier's SCIENCE comes from the shared table and
+    # must match it exactly, while `restart` is POSITIONAL and belongs to no
+    # tier -- stage2 is 'continue' because something precedes it, not because
+    # tier 2 means anything about restarting (run-identity.md § 4 rule 3).
+    # Folding them into one dict would let a tier value drift in under cover
+    # of the positional one.
+    science = {k: v for k, v in stage.overrides.items() if k != "restart"}
+    assert science == SIESTA_STAGE_PRESETS[tier]
+    assert stage.overrides["restart"] == ("clean" if tier == 1 else "continue")
 
 
 def test_the_one_shot_overlay_and_the_ladder_agree_field_for_field():
@@ -118,9 +126,19 @@ def test_the_one_shot_overlay_and_the_ladder_agree_field_for_field():
     from molbuilder.siesta.input import effective_config
     template = SiestaConfig(system_label="JOB")
     for tier, stage in enumerate(default_siesta_stages("vib-quality"), 1):
-        overlaid = apply_siesta_stage(template, tier)
-        resolved = effective_config(template, stage)
-        assert dataclasses.asdict(overlaid) == dataclasses.asdict(resolved)
+        overlaid = dataclasses.asdict(apply_siesta_stage(template, tier))
+        resolved = dataclasses.asdict(effective_config(template, stage))
+        # `restart` is the ONE field they may differ in, and the difference is
+        # the point rather than a leak: `--stage 2` is a single run with
+        # nothing before it, so it stays on the template's value, while
+        # stage2 OF A LADDER has stage1 in front of it and continues.
+        # Asserted as an exact set so a second divergence cannot hide behind
+        # this one.
+        differing = {k for k in overlaid if overlaid[k] != resolved[k]}
+        assert differing <= {"restart"}
+        if tier > 1:
+            assert differing == {"restart"}
+            assert resolved["restart"] == "continue"
 
 
 def test_a_stage_has_exactly_the_three_fields_of_section_2():
@@ -145,7 +163,11 @@ def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
               for k in s.overrides}
     assert varied <= known
     assert varied == {"relax_type", "relax_steps",
-                      "relax_force_tol", "relax_max_displ"}
+                      "relax_force_tol", "relax_max_displ",
+                      # P3 unit 4: the shipped ladder now SAYS it continues
+                      # rather than continuing because three booleans
+                      # happened to default True (run-identity.md § 4).
+                      "restart"}
 
 
 # --------------------------------------------------------------------- #

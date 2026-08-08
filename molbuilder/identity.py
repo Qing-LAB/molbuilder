@@ -33,7 +33,41 @@ rather than assumed.
 from __future__ import annotations
 
 import re
-from typing import Sequence
+from dataclasses import dataclass
+from typing import Sequence, Tuple
+
+
+@dataclass(frozen=True)
+class RestartGroup:
+    """§ 4 — what an engine means by *"may I continue this?"*.
+
+    § 4's claim is that this is **not a SIESTA quirk**: every engine has a
+    notion of which prior state belongs to a run, and a set of parameters that
+    decides whether that state is honoured when found. A design naming only the
+    filename has described none of it.
+
+    Two failures follow from getting the second half wrong, and they are
+    silent in opposite directions — *honoured with nothing to load* (the deck
+    says resume, the engine cold-starts) and *present but not honoured* (the
+    files are right there and the stage starts from scratch). **One field
+    cannot produce either**, which is why ``restart`` is one field and this is
+    what it expands into.
+
+    ``literal`` is the engine's job identity — the thing every warm file is
+    keyed by. ``keys`` are declared input keys where the engine has them, and
+    is empty where the mechanism is generated control flow instead;
+    ``mechanism`` says which, in prose, because the difference is real and
+    hiding it behind an empty tuple would be a lie of omission.
+
+    § 4 rule 1: *"A new engine that cannot fill this in is a new engine whose
+    restart behaviour nobody has thought about yet."* That sentence is the
+    reason this is a declared object rather than an ``if engine ==`` somewhere
+    in a renderer — a missing declaration is visible, and a missing branch is
+    not.
+    """
+    literal: str
+    keys: Tuple[str, ...]
+    mechanism: str
 
 #: One character of the id's alphabet.  Deliberately a character class rather
 #: than a whole-string pattern: this module *builds* names, and the shipped
@@ -160,4 +194,4 @@ def run_id(label: str, formula: str = "", *,
     return normalise_id(joined, stage_names=stage_names)
 
 
-__all__ = ["MAX_ID_BYTES", "normalise_id", "run_id"]
+__all__ = ["MAX_ID_BYTES", "RestartGroup", "normalise_id", "run_id"]

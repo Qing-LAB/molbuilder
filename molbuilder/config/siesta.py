@@ -33,6 +33,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Sequence, Tuple
 
+from ..identity import RestartGroup
+
 # Job-layout v1 protocol (docs/execution/job-contracts.md): the basename
 # (= SystemLabel for SIESTA, job_name for PySCF) drives EVERY output
 # filename, including SIESTA's restart files (.XV / .DM / .CG).  It
@@ -687,18 +689,15 @@ class SiestaConfig:
         ),
     })
 
-    use_save_dm: bool = field(default=True, metadata={
-        "help": "read .DM from a prior run if present (free warm-start)",
-            "engine_key":  'DM.UseSaveDM',
-    })
-    use_save_cg: bool = field(default=True, metadata={
-        "help": "read .CG from a prior CG relaxation if present",
-            "engine_key":  'MD.UseSaveCG',
-    })
-    use_save_xv: bool = field(default=True, metadata={
-        "help": "read .XV (final geometry/velocities) from a prior run if present",
-            "engine_key":  'MD.UseSaveXV',
-    })
+    # ``use_save_dm`` / ``use_save_cg`` / ``use_save_xv`` are DELETED here
+    # (P3 unit 4, 2026-08-08).  They were the group's members carried
+    # individually, which run-identity.md § 4 rule 2 forbids in as many
+    # words: "no description can carry its members individually and disagree
+    # with itself".  They also made ``restart`` inert -- the renderer read
+    # the three booleans and never the field, so `--restart clean` emitted
+    # all three flags as .true. and a stage told to start clean continued.
+    # Their absence is the proof; SIESTA_RESTART_GROUP below is what
+    # replaced them.
 
     # Atom positioning relative to the cell:
     #   wrap_into_cell -- when an explicit cell is given (e.g. read from
@@ -1170,6 +1169,24 @@ Config = SiestaConfig
 # which is the copy this table now replaces: a stage carries ``overrides``,
 # and the shipped ladder's overrides ARE these dicts (engines/stages.md
 # § 1.1 -- an engine config carries no stage list).
+#: § 4 rule 1 — SIESTA's identity group, declared in one place.
+#:
+#: The literal is what every warm file is keyed by (`job-contracts.md § 4.1`);
+#: the three keys are what SIESTA reads those files *only* when set (§ 4.2).
+#: Both halves are needed, and stating one without the other is how a deck
+#: comes to say it resumed while the engine started cold.
+#:
+#: ``MD.UseSaveCG`` is emitted only for CG relaxations — Broyden, FIRE and the
+#: dynamics modes ignore it. That conditionality lives in the renderer beside
+#: the optimizer it depends on, not here: this declares what the group *is*,
+#: and the emitter decides which members are meaningful for a given run.
+SIESTA_RESTART_GROUP = RestartGroup(
+    literal="SystemLabel",
+    keys=("DM.UseSaveDM", "MD.UseSaveCG", "MD.UseSaveXV"),
+    mechanism="declared .fdf keys; SIESTA reads .DM/.CG/.XV only when set",
+)
+
+
 SIESTA_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
     1: {
         "relax_type":      "CG",

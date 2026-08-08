@@ -77,12 +77,38 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
             f"unknown SIESTA stage strategy {strategy!r}; "
             f"choose from: {valid}")
     enables = SIESTA_STAGE_STRATEGY_PRESETS[strategy]
-    return [
-        Stage(name=f"stage{tier}",
-              enabled=bool(enables[i]) if i < len(enables) else False,
-              overrides=dict(SIESTA_STAGE_PRESETS[tier]))
-        for i, tier in enumerate(sorted(SIESTA_STAGE_PRESETS))
-    ]
+    out: List[Stage] = []
+    for i, tier in enumerate(sorted(SIESTA_STAGE_PRESETS)):
+        overrides = dict(SIESTA_STAGE_PRESETS[tier])
+        # § 4 rule 3: "A first stage is normally 'clean' and everything after
+        # it 'continue'.  Nothing special is needed to say so."  Positional,
+        # not tiered -- which is why it is set here and not in the presets
+        # table, where every value is a property of that TIER's science.
+        #
+        # Keyed on POSITION IN THE TABLE, not on which stage is first
+        # *enabled*.  Both readings are defensible and this one keeps an
+        # invariant the ladder already had and the tests already assert: a
+        # strategy preset says which tiers run and never retunes one.  Under
+        # the other reading, `loose-only` (which disables stage2) and
+        # `vib-quality` (which enables it) would hand stage2 different
+        # overrides, so picking a strategy would silently change what a stage
+        # computes.
+        #
+        # The case that reading protected -- stage1 off, so stage2 is first
+        # and says 'continue' with nothing before it -- no shipped mask
+        # produces, and it is not silent when it happens: the carry is empty
+        # (`stages_to_jobset` has no predecessor to take from) and § 5's
+        # surface + wrapper banner both report the absence.
+        #
+        # Before P3 unit 4 the ladder carried no `restart` at all and
+        # continued anyway, because the three use_save_* booleans defaulted
+        # True -- continuation by accident rather than by description, which
+        # is exactly what § 4 rule 2 exists to end.
+        overrides["restart"] = "clean" if i == 0 else "continue"
+        out.append(Stage(name=f"stage{tier}",
+                         enabled=bool(enables[i]) if i < len(enables) else False,
+                         overrides=overrides))
+    return out
 
 
 def _dep_kind(prev_policy: str) -> str:
@@ -123,11 +149,10 @@ def stages_to_jobset(
     field the shared schema does not have (from ``effective_config``), so a
     producer can't emit a JobSet the engines would choke on.
     """
-    from .input import _enabled_stages, effective_config
+    from .input import _continues, _enabled_stages, effective_config
 
     label = cfg.system_label
     enabled = _enabled_stages(stages)
-    use_dm = bool(getattr(cfg, "use_save_dm", True))
     policy_of = dict(on_nonconvergence or {})
     # Resolve once, up front: the refusal for an unknown override should
     # arrive before any Job is built, and the ``.CG`` carry needs the
@@ -155,10 +180,16 @@ def stages_to_jobset(
     prev = None
     for s in enabled:
         carry = []
-        if prev is not None:
+        # What gets carried is decided by the stage that will READ it, and by
+        # its ``restart`` alone (P3 unit 4).  It used to key on the template's
+        # ``use_save_dm``, one of the three booleans § 4 rule 2 retired -- so
+        # a stage saying 'clean' still had the previous stage's density
+        # carried in beside it, which is the "present but not honoured"
+        # failure wearing its other face: state placed for a run that was
+        # told not to look.
+        if prev is not None and _continues(resolved[s.name]):
             carry.append(Carry(f"{label}.XV", prev.name))
-            if use_dm:
-                carry.append(Carry(f"{label}.DM", prev.name))
+            carry.append(Carry(f"{label}.DM", prev.name))
             if resolved[prev.name].relax_type == resolved[s.name].relax_type:
                 carry.append(Carry(f"{label}.CG", prev.name))
         jobs.append(Job(

@@ -622,9 +622,12 @@ def test_fdf_cli_override_propagates_to_siesta_config(
     # each is True, so passing the negative form must flip it to False;
     # passing the positive form on top of an already-True default must
     # keep it True (round-trip).
-    ("use_save_dm",       "--no-use-save-dm",       "--use-save-dm"),
-    ("use_save_cg",       "--no-use-save-cg",       "--use-save-cg"),
-    ("use_save_xv",       "--no-use-save-xv",       "--use-save-xv"),
+    # use_save_dm / _cg / _xv are RETIRED (P3 unit 4, 2026-08-08) and so are
+    # their three generated flags.  They were the members of SIESTA's restart
+    # group carried individually, which run-identity.md § 4 rule 2 forbids;
+    # `--restart clean|continue` is the one field that sets them now, and
+    # tests/test_restart_group.py covers it.  These rows are deleted rather
+    # than commented out -- their absence is what proves the subtraction.
     ("write_forces",      "--no-write-forces",      "--write-forces"),
     ("write_coor_step",   "--no-write-coor-step",   "--write-coor-step"),
     ("write_coor_xmol",   "--no-write-coor-xmol",   "--write-coor-xmol"),
@@ -758,9 +761,13 @@ def test_pyscf_cli_bool_flags_round_trip(
     "WriteCoorStep      .true.",
     "WriteCoorXmol      .true.",
     "WriteMDhistory     .true.",
-    "DM.UseSaveDM      .true.",
-    "MD.UseSaveCG      .true.",
-    "MD.UseSaveXV      .true.",
+    # The three UseSave lines are NOT here any more, and their absence is the
+    # assertion: the shipped default is `restart='clean'`, so a default deck
+    # carries none of SIESTA's restart group (run-identity.md § 4).  They used
+    # to appear because three booleans defaulted True and the renderer never
+    # read `restart` at all -- a default deck that resumed without anyone
+    # asking.  What the group does now is pinned in
+    # tests/test_restart_group.py, both halves in one test.
 ])
 def test_siesta_default_values_render_in_fdf(expected_substr):
     """Each scalar/bool default in SiestaConfig must appear with the
