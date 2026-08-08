@@ -438,6 +438,53 @@ describes exactly what is in that archive.
 | **How it fails** | A MANIFEST that names a file the archive lacks turns a restore into a partial one; a sha that does not match turns it into a silent corruption |
 | **How to check** | For every entry: the file exists, its size equals the recorded bytes, and its sha256 equals the recorded sha. Run it over every archive in a repository — this is the single most valuable test in the system |
 
+### I2b — the record itself is sha256-protected, not only the files it lists
+
+***DOES NOT HOLD.** Required 2026-08-08 (user): "it should be sha256 protected —
+the save record should not be messed up before restore tries to work on that."*
+
+I2 makes the MANIFEST authoritative. **Nothing makes the MANIFEST itself
+tamper-evident**, and authority without integrity is the worst combination of
+the two: restore believes it completely and can be made to believe anything.
+
+The chain of custody has exactly one unprotected link:
+
+| | protected by | |
+|---|---|:--:|
+| the commit | git's hash chain — a changed byte is a different sha | ✅ |
+| `.binsnapshots/<sha>/MANIFEST` | **nothing** | ⛔ |
+| each file the MANIFEST lists | its recorded sha256, checked on restore | ✅ |
+
+`.binsnapshots/` is gitignored (S1), so the entire archive sits outside git's
+protection. The commit sha *names* the archive directory; it attests nothing
+about its contents.
+
+**What an edited MANIFEST does, and none of it is loud:**
+
+- **a deleted line** — that file is not restored, and nothing reports it. It
+  reads exactly like "this archive never held that file";
+- **a changed sha** — verify accuses a file that is fine;
+- **both changed together** — restore returns the wrong bytes and reports
+  success. This is the one that ends up in a paper.
+
+> **The ordering constraint that makes this non-trivial, stated so the obvious
+> fix is not proposed and then found impossible.** The archive lives at
+> `.binsnapshots/<commit-sha>/`, so it is written **after** the commit exists.
+> The MANIFEST's own sha therefore cannot simply be committed alongside the
+> files it describes — that commit is already sealed by the time there is a
+> MANIFEST to hash.
+>
+> So the anchor has to be something created *after* the archive is published and
+> immutable thereafter, and which anchor it should be is an open decision, not a
+> detail: a tag object, a git note, or a chained record folded into the next
+> checkpoint each have different failure modes. Recorded in the plan rather than
+> decided here.
+
+| | |
+|---|---|
+| **How it fails** | Silently and in the direction that matters: a restore that reports success and returns different data than was saved. Every other invariant in this document is guarding data that this one lets be rewritten underneath them |
+| **How to check** | Checkpoint a folder. Edit the MANIFEST three ways — delete a line, alter one sha, alter a sha *and* the file to match — and assert restore **refuses** in all three, naming the record as the thing that failed rather than the file. The third case is the test that matters; the first two are the easy ones |
+
 ### I2a — a restore is decided by what the **save** recorded, never by configuration
 
 *holds today — read against the code 2026-08-08: `Repo.restore`,
@@ -955,6 +1002,7 @@ One line each, for reading over a diff:
 | **S1** | every **regular file** is tracked XOR archived — never both, never neither (symlinks are layout, not content); a file in **neither** store only if losing it loses nothing, and **never a result** | today — ⛔ **and it fails**: `*.MD` / `*.MD_CAR` are ignored and unarchived |
 | **S1a** | the git-ignore set is *derived* from `archive_globs`, never kept beside it | today — ⛔ **and it fails** for `_GITIGNORE_FIXED_TAIL`, which is hand-kept beside the generated block |
 | **I2a** | a restore is decided by what the **save** recorded, never by configuration — so the classification can change without migrating a single archive | today — read against the code; wants the config-change-then-restore test |
+| **I2b** | the **record** is sha256-protected, not only the files it lists — an edited MANIFEST cannot make restore return different data and report success | ⛔ **does not hold**; the anchor is an open decision (the archive is written *after* the commit that names it) |
 | **S2** | a stage writes only inside its own directory | needs the layout |
 | **S3** | a run records what it started from (`run.json`'s `continued_from`) | needs the layout |
 | **S4** | the description is never modified by a produce or a run | needs the description |
