@@ -2142,7 +2142,19 @@ def test_siesta_form_schema_matches_documented_layout():
         # (workflow_group="budget"), which appended a stray "Optimization"
         # section after the schema order -- a form-order regression vs the
         # PySCF `stages` field; fixed 2026-06-29.
-        ("Compute & budget",        15),
+        #
+        # 2026-08-07: 16 = the 15 above + ``restart`` (clean | continue),
+        # the shared-schema field engines/stages.md § 3 asks for and nobody
+        # had added -- so § 6's own worked example named a field the schema
+        # did not have.  It is the ONE field a user sets for warm restart;
+        # the three use_save_* flags are what it expands into.
+        #
+        # ⚠ THIS COUNT DROPS TO 15 AGAIN AT P2 UNIT 2, when cfg.stages is
+        # deleted: a stage list is not a property of an engine config, and
+        # the ladder moves to task.json (engines/stages.md § 1.1).  When
+        # that lands, remove the stage-table line above rather than editing
+        # the number -- the widget it describes goes with the field.
+        ("Compute & budget",        16),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == expected, got
