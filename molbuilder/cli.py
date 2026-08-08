@@ -672,12 +672,49 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
         # the one-flag way to produce a coherent stage-N fdf.
         cfg = _dc.replace(cfg, stage=int(stage))
 
+    # ---- The id, resolved ONCE, before either branch ------------------
+    #
+    # ``run-identity.md § 2``: the SystemLabel *is* the id, not a copy kept
+    # in step with one.  It is also the only half the engine ever sees --
+    # SIESTA is fed the deck on stdin, so the FILENAME never reaches it and
+    # every file it writes is named from this line.
+    #
+    # Before 2026-08-08 the two branches disagreed: the staged one aligned
+    # the label to the output stem, and the plain one left the dataclass
+    # default, so `molbuilder fdf w.xyz clean.fdf` wrote a deck whose
+    # outputs were all called ``siesta.*``.  Two such runs in one folder
+    # silently shared restart state, which is § 1's first failure mode
+    # reached by doing nothing unusual.  Resolved here, once, so the two
+    # branches cannot drift again.
+    import dataclasses as _dc2
+
+    from .identity import normalise_id
+    _src = click.get_current_context().get_parameter_source("system_label")
+    _typed = (fields.get("system_label")
+              if _src is not None and _src.name == "COMMANDLINE"
+              else None)
+    # An explicit --system-label is what the user called it; otherwise the
+    # output path they typed is.  Both are things the user WROTE -- which is
+    # § 2's "built from inputs", not a name recovered from an artifact.
+    try:
+        _label = normalise_id(_typed or Path(fdf_path).stem)
+    except ValueError as exc:
+        # § 3 rule 3 is "say so and ask", and a traceback is neither.  The
+        # message already names the offending character; this only decides
+        # which surface it arrives on -- the same clean-Click-error rule
+        # --stages-json is already pinned to.
+        raise click.BadParameter(
+            str(exc),
+            param_hint=("--system-label" if _typed else "fdf")) from None
+    if _label != cfg.system_label:
+        cfg = _dc2.replace(cfg, system_label=_label)
+    # § 3 rule 2: shown, not hidden -- and by every surface, the terminal
+    # included (decided 2026-08-08).  This is the name that decides whether
+    # the next run continues, so it is printed BEFORE anything is written.
+    click.echo(f"SystemLabel: {_label}")
+
     # Multi-stage branch: build the ladder from --stages-json /
     # --stage-strategy, then emit one fdf per enabled stage + a bash runner.
-    # cfg.system_label is force-aligned to ``Path(fdf_path).stem`` so
-    # the per-stage filenames and the SystemLabel inside each fdf
-    # never drift apart -- that's the contract the .XV auto-warmstart
-    # relies on.
     if multi_stage:
         _emit_siesta_multi_stage(
             cfg=cfg,
@@ -820,11 +857,13 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     fdf_p = _Path(fdf_path)
     out_dir = fdf_p.parent if str(fdf_p.parent) else _Path(".")
     basename = fdf_p.stem
-    # Force-align the SystemLabel to the on-disk filename stem.  This
-    # is the single point where the multi-stage filename convention
-    # (<stem>_<stage>.fdf) is wired to the SIESTA SystemLabel that
-    # drives .XV / .DM auto-restart between stages.
-    cfg = _dc.replace(cfg, system_label=basename)
+    # The SystemLabel is NOT aligned here any more.  ``cmd_fdf`` resolves it
+    # once, before either branch, so the plain and staged paths cannot
+    # disagree -- which they did until 2026-08-08, the plain one leaving the
+    # dataclass default while this comment claimed to be "the single point"
+    # where the two were wired together.  It was the single point for one
+    # branch of two.
+    assert cfg.system_label, "cmd_fdf resolves the id before this is reached"
 
     with _resolve_input_path(input_path) as resolved_input:
         struct, cell = _struct_from_file(resolved_input)
