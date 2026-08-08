@@ -1,16 +1,18 @@
-"""Run-checkpoints HTTP routes -- powers the Projects Sidebar
+"""Checkpoint HTTP routes -- powers the Projects Sidebar
 "Run history" panel (sensor badge + list view + graph viewer).
 
-See docs/execution/running-a-job.md § 6 for the full contract.
+Contract: docs/execution/checkpointing.md (the rules and their status).
+Guide:    docs/execution/running-a-job.md § 6.
+Panel:    docs/web/projects.md.
 
-Envelope per web-api.md § 1.6 (four-bucket rule):
+Envelope per web-api.md § 1 (four-bucket rule):
   * success                            -> HTTP 2xx + ok:true + data
   * scientific advisory -- state-shaped
     refusal (dirty tree, nested-repo
     refusal, legacy MANIFEST refusal)  -> HTTP 200 + ok:false +
                                           error + issues[] +
                                           errors_only[]
-                                          (§ 1.1 canonical shape)
+                                          (web-api.md § 1 canonical shape)
   * protocol error (bad path, missing
     param, unknown ref)                -> HTTP 4xx + ok:false +
                                           error: "..."
@@ -55,7 +57,7 @@ def _resolve_path(raw: Optional[str]) -> Path:
     HTTP 400) when ``raw`` is None, empty, or not an existing dir.
 
     No symlink or directory-traversal handling here -- the molbuilder
-    web app is a single-user local server (see web-api.md § 1.3); we
+    web app is a single-user local server (see web-api.md § 1); we
     accept any path the host filesystem grants ``read`` to the user
     running molbuilder.
     """
@@ -96,7 +98,7 @@ def _serialise_state(st: RepoState) -> Dict[str, Any]:
 def _advisory(message: str, where: str = "") -> tuple:
     """Bucket-B response: scientific advisory, HTTP 200 + ok:false.
 
-    Canonical shape per web-api.md § 1.1: a single error-severity
+    Canonical shape per web-api.md § 1: a single error-severity
     Issue carried in both ``issues`` and the filtered ``errors_only``
     list, with a short ``error`` banner matching the issue message
     so a generic envelope reader has something to show.
@@ -138,11 +140,11 @@ def api_checkpoint_state():
     """Cheap snapshot of the working dir's checkpoint state.
 
     Called by the sidebar sensor on directory-enter and manual Refresh
-    (run-checkpoints.md § 6.2, § 11 decision 7 -- no background
+    (docs/web/projects.md -- explicit refresh only, no background
     polling) so the badge can show clean / dirty / N changes.  Cheap
     by contract: a single ``git status`` + ``rev-parse``, with NO walk
     of ``.binsnapshots/`` (archive size is the list/detail surface's
-    job, § 6.3 / § 6.6).
+    job -- docs/web/projects.md).
     """
     try:
         path = _resolve_path(request.args.get("path"))
@@ -242,7 +244,7 @@ def api_checkpoint_diff():
 def api_checkpoint_init():
     """Phase 1 -- initialise this dir as a checkpoint repo.
 
-    Refuses on nested working dirs (§ P5) -- bucket B advisory.
+    Refuses on nested working dirs (checkpointing.md L1) -- bucket B advisory.
     """
     body = _get_body()
     try:
@@ -251,7 +253,7 @@ def api_checkpoint_init():
         return _protocol_error(str(exc))
     # UI<->API contract: the web form already knows the engine at task setup
     # and passes it here, so the right big-binary files are archived
-    # (run-checkpoints.md § 9).  Absent -> the safe union.
+    # (checkpointing.md § 4).  Absent -> the safe union.
     engine = body.get("engine")
     repo = Repo(str(path))
     if repo.initialized:
@@ -278,7 +280,7 @@ def api_checkpoint_init():
 def api_checkpoint_config_get():
     """Read the big-binary archive classification (the user-editable table
     the sidebar renders).  Unified accessor -- same data the CLI's
-    ``snapshot config`` shows (run-checkpoints.md § 9)."""
+    ``snapshot config`` shows (checkpointing.md § 4)."""
     try:
         path = _resolve_path(request.args.get("path"))
     except ValueError as exc:
@@ -468,7 +470,7 @@ def api_checkpoint_restore():
 
 @bp.post("/api/checkpoint/migrate-manifest")
 def api_checkpoint_migrate_manifest():
-    """§ 10.4 -- migrate a legacy 2-column MANIFEST to canonical
+    """checkpointing.md I1 -- migrate a legacy 2-column MANIFEST to canonical
     3-column form for the archive at ``ref``.
     """
     body = _get_body()

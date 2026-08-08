@@ -11,24 +11,24 @@
  *   5. POST /api/checkpoint/tag      -> "Tag HEAD…" button
  *   6. POST /api/checkpoint/restore  -> per-row "Restore" button
  *
- * Activation gate (run-checkpoints.md § 6.1): the panel only appears
+ * Activation gate (docs/web/projects.md): the panel only appears
  * for a *run directory* -- a dir at projects rel-depth 3, in the
  * canonical layout projects/PROJECT/CATEGORY/RUNNING_DIR.  Selecting
  * anything shallower (or a file) hides the panel entirely.
  *
- * Refresh model (run-checkpoints.md § 6.2, § 11.7): explicit only --
+ * Refresh model (docs/web/projects.md): explicit only --
  * NO background polling.  State refreshes on (a) directory-enter into
  * such a run dir, and (b) the manual Refresh control.  There is no
  * setInterval and no visibility-driven timer.
  *
  * Graph viewer: lazy-loaded @gitgraph/js (see _ensureGitgraph() below).
  *
- * Spec: docs/execution/running-a-job.md § 6 (sidebar UI).
- * HTTP contract: web/blueprints/checkpoint.py + § 8 of run-checkpoints.md.
+ * HTTP contract: web/blueprints/checkpoint.py + docs/web/web-api.md.
+ * Invariants: docs/execution/checkpointing.md.
  */
 
 // projects rel-depth of a canonical run dir:
-// projects/PROJECT_NAME/CATEGORY/RUNNING_DIR_NAME  (§ 6.1).
+// projects/PROJECT_NAME/CATEGORY/RUNNING_DIR_NAME (docs/web/projects.md).
 const RUN_DIR_DEPTH = 3;
 const _state = {
     /** Currently selected directory path (relative to projects root,
@@ -114,7 +114,7 @@ function _attach() {
 /**
  * Whether ``dirPath`` is a canonical run directory -- projects
  * rel-depth 3 (projects/PROJECT/CATEGORY/RUNNING_DIR), the only place
- * a checkpoint viewer activates (run-checkpoints.md § 6.1).  The
+ * a checkpoint viewer activates (docs/web/projects.md).  The
  * ``.git/`` presence is confirmed separately by /api/checkpoint/state;
  * this is the cheap structural gate that runs before any fetch.
  */
@@ -145,7 +145,7 @@ export function onDirectoryChange(dirPath) {
     // Activation gate: the viewer exists ONLY for a canonical run dir
     // (rel-depth 3).  Anywhere else -- a project dir, a category dir,
     // the projects root, or a file -- the panel is hidden entirely
-    // (run-checkpoints.md § 6.1).
+    // (docs/web/projects.md).
     if (!_isRunDir(dirPath)) {
         _state.currentDir = null;
         _hide();
@@ -546,7 +546,7 @@ async function _onInitClick() {
             await _refresh();
         } else if (res.body && Array.isArray(res.body.errors_only)
                    && res.body.errors_only.length) {
-            // Bucket B advisory (web-api.md § 1.6): surface inline.
+            // Bucket B advisory (web-api.md § 1): surface inline.
             _showAdvisory(res.body.errors_only[0].message);
         } else {
             _showAdvisory("Init failed: " +

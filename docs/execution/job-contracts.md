@@ -1195,6 +1195,32 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 > `tests/test_checkpoint_manifest_format.py`; the reasoning is
 > [`execution/checkpointing.md`](?doc=execution/checkpointing.md), L2.
 
+**The MANIFEST's canonical format, in full.** The parser accepts exactly this
+and refuses everything else — no field-count fallback, no header line, no
+comments, no BOM tolerance. A reader that guesses is a reader that restores the
+wrong bytes, so every deviation is named rather than repaired.
+
+| | |
+|---|---|
+| **Encoding** | plain ASCII, LF line endings only, no BOM |
+| **Terminator** | every line ends `\n`, including the last; no blank lines |
+| **Empty file** | legal, and means *this commit archived nothing* — distinct from a **missing** archive directory, which means the archive was lost |
+| **Line** | exactly three fields separated by **two spaces**: `<sha256>  <bytes>  <key>` |
+| **`sha256`** | 64 lowercase hex characters |
+| **`bytes`** | decimal integer, no leading zeros |
+| **`key`** | repo-relative POSIX path, ASCII printable. Rejected: absolute paths, `.` or `..` or empty components, backslashes, and any dot-prefixed component (which could reach `.git` or `.binsnapshots`) |
+| **Ordering** | lines sorted alphabetically by key |
+| **Duplicates** | a key may appear once |
+
+A **two-column** file is the pre-2026-06 `sha256sum > MANIFEST` shape. It is
+detected explicitly and refused with a pointer to `molbuilder snapshot
+migrate-manifest <ref>`, which rewrites it in place; the conversion changes how
+the archive is *described*, never what is in it
+([`checkpointing.md`](?doc=execution/checkpointing.md) I1).
+
+The archive directory itself is named for the **full 40-character commit sha**,
+lowercase hex — `.binsnapshots/<sha>/`.
+
 > **The decoded run is not a file.** `decode_run_dir(run_dir)` returns an
 > in-memory `JobResult` dataclass served to the Results tab and consumed by
 > `jobset/runstatus.py`; nothing writes a `decoded.json`. Its bare-integer

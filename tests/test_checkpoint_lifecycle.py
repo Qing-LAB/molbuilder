@@ -1,10 +1,11 @@
-"""End-to-end tests for the run-checkpoints module.
+"""End-to-end tests for the checkpoint module
+(contract: docs/execution/checkpointing.md).
 
 Covers the user-facing lifecycle: init -> checkpoint -> tag -> change
 files -> checkpoint again -> restore to tag.  Both text files and big
 binaries (.DM-like) round-trip correctly.
 
-See docs/execution/running-a-job.md § 6 for the full design contract.
+Contract: docs/execution/checkpointing.md.
 """
 from __future__ import annotations
 
@@ -35,7 +36,7 @@ def _have_git() -> bool:
 
 pytestmark = pytest.mark.skipif(
     not _have_git(),
-    reason="git not on PATH; run-checkpoints tests require git >= 2.20",
+    reason="git not on PATH; checkpoint tests require git >= 2.20",
 )
 
 
@@ -154,7 +155,7 @@ def test_restore_unknown_ref_raises(tmp_path):
 
 
 def test_tag_requires_message(tmp_path):
-    """Per § 11 decision 3: tags are always annotated; empty message
+    """Per checkpointing.md L3/L4: tags are always annotated; empty message
     is refused."""
     _seed_working_dir(tmp_path)
     repo = Repo(str(tmp_path))
@@ -302,7 +303,7 @@ def test_user_supplied_gitignore_is_preserved_but_the_archive_set_is_added(
 
 
 # ----------------------------------------------------------------- #
-#  Phase 4: experimental branching (run-checkpoints.md § 4.5)        #
+#  Branching an experiment (checkpointing.md § 5, § 10.2)            #
 # ----------------------------------------------------------------- #
 
 
@@ -360,7 +361,7 @@ def test_cli_snapshot_branch(tmp_path):
 
 
 # ----------------------------------------------------------------- #
-#  Binary-archive integrity on restore (§ 10.3 data-safety) —       #
+#  Binary-archive integrity on restore (checkpointing.md A2) —      #
 #  the "verify sha256+size BEFORE touching the working tree" path.   #
 # ----------------------------------------------------------------- #
 
@@ -449,7 +450,7 @@ def test_archive_total_bytes_reports_archived_size(tmp_path):
 
 
 def test_restore_is_atomic_corrupt_binary_leaves_text_untouched(tmp_path):
-    """SAFETY (§ 10.3 atomicity): a corrupt binary archive must abort the
+    """SAFETY (checkpointing.md A2): a corrupt binary archive must abort the
     WHOLE restore -- the TEXT must NOT be rewound either. Before the
     verify-before-git-restore fix this left a half-restored tree (text@ref,
     binaries@current)."""
@@ -550,7 +551,7 @@ def test_cli_restore_warns_on_missing_archive(tmp_path):
 
 # ----------------------------------------------------------------- #
 #  Engine-aware, persistent, editable big-binary classification      #
-#  (run-checkpoints.md § 9) -- the unified accessor.                  #
+#  (checkpointing.md § 4) -- the unified accessor.                    #
 # ----------------------------------------------------------------- #
 
 

@@ -2466,7 +2466,7 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
 
 
 @cli.group("snapshot",
-           short_help="git-based run-checkpoints (init, checkpoint, "
+           short_help="checkpoint a calculation folder (init, checkpoint, "
                       "list, tag, restore)")
 def cmd_snapshot():
     """Manage the working dir's checkpoint history.
@@ -2513,9 +2513,12 @@ def cmd_snapshot_init(engine, path):
     """Create a git repo + .gitignore + first commit + binary archive
     in the current working dir (or --path).
 
-    Refuses if the directory contains nested working dirs (subdirs
-    with .fdf / .py / .run.sh) -- each lowest-directory is its own
-    checkpoint repo per the run-checkpoints.md § P5 rule.
+    One repository per calculation (checkpointing.md L1).  A directory
+    whose subdirectories are working dirs (they hold .fdf / .py / .run.sh)
+    is accepted only when this directory declares them one calculation by
+    carrying its description -- task.json, job-set.json or
+    bench-manifest.json.  Without one, init refuses: several independent
+    calculations in one history would rewind together.
 
     ``--engine`` selects which files count as big binaries (the persisted,
     editable classification -- see ``molbuilder snapshot config``).
@@ -2539,7 +2542,8 @@ def cmd_snapshot_init(engine, path):
     state = repo.state()
     click.echo(f"Initialised {repo.path}")
     click.echo(f"  HEAD = {state.head[:7] if state.head else '?'}")
-    # state() is cheap and omits archive size (§ 6.2); ask for it
+    # state() is cheap and omits archive size (docs/web/projects.md);
+    # ask for it
     # explicitly here -- this is a one-shot command, not a poll.
     archived = repo.archive_total_bytes()
     if archived:
@@ -2557,7 +2561,7 @@ def cmd_snapshot_init(engine, path):
               help="Working dir.  Default: cwd.")
 def cmd_snapshot_config(set_globs, path):
     """Show (or ``--set``) the big-binary patterns this repo archives -- the
-    engine-specific, user-editable classification (run-checkpoints.md § 9).
+    engine-specific, user-editable classification (checkpointing.md § 4).
     The web UI edits the SAME persisted table through the API; this is the
     CLI face of that one unified accessor."""
     from molbuilder.checkpoint import Repo, CheckpointError
@@ -2624,7 +2628,7 @@ def cmd_snapshot_checkpoint(message, path):
               help="Working dir.  Default: cwd.")
 def cmd_snapshot_tag(label, message, at, path):
     """Create an annotated tag.  Always annotated (carries a message)
-    per the design § 11 decision 3."""
+    per checkpointing.md L3/L4."""
     from molbuilder.checkpoint import Repo, CheckpointError
     repo = Repo(_resolve_repo_path(path))
     if not repo.initialized:
@@ -2647,7 +2651,7 @@ def cmd_snapshot_tag(label, message, at, path):
 @click.option("-p", "--path", default=None, type=click.Path(),
               help="Working dir.  Default: cwd.")
 def cmd_snapshot_branch(name, path):
-    """Create a new branch and switch to it (run-checkpoints.md § 4.5) --
+    """Create a new branch and switch to it (checkpointing.md § 5) --
     for exploring an experimental parameter path without losing the current
     one.  Tags mark milestones; branches carry experiments (P6).  Your next
     ``snapshot checkpoint`` lands on this branch; ``snapshot restore`` /
@@ -2756,7 +2760,7 @@ def cmd_snapshot_restore(ref, no_binaries, path):
 
 @cmd_snapshot.command("migrate-manifest",
                       short_help="convert legacy 2-column MANIFEST to "
-                                 "canonical 3-column form (§ 10.4)")
+                                 "canonical 3-column form")
 @click.argument("ref")
 @click.option("-p", "--path", default=None, type=click.Path(),
               help="Working dir.  Default: cwd.")
@@ -2764,7 +2768,7 @@ def cmd_snapshot_migrate_manifest(ref, path):
     """One-shot conversion of a legacy ``sha256sum``-style 2-column
     MANIFEST in the archive for REF to canonical 3-column form.
 
-    Behaviour (per run-checkpoints.md § 10.4):
+    Behaviour (per checkpointing.md I1; the format is job-contracts.md § 6.1):
 
       1. Resolves REF to a commit SHA.
       2. Reads .binsnapshots/<sha>/MANIFEST.

@@ -4,8 +4,8 @@ Real Flask test client + real filesystem (tmp_path) + real git
 subprocess.  Mirrors the no-mocks discipline of
 test_checkpoint_lifecycle.py and test_checkpoint_manifest_format.py.
 
-Envelope contract: web-api.md § 1.6 four-bucket rule.
-Behaviour contract: docs/execution/running-a-job.md § 6
+Envelope contract: web-api.md § 1 (the four-bucket rule).
+Behaviour contract: docs/execution/checkpointing.md
 """
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ def test_state_after_init_reports_head_and_clean(client, tmp_path):
     assert body["state"]["head"]
     assert body["state"]["dirty"] is False
     # archive_total_bytes is NOT computed on the refresh-path state()
-    # call (run-checkpoints.md § 5.2, § 6.2): walking .binsnapshots/ on
+    # call (docs/web/projects.md -- the sidebar's cheap read): walking .binsnapshots/ on
     # every directory-enter is the cost the explicit-refresh model
     # removed.  It stays at its 0 default even though a 2048-byte .DM
     # is archived on disk; archive size is surfaced by the list/detail
@@ -150,7 +150,7 @@ def test_init_creates_repo_and_archives_binaries(client, tmp_path):
     assert body["ok"] is True
     assert body["state"]["initialized"] is True
     # The init route's state() no longer reports archive size (it's off
-    # the refresh path -- run-checkpoints.md § 5.2).  Verify the archive
+    # the refresh path -- docs/web/projects.md).  Verify the archive
     # directly on disk instead: the 2048-byte .DM must be copied into
     # .binsnapshots/<sha>/.
     archived = list((tmp_path / ".binsnapshots").rglob("siesta-test.DM"))
@@ -182,7 +182,7 @@ def test_init_refuses_nested_working_dirs_as_advisory(client, tmp_path):
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is False
-    # Canonical bucket-B envelope per web-api.md § 1.1: ``errors_only``
+    # Canonical bucket-B envelope per web-api.md § 1: ``errors_only``
     # is a list (subset of ``issues`` with severity="error"), NOT a
     # boolean flag; the per-issue detail lives under ``issues``.
     assert isinstance(body["errors_only"], list) and body["errors_only"]
@@ -433,12 +433,12 @@ def test_diff_unknown_ref_is_404(client, tmp_path):
 
 
 # ----------------------------------------------------------------- #
-#  Envelope round-trip — bucket-B shape (web-api.md § 1.1, § 1.6)    #
+#  Envelope round-trip — bucket-B shape (web-api.md § 1)             #
 # ----------------------------------------------------------------- #
 
 
 def _assert_bucket_b(body):
-    """Generic bucket-B advisory shape gate per web-api.md § 1.1.
+    """Generic bucket-B advisory shape gate per web-api.md § 1.
 
     Every checkpoint advisory must satisfy: ok:false, a short ``error``
     banner, ``issues`` as a non-empty list, and ``errors_only`` as the
@@ -460,7 +460,7 @@ def _assert_bucket_b(body):
         assert (it["message"], it["where"]) in issue_keys
     # No legacy fields.
     assert "errors" not in body, (
-        "legacy key 'errors' must not appear (use 'issues' per § 1.1)"
+        "legacy key 'errors' must not appear (use 'issues' per web-api.md § 1)"
     )
 
 
@@ -511,7 +511,7 @@ def test_envelope_bucket_b_restore_legacy_manifest(client, tmp_path):
 
 
 # ----------------------------------------------------------------- #
-#  Engine on init + the config get/set contract (run-checkpoints §9) #
+#  Engine on init + the config get/set contract (checkpointing.md § 4) #
 # ----------------------------------------------------------------- #
 
 
@@ -605,7 +605,7 @@ def test_branch_carries_uncommitted_work_onto_the_branch(client, tmp_path):
 
 
 def test_branch_on_an_existing_name_is_an_advisory_not_a_fault(client, tmp_path):
-    """Bucket B (web-api.md § 1.6): the user picked a name and can pick another,
+    """Bucket B (web-api.md § 1): the user picked a name and can pick another,
     so it is HTTP 200 + ok:false with the reason, never a 500."""
     from molbuilder.checkpoint import Repo
     _seed(tmp_path)

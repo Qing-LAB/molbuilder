@@ -940,13 +940,23 @@ appear together, which is exactly where a person should be looking.
     longer archived is in no snapshot at all. The same words in
     `_render_gitignore`'s emitted header are likewise format, not prose.
 
-    *Done when:* each reference points at the section that owns it today —
-    [`checkpointing.md`](?doc=execution/checkpointing.md) for the invariants,
-    [`job-contracts.md`](?doc=execution/job-contracts.md) `§ 6.1` for the MANIFEST
-    columns and `.mbcheckpoint.json`,
-    [`running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` for the workflow
-    and the CLI — no docstring or error message names a file that is not in the
-    tree, and the two live docs stop routing readers to a deleted one.
+    **Done 2026-08-08.** Every reference now points at the section that owns it:
+    [`checkpointing.md`](?doc=execution/checkpointing.md) for the invariants
+    (cited by rule id — `A1`, `A2`, `I1`, `L1`, `L3/L4` — so a renumbering
+    cannot break them again),
+    [`job-contracts.md`](?doc=execution/job-contracts.md) `§ 6.1` for the
+    MANIFEST and archive formats, `docs/web/projects.md` for the sidebar panel
+    and its refresh model, and `web-api.md § 1` for the envelope. Nothing in the
+    subsystem names a file that is not in the tree.
+
+    **The MANIFEST's format had no live home to point at** — `job-contracts.md
+    § 6.1` held one table row, while the twenty error messages cited rules
+    (ASCII-only, trailing LF, sorted, no duplicates, no dot-components) that
+    existed in full *only* in the deleted document. Repointing them required
+    writing the spec there first, which is now done.
+
+    `_GITIGNORE_LEGACY_HEAD` and `_render_gitignore`'s emitted header were left
+    byte-for-byte, per the warning above.
 
 14a. **The module's own hygiene, found by the same pass.** All predate this branch
     except the last; none is urgent and all are one-liners.

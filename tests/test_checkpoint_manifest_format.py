@@ -1,11 +1,13 @@
-"""Tests gating the canonical MANIFEST lockdown (§ 10 of
-docs/execution/running-a-job.md § 6).
+"""Tests gating the canonical MANIFEST lockdown.
+
+Format spec: docs/execution/job-contracts.md § 6.1.
+Invariants:  docs/execution/checkpointing.md (I1, I2, A2).
 
 Real filesystem (pytest tmp_path), real git via subprocess.  No mocks
 -- the bug class that prompted the lockdown (writer format diverging
 from parser expectations) is invisible to mocked tests.
 
-Coverage required by § 10.5:
+Coverage (checkpointing.md § 13):
   * canonical write/read round-trip
   * canonical write is sorted + atomic
   * each malformed variant raises with a specific reason
@@ -53,7 +55,7 @@ def _seed(tmp_path: Path) -> Path:
 
 
 # ----------------------------------------------------------------- #
-#  § 10.2 — canonical format round-trips                             #
+#  job-contracts.md § 6.1 — canonical format round-trips                             #
 # ----------------------------------------------------------------- #
 
 
@@ -76,7 +78,7 @@ def test_canonical_write_round_trips_through_canonical_parser(tmp_path):
 
 
 def test_canonical_manifest_is_sorted_by_filename(tmp_path):
-    """§ 10.2: entries are alphabetical by filename so two machines
+    """job-contracts.md § 6.1: entries are alphabetical by filename so two machines
     archiving the same files produce identical MANIFEST bytes."""
     # Drop three files that, if archived in glob order, would NOT be
     # alphabetical.  Names chosen so a naïve traversal probably yields
@@ -119,7 +121,7 @@ def test_format_canonical_manifest_sorts(tmp_path):
 
 
 # ----------------------------------------------------------------- #
-#  § 10.2 — malformed variants all raise (parametrised)              #
+#  job-contracts.md § 6.1 — malformed variants all raise (parametrised)              #
 # ----------------------------------------------------------------- #
 
 
@@ -255,7 +257,8 @@ _MALFORMED_CASES = [
         id="unsorted",
     ),
     pytest.param(
-        # Empty file -- valid? § 10.2 requires at least one entry.
+        # A line that is only a newline: a BLANK line, which the format
+        # forbids.  (A wholly empty file is legal -- see the note below.)
         b"\n",
         "blank",
         id="single-blank-line",
@@ -296,7 +299,7 @@ def test_malformed_manifest_raises_with_specific_reason(
 
 
 # ----------------------------------------------------------------- #
-#  § 10.4 — legacy migration                                         #
+#  checkpointing.md I1 — legacy migration                                         #
 # ----------------------------------------------------------------- #
 
 
@@ -356,7 +359,7 @@ def test_migrate_manifest_is_idempotent_on_canonical(tmp_path):
 
 def test_migrate_manifest_aborts_on_sha_mismatch(tmp_path):
     """If the recorded sha256 doesn't match the file on disk, migration
-    aborts AND the original MANIFEST is left untouched (§ 10.4)."""
+    aborts AND the original MANIFEST is left untouched (checkpointing.md I1)."""
     repo = _seed_and_init(tmp_path)
     repo.tag("baseline", message="first")
     sha = repo._resolve_ref("baseline")
@@ -392,7 +395,7 @@ def test_migrate_manifest_handles_self_reference_in_legacy(tmp_path):
 
 
 # ----------------------------------------------------------------- #
-#  § 10.3 — restore refuses legacy MANIFEST (with hint)              #
+#  checkpointing.md A2 — restore refuses legacy MANIFEST (with hint)              #
 # ----------------------------------------------------------------- #
 
 

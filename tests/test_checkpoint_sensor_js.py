@@ -1,8 +1,9 @@
-"""Sidebar sensor refresh-contract tests (run-checkpoints.md § 12, L3).
+"""Sidebar sensor refresh-contract tests (docs/web/projects.md;
+test design: docs/execution/checkpointing.md § 13).
 
 This file pins the *refresh model* the checkpoint sensor depends on,
 after the 2026-06-26 decision to replace background polling with
-explicit refresh (run-checkpoints.md § 6.2 + § 11 decision 7).  Three
+explicit refresh (docs/web/projects.md).  Three
 guarantees, all server-side except the last (a cheap source guard):
 
   1. ``/api/checkpoint/state`` is CHEAP: it returns the documented
@@ -71,7 +72,7 @@ def _seed_with_archive(tmp_path: Path) -> Path:
 def test_state_does_not_walk_binsnapshots(client, tmp_path):
     """Even with a real 2048-byte archive on disk, the refresh-path
     state() reports archive_total_bytes == 0 (it never stats the
-    archive).  Regression gate for run-checkpoints.md § 5.2 / § 6.2."""
+    archive).  Regression gate for docs/web/projects.md."""
     from molbuilder.checkpoint import Repo
     _seed_with_archive(tmp_path)
     Repo(str(tmp_path)).init()
@@ -92,7 +93,7 @@ def test_state_does_not_walk_binsnapshots(client, tmp_path):
 
 def test_state_returns_documented_cheap_shape(client, tmp_path):
     """The sensor reads exactly these fields; none requires an archive
-    walk (run-checkpoints.md § 5.2 wire shape)."""
+    walk (docs/web/projects.md -- the wire shape)."""
     from molbuilder.checkpoint import Repo
     _seed_with_archive(tmp_path)
     Repo(str(tmp_path)).init()
@@ -139,7 +140,7 @@ def test_state_git_failure_is_structured_error_not_crash(
 
 
 def test_checkpoint_js_has_no_polling_timer():
-    """The explicit-refresh model (run-checkpoints.md § 11 decision 7)
+    """The explicit-refresh model (docs/web/projects.md)
     forbids a background poll loop.  Guard against setInterval creeping
     back into the sensor.  We strip line comments first so the doc-
     comment mention of 'no setInterval' doesn't trip the check."""
@@ -156,5 +157,5 @@ def test_checkpoint_js_has_no_polling_timer():
     code = "\n".join(code_lines)
     assert "setInterval" not in code, (
         "checkpoint.js must not poll -- refresh is explicit "
-        "(directory-enter + manual Refresh) per run-checkpoints.md "
-        "§ 6.2 / § 11 decision 7")
+        "(directory-enter + manual Refresh) per docs/web/projects.md "
+        "docs/web/projects.md")

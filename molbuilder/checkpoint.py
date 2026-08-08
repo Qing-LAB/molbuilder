@@ -1,12 +1,21 @@
-"""Run-checkpoints — git-based working-dir state management.
+"""Checkpointing — saving a calculation folder so its state can be brought back.
 
-See docs/execution/running-a-job.md § 6 for the full design contract.
-This module is the L1 + L2 implementation (data model + ``Repo``
-orchestration).  CLI lives in :mod:`molbuilder.cli`.
+**Module:** L1 + L2 (the data model and ``Repo``, the class every surface goes
+through).  **Callers:** the ``molbuilder snapshot`` CLI group
+(:mod:`molbuilder.cli`) and the HTTP routes in
+``molbuilder/web/blueprints/checkpoint.py``; nothing else in the codebase
+constructs a ``Repo``, which is what keeps *"nothing is ever saved without you
+saying so"* true.
 
-Single user, lowest-directory scope, no auto-commit (user-driven
-checkpoints only).  The wrapper does the first-run bootstrap via a
-shell prologue; this module owns the user-facing operations.
+**Contract:** [`execution/checkpointing.md`](?doc=execution/checkpointing.md) —
+the goal, the rules (S/I/A/L) and their status.  The **MANIFEST and archive
+formats** are [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
+§ 6.1; the **guide** (what to type, what the buttons do) is
+[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6.
+
+Single user, one repository per calculation, no auto-commit.  **No git ever
+runs on a compute node** — a generated wrapper contains none, and initialising
+is a CLI/UI act (I4; the "wrapper bootstraps git" path was dropped).
 
 Three primitives:
   * Phase 1 init         -- ``Repo.init()``
@@ -86,7 +95,7 @@ INPUT_TMP.*
 def _render_gitignore(archive_globs) -> str:
     """Render ``.gitignore`` with the big-binary section generated from
     ``archive_globs`` so the git-ignore set and the sha-archive set stay
-    consistent (run-checkpoints.md § 9)."""
+    consistent (checkpointing.md § 4)."""
     head = ("# molbuilder run-checkpoints contract: this dir is managed by "
             "git.\n"
             "# Large binary state files are archived separately in "
@@ -260,7 +269,9 @@ def _run_git(argv: List[str], cwd: str, *,
              check: bool = True) -> subprocess.CompletedProcess:
     """Run ``git argv`` in ``cwd``; return CompletedProcess.
 
-    Sets the molbuilder identity locally per § 11 decision 1.
+    Sets a molbuilder git identity in the environment so a checkpoint works on
+    a machine where the user never ran ``git config --global user.email``.
+    ``setdefault``, so a real identity already present is left alone.
     """
     env = os.environ.copy()
     env.setdefault("GIT_AUTHOR_NAME",     "molbuilder")
@@ -425,8 +436,8 @@ def _archive_dir(path: Path, sha: str) -> Path:
 
 
 # --------------------------------------------------------------------- #
-#  MANIFEST format -- canonical lockdown per § 10 of                    #
-#  docs/execution/running-a-job.md § 6.                                   #
+#  MANIFEST format -- the canonical spec is                             #
+#  docs/execution/job-contracts.md § 6.1.                               #
 #                                                                       #
 #  Exactly one format.  Strict parser raises on any deviation -- no     #
 #  silent skip, no fallback, no field-count tolerance.  Legacy 2-col    #
@@ -556,7 +567,7 @@ def _parse_canonical_manifest(raw: bytes,
 
     Returns a dict ``{filename: (sha256_hex, size_bytes)}``.  Raises
     :class:`CheckpointError` with a specific reason on ANY deviation
-    from § 10.2 -- no field-count fallback, no header skip, no comment
+    from job-contracts.md § 6.1 -- no field-count fallback, no header skip, no comment
     skip, no BOM tolerance.
 
     The 2-column legacy ``sha256sum > MANIFEST`` shape is detected
@@ -576,24 +587,24 @@ def _parse_canonical_manifest(raw: bytes,
     if raw.startswith(b"\xef\xbb\xbf"):
         raise CheckpointError(
             f"malformed MANIFEST in {where}: file starts with a UTF-8 "
-            f"BOM; canonical MANIFEST must be plain ASCII (§ 10.2).")
+            f"BOM; canonical MANIFEST must be plain ASCII (job-contracts.md § 6.1).")
     # CRLF rejection -- the design pins LF-only.
     if b"\r" in raw:
         raise CheckpointError(
             f"malformed MANIFEST in {where}: contains CR bytes; "
             f"canonical MANIFEST uses LF line terminators only "
-            f"(§ 10.2).")
+            f"(job-contracts.md § 6.1).")
     # Final newline required.
     if not raw.endswith(b"\n"):
         raise CheckpointError(
             f"malformed MANIFEST in {where}: missing final newline "
-            f"(§ 10.2 requires a trailing LF).")
+            f"(job-contracts.md § 6.1 requires a trailing LF).")
     try:
         text = raw.decode("ascii")
     except UnicodeDecodeError as e:
         raise CheckpointError(
             f"malformed MANIFEST in {where}: non-ASCII byte at "
-            f"offset {e.start} (§ 10.2 requires ASCII-only)."
+            f"offset {e.start} (job-contracts.md § 6.1 requires ASCII-only)."
         ) from e
     lines = text.split("\n")
     # split("\n") on a trailing-newline text gives a "" final element.
@@ -613,7 +624,7 @@ def _parse_canonical_manifest(raw: bytes,
         if line == "":
             raise CheckpointError(
                 f"malformed MANIFEST in {where}: line {idx} is blank "
-                f"(§ 10.2 forbids blank lines).")
+                f"(job-contracts.md § 6.1 forbids blank lines).")
         # Legacy 2-column sha256sum default form -- detect explicitly so
         # the user gets a useful error rather than "wrong field count".
         # Pattern: ``<64-hex-sha>  <name>`` (exactly two-space separator
@@ -628,9 +639,9 @@ def _parse_canonical_manifest(raw: bytes,
                 f"malformed MANIFEST in {where}: line {idx} is the "
                 f"legacy 2-column sha256sum format (sha + name).  "
                 f"Canonical MANIFEST is 3-column "
-                f"(sha + bytes + name; § 10.2).  Run "
+                f"(sha + bytes + name; job-contracts.md § 6.1).  Run "
                 f"`molbuilder snapshot migrate-manifest <ref>` to "
-                f"convert this archive in-place (§ 10.4).")
+                f"convert this archive in-place (checkpointing.md I1).")
         # Canonical 3-column shape: <sha>__<size>__<name>, exactly two
         # ASCII spaces between fields.  Strict split on the literal
         # double-space separator.  Embedded whitespace in filename is
@@ -640,23 +651,23 @@ def _parse_canonical_manifest(raw: bytes,
             raise CheckpointError(
                 f"malformed MANIFEST in {where}: line {idx} has "
                 f"{len(parts)} fields (separated by '  '); canonical "
-                f"requires exactly 3 (§ 10.2).")
+                f"requires exactly 3 (job-contracts.md § 6.1).")
         sha256, size_s, name = parts
         if not _SHA256_HEX_RE.match(sha256):
             raise CheckpointError(
                 f"malformed MANIFEST in {where}: line {idx} sha256 "
                 f"field {sha256!r} is not 64 lowercase hex chars "
-                f"(§ 10.2).")
+                f"(job-contracts.md § 6.1).")
         if not _SIZE_INT_RE.match(size_s):
             raise CheckpointError(
                 f"malformed MANIFEST in {where}: line {idx} size "
                 f"field {size_s!r} is not a non-negative decimal "
-                f"integer without leading zeros (§ 10.2).")
+                f"integer without leading zeros (job-contracts.md § 6.1).")
         if not _FILENAME_RE.match(name):
             raise CheckpointError(
                 f"malformed MANIFEST in {where}: line {idx} filename "
                 f"{name!r} contains non-printable or whitespace "
-                f"characters (§ 10.2 requires ASCII printable, no "
+                f"characters (job-contracts.md § 6.1 requires ASCII printable, no "
                 f"spaces).")
         # A key is a REPO-RELATIVE POSIX PATH.  A bare basename is one, which
         # is why every archive written before nested run folders existed still
@@ -667,7 +678,7 @@ def _parse_canonical_manifest(raw: bytes,
             raise CheckpointError(
                 f"malformed MANIFEST in {where}: line {idx} filename "
                 f"{name!r} is absolute or uses a backslash; keys are "
-                f"repo-relative POSIX paths (§ 10.2).")
+                f"repo-relative POSIX paths (job-contracts.md § 6.1).")
         parts = name.split("/")
         for part in parts:
             if part == "" or part == "." or part == "..":
@@ -675,29 +686,29 @@ def _parse_canonical_manifest(raw: bytes,
                     f"malformed MANIFEST in {where}: line {idx} filename "
                     f"{name!r} has an empty, current- or parent-directory "
                     f"component; a restore must not be able to escape the "
-                    f"run directory (§ 10.2).")
+                    f"run directory (job-contracts.md § 6.1).")
             if part.startswith("."):
                 raise CheckpointError(
                     f"malformed MANIFEST in {where}: line {idx} filename "
                     f"{name!r} has a dot-prefixed component {part!r}; the "
                     f"canonical archive contains no dotfiles or "
-                    f"dot-directories (§ 10.1).")
+                    f"dot-directories (job-contracts.md § 6.1).")
         if name == _MANIFEST_NAME:
             raise CheckpointError(
                 f"malformed MANIFEST in {where}: line {idx} lists the "
                 f"MANIFEST file itself; canonical MANIFEST must not "
-                f"self-reference (§ 10.2).")
+                f"self-reference (job-contracts.md § 6.1).")
         if name in out:
             raise CheckpointError(
                 f"malformed MANIFEST in {where}: filename {name!r} "
-                f"appears more than once (§ 10.2).")
+                f"appears more than once (job-contracts.md § 6.1).")
         out[name] = (sha256, int(size_s))
         seen_order.append(name)
-    # Sort-order check (§ 10.2: lines are alphabetical by filename).
+    # Sort-order check (job-contracts.md § 6.1: lines are alphabetical by filename).
     if seen_order != sorted(seen_order):
         raise CheckpointError(
             f"malformed MANIFEST in {where}: entries are not sorted "
-            f"alphabetically by filename (§ 10.2).")
+            f"alphabetically by filename (job-contracts.md § 6.1).")
     return out
 
 
@@ -803,7 +814,7 @@ def _link_or_copy(src: Path, dst: Path, src_sha: str,
 
 def _archive_binaries(path: Path, sha: str) -> int:
     """Copy big binaries from working dir into ``.binsnapshots/<sha>/``;
-    write MANIFEST in canonical format (§ 10.2).  Returns total bytes
+    write MANIFEST in canonical format (job-contracts.md § 6.1).  Returns total bytes
     archived (0 if no binaries).
 
     ALWAYS writes the directory and a MANIFEST, even with nothing to archive.
@@ -815,13 +826,13 @@ def _archive_binaries(path: Path, sha: str) -> int:
     if not _SHA_DIR_RE.match(sha):
         raise CheckpointError(
             f"_archive_binaries: SHA dir name {sha!r} is not 40 "
-            f"lowercase hex chars (§ 10.1).")
+            f"lowercase hex chars (job-contracts.md § 6.1).")
     final = _archive_dir(path, sha)
     # ATOMIC PUBLISH: build the archive in a sibling ``.tmp`` dir and rename it
     # into place only after every binary is copied AND the MANIFEST is written.
     # A crash mid-copy then leaves only the throwaway .tmp -- never a PARTIAL
     # archive at the real path that restore would mistake for complete (silent
-    # loss) or the parser would choke on (§ 10.3).
+    # loss) or the parser would choke on (checkpointing.md A1).
     tmp = final.parent / (sha + ".tmp")
     if tmp.exists():
         shutil.rmtree(tmp)
@@ -894,11 +905,11 @@ def _verify_archived_binaries(path: Path, sha: str
     (existence + size + sha256), touching NOTHING.  Raises
     :class:`CheckpointError` on ANY mismatch.  Returns the expected
     ``{name: (sha256, size)}`` map, or ``{}`` when there is no archive (a
-    binary-free checkpoint is legal, § 4.6).
+    binary-free checkpoint is legal, checkpointing.md § 7).
 
     Split out from the copy so callers (``restore``) can verify the archive
     is intact BEFORE they mutate the working tree at all -- a corrupt archive
-    must abort the WHOLE restore, not leave a half-restored tree (§ 10.3)."""
+    must abort the WHOLE restore, not leave a half-restored tree (checkpointing.md A2)."""
     arch = _archive_dir(path, sha)
     manifest = arch / _MANIFEST_NAME
     if not arch.is_dir() or not manifest.is_file():
@@ -911,19 +922,19 @@ def _verify_archived_binaries(path: Path, sha: str
         if not src.is_file():
             raise CheckpointError(
                 f"archive at {arch}: MANIFEST lists {name!r} but the "
-                f"file is missing; refusing to restore (§ 10.3).")
+                f"file is missing; refusing to restore (checkpointing.md A2).")
         actual_size = src.stat().st_size
         if actual_size != want_size:
             raise CheckpointError(
                 f"archive at {arch}: integrity check failed for "
                 f"{name!r} -- expected {want_size} bytes, got "
-                f"{actual_size} (§ 10.3).")
+                f"{actual_size} (checkpointing.md A2).")
         actual_sha256 = hashlib.sha256(src.read_bytes()).hexdigest()
         if actual_sha256 != want_sha256:
             raise CheckpointError(
                 f"archive at {arch}: integrity check failed for "
                 f"{name!r} -- expected sha256 {want_sha256!r}, got "
-                f"{actual_sha256!r}; refusing to restore (§ 10.3).")
+                f"{actual_sha256!r}; refusing to restore (checkpointing.md A2).")
     return expected
 
 
@@ -954,7 +965,7 @@ def _copy_archived_binaries(path: Path, sha: str,
 
 def _restore_archived_binaries(path: Path, sha: str) -> List[str]:
     """Verify then copy the archived binaries for ``sha`` (verification
-    aborts BEFORE any byte hits the working tree, § 10.3)."""
+    aborts BEFORE any byte hits the working tree, checkpointing.md A2)."""
     expected = _verify_archived_binaries(path, sha)
     return _copy_archived_binaries(path, sha, expected)
 
@@ -991,7 +1002,7 @@ def _working_binaries_dirty(path: Path, head_sha: str) -> List[str]:
 
 def _migrate_legacy_manifest(arch: Path) -> Dict[str, Tuple[str, int]]:
     """Convert a 2-column ``sha256sum`` MANIFEST in ``arch`` to the
-    canonical 3-column form (§ 10.4).
+    canonical 3-column form (checkpointing.md I1).
 
     Behaviour:
       1. Reads existing MANIFEST.  If it already parses as canonical,
@@ -1070,7 +1081,7 @@ def _migrate_legacy_manifest(arch: Path) -> Dict[str, Tuple[str, int]]:
             f"payload entries (only MANIFEST self-reference?); "
             f"refusing.")
     # Re-hash + size every file BEFORE writing anything.  Any mismatch
-    # aborts and leaves the original MANIFEST untouched (§ 10.4).
+    # aborts and leaves the original MANIFEST untouched (checkpointing.md I1).
     verified: Dict[str, Tuple[str, int]] = {}
     for name, (want_sha256, _) in parsed.items():
         src = arch / name
@@ -1149,7 +1160,7 @@ class Repo:
         ``engine`` (``"siesta"`` / ``"pyscf"``) selects the built-in
         big-binary classification seeded into the persisted config
         (``.mbcheckpoint.json``); the web/CLI caller already knows it at task
-        setup (UI<->API contract, run-checkpoints.md § 9).  ``archive_globs``
+        setup (UI<->API contract, checkpointing.md § 4).  ``archive_globs``
         overrides with an explicit set.  When neither is given, the safe
         union of all engines' patterns is used.  Both the persisted config
         AND the ``.gitignore`` big-binary section are derived from the same
@@ -1248,8 +1259,8 @@ class Repo:
 
     def archive_globs(self) -> List[str]:
         """The big-binary patterns this repo archives -- the persisted,
-        engine-specific, user-editable classification (run-checkpoints.md
-        § 9).  THE single read API; CLI, web, and internals all go through
+        engine-specific, user-editable classification (checkpointing.md
+        § 4).  THE single read API; CLI, web, and internals all go through
         it (falls back to the safe union for pre-config repos)."""
         return list(_read_archive_globs(Path(self.path)))
 
@@ -1336,8 +1347,8 @@ class Repo:
     # -- Phase 3: tag --------------------------------------------- #
 
     def tag(self, label: str, message: str, at: str = "HEAD") -> str:
-        """Create an annotated tag.  Always annotated (carries message)
-        per § 11 decision 3 (lightweight tags not used)."""
+        """Create an annotated tag.  Always annotated, so it carries a message
+        (checkpointing.md L3/L4; lightweight tags are not used)."""
         self._require_init()
         if not message:
             raise CheckpointError("tag message must be non-empty")
@@ -1348,7 +1359,7 @@ class Repo:
     # -- Phase 4: experimental branching -------------------------- #
 
     def branch(self, name: str) -> str:
-        """Create a new branch and switch to it (§ 4.5, Phase 4) -- the
+        """Create a new branch and switch to it (checkpointing.md § 5) -- the
         user's subsequent checkpoints land on it.  Equivalent to
         ``git checkout -b <name>``; carries any uncommitted changes onto the
         new branch (git's default) so a user can branch mid-edit before an
@@ -1391,7 +1402,7 @@ class Repo:
                     "'git status' does not show them).")
         # Resolve ref to a SHA.
         sha = self._resolve_ref(ref)
-        # ATOMICITY (§ 10.3): verify the binary archive BEFORE mutating the
+        # ATOMICITY (checkpointing.md A2): verify the binary archive BEFORE mutating the
         # working tree, so a corrupt/incomplete archive aborts the WHOLE
         # restore -- text AND binaries -- rather than leaving a half-restored
         # tree (text rewound, binaries stale).  git restore touches text; the
@@ -1399,8 +1410,9 @@ class Repo:
         expected: Dict[str, Tuple[str, int]] = {}
         if include_binaries:
             expected = _verify_archived_binaries(Path(self.path), sha)
-        # git restore: rewinds the working tree but keeps HEAD on
-        # the current branch (per § 11 decision 3).
+        # git restore: rewinds the working tree but keeps HEAD on the current
+        # branch, so history moves forward even when the folder moves back and
+        # nothing is ever rewritten (checkpointing.md § 7.1).
         _run_git(["restore", "--source", ref, "--worktree",
                   "--staged", "."],
                  cwd=self.path)
@@ -1417,7 +1429,7 @@ class Repo:
         commit->archive window), NOT that the checkpoint was legitimately
         binary-free.  Returns ``None`` when there is no reason to warn.
 
-        This is the honest bound on § 10.3: because big binaries are
+        This is the honest bound on checkpointing.md A2: because big binaries are
         gitignored, git records nothing about what a commit "should" have, so
         a lost archive cannot be proven -- but it CAN be flagged loudly so a
         restore never silently returns text-only for a binary project (#1)."""
@@ -1439,11 +1451,11 @@ class Repo:
             f"interrupted between commit and archive).  Verify the result; "
             f"re-checkpoint to heal the archive.")
 
-    # -- § 10.4 migrate-manifest ---------------------------------- #
+    # -- checkpointing.md I1 migrate-manifest ---------------------------------- #
 
     def migrate_manifest(self, ref: str) -> Dict[str, Tuple[str, int]]:
         """Convert a legacy 2-column ``sha256sum`` MANIFEST in the
-        archive for ``ref`` to canonical 3-column form (§ 10.4).
+        archive for ``ref`` to canonical 3-column form (checkpointing.md I1).
         No-op (returns the parsed contents) if already canonical.
 
         Raises :class:`CheckpointError` with a specific reason on any
@@ -1475,8 +1487,8 @@ class Repo:
         dirty = bool(lines)
         untracked = sum(1 for ln in lines if ln.startswith("?"))
         # NOTE: archive_total_bytes is deliberately left at its default
-        # (0). This snapshot is the refresh-path read (run-checkpoints.md
-        # § 5.2, § 6.2) hit on every directory-enter; walking
+        # (0). This snapshot is the refresh-path read (docs/web/projects.md --
+        # the sidebar's checkpoint panel) hit on every directory-enter; walking
         # .binsnapshots/ here would charge an O(archive) stat sweep on
         # each enter for a number the sensor never displays. Archive size
         # is computed only by the list/detail surfaces that show it
@@ -1491,8 +1503,8 @@ class Repo:
         """Total size of all archived binaries under ``.binsnapshots/``.
 
         Walks the archive -- an O(archived files) stat sweep -- so this
-        is deliberately NOT part of ``state()`` (the refresh-path read,
-        § 6.2).  Call it only from one-shot surfaces that actually
+        is deliberately NOT part of ``state()`` (the refresh-path read --
+        docs/web/projects.md).  Call it only from one-shot surfaces that actually
         display archive size: the CLI ``snapshot init`` confirmation and
         the list/detail route.
         """

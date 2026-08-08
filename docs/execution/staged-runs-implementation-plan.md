@@ -1214,7 +1214,7 @@ mislead a reader of the code.
 
 | Item | What |
 |---|---|
-| § 8 14 | Repoint the checkpoint subsystem's dead doc references — `run-checkpoints.md` was removed in the 2026-07 migration and 21 of the citations are **inside error messages a user reads**. ⚠ `_GITIGNORE_LEGACY_HEAD` looks like a citation and is **not** — it is the marker greped out of a user's existing `.gitignore`; renaming it opens a data-losing branch |
+| ~~§ 8 14~~ | ~~Repoint the checkpoint subsystem's dead doc references~~ — **done 2026-08-08**. All 9 live files repointed; invariants are now cited **by rule id** so a renumbering cannot break them again. The MANIFEST format was written into `job-contracts.md § 6.1` first, because the twenty error messages cited rules that lived only in the deleted document. `_GITIGNORE_LEGACY_HEAD` and the emitted `.gitignore` header left byte-for-byte |
 | § 8 14a | Module hygiene: `Any` annotated and not imported; unused `field` import; `__all__` omitting the four public names item 11 added; two copies of one `Checkpoint`-from-git-log builder; `list_checkpoints` walking every commit's archive |
 | § 8 10a | The archive-size display prints a number that is not true (hard links counted in full) and **feeds no decision — there is no `prune` verb**. Either drop it or make it match `du`. Two older faults ride along: `archive_total_bytes` is structurally always zero, and `missing_archive_warning` names `.DM/.HSX/.TSHS` whatever the engine |
 | § 8 12e | The checkpoint panel appears at a **fixed depth** (exactly 3 below the projects root) instead of wherever a repository is — so browsing into `01_coarse/` makes it vanish, in the shape where a checkpoint is load-bearing |
