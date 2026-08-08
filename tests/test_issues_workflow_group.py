@@ -23,6 +23,8 @@ These tests pin:
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from molbuilder.issues import Issue
@@ -255,3 +257,65 @@ class TestValidateEndToEndAttaches:
             f"Either tag the corresponding config field with "
             f"``workflow_group=...`` or document the where as "
             f"intentionally group-less.")
+
+
+# ===================================================================== #
+#  Integration completeness — a field is in the form, or it is not      #
+# ===================================================================== #
+
+class TestEveryExposedFieldIsTagged:
+    """A field exposed in the form MUST carry a ``workflow_group``.
+
+    User rule, 2026-08-07: *"all template fields should have a tag that
+    either enriches the information/validation or gives very minimum brief
+    information — if any field does not have that, someone added a new field
+    and did not finish the integration to the data system."*
+
+    Two pieces of metadata decide a field's place in the surface, and they
+    answer different questions:
+
+      ``section``         is this field in the form at all?  A field without
+                          one is deliberately internal (``use_save_dm``,
+                          ``species_order``, ``copy_psml``) and the form
+                          never shows it.
+      ``workflow_group``  WHICH card, and therefore where a finding about it
+                          appears (``web/ui-contract.md`` Rule 2).
+
+    **So they must move together.**  A field with a ``section`` and no
+    ``workflow_group`` renders bare after the three cards and its findings
+    fall to a residual panel instead of sitting beside the field they
+    concern — a half-integrated field, which is exactly the state this test
+    exists to catch.  The reverse, a tagged field with no ``section``, is a
+    tag nothing can ever read.
+
+    **It holds today, on both engines** — checked 2026-08-07, zero offenders
+    in either direction.  It has simply never been written down or guarded,
+    which is why a new field can quietly break it.
+    """
+
+    @pytest.mark.parametrize("cfg_cls", [SiestaConfig, PySCFConfig])
+    def test_section_and_workflow_group_move_together(self, cfg_cls):
+        exposed_untagged, tagged_hidden = [], []
+        for f in dataclasses.fields(cfg_cls):
+            has_section = bool(f.metadata.get("section"))
+            has_group = bool(f.metadata.get("workflow_group"))
+            if has_section and not has_group:
+                exposed_untagged.append(f.name)
+            if has_group and not has_section:
+                tagged_hidden.append(f.name)
+
+        assert not exposed_untagged, (
+            f"{cfg_cls.__name__}: field(s) exposed in the form with no "
+            f"workflow_group: {exposed_untagged}.\n"
+            "The form will render them bare after the three cards, and any "
+            "validation finding about them lands in the residual panel "
+            "instead of beside the field.  Add a workflow_group "
+            "(profile / stage / budget), or drop the `section` if the field "
+            "is meant to stay internal."
+        )
+        assert not tagged_hidden, (
+            f"{cfg_cls.__name__}: field(s) carrying a workflow_group but no "
+            f"section: {tagged_hidden}.\n"
+            "Nothing can read that tag — the form never renders the field.  "
+            "Either expose it with a `section` or drop the tag."
+        )

@@ -154,12 +154,30 @@ form):
 > structural — and it does not need to be.** Its jobs are real and one of them is
 > pinned by a wire-contract test.
 >
-> ⚠ **The genuine gap is the untagged fields, not the tag.** Nine fields on each
-> engine carry no `workflow_group`, so they render bare after the three cards and
-> **their findings fall to a residual panel instead of sitting beside the field
-> they concern**. If the tag's job is clarity and routing, an untagged science
-> field is a hole in that job. Closing it belongs to **P10**, where the form is
-> rebuilt — not to a model phase.
+> **A field is in the form or it is not, and two pieces of metadata must agree
+> on which** (user rule, 2026-08-07):
+>
+> | | |
+> |---|---|
+> | `section` | *is this field in the form at all?* A field without one is deliberately internal — `use_save_dm`, `species_order`, `copy_psml` — and never rendered |
+> | `workflow_group` | *which card*, and therefore where a finding about it appears |
+>
+> **They move together.** A field with a `section` and no `workflow_group` renders
+> bare after the three cards and its findings fall to a residual panel instead of
+> beside the field they concern — a **half-integrated field**, the signature of
+> someone adding a field and not finishing. The reverse, a tag with no `section`,
+> is a tag nothing can read.
+>
+> **It already holds, on both engines, in both directions — zero offenders**
+> (checked 2026-08-07). It had simply never been written down or guarded, so a new
+> field could break it silently. Now pinned:
+> `tests/test_issues_workflow_group.py::TestEveryExposedFieldIsTagged`.
+>
+> > **This withdraws a finding of mine.** I had called the nine untagged fields
+> > per engine "the genuine gap — their findings fall to a residual panel". They
+> > carry no `section` either, so they are not in the form and there are no
+> > findings to route. Nothing was wrong; I had counted `workflow_group` without
+> > checking `section` beside it.
 >
 > **And the selection is made in place, one checkbox per parameter** (user,
 > 2026-08-07) — **not** a separate list of stage-able settings anywhere. The form
