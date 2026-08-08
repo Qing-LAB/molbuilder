@@ -61,6 +61,9 @@ BLOCK_PROVENANCE    = "provenance"
 BLOCK_BENCH_MARKS   = "bench-marks"
 BLOCK_ATOM_METADATA = "atom-metadata"
 BLOCK_USER_CUSTOM   = "user-custom"
+#: § 3.7 item blocks: the marker is ``item <field>``, so the NAME reaches
+#: the marker and prep can rebuild a config by scanning.
+BLOCK_ITEM          = "item"
 
 
 def begin_marker(name: str) -> str:
@@ -263,6 +266,72 @@ def emit_bench_marks(metadata: Dict[str, Any],
             line += f"  default={defaults[f.name]}"
         out.append(line)
     out.append(end_marker(BLOCK_BENCH_MARKS))
+    return "\n".join(out)
+
+
+def decl_line(f: "BenchField", *, value=None, default=None,
+              indent: str = "#   ") -> str:
+    """Render one ``field …`` declaration line — `job-contracts.md § 3.3`/§ 3.7.
+
+    **One renderer, so BENCH-MARKS and a template's item blocks cannot drift
+    into two dialects** — § 3.7 is explicit that its declaration is not a
+    parallel notation but the same shape, in the same file, parsed the same way.
+
+    ``value`` is the item's current value and ``default`` what it would be
+    untouched. Both are rendered when given: the pair is what tells a surface
+    whether the user set this field or left it alone, without a second marker
+    saying so. ``value`` is also **what the reader reads** — never the payload,
+    which may be absent, several lines, or a ``%block`` (§ 3.7 property 2).
+    """
+    line = f"{indent}field {f.name}  anchor={f.anchor}  type={f.type_}"
+    if f.range_ is not None:
+        line += f"  range=[{f.range_[0]},{f.range_[1]}]"
+    if f.unit:
+        line += f"  unit={f.unit}"
+    if f.choices:
+        line += f"  choices={'|'.join(f.choices)}"
+    if f.optional:
+        line += "  optional=true"
+    if f.group:
+        line += f"  group={f.group}"
+    if default is not None:
+        line += f"  default={_scalar(default)}"
+    if value is not None:
+        line += f"  value={_scalar(value)}"
+    return line
+
+
+def _scalar(v) -> str:
+    """A value as one unambiguous token — no spaces, so the declaration line
+    stays splittable on whitespace by the reader."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (list, tuple)):
+        return ",".join(_scalar(x) for x in v)
+    return str(v)
+
+
+def emit_item_block(f: "BenchField", *, value, default=None,
+                    help_text: str = "", payload: str = "") -> str:
+    """One template item block — `job-contracts.md § 3.7`.
+
+    ``payload`` is what this item contributes to the deck, verbatim, and may
+    be **empty**: ten of SIESTA's exposed fields write no line at their
+    defaults, and an empty payload is the honest record of that. The value
+    still travels, on the declaration.
+    """
+    if f.type_ == "enum" and not f.choices:
+        raise ValueError(
+            f"item {f.name!r}: type=enum with no choices. A surface cannot "
+            "build the dropdown and a reader cannot validate what was typed "
+            "(job-contracts.md 3.7).")
+    name = f"{BLOCK_ITEM} {f.name}"
+    out = [begin_marker(name), decl_line(f, value=value, default=default)]
+    for para in (help_text or "").strip().splitlines():
+        out.append(f"#   {para.strip()}" if para.strip() else "#")
+    if payload:
+        out.extend(payload.splitlines())
+    out.append(end_marker(name))
     return "\n".join(out)
 
 
@@ -693,6 +762,7 @@ __all__ = [
     "BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
     "BLOCK_ATOM_METADATA", "BLOCK_USER_CUSTOM",
     "MARKER_RE", "begin_marker", "end_marker",
+    "BLOCK_ITEM", "DECL_TYPES", "decl_line", "emit_item_block",
     # Bench declarations
     "BenchField", "SIESTA_BENCH_FIELDS",
     # Emitters

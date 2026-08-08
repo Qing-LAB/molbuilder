@@ -1293,8 +1293,9 @@ table when it matters.
 | P2 | mechanism count | ✅ | **11 → 10**: mechanism 5 retired, `tests/test_stage_vocabulary.py` |
 | P2 | 4a · the declaration grammar | ✅ | `molbuilder/template.py::declarations_for`; § 3.3's five types gained `bool`, `int3` and an `optional` flag — measured, not guessed: 7 booleans, `kgrid` and one optional boolean had **no type at all** |
 | P2 | 4a · `schema_fingerprint` | ✅ | `template.py`; the writer § 6.6's only non-refusal row has been missing. Changes on add / remove / retype / re-bound / re-choice; **ignores defaults and presentation**, so a reworded tooltip cannot make every stored description suspect |
-| P2 | 4a · emit + read a whole template | ⛔ | **blocked on two questions now stated in `job-contracts.md § 3.7`**: `engine_key` is not an anchor for 4 fields (alternation / conjunction) and reaches no deck line for 8 more; and 10 exposed fields emit no deck line at their defaults, so *payload = what lands in the deck* and *every item has a place* pull apart. A reading is offered there |
-| P2 | 4a · template → config | 🔓 | **unblocked 2026-08-07** — the format is `job-contracts.md § 3.7`: marked item blocks naming their field, so `prep` scans rather than parses |
+| P2 | 4a · emit + read a whole template | ✅ | `template.py::render_template` / `config_from_template`; a non-default `SiestaConfig` round-trips field-for-field, types intact, and an unset optional stays unset |
+| P2 | 4a · § 3.7 property 1, as a guard | ✅ | `tests/test_template_roundtrip.py::test_every_payload_is_byte_identical_to_the_deck` — **that test IS the property** now that the rule is *re-render and check* rather than *scan and copy* |
+| P2 | 4a · template → config | ✅ | the value rides on the declaration (`value=`), so the read is total: an absent payload, two lines, or a `%block` all read the same |
 | P2 | 6 · validation across stages | ⬜ | a per-stage finding carries the stage in `where`; a ladder-that-loosens finding carries none |
 | P2 | 7 · the preflight's four refusals | ◐ | two land (`effective_config` names an unknown field; `_enabled_stages` refuses a nameless / duplicate / empty ladder). The engine-has-a-generator and fingerprint-matches rows still have no reader |
 | P2 | 8 · § 6.6a's identical-stage warning | ⬜ | — |

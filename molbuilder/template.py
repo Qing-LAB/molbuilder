@@ -22,31 +22,31 @@ so that **one artifact serves four readers**: a person learns the calculation
 and the reasoning, the UI renders it, ``prep`` extracts the deck, and the
 validator gets a real config out of it.
 
-**What this module does today, and what it deliberately does not.** It derives
-the *declarations* from a config class and computes the *schema fingerprint*.
-Emitting a whole template and reading one back are the rest of P2 unit 4a, and
-two questions in § 3.7 have to be answered first — both recorded in the plan,
-both found by measuring the shipped schema rather than by reading the contract
-again:
+**The read is from ``value=``, never from the payload** (§ 3.7 property 2,
+decided 2026-08-07). A payload can be absent — ten of SIESTA's exposed fields
+write no deck line at their defaults — several lines (``spin_total`` writes
+``Spin.Fix`` *and* ``Spin.Total``), or a ``%block``. None of that changes how
+the value is read, because the value is on the declaration line.
 
-  * ``engine_key`` is **not** an anchor for every field. Four carry prose or an
-    alternation (``relax_steps`` → *"MD.NumCGsteps (universal…) |
-    MD.FinalTimeStep (Verlet / Nose)"``; ``spin_total`` → *"Spin.Fix +
-    Spin.Total"*). § 3.7 assumes one field ↔ one anchor.
-  * Ten exposed fields are **conditionally emitted** — at their defaults the
-    deck has no line at all — so § 3.7's *"the payload is exactly what lands in
-    the deck"* and *"every item has a place in the file"* pull opposite ways.
-
-Both are stated so the next commit answers them on purpose.
+**And the deck is re-rendered, not spliced.** ``prep`` rebuilds a config, applies
+the stage's ``overrides``, and goes through the same emitter every other deck
+goes through. § 3.7 property 1's guarantee — *a value cannot change shape between
+what a person read and what the engine got* — survives as a **checked** property:
+``tests/test_template_roundtrip.py`` asserts the rendered line is byte-identical
+to the template's payload for every item no stage overrode. Substituting in place
+could not work at all, because a stage overriding ``relax_type`` moves the step
+budget's site from ``MD.NumCGsteps`` to ``MD.FinalTimeStep`` — the anchor itself
+is chosen by another field's value.
 """
 from __future__ import annotations
 
 import dataclasses
 import hashlib
+import re
 import typing
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from .script_emit import BenchField
+from .script_emit import BLOCK_ITEM, BenchField, emit_item_block
 
 
 # --------------------------------------------------------------------- #
@@ -215,5 +215,162 @@ def fingerprint_matches(config_cls, recorded: str) -> bool:
     return recorded == schema_fingerprint(config_cls)
 
 
+
+
+
+# --------------------------------------------------------------------- #
+#  Writing a template                                                   #
+# --------------------------------------------------------------------- #
+
+#: A ``%block`` payload runs to its ``%endblock``.
+_BLOCK_OPEN = "%block"
+
+
+def _anchor_token(engine_key: str) -> Optional[str]:
+    """The literal token a deck line starts with, or ``None``.
+
+    ``None`` for the three shapes ``engine_key`` actually carries besides a
+    plain keyword, measured against ``SiestaConfig`` on 2026-08-07:
+
+      * a **parenthesised note** — the field reaches no deck line at all
+        (``mpi_np``, ``psml_lib``, ``restart``, ``continue_retries``, …);
+      * an **alternation**, ``A | B`` — which site is used depends on another
+        field's value (``relax_steps``);
+      * a **conjunction**, ``A + B`` — one field writes two lines
+        (``spin_total``).
+
+    Only the payload is affected: the value rides on the declaration, so a
+    ``None`` here costs a block its illustrative body and nothing else. This
+    is exactly why § 3.7 stopped making the anchor load-bearing.
+    """
+    ek = (engine_key or "").strip()
+    if not ek or ek.startswith("(") or "|" in ek or "+" in ek:
+        return None
+    return ek
+
+
+def _payload_for(anchor: Optional[str], deck_lines: List[str]) -> str:
+    """The deck lines this anchor owns, verbatim, or ``""``."""
+    if not anchor:
+        return ""
+    if anchor.startswith(_BLOCK_OPEN):
+        name = anchor.split(None, 1)[-1]
+        out, inside = [], False
+        for line in deck_lines:
+            low = line.strip().lower()
+            if low.startswith(f"{_BLOCK_OPEN} {name}".lower()):
+                inside = True
+            if inside:
+                out.append(line)
+                if low.startswith("%endblock"):
+                    break
+        return "\n".join(out)
+    pat = re.compile(rf"^\s*{re.escape(anchor)}\b")
+    return "\n".join(l for l in deck_lines if pat.match(l))
+
+
+def render_template(deck_text: str, config, *, config_cls=None) -> str:
+    """The template for *config*, given the deck it renders to.
+
+    ``deck_text`` is what the ordinary emitter produced for this config — the
+    payloads are lifted **out of it** rather than re-implemented, so
+    ``payload == what lands in the deck`` is true by construction for every
+    item with a usable anchor, and the round-trip guard covers the rest.
+    """
+    cls = config_cls or type(config)
+    deck_lines = deck_text.splitlines()
+    defaults = {f.name: (f.default if f.default is not dataclasses.MISSING
+                         else None)
+                for f in dataclasses.fields(cls)}
+    out: List[str] = []
+    for d in declarations_for(cls):
+        out.append(emit_item_block(
+            d,
+            value=getattr(config, d.name),
+            default=defaults.get(d.name),
+            help_text=_help_of(cls, d.name),
+            payload=_payload_for(_anchor_token(d.anchor), deck_lines),
+        ))
+    return "\n\n".join(out) + "\n"
+
+
+def _help_of(cls, name: str) -> str:
+    for f in dataclasses.fields(cls):
+        if f.name == name:
+            return str(f.metadata.get("help", "") or "")
+    return ""
+
+
+# --------------------------------------------------------------------- #
+#  Reading one back                                                     #
+# --------------------------------------------------------------------- #
+
+_DECL_RE = re.compile(r"^#\s*field\s+(\S+)\s+(.*)$")
+
+
+def _coerce(raw: str, type_: str):
+    if type_ == "bool":
+        return raw.lower() == "true"
+    if type_ == "int":
+        return int(raw)
+    if type_ == "float":
+        return float(raw)
+    if type_ == "int3":
+        return tuple(int(x) for x in raw.split(","))
+    return raw                      # str, enum
+
+
+def read_template(text: str) -> Dict[str, Any]:
+    """``{field name: value}`` from a template's item blocks.
+
+    A **scan**, not a parse: the markers name the field and the declaration
+    carries the value, so nothing here understands ``.fdf`` syntax — which is
+    § 3.7 property 2's whole point, and just as well, since nothing in
+    molbuilder can read an ``.fdf`` back into a config.
+
+    A block whose declaration has no ``value=`` yields ``None``: that is an
+    optional field left unset, which is a real state and not the default.
+    """
+    from .script_emit import MARKER_RE
+
+    values: Dict[str, Any] = {}
+    current: Optional[str] = None
+    for line in text.splitlines():
+        m = MARKER_RE.match(line)
+        if m:
+            name = m.group(1)
+            if not name.startswith(f"{BLOCK_ITEM} "):
+                current = None
+                continue
+            current = (name.split(None, 1)[1] if m.group(2) == "BEGIN"
+                       else None)
+            continue
+        if current is None:
+            continue
+        d = _DECL_RE.match(line.strip())
+        if not d or d.group(1) != current:
+            continue
+        kv = dict(tok.split("=", 1) for tok in d.group(2).split()
+                  if "=" in tok)
+        raw = kv.get("value")
+        values[current] = (None if raw is None
+                           else _coerce(raw, kv.get("type", "str")))
+    return values
+
+
+def config_from_template(text: str, config_cls):
+    """An ordinary instance of *config_cls*, rebuilt from a template.
+
+    What ``prep`` holds before it applies a stage's ``overrides``
+    (`engines/stages.md § 4`). A field the template does not carry keeps the
+    class default — a template written against an older schema is missing
+    fields, not wrong about them, and the fingerprint is what says so.
+    """
+    known = {f.name for f in dataclasses.fields(config_cls)}
+    vals = {k: v for k, v in read_template(text).items() if k in known}
+    return config_cls(**vals)
+
+
 __all__ = ["declaration_for", "declarations_for", "schema_fingerprint",
-           "fingerprint_matches", "FINGERPRINT_VERSION"]
+           "fingerprint_matches", "FINGERPRINT_VERSION",
+           "render_template", "read_template", "config_from_template"]

@@ -684,14 +684,47 @@ calculation travels with its own catalogue.
 
 Four properties, and each buys something specific:
 
-1. **The payload is verbatim.** What sits between the markers, minus the comment
-   lines, is exactly what lands in the final deck. Producing that deck is a
-   **scan and a copy**, never a re-render — so a value cannot change shape
-   between what a person read and what the engine got.
-2. **The markers carry the field's name.** That is what lets `prep` walk the file
-   and rebuild an ordinary `SiestaConfig` — *without an fdf parser*. **This is the
-   whole reason the design works**: nothing in molbuilder can read an `.fdf` back
-   into a config, and with named blocks nothing needs to.
+1. **The payload is what lands in the final deck, and that is a *checked*
+   property.** *(Decided 2026-08-07 — this rule was written as "producing that
+   deck is a scan and a copy, never a re-render", and three fields of the
+   shipped schema cannot be served that way.)*
+
+   `prep` rebuilds an ordinary config from the blocks, resolves the stage
+   (`stages.md § 4`), and renders through the **same emitter every other deck
+   goes through**. A test then asserts that for every item no stage overrode,
+   the rendered line is byte-identical to the template's payload. So *a value
+   cannot change shape between what a person read and what the engine got*
+   survives as the guarantee — it is enforced by a guard rather than by the
+   copy being literal.
+
+   > **Why the literal copy could not hold.** A stage that overrides
+   > `relax_type` from `CG` to `Verlet` moves the step budget's site from
+   > `MD.NumCGsteps` to `MD.FinalTimeStep` — the *anchor itself* is chosen by
+   > another field's value, so there is no fixed site to substitute at.
+   > `spin_total` writes **two** lines (`Spin.Fix` + `Spin.Total`) from one
+   > field. And ten fields write **no** line at their defaults. Re-rendering
+   > handles all three for free; substitution handles none of them.
+   >
+   > The alternative considered and rejected was to allow only
+   > single-anchor, always-emitted fields to be varied — which would make
+   > *which settings may vary* a fixed list again, the exact arrow § 1.2 of
+   > [`engines/stages.md`](?doc=engines/stages.md) exists to reverse.
+
+   **`anchor=` therefore stops being load-bearing.** It still says where the
+   value lands, which is worth knowing and is what BENCH-MARKS uses it for
+   (§ 3.3); nothing reads it to produce a deck.
+2. **The markers carry the field's name, and the declaration carries its
+   value.** That is what lets `prep` walk the file and rebuild an ordinary
+   `SiestaConfig` — *without an fdf parser*. **This is the whole reason the
+   design works**: nothing in molbuilder can read an `.fdf` back into a config,
+   and with named blocks nothing needs to.
+
+   The declaration gains **`value=`** beside `default=`, and the reader takes
+   the value from there rather than from the payload. Same grammar, one more
+   key — and it is what makes the read total: a payload can be absent (the
+   field emits no line), several lines (`spin_total`), or a `%block`, and none
+   of those change how the value is read. `default=` stays, because the pair
+   is what tells a surface whether the user set this or left it alone.
 3. **The block holds what we know about the item** — what it is, what it is
    validated against, how the engine uses it, any hint worth having. It is
    generated from the field's own metadata (`web/form-schema.md § 1a`:
@@ -728,41 +761,15 @@ and it would have been none of those four things but the last.
 > one-liner. A format that keyed on "one line per setting" could not have carried
 > those at all.
 
-**Two things this format still has to decide**, both found on 2026-08-07 by
-measuring `SiestaConfig` against this section rather than by re-reading it:
+**Both of the questions this format was leaving open are answered above**
+(2026-08-07): `engine_key` is not an anchor for every field, and ten fields emit
+no line at their defaults — and re-rendering makes both harmless, which is why
+the rule changed rather than the schema.
 
-1. **`engine_key` is not an anchor for every field.** § 3.3's `anchor=` is *"the
-   literal token a parser greps for"*, and the table above assumes one field maps
-   to one of them. Four fields do not: `relax_steps` carries *"MD.NumCGsteps
-   (universal for CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)"* — an
-   **alternation** chosen by another field's value — and `spin_total` carries
-   *"Spin.Fix + Spin.Total"*, a **conjunction** where one value writes two lines.
-   Eight more exposed fields carry a parenthesised note because they reach no
-   deck line at all (`mpi_np`, `psml_lib`, `restart`, `continue_retries`, …).
-   So the declaration needs either a real `anchor=` distinct from `engine_key`,
-   or a way to say *"this item has no single site"*.
-
-2. **Ten exposed fields are conditionally emitted.** At their defaults the deck
-   has **no line** — `net_charge` when it is 0, `spin_polarized` when false,
-   `diag_algorithm` unless a GPU run. That puts property 1 (*"the payload is
-   exactly what lands in the deck"*) against property 4 (*"every allowed item
-   has a place in the file"*): the block must exist and its payload must be
-   nothing.
-
-   > **The reading that fits both, offered rather than assumed:** an **empty
-   > payload means the declaration's `default`**. It is the same rule as
-   > `overrides ⊆ varies`'s quiet cell, one level down — absent means *this is
-   > at the backbone value* — and the declaration already carries `default=`,
-   > which the table above says is what tells the user's value from the
-   > untouched one. It also answers the *"how is a derived default spelled"*
-   > question the same way: `default=derived`, payload absent until `prep`
-   > writes it.
-
-**How a stage's override lands:** `prep` resolves the effective config
-(`stages.md § 4`), and for each item the stage overrode, **replaces that block's
-payload** with the resolved value's rendering. Blocks no stage touched are copied
-through untouched. That is `overrides ⊆ varies` seen on disk — an absent key
-means the block is copied as it stands.
+**How a stage's override lands:** `prep` reads every block's `value=` into an
+ordinary config, applies the stage's `overrides` on top (`stages.md § 4`), and
+renders. A field the stage did not name keeps the template's value — that is
+`overrides ⊆ varies` seen on disk, the quiet cell in the table.
 
 > **Two things this format leaves to be decided when it is built**, recorded
 > rather than guessed:
