@@ -837,22 +837,68 @@ owned by `execution/job-system.md`.
 | **`--continue`** | Same as auto, but *asserts* the warm files must be present: if none exist it prints "…starting cold by necessity" rather than silently cold-starting. |
 | **`--cold`** | Forces a clean start regardless of on-disk state. Warm files are **moved aside** (never deleted) into `<basename>-restart-aside-<UTC-timestamp>/`. |
 
-The critical safety property of `--cold`: the move-aside glob **must cover
-every file the warm-start branch reads**, or `--cold` silently leaks prior
-state into a "clean" run. This is enforced per engine and pinned by tests
-(`molbuilder/runwrap.py::_cold_restart_aside_block`).
+The critical safety property of `--cold` is unchanged — **nothing the engine
+could read may survive it**, or `--cold` silently leaks prior state into a
+"clean" run — but **how that is achieved changed on 2026-08-08, and the reason
+is the one below.**
+
+> **`--cold` sweeps by NAME, not by a list of extensions.** Everything matching
+> the run's id goes aside, except the files molbuilder itself wrote (the deck,
+> the template, the pseudopotentials).
+>
+> An enumeration cannot be complete and never could be: **SIESTA's output set
+> depends on its version and on which options are on.** A list is a snapshot of
+> one build's behaviour, and the failure is silent in the worst direction — a
+> file nobody listed is a file `--cold` walks past, in the one operation whose
+> entire purpose is leaving nothing behind. Sweeping by name is complete by
+> construction, has nothing to drift, and needs no maintenance when an option
+> starts writing something new.
+>
+> The checkpoint history is the safety net for the other direction: `--cold`
+> **moves** files aside rather than deleting them, and a checkpoint can recover
+> anything the sweep took that the user wanted.
 
 ### 4.2 Per-engine warm-file inventory
 
-Every file below is in that engine's `--cold` move-aside glob.
+**Read this as the files that *drive* a warm start, not as an inventory of what
+an engine writes.** The distinction is the whole of § 4's design, and it was
+stated 2026-08-08 after a list-shaped reading of it produced two defects:
+
+> **molbuilder is not the engine. It is a setup and automation program, and its
+> job is to give the engine the right hint.**
+
+Three different questions get asked about a run directory, and only the first
+one wants a list:
+
+| Question | Answered by | Why |
+|---|---|---|
+| *Which flags do we write, and what does `prep` carry between stages?* | **the short list below** | These are documented restart files whose names are fixed by the engine. They are a **hint**, and a hint is allowed to be a small stable set |
+| *Has anything run here? Is there state to continue from?* | **by name** — anything matching the run's id that molbuilder did not write | We know exactly what we wrote. Everything else under that name came from the engine, whatever version it was, whatever options were on |
+| *Is this directory clean after `--cold`?* | **by name** (§ 4.1) | Completeness matters here and only a name sweep can provide it |
+
+**Nothing should enumerate an engine's outputs in order to detect them.** A
+timestamp, a name match, or the checkpoint history answers *"is something here"*
+without ever claiming to know what an engine produces. The lists below exist to
+be **written into a deck**, not to be matched against a directory.
 
 **SIESTA (13 suffixes):** `.DM` (density matrix), `.CG` (CG optimizer state),
 `.XV` (coords+velocities), `.LWF` (Wannier), `.ZM` (Z-matrix), `.Bonds`,
 `.PARTIAL`, `.EIG`, `.HSX` (Hamiltonian+overlap, TranSIESTA restart), `.WFSX`
 (saved wavefunctions), `.STRUCT_NEXT_ITER` (next-iter geometry), `.TSHS` /
 `.TSDE` (TranSIESTA self-energy H / NEGF density). SIESTA reads these itself
-when the matching `MD.UseSave*` / `DM.UseSaveDM` flags are set; the wrapper
-only moves them aside for `--cold`.
+when the matching `MD.UseSave*` / `DM.UseSaveDM` flags are set.
+
+**Of those, three do the work `prep` cares about** — `.XV` (the geometry),
+`.DM` (the density) and `.CG` (the optimizer's history). They are what a stage
+hands to the next one, and they are the short stable set the paragraph above
+means by *hint*. The rest are read by SIESTA when present and need no help from
+molbuilder to be found: they sit in the directory under the same id, which is
+the only arrangement the engine requires.
+
+⚠ **This list is not what `--cold` matches against** (§ 4.1), and it is not how
+*"has anything run here"* is answered. Reading it as either is what produced the
+2026-08-08 defects: three copies of it in `runwrap.py`, one of which had drifted
+to ten entries under a comment claiming it matched the others.
 
 **Those three flags are one group, and one field sets them.** A description
 carries `restart` — `clean` or `continue` — and the renderer expands it into

@@ -88,7 +88,7 @@ edited one copy and not the other.
 **The id appears as you type.** From "BDT/Au relax" plus the formula:
 
 ```
-BDT_Au_relax_C6H4S2Au38
+BDT_Au_relax_Au38C6H4S2
 ```
 
 That single name becomes the folder, the `SystemLabel` in every deck, and the
@@ -103,7 +103,7 @@ Press **Check** — every stage is validated whole, and any complaint says which
 stage it is about. Then **Generate**:
 
 ```
-projects/BDT-Au/optimization/BDT_Au_relax_C6H4S2Au38/
+projects/BDT-Au/optimization/BDT_Au_relax_Au38C6H4S2/
 ├── <id>.fdf.template               the science, minus what a stage varies
 │                                   and minus what the hardware decides
 ├── task.json                     what each stage tunes, + resource intent
@@ -125,7 +125,7 @@ changes both the deck and which environment the wrapper activates. **A parameter
 that depends on the launch cannot be decided before the launch is known**, so a
 deck finished on a laptop is guessing at both (`project-layout.md § 2.2`).
 
-**One basename everywhere.** Every deck says `SystemLabel BDT_Au_relax_C6H4S2Au38`.
+**One basename everywhere.** Every deck says `SystemLabel BDT_Au_relax_Au38C6H4S2`.
 That is not cosmetic: it is why a later stage can pick up an earlier one's `.XV`.
 
 > ### Which shape this walkthrough follows
@@ -140,12 +140,12 @@ That is not cosmetic: it is why a later stage can pick up an earlier one's `.XV`
 > UI produces today. The same two stages, flat:
 >
 > ```text
-> BDT_Au_relax_C6H4S2Au38/
-> ├── BDT_Au_relax_C6H4S2Au38_coarse.fdf     stages told apart by the suffix
-> ├── BDT_Au_relax_C6H4S2Au38_tight.fdf
-> ├── BDT_Au_relax_C6H4S2Au38_coarse-run0.out   attempts by an output index
-> ├── BDT_Au_relax_C6H4S2Au38.XV             ← SHARED and unsuffixed: this is
-> ├── BDT_Au_relax_C6H4S2Au38.DM                what lets tight find coarse's
+> BDT_Au_relax_Au38C6H4S2/
+> ├── BDT_Au_relax_Au38C6H4S2_coarse.fdf     stages told apart by the suffix
+> ├── BDT_Au_relax_Au38C6H4S2_tight.fdf
+> ├── BDT_Au_relax_Au38C6H4S2_coarse-run0.out   attempts by an output index
+> ├── BDT_Au_relax_Au38C6H4S2.XV             ← SHARED and unsuffixed: this is
+> ├── BDT_Au_relax_Au38C6H4S2.DM                what lets tight find coarse's
 > └── Au.psml  S.psml  C.psml  H.psml           geometry — and what overwrites it
 > ```
 >
@@ -310,8 +310,8 @@ the manual path breaks (`project-layout.md` § 8, question 4).
 A stage finishes. The history records it:
 
 ```
-commit   BDT_Au_relax_C6H4S2Au38 · coarse · relaxation converged, 41 steps
-tag      BDT_Au_relax_C6H4S2Au38/coarse/20260806T221403Z
+commit   BDT_Au_relax_Au38C6H4S2 · coarse · relaxation converged, 41 steps
+tag      BDT_Au_relax_Au38C6H4S2/coarse/20260806T221403Z
 ```
 
 The message carries the id, the stage and **how it went** — the run decoder

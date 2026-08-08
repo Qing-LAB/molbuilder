@@ -223,9 +223,9 @@ name: *everything in one folder*, or *a folder for each stage*.
 what will exist when you press the button, in the terms the folder actually uses:
 
 ```
-You will get:  2 decks in projects/BDT-Au/optimization/BDT_Au_relax_C6H4S2Au38/
-               BDT_Au_relax_C6H4S2Au38_coarse.fdf
-               BDT_Au_relax_C6H4S2Au38_tight.fdf
+You will get:  2 decks in projects/BDT-Au/optimization/BDT_Au_relax_Au38C6H4S2/
+               BDT_Au_relax_Au38C6H4S2_coarse.fdf
+               BDT_Au_relax_Au38C6H4S2_tight.fdf
                sharing one basename, so tight continues from coarse
 ```
 
@@ -387,9 +387,9 @@ guesses.
 So the page writes what any machine can read, and stops:
 
 ```text
-Written to  projects/BDT-Au/optimization/BDT_Au_relax_C6H4S2Au38/
+Written to  projects/BDT-Au/optimization/BDT_Au_relax_Au38C6H4S2/
 
-    BDT_Au_relax_C6H4S2Au38.fdf.template   the science backbone
+    BDT_Au_relax_Au38C6H4S2.fdf.template   the science backbone
     task.json                            what each stage tunes
     Au.psml  S.psml  C.psml  H.psml        the data files
     mb_monitor.py

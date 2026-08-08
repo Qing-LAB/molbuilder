@@ -66,8 +66,8 @@ knows:
 ```mermaid
 flowchart LR
     U["what the user calls it<br/><b>BDT/Au relax</b>"] --> N["normalise once<br/>§ 3"]
-    M["what the coordinates are of<br/>the molecule, by formula<br/>or by named components<br/><b>C6H4S2Au38</b>"] --> N
-    N --> I["<b>BDT_Au_relax_C6H4S2Au38</b><br/>= the SystemLabel literal<br/>= the basename of every file"]
+    M["what the coordinates are of<br/>the molecule, by formula<br/><b>Au38C6H4S2</b>"] --> N
+    N --> I["<b>BDT_Au_relax_Au38C6H4S2</b><br/>= the SystemLabel literal<br/>= the basename of every file"]
 ```
 
 A hash would be exact and unreadable. A formula is neither, and that is the trade
@@ -75,7 +75,43 @@ made deliberately: an id you can recognise in a directory listing and in a
 filename is worth more day to day than one that resolves every possible
 ambiguity.
 
+### 2.0 The formula, and the one rule it needs
+
+**Element symbols in alphabetical order, each followed by its count, and a count
+of one is written as nothing.** So the worked example below is `Au38C6H4S2` —
+`Au` before `C` before `H` before `S` — and **not** the hand-grouped
+`C` `6` `H` `4` `S` `2` `Au` `38` this document carried until today, which read as
+*"the molecule, then the gold"* and matched no rule at all.
+
+*Decided 2026-08-08 (user).* A convention was needed and any convention would
+do, so the deciding argument was that **this one already exists in the code**:
+`Structure.summary()` has computed exactly this since long before this document,
+and lifting it out of a `__repr__` is cheaper and safer than minting a second
+rule that could disagree with it.
+
+Alphabetical rather than the chemists' habit of leading with carbon and
+hydrogen: that convention would read more naturally for an organic molecule
+(`C6H4Au38S2`), and it costs a special case in a rule that otherwise has none.
+The id is a name to recognise, not a formula to publish.
+
+> **What this buys, and it is not tidiness.** Until there was a rule, the
+> formula was the one input to the id that no code could produce — the worked
+> example below was in an order nothing computes — so `run_id` had to be handed
+> it as a string and nothing could fill `structure.formula` in a description.
+> Both close now, and so does the check in § 5's second row, which had nothing
+> to compare against.
+
 **That one id is the `SystemLabel` / `JOB` literal. There is no second name.**
+
+> ⚠ **This is an ordering, not a pairing.** `SystemLabel` is not a copy of the
+> id kept in step with it — it **is** the id, and it is the half that matters,
+> because it is the only half the engine ever sees. SIESTA is fed the deck on
+> stdin (`siesta < job.fdf`), so the *filename* never reaches it; every file it
+> writes and reads back is named from the `SystemLabel` line **inside** the
+> deck. A deck called `clean.fdf` whose label says `siesta` produces
+> `siesta.XV`, `siesta.out`, and nothing in the directory listing reveals it.
+> Anything that derives a name from a filename instead has the dependency
+> backwards.
 
 **The timestamp is recorded but is not part of it.** A description carries when
 it was written, for tracing; putting it in the id would make every regeneration a
@@ -103,7 +139,7 @@ What is left is what those coordinates are *of*:
 
 | Considered | In the pin? | Why |
 |---|:--:|---|
-| the molecule — its formula, or its named components | **yes** | a `.XV` is a list of positions for *these* atoms. Different atoms, and every coordinate lands somewhere it does not belong |
+| the molecule — its formula (§ 2.0) | **yes** | a `.XV` is a list of positions for *these* atoms. Different atoms, and every coordinate lands somewhere it does not belong |
 | the positions | no | the output (above) |
 | the cell | **no — reported instead** (§ 5) | a `.XV` carries the cell too, so on a continue the saved cell **wins** and the new one is silently ignored. That is a fact to report, not a difference to pin |
 | basis, spin, XC | no | the geometry stays valid across all of them, and tuning the electronics while continuing is ordinary practice. A `.DM` of the wrong shape is caught by the engine — a failure it already reports, traded for one it cannot |
@@ -230,7 +266,7 @@ must display back **before** anything is written.
 
 | What the user types | Id | Which rule fired |
 |---|---|---|
-| `BDT/Au relax` + `C6H4S2Au38` | `BDT_Au_relax_C6H4S2Au38` | `/` and the space are outside the set → `_`; **case is kept**, and in `C6H4S2Au38` it has to be |
+| `BDT/Au relax` + `Au38C6H4S2` | `BDT_Au_relax_Au38C6H4S2` | `/` and the space are outside the set → `_`; **case is kept**, and in `Au38C6H4S2` it has to be |
 | `BDT  --  Au` | `BDT_Au` | a run of six separator characters collapses to one `_` |
 | `_relax_` | `relax` | leading and trailing separators trimmed |
 | `Relax.v2` | `Relax_v2` | the dot is outside the id's set (the *wrapper* tolerates a dot in a `SystemLabel`; the id does not mint one) |
@@ -243,17 +279,17 @@ must display back **before** anything is written.
 
 The point of the rule is that a *single* token is enough to identify every file
 of a calculation, on disk, in a history, and to the engine. For
-`BDT_Au_relax_C6H4S2Au38`, in the flat shape:
+`BDT_Au_relax_Au38C6H4S2`, in the flat shape:
 
 ```text
 projects/BDT-Au/optimization/bdt-relax/     ← the folder is what the user typed
 ├── task.json                                  ← and this says the id
-├── BDT_Au_relax_C6H4S2Au38.fdf.template
-├── BDT_Au_relax_C6H4S2Au38_coarse.fdf        ┐ what a STAGE produced
-├── BDT_Au_relax_C6H4S2Au38_tight.fdf         │ carries the stage: <id>_<stage>
-├── BDT_Au_relax_C6H4S2Au38_coarse-run0.out   ┘
-├── BDT_Au_relax_C6H4S2Au38.XV                ┐ what the ENGINE resumes from
-└── BDT_Au_relax_C6H4S2Au38.DM                ┘ carries the id ALONE
+├── BDT_Au_relax_Au38C6H4S2.fdf.template
+├── BDT_Au_relax_Au38C6H4S2_coarse.fdf        ┐ what a STAGE produced
+├── BDT_Au_relax_Au38C6H4S2_tight.fdf         │ carries the stage: <id>_<stage>
+├── BDT_Au_relax_Au38C6H4S2_coarse-run0.out   ┘
+├── BDT_Au_relax_Au38C6H4S2.XV                ┐ what the ENGINE resumes from
+└── BDT_Au_relax_Au38C6H4S2.DM                ┘ carries the id ALONE
 ```
 
 That is the **flat** shape, chosen here because it is where the id has to do all
@@ -265,8 +301,8 @@ the work — nothing but the filename separates one stage from another. The
 and in the history:
 
 ```text
-commit  BDT_Au_relax_C6H4S2Au38 · tight · relaxation converged, 41 steps
-tag     BDT_Au_relax_C6H4S2Au38/tight/20260806T221403Z
+commit  BDT_Au_relax_Au38C6H4S2 · tight · relaxation converged, 41 steps
+tag     BDT_Au_relax_Au38C6H4S2/tight/20260806T221403Z
 ```
 
 **Three different naming systems — a filesystem, a git ref, and SIESTA's
@@ -281,11 +317,36 @@ looks for `<SystemLabel>.XV`; the file sitting there is the one the last stage
 left, and no instruction passes between them.
 
 **In the hierarchical shape the same separation exists, expressed differently.**
-There every name is the bare id and the *directory* says which stage — so the
-warm files a stage resumes from are the ones `prep` copied into its attempt
+The warm files a stage resumes from are the ones `prep` copied into its attempt
 (`project-layout.md § 2.3.4`), rather than the ones the previous stage happened
 to leave in a shared directory. Same outcome, and it is the flat shape that makes
 the id's role visible, which is why the example above is flat.
+
+**Who names a file decides whether it carries the stage, and this holds in both
+shapes:**
+
+| Named by | Carries the stage? | Why it is not a choice |
+|---|:--:|---|
+| **the engine** — `<id>.XV`, `.DM`, `.CG` | **no** | SIESTA looks for `<SystemLabel>.XV` and nothing else. molbuilder has no say, in either shape |
+| **molbuilder** — `<id>_<stage>.fdf`, `<id>_<stage>-run0.out` | **yes** | molbuilder chooses, so what the name says is a design decision — and it spends it on a cross-check |
+
+> **The redundancy in the hierarchical shape is deliberate.** `01_coarse/` already
+> says which stage it is, and the deck inside it says so again. That is not the
+> naming rule being violated — it is a *self-check*, and it is the same idea as
+> § 6.3's structure witness: write down something you could have derived, so a
+> mismatch has something to fail against.
+>
+> Without it, every stage directory holds a file with an identical name. Two
+> decks swapped by a bad copy, a resumed `prep` or a hand-edit would be
+> **invisible** — nothing in either folder disagrees with anything. With it,
+> `01_coarse/<id>_tight.fdf` is wrong on sight.
+>
+> *Corrected 2026-08-08 (user).* This section used to read *"there every name is
+> the bare id and the directory says which stage"*, and `job-contracts.md § 6.3`'s
+> *a name says what its location does not* was read as forbidding the repetition.
+> That rule is about **noise**. Deliberate redundancy that catches a mix-up is
+> not noise, and applying a style rule to a safety mechanism is how a check gets
+> designed away.
 
 **Three rules keep normalisation from becoming a source of surprise:**
 
@@ -294,8 +355,13 @@ the id's role visible, which is why the example above is flat.
    from the user's raw text, because two components normalising slightly
    differently is a silent divergence between what a surface shows and what the
    engine writes.
-2. **The result is shown, not hidden.** A surface that hides it hides the thing
-   that decides whether the next run continues.
+2. **The result is shown, not hidden — by every surface, the terminal
+   included.** A surface that hides it hides the thing that decides whether the
+   next run continues, and *"the browser will show it"* is not an answer for
+   someone who never opens the browser. What the user typed goes in, the
+   normalised id comes back, and it is visible **before** anything is written:
+   a printed line from the CLI is as good as a field in a form. *(Stated
+   explicitly 2026-08-08 — it had been read as a web obligation.)*
 3. **A normalisation that loses the name is refused, not patched** — never append
    a digit and carry on, which produces `bdt_2` and no explanation of what it
    differs from. Two cases refuse, and what separates them from an ordinary
@@ -312,19 +378,23 @@ the id's role visible, which is why the example above is flat.
      the empty string; a 300-character name exceeds what `<id>_<stage>.<ext>` may
      occupy. Say so and ask.
 
-**A "collision" is narrower than it sounds, and since 2026-08-07 it is narrower
-still.** Two calculations collide when they would occupy the **same level-③
-directory** — not when they merely derive the same id. The same id under
-`optimization/` and under `frequency/` is not a collision (different ②), and
-neither is the same id in `bdt-relax-pbe/` and `bdt-relax-blyp/` (different ③):
-in both cases the warm files never meet, because they are in different
-directories, and *that* is what the rule protects. A genuine collision is one
-level-③ directory, and it is the case § 6 decides: **refuse unless told to
-overwrite.**
+**A "collision" is narrower than it sounds, and since 2026-08-08 molbuilder does
+not go looking for one.** Two calculations only interfere when they occupy the
+**same directory** — not when they merely derive the same id. The same id under
+`optimization/` and under `frequency/` is fine, and so is the same id in
+`bdt-relax-pbe/` and `bdt-relax-blyp/`: in both cases the warm files never meet.
 
-The comparison is on the **level-③ path**, case-insensitively — which is where
-the case-insensitive-filesystem worry above is actually handled, and it is now
-handled where it belongs, since the filesystem is what the check is about.
+> **molbuilder does not compare one calculation's folder against another's.**
+> *Decided 2026-08-08 (user): this is not a file manager.* Where a calculation
+> goes is the user's to choose, and two of them sharing a folder is a mess the
+> user is entitled to make — one they will notice, and one the checkpoint
+> history is there to recover from. A pre-emptive search for path collisions
+> would mean molbuilder holding an opinion about a directory tree it does not
+> own, and getting that opinion wrong is worse than not having it.
+>
+> What molbuilder still owes is a **report about the folder it was actually
+> pointed at**: § 5 says what is there and § 6 says so before writing over it.
+> That is the whole of it.
 
 ---
 
@@ -406,19 +476,28 @@ closes that.
 
 A second generate targets **the directory it is pointed at** — since 2026-08-07
 that is the level-③ name the user typed, not a location the id derives (§ 3.0).
-**Refuse unless the user says overwrite, and never rename.**
+**Say what is already there, and never rename.**
 
-> The rule did not change, only what makes two produces meet. It used to be *the
-> id is stable, so the second generate lands where the first one did*. It is now
-> *the second generate lands where you sent it*. Deriving the same id twice is no
-> longer enough to collide, and pointing at the same directory twice was always
-> the thing that mattered.
+> **Warn, do not refuse.** *Decided 2026-08-08 (user), softening what this
+> section used to require.* It read *refuse unless the user says overwrite*, and
+> that is one rule too many for a program that does not manage the user's
+> folders. Regenerating decks into a folder you are working in is an ordinary
+> thing to do — after fixing a typo in a basis, or widening a mesh — and a
+> refusal turns it into a flag to look up, which trains people to pass
+> `--overwrite` reflexively and stop reading.
+>
+> The rule that survives is the one carrying the information: **before writing,
+> say what is in the folder.** § 5's rows already do that, and this is the
+> moment they are for.
 
-That is the rule the handoff writer already applies (`job-contracts.md § 5.4`:
-it raises unless `overwrite=True`, and *"a UI that writes a handoff SHOULD warn
-before targeting a stem that already exists"*). Rewriting decks does not touch
-the warm files — which is the point, since they are what the next run continues
-from, and "make the name unique" would throw them away.
+**"Never rename" is the part that is not negotiable.** The warm files are what
+the next run continues from, so making a name unique to avoid a clash would
+throw away the geometry the user is trying to keep. Rewriting decks does not
+touch them, and nothing in this document ever moves a file to make room.
+
+`job-contracts.md § 5.4`'s handoff writer still raises unless `overwrite=True`.
+That is a **different** case and keeps its refusal: a handoff bundle is a single
+artifact being replaced wholesale, not a folder being worked in.
 
 ---
 

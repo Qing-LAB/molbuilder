@@ -304,7 +304,11 @@ def test_an_empty_stage_list_is_refused(example):
 def test_structure_is_a_reference_and_a_witness(example):
     task = Task.from_dict(example)
     assert task.structure.source.endswith("bdt_au.xyz")
-    assert task.structure.formula == "C6H4S2Au38"
+    # Alphabetical, per `run-identity.md § 2.0` (decided 2026-08-08): Au, C,
+    # H, S.  The example used to read C6H4S2Au38 -- hand-grouped as "the
+    # molecule, then the gold", which matched no rule and which no code could
+    # therefore produce.
+    assert task.structure.formula == "Au38C6H4S2"
     # DERIVED from the formula rather than retyped.  The example said 46 for
     # a formula that is 50 atoms, and this assertion held the wrong number in
     # place -- found by P3's Review 1 (§ 5c finding 5).  A witness whose two
