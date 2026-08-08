@@ -523,6 +523,12 @@ flowchart TD
   "big binaries" archived by content rather than committed to git. Engine
   defaults: SIESTA `*.DM` `*.HSX` `*.TSHS` `*.TBT.AVTRANS_*` `*.TBT.CC`
   `*.TBT.DOS`; PySCF `*.chk` `*.cube`.
+  > ⚠ **This is what ships, not where it is going.** The classification moves
+  > into molbuilder's own config, one home for every folder, and the store is
+  > chosen by **measuring** a file rather than matching its name
+  > ([`checkpointing.md`](?doc=execution/checkpointing.md) S1b, S1c). Nothing
+  > already archived is affected — a restore replays what the save recorded and
+  > reads no configuration at all (I2a).
 - **Text is git-tracked**, including small warm-restart files (`.XV`, `.CG`) so
   a restore brings back a resumable state; big binaries are **gitignored** and
   archived under `.binsnapshots/<full-sha>/` with a `MANIFEST`
@@ -530,14 +536,25 @@ flowchart TD
   [`job-contracts.md § 6.1`](?doc=execution/job-contracts.md)). **Content
   already archived is hard-linked rather than copied**, so checkpointing a
   folder whose binaries did not change costs no disk
-  ([`checkpointing.md`](?doc=execution/checkpointing.md) L5).
+  ([`checkpointing.md`](?doc=execution/checkpointing.md) § 12, *Disk cost*).
 - **Checkpoint** = `git add .` → commit → atomically archive the current
   binaries (build in a `.tmp`, hash, copy, re-hash and *verify the copy*, write
   MANIFEST, then `os.replace`).
-- **Restore = verify-before-mutate.** It refuses on a dirty text tree, refuses
-  on dirty binaries (sha-compared against HEAD's archive), **verifies the target
-  ref's archive before touching anything**, then `git restore`s the worktree and
-  copies the verified binaries back. `--no-binaries` restores text only.
+- **Restore = verify-before-mutate.** It refuses on an unknown ref and on an
+  archive that does not verify — **before touching anything** — then `git
+  restore`s the worktree and copies the verified binaries back. A restore does
+  **not** move `HEAD`: the folder rewinds, the history does not, and your next
+  checkpoint carries the rewound state forward
+  ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7.1).
+  > ⚠ **Two things here are the shipped behaviour and not the contract.**
+  > *Unsaved work:* today a dirty text tree or a changed big file is a **flat
+  > refusal**. The rule is that it warns, names exactly what will be lost, and
+  > then obeys `yes` or `--force` — checkpoint is not responsible for work you
+  > never saved, and it never stashes or sets anything aside (A5).
+  > *`--no-binaries`:* it ships, and it should not. It rewinds the text and
+  > leaves every big file, which is a folder no save ever produced; it also
+  > skips the archive verification. To read one old file, use `git show
+  > <ref>:<path>`, which touches nothing (A4).
 
 ### 6.2 The CLI
 
@@ -549,7 +566,6 @@ molbuilder snapshot tag stage3-converged -m "ready for transport"
 molbuilder snapshot branch what-if-tighter
 molbuilder snapshot list -n 20
 molbuilder snapshot restore stage3-converged        # verify archive -> git restore -> copy binaries
-molbuilder snapshot restore <ref> --no-binaries     # text only
 molbuilder snapshot migrate-manifest <ref>          # legacy 2-col -> canonical 3-col
 ```
 
@@ -563,10 +579,19 @@ The same operations are exposed over HTTP (`/api/checkpoint/*`: `state`, `list`,
 > (`POST /api/checkpoint/branch`); the **control that drives it** is still the
 > tab's to build ([`roadmap.md`](?doc=roadmap.md) workstream 1, Phase 2). A few items from
 > the original design remain **unbuilt**: archive pruning (`prune`), a
+> `snapshot verify` verb (the check exists and is reachable only by attempting a
+> restore, which is the worst moment to learn an archive is gone), a
 > `snapshot diff` *CLI* face (`diff` exists in Python and over HTTP, just not as
 > a subcommand), the wrapper-auto-bootstraps-git "Path B" (dropped — the wrapper
 > is deliberately git-agnostic, so init is CLI/UI-only), and a git-snippet
 > library.
+>
+> **What this section still describes and the contract has moved past** is
+> flagged inline above, and tracked with a status per rule in
+> [`checkpointing.md`](?doc=execution/checkpointing.md) § 12: the store chosen by
+> size rather than name (S1b), one molbuilder-wide classification instead of a
+> per-folder file (S1c), a restore that warns rather than refuses (A5), and the
+> removal of `--no-binaries` (A4).
 
 ---
 

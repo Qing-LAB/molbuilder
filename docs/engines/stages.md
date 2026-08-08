@@ -1056,10 +1056,12 @@ A produce that only rewrites decks changes only text, so that half is cheap.
 **The binary half is not, today.** The archive is keyed by commit sha and copies
 every big binary on every checkpoint — the *"deduped by content"* in the shipped
 guide describes deduping basenames within one MANIFEST, not storage across
-checkpoints (`execution/checkpointing.md`, I1 and L5). A mission checkpointed at
+checkpoints (`execution/checkpointing.md`, I1 and § 12 *Disk cost*). A mission
+checkpointed at
 both of § 7.3's boundaries pays two full copies of its `.DM` set per stage, so a
 careful five-stage run would pay ten unless the store is content-addressed first.
-**L5 was therefore a prerequisite for § 7.3 rather than a later optimisation**,
+**Storing identical content once was therefore a prerequisite for § 7.3 rather
+than a later optimisation**,
 and it landed on 2026-08-06: content already in the archive is hard-linked, so a
 checkpoint of unchanged binaries costs no disk.
 

@@ -771,7 +771,8 @@ def _link_or_copy(src: Path, dst: Path, src_sha: str,
     """Put ``src``'s content at ``dst``, reusing an identical archived copy when
     one exists.  Returns True if it was reused (hard link), False if copied.
 
-    **This is L5.** An archived file is never rewritten (I1), so a file whose
+    **This is the *Disk cost* property** (checkpointing.md § 12; it used to be
+    the rule `L5`).  An archived file is never rewritten (I1), so a file whose
     content is already in the archive does not need storing twice -- a hard link
     is a directory entry, and the second checkpoint of an unchanged binary costs
     no disk. Everything downstream is untouched: the archive still has a real
@@ -839,7 +840,7 @@ def _archive_binaries(path: Path, sha: str) -> int:
     tmp.mkdir(parents=True)
     entries: List[Tuple[str, int, str]] = []
     total = 0
-    # L5: what is already archived is not archived again.  Built once per
+    # What is already archived is not archived again.  Built once per
     # checkpoint, BEFORE the publish, so it never sees this archive's own .tmp.
     index = _published_archive_index(path)
     verified: Dict[str, bool] = {}
@@ -860,8 +861,8 @@ def _archive_binaries(path: Path, sha: str) -> int:
                 # Only a real copy can be corrupted in transit.  A reused entry
                 # was hashed before it was linked, and a hard link is the same
                 # inode -- re-reading it would cost a full read to confirm what
-                # was just confirmed, which is exactly the cost L5 exists to
-                # remove.
+                # was just confirmed, which is exactly the cost the reuse
+                # exists to remove.
                 dst_sha = hashlib.sha256(dst.read_bytes()).hexdigest()
                 if dst_sha != src_sha:
                     raise CheckpointError(

@@ -1041,8 +1041,8 @@ twenty-two invariants and the shape each holds in) · `engines/stages.md § 7.3`
    rule is **depth**, not a marker file.
 5. The remaining invariants get assertions, **each marked with the shape it
    holds in** — a check written for one shape that fails the other is worse than
-   no check, because it fails a directory that is working correctly. **L6**
-   (`snapshot verify`) is the one that matters most: the archive-verification
+   no check, because it fails a directory that is working correctly. **`snapshot
+   verify`** (`checkpointing.md` § 12, *Verifying without restoring*) is the one that matters most: the archive-verification
    code exists but is reachable only by attempting a restore, which is the worst
    moment to learn an archive is gone.
 
@@ -1219,7 +1219,7 @@ mislead a reader of the code.
 | § 8 10a | The archive-size display prints a number that is not true (hard links counted in full) and **feeds no decision — there is no `prune` verb**. Either drop it or make it match `du`. Two older faults ride along: `archive_total_bytes` is structurally always zero, and `missing_archive_warning` names `.DM/.HSX/.TSHS` whatever the engine |
 | § 8 12e | The checkpoint panel appears at a **fixed depth** (exactly 3 below the projects root) instead of wherever a repository is — so browsing into `01_coarse/` makes it vanish, in the shape where a checkpoint is load-bearing |
 | § 8 12c | If P7's subtraction does not resolve the two warm-file inventories, it becomes a real extraction here |
-| — | `tests/test_checkpoint_invariants.py`'s header names the wrong file for I1 and describes a twelve-invariant split that L3/L4/L5 have outgrown |
+| — | `tests/test_checkpoint_invariants.py`'s header names the wrong file for I1 and describes a twelve-invariant split the contract has outgrown (30 rules now, and L5 is not one) |
 
 **Milestone MZ** and its three reviews apply to the batch, not to each item.
 

@@ -75,8 +75,9 @@ def _attempt_dir_block(basename: str, *, ext: str = ".out",
     Why the directory form is worth the extra bash: an attempt that cannot be
     modified after it is written makes the saved history append-only, so a
     checkpoint stores what appeared since the last one instead of re-copying
-    every large binary (checkpointing.md, L5).  Filename indexing cannot give
-    that, because every attempt keeps writing into one shared directory.
+    every large binary (checkpointing.md § 12, *Disk cost*).  Filename indexing
+    cannot give that, because every attempt keeps writing into one shared
+    directory.
 
     THE REST OF THE WRAPPER IS UNCHANGED BY THIS.  Every later line works
     relative to the current directory -- the launch, the monitor, the SCF tee,

@@ -810,6 +810,14 @@ grows.
 
 ### Two things that are not rules
 
+> **These two were rules, and you will find them cited as `L5` and `L6`.** They
+> were demoted here, not deleted — the behaviour is unchanged and still tested.
+> **`L5` → *Disk cost*** below: storing identical content once is a property the
+> config tunes, and § 1 already forbids the only thing that could make it an
+> invariant (storing less). **`L6` → *Verifying without restoring*** below: a
+> verb that does not exist yet is a gap, not a rule a change can break. **Neither
+> id is valid; cite the paragraph.**
+
 **Disk cost.** Identical content is stored once, so a second save of an unchanged
 2 GB file costs nothing. That is a property, not an invariant: it is tuned through
 the config and **never** by storing less. It sits here rather than in § 7 so

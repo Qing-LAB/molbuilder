@@ -664,7 +664,8 @@ appear together, which is exactly where a person should be looking.
    same folder from a terminal and from the browser, and neither path has a
    renderer the other lacks.
 10. ~~**Archive only what is new**~~ — **done (2026-08-06)**,
-    `checkpointing.md` L5. Content already in the archive is **hard-linked**
+    `checkpointing.md` § 12 *Disk cost*. Content already in the archive is
+    **hard-linked**
     rather than copied, so a checkpoint of unchanged binaries costs no disk: the
     test that pins it went from 800 KB of growth to under 10 KB on the same
     fixture. Nothing downstream changed — the archive still holds a real file at
@@ -676,7 +677,8 @@ appear together, which is exactly where a person should be looking.
     than the disease — a changed binary is stored again, two checkpoints never
     alias different content, and a rotted candidate is copied past rather than
     linked to. The shipped guide's *"deduped by content"* is now true rather
-    than aspirational. **Still open: `snapshot verify`** (L6) — the check exists
+    than aspirational. **Still open: `snapshot verify`** (`checkpointing.md` § 12,
+    *Verifying without restoring*) — the check exists
     and is reachable only by attempting a restore.
 10a. **A display prints a number that is not true** — small, and smaller than an
     earlier draft of this item claimed. `archive_bytes` and `archive_total_bytes`
@@ -972,7 +974,8 @@ appear together, which is exactly where a person should be looking.
       star-import of the module gets everything *except* the part item 11 added.
     * `tests/test_checkpoint_invariants.py`'s header names the wrong file for I1
       (`manifest_format`, actually `nested_layout`) and still describes a
-      twelve-invariant split that L3, L4 and L5 have outgrown.
+      twelve-invariant split the contract has outgrown (it now carries 30 rules,
+      and L5 is no longer one of them).
     * `list_checkpoints` and `_checkpoint_from_sha` each split the same
       `%H|||%h|||%aI|||%s|||%D` line and each recompute archive size the same way
       — two copies of one `Checkpoint`-from-git-log builder, differing only in
