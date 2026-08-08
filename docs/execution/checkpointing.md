@@ -225,13 +225,31 @@ flowchart TB
     S["checkpoint"] --> R{"is .gitignore<br/>what it should be?"}
     R -->|"edited by hand"| STOP1["refuse or repair<br/>— an edited ignore list<br/>silently drops files"]
     R -->|"yes"| M["measure every file"]
-    M --> B["big ones → build the archive<br/>in a .tmp"]
-    B --> V["hash the source, copy,<br/><b>re-hash the copy</b>, compare"]
+    M --> H["hash the big ones,<br/>build the MANIFEST text,<br/>sha256 <i>that</i>"]
+    H --> C["<b>commit the small files</b><br/>carrying Manifest-SHA256"]
+    C --> GAP(["⚠ the seam: the commit<br/>exists, the archive<br/>does not yet"])
+    GAP --> B["build the archive in a .tmp<br/>under the new commit's sha"]
+    B --> V["copy, <b>re-hash the copy</b>,<br/>compare against the source"]
     V -->|"differ"| STOP2["fail — a corrupt copy must<br/>never become self-consistent"]
     V -->|"match"| W["write MANIFEST"]
     W --> SW["move any published archive aside<br/>→ swap the new one in<br/>→ delete the aside"]
-    SW --> C["commit the small files"]
 ```
+
+**The commit comes first, and it has to.** The archive lives at
+`.binsnapshots/<commit-sha>/`, so the sha must exist before anything can be put
+there. Everything about the *content* is computed before the commit — the file
+hashes, the MANIFEST text, and its digest — which is what lets the commit carry
+the anchor (I2b) for an archive that does not exist yet.
+
+**The seam is real and it is the one place a save is not atomic.** A1 covers the
+archive's own build-verify-swap; it says nothing about the gap between the two
+stores. Interrupt a checkpoint there and you get a commit with no archive beside
+it. Nothing is lost — the working tree still holds every file — but the snapshot
+is incomplete, and re-running `checkpoint` heals it.
+
+> **Today that state is ambiguous; with the anchor it stops being.** A commit
+> whose message carries a `Manifest-SHA256:` and has no archive was **interrupted
+> here** — provably, not suspiciously (§ 12).
 
 **Why the copy is re-hashed rather than trusted.** If the MANIFEST's checksum came
 from the copy alone, a copy corrupted on the way to disk would be
@@ -559,6 +577,25 @@ different** is a hard refusal naming the record, and **unanchored** is reported
 as unanchored. Treating the third as tampering would condemn every archive
 predating the rule, and I1 already holds that migration is legal.
 
+**It fits the message and the readback without disturbing either.**
+`checkpoint_message` produces one line — `<id> · <event> · <what happened>` — and
+a trailer sits below a blank line, so the message becomes multi-line. Every
+readback (`list_checkpoints`, `_checkpoint_from_sha`) asks git for `%s`, the
+*subject*, which is the first line; nothing else parses a message at all. So L3's
+naming rule and the trailer never meet.
+
+> ⚠ **The trailer is appended by the save, not by the message helper.** A
+> checkpoint may be taken with a free-form message, and with none at all — the
+> default is `checkpoint <ISO>`. Attach the anchor in `checkpoint_message` and
+> every save that skips the helper ships unanchored, the default path first.
+
+**It also strengthens I1, which is a behaviour change and not only a check.**
+Re-archiving a commit is permitted *because one commit implies one tree*. With a
+digest, the rebuild must reproduce the MANIFEST byte-for-byte — so if the big
+files have changed since that commit, re-archiving now **fails** where it used to
+overwrite in silence. That is the rule finally being enforced rather than
+asserted.
+
 > **Records are named so nobody mistakes one for a setting.** `MANIFEST` looks
 > like a file a person may reasonably adjust; `MANIFEST.do_not_edit` does not.
 > This buys nothing against deliberate tampering — that is the digest's job — and
@@ -838,16 +875,25 @@ conclude there is nothing to do.
 
 ### What cannot be proved, and is flagged instead
 
-**A lost archive cannot be detected, only suspected — and the code already says
-so where this document did not.** Big files are gitignored, so **git records
-nothing about what a commit *should* have contained.** If an archive directory
-goes missing, there is no list anywhere saying it ever existed.
+**A lost archive cannot be detected, only suspected — *until the anchor ships*.**
+Big files are gitignored, so today **git records nothing about what a commit
+*should* have contained.** If an archive directory goes missing, there is no list
+anywhere saying it ever existed.
 
-`Repo.missing_archive_warning` is the honest response: if you restore a commit
-with no archive *and* the folder plainly uses big files — there are some on
-disk, or other commits have archives — it says so loudly rather than returning
-text-only and looking fine. It cannot distinguish "the archive was lost" from
-"this commit legitimately had no binaries", and it does not pretend to.
+`Repo.missing_archive_warning` is the honest response in the meantime: if you
+restore a commit with no archive *and* the folder plainly uses big files — there
+are some on disk, or other commits have archives — it says so loudly rather than
+returning text-only and looking fine. It cannot distinguish "the archive was
+lost" from "this commit legitimately had no binaries", and it does not pretend
+to.
+
+> **I2b's anchor retires the guess.** A `Manifest-SHA256:` trailer *is* the
+> record of what a commit should have contained, so a commit that carries one
+> and has no archive is **provably** missing it, and one that carries none
+> legitimately archived nothing. The heuristic — look around at other commits
+> and at what happens to be on disk — becomes a fact read from the commit
+> itself, and § 6's seam stops being ambiguous. This is the second thing the
+> anchor buys, and it was not why it was chosen.
 
 **Archives are never reclaimed.** Delete a branch, or leave a commit
 unreachable, and its `.binsnapshots/<sha>/` stays on disk forever. There is no
@@ -937,8 +983,11 @@ so no fixture can be too small for them:
 
 ### 13.4 Where each rule is asserted
 
-All eight `test_checkpoint_*.py` files are here. A file in no row is a file
-nobody is maintaining against this document, which is how the two drift.
+All eight `test_checkpoint_*.py` files are here, **and all thirty rules**. A file
+in no row is a file nobody is maintaining against this document; a *rule* in no
+row is the same failure from the other side, and it is the quieter one — six of
+these wait on a surface that does not exist yet, and those are exactly the ones
+that get forgotten on the day it lands.
 
 | Rule | Where |
 |---|---|
@@ -958,6 +1007,19 @@ nobody is maintaining against this document, which is how the two drift.
 | the wrapper carries no git | `test_checkpoint_wrapper_isolation.py` |
 | the verbs end to end — init, checkpoint, tag, branch, restore, and their refusals | `test_checkpoint_lifecycle.py` |
 | the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` |
+
+**The six that cannot be tested yet, and what each waits on.** They are stated
+and tracked (§§ 11–12) and deliberately unasserted — a test written against a
+surface that does not exist can only pin a guess about it.
+
+| Rule | Waits on |
+|---|---|
+| **A3** the save precedes the change | the `prep` prompt — nothing calls `checkpoint()` before a produce today |
+| **S2** a stage writes only inside itself | a real staged folder to run a stage in |
+| **S3** a run records what it started from | `run.json`'s `continued_from`, still proposed |
+| **S4** the description is never modified | `task.json` reaching a produced folder |
+| **S6** a restored folder explains itself | the same, plus a `dry_run` produce to compare against |
+| **L8** a saved attempt never differs afterwards | the hierarchical layout — and it must be marked *hierarchical only*, or it fails a flat folder that is working correctly |
 
 > **One of these tests contradicts this document, and that is worth knowing
 > before you read it.** `test_restore_include_binaries_false_skips_integrity_and_binaries`
