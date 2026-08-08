@@ -1,290 +1,221 @@
-"""Tests for the SiestaStageSpec dataclass + SiestaConfig.stages field
-+ SIESTA_STAGE_STRATEGY_PRESETS (task #542, commit 1).
+"""The shipped SIESTA ladder: where it comes from, and what it is made of.
 
-Pins the cross-engine consistent surface:
-  * stage names are stage1 / stage2 / stage3 (matches PySCF)
-  * defaults match SIESTA_STAGE_PRESETS (the --stage {1,2,3} CLI overlay
-    that ships today) so single-stage and multi-stage paths produce
-    identical per-stage .fdf content
-  * strategy preset names match PySCF (publishable / loose-only /
-    vib-quality)
-  * round-trip via dict survives the schema gate (CLI's --stages-json
-    consumes the same shape that the form-schema emitter produces)
+Contract: ``docs/engines/stages.md`` § 1.1 (**no engine config carries a
+stage list**), § 1.3 (the default *selection*), § 2 (a stage has three
+fields), § 4 (``template ⊕ overrides``).
+
+**This file replaced one that tested ``SiestaStageSpec`` (2026-08-07, P2
+unit 2).**  That class is deleted, so tests naming its eight fields, its
+per-field defaults and its validator went with it — a test that pins a
+mechanism the contract removed is not coverage, it is a second copy of the
+old design that fails the next time the right thing is done.
+
+What survived is every rule that was about the *ladder* rather than about
+that class, restated against the mechanism that carries it now:
+
+  * three stages named stage1 / stage2 / stage3 (matches PySCF — the user
+    sees one mental model across engines)
+  * their values ARE ``SIESTA_STAGE_PRESETS``, so ``--stage {1,2,3}``'s
+    one-shot deck and stage N of the ladder cannot drift apart
+  * the strategy presets choose which tiers run and nothing else
+  * the ladder is a ``task.Stage`` list, and the config has no ``stages``
+
+The checks the old validator made that were genuinely structural — an
+empty / all-disabled ladder, duplicate names, a name that is not a
+filename — moved to the layers that own them and are asserted in
+``tests/test_stage_resolution.py``.
 """
 from __future__ import annotations
 
 import dataclasses
+
 import pytest
 
 from molbuilder.config.siesta import (
     SiestaConfig,
-    SiestaStageSpec,
     SIESTA_STAGE_PRESETS,
     SIESTA_STAGE_STRATEGY_PRESETS,
-    _default_siesta_stages,
-    apply_siesta_stage_strategy,
-    siesta_stages_from_dicts,
-    validate_siesta_stages,
+    apply_siesta_stage,
 )
+from molbuilder.siesta.stages import (
+    DEFAULT_NONCONVERGENCE,
+    default_siesta_stages,
+    default_siesta_varies,
+)
+from molbuilder.task import Stage
 
 
 # --------------------------------------------------------------------- #
-#  SiestaStageSpec defaults                                              #
+#  § 1.1 — an engine config carries no stage list                       #
 # --------------------------------------------------------------------- #
 
+def test_the_config_has_no_stages_field():
+    """**The deletion, asserted directly.**
 
-def test_stagespec_default_is_stage1_loose_warmup():
-    """Bare ``SiestaStageSpec()`` is the stage1 loose-preopt tier:
-    CG warm-up, 600 steps, 0.05 eV/Å, 0.20 Å displacement cap.  Matches
-    SIESTA_STAGE_PRESETS[1] value-for-value."""
-    s = SiestaStageSpec()
-    assert s.name == "stage1"
-    assert s.enabled is True
-    assert s.relax_type == "CG"
-    assert s.relax_steps == 600
-    assert s.relax_force_tol == pytest.approx(0.05)
-    assert s.relax_max_displ == pytest.approx(0.20)
-    assert s.on_nonconvergence == "halt"  # field default; per-stage
-                                          # overrides happen in _default_siesta_stages
+    ``SiestaConfig.stages`` was the fault, not a detail of it: a config
+    that contains a ladder cannot be the ordinary single parameter set
+    § 4 resolves *to*, and its presence is what made the form generator
+    publish a Python class's fields as the columns a user may vary
+    (§ 1.2).  A field re-added here would reopen both."""
+    names = {f.name for f in dataclasses.fields(SiestaConfig)}
+    assert "stages" not in names
+
+
+def test_no_field_of_the_config_is_a_list_of_dataclasses():
+    """The stronger form: not merely *this* name, but the SHAPE.  A
+    ``List[<dataclass>]`` on an engine config is what the form-schema
+    generator turns into a stage-table, so a differently-named ladder
+    would reopen § 1.2 just as wide."""
+    import typing
+    hints = typing.get_type_hints(SiestaConfig)
+    for f in dataclasses.fields(SiestaConfig):
+        ann = hints.get(f.name)
+        args = typing.get_args(ann)
+        assert not (typing.get_origin(ann) in (list, tuple)
+                    and args and dataclasses.is_dataclass(args[0])), (
+            f"SiestaConfig.{f.name} is a list of dataclasses -- the form "
+            f"generator would emit a stage-table for it (stages.md § 1.2)")
+
+
+def test_the_siesta_form_schema_emits_no_stage_table():
+    """The consequence, at the surface that had the bug.  The generator
+    answers *what settings exist and how is each drawn*; it must never
+    meet a stage (web/form-schema.md § 1's callout)."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
+    kinds = [f["kind"] for s in sch["sections"] for f in s["fields"]]
+    assert "stage-table" not in kinds
 
 
 # --------------------------------------------------------------------- #
-#  _default_siesta_stages() — three-tier ladder                          #
+#  The shipped ladder                                                   #
 # --------------------------------------------------------------------- #
 
-
-def test_default_stages_returns_three_named_stages():
-    stages = _default_siesta_stages()
-    assert len(stages) == 3
+def test_default_ladder_is_three_named_stages():
+    stages = default_siesta_stages()
     assert [s.name for s in stages] == ["stage1", "stage2", "stage3"]
+    assert all(isinstance(s, Stage) for s in stages)
 
 
-def test_default_stages_enabled_pattern_matches_pyscf():
-    """stage1 + stage2 enabled by default; stage3 OFF (vib/IR opt-in).
-    Same enabled-mask as PySCF's _default_stages()."""
-    stages = _default_siesta_stages()
-    assert [s.enabled for s in stages] == [True, True, False]
+def test_default_ladder_enabled_pattern_matches_pyscf():
+    """publishable = stage1 + stage2; stage3 (tight) is opt-in.  Same
+    shape as PySCF's default so the two engines read alike."""
+    assert [s.enabled for s in default_siesta_stages()] == [True, True, False]
 
 
-@pytest.mark.parametrize("idx,stage_name", [(0, 1), (1, 2), (2, 3)])
-def test_default_stages_match_existing_cli_overlay(idx, stage_name):
-    """Each _default_siesta_stages() entry matches SIESTA_STAGE_PRESETS
-    for the same stage number -- so ``--stage 2`` (single-stage CLI)
-    and ``stages[1]`` (multi-stage pipeline) produce identical .fdfs."""
-    stages = _default_siesta_stages()
-    overlay = SIESTA_STAGE_PRESETS[stage_name]
-    assert stages[idx].relax_type == overlay["relax_type"]
-    assert stages[idx].relax_steps == overlay["relax_steps"]
-    assert stages[idx].relax_force_tol == pytest.approx(
-        overlay["relax_force_tol"])
-    assert stages[idx].relax_max_displ == pytest.approx(
-        overlay["relax_max_displ"])
+@pytest.mark.parametrize("tier", sorted(SIESTA_STAGE_PRESETS))
+def test_each_stages_overrides_are_exactly_that_tiers_preset(tier):
+    """**The one that keeps the two paths aligned.**  ``--stage 2``
+    overlays ``SIESTA_STAGE_PRESETS[2]`` onto a config; stage2 of the
+    ladder overrides with the same dict.  One table, two readers — so a
+    tier value can be changed in exactly one place."""
+    stage = default_siesta_stages("vib-quality")[tier - 1]
+    assert stage.overrides == SIESTA_STAGE_PRESETS[tier]
 
 
-def test_default_stages_on_nonconvergence_policy_matches_pyscf():
-    """stage1 = proceed (loose warm-up; hand off "good enough" to next
-    tier); stage2 + stage3 = halt (publishable / tight; failure is real
-    signal).  Matches PySCF's _default_stages() policy ladder."""
-    stages = _default_siesta_stages()
-    assert stages[0].on_nonconvergence == "proceed"
-    assert stages[1].on_nonconvergence == "halt"
-    assert stages[2].on_nonconvergence == "halt"
+def test_the_one_shot_overlay_and_the_ladder_agree_field_for_field():
+    """The same claim from the other side, through both real code paths
+    rather than through the table they share."""
+    from molbuilder.siesta.input import effective_config
+    template = SiestaConfig(system_label="JOB")
+    for tier, stage in enumerate(default_siesta_stages("vib-quality"), 1):
+        overlaid = apply_siesta_stage(template, tier)
+        resolved = effective_config(template, stage)
+        assert dataclasses.asdict(overlaid) == dataclasses.asdict(resolved)
 
 
-# --------------------------------------------------------------------- #
-#  validate_siesta_stages()                                              #
-# --------------------------------------------------------------------- #
+def test_a_stage_has_exactly_the_three_fields_of_section_2():
+    """§ 2.  Anything else a stage seemed to need turned out to belong to
+    the shared schema or to a producer's input (§ 3)."""
+    assert [f.name for f in dataclasses.fields(Stage)] == [
+        "name", "enabled", "overrides"]
 
 
-def test_validate_passes_defaults():
-    assert validate_siesta_stages(_default_siesta_stages()) == []
+def test_default_varies_is_the_union_of_the_ladders_override_keys():
+    """§ 6.2: ``overrides ⊆ varies``.  ``varies`` for the shipped ladder is
+    derived from it, never a second list to keep in step."""
+    varies = default_siesta_varies()
+    for stage in default_siesta_stages("vib-quality"):
+        assert set(stage.overrides) <= set(varies)
+    assert varies == ["relax_type", "relax_steps",
+                      "relax_force_tol", "relax_max_displ"]
 
 
-def test_validate_catches_bad_name():
-    bad = [SiestaStageSpec(name="not a valid name!")]
-    errs = validate_siesta_stages(bad)
-    assert any("name" in e for e in errs)
-
-
-def test_validate_catches_unknown_relax_type():
-    bad = [dataclasses.replace(_default_siesta_stages()[0],
-                                relax_type="NotARelaxAlgorithm")]
-    errs = validate_siesta_stages(bad)
-    assert any("relax_type" in e for e in errs)
-
-
-def test_validate_catches_nonpositive_force_tol():
-    bad = [dataclasses.replace(_default_siesta_stages()[0],
-                                relax_force_tol=0.0)]
-    errs = validate_siesta_stages(bad)
-    assert any("relax_force_tol" in e for e in errs)
-
-
-def test_validate_catches_unknown_policy():
-    bad = [dataclasses.replace(_default_siesta_stages()[0],
-                                on_nonconvergence="bail-and-cry")]
-    errs = validate_siesta_stages(bad)
-    assert any("on_nonconvergence" in e for e in errs)
-
-
-# --- structural-invariant parity with pyscf.validate_stages (2026-06-29) ---
-
-def test_validate_catches_empty_list():
-    errs = validate_siesta_stages([])
-    assert any("empty" in e for e in errs)
-
-
-def test_validate_catches_all_disabled():
-    stages = [dataclasses.replace(s, enabled=False)
-              for s in _default_siesta_stages()]
-    errs = validate_siesta_stages(stages)
-    assert any("no stage is enabled" in e for e in errs)
-
-
-def test_validate_catches_duplicate_names():
-    """The fatal one: per-stage fdfs key on <basename>_<name>.fdf, so a
-    duplicate name silently overwrites a stage in render_siesta_stage_fdfs."""
-    s0 = _default_siesta_stages()[0]
-    dup = [dataclasses.replace(s0, name="stage1"),
-           dataclasses.replace(s0, name="stage1")]
-    errs = validate_siesta_stages(dup)
-    assert any("duplicate" in e for e in errs)
-
-
-def test_validate_wired_into_validate_pipeline():
-    """The whole point: a broken SIESTA ladder must surface as an "error"
-    issue through validate() (the Build-tab / CLI gate), not crash at
-    render or silently drop a stage -- parity with PySCF."""
-    import numpy as np
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.structure import Structure
-    from molbuilder.validation import validate
-
-    struct = Structure(
-        elements=["H"], positions=np.zeros((1, 3)), atom_names=["H1"],
-        residue_ids=[1], residue_names=["UNL"], chain_ids=["A"],
-    )
-    s0 = _default_siesta_stages()[0]
-    cfg = SiestaConfig(
-        relax_type="CG",
-        stages=[dataclasses.replace(s0, name="dup"),
-                dataclasses.replace(s0, name="dup")],
-    )
-    issues = validate(struct, cfg)
-    stage_errs = [i for i in issues
-                  if getattr(i, "where", "") == "config.stages"
-                  and i.severity == "error"]
-    assert stage_errs, f"expected a config.stages error issue, got {issues!r}"
-    assert any("duplicate" in i.message for i in stage_errs)
+def test_every_varied_field_exists_in_the_shared_schema():
+    """The preflight's rule, applied to what molbuilder itself ships: a
+    ladder naming a field the schema does not have would be refused, so
+    the default must not be one."""
+    known = {f.name for f in dataclasses.fields(SiestaConfig)}
+    assert set(default_siesta_varies()) <= known
 
 
 # --------------------------------------------------------------------- #
-#  Strategy presets                                                      #
+#  The strategy presets choose which tiers run, and nothing else        #
 # --------------------------------------------------------------------- #
-
 
 def test_strategy_preset_names_match_pyscf():
-    """Same three preset names as the PySCF surface.  This keeps the
-    UI's preset dropdown semantically aligned -- "publishable" means
-    the same thing across engines (stage1 loose + stage2 publishable;
-    skip the vib/IR-tight tier)."""
-    from molbuilder.config.pyscf import STAGE_STRATEGY_PRESETS as _PYSCF
-    assert (set(SIESTA_STAGE_STRATEGY_PRESETS.keys())
-            == set(_PYSCF.keys()))
+    from molbuilder.config.pyscf import STAGE_STRATEGY_PRESETS
+    assert (set(SIESTA_STAGE_STRATEGY_PRESETS)
+            == set(STAGE_STRATEGY_PRESETS))
 
 
 @pytest.mark.parametrize("strategy,expected", [
-    ("publishable", (True, True, False)),
-    ("loose-only", (True, False, False)),
-    ("vib-quality", (True, True, True)),
+    ("publishable", [True, True, False]),
+    ("loose-only",  [True, False, False]),
+    ("vib-quality", [True, True, True]),
 ])
 def test_strategy_preset_enabled_masks(strategy, expected):
-    """Each preset's enabled-mask matches its semantic role."""
-    stages = _default_siesta_stages()
-    applied = apply_siesta_stage_strategy(stages, strategy)
-    assert tuple(s.enabled for s in applied) == expected
+    assert [s.enabled for s in default_siesta_stages(strategy)] == expected
 
 
-def test_strategy_preset_preserves_per_stage_values():
-    """Preset only flips ``enabled``; relax_type / steps / force_tol /
-    max_displ / on_nonconvergence are preserved.  User overrides on
-    those fields survive the strategy-apply call."""
-    stages = _default_siesta_stages()
-    customised = list(stages)
-    customised[1] = dataclasses.replace(stages[1], relax_force_tol=0.123)
-    applied = apply_siesta_stage_strategy(customised, "loose-only")
-    assert applied[1].relax_force_tol == pytest.approx(0.123)
+def test_strategy_preset_changes_only_the_enable_flags():
+    """A preset says which tiers run; it never retunes one.  If it did,
+    picking 'loose-only' would silently change what stage1 computes."""
+    a = default_siesta_stages("loose-only")
+    b = default_siesta_stages("vib-quality")
+    assert [s.overrides for s in a] == [s.overrides for s in b]
+    assert [s.name for s in a] == [s.name for s in b]
 
 
 def test_strategy_preset_rejects_unknown_name():
     with pytest.raises(ValueError, match="unknown SIESTA stage strategy"):
-        apply_siesta_stage_strategy(
-            _default_siesta_stages(), "no-such-strategy")
+        default_siesta_stages("no-such-preset")
+
+
+def test_each_call_returns_independent_stages():
+    """A caller that disables a stage must not disturb the next caller's
+    ladder -- the mutable-default bug the old ``_default_siesta_stages``
+    factory existed to avoid, asserted rather than assumed."""
+    a, b = default_siesta_stages(), default_siesta_stages()
+    assert a is not b
+    assert a[0].overrides is not b[0].overrides
+    a[0].overrides["mesh_cutoff"] = 999
+    assert "mesh_cutoff" not in b[0].overrides
 
 
 # --------------------------------------------------------------------- #
-#  siesta_stages_from_dicts -- round-trip via JSON payload               #
+#  § 3 — the non-convergence policy is the producer's input             #
 # --------------------------------------------------------------------- #
 
-
-def test_from_dicts_round_trips_defaults():
-    """``siesta_stages_from_dicts([... defaults as dicts ...])`` returns
-    a list identical (field-for-field) to ``_default_siesta_stages()``.
-    The CLI's --stages-json path depends on this."""
-    stages = _default_siesta_stages()
-    payload = [dataclasses.asdict(s) for s in stages]
-    restored = siesta_stages_from_dicts(payload)
-    for original, copy in zip(stages, restored):
-        assert dataclasses.asdict(original) == dataclasses.asdict(copy)
+def test_no_stage_carries_a_nonconvergence_policy():
+    """§ 3: it fails question 1 -- without a scheduler there is nothing
+    for it to mean -- so it is not a stage field.  And it is not a
+    shared-schema field either, or ``overrides`` would readmit it."""
+    assert "on_nonconvergence" not in {f.name for f in dataclasses.fields(Stage)}
+    assert "on_nonconvergence" not in {f.name
+                                       for f in dataclasses.fields(SiestaConfig)}
 
 
-def test_from_dicts_silently_ignores_unknown_keys():
-    """Forward-compat: a payload from a future SiestaStageSpec with
-    extra fields shouldn't break the current parser."""
-    payload = [{
-        "name": "stage1", "enabled": True,
-        "relax_type": "CG", "relax_steps": 600,
-        "relax_force_tol": 0.05, "relax_max_displ": 0.20,
-        "future_field": "future_value",  # unknown -> silently dropped
-    }]
-    restored = siesta_stages_from_dicts(payload)
-    assert restored[0].relax_type == "CG"
-    assert not hasattr(restored[0], "future_field")
+def test_the_shipped_policy_names_the_shipped_stages():
+    """The producer's default input and the producer's default ladder
+    describe one ladder, so every stage in it is named."""
+    assert set(DEFAULT_NONCONVERGENCE) == {
+        s.name for s in default_siesta_stages("vib-quality")}
 
 
-def test_from_dicts_coerces_string_booleans():
-    """JSON-from-shell payloads may carry ``"true"`` / ``"false"``
-    strings instead of bool literals; the parser coerces both."""
-    payload = [{"name": "stage1", "enabled": "true",
-                "relax_type": "CG", "relax_steps": 100,
-                "relax_force_tol": 0.05, "relax_max_displ": 0.20}]
-    restored = siesta_stages_from_dicts(payload)
-    assert restored[0].enabled is True
-
-
-# --------------------------------------------------------------------- #
-#  SiestaConfig.stages field                                             #
-# --------------------------------------------------------------------- #
-
-
-def test_siesta_config_has_stages_field():
-    cfg = SiestaConfig()
-    assert hasattr(cfg, "stages")
-    assert isinstance(cfg.stages, list)
-
-
-def test_siesta_config_stages_defaults_to_three_stage_ladder():
-    cfg = SiestaConfig()
-    assert len(cfg.stages) == 3
-    assert [s.name for s in cfg.stages] == ["stage1", "stage2", "stage3"]
-
-
-def test_siesta_config_stages_default_is_independent_per_instance():
-    """The default_factory pattern means two SiestaConfig()s get
-    distinct list objects -- mutating one's stages doesn't leak into
-    the other.  Pins the field's use of ``default_factory=lambda: ...``
-    over a mutable default."""
-    cfg1 = SiestaConfig()
-    cfg2 = SiestaConfig()
-    cfg1.stages[0].relax_force_tol = 0.999
-    assert cfg2.stages[0].relax_force_tol != 0.999
+def test_continue_retries_is_a_shared_field_not_a_stage_one():
+    """§ 3's other half: it passes both questions, so it is ordinary.
+    What made it look special is only where it lands (the wrapper)."""
+    assert "continue_retries" in {f.name
+                                  for f in dataclasses.fields(SiestaConfig)}
+    assert "continue_retries" not in {f.name for f in dataclasses.fields(Stage)}

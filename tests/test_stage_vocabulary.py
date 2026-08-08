@@ -96,9 +96,9 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
     "--stage-strategy": (
         2, "molbuilder/cli.py", "named presets over the *enable* flags"),
     "SIESTA_STAGE_STRATEGY_PRESETS": (
-        2, "molbuilder/config/siesta.py", "those presets"),
-    "apply_siesta_stage_strategy": (
-        2, "molbuilder/config/siesta.py", "applies them"),
+        2, "molbuilder/config/siesta.py",
+        "those presets -- pure enable-mask data now; the applier that turned "
+        "them into SiestaStageSpec objects went with the class (P2)"),
     "apply_stage_strategy": (
         2, "molbuilder/config/pyscf.py", "the same road for PySCF"),
     "STAGE_STRATEGY_PRESETS": (
@@ -108,20 +108,20 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         3, "molbuilder/cli.py",
         "the whole ladder from a file; its help says 'Unknown keys ignored', "
         "which P1 reverses"),
-    "siesta_stages_from_dicts": (
-        3, "molbuilder/config/siesta.py", "parses it"),
     "stages_from_dicts": (
-        3, "molbuilder/config/pyscf.py", "the same for PySCF"),
+        3, ("molbuilder/config/pyscf.py", "molbuilder/task.py"),
+        "parses it.  TWO declarations of one name, and that is the point: "
+        "PySCF's builds its own StageSpec; task.py's builds the design's "
+        "own Stage, and it is what --stages-json reaches now that the "
+        "SIESTA parser is deleted (P2)"),
     "--stage-resources": (
         4, "molbuilder/cli.py", "per-stage scheduler asks, a *second* file"),
-    "SiestaStageSpec": (
-        5, "molbuilder/config/siesta.py",
-        "the in-memory model 1-4 all feed; eight fields where the contract "
-        "says three"),
-    "_default_siesta_stages": (
-        5, "molbuilder/config/siesta.py", "the ladder a fresh config carries"),
-    "validate_siesta_stages": (
-        5, "molbuilder/config/siesta.py", "its gate"),
+    # Mechanism 5 -- SiestaStageSpec, _default_siesta_stages,
+    # validate_siesta_stages -- is RETIRED (P2 unit 2, 2026-08-07).  These
+    # three rows are deleted rather than commented out: their absence is
+    # what proves the subtraction, and the guard below fails if any of the
+    # names comes back.  What replaced it is mechanism 11, which was
+    # already here.
     "render_siesta_stage_fdfs": (
         6, "molbuilder/siesta/input.py", "flat -- one deck per enabled stage"),
     "render_siesta_stages_runner": (
@@ -133,6 +133,13 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         6, "molbuilder/siesta/input.py",
         "the bash array in the emitted runner's template -- stage vocabulary "
         "in generated TEXT, which is where questions 3 and 4 both look"),
+    "default_siesta_stages": (
+        11, "molbuilder/siesta/stages.py",
+        "builds the shipped ladder as task.Stage objects, reading the tier "
+        "values from mechanism 1's preset table and the enable mask from "
+        "mechanism 2's.  It produces the design's own stage rather than "
+        "being a way of expressing one, which is why it is 11 and not a "
+        "twelfth"),
     "stages_to_jobset": (
         7, "molbuilder/siesta/stages.py",
         "hierarchical -- a ladder JobSet, wired stage-to-stage"),
@@ -210,10 +217,14 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
         None, "molviewer-window-stage is a CSS layer -- unrelated role"),
 }
 
-#: Eleven since 2026-08-07, and it went UP on purpose: P1 added task.json's
-#: own stage without retiring anything, which the plan calls "the one phase
-#: that deliberately raises the mechanism count".  P5 is where it falls.
-MECHANISM_COUNT = 11
+#: Eleven on 2026-08-07 morning, and it went UP on purpose: P1 added
+#: task.json's own stage without retiring anything, which the plan calls "the
+#: one phase that deliberately raises the mechanism count".
+#:
+#: TEN since P2 unit 2 the same day: mechanism 5 -- SiestaStageSpec and its
+#: two helpers -- is deleted.  That is the first subtraction of the program,
+#: and the number falling is what makes it a fact rather than a claim.
+MECHANISM_COUNT = 10
 
 
 def _py_sources() -> list[Path]:
@@ -248,6 +259,11 @@ def detect_js_files() -> set[str]:
             if rx.search(p.read_text(encoding="utf-8", errors="replace"))}
 
 
+def _expected_files(where) -> set[str]:
+    """A ledger row's ``where`` as a set: one path, or several."""
+    return {where} if isinstance(where, str) else set(where)
+
+
 def measure_mechanisms() -> list[str]:
     """The distinct mechanisms the ledgers attribute, as '<n>: <where>'."""
     seen: dict[int, str] = {}
@@ -278,9 +294,15 @@ def test_every_stage_declaration_is_attributed():
         + "\n\nIf a phase retired them, delete the rows -- that deletion IS "
           "the proof the subtraction happened.")
 
+    # Set EQUALITY, not membership.  Membership let a symbol declared in
+    # two files pass while the ledger named one -- which is precisely the
+    # blind spot this file exists to close, and ``stages_from_dicts`` walked
+    # into it on 2026-08-07 when task.py grew one beside PySCF's.  A row may
+    # name a tuple of files when a name genuinely lives in more than one.
     moved = sorted(
         f"{s}: ledger says {PY_LEDGER[s][1]}, found in {', '.join(sorted(w))}"
-        for s, w in found.items() if PY_LEDGER[s][1] not in w)
+        for s, w in found.items()
+        if _expected_files(PY_LEDGER[s][1]) != w)
     assert not moved, "declared somewhere the ledger does not expect:\n  " \
                       + "\n  ".join(moved)
 
@@ -347,7 +369,9 @@ def measure_positional_names() -> list[str]:
     h2 = Structure(elements=["H", "H"],
                    positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
                    vacuum=(12.0, 12.0, 12.0))
-    decks = render_siesta_stage_fdfs(h2, SiestaConfig(system_label="JOB"))
+    from molbuilder.siesta.stages import default_siesta_stages
+    decks = render_siesta_stage_fdfs(h2, SiestaConfig(system_label="JOB"),
+                                     default_siesta_stages())
     positional_decks = sorted(n for n in decks if _POSITIONAL.search(n))
     if positional_decks:
         offences.append(
@@ -412,7 +436,11 @@ def _flat_runner_text() -> str | None:
     except ImportError:
         return None
     from molbuilder.config.siesta import SiestaConfig
-    return render_siesta_stages_runner(SiestaConfig(system_label="JOB"))
+    from molbuilder.siesta.stages import (DEFAULT_NONCONVERGENCE,
+                                          default_siesta_stages)
+    return render_siesta_stages_runner(
+        SiestaConfig(system_label="JOB"), default_siesta_stages(),
+        on_nonconvergence=DEFAULT_NONCONVERGENCE)
 
 
 def measure_direct_engine_invocations() -> list[str]:
@@ -455,8 +483,10 @@ def measure_chaining_producers() -> list[str]:
     offences = []
 
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import stages_to_jobset
-    js = stages_to_jobset(SiestaConfig(system_label="JOB"))
+    from molbuilder.siesta.stages import (default_siesta_stages,
+                                          stages_to_jobset)
+    js = stages_to_jobset(SiestaConfig(system_label="JOB"),
+                          default_siesta_stages())
     chained = [j.name for j in js.jobs if j.depends_on is not None]
     if chained:
         offences.append(
@@ -490,8 +520,12 @@ def test_stages_do_not_chain():
 def baseline() -> list[tuple[str, str, int, str, str]]:
     """(question, measure, count, target, owning phase)."""
     return [
+        # Q1's owning phase moved P5 -> P2 when the plan's *Subtracts* was
+        # corrected: deleting the model belongs to the model phase, and P5
+        # owns the emitted SHAPE.  P2 has taken mechanism 5; the rest of the
+        # set is a grammar decision and stays P9's.
         ("Q1", 'ways to say "stage"',
-         len(measure_mechanisms()), "the agreed set", "P5"),
+         len(measure_mechanisms()), "the agreed set", "P2/P9"),
         ("Q2", "emitted names keyed on a position",
          len(measure_positional_names()), "0", "P4"),
         ("Q3", "generated scripts invoking an engine",

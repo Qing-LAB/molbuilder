@@ -14,8 +14,12 @@ import dataclasses as dc
 import numpy as np
 import pytest
 
-from molbuilder.config.siesta import SiestaConfig, apply_siesta_stage_strategy
-from molbuilder.siesta.stages import StageBundle, build_siesta_stage_bundle
+from molbuilder.config.siesta import SiestaConfig
+from molbuilder.siesta.stages import (
+    StageBundle,
+    build_siesta_stage_bundle,
+    default_siesta_stages,
+)
 from molbuilder.structure import Structure
 
 
@@ -28,13 +32,18 @@ def _h2(vacuum=(8.0, 8.0, 8.0)) -> Structure:
 
 
 def _publishable_cfg(label="h2") -> SiestaConfig:
-    cfg = SiestaConfig(system_label=label)
-    return dc.replace(
-        cfg, stages=apply_siesta_stage_strategy(cfg.stages, "publishable"))
+    """The template.  It carries no ladder -- see ``_publishable`` below."""
+    return SiestaConfig(system_label=label)
+
+
+def _publishable():
+    """The ladder, which travels beside the template rather than inside it
+    (engines/stages.md § 1.1).  'publishable' = stage1 + stage2."""
+    return default_siesta_stages("publishable")
 
 
 def test_producer_returns_stage_files_runner_species_jobset():
-    b = build_siesta_stage_bundle(_h2(), _publishable_cfg())
+    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable())
     assert isinstance(b, StageBundle)
     # one .fdf per enabled stage, all sharing the SystemLabel stem
     assert sorted(b.fdf_files) == ["h2_stage1.fdf", "h2_stage2.fdf"]
@@ -51,21 +60,23 @@ def test_producer_returns_stage_files_runner_species_jobset():
 def test_jobset_shared_defaults_to_expected_psml_names():
     """When ``shared`` is not given, the JobSet's static package defaults to
     the expected ``<species>.psml`` (PSML-first, matching install-pseudos)."""
-    b = build_siesta_stage_bundle(_h2(), _publishable_cfg())
+    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable())
     assert b.jobset.shared == ["H.psml"]
 
 
 def test_explicit_shared_is_honored():
     """A caller that knows its on-disk package (e.g. the CLI's glob picking
     up legacy .psf) overrides the default."""
-    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), shared=["H.psf"])
+    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable(),
+                              shared=["H.psf"])
     assert b.jobset.shared == ["H.psf"]
 
 
 def test_emit_jobset_false_skips_the_jobset():
     """The CLI renders files via the producer but builds its own JobSet from
     the pseudos actually on disk -> it asks for files only."""
-    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), emit_jobset=False)
+    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable(),
+                              emit_jobset=False)
     assert b.jobset is None
     assert b.fdf_files and b.runner_text  # files still produced
 
@@ -73,7 +84,8 @@ def test_emit_jobset_false_skips_the_jobset():
 def test_system_label_drives_filenames():
     """cfg.system_label is the stem the caller aligns; the producer uses it
     for both the .fdf names and the runner (the .XV warm-restart contract)."""
-    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(label="bdt"))
+    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(label="bdt"),
+                              _publishable())
     assert b.runner_name == "bdt.run.sh"
     assert all(name.startswith("bdt_") for name in b.fdf_files)
 
@@ -101,8 +113,10 @@ def test_cell_rides_on_the_structure_no_separate_input():
 
     tight = _h2(vacuum=(4.0, 4.0, 4.0))
     roomy = _h2(vacuum=(9.0, 9.0, 9.0))
-    tight_bundle = build_siesta_stage_bundle(tight, _publishable_cfg())
-    roomy_bundle = build_siesta_stage_bundle(roomy, _publishable_cfg())
+    tight_bundle = build_siesta_stage_bundle(tight, _publishable_cfg(),
+                                     _publishable())
+    roomy_bundle = build_siesta_stage_bundle(roomy, _publishable_cfg(),
+                                     _publishable())
 
     assert _lattices(tight_bundle), "no stage files produced"
     for lat in _lattices(tight_bundle):
@@ -119,6 +133,9 @@ def test_cell_rides_on_the_structure_no_separate_input():
 def test_no_enabled_stage_raises():
     """An empty/all-disabled ladder can't produce a bundle."""
     cfg = SiestaConfig(system_label="h2")
-    cfg = dc.replace(cfg, stages=[])
     with pytest.raises(ValueError):
-        build_siesta_stage_bundle(_h2(), cfg)
+        build_siesta_stage_bundle(_h2(), cfg, [])
+    with pytest.raises(ValueError):
+        build_siesta_stage_bundle(
+            _h2(), cfg,
+            [dc.replace(s, enabled=False) for s in _publishable()])

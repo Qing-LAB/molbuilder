@@ -544,25 +544,29 @@ def _make_pyscf_options_decorator():
                    "exclusive with --stages-json / --stage-strategy "
                    "(those drive the multi-stage pipeline; --stage is "
                    "for a single-stage one-shot fdf).")
-# --stages-json + --stage-strategy: power-user escape hatches for the
-# multi-stage SIESTA pipeline (cfg.stages).  The everyday UI is the
-# web form's stage-table widget; CLI users can paste a JSON payload
-# or pick a named preset.  Applied in order: --stages-json replaces
-# the entire ladder, then --stage-strategy overlays enable flags.
+# --stages-json + --stage-strategy: two ways of saying "here is the ladder".
+# Both build a stage list (molbuilder/task.py::Stage); neither writes to the
+# config, which carries no stage list at all (engines/stages.md § 1.1).
+# Applied in order: --stages-json replaces the entire ladder, then
+# --stage-strategy overlays enable flags positionally.
 # When either flag is set, cmd_fdf switches into multi-stage mode and
 # emits one ``<basename>_<stage>.fdf`` per enabled stage plus a
 # ``<basename>.run.sh`` bash runner instead of the single one-shot fdf.
 @click.option("--stages-json", "stages_json", default=None,
               metavar="JSON_OR_PATH",
-              help="override the per-stage convergence ladder with a "
-                   "JSON list-of-dicts (one entry per stage, keys = "
-                   "SiestaStageSpec fields: name / enabled / relax_type / "
-                   "relax_steps / relax_force_tol / relax_max_displ / "
-                   "on_nonconvergence).  Accepts a literal JSON string "
-                   "or a path to a .json file.  Unknown keys ignored.  "
-                   "Applied BEFORE --stage-strategy so you can combine "
-                   "them.  Sets multi-stage mode (one fdf per enabled "
-                   "stage + a .run.sh runner).")
+              help="override the ladder with a JSON list-of-dicts, one "
+                   "entry per stage.  A stage has exactly three keys: "
+                   "'name', 'enabled', and 'overrides' -- an object naming "
+                   "ANY field of the SIESTA schema and the value this "
+                   "stage uses for it, e.g. "
+                   "[{\"name\":\"coarse\",\"overrides\":{\"mesh_cutoff\":150}},"
+                   "{\"name\":\"tight\",\"overrides\":{\"mesh_cutoff\":300}}]. "
+                   "A field a stage does not name keeps the shared value. "
+                   "Accepts a literal JSON string or a path to a .json "
+                   "file.  An unknown key is refused by name.  Applied "
+                   "BEFORE --stage-strategy so you can combine them.  Sets "
+                   "multi-stage mode (one fdf per enabled stage + a "
+                   ".run.sh runner).")
 @click.option("--stage-strategy",
               type=click.Choice(["publishable", "loose-only", "vib-quality"]),
               default=None,
@@ -668,8 +672,8 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
         # the one-flag way to produce a coherent stage-N fdf.
         cfg = _dc.replace(cfg, stage=int(stage))
 
-    # Multi-stage branch: apply --stages-json + --stage-strategy to
-    # cfg.stages, then emit one fdf per enabled stage + a bash runner.
+    # Multi-stage branch: build the ladder from --stages-json /
+    # --stage-strategy, then emit one fdf per enabled stage + a bash runner.
     # cfg.system_label is force-aligned to ``Path(fdf_path).stem`` so
     # the per-stage filenames and the SystemLabel inside each fdf
     # never drift apart -- that's the contract the .XV auto-warmstart
@@ -751,13 +755,21 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     import os as _os
     from pathlib import Path as _Path
 
-    from .config.siesta import (
-        apply_siesta_stage_strategy,
-        siesta_stages_from_dicts,
-    )
     from .siesta.input import _struct_from_file
+    from .siesta.stages import default_siesta_stages
 
-    # --stages-json: replace cfg.stages wholesale.
+    # The ladder is no longer a field of the config (engines/stages.md § 1.1)
+    # -- it is the user's decision about what varies, and these two flags are
+    # two ways of saying it.  They build a stage list; P9 replaces the
+    # grammar with a description file, and until then nothing a user could
+    # express here has stopped being expressible.
+    #
+    # --stage-strategy alone: the shipped ladder with that preset's enable
+    # mask.  --stages-json alone or first: the caller's own ladder, with the
+    # preset then overlaying enable flags positionally, as before.
+    stages = default_siesta_stages(stage_strategy or "publishable")
+
+    # --stages-json: replace the ladder wholesale.
     if stages_json is not None:
         s = stages_json.strip()
         if s.startswith("["):
@@ -785,14 +797,25 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
                     param_hint="--stages-json",
                 )
         try:
-            cfg.stages = siesta_stages_from_dicts(payload)
+            from .task import stages_from_dicts
+            _varies, stages = stages_from_dicts(payload,
+                                                source="--stages-json")
+            stages = list(stages)
         except (TypeError, ValueError) as e:
             raise click.BadParameter(
                 f"--stages-json: {e}", param_hint="--stages-json")
-
-    # --stage-strategy: overlay enable flags onto cfg.stages.
-    if stage_strategy is not None:
-        cfg.stages = apply_siesta_stage_strategy(cfg.stages, stage_strategy)
+        # --stage-strategy after --stages-json still overlays enable flags,
+        # positionally, exactly as it did before.  The name is already known
+        # good: click.Choice gates the flag, and the call above would have
+        # raised for it.
+        if stage_strategy is not None:
+            from .config.siesta import SIESTA_STAGE_STRATEGY_PRESETS
+            enables = SIESTA_STAGE_STRATEGY_PRESETS[stage_strategy]
+            stages = [
+                _dc.replace(s, enabled=bool(enables[i])) if i < len(enables)
+                else s
+                for i, s in enumerate(stages)
+            ]
 
     fdf_p = _Path(fdf_path)
     out_dir = fdf_p.parent if str(fdf_p.parent) else _Path(".")
@@ -812,8 +835,28 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     # re-glue the sequence.  ``emit_jobset=False`` here -- the CLI builds its
     # own JobSet below from the pseudos actually present on disk (glob-fidelity
     # for legacy .psf/.vps), so the job-set.json stays byte-identical.
+    # Resolve the ladder FIRST, on its own, so the caller's typo leaves as a
+    # clean error naming the flag they typed rather than a traceback: a stage
+    # overriding a field the schema does not have is refused by name, and so
+    # is a ladder with nothing enabled or two stages sharing one.  (Found
+    # 2026-08-07 by the test that types `mesh_cutof`.)
+    #
+    # Deliberately NOT a try/except around the bundle call below: render_fdf
+    # raises ValueError for its own reasons -- a degenerate cell, say -- and
+    # blaming those on --stages-json would send the user to the wrong place.
+    # Only what the LADDER can get wrong is attributed to the ladder's flag.
+    from .siesta.input import _enabled_stages, effective_config
+    ladder_flag = "--stages-json" if stages_json is not None \
+        else "--stage-strategy"
+    try:
+        for _s in _enabled_stages(stages):
+            effective_config(cfg, _s)
+    except ValueError as e:
+        raise click.BadParameter(f"{ladder_flag}: {e}",
+                                 param_hint=ladder_flag)
+
     from .siesta.stages import build_siesta_stage_bundle
-    bundle = build_siesta_stage_bundle(struct, cfg, cell=cell,
+    bundle = build_siesta_stage_bundle(struct, cfg, stages, cell=cell,
                                        emit_jobset=False)
     fdfs = bundle.fdf_files
     runner = bundle.runner_text
@@ -860,7 +903,7 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
                     "--stage-resources must be a JSON object "
                     "{stage_name: {resource fields}}",
                     param_hint="--stage-resources")
-            valid = {s.name for s in cfg.stages if s.enabled}
+            valid = {s.name for s in stages if s.enabled}
             unknown = [k for k in spec if k not in valid]
             if unknown:
                 raise click.BadParameter(
@@ -887,8 +930,10 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
             res_map = {k: Resources.from_dict(v) for k, v in spec.items()}
             resources_for = res_map.get
         try:
-            js = stages_to_jobset(cfg, shared=pseudos,
-                                  resources_for=resources_for)
+            from .siesta.stages import DEFAULT_NONCONVERGENCE
+            js = stages_to_jobset(cfg, stages, shared=pseudos,
+                                  resources_for=resources_for,
+                                  on_nonconvergence=DEFAULT_NONCONVERGENCE)
         except ValueError as e:
             raise click.ClickException(f"--jobset: {e}")
         written.append(js.write(out_dir / "job-set.json"))
@@ -899,8 +944,13 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     # currently-running stage (per #542 / C1.4).
     if cfg.write_molwatch_log:
         from .trajectory_log import write_initial_preview
-        from .siesta.input import _enabled_stages
-        for stage in _enabled_stages(cfg):
+        for stage in _enabled_stages(stages):
+            # The preview's threshold line must be the one the stage's OWN
+            # deck carries, so it comes from the resolved config -- not from
+            # the stage, which only names the cells that differ.  A stage
+            # that does not override the tolerance shows the template's,
+            # which is exactly what its .fdf will say.
+            eff = effective_config(cfg, stage)
             mw_path = out_dir / f"{basename}-{stage.name}.molwatch.log"
             write_initial_preview(
                 struct, mw_path,
@@ -908,8 +958,8 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
                 engine="siesta",
                 stage_name=stage.name,
                 convergence_targets={
-                    "max_force_ev_per_ang": stage.relax_force_tol,
-                    "max_steps":            stage.relax_steps,
+                    "max_force_ev_per_ang": eff.relax_force_tol,
+                    "max_steps":            eff.relax_steps,
                 },
             )
             written.append(mw_path)

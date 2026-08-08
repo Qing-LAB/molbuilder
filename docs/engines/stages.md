@@ -68,13 +68,16 @@ field of an engine's config, because a stage is not a property of a calculation
 — it is a record of the user's intention to tune some parameters across a
 sequence of them.
 
-> **This is the sentence the shipped code contradicts.** `SiestaConfig.stages`
-> is a `List[SiestaStageSpec]`, so the engine config carries a list of stages,
-> and § 4's *"the effective config is an ordinary instance of the engine's
-> config dataclass"* cannot be true of it: resolving a stage would produce a
-> config that still contained the whole ladder. `SiestaStageSpec` is therefore
-> **removed**, not reshaped. `Task.stages` (`molbuilder/task.py`) is the model,
-> and it is engine-agnostic by construction.
+> **This was the sentence the shipped code contradicted, until 2026-08-07.**
+> `SiestaConfig.stages` was a `List[SiestaStageSpec]`, so the engine config
+> carried a list of stages, and § 4's *"the effective config is an ordinary
+> instance of the engine's config dataclass"* could not be true of it:
+> resolving a stage would produce a config that still contained the whole
+> ladder. `SiestaStageSpec` was therefore **removed**, not reshaped, along
+> with the field, its default factory, its validator and its parser.
+> `Task.stages` (`molbuilder/task.py`) is the model, and it is
+> engine-agnostic by construction. The shipped SIESTA ladder is built from
+> it by `siesta/stages.py::default_siesta_stages`.
 >
 > PySCF is a deliberate exception **for now**: its ladder runs inside one
 > process, so its stage list has a second life as engine behaviour. It is left
@@ -257,9 +260,16 @@ written twice: every tab already has a schema, so every tab gets this.
 > of `SiestaConfig`, so the form generator walked into it and answered the
 > **selection** question with the **catalogue** machinery — listing
 > `SiestaStageSpec`'s own fields as the columns a user may vary. That is why a
-> stage can vary exactly four things: they are the four somebody typed into a
-> Python class. A generator that reads an engine class to discover *what the
+> stage could vary exactly four things: they were the four somebody typed into
+> a Python class. A generator that reads an engine class to discover *what the
 > user is allowed to choose* has the arrow backwards.
+>
+> **Deleting the *field* is what closed it** (2026-08-07) — not deleting the
+> generator, which is doing its own job correctly. `SiestaConfig` now has no
+> `List[<dataclass>]` field at all, so the catalogue machinery has no route by
+> which it can reach a stage. `tests/test_siesta_stages.py` asserts the
+> *shape* and not merely the name, since a differently-named ladder would
+> reopen it just as wide.
 
 ---
 
@@ -303,8 +313,8 @@ Question 2 deliberately does **not** ask where the field ends up. A promoted
 field may become a deck line, a wrapper setting, or a scheduler request; sorting
 fields by destination is what produces stage types that grow without limit.
 
-Worked against the fields the shipped `SiestaStageSpec` carries — **the class
-is being deleted (§ 1.1), and the exercise is why**: sorting its eight fields by
+Worked against the fields the deleted `SiestaStageSpec` carried — **the class
+is gone (§ 1.1), and this exercise is why**: sorting its eight fields by
 these two questions leaves exactly two on the stage, which is the same answer as
 *a stage is not a property of a calculation*. The table is the derivation, not a
 description of something that will still exist.

@@ -20,7 +20,7 @@ import dataclasses
 import shutil
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -1710,16 +1710,37 @@ echo "[done] all enabled stages completed: ${{STAGES[*]}}"
 """
 
 
-def _enabled_stages(cfg: "SiestaConfig") -> List:
-    """Return cfg.stages filtered to enabled entries, or raise."""
-    stages = list(getattr(cfg, "stages", []) or [])
-    enabled = [s for s in stages if s.enabled]
+def _enabled_stages(stages) -> List:
+    """Return *stages* filtered to enabled entries, or raise.
+
+    ``stages`` is a list of :class:`molbuilder.task.Stage` — the ladder from
+    the **description**, not from the config.  An engine config carries no
+    stage list (``engines/stages.md`` § 1.1), so this takes the ladder as an
+    argument rather than reaching into a config for it.
+    """
+    enabled = [s for s in list(stages or []) if s.enabled]
     if not enabled:
         raise ValueError(
             "render_siesta_stage_fdfs / render_siesta_stages_runner: "
-            "cfg.stages has no enabled entries.  At least one stage "
+            "the stage list has no enabled entries.  At least one stage "
             "must be enabled."
         )
+    # Duplicate names are the fatal one: every per-stage artifact is keyed
+    # ``<label>_<name>.fdf``, so a collision silently overwrites a stage
+    # rather than failing.  ``read_task`` refuses this for a description
+    # read from disk; this is the same rule for a ladder built in Python,
+    # compared case-insensitively for the same reason (they are filenames).
+    seen: Dict[str, str] = {}
+    for s in enabled:
+        low = s.name.lower()
+        if low in seen:
+            raise ValueError(
+                f"two enabled stages named {s.name!r}"
+                + (f" and {seen[low]!r}" if seen[low] != s.name else "")
+                + " -- their per-stage files would collide, so one stage "
+                  "would silently overwrite the other "
+                  "(engines/stages.md 6.6)")
+        seen[low] = s.name
     return enabled
 
 
@@ -1778,46 +1799,56 @@ def effective_config(template: "SiestaConfig", stage) -> "SiestaConfig":
 
 def render_siesta_stage_fdfs(
     struct: Structure,
-    config: Optional["SiestaConfig"] = None,
+    template: "SiestaConfig",
+    stages,
     *,
     cell: Optional[np.ndarray] = None,
 ) -> Dict[str, str]:
-    """Render one .fdf per enabled stage in ``config.stages``.
+    """Render one .fdf per enabled stage of *stages*.
+
+    ``template`` is the science backbone — every field with a value — and
+    ``stages`` is the ladder from the description
+    (:class:`molbuilder.task.Stage`).  Each deck is
+    ``effective_config(template, stage)`` put through the ordinary
+    :func:`render_fdf`: **one object is resolved, validated and rendered**
+    (``engines/stages.md`` § 4 R1), and nothing below this line knows the
+    word "stage".
 
     Returns a mapping ``{filename: fdf_text}``.  All emitted files share
-    the same ``SystemLabel`` (== ``cfg.system_label``) so SIESTA's
+    the same ``SystemLabel`` (== ``template.system_label``) so SIESTA's
     auto-read of ``<SystemLabel>.XV`` warm-restarts each stage from
     the prior stage's final geometry without any file-copying step.
 
-    Filename convention: ``f"{cfg.system_label}_{stage.name}.fdf"``.
+    Filename convention: ``f"{template.system_label}_{stage.name}.fdf"``.
 
-    The LAST enabled stage's ``on_nonconvergence`` is intentionally
-    NOT mutated here -- this function only renders fdfs.  The runner
-    (:func:`render_siesta_stages_runner`) applies the
-    "last-stage-must-halt" policy.
+    Non-convergence policy is **not** consulted here — it is not a stage
+    property (§ 3) and this function only renders decks.  The runner
+    (:func:`render_siesta_stages_runner`) is the producer that owns it.
 
-    Raises ``ValueError`` if no stage is enabled.
+    Raises ``ValueError`` if no stage is enabled, or if a stage overrides a
+    field the shared schema does not have (refused **by name**, from
+    :func:`effective_config`).
     """
-    cfg = config or SiestaConfig()
-    enabled = _enabled_stages(cfg)
+    # No ``or SiestaConfig()`` fallback: the template IS the science, so
+    # quietly substituting an all-defaults one would emit a plausible deck
+    # that nobody asked for.  It was optional when this function read the
+    # ladder off the config; now that both arrive together, an absent
+    # template is a caller bug and says so.
+    cfg = template
     out: Dict[str, str] = {}
-    for stage in enabled:
-        staged_cfg = dataclasses.replace(
-            cfg,
-            relax_type=stage.relax_type,
-            relax_steps=stage.relax_steps,
-            relax_force_tol=stage.relax_force_tol,
-            relax_max_displ=stage.relax_max_displ,
-        )
+    for stage in _enabled_stages(stages):
+        staged_cfg = effective_config(cfg, stage)
         filename = f"{cfg.system_label}_{stage.name}.fdf"
         out[filename] = render_fdf(struct, staged_cfg, cell=cell)
     return out
 
 
 def render_siesta_stages_runner(
-    config: "SiestaConfig",
+    template: "SiestaConfig",
+    stages,
     *,
     siesta_cmd: str = "siesta",
+    on_nonconvergence: Optional[Mapping[str, str]] = None,
 ) -> str:
     """Render the bash runner that drives the per-stage SIESTA loop.
 
@@ -1828,27 +1859,35 @@ def render_siesta_stages_runner(
     command -- this emitter doesn't try to second-guess MPI / OpenMP /
     GPU flags.
 
-    The LAST enabled stage's ``on_nonconvergence`` is forced to
-    ``"halt"`` in the rendered runner regardless of what the
-    SiestaStageSpec carried.  Rationale: the final tier of any
-    ladder is the publishable / production result; falling through
-    silently is a bug.  Earlier stages keep their declared policy
-    (``proceed`` / ``continue`` / ``halt``).
+    ``on_nonconvergence`` is **this producer's own input**, keyed by stage
+    name — not a field of the stage and not a field of the shared schema.
+    ``engines/stages.md`` § 3: the policy's entire effect is the edge
+    between one attempt and the next, so it does not survive without a
+    runner to thread it, and putting it in the shared schema would let
+    ``overrides`` readmit it as a stage field through the back door.
+    A stage the mapping does not name gets ``"halt"``.
+
+    The LAST enabled stage's policy is forced to ``"halt"`` regardless of
+    what the mapping says.  Rationale: the final tier of any ladder is the
+    publishable / production result; falling through silently is a bug.
+    Earlier stages keep their supplied policy (``proceed`` / ``continue`` /
+    ``halt``).
 
     Raises ``ValueError`` if no stage is enabled.
     """
-    enabled = _enabled_stages(config)
+    enabled = _enabled_stages(stages)
+    policy_of = dict(on_nonconvergence or {})
     # Force-halt last enabled stage -- see docstring.
     last_idx = len(enabled) - 1
     policies = [
-        "halt" if i == last_idx else s.on_nonconvergence
+        "halt" if i == last_idx else policy_of.get(s.name, "halt")
         for i, s in enumerate(enabled)
     ]
-    # Stage names are constrained to ``[A-Za-z0-9_]+`` by the
-    # SiestaStageSpec name pattern, so they're shell-safe unquoted in
-    # the bash array literal.
+    # Stage names are constrained to ``[A-Za-z0-9_]+`` by ``task.py``'s
+    # STAGE_NAME_RE, so they're shell-safe unquoted in the bash array
+    # literal.
     return _STAGES_RUNNER_TEMPLATE.format(
-        basename=config.system_label,
+        basename=template.system_label,
         stages=" ".join(s.name for s in enabled),
         policies=" ".join(policies),
         n_stages=len(enabled),

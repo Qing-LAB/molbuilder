@@ -338,48 +338,68 @@ env, keep ELPA recent.
 A single CLI call can emit one `.fdf` per relaxation **stage** plus a
 `<basename>.run.sh` runner that walks the ladder — mirroring PySCF's staged-opt.
 
-> **This section describes what ships, and all of it is being replaced.**
-> `SiestaConfig.stages` and `SiestaStageSpec` are **removed**, not reshaped: a
-> stage is not a property of a calculation, so an engine config carries no stage
-> list. The list moves to `task.json` (`molbuilder/task.py`), and the four
-> relaxation values below stop being a privileged set — any field of the shared
-> schema can be varied, chosen by the user rather than fixed by a class.
-> [`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2 is the contract;
-> [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
-> P2 is the order. **PySCF's ladder is deliberately untouched** — it runs inside
-> one process, so its stage list is also engine behaviour.
+> **The ladder does not live in this engine's config, and that is the whole
+> shape of this section.** `SiestaConfig.stages` and `SiestaStageSpec` were
+> deleted on 2026-08-07 (P2 unit 2) — not reshaped. A stage is not a property
+> of a calculation, so an engine config carries no stage list; it is one
+> parameter set, and the ladder is the **user's** decision about what varies.
+> [`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2 is the contract.
+> **PySCF's ladder is deliberately untouched** — it runs inside one process,
+> so its stage list is also engine behaviour.
 
-- **Data model** `SiestaStageSpec` (`config/siesta.py:1235`): `name` (→ the
-  `<basename>_<name>.fdf` suffix), `enabled`, `relax_type` ∈ {CG, Broyden, FIRE}
-  (the geometry-relaxation algorithms — conjugate-gradient / quasi-Newton /
-  inertial), `relax_steps` (→ `MD.NumCGsteps`), `relax_force_tol` (→ `MD.MaxForceTol`),
-  `relax_max_displ` (→ `MD.MaxCGDispl`), `on_nonconvergence` ∈
-  {proceed, continue, halt}, `continue_retries`. `SiestaConfig.stages` is the
-  source of truth; `_default_siesta_stages()` (`:1315`) is the 3-stage ladder
-  (CG warm-up 0.05 → Broyden publishable 0.04 → Broyden crystal-tight 0.01 eV/Å —
-  the authoritative per-tier value table lives in
-  [`tuning.md`](?doc=engines/tuning.md) § 4).
-- **Presets** `SIESTA_STAGE_STRATEGY_PRESETS` (`:1414`): `publishable` (1+2),
-  `loose-only` (1), `vib-quality` (1+2+3). The same names + masks live in the PySCF
-  config and `form-schema.js`, kept in lock-step by
+- **Data model.** A stage is `molbuilder/task.py::Stage`: **`name`** (→ the
+  `<basename>_<name>.fdf` suffix), **`enabled`**, and **`overrides`** — a map
+  naming *any* field of `SiestaConfig` and the value this stage uses for it.
+  There is no privileged set: `mesh_cutoff`, `basis_size` and `kgrid` are as
+  varyable as the four relaxation knobs, which is what
+  [`stages.md`](?doc=engines/stages.md) § 1.2 means by *the catalogue is the
+  schema's, the selection is the user's*. A field a stage does not name keeps
+  the template's value (§ 6.2's subset rule).
+- **Resolution.** `siesta/input.py::effective_config(template, stage)` is the
+  **one** place a stage becomes a config: `dataclasses.replace(template,
+  **overrides)`, refusing an unknown field **by name**. What it returns is an
+  ordinary `SiestaConfig`, so the shipped validator and the shipped emitter
+  both take it unchanged (§ 4 R1).
+- **The shipped ladder.** `siesta/stages.py::default_siesta_stages(strategy)`
+  builds it: one stage per tier of `SIESTA_STAGE_PRESETS`, that tier's four
+  values as its `overrides`, enabled per `SIESTA_STAGE_STRATEGY_PRESETS` —
+  `publishable` (1+2), `loose-only` (1), `vib-quality` (1+2+3). CG warm-up
+  0.05 → Broyden publishable 0.04 → Broyden crystal-tight 0.01 eV/Å; the
+  authoritative per-tier value table is [`tuning.md`](?doc=engines/tuning.md)
+  § 4. Because `--stage {1,2,3}` overlays the *same* table, a one-shot tier-N
+  deck and stage N of the ladder cannot drift apart. The preset names + masks
+  also live in the PySCF config and `form-schema.js`, kept in lock-step by
   `tests/test_siesta_stage_strategy_presets_drift.py`.
-- **Validation** `validate_siesta_stages` (`:1346`, wired into `_validate_siesta`)
-  rejects an empty/no-enabled list, **duplicate stage names** (a collision would
-  silently overwrite a per-stage `.fdf`), and bad knob values — as clean `error`
-  Issues, not a render crash.
+- **Non-convergence policy** is **not** a stage field and not a shared-schema
+  field (§ 3): its entire effect is the edge between one attempt and the next,
+  so it is the producer's own input — `DEFAULT_NONCONVERGENCE` is the shipped
+  default for it. A stage the mapping does not name gets `halt`.
+- **Validation.** A stage is validated as a **resolved whole, never as a
+  diff** (§ 4 R2): the caller resolves it and runs the ordinary single-config
+  validator on the result, so there is no parallel copy of the knob rules to
+  drift. The two checks that are about the *ladder* rather than a member of it
+  — nothing enabled, and duplicate names (a collision would silently overwrite
+  a per-stage `.fdf`) — are refused by `_enabled_stages`.
 - **CLI** `molbuilder fdf JOB.fdf --stage-strategy publishable` emits
   `JOB_stage1.fdf`, `JOB_stage2.fdf`, and `JOB.run.sh`. `--stages-json` takes
-  **literal JSON or a file path** and replaces `cfg.stages` wholesale (combinable
-  with `--stage-strategy`: knob values from the JSON, enable mask from the preset);
-  both are **mutually exclusive** with the single-stage `--stage {1,2,3}` overlay.
-  The `SystemLabel` stays unsuffixed across stages so SIESTA's `.XV`/`.DM`/`.CG`
-  warm-restart files carry forward. The runner rewrites the final stage's policy to
-  `halt` (never overshoot). It runs each stage as a bare serial `siesta` invocation —
-  MPI-rank control (`MB_NP` / `SLURM_NTASKS` / `PBS_NP`) is a job-set / `runwrap`
-  concern, handled by `execution/`, not this direct-mode runner.
-- **Form widget.** `SiestaConfig.stages: List[SiestaStageSpec]` → the type-driven
-  schema helper emits a `{kind: "stage-table"}` automatically (no SIESTA-specific
-  form code).
+  **literal JSON or a file path** — a list of `{name, enabled, overrides}` —
+  and replaces the ladder wholesale (combinable with `--stage-strategy`: the
+  ladder from the JSON, the enable mask from the preset); both are **mutually
+  exclusive** with the single-stage `--stage {1,2,3}` overlay. The
+  `SystemLabel` stays unsuffixed across stages so SIESTA's `.XV`/`.DM`/`.CG`
+  warm-restart files carry forward. The runner rewrites the final stage's
+  policy to `halt` (never overshoot). It runs each stage as a bare serial
+  `siesta` invocation — MPI-rank control (`MB_NP` / `SLURM_NTASKS` / `PBS_NP`)
+  is a job-set / `runwrap` concern, handled by `execution/`, not this
+  direct-mode runner.
+- **Form widget.** There is none, and its absence is the fix. The form-schema
+  generator answers *what settings exist and how is each drawn*; when
+  `SiestaConfig` carried a `List[SiestaStageSpec]` the generator walked into
+  it and published that class's field names as the columns a user is allowed
+  to vary — answering the *selection* question with the *catalogue*
+  machinery, and the reason a stage could vary exactly four values. The
+  per-stage grid belongs to the shared Task Setup tab, fed by the catalogue
+  from here and the selection from `task.json`.
 
 Running the ladder as a real *job-set* on a scheduler (per-stage dirs,
 dependency chain, per-stage resources) is `execution/` territory

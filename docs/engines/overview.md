@@ -167,24 +167,33 @@ only *seeds* via the Stage-1 pre-fill — the form stays authoritative.
 
 ## 4. The shared staged-optimization contract
 
-Both the SIESTA and PySCF emitters ship a **three-stage relaxation ladder** with the
-same cross-engine shape (`config/siesta.py::SiestaStageSpec`,
-`config/pyscf.py::StageSpec`): a `name`, an `enabled` flag, engine-specific
-convergence knobs, and a shared **non-convergence policy**.
+Both the SIESTA and PySCF emitters ship a **three-stage relaxation ladder**, and
+they no longer share a shape.
 
-> **The two halves are separating** (2026-08-07). A stage is not a property of a
-> calculation, so an engine config carries no stage list: `SiestaStageSpec` and
-> `SiestaConfig.stages` are **removed**, and the SIESTA ladder moves to
-> `task.json` ([`engines/stages.md`](?doc=engines/stages.md) § 1.1). **PySCF
-> keeps its `StageSpec`** — its ladder runs inside one process, so the list is
-> also engine behaviour there. So this section describes a symmetry that is
-> ending on purpose, and the parity tests it motivated go with the SIESTA half.
+> **The two halves separated on 2026-08-07, on purpose.** A stage is not a
+> property of a calculation, so an engine config carries no stage list:
+> `SiestaStageSpec` and `SiestaConfig.stages` were **deleted**, and the SIESTA
+> ladder lives in `task.json` as `task.py::Stage` — `name`, `enabled`, and
+> `overrides`, which may name **any** field of the shared schema
+> ([`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2). **PySCF keeps its
+> `StageSpec`** (`config/pyscf.py`): its ladder runs inside one process, so
+> there the list is also engine behaviour. The parity tests that policed the
+> old symmetry went with the SIESTA half.
+>
+> What the two still share is what this section is actually about — **the tier
+> values**, below. That was always the part worth keeping aligned; the
+> dataclass shape was not.
 
 - **The tier *values*** (algorithm, steps, force / `gmax`, per stage) are owned by
   **[`tuning.md`](?doc=engines/tuning.md) § 4** — the single value table both emitters
   and this contract defer to.
-- **The non-convergence policy** is shared and defined here. When a stage exhausts its
-  step budget without converging:
+- **The non-convergence policy** is shared and defined here — but it is **not a
+  stage field and not a shared-schema field** for SIESTA
+  ([`stages.md`](?doc=engines/stages.md) § 3): its entire effect is the edge
+  between one attempt and the next, so it is the JobSet / runner producer's own
+  input. PySCF's in-script loop still carries it per stage, because there the
+  loop *is* the scheduler. When a stage exhausts its step budget without
+  converging:
   - **`proceed`** — hand the partial geometry to the next stage (loose warm-ups).
   - **`continue`** — re-enter the engine for up to `continue_retries` more batches
     (total budget = the stage's step count × `(1 + continue_retries)`), then halt.

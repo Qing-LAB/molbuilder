@@ -1253,16 +1253,33 @@ table when it matters.
 | P1 | `_BUNDLE_DESCRIPTORS` | ✅ | `("task.json", "job-set.json", "bench-manifest.json")` |
 | P1 | `persist` tolerates a minor bump | ✅ | `schema_major("…@1.4") == "1"` |
 | **P2** | 1 · pin resolution | ✅ | `tests/test_stage_resolution.py` — 7 pass, 1 `xfail` (the gate) |
-| P2 | 2 · `SiestaConfig.stages` deleted | ❌ | still a field |
-| P2 | 2 · `SiestaStageSpec` deleted | ❌ | still in `config/siesta.py` |
-| P2 | 2 · the stage-table emitter deleted | ❌ | `_stagespec_to_field_schemas` still in `_shared.py` |
-| P2 | 2 · CLI stage flags gone | ❌ | `--stage-strategy`, `--stages-json`, `--stage-resources` all still registered |
-| P2 | 2b · `restart` is a shared field | ❌ | not a field of `SiestaConfig` |
-| P2 | 3 · `Resources.continue_retries` | ❌ | not a field of `Resources` |
+| P2 | 2 · `SiestaConfig.stages` deleted | ✅ | not a field; and no field of it is a `List[<dataclass>]`, so the form generator cannot meet a stage by any name |
+| P2 | 2 · `SiestaStageSpec` deleted | ✅ | gone, with `_default_siesta_stages`, `validate_siesta_stages`, `siesta_stages_from_dicts`, `apply_siesta_stage_strategy` |
+| P2 | 2 · the SIESTA stage-table gone | ✅ | unreachable — `dataclass_to_form_schema(SiestaConfig)` emits no `stage-table` kind. **`_stagespec_to_field_schemas` itself stays**: it is PySCF's now (see the correction below) |
+| P2 | 2 · CLI stage flags **repointed, not deleted** | ✅ | all four still registered, each building a `Stage` list; P9 retires the grammar |
+| P2 | 2 · the ladder producers take it as an argument | ✅ | `render_siesta_stage_fdfs`, `render_siesta_stages_runner`, `stages_to_jobset`, `build_siesta_stage_bundle` |
+| P2 | 2 · the shipped ladder has a home | ✅ | `siesta/stages.py::default_siesta_stages(strategy)` — presets in, `Stage` list out |
+| P2 | 3 · `Resources.continue_retries` | ✅ | a field of `Resources` **and** of `SiestaConfig`; `stages_to_jobset` carries it |
+| P2 | 4 · `on_nonconvergence` is the producer's input | ✅ | not a field of `Stage` and not of `SiestaConfig`; `DEFAULT_NONCONVERGENCE` is the shipped default |
 | P2 | 5 · `effective_config` | ✅ | `siesta/input.py`; a stage may name **any** schema field, unknown ones refused by name |
 | P2 | 2b · `restart` is a shared field | ✅ | `SiestaConfig.restart`, `clean` \| `continue` |
 | P2 | 2c · `relax_type` retagged | ✅ | `profile` → `stage` |
+| P2 | **M2 the gate** | ✅ | two stages render decks with `MeshCutoff 150` / `300` — through `effective_config`, through the CLI's `--stages-json`, and asserted in `tests/test_stage_resolution.py` (no longer `xfail`) |
+| P2 | mechanism count | ✅ | **11 → 10**: mechanism 5 retired, `tests/test_stage_vocabulary.py` |
 | P2 | 4a · template → config | 🔓 | **unblocked 2026-08-07** — the format is `job-contracts.md § 3.7`: marked item blocks naming their field, so `prep` scans rather than parses |
+| P2 | 6 · validation across stages | ⬜ | a per-stage finding carries the stage in `where`; a ladder-that-loosens finding carries none |
+| P2 | 7 · the preflight's four refusals | ◐ | two land (`effective_config` names an unknown field; `_enabled_stages` refuses a nameless / duplicate / empty ladder). The engine-has-a-generator and fingerprint-matches rows still have no reader |
+| P2 | 8 · § 6.6a's identical-stage warning | ⬜ | — |
+
+> **One plan row was wrong, and the code is what corrected it.**
+> `_stagespec_to_field_schemas` is listed under *deleted in P2*, and it is
+> **kept** — because three paragraphs above, the same phase says *PySCF is
+> untouched*, and that emitter is the Python end of PySCF's `stage-table`.
+> Both statements were written the same day; the later, user-given one wins.
+> What the phase actually deletes is the SIESTA *route into* it — the
+> `List[SiestaStageSpec]` field — which is what made the generator publish a
+> class's field names as the columns a user may vary. The function is now
+> PySCF's, not a shared mechanism, and says so in a comment at its call site.
 
 ### ~~⛔ The template has no producer, and cannot be read back~~ — resolved 2026-08-07
 
@@ -1327,12 +1344,26 @@ are that command's output on **2026-08-07**, kept so a later review can diff.
 
 | Measure | 2026-08-07 | Target | Phase |
 |---|--:|--:|---|
-| ways to say "stage" | 10 → **11 after P1** | the agreed set | **P2** (was P5 — see P2's *Subtracts*) |
+| ways to say "stage" | 10 → **11 after P1** → **10 after P2** | the agreed set | **P2** (was P5 — see P2's *Subtracts*) |
 | emitted names keyed on a position | 2 | 0 | P4 |
 | generated scripts invoking an engine directly | 1 | 0 | P5 |
 | producers that chain stages | 2 | 0 | P7 |
 | checkpoint invariants with an assertion | 15 / 22 | 22 / 22 | P8 |
-| readers of a stage description | 2 formats | 1 | **P2** |
+| readers of a stage description | 2 formats → **1 for the CLI** | 1 | **P2** (browser: P10) |
+
+> **Row 1 went up and then down on the same day, and both moves were the
+> plan working.** P1 added `task.py::Stage` — mechanism 11 — without retiring
+> anything, which the plan calls *the one phase that deliberately raises the
+> count*. P2 unit 2 then retired mechanism 5 (`SiestaStageSpec` and its
+> helpers), the first subtraction of the program. **The number falling is what
+> makes the deletion a fact rather than a claim**, and it falls because three
+> ledger rows were deleted, not because a constant was edited.
+>
+> **Row 6 is half-done and says so.** `--stages-json` now goes through
+> `task.py::stages_from_dicts` — the one codec, with the one refusal rule — so
+> the CLI has stopped parsing a stage inline. The browser still assembles
+> `params` in JavaScript; that is P10's, and until it lands the honest count is
+> "one reader plus one surface that does not use it".
 
 > **Row 2 replaced *"filename conventions for a stage: 3 → 1"*, and the two say
 > the same thing from opposite ends.** § 8b counted **conventions** and found

@@ -83,6 +83,14 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             gres=r.gres,
             mem=r.mem,
             exclusive=r.exclusive,
+            # The warm-retry budget, which becomes no sbatch flag: the
+            # wrapper bakes it into its own retry loop at install time
+            # (running-a-job.md § 3.5).  This line is the second half of the
+            # road job-contracts.md § 6.2 describes -- without it the field
+            # was carried the whole way here and then dropped, which is why
+            # `job-system.md § 4.1` recorded the SIESTA ladder as never
+            # having implemented `continue` (2026-08-07, P2 unit 3).
+            continue_retries=r.continue_retries,
             # localize carried restart files at run time so this job's writes
             # never clobber the producer's dir (staged-execution.md § 4).
             carry_in=[c.pattern for c in job.carry],

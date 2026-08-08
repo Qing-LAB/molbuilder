@@ -445,13 +445,16 @@ flowchart LR
 
 ### 4.1 The SIESTA staged ladder (`stages_to_jobset`)
 
-`molbuilder/siesta/stages.py::stages_to_jobset(cfg)` turns a `SiestaConfig` that
-has stages into a **ladder** — one job per enabled stage, script
-`<label>_<stage>.fdf`. Three things are *derived* from the config, and each
-encodes a design decision:
+`molbuilder/siesta/stages.py::stages_to_jobset(cfg, stages)` turns a **template**
+(one ordinary `SiestaConfig`) plus a **ladder** (a list of `task.py::Stage`, from
+`task.json`) into a **ladder** JobSet — one job per enabled stage, script
+`<label>_<stage>.fdf`. An engine config carries no stage list, so the ladder is
+an argument rather than a field ([`engines/stages.md`](?doc=engines/stages.md)
+§ 1.1). Three things are *derived*, and each encodes a design decision:
 
-- **The dependency edge comes from each stage's non-convergence policy.** A stage
-  declares what to do if it hits its step cap without converging:
+- **The dependency edge comes from the non-convergence policy** the producer was
+  given for that stage. The policy says what to do if a stage hits its step cap
+  without converging:
   `proceed` (go on anyway), `halt` (stop the chain), or `continue` (intended:
   retry the stage up to `continue_retries` times before giving up). These become
   the scheduler edge: `proceed → afterany` (next stage runs regardless),
@@ -465,7 +468,9 @@ encodes a design decision:
   is carried only if the config saves it. `.CG` (conjugate-gradient optimizer
   state) is carried **only when consecutive stages use the same relaxation
   method** — a CG state is meaningless to a Broyden stage, so blindly carrying it
-  would corrupt the restart.
+  would corrupt the restart. The comparison is over each stage's **resolved**
+  config, so a stage that does not override the optimizer is correctly read as
+  having the template's rather than as having none.
 - **Resources are per-stage**, defaulting to inherit the config's ranks/threads
   and otherwise resolved at submit — so a coarse stage and a tight stage can be
   sized differently.
@@ -481,22 +486,35 @@ scientific rationale live in [`engines/tuning.md`](?doc=engines/tuning.md)):
 
 The three **strategy presets** flip only the enable flags:
 `loose-only` = (✅, —, —), `publishable` = (✅, ✅, —),
-`vib-quality` = (✅, ✅, ✅). The `continue` policy's per-stage retry budget
-(`continue_retries`, 1–5) is honored in two places today: the **PySCF**
-in-script ladder (the `not a JobSet` note under § 4) loops inside the
-generated Python, and a **single SIESTA run** whose wrapper was installed
-with a retry budget auto-retries itself with `--continue` on SCF-abort or
-geometry-step-cap (see `?doc=execution/running-a-job.md` § 3.5; today only
-the web install-wrapper door passes the budget). The **SIESTA staged
-runner/JobSet edge** still does *not* implement it — a `continue` stage
-takes the same `afterok` edge as `halt` and each stage is submitted once
-(a code follow-up: the ladder would need the budget threaded through
-`stages_to_jobset` → `jobset/prep`).
+`vib-quality` = (✅, ✅, ✅).
+
+**The warm-retry budget now travels the whole way** (fixed 2026-08-07).
+`continue_retries` is an ordinary field of the shared schema; `stages_to_jobset`
+carries it into `jobset.Resources` — the same road `mpi_np` and `omp_threads`
+ride — and `jobset/prep` hands it to `write_run_wrapper`, which bakes it into
+the wrapper's own retry loop (`?doc=execution/running-a-job.md` § 3.5). It
+becomes **no `sbatch` flag**, which is why it is the one row of
+`job-contracts.md § 6.2`'s translation table with no SLURM name. Before that
+last hop existed the field validated everywhere and was **silently dropped at
+prep**, so a `continue` stage was indistinguishable from a `halt` one — this
+paragraph used to record that as a standing gap.
+
+The dependency edge is a separate question and unchanged: a `continue` stage
+still takes the same `afterok` edge as `halt`, because its terminal failure
+mode *is* halt. The retries happen inside the one job the scheduler ran.
+
+> **Where the policy lives, since it is not where it looks.** `on_nonconvergence`
+> is **not** a field of a stage and not a field of the shared schema
+> ([`engines/stages.md`](?doc=engines/stages.md) § 3) — its entire effect is
+> this edge, so it is the producer's own input, passed to `stages_to_jobset`
+> keyed by stage name. `siesta/stages.py::DEFAULT_NONCONVERGENCE` is the
+> shipped default, and it is what the table above tabulates. A stage the
+> mapping does not name gets `halt`.
 
 There is also a pure, side-effect-free **`build_siesta_stage_bundle(struct,
-cfg)`** that returns a ready-to-write stage bundle by reusing the stage `.fdf`
-renderers plus `stages_to_jobset`. It exists as the clean seam a future **web**
-Build producer will call (§ 8).
+cfg, stages)`** that returns a ready-to-write stage bundle by reusing the stage
+`.fdf` renderers plus `stages_to_jobset`. It exists as the clean seam a future
+**web** Build producer will call (§ 8).
 
 ### 4.2 The benchmark sweep (`sweep_to_jobset`)
 

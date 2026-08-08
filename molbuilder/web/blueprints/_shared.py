@@ -835,11 +835,25 @@ def _field_to_schema(f: dataclasses.Field,
         out["kind"] = "comma-floats"
     elif (origin in (list, tuple) and args
           and dataclasses.is_dataclass(args[0])):
-        # List[<dataclass>] — PySCFConfig.stages is the first such
-        # case (per-stage rows for the in-script staged optimization,
-        # task #534).  Emit ``kind: "stage-table"`` plus the per-row
-        # field shape so the JS renderer (commit 3) can lay out a
-        # table without knowing the dataclass at compile time.
+        # List[<dataclass>] — ``PySCFConfig.stages`` is now the ONLY such
+        # case.  Emit ``kind: "stage-table"`` plus the per-row field shape
+        # so the JS renderer can lay out a table without knowing the
+        # dataclass at compile time.
+        #
+        # ⚠ 2026-08-07 (P2 unit 2): this branch is no longer reachable from
+        # ``SiestaConfig``, and that is the fix, not a coincidence.  Its
+        # stage list was a field of the config, so this walked into it and
+        # published ``SiestaStageSpec``'s field names as the columns a user
+        # is allowed to vary — answering *which settings may vary* with the
+        # *what settings exist* machinery (engines/stages.md § 1.2, and the
+        # reason a SIESTA stage could vary exactly four values).  Deleting
+        # the field is what closed it.
+        #
+        # PySCF keeps its ``stages`` field deliberately (user, same day):
+        # its ladder runs inside ONE process, so its stage list has a
+        # second life as engine behaviour.  This emitter therefore stays
+        # until the SIESTA path proves out — it is PySCF's now, not a
+        # shared mechanism.
         elem_cls = args[0]
         out["kind"] = "stage-table"
         out["stage_fields"] = _stagespec_to_field_schemas(elem_cls)

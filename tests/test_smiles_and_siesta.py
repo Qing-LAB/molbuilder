@@ -942,7 +942,7 @@ def test_savehs_keyword_emitted_always():
 #  Minimum-viable per-stage defaults so the user can generate           #
 #  stage1.fdf / stage2.fdf / stage3.fdf in one flag instead of four     #
 #  separate --relax-* overrides.  The CLI overlay is the precursor to  #
-#  #542 (full SIESTA staged-opt with per-stage SiestaStageSpec).        #
+#  the staged-opt ladder, which lives in task.json (not the config).    #
 # --------------------------------------------------------------------- #
 
 

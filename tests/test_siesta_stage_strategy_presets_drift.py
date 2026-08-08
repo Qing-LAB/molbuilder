@@ -8,7 +8,7 @@ Three sources carry the same data:
     stage-table widget)
   * ``molbuilder/config/siesta.py``
       SIESTA_STAGE_STRATEGY_PRESETS = { ... }
-    (the SIESTA-side ``apply_siesta_stage_strategy`` driver)
+    (read by ``siesta/stages.py::default_siesta_stages``)
   * ``molbuilder/config/pyscf.py``
       STAGE_STRATEGY_PRESETS = { ... }
     (the PySCF-side ``apply_stage_strategy`` driver)

@@ -1,23 +1,22 @@
 """Resolution — what a staged render actually uses when two homes disagree.
 
-Contract: ``docs/engines/stages.md`` § 4 — *effective config = ``base`` ⊕ that
-stage's ``overrides``*, one object validated **and** rendered (R1), validated as
-a resolved whole and never as a diff (R2).
+Contract: ``docs/engines/stages.md`` § 4 — *effective config = the template's
+values ⊕ that stage's ``overrides``*, one object validated **and** rendered
+(R1), validated as a resolved whole and never as a diff (R2).
 
-P2 unit 1 of ``docs/execution/staged-runs-implementation-plan.md``: **pin
-today's behaviour before changing anything.**  Four relaxation values live in
-two places right now — on ``SiestaConfig`` and again on ``SiestaStageSpec`` —
-and ``render_siesta_stage_fdfs`` resolves the collision with a
-``dataclasses.replace``.  Whoever is relying on a staged ladder has already
-built on whichever one wins, so it is written down here before the mechanism
-under it is replaced.
+P2 unit 1 of ``docs/execution/staged-runs-implementation-plan.md`` pinned
+today's behaviour **before** changing anything: four relaxation values lived
+in two places — on ``SiestaConfig`` and again on ``SiestaStageSpec`` — and
+``render_siesta_stage_fdfs`` resolved the collision with a hard-coded
+``dataclasses.replace``.  Whoever relied on a staged ladder had built on
+whichever one won, so it was written down before the mechanism was replaced.
 
-**These assertions are meant to survive P2, not to be retired by it.**  The
-*mechanism* changes — four hard-coded fields become an arbitrary ``overrides``
-map — but the *rule* they pin is the one § 4 keeps: the stage's value beats the
-shared one, and a field the stage says nothing about keeps the shared value.
-If a P2 commit has to weaken one of these, that is a design change and belongs
-in the contract first.
+**Unit 2 replaced that mechanism, and these assertions survived it** — which
+is what unit 1's note said they were for.  The *rule* is the one § 4 keeps:
+the stage's value beats the shared one, and a field the stage says nothing
+about keeps the shared value.  What changed is the *reach*: a stage names any
+field of the shared schema through ``overrides``, instead of the privileged
+four a deleted dataclass happened to carry.
 """
 from __future__ import annotations
 
@@ -26,9 +25,10 @@ import dataclasses
 import numpy as np
 import pytest
 
-from molbuilder.config.siesta import SiestaConfig, SiestaStageSpec
+from molbuilder.config.siesta import SiestaConfig
 from molbuilder.siesta.input import render_siesta_stage_fdfs
 from molbuilder.structure import Structure
+from molbuilder.task import Stage
 
 
 @pytest.fixture
@@ -40,24 +40,29 @@ def h2() -> Structure:
     )
 
 
-def _two_stages(**shared) -> SiestaConfig:
-    """A config whose SHARED values disagree with both stages' on purpose."""
-    return SiestaConfig(
-        system_label="JOB",
-        stages=[
-            SiestaStageSpec(name="coarse", enabled=True, relax_type="CG",
-                            relax_steps=100, relax_force_tol=0.05,
-                            relax_max_displ=0.30),
-            SiestaStageSpec(name="tight", enabled=True, relax_type="Broyden",
-                            relax_steps=900, relax_force_tol=0.01,
-                            relax_max_displ=0.10),
-        ],
-        **shared,
-    )
+#: The two-stage ladder, as the DESCRIPTION carries it.  It is not a field of
+#: the config below and never travels with it (engines/stages.md § 1.1).
+def _ladder() -> list:
+    return [
+        Stage(name="coarse", overrides={
+            "relax_type": "CG", "relax_steps": 100,
+            "relax_force_tol": 0.05, "relax_max_displ": 0.30}),
+        Stage(name="tight", overrides={
+            "relax_type": "Broyden", "relax_steps": 900,
+            "relax_force_tol": 0.01, "relax_max_displ": 0.10}),
+    ]
 
 
-def _deck(h2: Structure, cfg: SiestaConfig, stage: str) -> str:
-    return render_siesta_stage_fdfs(h2, cfg)[f"{cfg.system_label}_{stage}.fdf"]
+def _tpl(**shared) -> SiestaConfig:
+    """A template whose SHARED values disagree with both stages on purpose."""
+    return SiestaConfig(system_label="JOB", **shared)
+
+
+def _deck(h2: Structure, cfg: SiestaConfig, stage: str,
+          stages=None) -> str:
+    return render_siesta_stage_fdfs(
+        h2, cfg, stages if stages is not None else _ladder(),
+    )[f"{cfg.system_label}_{stage}.fdf"]
 
 
 def _value(deck: str, key: str) -> str:
@@ -69,7 +74,7 @@ def _value(deck: str, key: str) -> str:
 
 
 # --------------------------------------------------------------------- #
-#  The stage wins over the shared config                                #
+#  The stage wins over the template                                     #
 # --------------------------------------------------------------------- #
 
 def _same(emitted: str, expected) -> bool:
@@ -90,76 +95,121 @@ def _same(emitted: str, expected) -> bool:
     ("MD.MaxCGDispl",  0.30,   0.10),
 ])
 def test_the_stages_value_beats_the_shared_one(h2, engine_key, coarse, tight):
-    """The four duplicated fields: each stage's deck carries ITS value, not
-    the shared config's, even though the shared config sets all four to
-    something different from both."""
-    cfg = _two_stages(relax_type="FIRE", relax_steps=1,
-                      relax_force_tol=0.99, relax_max_displ=0.99)
+    """The four values that used to live in two places: each stage's deck
+    carries ITS value, not the template's, even though the template sets all
+    four to something different from both."""
+    cfg = _tpl(relax_type="FIRE", relax_steps=1,
+                    relax_force_tol=0.99, relax_max_displ=0.99)
     assert _same(_value(_deck(h2, cfg, "coarse"), engine_key), coarse)
     assert _same(_value(_deck(h2, cfg, "tight"), engine_key), tight)
 
 
-def test_two_stages_render_different_decks_from_one_config(h2):
+def test_two_stages_render_different_decks_from_one_tpl(h2):
     """The point of a ladder, asserted directly rather than field by field."""
-    cfg = _two_stages()
+    cfg = _tpl()
     assert _deck(h2, cfg, "coarse") != _deck(h2, cfg, "tight")
 
 
 # --------------------------------------------------------------------- #
-#  A field the stage says nothing about keeps the shared value          #
+#  A field the stage says nothing about keeps the template's value      #
 # --------------------------------------------------------------------- #
 
 def test_a_field_no_stage_carries_keeps_the_shared_value(h2):
-    """``mesh_cutoff`` is not on the stage type, so both decks take it from
-    the shared config.
+    """``mesh_cutoff`` is in neither stage's ``overrides``, so both decks
+    take it from the template.
 
-    This is the *correct* half of today's behaviour and § 4 keeps it: a stage
-    overrides what it names and inherits everything else.  What is missing is
-    the other half — there is currently **no way** for a stage to name it,
-    which is what M2 exists to fix and what
-    ``test_stage_vocabulary.py`` counts.  So this test stays after P2; the
-    one that changes is the *reach*, not the inheritance.
-    """
-    cfg = _two_stages(mesh_cutoff=275)
+    § 4 keeps this: a stage overrides what it names and inherits everything
+    else.  It is § 6.2's subset rule seen from the render side — the quiet
+    cell in the table."""
+    cfg = _tpl(mesh_cutoff=275)
     for stage in ("coarse", "tight"):
         assert _value(_deck(h2, cfg, stage), "MeshCutoff") == "275"
 
 
-def test_the_shared_config_is_not_mutated_by_rendering(h2):
+def test_the_template_is_not_mutated_by_rendering(h2):
     """R1's precondition: rendering a ladder resolves into a NEW object each
-    time.  If the shared config were mutated in place, stage 2 would render
+    time.  If the template were mutated in place, stage 2 would render
     against stage 1's values and the ladder would silently depend on order."""
-    cfg = _two_stages(relax_type="FIRE", relax_steps=1,
-                      relax_force_tol=0.99, relax_max_displ=0.99)
+    cfg = _tpl(relax_type="FIRE", relax_steps=1,
+                    relax_force_tol=0.99, relax_max_displ=0.99)
     before = dataclasses.asdict(cfg)
-    render_siesta_stage_fdfs(h2, cfg)
+    render_siesta_stage_fdfs(h2, cfg, _ladder())
     assert dataclasses.asdict(cfg) == before
 
 
 # --------------------------------------------------------------------- #
-#  What the ladder cannot express today -- the gate M2 opens            #
+#  The gate M2 opened -- no longer xfail                                #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.xfail(strict=True, reason=(
-    "M2 -- a stage can only vary the four values hard-coded into "
-    "render_siesta_stage_fdfs's dataclasses.replace.  `overrides` is what "
-    "lets a stage name any field of the shared schema; until it lands, "
-    "mesh_cutoff cannot differ between stages by any route."))
 def test_a_stage_can_vary_a_parameter_the_stage_type_never_carried(h2):
-    """**The gate the whole design named.**
+    """**The gate the whole design named**, and it is green.
 
     `staged-runs-architecture.md § 8` puts this between its steps 2 and 3:
-    the backend must be able to render a stage that overrides a parameter the
-    stage type never carried, *before any of it is drawn*.  Draw first and the
-    UI gets designed around what the model happens to allow.
+    the backend must be able to render a stage that overrides a parameter
+    the stage type never carried, *before any of it is drawn*.  Draw first
+    and the UI gets designed around what the model happens to allow.
 
-    Written now, red, so M2 has something to turn green rather than a
-    description of something to turn green.
-    """
-    cfg = _two_stages(mesh_cutoff=150)
-    cfg.stages[1].overrides = {"mesh_cutoff": 300}      # type: ignore[attr-defined]
-    assert _value(_deck(h2, cfg, "coarse"), "MeshCutoff") == "150"
-    assert _value(_deck(h2, cfg, "tight"), "MeshCutoff") == "300"
+    It was written red on 2026-08-07 so P2 would have something to turn
+    green rather than a description of something to turn green.  ``mesh_cutoff``
+    was unreachable from a stage by ANY route; it is now an ordinary field of
+    the shared schema like every other."""
+    cfg = _tpl(mesh_cutoff=150)
+    ladder = [
+        Stage(name="coarse", overrides={"mesh_cutoff": 150}),
+        Stage(name="tight", overrides={"mesh_cutoff": 300}),
+    ]
+    assert _value(_deck(h2, cfg, "coarse", ladder), "MeshCutoff") == "150"
+    assert _value(_deck(h2, cfg, "tight", ladder), "MeshCutoff") == "300"
+
+
+def test_a_stage_may_vary_a_field_from_any_section(h2):
+    """Not a privileged four and not a privileged section either: the gate
+    is about REACH, so assert it across the form's axes -- basis, grid,
+    SCF -- not only the one parameter the plan named."""
+    cfg = _tpl(basis_size="DZP", dm_tolerance=1e-4)
+    ladder = [
+        Stage(name="coarse", overrides={"basis_size": "SZ",
+                                        "dm_tolerance": 1e-3,
+                                        "kgrid": (1, 1, 1)}),
+        Stage(name="tight", overrides={"basis_size": "TZP",
+                                       "dm_tolerance": 1e-5,
+                                       "kgrid": (4, 4, 1)}),
+    ]
+    coarse = _deck(h2, cfg, "coarse", ladder)
+    tight = _deck(h2, cfg, "tight", ladder)
+    assert _value(coarse, "PAO.BasisSize") == "SZ"
+    assert _value(tight, "PAO.BasisSize") == "TZP"
+    assert float(_value(coarse, "DM.Tolerance")) == pytest.approx(1e-3)
+    assert float(_value(tight, "DM.Tolerance")) == pytest.approx(1e-5)
+
+
+# --------------------------------------------------------------------- #
+#  What a ladder must refuse                                            #
+# --------------------------------------------------------------------- #
+
+def test_a_ladder_with_nothing_enabled_is_refused(h2):
+    with pytest.raises(ValueError, match="enabled"):
+        render_siesta_stage_fdfs(h2, _tpl(), [
+            Stage(name="coarse", enabled=False),
+            Stage(name="tight", enabled=False)])
+
+
+def test_two_enabled_stages_with_one_name_are_refused(h2):
+    """Every per-stage artifact is keyed ``<label>_<name>.fdf``, so a name
+    collision does not fail -- it silently overwrites a stage.  The check
+    ``validate_siesta_stages`` used to make lives here now, at the producer
+    that owns the filename convention."""
+    with pytest.raises(ValueError, match="collide|silently"):
+        render_siesta_stage_fdfs(h2, _tpl(), [
+            Stage(name="tight", overrides={"mesh_cutoff": 150}),
+            Stage(name="Tight", overrides={"mesh_cutoff": 300})])
+
+
+def test_a_stage_name_that_is_not_a_filename_is_refused():
+    """The rule holds for the OBJECT, not only for a description parsed
+    from disk: a stage name becomes a filename and an unquoted bash word."""
+    with pytest.raises(ValueError, match=r"\[A-Za-z0-9_\]"):
+        Stage(name="rm -rf /")
 
 
 # --------------------------------------------------------------------- #
@@ -177,7 +227,6 @@ def test_a_stage_can_vary_a_parameter_the_stage_type_never_carried(h2):
 # § 6.2's subset rule decides the fallback: a stage may omit a varied key,
 # and omitting it means "use the template's value".
 
-from molbuilder.task import Stage                                   # noqa: E402
 from molbuilder.siesta.input import effective_config                # noqa: E402
 
 

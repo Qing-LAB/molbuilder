@@ -44,8 +44,10 @@ what they probably meant.
 """
 from __future__ import annotations
 
+import contextvars
 import difflib
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Mapping, NoReturn, Optional, Tuple
 
@@ -107,6 +109,20 @@ class Stage:
     name: str
     enabled: bool = True
     overrides: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """The name rule holds for the object too, not only for the file.
+
+        ``_stage_from_obj`` checks this when parsing, but a producer handed
+        hand-built stages would otherwise put an arbitrary string into a
+        filename (``<label>_<name>.fdf``) and into an unquoted bash array
+        literal in the runner.  The rule is the same one, read from the same
+        pattern -- not a second copy of it."""
+        if not isinstance(self.name, str) or not STAGE_NAME_RE.match(self.name):
+            raise ValueError(
+                f"stage name {self.name!r} must match [A-Za-z0-9_]+ -- it "
+                "becomes a filename and a shell word "
+                "(engines/stages.md 6.6)")
 
 
 @dataclass(frozen=True)
@@ -170,8 +186,32 @@ class Task:
 #  Refusals                                                             #
 # --------------------------------------------------------------------- #
 
+#: What a refusal calls the thing it is refusing.  ``task.json`` for the file
+#: this module owns, but the same codec also parses a bare ladder handed in by
+#: a surface (``stages_from_dicts``) -- and telling someone who typed
+#: ``--stages-json`` that their mistake is in ``task.json`` sends them to look
+#: at a file they did not write.  Set for the duration of such a parse.
+#:
+#: A ContextVar rather than a plain global because the web layer serves
+#: requests concurrently: two parses in flight would otherwise swap each
+#: other's label and blame the wrong input.
+_SOURCE: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "task_refusal_source", default=FILENAME)
+
+
 def _refuse(msg: str, *, where: str = "") -> NoReturn:
-    raise ValueError(f"{FILENAME}{': ' + where if where else ''}: {msg}")
+    raise ValueError(
+        f"{_SOURCE.get()}{': ' + where if where else ''}: {msg}")
+
+
+@contextmanager
+def _refusals_name(source: str):
+    """Name *source* in every refusal raised inside the block."""
+    token = _SOURCE.set(source)
+    try:
+        yield
+    finally:
+        _SOURCE.reset(token)
 
 
 def _as_object(value: Any, *, where: str) -> Mapping[str, Any]:
@@ -324,6 +364,76 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
 
     return Stage(name=name, enabled=bool(obj.get("enabled", True)),
                  overrides=overrides)
+
+
+def stages_from_dicts(payload: Any, *,
+                      source: str = "stages") -> Tuple[Tuple[str, ...],
+                                                       Tuple[Stage, ...]]:
+    """Parse a bare list of stage objects into ``(varies, stages)``.
+
+    For a surface that supplies a ladder **without** a whole description —
+    the CLI's ``--stages-json``, and the web's staged build payload — where
+    ``varies`` is not stated separately.  It is **derived**, as the union of
+    every stage's ``overrides`` keys in first-seen order: a payload that
+    lists what each stage overrides has already said what varies, and
+    asking for it twice would be a second place to disagree.
+
+    Everything else is the same codec ``read_task`` uses, so a hand-written
+    payload gets the same refusals by name: unknown keys, a name that is not
+    a filename, an override that redefines a stage field.  The § 6.2 subset
+    check is vacuous here by construction — which is correct, not skipped:
+    ``varies`` came from these overrides.
+
+    ``source`` is what the refusals call this payload — pass the flag or
+    field the caller read it from, so a person is sent to what they wrote.
+
+    Raises ``ValueError`` (from ``_refuse``) on any of the above.
+    """
+    with _refusals_name(source):
+        return _ladder_from_objs(payload)
+
+
+def _ladder_from_objs(payload: Any) -> Tuple[Tuple[str, ...],
+                                             Tuple[Stage, ...]]:
+    """The body of :func:`stages_from_dicts`, split only so the refusal
+    naming above wraps the whole of it.
+
+    Deliberately named without the word "stage":
+    ``tests/test_stage_vocabulary.py`` inventories every declaration that
+    carries it and demands each be attributed to a mechanism, and an
+    implementation split is not a new way of expressing a stage.  Naming it
+    ``_stages_from_dicts`` made the guard ask for a ledger row that would
+    have said nothing -- caught 2026-08-07, by the guard."""
+
+    if not isinstance(payload, (list, tuple)):
+        _refuse(f"stages payload must be a list, got "
+                f"{type(payload).__name__}")
+    if not payload:
+        _refuse("stages payload is empty. A ladder has at least one stage; "
+                "for a single parameter set, do not pass one at all "
+                "(engines/stages.md 6.5)")
+
+    varies: list = []
+    for i, obj in enumerate(payload):
+        for key in _as_object(obj, where=f"stage {i}").get("overrides") or {}:
+            if key not in varies:
+                varies.append(key)
+    frozen = tuple(varies)
+
+    stages = tuple(_stage_from_obj(obj, frozen, i)
+                   for i, obj in enumerate(payload))
+
+    seen: dict[str, str] = {}
+    for st in stages:
+        low = st.name.lower()
+        if low in seen:
+            _refuse(f"two stages named {st.name!r}"
+                    + (f" and {seen[low]!r}" if seen[low] != st.name else "")
+                    + " -- names are compared case-insensitively because they "
+                      "become filenames (engines/stages.md 6.6)")
+        seen[low] = st.name
+
+    return frozen, stages
 
 
 def read_task(path) -> Task:

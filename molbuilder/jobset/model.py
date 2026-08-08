@@ -43,6 +43,18 @@ class Resources:
     ``scheduler.routing`` name (slurm-integration.md § 4.3) the submit engine
     resolves to ``-p``/``-q``; ``gres`` is a raw SLURM gres string (e.g.
     ``"gpu:a100:1"``) or None.
+
+    **One field here becomes no scheduler flag at all, and that is not an
+    oversight.**  ``continue_retries`` is the warm-retry budget baked into
+    the run wrapper at install time (running-a-job.md § 3.5) — it never
+    reaches an ``sbatch`` line.  It rides this class because this is the
+    road every *"field the deck never carries"* already rides
+    (engines/stages.md § 5, the row that groups it with ``mpi_np`` and
+    ``omp_threads``); the alternative was a second, hand-maintained road
+    from a job to its wrapper.  Decided 2026-08-07, and written here as
+    well as in job-contracts.md § 6.2 because a field sitting in a class
+    called *a per-job scheduler ask* is otherwise an invitation to render
+    it into a directive.  **Do not emit it as one.**
     """
     domain:        Optional[str]   = None
     time:          Optional[str]   = None    # SLURM -t (D-HH:MM:SS); == scheduler defaults.time
@@ -51,6 +63,7 @@ class Resources:
     gres:          Optional[str]   = None    # SLURM --gres (e.g. "gpu:a100:1")
     mpi_np:        Optional[int]   = None    # SLURM -n (MPI ranks)
     cpus_per_task: Optional[int]   = None    # SLURM -c (OMP cores/rank); == SiestaConfig.omp_threads
+    continue_retries: Optional[int] = None   # NOT a SLURM flag -- baked into the wrapper
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)

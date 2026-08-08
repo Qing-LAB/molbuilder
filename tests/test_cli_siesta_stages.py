@@ -103,14 +103,56 @@ def test_no_stage_flags_preserves_single_fdf(xyz, tmp_path):
 # --------------------------------------------------------------------- #
 
 
+# The payload shape CHANGED on 2026-08-07 (P2 unit 2), and the change is the
+# point rather than a cost of it: a stage is `name` / `enabled` / `overrides`
+# (engines/stages.md § 2), and `overrides` may name ANY field of the SIESTA
+# schema -- not the eight fields a now-deleted dataclass happened to carry.
+# `on_nonconvergence` is gone from it entirely: that is the scheduler edge,
+# and so the producer's own input (§ 3).  A format change, pre-1.0, not a
+# compatibility shim.
 _TWO_STAGE_PAYLOAD = [
-    {"name": "stage1", "enabled": True, "relax_type": "CG",
-     "relax_steps": 50, "relax_force_tol": 0.10, "relax_max_displ": 0.30,
-     "on_nonconvergence": "proceed"},
-    {"name": "stage_final", "enabled": True, "relax_type": "Broyden",
-     "relax_steps": 100, "relax_force_tol": 0.02, "relax_max_displ": 0.05,
-     "on_nonconvergence": "halt"},
+    {"name": "stage1", "enabled": True, "overrides": {
+        "relax_type": "CG", "relax_steps": 50,
+        "relax_force_tol": 0.10, "relax_max_displ": 0.30}},
+    {"name": "stage_final", "enabled": True, "overrides": {
+        "relax_type": "Broyden", "relax_steps": 100,
+        "relax_force_tol": 0.02, "relax_max_displ": 0.05}},
 ]
+
+#: What the old shape could NOT say, asserted below: a stage varying a
+#: parameter no stage type ever carried.
+_MESH_LADDER = [
+    {"name": "coarse", "overrides": {"mesh_cutoff": 150}},
+    {"name": "tight", "overrides": {"mesh_cutoff": 300}},
+]
+
+
+def test_stages_json_can_vary_a_field_no_stage_type_ever_carried(xyz, tmp_path):
+    """**The gate, reached through the CLI.**  ``mesh_cutoff`` was not a
+    field of the old stage type, so no ``--stages-json`` payload could ask
+    two stages to differ in it.  Now it is an ordinary schema field."""
+    fdf = tmp_path / "JOB.fdf"
+    r = _invoke("fdf", str(xyz), str(fdf),
+                "--stages-json", json.dumps(_MESH_LADDER))
+    assert r.exit_code == 0, r.output
+    coarse = (tmp_path / "JOB_coarse.fdf").read_text()
+    tight = (tmp_path / "JOB_tight.fdf").read_text()
+    assert "MeshCutoff 150 Ry" in coarse
+    assert "MeshCutoff 300 Ry" in tight
+
+
+def test_stages_json_refuses_an_unknown_field_by_name(xyz, tmp_path):
+    """And a typo is refused rather than ignored -- the help text used to
+    say "Unknown keys ignored", which is how a misspelt override became a
+    silently-default deck."""
+    fdf = tmp_path / "JOB.fdf"
+    r = _invoke("fdf", str(xyz), str(fdf), "--stages-json", json.dumps(
+        [{"name": "tight", "overrides": {"mesh_cutof": 300}}]))
+    assert r.exit_code != 0
+    assert "mesh_cutof" in r.output
+    # named for what the CALLER wrote, not for a file they never touched
+    assert "--stages-json" in r.output
+    assert "task.json" not in r.output
 
 
 def test_stages_json_literal_overrides_ladder(xyz, tmp_path):

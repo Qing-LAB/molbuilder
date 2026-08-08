@@ -5,12 +5,17 @@ Pins the per-stage emission contract:
   * one .fdf per enabled stage, filename ``{system_label}_{stage}.fdf``
   * every fdf shares the same SystemLabel (so SIESTA auto-reads .XV
     between stages without any file-renaming)
-  * stage-specific MD parameters override cfg.relax_*
+  * a stage's ``overrides`` beat the template's values
   * runner is a valid bash script (``bash -n`` clean)
   * runner array literals match the enabled stages in order
-  * LAST enabled stage's on_nonconvergence is force-halted in runner
+  * LAST enabled stage's policy is force-halted in the runner
   * disabled stages drop out of both fdf set and runner arrays
   * empty-enabled-list raises (never silently emit a zero-stage run)
+
+2026-08-07 (P2 unit 2): the ladder is an ARGUMENT now, not ``cfg.stages`` --
+an engine config carries no stage list (engines/stages.md § 1.1), and the
+non-convergence policy is the producer's own input rather than a stage field
+(§ 3).  Every assertion below survived that; only the wiring moved.
 """
 from __future__ import annotations
 
@@ -21,10 +26,14 @@ import subprocess
 import numpy as np
 import pytest
 
-from molbuilder.config.siesta import SiestaConfig, _default_siesta_stages
+from molbuilder.config.siesta import SiestaConfig
 from molbuilder.siesta import (
     render_siesta_stage_fdfs,
     render_siesta_stages_runner,
+)
+from molbuilder.siesta.stages import (
+    DEFAULT_NONCONVERGENCE,
+    default_siesta_stages,
 )
 from molbuilder.structure import Structure
 
@@ -47,8 +56,14 @@ def h2():
 
 @pytest.fixture
 def cfg():
-    # Default stages = stage1 + stage2 enabled, stage3 disabled.
+    """The template -- one ordinary parameter set, no ladder in it."""
     return SiestaConfig(system_label="JOB")
+
+
+@pytest.fixture
+def stages():
+    """The shipped ladder: stage1 + stage2 enabled, stage3 disabled."""
+    return default_siesta_stages()
 
 
 # --------------------------------------------------------------------- #
@@ -56,31 +71,31 @@ def cfg():
 # --------------------------------------------------------------------- #
 
 
-def test_fdfs_returns_one_per_enabled_stage(h2, cfg):
-    fdfs = render_siesta_stage_fdfs(h2, cfg)
+def test_fdfs_returns_one_per_enabled_stage(h2, cfg, stages):
+    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
     assert sorted(fdfs) == ["JOB_stage1.fdf", "JOB_stage2.fdf"]
 
 
-def test_fdfs_filename_uses_system_label(h2):
+def test_fdfs_filename_uses_system_label(h2, stages):
     cfg = SiestaConfig(system_label="TJ-BDT-Au111")
-    fdfs = render_siesta_stage_fdfs(h2, cfg)
+    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
     assert all(name.startswith("TJ-BDT-Au111_") for name in fdfs)
 
 
-def test_fdfs_share_systemlabel_for_warm_restart(h2, cfg):
+def test_fdfs_share_systemlabel_for_warm_restart(h2, cfg, stages):
     """Each emitted fdf must declare the SAME SystemLabel as cfg --
     that's the mechanism by which SIESTA auto-reads <label>.XV across
     stage invocations."""
-    fdfs = render_siesta_stage_fdfs(h2, cfg)
+    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
     for body in fdfs.values():
         assert f"SystemLabel       {cfg.system_label}" in body
 
 
-def test_fdfs_per_stage_md_block_uses_stage_values(h2, cfg):
+def test_fdfs_per_stage_md_block_uses_stage_values(h2, cfg, stages):
     """stage1 = CG / 600 / 0.05 / 0.20, stage2 = Broyden / 200 / 0.04
     / 0.05.  Each fdf's MD block reflects its own stage's values, NOT
     the cfg.relax_* default."""
-    fdfs = render_siesta_stage_fdfs(h2, cfg)
+    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
     s1 = fdfs["JOB_stage1.fdf"]
     s2 = fdfs["JOB_stage2.fdf"]
 
@@ -95,30 +110,25 @@ def test_fdfs_per_stage_md_block_uses_stage_values(h2, cfg):
     assert "MD.MaxCGDispl 0.05" in s2
 
 
-def test_fdfs_disabled_stages_drop_out(h2):
-    cfg = SiestaConfig(system_label="JOB")
+def test_fdfs_disabled_stages_drop_out(h2, cfg, stages):
     # Disable stage2; enable stage3.
-    cfg.stages[1] = dataclasses.replace(cfg.stages[1], enabled=False)
-    cfg.stages[2] = dataclasses.replace(cfg.stages[2], enabled=True)
-    fdfs = render_siesta_stage_fdfs(h2, cfg)
+    stages[1] = dataclasses.replace(stages[1], enabled=False)
+    stages[2] = dataclasses.replace(stages[2], enabled=True)
+    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
     assert sorted(fdfs) == ["JOB_stage1.fdf", "JOB_stage3.fdf"]
 
 
-def test_fdfs_single_enabled_stage_is_still_emitted(h2):
-    cfg = SiestaConfig(system_label="JOB")
+def test_fdfs_single_enabled_stage_is_still_emitted(h2, cfg, stages):
     for i in (1, 2):
-        cfg.stages[i] = dataclasses.replace(cfg.stages[i], enabled=False)
-    fdfs = render_siesta_stage_fdfs(h2, cfg)
+        stages[i] = dataclasses.replace(stages[i], enabled=False)
+    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
     assert list(fdfs) == ["JOB_stage1.fdf"]
 
 
-def test_fdfs_zero_enabled_raises(h2):
-    cfg = SiestaConfig(system_label="JOB")
-    cfg.stages = [
-        dataclasses.replace(s, enabled=False) for s in cfg.stages
-    ]
+def test_fdfs_zero_enabled_raises(h2, cfg, stages):
+    stages = [dataclasses.replace(s, enabled=False) for s in stages]
     with pytest.raises(ValueError, match="no enabled entries"):
-        render_siesta_stage_fdfs(h2, cfg)
+        render_siesta_stage_fdfs(h2, cfg, stages)
 
 
 # --------------------------------------------------------------------- #
@@ -133,15 +143,17 @@ def _bash():
     return bash
 
 
-def test_runner_is_valid_bash(cfg):
-    script = render_siesta_stages_runner(cfg)
+def test_runner_is_valid_bash(cfg, stages):
+    script = render_siesta_stages_runner(
+        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
     r = subprocess.run([_bash(), "-n"], input=script, text=True,
                        capture_output=True)
     assert r.returncode == 0, r.stderr
 
 
-def test_runner_arrays_match_enabled_stages(cfg):
-    script = render_siesta_stages_runner(cfg)
+def test_runner_arrays_match_enabled_stages(cfg, stages):
+    script = render_siesta_stages_runner(
+        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
     # Defaults: stage1 + stage2 enabled.
     assert "STAGES=(stage1 stage2)" in script
     # stage1.on_nonconvergence='proceed' (preserved); stage2 is the
@@ -149,29 +161,36 @@ def test_runner_arrays_match_enabled_stages(cfg):
     assert "ON_NONCONV=(proceed halt)" in script
 
 
-def test_runner_force_halts_last_enabled_stage_even_if_user_set_proceed():
+def test_runner_force_halts_last_enabled_stage_even_if_user_set_proceed(
+        cfg, stages):
     """The last enabled stage must halt on non-convergence even if the
-    user explicitly set its policy to 'proceed' -- the final tier is
+    caller explicitly set its policy to 'proceed' -- the final tier is
     the publishable result; silent fall-through is a bug."""
-    cfg = SiestaConfig(system_label="JOB")
-    # User sets BOTH enabled stages to 'proceed'.
-    cfg.stages[0] = dataclasses.replace(cfg.stages[0],
-                                        on_nonconvergence="proceed")
-    cfg.stages[1] = dataclasses.replace(cfg.stages[1],
-                                        on_nonconvergence="proceed")
-    script = render_siesta_stages_runner(cfg)
+    script = render_siesta_stages_runner(
+        cfg, stages,
+        on_nonconvergence={"stage1": "proceed", "stage2": "proceed"})
     # stage1 keeps 'proceed'; stage2 is force-halted.
     assert "ON_NONCONV=(proceed halt)" in script
 
 
-def test_runner_basename_threaded(cfg):
+def test_runner_defaults_an_unnamed_stage_to_halt(cfg, stages):
+    """A policy mapping that says nothing about a stage means halt: the
+    producer's input is explicit, and the safe reading of silence is
+    'stop', not 'carry on with a geometry that did not converge'."""
+    script = render_siesta_stages_runner(cfg, stages)
+    assert "ON_NONCONV=(halt halt)" in script
+
+
+def test_runner_basename_threaded(stages):
     cfg = SiestaConfig(system_label="TJ-BDT-Au111")
-    script = render_siesta_stages_runner(cfg)
+    script = render_siesta_stages_runner(
+        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
     assert "BASENAME='TJ-BDT-Au111'" in script
 
 
-def test_runner_has_warm_restart_guard(cfg):
-    script = render_siesta_stages_runner(cfg)
+def test_runner_has_warm_restart_guard(cfg, stages):
+    script = render_siesta_stages_runner(
+        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
     # The cautious .XV check must be present:
     assert "_warm_check" in script
     # Stage 1 must short-circuit the check (idx == 0 returns).
@@ -180,55 +199,57 @@ def test_runner_has_warm_restart_guard(cfg):
     assert "*.XV" in script and "shopt -s nullglob" in script
 
 
-def test_runner_honors_molbuilder_force(cfg):
-    script = render_siesta_stages_runner(cfg)
+def test_runner_honors_molbuilder_force(cfg, stages):
+    script = render_siesta_stages_runner(
+        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
     assert 'FORCE="${MOLBUILDER_FORCE:-0}"' in script
     assert '"${FORCE}" == "1"' in script
 
 
-def test_runner_aborts_in_non_interactive_shell_without_force(cfg):
-    script = render_siesta_stages_runner(cfg)
+def test_runner_aborts_in_non_interactive_shell_without_force(cfg, stages):
+    script = render_siesta_stages_runner(
+        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
     # The runner refuses to silently warm-restart in batch shells.
     assert '! -t 0' in script
     assert 'MOLBUILDER_FORCE=1' in script
 
 
-def test_runner_injects_siesta_cmd_verbatim(cfg):
+def test_runner_injects_siesta_cmd_verbatim(cfg, stages):
     script = render_siesta_stages_runner(
-        cfg, siesta_cmd="mpirun -np 8 siesta")
+        cfg, stages, siesta_cmd="mpirun -np 8 siesta",
+        on_nonconvergence=DEFAULT_NONCONVERGENCE)
     assert 'mpirun -np 8 siesta < "$fdf" > "$log"' in script
 
 
-def test_runner_default_siesta_cmd_is_bare_siesta(cfg):
-    script = render_siesta_stages_runner(cfg)
+def test_runner_default_siesta_cmd_is_bare_siesta(cfg, stages):
+    script = render_siesta_stages_runner(
+        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
     assert 'siesta < "$fdf" > "$log"' in script
 
 
-def test_runner_zero_enabled_raises():
-    cfg = SiestaConfig(system_label="JOB")
-    cfg.stages = [
-        dataclasses.replace(s, enabled=False) for s in cfg.stages
-    ]
+def test_runner_zero_enabled_raises(cfg, stages):
+    stages = [dataclasses.replace(s, enabled=False) for s in stages]
     with pytest.raises(ValueError, match="no enabled entries"):
-        render_siesta_stages_runner(cfg)
+        render_siesta_stages_runner(
+            cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
 
 
-def test_runner_single_stage_collapses_to_one_element_arrays():
-    cfg = SiestaConfig(system_label="JOB")
+def test_runner_single_stage_collapses_to_one_element_arrays(cfg, stages):
     for i in (1, 2):
-        cfg.stages[i] = dataclasses.replace(cfg.stages[i], enabled=False)
-    script = render_siesta_stages_runner(cfg)
+        stages[i] = dataclasses.replace(stages[i], enabled=False)
+    script = render_siesta_stages_runner(
+        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
     assert "STAGES=(stage1)" in script
     # Single enabled stage is ALSO the last -> force-halt applies.
     assert "ON_NONCONV=(halt)" in script
 
 
-def test_runner_three_stage_ladder():
+def test_runner_three_stage_ladder(cfg):
     """vib-quality strategy = all three stages enabled.  Runner
     arrays must reflect that, and the LAST entry is force-halted."""
-    cfg = SiestaConfig(system_label="JOB")
-    cfg.stages[2] = dataclasses.replace(cfg.stages[2], enabled=True)
-    script = render_siesta_stages_runner(cfg)
+    stages = default_siesta_stages("vib-quality")
+    script = render_siesta_stages_runner(
+        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
     assert "STAGES=(stage1 stage2 stage3)" in script
     assert "ON_NONCONV=(proceed halt halt)" in script
 
@@ -238,12 +259,13 @@ def test_runner_three_stage_ladder():
 # --------------------------------------------------------------------- #
 
 
-def test_fdfs_and_runner_agree_on_enabled_set(h2, cfg):
+def test_fdfs_and_runner_agree_on_enabled_set(h2, cfg, stages):
     """The runner's STAGES array and the fdf filename set must name
     the same stages, in the same order.  If they ever diverged the
     runner would try to run a missing .fdf (or skip an emitted one)."""
-    fdfs = render_siesta_stage_fdfs(h2, cfg)
-    runner = render_siesta_stages_runner(cfg)
+    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
+    runner = render_siesta_stages_runner(
+        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
     fdf_stages = sorted(
         name[len(cfg.system_label) + 1: -len(".fdf")]
         for name in fdfs

@@ -449,19 +449,24 @@ def _validate_siesta(struct: Structure, cfg,
         ),
     )
 
-    # Multi-stage relaxation ladder (parity with PySCF's validate_stages,
-    # 2026-06-29; engines/siesta.md "Staged optimization").  When a
-    # relaxation will run, ``cfg.stages`` drives render_siesta_stage_fdfs,
-    # so reject the structural errors the generator can't recover from --
-    # empty / all-disabled list, DUPLICATE NAMES (silently overwrite a
-    # per-stage fdf), bad relax_type / non-positive knobs / bad policy --
-    # as clean "error" issues at the Build-tab gate instead of a
-    # render-time crash or a silently dropped stage.  Closes the
-    # cross-engine gap where SIESTA stages bypassed validation entirely.
-    if relax not in ("none", ""):
-        from ..config.siesta import validate_siesta_stages
-        for _msg in validate_siesta_stages(getattr(cfg, "stages", []) or []):
-            issues.append(Issue("error", _msg, "config.stages"))
+    # NOTE (2026-08-07, P2 unit 2): this validator used to walk ``cfg.stages``
+    # here and re-check every stage's relax knobs.  It does not any more, and
+    # nothing replaced it in this function -- BY DESIGN, not by omission.
+    #
+    # A config has no stage list (engines/stages.md § 1.1), and § 4 R2 says a
+    # stage is validated as a RESOLVED WHOLE, never as a diff: the caller
+    # resolves each stage through ``effective_config`` and calls THIS
+    # function on the result, once per stage.  So each stage's relax_type,
+    # steps, force tol and displacement cap are checked by the ordinary
+    # single-config rules above -- the same rules, not a parallel copy of
+    # them, which is what made the old block drift from them.
+    #
+    # The two checks that were genuinely about the LADDER rather than about
+    # any one stage moved to where the ladder is: an empty / all-disabled
+    # list and duplicate names are refused by ``siesta/input.py``'s
+    # ``_enabled_stages`` (and, for a description read from disk, by
+    # ``task.py``).  Cross-stage findings -- a ladder that loosens -- are
+    # P2 unit 6 and carry no stage label (§ 4).
 
     # SIESTA-specific: spin_polarized + no spin_total + open-shell metal
     # -> propor: ERROR: IMAX = 0 (initial-DM constructor abort).  See

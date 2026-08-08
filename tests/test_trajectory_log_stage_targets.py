@@ -183,7 +183,7 @@ def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
     ``max_force_ev_per_ang`` -- so the watch-tab horizontal threshold
     matches the stage that's currently running.
 
-    Default _default_siesta_stages() per stage:
+    Default ladder (siesta/stages.py::default_siesta_stages) per stage:
       stage1: 0.05 (loose preopt)
       stage2: 0.04 (publishable)
       stage3: 0.01 (crystal-tight)

@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 # Job-layout v1 protocol (docs/execution/job-contracts.md): the basename
 # (= SystemLabel for SIESTA, job_name for PySCF) drives EVERY output
@@ -559,46 +559,38 @@ class SiestaConfig:
         ),
     })
 
-    # Multi-stage relaxation ladder (#542).  Mirrors PySCFConfig.stages:
-    # an ordered list of SiestaStageSpec, each carrying its own per-stage
-    # relax_type / relax_steps / relax_force_tol / relax_max_displ +
-    # on_nonconvergence policy.  When the form / CLI uses ``cfg.stages``,
-    # the generator emits ONE .fdf per enabled stage with ``_<name>``
-    # suffixes + a bash runner that loops through them in order with
-    # warm-restart via SIESTA's auto ``.XV`` read.  The legacy single-
-    # stage relax_* fields above stay -- they're still used by the
-    # ``--stage {1,2,3}`` overlay (single-stage CLI) and by any
-    # workflow that doesn't multi-stage (energy, spectra, transport).
-    # The multi-stage path is opt-in via the form's stage-table widget
-    # (#5) or via ``--stages-json`` (#3).  skip_cli on the field so the
-    # CLI doesn't auto-generate a flag from it (the dedicated flags in
-    # commit #3 handle that with proper JSON parsing).
-    stages: List[SiestaStageSpec] = field(
-        default_factory=lambda: _default_siesta_stages(),
-        metadata={
-            # Lives in the "Compute & budget" Stage card -- mirrors the PySCF
-            # `stages` field + the design.md 2026-06-22 decision ("cfg.stages
-            # lives in Compute & budget's Stage card as a stage-table widget").
-            # Was "Optimization"/"budget" -- an unlisted section appended after
-            # the schema order, i.e. a form-order regression vs that decision.
-            "section":        "Compute & budget",
-            "workflow_group": "stage",
-            "label":          "Per-stage relaxation ladder",
-            "engine_key":     "(molbuilder: cfg.stages -> generator's "
-                              "STAGES literal in the emitted fdf-runner "
-                              "bash script)",
-            "tier":           "advanced",
-            "help":           "Ordered list of SiestaStageSpec.  When "
-                              "used (form's stage-table widget or "
-                              "--stages-json), the generator emits one "
-                              ".fdf per enabled stage + a bash runner "
-                              "that loops through them, with warm-restart "
-                              "via SIESTA's auto .XV read.  Defaults "
-                              "match the --stage {1,2,3} overlay's tier "
-                              "values so single-stage and multi-stage "
-                              "paths produce identical per-stage .fdfs.",
-            "skip_cli":       True,
-        })
+    # ``continue_retries`` -- the warm-retry budget.  It arrived here when
+    # ``SiestaStageSpec`` was deleted (P2 unit 2/3), and engines/stages.md § 3
+    # is why it is a SHARED field rather than a stage one: it passes both of
+    # § 3's questions -- it survives without a scheduler (running-a-job.md
+    # § 3.5: a SINGLE run's wrapper re-enters SIESTA with --continue), and a
+    # single run can mean it.  What made it look like a stage property is only
+    # where it LANDS, which § 3 says is never the test.
+    #
+    # It reaches the wrapper via ``jobset.Resources.continue_retries``
+    # (job-contracts.md § 6.2's translation table, decided 2026-08-07): the
+    # same road ``mpi_np`` and ``omp_threads`` already ride, rather than a
+    # second hand-maintained mapping from a stage to its wrapper.  Unlike
+    # those two it becomes NO sbatch flag -- it is baked in at install time.
+    continue_retries: int = field(default=1, metadata={
+        "section":        "Compute & budget",
+        # A retry budget is compute you are agreeing to spend, so it sits in
+        # the budget card with the other resource asks.  It restricts
+        # nothing: like any field it can be ticked to vary per stage
+        # (engines/stages.md § 1.3).
+        "workflow_group": "budget",
+        "label":          "Warm-retry budget",
+        "range":          (1, 5),
+        "engine_key":     "(molbuilder: baked into the run wrapper at "
+                          "install time; never an .fdf line and never an "
+                          "sbatch flag)",
+        "tier":           "advanced",
+        "help":           "How many extra relaxation batches the wrapper "
+                          "may run when a job hits its step cap without "
+                          "converging: it re-enters SIESTA with --continue "
+                          "from the current .XV.  Total step budget = "
+                          "relax_steps x (1 + continue_retries).",
+    })
 
     # ---- Verlet / Nose dynamics (only emitted when relax_type is in
     # ("Verlet", "Nose"); ignored otherwise).  Defaults are chosen to
@@ -1141,11 +1133,11 @@ Config = SiestaConfig
 #  values match docs/engines/tuning.md sect. 2.3.1's      #
 #  system-type-aware framework.                                         #
 #                                                                       #
-#  This is the precursor to #542 SIESTA staged-opt (full staged ladder #
-#  + per-stage SiestaStageSpec dataclass + form widget); for now it    #
-#  ships as a CLI-only overlay so the user can generate stage2 /       #
-#  stage3 fdfs with one flag instead of remembering 4 separate         #
-#  --relax-* overrides.                                                 #
+#  These values are the ladder's SCIENCE, and they outlive every        #
+#  mechanism that has carried them: read as an overlay by ``--stage N`` #
+#  for a one-shot deck, and read again by                               #
+#  ``siesta/stages.py::default_siesta_stages`` as each stage's          #
+#  ``overrides`` in the shipped ladder.  One table, two readers.        #
 # --------------------------------------------------------------------- #
 
 
@@ -1168,16 +1160,16 @@ Config = SiestaConfig
 # table: CG only for stage 1 (no memory / robust far from minimum),
 # Broyden for any production-tier work (quasi-Newton + best near minimum).
 #
-# RELATIONSHIP TO #542 (SIESTA staged-opt full data model):
-# This overlay is the minimum-viable precursor.  When ``SiestaStageSpec``
-# lands as the parallel to PySCFConfig.stages, it should inherit these
-# same per-stage tier values as its defaults.  The CLI overlay below
-# REMAINS USEFUL after #542 as a one-flag fast path for users who want
-# a single-stage fdf (the common case for hand-edited stage1/stage2/
-# stage3 fdfs from one command, as opposed to the per-stage ladder
-# emitted by #542's full multi-stage script).  Do NOT delete the
-# overlay during the #542 refactor; instead use these values as the
-# SiestaStageSpec defaults so the two paths stay aligned.
+# WHY THE ONE-SHOT OVERLAY STAYS (``apply_siesta_stage``, below).  It is a
+# one-flag fast path to a SINGLE tier-N deck, which is a different request
+# from "run the ladder" -- and since both readers take their values from
+# this one table, the deck ``--stage 2`` writes and the deck stage2 of the
+# ladder writes cannot drift apart.
+#
+# ``SiestaStageSpec`` used to copy these values into its own field defaults,
+# which is the copy this table now replaces: a stage carries ``overrides``,
+# and the shipped ladder's overrides ARE these dicts (engines/stages.md
+# § 1.1 -- an engine config carries no stage list).
 SIESTA_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
     1: {
         "relax_type":      "CG",
@@ -1238,216 +1230,12 @@ def apply_siesta_stage(cfg: SiestaConfig, stage: int) -> SiestaConfig:
     return _dc.replace(cfg, **overlay)
 
 
-# --------------------------------------------------------------------- #
-#  SiestaStageSpec -- multi-stage SIESTA optimization (#542)             #
-#                                                                       #
-#  Cross-engine consistent with PySCFConfig.stages from #534:           #
-#                                                                       #
-#    * Same generic stage NAMES (stage1 / stage2 / stage3) -- the user  #
-#      sees one mental model across engines.                            #
-#    * Engine-specific per-stage VALUES -- SIESTA's knobs               #
-#      (relax_type / relax_steps / relax_force_tol / relax_max_displ)   #
-#      are different fields from PySCF's geomeTRIC convergence targets, #
-#      but the TIER meaning lines up:                                   #
-#                                                                       #
-#        stage1 = screening / loose preopt                              #
-#        stage2 = publishable (Gaussian-OPT default)                    #
-#        stage3 = tight crystal-practical (default DISABLED)            #
-#                                                                       #
-#    * Warm-start is implicit and ON by default.  Between stages SIESTA #
-#      auto-reads ``.XV`` (and ``.DM`` / ``.LWF`` / ``.CG``) based on   #
-#      SystemLabel -- no explicit ``read_charge_density`` field needed. #
-#      The generated bash runner emits a defensive check at stage 2+    #
-#      entry if ``<basename>.XV`` is missing but other ``*.XV`` files    #
-#      exist (catches mid-pipeline project renames).  See #2 generator. #
-#                                                                       #
-#  The SIESTA_STAGE_PRESETS dict above stays as-is -- it's the          #
-#  single-stage CLI overlay (--stage {1,2,3}) that ships today.  We     #
-#  use those values as the ``_default_stages()`` baseline so the two    #
-#  paths produce identical .fdf content per stage.                      #
-# --------------------------------------------------------------------- #
-
-
-@dataclass
-class SiestaStageSpec:
-    """One stage of the multi-stage SIESTA relaxation pipeline.
-
-    Mirrors :class:`molbuilder.config.pyscf.StageSpec`'s shape -- same
-    ``name`` / ``enabled`` / ``on_nonconvergence`` / ``continue_retries``
-    cross-engine concepts, engine-specific convergence knobs.
-
-    Defaults match :data:`SIESTA_STAGE_PRESETS` (the existing single-
-    stage CLI overlay) so ``--stage 2`` and "stages[1]" produce the
-    same SIESTA configure block.
-
-    Per-field ``metadata`` is read by the web layer's stage-table
-    schema emitter (#5) -- same convention as PySCFConfig.stages.
-    """
-    name: str = field(default="stage1", metadata={
-        "label":      "Name",
-        "help":       "filename suffix (``<JOB>_<name>.fdf``); "
-                      "must match [A-Za-z0-9_]+",
-        "pattern":    r"^[A-Za-z0-9_]+$",
-    })
-    enabled: bool = field(default=True, metadata={
-        "label":      "Run",
-        "help":       "run this stage; uncheck to skip + carry the "
-                      "prior stage's geometry (via auto .XV read) forward",
-    })
-    relax_type: str = field(default="CG", metadata={
-        "label":      "Algorithm",
-        "choices":    ("CG", "Broyden", "FIRE"),
-        "engine_key": "MD.TypeOfRun",
-        "help":       "relaxation algorithm.  CG = stable warm-up; "
-                      "Broyden = faster for medium/large systems "
-                      "(publishable + tight); FIRE = robust on flexible "
-                      "geometries.",
-    })
-    relax_steps: int = field(default=600, metadata={
-        "label":      "Max steps", "range": (1, 10000),
-        "engine_key": "MD.NumCGsteps",
-        "help":       "max relaxation iterations in this stage.  Universal "
-                      "across CG / Broyden / FIRE (SIESTA 5.4.2 uses "
-                      "MD.NumCGsteps for all three algorithms despite "
-                      "the CG-prefixed name).",
-    })
-    relax_force_tol: float = field(default=0.05, metadata={
-        "label":      "Force tol", "unit": "eV/Å", "step": "any",
-        "engine_key": "MD.MaxForceTol",
-        "help":       "max-force convergence in this stage (eV/Å).  Tier "
-                      "ladder: stage1 ~0.05 (loose), stage2 ~0.04 "
-                      "(publishable), stage3 ~0.01 (crystal-tight; "
-                      "matches VASP EDIFFG=-0.01).",
-    })
-    relax_max_displ: float = field(default=0.20, metadata={
-        "label":      "Δx max", "unit": "Å", "step": "any",
-        "engine_key": "MD.MaxCGDispl",
-        "help":       "per-step atom-displacement cap (Å).  Universal "
-                      "across CG / Broyden / FIRE (SIESTA 5.4.2 uses "
-                      "MD.MaxCGDispl for all three).",
-    })
-    on_nonconvergence: str = field(default="halt", metadata={
-        "label":      "If max_steps runs out",
-        "choices":    ("proceed", "continue", "halt"),
-        "engine_key": "(molbuilder: per-stage non-convergence policy)",
-        "help":       "what to do when relax_steps runs out without the "
-                      "force tolerance being met: proceed (move on with "
-                      "the partial geometry), continue (re-enter SIESTA "
-                      "for another relax_steps batch from the current "
-                      ".XV), halt (raise + stop the runner).  The LAST "
-                      "enabled stage's value is forced to halt at render "
-                      "time -- the final tier must succeed or fail loud.",
-    })
-    continue_retries: int = field(default=1, metadata={
-        "label":      "Continue retries", "range": (1, 5),
-        "engine_key": "(molbuilder: max SIESTA re-entries when "
-                      "on_nonconvergence=continue)",
-        "help":       "only meaningful when on_nonconvergence='continue': "
-                      "how many additional relax_steps batches before "
-                      "falling through to halt.  Total step budget = "
-                      "relax_steps * (1 + continue_retries).",
-    })
-
-
-def _default_siesta_stages() -> List["SiestaStageSpec"]:
-    """Three-stage cross-engine-consistent default ladder.
-
-    Matches :data:`SIESTA_STAGE_PRESETS` value-for-value so the
-    ``--stage {1,2,3}`` overlay and the multi-stage pipeline produce
-    identical per-stage .fdfs.  on_nonconvergence defaults mirror
-    PySCF's ladder (proceed on warm-up; halt on the publishable +
-    tight tiers).
-    """
-    return [
-        SiestaStageSpec(
-            name="stage1", enabled=True,
-            relax_type="CG", relax_steps=600,
-            relax_force_tol=0.05, relax_max_displ=0.20,
-            on_nonconvergence="proceed",
-        ),
-        SiestaStageSpec(
-            name="stage2", enabled=True,
-            relax_type="Broyden", relax_steps=200,
-            relax_force_tol=0.04, relax_max_displ=0.05,
-            on_nonconvergence="halt",
-        ),
-        SiestaStageSpec(
-            name="stage3", enabled=False,
-            relax_type="Broyden", relax_steps=100,
-            relax_force_tol=0.01, relax_max_displ=0.02,
-            on_nonconvergence="halt",
-        ),
-    ]
-
-
-def validate_siesta_stages(stages: List[SiestaStageSpec]) -> List[str]:
-    """Return human-readable error strings for any stage that fails
-    field-level checks.  Empty list means valid.
-
-    Mirrors :func:`molbuilder.config.pyscf.validate_stages`'s shape so
-    the CLI's per-stage error reporting reads the same across engines.
-    """
-    errors: List[str] = []
-    name_re = re.compile(r"^[A-Za-z0-9_]+$")
-    valid_relax = {"CG", "Broyden", "FIRE"}
-    valid_policy = {"proceed", "continue", "halt"}
-    # Structural invariants the generator can't recover from (parity with
-    # pyscf.validate_stages): an empty / all-disabled ladder, and -- the
-    # fatal one -- duplicate names, since per-stage fdfs are keyed
-    # ``<basename>_<name>.fdf`` and a collision silently overwrites a stage
-    # in render_siesta_stage_fdfs.
-    if not stages:
-        errors.append("stages: list is empty; need at least 1 stage")
-        return errors
-    if not any(s.enabled for s in stages):
-        errors.append(
-            "stages: no stage is enabled; either enable one or set "
-            "relax_type='none' to skip the optimization loop entirely")
-    seen_names: set = set()
-    for i, s in enumerate(stages):
-        prefix = f"stages[{i}]"
-        if not isinstance(s.name, str) or not name_re.match(s.name or ""):
-            errors.append(
-                f"{prefix}.name = {s.name!r}: must match [A-Za-z0-9_]+")
-        elif s.name in seen_names:
-            errors.append(
-                f"{prefix}.name = {s.name!r}: duplicate; per-stage output "
-                f"files would collide (one stage silently overwrites another)")
-        else:
-            seen_names.add(s.name)
-        if s.relax_type not in valid_relax:
-            errors.append(
-                f"{prefix}.relax_type = {s.relax_type!r}: must be one of "
-                f"{sorted(valid_relax)}")
-        if not isinstance(s.relax_steps, int) or s.relax_steps < 1:
-            errors.append(
-                f"{prefix}.relax_steps = {s.relax_steps!r}: must be a "
-                f"positive integer")
-        if not isinstance(s.relax_force_tol, (int, float)) or s.relax_force_tol <= 0:
-            errors.append(
-                f"{prefix}.relax_force_tol = {s.relax_force_tol!r}: "
-                f"must be a positive number (eV/Å)")
-        if not isinstance(s.relax_max_displ, (int, float)) or s.relax_max_displ <= 0:
-            errors.append(
-                f"{prefix}.relax_max_displ = {s.relax_max_displ!r}: "
-                f"must be a positive number (Å)")
-        if s.on_nonconvergence not in valid_policy:
-            errors.append(
-                f"{prefix}.on_nonconvergence = {s.on_nonconvergence!r}: "
-                f"must be one of {sorted(valid_policy)}")
-        if (not isinstance(s.continue_retries, int)
-                or s.continue_retries < 1 or s.continue_retries > 5):
-            errors.append(
-                f"{prefix}.continue_retries = {s.continue_retries!r}: "
-                f"must be an integer in [1, 5]")
-    return errors
-
-
-# Mirrors PySCF's STAGE_STRATEGY_PRESETS shape exactly.  Same preset
-# names, same semantic meanings; only difference is which engine the
-# enabled-mask gates.  Keep aligned with web/static/lib/form-schema.js
-# ``SIESTA_STAGE_STRATEGY_PRESETS`` (added in #6 commit) -- a regex-
-# parse drift-guard test will fire if the two ever diverge.
+# Which of the three tiers a named strategy runs.  Pure enable-mask data:
+# it says nothing about how a stage is tuned, only which ones are in the
+# ladder.  ``siesta/stages.py::default_siesta_stages`` reads it together with
+# SIESTA_STAGE_PRESETS above to build the shipped ladder; keep aligned with
+# web/static/lib/form-schema.js ``SIESTA_STAGE_STRATEGY_PRESETS`` (a regex-
+# parse drift-guard test fires if the two ever diverge).
 SIESTA_STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
     "publishable": (True,  True,  False),   # stage1 loose + stage2 publishable
     "loose-only":  (True,  False, False),   # stage1 only (CG warm-up)
@@ -1455,83 +1243,10 @@ SIESTA_STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
 }
 
 
-def apply_siesta_stage_strategy(
-    stages: List[SiestaStageSpec], strategy: str,
-) -> List[SiestaStageSpec]:
-    """Return a copy of *stages* with ``enabled`` flags overlaid from
-    the named preset in :data:`SIESTA_STAGE_STRATEGY_PRESETS`.
-
-    Raises ``ValueError`` on an unknown strategy.  Non-enabled fields
-    (relax_*, on_nonconvergence, ...) are preserved verbatim -- the
-    preset only chooses which stages run, not how they're tuned.
-    """
-    import dataclasses as _dc
-    if strategy not in SIESTA_STAGE_STRATEGY_PRESETS:
-        valid = ", ".join(sorted(SIESTA_STAGE_STRATEGY_PRESETS))
-        raise ValueError(
-            f"unknown SIESTA stage strategy {strategy!r}; "
-            f"choose from: {valid}")
-    enables = SIESTA_STAGE_STRATEGY_PRESETS[strategy]
-    out: List[SiestaStageSpec] = []
-    for i, s in enumerate(stages):
-        if i < len(enables):
-            out.append(_dc.replace(s, enabled=enables[i]))
-        else:
-            out.append(_dc.replace(s))
-    return out
-
-
-def siesta_stages_from_dicts(payload: Any) -> List[SiestaStageSpec]:
-    """Coerce a list-of-dicts (e.g. parsed from ``--stages-json``) into
-    a ``List[SiestaStageSpec]``.
-
-    Unknown keys silently ignored (consistent with PySCF's
-    stages_from_dicts).  Missing keys fall back to SiestaStageSpec's
-    field defaults.  Type coercion permissive so JSON-from-shell
-    payloads round-trip cleanly.
-    """
-    import dataclasses as _dc
-    # TypeError on shape errors -- parity with pyscf.stages_from_dicts and
-    # the web _shared coercion boundary (so callers catch one type).
-    if not isinstance(payload, list):
-        raise TypeError(
-            f"stages payload must be a list, got {type(payload).__name__}")
-    spec_fields = {f.name: f for f in _dc.fields(SiestaStageSpec)}
-    out: List[SiestaStageSpec] = []
-    for i, entry in enumerate(payload):
-        if not isinstance(entry, dict):
-            raise TypeError(
-                f"stages[{i}] must be a dict, got "
-                f"{type(entry).__name__}")
-        coerced: Dict[str, Any] = {}
-        for k, v in entry.items():
-            if k not in spec_fields:
-                continue
-            f = spec_fields[k]
-            if f.type in ("bool", bool):
-                if isinstance(v, str):
-                    coerced[k] = v.strip().lower() in ("true", "1", "yes", "y")
-                else:
-                    coerced[k] = bool(v)
-            elif f.type in ("int", int):
-                coerced[k] = int(v) if not isinstance(v, bool) else v
-            elif f.type in ("float", float):
-                coerced[k] = float(v)
-            else:
-                coerced[k] = v
-        out.append(SiestaStageSpec(**coerced))
-    return out
-
-
 __all__ = [
     "SiestaConfig",
     "Config",
     "SIESTA_STAGE_PRESETS",
     "apply_siesta_stage",
-    "SiestaStageSpec",
     "SIESTA_STAGE_STRATEGY_PRESETS",
-    "apply_siesta_stage_strategy",
-    "validate_siesta_stages",
-    "siesta_stages_from_dicts",
-    "_default_siesta_stages",
 ]

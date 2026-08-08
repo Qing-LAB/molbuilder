@@ -1204,12 +1204,18 @@ not just the ones the plan already named. It changed what several items mean.*
 
 ### What the design specifies, and what is actually there
 
+> **This table is a dated snapshot — the audit of 2026-08-07 morning — and its
+> right-hand column is kept as written.** Three of its six rows were closed the
+> same afternoon by P2 unit 2, and the ✅ notes say which; rewriting the column
+> would erase the finding that motivated the work. Read it as *what was true
+> when the design was checked against the code*, not as current state.
+
 | The design says | The code has |
 |---|---|
-| A stage is **three fields** — name, enabled, `overrides` — and lives in `task.json`, never in an engine config | `SiestaConfig` **has a `stages` field**, so the engine config carries the ladder. `SiestaStageSpec` has **eight** fields and **`overrides` does not exist in any form**. A stage can vary exactly four values (`relax_type`, `relax_steps`, `relax_force_tol`, `relax_max_displ`), hard-coded as a `dataclasses.replace` in `render_siesta_stage_fdfs`. There is no path by which a stage varies `mesh_cutoff` — **and the four are four because they are the fields somebody typed into that class**, which the web form then re-published as the columns a user may vary (`stages.md § 1.2`) |
-| `task.json` (`molbuilder/task@1`), unknown keys **refused rather than ignored** | **No such file.** But **`--stages-json` ships** — a JSON list-of-dicts of `SiestaStageSpec` fields, accepted as a literal *or a path*, and its help text says **"Unknown keys ignored"** |
+| A stage is **three fields** — name, enabled, `overrides` — and lives in `task.json`, never in an engine config | `SiestaConfig` **has a `stages` field**, so the engine config carries the ladder. `SiestaStageSpec` has **eight** fields and **`overrides` does not exist in any form**. A stage can vary exactly four values (`relax_type`, `relax_steps`, `relax_force_tol`, `relax_max_displ`), hard-coded as a `dataclasses.replace` in `render_siesta_stage_fdfs`. There is no path by which a stage varies `mesh_cutoff` — **and the four are four because they are the fields somebody typed into that class**, which the web form then re-published as the columns a user may vary (`stages.md § 1.2`). **✅ CLOSED 2026-08-07** — the field, the type, its default factory, its validator and its parser are deleted; a stage is `task.py::Stage` and `overrides` may name any schema field, `mesh_cutoff` included |
+| `task.json` (`molbuilder/task@1`), unknown keys **refused rather than ignored** | **No such file.** But **`--stages-json` ships** — a JSON list-of-dicts of `SiestaStageSpec` fields, accepted as a literal *or a path*, and its help text said **"Unknown keys ignored"**. **✅ HALF-CLOSED 2026-08-07** — `--stages-json` now takes the three-field shape and goes through `task.py`'s codec, so an unknown key is refused **by name**. `task.json` itself exists (P1); what is still missing is a surface that WRITES one (P10) |
 | Per-stage resources ride in the description | a **second** file, `--stage-resources`, `{stage_name: {…}}` |
-| **One reader, used by both surfaces** | no reader at all: the CLI parses `--stages-json` inline, the browser assembles `params` in JavaScript |
+| **One reader, used by both surfaces** | no reader at all: the CLI parsed `--stages-json` inline, the browser assembles `params` in JavaScript. **◐ HALF-CLOSED 2026-08-07** — the CLI now goes through `task.py::stages_from_dicts`, the one codec; the browser still assembles `params` (P10) |
 | **Names are stable, positions are not — a stage's position must never reach a filename** | the browser writes **`<label>-stage<N>.fdf`**, N from a preset dropdown |
 | `checkpoint.py` treats `task.json` as a bundle descriptor | **that arm is dead** — nothing in the tree writes one, so today only `job-set.json` and `bench-manifest.json` reach it |
 
@@ -1227,12 +1233,12 @@ than a migration — molbuilder does not carry compatibility shims across a rena
 | 2 | `--stage-strategy` | named presets over the *enable* flags | `cli.py` |
 | 3 | `--stages-json` | the whole ladder, from a file | `cli.py` |
 | 4 | `--stage-resources` | per-stage scheduler asks, a second file | `cli.py` |
-| 5 | `cfg.stages` / `SiestaStageSpec` | the in-memory model 1–4 all feed — **deleted, not reshaped** (`stages.md § 1.1`) | `config/siesta.py` |
+| ~~5~~ | ~~`cfg.stages` / `SiestaStageSpec`~~ | the in-memory model 1–4 all fed — **✅ DELETED 2026-08-07**, not reshaped (`stages.md § 1.1`). The mechanism count is **ten**, and `tests/test_stage_vocabulary.py` is what says so | ~~`config/siesta.py`~~ |
 | 6 | `render_siesta_stage_fdfs` + `..._runner` | **flat** — decks + a bash loop | `siesta/input.py` |
 | 7 | `stages_to_jobset` | **hierarchical** — a ladder JobSet | `siesta/stages.py` |
 | 8 | PySCF `StageSpec` | an in-script Python loop, **one file** | `config/pyscf.py` |
 | 9 | the browser's `p-stage-preset` | a stage **number**, into a filename | `structure-optimization/viewer.js` |
-| 10 | the `stage-table` field kind | a **generic** per-stage grid, from any `List[<dataclass>]` | `web/blueprints/_shared.py` → `static/lib/form-schema.js` |
+| 10 | the `stage-table` field kind | a per-stage grid from a `List[<dataclass>]`. **No longer generic in practice**: `PySCFConfig.stages` is the only such field left, so it is PySCF's mechanism rather than a shared one | `web/blueprints/_shared.py` → `static/lib/form-schema.js` |
 
 Ten mechanisms, one word. The design's `task.json` + `overrides` would be the
 eleventh, **and the plan currently retires none of them.** That is the single

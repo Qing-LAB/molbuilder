@@ -231,9 +231,9 @@ def api_run_install_wrapper():
         return jsonify({"ok": False, "error":
                         "mpi_np / omp_threads / max_memory_mb / "
                         "continue_retries must be integers"}), 400
-    # Mirror the config-side validator (config/siesta.py stages
-    # continue_retries: 1..5) -- the wrapper bakes this number into a
-    # retry loop, so an uncapped request would render an unbounded one.
+    # Mirror the shared schema's bound (SiestaConfig.continue_retries,
+    # range 1..5) -- the wrapper bakes this number into a retry loop, so an
+    # uncapped request would render an unbounded one.
     if continue_retries is not None and not (1 <= continue_retries <= 5):
         return jsonify({"ok": False, "error":
                         "continue_retries must be between 1 and 5"}), 400

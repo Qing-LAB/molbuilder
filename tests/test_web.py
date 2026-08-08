@@ -2133,27 +2133,24 @@ def test_siesta_form_schema_matches_documented_layout():
         #   Parallel execution contributed 7 (mpi_np,
         #   parallel_block_size, parallel_over_k, omp_threads,
         #   max_memory_mb, enable_gpu, diag_algorithm).
-        # Compute & budget: 15 fields = the 14 above + the staged-opt
-        # stage-table widget (cfg.stages, List[SiestaStageSpec]; one
-        # dataclass-typed field rendered as a multi-row table).  Per
-        # design.md 2026-06-22 + the #542 PySCF-parity decision +
-        # engines/siesta.md, cfg.stages lives in the "Compute & budget"
-        # Stage card.  It was mis-tagged section="Optimization"
-        # (workflow_group="budget"), which appended a stray "Optimization"
-        # section after the schema order -- a form-order regression vs the
-        # PySCF `stages` field; fixed 2026-06-29.
-        #
-        # 2026-08-07: 16 = the 15 above + ``restart`` (clean | continue),
-        # the shared-schema field engines/stages.md § 3 asks for and nobody
-        # had added -- so § 6's own worked example named a field the schema
-        # did not have.  It is the ONE field a user sets for warm restart;
-        # the three use_save_* flags are what it expands into.
-        #
-        # ⚠ THIS COUNT DROPS TO 15 AGAIN AT P2 UNIT 2, when cfg.stages is
-        # deleted: a stage list is not a property of an engine config, and
-        # the ladder moves to task.json (engines/stages.md § 1.1).  When
-        # that lands, remove the stage-table line above rather than editing
-        # the number -- the widget it describes goes with the field.
+        # 2026-08-07 (P2 unit 2/2b/3) -- three changes, net +2 on the 14:
+        #   * the staged-opt STAGE-TABLE WIDGET IS GONE.  It came from
+        #     ``cfg.stages: List[SiestaStageSpec]``, and the generator turned
+        #     that into a per-stage grid automatically -- which is exactly
+        #     the bug: it answered "which settings may a user vary" by
+        #     listing a Python class's fields.  An engine config carries no
+        #     stage list (engines/stages.md § 1.1), so the field, the type
+        #     and the widget went together.  The per-stage grid belongs to
+        #     the shared Task Setup tab, fed by this schema + task.json.
+        #   * ``restart`` (clean | continue) arrived -- the shared-schema
+        #     field § 3 asks for and nobody had added, so § 6's own worked
+        #     example named a field the schema did not have.  It is the ONE
+        #     field a user sets for warm restart; the three use_save_* flags
+        #     are what it expands into.
+        #   * ``continue_retries`` arrived -- it had lived on the deleted
+        #     stage type, and § 3 puts it in the shared schema: a SINGLE
+        #     run's wrapper honours it, so it passes § 3's two questions.
+        # Compute & budget: 16 = the 14 + restart + continue_retries.
         ("Compute & budget",        16),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
@@ -2254,8 +2251,11 @@ def test_pyscf_form_schema_matches_documented_layout():
         #   * 2 optimization knobs left (optimize, optimizer); the
         #     four flat geom_conv_* / geom_max_steps scalars + the
         #     5 preopt_* knobs they used to share this section with
-        #     are gone -- the cfg.stages stage-table is the
-        #     canonical convergence-ladder control.
+        #     are gone -- PySCFConfig.stages' stage-table is the
+        #     canonical convergence-ladder control.  (PySCF is the ONLY
+        #     engine with one now; SIESTA's was deleted 2026-08-07 --
+        #     its ladder runs inside one process, so its stage list is
+        #     also engine behaviour, which SIESTA's never was.)
         #   * 1 stage-table widget (``stages``).
         #   * 7 runtime + output knobs (max_memory_mb, threads,
         #     use_gpu, verbose, chkfile, log_file, verbose_comments).

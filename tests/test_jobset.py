@@ -170,10 +170,14 @@ def test_render_plan_sweep_says_independent():
 
 def test_stages_to_jobset_default_ladder():
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import stages_to_jobset
+    from molbuilder.siesta.stages import (DEFAULT_NONCONVERGENCE,
+                                          default_siesta_stages,
+                                          stages_to_jobset)
 
-    cfg = SiestaConfig()                   # default: stage1+stage2 on, stage3 off
-    js = stages_to_jobset(cfg, shared=["C.psml"])
+    cfg = SiestaConfig()                   # the template -- no ladder in it
+    stages = default_siesta_stages()       # stage1+stage2 on, stage3 off
+    js = stages_to_jobset(cfg, stages, shared=["C.psml"],
+                          on_nonconvergence=DEFAULT_NONCONVERGENCE)
     assert js.kind == "ladder" and js.engine == "siesta"
     assert [j.name for j in js.jobs] == ["stage1", "stage2"]
     assert js.jobs[0].script == "siesta_stage1.fdf"
@@ -189,29 +193,52 @@ def test_stages_to_jobset_default_ladder():
 
 
 def test_stages_to_jobset_carries_cg_when_same_relax_type():
+    """The comparison is over the RESOLVED optimizer, not a stage field:
+    a stage that does not override ``relax_type`` has the template's."""
     import dataclasses
-    from molbuilder.config.siesta import (SiestaConfig,
-                                          _default_siesta_stages)
-    from molbuilder.siesta.stages import stages_to_jobset
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import (default_siesta_stages,
+                                          stages_to_jobset)
 
-    s = _default_siesta_stages()
+    stages = default_siesta_stages()
     # make stage2 use CG too (same as stage1) -> .CG should carry forward.
-    s[1] = dataclasses.replace(s[1], relax_type="CG")
-    cfg = SiestaConfig(stages=s)
-    js = stages_to_jobset(cfg)
+    stages[1] = dataclasses.replace(
+        stages[1], overrides={**stages[1].overrides, "relax_type": "CG"})
+    js = stages_to_jobset(SiestaConfig(), stages)
+    assert "siesta.CG" in [c.pattern for c in js.jobs[1].carry]
+
+
+def test_stages_to_jobset_carries_cg_when_neither_stage_overrides_it():
+    """Both stages inherit the template's optimizer, so they match -- a
+    case the old field-comparison could not even express, since every
+    stage carried its own ``relax_type`` whether or not it meant to."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import stages_to_jobset
+    from molbuilder.task import Stage
+
+    js = stages_to_jobset(SiestaConfig(relax_type="Broyden"),
+                          [Stage(name="a"), Stage(name="b")])
     assert "siesta.CG" in [c.pattern for c in js.jobs[1].carry]
 
 
 def test_stages_to_jobset_halt_policy_gives_afterok():
-    import dataclasses
-    from molbuilder.config.siesta import (SiestaConfig,
-                                          _default_siesta_stages)
-    from molbuilder.siesta.stages import stages_to_jobset
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import (default_siesta_stages,
+                                          stages_to_jobset)
 
-    s = _default_siesta_stages()
-    s[0] = dataclasses.replace(s[0], on_nonconvergence="halt")
-    cfg = SiestaConfig(stages=s)
-    js = stages_to_jobset(cfg)
+    js = stages_to_jobset(SiestaConfig(), default_siesta_stages(),
+                          on_nonconvergence={"stage1": "halt"})
+    assert js.jobs[1].dep_kind == "afterok"
+
+
+def test_stages_to_jobset_defaults_an_unnamed_stage_to_afterok():
+    """Silence in the policy input means halt, and halt means the next
+    stage runs only on success -- the safe reading."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import (default_siesta_stages,
+                                          stages_to_jobset)
+
+    js = stages_to_jobset(SiestaConfig(), default_siesta_stages())
     assert js.jobs[1].dep_kind == "afterok"
 
 
@@ -220,10 +247,12 @@ def test_stages_to_jobset_resources_injection():
     from molbuilder.jobset.model import Resources
     from molbuilder.siesta.stages import stages_to_jobset
 
+    from molbuilder.siesta.stages import default_siesta_stages
+
     overrides = {"stage2": Resources(domain="public", time="7-00:00:00",
                                      exclusive=True)}
-    cfg = SiestaConfig()
-    js = stages_to_jobset(cfg, resources_for=overrides.get)
+    js = stages_to_jobset(SiestaConfig(), default_siesta_stages(),
+                          resources_for=overrides.get)
     assert js.jobs[1].resources.domain == "public"
     assert js.jobs[1].resources.exclusive is True
     # stage1 (no override) inherits job-level defaults.
@@ -232,15 +261,39 @@ def test_stages_to_jobset_resources_injection():
 
 def test_stages_to_jobset_rejects_invalid_ladder():
     import dataclasses
-    from molbuilder.config.siesta import (SiestaConfig,
-                                          _default_siesta_stages)
-    from molbuilder.siesta.stages import stages_to_jobset
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import (default_siesta_stages,
+                                          stages_to_jobset)
 
-    s = _default_siesta_stages()
-    s[1] = dataclasses.replace(s[1], name="stage1")   # duplicate name
-    cfg = SiestaConfig(stages=s)
-    with pytest.raises(ValueError, match="invalid ladder"):
-        stages_to_jobset(cfg)
+    stages = default_siesta_stages()
+    stages[1] = dataclasses.replace(stages[1], name="stage1")  # duplicate
+    with pytest.raises(ValueError, match="collide|silently"):
+        stages_to_jobset(SiestaConfig(), stages)
+
+
+def test_stages_to_jobset_rejects_an_override_the_schema_has_no_field_for():
+    """The refusal arrives BEFORE any Job is built, and names the field --
+    the preflight rule applied at the producer (stages.md § 6.6)."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import stages_to_jobset
+    from molbuilder.task import Stage
+
+    with pytest.raises(ValueError, match="mesh_cutof"):
+        stages_to_jobset(SiestaConfig(),
+                         [Stage(name="a", overrides={"mesh_cutof": 300})])
+
+
+def test_stages_to_jobset_carries_continue_retries_into_resources():
+    """job-contracts.md § 6.2: the warm-retry budget rides Resources under
+    its own name.  It is the one field there that becomes no SLURM flag --
+    the wrapper bakes it in (running-a-job.md § 3.5)."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import (default_siesta_stages,
+                                          stages_to_jobset)
+
+    js = stages_to_jobset(SiestaConfig(continue_retries=3),
+                          default_siesta_stages())
+    assert [j.resources.continue_retries for j in js.jobs] == [3, 3]
 
 
 # --------------------------------------------------------------------- #
@@ -287,6 +340,44 @@ def test_prep_renders_real_wrappers_into_each_job_dir(tmp_path):
         link = tmp_path / name / "job-gpu.run.sh"
         assert link.is_symlink() and os.readlink(link) == "../job-gpu.run.sh"
         assert link.resolve() == (tmp_path / "job-gpu.run.sh").resolve()
+
+
+def test_prep_bakes_the_warm_retry_budget_into_the_wrapper(tmp_path):
+    """**The whole road for `continue_retries`, end to end.**
+
+    job-contracts.md § 6.2: the budget rides ``jobset.Resources`` -- the same
+    road ``mpi_np`` and ``omp_threads`` ride -- but becomes no sbatch flag.
+    It is baked into the wrapper's own retry loop at install time
+    (running-a-job.md § 3.5).
+
+    Asserted on the EMITTED TEXT rather than on a call argument, because the
+    defect this closes was exactly a value that travelled correctly and was
+    then dropped at the last hop: `job-system.md § 4.1` recorded the SIESTA
+    ladder as never having implemented `continue`, and prep not passing the
+    field was where it stopped (fixed 2026-08-07, P2 unit 3)."""
+    js = JobSet(name="lad", engine="siesta", kind="ladder",
+                jobs=[Job(name="tight", script="job.fdf",
+                          resources=Resources(mpi_np=1, continue_retries=3))])
+    _write_config(tmp_path)
+    _write_fdf(tmp_path / "job.fdf")
+    prep_jobset(js, tmp_path, env="molbuilder-siesta", emit_sbatch=False)
+
+    wrapper = (tmp_path / "job.run.sh").read_text()
+    assert "_siesta_retry_max=3" in wrapper, wrapper
+    # and the wrapper SAYS so to the person reading its banner
+    assert "3" in wrapper and "etry" in wrapper
+
+
+def test_prep_omits_the_retry_loop_when_no_budget_is_asked_for(tmp_path):
+    """The other half: absent means absent.  A wrapper that always carried a
+    retry loop would re-enter SIESTA for jobs nobody asked to retry."""
+    js = JobSet(name="lad", engine="siesta", kind="ladder",
+                jobs=[Job(name="tight", script="job.fdf",
+                          resources=Resources(mpi_np=1))])
+    _write_config(tmp_path)
+    _write_fdf(tmp_path / "job.fdf")
+    prep_jobset(js, tmp_path, env="molbuilder-siesta", emit_sbatch=False)
+    assert "_siesta_retry_max=" not in (tmp_path / "job.run.sh").read_text()
 
 
 def test_prep_rejects_missing_script(tmp_path):
