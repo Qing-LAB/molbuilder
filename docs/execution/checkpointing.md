@@ -90,7 +90,6 @@ flowchart TB
 | decks, wrappers, `task.json`, links | **git** | text — a diff is meaningful and the cost is nothing |
 | `.XV`, `.CG`, `run.json` | **git** | small, and *"a restore brings back a resumable state"* |
 | `.DM`, `.HSX`, `.TSHS` | **the archive** | large and binary — git would store every version whole |
-| a benchmark's trial output | **neither** | a five-iteration throwaway is not a result |
 
 **S1 is that picture stated as a rule**: never both, never neither. Both halves
 fail silently — a big binary in git bloats the repository until a clone is
@@ -173,12 +172,21 @@ checked against the ignore list. See "The third bucket" below.*
 (including the small warm-restart `.XV` / `.CG`) is committed to git; the large
 binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
 
-**Where a file sits decides whether it is ours.** `project-layout.md § 1.4`
-makes every directory a *container* (setup — text, git's) or a *run* (what one
-invocation produced). The archive covers the runs this calculation owns: a flat
-root, or a stage's `run-N/`. A nested container's runs — a benchmark's
-`point-*/`, two levels down — hold five-iteration throwaways and are not this
-history's business. **Depth, not names, and no marker file.**
+**Every depth, and no exceptions by location.** A file three directories down is
+stored exactly as one at the root; the archive keys are paths relative to the
+calculation root precisely so that works (L2).
+
+> **Which directory to checkpoint is the CALLER's decision, not this module's.**
+> *Corrected 2026-08-08 (user).* This section used to carve out a benchmark's
+> `point-*/` runs as "five-iteration throwaways… not this history's business" —
+> checkpoint deciding that somebody else's files did not matter. **Whether a
+> benchmark's trials are worth keeping is the benchmark command's call**, made
+> by choosing what to point checkpoint at. Once pointed at a directory,
+> checkpoint stores that directory, all of it.
+>
+> The carve-out was the same mistake as the ignore list, one level up: a
+> judgement about *importance* living in the module that is supposed to have no
+> opinions about importance.
 
 **No dotfiles either, and writer and reader must agree on that.** The MANIFEST
 parser rejects a dot-prefixed component anywhere in a key, so the archive walk
@@ -409,15 +417,14 @@ the `bytes` column it adds agrees with the file on disk.**
 | **How it fails** | An archive directory whose *files* are rewritten in place means an old commit's binaries silently become a newer run's. Every restore before that point returns the wrong data, and nothing reports it |
 | **How to check** | For a given commit sha, the archived bytes never change. Re-archiving the *same* sha rebuilds the directory — legal only because one commit implies one tree — so the assertion is on **content for a sha**, not on the directory's mtime. The rebuild moves the published archive **aside** before publishing the new one and deletes it only after (A1), so no window exists in which neither is present. For the migration specifically: diff the parsed MANIFEST before and after — the name→sha mapping is unchanged, and I2 passes afterwards |
 
-**One phrase in the shipped docs is misleading, and it misled me.**
-`running-a-job.md § 6.1` and `job-contracts.md § 6.1` both say the archive is
-*"deduped by content"*. Reading `checkpoint.py`, that describes deduping by
-**basename within one MANIFEST** — so that overlapping globs like `*.DM` and
-`*.D*` do not list a file twice and trap the strict parser. It is **not**
-storage dedup across checkpoints: `_archive_binaries` copies every big binary
-into `.binsnapshots/<commit-sha>/` on every checkpoint, with no hardlinking and
-no content-addressed store. Ten checkpoints of a folder holding a 2 GB `.DM`
-cost 20 GB. See L5.
+> **A stale paragraph lived here until 2026-08-08 and said the opposite of the
+> code.** It claimed there was "no hardlinking and no content-addressed store",
+> and that ten checkpoints of a 2 GB `.DM` cost 20 GB. Hard-linking by content
+> shipped afterwards — `_archive_binaries` calls `_link_or_copy`
+> (`checkpoint.py:847`) — and L5 describes it correctly, so the document
+> contradicted itself across four hundred lines. Deleted rather than corrected
+> in place: **it was arguing about disk cost inside a rule about not corrupting
+> data**, which is how the two came to be weighed against each other at all.
 
 ### I2 — a MANIFEST is authoritative for its archive
 
@@ -804,23 +811,31 @@ user tagging by hand is their own business — `snapshot tag` exists for it — 
 assertion is on what the offered path emits, not on the total. Under § 4.1 the
 user still says yes; this invariant governs what is proposed, not who decides.
 
-### L5 — a checkpoint's cost is bounded by what changed, not by what exists
+### L5 — *(not an invariant)* a checkpoint's cost is bounded by what changed
 
-*HOLDS as of 2026-08-06 — `tests/test_checkpoint_invariants.py`.*
+*Holds as of 2026-08-06 — `tests/test_checkpoint_invariants.py`. **Demoted from
+an invariant 2026-08-08.***
 
-> **This verdict was written twice and wrong both times (settled 2026-08-07).**
-> First it said HOLDS while filing a display discrepancy as "a separate fix" —
-> which looked like letting a passing test outrank the invariant. So it was
-> changed to *half held*, on the argument that "a cost nobody can see is not a
-> bounded cost." That was an over-correction in the other direction.
+> ### ⚠ Disk cost is a by-product. It is never traded against correctness.
 >
-> **This invariant is about storage, and storage is what it governs.** A
-> checkpoint's disk cost is bounded by what changed; that is true, tested, and
-> unaffected by what any surface prints. What a display shows is a display's
-> problem, and belongs to a guide rather than to a contract about an archive. The
-> discrepancy is real and is recorded below — but it does not make this invariant
-> half-true, and dragging it in here was the contract reaching for something that
-> is not its business.
+> *Ruled 2026-08-08 (user): "disk cost is a fucking by-product. Correctness goes
+> first… what is the use of a good disk space when all the results are fucked up
+> by errors."*
+>
+> **Everything above is an invariant: it must hold or the history is broken.
+> This is not one.** It is a property the implementation happens to have, and it
+> is tuned through configuration — never by storing less.
+>
+> It is written here as a warning as much as a description. **This document has
+> already lost a file to cost reasoning**: `*.MD` was ignored *because it was
+> large*, and the question of where it should be stored instead was never asked
+> (S1). That is what happens when "expensive" and "must not be lost" are allowed
+> to argue. They are not comparable, and this section is placed below the
+> invariants rather than among them so nobody reads them as peers again.
+>
+> **Two earlier verdicts here argued about whether a display discrepancy made
+> the invariant half-true.** Both were beside the point. The question was never
+> whether the cost is visible; it is that cost does not get a vote.
 
 **What is already archived is not archived again.** An archived file is never
 rewritten (I1), so when a binary's content is already in the archive the new
@@ -875,7 +890,7 @@ ever needs to be shared across repositories, where links cannot reach.
 
 | | |
 |---|---|
-| **How it fails** | Silently, and only at scale. Nothing errors; the archive grows linearly in checkpoints × binary size, and `prune` is unbuilt (`running-a-job.md § 6.2`), so nothing reclaims it either. A mission checkpointed at both boundaries `engines/stages.md § 7.3` names — before a replacing produce and when a stage finishes — pays two full copies of its `.DM` and `.HSX` set per stage, so a careful five-stage run paid ten |
+| **How it fails** | It costs disk. Nothing errors, nothing is lost, and no result is wrong — which is why this is not an invariant. Without link-reuse the archive grows linearly in checkpoints × binary size and `prune` is unbuilt (`running-a-job.md § 6.2`), so a five-stage run checkpointed at both boundaries paid ten full copies of its binaries. Annoying; not a defect of the history |
 | **Made worse by L7's fix** | Binary-only changes now produce commits that previously did not exist — correctly, since the alternative was losing them — and each one used to copy the full binary set again. Fixing the data-loss bug raised the disk cost, which is why L5 followed it rather than waiting |
 | **How to check** | Checkpoint a folder twice with the binaries untouched between them; the second checkpoint's *incremental* disk cost is near zero. Measured by inode so a hard-linked file counts once — summing `st_size` counts every link in full and would report no saving at all. Then the three that stop the cure being worse than the disease: a **changed** binary is stored again, two checkpoints never **alias** different content, and a **rotted** candidate is copied past rather than linked to |
 
