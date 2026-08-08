@@ -204,43 +204,56 @@ belongs.
 > archived binary like any other — the link rule above is about the deck and the
 > shared package, which are the links a checkpointed tree actually contains.
 
-#### The third bucket — and the one rule that governs it
+#### There is no third bucket
 
-S1 is written as a binary, and the code has a **third** state it never named:
-ignored by git *and* matched by no archive glob. `_GITIGNORE_FIXED_TAIL` is a
-hand-kept list of such patterns, sitting directly beneath the generated section
-under a comment promising the two lists "never drift apart".
+**Every regular file in the directory is stored. There is exactly one thing
+that is not, and it is not a judgement: `.binsnapshots/`, because a store
+cannot contain itself.**
 
-A third bucket is not automatically wrong — a lock file or an editor swap file
-is genuinely not part of the calculation. But it needs a rule, and until
-2026-08-08 it had none, so nothing stopped a *result* from being put in it.
+That is the whole exclusion list. No category of file is exempt, because
+deciding which files matter is not this module's job — it is handed a
+directory and it stores the directory.
 
-> **A file may be in neither store only if losing it loses nothing:** it is
-> **regenerable** from something that *is* stored, or it is **not the
-> calculation's** at all.
->
-> **A result may never be there.** If a run produced it and it cannot be
-> recomputed from what a checkpoint holds, it is tracked or it is archived.
-> "Too large for git" selects the *archive*; it never selects the exit.
+The code does not do this. `_GITIGNORE_FIXED_TAIL` is a hand-kept list of
+patterns that git ignores and no archive glob matches, so they are in **no
+snapshot at all**: `*.ion.nc`, `*.ion.xml`, `fdf.*.log`, `WORK_*`,
+`INPUT_TMP.*`, `*.swp`, `*~`, and — the one that is plainly a result —
+**`*.MD` and `*.MD_CAR`**, ignored *because they are large*, which is the
+argument for archiving them rather than for dropping them. A restored MD
+calculation comes back without its trajectory, silently, in the **shipped
+default**.
 
-Against that rule, the shipped list divides cleanly:
+> **An earlier version of this section (2026-08-08, same day) permitted a
+> third bucket for files that were "regenerable, or not the calculation's".
+> That was wrong and is recorded rather than removed**, because the way it was
+> wrong is the thing this document keeps failing at: it reads like a rule and
+> is a judgement. *Regenerable by whom, checked how?* Nothing stops the next
+> reader deciding a trajectory is regenerable "because you can rerun the
+> calculation" — which is exactly the reasoning that put `*.MD` there. **A
+> contract that needs an opinion to apply is how the drift happens.** One
+> sentence with no categories in it cannot be argued with.
 
-| Pattern | Verdict |
-|---|---|
-| `*.ion.nc`, `*.ion.xml` | **regenerable** — deterministic from the `.psml` |
-| `fdf.*.log`, `WORK_*`, `INPUT_TMP.*` | **scratch** — SIESTA's working files, meaningless after the run |
-| `*.swp`, `*~` | **not ours** — editor noise |
-| `.binsnapshots/` | **the store itself** — archiving the archive |
-| **`*.MD`, `*.MD_CAR`** | ⛔ **results.** Ignored *because they are large* — which is the argument for archiving them, and instead they are in no snapshot at all. A restored MD calculation comes back without its trajectory, silently |
+#### Which store — by size, not by name
 
-`*.MD` is S1's losing branch in the **shipped default**, not in some
-misconfigured directory: large enough to be worth ignoring, and nothing ever
-asked where it went instead.
+The mechanism is the part this module *does* choose, and the criterion has to
+be as explicit as the rule above or it drifts the same way.
+
+**A file goes to the content-addressed store when it is too large for git, and
+that is a size, not a list of extensions.** `archive_globs` is a list of names,
+which means it is a guess about which extensions are usually big — and it is
+wrong in both directions the moment an engine version, an option, or a system
+size changes. A 4 GB `.EIG` is committed because nobody listed it; an empty
+`.DM` is archived because somebody did.
+
+The glob list may survive as an *override* — a way to force a known-huge
+family to the archive regardless of the size it happens to have in one run —
+but it may not be the **gate**, because a name is not the property being
+tested. Size is.
 
 | | |
 |---|---|
 | **How it fails** | A file matching an archive glob that is *also* tracked puts a multi-gigabyte blob in git history forever. A file matching neither is in no snapshot at all — a restore silently does not bring it back |
-| **How to check** | For every file in a checkpointed directory: `matches_archive_glob(f) XOR git_tracked(f)` is true, **or** the file matches a pattern in the ignore set that the rule above admits. Assert it over a fixture containing one of each engine's warm files, a text log, an MD trajectory and a scratch file — and assert the ignore set itself contains **no pattern that is neither regenerable nor foreign**, which is the check nobody ran |
+| **How to check** | Walk a checkpointed directory and assert `archived(f) XOR git_tracked(f)` for **every** regular file, with `.binsnapshots/` the only path excluded. No allow-list, no per-pattern reasoning — a file is stored or the assertion fails. Then assert the generated `.gitignore` contains **nothing that is not an archive pattern**, which is the check nobody ran and the one that catches the whole class |
 
 **An archive is now always written, even with nothing to put in it.** A missing
 archive directory used to mean two things — *this commit had no big binaries* and
