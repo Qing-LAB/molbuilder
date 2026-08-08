@@ -711,11 +711,24 @@ means the block is copied as it stands.
 > **Three things this format leaves to be decided when it is built**, recorded
 > rather than guessed:
 >
-> - **Machine-dependent items.** `BlockSize` comes from the rank count and
->   `Diag.Algorithm` also picks the wrapper's conda env — neither is knowable
->   when the template is written (`project-layout.md § 2.2`). Do those items get
->   a block with a placeholder payload that `prep` fills, or no block until
->   `prep` adds one?
+> - **Items whose default is *derived*, not literal.** Some defaults come from
+>   the compute resources — `BlockSize` from the rank count is the example — and
+>   the rank count is not known when the template is written. **These still get a
+>   block**, and the rule is (user, 2026-08-07): **an explicit user setting is
+>   honoured; otherwise the value is derived at generation, and at generation
+>   time both are available.** So the block's declaration says the default is
+>   derived rather than naming a number, and the payload is either what the user
+>   set or supplied by `prep`. *How* that is spelled — a `default=derived` marker
+>   with the payload line absent until `prep` writes it, or a placeholder payload
+>   — is the remaining detail, and it is small.
+>
+>   ⚠ **`Diag.Algorithm` is not one of these**, and it was wrong to file it here.
+>   It is **an ordinary explicit option**: a user chooses it, it gets a plain
+>   block with a plain payload, and nothing derives it. **Whether the engine can
+>   deliver the choice is the engine's business, not the generator's** — an
+>   `.fdf` asking for an ELPA solver that the build does not have fails when
+>   SIESTA runs, and that is the correct place for it to fail. The generator does
+>   not check, and does not need to.
 > - **A hand-edited payload that no longer matches its block name.** The file is
 >   meant to be edited; someone will change `MeshCutoff 300.0` to `400.0` by
 >   hand. Reading the value back out is what makes that work — but it also means

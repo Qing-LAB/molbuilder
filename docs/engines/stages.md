@@ -417,6 +417,20 @@ decks that are subtly wrong for the machine they run on.
 |---|---|---|
 | an ordinary deck line | `mesh_cutoff` → `MeshCutoff` | the stage's deck, and nowhere else |
 | **a deck line that is also a resource decision** | `diag_algorithm` → `Diag.Algorithm`; `enable_gpu` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
+
+> **This row is about where a value *lands*, not about who *chooses* it**
+> (clarified 2026-08-07, because the wording invited the other reading).
+> `diag_algorithm` is an **ordinary explicit option** — the user picks it, and
+> nothing derives it from the machine. What makes it a resource decision is only
+> that the choice is *read* in three places downstream. **And whether the engine
+> can honour it is the engine's business**: a deck asking for an ELPA solver a
+> build does not have fails when SIESTA runs, which is the right place to fail.
+> The generator does not check.
+>
+> **A genuinely derived value is a different case** — `BlockSize` from the rank
+> count. There the default is computed at generation, an explicit user setting
+> wins, and both are available at that moment
+> (`job-contracts.md § 3.7`).
 | a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at install (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
 
 **The routing is derivable, never a second list.** A field carries an
