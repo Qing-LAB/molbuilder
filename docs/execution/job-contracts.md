@@ -185,7 +185,7 @@ say so.
 >
 > Three parties, three verbs: **the wrapper activates and execs, the engine reads
 > and writes, the monitor watches and tells.** Everything that *decides* runs
-> where the user is (`checkpointing.md § 4.1`).
+> where the user is (`checkpointing.md § 6`).
 
 **Rule 1 — one job per directory.** Every job lives in its own directory. A
 directory may hold *several inputs* (one per stage of a staged relaxation,

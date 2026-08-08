@@ -1,1190 +1,502 @@
-# Checkpointing — the invariants a run directory's history must hold
+# Checkpointing — saving a calculation so you can always get it back
 
 **Role:** contract
 **Domain:** execution
-**Companions:** [`execution/running-a-job.md`](?doc=execution/running-a-job.md)
-— the guide (`running-a-job.md § 6`): what `molbuilder snapshot` is for and how
-to drive it, which this document never repeats;
-[`execution/job-contracts.md`](?doc=execution/job-contracts.md) — the registry
-entries for `.mbcheckpoint.json` and the archive MANIFEST
-(`job-contracts.md § 6.1`), and the run directory being checkpointed
-(`job-contracts.md § 2`);
-[`engines/stages.md`](?doc=engines/stages.md) — the folder this history is taken
-of, and the two boundaries where it is taken (`stages.md § 7.3`);
-[`execution/run-identity.md`](?doc=execution/run-identity.md) — the id every
-commit and tag carries.
-
-**Status: mixed, and each invariant says which it is.** Most hold of the shipped
-`Repo` core today and a change must not break them; a few depend on the staged
-layout (`engines/stages.md § 7.1`) and cannot be asserted until it exists. The
-split is *not* by section — § 2 contains both — so every invariant carries a
-**holds today** or **needs the layout** marker, and § 6's sheet collects them.
-Every one is written so a test can assert it; that is the point of the
-document.
-
-**This contract owns:** what must never change in a checkpointed run directory,
-and what information must be kept separate from what. Where the history sits in
-the project tree, and why it sits there, is
-[`execution/project-layout.md`](?doc=execution/project-layout.md) § 6.
+**Companions:** [`running-a-job.md`](?doc=execution/running-a-job.md) § 6 — how to
+*drive* the checkpoint system (the CLI verbs, the routes, the sidebar panel);
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1 — the file formats;
+[`engines/stages.md`](?doc=engines/stages.md) § 7 — the folder being saved and the
+two moments a save is offered; [`project-layout.md`](?doc=execution/project-layout.md)
+§ 6 — where the history sits in the project tree.
 
 ---
 
-## 1. Why invariants rather than a description
+## 1. What this is for
 
-The checkpoint history is what makes a folder of stages safe to rewrite, safe to
-branch and safe to come back to (`engines/stages.md § 7.2` and
-`engines/stages.md § 7.3`). Everything
-downstream of it — replacing a produce, redoing a stage, forking a what-if —
-assumes the history is *complete and honest*. A history with a hole in it is
-worse than none, because the hole is invisible until the moment somebody needs
-what was in it.
+You have a folder holding a calculation: inputs, a relaxed geometry, a density
+matrix, output logs. You are about to do something to it — rerun a stage,
+regenerate the decks, start over cleanly. **This is the thing that means you can
+change your mind afterwards.**
 
-So this document is a list of things that must always be true, each with the
-failure it prevents and the check that catches it. It is the review sheet for the
-code, not a tour of the feature.
+> ### The promise
+>
+> **Whatever state a run is in, that state can be brought back.**
+>
+> Every other rule in this document exists to keep that sentence true.
 
-### 1.1 What is shipped, and what this design changes
+**Nothing else is promised, and nothing else competes with it.** Not disk space,
+not speed, not tidiness. If a rule here and a saving of disk ever disagree, the
+rule wins — a folder that is cheap to store and wrong is worth nothing.
 
-The `Repo` core, the `molbuilder snapshot` CLI, the HTTP routes and the sidebar
-panel all ship (`running-a-job.md § 6`). Read this document as a statement of
-what that code must keep doing, plus the six changes a staged folder needs:
+### 1.1 What it decides, and what it does not
 
-| | Shipped today | With a staged folder |
-|---|---|---|
-| **What it covers** | one flat run directory | the calculation root and every stage beneath it — **one repository per calculation** (L1) |
-| **Archive globs** | `*.DM`, `*.HSX`, … — matched beside the config | must match **at depth**; today's patterns miss `<stage>/<id>.DM` and every binary lands in git as a blob (L2) |
-| **When a checkpoint is taken** | when the user runs `snapshot checkpoint` | still **only when the user says so** — but `prep` **asks**, when it is about to change a directory that already holds results (§ 4.1) |
-| **What it is called** | a free-text message; a tag name the user picks | the message carries the id and the stage; a stage completion is tagged `<id>/<stage>/<UTC>` (L3) |
-| **Who initialises** | `snapshot init`, always explicit | a produce that *creates* the folder initialises it; one writing into a folder that already existed without a checkpoint does not |
-| **`branch`** | CLI **and** `POST /api/checkpoint/branch` (added 2026-08-06) | the operation the staged design turns on — the browser could report a stage finished and not let you fork from it |
+| | |
+|---|---|
+| **You choose** | *which folder* to save, and *when* |
+| **Checkpoint chooses** | *how* each file is stored |
+| **Checkpoint never chooses** | *whether* a file is stored |
 
-Everything else — the text/binary split, the archive format, build-verify-swap,
-verify-before-restore — is unchanged, and §§ 2–4 exist to say so precisely enough
-that a change can be checked against them.
+That middle row is the only decision it owns, and it is a mechanical one: git is
+bad at very large files, so those go somewhere else. That is a storage detail,
+not an opinion about what matters.
+
+**It has no opinion about what matters.** A benchmark's throwaway trials, a log
+nobody will read, a 2 GB density matrix — if they are in the folder, they are
+saved. Whether a benchmark's trials are worth keeping is decided by whoever runs
+the benchmark, by choosing what to point this at.
+
+> **This is not a rule the design started with; it is one it learned.** A
+> trajectory file (`*.MD`) was left out of every snapshot for months because it
+> was *large* — the size was allowed to argue with the saving, and the size won.
+> Nobody chose that; it followed from letting the two be weighed at all.
 
 ---
 
-## 2. The separations — what must be kept apart
+## 2. How a folder is saved
 
-**Two stores, and every file is in exactly one of them.** That is the whole data
-structure, and most of the invariants below are consequences of it:
+Two stores. Every file is in exactly one of them.
 
 ```mermaid
-flowchart TB
-    subgraph TREE["a calculation folder"]
-      direction LR
-      C["<b>containers</b><br/>template · task.json<br/>rendered decks · wrappers<br/>links · bench-result.json"]
-      R["<b>runs</b> — run-N/<br/>.DM · .HSX · .TSHS<br/>the big binaries"]
-      SM["small run files<br/>.XV · .CG · run.json"]
-    end
-    G[("<b>git</b><br/>.git/<br/>text, diffable, cheap")]
-    A[("<b>the archive</b><br/>.binsnapshots/&lt;sha&gt;/<br/>copies + a MANIFEST of sha256")]
-    C --> G
-    SM --> G
-    R --> A
-    G -.->|"the commit sha names<br/>the archive beside it"| A
+flowchart LR
+    F["<b>a file in the folder</b>"] --> Q{"bigger than<br/>the size limit?"}
+    Q -->|"no"| G[("<b>git</b><br/>.git/<br/>diffable, cheap")]
+    Q -->|"yes"| A[("<b>the archive</b><br/>.binsnapshots/&lt;sha&gt;/<br/>whole copies + a list")]
+    G -.->|"the commit names the<br/>archive that goes with it"| A
 ```
 
-| | goes to | why |
-|---|---|---|
-| decks, wrappers, `task.json`, links | **git** | text — a diff is meaningful and the cost is nothing |
-| `.XV`, `.CG`, `run.json` | **git** | small, and *"a restore brings back a resumable state"* |
-| `.DM`, `.HSX`, `.TSHS` | **the archive** | large and binary — git would store every version whole |
+**Which store, by measuring — not by file type.** A file over the limit goes to
+the archive; everything else goes to git. Extensions are not consulted, because a
+name is not the property being tested: a 4 GB `.EIG` nobody listed would be
+committed, and an empty `.DM` somebody did list would be archived.
 
-**S1 is that picture stated as a rule**: never both, never neither. Both halves
-fail silently — a big binary in git bloats the repository until a clone is
-impossible, and one in neither store is *gone* after a restore, with nothing
-saying so.
+The engine entries in the config (§ 3) name families that are *always* large, so
+those skip the measuring. That is an effort saving and nothing else — **a hint
+can make a save faster; it can never make it store less.**
 
-### 2.1 The two stores, on disk
-
-The same picture as files, after two checkpoints of a two-stage calculation. This
-is what every invariant below is talking about:
+### 2.1 A real folder, after two saves
 
 ```text
 BDT_Au_relax_Au38C6H4S2/
-├── .git/                              ← store 1: the text history
-├── .gitignore                         ← generated: ignores exactly what the
-│                                         archive claims (S1a)
-├── .mbcheckpoint.json                 ← which patterns count as "big" here
-├── .binsnapshots/                     ← store 2: the content archive
-│   ├── 4f9c…a71/                        one directory per commit sha
+├── .git/                            the text history
+├── .gitignore                       generated — lists exactly what the archive holds
+├── .binsnapshots/                   the archive
+│   ├── 4f9c…a71/                      one directory per commit
 │   │   ├── 01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM
-│   │   └── MANIFEST
+│   │   └── MANIFEST                   what is in here, and its sha256
 │   └── b2e0…33d/
-│       ├── 01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM   ← same content as
-│       │                                                   above: a hard link,
-│       │                                                   costing no disk (L5)
+│       ├── 01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM   ← unchanged since the
+│       │                                                   save above, so this is
+│       │                                                   a hard link: no disk
 │       ├── 02_tight/run-0/BDT_Au_relax_Au38C6H4S2.DM
 │       └── MANIFEST
-├── task.json                        ┐
-├── BDT_Au_relax_Au38C6H4S2.fdf.template │ tracked by git —
-├── 01_coarse/                         │ text, diffable
-│   ├── BDT_Au_relax_Au38C6H4S2.fdf    │ ← no stage suffix: the DIRECTORY
-│   └── run-0/                         │   already says which stage
-│       ├── BDT_Au_relax_Au38C6H4S2.out
-│       ├── BDT_Au_relax_Au38C6H4S2.XV      ← small: git
-│       ├── run.json                        ┘
-│       └── BDT_Au_relax_Au38C6H4S2.DM      ← large: gitignored, in the archive
+├── task.json                      ┐
+├── BDT_Au_relax_Au38C6H4S2.fdf.template │  small → git
+├── 01_coarse/                     │
+│   ├── BDT_Au_relax_Au38C6H4S2.fdf│
+│   └── run-0/                     │
+│       ├── BDT_Au_relax_Au38C6H4S2.out                ┘
+│       ├── BDT_Au_relax_Au38C6H4S2.XV      small → git
+│       ├── run.json                        small → git
+│       └── BDT_Au_relax_Au38C6H4S2.DM      large → the archive
 └── 02_tight/…
 ```
 
-And one `MANIFEST`, which is the whole format — three columns, two spaces
-between, sorted by the third:
+And a MANIFEST is three columns — sha256, bytes, path — sorted by path:
 
 ```text
-7ef4c6452a48e8625b612ee830dd7554959b03b23df81867e38edc6d8bb1344a  8388608  01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM
-36c543955301c21a0ca61358275551df1ba4837a2c9fd93bd6c185f67409a572  8388608  02_tight/run-0/BDT_Au_relax_Au38C6H4S2.DM
+7ef4c645…344a  8388608  01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM
+36c54395…a572  8388608  02_tight/run-0/BDT_Au_relax_Au38C6H4S2.DM
 ```
 
-**Read the key column and the design is visible.** It is a path *relative to the
-calculation root*, not a bare filename — which is what lets one archive hold a
-`.DM` from every stage without them colliding (L2). Every component is checked so
-a restore cannot be steered out of the folder: no leading `/`, no `..`, no
-dot-prefixed component that would reach `.git` or `.binsnapshots`.
+**The path is relative to the folder root, not a bare filename.** That is what
+lets one archive hold a `.DM` from every stage without them colliding. Every part
+of it is checked so a restore cannot be steered out of the folder: no leading
+`/`, no `..`, nothing starting with a dot.
 
-**And the sha column is why the same content is stored once.** Two commits that
-both contain an unchanged `.DM` record the same sha, so the second archive links
-to the first's file instead of copying it (L5) — the archive still holds a real
-file at that path, so nothing reading it can tell the difference.
-
-### S1 — a **regular file** is git-tracked **or** content-archived, never both, never neither
-
-***DOES NOT HOLD.** Found 2026-08-08; it said "holds today" and had not been
-checked against the ignore list. See "The third bucket" below.*
-
-> **What a checkpoint is for, stated before the mechanism, because reading it
-> the other way round is what produced the defect below.**
->
-> **A checkpoint saves the whole directory. It chooses *how* to store a file,
-> never *whether* to.**
->
-> Membership is not a decision this module gets to make: it is not designed for
-> a particular set of files, it is designed for a directory, and the promise it
-> exists to keep is that **the state of a run can always be returned** — before
-> a cold start, before a warm one, before anything that overwrites. Selecting
-> a mechanism per file is an implementation detail and is allowed; git is bad
-> at multi-gigabyte binaries, so those go to a content-addressed store instead.
-> Selecting *members* is a different act wearing the same clothes, and it is
-> how a result stops being saved.
-
-`.mbcheckpoint.json`'s `archive_globs` classify a run directory's files: text
-(including the small warm-restart `.XV` / `.CG`) is committed to git; the large
-binaries are gitignored and archived by content under `.binsnapshots/<sha>/`.
-
-**Every depth, and no exceptions by location.** A file three directories down is
-stored exactly as one at the root; the archive keys are paths relative to the
-calculation root precisely so that works (L2).
-
-> **Which directory to checkpoint is the CALLER's decision, not this module's.**
-> *Corrected 2026-08-08 (user).* This section used to carve out a benchmark's
-> `point-*/` runs as "five-iteration throwaways… not this history's business" —
-> checkpoint deciding that somebody else's files did not matter. **Whether a
-> benchmark's trials are worth keeping is the benchmark command's call**, made
-> by choosing what to point checkpoint at. Once pointed at a directory,
-> checkpoint stores that directory, all of it.
->
-> The carve-out was the same mistake as the ignore list, one level up: a
-> judgement about *importance* living in the module that is supposed to have no
-> opinions about importance.
-
-**No dotfiles either, and writer and reader must agree on that.** The MANIFEST
-parser rejects a dot-prefixed component anywhere in a key, so the archive walk
-must skip them at every level — basename included. It filtered only the parent
-directories until 2026-08-06, and pathlib's `*` matches a leading dot, so a file
-like `.hidden.DM` was archived under a key the parser refuses: **the archive wrote
-a MANIFEST its own reader could never accept**, making that checkpoint
-permanently unverifiable and unrestorable.
-
-**Symlinks are outside this too, and the word "regular" is load-bearing.** A
-stage links its deck and the shared pseudopotentials up to the calculation root,
-and an attempt links the deck down from its stage — so a checkpointed tree is
-full of links. A link has no content of its own: the real file is tracked or
-archived once, wherever it actually lives. Git ignores the link as well (a
-gitignore pattern matches by name, not by file type), so a link is in *neither*
-set, and that is correct rather than a hole — the layout is reproducible from the
-description, while the bytes are already stored once. Archiving a link as a
-second copy would duplicate content *and* restore a regular file where a link
-belongs.
-
-> **A file a stage continues from is not a link.** It is copied in as a real
-> file before the run starts (`project-layout.md § 1.6`), so it is an ordinary
-> archived binary like any other — the link rule above is about the deck and the
-> shared package, which are the links a checkpointed tree actually contains.
-
-#### There is no third bucket
-
-**Every regular file in the directory is stored. There is exactly one thing
-that is not, and it is not a judgement: `.binsnapshots/`, because a store
-cannot contain itself.**
-
-That is the whole exclusion list. No category of file is exempt, because
-deciding which files matter is not this module's job — it is handed a
-directory and it stores the directory.
-
-The code does not do this. `_GITIGNORE_FIXED_TAIL` is a hand-kept list of
-patterns that git ignores and no archive glob matches, so they are in **no
-snapshot at all**: `*.ion.nc`, `*.ion.xml`, `fdf.*.log`, `WORK_*`,
-`INPUT_TMP.*`, `*.swp`, `*~`, and — the one that is plainly a result —
-**`*.MD` and `*.MD_CAR`**, ignored *because they are large*, which is the
-argument for archiving them rather than for dropping them. A restored MD
-calculation comes back without its trajectory, silently, in the **shipped
-default**.
-
-> **An earlier version of this section (2026-08-08, same day) permitted a
-> third bucket for files that were "regenerable, or not the calculation's".
-> That was wrong and is recorded rather than removed**, because the way it was
-> wrong is the thing this document keeps failing at: it reads like a rule and
-> is a judgement. *Regenerable by whom, checked how?* Nothing stops the next
-> reader deciding a trajectory is regenerable "because you can rerun the
-> calculation" — which is exactly the reasoning that put `*.MD` there. **A
-> contract that needs an opinion to apply is how the drift happens.** One
-> sentence with no categories in it cannot be argued with.
-
-#### Which store — by size, not by name
-
-The mechanism is the part this module *does* choose, and the criterion has to
-be as explicit as the rule above or it drifts the same way.
-
-**A file goes to the content-addressed store when it is too large for git, and
-that is a size, not a list of extensions.** `archive_globs` is a list of names,
-which means it is a guess about which extensions are usually big — and it is
-wrong in both directions the moment an engine version, an option, or a system
-size changes. A 4 GB `.EIG` is committed because nobody listed it; an empty
-`.DM` is archived because somebody did.
-
-The glob list may survive as an *override* — a way to force a known-huge
-family to the archive regardless of the size it happens to have in one run —
-but it may not be the **gate**, because a name is not the property being
-tested. Size is.
-
-| | |
-|---|---|
-| **How it fails** | A file matching an archive glob that is *also* tracked puts a multi-gigabyte blob in git history forever. A file matching neither is in no snapshot at all — a restore silently does not bring it back |
-| **How to check** | Walk a checkpointed directory and assert `archived(f) XOR git_tracked(f)` for **every** regular file, with `.binsnapshots/` the only path excluded. No allow-list, no per-pattern reasoning — a file is stored or the assertion fails. Then assert the generated `.gitignore` contains **nothing that is not an archive pattern**, which is the check nobody ran and the one that catches the whole class |
-
-**An archive is now always written, even with nothing to put in it.** A missing
-archive directory used to mean two things — *this commit had no big binaries* and
-*this commit's archive is lost* — which is why `missing_archive_warning` has to
-guess from whether **other** commits have archives, its docstring conceding that
-*"a lost archive cannot be proven"*. Every commit now gets a directory and a
-MANIFEST, empty when there was nothing to archive, so absence is evidence rather
-than a hint. (Repositories predating this have legitimately absent archives, so
-the warning stays a warning; promoting it to an error is a later step.)
-
-### S1a — the ignore set is *derived* from `archive_globs`, never kept beside it
-
-*HOLDS for the **derived** section as of 2026-08-06. **It does not hold for the
-file as a whole** — found 2026-08-08.*
-
-> **The generated block is not the whole ignore set.** `_GITIGNORE_FIXED_TAIL`
-> is a second list, written by the same function but **not derived from
-> anything**, and it sits immediately below a comment stating that the archive
-> section is generated "so git-ignore and sha-archive never drift apart". The
-> sentence is true of the block above it and false of the block below it, which
-> is the most expensive shape a comment can have.
->
-> One writer was necessary and is not sufficient: what S1a is actually after is
-> **one *source*.** A hand-kept tail cannot drift from `archive_globs` by being
-> edited elsewhere — it starts already independent of it, and the patterns in it
-> answer to no invariant at all. That is how `*.MD` came to be ignored without
-> anyone deciding where it should be stored instead (S1's third bucket).
-
-S1 rests on two lists agreeing: `archive_globs` in `.mbcheckpoint.json`, and what
-git ignores in `.gitignore`. **One list, one writer**, or the agreement is a
-coincidence somebody has to maintain.
-
-`set_archive_globs` was already that writer and says so — *"derived from the same
-resolved globs, so they never drift"*. **`init` was not.** It wrote `.gitignore`
-only `if not gi.exists()`, so a directory that already had one — every benchmark
-bundle, every directory anyone had worked in — kept an ignore file that said
-nothing about the archive set. The result is S1's *other* branch: the file
-archived **and** committed, a large blob in git history forever.
-
-Both now go through one writer that keeps a **marked section** and leaves
-everything outside it byte-for-byte. It also excises an unmarked block written
-before the markers existed — appending beside one would leave the old patterns in
-force, so narrowing the classification would leave a file ignored and no longer
-archived, which is the losing branch again.
-
-| | |
-|---|---|
-| **How it fails** | A second writer. Any future path that edits `archive_globs` without going through that API, or hand-edits `.gitignore`, makes a formerly-archived pattern start committing as a blob or a newly-archived one keep being tracked — **S1 broken by a configuration change rather than by a bug**, which is the kind nobody thinks to test |
-| **How to check** | Grep for writers of `archive_globs` and of `.gitignore`: there is exactly one of each, and they are the same function. Then a regression test: `config --set` changes both files, and a fixture whose two disagree is *reported*, not obeyed |
-
-### S2 — shared state lives above; a stage writes only inside its own directory
-
-*needs the layout.*
-
-A staged folder holds shared files once at the parent and one subdirectory per
-stage (`engines/stages.md § 7.1`). Cross-contamination is exactly what that
-separation exists to prevent.
-
-| | |
-|---|---|
-| **How it fails** | A stage writing through an inherited symlink overwrites the *producing* stage's result, and the history then records one stage's outputs replacing another's with no diff that says so |
-| **How to check** | **Two halves, and one alone is worse than useless.** (a) Checkpoint the folder, run one stage, read `git status` at the parent: every changed path is under that stage's subdirectory. (b) **`git status` cannot see the big binaries** — they are gitignored, which is S1 working as designed — so compare each archived file's sha against the head archive's MANIFEST for the same thing. The shipped restore already needs exactly this and has the helper (`_working_binaries_dirty`), whose own comment says *"big binaries are gitignored, so `git status` cannot see them"*. Half (a) alone would pass while a stage overwrote another stage's `.DM` — the single most valuable file it could destroy. The guard is that nothing is inherited by reference at all: whatever a stage continues from is **copied** into its run directory before it starts (`project-layout.md § 1.6`), so there is no link to write through. The shipped chained ladder still relies on localize-on-run for the same protection (`job-system.md § 5.2`); the staged path removes the hazard instead of guarding it |
-
-### S3 — a run records what it started from
-
-*needs the layout.*
-
-You must be able to tell a stage that **inherited** a geometry from one that
-**computed** it. Otherwise a checkpoint records the same bytes with two different
-meanings, and a year later nobody can say which run a published number came from.
-
-**This invariant survived a design change and its mechanism did not.** When
-stages were chained, an inherited file arrived as a *symlink* and became a
-regular file when the wrapper localised it — the type change on disk *was* the
-record. Stages no longer chain (`project-layout.md § 1.6`): whatever a run
-continues from is copied in as a real file before it starts, so there is no type
-change left to read.
-
-The record is now explicit instead of incidental: **`run.json`'s
-`continued_from`** (`project-layout.md § 1.6`), naming the run directory the
-files came from, or absent when the run started from the structure.
-
-| | |
-|---|---|
-| **How it fails** | Two runs hold byte-identical `.XV` files. One computed it; one was handed it. With nothing recording which, a history of five stages cannot be read backwards, and "where did this geometry come from" has no answer |
-| **How to check** | Prepare a stage from a named earlier run: its `run.json` names that run. Prepare one from the structure: the field is absent, not empty. Then the useful assertion — for every run in a finished tree, `continued_from` either names a directory that exists in the same tree or is absent; it never names something that has been deleted or was never there |
-
-> **An explicit record is better than the one it replaced**, quite apart from the
-> design change. A symlink becoming a file says *something was inherited here*;
-> it does not say **which run**, and with several attempts per stage that is the
-> question you actually have.
-
-### S4 — the description is input; everything else in the folder is derived
-
-*needs the description (`engines/stages.md § 6`).*
-
-`task.json` is written by the user's surface and read by the generator. Decks,
-wrappers, links and outputs are derived from it.
-
-| | |
-|---|---|
-| **How it fails** | A produce or a run that edits the description makes the folder self-modifying: the file that is supposed to explain the folder becomes a consequence of it, and reopening no longer restores intent |
-| **How to check** | The description's bytes are unchanged by any produce that did not receive a new one, and by every run. Hash it before and after |
-
-### S5 — identity is calculation-level; the run index is invocation-level
-
-*holds today, trivially: nothing derives an identity from a run at all — the
-wrapper reads `SystemLabel` **out of the script** (`job-contracts.md § 4.3`),
-which is an input. The invariant exists to keep it that way once a description
-does.*
-
-The id names the calculation; `-run0`, `-run1` name invocations of it
-(`run-identity.md § 2`).
-
-| | |
-|---|---|
-| **How it fails** | If anything about a run could change the id, the warm files it produced would be orphaned by the act of producing them |
-| **How to check** | No code path derives an id from a run's output, a timestamp, or a run index. `task.json`'s `run.id` is read, never recomputed (`run-identity.md § 3`, rule 1) |
-
-### S6 — a restored folder is internally consistent
-
-*needs the description.*
-
-`task.json` is tracked text (S1), so it travels with the commit. Restoring a
-checkpoint therefore restores **the description together with the decks it
-produced** — the folder explains itself at every point in its history, not only
-at the tip.
-
-| | |
-|---|---|
-| **How it fails** | If the description were untracked or archived, a restore would give you last week's decks beside this week's description, and nothing would say which the results came from |
-| **How to check** | Restore any commit and re-run the produce with `dry_run`: it reports no change. **One exclusion, and only one:** PROVENANCE stamps `generated-at` at generation time (`job-contracts.md § 3.2`), so two produces of the same description are never byte-identical and the comparison ignores that key. Anything else differing is a real difference — which is exactly what makes this check worth running |
+**Identical content is stored once.** Two saves that both contain an unchanged
+`.DM` record the same sha256, so the second links to the first's file rather than
+copying it. The archive still holds a real file at that path, so nothing reading
+it can tell.
 
 ---
 
-## 3. The immutabilities — what must never change
+## 3. The pieces
 
-### I1 — a written archive's *content* is never modified
+| Piece | What it is | Who writes it |
+|---|---|---|
+| **git** | the history of everything small | `checkpoint` |
+| **the archive** — `.binsnapshots/<commit>/` | whole copies of everything large | `checkpoint` |
+| **MANIFEST** | what is in one archive, with a sha256 each | `checkpoint` |
+| **`.gitignore`** | the list of what git skips — *generated*, so it matches the archive exactly | `checkpoint` only |
+| **the config** | the size limit, and the per-engine hints | the user, in molbuilder's own config |
+| **`snapshot` verbs** | `init`, `checkpoint`, `list`, `restore`, `branch`, `tag` | — |
 
-*holds today — read against the code.*
+**The config is molbuilder-wide, not per folder.** One `generic` entry — save
+everything, choose the store by size — plus optional per-engine hints. A caller
+may name its engine so the matching hint is used; with no name, `generic` applies,
+which is always correct and merely does more measuring.
 
-Git commits are immutable by construction; the archived bytes must be too.
-
-**One shipped command edits an archive and is not a violation.**
-`molbuilder snapshot migrate-manifest <ref>` rewrites a legacy 2-column MANIFEST
-into the canonical 3-column form (`running-a-job.md § 6.2`). That changes how the
-archive is *described*, never what is in it — so the invariant is about content,
-and the migration carries its own: **every `(name, sha256)` pair survives it, and
-the `bytes` column it adds agrees with the file on disk.**
-
-| | |
-|---|---|
-| **How it fails** | An archive directory whose *files* are rewritten in place means an old commit's binaries silently become a newer run's. Every restore before that point returns the wrong data, and nothing reports it |
-| **How to check** | For a given commit sha, the archived bytes never change. Re-archiving the *same* sha rebuilds the directory — legal only because one commit implies one tree — so the assertion is on **content for a sha**, not on the directory's mtime. The rebuild moves the published archive **aside** before publishing the new one and deletes it only after (A1), so no window exists in which neither is present. For the migration specifically: diff the parsed MANIFEST before and after — the name→sha mapping is unchanged, and I2 passes afterwards |
-
-> **A stale paragraph lived here until 2026-08-08 and said the opposite of the
-> code.** It claimed there was "no hardlinking and no content-addressed store",
-> and that ten checkpoints of a 2 GB `.DM` cost 20 GB. Hard-linking by content
-> shipped afterwards — `_archive_binaries` calls `_link_or_copy`
-> (`checkpoint.py:847`) — and L5 describes it correctly, so the document
-> contradicted itself across four hundred lines. Deleted rather than corrected
-> in place: **it was arguing about disk cost inside a rule about not corrupting
-> data**, which is how the two came to be weighed against each other at all.
-
-### I2 — a MANIFEST is authoritative for its archive
-
-*holds today.*
-
-The 3-column `<sha256>  <bytes>  <name>` MANIFEST (`job-contracts.md § 6.1`)
-describes exactly what is in that archive.
-
-| | |
-|---|---|
-| **How it fails** | A MANIFEST that names a file the archive lacks turns a restore into a partial one; a sha that does not match turns it into a silent corruption |
-| **How to check** | For every entry: the file exists, its size equals the recorded bytes, and its sha256 equals the recorded sha. Run it over every archive in a repository — this is the single most valuable test in the system |
-
-### I2b — every record the history depends on is tamper-evident
-
-***DOES NOT HOLD.** Required 2026-08-08 (user): "it should be sha256 protected —
-the save record should not be messed up before restore tries to work on that",
-and "the `.gitignore` would need similar check — this is where user could mess
-up".*
-
-I2 makes the MANIFEST authoritative. **Nothing makes the MANIFEST itself
-tamper-evident**, and authority without integrity is the worst combination of
-the two: restore believes it completely and can be made to believe anything.
-
-The chain of custody has exactly one unprotected link:
-
-| | protected by | |
-|---|---|:--:|
-| the commit | git's hash chain — a changed byte is a different sha | ✅ |
-| `.binsnapshots/<sha>/MANIFEST` | **nothing** | ⛔ |
-| each file the MANIFEST lists | its recorded sha256, checked on restore | ✅ |
-
-`.binsnapshots/` is gitignored (S1), so the entire archive sits outside git's
-protection. The commit sha *names* the archive directory; it attests nothing
-about its contents.
-
-#### `.gitignore` is the second record, and it fails the other way
-
-The MANIFEST decides what a **restore** returns. `.gitignore` decides what the
-**next save** even sees — so an edit there corrupts a checkpoint that has not
-been taken yet, which is harder to notice and impossible to spot afterwards.
-
-Add `*.XV` to it by hand and the next checkpoint tracks no `.XV`. They are not
-archived either, since they are not large. They land in S1's losing branch —
-**in no store at all** — and the resulting checkpoint looks perfectly healthy.
-
-**Its integrity does not need a sha, and should not use one.** The ignore set is
-*derived* from the classification (S1a), so the correct content is **computable
-at any moment**: regenerate it and compare. That is strictly better than a
-digest, which can only say *something changed* — regeneration says *this line
-should not be here*, and can offer to put it right.
-
-> The two records therefore get different mechanisms for a real reason, not for
-> convenience: **a MANIFEST records facts that cannot be recomputed** (what was
-> archived, and its bytes), so it needs a digest anchored outside itself.
-> **`.gitignore` records a derivation**, so the derivation is the check.
-
-#### Records are named so nobody mistakes one for a setting
-
-*User, 2026-08-08: "if we want to make it explicit, we can add a `.do_not_edit`
-suffix to all save records."*
-
-A file called `MANIFEST` looks like something a person may reasonably open and
-adjust. A file called **`MANIFEST.do_not_edit`** does not. This buys nothing
-against deliberate tampering — that is what the digest is for — and it is aimed
-at the far commoner case: somebody tidying a directory, or fixing what looks
-like a typo, without knowing they have rewritten what a restore will believe.
-
-**`.gitignore` cannot take the suffix** — git requires that exact name — which
-is the more reason for the marked, regenerable section it already carries to
-say plainly what it is.
-
-⚠ **A rename is an archive-format change and needs the reader to accept both
-names**, or every archive written before it becomes unreadable — which would
-break I2a on the day it shipped. `snapshot migrate-manifest` is the precedent
-and the place for it.
-
-**What an edited MANIFEST does, and none of it is loud:**
-
-- **a deleted line** — that file is not restored, and nothing reports it. It
-  reads exactly like "this archive never held that file";
-- **a changed sha** — verify accuses a file that is fine;
-- **both changed together** — restore returns the wrong bytes and reports
-  success. This is the one that ends up in a paper.
-
-> **The ordering constraint that makes this non-trivial, stated so the obvious
-> fix is not proposed and then found impossible.** The archive lives at
-> `.binsnapshots/<commit-sha>/`, so it is written **after** the commit exists.
-> The MANIFEST's own sha therefore cannot simply be committed alongside the
-> files it describes — that commit is already sealed by the time there is a
-> MANIFEST to hash.
->
-> So the anchor has to be something created *after* the archive is published and
-> immutable thereafter, and which anchor it should be is an open decision, not a
-> detail: a tag object, a git note, or a chained record folded into the next
-> checkpoint each have different failure modes. Recorded in the plan rather than
-> decided here.
-
-| | |
-|---|---|
-| **How it fails** | Silently and in the direction that matters: a restore that reports success and returns different data than was saved, or a checkpoint that looks healthy and quietly stored nothing. Every other invariant in this document is guarding data that this one lets be rewritten underneath them |
-| **How to check** | **The MANIFEST:** checkpoint a folder, then edit it three ways — delete a line, alter one sha, alter a sha *and* the file to match — and assert restore **refuses** all three, naming the record as what failed rather than the file. The third is the test that matters; the first two are the easy ones. **`.gitignore`:** add `*.XV` to it by hand, then checkpoint, and assert the checkpoint **refuses or repairs** rather than producing a snapshot with no `.XV` in either store. Assert it for a pattern added *inside* the marked section and one added outside it, since a reader who knows about the markers will edit inside them |
-
-### I2a — a restore is decided by what the **save** recorded, never by configuration
-
-*holds today — read against the code 2026-08-08: `Repo.restore`,
-`_copy_archived_binaries` and `_verify_archived_binaries` contain **no** read of
-`archive_globs`, `.mbcheckpoint.json`, or an engine name.*
-
-**Restore replays what the save wrote down. It does not re-derive, re-classify,
-or consult a setting.** Which files were archived is a fact the MANIFEST records
-(I2); which were tracked is a fact the commit records. A restore reads those two
-and puts the bytes back. There is no third input, and there is no trick.
-
-> **This is the invariant that lets the classification be changed at all.** The
-> rule for *which store a file goes to* is going to move — out of the repository
-> and into molbuilder's own configuration, with a generic default and per-engine
-> hints (`running-a-job.md § 6`). Every archive written before that change stays
-> restorable, because none of them will be re-read through the new rule: they
-> are restored through the record they were written with.
->
-> Without this, changing the classification would be a migration of every
-> archive in existence. With it, it is an edit to one file.
-
-**The saved state is therefore final at save time.** Nothing that happens
-afterwards — editing the config, deleting it, moving it, running a different
-engine, upgrading molbuilder — can change what a given checkpoint gives back.
-
-| | |
-|---|---|
-| **How it fails** | A restore that consulted the *current* classification would return a different tree depending on when it ran. A file archived under yesterday's rule and no longer matching today's would be looked for in git, not found, and silently skipped — the folder comes back short, and the checkpoint that "worked" last week is the one blamed |
-| **How to check** | Checkpoint a folder. Then change the classification as violently as the config allows — different engine, empty glob list, delete `.mbcheckpoint.json` outright — and restore. The restored tree is byte-identical to the one produced by restoring before the change. Run it for a folder holding both a tracked text file and an archived binary, so both halves of the record are exercised |
-
-### I3 — warm state is moved or restored, never incidentally lost
-
-*holds today — read against the code: the cold path is a `mv` into
-`<basename>-restart-aside-<UTC>/`, and the only `rm` in a generated wrapper
-targets the rank helper and the MPS pipe directory. One mover, no deleter.*
-
-`--cold` **moves warm files aside** into `<basename>-restart-aside-<UTC>/`; it
-does not delete them (`job-contracts.md § 4.1`). No operation *whose purpose is
-something else* removes or overwrites them — in particular a replacing produce,
-which may remove orphaned decks and wrappers but never state
-(`engines/stages.md § 7.2`).
-
-**`restore` is the one exception, and it is not a leak.** Restoring an earlier
-checkpoint replaces the worktree, warm files included — that is precisely what
-the user asked for, it refuses on a dirty tree first (A2), and the state it
-overwrites is itself in a commit. The invariant is therefore about *incidental*
-loss: **exactly one operation may move warm state (`--cold`), exactly one may
-replace it (`restore`), and nothing else may touch it.**
-
-| | |
-|---|---|
-| **How it fails** | Hours of converged geometry destroyed by an operation whose job was to write an input file |
-| **How to check** | Grep every path that writes into a run directory for an unlink, an rmtree or a truncating open whose target can match a warm-file suffix. There should be exactly two hits — the cold move-aside and the restore — and no third |
-
-### I4 — a generated wrapper contains no git
-
-*holds today.*
-
-`running-a-job.md § 6.2` records that the wrapper-bootstraps-git path was
-deliberately dropped: *"the wrapper is deliberately git-agnostic, so init is
-CLI/UI-only."* A wrapper that committed would need git on the compute node, which
-`running-a-job.md § 2`'s standalone contract forbids.
-
-| | |
-|---|---|
-| **How it fails** | A run that dies on a node without git, for a reason having nothing to do with the calculation |
-| **How to check** | No emitted `.run.sh` or `.sbatch` invokes git: grep the rendered wrapper fixtures for `git` **as a command word** (`(^\|[;&|(\s])git\s`), not as a substring — `digits` and `logging` are not violations, and a check that flags them is one somebody will disable |
+> A per-folder config file would let one folder behave differently from another
+> for no recorded reason. That is a trap, not a feature.
 
 ---
 
-## 4. The atomicity rules — a mutation completes or does not happen
+## 4. Saving, step by step
 
-### A1 — archiving is build, verify, swap, then delete
+```mermaid
+flowchart TB
+    S["checkpoint"] --> R{"is .gitignore<br/>what it should be?"}
+    R -->|"edited by hand"| STOP1["refuse or repair<br/>— an edited ignore list<br/>silently drops files"]
+    R -->|"yes"| M["measure every file"]
+    M --> B["big ones → build the archive<br/>in a .tmp"]
+    B --> V["hash the source, copy,<br/><b>re-hash the copy</b>, compare"]
+    V -->|"differ"| STOP2["fail — a corrupt copy must<br/>never become self-consistent"]
+    V -->|"match"| W["write MANIFEST"]
+    W --> SW["move any published archive aside<br/>→ swap the new one in<br/>→ delete the aside"]
+    SW --> C["commit the small files"]
+```
 
-*holds today — read against the code, and it is stronger than this contract asked for.*
+**Why the copy is re-hashed rather than trusted.** If the MANIFEST's sha were
+taken from the copy alone, a copy corrupted on the way to disk would be
+*self-consistent* — it would verify against its own bad sha forever and be
+restored as truth. Hashing the source and re-hashing the copy is what makes that
+impossible.
 
-The sequence is: build into a `.tmp`, hash, copy, **re-hash and verify the copy**,
-write the MANIFEST, move any published archive **aside**, `os.replace` the new one
-into place, then delete the aside.
+**Why the old archive is moved aside instead of deleted first.** Deleting and
+then renaming leaves a moment where neither exists; a crash there destroys the
+archive that was already good. The worst case now is a leftover `.old` directory
+beside a complete archive.
 
-**The aside step was missing until 2026-08-06.** The code removed the published
-archive and *then* renamed the new one in, leaving a window in which neither
-existed — a crash there destroyed the archive that was already there and
-published nothing, which is the one outcome "complete archive or nothing" must not
-include. The worst case is now a stray `<sha>.old` beside a complete archive.
+## 5. Restoring, step by step
 
-| | |
-|---|---|
-| **How it fails** | An interrupted archive leaves a directory that looks complete and is not, and I2's check would be the only thing that ever noticed |
-| **How to check** | Kill the process between each step of a checkpoint; afterwards the archive set is either the old one or the new one, never a mixture |
+```mermaid
+flowchart TB
+    R["restore &lt;ref&gt;"] --> D1{"any uncommitted<br/>text changes?"}
+    D1 -->|"yes"| X1["refuse — nothing touched"]
+    D1 -->|"no"| D2{"any changed<br/>big files?"}
+    D2 -->|"yes"| X2["refuse — git cannot see<br/>these, so they are compared<br/>by sha against the last save"]
+    D2 -->|"no"| D3{"does the target's<br/>archive verify?"}
+    D3 -->|"no"| X3["refuse — before any change"]
+    D3 -->|"yes"| G["restore the text from git"]
+    G --> B["copy the big files back"]
+```
 
-The shipped implementation does three things this contract did not think to ask
-for, and each is worth keeping: it **validates the sha directory name** before
-writing anything; it hashes the **source**, copies, then re-hashes the **archived
-copy** and requires them equal — because deriving the MANIFEST sha from the copy
-alone would make a disk-corrupted copy *self-consistent*, later verifying against
-its own bad sha and being restored as truth; and it cleans up the `.tmp` on
-`BaseException`, so an interrupt leaves no stray directory. A change that
-simplifies any of the three is a regression.
+**Four gates before the first change, and the order is the rule** — not merely
+that the checks exist. A restore that half-completes leaves text from one save
+and binaries from another: a state no save ever held, which nothing can diagnose
+afterwards.
 
-### A2 — restore verifies before it mutates
+**A restore reads only what the save wrote down.** It consults no configuration —
+not the size limit, not the engine hints, not any file you can edit. So the
+config can be changed, moved, or deleted and every archive already written stays
+restorable.
 
-*holds today — read against the code, in exactly this order.*
+### 5.1 Why this matters far more in a flat folder
 
-Restore refuses on a dirty text tree, refuses on dirty binaries (sha-compared
-against HEAD's archive), **verifies the target ref's archive before touching
-anything**, and only then restores the worktree and copies binaries back.
+In the **nested** shape every stage and attempt is on disk at once. Going back to
+stage 1's geometry means opening `01_coarse/run-0/`. A checkpoint there is
+protection against loss and a way to branch — valuable, not load-bearing.
 
-| | |
-|---|---|
-| **How it fails** | A restore that half-completes leaves a worktree from one commit and binaries from another — a state no commit ever held, which nothing can diagnose afterwards |
-| **How to check** | Corrupt one byte of the target ref's archive and attempt a restore: it refuses, and the worktree is byte-identical to what it was |
+**In the flat shape it is load-bearing.** The restart files are unsuffixed and
+shared *by design* — that is exactly what lets stage 2 continue from stage 1 —
+which means stage 2 **overwrites** them.
 
-The shipped order is: refuse on dirty text (`git status --porcelain`), refuse on
-dirty **binaries** (shas compared against the head archive, since git cannot see
-them — S1 again), verify the *target* archive, only then `git restore`, only then
-copy the binaries back. Four gates before the first mutation. The invariant is
-that order, not merely the presence of the checks.
+> **Without a checkpoint, a flat folder can only move forward.** With one it can
+> return to any state it was saved in and continue from there. That is not a
+> convenience on top of the flat shape; it is what makes the flat shape usable
+> for iterative work at all.
 
-### A3 — the checkpoint precedes the mutation it protects
+Two consequences worth saying out loud:
 
-*needs the prep prompt (§ 4.1).*
+- **Saving before each stage is not housekeeping in a flat folder — it is the
+  save point.** Miss one and that state is gone, because nothing else on disk
+  holds it.
+- **A restore is a rewind, not a fetch.** It returns the *whole* folder to a past
+  state (S6). So going back means **save what you have, then restore the earlier
+  one** — skip the first step and you lose the present. The nested shape never
+  poses the question, because it never had to overwrite anything.
 
-A pre-produce checkpoint is committed **before** the first file of the new produce
-is written (`engines/stages.md § 7.3`).
+---
 
-| | |
-|---|---|
-| **How it fails** | Taken afterwards, it records the state it was supposed to preserve a way back to |
-| **How to check** | Interrupt a produce after the checkpoint and before the swap: the commit exists and **`git status` is clean** — no new file reached the folder. That is the same assertion as `engines/stages.md § 7.2`'s transactional rule seen from the history's side, and like S4's check it uses git rather than an mtime comparison, which clock skew and filesystem granularity both defeat |
-
-### 4.1 Who takes a checkpoint, and when they are asked
-
-*Decided 2026-08-07. This replaces an earlier plan for **automatic** checkpoints,
-and the change is a simplification: it deletes a problem rather than solving it.*
+## 6. Who takes a checkpoint, and when you are asked
 
 > **A checkpoint is always an explicit act. molbuilder never takes one on its
-> own.** What it does is **ask**, at the one moment where not having asked would
-> cost something — and then do what it is told.
+> own.** It *asks*, at the one moment where not having asked would cost
+> something, and then does what it is told.
 
-**The moment is interactive `prep`, because prep is the mutation.** A3 says the
-checkpoint precedes the mutation it protects, and `prep` *is* that mutation: it
-is what rewrites a stage's deck, replaces a produce, or builds the next attempt.
-So when prep is about to change a directory that already holds results, it says
-so and offers to save first. The user answers.
-
-**Never at run or submit time.** That run may be a scheduled job — a prompt would
-block a queue, and a checkpoint taken there would be taken by the wrong party at
-the wrong moment. Submitting is not a mutation of anything that already exists;
-it starts something new.
-
-**And never on the compute node**, which is I4, and which this decision makes
-permanent rather than provisional: nothing about the wrapper needs to change,
-because the wrapper was never going to be the answer.
-
-**There is already an observer, and it is not this.** `mb_monitor.py` runs
-beside the job on the node it runs on: it watches the launcher's PID, so it knows
-authoritatively when the run ended, it parses the outputs, so it knows how it
-went, and it carries a **registered notifier hook** (`register_notifier`,
-`MB_NOTIFY_URL`) so a user can be told — webhook, email, whatever they wire in.
-Nobody has to sit at the cluster at 3am.
-
-**What the monitor must not do is act.** It observes and it notifies; it never
-decides and never mutates the calculation. That is the same boundary the wrapper
-has — activate and exec, nothing more (`running-a-job.md § 2.2a`) — applied one
-layer out, and it is why the monitor is not where a checkpoint comes from even
-though it is the thing that knows. Taking one would need git on the compute node
-(I4), and more importantly it would be the wrong party: saving is a decision, and
-decisions are the user's.
-
-**So the two halves are separate, and each is where it belongs.** The monitor
-tells you a run finished and how. The next `prep` asks whether to save before it
-changes anything. Nothing needs to observe *and* act, which is what made this look
-harder than it is.
+**The moment is `prep`, because prep is the change.** When prep is about to
+rewrite a folder that already holds results, it says what will change and offers
+to save first. You answer.
 
 | | |
 |---|---|
-| **Where the prompt fires** | interactive `prep`, when the target directory already holds results |
-| **What it says** | what is about to change, and that saving now is the way back |
-| **Who decides** | the user, every time |
-| **Non-interactive prep** (a script, `--yes`) | proceeds **without** a checkpoint and **says so in its output**. It may not silently decide either way: blocking automation is wrong, and quietly taking or skipping a save is worse |
-| **The last stage** | nothing prompts, because nothing follows. Saving the final state is the user's explicit act — and a surface showing a finished, unsaved run should say it is unsaved |
+| **Where it asks** | interactive `prep`, when the target already holds results |
+| **Who decides** | you, every time |
+| **Non-interactive** (`--yes`, a script) | proceeds **without** saving and **says so** — it may not silently pick either way |
+| **The last stage** | nothing asks, because nothing follows. A surface showing a finished, unsaved run should say it is unsaved |
 
-**Why asking is cheap enough to be worth it.** Before L5 a checkpoint copied
-every large binary again, so offering one at every prep would have been offering
-a real cost. Now a checkpoint stores what changed, so the honest answer to *"is
-it worth saving?"* is almost always yes — and the prompt is a decision about
-intent rather than about disk.
+**Never at run or submit time**, which may be a queued job — a prompt would block
+a queue, and submitting starts something new rather than changing something that
+exists. **Never on the compute node**, which would need git there (I4).
+
+**Something already watches the run, and it is not this.** `mb_monitor.py` sits
+beside the job, follows the launcher's PID so it knows when the run really ended,
+reads the outputs, and can notify you — webhook, email, whatever you wire in. So
+nobody has to be at the cluster at 3am. **What it must not do is act.** It
+observes and tells; it never decides and never changes the calculation. Saving is
+a decision, and decisions are yours.
 
 ---
 
-## 5. Both directory shapes, and why flat needs this most
+## 7. The rules
 
-`project-layout.md § 1` defines two shapes — **flat** (one directory, stages told
-apart by filename suffix, warm files shared) and **hierarchical** (a directory
-per stage, a directory per attempt). **Every invariant above holds in both.**
-What differs is how much work they are doing.
+Each one names what it prevents and how to test it. **Status is in § 8.**
 
-| | **Flat** | **Hierarchical** |
+### Everything is saved
+
+**S1 — every regular file is in git or in the archive: never both, never
+neither.** The only thing not stored is `.binsnapshots/` itself, because a store
+cannot contain itself. No category of file is exempt.
+
+*Symlinks are outside this, and "regular" is load-bearing.* A stage links its
+deck and the shared pseudopotentials rather than copying them, so a saved tree is
+full of links. A link has no content of its own — the real file is stored once,
+wherever it lives — and recreating the layout is what a restore does anyway.
+
+- **Fails as:** both → a multi-gigabyte blob in git history forever. Neither →
+  the file is in no snapshot, and a restore silently does not bring it back.
+- **Test:** walk every regular file and assert `archived` ≠ `tracked`, with
+  `.binsnapshots/` the only excluded path. **No allow-list** — a file is stored
+  or the test fails.
+
+**S1a — `.gitignore` is generated from the classification, never hand-kept
+beside it.** One *source*, not merely one writer.
+
+- **Fails as:** a hand-kept list answers to no rule. That is exactly how `*.MD`
+  came to be ignored with nowhere else to go.
+- **Test:** assert the generated `.gitignore` contains **nothing that is not an
+  archive pattern**. That check catches the whole class, and no fixture can be
+  too short for it.
+
+### The record can be trusted
+
+**I1 — an archive's content is never modified once written.** Re-archiving the
+same commit rebuilds the directory, which is legal because one commit implies one
+tree; the assertion is on *content for a commit*, not on the directory's mtime.
+`snapshot migrate-manifest` rewrites a legacy 2-column MANIFEST into the 3-column
+form and is not a violation: it changes how the archive is *described*, never
+what is in it, and every `(name, sha256)` pair survives it.
+
+**I2 — a MANIFEST is authoritative for its archive.** For every entry: the file
+exists, its size matches, its sha256 matches.
+
+- **Test:** run it over every archive in a folder. This is the single most
+  valuable test in the system.
+
+**I2a — a restore is decided by what the save recorded, never by
+configuration.** Verified in code: `Repo.restore`, `_copy_archived_binaries` and
+`_verify_archived_binaries` read no config, no glob list, no engine name.
+
+- **Why it matters now:** the classification is moving out of the folder and into
+  molbuilder's config. Because restore never re-derives, every archive written
+  before that stays readable — an edit to one file instead of a migration of
+  every archive in existence.
+- **Test:** save, then change the engine, empty the hint list, delete the config
+  outright — and assert the restored tree is byte-identical either way.
+
+**I2b — every record the history leans on is tamper-evident.** Two records, and
+they fail in opposite directions:
+
+| record | decides | protected by |
 |---|---|---|
-| What the repository covers | the one directory | the calculation, all stages beneath it |
-| What git tracks | decks, wrappers, the small warm files | the same, spread over containers |
-| What the archive covers | the big binaries in that directory | the big binaries in every `run-N/` |
-| How the two are told apart | by **pattern** (`archive_globs`) | by pattern, at any depth (L2) |
-| **What a checkpoint is for** | **the only way back to an earlier state** | insurance, and a branch point |
+| `MANIFEST` | what a **restore** returns | a sha256 **anchored outside itself** |
+| `.gitignore` | what the **next save** even sees | **regeneration** — the correct content is computable |
 
-**The classification rule is the same sentence in both**: a big binary matching
-`archive_globs` goes to the archive, wherever it sits; everything else is git's.
-The hierarchical shape needs that walk to be **recursive**, which is L2 — and
-that recursion costs the flat shape nothing, because it has only one level.
+*The MANIFEST records facts that cannot be recomputed, so it needs a digest.
+`.gitignore` records a derivation, so the derivation is the check* — and
+regeneration says which line is wrong, where a digest could only say that
+something is.
 
-### 5.0 Why the flat shape depends on this more than the staged one
+- **Fails as:** delete a MANIFEST line and that file is simply not restored — it
+  reads exactly like "this archive never held it". Change a sha *and* the file to
+  match and a restore returns the wrong bytes **and reports success**. Add
+  `*.XV` to `.gitignore` and the next save stores no `.XV` at all while looking
+  perfectly healthy.
+- **Test:** the three MANIFEST edits above must all be refused, naming the
+  *record* as what failed. For `.gitignore`, edit inside the marked section as
+  well as outside — anyone who knows about the markers will edit inside them.
 
-In the hierarchical shape every stage and attempt is on disk simultaneously.
-Going back to stage 1's geometry means opening `01_coarse/run-0/`. The checkpoint
-is protection against loss and a way to branch — valuable, not load-bearing.
+> **Records are named so nobody mistakes one for a setting.** `MANIFEST` looks
+> like a file a person may reasonably adjust; `MANIFEST.do_not_edit` does not.
+> This buys nothing against deliberate tampering — that is the digest's job — and
+> everything against somebody tidying a directory. `.gitignore` cannot take the
+> suffix, since git requires that name. ⚠ A rename is an archive-format change:
+> the reader must accept both names or archives written before it stop opening.
 
-**In the flat shape it is load-bearing.** The warm files are unsuffixed and
-shared *by design* — that is exactly what lets stage 2 continue from stage 1 —
-and it means stage 2 overwrites them. So:
+**L8 — a saved attempt never differs afterwards.** This is I2 pointed at a
+directory the layout says is frozen. *Hierarchical only* — a flat folder's
+`<id>.DM` is *expected* to change every stage, so there a difference is news
+rather than a violation. Do not let a check written for one shape fail the other.
 
-> **Without a checkpoint, a flat directory can only move forward.** With one, it
-> can go back to any state it was checkpointed in and continue from there. That
-> is not a convenience on top of the flat shape; it is what makes the flat shape
-> usable for iterative work at all.
+### A save or a restore completes, or does not happen
 
-Two consequences worth stating:
+**A1 — archiving is build, verify, swap, then delete** (§ 4).
 
-- **A checkpoint before each stage is not optional housekeeping in a flat
-  directory** — it is the save point. Miss one and that state is unrecoverable,
-  because nothing else on disk holds it.
-- **Restore is a rewind, not a fetch** (S6): it returns the whole directory to a
-  past state. Going back therefore means *checkpoint what you have, then restore
-  the earlier one*. Skipping the first step loses the present. The hierarchical
-  shape never poses that question, because it never had to overwrite anything.
+- **Test:** kill the process between each step; afterwards the archive set is the
+  old one or the new one, never a mixture.
 
-### 5.1 What a staged folder adds
+**A2 — a restore verifies before it changes anything** (§ 5), in that order.
 
-All four **need the layout**, and each follows from `engines/stages.md § 7.1`.
+- **Test:** corrupt one byte of the target archive and attempt a restore — it
+  refuses, and the folder is byte-identical to before.
 
-> **Why `L` and not `P`.** `molbuilder/checkpoint.py`'s own comments cite
-> numbered principles — *"P3 (the user decides; the system never silently
-> discards binary work)"* — from a design document that no longer exists in the
-> tree. A second P-series in the same subsystem would make a code comment and a
-> contract row read as the same reference and mean different things. **L** is for
-> layout, which is what all four are about.
+**A3 — the checkpoint precedes the change it protects.** A pre-produce save is
+committed *before* the first new file is written.
 
-### L1 — one repository per calculation, in either shape
+- **Test:** interrupt a produce between the save and the swap: the commit exists
+  and `git status` is clean — no new file reached the folder.
 
-*HOLDS as of 2026-08-06. This was the blocking defect; the recommended option
-below was taken.*
+### Nothing else touches the state
 
-**One repository covers one calculation** — the whole of it. In the flat shape
-that is the single directory. In the hierarchical shape it is the calculation
-root, **not** each stage: a per-stage repository cannot restore a shared file
-that lives above it (a restored stage's pseudopotential links would dangle), and
-no such repository contains the workflow, so *branch at stage 2* cannot be
-expressed.
+**I3 — warm state is moved or restored, never incidentally lost.** Exactly one
+operation may move it and exactly one may replace it (`restore`). Nothing else
+may touch it. A replacing produce may remove orphaned decks and wrappers, never
+state.
 
-**What was wrong.** `Repo.init` walked for subdirectories containing a
-working-dir marker (`.fdf`, `.py`, `.run.sh`) and refused if it found any. The
-rule was sound for the world it was written in — a parent holding several
-*independent* run directories would checkpoint unrelated jobs together, and
-restoring one would rewind the others. It could not tell that apart from *the
-stages of one calculation*, which is the case where the parent is exactly the
-right unit.
+- **Test:** grep every path that writes into a run directory for a delete or a
+  truncating open that could match run state. There should be no hit that is not
+  one of those two.
 
-**It was not only the proposed layout that this blocked.** Verified against the
-shipped `jobset prep` output: a bundle with `point-stage1/` and `point-stage2/`
-holding linked decks was refused, so a staged job-set could not be checkpointed
-at all. The guard had been closing a shipped path.
+**I4 — a generated wrapper contains no git.** A wrapper that committed would need
+git on the compute node, which `running-a-job.md § 2` forbids.
 
-**The fix asks a different question.** A directory holding one of the recognised
-descriptions — `task.json`, `job-set.json`, `bench-manifest.json` — has
-declared itself **one unit of work whose subdirectories are its own parts**.
-That is not a new marker file: each is already in the artifact registry
-(`job-contracts.md § 6.1`), and it is the same file that makes the folder a
-calculation in the first place. So:
+- **Test:** no emitted `.run.sh` or `.sbatch` invokes `git` **as a command word** —
+  `digits` and `logging` are not violations, and a check that flags them is one
+  somebody will disable.
 
-| The directory | Nested working dirs | Result |
-|---|---|---|
-| carries a description | its own stages | **init proceeds** |
-| carries none | several independent calculations | refused, with the reason |
-| any | a subdirectory that is **already a repository** | refused, in both cases |
+**S2 — shared state lives above; a stage writes only inside its own directory.**
 
-The last row is new and is not the same rule. A history inside a history has no
-consistent restore — the outer cannot rewind files the inner owns — so it is
-refused even in a bundle root, where nested working dirs are otherwise fine.
+- **Test, and one half alone is worse than useless:** (a) run one stage and read
+  `git status` at the parent — every changed path is under that stage. (b) git
+  **cannot see the big files**, so compare their shas against the last archive
+  too. Half (a) alone passes while a stage overwrites another stage's `.DM`.
 
-| | |
-|---|---|
-| **How it fails** | Two ways, opposite in shape. Too narrow: a calculation cannot be checkpointed at all, and the flat shape's only route back to an earlier state does not exist (§ 5.0). Too wide: one history spans several unrelated calculations, and restoring one rewinds work nobody meant to touch |
-| **How to check** | `tests/test_checkpoint_repo_scope.py` — a bundle root with linked decks initialises; a topic directory holding two independent calculations is refused **and names both**; a nested repository is refused even under a description; and a hierarchical folder round-trips, so a `.DM` two levels down is archived, survives a later stage, and returns on restore. That last one matters most: an `init` that succeeds and then loses results is worse than one that refuses |
+**S4 — the description is input; everything else is derived.** No produce and no
+run may edit `task.json`.
 
-> **A dot-directory is no longer a working directory.** The old walk skipped only
-> `.git` and `.binsnapshots`, so a `.venv/` beside a run — full of `.py` — read
-> as a nested working dir and blocked `init` for a reason with nothing to do with
-> calculations. All dot-directories are skipped now.
+- **Test:** hash it before and after.
 
-> **The description must be read, not merely found** — *not held today.*
-> A root's description says which subdirectories are this calculation's own, so
-> **a nested working directory the description does not name is refused**, exactly
-> as it would be under a root that declares nothing. Otherwise the rule degrades
-> from *"these are one calculation's parts"* to *"somebody put a JSON file here"*,
-> and one history spans work nobody meant to join — the too-wide failure above,
-> reached through the door the fix opened.
->
-> Today `_is_bundle_root` asks only whether one of the three files **exists**; it
-> never opens it. Copy an unrelated calculation in beside `coarse` and `tight`
-> and `init` takes all three. The check that closes it is cheap, and it becomes
-> assertable when a producer writes a real description to read against — which is
-> when it should be written, not guessed at now. Until then this clause is a
-> claim, like S3 and S4, and it is listed as one.
+**S5 — identity is calculation-level; the run index is invocation-level.** Nothing
+about a run may change the id, or the files it produced would be orphaned by the
+act of producing them.
 
-### L2 — the archive globs match at depth
+### A history you can read back
 
-*HOLDS as of 2026-08-06 — this was broken, and fixing it is what prompted the
-rest of this section.*
+**S3 — a run records what it started from.** `run.json`'s `continued_from` names
+the run directory its files came from, or is absent when it started from the
+structure.
 
-**The failure mode is worse than the obvious one, and the obvious one is what
-most readers will assume.** A big binary that the archive misses does not "land
-in git as a blob" — it lands **nowhere**.
+*This survived a design change and its mechanism did not.* When stages chained, an
+inherited file arrived as a symlink and became real when localised — the type
+change *was* the record. Stages no longer chain, so the record is explicit. It is
+also better: a symlink says *something was inherited*, not **which run**, and with
+several attempts per stage that is the question you actually have.
 
-The two sides of S1's classification resolve depth **differently**:
+- **Test:** for every run in a finished tree, `continued_from` names a directory
+  that exists or is absent — never something deleted or never there.
 
-| | Pattern | Reaches `coarse/<id>.DM`? |
-|---|---|:--:|
-| `.gitignore`, from `_render_gitignore` | the raw glob, `*.DM` | **yes** — a gitignore pattern with no slash matches at every level |
-| the archive set, `_list_big_binaries` | `path.glob("*.DM")` | **no** — its own docstring says *"Top-level big binaries"* |
+**S6 — a restored folder is internally consistent.** `task.json` is tracked text,
+so a restore brings back the description *together with* the decks it produced.
 
-So a stage's density matrix is **gitignored and unarchived** — excluded from the
-commit *and* absent from `.binsnapshots/`. It is in no snapshot at all, and a
-restore silently does not bring it back. That is S1's "never neither" branch, the
-one whose failure is losing data rather than wasting disk.
+- **Test:** restore any commit and re-run the produce with `dry_run` — it reports
+  no change. One exclusion only: PROVENANCE stamps `generated-at`, so that key is
+  ignored.
 
-| | |
-|---|---|
-| **How it fails** | Quietly, at the moment of maximum trust. The user restores a checkpoint expecting a resumable state and gets the geometry (`.XV` is text, so it is tracked) with no density matrix beside it. The run starts over and nothing says why |
-| **How to check** | Produce a two-stage folder, run both, checkpoint, assert S1 over the whole tree: every file is tracked or archived. It fails today, and that failure is the acceptance test |
-| **Fixed by** | The archive walk is recursive and the MANIFEST key is a **repo-relative POSIX path** rather than a bare basename — so both sides resolve depth the same way. The key space *widened*: a basename is a valid relative path, so every archive written before it reads unchanged. Two consequences fell out and are part of the invariant: the walk **skips symlinks** (a carried restart file is inherited, not owned — S3 — and archiving the link would restore a regular file where a link belongs) and **skips dot-directories** (a recursive walk that forgot would archive the archive). Pinned by `tests/test_checkpoint_nested_layout.py` |
+**L3 — every commit and tag names its calculation.** The message carries the id
+and the stage; a finished stage is tagged `<id>/<stage>/<UTC>`. Nothing is
+normalised — a name needing repair is **refused**, because silently fixing an id
+would decouple the history's name from the folder's.
 
-### L3 — every commit and tag names its calculation
+**L4 — tags are stage completions only.** Pre-produce saves are commits, reachable
+through `snapshot list`. Tagging them too would bury the points you meant to
+reach among the ones you passed through. A hand-made tag is your own business.
 
-*The naming HOLDS as of 2026-08-06 (`checkpoint.py`, `test_checkpoint_invariants.py`).
-What still needs building is the **prompt** that offers it — nothing "notices" a
-stage finished, and under § 4.1 nothing has to.*
+### Depth, and both folder shapes
 
-The commit message carries the id and the stage; a finished stage is tagged
-`<id>/<stage>/<UTC>` (`engines/stages.md § 7.3`). A folder can be moved, copied
-to a cluster, or opened a year later, and a history whose commits say only
-*"stage 2 converged"* cannot say which calculation that was.
+**L1 — one repository per calculation**, covering the root and every stage
+beneath it.
 
-**Nothing is normalised.** The id is `[A-Za-z0-9_-]+` and a stage is
-`[A-Za-z0-9_]+`, both already ref-safe, so a name that would need repairing is
-**refused** rather than rewritten — silently fixing an id would decouple the
-history's name from the folder's, which is the one thing the name exists to tie
-together.
+**L2 — the archive matches at depth.** A gitignore pattern with no slash matches
+at *every* level, so a nested `01_coarse/job.DM` is ignored by git — and if the
+archive walk only looked at the top level it would be ignored **and** unarchived:
+in no snapshot at all. Both sides must resolve depth the same way.
 
-*Check:* every commit message contains the folder's `run.id`, and every tag
-parses into exactly three parts of which the first equals it — read back through
-the same parser that writes them, so the two cannot drift.
+**L7 — a change to a big file alone still leaves a checkpoint.** Big files are
+gitignored, so `git status` is clean when only they changed; the save must not
+conclude there is nothing to do.
 
-### L4 — the tag namespace is stage completions only
-
-Pre-produce checkpoints are commits, reachable through `snapshot list`. Tagging
-them too would bury the points a user meant to reach among the ones they passed
-through.
-
-*Check:* the tag molbuilder **offers** is offered only at a stage completion. A
-user tagging by hand is their own business — `snapshot tag` exists for it — so the
-assertion is on what the offered path emits, not on the total. Under § 4.1 the
-user still says yes; this invariant governs what is proposed, not who decides.
-
-### L5 — *(not an invariant)* a checkpoint's cost is bounded by what changed
-
-*Holds as of 2026-08-06 — `tests/test_checkpoint_invariants.py`. **Demoted from
-an invariant 2026-08-08.***
-
-> ### ⚠ Disk cost is a by-product. It is never traded against correctness.
->
-> *Ruled 2026-08-08 (user): "disk cost is a fucking by-product. Correctness goes
-> first… what is the use of a good disk space when all the results are fucked up
-> by errors."*
->
-> **Everything above is an invariant: it must hold or the history is broken.
-> This is not one.** It is a property the implementation happens to have, and it
-> is tuned through configuration — never by storing less.
->
-> It is written here as a warning as much as a description. **This document has
-> already lost a file to cost reasoning**: `*.MD` was ignored *because it was
-> large*, and the question of where it should be stored instead was never asked
-> (S1). That is what happens when "expensive" and "must not be lost" are allowed
-> to argue. They are not comparable, and this section is placed below the
-> invariants rather than among them so nobody reads them as peers again.
->
-> **Two earlier verdicts here argued about whether a display discrepancy made
-> the invariant half-true.** Both were beside the point. The question was never
-> whether the cost is visible; it is that cost does not get a vote.
-
-**What is already archived is not archived again.** An archived file is never
-rewritten (I1), so when a binary's content is already in the archive the new
-checkpoint gets a **hard link** to it rather than a second copy. A hard link is
-a directory entry: the second checkpoint of an unchanged 2 GB density matrix
-costs no disk.
-
-**Nothing downstream knows the difference.** The archive still has a real file
-at `<sha>/<key>`, so restore, `_verify_archived_binaries` and the MANIFEST
-format are untouched — no new directory, no format change, no migration of
-archives that already exist.
-
-**Reuse is by content, and that is what makes it serve both directory shapes.**
-In the hierarchical shape an attempt is immutable, so its files link forever
-after their first save. In the flat shape one `<id>.DM` is overwritten every
-stage, so its content genuinely differs and it is copied — correct rather than
-wasteful (`project-layout.md § 6.2`). Neither case is special-cased; the content
-decides.
-
-**A candidate is verified before it is trusted.** The index of what is already
-archived is read from MANIFESTs, which record only what a file *claims*. Linking
-to a file that had rotted would record a sha its bytes do not have — turning a
-cheap save into a corrupt one. So a candidate is hashed once per checkpoint and
-copied past if it does not match. That is one read where a copy would have done
-a read *and* a write, so the I/O falls too.
-
-**A note on the number the surfaces print, which is not this invariant's
-business but is worth recording where somebody will find it.** `archive_bytes`
-and `archive_total_bytes` both sum file sizes, counting every hard link in full,
-so ten checkpoints of an unchanged 2 GB binary are displayed as 20 GB while the
-disk holds 2.
-
-**Who needs that number? Nobody, as far as anyone has been able to say.** It
-appears in five places — three CLI lines and two in the sidebar — and informs no
-decision: the only choice it could feed is *"should I delete old checkpoints"*,
-and there is no `prune` verb to act on it. So this is not a gap in the design; it
-is a display printing something untrue about a quantity nobody uses.
-
-The cheap honest fixes, in order of how little they cost: **stop printing it**,
-or **make the repository total count each inode once** so what it claims is what
-`du` would say. What is not worth doing is the two-number scheme an earlier draft
-proposed here — a *logical* size per checkpoint and a *physical* one for the
-folder, each with its own explanation. That was designing a vocabulary for a
-readout nobody reads. Recorded as `web/staged-runs-architecture.md` item 10a, at
-the size it deserves.
-
-**Why not content-addressing.** `.binsnapshots/by-content/<sha256>` was the
-fallback this invariant used to call for. It would change the archive layout and
-need every existing archive migrated, to buy the same saving; hard links get
-there without touching the format. The fallback stays available if the archive
-ever needs to be shared across repositories, where links cannot reach.
-
-| | |
-|---|---|
-| **How it fails** | It costs disk. Nothing errors, nothing is lost, and no result is wrong — which is why this is not an invariant. Without link-reuse the archive grows linearly in checkpoints × binary size and `prune` is unbuilt (`running-a-job.md § 6.2`), so a five-stage run checkpointed at both boundaries paid ten full copies of its binaries. Annoying; not a defect of the history |
-| **Made worse by L7's fix** | Binary-only changes now produce commits that previously did not exist — correctly, since the alternative was losing them — and each one used to copy the full binary set again. Fixing the data-loss bug raised the disk cost, which is why L5 followed it rather than waiting |
-| **How to check** | Checkpoint a folder twice with the binaries untouched between them; the second checkpoint's *incremental* disk cost is near zero. Measured by inode so a hard-linked file counts once — summing `st_size` counts every link in full and would report no saving at all. Then the three that stop the cure being worse than the disease: a **changed** binary is stored again, two checkpoints never **alias** different content, and a **rotted** candidate is copied past rather than linked to |
-
-### L6 — a history can be verified without being restored
-
-*needs work — the capability exists but has no door.*
-
-`_verify_archived_binaries` already checks existence, size and sha256 against the
-MANIFEST and touches nothing (I2). It is called from exactly two places, both on
-the restore path. **So the only way to learn that an archive is intact is to
-attempt a restore** — which is the worst possible moment to find out it is not,
-and which a user will not do speculatively on a folder they are working in.
-
-| | |
-|---|---|
-| **How it fails** | A checkpoint taken onto a failing disk verifies at write time (A1) and is never looked at again until the day someone needs it |
-| **How to check** | A `snapshot verify [<ref>]` verb — CLI and HTTP — runs I2 over one archive or all of them and reports. It is a few lines over a helper that already exists, and it is the natural home for the most valuable test in this document |
+- **Fails as:** you re-run a stage that rewrites its `.DM` and nothing else, save,
+  and are told the tree was clean. The new density matrix is in no snapshot.
+- **Test:** change only a big file, save, and assert a new archive exists whose
+  MANIFEST records the new sha.
 
 ---
 
-### L7 — a change to a big binary alone leaves no checkpoint
+## 8. Status
 
-*not held today — found by running L2's acceptance test.*
-
-`checkpoint()` runs `git add .`, then `git status --porcelain`; if the tree is
-clean it returns `None`. Big binaries are gitignored (S1), so **a change that
-touches only them leaves the status clean and produces no commit and no new
-archive.** The code half-anticipates this: if HEAD has *no* archive at all and
-binaries exist, it writes one. It does not notice that HEAD's archive is stale.
-
-| | |
-|---|---|
-| **How it fails** | A user re-runs a stage that rewrites its `.DM` and nothing else git can see, checkpoints, and is told the tree was clean. The new density matrix is in no snapshot. It surfaces later as a refused restore ("uncommitted binary changes"), which is the safe direction, but the checkpoint they asked for never happened |
-| **How to check** | Change only a big binary, checkpoint, and assert a new archive exists whose MANIFEST records the new sha |
-| **Note** | In a staged folder a run also writes text (`.out`, `.XV`), so the clean-status case is narrower than it looks — but "narrower" is not "absent", and `--force`-style re-runs hit it |
-
-### L8 — an archived attempt never differs afterwards
-
-*needs the layout — and it is I2 pointed at a directory.*
-
-An attempt is immutable by contract, not by permission bit
-(`project-layout.md § 1.5`). Nothing stops an edit; what matters is that an edit
-is **noticed**.
-
-**Hierarchical only.** A flat directory's `<id>.DM` is *expected* to change —
-every stage overwrites it, which is the shape working as designed
-(`project-layout.md § 6.2`). The same re-hash still runs there and still
-reports a difference; what changes is that the difference is news rather than a
-violation. Do not let a check written for one shape fail the other.
-
-| | |
-|---|---|
-| **How it fails** | Silently. Someone edits a file inside an attempt already saved, and every later save carries a history whose earlier points no longer describe what is on disk |
-| **How to check** | Re-hash an archived attempt's files against their MANIFEST entries — exactly I2, over a directory the layout says is frozen. A difference is reported, never merged |
-
-## 6. The review sheet
-
-One line each, for reading over a diff:
-
-| | Invariant | Assertable |
+| Rule | | |
 |---|---|:--:|
-| **S1** | every **regular file** is tracked XOR archived — never both, never neither (symlinks are layout, not content); a file in **neither** store only if losing it loses nothing, and **never a result** | today — ⛔ **and it fails**: `*.MD` / `*.MD_CAR` are ignored and unarchived |
-| **S1a** | the git-ignore set is *derived* from `archive_globs`, never kept beside it | today — ⛔ **and it fails** for `_GITIGNORE_FIXED_TAIL`, which is hand-kept beside the generated block |
-| **I2a** | a restore is decided by what the **save** recorded, never by configuration — so the classification can change without migrating a single archive | today — read against the code; wants the config-change-then-restore test |
-| **I2b** | the **record** is sha256-protected, not only the files it lists — an edited MANIFEST cannot make restore return different data and report success | ⛔ **does not hold**; the anchor is an open decision (the archive is written *after* the commit that names it) |
-| **S2** | a stage writes only inside its own directory | needs the layout |
-| **S3** | a run records what it started from (`run.json`'s `continued_from`) | needs the layout |
-| **S4** | the description is never modified by a produce or a run | needs the description |
-| **S5** | nothing a run produces can change the id | today — `test_checkpoint_invariants.py` |
-| **S6** | a restored folder explains itself: description and decks travel together | needs the description |
-| **I1** | a written archive's *content* is never rewritten; identical content dedupes | today |
-| **I2** | every MANIFEST entry matches its file: name, size, sha256 | today — `test_checkpoint_invariants.py` |
-| **I3** | exactly one operation moves warm state, exactly one replaces it, nothing else touches it | today — `test_checkpoint_invariants.py` |
-| **I4** | no generated wrapper invokes git | today — `test_checkpoint_invariants.py` |
-| **A1** | archive: build, verify the copy, then swap | today — `test_checkpoint_invariants.py` |
-| **A2** | restore verifies the target archive before touching the worktree | today — `test_checkpoint_invariants.py` |
-| **A3** | the checkpoint is committed before the mutation it protects | needs the prep prompt (§ 4.1) |
-| **L1** | one repository per calculation, in either shape | **HOLDS** (2026-08-06) — `tests/test_checkpoint_repo_scope.py`; its *"the description must be read, not merely found"* clause **does not** — it needs a producer to write one |
-| **L2** | archive globs match at depth | **holds** (fixed 2026-08-06) |
-| **L3** | every commit and tag names its calculation | **the naming HOLDS** (2026-08-06) — `test_checkpoint_invariants.py`; what still needs building is the *prompt* that offers it (§ 4.1) |
-| **L4** | molbuilder tags stage completions only | **the tag form HOLDS** (2026-08-06) — hierarchical, globbable, collisions refused; what still needs building is the *prompt* that offers it (§ 4.1) |
-| **L5** | a checkpoint costs what changed, not what exists | **HOLDS** (2026-08-06) — `test_checkpoint_invariants.py` |
-| **L6** | a history can be verified without being restored | **not held today** |
-| **L7** | a binary-only change still produces a checkpoint | **holds** (fixed 2026-08-06) |
-| **L8** | an archived attempt never differs afterwards | needs the layout — **hierarchical only** (`project-layout.md § 6.2`) |
+| **S1** | everything is stored; the only exclusion is the store itself | ⛔ `*.MD` / `*.MD_CAR` are ignored and unarchived |
+| **S1a** | `.gitignore` generated, one source | ⛔ a hand-kept list sits beside the generated block |
+| **I1** | archived content is never modified | ✅ |
+| **I2** | a MANIFEST is authoritative | ✅ |
+| **I2a** | a restore replays the save, and consults nothing | ✅ |
+| **I2b** | the records themselves are tamper-evident | ⛔ neither is |
+| **I3** | one mover, one replacer, no third | ✅ |
+| **I4** | no git in a generated wrapper | ✅ |
+| **A1** | build, verify, swap, delete | ✅ |
+| **A2** | verify before mutating, in order | ✅ |
+| **A3** | the save precedes the change | needs the prep prompt |
+| **S2** | a stage writes only inside itself | needs the layout |
+| **S3** | a run records what it started from | needs the layout |
+| **S4** | the description is never modified | needs the description |
+| **S5** | nothing about a run changes the id | ✅ |
+| **S6** | a restored folder explains itself | needs the description |
+| **L1** | one repository per calculation | ✅ |
+| **L2** | the archive matches at depth | ✅ |
+| **L3** | every commit and tag names its calculation | ✅ |
+| **L4** | tags are stage completions only | ✅ |
+| **L7** | a big-file-only change still saves | ⛔ |
+| **L8** | a saved attempt never differs afterwards | needs the layout |
 
-**Fifteen of the twenty-two can be asserted against the code as it stands, and
-all fifteen have a test** — nine (**S5 I2 I3 I4 A1 A2 L3 L4 L5**) in
-`test_checkpoint_invariants.py`, five (**S1 S1a I1 L2 L7**) in
-`test_checkpoint_nested_layout.py`, and **L1** in
-`test_checkpoint_repo_scope.py`. Four (**L1**, **L2**, **L5**, **L7**) were found
-broken; **L2, L5 and L7 are fixed**, and **L1 is fixed in the half that had a
-mechanism** — its repository scope holds while *"the description must be read, not
-merely found"* waits for a producer to write one.
+### Two things that are not rules
 
-**So two of the twenty-two are not held**: **L6** entirely (verification has no
-door), and L1's description clause. Three more — **L3**, **L4** and that same
-clause — are held in form and wait on the producer for their trigger.
-"Assertable" counts an invariant whose *stated* requirement has a test; it does
-not promise the whole requirement passes, and where it does not, the row above
-says which half fails.
+**Disk cost.** Identical content is stored once, so a second save of an unchanged
+2 GB file costs nothing. That is a property, not an invariant: it is tuned through
+the config and **never** by storing less. It sits here rather than in § 7 so
+nobody reads the two as peers again — this document has already lost a file to
+that mistake.
 
-> It was thirteen until 2026-08-06, when **L3** and **L4** stopped needing the
-> layout: naming a checkpoint and naming a stage tag are pure functions of an id,
-> a stage and a clock, so the *forms* could be built and asserted while the
-> *triggers* still wait for the producer. The count moved because half of two
-> invariants became reachable, not because anything was reclassified.
+*Known and cosmetic:* the size the surfaces print sums file sizes and counts each
+hard link in full, so ten saves of an unchanged 2 GB file display as 20 GB where
+the disk holds 2. Five call sites, and no `prune` verb for the number to inform.
 
-### What has actually been read
-
-| Read against the code | Verdict |
-|---|---|
-| **S1** | **broken** — a dot-prefixed basename was archived under a key the parser refuses, so the archive wrote a MANIFEST it could never read back. Fixed 2026-08-06 |
-| **S1a** | **broken** — `set_archive_globs` was a single writer, `init` was not; "the hazard is false" was half a reading. Fixed 2026-08-06 |
-| **S2** | check was blind to the big binaries; both halves now |
-| **S5** | holds trivially — nothing derives an identity from a run at all |
-| **I1** | held, restated: content-for-a-sha — and the rebuild now moves the published archive aside instead of deleting it first |
-| **I2** | implemented and correct — but reachable only through restore (→ L6) |
-| **I3** | held — one mover (`mv` to `-restart-aside-`), no deleter |
-| **I4** | held — no generated wrapper invokes git |
-| **A1** | strong in its three parts (sha-dir validation, source-vs-copy fidelity, `.tmp` cleanup) — **but the swap itself was not atomic**. Fixed 2026-08-06 |
-| **A2** | held, in exactly the stated order — four gates before the first mutation |
-| **L2** | was **broken, losing data rather than wasting disk** — fixed 2026-08-06, pinned by tests |
-| **L5** | was **broken** — no cross-checkpoint dedup; fixed 2026-08-06 by hard-linking content already archived. Its verdict then flipped twice in one day — HOLDS, then *half held* because a display prints the wrong number, then HOLDS again once it was clear the display is not this contract's business. The lesson is about scope, not about the fix |
-| **L6** | **absent** — no way to verify a history without restoring it |
-| **L1** | **held** — a root carrying its description owns its subdirectories; a directory declaring nothing, and any nested repository, are still refused |
-| **L7** | was **absent** — a binary-only change left `git status` clean and nothing was checkpointed; fixed 2026-08-06 |
-
-**Seven defects found, all fixed.** Three (L1, L2, L7) turned up by *running* the
-checks — L1 by building the shipped `jobset prep` shape and watching `init`
-refuse it. **Four turned up by reading the module end to end** — `init` skipping an
-existing `.gitignore`, a dot-prefixed basename writing an unreadable MANIFEST,
-archive sizes counted only at the top level, and a swap that deleted the
-published archive before publishing its replacement.
-
-**The four found by reading were invisible to the tests, which passed
-throughout.** That is the argument for reading a module in call order rather than
-probing it, and it is the opposite lesson from the one the first two taught.
-
-Three of my own invariants were wrong when written, each because a phrase in the
-guide was trusted over the code: *"nothing keeps them in step"*, *"deduped by
-content"*, *"lands in git as a blob"*. A fourth — the first fix for S1a — would
-have shipped a **worse** bug than the one it closed, and was caught by statically
-reviewing the patch rather than by its tests, which passed.
-
-**Four still cannot be read**: S3, S4 and S6 describe the per-stage layout and
-the description, neither of which exists, and A3 needs the prep prompt (§ 4.1),
-which is not built. They stay claims until there is something to assert them against.
-It was six until L3 and L4 split — their *forms* are pure functions and are now
-asserted; only their *triggers* wait.
-
-### The 2026-08-07 cross-check — reading the module against this document
-
-A second pass, this time reading the document and the code against **each other**
-rather than either alone. It found no new defect in what the invariants govern,
-which is the useful result: the four fixes of 2026-08-06 survived a hostile
-re-read. What it did find is that **the module's own citations no longer resolve**
-and that **one of the fixes is not visible where it counts**.
-
-| Found | Where it goes |
-|---|---|
-| `checkpoint.py` cites `run-checkpoints.md`, a document the 2026-07 migration removed, and cites its section numbers on **48 lines** — 33 of them `§ 10.1`–`§ 10.4`, the rest `§ 9`, `§ 11 decision 1/3`, `P3`, `P5`. **Twenty-one sit inside error messages a user reads.** A malformed MANIFEST is explained by pointing at a section of nothing | `staged-runs-architecture.md` item 14, whose scope was understated fivefold |
-| L5's saving is real on disk and invisible in every surface that displays archive size | L5 above, and item 10a |
-| `_is_bundle_root` never opens the description it checks for | L1 above |
-| This file's own count said *thirteen* after L3 and L4 made it fifteen | fixed above |
-| `test_checkpoint_invariants.py`'s header says I1 is pinned in `test_checkpoint_manifest_format.py`; it is pinned in `test_checkpoint_nested_layout.py`, and the header still describes a twelve-invariant split that L3/L4/L5 have since outgrown | item 14 |
-
-**The pattern in all five is the same one this document keeps re-learning**: a
-statement that was true when written, left in place while the thing it describes
-moved. The section numbers were correct until the doc they indexed was deleted;
-the count was correct until two invariants graduated; the header was correct until
-three tests were added to the file it describes. None of them could fail a test,
-because none of them is executable — which is precisely why they need a reading
-pass rather than a suite.
-
-### The correction that pass itself needed
-
-**Two of the entries written on 2026-08-07 let the code set the verdict, which is
-the inversion this document exists to prevent.** Caught 2026-08-07 on being
-asked the direct question, *did you twist the document to fit the code?*
-
-| What was written | Why it was wrong |
-|---|---|
-| L5 marked **HOLDS**, with the reporting failure filed as *"a separate fix from storing"* | The invariant's own sentence says **cost**, and the cost a user is shown is still unbounded. A passing test was allowed to outrank the sentence at the top of the section. Worse, the excuse invented a design decision on the spot — *"per checkpoint that sum is the honest answer"* — with no prior basis, purely to shrink the failing surface from two numbers to one |
-| L1's new clause written as *"recorded rather than fixed, deliberately"* | That is a note about the code's state sitting in a contract. A contract states the requirement — *a nested working dir the description does not name is refused* — and then reports it as not held. The requirement and its status are two different sentences, and only the second may mention what the code does today |
-
-**The rule this restores:** a section of this document is written from what must
-be true, and the *status line* is the only place the code gets a vote. When they
-disagree the status line changes, never the requirement. A verdict of HOLDS
-belongs to the invariant as stated, not to whichever part of it happens to have a
-test.
+**Verifying without restoring.** `_verify_archived_binaries` already checks
+everything I2 asks and touches nothing — but it is reachable only from the restore
+path, so the only way to learn an archive is intact is to attempt a restore. That
+is the worst moment to find out. A `snapshot verify [<ref>]` verb is a few lines
+over a helper that exists.
 
 ---
 
-## 7. What this contract does not own
+## 9. What this does not own
 
-- **How to use the checkpoint system** — the CLI verbs, the HTTP routes, the
-  sidebar panel, and what is still unbuilt (archive pruning, a `snapshot diff`
-  CLI face) — [`running-a-job.md`](?doc=execution/running-a-job.md) —
-  `running-a-job.md § 6`.
-- **The `.mbcheckpoint.json` schema and the MANIFEST column format** —
-  [`job-contracts.md`](?doc=execution/job-contracts.md) — `job-contracts.md § 6.1`.
-- **The folder being checkpointed, and when a checkpoint is taken** —
-  [`engines/stages.md`](?doc=engines/stages.md) — `engines/stages.md § 7`.
+- **How to use it** — the CLI verbs, the routes, the sidebar panel, and what is
+  unbuilt (archive pruning, `snapshot diff`) —
+  [`running-a-job.md`](?doc=execution/running-a-job.md) § 6.
+- **The file formats** — [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1.
+- **The folder being saved, and the two moments a save is offered** —
+  [`engines/stages.md`](?doc=engines/stages.md) § 7.
 - **Phasing and open questions** —
   [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).
