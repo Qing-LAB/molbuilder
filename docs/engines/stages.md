@@ -530,7 +530,7 @@ rather than inventing a second mechanism.
   // What this is a calculation OF: a reference into the tree, plus a witness of
   // what was there when it was written (§ 6.3).
   "structure": { "source": "projects/BDT-Au/structure/bdt_au.xyz",
-                 "formula": "C6H4S2Au38", "atoms": 46 },
+                 "formula": "C6H4S2Au38", "atoms": 50 },
 
   // WHICH fields the user chose to tune. Intent — it cannot be inferred (§ 6.2).
   // There is no `base` key: everything that does NOT vary is in the template,

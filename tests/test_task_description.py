@@ -305,7 +305,12 @@ def test_structure_is_a_reference_and_a_witness(example):
     task = Task.from_dict(example)
     assert task.structure.source.endswith("bdt_au.xyz")
     assert task.structure.formula == "C6H4S2Au38"
-    assert task.structure.atoms == 46
+    # DERIVED from the formula rather than retyped.  The example said 46 for
+    # a formula that is 50 atoms, and this assertion held the wrong number in
+    # place -- found by P3's Review 1 (§ 5c finding 5).  A witness whose two
+    # halves disagree cannot detect anything, which is the one job it has.
+    counts = re.findall(r"([A-Z][a-z]?)(\d*)", task.structure.formula)
+    assert task.structure.atoms == sum(int(n or 1) for _, n in counts)
 
 
 def test_structure_may_not_carry_coordinates(example):

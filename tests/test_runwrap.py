@@ -1129,3 +1129,48 @@ def test_pyscf_cold_actually_moves_optimized_xyz_aside(tmp_path):
     assert moved == expected, (
         f"aside dir contents diverge from planted inventory; "
         f"got {moved}, expected {expected}")
+
+
+# --------------------------------------------------------------------- #
+#  SIESTA warm-file inventory parity (P3 Review 2, 2026-08-08)          #
+# --------------------------------------------------------------------- #
+#
+# The SIESTA counterpart of ``_PYSCF_WARM_RESTART_INVENTORY`` above, added
+# because the parity it asserts was NOT holding.  ``runwrap`` spelled the
+# SIESTA list three times: the module tuple, the cold-restart aside, and the
+# banner's warm detection -- and the third had drifted to 10 of the 13,
+# missing .Bonds, .EIG and .PARTIAL, under a comment claiming it matched.
+#
+# ``job-contracts.md § 4.2`` makes the --cold glob the authority, and
+# ``run-identity.md § 5`` makes the banner the report that must never be
+# weakened.  A banner that under-detects warm state weakens it.
+
+def test_every_siesta_warm_suffix_reaches_both_halves_of_the_wrapper(tmp_path):
+    """Both emitted bash blocks name every suffix in the shipped tuple.
+
+    Asserted against the RENDERED WRAPPER rather than against the Python
+    literals: the literals are derived from one tuple now, so comparing them
+    would only prove that ``tuple(x) == tuple(x)``. What matters is that
+    both blocks of the generated script actually mention each suffix -- the
+    end result, which is what a user's `--cold` and banner run against.
+    """
+    from molbuilder.runwrap import _SIESTA_WARM_SUFFIXES
+
+    # Engine is routed by extension, and the basename comes from the path --
+    # `.fdf` is what makes this the SIESTA wrapper.
+    script = render_run_wrapper(Path("/somewhere/job.fdf"))
+
+    # The cold-restart aside block, and the warm-detection test, are both in
+    # the one script; every suffix must appear for the file-name patterns of
+    # both (``$_warm_label.<ext>`` and ``job.<ext>``).
+    for suffix in _SIESTA_WARM_SUFFIXES:
+        ext = suffix.lstrip(".")
+        assert f'job.{ext}' in script, (
+            f"{ext} never reaches the generated wrapper -- the cold-restart "
+            f"aside and the banner's warm detection are both keyed on this "
+            f"list (job-contracts.md § 4.2)")
+        assert f'$_warm_label.{ext}' in script, (
+            f"{ext} is not in the banner's warm-state detection, so a "
+            f"directory holding only .{ext} would be reported as "
+            f"'initial-run (clean state)' while --cold treats it as warm "
+            f"(run-identity.md § 5: the banner must never be weakened)")

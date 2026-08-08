@@ -1311,6 +1311,55 @@ the other two so it reads as a decision.
 
 ---
 
+## 5c. M3 — the milestone review, 2026-08-08
+
+Three lenses over P3 (units 1–5). Review 4 does not apply: P3 moves no
+scientific parameter or default.
+
+**The re-anchor found two contract contradictions before any code was written**,
+and both stopped the phase under § 0 outcome 2 — fixed in `678bc1b2`, their own
+commit, with the code written against the corrected sentences afterwards. They
+are recorded as § 8 decisions 14 and 15, not here, because they were settled by
+the user rather than dispositioned by a reviewer.
+
+| # | Lens | What is wrong | Evidence | Disposition |
+|---|---|---|---|---|
+| 1 | R1 | **The id is not tied to the `SystemLabel` literal.** § 2: *"That one id **is** the `SystemLabel` / `JOB` literal. There is no second name."* Nothing compares `task.run.id` to a config's `system_label`; they are two independent strings, so a description can name one while the deck writes another — § 1's *two calculations, one label* reachable by accident | `grep -rn "run\.id" molbuilder/validation/task.py molbuilder/siesta/input.py` → no hits | **Deferred → P4.** The deck is where `SystemLabel` is written, and `preflight` holds no template instance to compare against; P4 is where the description and the template meet |
+| 2 | R1 | § 3's **case-insensitive level-③ path comparison** is unimplemented. `check_overwrite` answers § 6 (*is there a calculation in this directory*), which is a different question from *would these two calculations occupy the same folder* | `validation/identity.py::check_overwrite` | **Deferred → P10.** Only the surface that creates a calculation directory can compare a proposed path against existing ones; P3 creates no directories |
+| 3 | R1 | § 3 rule 2, *"the result is shown, not hidden"*, has no implementation | — | **Deferred → P10/P11**, declared in `e497515f`'s message when the unit landed rather than found later |
+| 4 | R1 | § 5's second row — *the structure moved under a saved description* — is unimplemented. Its author is *the reader, at preflight*, and `preflight` has no witness row | `molbuilder/validation/task.py` (five rows, none about `structure`) | **Deferred → P6**, the first caller of `preflight` that has the structure file to compare the witness against |
+| 5 | R1 | `stages.md § 6.3`'s worked example was arithmetically wrong: `"formula": "C6H4S2Au38", "atoms": 46`, and that formula is 50 atoms | `stages.md:533` | **Fixed** — 46 → 50. The *ordering* question (`C6H4S2Au38` is neither alphabetical nor Hill, so nothing can compute it) is a different finding and stays with § 8 #10 |
+| 6 | R2 | **Three SIESTA warm-file inventories, and one had drifted.** `runwrap` spelled the list three times; the banner's copy carried 10 of the 13, missing `.Bonds`, `.EIG`, `.PARTIAL` — under a comment claiming *"Match the full SIESTA warm-start ext tuple used by the cold-restart aside below."* So `--cold` moved those aside as warm state while the banner reported `initial-run (clean state)`: the two halves of one contract disagreeing, and the wrong half is the one § 5 says must never be weakened | `runwrap.py:674` vs `runwrap.py:347` | **Fixed.** Both inline lists are now derived from `_SIESTA_WARM_SUFFIXES`, and a test asserts every suffix reaches **both** blocks of the *rendered wrapper* — the end result, not the literals, since comparing derived literals only proves `tuple(x) == tuple(x)` |
+| 7 | R2 | `jobset/runstatus._WARM_FILES` lists 3 SIESTA suffixes and cites `script-execution.md`, **which no longer exists**. It may be right for the narrower question it asks (*can this stage resume*) rather than *what does this id key* — but which question it means is no longer written down anywhere | `runstatus.py:31` | **Deferred**, owner unassigned pending a decision. Recorded in `validation/identity.py`'s docstring so the next reader meets it. P3 subtracts normalisers, not inventories |
+| 8 | R3 | **The hierarchical shape says the stage twice.** The walk emits job script `<id>_coarse.fdf`, which materialises inside `01_coarse/`. § 3.2: *"in the hierarchical shape … every name is the bare id and the **directory** says which stage"*; `job-contracts.md § 6.3`: *a name says what its location does not* | the walk, § 5c below | **Deferred → P4** (owns the naming rule); P5's *one shape out* may dissolve it entirely |
+| 9 | R3 | Over-engineering Q3, *does anything exist only to serve a later phase?* `check_id_change`, `check_prior_state` and `check_overwrite` have **no callers** | `grep -rn "check_prior_state\|check_overwrite" molbuilder/` → declarations only | **Withdrawn.** The premise is that they serve a later phase; they implement §§ 5–6 of the contract **P3 owns**, and it is their *callers* that belong to P5/P10/P11. P2's `preflight` shipped the same way with the reasoning in its docstring. The M3 xfail is what keeps the produce-path gap from being forgotten rather than merely noted |
+| 10 | R2 | *Withdrawn before filing:* I read `runwrap`'s PySCF branch as carrying SIESTA extensions | two `sed` ranges printed back to back; the `elif engine == "pyscf":` line was the **tail of the first range**, not a header for the second. Both lists are in the SIESTA branch | **Withdrawn**, premise named: I read my own tool output as contiguous when it was two windows |
+
+**The walk (R3), run in both shapes, and what actually happened.** One template,
+two stages (`coarse` clean, `tight` continue):
+
+- **flat** — two decks, `<id>_coarse.fdf` / `<id>_tight.fdf`, both carrying the
+  **same** `SystemLabel` (the bare id); `coarse` emits none of the restart group
+  and `tight` emits all three. The warm files are unsuffixed and shared in one
+  directory, which is the design and not a bug, exactly as P3's review line says.
+- **hierarchical** — `tight` depends on `coarse` and carries
+  `<id>.XV` / `.DM` / `.CG`, all unsuffixed. Consistent with the flat shape;
+  finding 8 is the one disagreement, and it is about naming, not restart.
+
+**Subtracts, proved:** *any second normaliser* — none existed to remove
+(`checkpoint.py:453` says outright *"Nothing here normalises"*), so
+`normalise_id` is the first, not a second. *Any id path that reads a result* —
+searched **by behaviour**, not by name: every `SystemLabel` read in `parse/`
+comes from a `.fdf`, an input. `bundle.py`'s any-`*.XV` glob is a reader
+recovering from a rename, not an id being constructed. Nothing to remove.
+
+**Mechanism count unchanged at 10** — P3 adds no way to say "stage". Its one
+stage-shaped name, `normalise_id(..., stage_names=)`, is a parameter and the
+vocabulary guard detects only classes, defs, constants and click options; that
+is the guard's own declared blind spot rather than a new hole.
+
+---
+
 ## 5a. Where the code actually is — verified 2026-08-07
 
 Not the plan's own markers: each row was **checked against the code** by

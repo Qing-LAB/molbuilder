@@ -420,11 +420,10 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         # Intentionally OMITTED: .PSF (pseudopotential cache;
         # regenerable, and a stale cache may carry the user's
         # custom pseudo which would be destructive to remove).
-        exts = (
-            "DM", "CG", "XV", "LWF", "ZM", "Bonds", "PARTIAL", "EIG",
-            "HSX", "WFSX", "STRUCT_NEXT_ITER",
-            "TSHS", "TSDE",
-        )
+        # DERIVED from the module's one tuple, not retyped.  These two were
+        # equal by hand until P3's Review 2 checked; the banner's copy below
+        # was not (see there).
+        exts = tuple(s.lstrip(".") for s in _SIESTA_WARM_SUFFIXES)
     elif engine == "pyscf":
         # PySCF warm-start file SUFFIXES (NOT bare extensions -- the
         # generator names per-stage trajectory files
@@ -671,11 +670,17 @@ def _runtime_status_block(
         # .TSDE/.WFSX) and the geometry-checkpoint case
         # (STRUCT_NEXT_ITER) too.  Used only to detect whether the
         # banner should report "Mode: hot/warm" vs "Mode: cold".
-        warmstart_exts = (
-            "DM", "CG", "XV", "LWF", "ZM",
-            "HSX", "WFSX", "STRUCT_NEXT_ITER",
-            "TSHS", "TSDE",
-        )
+        #
+        # ⚠ That comment was already here and was NOT true: this list was
+        # retyped and had drifted to 10 of the 13, missing .Bonds, .EIG and
+        # .PARTIAL.  A directory holding only those got the banner
+        # "initial-run (clean state)" while ``--cold`` would have moved them
+        # aside as warm state -- the two halves of one contract disagreeing,
+        # and the half that was wrong is the one `run-identity.md § 5` says
+        # must never be weakened, because it is the one always present.
+        # Found by P3's Review 2, whose checklist names this exact shape:
+        # "a comment claiming one list sat above two lists".  Now derived.
+        warmstart_exts = tuple(s.lstrip(".") for s in _SIESTA_WARM_SUFFIXES)
         warmstart_test_pieces = []
         for ext in warmstart_exts:
             warmstart_test_pieces.append(f'[ -e "$_warm_label.{ext}" ]')
