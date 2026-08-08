@@ -42,7 +42,23 @@ class Issue:
           "geometry.min_distance"   -- structural finding
           "cell.no_volume"          -- about the cell
           "config.mesh_cutoff"      -- about a config field
+          "stages.loosens.mesh_cutoff" -- about the SEQUENCE of stages
         Used by the CLI / web UI to highlight the offending field.
+    stage : Optional[str]
+        Which stage of a ladder this finding is about, or ``None``.
+
+        **Beside ``where``, never inside it** (``engines/stages.md`` § 4 R2).
+        A stage is validated as a RESOLVED WHOLE -- the validator is handed a
+        whole config plus the stage's name as a label -- so the same check
+        that fires for a single run fires for a stage, and produces the same
+        ``where``.  Folding the stage into the id instead would give one
+        check as many ids as a ladder has stages, and the UI binds behaviour
+        to the id.
+
+        ``None`` means the finding is not about a member of the ladder:
+        either an ordinary single-run finding, or a fact about the
+        SEQUENCE (§ 4 R3) -- a ladder that loosens is a property of the
+        description, not of any one stage in it.
     workflow_group : Optional[str]
         Optional workflow-card binding -- one of "profile", "stage",
         or "budget" -- so the web UI can attach the finding to the
@@ -60,6 +76,7 @@ class Issue:
     message:         str
     where:           str = ""
     workflow_group:  Optional[str] = None
+    stage:           Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.severity not in _SEVERITIES:

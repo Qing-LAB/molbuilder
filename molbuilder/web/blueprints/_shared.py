@@ -106,6 +106,13 @@ def issues_to_json(issues, cfg=None):
             group = resolve_workflow_group(i.where, cfg)
         if group is not None:
             d["workflow_group"] = group
+        # The stage label rides BESIDE ``where``, never inside it
+        # (engines/stages.md § 4 R2): the same check produces the same id
+        # whether it fired for a single run or for a stage, and the UI binds
+        # behaviour to the id.  Omitted when absent so a single-run response
+        # is byte-identical to what it was before ladders existed.
+        if i.stage is not None:
+            d["stage"] = i.stage
         out.append(d)
     return out
 
