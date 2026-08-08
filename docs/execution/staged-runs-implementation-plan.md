@@ -610,9 +610,51 @@ and the findings contract (facts in, findings out; `where` is the stable id).
    over the resolved pair**, so comparing `overrides` alone is the wrong test and
    would flag the legitimate case.
 
-**Subtracts — and this moved here from P5, because deleting the field forces
-it.** `SiestaConfig.stages` is what mechanisms **1–5 all write**, so they cannot
-outlive it by four phases the way the plan used to schedule:
+**Subtracts — the MODEL, not the surface** (corrected 2026-08-07, user).
+
+> **P2's goal is resolution, and resolution is a model layer.** The plan is
+> bottom-up: P1 said *what a calculation is*, P2 says *how a description and a
+> template become one config per stage*, and **the surfaces are last** (P9 the
+> CLI grammar, P10/P11 the web). A phase that deletes a command-line flag is
+> changing a surface, and P2 is not the phase for that.
+>
+> **What the four flags actually are.** `--stage N`, `--stage-strategy`,
+> `--stages-json` and `--stage-resources` are **four input syntaxes for one
+> thing**: *here is the ladder*. Every one of them expresses something
+> `task.json` expresses. So retiring them removes **a way of saying it**, never
+> the ability to say it — that is a switch of design, exactly as the file-driven
+> scheme intends, and not a loss of function.
+>
+> **Which gives the timing rule this plan was missing:**
+>
+> > **Change the model when the model changes; change the surface when the
+> > grammar changes — and never leave a moment where a user can express
+> > something in neither.**
+>
+> P2 therefore deletes `SiestaConfig.stages` and `SiestaStageSpec` — those *are*
+> the model it replaces — and **repoints the flags at `Task` instead of deleting
+> them**. They keep working. **P9 retires them**, when the new grammar arrives to
+> replace them, which is a grammar decision and always was.
+>
+> **This dissolves § 8 decision 13.** I had recorded a four-phase window in which
+> neither surface could start a staged run, and offered three ways to live with
+> it. The window was manufactured by deleting a surface in a model phase. There
+> is no window.
+
+| Deleted in P2 — the model | Repointed in P2, retired in P9 — the surface |
+|---|---|
+| `SiestaConfig.stages` — the field | `--stage N` · `--stage-strategy` · `--stages-json` · `--stage-resources`, each building a `Task` instead of writing `cfg.stages` |
+| `SiestaStageSpec` — the type | the staged `/api/build` path, which likewise parses into a `Task` |
+| `_stagespec_to_field_schemas` — it published a class's fields as the columns a user may vary, and the checkbox replaces it (`stages.md § 1.3`) | |
+| the `dataclasses.replace` block in `render_siesta_stage_fdfs` — `effective_config` replaces it | |
+
+⚠ **One payload does break, and that is fine pre-1.0.** `--stages-json` currently
+takes the eight-field stage shape; a stage is now name / enabled / overrides, so
+the flag accepts the new shape and its help text says so. That is a format
+change, not a compatibility shim.
+
+The original text is kept below because its *evidence* still stands — these are
+the call sites that made the model deletion unavoidable:
 
 | Gone in P2 | Why it cannot wait for P5 |
 |---|---|
@@ -1312,7 +1354,7 @@ open.
 | 10 | **What are the "components" of a composite system?** A junction is a molecule *and* two electrodes; naming it by total formula loses that structure | P3, same |
 
 | 12 | ~~**Does the `.fdf.template` survive, and what may it contain?**~~ — **answered 2026-08-07 (user), and the question should not have been asked.** The template carries what does not change; `task.json` carries what does. The contract contradicted itself — § 4 said *effective config = `base` ⊕ `overrides`* while § 7.1's own diagram said *template ⊕ the stage's row ⊕ this machine*, three sections apart — and I quoted § 4 as settled instead of reporting the contradiction. **`base` is deleted** from the contract, from `molbuilder/task.py` and from its tests | ~~P2~~ |
-| 13 | **Is the P2→P6 window acceptable?** P2 deletes `--stage`, `--stage-strategy`, `--stages-json` and `--stage-resources` because they all write the field it removes — but nothing consumes a `task.json` until **P6**'s `prep`. So for four phases **neither surface can create a staged run**, where today the CLI can. Options: **(a)** accept it and say so in the release notes; **(b)** pull a minimal *produce from a description* into P2 so a hand-written `task.json` works immediately (decision 3 already made hand-editing supported, so this is small); **(c)** keep `--stages-json` at P2 pointed at the new file, retired at P9 — not a compat shim, the same flag aimed at the new target | **P2** |
+| 13 | ~~**Is the P2→P6 window acceptable?**~~ — **dissolved 2026-08-07 (user): the window was manufactured.** P2 is a *model* phase; deleting a CLI flag is a *surface* change and belongs to P9's grammar. The flags are four input syntaxes for one thing — *here is the ladder* — and every one expresses what `task.json` expresses, so retiring them switches where a user says it, never whether they can. P2 repoints them at `Task`; P9 retires them. **The rule that generalises it:** change the model when the model changes, change the surface when the grammar changes, and never leave a moment where a user can express something in neither | ~~P2~~ |
 
 **Already decided, recorded so they are not reopened:** the shape is a required
 field in the description (`stages.md § 6.7`); the id is fixed once and a later

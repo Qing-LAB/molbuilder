@@ -116,6 +116,22 @@ form):
 > may be promoted, whatever group it carries — § 1.2's rule stands. The group only
 > decides what is *already ticked* when the tab opens.
 >
+> **What the tag was actually built for, since it is easy to over-read.** It is a
+> **UI grouping**, added 2026-06-13 to fix a reported bug: the form used to mix
+> stage, budget and system fields inside the same fieldsets, *so switching the
+> stage preset silently rewrote budget and system fields too*. Two consumers, both
+> in the surface — `form-schema.js` renders three cards in a fixed order so
+> "switching the stage selector touches the stage card only" is visible at a
+> glance, and `_shared.py::resolve_workflow_group` routes a validation finding to
+> the card whose fields it concerns (`web/ui-contract.md` Rule 2). **It has never
+> been a model constraint and must not become one.** Under the checkbox design it
+> keeps three honest jobs: ordering the form, routing findings, and deciding which
+> boxes start ticked.
+>
+> `profile`'s own subtitle reads *"Set once per run; doesn't change between
+> stages"* — a claim about typical use, and **false for `relax_type`**, which is
+> why that field is mis-tagged rather than the rule being wrong.
+>
 > **And the selection is made in place, one checkbox per parameter** (user,
 > 2026-08-07) — **not** a separate list of stage-able settings anywhere. The form
 > already lists every parameter; each one carries a *vary per stage* checkbox
@@ -507,9 +523,20 @@ indistinguishable, in the decks, from one that was never promoted.
 > recovered from the cells once a stage is allowed to leave one empty.
 
 **And the fallback is the template, not a second copy in this file.** A stage
-that omits a varied key renders with the backbone's value for it (§ 4). That is
-why `task.json` needs no `base`: the thing a stage falls back to already exists,
-in the one artifact whose whole job is *what does not change*.
+that omits a varied key renders with the template's value for it (§ 4).
+
+> **The two files answer different questions, which is why neither duplicates
+> the other** (user, 2026-08-07):
+>
+> | | |
+> |---|---|
+> | **the template** | *everything a script owns, with values* — what the user set, or the default where they did not touch it. **Including the parameters that vary**: the template holds their starting value. |
+> | **`task.json`** | *which of those the user wants flexible*, so the calculation can be conducted stepwise — plus each stage's value for them. |
+>
+> So `mesh_cutoff` appears in both, and says something different in each: the
+> template says **what it is**, the description says **that it steps, and to
+> what**. A stage that overrides it wins; a stage that does not takes the
+> template's. That is the whole relationship, and it is why there is no `base`.
 
 ### 6.3 `structure` is a reference plus a witness, never a copy
 
