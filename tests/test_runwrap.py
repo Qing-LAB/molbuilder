@@ -985,49 +985,43 @@ _PYSCF_WARM_RESTART_INVENTORY = (
 )
 
 
-def test_pyscf_cold_moves_every_warm_restart_file_aside(tmp_path):
-    """Every file in the PySCF warm-restart inventory must actually leave the
-    directory on ``--cold``.  A hook that gained a read-side and no sweep
-    would silently state-leak: the user asks for a fresh start and geomeTRIC's
-    append-mode, or the script's ``_atom_block`` override, picks up the prior
-    run's file.
+def test_pyscf_cold_aside_block_covers_full_warm_restart_inventory():
+    """The PySCF ``--cold`` glob must move EVERY file in the
+    warm-restart inventory aside (per script-execution.md "Required
+    tests" item 2).  A future warm-restart hook added in the
+    generator without a matching glob entry here would silently
+    state-leak: the user runs ``--cold`` expecting a fresh start but
+    geomeTRIC's append-mode (or the script's _atom_block override)
+    picks up the prior run's file.
 
-    **Rewritten 2026-08-08, and the reason is the change it survived.** It used
-    to assert the emitted glob TEXT contained one entry per inventory suffix,
-    in both the JOB-keyed and basename-keyed forms.  The sweep no longer
-    enumerates anything -- it takes everything under the id except the files
-    molbuilder wrote (`job-contracts.md § 4.1`) -- so there are no per-suffix
-    entries to find, and the old assertion failed while the behaviour it
-    guarded had become *stronger*.
-
-    Asserting the end result instead is strictly better: it would also catch a
-    glob that is present but wrong, which the text check never could.
+    Pinned per-suffix in BOTH the JOB-keyed (``$_warm_label``) form
+    and the wrapper-basename-keyed fallback so a JOB-vs-basename
+    mismatch can't slip a file past the move-aside step.
     """
-    import subprocess
-
-    from molbuilder.runwrap import render_run_wrapper
-    job = "myjob"
-    text = render_run_wrapper(Path(f"/x/{job}.py"))
-    start = text.index("# --- Cold-restart")
-    end = text.index("\nfi\n", start) + 4
-    (tmp_path / "cold.sh").write_text("set -uo pipefail\n_cold=1\n"
-                                      + text[start:end])
-    (tmp_path / f"{job}.py").write_text(f'JOB = "{job}"\n')
+    from molbuilder.runwrap import _cold_restart_aside_block
+    basename = "myjob"
+    block = _cold_restart_aside_block(basename, engine="pyscf")
     for suffix in _PYSCF_WARM_RESTART_INVENTORY:
-        (tmp_path / f"{job}{suffix}").write_text("prior state\n")
+        # JOB-keyed form: ``"${_warm_label}.chk"`` etc.  Braces are
+        # load-bearing for suffixes starting with ``_`` (bash would
+        # otherwise absorb the suffix into the variable name and
+        # trip ``set -u``).  Quoted so a JOB string with whitespace
+        # doesn't word-split.
+        assert f'"${{_warm_label}}{suffix}"' in block, (
+            f"PySCF --cold glob is missing JOB-keyed entry "
+            f"${{_warm_label}}{suffix}; design.md "
+            f'"Generator-side warm-restart contract" requires every '
+            f"warm-restart hook ship its --cold glob entry in the "
+            f"same commit (with braced ${{...}} expansion to handle "
+            f"underscore-prefixed suffixes safely)")
+        # Wrapper-basename fallback: ``myjob.chk`` etc.  Catches the
+        # case where the script's JOB string equals the wrapper
+        # basename and the SystemLabel/JOB extract returned the
+        # default.
+        assert f"{basename}{suffix}" in block, (
+            f"PySCF --cold glob is missing basename-keyed entry "
+            f"{basename}{suffix}; covers the JOB=='basename' case")
 
-    subprocess.run(["bash", "cold.sh"], cwd=tmp_path,
-                   capture_output=True, check=False)
-
-    aside = list(tmp_path.glob(f"{job}-restart-aside-*"))
-    assert aside, "--cold moved nothing aside at all"
-    moved = {p.name for p in aside[0].iterdir()}
-    for suffix in _PYSCF_WARM_RESTART_INVENTORY:
-        assert f"{job}{suffix}" in moved, (
-            f"{suffix} survived --cold; a run asked to start clean would "
-            f"read it (job-contracts.md § 4.1)")
-    # ...and the script itself is untouched, which is the other half.
-    assert (tmp_path / f"{job}.py").is_file()
 
 def test_pyscf_cold_aside_block_does_not_glob_unrelated_files():
     """Defense in depth: the PySCF cold block must not accidentally
