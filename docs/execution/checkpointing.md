@@ -103,30 +103,30 @@ The same picture as files, after two checkpoints of a two-stage calculation. Thi
 is what every invariant below is talking about:
 
 ```text
-bdt_au_relax_c6h4s2au38/
+BDT_Au_relax_C6H4S2Au38/
 ├── .git/                              ← store 1: the text history
 ├── .gitignore                         ← generated: ignores exactly what the
 │                                         archive claims (S1a)
 ├── .mbcheckpoint.json                 ← which patterns count as "big" here
 ├── .binsnapshots/                     ← store 2: the content archive
 │   ├── 4f9c…a71/                        one directory per commit sha
-│   │   ├── 01_coarse/run-0/bdt_au_relax_c6h4s2au38.DM
+│   │   ├── 01_coarse/run-0/BDT_Au_relax_C6H4S2Au38.DM
 │   │   └── MANIFEST
 │   └── b2e0…33d/
-│       ├── 01_coarse/run-0/bdt_au_relax_c6h4s2au38.DM   ← same content as
+│       ├── 01_coarse/run-0/BDT_Au_relax_C6H4S2Au38.DM   ← same content as
 │       │                                                   above: a hard link,
 │       │                                                   costing no disk (L5)
-│       ├── 02_tight/run-0/bdt_au_relax_c6h4s2au38.DM
+│       ├── 02_tight/run-0/BDT_Au_relax_C6H4S2Au38.DM
 │       └── MANIFEST
 ├── task.json                        ┐
-├── bdt_au_relax_c6h4s2au38.fdf.template │ tracked by git —
+├── BDT_Au_relax_C6H4S2Au38.fdf.template │ tracked by git —
 ├── 01_coarse/                         │ text, diffable
-│   ├── bdt_au_relax_c6h4s2au38.fdf    │ ← no stage suffix: the DIRECTORY
+│   ├── BDT_Au_relax_C6H4S2Au38.fdf    │ ← no stage suffix: the DIRECTORY
 │   └── run-0/                         │   already says which stage
-│       ├── bdt_au_relax_c6h4s2au38.out
-│       ├── bdt_au_relax_c6h4s2au38.XV      ← small: git
+│       ├── BDT_Au_relax_C6H4S2Au38.out
+│       ├── BDT_Au_relax_C6H4S2Au38.XV      ← small: git
 │       ├── run.json                        ┘
-│       └── bdt_au_relax_c6h4s2au38.DM      ← large: gitignored, in the archive
+│       └── BDT_Au_relax_C6H4S2Au38.DM      ← large: gitignored, in the archive
 └── 02_tight/…
 ```
 
@@ -134,8 +134,8 @@ And one `MANIFEST`, which is the whole format — three columns, two spaces
 between, sorted by the third:
 
 ```text
-7ef4c6452a48e8625b612ee830dd7554959b03b23df81867e38edc6d8bb1344a  8388608  01_coarse/run-0/bdt_au_relax_c6h4s2au38.DM
-36c543955301c21a0ca61358275551df1ba4837a2c9fd93bd6c185f67409a572  8388608  02_tight/run-0/bdt_au_relax_c6h4s2au38.DM
+7ef4c6452a48e8625b612ee830dd7554959b03b23df81867e38edc6d8bb1344a  8388608  01_coarse/run-0/BDT_Au_relax_C6H4S2Au38.DM
+36c543955301c21a0ca61358275551df1ba4837a2c9fd93bd6c185f67409a572  8388608  02_tight/run-0/BDT_Au_relax_C6H4S2Au38.DM
 ```
 
 **Read the key column and the design is visible.** It is a path *relative to the

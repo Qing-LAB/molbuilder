@@ -95,7 +95,7 @@ exactly why stage 2 overwrites them.
 **Hierarchical** — the same stages and attempts, kept apart by directory:
 
 ```
-bdt_au_relax_c6h4s2au38/            the CALCULATION
+BDT_Au_relax_C6H4S2Au38/            the CALCULATION
 ├── <id>.fdf.template               ─┐ written by the browser
 ├── task.json                      │ portable: names no machine
 ├── Au.psml  S.psml  mb_monitor.py  ─┘
@@ -1211,7 +1211,7 @@ anyway and the history is a safety net. Same machinery, different weight — and
 `checkpointing.md § 5` states the invariants for both.
 
 ```
-bdt_au_relax_c6h4s2au38/
+BDT_Au_relax_C6H4S2Au38/
 ├── .git/                       the text: decks, wrappers, task.json, .XV, .CG
 ├── .binsnapshots/<save>/       the big files, by path:
 │   ├── 01_coarse/run-0/<id>.DM   ← that attempt's density matrix

@@ -521,7 +521,7 @@ rather than inventing a second mechanism.
   // What identifies this calculation, and what the user called it.
   // The rules are execution/run-identity.md.
   "run": { "name": "BDT/Au relax",                    // typed, kept verbatim
-           "id":   "bdt_au_relax_c6h4s2au38",         // normalised once, then quoted
+           "id":   "BDT_Au_relax_C6H4S2Au38",         // normalised once, then quoted
            "created": "2026-08-06T22:14:03-07:00" },  // for tracing, not identity
 
   // Which schema the values were entered against — a witness, not a definition.
@@ -894,7 +894,7 @@ refer to it. `project-layout.md` § 1 is the authority for both, and if the two
 ever disagree that one wins.
 
 ```
-projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/
+projects/BDT-Au/optimization/BDT_Au_relax_C6H4S2Au38/
 ├── <id>.fdf.template                  ← the science backbone
 ├── task.json                        ← what each stage tunes
 ├── Au.psml  S.psml  C.psml  H.psml    ← shared, stored ONCE
@@ -1134,8 +1134,8 @@ a commit message, an annotated tag with a name, and a branch name
 
 | | Form | Example |
 |---|---|---|
-| **commit message** (both boundaries) | `<id> · <stage or event> · <what happened>` | `bdt_au_relax_c6h4s2au38 · tight · relaxation converged, 41 steps` |
-| **tag** (a stage that finished) | `<id>/<stage>/<UTC timestamp>` | `bdt_au_relax_c6h4s2au38/tight/20260806T221403Z` |
+| **commit message** (both boundaries) | `<id> · <stage or event> · <what happened>` | `BDT_Au_relax_C6H4S2Au38 · tight · relaxation converged, 41 steps` |
+| **tag** (a stage that finished) | `<id>/<stage>/<UTC timestamp>` | `BDT_Au_relax_C6H4S2Au38/tight/20260806T221403Z` |
 | **branch** (a user forking a what-if) | proposed as `<stage>-<what you are trying>`, and editable | `tight-tighter-mesh` |
 
 Four things make that work rather than merely look tidy:

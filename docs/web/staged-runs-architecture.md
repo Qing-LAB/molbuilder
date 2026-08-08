@@ -292,9 +292,9 @@ would rename it.
 ```jsonc
 {
   "ok": true,
-  "id": "bdt_au_relax_c6h4s2au38",
-  "written": { "folder":      "projects/BDT-Au/optimization/bdt_au_relax_c6h4s2au38/",
-               "template":    "…/bdt_au_relax_c6h4s2au38.fdf.template",
+  "id": "BDT_Au_relax_C6H4S2Au38",
+  "written": { "folder":      "projects/BDT-Au/optimization/BDT_Au_relax_C6H4S2Au38/",
+               "template":    "…/BDT_Au_relax_C6H4S2Au38.fdf.template",
                "description": "…/task.json",
                "data":        ["Au.psml", "S.psml", "C.psml", "H.psml"] },
   "findings": [ /* warnings that did not block, each naming its stage */ ]
@@ -1371,7 +1371,7 @@ A reader should be able to check the design landed with four questions:
    `job-set.json`).
 2. **Should the folder really be named by the id** (`run-identity.md § 3`)? It
    removes a second name and makes a directory listing self-describing, at the
-   cost of a folder called `bdt_au_relax_c6h4s2au38` where someone would have
+   cost of a folder called `BDT_Au_relax_C6H4S2Au38` where someone would have
    typed `bdt-relax`.
 3. ~~**Is the user's half of the id editable after the fact?**~~ **Answered
    2026-08-07: it is set once, and after that changing it makes a new job set.**

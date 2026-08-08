@@ -67,7 +67,7 @@ knows:
 flowchart LR
     U["what the user calls it<br/><b>BDT/Au relax</b>"] --> N["normalise once<br/>§ 3"]
     M["what the coordinates are of<br/>the molecule, by formula<br/>or by named components<br/><b>C6H4S2Au38</b>"] --> N
-    N --> I["<b>bdt_au_relax_c6h4s2au38</b><br/>= the SystemLabel literal<br/>= the basename of every file"]
+    N --> I["<b>BDT_Au_relax_C6H4S2Au38</b><br/>= the SystemLabel literal<br/>= the basename of every file"]
 ```
 
 A hash would be exact and unreadable. A formula is neither, and that is the trade
@@ -138,17 +138,30 @@ dot — and sanitising it there is also what blocks shell injection from a hosti
 script (`job-contracts.md § 4.3`). The project tree uses the same set per
 segment (`job-contracts.md § 2.5`).
 
-So the normalisation is: **anything outside `[A-Za-z0-9_-]` to `_`, runs
-collapsed, leading and trailing separators trimmed, and length capped.**
+So the normalisation is: **anything outside `[A-Za-z0-9_-]` to `_`, runs of two
+or more separators collapsed to a single `_`, leading and trailing separators
+trimmed, and length capped.**
+
+*A run collapses; a lone separator does not.* `BDT-Au` keeps its hyphen — it is
+in the set and the user typed it deliberately — while `BDT  --  Au` is a run of
+six separator characters and becomes one `_`. Collapsing every `-` to `_` would
+be a simpler rule that quietly renames a project.
 
 The cap is derived, not chosen: `<id>_<longest stage name>.<longest extension the
 run will write>` must fit the filesystem's name limit (255 bytes, in practice).
 Since rule 3 below **refuses** rather than truncating, the cap has to be checked
 where the id is made — a truncated id is a different calculation wearing the same
-name, which is the one failure this whole document exists to prevent. There is **no lowercasing rule** — that would
-make the id the one name in the system that forbids capitals. The
-case-insensitive-filesystem worry is handled where it actually bites, by making
-the **collision check** case-insensitive.
+name, which is the one failure this whole document exists to prevent.
+
+**Case is preserved, and there is no lowercasing rule.** The reason is stronger
+than symmetry with the rest of the system: **the id carries a chemical formula,
+and in a formula the case *is* the element.** Lowercasing `Co` (cobalt) makes it
+`co`, the same token `CO` (carbon monoxide) lowercases to — so a rule meant to
+tidy filenames would erase the one thing the formula is in the id to say. It
+would also make the id the single name in this system that forbids capitals,
+when the project level (`BDT-Au`) allows them. The case-insensitive-filesystem
+worry is handled where it actually bites, by making the **collision check**
+case-insensitive.
 
 **And the same set is git-ref-safe**, which the checkpoint history depends on:
 `[A-Za-z0-9_-]+` contains none of the characters a ref forbids, so a commit,
@@ -217,12 +230,12 @@ must display back **before** anything is written.
 
 | What the user types | Id | Which rule fired |
 |---|---|---|
-| `BDT/Au relax` + `C6H4S2Au38` | `bdt_au_relax_c6h4s2au38` | `/` and the space are outside the set → `_` |
-| `BDT  --  Au` | `bdt_au` | runs of separators collapse to one |
+| `BDT/Au relax` + `C6H4S2Au38` | `BDT_Au_relax_C6H4S2Au38` | `/` and the space are outside the set → `_`; **case is kept**, and in `C6H4S2Au38` it has to be |
+| `BDT  --  Au` | `BDT_Au` | a run of six separator characters collapses to one `_` |
 | `_relax_` | `relax` | leading and trailing separators trimmed |
-| `Relax.v2` | `relax_v2` | the dot is outside the id's set (the *wrapper* tolerates a dot in a `SystemLabel`; the id does not mint one) |
-| `BDT-Au` | `bdt-au` | hyphens are **kept** — they are in the set |
-| `Über` | `_ber`, then **refused** | a leading separator trims to `ber`, which is not what was asked for → rule 3 refuses rather than guessing |
+| `Relax.v2` | `Relax_v2` | the dot is outside the id's set (the *wrapper* tolerates a dot in a `SystemLabel`; the id does not mint one) |
+| `BDT-Au` | `BDT-Au` | hyphens are **kept** — they are in the set, and a lone one is not a run |
+| `Über` | **refused** | `Ü` is a letter, not a separator — the id cannot carry it and will not silently drop it (rule 3) |
 | `///` | **refused** | reduces to nothing; say so and ask |
 | a 300-character name | **refused** | over the derived cap — a truncated id is a different calculation wearing the same name |
 
@@ -230,17 +243,17 @@ must display back **before** anything is written.
 
 The point of the rule is that a *single* token is enough to identify every file
 of a calculation, on disk, in a history, and to the engine. For
-`bdt_au_relax_c6h4s2au38`, in the hierarchical shape:
+`BDT_Au_relax_C6H4S2Au38`, in the flat shape:
 
 ```text
 projects/BDT-Au/optimization/bdt-relax/     ← the folder is what the user typed
 ├── task.json                                  ← and this says the id
-├── bdt_au_relax_c6h4s2au38.fdf.template
-├── bdt_au_relax_c6h4s2au38_coarse.fdf        ┐ what a STAGE produced
-├── bdt_au_relax_c6h4s2au38_tight.fdf         │ carries the stage: <id>_<stage>
-├── bdt_au_relax_c6h4s2au38_coarse-run0.out   ┘
-├── bdt_au_relax_c6h4s2au38.XV                ┐ what the ENGINE resumes from
-└── bdt_au_relax_c6h4s2au38.DM                ┘ carries the id ALONE
+├── BDT_Au_relax_C6H4S2Au38.fdf.template
+├── BDT_Au_relax_C6H4S2Au38_coarse.fdf        ┐ what a STAGE produced
+├── BDT_Au_relax_C6H4S2Au38_tight.fdf         │ carries the stage: <id>_<stage>
+├── BDT_Au_relax_C6H4S2Au38_coarse-run0.out   ┘
+├── BDT_Au_relax_C6H4S2Au38.XV                ┐ what the ENGINE resumes from
+└── BDT_Au_relax_C6H4S2Au38.DM                ┘ carries the id ALONE
 ```
 
 That is the **flat** shape, chosen here because it is where the id has to do all
@@ -252,8 +265,8 @@ the work — nothing but the filename separates one stage from another. The
 and in the history:
 
 ```text
-commit  bdt_au_relax_c6h4s2au38 · tight · relaxation converged, 41 steps
-tag     bdt_au_relax_c6h4s2au38/tight/20260806T221403Z
+commit  BDT_Au_relax_C6H4S2Au38 · tight · relaxation converged, 41 steps
+tag     BDT_Au_relax_C6H4S2Au38/tight/20260806T221403Z
 ```
 
 **Three different naming systems — a filesystem, a git ref, and SIESTA's
@@ -283,9 +296,21 @@ the id's role visible, which is why the example above is flat.
    engine writes.
 2. **The result is shown, not hidden.** A surface that hides it hides the thing
    that decides whether the next run continues.
-3. **A normalisation that loses the name is refused, not patched.** If what the
-   user typed reduces to nothing, say so and ask — never append a digit and carry
-   on, which produces `bdt_2` and no explanation of what it differs from.
+3. **A normalisation that loses the name is refused, not patched** — never append
+   a digit and carry on, which produces `bdt_2` and no explanation of what it
+   differs from. Two cases refuse, and what separates them from an ordinary
+   substitution is *what was replaced*:
+
+   - **a letter or a digit was replaced.** Substituting a **separator** — a
+     space, a `/`, a `.` — is expected and silent; that is all `BDT/Au relax`
+     does. Substituting a character the user typed *inside a word* loses it, so
+     `Über` is refused rather than quietly becoming `ber`, and so is `Ω-shape`.
+     The test is mechanical: a character outside `[A-Za-z0-9_-]` that is
+     nonetheless alphanumeric is a letter or a digit in *some* alphabet, and the
+     id has no way to carry it.
+   - **nothing is left, or the result is over the derived cap.** `///` reduces to
+     the empty string; a 300-character name exceeds what `<id>_<stage>.<ext>` may
+     occupy. Say so and ask.
 
 **A "collision" is narrower than it sounds, and since 2026-08-07 it is narrower
 still.** Two calculations collide when they would occupy the **same level-③
