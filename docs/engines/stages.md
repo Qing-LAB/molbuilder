@@ -91,8 +91,63 @@ is what limited a stage to four values.**
 | the **selection** | *Which of those settings vary per stage?* | **the user**, in the UI, recorded as `varies` in `task.json` (§ 6.2) |
 
 Today's four relaxation values are a **default selection** over that catalogue —
-a sensible starting point because we already know what the tab lists — and not a
-privileged class of parameter. Any field of the shared schema can be selected.
+and not a privileged class of parameter. Any field of the shared schema can be
+selected.
+
+### 1.3 The default selection is a group each engine declares, not a list in code
+
+**Every engine's config already tags its fields**, and the tag is exactly this
+question (`metadata["workflow_group"]`, read by the form builder to order the
+form):
+
+| group | meaning | SIESTA | PySCF |
+|---|---|---|---|
+| `profile` | set once for the calculation | `xc_functional`, `solution_method`, `relax_type`, … | `method`, `basis`, `functional`, … |
+| **`stage`** | **the settings that typically vary across a sequence** | `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `kgrid`, `relax_force_tol`, `relax_max_displ` | `scf_conv_tol`, `grid_level` |
+| `budget` | what it is allowed to spend | `max_scf_iter`, `relax_steps`, `mpi_np`, `omp_threads`, … | `scf_max_cycle`, `threads`, … |
+
+> **So `varies` defaults to the engine's `stage` group**, and the user adds to or
+> removes from it. That is the whole of "which parameters may vary" — declared by
+> each engine, beside the fields themselves, in the one place that already knows
+> what a field *is*. No engine needs code in the shared machinery, and a new
+> engine gets a working default by tagging its own fields.
+
+**The four hard-coded values are historical residue, and the tagging proves it**
+(2026-08-07). Of the four that `render_siesta_stage_fdfs` can vary, **two are not
+even tagged as stage settings**:
+
+| hard-coded as varying | what the config actually tags it |
+|---|---|
+| `relax_force_tol` | `stage` ✓ |
+| `relax_max_displ` | `stage` ✓ |
+| `relax_type` | **`profile`** — a set-once choice |
+| `relax_steps` | **`budget`** — a resource |
+
+And **six fields tagged `stage` cannot be varied at all**: `basis_size`,
+`pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`,
+`kgrid`. So the shipped set simultaneously admits two fields the config says are
+not stage settings and excludes six it says are. **The code already knew the
+right answer; the stage mechanism never read it.**
+
+### 1.4 One mechanism, engine-specific only where the science is
+
+The same machinery serves every engine, and exactly three things are the
+engine's own:
+
+| | Shared, written once | The engine's |
+|---|---|---|
+| the description | `task.json` + its reader | — |
+| the catalogue | the form-schema generator | **its config class and its `workflow_group` tags** |
+| resolution | template ⊕ `overrides` → one config | — |
+| the per-stage table | one tab, driven by `varies` | — |
+| the backbone | — | **its template's format** (`.fdf` for SIESTA, `.py` for PySCF) |
+| correctness | the *structural* preflight (§ 6.6) | **the science** — is this basis adequate for that cutoff, does this ladder loosen |
+
+**Everything generic happens first; the engine-specific judgement happens last,
+on the resolved config.** That is what R2 already requires — a stage is validated
+as a resolved whole, never as a diff — and it is why the split works: by the time
+an engine's validator is asked anything, it is looking at an ordinary complete
+config of its own type, exactly as it would for a single run.
 
 **So the stage setting is a contract between the UI and `prep`, and the engine
 sits downstream of both.** The browser asks the user which parameters to vary

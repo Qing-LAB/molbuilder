@@ -529,9 +529,27 @@ and the findings contract (facts in, findings out; `where` is the stable id).
 
 2a. **The columns a user may vary stop being a Python class's field list.** The
    catalogue keeps coming from the schema; the *selection* comes from `varies`
-   in the description. Nothing in this phase draws it — P10 and P11 own the
-   surface — but the backend stops constraining it, which is what makes the
+   in the description, defaulting to the engine's **`workflow_group: "stage"`**
+   group (`stages.md § 1.3`). Nothing in this phase draws it — P10 and P11 own
+   the surface — but the backend stops constraining it, which is what makes the
    surface work possible at all.
+
+   > **The default already exists and is better than what ships.** Both engines
+   > tag every field `profile` / `stage` / `budget`, and the stage mechanism has
+   > never read those tags. Of the four values `render_siesta_stage_fdfs` can
+   > vary, **`relax_type` is tagged `profile`** (set once) and **`relax_steps` is
+   > tagged `budget`** (a resource) — while six fields tagged `stage`
+   > (`basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`,
+   > `dm_energy_tolerance`, `kgrid`) cannot be varied at all. **So this unit is a
+   > refactor toward something the codebase already declares**, not a new
+   > invention: delete the hard-coded four, read the group. A new engine then
+   > gets a working default by tagging its own fields and writing no shared code.
+   >
+   > ⚠ **Check the two demotions against the science before shipping them**
+   > (Review 4). Varying `relax_type` between stages is what today's ladder does
+   > — CG warm-up then Broyden — and the tag says `profile`. Either the tag is
+   > wrong or the ladder is; `engines/tuning.md` owns that answer, and this unit
+   > does not guess it.
 3. `continue_retries` gets a road to the wrapper. ⚠ It is not merely unrouted —
    it is **silently dropped while everything upstream validates** (§ 8a D): the
    field range-checks 1..5, `runwrap.py` implements the retry loop, and
