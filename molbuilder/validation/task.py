@@ -1,0 +1,216 @@
+"""The preflight's other half — the checks that need a field schema.
+
+**Module:** L2, inside the ``validation`` package. Imports ``issues`` and
+``task`` (both L1), ``template`` (L2) and an engine's config (L1) — the config
+lazily, so importing ``validation`` does not drag the engine stack in. To be
+called by ``jobset/prep`` (P6) and the web Build route (P10); it has no caller
+yet because no phase has built the reader, which is the plan's sequencing
+rather than a function written on spec.
+
+**Contract:** [`engines/stages.md`](?doc=engines/stages.md) § 6.6 (the eight
+checks, *"in order, and all of it before anything is written"*) · § 6.7 (`shape`
+is required and never inferred) · [`science/validation.md`](?doc=science/validation.md)
+§ 4.1 (one result type; ``where`` is the stable id; severity means the same
+everywhere).
+
+**Why this is a second file and not more of `task.py`.** § 6.6's eight checks
+split cleanly: four are answerable from the description alone and live in the
+codec, and four need the engine's field schema. ``task.py`` is L1 — it imports
+``persist`` and the standard library — and importing an engine into it is
+exactly what ``tests/test_layering.py`` prevents. Its docstring carries the same
+split, so the two halves cannot quietly diverge; **if you add a row here, add it
+there.**
+
+**Why this returns findings rather than raising.** § 6.6's rows say *refuse*,
+except one: the fingerprint row says *"proceed, and say plainly it was written
+against a different schema"*. A function that raises cannot express that row at
+all. So every row becomes an ``Issue`` — ``error`` for the refusals, ``warn``
+for the fingerprint — and :func:`refuse_on_error` is the caller's one line when
+it wants the exception. That also puts these on the one channel into the UI
+(§ 4.1 R2), which is the point: a check nobody sees is worse than no check.
+
+``task.py``'s half still raises, and that is not an inconsistency — it fails
+while *parsing*, where there is no object yet to attach a finding to.
+"""
+from __future__ import annotations
+
+import dataclasses
+from typing import Any, Dict, List, Optional
+
+from ..issues import Issue, ValidationError
+
+
+#: Engines whose ladder runs inside ONE process, so a per-stage directory tree
+#: would describe a layout that never exists on disk (§ 6.7 + § 1.1's note on
+#: why PySCF keeps its own stage list).
+_ONE_PROCESS_ENGINES = ("pyscf",)
+
+
+def preflight(task, config_cls=None, *,
+              generators: Optional[Dict[str, Any]] = None) -> List[Issue]:
+    """§ 6.6's schema-dependent half, in the order the contract lists them.
+
+    ``task`` is a parsed :class:`molbuilder.task.Task` — the codec's own four
+    checks have already passed, or there would be no object. ``config_cls`` is
+    the engine's config dataclass; when omitted it is resolved from
+    ``task.engine``, and *that resolution failing is itself the first check*.
+
+    ``generators`` maps engine name → config class, and defaults to what this
+    backend actually ships. It is an argument so a test can ask "what happens
+    for an engine we do not have" without inventing one in the registry.
+
+    Every finding names what it refused (§ 6.6's right-hand column) — this is a
+    file people edit by hand, so a refusal owes them the offending key, the
+    stage it was in, and the bound it broke.
+    """
+    known = dict(generators if generators is not None else _shipped())
+    out: List[Issue] = []
+
+    # -- 1. the engine is one this backend has a generator for -------------
+    if task.engine not in known:
+        return [Issue(
+            "error",
+            f"engine {task.engine!r} has no generator in this backend. "
+            f"Available: {', '.join(sorted(known)) or '(none)'}",
+            where="task.engine")]
+    cls = config_cls if config_cls is not None else known[task.engine]
+
+    # -- 1a. § 6.7 -- a one-process ladder has no hierarchy to lay out -----
+    if task.shape == "hierarchical" and task.engine in _ONE_PROCESS_ENGINES:
+        out.append(Issue(
+            "error",
+            f"shape 'hierarchical' asks for one directory per stage, but "
+            f"{task.engine!r} runs its whole ladder inside a single process, "
+            f"so there is only ever one directory to put things in. Use "
+            f"shape 'flat'",
+            where="task.shape"))
+
+    # -- 2. the schema fingerprint -- the ONE non-refusal ------------------
+    out.extend(_fingerprint_row(task, cls))
+
+    # -- 3. every named field exists in the schema ------------------------
+    fields = {f.name: f for f in dataclasses.fields(cls)}
+    out.extend(_names_exist(task, cls, fields))
+
+    # -- 4. every value is inside the schema's bounds ---------------------
+    out.extend(_values_in_bounds(task, fields))
+    return out
+
+
+def _shipped() -> Dict[str, Any]:
+    """The engines this backend has a generator for, resolved lazily.
+
+    Lazily because importing an engine config at module scope would drag the
+    whole engine stack into anything that imports ``validation``.
+    """
+    from ..config.pyscf import PySCFConfig
+    from ..config.siesta import SiestaConfig
+    return {"siesta": SiestaConfig, "pyscf": PySCFConfig}
+
+
+def _fingerprint_row(task, cls) -> List[Issue]:
+    """§ 6.6's only non-refusal: *proceed, and say plainly*.
+
+    **The claim is deliberately weak.** One string can say *this was written
+    against a different schema*; it cannot say which fields moved. The
+    per-field rows below do that work, and they run either way — so a stale
+    fingerprint is information, never a gate.
+
+    An **absent** fingerprint is read without the warning: a description
+    written by hand, or before this existed, makes no claim.
+    """
+    from ..template import fingerprint_matches, schema_fingerprint
+
+    if fingerprint_matches(cls, task.schema_fingerprint):
+        return []
+    return [Issue(
+        "warn",
+        f"this description was written against a different {task.engine} "
+        f"schema (it records {task.schema_fingerprint!r}; this backend's is "
+        f"{schema_fingerprint(cls)!r}). The per-field checks below still run, "
+        f"so a field that moved will be named -- this only says the shape is "
+        f"not the one it was written for",
+        where="task.schema_fingerprint")]
+
+
+def _names_exist(task, cls, fields) -> List[Issue]:
+    """Every name in ``varies`` and every ``overrides`` key is a real field.
+
+    ``varies`` is checked too, not only the overrides. ``task.py`` enforces
+    ``overrides ⊆ varies`` without a schema, so a *misspelt* name that appears
+    in both passes the codec cleanly — the subset holds, and both are wrong the
+    same way. This is the only place that can catch it.
+    """
+    out: List[Issue] = []
+    for name in (task.varies or ()):
+        if name not in fields:
+            out.append(Issue("error", _no_such_field(
+                name, fields, cls, "'varies' names"), where="task.varies"))
+    for st in (task.stages or ()):
+        for key in st.overrides:
+            if key not in fields:
+                out.append(Issue("error", _no_such_field(
+                    key, fields, cls, f"stage {st.name!r} overrides"),
+                    where="task.stages.overrides", stage=st.name))
+    return out
+
+
+def _no_such_field(name, fields, cls, lead) -> str:
+    import difflib
+    near = difflib.get_close_matches(name, list(fields), n=1, cutoff=0.75)
+    hint = f" -- did you mean {near[0]!r}?" if near else ""
+    return (f"{lead} {name!r}, which is not a field of "
+            f"{cls.__name__}{hint}")
+
+
+def _values_in_bounds(task, fields) -> List[Issue]:
+    """Every override's value is inside the bound the schema declares.
+
+    Numeric ``range`` and enum ``choices`` are both "bounds" in § 6.6's sense:
+    each is the schema saying *these are the values this field may take*, and
+    a description carrying anything else renders a deck the engine will reject
+    or, worse, quietly reinterpret.
+
+    A field with neither is unbounded on purpose and is not checked — the
+    schema is the authority on what a bound is, and inventing one here would
+    refuse a description for breaking a rule nobody wrote.
+    """
+    out: List[Issue] = []
+    for st in (task.stages or ()):
+        for key, value in st.overrides.items():
+            f = fields.get(key)
+            if f is None:
+                continue                    # already reported by _names_exist
+            rng = f.metadata.get("range")
+            choices = f.metadata.get("choices")
+            if choices and value not in choices:
+                out.append(Issue(
+                    "error",
+                    f"stage {st.name!r} sets {key} = {value!r}, which is not "
+                    f"one of {', '.join(repr(c) for c in choices)}",
+                    where=f"config.{key}", stage=st.name))
+            elif rng and isinstance(value, (int, float)) \
+                    and not isinstance(value, bool):
+                lo, hi = rng
+                if not (lo <= value <= hi):
+                    out.append(Issue(
+                        "error",
+                        f"stage {st.name!r} sets {key} = {value!r}, outside "
+                        f"the allowed range [{lo}, {hi}]",
+                        where=f"config.{key}", stage=st.name))
+    return out
+
+
+def refuse_on_error(issues: List[Issue]) -> List[Issue]:
+    """Raise if any finding is an ``error``; return the rest.
+
+    § 6.6's *"all of it before anything is written"* is the caller's to honour
+    — this is the one line that makes honouring it hard to forget.
+    """
+    errors = [i for i in issues if i.severity == "error"]
+    if errors:
+        raise ValidationError(errors)
+    return issues
+
+
+__all__ = ["preflight", "refuse_on_error"]

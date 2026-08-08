@@ -109,6 +109,11 @@ _L2_MODULES = {
 
     "builders",          # backends/* package
     "backends",          # back-compat shim re-exporting builders.backends
+    "template",          # an engine config as a readable .fdf.template
+                         # (job-contracts.md § 3.7).  L2 because it imports the
+                         # L1 config dataclasses and ``script_emit``, and is
+                         # imported by the siesta producers and (later) prep --
+                         # a config-shaped verb, not a core type.
     "siesta", "pyscf",   # script generators
     "spectra",           # spectra engines + script renderers
     "transport",         # transport engines + results (Phase B.2)

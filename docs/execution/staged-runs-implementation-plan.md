@@ -1298,7 +1298,16 @@ table when it matters.
 | P2 | 4a · template → config | ✅ | the value rides on the declaration (`value=`), so the read is total: an absent payload, two lines, or a `%block` all read the same |
 | P2 | 6 · validation across stages | ✅ | `validation/stages.py::validate_ladder` — each stage resolved and handed to the **shipped** validator, findings stamped with the stage; the sequence checked after, `stage=None`. `Issue` gained a `stage` field (**beside** `where`, never inside it) and the serializer omits it when unset, so a single-run response is unchanged |
 | P2 | 6 · which parameters must not loosen | ✅ | the four `tuning.md` § 2 gives an explicit tier table for: `relax_force_tol`, `relax_max_displ`, `dm_tolerance` (tighter = smaller) and `mesh_cutoff` (tighter = larger). **`basis_size` and `pao_energy_shift` are deliberately NOT checked** — tuning.md gives them no tier ladder, and a direction invented in code would be a science claim with no source |
-| P2 | 7 · the preflight's four refusals | ◐ | two land (`effective_config` names an unknown field; `_enabled_stages` refuses a nameless / duplicate / empty ladder). The engine-has-a-generator and fingerprint-matches rows still have no reader |
+| P2 | 7 · the preflight's schema half | ✅ | `validation/task.py::preflight` — engine-has-a-generator, § 6.7's one-process `shape`, the fingerprint (the ONE non-refusal, a `warn`), every name in **`varies` and** `overrides` exists, every value inside its `range` **or** `choices`. Each names what it refused; `refuse_on_error` is the caller's one line |
+| P2 | 7 · the two halves cannot diverge | ✅ | `task.py`'s docstring lists P2's rows and a test asserts this module implements exactly those; a second test pins that the L1 codec still imports no engine |
+
+> **The preflight has no caller yet, and that is sequencing rather than
+> speculation.** Nothing reads a `task.json` until `prep` (P6) and the web route
+> (P10); the plan hands this half to P2 because P2 is *the first phase that
+> holds a field schema*, not because a caller was waiting. The distinction
+> matters — Review 3's question 3 (*"does anything exist only to serve a later
+> phase? delete it"*) already deleted `default_siesta_varies`, which duplicated
+> a one-line derivation. This is the unit's stated deliverable.
 | P2 | 8 · § 6.6a's identical-stage warning | ⬜ | — |
 
 > **One plan row was wrong, and the code is what corrected it.**
