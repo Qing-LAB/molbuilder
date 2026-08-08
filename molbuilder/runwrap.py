@@ -581,6 +581,27 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
             f'"${{_warm_label}}{suffix}" {basename}{suffix}'
             for suffix in suffixes
         )
+    # ---- The sweep is BY NAME, not by an extension list ----------------
+    #
+    # job-contracts.md § 4.1 (2026-08-08).  An enumeration of what an engine
+    # writes cannot be complete -- SIESTA's output set depends on its version
+    # and on which options are on -- and the failure is silent in the worst
+    # direction: a file nobody listed is one --cold walks past, in the single
+    # operation whose entire purpose is leaving nothing behind.
+    #
+    # So everything under the id goes aside EXCEPT the files molbuilder
+    # itself wrote, which is the list that can be complete because we write
+    # it (§ 2.2's catalogue; identity.OUR_FILE_PATTERNS is the Python twin).
+    #
+    # Three globs, each requiring a SEPARATOR after the label, so a job
+    # called ``job`` never sweeps ``job2.XV``.  A bare ``"$_warm_label"*``
+    # would.
+    keep_cases = " | ".join((
+        "*.fdf", "*.fdf.template", "*.py",           # inputs we generated
+        "*.run.sh", "*.sbatch",                      # wrapper + sbatch header
+        "*.molwatch.log", "*.log",                   # canonical trajectory, geomeTRIC
+        "*-run*.out", "*-run*.pyscf.log",            # engine stdout: HISTORY, not state
+    ))
     return (
         f"# --- Cold-restart: move engine warm-start files aside ---\n"
         f'if [ "$_cold" = "1" ]; then\n'
@@ -591,10 +612,18 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         f"    _moved=0\n"
         f"    shopt -s nullglob 2>/dev/null || true\n"
         f"    {label_extract}"
-        f"    echo \"[molbuilder] --cold: scanning for "
-        f"\\\"$_warm_label\\\".* and \\\"{basename}\\\".* warm-start files\" >&2\n"
-        f"    for _f in {glob_pieces}; do\n"
-        f'        if [ -e "$_f" ]; then\n'
+        f"    echo \"[molbuilder] --cold: sweeping everything named after "
+        f"\\\"$_warm_label\\\" or \\\"{basename}\\\" that molbuilder did not "
+        f'write" >&2\n'
+        f'    for _f in "${{_warm_label}}".* "${{_warm_label}}"_* '
+        f'"${{_warm_label}}"-* {basename}.* {basename}_* {basename}-*; do\n'
+        f"        # Ours -- never swept.  Getting this wrong moves the deck\n"
+        f"        # the run is about to use, or the run's own history.\n"
+        f"        case \"$_f\" in\n"
+        f"            {keep_cases} ) continue ;;\n"
+        f'            "$_aside"* ) continue ;;\n'
+        f"        esac\n"
+        f'        if [ -f "$_f" ]; then\n'
         f'            if [ "$_moved" = "0" ]; then\n'
         f'                mkdir -p "$_aside"\n'
         f"                _moved=1\n"
