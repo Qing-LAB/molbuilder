@@ -354,8 +354,15 @@ schema; what the generator does with it is
 > **effective config = the template's values ⊕ that stage's `overrides`.**
 
 The template (`<id>.fdf.template`) is the science backbone the generating tab
-wrote — **everything no stage varies**. A stage supplies only the cells it
-changes. Together they make an ordinary instance of the engine's config
+wrote — **everything a script owns, with values**: what the user set, or the
+default where they did not touch it. A stage supplies only the cells it changes.
+
+**Its format is [`job-contracts.md § 3.7`](?doc=execution/job-contracts.md)** —
+every item exactly as it will be copied, wrapped in
+`# === molbuilder item <field> BEGIN/END ===`, with what we know about that item
+in comments inside the block. That is what makes this section implementable:
+the markers name the field, so `prep` rebuilds a config by scanning them, and
+**nothing has to parse an `.fdf`** — which nothing in molbuilder can do. Together they make an ordinary instance of the engine's config
 dataclass — a `SiestaConfig`, not a new type — so every default, every bound and
 every `engine_key` mapping applies to it unchanged.
 

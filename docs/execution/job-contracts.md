@@ -623,6 +623,82 @@ molbuilder does not validate its contents (engine-invalid text there will be
 rejected by the engine, not by molbuilder). The block may be missing; on
 regenerate an empty one is emitted.
 
+### 3.7 The template's item blocks — one file that is both the reference and the source
+
+*Specified by the user, 2026-08-07.* The **template** (`engines/stages.md § 4`)
+is the science backbone a generating tab writes: everything a script owns, with
+the value the user set or the default they did not touch. This is its format.
+
+**The rule in one line: every item appears exactly as it will be copied, wrapped
+in markers, with its explanation beside it.**
+
+```fdf
+# === molbuilder item mesh_cutoff BEGIN ===
+#   Mesh cutoff — the real-space integration grid, in Ry.  Higher is finer
+#   and slower; convergence is checked, not assumed.
+#   Range 50–2000.  Tier ladder: 150 screening · 300 publishable · 500 tight.
+#   Varies per stage: ticked by default (workflow_group "stage").
+MeshCutoff   300.0 Ry
+# === molbuilder item mesh_cutoff END ===
+```
+
+Four properties, and each buys something specific:
+
+1. **The payload is verbatim.** What sits between the markers, minus the comment
+   lines, is exactly what lands in the final deck. Producing that deck is a
+   **scan and a copy**, never a re-render — so a value cannot change shape
+   between what a person read and what the engine got.
+2. **The markers carry the field's name.** That is what lets `prep` walk the file
+   and rebuild an ordinary `SiestaConfig` — *without an fdf parser*. **This is the
+   whole reason the design works**: nothing in molbuilder can read an `.fdf` back
+   into a config, and with named blocks nothing needs to.
+3. **The block holds what we know about the item** — what it is, what it is
+   validated against, how the engine uses it, any hint worth having. It is
+   generated from the field's own metadata (`web/form-schema.md § 1a`:
+   `help`, `range`, `unit`, `choices`, `engine_key`, `workflow_group`), so the
+   documentation and the form are the same source and cannot drift.
+4. **Every allowed, validated item has a place in the file** — not only the ones
+   a user touched. The template is the engine's whole surface, instantiated.
+
+**So one artifact serves four readers.** A person opens it and learns the
+calculation *and* the reasoning. The UI renders it. `prep` extracts the deck.
+The validator gets a real config out of it. That is why it is worth being a
+real, readable `.fdf` rather than a serialised blob — which was the alternative,
+and it would have been none of those four things but the last.
+
+> **The marker convention is the one that already ships**, not a new one:
+> `# === molbuilder <name> BEGIN ===` / `# === molbuilder <name> END ===`
+> (`script_emit.py`), the same shape as HEADER, PROVENANCE, BENCH-MARKS and
+> USER-CUSTOM above. The comment character is the engine's — `#` for `.fdf` and
+> `.py`; an engine whose comment is `!` uses `!`.
+>
+> **Multi-line items come free.** A `%block ChemicalSpeciesLabel` or a coordinate
+> block is several lines, and the markers delimit it exactly as they delimit a
+> one-liner. A format that keyed on "one line per setting" could not have carried
+> those at all.
+
+**How a stage's override lands:** `prep` resolves the effective config
+(`stages.md § 4`), and for each item the stage overrode, **replaces that block's
+payload** with the resolved value's rendering. Blocks no stage touched are copied
+through untouched. That is `overrides ⊆ varies` seen on disk — an absent key
+means the block is copied as it stands.
+
+> **Three things this format leaves to be decided when it is built**, recorded
+> rather than guessed:
+>
+> - **Machine-dependent items.** `BlockSize` comes from the rank count and
+>   `Diag.Algorithm` also picks the wrapper's conda env — neither is knowable
+>   when the template is written (`project-layout.md § 2.2`). Do those items get
+>   a block with a placeholder payload that `prep` fills, or no block until
+>   `prep` adds one?
+> - **A hand-edited payload that no longer matches its block name.** The file is
+>   meant to be edited; someone will change `MeshCutoff 300.0` to `400.0` by
+>   hand. Reading the value back out is what makes that work — but it also means
+>   the payload, not the metadata, is the authority. Worth stating explicitly.
+> - **Items the schema does not model.** A user adds a legitimate SIESTA keyword
+>   molbuilder has no field for. Does it get an unnamed block, or does it belong
+>   in USER-CUSTOM (§ 3.5), which exists for exactly that?
+
 ### 3.6 Versioning and what a tool may assume
 
 Each structured block versions **independently**: BENCH-MARKS carries

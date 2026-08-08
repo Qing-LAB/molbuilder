@@ -1259,9 +1259,12 @@ table when it matters.
 | P2 | 2 · CLI stage flags gone | ❌ | `--stage-strategy`, `--stages-json`, `--stage-resources` all still registered |
 | P2 | 2b · `restart` is a shared field | ❌ | not a field of `SiestaConfig` |
 | P2 | 3 · `Resources.continue_retries` | ❌ | not a field of `Resources` |
-| P2 | 4a/5 · template → config | ⛔ | **blocked — see below** |
+| P2 | 5 · `effective_config` | ✅ | `siesta/input.py`; a stage may name **any** schema field, unknown ones refused by name |
+| P2 | 2b · `restart` is a shared field | ✅ | `SiestaConfig.restart`, `clean` \| `continue` |
+| P2 | 2c · `relax_type` retagged | ✅ | `profile` → `stage` |
+| P2 | 4a · template → config | 🔓 | **unblocked 2026-08-07** — the format is `job-contracts.md § 3.7`: marked item blocks naming their field, so `prep` scans rather than parses |
 
-### ⛔ The template has no producer, and cannot be read back
+### ~~⛔ The template has no producer, and cannot be read back~~ — resolved 2026-08-07
 
 Two facts, both checked rather than assumed:
 
@@ -1276,6 +1279,21 @@ Two facts, both checked rather than assumed:
 
 **So `effective_config(template, stage) -> SiestaConfig` cannot be implemented as
 written**, and P2 cannot be finished until this is settled.
+
+> **Settled by the user, 2026-08-07, and the answer removes the problem rather
+> than working around it.** The template is a **real, readable `.fdf`** in which
+> every item is wrapped in `# === molbuilder item <field> BEGIN/END ===` markers,
+> with what we know about the item written in comments inside the block —
+> [`job-contracts.md § 3.7`](?doc=execution/job-contracts.md).
+>
+> **Because the markers name the field, `prep` rebuilds a config by scanning
+> them.** No fdf grammar is parsed, so option (c) below is not needed and (b) is
+> not a compromise: the file is human-readable *and* machine-readable at once, and
+> it is also where the item's documentation lives. The three options I had listed
+> were all trying to buy one of those properties at the cost of another.
+>
+> The producer half is still to be built (P10 for the browser, P9 for the CLI) —
+> but it is now ordinary work with a specified format, not an open design.
 
 > **This is a consequence of removing `base`, and the removal was still right.**
 > `base` did duplicate the template — but it was also the only *machine-readable*
