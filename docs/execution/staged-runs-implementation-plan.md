@@ -544,28 +544,29 @@ and the findings contract (facts in, findings out; `where` is the stable id).
    field arrives"* — `restart` (`continue` | `clean`), because whether a stage
    starts from what is in the folder has to be sayable and a single run can mean
    it too. **`SiestaConfig` has no such field**, and no phase added it: the
-   contract's own worked example in § 6 lists `"restart": "clean"` in `base` and
-   in `varies`, so **the example would fail the very preflight P2 builds** (*every
+   contract's own worked example in § 6 lists `"restart"` in `varies` and in
+   every stage's `overrides`, so **the example would fail the very preflight P2 builds** (*every
    named field exists in the shared schema*). Found by the third review pass,
    2026-08-07. It lands here because it is an ordinary shared field, and P3 unit 4
    — which turns it into SIESTA's `DM.UseSaveDM` / `MD.UseSaveXV` / `MD.UseSaveCG`
    trio — depends on it existing.
 
-4a. **`base` ↔ `SiestaConfig`, and the fingerprint that comes with it.** Nothing
-   in the tree serialises a config to a plain dict or back — the only `asdict` is
-   local to `spectra/pyscf_script.py` — yet `task.json`'s `base` **is** exactly
-   that: one value per schema field. ⚠ **Reuse, do not write a second codec**:
-   `dataclass_to_form_schema` already walks the class and `coerce_to_field_type`
-   already turns wire values into typed ones, which is the same job from the same
-   schema. **The same step computes `schema_fingerprint`** — `base` and the
-   fingerprint are one act, since both are "this schema, right now", and the
-   preflight's only non-refusal row has had a reader and no writer since it was
-   written (`stages.md § 6.6`).
+4a. **The template is read back into a config, and the fingerprint is written
+   where the template is.** ⚠ **This unit replaced one built on a premise that
+   turned out to be false** (2026-08-07): it used to serialise `task.json`'s
+   `base` into a `SiestaConfig`, and **there is no `base`** — everything that
+   does not vary lives in the template, once (`stages.md § 4`). What P2 actually
+   needs is the *other* direction: `prep` holds a template and a stage's
+   `overrides`, and must produce one ordinary config to validate and render.
+   **`schema_fingerprint` is computed by whatever writes the template**, since
+   that is the moment the schema is in hand; the preflight's only non-refusal row
+   has had a reader and no writer since it was written.
 
-5. `effective_config(base, stage) -> SiestaConfig` — **one function, one place**,
-   and the object it returns is the object that gets validated *and* rendered.
-   A stage that omits a varied key resolves to `base`'s value for it (§ 6.2's
-   subset rule), which is what makes `base` complete rather than half-shadowed.
+5. `effective_config(template, stage) -> SiestaConfig` — **one function, one
+   place**, and the object it returns is the object that gets validated *and*
+   rendered. A stage that omits a varied key keeps the template's value for it
+   (§ 6.2's subset rule): the fallback is the backbone, not a second copy in the
+   description.
 
    ⚠ **This unit must land before, or with, unit 2** — not after. Unit 2 deletes
    the field every current consumer reads, and `effective_config` is what they
@@ -577,7 +578,7 @@ and the findings contract (facts in, findings out; `where` is the stable id).
 7. **The half of § 6.6's preflight P1 could not reach**, handed over because this
    phase is the first that holds a field schema. Four refusals — the engine is
    one this backend has a generator for; the schema fingerprint matches; every
-   name in `base` and every `overrides` key exists in the shared schema; every
+   name in `varies` and every `overrides` key exists in the shared schema; every
    value is inside its bounds — each **naming what it refused**, and all of them
    before anything is written. `molbuilder/task.py`'s docstring carries the same
    split so the two halves cannot quietly diverge.
@@ -1234,7 +1235,7 @@ open.
 | 11 | ~~**What happens to the Build tab's stage table when a stage becomes three fields?**~~ — **dissolved 2026-08-07: the question was malformed.** All four options were ways to cope with `stages` being a field of `SiestaConfig`. It is not one: the stage list lives in `task.json`, the form generator never meets a stage, and `_stagespec_to_field_schemas` is deleted rather than patched (`stages.md § 1.1`–`1.2`) | ~~P2~~ |
 | 10 | **What are the "components" of a composite system?** A junction is a molecule *and* two electrodes; naming it by total formula loses that structure | P3, same |
 
-| 12 | **Does the `.fdf.template` survive, and if so what may it contain?** `stages.md § 7.1` describes it as *"the science backbone — functional · basis · k-grid, everything no stage varies"*, and `task.json`'s `base` holds **one value for every schema field** — so every non-varied field is in **both**, with nothing saying which `prep` uses. That is two homes for one fact, which § 2 refuses for stage fields. It matters because it decides what `prep` is a function of. **(a)** Narrow the template to what `base` *cannot* express — the coordinate/cell/species blocks and unmodelled engine keywords — and take every schema value from `base ⊕ overrides`. **(b) (recommended)** **Delete the template.** The folder already carries the structure as a data file with its own codec, so `prep` renders the deck from `task.json` + that file and there is no third format to keep in step; an unmodelled keyword rides the deck's existing USER-CUSTOM reserved block (`job-contracts.md § 3`) | **P2**, and it reaches P5/P6 |
+| 12 | ~~**Does the `.fdf.template` survive, and what may it contain?**~~ — **answered 2026-08-07 (user), and the question should not have been asked.** The template carries what does not change; `task.json` carries what does. The contract contradicted itself — § 4 said *effective config = `base` ⊕ `overrides`* while § 7.1's own diagram said *template ⊕ the stage's row ⊕ this machine*, three sections apart — and I quoted § 4 as settled instead of reporting the contradiction. **`base` is deleted** from the contract, from `molbuilder/task.py` and from its tests | ~~P2~~ |
 | 13 | **Is the P2→P6 window acceptable?** P2 deletes `--stage`, `--stage-strategy`, `--stages-json` and `--stage-resources` because they all write the field it removes — but nothing consumes a `task.json` until **P6**'s `prep`. So for four phases **neither surface can create a staged run**, where today the CLI can. Options: **(a)** accept it and say so in the release notes; **(b)** pull a minimal *produce from a description* into P2 so a hand-written `task.json` works immediately (decision 3 already made hand-editing supported, so this is small); **(c)** keep `--stages-json` at P2 pointed at the new file, retired at P9 — not a compat shim, the same flag aimed at the new target | **P2** |
 
 **Already decided, recorded so they are not reopened:** the shape is a required

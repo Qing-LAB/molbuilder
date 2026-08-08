@@ -6,11 +6,14 @@ that turns those bytes into objects and back, which is what makes
 coincidental (§ 6.4).
 
 WHAT A DESCRIPTION IS.  One calculation: which engine, which layout, what it
-is a calculation *of*, one value for every schema field (``base``), which of
-those fields the user chose to tune (``varies``), and the per-stage cells that
-vary (``stages[].overrides``).  It **names no machine** — ranks, queues and
-walltimes are decided by ``prep`` on the target, not written here
-(``execution/project-layout.md`` § 2.1).
+is a calculation *of*, which settings the user chose to tune (``varies``), and
+the per-stage cells that differ (``stages[].overrides``).
+
+**It carries only what CHANGES.**  Everything that does not is in the template
+(``<id>.fdf.template``), written once — so there is no ``base`` key here, and a
+stage that omits a varied field renders with the template's value (§ 4).  It
+**names no machine** either: ranks, queues and walltimes are decided by ``prep``
+on the target (``execution/project-layout.md`` § 2.1).
 
 LAYER.  L1: it imports ``persist`` and the standard library, and nothing else.
 That is deliberate rather than incidental — see *the split preflight* below.
@@ -63,7 +66,7 @@ STAGE_FIELDS = ("name", "enabled", "overrides")
 STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 _TOP_KEYS = ("schema", "engine", "shape", "run", "schema_fingerprint",
-             "structure", "base", "varies", "stages")
+             "structure", "varies", "stages")
 _RUN_KEYS = ("name", "id", "created")
 _STRUCTURE_KEYS = ("source", "formula", "atoms")
 
@@ -122,7 +125,6 @@ class Task:
     shape: str
     run: Run
     structure: StructureRef
-    base: Mapping[str, Any] = field(default_factory=dict)
     varies: Optional[Tuple[str, ...]] = None
     stages: Optional[Tuple[Stage, ...]] = None
     schema_fingerprint: str = ""
@@ -243,8 +245,6 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         formula=str(struct_obj.get("formula", "")),
         atoms=int(struct_obj.get("atoms", 0)))
 
-    base = dict(_as_object(_require(obj, "base", where=""), where="base"))
-
     has_stages = "stages" in obj
     has_varies = "varies" in obj
     if has_varies and not has_stages:
@@ -254,7 +254,6 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
 
     if not has_stages:
         return Task(engine=engine, shape=shape, run=run, structure=structure,
-                    base=base,
                     schema_fingerprint=str(obj.get("schema_fingerprint", "")))
 
     raw_stages = obj["stages"]
@@ -282,7 +281,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # differ in nothing but their name.  (``None`` is reserved for the
     # no-stages case above, which § 6.5 spells by omitting both keys.)
     return Task(engine=engine, shape=shape, run=run, structure=structure,
-                base=base, varies=varies, stages=stages,
+                varies=varies, stages=stages,
                 schema_fingerprint=str(obj.get("schema_fingerprint", "")))
 
 
@@ -312,10 +311,10 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
     #
     # No key outside `varies`: a demoted parameter must not leave a value
     # hiding in a stage nobody can see.  But a varied key may be ABSENT, and
-    # absent means "this stage uses base's value" -- a real state, and the one
-    # the table draws as a quiet cell.  Requiring equality (as this did until
-    # 2026-08-07) both made `varies` redundant -- derivable as the key set of
-    # any stage -- and forced every cell to be filled with a copy of base.
+    # absent means "this stage uses the TEMPLATE's value" -- a real state, and
+    # the one the table draws as a quiet cell.  Requiring equality (as this did
+    # until 2026-08-07) both made `varies` redundant -- derivable as the key set
+    # of any stage -- and forced every cell to be filled with a copy.
     extra = sorted(set(overrides) - set(varies))
     if extra:
         _refuse(f"override(s) {', '.join(repr(k) for k in extra)} not listed "
@@ -354,7 +353,6 @@ def _task_to_dict(task: Task) -> dict:
     out["structure"] = {"source": task.structure.source,
                         "formula": task.structure.formula,
                         "atoms": task.structure.atoms}
-    out["base"] = dict(task.base)
     # Absent together, never empty -- an empty list would be a second way to
     # spell "one stage" (§ 6.5).
     if task.stages:

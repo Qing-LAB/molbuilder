@@ -242,7 +242,8 @@ def test_a_stage_may_omit_a_varied_key_and_that_means_base(example):
     task = Task.from_dict(example)
     assert "relax_type" not in task.stages[0].overrides
     assert "relax_type" in task.varies          # still a column
-    assert task.base["relax_type"] == "CG"      # and this is what it resolves to
+    # What it resolves to is the TEMPLATE's value -- not a second copy in this
+    # file.  There is no `base` key (§ 4, corrected 2026-08-07).
 
 
 # --------------------------------------------------------------------- #
@@ -376,7 +377,6 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
                 created="2026-08-07T10:00:00-07:00"),
         structure=StructureRef(source="projects/x/structure/h2.xyz",
                                formula="H2", atoms=2),
-        base={"mesh_cutoff": 150, "restart": "clean"},
         varies=("mesh_cutoff", "restart"),
         stages=(Stage(name="coarse", enabled=True,
                       overrides={"mesh_cutoff": 150, "restart": "clean"}),
@@ -392,7 +392,6 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
     ("engine", "siesta"),
     ("run", "bdt-relax"),
     ("structure", ["projects/x/structure/h2.xyz"]),
-    ("base", 3),
 ])
 def test_a_non_object_where_an_object_belongs_says_so(example, key, value):
     """Decision 3 again.  Before the type guard, ``"engine": "siesta"``
@@ -419,7 +418,7 @@ def test_a_task_cannot_hold_varies_without_stages():
     with pytest.raises(ValueError) as e:
         Task(engine="siesta", shape="flat",
              run=Run(name="x", id="x"), structure=StructureRef(source="x.xyz"),
-             base={"mesh_cutoff": 150}, varies=("mesh_cutoff",), stages=None)
+             varies=("mesh_cutoff",), stages=None)
     assert "varies" in str(e.value) and "stages" in str(e.value)
 
 
@@ -427,7 +426,7 @@ def test_a_task_cannot_hold_an_empty_stage_tuple():
     with pytest.raises(ValueError) as e:
         Task(engine="siesta", shape="flat",
              run=Run(name="x", id="x"), structure=StructureRef(source="x.xyz"),
-             base={}, varies=(), stages=())
+             varies=(), stages=())
     assert "empty" in str(e.value)
 
 

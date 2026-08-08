@@ -184,8 +184,8 @@ Three rules keep it honest:
 1. **`varies` is the column set.** Every stage's `overrides` holds exactly those
    keys — no more, so a demoted parameter cannot leave a value hiding in a stage
    nobody can see.
-2. **`base` holds a value for every field, always**, including the promoted ones.
-   A one-stage description is then just `base` — and that is literally true on
+2. **The template holds a value for every field, always**, including the promoted
+   ones. A one-stage description is then just the template — and that is literally true on
    disk: with a single stage there is nothing to vary across, so a description
    with one stage is written **with no `stages` key at all** and produces
    `<id>.fdf`, unsuffixed (`engines/stages.md § 6.5`). The suffix and the
@@ -202,7 +202,7 @@ the cells** (`engines/stages.md § 6.2`).
 
 | Key | Owner | Why |
 |---|---|---|
-| `structure`, `base` | generating tab | the physics — once per molecule |
+| `structure`, the **template** | generating tab | the physics — once per molecule |
 | `varies` | generating tab | promotion happens *where the parameter lives*, and those fields are on that page |
 | `shape` | generating tab — **forced** | it is required with no default (`stages.md § 6.7`), so whoever writes the file first has to ask |
 | stage **names** | generating tab creates the skeleton; **this tab may append** — `stages.md § 7` already says the list is appended to and three rungs is a default, not a bound. Neither may renumber: a stage's `seq` is assigned once |
@@ -235,7 +235,7 @@ has:
 
 Four things the table has to get right:
 
-- **A cell equal to `base` is drawn quietly; one that differs is drawn plainly.**
+- **A cell equal to the template's value is drawn quietly; one that differs is drawn plainly.**
   Progressive tightening then reads as a *shape* rather than as a wall of
   numbers.
 
@@ -268,7 +268,7 @@ Four things the table has to get right:
 > **The gap is the data source, not the layout.** That widget lays out a schema's
 > `default`; this tab lays out a `task.json` read off a folder, and the two
 > differ on three of the four bullets above — the quiet-vs-plain drawing of a cell
-> that equals `base`, the *start from* row, and the column headers, which the
+> that equals the template's value, the *start from* row, and the column headers, which the
 > widget deliberately takes from the index rather than the stage's name. So the
 > first thing this tab does is ask whether the widget can be fed a description
 > without being rewritten — and if it cannot, say why in writing.

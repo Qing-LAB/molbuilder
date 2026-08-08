@@ -323,10 +323,10 @@ changes the file is not a preference.
 
 ### 7.6 What gets written
 
-A column is a config: `base` overlaid with that stage's `overrides`. So **n
+A column is a config: the template overlaid with that stage's `overrides`. So **n
 columns produce n decks**, written into one folder with one shared basename
 (`job-contracts.md § 2.1` Rule 2) — and one column produces one deck with no
-suffix, because one column is `base` (`task-setup-plan.md` § 5). Nothing here
+suffix, because one column is the template as-is (`task-setup-plan.md` § 5). Nothing here
 invents a directory
 layout: it is `job-contracts.md § 2.1` Rule 1 and Rule 2, which is what makes
 continuing free.

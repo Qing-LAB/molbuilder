@@ -199,11 +199,25 @@ schema; what the generator does with it is
 
 ## 4. The effective config
 
-> **effective config = `base` ⊕ that stage's `overrides`.**
+> **effective config = the template's values ⊕ that stage's `overrides`.**
 
-It is an ordinary instance of the engine's config dataclass — a `SiestaConfig`,
-not a new type — so every default, every bound and every `engine_key` mapping
-applies to it unchanged.
+The template (`<id>.fdf.template`) is the science backbone the generating tab
+wrote — **everything no stage varies**. A stage supplies only the cells it
+changes. Together they make an ordinary instance of the engine's config
+dataclass — a `SiestaConfig`, not a new type — so every default, every bound and
+every `engine_key` mapping applies to it unchanged.
+
+> **Corrected 2026-08-07 (user). This section used to say `base` ⊕ `overrides`,
+> and `base` was a key in `task.json` holding "every schema field, one value".**
+> That is the template's content, written a second time in a second file, with
+> nothing saying which one `prep` reads — and § 7.1's own diagram never mentioned
+> it: *template ⊕ the stage's row ⊕ this machine*. The document contradicted
+> itself for three sections and I reported the overlap as an open question rather
+> than as the duplication it is.
+>
+> **`base` is removed from `task.json`.** The file carries what *changes* —
+> `varies` and the per-stage `overrides` — plus what identifies the calculation.
+> What does not change is already in the template, once.
 
 Two rules govern it, and both exist to stop a stage becoming a special case:
 
@@ -335,12 +349,9 @@ rather than inventing a second mechanism.
   "structure": { "source": "projects/BDT-Au/structure/bdt_au.xyz",
                  "formula": "C6H4S2Au38", "atoms": 46 },
 
-  // Every schema field, one value. Abridged here — a real file lists them all,
-  // and a one-stage description stops at this key (§ 6.5).
-  "base": { "mesh_cutoff": 150, "relax_type": "CG", "relax_force_tol": 0.04,
-            "relax_steps": 600, "restart": "clean" },
-
   // WHICH fields the user chose to tune. Intent — it cannot be inferred (§ 6.2).
+  // There is no `base` key: everything that does NOT vary is in the template,
+  // once (§ 4).
   "varies": ["mesh_cutoff", "relax_force_tol", "relax_type", "restart"],
 
   "stages": [
@@ -357,8 +368,9 @@ rather than inventing a second mechanism.
 
 ### 6.1 Three rules
 
-**It names fields; it never defines them.** Every key in `base` and in every
-`overrides` map must resolve to a field the shared schema already declares. A key
+**It names fields; it never defines them.** Every key in every `overrides` map,
+and every name in `varies`, must resolve to a field the shared schema already
+declares. A key
 the schema does not know is **refused, not ignored** — an ignored key is a
 calculation quietly different from the one that was asked for. This is what keeps
 the file from becoming a second schema.
@@ -386,28 +398,29 @@ indistinguishable, in the decks, from one that was never promoted.
 
 - **No key outside `varies`.** A field nobody promoted must not carry a per-stage
   value, or a demoted parameter leaves a value hiding in a stage nobody can see.
-- **A key may be absent**, and absent means **"this stage uses `base`'s value"**.
-  That is a real state a user asks for: a column exists because *some* stage
-  varies it, and the stages that do not are simply at the shared value.
+- **A key may be absent**, and absent means **"this stage uses the template's
+  value"** — the shared one, unchanged. That is a real state a user asks for: a
+  column exists because *some* stage varies it, and the stages that do not are
+  simply at the backbone value.
 
 > **Corrected 2026-08-07.** This section used to require *exactly* the keys in
 > `varies`, and that had two faults. It made `varies` **redundant** — with
 > equality, `varies` is just the key set of any stage's overrides, derivable from
 > the file, so the sentence above defending it as un-inferable was arguing about
 > *decks* while stating a rule about *this file*. And it made the table's own
-> design unbuildable: § 6 of the tab plan draws **a cell equal to `base` quietly**
-> so that progressive tightening reads as a shape, which requires a way to *be* at
-> base — and equality forbade it, forcing every cell to be filled with a copy.
+> design unbuildable: § 6 of the tab plan draws **a cell equal to the shared
+> value quietly** so that progressive tightening reads as a shape, which requires
+> a way to *be* at that value — and equality forbade it, forcing every cell to be
+> filled with a copy.
 >
 > The subset rule fixes both. `varies` becomes load-bearing rather than a
 > duplicate: it is the one place the column set is stated, and it cannot be
 > recovered from the cells once a stage is allowed to leave one empty.
 
-**This is also what makes `base` complete rather than half-dead.** `base` carries
-a value for **every** schema field, including the varied ones — and those entries
-are not spare copies waiting to disagree with something. They are what a stage
-resolves to when it does not override the field. Remove them and a stage that
-omits a varied key would have nothing to fall back on.
+**And the fallback is the template, not a second copy in this file.** A stage
+that omits a varied key renders with the backbone's value for it (§ 4). That is
+why `task.json` needs no `base`: the thing a stage falls back to already exists,
+in the one artifact whose whole job is *what does not change*.
 
 ### 6.3 `structure` is a reference plus a witness, never a copy
 
@@ -443,8 +456,8 @@ description living only in a browser tab.
 ### 6.5 One stage is no stages
 
 **`stages` may be absent, and absent means one.** A description with no `stages`
-key is a calculation with a single parameter set — `base`, exactly — and it
-produces one deck named `<id>.fdf`, with no stage suffix. Nothing about stages
+key is a calculation with a single parameter set — **the template, exactly** —
+and it produces one deck named `<id>.fdf`, with no stage suffix. Nothing about stages
 has to be understood to read or write it.
 
 Three things follow, and they are one fact seen three times: the deck takes no
@@ -488,9 +501,9 @@ per-field rows do that work.
 
 > **And it needs a writer, not only a reader** (noted 2026-08-07). Nothing in the
 > tree computes a schema fingerprint today, so a check with no producer either
-> never fires or always complains. **Whatever serialises `base` computes it**, in
-> the same step and from the same schema — they are one act, since `base` is
-> exactly "one value per field of that schema". A description whose
+> never fires or always complains. **Whatever writes the template computes it** —
+> the template is the rendering of the schema's values, so the schema is in hand
+> at exactly that moment. A description whose
 > `schema_fingerprint` is absent is read without the warning rather than refused:
 > the row above is the only non-refusal in the preflight, and it stays that way.
 >
