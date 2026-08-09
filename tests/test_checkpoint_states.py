@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -450,3 +451,175 @@ def test_a_repository_inside_a_repository_is_refused(tmp_path):
     (root / "task.json").write_text("{}")
     with pytest.raises(NestedRepoRefusedError):
         Repo(str(root)).init(note="outer")
+
+
+# ------------------------------------------------------------------ #
+#  I2a — a restore replays the save and consults nothing              #
+# ------------------------------------------------------------------ #
+
+
+def test_a_restore_ignores_the_configuration_entirely(calc, tmp_path):
+    """The contract's own test for I2a: save, then change the classification
+    beyond recognition -- and the restored tree must be byte-identical.
+
+    This is what makes moving the classification safe (S1c): every archive
+    already written stays restorable, because a restore replays what the save
+    recorded rather than re-deriving it.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    (calc.root / "small.txt").write_text(SMALL)
+    state = calc.save("the state to come back to")
+    before = {archive_key(calc.root, p): p.read_bytes()
+              for p in walk_files(calc.root)}
+
+    (calc.root / "big.bin").write_bytes(b"\x09" * 5000)
+    (calc.root / "stray.bin").write_bytes(BIG)
+    calc.save("moved on")
+
+    # Change the classification beyond recognition, then delete it outright.
+    cfg = calc.root / PROJECT_CONFIG_FILENAME
+    cfg.write_text(json.dumps({"checkpoint": {
+        "size_limit_bytes": 99_999_999,          # nothing is big any more
+        "engines": {"generic": []}}}))
+    calc.restore(state.id, force=True)
+    after = {archive_key(calc.root, p): p.read_bytes()
+             for p in walk_files(calc.root) if p.name != PROJECT_CONFIG_FILENAME}
+    expected = {k: v for k, v in before.items() if k != PROJECT_CONFIG_FILENAME}
+    assert after == expected, (
+        "a restore re-derived what to do from the config instead of replaying "
+        "what the save recorded (I2a)")
+
+
+# ------------------------------------------------------------------ #
+#  A1 / A2 / I2 — the archive is verified, not trusted                #
+# ------------------------------------------------------------------ #
+
+
+def test_a_copy_corrupted_on_the_way_to_disk_is_caught_at_save(calc,
+                                                              monkeypatch):
+    """§ 6: the copy is re-hashed rather than trusted.
+
+    If the MANIFEST's checksum came from the copy alone, a copy corrupted on
+    the way to disk would be *self-consistent* -- it would verify against its
+    own bad checksum forever and be restored as truth.  Monkeypatching the copy
+    is the only way to produce a disk fault on demand; everything either side
+    of it is real.
+    """
+    import molbuilder.checkpoint as cp
+
+    def corrupting_copy(src, dst, *a, **k):
+        Path(dst).write_bytes(b"\x00" * 5000)
+        return dst
+
+    (calc.root / "big.bin").write_bytes(BIG)
+    monkeypatch.setattr(cp.shutil, "copy2", corrupting_copy)
+    with pytest.raises(CheckpointError) as exc:
+        calc.save("a save that must not succeed")
+    assert "corrupt" in str(exc.value).lower()
+
+
+def test_a_corrupt_archive_is_refused_and_the_folder_is_untouched(calc):
+    """A2: verify before mutating, in that order.
+
+    A restore that half-completes leaves text from one state and big files from
+    another -- a folder no save ever held, and nothing can diagnose it
+    afterwards.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    target = calc.save("the state to come back to")
+    (calc.root / "job.XV").write_text("moved on\n")
+    calc.save("moved on")
+
+    payload = archive_dir(calc.root, target.archive) / "big.bin"
+    payload.write_bytes(b"\x00" * 5000)          # right size, wrong bytes
+
+    before = {archive_key(calc.root, p): p.read_bytes()
+              for p in walk_files(calc.root)}
+    with pytest.raises(CheckpointError):
+        calc.restore(target.id, force=True)
+    after = {archive_key(calc.root, p): p.read_bytes()
+             for p in walk_files(calc.root)}
+    assert after == before, "the folder changed before the check refused"
+
+
+def test_a_partial_archive_never_appears_at_the_published_name(calc,
+                                                               monkeypatch):
+    """A1: build, verify, publish -- a reader never meets a half-written one."""
+    import molbuilder.checkpoint as cp
+
+    def die(src, dst, *a, **k):
+        raise OSError("disk full")
+
+    (calc.root / "big.bin").write_bytes(BIG)
+    monkeypatch.setattr(cp.shutil, "copy2", die)
+    with pytest.raises(OSError):
+        calc.save("this save dies mid-copy")
+    published = [d for d in (calc.root / ".binsnapshots").iterdir()
+                 if d.is_dir() and not d.name.endswith(".tmp")]
+    for adir in published:
+        assert (adir / MANIFEST_NAME).is_file(), (
+            f"{adir.name} is published but has no MANIFEST -- a reader would "
+            f"take it for complete")
+
+
+# ------------------------------------------------------------------ #
+#  § 3 — the archive is named by content                              #
+# ------------------------------------------------------------------ #
+
+
+def test_two_states_with_the_same_big_files_share_one_archive(calc):
+    """Not a copy avoided -- the same directory, named by what it holds."""
+    (calc.root / "big.bin").write_bytes(BIG)
+    first = calc.save("first")
+    (calc.root / "note.txt").write_text("only the text changed\n")
+    second = calc.save("second")
+
+    assert first.archive == second.archive
+    assert len([d for d in (calc.root / ".binsnapshots").iterdir()
+                if d.is_dir()]) == 2, (
+        "one archive for the big file, one empty archive for the first state")
+
+
+def test_changing_a_big_file_makes_a_different_archive(calc):
+    """I1 made structural: content cannot change under a name."""
+    (calc.root / "big.bin").write_bytes(BIG)
+    first = calc.save("first")
+    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)
+    second = calc.save("second")
+    assert first.archive != second.archive
+    assert (archive_dir(calc.root, first.archive) / "big.bin"
+            ).read_bytes() == BIG, "the older archive was modified in place"
+
+
+# ------------------------------------------------------------------ #
+#  S1a — the ignore file is generated, and only the block is ours     #
+# ------------------------------------------------------------------ #
+
+
+def test_a_users_own_ignore_entries_are_left_alone(calc):
+    gi = calc.root / ".gitignore"
+    gi.write_text("# mine\nnotes.private\n\n" + gi.read_text())
+    (calc.root / "job.XV").write_text("x\n")
+    calc.save("regenerates only the marked block")
+    text = gi.read_text()
+    assert "notes.private" in text, "a user's own entries are theirs"
+    assert text.count("=== molbuilder checkpoint BEGIN ===") == 1
+
+
+def test_the_generated_block_contains_nothing_but_archive_patterns(calc):
+    """S1a's test, and no fixture can be too short for it.
+
+    If git is told to skip something the archive does not take, that file is in
+    no store -- and this catches it without any file existing at all.
+    """
+    from molbuilder.checkpoint import ARCHIVE_DIR
+    always = calc._classification()["always_large"]
+    text = (calc.root / ".gitignore").read_text()
+    block = text.split("=== molbuilder checkpoint BEGIN ===")[1] \
+                .split("=== molbuilder checkpoint END ===")[0]
+    for line in block.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        assert line in set(always) | {ARCHIVE_DIR + "/"}, (
+            f"{line!r} is ignored by git and taken by nothing")

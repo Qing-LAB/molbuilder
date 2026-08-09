@@ -1088,23 +1088,23 @@ conclude there is nothing to do.
 
 | Rule | | |
 |---|---|:--:|
-| **S1** | everything is stored; the two stores are the only exclusions | ⛔ several patterns are ignored and unarchived, so they are in no store at all |
-| **S1a** | `.gitignore` generated, one source | ⛔ the generated block itself has two sources — the classification, and a fixed tail compiled into the module |
-| **S1b** | the store is chosen by measuring the file | ⛔ **not built** — there is no size limit anywhere; the gate is the glob list |
-| **S1c** | the classification lives in molbuilder's config, one home | ⛔ **not built** — every folder has its own `.mbcheckpoint.json`, writable from CLI and web |
-| **I1** | archived content is never modified | ⛔ holds by convention; becomes structural when the name is the content digest (§ 3) |
+| **S1** | everything is stored; the two stores are the only exclusions | ✅ the fixed ignore tail is gone; a walk over a saved folder asserts it |
+| **S1a** | `.gitignore` generated, one source | ✅ the block holds nothing but archive patterns; a user's own entries are left alone |
+| **S1b** | the store is chosen by measuring the file | ✅ 10 MB by default; engine entries only let a family skip the measuring |
+| **S1c** | the classification lives in molbuilder's config, one home | ✅ in `molbuilder.json`; no calculation folder carries one |
+| **I1** | archived content is never modified | ✅ structural — the name is the content digest, so changed content is a different archive |
 | **I2** | a MANIFEST is authoritative | ✅ |
-| **I2a** | a restore replays the save, and consults nothing | ✅ |
-| **I2b** | the records themselves are tamper-evident | ⛔ neither is — the anchor is decided (a `Manifest-SHA256:` commit trailer), not built |
+| **I2a** | a restore replays the save, and consults nothing | ✅ what a restore removes is decided by git and the MANIFEST, never by the classification |
+| **I2b** | the records themselves are tamper-evident | ✅ every state carries the digest; a tampered MANIFEST is refused, an edited ignore block detected |
 | **I2c** | the restore's gate reads the record, not the config | ⛔ the gate derives from the glob list; the copy derives from the MANIFEST |
 | **I3** | `restore` is the only operation that writes into the folder | ✅ |
 | **I4** | no git in a generated wrapper | ✅ |
-| **A1** | build, verify, publish — create if absent, never overwrite | ⛔ builds and swaps over an existing archive; no content-addressed name to make that impossible |
+| **A1** | build, verify, publish — create if absent, never overwrite | ✅ |
 | **A2** | verify before mutating, in order | ✅ |
 | **A3** | the save precedes the change | needs the prep prompt |
-| **A4** | a restore is whole or does not happen | ⛔ `--no-binaries` ships on three surfaces and skips both checks |
-| **A5** | make the folder equal the target; warn about what is lost, then obey | ⛔ refuses instead of asking; no `--force`; does not remove what the target lacks |
-| **A6** | every saved state stays listed and restorable | ⛔ saving after a restore leaves the result unreferenced |
+| **A4** | a restore is whole or does not happen | ✅ in the CLI and the module; ⛔ the HTTP route still accepts `include_binaries` |
+| **A5** | make the folder equal the target; warn about what is lost, then obey | ✅ names the three shapes; `--force` accepts them; removes what the target lacks |
+| **A6** | every saved state stays listed and restorable | ✅ one ref per state, so nothing depends on where HEAD points |
 | **S2** | a stage writes only inside itself | needs the layout |
 | **S3** | a run records what it started from | needs the layout |
 | **S4** | the description is never modified | needs the description |
@@ -1112,12 +1112,12 @@ conclude there is nothing to do.
 | **S6** | a restored folder explains itself | needs the description |
 | **L1** | one repository per calculation | ✅ |
 | **L2** | the archive matches at depth | ✅ |
-| **L3** | every state carries a note, and names its calculation | ⛔ the note is optional and defaults to a timestamp |
-| **L4** | a tag is yours; nothing tags on your behalf | ⛔ finished stages are tagged automatically |
-| **L7** | a big-file-only change still produces a state | ✅ two tests in `test_checkpoint_nested_layout.py` |
-| **S7** | a file that changes category leaves the store it came from | ⛔ nothing untracks; **routine once the gate is a size**, because files grow |
+| **L3** | every state carries a note, and names its calculation | ✅ the note is required; a `Calculation:` trailer names it, and a name needing repair is refused |
+| **L4** | a tag is yours; nothing tags on your behalf | ✅ nothing tags automatically |
+| **L7** | a big-file-only change still produces a state | ✅ |
+| **S7** | a file that changes category leaves the store it came from | ✅ a save stages a newly-big file out of git and a newly-small one back in; ⛔ untested |
 | **S8** | a folder pulled out of step by bare git is refused, not believed | ⛔ no trailer to check against, so it proceeds |
-| **S9** | two saves cannot corrupt each other | ⛔ mostly dissolved by content addressing; what is left is A1's build-then-publish |
+| **S9** | two saves cannot corrupt each other | ✅ by construction — same content, same digest, same path; ⛔ untested |
 | **L8** | a saved attempt never differs afterwards | needs the layout |
 
 ### What cannot be proved, and is flagged instead
@@ -1249,18 +1249,25 @@ nobody is maintaining against this document, which is how the two drift.
 
 | Rule | Where |
 |---|---|
-| S1, S1a | `test_checkpoint_nested_layout.py` — the store-or-store walk |
-| S1b, S1c | **not yet written** — the rules are new (§ 12) |
-| I1, I2, A1, A2 | `test_checkpoint_invariants.py` |
-| I2a, I2b, I2c | **not yet written** — see § 12 |
-| I3, I4 | `test_checkpoint_invariants.py` |
-| A4, A5 | **not yet written**, and A4 starts red: `test_checkpoint_lifecycle.py` currently *pins* the violation |
-| L1, L2, L7 | `test_checkpoint_nested_layout.py`, `test_checkpoint_manifest_format.py` |
-| L3, L4 | `test_checkpoint_invariants.py` |
-| S5 | `test_checkpoint_invariants.py` |
+| S1, S1a, L2 | `test_checkpoint_states.py` — the store-or-store walk over a real saved folder |
+| S1b, S1c | `test_checkpoint_config.py` — the size gate and the one home |
+| I1, I2, A1, A2 | `test_checkpoint_states.py` — corrupt the copy at save, corrupt the archive before a restore |
+| I2a | `test_checkpoint_states.py` — change the classification beyond recognition, restore, compare bytes |
+| I2b | `test_checkpoint_states.py` — a tampered MANIFEST, and a hand-edited ignore block |
+| I2c | **not yet written** — see § 12 |
+| I3 | **not yet written** — see § 12 |
+| I4 | `test_checkpoint_wrapper_isolation.py` |
+| A4, A5 | `test_checkpoint_cli.py` (no partial restore on any surface) and `test_checkpoint_states.py` (the three shapes, and `--force`) |
+| A6 | `test_checkpoint_states.py` — wander, then `git gc --prune=now`, then restore each |
+| L1 | `test_checkpoint_states.py` — independent calculations refused, one declared calculation accepted |
+| L3, L4 | `test_checkpoint_states.py` — the note, the calculation's name, and an empty tag list |
+| L7 | `test_checkpoint_states.py` — a big-file-only change |
 | S7, S8, S9 | **not yet written** — see § 12 |
-| A6 | **not yet written** — save-after-restore does not keep its result referenced (§ 7.1) |
 | A3, S2, S3, S4, S6, L8 | **not yet written** — each waits on a surface that does not exist; the table below says which |
+| the MANIFEST format | `test_checkpoint_manifest.py` |
+| the verbs as a printed surface | `test_checkpoint_cli.py` |
+| the HTTP routes | `test_checkpoint_routes.py` |
+| the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` |
 
 **A rule in no row is the same failure as a file in no row, and quieter.** These
 six are stated, tracked and deliberately unasserted — a test written against a
@@ -1316,14 +1323,14 @@ on is what stops them being forgotten on the day it lands.
 
 | | |
 |---|---|
-| `molbuilder/checkpoint.py` | all of it — `Repo` is the class every surface goes through |
+| `molbuilder/checkpoint.py` | all of it — `Repo` is the class every surface goes through; `State` / `Tag` / `FolderStatus` are the vocabulary of § 5 |
 | `Repo.init` / `.save` / `.restore` | the three verbs everything else is built on |
 | `Repo.tag` / `.states` / `.diff` | naming and reading a history. **No `branch`** — a fork is what happens when you save from a restored state (§ 7.1), not a verb |
 | the classification accessor | which files are always large — reads `molbuilder.json`, never a per-folder file (S1c) |
 | the note + calculation-name builder | the naming rules (L3) — written and read through one parser so the two cannot drift |
 | `CheckpointError` and its four subclasses | what a refusal raises |
 | `molbuilder/web/blueprints/checkpoint.py` | the HTTP routes the sidebar calls |
-| `tests/test_checkpoint_*.py` | eight files — § 13.4 maps them to rules |
+| `tests/test_checkpoint_*.py` | seven files — § 13.4 maps them to rules |
 
 ---
 

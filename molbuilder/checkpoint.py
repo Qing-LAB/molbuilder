@@ -1067,17 +1067,21 @@ class Repo:
         _run_git(["checkout", "--force", "--detach", sha], cwd=self.path)
         _run_git(["clean", "-fdq"], cwd=self.path)
 
-        # Big files are gitignored, so neither checkout nor clean touches
-        # them.  Everything the target did not hold is removed -- that is not
-        # a loss and is not warned about (A5): those files are still in the
-        # state that holds them, and leaving a stage 2 .DM in a folder that
-        # claims to be stage 1 is exactly the file a later run picks up
-        # unasked.
-        cls = self._classification()
-        big, _small = split_by_store(self.root, int(cls["size_limit_bytes"]),
-                                     cls["always_large"])
-        for path in big:
-            if archive_key(self.root, path) not in expected:
+        # Everything the target did not hold is removed -- not a loss, and not
+        # warned about (A5): those files are still in the state that holds
+        # them, and leaving a stage 2 .DM in a folder claiming to be stage 1 is
+        # exactly the file a later run picks up unasked.
+        #
+        # What belongs here is decided by TWO RECORDS AND NO CONFIGURATION
+        # (I2a): git says which text the target held, the MANIFEST says which
+        # big files it held, and anything else is a leftover.  Deriving the set
+        # from the classification instead would make a restore mean different
+        # things before and after a config edit -- and `git clean` alone cannot
+        # do it, because a file matching an ignore pattern is invisible to it.
+        tracked = set(_run_git(["ls-files"], cwd=self.path).stdout.split())
+        for path in walk_files(self.root):
+            key = archive_key(self.root, path)
+            if key not in tracked and key not in expected:
                 path.unlink()
 
         adir = archive_dir(self.root, target.archive)
