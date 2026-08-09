@@ -759,12 +759,32 @@ class Repo:
                 f"calculation.  Its root should carry the description that "
                 f"says so ({', '.join(_BUNDLE_DESCRIPTORS)}) (L1).")
         _run_git(["init", "-q"], cwd=self.path)
-        self._engine = engine
+        if engine:
+            _run_git(["config", "molbuilder.engine", engine], cwd=self.path)
         write_gitignore(self.root, self._classification()["always_large"])
         return self.save(note)
 
+    def _engine(self) -> Optional[str]:
+        """Which config entry this folder's saves use (§ 4).
+
+        Kept in the repository's own git config -- inside ``.git/``, which is
+        never stored (S1) and is not a file anybody edits by hand.  It is
+        **not** a second classification: it names which entry to read, while
+        the patterns and the size limit stay in molbuilder.json (S1c).
+
+        Losing it is safe by design -- an unnamed engine resolves to
+        ``generic``, which measures every file and is "always correct and
+        merely measures more".  It is persisted so that property costs a stat
+        sweep only when nobody said what the engine was, rather than always.
+        """
+        if not self.initialized:
+            return None
+        out = _run_git(["config", "--get", "molbuilder.engine"],
+                       cwd=self.path, check=False).stdout.strip()
+        return out or None
+
     def _classification(self) -> Dict[str, object]:
-        return classification(getattr(self, "_engine", None), self.root)
+        return classification(self._engine(), self.root)
 
     # -- states ---------------------------------------------------- #
 

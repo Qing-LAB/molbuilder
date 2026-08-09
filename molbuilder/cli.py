@@ -2466,26 +2466,31 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
 
 
 @cli.group("snapshot",
-           short_help="checkpoint a calculation folder (init, checkpoint, "
-                      "list, tag, restore)")
+           short_help="save a calculation folder so you can come back to it")
 def cmd_snapshot():
-    """Manage the working dir's checkpoint history.
+    """Save the state of a calculation folder, and come back to it.
 
-    Each working dir (the one containing your .fdf / .py / .run.sh)
-    becomes a tiny self-contained git repo.  Big binaries (.DM, .HSX,
-    .TSHS, .TBT.AVTRANS_*) are archived by SHA in .binsnapshots/<sha>/
-    rather than committed.  Use this group to snapshot before risky
-    changes and roll back if things go wrong.
+    A **state** is a saved snapshot of the whole folder: it has an id, a note
+    you wrote, and the state it came from.  A **tag** is a name you give a
+    state so you can find it again.  That is the whole vocabulary.
 
-    Examples:
-
-        molbuilder snapshot init                      # one-time setup
-        molbuilder snapshot checkpoint -m "stage 3 converged"
-        molbuilder snapshot tag stage3-converged -m "ready for transport"
+    \b
+        molbuilder snapshot init
+        molbuilder snapshot save -m "stage 1 converged, 41 steps"
         molbuilder snapshot list
-        molbuilder snapshot restore stage3-converged  # rewinds everything
+        molbuilder snapshot tag stage1-good -m "geometry I trust"
+        molbuilder snapshot restore 4f9ca71
 
-    See docs/execution/running-a-job.md § 6 for the full design.
+    Going back to a state and saving from it is how you branch: the new state's
+    parent is the one you restored, both attempts stay listed, and neither can
+    shadow the other.  There is no branch verb because there is nothing to
+    declare.
+
+    \b
+    ONE RULE FOR YOU: use these verbs, not bare git.  The folder IS a git
+    repository, but git alone sees only half of it -- the big files live in a
+    side archive it is told to ignore -- so `git checkout` leaves the folder in
+    a state no save ever produced.  See docs/execution/checkpointing.md § 2.0.
     """
 
 
@@ -2500,242 +2505,164 @@ def _resolve_repo_path(path: Optional[str]) -> str:
     return str(p)
 
 
+def _repo_or_exit(path):
+    from molbuilder.checkpoint import Repo
+    repo = Repo(_resolve_repo_path(path))
+    if not repo.initialized:
+        click.echo(f"Error: {repo.path} is not a checkpoint folder.  "
+                   f"Run `molbuilder snapshot init` first.", err=True)
+        sys.exit(2)
+    return repo
+
+
+_PATH_OPT = click.option("-p", "--path", default=None, type=click.Path(),
+                         help="The calculation folder.  Default: cwd.")
+
+
 @cmd_snapshot.command("init",
-                      short_help="initialise this dir as a checkpoint repo")
-@click.option("--engine", type=click.Choice(["siesta", "pyscf"]), default=None,
-              help="Engine whose big-binary files to archive (SIESTA: "
-                   ".DM/.HSX/.TSHS/.TBT.*; PySCF: .chk/.cube).  The web UI "
-                   "passes this from the task setup; on the CLI, set it so "
-                   "the right files are archived.  Omit for the safe union.")
-@click.option("-p", "--path", default=None, type=click.Path(),
-              help="Working dir to initialise.  Default: cwd.")
-def cmd_snapshot_init(engine, path):
-    """Create a git repo + .gitignore + first commit + binary archive
-    in the current working dir (or --path).
+                      short_help="make this folder a checkpoint folder")
+@click.option("--engine", default=None,
+              help="Engine hint, so families that are always large skip the "
+                   "size check (siesta, pyscf).  Omit and every file is "
+                   "measured, which is always correct and merely slower.")
+@click.option("-m", "--note", default="set up",
+              help="The note for the first state.")
+@_PATH_OPT
+def cmd_snapshot_init(engine, note, path):
+    """Make this folder a checkpoint folder and save its first state.
 
-    One repository per calculation (checkpointing.md L1).  A directory
-    whose subdirectories are working dirs (they hold .fdf / .py / .run.sh)
-    is accepted only when this directory declares them one calculation by
-    carrying its description -- task.json, job-set.json or
-    bench-manifest.json.  Without one, init refuses: several independent
-    calculations in one history would rewind together.
-
-    ``--engine`` selects which files count as big binaries (the persisted,
-    editable classification -- see ``molbuilder snapshot config``).
+    One repository per calculation.  A folder whose subdirectories are working
+    dirs is accepted only when this folder carries its description --
+    task.json, job-set.json or bench-manifest.json -- because without one,
+    several independent calculations would share a history and rewind together.
     """
     from molbuilder.checkpoint import (
-        Repo, NestedRepoRefusedError, CheckpointError,
-    )
+        Repo, CheckpointError, NestedRepoRefusedError)
     repo = Repo(_resolve_repo_path(path))
     if repo.initialized:
-        click.echo(f"{repo.path}: already initialised "
-                   f"(HEAD = {repo._head_sha()[:7]})")
+        here = repo.standing_at()
+        click.echo(f"{repo.path}: already a checkpoint folder "
+                   f"(standing at {here.short})" if here else repo.path)
         return
     try:
-        repo.init(engine=engine)
+        state = repo.init(engine=engine, note=note)
     except NestedRepoRefusedError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
     except CheckpointError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
-    state = repo.state()
-    click.echo(f"Initialised {repo.path}")
-    click.echo(f"  HEAD = {state.head[:7] if state.head else '?'}")
-    # state() is cheap and omits archive size (docs/web/projects.md);
-    # ask for it
-    # explicitly here -- this is a one-shot command, not a poll.
-    archived = repo.archive_total_bytes()
-    if archived:
-        click.echo(f"  archived {archived / (1024 * 1024):.1f} "
-                   f"MB of big binaries to .binsnapshots/")
+    click.echo(f"initialised {repo.path}")
+    click.echo(f"  {state.short}  {state.note}")
 
 
-@cmd_snapshot.command("config",
-                      short_help="show / edit which files are archived as big binaries")
-@click.option("--set", "set_globs", default=None, metavar="GLOBS",
-              help="Comma-separated globs to REPLACE the archive set "
-                   "(e.g. '*.DM,*.HSX,*.chk').  Regenerates .gitignore to "
-                   "match.  Omit to just show the current set.")
-@click.option("-p", "--path", default=None, type=click.Path(),
-              help="Working dir.  Default: cwd.")
-def cmd_snapshot_config(set_globs, path):
-    """Show (or ``--set``) the big-binary patterns this repo archives -- the
-    engine-specific, user-editable classification (checkpointing.md § 4).
-    The web UI edits the SAME persisted table through the API; this is the
-    CLI face of that one unified accessor."""
-    from molbuilder.checkpoint import Repo, CheckpointError
-    repo = Repo(_resolve_repo_path(path))
-    if not repo.initialized:
-        click.echo(f"Error: {repo.path} is not a checkpoint repo.", err=True)
-        sys.exit(2)
-    if set_globs is not None:
-        globs = [g.strip() for g in set_globs.split(",") if g.strip()]
-        try:
-            repo.set_archive_globs(globs)
-        except CheckpointError as e:
-            click.echo(f"Error: {e}", err=True)
-            sys.exit(1)
-        click.echo("updated archive globs (checkpoint to save the change):")
-    for g in repo.archive_globs():
-        click.echo(f"  {g}")
+@cmd_snapshot.command("save",
+                      short_help="save the folder as a new state")
+@click.option("-m", "--note", required=True,
+              help="What happened, and what you were about to do.  Required: "
+                   "it is the only thing that answers the question you bring "
+                   "to a history a month later.")
+@_PATH_OPT
+def cmd_snapshot_save(note, path):
+    """Save the whole folder as a new state.
 
-
-@cmd_snapshot.command("checkpoint",
-                      short_help="commit current state + archive big binaries")
-@click.option("-m", "--message", default=None,
-              help="Commit message.  Default: 'checkpoint <ISO_TS>'.")
-@click.option("-p", "--path", default=None, type=click.Path(),
-              help="Working dir.  Default: cwd.")
-def cmd_snapshot_checkpoint(message, path):
-    """Stage everything (.fdf, .out, .molwatch.log, sidecars, ...),
-    create a new commit, and archive the current big binaries
-    (.DM, .HSX, .TSHS, .TBT.AVTRANS_*) under .binsnapshots/<new_sha>/.
-
-    If nothing has changed since HEAD, prints a polite no-op and
-    exits 0 -- not an error.
+    The new state's parent is wherever the folder currently stands, so saving
+    after a restore forks -- and both attempts stay listed.
     """
-    from molbuilder.checkpoint import Repo, CheckpointError
-    repo = Repo(_resolve_repo_path(path))
-    if not repo.initialized:
-        click.echo(f"Error: {repo.path} is not a checkpoint repo.  "
-                   f"Run `molbuilder snapshot init` first.", err=True)
-        sys.exit(2)
+    from molbuilder.checkpoint import CheckpointError
+    repo = _repo_or_exit(path)
     try:
-        cp = repo.checkpoint(message=message)
+        state = repo.save(note)
     except CheckpointError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
-    if cp is None:
-        click.echo("working tree clean; nothing to checkpoint")
+    if state is None:
+        click.echo("nothing changed since the state this folder stands at.")
         return
-    click.echo(f"checkpointed {cp.short_sha}  {cp.summary}")
-    if cp.has_archive:
-        click.echo(f"  archived "
-                   f"{cp.archive_bytes / (1024 * 1024):.1f} MB of big "
-                   f"binaries")
+    click.echo(f"saved {state.short}  {state.note}")
 
 
-@cmd_snapshot.command("tag",
-                      short_help="annotate current commit (or another ref)")
-@click.argument("label")
-@click.option("-m", "--message", default="",
-              help="Tag message.  Required by the design (no lightweight "
-                   "tags); will prompt if not provided.")
-@click.option("--at", default="HEAD",
-              help="Ref to tag.  Default: HEAD.")
-@click.option("-p", "--path", default=None, type=click.Path(),
-              help="Working dir.  Default: cwd.")
-def cmd_snapshot_tag(label, message, at, path):
-    """Create an annotated tag.  Always annotated (carries a message)
-    per checkpointing.md L3/L4."""
-    from molbuilder.checkpoint import Repo, CheckpointError
-    repo = Repo(_resolve_repo_path(path))
-    if not repo.initialized:
-        click.echo(f"Error: {repo.path} is not a checkpoint repo.",
-                   err=True)
-        sys.exit(2)
-    if not message:
-        message = click.prompt("tag message")
-    try:
-        repo.tag(label, message=message, at=at)
-    except CheckpointError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-    click.echo(f"tagged {at} as {label!r}")
-
-
-@cmd_snapshot.command("branch",
-                      short_help="fork a branch to explore an alternative")
-@click.argument("name")
-@click.option("-p", "--path", default=None, type=click.Path(),
-              help="Working dir.  Default: cwd.")
-def cmd_snapshot_branch(name, path):
-    """Create a new branch and switch to it (checkpointing.md § 5) --
-    for exploring an experimental parameter path without losing the current
-    one.  Tags mark milestones; branches carry experiments (P6).  Your next
-    ``snapshot checkpoint`` lands on this branch; ``snapshot restore`` /
-    ``git checkout`` returns you to the original."""
-    from molbuilder.checkpoint import Repo, CheckpointError
-    repo = Repo(_resolve_repo_path(path))
-    if not repo.initialized:
-        click.echo(f"Error: {repo.path} is not a checkpoint repo.",
-                   err=True)
-        sys.exit(2)
-    try:
-        repo.branch(name)
-    except CheckpointError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-    click.echo(f"switched to a new branch {name!r} "
-               "(subsequent checkpoints land here)")
-
-
-@cmd_snapshot.command("list",
-                      short_help="list checkpoints (most recent first)")
-@click.option("-n", "--limit", type=int, default=20, show_default=True,
-              help="Maximum number of checkpoints to show.")
-@click.option("-p", "--path", default=None, type=click.Path(),
-              help="Working dir.  Default: cwd.")
+@cmd_snapshot.command("list", short_help="the states you have saved")
+@click.option("-n", "--limit", default=None, type=int,
+              help="Show only the newest N.")
+@_PATH_OPT
 def cmd_snapshot_list(limit, path):
-    """Show the checkpoint history, decorated with tags + branches +
-    binary-archive presence."""
-    from molbuilder.checkpoint import Repo, CheckpointError
-    repo = Repo(_resolve_repo_path(path))
-    if not repo.initialized:
-        click.echo(f"Error: {repo.path} is not a checkpoint repo.",
-                   err=True)
-        sys.exit(2)
+    """Every state, newest first, with the state each came from.
+
+    Two states sharing a parent are alternatives from the same point -- that is
+    what a fork looks like here, and nothing had to be named for it.
+    """
+    repo = _repo_or_exit(path)
+    here = repo.standing_at()
+    states = repo.states(limit=limit)
+    if not states:
+        click.echo("no states saved yet.")
+        return
+    for state in states:
+        mark = "->" if here and state.id == here.id else "  "
+        parent = state.parent[:7] if state.parent else "-"
+        tags = f"  [{', '.join(state.tags)}]" if state.tags else ""
+        click.echo(f"{mark} {state.short}  {state.note}{tags}")
+        click.echo(f"      {state.at}   from {parent}")
+    if here:
+        click.echo(f"\n-> is where this folder stands ({here.short}).")
+    status = repo.status()
+    if not status.clean:
+        click.echo(f"   {len(status.unsaved())} unsaved change(s) here; "
+                   f"`snapshot save` keeps them.")
+
+
+@cmd_snapshot.command("tag", short_help="name a state so you can find it")
+@click.argument("name")
+@click.option("-m", "--note", required=True,
+              help="Why this state is worth returning to.")
+@click.option("--at", default=None,
+              help="Which state to name.  Default: where the folder stands.")
+@_PATH_OPT
+def cmd_snapshot_tag(name, note, at, path):
+    """Give a state a name.
+
+    Nothing tags a state on your behalf -- the namespace is yours alone, which
+    is what makes your own tags easy to see.
+    """
+    from molbuilder.checkpoint import CheckpointError, NoSuchRefError
+    repo = _repo_or_exit(path)
     try:
-        cps = repo.list_checkpoints(limit=limit)
+        tag = repo.tag(name, note, at=at)
+    except NoSuchRefError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(2)
     except CheckpointError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
-    if not cps:
-        click.echo("(no checkpoints)")
-        return
-    for cp in cps:
-        refs = f"  [{', '.join(cp.refs)}]" if cp.refs else ""
-        arch = (f"  ({cp.archive_bytes / (1024 * 1024):.1f} MB archived)"
-                if cp.has_archive else "")
-        click.echo(f"{cp.short_sha}  {cp.summary}{refs}{arch}")
+    click.echo(f"tagged {tag.state[:7]} as {tag.name}")
 
 
 @cmd_snapshot.command("restore",
-                      short_help="rewind everything (text + binaries) to a ref")
-@click.argument("ref")
-@click.option("--no-binaries", is_flag=True,
-              help="Skip the binary archive copy (text-only restore).")
-@click.option("-p", "--path", default=None, type=click.Path(),
-              help="Working dir.  Default: cwd.")
-def cmd_snapshot_restore(ref, no_binaries, path):
-    """Rewind the working tree to the state at REF.
+                      short_help="put the folder back to a state")
+@click.argument("state")
+@click.option("--force", is_flag=True,
+              help="Accept the loss of unsaved work without being asked.  For "
+                   "scripts; interactively you are asked instead.")
+@_PATH_OPT
+def cmd_snapshot_restore(state, force, path):
+    """Make the folder equal STATE exactly -- text and big files together.
 
-    REF can be a tag (`stage3-converged`), a branch (`main`), or a
-    short SHA (`63f143f`).  Refuses on a dirty working tree --
-    checkpoint or discard your changes first.
+    STATE is a state id or a tag.
 
-    Copies the archived big binaries (.DM, .HSX, ...) from
-    .binsnapshots/<sha>/ on top of the restored text files.  Pass
-    --no-binaries for a text-only restore.
+    Anything here that is not saved is named first, and it is lost if you go
+    ahead: checkpointing is not responsible for work you never saved, and
+    nothing is stashed or set aside on your behalf.  Files that are simply
+    absent from the target are removed without a warning -- they are still in
+    the state that holds them.
     """
     from molbuilder.checkpoint import (
-        Repo, CheckpointError, DirtyWorkingTreeError, NoSuchRefError,
-    )
-    repo = Repo(_resolve_repo_path(path))
-    if not repo.initialized:
-        click.echo(f"Error: {repo.path} is not a checkpoint repo.",
-                   err=True)
-        sys.exit(2)
+        CheckpointError, DirtyWorkingTreeError, NoSuchRefError)
+    repo = _repo_or_exit(path)
     try:
-        restored = repo.restore(ref, include_binaries=not no_binaries)
+        target = repo.restore(state, force=force)
     except DirtyWorkingTreeError as e:
-        click.echo(f"Error: {e}", err=True)
-        click.echo(
-            "  hint: `molbuilder snapshot checkpoint -m \"WIP\"` "
-            "to save current state first, OR "
-            "`git restore --staged --worktree .` to discard it.",
-            err=True)
+        click.echo(str(e), err=True)
         sys.exit(2)
     except NoSuchRefError as e:
         click.echo(f"Error: {e}", err=True)
@@ -2743,65 +2670,33 @@ def cmd_snapshot_restore(ref, no_binaries, path):
     except CheckpointError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
-    click.echo(f"restored working tree to {ref}")
-    if restored:
-        click.echo(f"  copied {len(restored)} binary "
-                   f"{'file' if len(restored) == 1 else 'files'} "
-                   f"from archive: {', '.join(restored)}")
-    elif not no_binaries:
-        # #1: a missing archive in a binary-using project is a LOUD warning
-        # (possible interrupted checkpoint), not a neutral note.
-        warning = repo.missing_archive_warning(ref)
-        if warning:
-            click.echo(f"  WARNING: {warning}", err=True)
-        else:
-            click.echo("  (no archived binaries for this ref)")
+    click.echo(f"restored to {target.short}  {target.note}")
 
 
-@cmd_snapshot.command("migrate-manifest",
-                      short_help="convert legacy 2-column MANIFEST to "
-                                 "canonical 3-column form")
-@click.argument("ref")
-@click.option("-p", "--path", default=None, type=click.Path(),
-              help="Working dir.  Default: cwd.")
-def cmd_snapshot_migrate_manifest(ref, path):
-    """One-shot conversion of a legacy ``sha256sum``-style 2-column
-    MANIFEST in the archive for REF to canonical 3-column form.
+@cmd_snapshot.command("config",
+                      short_help="which files are stored where, and why")
+@_PATH_OPT
+def cmd_snapshot_config(path):
+    """Show the classification this folder is saved under.
 
-    Behaviour (per checkpointing.md I1; the format is job-contracts.md § 6.1):
-
-      1. Resolves REF to a commit SHA.
-      2. Reads .binsnapshots/<sha>/MANIFEST.
-      3. If already canonical -> no-op, exits 0 with "already canonical".
-      4. If 2-column legacy: parses sha + name, re-hashes each archived
-         file's content, verifies against the recorded sha256, stat()s
-         for the size column, writes canonical MANIFEST atomically.
-      5. Any other shape -> error, no auto-fix; original MANIFEST is
-         left untouched.
-
-    REF can be a tag, branch, or short SHA.
+    It lives in molbuilder.json, not in the folder: one home, so two folders
+    cannot behave differently for no recorded reason.  Edit it there.
     """
-    from molbuilder.checkpoint import (
-        Repo, CheckpointError, NoSuchRefError,
-    )
-    repo = Repo(_resolve_repo_path(path))
-    if not repo.initialized:
-        click.echo(f"Error: {repo.path} is not a checkpoint repo.",
-                   err=True)
-        sys.exit(2)
-    try:
-        entries = repo.migrate_manifest(ref)
-    except NoSuchRefError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(2)
-    except CheckpointError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-    click.echo(f"migrated MANIFEST for {ref}: "
-               f"{len(entries)} archived file"
-               f"{'s' if len(entries) != 1 else ''}")
-    for name, (sha256, size) in sorted(entries.items()):
-        click.echo(f"  {sha256[:12]}…  {size:>12} bytes  {name}")
+    repo = _repo_or_exit(path)
+    cls = repo._classification()
+    limit = int(cls["size_limit_bytes"])
+    click.echo(f"size limit    {limit} bytes ({limit / (1024 * 1024):.1f} MB)")
+    click.echo("              over it -> the archive; under it -> git")
+    always = cls["always_large"]
+    if always:
+        click.echo("always large  " + ", ".join(always))
+        click.echo("              these skip the size check; a hint can make "
+                   "a save faster,")
+        click.echo("              it can never make it store less")
+    else:
+        click.echo("always large  (none) -- every file is measured")
+    click.echo("\nedit molbuilder.json to change it "
+               "(docs/execution/checkpointing.md § 4)")
 
 
 # --------------------------------------------------------------------- #
