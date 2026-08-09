@@ -767,9 +767,16 @@ four behaviours).
 **Milestone M3.** A two-stage description whose second stage continues renders
 **every** bound parameter set, and a stage set to `clean` renders **none** —
 asserted together, because the failure mode is that they disagree. A second
-produce into a folder that already holds warm files **refuses unless told to
-overwrite, and never renames**. `job-contracts.md § 4` is updated in the same
+produce into a folder that already holds warm files **says what is already
+there, and never renames**. `job-contracts.md § 4` is updated in the same
 commit.
+
+> ⚠ **Corrected 2026-08-09.** This line read *"refuses unless told to
+> overwrite"* until decision 19 softened it to a warning the same day, and the
+> milestone was not carried along. `run-identity.md § 6` is the corrected
+> sentence; `validation/identity.py::check_overwrite` still returns an `error`
+> and quotes the retired wording, which is the *code in a follow-up* half of
+> decision 19 and lands with P5, the phase that rewrites the produce path.
 
 **Reviews:** 1 · 2 · 3 (walk: continue a stage in both shapes; in flat the warm
 files are unsuffixed and shared, and that is the design, not a bug).
@@ -1136,6 +1143,12 @@ doctrine) · [`web/tabs.md`](?doc=web/tabs.md) ·
    *vary per stage* affordance on every field, the stage list **as names**, the
    shape, and the outcome line. **A one-stage calculation is finished here** —
    today's whole workflow, untouched.
+4. **A save says what it replaced** (§ 8 decision 24). `/api/files/write` gains
+   an `overwritten` flag on its success envelope, and both save pipelines report
+   it — the same shape `/api/run/install-wrapper` already returns and
+   `viewer.js:1717` already prints. **Warn, do not block**: no confirm dialog,
+   per decision 19. Today the wrapper announces its own replacement while the
+   deck beside it is replaced in silence.
 
 **Subtracts:** the "Stage" menu that is a form autofill rewriting nine
 convergence fields and making no stage at all; the `p-stage-preset` number.
@@ -1143,7 +1156,8 @@ convergence fields and making no stage at all; the `p-stage-preset` number.
 **Milestone M10.** The same description produces the same folder from a terminal
 and from the browser, file by file. A user goes from a structure on the canvas to
 a written description **without typing a path**, and a single-stage user gets
-exactly what they get today.
+exactly what they get today. **Saving over an existing file names the file it
+replaced**, in both pipelines, without stopping to ask.
 
 **Reviews:** 1 · 2 · 3 · **plus a browser check**: this project has twice had
 139 green tests over a broken page, and a filename or stylesheet change is
@@ -1574,6 +1588,7 @@ open.
 | 22 | ~~**How does a stage say it needs a file the standard restart set does not cover?**~~ — **decided 2026-08-08 (user): a config field called `required`.** A TranSIESTA scattering stage cannot start without an electrode run's `.TSHS`, and `restart: continue` says nothing about it. It is an **ordinary config field**, so a stage sets it through `overrides` and `stages.md § 2`'s *"name, enabled, overrides — and no others"* survives untouched: no new stage mechanism, no fourth key. Extensions rather than filenames, so the id is always prepended and a stage cannot name another calculation's file by accident. **The name matters**: `required` is a *claim* the wrapper can verify, where a `carry_also` would have been an *instruction* that can only be obeyed | ~~P3~~ contract; code in a follow-up |
 | 23 | ~~**Where is `required` checked?**~~ — **decided 2026-08-08 (user): in the directory the job runs in, immediately before the engine starts.** *"Based on how the job is run inside the stage run subdir, I think that's where the check is done."* Not at produce — the files do not exist and a `.TSHS` may come from a different calculation, so *"does an earlier stage produce this?"* is unanswerable and is not asked. **Not at prep either**, and this corrected a proposal of mine that was impossible rather than merely wrong: `Carry`'s symlink is laid *before* the producer runs and is **meant** to dangle (`job-system.md` D1). Reuses the shipped `_warm_check` pattern — warn by name, offer abort, `MOLBUILDER_FORCE=1` for unattended runs — in both emitters | ~~P3~~ contract; code in a follow-up |
 | 15 | ~~**When does normalisation refuse?**~~ — **decided 2026-08-08: when a letter or a digit is replaced, or when nothing is left.** § 3 rule 3 said only *"reduces to nothing"*, yet § 3.1 refused `Über` → `ber`, which does not. The line is **what was replaced**: a *separator* (space, `/`, `.`) becomes `_` silently — that is all `BDT/Au relax` does — while a character typed *inside a word* cannot be dropped, so `Über` and `Ω-shape` refuse. Mechanically: a character outside `[A-Za-z0-9_-]` that is nonetheless alphanumeric | ~~P3~~ |
+| 24 | ~~**Does the browser need its own identity mechanism, given that its `SystemLabel` field defaults to the literal `siesta`?**~~ — **decided 2026-08-09 (user): no. The identity half dissolves; what is left is a save that does not say what it replaced.** See § 8a below for the walk | ~~P3~~; the surviving unit is **P10** |
 
 **Already decided, recorded so they are not reopened:** the shape is a required
 field in the description (`stages.md § 6.7`); the id is fixed once and a later
@@ -1584,3 +1599,51 @@ stays flat on purpose; **the browser describes and observes, the terminal acts**
 (no prep or submit over HTTP for now); the web surface is **two tabs** — a
 generating tab per engine that writes the description, and **one shared tab**
 that starts from a folder and fills in the per-stage values.
+
+### 8a. Decision 24, walked — the browser's `SystemLabel` default
+
+**The question.** The `SystemLabel` form field defaults to the literal string
+`siesta` (`config/siesta.py:171`). Does that put two web-built calculations in
+one folder under one name — § 1's *two calculations, one label* reached by
+doing nothing unusual?
+
+**The chain, read from the code.** On the CLI the label follows the file:
+`cli.py:700` resolves it from what was typed *or from the deck's stem*
+(`Path(fdf_path).stem`), normalises once, and echoes it. Two differently-named
+decks get two labels for free. **On the web the arrow reverses** — the file
+follows the label. `viewer.js:1491` builds `filename` *from* `r.system_label`,
+and `viewer.js:1598` writes it with `overwrite: true`. So a second Save into the
+same directory with the field untouched lands on the first: `siesta.fdf`, and at
+run time `siesta.out` / `.DM` / `.XV`.
+
+**Why that is not an identity defect.** The directory is chosen by hand, per
+save, and Save *refuses at the projects root* — it forces a subdirectory. Two
+`siesta.fdf` in two folders collide with nothing; SIESTA reads the deck on stdin
+and never sees the filename. Reaching the collision means putting two
+calculations in one folder, which is the mess decision 18 already says is the
+user's to make and checkpoint's to recover. **Nothing is owed here.**
+
+**And the missing `normalise_id` call is correct, not a gap.** The CLI
+normalises because it derives a label from an arbitrary *filename*. The form
+field is pattern-gated to `[A-Za-z0-9_-]+` at both ends — `metadata["pattern"]`
+and `_validate_basename` — so there is nothing left to normalise, and adding a
+call would be the second normaliser P3 exists to subtract.
+
+**What survives, and it is not about naming.** The deck is written silently.
+One step later in the *same function* the wrapper step reads
+`wr.overwritten` and prints `overwrote <name>` (`viewer.js:1717`) — so the
+pipeline announces the replacement of regenerable boilerplate and says nothing
+about replacing the file that defines the calculation. `/api/files/write` takes
+`elif overwrite: pass` (`files.py:1285`) and returns no such flag, so the JS
+could not report it even if it asked.
+
+**The mechanism is *warn*, not a dialog** — decision 19, applied to a browser. A
+modal is what a `--overwrite` flag is on a terminal: the thing people learn to
+get past without reading. The fix is `/api/files/write` reporting whether it
+replaced anything, and the status line saying so, exactly as the wrapper step
+already does. The Structure tab's confirm dialog is **not** the model to copy,
+and the asymmetry is principled: a structure document is hand work that cannot
+be regenerated, a deck is a pure function of the form still on screen.
+
+> This lands in **P10**, whose unit 3 already reduces this tab. It is not P3
+> work: P3's units 1–5 shipped and were reviewed at M3 (§ 5c).
