@@ -566,12 +566,11 @@ molbuilder snapshot tag stage3-converged -m "ready for transport"
 molbuilder snapshot branch what-if-tighter
 molbuilder snapshot list -n 20
 molbuilder snapshot restore stage3-converged        # verify archive -> git restore -> copy binaries
-molbuilder snapshot migrate-manifest <ref>          # legacy 2-col -> canonical 3-col
 ```
 
 The same operations are exposed over HTTP (`/api/checkpoint/*`: `state`, `list`,
 `diff`, `config` GET; `init`, `config`, `commit`, `tag`, `branch`, `restore`,
-`migrate-manifest` POST) and in the projects-sidebar run-history panel.
+POST) and in the projects-sidebar run-history panel.
 
 > **Current status.** The `Repo` core, the `molbuilder snapshot` CLI (including
 > `branch`), the HTTP routes, and the sidebar panel — with its lazy-loaded

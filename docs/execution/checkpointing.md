@@ -138,12 +138,6 @@ Three things follow, and each removes a problem rather than adding a mechanism:
   identical bytes**, so a repeat is harmless by construction rather than by
   locking (S9).
 
-> ⚠ **This is an archive-format change**, and the rule for those is already
-> written into I2b's note: the reader accepts both forms, or every archive
-> written before it stops opening. An archive named for a state rather than for
-> its own content predates this and is read as such. Breaking those would
-> violate § 1 for folders that did nothing wrong.
-
 **Which store, by measuring — not by file type.** A file over the limit goes to
 the archive; everything else to git. Extensions are not consulted, because a name
 is not the property being tested: a 4 GB `.EIG` nobody listed would be committed,
@@ -661,11 +655,11 @@ path; the old one is still there, still correct, still named by what it holds.
 There is no write that can modify an archive in place — only a write that creates
 another one.
 
-Re-publishing an archive that already exists is therefore a no-op, not a rebuild,
-and `snapshot migrate-manifest` — which rewrites a legacy 2-column MANIFEST into
-3-column form — now **produces a new archive** rather than editing one. Both are
-kept: the legacy commits point at the old, and nothing that already worked stops
-working.
+Re-publishing an archive that already exists is therefore a no-op rather than a
+rebuild, and there is no operation anywhere that edits one in place. There is
+also no legacy archive form to convert from: this is the first draft, so the
+format has no history and needs no migration
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1).
 
 **I2 — a MANIFEST is authoritative for its archive.** For every entry: the file
 exists, its size matches, its sha256 matches.
@@ -753,11 +747,11 @@ comfortably — a 500-file archive is ~45 KB and a commit message has no practic
 limit — but a second copy of a record is a second thing that can disagree with
 the first.
 
-**Absent is not the same as wrong.** Commits written before this carry no
-trailer. So verification has three outcomes: **anchored and matching** passes,
-**anchored and the archive missing or different** is a hard refusal naming the
-record, and **unanchored** is reported as unanchored. Treating the third as
-tampering would condemn every archive predating the rule.
+**Verification has two outcomes, not three: it matches, or it is refused.**
+Every state carries a trailer from the first one onwards, so a state without one
+is not a legacy case to tolerate — it is damage, and it is named as such. (An
+earlier draft had a third outcome for states written before the anchor existed.
+There are none; this is the first draft.)
 
 > **A commit that archived nothing still carries a trailer** — the digest of an
 > empty MANIFEST, which is a fixed, well-known value. That is what makes *"this
@@ -769,8 +763,8 @@ tampering would condemn every archive predating the rule.
 > like a file a person may reasonably adjust; `MANIFEST.do_not_edit` does not.
 > This buys nothing against deliberate tampering — that is the digest's job — and
 > everything against somebody tidying a directory. `.gitignore` cannot take the
-> suffix, since git requires that name. ⚠ A rename is an archive-format change:
-> the reader must accept both names or archives written before it stop opening.
+> suffix, since git requires that name. The name is chosen once, here, and
+> nothing has to read an older one.
 
 **I2c — the warning is measured against the records, not against the config,
 and it takes two of them.** I2a made the *action* config-free; this is its other

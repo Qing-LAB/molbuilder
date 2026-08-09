@@ -1195,31 +1195,38 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 > `tests/test_checkpoint_manifest_format.py`; the reasoning is
 > [`execution/checkpointing.md`](?doc=execution/checkpointing.md), L2.
 
-**The MANIFEST's canonical format, in full.** The parser accepts exactly this
-and refuses everything else — no field-count fallback, no header line, no
+**The MANIFEST's canonical format, in full.** Every rule below exists so that
+**one set of files has exactly one possible MANIFEST**, byte for byte. That is
+not tidiness: the archive's directory name is the sha256 of this file
+([`checkpointing.md`](?doc=execution/checkpointing.md) § 3), so any two ways of
+writing the same content would be two different archives. The parser accepts
+exactly this and refuses everything else — no field-count fallback, no header, no
 comments, no BOM tolerance. A reader that guesses is a reader that restores the
-wrong bytes, so every deviation is named rather than repaired.
+wrong bytes.
 
-| | |
-|---|---|
-| **Encoding** | plain ASCII, LF line endings only, no BOM |
-| **Terminator** | every line ends `\n`, including the last; no blank lines |
-| **Empty file** | legal, and means *this commit archived nothing* — distinct from a **missing** archive directory, which means the archive was lost |
-| **Line** | exactly three fields separated by **two spaces**: `<sha256>  <bytes>  <key>` |
-| **`sha256`** | 64 lowercase hex characters |
-| **`bytes`** | decimal integer, no leading zeros |
-| **`key`** | repo-relative POSIX path, ASCII printable. Rejected: absolute paths, `.` or `..` or empty components, backslashes, and any dot-prefixed component (which could reach `.git` or `.binsnapshots`) |
-| **Ordering** | lines sorted alphabetically by key |
-| **Duplicates** | a key may appear once |
+```text
+<sha256>\t<bytes>\t<key>\n
+```
 
-A **two-column** file is the pre-2026-06 `sha256sum > MANIFEST` shape. It is
-detected explicitly and refused with a pointer to `molbuilder snapshot
-migrate-manifest <ref>`, which rewrites it in place; the conversion changes how
-the archive is *described*, never what is in it
-([`checkpointing.md`](?doc=execution/checkpointing.md) I1).
+| | | |
+|---|---|---|
+| **Encoding** | plain ASCII, LF only, no BOM | one byte sequence per content |
+| **Terminator** | every line ends `\n`, including the last; no blank lines | same |
+| **Separator** | a single **tab** | a tab is a control character and the `key` rule forbids those, so a tab can never occur inside a key — the line is unambiguous by construction, with no "split on the first N" rule to remember |
+| **Field order** | `sha256`, `bytes`, `key` | `key` is the only field of unbounded length with arbitrary content, so it must be last |
+| **`sha256`** | 64 lowercase hex characters | one spelling per digest |
+| **`bytes`** | decimal integer, no leading zeros | one spelling per value |
+| **`key`** | repo-relative POSIX path, ASCII printable | **Rejected:** absolute paths, `.` / `..` / empty components, backslashes, and any dot-prefixed component — a restore must not be steerable out of the folder or into `.git` or `.binsnapshots` |
+| **Ordering** | sorted by `key` | two machines archiving the same files must produce identical bytes, or they produce different archives |
+| **Duplicates** | a key appears once | a key names one file, or a restore has to choose |
+| **Empty file** | legal — *this state archived nothing* | distinct from a **missing** archive directory, which means the archive was lost |
 
-The archive directory itself is named for the **full 40-character commit sha**,
-lowercase hex — `.binsnapshots/<sha>/`.
+**There is no version field, and there is no legacy form.** A version line would
+be a header, which the format forbids, and it would change the digest that names
+the archive. If this format ever changes, every archive is rebuilt from the
+working tree — there is no older data to preserve, and building a migration path
+for data that does not exist is how a format acquires a legacy before it has
+users.
 
 > **The decoded run is not a file.** `decode_run_dir(run_dir)` returns an
 > in-memory `JobResult` dataclass served to the Results tab and consumed by
