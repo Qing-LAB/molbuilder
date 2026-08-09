@@ -242,12 +242,24 @@ nothing else — moving it changes where a file is kept, never whether it is kep
 
 ## 5. Using it
 
-There are two words in this system and nothing else to learn.
+Three ideas, and nothing else to learn.
 
 | | |
 |---|---|
 | a **state** | a saved snapshot of the whole folder. It has an id, a note you wrote, and the state it came from |
 | a **tag** | a name you give a state so you can find it again |
+| **where you stand** | the one state the folder is currently at. `init` puts you at the first state, `save` puts you at the one it just made, `restore` puts you at the one you asked for |
+
+**Where you stand is what makes the other two work**, so it is worth thirty
+seconds even though you never type it:
+
+- **It decides what "unsaved" means** — the folder differs from the state it
+  stands at. Nothing is ever compared against the *newest* state, which is why
+  going back does not make the whole folder look modified (§ 7, A5).
+- **It decides where a new state hangs.** `save` records where you stood as the
+  new state's parent, then moves you onto it. That is the entire branching
+  mechanism (§ 7.1) — you never declare a fork, you just save from wherever you
+  are.
 
 ```bash
 # once, in the calculation folder
@@ -266,6 +278,7 @@ molbuilder snapshot tag stage1-good -m "geometry I trust"
 # Anything unsaved here is named first, and you are asked.
 molbuilder snapshot restore 4f9ca71
 molbuilder snapshot restore stage1-good
+molbuilder snapshot restore 4f9ca71 --force   # answers yes, for a script
 
 # which files count as "big" here
 molbuilder snapshot config
@@ -759,16 +772,22 @@ tampering would condemn every archive predating the rule.
 > suffix, since git requires that name. ⚠ A rename is an archive-format change:
 > the reader must accept both names or archives written before it stop opening.
 
-**I2c — what a restore *says* it will overwrite is read from the same record it
-overwrites *from*.** I2a made the action config-free. This is its other half:
-the warning A5 asks you to answer must be computed from the target's MANIFEST,
-because the MANIFEST is exactly the set of files the restore is about to write
-over. Anything else is a different question being reported as if it were this
-one.
+**I2c — the warning is measured against the records, not against the config,
+and it takes two of them.** I2a made the *action* config-free; this is its other
+half. Answering *what will be lost* is two questions with two different
+baselines, and using one for both gets it wrong:
+
+| question | measured against |
+|---|---|
+| **what is unsaved** | the MANIFEST of the state you **stand at** (§ 5) |
+| **what will be overwritten** | the MANIFEST of the state you are **restoring to** |
+
+A file is named in the warning when it is in both — unsaved, and about to be
+written over. Neither MANIFEST answers that alone, and neither is the glob list.
 
 Today the warning is computed from the glob list instead
 (`_working_binaries_dirty` → `_list_big_binaries` → the config), so the two
-halves of one restore ask two different sources what the big files are.
+halves of one restore ask two different sources what the big files even are.
 
 - **Fails as: you are told the wrong thing and agree to it.** A `.DM` is
   archived while `*.DM` is classified big. The classification is later narrowed
@@ -778,7 +797,7 @@ halves of one restore ask two different sources what the big files are.
   lists it. **Losing it is your call to make** (A5) — being asked a question
   that omits it is not.
 - **Test:** archive a big file, narrow the classification so nothing matches it,
-  modify it, restore an earlier ref — the warning must still name that file.
+  modify it, restore an earlier state — the warning must still name that file.
   Then, separately, create a big file that no MANIFEST mentions and assert
   `save` still sees it.
 
@@ -829,29 +848,48 @@ this document.
 - **Test:** no surface accepts a request for a text-only restore. Until the flag
   is gone, the test is red and names it.
 
-**A5 — a restore warns about unsaved work, then does what it is told.** It does
-not refuse, and it does not rescue.
+**A5 — a restore makes the folder equal the target state exactly, and warns
+first about anything that will be lost.** It does not refuse, and it does not
+rescue.
 
-**Checkpoint is not responsible for work you did not save.** Calling `restore`
-without calling `snapshot save` is a decision, and the answer to it is yours: the
-warning names what will go, and `yes` — or `--force` for a script — proceeds and
-loses it. There is no stash, no move-aside, no automatic save-before-restore, no
-`.orig` copies. Every one of those is a mechanism that owns a decision it should
-not, and each one leaves debris a later restore then has to reason about.
+**Unsaved means the folder differs from the state it stands at** (§ 5) — never
+from the newest state. Three shapes, and the warning names all three:
 
-*A state is the whole directory.* Checkpoint deals in directory states, not in
-files, so "keep this one file while rewinding the rest" is not a smaller request
-than a restore — it is a **different** one, and the tool for it is `git show
+| | |
+|---|---|
+| **changed** | a file that differs from that state |
+| **added** | a file that state never had |
+| **deleted** | a file that state had and the folder no longer does |
+
+All three are gone once the folder is made equal to the target, so all three are
+named, and `--force` — or a `yes` — accepts all three at once.
+
+**Files that are merely absent from the target are removed without a warning,
+because that is not a loss.** Restore stage 1 while standing at stage 2 and
+stage 2's outputs leave the folder — they are still in the state that holds
+them, and restoring it brings them back. Warning about a non-loss is how people
+are taught to stop reading warnings. The alternative is also worse than untidy:
+a stage 2 `.DM` left lying in a folder that claims to be stage 1 is exactly the
+file a later run picks up without being asked to.
+
+**Checkpointing is not responsible for work you did not save.** Calling
+`restore` without calling `snapshot save` is a decision, and the answer is
+yours. There is no stash, no move-aside, no automatic save-before-restore, no
+`.orig` copies — each of those owns a decision it should not, and each leaves
+debris a later restore has to reason about.
+
+*A state is the whole directory.* This deals in directory states, not files, so
+"keep this one file while rewinding the rest" is not a smaller request than a
+restore — it is a **different** one, and the tool for it is `git show
 <state>:<path>` or a second folder.
 
 - **Fails as, in both directions:** a refusal makes the user hand-delete files
   to get past it, which is worse than the loss they had already accepted. A
   silent rescue leaves the folder holding something no save produced (A4, S8).
-- **Test:** with unsaved text *and* an unsaved big file, a non-interactive
-  restore stops and changes nothing; `--force` completes; and afterwards the
-  folder matches the target state exactly, with no rescue copies anywhere in it.
-- **Status today:** it refuses on both, there is no `--force`, and the refusal
-  for binaries reads as an error about something the user broke.
+- **Test:** with an unsaved edit, an unsaved new file *and* a deleted one, a
+  non-interactive restore stops and changes nothing while naming all three;
+  `--force` completes; afterwards the folder equals the target state exactly,
+  with no rescue copies and no leftovers from where you stood.
 
 **A6 — every state you saved stays listed and restorable, forever.** Going back
 and carrying on is the ordinary way to run an experiment (§ 7.1), and no sequence
@@ -1068,7 +1106,7 @@ conclude there is nothing to do.
 | **A2** | verify before mutating, in order | ✅ |
 | **A3** | the save precedes the change | needs the prep prompt |
 | **A4** | a restore is whole or does not happen | ⛔ `--no-binaries` ships on three surfaces and skips both checks |
-| **A5** | warn about unsaved work, then obey | ⛔ refuses instead of asking; no `--force` |
+| **A5** | make the folder equal the target; warn about what is lost, then obey | ⛔ refuses instead of asking; no `--force`; does not remove what the target lacks |
 | **A6** | every saved state stays listed and restorable | ⛔ saving after a restore leaves the result unreferenced |
 | **S2** | a stage writes only inside itself | needs the layout |
 | **S3** | a run records what it started from | needs the layout |
