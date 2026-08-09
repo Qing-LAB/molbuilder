@@ -69,41 +69,65 @@ def _seed_with_archive(tmp_path: Path) -> Path:
 # ----------------------------------------------------------------- #
 
 
-def test_state_does_not_walk_binsnapshots(client, tmp_path):
-    """Even with a real 2048-byte archive on disk, the refresh-path
-    state() reports archive_total_bytes == 0 (it never stats the
-    archive).  Regression gate for docs/web/projects.md."""
+def test_state_does_not_read_big_files_it_does_not_have_to(client, tmp_path):
+    """The sidebar calls this on every directory-enter (docs/web/projects.md).
+
+    A folder holding a 2 GB density matrix must not be read end-to-end to
+    answer "is anything unsaved".  A file whose size matches its record and
+    which has not been touched since the state was saved cannot have changed,
+    so it is ruled out by two ``stat`` fields rather than by hashing.
+
+    The gate is behavioural, not a timing assertion: make the file unreadable
+    after saving it.  If the answer still comes back clean, nothing opened it.
+    """
+    import json
+    import os
     from molbuilder.checkpoint import Repo
-    _seed_with_archive(tmp_path)
-    Repo(str(tmp_path)).init()
+    from molbuilder.runtime_config import PROJECT_CONFIG_FILENAME
 
-    # The archive really exists on disk -- so a 0 below means "did not
-    # walk", not "nothing to walk".
-    archive_files = list((tmp_path / ".binsnapshots").rglob("*.DM"))
-    assert archive_files, "precondition: init() should archive the .DM"
+    (tmp_path / PROJECT_CONFIG_FILENAME).write_text(json.dumps(
+        {"checkpoint": {"size_limit_bytes": 1024, "engines": {"generic": []}}}))
+    (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n")
+    big = tmp_path / "siesta-test.DM"
+    big.write_bytes(b"\x00" * 4096)
+    Repo(str(tmp_path)).init(note="set up")
+    assert list((tmp_path / ".binsnapshots").rglob("siesta-test.DM")), (
+        "precondition: the .DM is over the limit and must be archived")
 
-    r = client.get("/api/checkpoint/state",
-                   query_string={"path": str(tmp_path)})
-    assert r.status_code == 200
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["state"]["initialized"] is True
-    assert body["state"]["archive_total_bytes"] == 0
+    # Age it past the save.  A state's timestamp has one-second resolution, so
+    # a file written in the same second is deliberately NOT ruled out -- this
+    # makes the "untouched since the save" case the one under test rather than
+    # a race.
+    saved = os.stat(big).st_mtime - 60
+    os.utime(big, (saved, saved))
+    os.chmod(big, 0o000)
+    try:
+        r = client.get("/api/checkpoint/state",
+                       query_string={"path": str(tmp_path)})
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["ok"] and body["clean"], (
+            "the sensor read the file it did not need to read")
+    finally:
+        os.chmod(big, 0o644)
 
 
-def test_state_returns_documented_cheap_shape(client, tmp_path):
-    """The sensor reads exactly these fields; none requires an archive
-    walk (docs/web/projects.md -- the wire shape)."""
+def test_state_returns_the_shape_the_sensor_reads(client, tmp_path):
+    """§ 5's vocabulary, and nothing that would need an archive walk.
+
+    No archive size: the number was never true (hard links counted in full)
+    and fed no decision, since nothing prunes (checkpointing.md § 12).
+    """
     from molbuilder.checkpoint import Repo
-    _seed_with_archive(tmp_path)
-    Repo(str(tmp_path)).init()
-    r = client.get("/api/checkpoint/state",
-                   query_string={"path": str(tmp_path)})
-    assert r.status_code == 200
-    state = r.get_json()["state"]
-    for key in ("path", "initialized", "head", "current_branch",
-                "dirty", "untracked", "archive_total_bytes"):
-        assert key in state, f"sensor field {key!r} missing from /state"
+    (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n")
+    Repo(str(tmp_path)).init(note="set up")
+    body = client.get("/api/checkpoint/state",
+                      query_string={"path": str(tmp_path)}).get_json()
+    for key in ("path", "initialized", "standing_at", "clean",
+                "changed", "added", "deleted", "unsaved", "ignore_edited"):
+        assert key in body, f"sensor field {key!r} missing from /state"
+    assert "archive_total_bytes" not in body
+    assert body["standing_at"]["note"] == "set up"
 
 
 # ----------------------------------------------------------------- #
@@ -123,7 +147,7 @@ def test_state_git_failure_is_structured_error_not_crash(
     def _boom(self):
         raise bp.CheckpointError("git rev-parse exploded (simulated)")
 
-    monkeypatch.setattr(bp.Repo, "state", _boom)
+    monkeypatch.setattr(bp.Repo, "status", _boom)
     r = client.get("/api/checkpoint/state",
                    query_string={"path": str(tmp_path)})
     assert r.status_code == 500

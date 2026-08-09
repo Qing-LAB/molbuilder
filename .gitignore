@@ -87,3 +87,6 @@ test-artifacts/
 
 # live test-progress files (tools/testrun.py)
 .test-progress/
+
+# scratch for test runs and throwaway checks (never committed)
+.testtmp/

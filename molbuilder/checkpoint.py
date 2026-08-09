@@ -40,6 +40,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -965,16 +966,34 @@ class Repo:
         # brand-new big file is noticed.  Iterating the classification alone
         # would report a file as *deleted* the moment it stopped matching an
         # always-large pattern, while it sat untouched on disk.
+        # Cheap first, exact only when it has to be.  This runs on every
+        # directory-enter in the sidebar (docs/web/projects.md), and a folder
+        # holding a 2 GB density matrix must not be read end-to-end to answer
+        # "is anything unsaved".  A different SIZE is already an answer; only a
+        # same-size file that was touched after the state was saved needs
+        # hashing, and an untouched one cannot have changed.
+        saved_at = _epoch_of(here.at) if here is not None else None
         for key in set(expected) | set(on_disk):
             path = self.root / key
             if not path.is_file():
                 deleted.add(key)
                 continue
             want = expected.get(key)
-            actual = hashlib.sha256(path.read_bytes()).hexdigest()
             if want is None:
                 added.add(key)
-            elif want[0] != actual:
+                continue
+            stat = path.stat()
+            if stat.st_size != want[1]:
+                changed.add(key)
+                continue
+            # STRICTLY older, because a state's timestamp has one-second
+            # resolution while a file's does not: something written 0.7 s into
+            # the same second the save happened cannot be ruled out by
+            # comparing them.  Same-second files are hashed -- slower, never
+            # wrong, and this is the classic racy-timestamp trap.
+            if saved_at is not None and stat.st_mtime < saved_at:
+                continue                      # untouched since the save
+            if hashlib.sha256(path.read_bytes()).hexdigest() != want[0]:
                 changed.add(key)
 
         return FolderStatus(
@@ -1138,6 +1157,18 @@ class Repo:
             found.append(Tag(name=name, state=state or self.resolve(name),
                              note=subject))
         return sorted(found, key=lambda t: t.name)
+
+
+def _epoch_of(iso: str) -> Optional[float]:
+    """An ISO-8601 timestamp as epoch seconds, or None if unreadable.
+
+    Unreadable means "cannot rule the file out cheaply", and the caller then
+    hashes -- slower, never wrong.
+    """
+    try:
+        return datetime.fromisoformat(iso).timestamp()
+    except (ValueError, TypeError):
+        return None
 
 
 def _describe(status: "FolderStatus") -> str:

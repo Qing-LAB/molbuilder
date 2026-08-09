@@ -5,11 +5,17 @@
  * the user navigates into a directory.  For each directory:
  *
  *   1. GET  /api/checkpoint/state    -> sensor pill + visibility decision
- *   2. GET  /api/checkpoint/list     -> populate row list when init'd
+ *   2. GET  /api/checkpoint/list     -> the states, when the folder has any
  *   3. POST /api/checkpoint/init     -> empty-state CTA
- *   4. POST /api/checkpoint/commit   -> "Checkpoint now" button
- *   5. POST /api/checkpoint/tag      -> "Tag HEAD…" button
+ *   4. POST /api/checkpoint/save     -> "Save state…" button
+ *   5. POST /api/checkpoint/tag      -> "Name this state…" button
  *   6. POST /api/checkpoint/restore  -> per-row "Restore" button
+ *
+ * Vocabulary is the contract's and nothing else: a STATE is a saved snapshot
+ * of the folder, a TAG is a name you gave one, and the folder always STANDS AT
+ * exactly one state.  There are no branches and no "HEAD" here -- going back
+ * and saving is how you fork, so there is nothing to declare and nothing to
+ * name (docs/execution/checkpointing.md § 5, § 7.1).
  *
  * Activation gate (docs/web/projects.md): the panel only appears
  * for a *run directory* -- a dir at projects rel-depth 3, in the
@@ -36,8 +42,8 @@ const _state = {
     currentDir:    null,
     /** Latest /api/checkpoint/state snapshot (or null on init). */
     repoState:     null,
-    /** Cached checkpoints list to avoid re-rendering on every refresh. */
-    checkpoints:   [],
+    /** The states this folder has, newest first. */
+    states:        [],
     /** True if the user has collapsed the panel via the chevron. */
     userCollapsed: false,
 };
@@ -187,7 +193,7 @@ function _renderCollapsedHeader() {
 function _renderState(repoState) {
     _state.repoState = repoState;
     if (!repoState || !repoState.initialized) {
-        elSensor.textContent = "no checkpoints";
+        elSensor.textContent = "no states saved";
         elSensor.setAttribute("data-state", "uninit");
         elEmpty.hidden    = false;
         elActions.hidden  = true;
@@ -195,13 +201,22 @@ function _renderState(repoState) {
         if (elGraph) elGraph.hidden = true;
         return;
     }
-    if (repoState.dirty) {
-        const n = repoState.untracked || 0;
-        elSensor.textContent = `${n > 0 ? n + " new + " : ""}dirty`;
+    // "unsaved", not "dirty": the folder differs from the state it STANDS AT,
+    // which is the only baseline (§ 5).  Measured against the newest state
+    // instead, this would light up after every restore about work that is
+    // already saved -- and a warning that fires when nothing is wrong is one
+    // people learn to ignore.
+    const unsaved = (repoState.unsaved || []).length;
+    if (unsaved > 0) {
+        elSensor.textContent = `${unsaved} unsaved`;
         elSensor.setAttribute("data-state", "dirty");
+        elSensor.title = (repoState.unsaved || []).join("\n");
     } else {
-        elSensor.textContent = "clean";
+        elSensor.textContent = "saved";
         elSensor.setAttribute("data-state", "clean");
+        elSensor.title = repoState.standing_at
+            ? `standing at ${repoState.standing_at.short}`
+            : "";
     }
     elEmpty.hidden   = true;
     elActions.hidden = false;
@@ -213,53 +228,53 @@ function _renderError(message) {
     _showAdvisory("Sensor error: " + message);
 }
 
-function _renderCheckpoints(checkpoints) {
-    _state.checkpoints = checkpoints || [];
-    _renderActiveView(_state.checkpoints);
+function _renderStates(states) {
+    _state.states = states || [];
+    _renderActiveView(_state.states);
 }
 
-function _buildRow(cp) {
+function _buildRow(state) {
     const li = document.createElement("li");
-    li.className     = "ps-checkpoint-list-item";
-    li.dataset.sha   = cp.sha;
-
-    const sha = document.createElement("span");
-    sha.className   = "ps-checkpoint-row-sha";
-    sha.textContent = cp.short_sha;
-    li.appendChild(sha);
-
-    const summary = document.createElement("span");
-    summary.className   = "ps-checkpoint-row-summary";
-    summary.textContent = cp.summary || "(no message)";
-    li.appendChild(summary);
-
-    if (cp.refs && cp.refs.length) {
-        const refs = document.createElement("span");
-        refs.className = "ps-checkpoint-row-refs";
-        for (const r of cp.refs) {
-            const chip = document.createElement("span");
-            chip.className = "ps-checkpoint-ref-chip";
-            const t = r.trim();
-            if (t.startsWith("tag:")) {
-                chip.setAttribute("data-kind", "tag");
-                chip.textContent = t.slice(4).trim();
-            } else if (t === "HEAD -> master" || t === "HEAD") {
-                chip.setAttribute("data-kind", "branch");
-                chip.textContent = "HEAD";
-            } else {
-                chip.setAttribute("data-kind", "branch");
-                chip.textContent = t.replace(/^HEAD -> /, "");
-            }
-            refs.appendChild(chip);
-        }
-        li.appendChild(refs);
+    li.className   = "ps-checkpoint-list-item";
+    li.dataset.sha = state.id;
+    if (_state.repoState && _state.repoState.standing_at
+        && _state.repoState.standing_at.id === state.id) {
+        li.setAttribute("data-standing", "true");
     }
 
-    if (cp.has_archive && cp.archive_bytes != null) {
-        const arch = document.createElement("span");
-        arch.className   = "ps-checkpoint-row-archive";
-        arch.textContent = _fmtBytes(cp.archive_bytes) + " archived";
-        li.appendChild(arch);
+    const id = document.createElement("span");
+    id.className   = "ps-checkpoint-row-sha";
+    id.textContent = state.short;
+    li.appendChild(id);
+
+    // The NOTE, never a generated stand-in.  It is the only thing that answers
+    // the question you bring to this list a month later (L3), and the panel is
+    // where that question gets asked.
+    const note = document.createElement("span");
+    note.className   = "ps-checkpoint-row-summary";
+    note.textContent = state.note;
+    li.appendChild(note);
+
+    // Which state this one came from -- two rows sharing a parent ARE the fork
+    // (§ 7.1), and nothing had to be named for it.
+    if (state.parent) {
+        const from = document.createElement("span");
+        from.className   = "ps-checkpoint-row-parent";
+        from.textContent = "from " + state.parent.slice(0, 7);
+        li.appendChild(from);
+    }
+
+    if (state.tags && state.tags.length) {
+        const tags = document.createElement("span");
+        tags.className = "ps-checkpoint-row-refs";
+        for (const name of state.tags) {
+            const chip = document.createElement("span");
+            chip.className = "ps-checkpoint-ref-chip";
+            chip.setAttribute("data-kind", "tag");
+            chip.textContent = name;
+            tags.appendChild(chip);
+        }
+        li.appendChild(tags);
     }
 
     // Inline action buttons -- shown when the row is expanded
@@ -296,20 +311,20 @@ function _setViewMode(mode) {
     try { sessionStorage.setItem("ws.ui.checkpoint.view", mode); }
     catch (_) { /* sessionStorage disabled */ }
     _updateViewButtons();
-    _renderActiveView(_state.checkpoints);
+    _renderActiveView(_state.states);
 }
 
-function _renderActiveView(checkpoints) {
+function _renderActiveView(states) {
     // Hide both, then show the active one (single source of layout
     // truth -- no race between toggles).
     if (elList)  elList.hidden  = true;
     if (elGraph) elGraph.hidden = true;
     if (_viewMode === "graph") {
         if (elGraph) elGraph.hidden = false;
-        _renderGraph(checkpoints);
+        _renderGraph(states);
     } else {
         if (elList)  elList.hidden  = false;
-        _renderListRows(checkpoints);
+        _renderListRows(states);
     }
 }
 
@@ -341,13 +356,13 @@ function _loadGitGraph() {
 
 /* ---------- Graph view rendering ---------- */
 
-async function _renderGraph(checkpoints) {
+async function _renderGraph(states) {
     if (!elGraph) return;
     elGraph.innerHTML = "";
-    if (!checkpoints || !checkpoints.length) {
+    if (!states || !states.length) {
         const empty = document.createElement("p");
         empty.className   = "ps-checkpoint-graph-empty";
-        empty.textContent = "(no checkpoints to graph)";
+        empty.textContent = "(no states to graph)";
         elGraph.appendChild(empty);
         return;
     }
@@ -401,77 +416,62 @@ async function _renderGraph(checkpoints) {
         orientation: "vertical",
     });
 
-    // @gitgraph/js wants commits in chronological order (oldest first).
-    // Our /api/checkpoint/list returns newest-first, so reverse.
-    const ordered = checkpoints.slice().reverse();
+    // Oldest first: a child is drawn after the state it came from.
+    const ordered = states.slice().reverse();
 
-    // Build per-branch hashes-known map so we can wire merges if any.
-    // PR-A's CLI is single-branch by default; this is a no-op for
-    // linear histories, but ready for the day branches appear.
-    const branches = new Map();
-    let mainBranch = null;
-    for (const cp of ordered) {
-        // Determine the branch this commit lives on (best-effort
-        // from ref decorations).  Default to "main".
-        let branchName = "main";
-        for (const r of (cp.refs || [])) {
-            const m = r.trim().match(/^([^:>\s]+)$/);
-            if (m && m[1] !== "HEAD" && m[1] !== "tag") {
-                branchName = m[1];
-                break;
-            }
+    // THE SHAPE COMES FROM PARENTAGE, NOT FROM BRANCH NAMES.  There are no
+    // branches in this system -- going back to a state and saving from it is
+    // how you fork (§ 7.1), so a fork is simply a state with a second child.
+    // The old renderer read branch names off ref decorations, which is a
+    // concept the contract removed; it drew every history as one line.
+    //
+    // @gitgraph/js needs a branch object per line, so one is created the
+    // moment a parent acquires its second child.  Those names are a drawing
+    // artifact and are never shown to the user as something they chose.
+    const lineOf   = new Map();   // state id -> gitgraph branch
+    const children = new Map();   // parent id -> how many children drawn
+    let trunk = null;
+
+    for (const st of ordered) {
+        let line;
+        if (!st.parent || !lineOf.has(st.parent)) {
+            line = trunk || (trunk = gitgraph.branch("main"));
+        } else {
+            const seen = children.get(st.parent) || 0;
+            line = seen === 0
+                ? lineOf.get(st.parent)                    // continue the line
+                : lineOf.get(st.parent).branch(st.short);  // a second child = a fork
+            children.set(st.parent, seen + 1);
         }
-        if (!branches.has(branchName)) {
-            const b = gitgraph.branch(branchName);
-            branches.set(branchName, b);
-            if (!mainBranch) mainBranch = b;
-        }
-        const b = branches.get(branchName);
-        b.commit({
-            subject: cp.summary || cp.short_sha,
-            hash:    cp.short_sha,
-            onClick: () => _showCommitDetail(cp),
+        line.commit({
+            subject: st.note,
+            hash:    st.short,
+            onClick: () => _showStateDetail(st),
         });
-        // Decorate with tag chips inline.
-        for (const r of (cp.refs || [])) {
-            const t = r.trim();
-            if (t.startsWith("tag:")) {
-                b.tag(t.slice(4).trim());
-            }
-        }
+        lineOf.set(st.id, line);
+        for (const name of (st.tags || [])) line.tag(name);
     }
 }
 
-function _showCommitDetail(cp) {
-    // Click on a graph node = inline advisory line with the full
-    // commit info.  Keeps the panel chrome minimal (no popover
-    // library); user can then act via the list view or sidebar
-    // context menu in future Phase 4 work.
-    const refs = (cp.refs || []).join(", ");
-    const arch = cp.has_archive
-        ? `${_fmtBytes(cp.archive_bytes)} archived`
-        : "no binaries archived";
+function _showStateDetail(state) {
+    // Click on a node = an inline line with what the list cannot fit.
+    const tags = (state.tags || []).join(", ");
+    const from = state.parent ? `from ${state.parent.slice(0, 7)}` : "the first state";
     _showAdvisory(
-        `${cp.short_sha} — ${cp.summary || "(no message)"} ` +
-        `[${refs || "no refs"}] · ${arch}`);
+        `${state.short} — ${state.note} · ${from}` +
+        (tags ? ` · tagged ${tags}` : ""));
 }
 
 /* ---------- List view extraction (so View toggle can call it) ---------- */
 
-function _renderListRows(checkpoints) {
+function _renderListRows(states) {
     if (!elList) return;
     elList.innerHTML = "";
-    for (const cp of (checkpoints || [])) {
-        elList.appendChild(_buildRow(cp));
+    for (const st of (states || [])) {
+        elList.appendChild(_buildRow(st));
     }
 }
 
-function _fmtBytes(n) {
-    if (n == null) return "";
-    if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
-    if (n >= 1024)        return (n / 1024).toFixed(1) + " KB";
-    return n + " B";
-}
 
 /* ---------- Network calls ---------- */
 
@@ -499,13 +499,16 @@ async function _refresh() {
             _renderError(stRes.body.error || "HTTP " + stRes.http);
             return;
         }
-        _renderState(stRes.body.state);
+        // The status fields are the response, not a nested object: `state`
+        // now means a saved snapshot, so the folder's condition cannot also
+        // be called that (§ 5).
+        _renderState(stRes.body);
 
-        if (stRes.body.state && stRes.body.state.initialized) {
+        if (stRes.body.initialized) {
             const lsRes = await _fetchJSON("GET",
                 `/api/checkpoint/list?path=${encodeURIComponent(_state.currentDir)}&limit=50`);
-            if (lsRes.body && lsRes.body.ok && lsRes.body.checkpoints) {
-                _renderCheckpoints(lsRes.body.checkpoints);
+            if (lsRes.body && lsRes.body.ok && lsRes.body.states) {
+                _renderStates(lsRes.body.states);
             }
         } else {
             elList.hidden = true;
@@ -567,7 +570,7 @@ async function _onCommitClick() {
     _hideAdvisory();
     elCommitBtn.disabled = true;
     try {
-        const res = await _fetchJSON("POST", "/api/checkpoint/commit", {
+        const res = await _fetchJSON("POST", "/api/checkpoint/save", {
             path:    _state.currentDir,
             message: msg.trim(),
         });
@@ -638,40 +641,56 @@ function _onListClick(ev) {
 async function _onRestoreClick(sha) {
     if (!_state.currentDir) return;
     if (!sha) return;
-    const cp = _state.checkpoints.find(c => c.sha === sha);
-    const label = cp && cp.refs && cp.refs.length
-        ? cp.refs[0].replace(/^tag:\s*/, "").replace(/^HEAD -> /, "")
-        : cp ? cp.short_sha : sha.slice(0, 7);
+    const target = _state.states.find(s => s.id === sha);
+    const label = target
+        ? (target.tags && target.tags.length ? target.tags[0] : target.short)
+        : sha.slice(0, 7);
     if (!confirm(
-        `Restore working tree to ${label}?\n\n` +
-        `This rewinds text files via git restore AND copies archived\n` +
-        `binaries (.DM, .HSX, ...) back over the working dir.  Refuses\n` +
-        `if there are uncommitted changes.`)) {
+        `Put this folder back to ${label}?\n\n` +
+        `The whole folder returns to that state -- text and big files\n` +
+        `together.  Anything here that is not saved is named first, and\n` +
+        `you get the choice before anything changes.`)) {
         return;
     }
     _hideAdvisory();
+    await _restore(sha, label, false);
+}
+
+/**
+ * A5 in two steps: try, and if there is unsaved work the server names it and
+ * refuses.  Only then is the user asked whether to accept the loss -- with the
+ * files in front of them, which is the whole difference between an informed
+ * decision and a shrug.  Nothing is stashed or set aside either way.
+ */
+async function _restore(sha, label, force) {
     try {
         const res = await _fetchJSON("POST", "/api/checkpoint/restore", {
-            path: _state.currentDir,
-            ref:  sha,
+            path:  _state.currentDir,
+            state: sha,
+            force: !!force,
         });
         if (res.body && res.body.ok) {
             await _refresh();
-            _showAdvisory(
-                `Restored ${label}.  ` +
-                (res.body.restored && res.body.restored.length
-                    ? `Binaries: ${res.body.restored.join(", ")}.`
-                    : "Text only (no archived binaries for this ref)."));
-        } else if (res.body && Array.isArray(res.body.errors_only)
-                   && res.body.errors_only.length) {
-            _showAdvisory(res.body.errors_only[0].message);
-        } else {
-            _showAdvisory("Restore failed: " +
-                (res.body?.error || "HTTP " + res.http));
+            _showAdvisory(`This folder is now ${label}.`);
+            return;
         }
+        const advisory = res.body && Array.isArray(res.body.errors_only)
+            && res.body.errors_only.length
+            ? res.body.errors_only[0].message : null;
+        if (advisory && !force) {
+            if (confirm(advisory + "\n\nGo ahead and lose it?")) {
+                await _restore(sha, label, true);
+            } else {
+                _showAdvisory("Nothing was changed.");
+            }
+            return;
+        }
+        _showAdvisory(advisory || ("Restore failed: " +
+            (res.body?.error || "HTTP " + res.http)));
     } catch (e) {
-        _showAdvisory("Restore failed: " + String(e?.message || e));
+        _showAdvisory("Restore failed: " + String(e && e.message || e));
     }
+}
 }
 
 /* ---------- Advisory surface ---------- */
