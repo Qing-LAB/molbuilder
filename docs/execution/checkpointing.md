@@ -12,9 +12,9 @@ sits in the project tree; [`run-identity.md`](?doc=execution/run-identity.md) �
 the id every commit and tag carries.
 
 A calculation lives in a folder: inputs, a relaxed geometry, a density matrix,
-logs. Checkpointing takes a **snapshot of that whole folder** so that whatever
-you do next — rerun a stage, regenerate the decks, start over from scratch — you
-can get back to exactly where you were.
+logs. Checkpointing takes a **snapshot of that whole folder** when you say so, and
+any snapshot you took is a point you can come back to — to rerun a stage, retune
+and try again, or start over from it.
 
 It is git underneath, with one addition: files too large for git are copied into
 a side store with a checksum each, so a snapshot holds the big binaries too. You
@@ -226,13 +226,35 @@ molbuilder snapshot list
 # started from there, so what you do next is an experiment and not an edit
 # to the past.  Anything unsaved here is named first and you are asked.
 molbuilder snapshot restore 2 --as tighter-mesh
+molbuilder snapshot restore 2               # same, with the line named for you
 
 # back to where you were
 molbuilder snapshot restore main
 
+# fork from HERE, before trying something -- see below
+molbuilder snapshot branch what-if-tighter
+
+# mark a point you will want by name later
+molbuilder snapshot tag stage1-good -m "geometry I trust"
+
 # which files count as "big" here
 molbuilder snapshot config
 ```
+
+**`branch` and `restore` fork in opposite directions, and you need both.**
+`restore <point>` goes *back* and starts a line there — you already have the
+result and want to try a different route from it. `branch` starts a line *where
+you are now*, before you try something. Without it the only way to experiment is
+to work on `main` and retreat if it fails, which leaves the experiment on the
+main line and the retreat on a side one — backwards from how anyone reads a
+history afterwards.
+
+**A point's number is assigned when it is saved, and never reused.** It is
+per line and it does not shift when later points are added, so `restore 2` means
+the same thing next month as it does today. (The same rule as attempt numbers in
+[`project-layout.md`](?doc=execution/project-layout.md) § 4.3, for the same
+reason: an identifier you can type is worthless if it drifts.) `snapshot tag`
+gives a point a name as well, for the ones you know you will come back to.
 
 ### 5.1 Two labels, both yours
 
@@ -519,6 +541,24 @@ molbuilder snapshot restore main
 
 That is the whole of it. The `tighter-mesh` line stays exactly where it is, and
 `snapshot restore tighter-mesh` returns to it whenever you want to compare.
+
+### 10.3 Forking before you try something, rather than after
+
+10.1 goes back to a point you already have. This is the other direction: you are
+at the tip of the main line, about to try something you are not sure about, and
+you want the main line to stay clean whatever happens.
+
+```bash
+molbuilder snapshot checkpoint -m "stage 2 converged -- about to try a tighter mesh"
+molbuilder snapshot branch tighter-mesh
+# edit task.json, rerun, save.  main is untouched; `snapshot restore main`
+# returns to it, and both lines stay in the list side by side.
+```
+
+**The difference from 10.1 is which line the experiment ends up on.** Fork first
+and the experiment is on `tighter-mesh` where it belongs. Work on `main` and
+retreat afterwards, and the experiment is on `main` while the *retreat* becomes
+the side line — a history that reads backwards a month later.
 
 ### 10.3 From Python
 
@@ -849,8 +889,10 @@ That belongs where produce is specified, and stating it here made this document
 appear to know things it has no business knowing (a folder is files; whether a
 deck tells an engine to look for prior state is not a property of a snapshot).
 
-- **Test:** every checkpoint operation other than `restore` leaves the working
-  folder byte-identical.
+- **Test:** after `init`, every checkpoint operation other than `restore` leaves
+  the working folder byte-identical. `init` is the one setup act — it creates the
+  two stores and writes the generated `.gitignore` — and it is excepted by name,
+  not by a rule about which files may change.
 
 **I4 — a generated wrapper contains no git.** A wrapper that committed would need
 git on the compute node, which `running-a-job.md § 2` forbids.
