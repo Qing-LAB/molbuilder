@@ -1216,7 +1216,7 @@ wrong bytes.
 | **Field order** | `sha256`, `bytes`, `key` | `key` is the only field of unbounded length with arbitrary content, so it must be last |
 | **`sha256`** | 64 lowercase hex characters | one spelling per digest |
 | **`bytes`** | decimal integer, no leading zeros | one spelling per value |
-| **`key`** | repo-relative POSIX path, ASCII printable | **Rejected:** absolute paths, `.` / `..` / empty components, backslashes, and any dot-prefixed component — a restore must not be steerable out of the folder or into `.git` or `.binsnapshots` |
+| **`key`** | repo-relative POSIX path, ASCII printable | **Rejected:** absolute paths, `.` / `..` / empty components, backslashes, and any component naming a **store** (`.git`, `.binsnapshots`) — a restore must not be steerable out of the folder, nor into the history it is restoring from. Other dot-prefixed names are ordinary files and **are** stored: `.gitignore` and a `.scratch/` directory are part of the folder, and [`checkpointing.md`](?doc=execution/checkpointing.md) S1 exempts no category but the two stores |
 | **Ordering** | sorted by `key` | two machines archiving the same files must produce identical bytes, or they produce different archives |
 | **Duplicates** | a key appears once | a key names one file, or a restore has to choose |
 | **Empty file** | legal — *this state archived nothing* | distinct from a **missing** archive directory, which means the archive was lost |

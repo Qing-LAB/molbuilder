@@ -126,16 +126,16 @@ def test_a_deviation_is_refused_and_named(raw, why):
     "./here",
     ".git/config",
     ".binsnapshots/x",
-    "sub/.hidden/x",
+    "sub/.git/config",
     "back\\slash",
     "",
 ])
 def test_a_key_that_could_steer_a_restore_out_of_the_folder_is_refused(key):
     """The restore writes to these paths, so the format is the boundary.
 
-    Dot-prefixed components are rejected wholesale rather than by naming
-    `.git` and `.binsnapshots`: a blocklist of two is a blocklist somebody
-    extends the store with a third and forgets.
+    Two hazards, not one: escaping the folder, and writing *into the history
+    being restored from*.  The store names come from `NEVER_STORED` rather than
+    being spelled here, so a third store cannot be added without this following.
     """
     with pytest.raises(CheckpointError):
         parse_manifest(f"{A}\t1\t{key}\n".encode("utf-8", "surrogateescape"),
@@ -145,6 +145,20 @@ def test_a_key_that_could_steer_a_restore_out_of_the_folder_is_refused(key):
 # ------------------------------------------------------------------ #
 #  The writer refuses what the reader would refuse                    #
 # ------------------------------------------------------------------ #
+
+
+@pytest.mark.parametrize("key", [".gitignore", ".scratch/big.bin",
+                                 "sub/.hidden/data.bin"])
+def test_an_ordinary_hidden_file_is_stored_like_any_other(key):
+    """S1 exempts no category but the two stores.
+
+    A blanket ban on dot-prefixed components is broader than its own reason,
+    and it is not free: a folder holding a `.scratch/` directory could not be
+    saved AT ALL, which is § 1's promise failing outright rather than a tidiness
+    question.
+    """
+    raw = format_manifest([(A, 1, key)])
+    assert parse_manifest(raw, "x") == {key: (A, 1)}
 
 
 @pytest.mark.parametrize("entries, why", [

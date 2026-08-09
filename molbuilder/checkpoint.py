@@ -381,7 +381,11 @@ def walk_files(root: Path):
     """
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root)
-        if rel.parts[0] in NEVER_STORED:
+        # Any component, not just the first: a stray `sub/.git` is somebody
+        # else's repository and is no more ours to store than our own.  The
+        # walk and the key check must exclude the same set, or a file the walk
+        # collects is a file the MANIFEST refuses and the save dies on.
+        if any(part in NEVER_STORED for part in rel.parts):
             continue
         if path.is_symlink() or not path.is_file():
             continue
@@ -463,11 +467,16 @@ def _check_key(key: str, prefix: str) -> None:
             f"{prefix}: {key!r} must be a repo-relative POSIX path "
             f"(job-contracts.md § 6.1).")
     for part in key.split("/"):
-        if part in ("", ".", "..") or part.startswith("."):
+        if part in ("", ".", ".."):
             raise CheckpointError(
-                f"{prefix}: {key!r} has an empty, dot or dot-prefixed "
-                f"component, which could reach outside the folder or into "
-                f"{'/'.join(NEVER_STORED)} (job-contracts.md § 6.1).")
+                f"{prefix}: {key!r} has an empty or dot component, which "
+                f"could steer a restore outside the folder "
+                f"(job-contracts.md § 6.1).")
+        if part in NEVER_STORED:
+            raise CheckpointError(
+                f"{prefix}: {key!r} names a store ({part}), and a restore "
+                f"writing there would corrupt the history it is restoring "
+                f"from (job-contracts.md § 6.1).")
 
 
 def parse_manifest(raw: bytes, where: str) -> Dict[str, Tuple[str, int]]:
@@ -1097,14 +1106,22 @@ class Repo:
         self._require_init()
         # ``*objectname`` is the commit an annotated tag points AT; plain
         # ``objectname`` would be the tag object itself, which is not a state.
-        out = _run_git(["for-each-ref", "--format=%(refname:short)%x00"
-                        "%(*objectname)%x00%(contents:subject)", "refs/tags"],
+        #
+        # Space-separated with the free text LAST, not %x00-separated:
+        # `for-each-ref` does not interpret %xNN escapes, so a NUL format
+        # emits the four literal characters and the whole line parses as one
+        # field.  A tag name and a hash cannot contain spaces; a note can, so
+        # it goes last and the split is bounded.
+        out = _run_git(["for-each-ref",
+                        "--format=%(refname:short) %(*objectname) "
+                        "%(contents:subject)", "refs/tags"],
                        cwd=self.path, check=False).stdout
         found = []
         for line in out.splitlines():
             if not line.strip():
                 continue
-            name, state, subject = (line.split("\x00") + ["", ""])[:3]
+            parts = (line.split(" ", 2) + ["", ""])[:3]
+            name, state, subject = parts
             found.append(Tag(name=name, state=state or self.resolve(name),
                              note=subject))
         return sorted(found, key=lambda t: t.name)

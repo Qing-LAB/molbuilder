@@ -192,8 +192,10 @@ path (`job-contracts.md § 6.1` gives the rules and why each one is there):
 
 **The path is relative to the folder root, not a bare filename.** That is what
 lets one archive hold a `.DM` from every stage without them colliding. Every part
-is checked so a restore cannot be steered out of the folder: no leading `/`, no
-`..`, nothing starting with a dot.
+is checked so a restore cannot be steered out of the folder, nor into the
+history it is restoring from: no leading `/`, no `..`, and no component naming
+a store. Other hidden files are ordinary files and are stored like any other —
+S1 exempts no category but the two stores.
 
 **Identical content is stored once.** Two saves that both contain an unchanged
 `.DM` record the same sha256, so the second links to the first's file rather than
