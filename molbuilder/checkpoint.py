@@ -39,8 +39,7 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -357,79 +356,45 @@ def _scan_subtree(path: Path) -> Tuple[List[str], List[str]]:
 #: Directories the archive walk never descends into.  ``.binsnapshots`` would
 #: make the archive archive itself; ``.git`` holds packfiles that are git's own
 #: business.  Any other dot-directory is tooling scratch, not run state.
-_ARCHIVE_SKIP_DIRS = frozenset({".git", ".binsnapshots"})
+def archive_key(root: Path, path: Path) -> str:
+    """A file's key inside an archive: its path relative to the folder root.
+
+    Repo-relative rather than a bare basename, so one archive can hold a `.DM`
+    from every stage without them colliding (L2).
+    """
+    return path.relative_to(root).as_posix()
 
 
-def _archive_key(root: Path, p: Path) -> str:
-    """The archive/MANIFEST key for a working-tree file: its path relative to
-    the repo root, POSIX separators.  A file at the top level keys as its bare
-    basename, which is what every archive written before nested run folders
-    existed contains -- so the key space WIDENED and old archives still read."""
-    return p.relative_to(root).as_posix()
+def walk_files(root: Path):
+    """Every regular file that belongs in a store (S1).
+
+    Skips only :data:`NEVER_STORED` — the two stores themselves — and symlinks.
+    **No other exclusion**: "no category of file is exempt", and a walk with a
+    private skip list is a walk that agrees with itself about files nobody
+    stores.
+
+    Symlinks are outside S1 by its own wording: a link has no content of its
+    own, the real file is stored once wherever it lives, and recreating the
+    layout is what a restore does anyway.
+    """
+    for path in sorted(root.rglob("*")):
+        rel = path.relative_to(root)
+        if rel.parts[0] in NEVER_STORED:
+            continue
+        if path.is_symlink() or not path.is_file():
+            continue
+        yield path
 
 
-def _list_big_binaries(path: Path) -> List[Path]:
-    """Big binaries anywhere in the run tree, per the repo's PERSISTED
-    classification (``.mbcheckpoint.json`` via ``_read_archive_globs`` --
-    engine-specific, user-editable).
+def split_by_store(root: Path, size_limit: int, always_large=()):
+    """Partition the folder into ``(big, small)`` — the archive's and git's.
 
-    RECURSIVE, and it has to be.  ``.gitignore`` receives the raw globs
-    (``*.DM``), and a gitignore pattern with no slash matches at EVERY level --
-    so a nested ``coarse/job.DM`` is ignored by git.  A top-level-only archive
-    walk would then leave it ignored AND unarchived: in no snapshot at all,
-    silently absent after a restore.  Both sides of the classification resolve
-    depth the same way or the two disagree, and the disagreement loses data
-    (docs/execution/checkpointing.md, L2).
-
-    SYMLINKS ARE SKIPPED.  A carried restart file is a link to the stage that
-    produced it until localize-on-run replaces it with a real copy; the
-    producer's file is archived once, under its own key, and archiving the link
-    as a second copy would both duplicate content and restore a regular file
-    where a link belongs."""
-    root = Path(path)
-    # Dedupe by archive key: OVERLAPPING globs (e.g. "*.DM" and "*.D*") would
-    # otherwise list the same file twice -> duplicate MANIFEST entries, which
-    # the strict parser REJECTS on restore (trapping the checkpoint).
-    found: List[Path] = []
-    seen: set = set()
-    for pat in _read_archive_globs(root):
-        for p in sorted(root.rglob(pat)):
-            rel = p.relative_to(root)
-            # EVERY component, basename included.  Filtering only the parents
-            # let a file like `.hidden.DM` through -- pathlib's ``*`` matches a
-            # leading dot -- and the MANIFEST parser rejects a dot-prefixed
-            # component anywhere in a key.  The archive would then write a
-            # MANIFEST its own parser refuses, and that checkpoint could never
-            # be verified or restored again.  Writer and reader agree on the
-            # same rule or the archive traps itself.
-            if any(part in _ARCHIVE_SKIP_DIRS or part.startswith(".")
-                   for part in rel.parts):
-                continue
-            if p.is_symlink() or not p.is_file():
-                continue
-            key = rel.as_posix()
-            if key not in seen:
-                seen.add(key)
-                found.append(p)
-    return found
-
-
-def _archive_files(arch: Path) -> List[Path]:
-    """Every archived payload file under ``arch``, at any depth.
-
-    RECURSIVE.  Keys became repo-relative paths on 2026-08-06, so an archive
-    holding ``01_coarse/job.DM`` has nothing but a DIRECTORY at its top level --
-    a top-level-only scan reports such an archive as empty and its size as
-    zero, which is what ``list_checkpoints`` and ``_checkpoint_from_sha`` did
-    while ``archive_total_bytes`` (already ``rglob``) disagreed."""
-    if not arch.is_dir():
-        return []
-    return [p for p in sorted(arch.rglob("*"))
-            if p.is_file() and p.name not in (_MANIFEST_NAME, ".gitkeep")]
-
-
-def _archive_dir(path: Path, sha: str) -> Path:
-    return path / ".binsnapshots" / sha
+    Every regular file lands in exactly one list, which is S1 stated as code.
+    """
+    big, small = [], []
+    for path in walk_files(root):
+        (big if is_big(path, size_limit, always_large) else small).append(path)
+    return big, small
 
 
 # --------------------------------------------------------------------- #
@@ -570,908 +535,498 @@ def archive_dir(root: Path, digest: str) -> Path:
     return root / ARCHIVE_DIR / digest
 
 
-def _atomic_write_text(target: Path, text: str) -> None:
-    """Write ``text`` to ``target`` atomically via .tmp + os.replace.
-
-    The body is fully flushed + fsync'd before the rename, so any
-    crash mid-write leaves either the prior file intact or the new
-    file fully written -- never a half-MANIFEST.
-    """
-    tmp = target.parent / (target.name + ".tmp")
-    with open(tmp, "w", encoding="ascii", newline="\n") as fh:
-        fh.write(text)
-        fh.flush()
-        try:
-            os.fsync(fh.fileno())
-        except OSError:
-            pass        # tmpfs / some FS lack fsync; replace will still atom-swap
+def _atomic_write_bytes(target: Path, data: bytes) -> None:
+    """Write via a sibling temp + ``os.replace`` so readers never see a partial."""
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_bytes(data)
     os.replace(tmp, target)
 
 
-def _published_archive_index(path: Path) -> Dict[str, Path]:
-    """``{sha256: an existing archived file with that content}``, read from the
-    MANIFESTs of every published archive.
+# --------------------------------------------------------------------- #
+#  Publishing an archive (A1, I1, § 6)                                  #
+# --------------------------------------------------------------------- #
 
-    Only real published archives are indexed -- a directory name must be 40 hex
-    chars, so the transient ``<sha>.tmp`` and ``<sha>.old`` of an in-flight
-    publish can never be linked against.
 
-    The MANIFEST is trusted for *which* sha a file claims; the claim is verified
-    before anything links to it (see ``_link_or_copy``).  Reading the MANIFESTs
-    is cheap: they are small text files, one per checkpoint.
+def _existing_by_sha(root: Path) -> Dict[str, Path]:
+    """Every already-archived file, indexed by content.
+
+    Serves the *Disk cost* property (§ 12): identical content is stored once,
+    so a second save of an unchanged 2 GB binary costs a directory entry.
     """
     index: Dict[str, Path] = {}
-    root = path / ".binsnapshots"
-    if not root.is_dir():
+    base = root / ARCHIVE_DIR
+    if not base.is_dir():
         return index
-    for arch in sorted(root.iterdir()):
-        if not arch.is_dir() or not _SHA_DIR_RE.match(arch.name):
-            continue
-        manifest = arch / _MANIFEST_NAME
-        if not manifest.is_file():
+    for adir in sorted(base.iterdir()):
+        man = adir / MANIFEST_NAME
+        if not (adir.is_dir() and man.is_file()):
             continue
         try:
-            entries = _parse_canonical_manifest(manifest.read_bytes(),
-                                                where=str(arch))
+            entries = parse_manifest(man.read_bytes(), str(adir))
         except CheckpointError:
-            continue                      # a damaged MANIFEST indexes nothing
-        for key, (entry_sha, _size) in entries.items():
-            if entry_sha in index:
-                continue
-            cand = arch / key
-            if cand.is_file():
-                index[entry_sha] = cand
+            continue                     # a damaged archive indexes nothing
+        for key, (sha256, _size) in entries.items():
+            index.setdefault(sha256, adir / key)
     return index
 
 
-def _link_or_copy(src: Path, dst: Path, src_sha: str,
-                  index: Dict[str, Path], verified: Dict[str, bool]) -> bool:
-    """Put ``src``'s content at ``dst``, reusing an identical archived copy when
-    one exists.  Returns True if it was reused (hard link), False if copied.
+def publish_archive(root: Path, big: Sequence[Path]) -> str:
+    """Write the archive for *big* and return its digest (§ 6).
 
-    **This is the *Disk cost* property** (checkpointing.md § 12; it used to be
-    the rule `L5`).  An archived file is never rewritten (I1), so a file whose
-    content is already in the archive does not need storing twice -- a hard link
-    is a directory entry, and the second checkpoint of an unchanged binary costs
-    no disk. Everything downstream is untouched: the archive still has a real
-    file at ``<sha>/<key>``, so restore, verify and the MANIFEST format do not
-    know the difference.
+    Build in a ``.tmp``, hash the source, copy, **re-hash the copy** and
+    compare, write the MANIFEST, then publish at the digest — *create if
+    absent, never overwrite* (A1).  An archive at a given name always holds the
+    same content, so there is nothing to replace and nothing to move aside.
 
-    **It serves both directory shapes with one rule, which is why it is by
-    content rather than by "the attempt did not change".** In the hierarchical
-    shape an attempt is immutable, so its files link forever after the first
-    save. In the flat shape one ``<id>.DM`` is overwritten every stage, so its
-    content differs and it is copied -- correct rather than wasteful
-    (``project-layout.md § 6.2``), and nothing has to special-case which shape
-    it is in.
-
-    **The candidate is verified before it is trusted.** The index knows only
-    what a MANIFEST *claims*; linking to a file that had rotted would record a
-    sha the bytes do not have, turning a cheap save into a corrupt one. So the
-    candidate is hashed once per checkpoint (memoised in ``verified``) and
-    rejected if it does not match. That is one read where a copy would have
-    done a read *and* a write, so the I/O is lower too.
+    Re-hashing the copy is not belt-and-braces: if the MANIFEST's checksum came
+    from the copy alone, a copy corrupted on the way to disk would be
+    *self-consistent* and would verify against its own bad checksum forever.
     """
-    cand = index.get(src_sha)
-    if cand is not None and cand.is_file():
-        ok = verified.get(src_sha)
-        if ok is None:
-            try:
-                ok = hashlib.sha256(cand.read_bytes()).hexdigest() == src_sha
-            except OSError:
-                ok = False
-            verified[src_sha] = ok
-        if ok:
-            try:
-                os.link(cand, dst)
-                return True
-            except OSError:
-                pass                      # cross-device, or links unsupported
-    shutil.copy2(src, dst)
-    return False
+    entries: List[Tuple[str, int, str]] = []
+    for src in big:
+        entries.append((hashlib.sha256(src.read_bytes()).hexdigest(),
+                        src.stat().st_size, archive_key(root, src)))
+    raw = format_manifest(entries)
+    digest = manifest_digest(raw)
+    final = archive_dir(root, digest)
+    if (final / MANIFEST_NAME).is_file():
+        return digest                    # already published; identical by name
 
-
-def _archive_binaries(path: Path, sha: str) -> int:
-    """Copy big binaries from working dir into ``.binsnapshots/<sha>/``;
-    write MANIFEST in canonical format (job-contracts.md § 6.1).  Returns total bytes
-    archived (0 if no binaries).
-
-    ALWAYS writes the directory and a MANIFEST, even with nothing to archive.
-    An empty MANIFEST says "this commit archived nothing"; a MISSING directory
-    then says "this commit's archive is lost".  Before, absence meant both, and
-    ``missing_archive_warning`` had to guess between them from whether OTHER
-    commits had archives (its docstring: "a lost archive cannot be proven")."""
-    binaries = _list_big_binaries(path)
-    if not _SHA_DIR_RE.match(sha):
-        raise CheckpointError(
-            f"_archive_binaries: SHA dir name {sha!r} is not 40 "
-            f"lowercase hex chars (job-contracts.md § 6.1).")
-    final = _archive_dir(path, sha)
-    # ATOMIC PUBLISH: build the archive in a sibling ``.tmp`` dir and rename it
-    # into place only after every binary is copied AND the MANIFEST is written.
-    # A crash mid-copy then leaves only the throwaway .tmp -- never a PARTIAL
-    # archive at the real path that restore would mistake for complete (silent
-    # loss) or the parser would choke on (checkpointing.md A1).
-    tmp = final.parent / (sha + ".tmp")
+    tmp = final.with_name(digest + ".tmp")
     if tmp.exists():
         shutil.rmtree(tmp)
     tmp.mkdir(parents=True)
-    entries: List[Tuple[str, int, str]] = []
-    total = 0
-    # What is already archived is not archived again.  Built once per
-    # checkpoint, BEFORE the publish, so it never sees this archive's own .tmp.
-    index = _published_archive_index(path)
-    verified: Dict[str, bool] = {}
+    index = _existing_by_sha(root)
     try:
-        for src in binaries:
-            key = _archive_key(path, src)
+        for sha256, _size, key in entries:
+            src = root / key
             dst = tmp / key
             dst.parent.mkdir(parents=True, exist_ok=True)
-            # Hash the SOURCE, copy, then re-hash the ARCHIVED copy and require
-            # they match.  Deriving the MANIFEST sha from the copy alone would
-            # make a silent copy corruption (disk error) self-consistent -- the
-            # bad bytes would later "verify" against their own bad sha and be
-            # restored as truth.  Verify FIDELITY (source == archive) at save
-            # time so a corrupt copy fails loudly here, not silently on restore.
-            src_sha = hashlib.sha256(src.read_bytes()).hexdigest()
-            reused = _link_or_copy(src, dst, src_sha, index, verified)
-            if not reused:
-                # Only a real copy can be corrupted in transit.  A reused entry
-                # was hashed before it was linked, and a hard link is the same
-                # inode -- re-reading it would cost a full read to confirm what
-                # was just confirmed, which is exactly the cost the reuse
-                # exists to remove.
-                dst_sha = hashlib.sha256(dst.read_bytes()).hexdigest()
-                if dst_sha != src_sha:
-                    raise CheckpointError(
-                        f"archive copy of {key!r} is corrupt: source sha256 "
-                        f"{src_sha!r} != archived {dst_sha!r} (disk error?); "
-                        f"the checkpoint was NOT safely archived.")
-            size = dst.stat().st_size
-            entries.append((src_sha, size, key))
-            total += size
-        _atomic_write_text(tmp / _MANIFEST_NAME,
-                           _format_canonical_manifest(entries))
-        # RENAME ASIDE, PUBLISH, THEN DELETE.  `rmtree(final)` followed by
-        # `os.replace` leaves a window in which NEITHER archive exists: a crash
-        # there destroys the archive that was already there and publishes
-        # nothing, which is the one outcome "complete archive or nothing" must
-        # not include.  Moving it aside first means the worst case is a stray
-        # `.old` directory beside a complete archive.
-        old = None
-        if final.exists():                     # idempotent re-archive
-            old = final.parent / (sha + ".old")
-            if old.exists():
-                shutil.rmtree(old)
-            os.replace(final, old)
+            reuse = index.get(sha256)
+            if reuse is not None and reuse.is_file():
+                try:
+                    os.link(reuse, dst)
+                    continue              # same inode: already verified once
+                except OSError:
+                    pass                  # cross-device or unsupported: copy
+            shutil.copy2(src, dst)
+            if hashlib.sha256(dst.read_bytes()).hexdigest() != sha256:
+                raise CheckpointError(
+                    f"archive copy of {key!r} is corrupt: it does not match "
+                    f"the source it was copied from.  Refusing to publish an "
+                    f"archive that would verify against its own bad checksum "
+                    f"(checkpointing.md § 6).")
+        _atomic_write_bytes(tmp / MANIFEST_NAME, raw)
         try:
-            os.replace(tmp, final)             # atomic publish
-        except BaseException:
-            if old is not None and not final.exists():
-                os.replace(old, final)         # put the previous one back
-            raise
-        if old is not None:
-            shutil.rmtree(old, ignore_errors=True)
+            os.replace(tmp, final)
+        except OSError:
+            if (final / MANIFEST_NAME).is_file():
+                shutil.rmtree(tmp, ignore_errors=True)   # someone else won
+            else:
+                raise
     except BaseException:
-        shutil.rmtree(tmp, ignore_errors=True)  # never leave a stray .tmp
+        shutil.rmtree(tmp, ignore_errors=True)
         raise
-    return total
+    return digest
 
 
-def _verify_archived_binaries(path: Path, sha: str
-                              ) -> Dict[str, Tuple[str, int]]:
-    """Verify the archived binaries for ``sha`` against their MANIFEST
-    (existence + size + sha256), touching NOTHING.  Raises
-    :class:`CheckpointError` on ANY mismatch.  Returns the expected
-    ``{name: (sha256, size)}`` map, or ``{}`` when there is no archive (a
-    binary-free checkpoint is legal, checkpointing.md § 7).
+def verify_archive(root: Path, digest: str) -> Dict[str, Tuple[str, int]]:
+    """Check an archive against its MANIFEST, touching nothing (I2).
 
-    Split out from the copy so callers (``restore``) can verify the archive
-    is intact BEFORE they mutate the working tree at all -- a corrupt archive
-    must abort the WHOLE restore, not leave a half-restored tree (checkpointing.md A2)."""
-    arch = _archive_dir(path, sha)
-    manifest = arch / _MANIFEST_NAME
-    if not arch.is_dir() or not manifest.is_file():
-        return {}
-    expected = _parse_canonical_manifest(manifest.read_bytes(), where=str(arch))
-    # A zero-entry MANIFEST is a legitimate "this commit had no big binaries",
-    # written so that a MISSING archive is unambiguous.  Nothing to verify.
-    for name, (want_sha256, want_size) in expected.items():
-        src = arch / name
+    Existence, size and sha256 for every entry.  Returns the expected map so a
+    caller can act on what it just verified rather than reading it twice.
+    """
+    adir = archive_dir(root, digest)
+    man = adir / MANIFEST_NAME
+    if not man.is_file():
+        raise CheckpointError(
+            f"archive {digest[:12]}… is missing: no {MANIFEST_NAME} at {adir}. "
+            f"The state that names it recorded this archive, so it was lost "
+            f"(checkpointing.md I2b).")
+    raw = man.read_bytes()
+    if manifest_digest(raw) != digest:
+        raise CheckpointError(
+            f"archive {digest[:12]}…: its {MANIFEST_NAME} does not hash to the "
+            f"name it is stored under.  The record was modified "
+            f"(checkpointing.md I2b).")
+    expected = parse_manifest(raw, str(adir))
+    for key, (sha256, size) in expected.items():
+        src = adir / key
         if not src.is_file():
             raise CheckpointError(
-                f"archive at {arch}: MANIFEST lists {name!r} but the "
-                f"file is missing; refusing to restore (checkpointing.md A2).")
-        actual_size = src.stat().st_size
-        if actual_size != want_size:
+                f"archive {digest[:12]}…: {MANIFEST_NAME} lists {key!r} but "
+                f"the file is missing; refusing to restore (I2).")
+        if src.stat().st_size != size:
             raise CheckpointError(
-                f"archive at {arch}: integrity check failed for "
-                f"{name!r} -- expected {want_size} bytes, got "
-                f"{actual_size} (checkpointing.md A2).")
-        actual_sha256 = hashlib.sha256(src.read_bytes()).hexdigest()
-        if actual_sha256 != want_sha256:
+                f"archive {digest[:12]}…: {key!r} is {src.stat().st_size} "
+                f"bytes, the record says {size}; refusing to restore (I2).")
+        if hashlib.sha256(src.read_bytes()).hexdigest() != sha256:
             raise CheckpointError(
-                f"archive at {arch}: integrity check failed for "
-                f"{name!r} -- expected sha256 {want_sha256!r}, got "
-                f"{actual_sha256!r}; refusing to restore (checkpointing.md A2).")
+                f"archive {digest[:12]}…: {key!r} does not match its recorded "
+                f"sha256; refusing to restore (I2).")
     return expected
 
 
-def _copy_archived_binaries(path: Path, sha: str,
-                            expected: Dict[str, Tuple[str, int]]
-                            ) -> List[str]:
-    """Copy the (already-verified) archived binaries into the working tree.
-    Sorted order = deterministic restore log.  Call ONLY after
-    :func:`_verify_archived_binaries` has passed."""
-    arch = _archive_dir(path, sha)
-    restored: List[str] = []
-    for name in sorted(expected.keys()):
-        try:
-            dst = path / name
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(arch / name, dst)
-        except OSError as e:
-            # Verified moments ago, so this is a TOCTOU/IO fault mid-copy.
-            # Surface it clearly (the working tree may be partially restored)
-            # rather than let a raw OSError escape.
-            raise CheckpointError(
-                f"restore: archive verified but copying {name!r} failed "
-                f"({e}); the working tree may be partially restored -- fix "
-                f"the disk/archive and re-run restore.")
-        restored.append(name)
-    return restored
+# --------------------------------------------------------------------- #
+#  The trailer -- one value that is both pointer and proof (I2b)        #
+# --------------------------------------------------------------------- #
+
+TRAILER = "Manifest-SHA256"
 
 
-def _restore_archived_binaries(path: Path, sha: str) -> List[str]:
-    """Verify then copy the archived binaries for ``sha`` (verification
-    aborts BEFORE any byte hits the working tree, checkpointing.md A2)."""
-    expected = _verify_archived_binaries(path, sha)
-    return _copy_archived_binaries(path, sha, expected)
+def message_with_trailer(note: str, digest: str) -> str:
+    """A state's message: the note you wrote, then the anchor.
 
-
-def _working_binaries_dirty(path: Path, head_sha: str) -> List[str]:
-    """Big-binary files in the working dir that DIFFER from what was archived
-    at ``head_sha`` -- i.e. uncommitted binary changes a restore would
-    overwrite.  Big binaries are gitignored, so ``git status`` cannot see
-    them; restore checks this separately to honor P3 (the user decides; the
-    system never silently discards binary work).  Returns sorted names."""
-    expected: Dict[str, Tuple[str, int]] = {}
-    arch = _archive_dir(path, head_sha)
-    manifest = arch / _MANIFEST_NAME
-    if arch.is_dir() and manifest.is_file():
-        try:
-            expected = _parse_canonical_manifest(manifest.read_bytes(),
-                                                 where=str(arch))
-        except CheckpointError as e:
-            # A corrupt HEAD MANIFEST is NOT "you have local changes" -- say so
-            # plainly instead of the misleading dirty-binary message below.
-            raise CheckpointError(
-                f"cannot check for uncommitted binary changes: HEAD's archive "
-                f"MANIFEST is unreadable ({e}).  The archive at {arch} is "
-                f"corrupt; restore is unsafe until it is repaired.")
-    dirty: List[str] = []
-    for wb in _list_big_binaries(path):
-        key = _archive_key(path, wb)
-        want = expected.get(key)
-        actual = hashlib.sha256(wb.read_bytes()).hexdigest()
-        if want is None or want[0] != actual:
-            dirty.append(key)
-    return sorted(dirty)
-
-
-def _migrate_legacy_manifest(arch: Path) -> Dict[str, Tuple[str, int]]:
-    """Convert a 2-column ``sha256sum`` MANIFEST in ``arch`` to the
-    canonical 3-column form (checkpointing.md I1).
-
-    Behaviour:
-      1. Reads existing MANIFEST.  If it already parses as canonical,
-         no-ops and returns the parsed contents.
-      2. If 2-column legacy: parses sha + name, re-hashes each file
-         against the recorded sha, stat()s for the size column, writes
-         canonical MANIFEST atomically.
-      3. Any other shape: raises -- no auto-fix.
-
-    Verification step (3) is load-bearing: if a recorded sha doesn't
-    match the file on disk, the migration aborts before writing
-    anything, leaving the legacy MANIFEST untouched.
-
-    Returns the parsed canonical contents.
+    The trailer is appended by the SAVE, never by a note helper: a save may
+    carry any note at all, and hanging the anchor off a helper would let every
+    save that skipped it ship unanchored (I2b).
     """
-    manifest = arch / _MANIFEST_NAME
-    if not manifest.is_file():
-        raise CheckpointError(
-            f"migrate-manifest: {arch}: no MANIFEST file present.")
-    raw = manifest.read_bytes()
-    # Try canonical first -- short-circuits already-migrated archives.
-    try:
-        canon = _parse_canonical_manifest(raw, where=str(arch))
-        return canon
-    except CheckpointError as canon_err:
-        canon_msg = str(canon_err)
-    # Try legacy 2-column shape.  This must not silently accept anything
-    # the canonical parser rejected for reasons OTHER than format.
-    if not raw.endswith(b"\n"):
-        raise CheckpointError(
-            f"migrate-manifest: {arch}: MANIFEST missing final "
-            f"newline; refusing to guess at the format.")
-    try:
-        text = raw.decode("ascii")
-    except UnicodeDecodeError as e:
-        raise CheckpointError(
-            f"migrate-manifest: {arch}: MANIFEST has non-ASCII bytes "
-            f"at offset {e.start}; refusing."
-        ) from e
-    parsed: Dict[str, Tuple[str, int]] = {}
-    lines = text.split("\n")
-    if lines and lines[-1] == "":
-        lines.pop()
-    for idx, line in enumerate(lines, start=1):
-        # sha256sum default output: "<64-hex-sha>  <name>" (two spaces).
-        if not (len(line) >= 66 and _SHA256_HEX_RE.match(line[:64])
-                and line[64:66] == "  "):
-            raise CheckpointError(
-                f"migrate-manifest: {arch}: line {idx} is neither "
-                f"canonical 3-column nor legacy 2-column "
-                f"sha256sum.  Original parser error was: "
-                f"{canon_msg}.  Refusing to guess.")
-        sha256_hex = line[:64]
-        name = line[66:]
-        if not _FILENAME_RE.match(name):
-            raise CheckpointError(
-                f"migrate-manifest: {arch}: line {idx} filename "
-                f"{name!r} contains non-printable or whitespace "
-                f"characters; refusing.")
-        if "/" in name or name == ".." or name.startswith("."):
-            raise CheckpointError(
-                f"migrate-manifest: {arch}: line {idx} filename "
-                f"{name!r} is not a bare basename; refusing.")
-        if name == _MANIFEST_NAME:
-            # sha256sum * includes MANIFEST itself; skip it -- the
-            # canonical form must not self-reference.
-            continue
-        if name in parsed:
-            raise CheckpointError(
-                f"migrate-manifest: {arch}: filename {name!r} "
-                f"appears more than once; refusing.")
-        parsed[name] = (sha256_hex, -1)   # size filled in below
-    if not parsed:
-        raise CheckpointError(
-            f"migrate-manifest: {arch}: legacy MANIFEST has no "
-            f"payload entries (only MANIFEST self-reference?); "
-            f"refusing.")
-    # Re-hash + size every file BEFORE writing anything.  Any mismatch
-    # aborts and leaves the original MANIFEST untouched (checkpointing.md I1).
-    verified: Dict[str, Tuple[str, int]] = {}
-    for name, (want_sha256, _) in parsed.items():
-        src = arch / name
-        if not src.is_file():
-            raise CheckpointError(
-                f"migrate-manifest: {arch}: MANIFEST references "
-                f"{name!r} but the file is missing.")
-        actual_sha256 = hashlib.sha256(src.read_bytes()).hexdigest()
-        if actual_sha256 != want_sha256:
-            raise CheckpointError(
-                f"migrate-manifest: {arch}: integrity check failed "
-                f"for {name!r} -- expected sha256 {want_sha256!r}, "
-                f"got {actual_sha256!r}.  Refusing to migrate; "
-                f"original MANIFEST left untouched.")
-        verified[name] = (actual_sha256, src.stat().st_size)
-    # All entries verified; write canonical MANIFEST atomically.
-    entries = [(sha, size, name) for name, (sha, size) in verified.items()]
-    _atomic_write_text(arch / _MANIFEST_NAME,
-                       _format_canonical_manifest(entries))
-    return verified
+    return f"{note.rstrip()}\n\n{TRAILER}: {digest}\n"
+
+
+def trailer_of(message: str) -> Optional[str]:
+    """The archive digest a state names, or None if it carries no anchor."""
+    for line in message.splitlines():
+        if line.startswith(TRAILER + ":"):
+            value = line.split(":", 1)[1].strip()
+            return value if _SHA256_RE.match(value) else None
+    return None
+
+
+def note_of(message: str) -> str:
+    """The note, without the anchor -- what a person reads in a list."""
+    return "\n".join(ln for ln in message.splitlines()
+                     if not ln.startswith(TRAILER + ":")).strip()
 
 
 # --------------------------------------------------------------------- #
-#  Public surface                                                       #
+#  Repo -- the class every surface goes through (§ 15)                  #
 # --------------------------------------------------------------------- #
+
+#: One ref per state, so **every state stays reachable forever** whatever else
+#: is restored afterwards (A6).  Nothing depends on where HEAD points, which is
+#: what lets a restore move the folder without any state becoming unreferenced.
+_STATE_REF = "refs/molbuilder/state/"
 
 
 class Repo:
-    """A single working directory tracked by a checkpoint repository.
+    """A calculation folder under checkpointing.
 
-    Single-user.  Lowest-directory scope (the directory containing the
-    ``.fdf`` / ``.py`` / ``.run.sh``; not its parent).  No auto-commit
-    -- every commit is the result of an explicit user call to
-    :meth:`checkpoint`.
+    **Contract:** `execution/checkpointing.md`.  The vocabulary is the
+    contract's: a **state** is a saved snapshot of the whole folder, a **tag**
+    is a name you gave one, and the folder always **stands at** exactly one
+    state (§ 5).  There are no branches and no lines; a fork is what happens
+    when you save from a restored state (§ 7.1).
     """
 
     def __init__(self, path: str) -> None:
-        self.path = str(Path(path).resolve())
+        self.path = str(path)
+        self.root = Path(path)
 
-    # -- predicates ----------------------------------------------- #
+    # -- setup ---------------------------------------------------- #
 
     @property
     def initialized(self) -> bool:
-        return (Path(self.path) / ".git").is_dir()
+        return (self.root / ".git").is_dir()
 
     def _require_init(self) -> None:
         if not self.initialized:
             raise CheckpointError(
-                f"{self.path}: not a checkpoint repository.  Run "
+                f"{self.path} is not a checkpoint folder; run "
                 f"`molbuilder snapshot init` first.")
 
-    # -- Phase 1: init -------------------------------------------- #
-
     def init(self, engine: Optional[str] = None,
-             archive_globs: Optional[List[str]] = None) -> None:
-        """Initialise the working dir as a git repository.  Idempotent
-        (no-op if already initialised).
+             note: str = "set up") -> "State":
+        """Make this folder a checkpoint folder and save its first state.
 
-        **Scope.** A repository covers one calculation, in either directory
-        shape (``execution/project-layout.md`` § 1):
-
-        * **flat** -- one directory, no subdirectories to worry about;
-        * **hierarchical** -- a calculation root whose subdirectories are its
-          own stages, attempts and benchmark.  Permitted because the root
-          carries a description saying they are one unit of work
-          (:data:`_BUNDLE_DESCRIPTORS`).
-
-        Two things are refused, for reasons that differ:
-
-        * **a subdirectory that is already a repository** -- a history inside a
-          history has no consistent restore;
-        * **nested working dirs with nothing declaring them one calculation** --
-          that is several independent calculations, and one history over them
-          would rewind all of them together.
-
-        ``engine`` (``"siesta"`` / ``"pyscf"``) selects the built-in
-        big-binary classification seeded into the persisted config
-        (``.mbcheckpoint.json``); the web/CLI caller already knows it at task
-        setup (UI<->API contract, checkpointing.md § 4).  ``archive_globs``
-        overrides with an explicit set.  When neither is given, the safe
-        union of all engines' patterns is used.  Both the persisted config
-        AND the ``.gitignore`` big-binary section are derived from the same
-        resolved globs, so they never drift."""
-        p = Path(self.path)
+        One repository per calculation (L1).  A folder whose subdirectories are
+        working dirs is accepted only when this folder declares them one
+        calculation by carrying its description; without one, several
+        independent calculations would share a history and rewind together.
+        """
         if self.initialized:
-            return
-
-        working, inner_repos = _scan_subtree(p)
-
-        # A repository inside a repository has no consistent restore -- the
-        # outer one cannot rewind files the inner one owns.  Refused in EITHER
-        # shape, bundle root or not.
-        if inner_repos:
+            return self.standing_at()
+        working, inner = _scan_subtree(self.root)
+        if inner:
             raise NestedRepoRefusedError(
-                f"{self.path}: cannot init -- these subdirectories are "
-                f"already checkpoint repositories: {inner_repos}.  A history "
-                f"inside a history cannot be restored consistently; "
-                f"checkpoint them where they are, or move them aside first.")
-
-        # Nested working dirs are fine WHEN THEY ARE THIS CALCULATION'S OWN.
-        # A bundle root says so by holding its description; anything else is
-        # several independent calculations, and one history over them would
-        # rewind all of them together (execution/project-layout.md § 6).
-        if working and not _is_bundle_root(p):
+                f"{self.path}: cannot init -- these subdirectories are already "
+                f"checkpoint folders: {inner}.  A history inside a history "
+                f"cannot be restored consistently (L1).")
+        if working and not _is_bundle_root(self.root):
             raise NestedRepoRefusedError(
                 f"{self.path}: cannot init -- nested working dirs present: "
                 f"{working}, and nothing here says they belong to one "
-                f"calculation.  Initialising would put several independent "
-                f"calculations in one history, so a restore would rewind all "
-                f"of them.  Run `snapshot init` inside each instead -- or, if "
-                f"these really are one calculation's stages, its root should "
-                f"carry the description that says so "
-                f"({', '.join(_BUNDLE_DESCRIPTORS)}).")
-
-        globs = _resolve_archive_globs(engine, archive_globs)
-
+                f"calculation.  Its root should carry the description that "
+                f"says so ({', '.join(_BUNDLE_DESCRIPTORS)}) (L1).")
         _run_git(["init", "-q"], cwd=self.path)
-        host = os.uname().nodename
-        _run_git(["config", "user.email", f"molbuilder@{host}"],
-                 cwd=self.path)
-        _run_git(["config", "user.name", "molbuilder"], cwd=self.path)
-        _run_git(["config", "commit.gpgsign", "false"], cwd=self.path)
+        self._engine = engine
+        write_gitignore(self.root, self._classification()["always_large"])
+        return self.save(note)
 
-        # The big-binary section is REGENERATED even when a .gitignore already
-        # exists.  Leaving an existing file alone was the one hole in "one list,
-        # one writer": archive_globs would say *.DM while git happily tracked
-        # it, so the file was archived AND committed -- a large blob in history
-        # forever, S1's "never both".  Any directory a user has worked in, and
-        # every benchmark bundle, arrives with a .gitignore.
-        #
-        # Lines the user added are PRESERVED: only molbuilder's own section is
-        # rewritten, identified by the marker below.
-        _write_gitignore_section(p / ".gitignore", globs)
-        # Persist the classification (git-tracked, written BEFORE the commit
-        # so it lands in the initial commit and is present for the archive
-        # step below).  The UNIFIED accessor for it is archive_globs() /
-        # set_archive_globs().
-        from . import persist
-        persist.write_json(p / _CHECKPOINT_CONFIG, {
-            "schema": _CHECKPOINT_CONFIG_SCHEMA,
-            "engine": engine or "unspecified",
-            "archive_globs": list(globs),
-        })
-        snaps = p / ".binsnapshots"
-        snaps.mkdir(exist_ok=True)
-        (snaps / ".gitkeep").touch()
+    def _classification(self) -> Dict[str, object]:
+        return classification(getattr(self, "_engine", None), self.root)
 
-        _run_git(["add", "."], cwd=self.path)
-        # If the dir is empty (no files at all) git complains; tolerate.
-        st = _run_git(["status", "--porcelain"], cwd=self.path,
-                      check=False)
-        if not st.stdout.strip():
-            # Nothing to commit (truly empty dir + .gitignore + .gitkeep
-            # already added means there's at least the gitignore).
-            # Force-create an empty initial commit so HEAD exists.
-            _run_git(
-                ["commit", "--allow-empty", "-q",
-                 "-m", f"molbuilder: initialised empty checkpoint repo "
-                       f"({Path(self.path).name})"],
-                cwd=self.path,
-            )
-        else:
-            _run_git(
-                ["commit", "-q",
-                 "-m", f"molbuilder: initial state of "
-                       f"{Path(self.path).name}"],
-                cwd=self.path,
-            )
+    # -- states ---------------------------------------------------- #
 
-        # Archive big binaries to the new HEAD's SHA.
-        head_sha = self._head_sha()
-        _archive_binaries(p, head_sha)
+    def _state_from(self, sha: str) -> "State":
+        out = _run_git(["show", "-s", "--format=%H%x00%P%x00%aI%x00%B", sha],
+                       cwd=self.path).stdout
+        sha_full, parents, at, message = out.split("\x00", 3)
+        parent = parents.split()[0] if parents.strip() else None
+        return State(id=sha_full.strip(), note=note_of(message),
+                     parent=parent, at=at.strip(),
+                     archive=trailer_of(message),
+                     tags=tuple(self._tag_names_at(sha_full.strip())))
 
-    # -- Big-binary classification: the UNIFIED accessor ---------- #
+    def _tag_names_at(self, sha: str) -> List[str]:
+        out = _run_git(["tag", "--points-at", sha], cwd=self.path,
+                       check=False).stdout
+        return sorted(n for n in out.split() if n)
 
-    def archive_globs(self) -> List[str]:
-        """The big-binary patterns this repo archives -- the persisted,
-        engine-specific, user-editable classification (checkpointing.md
-        § 4).  THE single read API; CLI, web, and internals all go through
-        it (falls back to the safe union for pre-config repos)."""
-        return list(_read_archive_globs(Path(self.path)))
+    def standing_at(self) -> Optional["State"]:
+        """The one state the folder is currently at (§ 5).
 
-    def set_archive_globs(self, globs: List[str]) -> List[str]:
-        """Update this repo's big-binary classification (the user-customizable
-        table) and regenerate the ``.gitignore`` big-binary section to match,
-        so git-ignore and sha-archive stay consistent.  Persisted in
-        ``.mbcheckpoint.json``; the change is a normal edit the user then
-        checkpoints.  THE single write API (CLI + web share it).  Raises on an
-        empty set."""
-        self._require_init()
-        cleaned = [str(g).strip() for g in globs if str(g).strip()]
-        if not cleaned:
-            raise CheckpointError(
-                "archive_globs cannot be empty -- restore would archive "
-                "nothing and silently lose binary state.")
-        from . import persist
-        p = Path(self.path)
-        cfg = p / _CHECKPOINT_CONFIG
-        data: Dict[str, Any] = {}
-        if cfg.is_file():
-            try:
-                data = persist.read_json(cfg)
-            except Exception:
-                data = {}
-        data["schema"] = _CHECKPOINT_CONFIG_SCHEMA
-        data["archive_globs"] = cleaned
-        persist.write_json(cfg, data)
-        # keep .gitignore's big-binary section consistent with the archive set,
-        # through the same single writer init uses -- and preserving whatever
-        # the user put outside molbuilder's section.
-        _write_gitignore_section(p / ".gitignore", cleaned)
-        return cleaned
-
-    # -- Phase 2: checkpoint -------------------------------------- #
-
-    def checkpoint(self, message: Optional[str] = None
-                   ) -> Optional[Checkpoint]:
-        """Stage everything in the working tree and create a new commit.
-
-        Big binaries are archived to ``.binsnapshots/<new_sha>/`` after
-        the commit lands.  Returns the new :class:`Checkpoint`, or
-        ``None`` if the working tree was clean (nothing to commit).
+        Set by `init`, by `save`, and by `restore`.  Everything `status` reports
+        is measured against it and never against the newest state, which is why
+        going back does not make the whole folder read as modified.
         """
         self._require_init()
-        _run_git(["add", "."], cwd=self.path)
-        st = _run_git(["status", "--porcelain"], cwd=self.path,
-                      check=False)
-        text_changed = bool(st.stdout.strip())
+        r = _run_git(["rev-parse", "HEAD"], cwd=self.path, check=False)
+        sha = r.stdout.strip()
+        return self._state_from(sha) if r.returncode == 0 and sha else None
 
-        # BIG BINARIES ARE GITIGNORED, so `git status` above is blind to them.
-        # A run that rewrote only a .DM leaves the status clean, and a
-        # checkpoint that trusted it would report "nothing to commit" while the
-        # new density matrix went into no snapshot at all -- surfacing much
-        # later as a REFUSED restore ("uncommitted binary changes"), about work
-        # the user believed they had saved.  So ask the binaries directly, with
-        # the same comparison restore uses.  Only when git already has
-        # something to commit do we skip the hashing pass, since the archive is
-        # rewritten either way.
-        bins_changed = (not text_changed
-                        and bool(_working_binaries_dirty(Path(self.path),
-                                                         self._head_sha())))
-        if not text_changed and not bins_changed:
-            return None
-
-        if message is None:
-            message = (
-                f"checkpoint "
-                f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}"
-            )
-        commit_argv = ["commit", "-q", "-m", message]
-        if not text_changed:
-            # Nothing git can see changed, but the binary state did.  An empty
-            # commit gives that state its own sha to be archived under.  The
-            # alternative -- rewriting HEAD's archive in place -- would make a
-            # restore of HEAD return bytes it never held, which is exactly what
-            # an immutable checkpoint must not do.
-            commit_argv.insert(1, "--allow-empty")
-        _run_git(commit_argv, cwd=self.path)
-        new_sha = self._head_sha()
-        _archive_binaries(Path(self.path), new_sha)
-        return self._checkpoint_from_sha(new_sha)
-
-    # -- Phase 3: tag --------------------------------------------- #
-
-    def tag(self, label: str, message: str, at: str = "HEAD") -> str:
-        """Create an annotated tag.  Always annotated, so it carries a message
-        (checkpointing.md L3/L4; lightweight tags are not used)."""
+    def states(self, limit: Optional[int] = None) -> List["State"]:
+        """Every state, newest first.  Nothing is ever removed (A6)."""
         self._require_init()
-        if not message:
-            raise CheckpointError("tag message must be non-empty")
-        _run_git(["tag", "-a", label, at, "-m", message],
-                 cwd=self.path)
-        return label
+        # Topological order, not date order.  Several states can share a
+        # second -- a scripted sweep saves faster than the clock ticks -- and a
+        # tie there would print a child above its own parent.  Topology cannot
+        # tie: a state always follows the state it came from.
+        out = _run_git(["rev-list", "--topo-order",
+                        "--glob=" + _STATE_REF + "*"],
+                       cwd=self.path, check=False).stdout
+        shas = [s for s in out.split() if s]
+        if limit is not None:
+            shas = shas[:int(limit)]
+        return [self._state_from(s) for s in shas]
 
-    # -- Phase 4: experimental branching -------------------------- #
-
-    def branch(self, name: str) -> str:
-        """Create a new branch and switch to it (checkpointing.md § 5) -- the
-        user's subsequent checkpoints land on it.  Equivalent to
-        ``git checkout -b <name>``; carries any uncommitted changes onto the
-        new branch (git's default) so a user can branch mid-edit before an
-        experiment.  Raises :class:`CheckpointError` (with git's message) if
-        the branch already exists or the name is invalid."""
+    def resolve(self, ref: str) -> str:
+        """A state id or a tag -> the state's id.  One kind of argument."""
         self._require_init()
-        if not name.strip():
-            raise CheckpointError("branch name must be non-empty")
-        _run_git(["checkout", "-q", "-b", name], cwd=self.path)
-        return name
-
-    # -- Phase 5: restore ----------------------------------------- #
-
-    def restore(self, ref: str, *,
-                include_binaries: bool = True) -> List[str]:
-        """Restore the working tree to the state at ``ref``.  Refuses on
-        a dirty working tree.  Returns the list of restored binary
-        files (empty if no archive at the ref's SHA).
-        """
-        self._require_init()
-        st = _run_git(["status", "--porcelain"], cwd=self.path,
-                      check=False)
-        if st.stdout.strip():
-            raise DirtyWorkingTreeError(
-                "working tree has uncommitted changes; "
-                "checkpoint or discard them before restoring.")
-        # Big binaries are gitignored, so the git-status check above cannot
-        # see uncommitted changes to them.  Restore would overlay the ref's
-        # archived binaries and silently destroy that work -- refuse instead
-        # (P3: the user decides; asymmetry with text would be a data-loss
-        # trap).  Skipped when include_binaries is False (binaries untouched).
-        if include_binaries:
-            dirty_bins = _working_binaries_dirty(Path(self.path),
-                                                 self._head_sha())
-            if dirty_bins:
-                raise DirtyWorkingTreeError(
-                    "uncommitted binary changes would be overwritten by "
-                    f"restore: {', '.join(dirty_bins)}.  Checkpoint or move "
-                    "them aside first (big binaries are gitignored, so "
-                    "'git status' does not show them).")
-        # Resolve ref to a SHA.
-        sha = self._resolve_ref(ref)
-        # ATOMICITY (checkpointing.md A2): verify the binary archive BEFORE mutating the
-        # working tree, so a corrupt/incomplete archive aborts the WHOLE
-        # restore -- text AND binaries -- rather than leaving a half-restored
-        # tree (text rewound, binaries stale).  git restore touches text; the
-        # binary integrity check must gate it, not follow it.
-        expected: Dict[str, Tuple[str, int]] = {}
-        if include_binaries:
-            expected = _verify_archived_binaries(Path(self.path), sha)
-        # git restore: rewinds the working tree but keeps HEAD on the current
-        # branch, so history moves forward even when the folder moves back and
-        # nothing is ever rewritten (checkpointing.md § 7.1).
-        _run_git(["restore", "--source", ref, "--worktree",
-                  "--staged", "."],
-                 cwd=self.path)
-        if not include_binaries:
-            return []
-        # Copy the already-verified binaries (verification passed above).
-        return _copy_archived_binaries(Path(self.path), sha, expected)
-
-    def missing_archive_warning(self, ref: str) -> Optional[str]:
-        """Return a warning string if restoring ``ref`` would restore NO
-        binaries in a project that clearly USES big binaries (the working dir
-        has some, or other checkpoints have archives) -- a sign ``ref``'s
-        archive is missing/incomplete (e.g. an interrupted checkpoint in the
-        commit->archive window), NOT that the checkpoint was legitimately
-        binary-free.  Returns ``None`` when there is no reason to warn.
-
-        This is the honest bound on checkpointing.md A2: because big binaries are
-        gitignored, git records nothing about what a commit "should" have, so
-        a lost archive cannot be proven -- but it CAN be flagged loudly so a
-        restore never silently returns text-only for a binary project (#1)."""
-        self._require_init()
-        sha = self._resolve_ref(ref)
-        base = Path(self.path)
-        if (_archive_dir(base, sha) / _MANIFEST_NAME).is_file():
-            return None                          # ref has an archive -> fine
-        snaps = base / ".binsnapshots"
-        others = [d for d in snaps.iterdir()
-                  if d.is_dir() and (d / _MANIFEST_NAME).is_file()] \
-            if snaps.is_dir() else []
-        if not (_list_big_binaries(base) or others):
-            return None                          # binary-free project -> normal
-        return (
-            f"checkpoint {ref!r} has NO binary archive, but this project uses "
-            f"big binaries -- if {ref!r} had .DM/.HSX/.TSHS files they were "
-            f"NOT restored (the archive may be incomplete, e.g. a checkpoint "
-            f"interrupted between commit and archive).  Verify the result; "
-            f"re-checkpoint to heal the archive.")
-
-    # -- checkpointing.md I1 migrate-manifest ---------------------------------- #
-
-    def migrate_manifest(self, ref: str) -> Dict[str, Tuple[str, int]]:
-        """Convert a legacy 2-column ``sha256sum`` MANIFEST in the
-        archive for ``ref`` to canonical 3-column form (checkpointing.md I1).
-        No-op (returns the parsed contents) if already canonical.
-
-        Raises :class:`CheckpointError` with a specific reason on any
-        other shape (or on hash mismatch); the original MANIFEST is
-        left untouched in that case.
-        """
-        self._require_init()
-        sha = self._resolve_ref(ref)
-        arch = _archive_dir(Path(self.path), sha)
-        if not arch.is_dir():
-            raise CheckpointError(
-                f"migrate-manifest: no archive directory at {arch}.")
-        return _migrate_legacy_manifest(arch)
-
-    # -- introspection -------------------------------------------- #
-
-    def state(self) -> RepoState:
-        p = Path(self.path)
-        if not self.initialized:
-            return RepoState(path=self.path, initialized=False)
-        head = self._head_sha()
-        branch_r = _run_git(["rev-parse", "--abbrev-ref", "HEAD"],
-                            cwd=self.path)
-        branch = branch_r.stdout.strip() or None
-        if branch == "HEAD":
-            branch = None  # detached
-        st = _run_git(["status", "--porcelain"], cwd=self.path)
-        lines = [ln for ln in st.stdout.splitlines() if ln.strip()]
-        dirty = bool(lines)
-        untracked = sum(1 for ln in lines if ln.startswith("?"))
-        # NOTE: archive_total_bytes is deliberately left at its default
-        # (0). This snapshot is the refresh-path read (docs/web/projects.md --
-        # the sidebar's checkpoint panel) hit on every directory-enter; walking
-        # .binsnapshots/ here would charge an O(archive) stat sweep on
-        # each enter for a number the sensor never displays. Archive size
-        # is computed only by the list/detail surfaces that show it
-        # (list_checkpoints()).
-        return RepoState(
-            path=self.path, initialized=True,
-            head=head, current_branch=branch,
-            dirty=dirty, untracked=untracked,
-        )
-
-    def archive_total_bytes(self) -> int:
-        """Total size of all archived binaries under ``.binsnapshots/``.
-
-        Walks the archive -- an O(archived files) stat sweep -- so this
-        is deliberately NOT part of ``state()`` (the refresh-path read --
-        docs/web/projects.md).  Call it only from one-shot surfaces that actually
-        display archive size: the CLI ``snapshot init`` confirmation and
-        the list/detail route.
-        """
-        snaps = Path(self.path) / ".binsnapshots"
-        return sum(f.stat().st_size for f in _archive_files(snaps))
-
-    # -- public ref + diff surface (callers shouldn't touch _-prefixed) #
-
-    def resolve_ref(self, ref: str) -> str:
-        """Resolve ``ref`` to a commit SHA.  Raises
-        :class:`NoSuchRefError` when the ref doesn't exist.  Use this
-        from blueprints / external consumers instead of reaching at
-        ``_resolve_ref``."""
-        self._require_init()
-        return self._resolve_ref(ref)
-
-    def diff(self, ref_a: str, ref_b: str,
-             pathspec: Optional[List[str]] = None) -> str:
-        """Unified-diff text between two refs, optionally restricted to
-        ``pathspec`` (a list of git pathspec globs).  Both refs are
-        validated up-front so an unknown ref surfaces as
-        :class:`NoSuchRefError` rather than a generic git-failure
-        string."""
-        self._require_init()
-        self._resolve_ref(ref_a)
-        self._resolve_ref(ref_b)
-        argv = ["diff", f"{ref_a}..{ref_b}"]
-        if pathspec:
-            argv.append("--")
-            argv.extend(pathspec)
-        return _run_git(argv, cwd=self.path).stdout
-
-    def list_checkpoints(self, limit: int = 50) -> List[Checkpoint]:
-        self._require_init()
-        # Format: SHA|short|author_iso|subject|refnames (split by |||)
-        fmt = "%H|||%h|||%aI|||%s|||%D"
-        r = _run_git(["log", f"-n{int(limit)}", f"--pretty=format:{fmt}",
-                      "--all"], cwd=self.path)
-        out: List[Checkpoint] = []
-        for line in r.stdout.splitlines():
-            if not line:
-                continue
-            parts = line.split("|||")
-            if len(parts) != 5:
-                continue
-            sha, short, iso, subject, refs_raw = parts
-            refs = [r.strip()
-                    for r in refs_raw.split(",")
-                    if r.strip()]
-            files = _archive_files(_archive_dir(Path(self.path), sha))
-            has_arch = bool(files)
-            arch_bytes = (sum(f.stat().st_size for f in files)
-                          if has_arch else None)
-            out.append(Checkpoint(
-                sha=sha, short_sha=short, summary=subject,
-                author_at=iso, refs=refs,
-                has_archive=has_arch, archive_bytes=arch_bytes,
-            ))
-        return out
-
-    # -- helpers -------------------------------------------------- #
-
-    def _head_sha(self) -> str:
-        r = _run_git(["rev-parse", "HEAD"], cwd=self.path)
-        return r.stdout.strip()
-
-    def _resolve_ref(self, ref: str) -> str:
-        """Resolve a ref to the COMMIT SHA it points at.
-
-        ``ref^{commit}`` peels through annotated-tag objects to the
-        underlying commit -- without this, `git rev-parse my-tag`
-        returns the tag-object SHA (not the commit) for annotated
-        tags, and the binary-archive lookup misses.
-        """
-        try:
-            r = _run_git(["rev-parse", f"{ref}^{{commit}}"],
-                         cwd=self.path)
-        except CheckpointError as e:
+        r = _run_git(["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+                     cwd=self.path, check=False)
+        sha = r.stdout.strip()
+        if r.returncode != 0 or not sha:
             raise NoSuchRefError(
-                f"no such ref: {ref!r}.  Use `molbuilder snapshot list` "
-                f"to see available tags / branches / checkpoints."
-            ) from e
-        return r.stdout.strip()
+                f"{ref!r} does not name a state or a tag in {self.path}.")
+        return sha
 
-    def _checkpoint_from_sha(self, sha: str) -> Checkpoint:
-        # Single-row lookup; cheap.
-        r = _run_git(["log", "-1", sha,
-                      "--pretty=format:%H|||%h|||%aI|||%s|||%D"],
-                     cwd=self.path)
-        parts = r.stdout.split("|||")
-        refs = [t.strip() for t in parts[4].split(",") if t.strip()] \
-            if len(parts) >= 5 else []
-        files = _archive_files(_archive_dir(Path(self.path), sha))
-        has_arch = bool(files)
-        arch_bytes = (sum(f.stat().st_size for f in files)
-                      if has_arch else None)
-        return Checkpoint(
-            sha=parts[0], short_sha=parts[1],
-            summary=parts[3] if len(parts) >= 4 else "",
-            author_at=parts[2] if len(parts) >= 3 else "",
-            refs=refs, has_archive=has_arch,
-            archive_bytes=arch_bytes,
-        )
+    # -- what is unsaved ------------------------------------------- #
+
+    def status(self) -> "FolderStatus":
+        """Where the folder stands, and what differs from it (§ 5, A5).
+
+        Three shapes -- changed, added, deleted -- covering text and big files
+        alike.  Big files are gitignored, so git cannot see them; they are
+        compared against the standing state's MANIFEST, which is the record
+        that says what that state held (I2c).
+        """
+        if not self.initialized:
+            return FolderStatus(path=self.path, initialized=False)
+        here = self.standing_at()
+        changed, added, deleted = set(), set(), set()
+
+        for line in _run_git(["status", "--porcelain", "-uall"],
+                             cwd=self.path).stdout.splitlines():
+            if not line.strip():
+                continue
+            code, name = line[:2], line[3:].strip()
+            if code == "??" or code[0] == "A":
+                added.add(name)
+            elif "D" in code:
+                deleted.add(name)
+            else:
+                changed.add(name)
+
+        expected: Dict[str, Tuple[str, int]] = {}
+        if here is not None and here.archive:
+            try:
+                man = archive_dir(self.root, here.archive) / MANIFEST_NAME
+                if man.is_file():
+                    expected = parse_manifest(man.read_bytes(), str(man))
+            except CheckpointError:
+                raise CheckpointError(
+                    "cannot say what is unsaved: the archive for the state "
+                    "this folder stands at is unreadable.  Nothing is safe "
+                    "to overwrite until that is resolved (I2b).")
+        cls = self._classification()
+        big, _small = split_by_store(self.root, int(cls["size_limit_bytes"]),
+                                     cls["always_large"])
+        on_disk = {archive_key(self.root, p): p for p in big}
+        for key, path in on_disk.items():
+            want = expected.get(key)
+            actual = hashlib.sha256(path.read_bytes()).hexdigest()
+            if want is None:
+                added.add(key)
+            elif want[0] != actual:
+                changed.add(key)
+        for key in expected:
+            if key not in on_disk:
+                deleted.add(key)
+
+        return FolderStatus(
+            path=self.path, initialized=True,
+            standing_at=here.id if here else None,
+            changed=tuple(sorted(changed - added - deleted)),
+            added=tuple(sorted(added)), deleted=tuple(sorted(deleted)))
+
+    # -- save ------------------------------------------------------ #
+
+    def save(self, note: str) -> Optional["State"]:
+        """Save the folder as a new state.  The note is required (L3).
+
+        The new state's parent is **where the folder stood**, then the folder
+        stands at the new state.  That is the whole of the branching mechanism
+        (§ 7.1): you never declare a fork, you save from where you are.
+
+        Returns ``None`` when nothing changed.
+        """
+        self._require_init()
+        if not (note or "").strip():
+            raise CheckpointError(
+                "a state needs a note saying what happened and what you were "
+                "about to do -- it is the only thing that answers the question "
+                "you bring to a history a month later, and it is not "
+                "defaulted (checkpointing.md L3).")
+        cls = self._classification()
+        always = cls["always_large"]
+        write_gitignore(self.root, always)
+        big, _small = split_by_store(self.root,
+                                     int(cls["size_limit_bytes"]), always)
+
+        # The size gate cannot be a gitignore pattern, so a file that is big by
+        # MEASUREMENT is staged out here -- and a file that stopped being big
+        # is staged back in.  That is S7: a file that changes category leaves
+        # the store it came from, which becomes ordinary once the gate is a
+        # size, because files grow.
+        _run_git(["add", "-A"], cwd=self.path)
+        for path in big:
+            _run_git(["rm", "--cached", "-q", "--ignore-unmatch", "--",
+                      archive_key(self.root, path)], cwd=self.path,
+                     check=False)
+
+        digest = publish_archive(self.root, big)
+        here = self.standing_at()
+        staged = _run_git(["diff", "--cached", "--name-only"],
+                          cwd=self.path, check=False).stdout.strip()
+        if not staged and here is not None and here.archive == digest:
+            return None                   # nothing changed, in either store
+
+        _run_git(["commit", "-q", "--allow-empty", "-m",
+                  message_with_trailer(note, digest)], cwd=self.path)
+        sha = _run_git(["rev-parse", "HEAD"], cwd=self.path).stdout.strip()
+        _run_git(["update-ref", _STATE_REF + sha, sha], cwd=self.path)
+        return self._state_from(sha)
 
 
-__all__ = [
-    "Repo", "Checkpoint", "RepoState",
-    "CheckpointError", "GitNotInstalledError",
-    "DirtyWorkingTreeError", "NoSuchRefError",
-    "NestedRepoRefusedError",
-]
+    # -- restore ---------------------------------------------------- #
+
+    def restore(self, ref: str, force: bool = False) -> "State":
+        """Make the folder equal *ref* exactly (A5), or refuse (A2, A4).
+
+        Order is the rule.  The two refusals come first because they are about
+        the **target** -- an unknown state or an archive that does not verify
+        means the operation cannot happen at all, and nobody should be asked to
+        accept a loss for an operation that then fails for an unrelated reason.
+        The question about unsaved work comes last, immediately before the
+        first byte moves.
+
+        A restore is whole or it does not happen (A4): text and big files are
+        one state, and returning half of one save and half of another produces
+        a folder no save ever held.
+        """
+        self._require_init()
+        sha = self.resolve(ref)                       # refusal 1: unknown
+        target = self._state_from(sha)
+        if not target.archive:
+            raise CheckpointError(
+                f"state {target.short} carries no archive digest, so what it "
+                f"held cannot be checked.  Refusing to restore from a record "
+                f"that cannot be verified (I2b).")
+        expected = verify_archive(self.root, target.archive)   # refusal 2
+
+        status = self.status()                        # the question, last
+        if not status.clean and not force:
+            raise DirtyWorkingTreeError(
+                "this folder has work that is not saved, and restoring will "
+                "lose it:\n"
+                + _describe(status)
+                + "\n\nSave it first with `molbuilder snapshot save -m \"…\"`, "
+                  "or pass --force to accept the loss.")
+
+        # --- from here on the folder is being changed --------------- #
+        _run_git(["checkout", "--force", "--detach", sha], cwd=self.path)
+        _run_git(["clean", "-fdq"], cwd=self.path)
+
+        # Big files are gitignored, so neither checkout nor clean touches
+        # them.  Everything the target did not hold is removed -- that is not
+        # a loss and is not warned about (A5): those files are still in the
+        # state that holds them, and leaving a stage 2 .DM in a folder that
+        # claims to be stage 1 is exactly the file a later run picks up
+        # unasked.
+        cls = self._classification()
+        big, _small = split_by_store(self.root, int(cls["size_limit_bytes"]),
+                                     cls["always_large"])
+        for path in big:
+            if archive_key(self.root, path) not in expected:
+                path.unlink()
+
+        adir = archive_dir(self.root, target.archive)
+        for key in sorted(expected):
+            dst = self.root / key
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(adir / key, dst)
+        return target
+
+    # -- tags ------------------------------------------------------ #
+
+    def tag(self, name: str, note: str, at: Optional[str] = None) -> "Tag":
+        """Give a state a name so you can find it again (§ 5, L4)."""
+        self._require_init()
+        if not (name or "").strip():
+            raise CheckpointError("a tag needs a name.")
+        if not (note or "").strip():
+            raise CheckpointError(
+                "a tag needs a note saying why this state is worth returning "
+                "to (L3).")
+        sha = self.resolve(at) if at else self.resolve("HEAD")
+        _run_git(["tag", "-a", name, sha, "-m", note], cwd=self.path)
+        return Tag(name=name, state=sha, note=note)
+
+    def tags(self) -> List["Tag"]:
+        self._require_init()
+        out = _run_git(["for-each-ref", "--format=%(refname:short)%x00"
+                        "%(objectname)%x00%(contents:subject)", "refs/tags"],
+                       cwd=self.path, check=False).stdout
+        found = []
+        for line in out.splitlines():
+            if not line.strip():
+                continue
+            name, obj, subject = (line.split("\x00") + ["", ""])[:3]
+            found.append(Tag(name=name, state=self.resolve(name), note=subject))
+        return sorted(found, key=lambda t: t.name)
+
+
+def _describe(status: "FolderStatus") -> str:
+    """A5's three shapes, named -- never a count.
+
+    "3 unsaved files" tells nobody anything; `01_coarse/job.DM` tells them the
+    density matrix is what they are about to walk away from.
+    """
+    parts = []
+    for label, names in (("changed", status.changed),
+                         ("added", status.added),
+                         ("deleted", status.deleted)):
+        for name in names:
+            parts.append(f"  {label:>7}  {name}")
+    return "\n".join(parts)
