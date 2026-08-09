@@ -300,7 +300,7 @@ molbuilder snapshot list
 
 **The question you bring to this list is never *where was I*** — the list answers
 that — it is **why did I stop here, and what was I about to do?** So a generated
-note (`checkpoint 2026-08-08T14:02:11Z`) is worse than none: it answers neither,
+note (`saved 2026-08-08T14:02:11Z`) is worse than none: it answers neither,
 it repeats the timestamp column, and five of them in a row is a list you cannot
 choose from. A caller offering a save may **draft** the note, since it knows what
 it is about to change; you confirm or edit it (§ 9).
@@ -379,7 +379,7 @@ question comes last, immediately before the first byte moves.
 **The question is answered by you, and the answer is honoured.** It names what is
 unsaved and says plainly that **it will be lost unless you save it first**.
 Nothing is rescued, stashed, renamed or set aside. If you say yes, it is gone —
-you called `restore` without calling `checkpoint`, and that is a choice the
+you called `restore` without calling `snapshot save`, and that is a choice the
 system spells out rather than second-guesses (A5).
 
 **What must never happen is a half-restore**: text from one save and binaries
@@ -446,14 +446,14 @@ folder exists (A6). That is what makes it safe to wander.
 ## 8. Why this matters far more in a flat folder
 
 In the **nested** shape every stage and attempt is on disk at once. Going back to
-stage 1's geometry means opening `01_coarse/run-0/`. A checkpoint there is
+stage 1's geometry means opening `01_coarse/run-0/`. A saved state there is
 protection against loss and a way to branch — valuable, not load-bearing.
 
 **In the flat shape it is load-bearing.** The restart files are unsuffixed and
 shared *by design* — that is exactly what lets stage 2 continue from stage 1 —
 which means stage 2 **overwrites** them.
 
-> **Without a checkpoint, a flat folder can only move forward.** With one it can
+> **Without saved states, a flat folder can only move forward.** With them it can
 > return to any state it was saved in and continue from there. That is not a
 > convenience on top of the flat shape; it is what makes the flat shape usable for
 > iterative work at all.
@@ -470,7 +470,7 @@ Two consequences worth saying out loud:
 
 ## 9. Who decides to save, and when you are asked
 
-> **A checkpoint is always an explicit act. Checkpointing never initiates one.**
+> **A save is always an explicit act. Checkpointing never initiates one.**
 > It takes a snapshot when told to, and that is the whole of its part.
 
 **The decision belongs to whatever is about to change the folder.** A script
@@ -721,8 +721,8 @@ Tamper with the digest and you get a different commit, which points at an archiv
 that does not exist while the real one sits unreferenced. The anchor inherits
 git's own hashing rather than needing protection of its own. A tag can be moved
 or deleted; a git note lives on a mutable ref and can be rewritten in place
-leaving nothing behind; a record chained into the next checkpoint needs a next
-checkpoint, and the last save of a project never gets one. A trailer is also the
+leaving nothing behind; a record chained into the next save needs a next save,
+and the last save of a project never gets one. A trailer is also the
 ordinary git idiom for machine-readable metadata — `Signed-off-by`, Gerrit's
 `Change-Id` — so it is greppable and nothing has to parse prose.
 
@@ -773,14 +773,14 @@ halves of one restore ask two different sources what the big files are.
 - **Fails as: you are told the wrong thing and agree to it.** A `.DM` is
   archived while `*.DM` is classified big. The classification is later narrowed
   — one CLI call or one web request (S1c). You modify that `.DM` and restore an
-  earlier checkpoint. The warning does not mention it, because the glob list no
+  earlier state. The warning does not mention it, because the glob list no
   longer matches it; the copy overwrites it anyway, because the MANIFEST still
   lists it. **Losing it is your call to make** (A5) — being asked a question
   that omits it is not.
 - **Test:** archive a big file, narrow the classification so nothing matches it,
   modify it, restore an earlier ref — the warning must still name that file.
   Then, separately, create a big file that no MANIFEST mentions and assert
-  `checkpoint` still sees it.
+  `save` still sees it.
 
 **L8 — a saved attempt never differs afterwards.** This is I2 pointed at a
 directory the layout says is frozen. *Hierarchical only* — a flat folder's
@@ -799,7 +799,7 @@ rather than a violation. Do not let a check written for one shape fail the other
 - **Test:** corrupt one byte of the target archive and attempt a restore — it
   refuses, and the folder is byte-identical to before.
 
-**A3 — the checkpoint precedes the change it protects.** A pre-produce save is
+**A3 — the save precedes the change it protects.** A pre-produce save is
 committed *before* the first new file is written.
 
 - **Test:** interrupt a produce between the save and the swap: the commit exists
@@ -833,7 +833,7 @@ this document.
 not refuse, and it does not rescue.
 
 **Checkpoint is not responsible for work you did not save.** Calling `restore`
-without calling `checkpoint` is a decision, and the answer to it is yours: the
+without calling `snapshot save` is a decision, and the answer to it is yours: the
 warning names what will go, and `yes` — or `--force` for a script — proceeds and
 loses it. There is no stash, no move-aside, no automatic save-before-restore, no
 `.orig` copies. Every one of those is a mechanism that owns a decision it should
@@ -842,14 +842,14 @@ not, and each one leaves debris a later restore then has to reason about.
 *A state is the whole directory.* Checkpoint deals in directory states, not in
 files, so "keep this one file while rewinding the rest" is not a smaller request
 than a restore — it is a **different** one, and the tool for it is `git show
-<ref>:<path>` or a second folder.
+<state>:<path>` or a second folder.
 
 - **Fails as, in both directions:** a refusal makes the user hand-delete files
   to get past it, which is worse than the loss they had already accepted. A
   silent rescue leaves the folder holding something no save produced (A4, S8).
 - **Test:** with unsaved text *and* an unsaved big file, a non-interactive
   restore stops and changes nothing; `--force` completes; and afterwards the
-  folder matches the ref exactly, with no rescue copies anywhere in it.
+  folder matches the target state exactly, with no rescue copies anywhere in it.
 - **Status today:** it refuses on both, there is no `--force`, and the refusal
   for binaries reads as an error about something the user broke.
 
@@ -1024,7 +1024,7 @@ be mistaken for a complete one, which is A1's build-then-publish, and git
 serialises its own index already.
 
 - **Fails as:** a reader finds a half-published archive and treats it as whole.
-- **Test:** two concurrent checkpoints of the same folder; afterwards every
+- **Test:** two concurrent saves of the same folder; afterwards every
   archive present verifies (I2), and neither save reports success over a
   directory the other was still writing.
 
@@ -1038,7 +1038,7 @@ at *every* level, so a nested `01_coarse/job.DM` is ignored by git — and if th
 archive walk only looked at the top level it would be ignored **and** unarchived:
 in no snapshot at all. Both sides must resolve depth the same way.
 
-**L7 — a change to a big file alone still leaves a checkpoint.** Big files are
+**L7 — a change to a big file alone still produces a state.** Big files are
 gitignored, so `git status` is clean when only they changed; the save must not
 conclude there is nothing to do.
 
@@ -1079,7 +1079,7 @@ conclude there is nothing to do.
 | **L2** | the archive matches at depth | ✅ |
 | **L3** | every save carries a note; every commit and tag names its calculation | ⛔ the note is optional and defaults to a timestamp |
 | **L4** | a tag is yours; nothing tags on your behalf | ⛔ finished stages are tagged automatically |
-| **L7** | a big-file-only change still saves | ✅ fixed in `1e87e01e`; two tests in `test_checkpoint_nested_layout.py` |
+| **L7** | a big-file-only change still produces a state | ✅ two tests in `test_checkpoint_nested_layout.py` |
 | **S7** | a file that changes category leaves the store it came from | ⛔ nothing untracks; **routine once the gate is a size**, because files grow |
 | **S8** | using git directly does not silently desynchronise the two stores | ⛔ `git checkout` rewinds text and leaves every big file |
 | **S9** | two saves cannot corrupt each other | ⛔ mostly dissolved by content addressing; what is left is A1's build-then-publish |
@@ -1233,7 +1233,7 @@ on is what stops them being forgotten on the day it lands.
 | repo boundaries | `test_checkpoint_repo_scope.py` |
 | the HTTP routes | `test_checkpoint_routes.py` |
 | the wrapper carries no git | `test_checkpoint_wrapper_isolation.py` |
-| the verbs end to end — init, checkpoint, tag, branch, restore, and their refusals | `test_checkpoint_lifecycle.py` |
+| the verbs end to end — init, save, tag, restore, and their refusals | `test_checkpoint_lifecycle.py` |
 | the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` |
 
 > **One of these tests contradicts this document, and that is worth knowing
