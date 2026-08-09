@@ -498,6 +498,12 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
             )
         out["execution"] = dict(execn)
 
+    # --- checkpoint section (checkpointing.md § 4) -------------------- #
+    # Validated eagerly: a wrong size limit or a mistyped engine list decides
+    # where every file in a calculation is stored, and the failure is silent.
+    if "checkpoint" in raw:
+        out["checkpoint"] = _validate_checkpoint(raw["checkpoint"])
+
     return out
 
 
@@ -590,6 +596,108 @@ def get_rate_limit(cfg: Mapping[str, Any]) -> Dict[str, Any]:
     Trivial accessor -- defaults are applied inside ``RateLimiter``.
     """
     return dict(cfg.get("rate_limit", {}))
+
+
+# --------------------------------------------------------------------- #
+#  checkpoint section (docs/execution/checkpointing.md § 4)             #
+# --------------------------------------------------------------------- #
+
+
+# **Contract:** `execution/checkpointing.md` § 4 -- the classification lives
+# here, molbuilder-wide, and NEVER in a calculation folder (S1c).  A per-folder
+# copy would let one folder behave differently from another for no recorded
+# reason, and would put the classification somewhere a person can edit between a
+# save and a restore.
+#
+# ``size_limit_bytes`` is the whole of the decision § 3's diagram turns on: over
+# it a file goes to the archive, under it to git (S1b).  It is a STORAGE
+# threshold -- moving it changes where a file is kept, never whether it is kept
+# (§ 2.1).
+#
+# ``engines`` name families that are ALWAYS large, so those skip the measuring.
+# That is an effort saving and nothing else: "a hint can make a save faster; it
+# can never make it store less."  ``generic`` names none, which is always
+# correct and merely stats more.
+_CHECKPOINT_SIZE_LIMIT_DEFAULT = 10 * 1024 * 1024        # 10 MB, § 4
+_CHECKPOINT_DEFAULTS: Dict[str, Any] = {
+    "size_limit_bytes": _CHECKPOINT_SIZE_LIMIT_DEFAULT,
+    "engines": {
+        "generic": [],
+        "siesta":  ["*.DM", "*.HSX", "*.TSHS",
+                    "*.TBT.AVTRANS_*", "*.TBT.CC", "*.TBT.DOS"],
+        "pyscf":   ["*.chk", "*.cube"],
+    },
+}
+
+
+def _validate_checkpoint(raw: Mapping[str, Any]) -> Dict[str, Any]:
+    """Validate one scope's ``checkpoint`` section (checkpointing.md § 4).
+
+    Returns a normalised copy with defaults filled in.  Raises
+    :class:`RuntimeConfigError` on shape errors -- a checkpoint config that is
+    wrong in a way nobody notices is a folder saved wrongly, so nothing here is
+    coerced or guessed.
+    """
+    if not isinstance(raw, Mapping):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'checkpoint' must be an object; got "
+            f"{type(raw).__name__}."
+        )
+    out: Dict[str, Any] = {
+        "size_limit_bytes": _CHECKPOINT_DEFAULTS["size_limit_bytes"],
+        "engines": {k: list(v)
+                    for k, v in _CHECKPOINT_DEFAULTS["engines"].items()},
+    }
+    if "size_limit_bytes" in raw:
+        v = raw["size_limit_bytes"]
+        # bool is an int subclass and is never a size.
+        if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'checkpoint.size_limit_bytes' must be a "
+                f"positive integer number of bytes; got {v!r}."
+            )
+        out["size_limit_bytes"] = v
+    if "engines" in raw:
+        engines = raw["engines"]
+        if not isinstance(engines, Mapping):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'checkpoint.engines' must be an object "
+                f"mapping an engine name to its always-large patterns; got "
+                f"{type(engines).__name__}."
+            )
+        for name, pats in engines.items():
+            if not isinstance(pats, (list, tuple)) or not all(
+                    isinstance(x, str) and x.strip() for x in pats):
+                raise RuntimeConfigError(
+                    f"{CONFIG_FILENAME}: 'checkpoint.engines.{name}' must be a "
+                    f"list of non-empty glob strings; got {pats!r}."
+                )
+            out["engines"][str(name)] = [x.strip() for x in pats]
+    return out
+
+
+def get_checkpoint(engine: Optional[str] = None,
+                   project_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """The effective checkpoint classification (checkpointing.md § 4).
+
+    ``engine`` is a **hint** and may be omitted or unknown: an engine nobody
+    configured resolves to ``generic``, which names no always-large families and
+    therefore measures every file.  That is always correct and merely slower,
+    which is the direction this contract errs in -- an unknown engine must never
+    make a save store less.
+
+    Returns ``{"size_limit_bytes": int, "always_large": [glob, ...]}``.
+    """
+    cfg = read_effective_config(project_dir)
+    section = _validate_checkpoint(cfg.get("checkpoint") or {})
+    engines = section["engines"]
+    always = engines.get(engine) if engine else None
+    if always is None:
+        always = engines.get("generic", [])
+    return {
+        "size_limit_bytes": int(section["size_limit_bytes"]),
+        "always_large":     list(always),
+    }
 
 
 # --------------------------------------------------------------------- #
