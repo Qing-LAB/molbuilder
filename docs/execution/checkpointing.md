@@ -89,9 +89,31 @@ Two stores. Every file is in exactly one of them.
 flowchart LR
     F["<b>a file in the folder</b>"] --> Q{"bigger than<br/>the size limit?"}
     Q -->|"no"| G[("<b>git</b><br/>.git/<br/>diffable, cheap")]
-    Q -->|"yes"| A[("<b>the archive</b><br/>.binsnapshots/&lt;commit&gt;/<br/>whole copies + a checksum list")]
-    G -.->|"the commit names the<br/>archive that goes with it"| A
+    Q -->|"yes"| A[("<b>the archive</b><br/>.binsnapshots/&lt;digest&gt;/<br/>whole copies + a checksum list")]
+    G -.->|"the commit carries the digest,<br/>which is both the name and the proof"| A
 ```
+
+**The archive is named by what it contains, not by the commit it belongs to.**
+Its directory is the sha256 of its own MANIFEST. That one value does three jobs
+at once: it *locates* the archive, it *proves* the archive (I2b), and it makes an
+archive impossible to modify without becoming a different archive (I1).
+
+Three things follow, and each removes a problem rather than adding a mechanism:
+
+- **The archive can be published before the commit**, because it no longer needs
+  a commit's name. There is no window where a commit exists with nothing beside
+  it (§ 6).
+- **Two saves with the same big files share one archive.** Not a copy avoided —
+  the *same directory*, referred to by both commits.
+- **A save that is interrupted and re-run writes the identical path with the
+  identical bytes**, so a repeat is harmless by construction rather than by
+  locking (S9).
+
+> ⚠ **This is an archive-format change**, and the rule for those is already
+> written into I2b's note: the reader accepts both forms, or every archive
+> written before it stops opening. A directory named for a 40-character commit
+> sha is a pre-digest archive and is read as one. Breaking them would violate
+> § 1 for folders that did nothing wrong.
 
 **Which store, by measuring — not by file type.** A file over the limit goes to
 the archive; everything else to git. Extensions are not consulted, because a name
@@ -114,10 +136,10 @@ BDT_Au_relax_Au38C6H4S2/
 ├── .git/                            the text history
 ├── .gitignore                       generated — lists exactly what the archive holds
 ├── .binsnapshots/                   the archive
-│   ├── 4f9c…a71/                      one directory per commit
+│   ├── a19f0b72…c8e5/                 named by the sha256 of its own MANIFEST
 │   │   ├── 01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM
-│   │   └── MANIFEST                   what is in here, and its sha256
-│   └── b2e0…33d/
+│   │   └── MANIFEST                   what is in here, and a sha256 each
+│   └── 4d7ba930…1f62/
 │       ├── 01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM   ← unchanged since the
 │       │                                                   save above, so this is
 │       │                                                   a hard link: no disk
@@ -159,7 +181,7 @@ it can tell.
 | Piece | What it is | Who writes it |
 |---|---|---|
 | **git** | the history of everything small | `checkpoint` |
-| **the archive** — `.binsnapshots/<commit>/` | whole copies of everything large | `checkpoint` |
+| **the archive** — `.binsnapshots/<digest>/` | whole copies of everything large, named by content | `checkpoint` |
 | **MANIFEST** | what is in one archive, with a sha256 each | `checkpoint` |
 | **`.gitignore`** | what git skips — *generated*, so it matches the archive exactly | `checkpoint` only |
 | **the config** | the size limit and the per-engine hints | you, in molbuilder's config |
@@ -229,9 +251,22 @@ flowchart TB
     B --> V["hash the source, copy,<br/><b>re-hash the copy</b>, compare"]
     V -->|"differ"| STOP2["fail — a corrupt copy must<br/>never become self-consistent"]
     V -->|"match"| W["write MANIFEST"]
-    W --> SW["move any published archive aside<br/>→ swap the new one in<br/>→ delete the aside"]
-    SW --> C["commit the small files"]
+    W --> D["the MANIFEST's sha256<br/>is the archive's name"]
+    D --> SW["publish it at that name<br/>— already there and identical?<br/>then there is nothing to do"]
+    SW --> C["commit the small files,<br/>carrying the same digest"]
 ```
+
+**The archive is published before the commit, and that is the point of naming it
+by content.** It does not need the commit's name, so it does not need to wait for
+one. The only thing an interruption can leave behind is an archive nobody points
+at yet — no lost data, and the next save writes the identical bytes to the
+identical path.
+
+**Publishing is idempotent, which is what removes the need for a lock.** Same
+content, same digest, same directory: two saves racing to publish the same
+archive are writing the same thing. This is the standard property of a
+content-addressed store, and it is why git, Nix and container layers all work
+this way (S9).
 
 **Why the copy is re-hashed rather than trusted.** If the MANIFEST's checksum came
 from the copy alone, a copy corrupted on the way to disk would be
@@ -239,10 +274,16 @@ from the copy alone, a copy corrupted on the way to disk would be
 restored as truth. Hashing the source and re-hashing the copy makes that
 impossible.
 
-**Why the old archive is moved aside instead of deleted first.** Deleting and then
-renaming leaves a moment where neither exists; a crash there destroys the archive
-that was already good. The worst case now is a leftover `.old` directory beside a
-complete one.
+**No archive is ever replaced, so nothing has to be moved aside.** An archive at
+a given name always holds the same content — that is what naming it by that
+content means — so publishing is *create if absent*, never *overwrite*. The old
+scheme needed a careful delete-and-rename dance because a commit's archive could
+be rebuilt with different bytes; that whole class of problem is gone rather than
+handled.
+
+Build in a `.tmp` and rename it into place all the same: the rename is what makes
+a directory appear complete or not at all, so a reader never meets a half-written
+archive (A1).
 
 ---
 
@@ -417,8 +458,22 @@ Each one names what it prevents and how to test it. **Status is in § 8.**
 ### Everything is saved
 
 **S1 — every regular file is in git or in the archive: never both, never
-neither.** The only thing not stored is `.binsnapshots/` itself, because a store
-cannot contain itself. No category of file is exempt.
+neither.** **The two stores are the only exclusions** — `.git/` and
+`.binsnapshots/` — because a store cannot contain itself. That is the whole list,
+and it is a consequence rather than a policy: nothing was judged unworthy, the
+two directories simply cannot hold themselves.
+
+**No other category is exempt, including the ones it is tempting to exempt.**
+Editor leftovers, scratch that only exists mid-run, caches an engine could
+rebuild — all stored. Two reasons, and the second is the one that matters:
+storing them costs a little disk, which § 1 has already ruled is never an
+argument; and every exemption is a judgement about what is worth keeping, which
+§ 2.1 says this system does not make. A snapshot of *most* of a folder is not a
+snapshot of the folder.
+
+> **Any future exception belongs here, in this list, with its reason** — never in
+> a constant inside a module. A file excluded by code nobody agreed to is
+> indistinguishable from a file lost.
 
 *Symlinks are outside this, and "regular" is load-bearing.* A stage links its
 deck and the shared pseudopotentials rather than copying them, so a saved tree is
@@ -428,8 +483,9 @@ wherever it lives — and recreating the layout is what a restore does anyway.
 - **Fails as:** both → a multi-gigabyte blob in git history forever. Neither →
   the file is in no snapshot, and a restore silently does not bring it back.
 - **Test:** walk every regular file and assert `archived` ≠ `tracked`, with
-  `.binsnapshots/` the only excluded path. **No allow-list** — a file is stored
-  or the test fails.
+  `.git/` and `.binsnapshots/` the only excluded paths. **No allow-list** — a
+  file is stored or the test fails. The walk must not reuse the same skip rule
+  the classification uses, or it can only ever agree with it.
 
 **S1a — `.gitignore` is generated from the classification, never hand-kept
 beside it.** One *source*, not merely one writer.
@@ -466,12 +522,18 @@ always correct.
 
 ### The record can be trusted
 
-**I1 — an archive's content is never modified once written.** Re-archiving the
-same commit rebuilds the directory, which is legal because one commit implies one
-tree; the assertion is on *content for a commit*, not on the directory's mtime.
-`snapshot migrate-manifest` rewrites a legacy 2-column MANIFEST into the 3-column
-form and is not a violation: it changes how the archive is *described*, never
-what is in it, and every `(name, sha256)` pair survives it.
+**I1 — an archive's content is never modified once written**, and since § 3 the
+name enforces it rather than the rule asking politely. A directory is the sha256
+of its own MANIFEST, so changed content is a *different* archive at a *different*
+path; the old one is still there, still correct, still named by what it holds.
+There is no write that can modify an archive in place — only a write that creates
+another one.
+
+Re-publishing an archive that already exists is therefore a no-op, not a rebuild,
+and `snapshot migrate-manifest` — which rewrites a legacy 2-column MANIFEST into
+3-column form — now **produces a new archive** rather than editing one. Both are
+kept: the legacy commits point at the old, and nothing that already worked stops
+working.
 
 **I2 — a MANIFEST is authoritative for its archive.** For every entry: the file
 exists, its size matches, its sha256 matches.
@@ -503,6 +565,18 @@ they fail in opposite directions:
 regeneration says which line is wrong, where a digest could only say that
 something is.
 
+> **Why `.gitignore` does not get a digest, when the instruction was to give it
+> the same check.** A stored digest cannot catch the attack it would be for.
+> `.gitignore` is *tracked*, so an uncommitted edit is already visible; the real
+> hazard is an edit that **rides into the next save** — and a save computes the
+> digest of whatever it finds, so it would faithfully record the tampered file
+> and call it correct from then on. The only check that survives that is
+> comparing against what the generator *would* produce, which is the standard
+> treatment for generated files everywhere (`gofmt -l`, `terraform fmt -check`,
+> a committed-codegen CI gate). Same goal, and the only mechanism that reaches
+> it. **This is a deliberate deviation from "a similar check", recorded here so
+> it is a decision and not a substitution.**
+
 - **Fails as:** delete a MANIFEST line and that file is simply not restored — it
   reads exactly like "this archive never held it". Change a sha *and* the file to
   match and a restore returns the wrong bytes **and reports success**. Add
@@ -512,52 +586,52 @@ something is.
   *record* as what failed. For `.gitignore`, edit inside the marked section as
   well as outside — anyone who knows about the markers will edit inside them.
 
-#### Where the MANIFEST's digest lives: the commit message
-
-**A trailer line on the commit that names the archive**, lowercase hex, matching
-the convention the MANIFEST and the archive directory already use:
+#### Where the MANIFEST's digest lives: a trailer on the commit
 
 ```text
-Manifest-SHA256: 7ef4c645…344a
+Manifest-SHA256: a19f0b72…c8e5
 ```
+
+**One value doing two jobs.** Since § 3 names an archive by the sha256 of its own
+MANIFEST, this trailer is simultaneously the **pointer** — where the archive is —
+and the **proof** — what it must contain. There is nothing to keep in step,
+because there is only one thing.
 
 **Why the commit and not a tag or a note: the commit sha covers the message.**
-Tamper with the digest and you get a different commit — which orphans
-`.binsnapshots/<the old sha>/` *and* leaves the new commit with no archive, so
-the edit announces itself twice. The anchor inherits git's own hashing instead of
-needing protection of its own. A tag can be moved or deleted; a git note lives on
-a mutable ref and can be rewritten in place leaving nothing behind; a record
-chained into the next checkpoint needs a next checkpoint, and the last save of a
-project never gets one.
+Tamper with the digest and you get a different commit, which points at an archive
+that does not exist while the real one sits unreferenced. The anchor inherits
+git's own hashing rather than needing protection of its own. A tag can be moved
+or deleted; a git note lives on a mutable ref and can be rewritten in place
+leaving nothing behind; a record chained into the next checkpoint needs a next
+checkpoint, and the last save of a project never gets one. A trailer is also the
+ordinary git idiom for machine-readable metadata — `Signed-off-by`, Gerrit's
+`Change-Id` — so it is greppable and nothing has to parse prose.
 
-**The ordering that makes it possible.** A MANIFEST's content — `sha256  bytes
-key`, three columns — contains no commit sha, so it is fully known before
-anything is committed:
+**Nothing is circular.** A MANIFEST's content is three columns of `sha256 bytes
+key` and contains no commit sha, so the whole chain runs forward:
 
 ```text
-hash the big files → build the MANIFEST text → sha256 that text
-  → commit, carrying the digest
-  → publish the archive at .binsnapshots/<the new sha>/
+hash the big files → build the MANIFEST → sha256 it → that is the archive's name
+  → publish the archive        (it needs no commit)
+  → commit, carrying the same digest
 ```
 
-Nothing is circular: the digest goes in before the commit exists, the archive
-goes out after. *(This was written down once as an open problem — "the anchor
-must be created after the archive is published" — which was simply wrong. The
-digest is of content, and the content is knowable early.)*
-
 **Only the digest, never the record.** Git would hold the whole MANIFEST
-comfortably — messages are compressed blobs with no practical size limit, and a
-500-file archive is ~45 KB — but a second copy of a record is a second thing that
-can disagree with the first. One digest says *the MANIFEST I published had
-exactly this content*, which is all this rule asks.
+comfortably — a 500-file archive is ~45 KB and a commit message has no practical
+limit — but a second copy of a record is a second thing that can disagree with
+the first.
 
-**Absent is not the same as wrong.** Archives written before this carry no
-trailer, and `snapshot migrate-manifest` rewrites a legacy MANIFEST's bytes
-without being able to rewrite the commit that anchors it. So verification has
-three outcomes, not two: **anchored and matching** passes, **anchored and
-different** is a hard refusal naming the record, and **unanchored** is reported
-as unanchored. Treating the third as tampering would condemn every archive
-predating the rule, and I1 already holds that migration is legal.
+**Absent is not the same as wrong.** Commits written before this carry no
+trailer. So verification has three outcomes: **anchored and matching** passes,
+**anchored and the archive missing or different** is a hard refusal naming the
+record, and **unanchored** is reported as unanchored. Treating the third as
+tampering would condemn every archive predating the rule.
+
+> **A commit that archived nothing still carries a trailer** — the digest of an
+> empty MANIFEST, which is a fixed, well-known value. That is what makes *"this
+> save had no big files"* and *"this save's archive is gone"* two different
+> observations instead of one ambiguous silence, and it is what retires the
+> guesswork in § 12.
 
 > **Records are named so nobody mistakes one for a setting.** `MANIFEST` looks
 > like a file a person may reasonably adjust; `MANIFEST.do_not_edit` does not.
@@ -668,14 +742,20 @@ than a restore — it is a **different** one, and the tool for it is `git show
 
 ### Nothing else touches the state
 
-**I3 — warm state is moved or restored, never incidentally lost.** Exactly one
-operation may move it and exactly one may replace it (`restore`). Nothing else
-may touch it. A replacing produce may remove orphaned decks and wrappers, never
-state.
+**I3 — nothing moves warm state. `restore` replaces it. Nothing else touches
+it.** One operation, not two.
 
-- **Test:** grep every path that writes into a run directory for a delete or a
-  truncating open that could match run state. There should be no hit that is not
-  one of those two.
+*This rule used to allow a mover*, because `--cold` relocated warm files so a run
+would not find them. That mechanism is gone — a checkpoint already holds the
+state, so moving files to protect them was work that bought nothing — and A5 says
+the same thing from the other side: molbuilder does not relocate your files on
+your behalf, ever. The permission outlived the thing it permitted.
+
+A replacing produce may remove orphaned decks and wrappers. Never state.
+
+- **Test:** every path that writes into a run directory is checked for a delete
+  or a truncating open that could match run state. `restore` is the only
+  permitted hit.
 
 **I4 — a generated wrapper contains no git.** A wrapper that committed would need
 git on the compute node, which `running-a-job.md § 2` forbids.
@@ -771,14 +851,24 @@ a command that works correctly everywhere else.
   says which. It may not simply refuse the next operation with a message about a
   dirty tree, which is what happens today and explains nothing.
 
-**S9 — two saves of one folder cannot interleave.** There is no lock. Git
-serialises its own index, but the archive's build-verify-swap does not — and
-two `prep` runs, or a CLI and the browser, can reach it at once.
+**S9 — two saves of one folder cannot corrupt each other.** Two `prep` runs, or
+the CLI and the browser, can reach a folder at once.
 
-- **Fails as:** two processes build `.binsnapshots/<same-sha>.tmp` and race the
-  swap. A1's atomicity holds for one writer and says nothing about two.
-- **Test:** two concurrent checkpoints of the same folder; afterwards exactly one
-  archive exists for that commit and it verifies (I2).
+**Content addressing does most of this rather than a lock.** Two saves of the
+same big files compute the same digest and publish to the same path with the same
+bytes — the race has no wrong outcome to reach. Two saves of *different* content
+publish to *different* paths and never meet. This is the ordinary reason
+content-addressed stores need no write lock, and it is why the rule is stated as
+*cannot corrupt* rather than *cannot interleave*: interleaving is fine.
+
+What remains is ordinary and local: a **partially written** directory must never
+be mistaken for a complete one, which is A1's build-then-publish, and git
+serialises its own index already.
+
+- **Fails as:** a reader finds a half-published archive and treats it as whole.
+- **Test:** two concurrent checkpoints of the same folder; afterwards every
+  archive present verifies (I2), and neither save reports success over a
+  directory the other was still writing.
 
 ### Depth, and both folder shapes
 
@@ -805,16 +895,16 @@ conclude there is nothing to do.
 
 | Rule | | |
 |---|---|:--:|
-| **S1** | everything is stored; the only exclusion is the store itself | ⛔ `*.MD` / `*.MD_CAR` are ignored and unarchived |
+| **S1** | everything is stored; the two stores are the only exclusions | ⛔ several patterns are ignored and unarchived, so they are in no store at all |
 | **S1a** | `.gitignore` generated, one source | ⛔ a hand-kept list sits beside the generated block |
 | **S1b** | the store is chosen by measuring the file | ⛔ **not built** — there is no size limit anywhere; the gate is the glob list |
 | **S1c** | the classification lives in molbuilder's config, one home | ⛔ **not built** — every folder has its own `.mbcheckpoint.json`, writable from CLI and web |
-| **I1** | archived content is never modified | ✅ |
+| **I1** | archived content is never modified | ⛔ holds by convention; becomes structural when the name is the content digest (§ 3) |
 | **I2** | a MANIFEST is authoritative | ✅ |
 | **I2a** | a restore replays the save, and consults nothing | ✅ |
 | **I2b** | the records themselves are tamper-evident | ⛔ neither is — the anchor is decided (a `Manifest-SHA256:` commit trailer), not built |
 | **I2c** | the restore's gate reads the record, not the config | ⛔ the gate derives from the glob list; the copy derives from the MANIFEST |
-| **I3** | one mover, one replacer, no third | ✅ |
+| **I3** | nothing moves it, `restore` replaces it | ⛔ re-check: the rule allowed a mover that no longer exists |
 | **I4** | no git in a generated wrapper | ✅ |
 | **A1** | build, verify, swap, delete | ✅ |
 | **A2** | verify before mutating, in order | ✅ |
@@ -833,15 +923,20 @@ conclude there is nothing to do.
 | **L7** | a big-file-only change still saves | ✅ fixed in `1e87e01e`; two tests in `test_checkpoint_nested_layout.py` |
 | **S7** | a file that changes category leaves the store it came from | ⛔ nothing untracks; **routine once the gate is a size**, because files grow |
 | **S8** | using git directly does not silently desynchronise the two stores | ⛔ `git checkout` rewinds text and leaves every big file |
-| **S9** | two saves of one folder cannot interleave | ⛔ there is no lock |
+| **S9** | two saves cannot corrupt each other | ⛔ mostly dissolved by content addressing; what is left is A1's build-then-publish |
 | **L8** | a saved attempt never differs afterwards | needs the layout |
 
 ### What cannot be proved, and is flagged instead
 
-**A lost archive cannot be detected, only suspected — and the code already says
-so where this document did not.** Big files are gitignored, so **git records
-nothing about what a commit *should* have contained.** If an archive directory
-goes missing, there is no list anywhere saying it ever existed.
+**A lost archive cannot be detected, only suspected — until the trailer ships.**
+Big files are gitignored, so today **git records nothing about what a commit
+*should* have contained.** If an archive directory goes missing, there is no list
+anywhere saying it ever existed.
+
+> **I2b's trailer is that list.** Once every commit carries the digest of the
+> archive it expects — including the empty one — a missing archive is a fact
+> read off the commit rather than a guess assembled from what happens to be
+> lying around. This paragraph and the warning below describe the interim.
 
 `Repo.missing_archive_warning` is the honest response: if you restore a commit
 with no archive *and* the folder plainly uses big files — there are some on
@@ -849,11 +944,18 @@ disk, or other commits have archives — it says so loudly rather than returning
 text-only and looking fine. It cannot distinguish "the archive was lost" from
 "this commit legitimately had no binaries", and it does not pretend to.
 
-**Archives are never reclaimed.** Delete a branch, or leave a commit
-unreachable, and its `.binsnapshots/<sha>/` stays on disk forever. There is no
-`prune` verb. Not a correctness problem — nothing is lost, which is the
-direction this system errs in on purpose — but it means the archive only ever
-grows.
+**Archives are never reclaimed, and content addressing turns that from an
+oddity into an ordinary piece of unbuilt work.** Delete a branch or leave a
+commit unreachable and its archive stays on disk. There is no `prune` verb.
+
+Not a correctness problem — nothing is lost, which is the direction this system
+errs in on purpose. And the shape of the fix is now the standard one, because
+the store is standard: **an archive is reachable when some reachable commit's
+trailer names it.** Mark from the refs, sweep what nothing points at — what
+`git gc` does for git's own objects. One consequence to keep in mind when it is
+built: an archive may be named by *many* commits, so reachability is a count and
+not a flag, and deleting on the first unreferenced commit would take an archive
+another one still needs.
 
 ### Two things that are not rules
 
