@@ -147,10 +147,12 @@ The engine entries in the config (§ 4) name families that are *always* large, s
 those skip the measuring. That is an effort saving and nothing else — **a hint
 can make a save faster; it can never make it store less.**
 
-> ⚠ **This is the rule; it is not yet the code (S1b).** What ships today consults
-> *only* the name: `_list_big_binaries` matches the glob list and measures
-> nothing, so there is no size limit anywhere in the system. Every sentence above
-> describes where this is going. The diagram is the contract, not a screenshot.
+> **A file over the limit is never handed to git at all**, and that is stronger
+> than it sounds. `git add` writes a blob the moment it stages a file, so a big
+> file merely *unstaged* afterwards has already left its bytes in `.git/objects`
+> — on every save, for a file this diagram says lives elsewhere. The save
+> excludes them by pathspec instead, so "exactly one store" is true of what is
+> on disk and not only of what git's index reports.
 
 ### 3.1 A real folder, after two saves
 
@@ -232,10 +234,12 @@ nothing else — moving it changes where a file is kept, never whether it is kep
 > A per-folder config would let one folder behave differently from another for no
 > recorded reason. That is a trap, not a feature.
 
-> ⚠ **Also the rule and not yet the code (S1c).** Today every folder carries its
-> own `.mbcheckpoint.json`, and two surfaces write it — `molbuilder snapshot
-> config --set-globs` and the web route behind it. So the trap described above is
-> currently open, and one of its consequences is I2c below.
+> **The door is shut rather than merely unused.** A `checkpoint` section placed
+> in a project- or calculation-scope config is **refused**, naming this rule —
+> not read and quietly dropped. A section that is parsed, validated and then
+> ignored looks effective, and the folder is then saved under rules nobody
+> applied. The accessor takes no directory argument at all, which is what stops
+> the per-folder scope coming back the next time a caller has one in hand.
 
 ---
 
@@ -330,9 +334,11 @@ always does, regardless of what a list last said.
 state — it does not pull one file out. To read a single old file without moving
 anything, git already answers that: `git show <state>:<path>`.
 
-> ⚠ **`snapshot restore --no-binaries` exists today and should not** (A4). It
-> rewinds the text and leaves every big file untouched, which is the mixed state
-> S8 is about — reached on purpose instead of by accident.
+> **There is no `--no-binaries`, on any surface** (A4). It rewound the text and
+> left every big file untouched — the mixed state S8 is about, reached on
+> purpose instead of by accident. The HTTP route *refuses* `include_binaries`
+> rather than ignoring it, because a caller that still sends it believes it is
+> getting a text-only restore.
 
 ---
 
@@ -730,13 +736,16 @@ exists, its size matches, its sha256 matches.
   valuable test in the system.
 
 **I2a — a restore is decided by what the save recorded, never by
-configuration.** Verified in code: `Repo.restore`, `_copy_archived_binaries` and
-`_verify_archived_binaries` read no config, no glob list, no engine name.
+configuration.** Verified in code: after `Repo.restore` resolves its target,
+everything it does is driven by two records — `git ls-files` for the text and
+`verify_archive`'s MANIFEST for the big files. No config, no glob list, no
+engine name, and no size limit is consulted between the target resolving and the
+last byte landing.
 
-- **Why it matters now:** the classification is moving out of the folder and into
-  molbuilder's config. Because restore never re-derives, every archive written
-  before that stays readable — an edit to one file instead of a migration of
-  every archive in existence.
+- **Why it matters:** the classification lives outside the folder and can be
+  edited at any time. Because a restore never re-derives, every archive already
+  written stays readable — an edit to one file rather than a migration of every
+  archive in existence.
 - **Test:** save, then change the engine, empty the hint list, delete the config
   outright — and assert the restored tree is byte-identical either way.
 
@@ -839,10 +848,6 @@ baselines, and using one for both gets it wrong:
 A file is named in the warning when it is in both — unsaved, and about to be
 written over. Neither MANIFEST answers that alone, and neither is the glob list.
 
-Today the warning is computed from the glob list instead
-(`_working_binaries_dirty` → `_list_big_binaries` → the config), so the two
-halves of one restore ask two different sources what the big files even are.
-
 - **Fails as: you are told the wrong thing and agree to it.** A `.DM` is
   archived while `*.DM` is classified big. The classification is later narrowed
   — one CLI call or one web request (S1c). You modify that `.DM` and restore an
@@ -883,24 +888,22 @@ partial restore. Text and binaries are one state; returning half of one save and
 keeping half of another produces a folder no save ever held, and § 1's promise
 is about *states*, not about files.
 
-**`snapshot restore --no-binaries` is that partial restore, and it ships.** It is
-on three surfaces — the CLI flag, `include_binaries` in the
-`/api/checkpoint/restore` body, and the Python keyword — and it does not merely
-skip the copy: both remaining protections sit inside the same conditional, so it
-also skips the dirty-binary gate and the archive verification. Its own test is
-named for it.
+**`snapshot restore --no-binaries` was that partial restore, on three surfaces**
+— the CLI flag, `include_binaries` in the `/api/checkpoint/restore` body, and
+the Python keyword — and it did not merely skip the copy: both remaining
+protections sat inside the same conditional, so it also skipped the
+dirty-binary gate and the archive verification. It is gone from all three.
 
-*The flag should be removed rather than documented.* The one use it plausibly
-serves — reading an old input without disturbing the present — is `git show
-<ref>:<path>`, which touches nothing at all. A verb that produces a state the
-contract calls a hazard cannot be kept because it is occasionally convenient.
-⚠ Removing it is a code change and an API change to the route; it is not done by
-this document.
+*Removed rather than documented.* The one use it plausibly served — reading an
+old input without disturbing the present — is `git show <ref>:<path>`, which
+touches nothing at all. A verb that produces a state the contract calls a hazard
+cannot be kept because it is occasionally convenient.
 
 - **Fails as:** exactly S8, minus the excuse. There the user typed a git command
   that means something else everywhere; here molbuilder offered it.
-- **Test:** no surface accepts a request for a text-only restore. Until the flag
-  is gone, the test is red and names it.
+- **Test:** no surface accepts a request for a text-only restore — the CLI has
+  no such flag and rejects it as an argument, and the route answers 400 rather
+  than dropping the field.
 
 **A5 — a restore makes the folder equal the target state exactly, and warns
 first about anything that will be lost.** It does not refuse, and it does not
@@ -1165,12 +1168,12 @@ conclude there is nothing to do.
 |---|---|:--:|
 | **S1** | everything is stored; the two stores are the only exclusions | ✅ the fixed ignore tail is gone; a walk over a saved folder asserts it |
 | **S1a** | `.gitignore` generated, one source | ✅ the block holds nothing but archive patterns; a user's own entries are left alone |
-| **S1b** | the store is chosen by measuring the file | ✅ 10 MB by default; engine entries only let a family skip the measuring |
-| **S1c** | the classification lives in molbuilder's config, one home | ✅ in `molbuilder.json`; no calculation folder carries one |
+| **S1b** | the store is chosen by measuring the file | ✅ 10 MB by default; engine entries only let a family skip the measuring, and a big file never reaches `git add` at all |
+| **S1c** | the classification lives in molbuilder's config, one home | ✅ in `molbuilder.json`; a section in any narrower scope is **refused**, and the accessor takes no directory |
 | **I1** | archived content is never modified | ✅ structural — the name is the content digest, so changed content is a different archive |
 | **I2** | a MANIFEST is authoritative | ✅ |
 | **I2a** | a restore replays the save, and consults nothing | ✅ what a restore removes is decided by git and the MANIFEST, never by the classification |
-| **I2b** | the records themselves are tamper-evident | ✅ every state carries the digest; a tampered MANIFEST is refused, an edited ignore block detected |
+| **I2b** | the records themselves are tamper-evident | ✅ every state carries the digest; a tampered or missing MANIFEST is named on the cheap read as well as at restore, an edited ignore block detected |
 | **I2c** | the warning is measured against the records, not the config | ✅ the standing state's MANIFEST unioned with what is big now; a file the classification stopped matching is still named |
 | **I3** | `restore` is the only operation that writes into the folder | ✅ |
 | **I4** | no git in a generated wrapper | ✅ |
@@ -1178,7 +1181,7 @@ conclude there is nothing to do.
 | **A2** | verify before mutating, in order | ✅ |
 | **A3** | the save precedes the change | needs the prep prompt |
 | **A4** | a restore is whole or does not happen | ✅ on every surface — the HTTP route refuses `include_binaries` rather than ignoring it |
-| **A5** | make the folder equal the target; warn about what is lost, then obey | ✅ names the three shapes; `--force` accepts them; removes what the target lacks; the warning is answered by content while the display is not (§ 7.2) |
+| **A5** | make the folder equal the target; warn about what is lost, then obey | ✅ names the three shapes; at a terminal you are **asked** and `--force` answers for a script; removes what the target lacks; the warning is answered by content while the display is not (§ 7.2) |
 | **A6** | every saved state stays listed and restorable | ✅ one ref per state, so nothing depends on where HEAD points |
 | **S2** | a stage writes only inside itself | needs the layout |
 | **S3** | a run records what it started from | needs the layout |
@@ -1195,23 +1198,21 @@ conclude there is nothing to do.
 | **S9** | two saves cannot corrupt each other | ✅ unique staging per publisher, one atomic rename; tested with four concurrent publishers |
 | **L8** | a saved attempt never differs afterwards | needs the layout |
 
-### What cannot be proved, and is flagged instead
+### A lost archive is a fact now, not a suspicion
 
-**A lost archive cannot be detected, only suspected — until the trailer ships.**
-Big files are gitignored, so today **git records nothing about what a commit
-*should* have contained.** If an archive directory goes missing, there is no list
-anywhere saying it ever existed.
+**Every state carries the digest of the archive it expects** — including the
+empty one, whose digest is a fixed well-known value (I2b). So "this state had no
+big files" and "this state's archive is gone" are two different observations
+rather than one ambiguous silence, and no guesswork is needed to tell them
+apart.
 
-> **I2b's trailer is that list.** Once every commit carries the digest of the
-> archive it expects — including the empty one — a missing archive is a fact
-> read off the commit rather than a guess assembled from what happens to be
-> lying around. This paragraph and the warning below describe the interim.
-
-`Repo.missing_archive_warning` is the honest response: if you restore a commit
-with no archive *and* the folder plainly uses big files — there are some on
-disk, or other commits have archives — it says so loudly rather than returning
-text-only and looking fine. It cannot distinguish "the archive was lost" from
-"this commit legitimately had no binaries", and it does not pretend to.
+That is read on **both** paths, and the cheap one matters more than it looks: a
+restore verifying the target is the obvious place, but a folder whose archive
+has vanished must not sit in the panel reading *"12 unsaved"* until somebody
+tries to act on it. With no record of what the state held, every archived file
+looks like something newly created — the exact opposite of the truth, and an
+invitation to save over the loss. So a missing archive, a missing digest, and a
+MANIFEST that does not hash to its own name are each named where they are found.
 
 **Nothing is ever reclaimed, and under A6 almost nothing can be.** A6 says every
 state you saved stays listed and restorable *forever*, so every state is
@@ -1253,15 +1254,17 @@ the config and **never** by storing less. It sits here rather than in § 7 so
 nobody reads the two as peers again — this document has already lost a file to
 that mistake.
 
-*Known and cosmetic:* the size the surfaces print sums file sizes and counts each
-hard link in full, so ten saves of an unchanged 2 GB file display as 20 GB where
-the disk holds 2. Five call sites, and no `prune` verb for the number to inform.
+*No surface prints an archive total,* and that is deliberate rather than
+pending: the number was never true — hard links counted in full, so ten saves of
+an unchanged 2 GB file read as 20 GB where the disk holds 2 — and it fed no
+decision, since nothing prunes. Computing it also meant walking every archive on
+a path that runs every time a directory is opened.
 
-**Verifying without restoring.** `_verify_archived_binaries` already checks
-everything I2 asks and touches nothing — but it is reachable only from the restore
-path, so the only way to learn an archive is intact is to attempt a restore. That
-is the worst moment to find out. A `snapshot verify [<ref>]` verb is a few lines
-over a helper that exists.
+**Verifying without restoring.** `verify_archive` already checks everything I2
+asks and touches nothing — but no verb reaches it, so the only way to learn an
+archive is intact is to attempt a restore. That is the worst moment to find out.
+A `snapshot verify [<ref>]` verb is a few lines over a function that exists and
+is already public.
 
 ---
 
@@ -1319,7 +1322,7 @@ so no fixture can be too small for them:
 
 ### 13.4 Where each rule is asserted
 
-All eight `test_checkpoint_*.py` files are here. A file in no row is a file
+All seven `test_checkpoint_*.py` files are here. A file in no row is a file
 nobody is maintaining against this document, which is how the two drift.
 
 | Rule | Where |
@@ -1360,20 +1363,11 @@ on is what stops them being forgotten on the day it lands.
 | **S4** the description is never modified | `task.json` reaching a produced folder |
 | **S6** a restored folder explains itself | the same, plus a `dry_run` produce to compare against |
 | **L8** a saved attempt never differs afterwards | the hierarchical layout — and it must be marked *hierarchical only*, or it fails a flat folder that is working correctly |
-| the MANIFEST format | `test_checkpoint_manifest_format.py` |
-| repo boundaries | `test_checkpoint_repo_scope.py` |
-| the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` |
-| the wrapper carries no git | `test_checkpoint_wrapper_isolation.py` |
-| the verbs end to end — init, save, tag, restore, and their refusals | `test_checkpoint_lifecycle.py` |
-| the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` |
-| *Disk cost* (§ 12) — identical content stored once | `test_checkpoint_states.py` — three of four unchanged big files share an inode across two archives |
-| symlinks are outside S1 and survive a restore | `test_checkpoint_states.py` |
 
-> **One of these tests contradicts this document, and that is worth knowing
-> before you read it.** `test_restore_include_binaries_false_skips_integrity_and_binaries`
-> asserts the behaviour A4 forbids — it pins the flag *and* its skipping of both
-> gates. It is not a wrong test; it correctly describes what ships. It retires
-> with the flag.
+*This table lists only rules that are **waiting**. It used to carry a copy of
+the rows above it as well, naming three test files that no longer exist —
+`test_checkpoint_manifest_format.py`, `test_checkpoint_repo_scope.py` and
+`test_checkpoint_lifecycle.py` — which is how a map stops being one.*
 
 ---
 
@@ -1405,11 +1399,13 @@ on is what stops them being forgotten on the day it lands.
 |---|---|
 | `molbuilder/checkpoint.py` | all of it — `Repo` is the class every surface goes through; `State` / `Tag` / `FolderStatus` are the vocabulary of § 5 |
 | `Repo.init` / `.save` / `.restore` | the three verbs everything else is built on |
-| `Repo.tag` / `.states` / `.diff` | naming and reading a history. **No `branch`** — a fork is what happens when you save from a restored state (§ 7.1), not a verb |
-| the classification accessor | which files are always large — reads `molbuilder.json`, never a per-folder file (S1c) |
+| `Repo.tag` / `.states` / `.status` | naming and reading a history. **No `branch`** — a fork is what happens when you save from a restored state (§ 7.1), not a verb. **No `diff`** either: it is listed as unbuilt in § 16 |
+| `Repo.classification` | which files are large here — reads molbuilder's own config and takes **no directory**, which is the shape of S1c |
+| `Repo._manifest_of` | what a state held, and the one place damage to that record is named (I2b) |
 | the note + calculation-name builder | the naming rules (L3) — written and read through one parser so the two cannot drift |
-| `CheckpointError` and its four subclasses | what a refusal raises |
+| `CheckpointError` and its five subclasses | what a refusal raises. `CalculationNameError` is separate because it is the only one a **user** resolves; the rest are faults, and a surface that cannot tell them apart reports "fix your input" for a broken disk |
 | `molbuilder/web/blueprints/checkpoint.py` | the HTTP routes the sidebar calls |
+| `molbuilder/web/static/lib/projects/checkpoint.js` | the sidebar panel — the surface where L3's note is actually asked for |
 | `tests/test_checkpoint_*.py` | seven files — § 13.4 maps them to rules |
 
 ---

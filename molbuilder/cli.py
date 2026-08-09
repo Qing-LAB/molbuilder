@@ -2505,6 +2505,24 @@ def _resolve_repo_path(path: Optional[str]) -> str:
     return str(p)
 
 
+def _stdin_is_a_terminal() -> bool:
+    """Is there somebody present to answer a question?
+
+    A5's warning is a question, and a question needs an answerer.  With no
+    terminal there is nobody, and neither answer may be assumed -- so the
+    restore stops and prints how to say yes.
+
+    A named function rather than an inline ``sys.stdin.isatty()`` because it is
+    the branch that decides whether a folder can be overwritten, and a test
+    harness replaces ``sys.stdin`` wholesale -- leaving the interactive half
+    unreachable, which is how it came to be documented but never written.
+    """
+    try:
+        return sys.stdin.isatty()
+    except (AttributeError, ValueError):        # detached or closed
+        return False
+
+
 def _repo_or_exit(path):
     from molbuilder.checkpoint import Repo
     repo = Repo(_resolve_repo_path(path))
@@ -2541,17 +2559,21 @@ def cmd_snapshot_init(engine, note, calculation, path):
     several independent calculations would share a history and rewind together.
     """
     from molbuilder.checkpoint import (
-        Repo, CheckpointError, NestedRepoRefusedError)
+        Repo, CalculationNameError, CheckpointError, NestedRepoRefusedError)
     repo = Repo(_resolve_repo_path(path))
     if repo.initialized:
         here = repo.standing_at()
-        click.echo(f"{repo.path}: already a checkpoint folder "
-                   f"(standing at {here.short})" if here else repo.path)
+        where = f" (standing at {here.short})" if here else " (no states yet)"
+        click.echo(f"{repo.path}: already a checkpoint folder{where}")
         return
     try:
         state = repo.init(engine=engine, note=note,
                           calculation=calculation)
-    except NestedRepoRefusedError as e:
+    # Exit 2 for both of these: they are the two things the person running the
+    # command fixes -- the folder holds several calculations, or the name needs
+    # repair.  Exit 1 is kept for a fault, so a script can tell "my input was
+    # wrong" from "the machine is broken".
+    except (NestedRepoRefusedError, CalculationNameError) as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
     except CheckpointError as e:
@@ -2608,11 +2630,19 @@ def cmd_snapshot_list(limit, check, path):
     what a fork looks like here, and nothing had to be named for it.
     """
     repo = _repo_or_exit(path)
-    here = repo.standing_at()
     states = repo.states(limit=limit)
     if not states:
         click.echo("no states saved yet.")
         return
+    if check:
+        # Say what is happening before it happens.  --check reads every large
+        # file end to end, and a pause nobody explained reads as a hang.
+        click.echo("comparing file content…", err=True)
+    # One call answers both questions: `status` has to read where the folder
+    # stands in order to say what is unsaved, so asking git again for the same
+    # state was a second pair of subprocesses for a value already in hand.
+    status = repo.status(deep=check)
+    here = status.standing_at
     for state in states:
         mark = "->" if here and state.id == here.id else "  "
         parent = state.parent[:7] if state.parent else "-"
@@ -2621,13 +2651,16 @@ def cmd_snapshot_list(limit, check, path):
         click.echo(f"      {state.at}   from {parent}")
     if here:
         click.echo(f"\n-> is where this folder stands ({here.short}).")
-    status = repo.status(deep=check)
     if not status.clean:
         click.echo(f"   {len(status.unsaved())} unsaved change(s) here; "
                    f"`snapshot save` keeps them.")
         for name in status.unsaved():
             click.echo(f"     {name}")
-    elif not check:
+    elif check:
+        # Silence after an explicit request for certainty reads as "it did not
+        # run".  The whole point of --check is to be told, now.
+        click.echo("   nothing unsaved (content compared).")
+    else:
         click.echo("   nothing unsaved (by size and timestamp; --check "
                    "compares content).")
     if status.ignore_edited:
@@ -2673,11 +2706,12 @@ def cmd_snapshot_restore(state, force, path):
 
     STATE is a state id or a tag.
 
-    Anything here that is not saved is named first, and it is lost if you go
-    ahead: checkpointing is not responsible for work you never saved, and
-    nothing is stashed or set aside on your behalf.  Files that are simply
-    absent from the target are removed without a warning -- they are still in
-    the state that holds them.
+    Anything here that is not saved is named first, and you are asked: at a
+    terminal you answer the question, and a script passes --force.  It is lost
+    if you go ahead -- checkpointing is not responsible for work you never
+    saved, and nothing is stashed or set aside on your behalf.  Files that are
+    simply absent from the target are removed without a warning -- they are
+    still in the state that holds them.
     """
     from molbuilder.checkpoint import (
         CheckpointError, DirtyWorkingTreeError, NoSuchRefError)
@@ -2687,8 +2721,25 @@ def cmd_snapshot_restore(state, force, path):
     try:
         target = repo.restore(state, force=force)
     except DirtyWorkingTreeError as e:
+        # A5 IN TWO STEPS, and the order is the rule (§ 7).  The refusals about
+        # the target come first; only once they have passed is anything asked,
+        # and by then the files are named and in front of the person deciding.
+        # Answering yes runs the restore again -- which verifies the archive a
+        # second time.  That is the honest cost of putting the question last:
+        # the check that guards the folder happens immediately before the
+        # folder changes, not before a prompt somebody sat reading.
         click.echo(str(e), err=True)
-        sys.exit(2)
+        if not _stdin_is_a_terminal():
+            # No terminal, no --force: nothing may be assumed either way.
+            sys.exit(2)
+        if not click.confirm("\nGo ahead and lose it?", default=False):
+            click.echo("nothing was changed.")
+            sys.exit(2)
+        try:
+            target = repo.restore(state, force=True)
+        except CheckpointError as e2:
+            click.echo(f"Error: {e2}", err=True)
+            sys.exit(1)
     except NoSuchRefError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
@@ -2708,7 +2759,7 @@ def cmd_snapshot_config(path):
     cannot behave differently for no recorded reason.  Edit it there.
     """
     repo = _repo_or_exit(path)
-    cls = repo._classification()
+    cls = repo.classification()
     limit = int(cls["size_limit_bytes"])
     click.echo(f"calculation   {repo.calculation()}")
     click.echo(f"size limit    {limit} bytes ({limit / (1024 * 1024):.1f} MB)")

@@ -696,9 +696,15 @@ def _validate_checkpoint(raw: Mapping[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def get_checkpoint(engine: Optional[str] = None,
-                   project_dir: Optional[Path] = None) -> Dict[str, Any]:
+def get_checkpoint(engine: Optional[str] = None) -> Dict[str, Any]:
     """The effective checkpoint classification (checkpointing.md § 4).
+
+    **Server-wide scope only, and that is the rule rather than an omission.**
+    There is deliberately no ``project_dir`` parameter: reading a scope beside
+    the folder being saved is exactly the per-folder classification S1c
+    forbids, and it is what would let somebody change where files are stored
+    between a save and a restore (I2c).  :func:`_read_project` refuses such a
+    section outright, so there is no quiet second home either.
 
     ``engine`` is a **hint** and may be omitted or unknown: an engine nobody
     configured resolves to ``generic``, which names no always-large families and
@@ -708,7 +714,7 @@ def get_checkpoint(engine: Optional[str] = None,
 
     Returns ``{"size_limit_bytes": int, "always_large": [glob, ...]}``.
     """
-    cfg = read_effective_config(project_dir)
+    cfg = _read_server_wide()
     section = _validate_checkpoint(cfg.get("checkpoint") or {})
     engines = section["engines"]
     always = engines.get(engine) if engine else None
@@ -861,7 +867,29 @@ def _read_server_wide() -> Dict[str, Any]:
 
 
 def _read_project(project_dir: Path) -> Dict[str, Any]:
-    return _read_scope(Path(project_dir) / PROJECT_CONFIG_FILENAME)
+    """One project-scope file, refusing the one section that may not live here.
+
+    S1c: the checkpoint classification has ONE home, and it is the server-wide
+    config.  A project-scope copy is a file somebody can edit between a save and
+    a restore, and it makes two folders behave differently with nothing on disk
+    explaining why (checkpointing.md § 4, I2c).
+
+    Refused rather than ignored: a section that is read, validated and then
+    silently dropped is worse than one that was never allowed -- it looks
+    effective, and the folder is saved under rules nobody applied.
+    """
+    scope = _read_scope(Path(project_dir) / PROJECT_CONFIG_FILENAME)
+    if "checkpoint" in scope:
+        raise RuntimeConfigError(
+            f"{Path(project_dir) / PROJECT_CONFIG_FILENAME}: a 'checkpoint' "
+            f"section may not live in a project or calculation folder.  The "
+            f"classification has one home -- the server-wide "
+            f"{CONFIG_FILENAME} -- so that two folders cannot behave "
+            f"differently for no recorded reason, and so that nobody can "
+            f"change where files are stored between a save and a restore "
+            f"(docs/execution/checkpointing.md S1c, I2c)."
+        )
+    return scope
 
 
 def _deep_merge(base: Dict[str, Any],

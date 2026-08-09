@@ -28,7 +28,9 @@ no-mocks discipline of test_checkpoint_routes.py.
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -69,7 +71,8 @@ def _seed_with_archive(tmp_path: Path) -> Path:
 # ----------------------------------------------------------------- #
 
 
-def test_state_does_not_read_big_files_it_does_not_have_to(client, tmp_path):
+def test_state_does_not_read_big_files_it_does_not_have_to(
+        client, tmp_path, checkpoint_config):
     """The sidebar calls this on every directory-enter (docs/web/projects.md).
 
     A folder holding a 2 GB density matrix must not be read end-to-end to
@@ -80,13 +83,10 @@ def test_state_does_not_read_big_files_it_does_not_have_to(client, tmp_path):
     The gate is behavioural, not a timing assertion: make the file unreadable
     after saving it.  If the answer still comes back clean, nothing opened it.
     """
-    import json
     import os
     from molbuilder.checkpoint import Repo
-    from molbuilder.runtime_config import PROJECT_CONFIG_FILENAME
 
-    (tmp_path / PROJECT_CONFIG_FILENAME).write_text(json.dumps(
-        {"checkpoint": {"size_limit_bytes": 1024, "engines": {"generic": []}}}))
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
     (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n")
     big = tmp_path / "siesta-test.DM"
     big.write_bytes(b"\x00" * 4096)
@@ -161,6 +161,78 @@ def test_state_git_failure_is_structured_error_not_crash(
 # ----------------------------------------------------------------- #
 #  3. no background poll loop in the JS                              #
 # ----------------------------------------------------------------- #
+
+
+def _js(name: str) -> Path:
+    return (Path(__file__).resolve().parent.parent / "molbuilder" / "web"
+            / "static" / "lib" / "projects" / name)
+
+
+@pytest.mark.parametrize("name", ["checkpoint.js", "projects-sidebar.js"])
+def test_the_panel_and_its_importer_actually_parse(name):
+    """The cheapest test in the file, and it would have caught a dead sidebar.
+
+    A stray brace made `checkpoint.js` a SyntaxError.  `projects-sidebar.js`
+    imports it STATICALLY, so the failure took the importer down too -- and
+    that module is loaded by five page templates, which means the whole
+    projects sidebar was gone from every page.  Every other test here reads
+    this file as *text* and greps it, and text greps cannot tell you a file
+    does not parse.
+    """
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not on PATH; cannot parse-check ES modules")
+    source = _js(name)
+    # `--check` reads .js as CommonJS, where `export` is a syntax error in
+    # itself; the .mjs copy is what makes it judge the module as a module.
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = Path(tmp) / (source.stem + ".mjs")
+        probe.write_text(source.read_text(), encoding="utf-8")
+        result = subprocess.run([node, "--check", str(probe)],
+                                capture_output=True, text=True)
+    assert result.returncode == 0, (
+        f"{name} does not parse:\n{result.stderr}")
+
+
+def test_the_panel_speaks_the_routes_vocabulary():
+    """The panel's request bodies must be the ones the routes accept.
+
+    `save` and `tag` sent `message` and `label` -- the pre-rework names -- so
+    every save and every tag from the sidebar was refused with HTTP 400 while
+    the module itself was correct.  Nothing else in the suite crosses that
+    seam: the route tests post their own bodies, and the JS tests grep text.
+    """
+    js = _js("checkpoint.js").read_text()
+
+    def body_of(route):
+        """The object literal passed to the CALL, not the header comment.
+
+        Splitting on the bare route path finds the module docstring's list of
+        endpoints first, which contains no request body at all -- a grep that
+        matches prose can only ever agree with prose.
+        """
+        anchor = f'_fetchJSON("POST", "/api/checkpoint/{route}"'
+        assert anchor in js, f"no POST call to {route} in checkpoint.js"
+        return js.split(anchor, 1)[1][:400]
+
+    save = body_of("save")
+    assert "note:" in save and "message:" not in save, (
+        "save must send `note` -- the field L3 requires and the route reads")
+    tag = body_of("tag")
+    assert "name:" in tag and "note:" in tag, "tag sends `name` and `note`"
+    assert "label:" not in tag
+
+
+def test_the_panel_never_offers_to_generate_a_note():
+    """L3: the note is required and never generated.
+
+    The prompt offered "leave blank for ISO timestamp" -- the exact generated
+    stand-in the contract rules out, on the one surface where the question is
+    actually asked.
+    """
+    js = _js("checkpoint.js").read_text().lower()
+    assert "leave blank" not in js
+    assert "iso timestamp" not in js
 
 
 def test_checkpoint_js_has_no_polling_timer():

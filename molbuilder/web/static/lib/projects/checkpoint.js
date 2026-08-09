@@ -570,53 +570,72 @@ async function _onInitClick() {
     }
 }
 
+/**
+ * Save the folder as a new state.  THE NOTE IS REQUIRED AND NEVER GENERATED
+ * (L3): it is the only thing that answers the question you bring to this list a
+ * month later -- why did I stop here, and what was I about to do?  A timestamp
+ * answers neither and repeats the column beside it, so an empty answer is
+ * refused here rather than filled in.
+ */
 async function _onCommitClick() {
     if (!_state.currentDir) return;
-    const msg = prompt(
-        "Checkpoint message (leave blank for ISO timestamp):", "");
-    if (msg === null) return;     // user cancelled
+    const note = prompt(
+        "What happened, and what were you about to do?\n"
+        + "(e.g. \"stage 1 converged, 41 steps -- before retightening\")", "");
+    if (note === null) return;     // user cancelled
+    if (!note.trim()) {
+        _showAdvisory("A state needs a note. Nothing was saved.");
+        return;
+    }
     _hideAdvisory();
     elCommitBtn.disabled = true;
     try {
         const res = await _fetchJSON("POST", "/api/checkpoint/save", {
-            path:    _state.currentDir,
-            message: msg.trim(),
+            path: _state.currentDir,
+            note: note.trim(),
         });
         if (res.body && res.body.ok) {
             await _refresh();
-            if (res.body.checkpoint === null) {
-                _showAdvisory(res.body.note ||
-                    "Nothing to checkpoint (working tree clean).");
+            // `changed:false` is the honest "nothing differed from where you
+            // stand" -- not a failure, and not a state that was invented.
+            if (res.body.changed === false) {
+                _showAdvisory(
+                    "Nothing changed since the state this folder stands at.");
             }
         } else {
-            _showAdvisory("Checkpoint failed: " +
+            _showAdvisory("Save failed: " +
                 (res.body?.error || "HTTP " + res.http));
         }
     } catch (e) {
-        _showAdvisory("Checkpoint failed: " + String(e?.message || e));
+        _showAdvisory("Save failed: " + String(e?.message || e));
     } finally {
         elCommitBtn.disabled = false;
     }
 }
 
+/**
+ * Give a state a name so you can find it again (§ 5, L4).  Nothing tags on your
+ * behalf, so this namespace is the user's alone -- which is what makes their
+ * own tags easy to see in a list a month later.
+ */
 async function _onTagClick() {
     if (!_state.currentDir) return;
-    const label = prompt("Tag label (e.g. stage3-converged):", "");
-    if (!label || !label.trim()) return;
-    const message = prompt(
-        "Tag message (required; the audit trail wants meaning):", "");
-    if (message === null) return;
-    if (!message.trim()) {
-        _showAdvisory("Tag message is required.");
+    const name = prompt("Name this state (e.g. stage1-good):", "");
+    if (name === null) return;                     // user cancelled
+    if (!name.trim()) return;
+    const note = prompt("Why is it worth coming back to?", "");
+    if (note === null) return;
+    if (!note.trim()) {
+        _showAdvisory("A tag needs a note saying why. Nothing was tagged.");
         return;
     }
     _hideAdvisory();
     elTagBtn.disabled = true;
     try {
         const res = await _fetchJSON("POST", "/api/checkpoint/tag", {
-            path:    _state.currentDir,
-            label:   label.trim(),
-            message: message.trim(),
+            path: _state.currentDir,
+            name: name.trim(),
+            note: note.trim(),
         });
         if (res.body && res.body.ok) {
             await _refresh();
@@ -698,7 +717,6 @@ async function _restore(sha, label, force) {
     } catch (e) {
         _showAdvisory("Restore failed: " + String(e && e.message || e));
     }
-}
 }
 
 /* ---------- Advisory surface ---------- */

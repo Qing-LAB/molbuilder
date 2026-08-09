@@ -7,6 +7,7 @@ when more than one test file needs the same setup.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,34 @@ import pytest
 
 from molbuilder import diagnostics
 from molbuilder.structure import Structure
+
+
+@pytest.fixture
+def checkpoint_config(tmp_path, monkeypatch):
+    """Set the checkpoint classification for one test, where it really lives.
+
+    **S1c: the classification has one home, and it is not beside the folder
+    being saved.**  A test cannot set it by dropping a config into the
+    calculation directory -- ``_read_project`` refuses a ``checkpoint`` section
+    there outright, which is the rule, not a limitation to work around.
+
+    The one home is the server-wide scope, and its first candidate is
+    ``./molbuilder.json``.  So this gives the test its own working directory
+    and writes the real file into it: the same resolution path production
+    takes, with nothing mocked (checkpointing.md § 4, S1c).
+
+    Returns a setter, because several tests change the classification *during*
+    a test -- narrowing it between a save and a restore is I2c's own scenario.
+    """
+    home = tmp_path / "config-home"
+    home.mkdir()
+    monkeypatch.chdir(home)
+
+    def _set(**section) -> Path:
+        target = home / "molbuilder.json"
+        target.write_text(json.dumps({"checkpoint": section}))
+        return target
+    return _set
 
 
 @pytest.fixture(autouse=True)

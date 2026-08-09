@@ -13,23 +13,20 @@ verb somebody's script calls, and the contract removed these outright.
 """
 from __future__ import annotations
 
-import json
-
 import pytest
 from click.testing import CliRunner
 
 from molbuilder.cli import cli
-from molbuilder.runtime_config import PROJECT_CONFIG_FILENAME
 
 BIG = b"\x01" * 5000
 
 
 @pytest.fixture()
-def calc(tmp_path):
+def calc(tmp_path, checkpoint_config):
+    """The classification is server-wide (S1c); the folder carries none."""
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
     root = tmp_path / "BDT_Au_relax"
     root.mkdir()
-    (root / PROJECT_CONFIG_FILENAME).write_text(json.dumps(
-        {"checkpoint": {"size_limit_bytes": 1024, "engines": {"generic": []}}}))
     (root / "job.fdf").write_text("SystemLabel job\n")
     return root
 
@@ -207,6 +204,49 @@ def test_restore_names_what_will_be_lost_and_refuses(mb, calc):
     assert "job.XV" in combined and "new.bin" in combined, (
         "a count tells nobody anything; the files must be named")
     assert "--force" in combined, "the way through must be in the message"
+
+
+def test_at_a_terminal_the_question_is_asked_and_yes_is_an_answer(
+        mb, calc, monkeypatch):
+    """§ 7's flowchart has a QUESTION, and `yes` is one of its two ways through.
+
+    The CLI only ever offered `--force`: it printed the files and exited, so
+    the interactive path the contract describes -- and that this command's own
+    help promised -- did not exist.  A person had to retype the whole command
+    with a flag to answer a question they had just been asked.
+    """
+    import molbuilder.cli as cli_mod
+    mb("init")
+    (calc / "job.XV").write_text("saved\n")
+    mb("save", "-m", "stage 1")
+    first = _ids(mb("list").output)[0]
+    (calc / "job.XV").write_text("unsaved\n")
+
+    # The runner replaces sys.stdin wholesale, so the terminal check is the
+    # seam -- not stdin itself.
+    monkeypatch.setattr(cli_mod, "_stdin_is_a_terminal", lambda: True)
+    result = CliRunner().invoke(
+        cli, ["snapshot", "restore", first, "-p", str(calc)], input="y\n")
+    assert result.exit_code == 0, result.output
+    assert (calc / "job.XV").read_text() == "saved\n"
+
+
+def test_answering_no_changes_nothing(mb, calc, monkeypatch):
+    """The answer is honoured in both directions -- that is what makes it a
+    question rather than a formality."""
+    import molbuilder.cli as cli_mod
+    mb("init")
+    (calc / "job.XV").write_text("saved\n")
+    mb("save", "-m", "stage 1")
+    first = _ids(mb("list").output)[0]
+    (calc / "job.XV").write_text("unsaved\n")
+
+    monkeypatch.setattr(cli_mod, "_stdin_is_a_terminal", lambda: True)
+    result = CliRunner().invoke(
+        cli, ["snapshot", "restore", first, "-p", str(calc)], input="n\n")
+    assert result.exit_code != 0
+    assert (calc / "job.XV").read_text() == "unsaved\n", (
+        "answering no must leave the folder exactly as it was")
 
 
 def test_restore_with_force_completes(mb, calc):

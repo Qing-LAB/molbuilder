@@ -12,22 +12,19 @@ Real filesystem, real git, no mocks.
 """
 from __future__ import annotations
 
-import json
-
 import pytest
 
-from molbuilder.runtime_config import PROJECT_CONFIG_FILENAME
 from molbuilder.web.app import create_app
 
 BIG = b"\x01" * 5000
 
 
 @pytest.fixture()
-def calc(tmp_path):
+def calc(tmp_path, checkpoint_config):
+    """The classification is server-wide (S1c); the folder carries none."""
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
     root = tmp_path / "BDT_Au_relax"
     root.mkdir()
-    (root / PROJECT_CONFIG_FILENAME).write_text(json.dumps(
-        {"checkpoint": {"size_limit_bytes": 1024, "engines": {"generic": []}}}))
     (root / "job.fdf").write_text("SystemLabel job\n")
     return root
 
@@ -190,7 +187,8 @@ def test_list_carries_tags_and_where_you_stand(client, started, calc):
     state = _post(client, "save", started, note="stage 1").get_json()["state"]
     _post(client, "tag", started, name="stage1-good", note="trusted")
     body = _get(client, "list", started).get_json()
-    assert body["standing_at"] == state["id"]
+    assert body["standing_at"]["id"] == state["id"], (
+        "/list and /state must name the same field the same way")
     assert [t["name"] for t in body["tags"]] == ["stage1-good"]
     assert "stage1-good" in [t for s in body["states"] for t in s["tags"]]
 

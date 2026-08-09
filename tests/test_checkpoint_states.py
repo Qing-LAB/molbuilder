@@ -13,7 +13,7 @@ not a name — that is S1b, and it is the path that had a live defect.
 """
 from __future__ import annotations
 
-import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -25,28 +25,56 @@ from molbuilder.checkpoint import (
     MANIFEST_NAME,
     NoSuchRefError,
     Repo,
+    _SHA256_RE,
     archive_dir,
     archive_key,
     parse_manifest,
     walk_files,
 )
-from molbuilder.runtime_config import PROJECT_CONFIG_FILENAME
 
 BIG = b"\x01" * 5000       # over the fixture's limit
 SMALL = "text\n"
 
 
 @pytest.fixture()
-def calc(tmp_path):
-    """A calculation folder whose store is decided by SIZE, not by name."""
+def calc(tmp_path, checkpoint_config):
+    """A calculation folder whose store is decided by SIZE, not by name.
+
+    The classification is set in the server-wide config (S1c) -- the folder
+    itself carries none, which is what the rule says and what the walk below
+    would otherwise have to make an exception for.
+    """
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
     root = tmp_path / "BDT_Au_relax"
     root.mkdir()
-    (root / PROJECT_CONFIG_FILENAME).write_text(json.dumps(
-        {"checkpoint": {"size_limit_bytes": 1024, "engines": {"generic": []}}}))
     (root / "job.fdf").write_text("SystemLabel job\n")
     repo = Repo(str(root))
     repo.init(note="set up")
     return repo
+
+
+def _published(repo):
+    """The archives on disk -- staging directories are not archives.
+
+    A publisher stages under `<digest>.<random>` and renames into place, so a
+    name that is not a bare sha256 is somebody mid-write.
+    """
+    return [d for d in (repo.root / ".binsnapshots").iterdir()
+            if d.is_dir() and _SHA256_RE.match(d.name)]
+
+
+def _as_of_the_state(path, repo):
+    """Give `path` the timestamp of the state the folder stands at.
+
+    § 7.2 defines the cheap read's blind spot against the STATE's clock -- "a
+    rewrite to exactly the same size inside the same second as the save" -- so
+    a test of it has to set that relationship rather than hope for it.  Left to
+    the wall clock these pass or fail on where the save's sub-second fraction
+    happened to land, which is a coin toss dressed as an assertion.
+    """
+    from molbuilder.checkpoint import _epoch_of
+    at = _epoch_of(repo.standing_at().at)
+    os.utime(path, (at, at))
 
 
 def _tracked(repo):
@@ -129,7 +157,7 @@ def test_unsaved_is_measured_against_where_you_stand_not_the_newest(calc):
 
     calc.restore(first.id)
     status = calc.status()
-    assert status.standing_at == first.id
+    assert status.standing_at.id == first.id
     assert status.clean, "standing at an older state is not 'unsaved work'"
 
 
@@ -187,7 +215,8 @@ def test_the_cheap_read_may_miss_a_same_size_rewrite_and_that_is_the_deal(calc):
     """
     (calc.root / "big.bin").write_bytes(BIG)
     calc.save("first")
-    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)      # same size, now
+    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)      # same size...
+    _as_of_the_state(calc.root / "big.bin", calc)             # ...same second
     assert calc.status().clean, (
         "if this starts failing, the cheap read began hashing -- check that "
         "the display is not paying for exactness it does not need")
@@ -204,7 +233,8 @@ def test_a_restore_still_refuses_a_same_size_rewrite(calc):
     first = calc.save("first")
     (calc.root / "job.XV").write_text("moved on\n")
     calc.save("moved on")
-    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)      # same size, now
+    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)      # same size...
+    _as_of_the_state(calc.root / "big.bin", calc)             # ...same second
 
     assert calc.status().clean, "precondition: the cheap read misses it"
     with pytest.raises(DirtyWorkingTreeError) as exc:
@@ -512,13 +542,17 @@ def test_a_repository_inside_a_repository_is_refused(tmp_path):
 # ------------------------------------------------------------------ #
 
 
-def test_a_restore_ignores_the_configuration_entirely(calc, tmp_path):
+def test_a_restore_ignores_the_configuration_entirely(calc, checkpoint_config):
     """The contract's own test for I2a: save, then change the classification
     beyond recognition -- and the restored tree must be byte-identical.
 
-    This is what makes moving the classification safe (S1c): every archive
-    already written stays restorable, because a restore replays what the save
-    recorded rather than re-deriving it.
+    This is what makes the classification's single home safe (S1c): every
+    archive already written stays restorable, because a restore replays what
+    the save recorded rather than re-deriving it.
+
+    The comparison is now over the WHOLE tree with no exclusions.  It used to
+    exempt the config file, because the config lived inside the folder being
+    compared -- an exemption that existed only to hide the rule S1c is about.
     """
     (calc.root / "big.bin").write_bytes(BIG)
     (calc.root / "small.txt").write_text(SMALL)
@@ -530,16 +564,12 @@ def test_a_restore_ignores_the_configuration_entirely(calc, tmp_path):
     (calc.root / "stray.bin").write_bytes(BIG)
     calc.save("moved on")
 
-    # Change the classification beyond recognition, then delete it outright.
-    cfg = calc.root / PROJECT_CONFIG_FILENAME
-    cfg.write_text(json.dumps({"checkpoint": {
-        "size_limit_bytes": 99_999_999,          # nothing is big any more
-        "engines": {"generic": []}}}))
+    # Change the classification beyond recognition: nothing is big any more.
+    checkpoint_config(size_limit_bytes=99_999_999, engines={"generic": []})
     calc.restore(state.id, force=True)
     after = {archive_key(calc.root, p): p.read_bytes()
-             for p in walk_files(calc.root) if p.name != PROJECT_CONFIG_FILENAME}
-    expected = {k: v for k, v in before.items() if k != PROJECT_CONFIG_FILENAME}
-    assert after == expected, (
+             for p in walk_files(calc.root)}
+    assert after == before, (
         "a restore re-derived what to do from the config instead of replaying "
         "what the save recorded (I2a)")
 
@@ -608,9 +638,7 @@ def test_a_partial_archive_never_appears_at_the_published_name(calc,
     monkeypatch.setattr(cp.shutil, "copy2", die)
     with pytest.raises(OSError):
         calc.save("this save dies mid-copy")
-    published = [d for d in (calc.root / ".binsnapshots").iterdir()
-                 if d.is_dir() and not d.name.endswith(".tmp")]
-    for adir in published:
+    for adir in _published(calc):
         assert (adir / MANIFEST_NAME).is_file(), (
             f"{adir.name} is published but has no MANIFEST -- a reader would "
             f"take it for complete")
@@ -629,8 +657,7 @@ def test_two_states_with_the_same_big_files_share_one_archive(calc):
     second = calc.save("second")
 
     assert first.archive == second.archive
-    assert len([d for d in (calc.root / ".binsnapshots").iterdir()
-                if d.is_dir()]) == 2, (
+    assert len(_published(calc)) == 2, (
         "one archive for the big file, one empty archive for the first state")
 
 
@@ -667,7 +694,7 @@ def test_the_generated_block_contains_nothing_but_archive_patterns(calc):
     no store -- and this catches it without any file existing at all.
     """
     from molbuilder.checkpoint import ARCHIVE_DIR
-    always = calc._classification()["always_large"]
+    always = calc.classification()["always_large"]
     text = (calc.root / ".gitignore").read_text()
     block = text.split("=== molbuilder checkpoint BEGIN ===")[1] \
                 .split("=== molbuilder checkpoint END ===")[0]
@@ -714,11 +741,10 @@ def _staged(root, stages=("01_coarse", "02_tight"), attempts=2, dm=BIG):
 
 
 @pytest.fixture()
-def staged(tmp_path):
+def staged(tmp_path, checkpoint_config):
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
     root = tmp_path / "BDT_Au_relax"
     root.mkdir()
-    (root / PROJECT_CONFIG_FILENAME).write_text(json.dumps(
-        {"checkpoint": {"size_limit_bytes": 1024, "engines": {"generic": []}}}))
     _staged(root)
     repo = Repo(str(root))
     repo.init(note="a staged calculation, two stages, two attempts each")
@@ -871,7 +897,8 @@ def test_a_deep_forked_history_lists_children_before_parents(staged):
     assert {f.parent for f in forks} == {made[1].id}
 
 
-def test_i2c_the_warning_names_a_file_the_classification_no_longer_matches(calc):
+def test_i2c_the_warning_names_a_file_the_classification_no_longer_matches(
+        calc, checkpoint_config):
     """I2c's own stated test.
 
     A `.DM` archived while `*.DM` was classified big; the classification is
@@ -879,16 +906,14 @@ def test_i2c_the_warning_names_a_file_the_classification_no_longer_matches(calc)
     must still name it, because the MANIFEST -- not the classification -- is
     what says the restore will write over it.
     """
-    cfg = calc.root / PROJECT_CONFIG_FILENAME
-    cfg.write_text(json.dumps({"checkpoint": {
-        "size_limit_bytes": 99_999_999, "engines": {"generic": ["*.DM"]}}}))
+    checkpoint_config(size_limit_bytes=99_999_999,
+                      engines={"generic": ["*.DM"]})
     (calc.root / "job.DM").write_bytes(b"\x01" * 100)
     first = calc.save("with a .DM")
     (calc.root / "job.XV").write_text("moved on\n")
     calc.save("moved on")
 
-    cfg.write_text(json.dumps({"checkpoint": {
-        "size_limit_bytes": 99_999_999, "engines": {"generic": []}}}))
+    checkpoint_config(size_limit_bytes=99_999_999, engines={"generic": []})
     (calc.root / "job.DM").write_bytes(b"\x02" * 100)
 
     with pytest.raises(DirtyWorkingTreeError) as exc:
@@ -969,13 +994,13 @@ def test_concurrent_saves_of_the_same_content_cannot_corrupt_the_archive(calc):
     What must hold afterwards is that every archive present verifies (I2).
     """
     import threading
-    from molbuilder.checkpoint import publish_archive, split_by_store, verify_archive
+    from molbuilder.checkpoint import big_files, publish_archive, verify_archive
 
     (calc.root / "big.bin").write_bytes(BIG)
     (calc.root / "other.bin").write_bytes(b"\x05" * 6000)
-    cls = calc._classification()
-    big, _ = split_by_store(calc.root, int(cls["size_limit_bytes"]),
-                            cls["always_large"])
+    cls = calc.classification()
+    big = big_files(calc.root, int(cls["size_limit_bytes"]),
+                    cls["always_large"])
 
     results, errors = [], []
 
@@ -995,7 +1020,216 @@ def test_concurrent_saves_of_the_same_content_cannot_corrupt_the_archive(calc):
     assert len(set(results)) == 1, "same content must mean one archive name"
     verify_archive(calc.root, results[0])             # raises if damaged
 
-    published = [d for d in (calc.root / ".binsnapshots").iterdir()
-                 if d.is_dir() and not d.name.endswith(".tmp")]
-    for adir in published:
+    for adir in _published(calc):
         verify_archive(calc.root, adir.name)
+
+
+# ------------------------------------------------------------------ #
+#  § 3 — "exactly one store" is true of the object database too       #
+# ------------------------------------------------------------------ #
+
+
+def _loose_blob_bytes(repo):
+    """Total size of every blob git holds, reachable or not.
+
+    `git add` writes a blob the moment it stages a file, and `rm --cached`
+    only drops the index entry -- so a big file that reached `add` leaves its
+    bytes behind whatever the index says afterwards.  Asking git what it holds
+    is the only question that catches that; `ls-files` cannot.
+    """
+    out = subprocess.run(
+        ["git", "cat-file", "--batch-all-objects",
+         "--batch-check=%(objecttype) %(objectsize)"],
+        cwd=repo.path, capture_output=True, text=True, check=True).stdout
+    total = 0
+    for line in out.splitlines():
+        kind, _, size = line.partition(" ")
+        if kind == "blob":
+            total += int(size)
+    return total
+
+
+def test_a_big_file_never_enters_gits_object_store(calc):
+    """S1's losing branch, in the one place a walk of the tree cannot see it.
+
+    A file big by SIZE cannot be named in `.gitignore`, so it used to be handed
+    to `git add -A` and only unstaged afterwards.  `add` hashes, compresses and
+    WRITES: the blob landed in `.git/objects` and stayed there -- re-created on
+    every save, for a file § 3 says never goes into git.  `git ls-files` shows
+    nothing wrong, which is why this asks the object database instead.
+    """
+    payload = b"\x07" * 200_000                  # 200 KB, far over the 1 KB limit
+    (calc.root / "big.bin").write_bytes(payload)
+    (calc.root / "small.txt").write_text(SMALL)
+    calc.save("one big file, one small")
+
+    assert "big.bin" not in _tracked(calc), "precondition: it is not tracked"
+    assert _loose_blob_bytes(calc) < len(payload), (
+        "the big file's bytes are in .git/objects; unstaging it does not "
+        "remove the blob `git add` already wrote (§ 3, S1)")
+
+
+def test_repeated_saves_do_not_grow_git_by_the_big_file(calc):
+    """The cost was paid AGAIN on every save, which is what made it fatal.
+
+    Ten saves of an unchanged density matrix meant ten copies in the object
+    store of a file the archive already holds once.
+    """
+    (calc.root / "big.bin").write_bytes(b"\x07" * 200_000)
+    calc.save("first")
+    baseline = _loose_blob_bytes(calc)
+    for n in range(3):
+        (calc.root / "big.bin").write_bytes(bytes([n]) * 200_000)
+        calc.save(f"rewrite {n}")
+    assert _loose_blob_bytes(calc) - baseline < 200_000, (
+        "each save added another copy of the big file to git's object store")
+
+
+# ------------------------------------------------------------------ #
+#  I2b — damage is named, not absorbed                                #
+# ------------------------------------------------------------------ #
+
+
+def test_a_lost_archive_is_named_rather_than_read_as_unsaved_work(calc):
+    """Two outcomes, not three: it matches, or it is refused (I2b).
+
+    With the archive gone there is no record of what the state held, so every
+    archived file looks like something you just created.  Reporting "1 unsaved"
+    is the exact opposite of the truth -- those files were saved and are now
+    unreachable -- and it invites a save that would paper over the loss.
+    """
+    import shutil as _sh
+    (calc.root / "big.bin").write_bytes(BIG)
+    state = calc.save("with an archive")
+    _sh.rmtree(archive_dir(calc.root, state.archive))
+
+    with pytest.raises(CheckpointError) as exc:
+        calc.status()
+    message = str(exc.value)
+    assert "missing" in message or "lost" in message
+    assert state.short in message, "it must say WHICH state's archive is gone"
+
+
+def test_a_tampered_manifest_is_caught_by_the_cheap_read_too(calc):
+    """The digest check costs one small file, so the display can afford it.
+
+    A record that does not hash to the name it is stored under is damage
+    wherever it is noticed, and noticing it only at restore time means the
+    panel shows a healthy folder until the moment somebody acts on it.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    state = calc.save("with an archive")
+    man = archive_dir(calc.root, state.archive) / MANIFEST_NAME
+    man.write_bytes(man.read_bytes().replace(b"big.bin", b"big.bio"))
+
+    with pytest.raises(CheckpointError) as exc:
+        calc.status()
+    assert "modified" in str(exc.value) or MANIFEST_NAME in str(exc.value)
+
+
+# ------------------------------------------------------------------ #
+#  Paths git does not hand back verbatim                              #
+# ------------------------------------------------------------------ #
+
+
+def test_a_big_file_whose_path_has_a_space_still_reads_saved(calc):
+    """`git status --porcelain` QUOTES a path containing a space.
+
+    Read as a bare path that arrives as `"01 coarse/job.DM"` -- quotes and all
+    -- which matches no archive key, so the guard that keeps git quiet about
+    big files never fired: the file read as unsaved immediately after being
+    saved, forever, and every restore demanded --force.
+    """
+    stage = calc.root / "01 coarse"
+    stage.mkdir()
+    (stage / "job.DM").write_bytes(BIG)
+    state = calc.save("a stage directory with a space in its name")
+
+    assert "01 coarse/job.DM" in _archived(calc, state)
+    status = calc.status()
+    assert status.clean, (
+        f"a saved big file read as unsaved: {status.unsaved()}")
+
+
+def test_a_rename_is_reported_as_the_two_files_it_touched(calc):
+    """git reports a rename as one record naming BOTH paths.
+
+    Taken as a single name it becomes the string `old -> new`, which names
+    nothing on disk: it cannot be found, saved or restored, and the person
+    reading the warning is shown a path that does not exist.
+    """
+    (calc.root / "before.txt").write_text(SMALL)
+    calc.save("with a file to rename")
+    subprocess.run(["git", "mv", "before.txt", "after.txt"],
+                   cwd=calc.path, check=True)
+
+    status = calc.status()
+    assert "before.txt" in status.deleted
+    assert "after.txt" in status.added
+    assert not any("->" in name for name in status.unsaved()), (
+        "a rename was reported as one path naming two files")
+
+
+def test_a_name_the_archive_cannot_carry_is_refused_with_the_way_out(calc):
+    """S1 cannot be met for this file, so the refusal has to be usable.
+
+    The MANIFEST is ASCII, so a big file named outside it cannot be archived.
+    That is a real limit; what makes it survivable is saying which file it is
+    and what to do -- rename it, or raise the limit so git takes it instead.
+    """
+    (calc.root / "résumé.bin").write_bytes(BIG)
+    with pytest.raises(CheckpointError) as exc:
+        calc.save("a file the record cannot carry")
+    message = str(exc.value)
+    assert "résumé.bin" in message, "it must name the file"
+    assert "rename" in message.lower() and "size_limit_bytes" in message, (
+        "a refusal with no way out is a dead end")
+
+
+def test_a_restore_keeps_a_tracked_file_whose_path_has_a_space(calc):
+    """The same quoting hazard as above, in the place where BYTES MOVE.
+
+    A restore removes what the target did not hold, and the set it keeps came
+    from `git ls-files` split on whitespace -- so `01 coarse/job.fdf` arrived as
+    `01` and `coarse/job.fdf`, the real key matched neither, and the file was
+    deleted as a leftover.  Nothing put it back: only *archived* files are
+    copied afterwards, and this one is small enough for git.
+
+    So the file the target state holds is gone from the folder while the state
+    still claims it -- silent loss during the one operation § 1's promise is
+    entirely about.
+    """
+    stage = calc.root / "01 coarse"
+    stage.mkdir()
+    (stage / "job.fdf").write_text("SystemLabel job\n")
+    (stage / "big.bin").write_bytes(BIG)
+    target = calc.save("a stage whose directory name has a space")
+
+    (calc.root / "later.txt").write_text(SMALL)
+    calc.save("moved on")
+    calc.restore(target.id, force=True)
+
+    assert (stage / "job.fdf").is_file(), (
+        "a restore deleted a tracked file the target state holds")
+    assert (stage / "job.fdf").read_text() == "SystemLabel job\n"
+    assert (stage / "big.bin").read_bytes() == BIG
+    assert not (calc.root / "later.txt").exists()
+    assert calc.status(deep=True).clean
+
+
+def test_an_unreadable_file_stops_the_save_rather_than_being_skipped(calc):
+    """S1 exempts nothing, so "could not read it" is not a reason to omit it.
+
+    Silently leaving it out produces a snapshot of most of a folder, which the
+    contract says is not a snapshot of the folder -- and the omission would only
+    be discovered by a restore that did not bring the file back.
+    """
+    victim = calc.root / "locked.bin"
+    victim.write_bytes(BIG)
+    os.chmod(victim, 0o000)
+    try:
+        with pytest.raises(CheckpointError) as exc:
+            calc.save("a file nobody can read")
+        assert "locked.bin" in str(exc.value), "it must name the file"
+    finally:
+        os.chmod(victim, 0o644)

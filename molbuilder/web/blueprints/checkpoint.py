@@ -33,6 +33,7 @@ from flask import Blueprint, jsonify, request
 
 from molbuilder.checkpoint import (
     Repo,
+    CalculationNameError,
     CheckpointError,
     DirtyWorkingTreeError,
     NestedRepoRefusedError,
@@ -146,7 +147,10 @@ def api_checkpoint_state():
     repo = Repo(str(path))
     try:
         status = repo.status(deep=deep)
-        here = repo.standing_at() if status.initialized else None
+        # `status` already read where the folder stands -- it cannot say what
+        # is unsaved without it -- so asking git again was two more subprocesses
+        # per directory-enter for a value already in hand.
+        here = status.standing_at
         return jsonify({
             "ok":            True,
             "path":          str(path),
@@ -194,7 +198,10 @@ def api_checkpoint_list():
         return jsonify({
             "ok":          True,
             "path":        str(path),
-            "standing_at": here.id if here else None,
+            # The SAME shape `/state` returns.  One field name meant a state
+            # object on one route and a bare id on the other, so every reader
+            # had to know which route it came from to know what it held.
+            "standing_at": _state_json(here) if here else None,
             "states":      [_state_json(s) for s in repo.states(limit=limit)],
             "tags":        [{"name": t.name, "state": t.state, "note": t.note}
                             for t in repo.tags()],
@@ -221,7 +228,7 @@ def api_checkpoint_config():
         return _protocol_error(str(exc))
     repo = Repo(str(path))
     try:
-        cls = repo._classification()
+        cls = repo.classification()
         return jsonify({
             "ok":               True,
             "path":             str(path),
@@ -259,10 +266,17 @@ def api_checkpoint_init():
         state = repo.init(engine=body.get("engine"),
                           note=body.get("note") or "set up",
                           calculation=body.get("calculation"))
+    # TWO advisories, named by class rather than caught as a group.  These are
+    # the only two failures here a person resolves -- the folder holds several
+    # calculations, or the name needs repair.  A blanket `except
+    # CheckpointError` also caught git missing from PATH and a corrupt archive,
+    # and answered HTTP 200 "please fix your input" for a broken machine.
     except NestedRepoRefusedError as exc:
         return _advisory(str(exc), where="path")
-    except CheckpointError as exc:
+    except CalculationNameError as exc:
         return _advisory(str(exc), where="calculation")
+    except CheckpointError as exc:
+        return _server_fault(str(exc))
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint init failed")
         return _server_fault(f"{type(exc).__name__}: {exc}")
@@ -295,7 +309,12 @@ def api_checkpoint_save():
     try:
         state = repo.save(note)
     except CheckpointError as exc:
-        return _advisory(str(exc), where="save")
+        # A fault, not an advisory.  The one thing a user can fix about a save
+        # -- the missing note -- was already refused above as a protocol error,
+        # so everything reaching here is the machine: git gone, a corrupt copy,
+        # an unreadable archive.  Reporting those as HTTP 200 "ok:false" put
+        # integrity failures in the bucket meant for questions.
+        return _server_fault(str(exc))
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint save failed")
         return _server_fault(f"{type(exc).__name__}: {exc}")

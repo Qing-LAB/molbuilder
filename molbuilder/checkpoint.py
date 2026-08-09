@@ -65,16 +65,17 @@ _GITIGNORE_BEGIN = "# === molbuilder checkpoint BEGIN ==="
 _GITIGNORE_END = "# === molbuilder checkpoint END ==="
 
 
-def classification(engine: Optional[str] = None,
-                   project_dir=None) -> Dict[str, object]:
+def classification(engine: Optional[str] = None) -> Dict[str, object]:
     """The size limit and always-large families for this calculation (§ 4).
 
     Read from molbuilder's own config, never from the folder being saved
     (S1c) -- a per-folder copy is a file somebody can edit between a save and a
-    restore, which is exactly the hazard I2c is about.
+    restore, which is exactly the hazard I2c is about.  There is **no**
+    directory argument, and that absence is the rule: a function that accepted
+    one would read a scope beside the folder being saved, which is the trap.
     """
     from .runtime_config import get_checkpoint
-    return get_checkpoint(engine, project_dir)
+    return get_checkpoint(engine)
 
 
 def is_big(path: Path, size_limit: int, always_large=()) -> bool:
@@ -90,8 +91,9 @@ def is_big(path: Path, size_limit: int, always_large=()) -> bool:
     try:
         return path.stat().st_size > size_limit
     except OSError:
-        # Unreadable is not "small": treat it as big so it is archived whole
-        # rather than committed, and let the archive's own verify complain.
+        # Unreadable is not "small".  Calling it big sends it to the archive,
+        # where :func:`publish_archive` refuses the save and names the file --
+        # rather than to git, which would commit whatever it could read.
         return True
 
 
@@ -104,8 +106,9 @@ def render_gitignore(always_large=()) -> str:
     tail, because every line in one would be a file excluded by code nobody
     agreed to (S1).
 
-    The size gate cannot be expressed as a gitignore pattern, so files that are
-    big *by measurement* are staged out per-save rather than named here.
+    The size gate cannot be expressed as a gitignore pattern, so a file that is
+    big *by measurement* is kept out of git by the save's pathspec instead of
+    by a line here (see :meth:`Repo.save`).
     """
     lines = [
         _GITIGNORE_BEGIN,
@@ -194,6 +197,17 @@ class NestedRepoRefusedError(CheckpointError):
     one history over them would rewind all of them together (L1)."""
 
 
+class CalculationNameError(CheckpointError):
+    """The calculation's name would have to be repaired to be used (L3).
+
+    Its own class because it is the one refusal here a **user** resolves, by
+    choosing a name or renaming the folder.  Every other failure in this module
+    is a fault -- git missing, an archive damaged, a copy corrupt -- and a
+    surface that cannot tell them apart reports "please fix your input" for a
+    broken disk.
+    """
+
+
 # --------------------------------------------------------------------- #
 #  Data model                                                           #
 # --------------------------------------------------------------------- #
@@ -211,7 +225,7 @@ class State:
     id:          str
     note:        str
     parent:      Optional[str]      # the state this one came from
-    at:          str                # ISO-8601 UTC
+    at:          str                # ISO-8601, with the offset git recorded
     archive:     Optional[str] = None   # Manifest-SHA256; None if damaged
     calculation: Optional[str] = None   # which calculation this belongs to
     tags:        Tuple[str, ...] = ()
@@ -236,16 +250,19 @@ class Tag:
 class FolderStatus:
     """Where the folder stands, and what is unsaved (§ 5, A5).
 
-    ``standing_at`` is the one state the folder is currently at.  Everything
+    ``standing_at`` is the one state the folder is currently at, and everything
     else is measured **against that state and never against the newest one** —
     which is why going back does not make the whole folder read as modified.
+    It is the **State**, not its id: answering "what is unsaved" requires
+    reading it anyway, so returning only the id made every caller that wanted
+    the note or the parent ask git for the same thing a second time.
 
     The three lists are A5's three shapes, and all three are lost when a
     restore makes the folder equal its target.
     """
     path:        str
     initialized: bool
-    standing_at: Optional[str] = None
+    standing_at: Optional["State"] = None
     changed:      Tuple[str, ...] = ()
     added:        Tuple[str, ...] = ()
     deleted:      Tuple[str, ...] = ()
@@ -267,7 +284,8 @@ class FolderStatus:
 
 
 def _run_git(argv: List[str], cwd: str, *,
-             check: bool = True) -> subprocess.CompletedProcess:
+             check: bool = True,
+             stdin: Optional[str] = None) -> subprocess.CompletedProcess:
     """Run ``git argv`` in ``cwd``; return CompletedProcess.
 
     Sets a molbuilder git identity in the environment so a checkpoint works on
@@ -285,6 +303,7 @@ def _run_git(argv: List[str], cwd: str, *,
             ["git", *argv],
             cwd=cwd,
             env=env,
+            input=stdin,
             capture_output=True,
             text=True,
             check=check,
@@ -383,29 +402,45 @@ def walk_files(root: Path):
     Symlinks are outside S1 by its own wording: a link has no content of its
     own, the real file is stored once wherever it lives, and recreating the
     layout is what a restore does anyway.
+
+    **Pruned, not filtered.**  ``rglob`` descends into every directory and lets
+    the caller discard what it collected, which means walking the whole archive
+    -- every big file, once per state that ever held it -- to answer a question
+    about the working tree.  That cost grows with the length of the history and
+    is paid on every directory-enter, so the stores are never entered at all.
     """
-    for path in sorted(root.rglob("*")):
-        rel = path.relative_to(root)
-        # Any component, not just the first: a stray `sub/.git` is somebody
-        # else's repository and is no more ours to store than our own.  The
-        # walk and the key check must exclude the same set, or a file the walk
-        # collects is a file the MANIFEST refuses and the save dies on.
-        if any(part in NEVER_STORED for part in rel.parts):
+    stack: List[Path] = [root]
+    while stack:
+        try:
+            entries = sorted(stack.pop().iterdir())
+        except OSError:                       # unreadable dir: not our problem
             continue
-        if path.is_symlink() or not path.is_file():
-            continue
-        yield path
+        for entry in entries:
+            # Any component, not just the top one: a stray `sub/.git` is
+            # somebody else's repository and is no more ours to store than our
+            # own.  The walk and the key check must exclude the same set, or a
+            # file the walk collects is a file the MANIFEST refuses and the
+            # save dies on.
+            if entry.name in NEVER_STORED:
+                continue
+            if entry.is_symlink():
+                continue                      # and never descend through one
+            if entry.is_dir():
+                stack.append(entry)
+            elif entry.is_file():
+                yield entry
 
 
-def split_by_store(root: Path, size_limit: int, always_large=()):
-    """Partition the folder into ``(big, small)`` — the archive's and git's.
+def big_files(root: Path, size_limit: int, always_large=()) -> List[Path]:
+    """The files that go to the archive rather than to git (S1, S1b).
 
-    Every regular file lands in exactly one list, which is S1 stated as code.
+    Only one side is ever wanted: git is told about everything else by a
+    pathspec that names *these*, so building a second list of the small ones
+    was work nobody consumed -- on every save and every directory-enter, over
+    every file in the folder.
     """
-    big, small = [], []
-    for path in walk_files(root):
-        (big if is_big(path, size_limit, always_large) else small).append(path)
-    return big, small
+    return [path for path in walk_files(root)
+            if is_big(path, size_limit, always_large)]
 
 
 # --------------------------------------------------------------------- #
@@ -558,6 +593,51 @@ def _atomic_write_bytes(target: Path, data: bytes) -> None:
     os.replace(tmp, target)
 
 
+#: Big enough that the syscall overhead disappears, small enough that a 2 GB
+#: density matrix never becomes a 2 GB allocation.
+_HASH_CHUNK = 1024 * 1024
+
+
+def sha256_of(path: Path) -> str:
+    """The sha256 of a file, read in chunks.
+
+    Every hash in this module goes through here.  ``read_bytes()`` would load
+    the whole file first, and the files this system exists for are the large
+    ones: a folder of density matrices would need as much memory as it needs
+    disk, on a save, on a verify, and on every exact status.
+    """
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(_HASH_CHUNK), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _refuse_unstorable(root: Path, path: Path) -> str:
+    """The archive key for *path*, or a refusal a person can act on.
+
+    ``_check_key`` guards the MANIFEST against a key that could steer a restore
+    out of the folder, and its message is written for whoever is reading the
+    record.  Reaching it from a save means an ordinary file the user just
+    created cannot be archived -- most often a name outside ASCII, which the
+    format does not carry -- so the refusal has to say which file and what to
+    do about it, rather than cite a format section.
+    """
+    key = archive_key(root, path)
+    try:
+        _check_key(key, "cannot archive")
+        return key
+    except CheckpointError as exc:
+        raise CheckpointError(
+            f"{path} cannot go into the archive: {exc}\n\n"
+            f"This file is stored in `.binsnapshots/` rather than in git, and "
+            f"the archive's record (MANIFEST) is plain ASCII.  Either rename "
+            f"the file, or adjust `checkpoint.size_limit_bytes` / "
+            f"`checkpoint.engines` in molbuilder.json so it goes to git "
+            f"instead -- git carries the name unchanged.  Nothing was saved."
+        ) from exc
+
+
 # --------------------------------------------------------------------- #
 #  Publishing an archive (A1, I1, § 6)                                  #
 # --------------------------------------------------------------------- #
@@ -626,8 +706,22 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
     """
     entries: List[Tuple[str, int, str]] = []
     for src in big:
-        entries.append((hashlib.sha256(src.read_bytes()).hexdigest(),
-                        src.stat().st_size, archive_key(root, src)))
+        # The key is checked BEFORE anything is hashed or copied: a name the
+        # record cannot carry should cost a message, not a sweep over every
+        # large file in the folder first.
+        key = _refuse_unstorable(root, src)
+        try:
+            entries.append((sha256_of(src), src.stat().st_size, key))
+        except OSError as exc:
+            # S1 exempts nothing, so a file that cannot be read STOPS the save
+            # rather than being quietly left out of it -- a snapshot of most of
+            # a folder is not a snapshot of the folder.
+            raise CheckpointError(
+                f"cannot read {src} in order to archive it: {exc}.  Every file "
+                f"in the folder is stored, so this stops the save rather than "
+                f"producing a snapshot missing one file (checkpointing.md S1). "
+                f"Fix the permissions, or move the file out of the calculation "
+                f"folder.") from exc
     raw = format_manifest(entries)
     digest = manifest_digest(raw)
     final = archive_dir(root, digest)
@@ -661,7 +755,7 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
                 except OSError:
                     pass                  # cross-device or unsupported: copy
             shutil.copy2(src, dst)
-            if hashlib.sha256(dst.read_bytes()).hexdigest() != sha256:
+            if sha256_of(dst) != sha256:
                 raise CheckpointError(
                     f"archive copy of {key!r} is corrupt: it does not match "
                     f"the source it was copied from.  Refusing to publish an "
@@ -711,7 +805,7 @@ def verify_archive(root: Path, digest: str) -> Dict[str, Tuple[str, int]]:
             raise CheckpointError(
                 f"archive {digest[:12]}…: {key!r} is {src.stat().st_size} "
                 f"bytes, the record says {size}; refusing to restore (I2).")
-        if hashlib.sha256(src.read_bytes()).hexdigest() != sha256:
+        if sha256_of(src) != sha256:
             raise CheckpointError(
                 f"archive {digest[:12]}…: {key!r} does not match its recorded "
                 f"sha256; refusing to restore (I2).")
@@ -735,7 +829,7 @@ _CALC_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 def check_calculation_name(name: str) -> str:
     """L3: refuse a name that would have to be repaired to be used."""
     if not _CALC_NAME_RE.match(name or ""):
-        raise CheckpointError(
+        raise CalculationNameError(
             f"calculation name {name!r} is not [A-Za-z0-9_-]+.  It is written "
             f"verbatim into every state and never rewritten, so a name that "
             f"needs repair is refused rather than quietly changed -- fixing it "
@@ -876,7 +970,9 @@ class Repo:
         _run_git(["config", "molbuilder.calculation", name], cwd=self.path)
         if engine:
             _run_git(["config", "molbuilder.engine", engine], cwd=self.path)
-        write_gitignore(self.root, self._classification()["always_large"])
+        # `.gitignore` is not written here: `save` regenerates it as its first
+        # act (I2b), so writing it twice only creates a second place the
+        # derivation happens.
         return self.save(note)
 
     def _engine(self) -> Optional[str]:
@@ -910,8 +1006,51 @@ class Repo:
                        cwd=self.path, check=False).stdout.strip()
         return out or self.root.name
 
-    def _classification(self) -> Dict[str, object]:
-        return classification(self._engine(), self.root)
+    def classification(self) -> Dict[str, object]:
+        """Which files this folder's saves send to the archive (§ 4, S1c).
+
+        Public: two surfaces print it — ``snapshot config`` and
+        ``GET /api/checkpoint/config`` — and a private name they both reach
+        past is not a seam, it is a seam being ignored.
+
+        Resolves through the module-level :func:`classification`, which reads
+        molbuilder's own config and never a scope beside this folder.
+        """
+        return classification(self._engine())
+
+    def _manifest_of(self, state: "State") -> Dict[str, Tuple[str, int]]:
+        """What *state* held, read off its own record (I2b, I2c).
+
+        **Damage is named, never absorbed.**  A state with no digest, or a
+        digest whose archive is gone, used to leave this empty — and an empty
+        record makes every archived file look newly added, so the panel said
+        "12 unsaved" about files that were saved and are now unreachable.
+        I2b's whole point is that those are two different observations:
+        verification matches or it is refused, and there is no third answer.
+        """
+        if not state.archive:
+            raise CheckpointError(
+                f"state {state.short} carries no archive digest, so what it "
+                f"held cannot be read.  Every state carries one from the first "
+                f"onwards — including states that archived nothing — so this "
+                f"is damage rather than a state without big files "
+                f"(checkpointing.md I2b).")
+        adir = archive_dir(self.root, state.archive)
+        man = adir / MANIFEST_NAME
+        if not man.is_file():
+            raise CheckpointError(
+                f"the archive for state {state.short} is missing: no "
+                f"{MANIFEST_NAME} at {adir}.  The state records that archive, "
+                f"so it was lost rather than never written, and nothing here "
+                f"can be called saved or unsaved until that is resolved "
+                f"(checkpointing.md I2b).")
+        raw = man.read_bytes()
+        if manifest_digest(raw) != state.archive:
+            raise CheckpointError(
+                f"state {state.short}: its {MANIFEST_NAME} does not hash to "
+                f"the name it is stored under.  The record was modified "
+                f"(checkpointing.md I2b).")
+        return parse_manifest(raw, str(man))
 
     # -- states ---------------------------------------------------- #
 
@@ -1006,9 +1145,12 @@ class Repo:
         """Where the folder stands, and what differs from it (§ 5, A5).
 
         Three shapes -- changed, added, deleted -- covering text and big files
-        alike.  Big files are gitignored, so git cannot see them; they are
-        compared against the standing state's MANIFEST, which is the record
-        that says what that state held (I2c).
+        alike.  **git is not asked about big files at all**: the always-large
+        families are gitignored and the rest are kept out of the index by the
+        save's pathspec, so git either cannot see them or sees them as
+        untracked, and neither answer is the truth.  They are compared against
+        the standing state's MANIFEST, which is the record of what that state
+        held (I2c).
 
         **Two depths, and the difference is who pays for exactness.**
 
@@ -1027,39 +1169,57 @@ class Repo:
         if not self.initialized:
             return FolderStatus(path=self.path, initialized=False)
         here = self.standing_at()
-        cls = self._classification()          # read once; it hits the filesystem
+        cls = self.classification()           # read once; it hits the filesystem
         edited = not gitignore_is_current(self.root, cls["always_large"])
         changed, added, deleted = set(), set(), set()
 
-        big, _small = split_by_store(self.root, int(cls["size_limit_bytes"]),
-                                     cls["always_large"])
+        big = big_files(self.root, int(cls["size_limit_bytes"]),
+                        cls["always_large"])
         on_disk = {archive_key(self.root, p): p for p in big}
 
         expected: Dict[str, Tuple[str, int]] = {}
-        _archived_keys: set = set()
-        if here is not None and here.archive:
-            try:
-                man = archive_dir(self.root, here.archive) / MANIFEST_NAME
-                if man.is_file():
-                    expected = parse_manifest(man.read_bytes(), str(man))
-                    _archived_keys = set(expected)
-            except CheckpointError:
-                raise CheckpointError(
-                    "cannot say what is unsaved: the archive for the state "
-                    "this folder stands at is unreadable.  Nothing is safe "
-                    "to overwrite until that is resolved (I2b).")
-        # git's view of these files is noise and must be dropped.  A file that
-        # is big by *size* rather than by *name* cannot be named in .gitignore,
-        # so git sees it as untracked and would report it as added on every
-        # status -- including immediately after it was saved.  The archive is
-        # their record, and the comparison below is the only thing entitled to
-        # speak about them (I2c).
-        for line in _run_git(["status", "--porcelain", "-uall"],
-                             cwd=self.path).stdout.splitlines():
-            if not line.strip():
+        if here is not None:
+            expected = self._manifest_of(here)
+
+        def _archives(name: str) -> bool:
+            """Is this git talking about a file the archive owns?
+
+            git's view of a big file is noise and must be dropped.  A file that
+            is big by *size* rather than by *name* cannot be named in
+            `.gitignore`, so git sees it as untracked and would report it as
+            added on every status -- including immediately after it was saved.
+            The MANIFEST comparison below is the only thing entitled to speak
+            about these (I2c).
+            """
+            return name in on_disk or name in expected
+
+        # `-z`, and that matters for correctness rather than parsing taste.
+        # In its default form git C-escapes non-ASCII names and wraps anything
+        # containing a space in double quotes, so `01 coarse/job.DM` arrives as
+        # `"01 coarse/job.DM"`: a string that matches no key, slips past the
+        # guard above, and makes a saved big file read unsaved forever.  With
+        # -z the records are NUL-separated and never quoted.
+        fields = _run_git(["status", "--porcelain", "-z", "-uall"],
+                          cwd=self.path).stdout.split("\0")
+        idx = 0
+        while idx < len(fields):
+            record = fields[idx]
+            idx += 1
+            if len(record) < 4:               # the trailing empty field
                 continue
-            code, name = line[:2], line[3:].strip()
-            if name in on_disk or name in _archived_keys:
+            code, name = record[:2], record[3:]
+            if code[0] in ("R", "C"):
+                # A rename or copy carries its SOURCE in the next field.  Read
+                # as one record it becomes the path `old -> new`, which names
+                # nothing on disk and cannot be matched, saved or restored.
+                source = fields[idx] if idx < len(fields) else ""
+                idx += 1
+                if source and not _archives(source):
+                    deleted.add(source)       # the pair is a delete and an add
+                if not _archives(name):
+                    added.add(name)
+                continue
+            if _archives(name):
                 continue
             if code == "??" or code[0] == "A":
                 added.add(name)
@@ -1113,17 +1273,32 @@ class Repo:
             # Falls through to the exact comparison when asked for it -- and
             # also when the state's timestamp is unreadable, because "cannot
             # rule it out cheaply" must mean *check*, not *assume changed*.
-            if hashlib.sha256(path.read_bytes()).hexdigest() != want[0]:
+            if sha256_of(path) != want[0]:
                 changed.add(key)
 
         return FolderStatus(
             path=self.path, initialized=True,
-            standing_at=here.id if here else None,
+            standing_at=here,
             changed=tuple(sorted(changed - added - deleted)),
             added=tuple(sorted(added)), deleted=tuple(sorted(deleted)),
             ignore_edited=edited)
 
     # -- save ------------------------------------------------------ #
+
+    def _ignored(self, keys: Sequence[str]) -> set:
+        """Which of *keys* git has already been told to skip.
+
+        Asked of git rather than derived, because there are two sources and
+        only one of them is ours: the generated block (the always-large
+        families) and whatever the user wrote above or below the markers, which
+        S1a leaves alone deliberately.  Guessing would mean naming an ignored
+        path in a pathspec, which `git add` refuses outright.
+        """
+        if not keys:
+            return set()
+        result = _run_git(["check-ignore", "-z", "--stdin"], cwd=self.path,
+                          check=False, stdin="\0".join(keys))
+        return {name for name in result.stdout.split("\0") if name}
 
     def save(self, note: str) -> Optional["State"]:
         """Save the folder as a new state.  The note is required (L3).
@@ -1141,25 +1316,44 @@ class Repo:
                 "about to do -- it is the only thing that answers the question "
                 "you bring to a history a month later, and it is not "
                 "defaulted (checkpointing.md L3).")
-        cls = self._classification()
+        cls = self.classification()
         always = cls["always_large"]
         # I2b: `.gitignore` records a DERIVATION, so the derivation is the
         # check -- regenerating it every save is what makes a hand edit
         # harmless rather than a file silently dropped from every store.
         write_gitignore(self.root, always)
-        big, _small = split_by_store(self.root,
-                                     int(cls["size_limit_bytes"]), always)
+        big = big_files(self.root, int(cls["size_limit_bytes"]), always)
+        keys = [archive_key(self.root, path) for path in big]
 
-        # The size gate cannot be a gitignore pattern, so a file that is big by
-        # MEASUREMENT is staged out here -- and a file that stopped being big
-        # is staged back in.  That is S7: a file that changes category leaves
-        # the store it came from, which becomes ordinary once the gate is a
-        # size, because files grow.
-        _run_git(["add", "-A"], cwd=self.path)
-        for path in big:
-            _run_git(["rm", "--cached", "-q", "--ignore-unmatch", "--",
-                      archive_key(self.root, path)], cwd=self.path,
-                     check=False)
+        # THE BIG FILES ARE NEVER SHOWN TO `git add`, and that is not an
+        # optimisation.  `add` hashes, compresses and WRITES every file it is
+        # given: a big file reaching it lands in `.git/objects` and stays
+        # there, because the `rm --cached` below only drops the index entry.
+        # The blob is then on disk forever, re-created on every save, for a
+        # file § 3 says never goes into git.  "Every file is in exactly one
+        # store" has to be true of the object database, not just of the index.
+        #
+        # `:(exclude,literal)` is exact -- no glob, so a path holding `[`, `*`
+        # or a space is excluded as itself and nothing else.
+        #
+        # Only the files git would OTHERWISE TAKE are named.  `git add` refuses
+        # a pathspec that names an ignored path -- even to exclude it -- and
+        # the always-large families are ignored already, by the block this save
+        # just regenerated.  So the exclusions are exactly the files that are
+        # big by MEASUREMENT, which is the set that has no other way to be kept
+        # out of git (the size gate cannot be a gitignore pattern).
+        ignored = self._ignored(keys)          # one call, not one per key
+        excludes = [f":(exclude,literal){key}"
+                    for key in keys if key not in ignored]
+        _run_git(["add", "-A", "--", ".", *excludes], cwd=self.path)
+        # S7: a file that was small last save and is big now is still in the
+        # index, and the pathspec above cannot remove it -- excluded means
+        # untouched.  This is the half that makes a category change complete:
+        # a file leaves the store it came from.  (The reverse direction needs
+        # nothing: a file that shrank is no longer excluded, so `add` takes it.)
+        for key in keys:
+            _run_git(["rm", "--cached", "-q", "--ignore-unmatch", "--", key],
+                     cwd=self.path, check=False)
 
         digest = publish_archive(self.root, big)
         here = self.standing_at()
@@ -1232,7 +1426,16 @@ class Repo:
         # from the classification instead would make a restore mean different
         # things before and after a config edit -- and `git clean` alone cannot
         # do it, because a file matching an ignore pattern is invisible to it.
-        tracked = set(_run_git(["ls-files"], cwd=self.path).stdout.split())
+        #
+        # `-z` and a NUL split, NOT `.split()`.  Whitespace is not a separator
+        # here: `01 coarse/job.fdf` split into `01` and `coarse/job.fdf`, so the
+        # real key matched nothing, the file counted as a leftover, and the loop
+        # below DELETED a tracked file the target holds -- with nothing to put
+        # it back, since only archived files are copied afterwards.  `-z` also
+        # stops git quoting a non-ASCII name, which fails the same way.
+        tracked = {name for name in
+                   _run_git(["ls-files", "-z"], cwd=self.path).stdout.split("\0")
+                   if name}
         for path in walk_files(self.root):
             key = archive_key(self.root, path)
             if key not in tracked and key not in expected:
