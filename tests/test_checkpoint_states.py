@@ -263,6 +263,37 @@ def test_the_cheap_read_may_miss_a_same_size_rewrite_and_that_is_the_deal(calc):
         "the display is not paying for exactness it does not need")
 
 
+def test_an_unreadable_state_timestamp_means_check_rather_than_assume(
+        calc, monkeypatch):
+    """§ 7.2: *"If a state's time cannot be parsed, the file is hashed rather
+    than declared changed — slower, never wrong, and never a false alarm that
+    trains people to ignore the real one."*
+
+    A sentence of the contract with no test.  This uses the cheap read's own
+    blind spot as the probe, which is the only way to tell the two failures
+    apart: a same-size rewrite inside the save's second is invisible to the
+    timestamp comparison — the test above pins exactly that.  Make the
+    timestamp unreadable and the *same folder* must now report the change,
+    which can only happen if it hashed.
+
+    Asserting merely that nothing crashed would pass for code that read
+    "unreadable" as "unchanged" and quietly dropped the file.
+    """
+    import molbuilder.checkpoint as cp
+
+    (calc.root / "big.bin").write_bytes(BIG)
+    calc.save("first")
+    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)      # same size...
+    _as_of_the_state(calc.root / "big.bin", calc)             # ...same second
+    assert calc.status().clean, "precondition: the cheap read misses it"
+
+    monkeypatch.setattr(cp, "_epoch_of", lambda iso: None)
+    assert "big.bin" in calc.status().changed, (
+        "an unreadable timestamp was read as 'unchanged'.  It must mean "
+        "*check* -- the slow answer is never wrong, and the wrong cheap "
+        "answer here loses a file")
+
+
 def test_a_restore_still_refuses_a_same_size_rewrite(calc):
     """And this is why missing it in the display is safe.
 
@@ -284,6 +315,50 @@ def test_a_restore_still_refuses_a_same_size_rewrite(calc):
         "the operation must check content, whatever the display said")
 
 
+def test_a_restored_big_file_keeps_its_own_timestamp(calc):
+    """The archive copy carries the file's own mtime, and § 7.2 leans on it.
+
+    The cheap read rules a large file out with two `stat` fields: the size
+    matches its record, and it has not been touched since the state was saved.
+    A restore that stamped the copy with **now** would give every restored big
+    file a timestamp far newer than the older state it just returned to — so
+    the folder would read *everything unsaved* the moment you went back, on
+    every restore of an earlier state.  That is § 7.2's false alarm, fired by
+    the one operation the warning matters most for.
+
+    `shutil.copy2` is what prevents it, and until now it was covered only by
+    accident: a test about recreating directories happened to assert `.clean`.
+    Retire that test and the guarantee would have gone with it, silently.
+    """
+    import time
+
+    big = calc.root / "big.bin"
+    big.write_bytes(BIG)
+    # AGE IT, and this line is the test.  A real `.DM` is written when the run
+    # produces it and then sits there for hours.  With a freshly written file
+    # the save and the restore land inside any sane tolerance, so the check
+    # passes for code that stamps `now` -- which is exactly what the first
+    # version of this test did: it was green and proved nothing.
+    saved_mtime = time.time() - 3600
+    os.utime(big, (saved_mtime, saved_mtime))
+
+    target = calc.save("the state to come back to")
+    big.write_bytes(b"\x02" * 5000)
+    calc.save("moved on")
+    calc.restore(target.id, force=True)
+
+    assert big.stat().st_mtime == pytest.approx(saved_mtime, abs=1), (
+        "the restored copy was stamped with the time of the restore rather "
+        "than carrying the mtime the file had when it was saved -- an hour of "
+        "difference, so this cannot pass by the test running quickly")
+    # The consequence, on the path that actually reads it: the cheap read
+    # rules the file out by size and timestamp and must not call it unsaved.
+    status = calc.status()
+    assert status.clean, (
+        f"the folder read as unsaved immediately after a restore: "
+        f"{status.unsaved()}")
+
+
 def test_a_big_file_only_change_still_produces_a_state(calc):
     """L7.  `git status` is clean when only a gitignored file changed, and a
     save that trusted it would report 'nothing to do' about work you believed
@@ -298,6 +373,63 @@ def test_a_big_file_only_change_still_produces_a_state(calc):
 
 def test_saving_an_unchanged_folder_produces_nothing(calc):
     assert calc.save("nothing happened") is None
+
+
+def test_where_you_stand_moves_only_where_section_5_says_it_does(calc):
+    """§ 5's third row, which makes three separate claims and had one test.
+
+    *"`init` puts you at the first state, `save` puts you at the one it just
+    made, `restore` puts you at the one you asked for."*  Only the third was
+    asserted directly; the other two were implied by tests that would have
+    failed for other reasons first, which is not the same as being checked.
+    """
+    first = calc.standing_at()
+    assert first is not None and first.note == "set up", (
+        "init must leave you standing at the state it made")
+
+    (calc.root / "job.XV").write_text("one\n")
+    saved = calc.save("stage 1")
+    assert calc.standing_at().id == saved.id, (
+        "save must move you onto the state it just made -- that is what makes "
+        "the next save's parent this one (§ 7.1)")
+
+    calc.restore(first.id)
+    assert calc.standing_at().id == first.id
+
+
+def test_nothing_but_save_and_init_ever_records_a_state(calc):
+    """§ 2: *"It is not automatic. Nothing is ever saved without you saying
+    so."*
+
+    I3 makes the same promise about **your files**; this is the same promise
+    about **the history**, and it had no test.  A read that quietly recorded a
+    state would be invisible: the folder still works, the list simply grows
+    states nobody asked for, and the notes would be whatever the code invented
+    -- which L3 exists to prevent.
+
+    `restore` is included deliberately.  It is the one verb that changes the
+    folder, so it is the one most likely to be given a "save first for you"
+    convenience, which A5 rules out in so many words.
+    """
+    (calc.root / "job.XV").write_text("coords\n")
+    first = calc.save("something to stand on")
+    (calc.root / "job.XV").write_text("later\n")
+    calc.save("and somewhere to come back from")
+
+    before = [s.id for s in calc.states()]
+    calc.status()
+    calc.status(deep=True)
+    calc.states()
+    calc.states(limit=1)
+    calc.standing_at()
+    calc.tags()
+    calc.classification()
+    calc.calculation()
+    calc.tag("a-name", "why it matters")
+    calc.restore(first.id, force=True)
+
+    assert [s.id for s in calc.states()] == before, (
+        "an operation other than `save` recorded a state")
 
 
 # ------------------------------------------------------------------ #
@@ -774,6 +906,37 @@ def test_a_hand_edited_ignore_block_is_detected_and_repaired(calc):
     (calc.root / "job.XV").write_text("x\n")
     calc.save("regenerates the block")
     assert not calc.status().ignore_edited
+
+
+def test_the_documents_own_advice_for_reading_one_old_file(calc):
+    """§ 2, § 2.0, § 5.1 and A5 all point at `git show <state>:<path>`.
+
+    That is right for the text half and **cannot work for the other**.  A
+    large file is deliberately never in any commit (§ 3) — kept out of
+    `git add` by pathspec and dropped from the index — so git has nothing to
+    show.  The advice appears five times in this contract and once in the
+    guide with no such qualification, which sends somebody holding a 2 GB
+    `.DM` to a command that answers *path does not exist*.
+
+    Both halves are pinned here, and the second assertion doubles as a canary:
+    if `git show` ever starts producing the large file, a big file has reached
+    git, which is S1's losing branch rather than an improvement to the advice.
+    """
+    (calc.root / "job.DM").write_bytes(BIG)
+    state = calc.save("a text file and a large one")
+
+    def git_show(path):
+        return subprocess.run(["git", "show", f"{state.id}:{path}"],
+                              cwd=calc.path, capture_output=True)
+
+    assert git_show("job.fdf").returncode == 0, (
+        "the advice must work for the half it is actually about")
+    assert git_show("job.DM").returncode != 0, (
+        "a large file is in a commit tree; the archive is supposed to be the "
+        "only place it lives (§ 3, S1)")
+
+    # What does work, derived from the state's own record rather than guessed.
+    assert (archive_dir(calc.root, state.archive) / "job.DM").read_bytes() == BIG
 
 
 # ------------------------------------------------------------------ #
@@ -1318,6 +1481,41 @@ def test_symlinks_are_not_stored_and_survive_a_restore(staged):
     assert link.resolve() == (staged.root / "Au.psml").resolve()
 
 
+def test_a_symlink_to_a_big_file_is_not_followed_into_the_archive(calc):
+    """S1's carve-out, at the size where following a link actually costs.
+
+    **The existing symlink test could not fail for this.**  The staged fixture
+    links a *small* pseudopotential, so treating links as ordinary files
+    changes nothing observable there — the target is under the limit either
+    way and still lands in git.  Breaking the walk to follow links failed not
+    one test in the suite.
+
+    Over the limit the two behaviours separate, in both directions at once:
+    the target is archived a **second** time under the link's path, and the
+    restore then writes a real file where a link belongs.  A stage that linked
+    a shared file comes back holding its own private copy, and the layout the
+    next run reads is quietly not the one that was saved.
+    """
+    real = calc.root / "shared.DM"
+    real.write_bytes(BIG)
+    stage = calc.root / "01_coarse"
+    stage.mkdir()
+    (stage / "shared.DM").symlink_to("../shared.DM")
+
+    state = calc.save("a stage that links a large shared file")
+    archived = _archived(calc, state)
+    assert "shared.DM" in archived, "the real file is stored once, where it is"
+    assert "01_coarse/shared.DM" not in archived, (
+        "the link was followed and its target archived a second time under "
+        "the link's path — S1: a link has no content of its own")
+
+    calc.restore(state.id, force=True)
+    link = stage / "shared.DM"
+    assert link.is_symlink(), "a restore turned a link into a real file"
+    assert link.resolve() == real.resolve()
+    assert link.read_bytes() == BIG
+
+
 def test_a_restore_recreates_directories_that_had_been_removed(staged):
     """The archive's keys are paths, so a restore must rebuild the tree."""
     state = staged.standing_at()
@@ -1579,7 +1777,10 @@ def test_two_concurrent_saves_of_one_folder_cannot_corrupt_it(calc):
         # A separate handle, the way two processes would reach one folder.
         repo = Repo(str(calc.root))
         try:
-            ready.wait()
+            # A timeout, not a bare wait: if the other thread dies before it
+            # reaches the barrier, a bare wait hangs the suite forever and the
+            # failure looks like an infrastructure problem instead of a bug.
+            ready.wait(timeout=60)
             done.append(repo.save(f"concurrent save {n}"))
         except Exception as exc:                      # noqa: BLE001
             failures.append(exc)

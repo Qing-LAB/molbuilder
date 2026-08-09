@@ -28,12 +28,21 @@ import pytest
 from molbuilder.runwrap import render_run_wrapper, write_run_wrapper
 
 
-#: `git` as a COMMAND WORD: at the start of a line or after a shell operator
-#: (`|`, `&&`, `;`, `$(`, backtick…), never inside another identifier.  This is
-#: I4's own instruction, and the reason for it is that a blunt substring search
-#: flags `digits` and gets switched off.
-_GIT_COMMAND = re.compile(r"(?:^|[|&;(`]|\$\(|\bthen\b|\bdo\b|\belse\b)\s*git\b",
-                          re.MULTILINE)
+#: `git` as a COMMAND WORD: at the start of a line, after a shell operator
+#: (`|`, `&&`, `;`, `$(`, backtick…), after a keyword that introduces a command
+#: (`then`, `do`, `else`), or after a **runner that executes its argument**.
+#: Never inside another identifier.  This is I4's own instruction, and the
+#: reason for it is that a blunt substring search flags `digits` and gets
+#: switched off.
+#:
+#: The runner alternative was added in the second review.  `xargs git push` and
+#: `sudo git commit` invoke git exactly as much as a bare `git` does, and the
+#: pattern saw neither -- so a wrapper could have shipped one and stayed green
+#: while dying on a node with no git, which is the whole failure I4 names.
+_GIT_COMMAND = re.compile(
+    r"(?:^|[|&;(`]|\$\(|\b(?:then|do|else|xargs|sudo|env|time|nohup|exec"
+    r"|command|eval)\b)\s*git\b",
+    re.MULTILINE)
 
 
 #: `git` as a bare word, for the emitted files that are not shell scripts.
@@ -108,11 +117,18 @@ def test_the_check_does_not_fire_on_words_that_merely_contain_git(tmp_path):
     protects nothing.  Asserted directly so the pattern above cannot be
     "tightened" into uselessness.
     """
-    innocent = "echo digits\nLOG=logging.txt\necho legit\n"
+    innocent = ("echo digits\nLOG=logging.txt\necho legit\n"
+                "# the legitimate word gitlab appears in a comment\n"
+                "MSG=\"no digits here\"\n")
     assert _GIT_COMMAND.search(innocent) is None
     for guilty in ("git rev-parse HEAD\n", "  git add -A\n",
                    "x=$(git status)\n", "true && git commit\n",
-                   "if true; then git log; fi\n"):
+                   "if true; then git log; fi\n",
+                   # A runner still runs it.  These were invisible until the
+                   # second review, and each is a real way to ship git into a
+                   # wrapper without typing it at the start of a line.
+                   "xargs git push\n", "sudo git commit\n", "env git status\n",
+                   "exec git log\n", "command git add .\n"):
         assert _GIT_COMMAND.search(guilty) is not None, guilty
 
 

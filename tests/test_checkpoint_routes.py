@@ -295,3 +295,29 @@ def test_init_refuses_a_calculation_name_needing_repair(client, tmp_path):
     (root / "job.fdf").write_text("x\n")
     body = _post(client, "init", root, note="set up").get_json()
     assert body["ok"] is False and body["errors_only"]
+
+
+def test_init_refuses_a_folder_of_independent_calculations_as_an_advisory(
+        client, tmp_path):
+    """L1 over the wire, and the **bucket** is the point (§ 15).
+
+    Two refusals reach this route and they are not the same kind of thing.
+    `CalculationNameError` and this one are things a **person** resolves --
+    rename the folder, or point at one calculation -- so they are advisories
+    the panel can render and act on.  Everything else is a fault.  *"A surface
+    that cannot tell them apart reports 'fix your input' for a broken disk"*,
+    and only one of the two advisories was tested.
+    """
+    root = tmp_path / "topic"
+    (root / "run_a").mkdir(parents=True)
+    (root / "run_b").mkdir()
+    (root / "run_a" / "job.fdf").write_text("x\n")
+    (root / "run_b" / "job.fdf").write_text("x\n")
+
+    r = _post(client, "init", root, note="set up")
+    body = r.get_json()
+    assert r.status_code == 200, (
+        "a refusal the user can act on is an advisory, not a server fault")
+    assert body["ok"] is False and body["errors_only"]
+    assert "run_a" in body["error"] or "calculation" in body["error"].lower(), (
+        "the message must say what is wrong with the folder")

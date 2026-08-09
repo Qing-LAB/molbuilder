@@ -567,7 +567,21 @@ Every verb takes `-p/--path` (default: the current directory).
   other than where you stand.
 - **`restore STATE`** — STATE is a state id or a tag. The **whole folder**
   returns; it is a rewind, not a fetch. To read one old file without moving
-  anything, `git show <state>:<path>` touches nothing at all.
+  anything, there are two commands and which one you want depends on the file's
+  size. A small one is in git:
+
+  ```bash
+  git show <state>:<path>
+  ```
+
+  A large one is not in any commit — it lives in the side archive — so git
+  answers `path '…' does not exist`. Read the state's message for the archive
+  it names, then read the file straight out of it:
+
+  ```bash
+  git show -s --format=%B <state>      # the `Manifest-SHA256:` line is the archive
+  cat .binsnapshots/<digest>/<path>
+  ```
 - **`config`** — prints the size limit, which families skip the measuring, and
   where to change them. Read-only: the classification has one home.
 

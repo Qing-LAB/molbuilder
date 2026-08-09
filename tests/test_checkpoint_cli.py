@@ -296,3 +296,97 @@ def test_config_shows_the_limit_and_which_side_goes_where(mb):
 def test_config_names_the_calculation(mb):
     mb("init")
     assert "BDT_Au_relax" in mb("config").output
+
+
+def test_config_prints_no_archive_total(mb):
+    """§ 12 says *no surface* prints one, and only the route was checked.
+
+    The number was never true -- hard links counted in full, so ten saves of
+    an unchanged 2 GB file read as 20 GB where the disk holds 2 -- and it fed
+    no decision, since nothing prunes.  "No surface" includes this one.
+    """
+    out = mb("config").output.lower()
+    for word in ("archive total", "total bytes", "archive_total"):
+        assert word not in out, f"the CLI prints an archive total ({word!r})"
+
+
+# ------------------------------------------------------------------ #
+#  § 7.2 — say what is happening before it happens                    #
+# ------------------------------------------------------------------ #
+
+
+def _said(result):
+    return result.output + (result.stderr or "")
+
+
+def test_restore_announces_the_slow_part_before_doing_it(mb, calc):
+    """§ 7.2 quotes this string **verbatim** and nothing asserted it.
+
+    *"Checksumming gigabytes takes time, and a pause nobody explained reads as
+    a hang.  The verbs announce the slow part -- 'verifying the archive, then
+    checking what is unsaved here…' -- so a wait is understood rather than
+    endured."*
+
+    On a real calculation this pause is minutes.  A test that only checks the
+    restore worked passes for a version that sits silent through all of it,
+    which is the failure the sentence exists to prevent.
+    """
+    mb("init")
+    (calc / "job.XV").write_text("saved\n")
+    (calc / "big.bin").write_bytes(BIG)
+    mb("save", "-m", "stage 1")
+    first = _ids(mb("list").output)[0]
+
+    # Restoring to where the folder already stands: nothing is lost, nothing
+    # is asked.  The announcement must still appear -- it explains a pause
+    # that happens whether or not there turns out to be anything to report,
+    # and a version that only spoke up when it found something would be silent
+    # for exactly the long clean checks this sentence is about.
+    said = _said(mb("restore", first))
+    assert "verifying the archive" in said, (
+        f"the restore said nothing before checksumming: {said!r}")
+
+
+def test_save_announces_that_it_is_checksumming(mb, calc):
+    """The same rule on the verb that always hashes (§ 7.2's own table:
+    *save checksums every large file, always -- it has no choice*)."""
+    mb("init")
+    (calc / "big.bin").write_bytes(BIG)
+    said = _said(mb("save", "-m", "a folder with large files"))
+    assert "checksumming" in said.lower()
+
+
+def test_list_says_which_question_it_answered(mb, calc):
+    """§ 5.1: *"`list` answers cheaply, **and says so**."*
+
+    Both branches, because the whole point is telling them apart: the default
+    read compares size and timestamp and must say which, and `--check`
+    compares content and must say that instead.  A clean folder that does not
+    say how it decided invites the reader to trust it further than § 7.2 does.
+    """
+    mb("init")
+    (calc / "job.XV").write_text("saved\n")
+    mb("save", "-m", "stage 1")
+
+    cheap = _said(mb("list")).lower()
+    assert "size and timestamp" in cheap and "--check" in cheap, (
+        "the cheap read must say it was cheap, and how to ask for certainty")
+
+    exact = _said(mb("list", "--check")).lower()
+    assert "comparing file content" in exact
+    assert "content compared" in exact
+
+
+def test_list_says_when_the_generated_ignore_block_was_edited(mb, calc):
+    """The panel says so (I2b) and the CLI does too -- and only the panel was
+    tested.  The block is rewritten from the classification on every save, so
+    a hand edit inside the markers is about to disappear; a surface that
+    receives that fact and stays quiet leaves somebody editing a file that
+    never survives.
+    """
+    mb("init")
+    gi = calc / ".gitignore"
+    gi.write_text(gi.read_text().replace(".binsnapshots/",
+                                         ".binsnapshots/\n*.XV"))
+    said = _said(mb("list")).lower()
+    assert "edited by hand" in said

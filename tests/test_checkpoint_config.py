@@ -191,19 +191,28 @@ def test_the_classification_is_read_from_one_scope_only(tmp_path):
     same store decision for the same file".  Nothing about *where* the folder
     sits may enter the answer, which is why the accessor takes no directory.
     """
-    _write_config({"size_limit_bytes": 4096, "engines": {"generic": []}})
+    _write_config({"size_limit_bytes": 4096,
+                   "engines": {"generic": [], "siesta": ["*.DM"],
+                               "pyscf": ["*.chk"]}})
     here = tmp_path / "one"
     there = tmp_path / "two" / "deeper"
     there.mkdir(parents=True)
     here.mkdir()
 
-    from molbuilder.checkpoint import Repo, is_big
-    limit = get_checkpoint()["size_limit_bytes"]
-    for folder in (here, there):
-        sample = folder / "same.bin"
+    from molbuilder.checkpoint import classification_for, is_big
+    # "two folders under DIFFERENT ENGINES produce the same store decision for
+    # the same file" -- the engine is named, and it must not move the answer,
+    # because an engine entry may only let a family SKIP the measuring.
+    for folder, engine in ((here, "siesta"), (there, "pyscf")):
+        sample = folder / "same.bin"                 # named by no engine's list
         sample.write_bytes(b"x" * 5000)
-        assert is_big(sample, limit) is True
-        assert Repo(str(folder)).classification()["size_limit_bytes"] == 4096
+        cls = classification_for(engine)
+        assert cls["size_limit_bytes"] == 4096, (
+            f"{engine}: the limit came from somewhere other than the one home")
+        assert is_big(sample, cls["size_limit_bytes"],
+                      cls["always_large"]) is True, (
+            f"{engine}: an unlisted file over the limit must be archived "
+            f"whatever engine is named -- a hint may only skip a measurement")
 
 
 def test_the_accessor_takes_no_directory_at_all():

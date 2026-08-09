@@ -65,8 +65,8 @@ folder that is cheap to store and wrong is worth nothing.
   it is about to overwrite and then does it (A5). Nothing is stashed or set
   aside on your behalf.
 - **It does not deal in files.** A state is the whole directory. Pulling one
-  file out of the past is a different request with a different tool — `git show
-  <ref>:<path>`.
+  file out of the past is a different request with different tools — § 2.2 says
+  which, and there are two of them because there are two stores.
 
 ### 2.0 One rule for you: use the verbs, not git
 
@@ -92,9 +92,6 @@ Two things make this a fair deal rather than a trap:
   you edited it yourself, and S8 says plainly that guessing there is worse than
   saying less.
 
-To read one old file, `git show <state>:<path>` is safe — it prints and touches
-nothing.
-
 ### 2.1 What it decides, and what it does not
 
 | | |
@@ -111,6 +108,36 @@ about what matters.
 > file (`*.MD`) sat outside every snapshot for months because it was *large* —
 > the size was allowed to argue with the saving, and the size won. Nobody chose
 > that; it followed from letting the two be weighed at all.
+
+### 2.2 Reading one old file without moving anything
+
+Both answers print and touch nothing, and **which one you need depends on the
+store the file was in** — the one place in this document where that distinction
+reaches you rather than staying an implementation detail.
+
+**Small enough for git** — the deck, `task.json`, `run.json`, an `.XV`:
+
+```bash
+git show <state>:<path>
+```
+
+**Large enough for the archive** — a `.DM`, an `.HSX`, a `.TSHS`. Git cannot
+show it, and the error says so plainly (`path '…' does not exist in '…'`). That
+is not a gap: § 3 keeps large files out of every commit deliberately, so there
+is nothing for git to have. The state names its archive, and the file is inside:
+
+```bash
+git show -s --format=%B <state>      # its `Manifest-SHA256:` line names the archive
+cat .binsnapshots/<digest>/<path>    # …and the file sits there under the same path
+```
+
+> **This section exists because the document was wrong about it.** *"To read
+> one old file, `git show <state>:<path>` is safe"* appeared here and in four
+> other places with no qualification — sending somebody holding a 2 GB `.DM` to
+> a command that cannot ever produce it, for exactly the class of file this
+> system was built to handle. The advice was right about the half it was
+> thinking of and silent about the other. A test now pins both halves, so the
+> sentences and the behaviour cannot drift apart again.
 
 ---
 
@@ -336,7 +363,8 @@ always does, regardless of what a list last said.
 
 **`restore` is a rewind, not a fetch.** It returns the *whole folder* to that
 state — it does not pull one file out. To read a single old file without moving
-anything, git already answers that: `git show <state>:<path>`.
+anything, § 2.2 gives the two commands — one per store, because a large file is
+in no commit and git cannot show it.
 
 > **There is no `--no-binaries`, on any surface** (A4). It rewound the text and
 > left every big file untouched — the mixed state S8 is about, reached on
@@ -918,9 +946,9 @@ protections sat inside the same conditional, so it also skipped the
 dirty-binary gate and the archive verification. It is gone from all three.
 
 *Removed rather than documented.* The one use it plausibly served — reading an
-old input without disturbing the present — is `git show <ref>:<path>`, which
-touches nothing at all. A verb that produces a state the contract calls a hazard
-cannot be kept because it is occasionally convenient.
+old input without disturbing the present — is § 2.2's pair of read commands,
+which touch nothing at all. A verb that produces a state the contract calls a
+hazard cannot be kept because it is occasionally convenient.
 
 - **Fails as:** exactly S8, minus the excuse. There the user typed a git command
   that means something else everywhere; here molbuilder offered it.
@@ -972,8 +1000,8 @@ debris a later restore has to reason about.
 
 *A state is the whole directory.* This deals in directory states, not files, so
 "keep this one file while rewinding the rest" is not a smaller request than a
-restore — it is a **different** one, and the tool for it is `git show
-<state>:<path>` or a second folder.
+restore — it is a **different** one, and the tools for it are § 2.2's two read
+commands, or a second folder.
 
 - **Fails as, in both directions:** a refusal makes the user hand-delete files
   to get past it, which is worse than the loss they had already accepted. A
@@ -1238,7 +1266,7 @@ conclude there is nothing to do.
 | **S2** | a stage writes only inside itself | needs the layout |
 | **S3** | a run records what it started from | needs the layout |
 | **S4** | the description is never modified | needs the description |
-| **S5** | nothing about a run changes the id | ✅ **the half this owns** — attempts come and go and every state still names one calculation; the run-layer half waits with the six below |
+| **S5** | nothing about a run changes the id | ✅ **the half this owns** — attempts come and go and every state still names one calculation; the run-layer half is in § 13.4's waiting table |
 | **S6** | a restored folder explains itself | needs the description |
 | **L1** | one repository per calculation | ✅ |
 | **L2** | the archive matches at depth | ✅ |
@@ -1410,12 +1438,19 @@ nobody is maintaining against this document, which is how the two drift.
 | the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` |
 | the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` — the state route does not open a big file it can rule out by size and timestamp, a failure is a structured envelope, the panel and its importer parse, and the panel speaks the routes' field names |
 | *Disk cost* (§ 12) — identical content stored once | `test_checkpoint_states.py` — three of four unchanged big files share an inode across two archives |
-| symlinks are outside S1 and survive a restore | `test_checkpoint_states.py` |
+| symlinks are outside S1 and survive a restore | `test_checkpoint_states.py` — and the link points at a file **over** the limit, which is the only size at which the two behaviours differ: follow it and the target is archived a second time under the link's path, and the restore writes a real file where a link belongs. A link to a small file cannot tell them apart |
+| § 7.2's cheap read after a restore | `test_checkpoint_states.py` — a restored large file keeps **its own** mtime, so the folder does not read *everything unsaved* the moment you return to an older state. The file is deliberately aged an hour before saving, or the assertion passes for a stamp of `now` whenever the test runs quickly |
 
-**A rule in no row is the same failure as a file in no row, and quieter.** These
-six are stated, tracked and deliberately unasserted — a test written against a
-surface that does not exist can only pin a guess about it. Naming what each waits
-on is what stops them being forgotten on the day it lands.
+**A rule in no row is the same failure as a file in no row, and quieter.** The
+seven entries below are stated, tracked and deliberately unasserted — a test
+written against a surface that does not exist can only pin a guess about it.
+Naming what each waits on is what stops them being forgotten on the day it
+lands.
+
+> **S5 is here because it was found in exactly that state**: marked ✅ in § 12,
+> absent from the map above, and absent from this table too — a rule nothing
+> was maintaining, which is the failure the sentence above names. It turned
+> out to have two halves, one of which was answerable immediately.
 
 | Rule | Waits on |
 |---|---|
