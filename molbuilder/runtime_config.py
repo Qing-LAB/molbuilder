@@ -696,6 +696,20 @@ def _validate_checkpoint(raw: Mapping[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def get_checkpoint_engines() -> list:
+    """Every engine entry the effective classification defines (§ 4).
+
+    Exists so a test can be **generated from the configuration** rather than
+    hand-written: walk the engines, walk each one's patterns, assert every
+    matching file is stored (checkpointing.md § 13.1).  A hand-written list of
+    extensions is a second copy of the classification, and it agrees with the
+    first until the day it matters -- which is how `*.MD` sat in no store for
+    months.
+    """
+    section = _validate_checkpoint(_read_server_wide().get("checkpoint") or {})
+    return sorted(section["engines"])
+
+
 def get_checkpoint(engine: Optional[str] = None) -> Dict[str, Any]:
     """The effective checkpoint classification (checkpointing.md § 4).
 

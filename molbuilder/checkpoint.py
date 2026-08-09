@@ -65,7 +65,7 @@ _GITIGNORE_BEGIN = "# === molbuilder checkpoint BEGIN ==="
 _GITIGNORE_END = "# === molbuilder checkpoint END ==="
 
 
-def classification(engine: Optional[str] = None) -> Dict[str, object]:
+def classification_for(engine: Optional[str] = None) -> Dict[str, object]:
     """The size limit and always-large families for this calculation (§ 4).
 
     Read from molbuilder's own config, never from the folder being saved
@@ -1013,10 +1013,11 @@ class Repo:
         ``GET /api/checkpoint/config`` — and a private name they both reach
         past is not a seam, it is a seam being ignored.
 
-        Resolves through the module-level :func:`classification`, which reads
-        molbuilder's own config and never a scope beside this folder.
+        Resolves through :func:`classification_for`, whose name differs from
+        this one on purpose: a module function and a method sharing one name
+        read like a recursive call to anyone skimming the body.
         """
-        return classification(self._engine())
+        return classification_for(self._engine())
 
     def _manifest_of(self, state: "State") -> Dict[str, Tuple[str, int]]:
         """What *state* held, read off its own record (I2b, I2c).
@@ -1199,6 +1200,7 @@ class Repo:
         # `"01 coarse/job.DM"`: a string that matches no key, slips past the
         # guard above, and makes a saved big file read unsaved forever.  With
         # -z the records are NUL-separated and never quoted.
+        git_says: Dict[str, str] = {}
         fields = _run_git(["status", "--porcelain", "-z", "-uall"],
                           cwd=self.path).stdout.split("\0")
         idx = 0
@@ -1214,13 +1216,23 @@ class Repo:
                 # nothing on disk and cannot be matched, saved or restored.
                 source = fields[idx] if idx < len(fields) else ""
                 idx += 1
-                if source and not _archives(source):
-                    deleted.add(source)       # the pair is a delete and an add
-                if not _archives(name):
-                    added.add(name)
+                if source:
+                    git_says[source] = "D "   # the pair is a delete and an add
+                git_says[name] = "A "
                 continue
+            git_says[name] = code
+
+        # Which files the standing state held **in git**.  A5's three shapes ask
+        # whether *the state held a file at this path*, and a state holds files
+        # in BOTH stores -- so answering from the MANIFEST alone calls a file
+        # that crossed the size limit "added", when the state had it all along.
+        tracked = {name for name in
+                   _run_git(["ls-files", "-z"], cwd=self.path).stdout.split("\0")
+                   if name}
+
+        for name, code in git_says.items():
             if _archives(name):
-                continue
+                continue                      # the archive's business, below
             if code == "??" or code[0] == "A":
                 added.add(name)
             elif "D" in code:
@@ -1248,7 +1260,23 @@ class Repo:
                 continue
             want = expected.get(key)
             if want is None:
-                added.add(key)
+                # Not in the standing state's archive.  That is only "added" if
+                # the state had NO file at this path -- and it may well have had
+                # one in git, which is what happens when a file crosses the size
+                # limit.  A5's shapes are about the file, not about which store
+                # held it.
+                if key in tracked:
+                    # git tracked it, so the state held it.  Whether it differs
+                    # is git's own answer: a modification shows in the porcelain
+                    # above, and silence there means the bytes still match what
+                    # the state holds.  A file that merely got RECLASSIFIED --
+                    # the size limit moved, nothing was touched -- is therefore
+                    # not unsaved, and saying it was would be the false alarm
+                    # § 7.2 warns trains people to ignore the real one.
+                    if key in git_says:
+                        changed.add(key)
+                else:
+                    added.add(key)
                 continue
             stat = path.stat()
             if stat.st_size != want[1]:
@@ -1293,6 +1321,16 @@ class Repo:
         families) and whatever the user wrote above or below the markers, which
         S1a leaves alone deliberately.  Guessing would mean naming an ignored
         path in a pathspec, which `git add` refuses outright.
+
+        **DO NOT ADD ``--no-index`` HERE.**  It reads like the more careful
+        flag and it would reinstate the blob leak.  `check-ignore` consults the
+        index by default, so a **tracked** file is reported as *not* ignored --
+        which is exactly right, because the question this asks is not "do the
+        ignore rules match it" but "would ``git add`` otherwise take it".  git
+        stages a tracked file regardless of any pattern.  With ``--no-index`` a
+        file that a config change just reclassified would be called ignored,
+        dropped from the exclusion list, and re-staged by `add` -- writing its
+        blob into `.git/objects`, which is what § 3 forbids.
         """
         if not keys:
             return set()

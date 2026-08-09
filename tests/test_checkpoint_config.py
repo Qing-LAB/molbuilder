@@ -215,5 +215,5 @@ def test_the_accessor_takes_no_directory_at_all():
     """
     import inspect
     assert "project_dir" not in inspect.signature(get_checkpoint).parameters
-    from molbuilder.checkpoint import classification
-    assert "project_dir" not in inspect.signature(classification).parameters
+    from molbuilder.checkpoint import classification_for
+    assert "project_dir" not in inspect.signature(classification_for).parameters

@@ -83,10 +83,14 @@ Two things make this a fair deal rather than a trap:
 
 - **The verbs cover the work.** Saving, going back, comparing, naming a state —
   § 5 is the whole list, and none of it needs git.
-- **You will not be quietly fooled.** Every commit carries the digest of the
-  archive that belongs with it (I2b), so a folder pulled out of step fails
-  verification the next time molbuilder is asked to do anything with it. It
-  refuses and says the archive does not match, rather than proceeding.
+- **You will not be quietly fooled.** Every state carries the digest of the
+  archive that belongs with it (I2b), so a folder pulled out of step is
+  detectable: the big files on disk no longer match the record of the state the
+  folder now stands at. A restore refuses and **names the files that differ**,
+  and the panel shows them as unsaved. What it will not tell you is *why* — a
+  file that differs looks the same whether git moved the text underneath it or
+  you edited it yourself, and S8 says plainly that guessing there is worse than
+  saying less.
 
 To read one old file, `git show <state>:<path>` is safe — it prints and touches
 nothing.
@@ -163,13 +167,13 @@ BDT_Au_relax_Au38C6H4S2/
 ├── .binsnapshots/                   the archive
 │   ├── a19f0b72…c8e5/                 named by the sha256 of its own MANIFEST
 │   │   ├── 01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM
-│   │   └── MANIFEST                   what is in here, and a sha256 each
+│   │   └── MANIFEST.do_not_edit       what is in here, and a sha256 each
 │   └── 4d7ba930…1f62/
 │       ├── 01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM   ← unchanged since the
 │       │                                                   save above, so this is
 │       │                                                   a hard link: no disk
 │       ├── 02_tight/run-0/BDT_Au_relax_Au38C6H4S2.DM
-│       └── MANIFEST
+│       └── MANIFEST.do_not_edit
 ├── task.json                             ┐
 ├── BDT_Au_relax_Au38C6H4S2.fdf.template  │  small → git
 ├── 01_coarse/                            │
@@ -212,7 +216,7 @@ it can tell.
 |---|---|---|
 | **git** | the history of everything small | `snapshot save` |
 | **the archive** — `.binsnapshots/<digest>/` | whole copies of everything large, named by content | `snapshot save` |
-| **MANIFEST** | what is in one archive, with a sha256 each | `snapshot save` |
+| **`MANIFEST.do_not_edit`** | what is in one archive, with a sha256 each — the name is the reminder (I2b) | `snapshot save` |
 | **`.gitignore`** | what git skips — *generated*, so it matches the archive exactly | `snapshot save` only |
 | **the config** | the size limit and the per-engine hints | you, in molbuilder's config |
 | **`molbuilder snapshot …`** | the verbs you type (§ 5) | — |
@@ -349,7 +353,7 @@ flowchart TB
     S["snapshot save"] --> R{"is .gitignore<br/>what it should be?"}
     R -->|"edited by hand"| STOP1["refuse or repair<br/>— an edited ignore list<br/>silently drops files"]
     R -->|"yes"| M["measure every file"]
-    M --> B["big ones → build the archive<br/>in a .tmp"]
+    M --> B["big ones → build the archive in a<br/>private staging dir"]
     B --> V["hash the source, copy,<br/><b>re-hash the copy</b>, compare"]
     V -->|"differ"| STOP2["fail — a corrupt copy must<br/>never become self-consistent"]
     V -->|"match"| W["write MANIFEST"]
@@ -371,9 +375,18 @@ impossible.
 
 **Publishing is *create if absent*, never *overwrite*.** An archive at a given
 name always holds the same content, so there is nothing to replace and nothing to
-move aside. Build in a `.tmp` and rename it into place all the same: the rename
-is what makes a directory appear complete or not at all, so a reader never meets
-a half-written archive (A1).
+move aside. Build in a staging directory and rename it into place all the same:
+the rename is what makes a directory appear complete or not at all, so a reader
+never meets a half-written archive (A1).
+
+**That staging directory is private to the saver, never `<digest>.tmp`.** Content
+addressing makes the *final* name safe to race for — same content, same digest,
+same bytes — but it makes a derived temporary name **collide**, because two
+savers of the same content agree about that too. Sharing it, one deletes the
+directory the other is still filling, and the survivor can publish a half-copied
+archive under a name that promises the opposite. Give each saver its own
+directory and the only shared moment is the single atomic rename, which already
+handles "somebody got there first" (S9).
 
 ---
 
@@ -382,7 +395,7 @@ a half-written archive (A1).
 ```mermaid
 flowchart TB
     R["restore &lt;ref&gt;"] --> D0{"does &lt;ref&gt;<br/>resolve?"}
-    D0 -->|"no"| X0["refuse — unknown tag,<br/>branch or sha"]
+    D0 -->|"no"| X0["refuse — not a state id<br/>and not a tag"]
     D0 -->|"yes"| D3{"does the target's<br/>archive verify?"}
     D3 -->|"no"| X3["refuse — before any change"]
     D3 -->|"yes"| D1{"anything here<br/>not saved?"}
@@ -835,23 +848,33 @@ is not a legacy case to tolerate — it is damage, and it is named as such.
 > suffix, since git requires that name. The name is chosen once, here, and
 > nothing has to read an older one.
 
-**I2c — the warning is measured against the records, not against the config,
-and it takes two of them.** I2a made the *action* config-free; this is its other
-half. Answering *what will be lost* is two questions with two different
-baselines, and using one for both gets it wrong:
+**I2c — the warning is measured against the records, not against the config.**
+I2a made the *action* config-free; this is its other half.
 
-| question | measured against |
-|---|---|
-| **what is unsaved** | the MANIFEST of the state you **stand at** (§ 5) |
-| **what will be overwritten** | the MANIFEST of the state you are **restoring to** |
+**What the warning names is A5's answer, not a second one** — everything that
+differs from the state you stand at: changed, added and deleted alike. This rule
+adds exactly one thing to that, and nothing else: *where those differences are
+measured from*. For big files it is **the MANIFEST of the state you stand at,
+unioned with what is big on disk now** — the MANIFEST because it is the record
+of what that state held, and what-is-big-now because that is the only way a file
+created since the save is noticed at all. Never the glob list.
 
-A file is named in the warning when it is in both — unsaved, and about to be
-written over. Neither MANIFEST answers that alone, and neither is the glob list.
+> **An earlier draft said the warning "takes two of them": intersect what is
+> unsaved with the MANIFEST of the state you are restoring to, and name a file
+> only when it is in both.** That is wrong, and it loses data. A 300 MB `.DM`
+> you produced and never saved is in no MANIFEST anywhere, so the intersection
+> is empty and the warning says nothing — and the restore then deletes it,
+> because A5 removes what the target did not hold. It was written in the same
+> sitting as A5 and never checked against it: A5 had already answered *what is
+> named*, and this rule reached past its own question into *how to compute it*
+> and got the computation wrong. **A rule says what must be true; it does not
+> say how to work it out.** That is why this one now states the requirement and
+> leaves the answer to A5.
 
 - **Fails as: you are told the wrong thing and agree to it.** A `.DM` is
   archived while `*.DM` is classified big. The classification is later narrowed
-  — one CLI call or one web request (S1c). You modify that `.DM` and restore an
-  earlier state. The warning does not mention it, because the glob list no
+  — one edit to molbuilder's config, which is the one place it lives (S1c). You
+  modify that `.DM` and restore an earlier state. The warning does not mention it, because the glob list no
   longer matches it; the copy overwrites it anyway, because the MANIFEST still
   lists it. **Losing it is your call to make** (A5) — being asked a question
   that omits it is not.
@@ -867,12 +890,12 @@ rather than a violation. Do not let a check written for one shape fail the other
 
 ### A save or a restore completes, or does not happen
 
-**A1 — archiving is build, verify, swap, then delete** (§ 4).
+**A1 — archiving is build, verify, publish** (§ 6). *Nothing is deleted:* an archive at a given name always holds the same content, so publishing is *create if absent* and there is never an old one to remove.
 
 - **Test:** kill the process between each step; afterwards the archive set is the
   old one or the new one, never a mixture.
 
-**A2 — a restore verifies before it changes anything** (§ 5), in that order.
+**A2 — a restore verifies before it changes anything** (§ 7), in that order.
 
 - **Test:** corrupt one byte of the target archive and attempt a restore — it
   refuses, and the folder is byte-identical to before.
@@ -914,12 +937,19 @@ from the newest state. Three shapes, and the warning names all three:
 
 | | |
 |---|---|
-| **changed** | a file that differs from that state |
-| **added** | a file that state never had |
-| **deleted** | a file that state had and the folder no longer does |
+| **changed** | the state held a file at this path — **in either store** — and what is on disk now differs from it |
+| **added** | the state held no file at this path, in either store |
+| **deleted** | the state held a file at this path, in either store, and the folder no longer has one |
 
 All three are gone once the folder is made equal to the target, so all three are
 named, and `--force` — or a `yes` — accepts all three at once.
+
+**Which store held it is not one of the three questions.** A file that crossed
+the size limit without its content changing has not changed: the state still
+holds those exact bytes, and restoring gives them back. Move the size limit and
+a folder nobody touched would otherwise light up as unsaved — a warning that
+fires when nothing is wrong, which § 7.2 says is how people learn to ignore the
+one that matters.
 
 **Files that are merely absent from the target are removed without a warning,
 because that is not a loss.** Restore stage 1 while standing at stage 2 and
@@ -971,10 +1001,19 @@ implementation; that they **stay** referred to is the rule.
 
 ### Nothing else touches the state
 
-**I3 — `restore` is the only checkpoint operation that writes into the working
-folder.** Saving reads. Listing, tagging
-and branching touch only the history. One operation changes what is on disk, and
-it is the one whose whole purpose is putting the folder into a state you chose.
+**I3 — `restore` is the only checkpoint operation that changes a file you
+made.** Listing and tagging touch only the history; saving reads your files and
+writes only its own — the generated `.gitignore` (S1a requires it on *every*
+save, not once at setup) and the archive under `.binsnapshots/`. One operation
+puts your files back to a state you chose, and it is the one whose whole purpose
+that is.
+
+*The exception is named by what may be written, not by which verb writes it.*
+An earlier draft excepted `init` instead, on the grounds that setup writes the
+ignore file — but § 4 has always said `.gitignore` is written by **`snapshot
+save` only**, and the tamper rule needs it regenerated every time. Excepting a
+verb hid the two files the rule actually has to allow, and pointed at a verb
+that does not write them.
 
 *What this rule is **not**.* It used to also govern what a **produce** may delete
 from a run directory, in the run layer's vocabulary — warm files, cold starts.
@@ -982,10 +1021,11 @@ That belongs where produce is specified, and stating it here made this document
 appear to know things it has no business knowing (a folder is files; whether a
 deck tells an engine to look for prior state is not a property of a snapshot).
 
-- **Test:** after `init`, every checkpoint operation other than `restore` leaves
-  the working folder byte-identical. `init` is the one setup act — it creates the
-  two stores and writes the generated `.gitignore` — and it is excepted by name,
-  not by a rule about which files may change.
+- **Test:** after `init`, run every checkpoint operation other than `restore`
+  and assert **no file you made** differs — the generated `.gitignore` and
+  anything under `.git/` or `.binsnapshots/` excepted by name, because those are
+  what the rule permits. A test that excepted a *verb* would pass a save that
+  quietly rewrote an input.
 
 **I4 — a generated wrapper contains no git.** A wrapper that committed would need
 git on the compute node, which `running-a-job.md § 2` forbids.
@@ -1171,7 +1211,7 @@ conclude there is nothing to do.
 | **S1b** | the store is chosen by measuring the file | ✅ 10 MB by default; engine entries only let a family skip the measuring, and a big file never reaches `git add` at all |
 | **S1c** | the classification lives in molbuilder's config, one home | ✅ in `molbuilder.json`; a section in any narrower scope is **refused**, and the accessor takes no directory |
 | **I1** | archived content is never modified | ✅ structural — the name is the content digest, so changed content is a different archive |
-| **I2** | a MANIFEST is authoritative | ✅ |
+| **I2** | a MANIFEST is authoritative | ✅ existence, size and sha256 for every entry, run over every archive in the folder |
 | **I2a** | a restore replays the save, and consults nothing | ✅ what a restore removes is decided by git and the MANIFEST, never by the classification |
 | **I2b** | the records themselves are tamper-evident | ✅ every state carries the digest; a tampered or missing MANIFEST is named on the cheap read as well as at restore, an edited ignore block detected |
 | **I2c** | the warning is measured against the records, not the config | ✅ the standing state's MANIFEST unioned with what is big now; a file the classification stopped matching is still named |
@@ -1327,26 +1367,28 @@ nobody is maintaining against this document, which is how the two drift.
 
 | Rule | Where |
 |---|---|
-| S1, S1a, L2 | `test_checkpoint_states.py` — the store-or-store walk over a **staged tree**: two stages, two attempts each, big files at depth, and symlinked pseudopotentials |
+| S1, S1a, L2 | `test_checkpoint_states.py` — walk every file of a **staged tree** (two stages, two attempts each, big files at depth, symlinked pseudopotentials) and assert each is in exactly one store; the generated ignore block holds nothing the archive does not take; and a big file never reaches git's object database |
+| S1b, the classification end to end | `test_checkpoint_states.py` — a fixture **generated from the config**: every engine, every pattern it names, one file each, all archived on size alone being wrong; plus an unlisted file either side of the limit |
 | S1b, S1c | `test_checkpoint_config.py` — the size gate and the one home |
-| I1, I2, A1, A2 | `test_checkpoint_states.py` — corrupt the copy at save, corrupt the archive before a restore |
+| I1, I2, A1, A2 | `test_checkpoint_states.py` — a copy corrupted on its way to disk is caught at save; a corrupted archive is refused before a restore touches anything; a save that dies mid-copy leaves no half-archive at a published name; changed content lands at a different name and the old archive still holds its bytes |
 | I2a | `test_checkpoint_states.py` — change the classification beyond recognition, restore, compare bytes |
 | I2b | `test_checkpoint_states.py` — a tampered MANIFEST, and a hand-edited ignore block |
 | I2c | `test_checkpoint_states.py` — narrow the classification, then the warning must still name the file |
-| I3 | **not yet written** — see § 12 |
-| I4 | `test_checkpoint_wrapper_isolation.py` |
+| I3 | `test_checkpoint_states.py` — after `init`, every operation but `restore` leaves the files you made byte-identical |
+| I4 | `test_checkpoint_wrapper_isolation.py` — an **emitted** wrapper contains no `git` as a command word, and the wrapper module never reaches the checkpoint module |
 | A4, A5 | `test_checkpoint_cli.py` (no partial restore on any surface) and `test_checkpoint_states.py` (the three shapes, and `--force`) |
-| A6 | `test_checkpoint_states.py` — wander, then `git gc --prune=now`, then restore each |
+| A6 | `test_checkpoint_states.py` — restore, save, restore elsewhere, then `git gc --prune=now`: the state saved in between is still listed and still restorable |
 | L1 | `test_checkpoint_states.py` — independent calculations refused, one declared calculation accepted |
-| L3, L4 | `test_checkpoint_states.py` — the note, the calculation's name, and an empty tag list |
+| L3, L4 | `test_checkpoint_states.py` — a save with no note is refused, a state names its calculation without polluting the note, a name needing repair is refused, and the tag list stays empty until somebody types `snapshot tag` |
 | L7 | `test_checkpoint_states.py` — a big-file-only change |
 | S7 | `test_checkpoint_states.py` — a file grows past the limit, and one shrinks below it |
-| S8, S9 | **not yet written** — see § 12 |
+| S8 | `test_checkpoint_states.py` — `git checkout` an older state by hand, then a restore must refuse and name the big file that differs; and a save of that folder records what is on disk and restores correctly |
+| S9 | `test_checkpoint_states.py` — four threads publish one archive at once: none errors, all agree on one name, and every archive on disk verifies |
 | A3, S2, S3, S4, S6, L8 | **not yet written** — each waits on a surface that does not exist; the table below says which |
-| the MANIFEST format | `test_checkpoint_manifest.py` |
-| the verbs as a printed surface | `test_checkpoint_cli.py` |
+| the MANIFEST format | `test_checkpoint_manifest.py` — one content has exactly one MANIFEST; every deviation a lenient reader could "understand" is refused and names the archive; no key can steer a restore out of the folder or into a store |
+| the verbs as a printed surface | `test_checkpoint_cli.py` — what each verb prints and what it exits with, retired verbs gone, and the question asked at a terminal |
 | the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` |
-| the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` |
+| the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` — the state route does not open a big file it can rule out by size and timestamp, a failure is a structured envelope, the panel and its importer parse, and the panel speaks the routes' field names |
 | *Disk cost* (§ 12) — identical content stored once | `test_checkpoint_states.py` — three of four unchanged big files share an inode across two archives |
 | symlinks are outside S1 and survive a restore | `test_checkpoint_states.py` |
 

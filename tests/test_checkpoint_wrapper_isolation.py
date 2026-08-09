@@ -1,65 +1,179 @@
-"""P4 invariant: ``runwrap`` never imports or invokes the checkpoint
-module.  The wrapper is git-agnostic.  This is load-bearing for SLURM
-compatibility — compute nodes execute the generated ``.run.sh`` with
-no git access required.
+"""No git on a compute node (I4).
 
-See docs/execution/running-a-job.md § 6 P4.
+**Contract:** [`checkpointing.md`](?doc=execution/checkpointing.md) I4 — *a
+generated wrapper contains no git*, because a wrapper that committed would need
+git on the compute node, which `running-a-job.md § 2` forbids.
+
+**The contract's test is about the EMITTED SCRIPT, and it used to be missing.**
+Everything here once checked Python import graphs — that `runwrap.py` does not
+import the checkpoint module. That is a real property and it is kept below, but
+it is not I4: a template could hard-code a `git rev-parse` line into the bash it
+emits without importing anything, and the import check stays green while the
+`.sbatch` dies on a node with no git. The rule is about what lands in the file
+that SLURM runs, so that is what is read.
+
+I4's own wording sets the bar for *how* to read it: `git` must be matched **as a
+command word** — `digits` and `logging` are not violations, and a check that
+flags them is one somebody will disable.
 """
 from __future__ import annotations
 
-import importlib
 import inspect
+import re
+import shutil
+import subprocess
+
+import pytest
+
+from molbuilder.runwrap import render_run_wrapper, write_run_wrapper
+
+
+#: `git` as a COMMAND WORD: at the start of a line or after a shell operator
+#: (`|`, `&&`, `;`, `$(`, backtick…), never inside another identifier.  This is
+#: I4's own instruction, and the reason for it is that a blunt substring search
+#: flags `digits` and gets switched off.
+_GIT_COMMAND = re.compile(r"(?:^|[|&;(`]|\$\(|\bthen\b|\bdo\b|\belse\b)\s*git\b",
+                          re.MULTILINE)
+
+
+#: `git` as a bare word, for the emitted files that are not shell scripts.
+#: Still word-bounded rather than a substring search -- "digits" contains the
+#: three letters, which is the trap I4 names.
+_GIT_WORD = re.compile(r"\bgit\b")
+
+
+def _emit(tmp_path, **kwargs):
+    """Write a real wrapper for a real script and return every emitted file."""
+    script = tmp_path / "job.fdf"
+    script.write_text("SystemLabel job\n")
+    write_run_wrapper(script, env="molbuilder-siesta", **kwargs)
+    return [p for p in tmp_path.iterdir() if p.is_file() and p != script]
+
+
+def _shell(files):
+    """The emitted files bash actually runs.
+
+    A wrapper drops more than scripts beside the job -- `mb_monitor.py` rides
+    along and is Python.  Reading that as bash proves nothing; it gets the
+    word-level check below instead, because it runs on the node too.
+    """
+    return [p for p in files
+            if p.name.endswith((".run.sh", ".sbatch"))]
+
+
+# ------------------------------------------------------------------ #
+#  I4 — the emitted script                                            #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"emit_sbatch": False},
+    {"emit_sbatch": True, "time": "01:00:00", "mem": "8G", "cpus_per_task": 4},
+    {"emit_sbatch": False, "attempt_dirs": True, "continue_retries": 2},
+    {"emit_sbatch": False, "mpi_np": 4, "omp_threads": 2},
+])
+def test_no_emitted_wrapper_invokes_git(tmp_path, kwargs):
+    """I4's stated test, over every shape the generator produces.
+
+    A wrapper runs where there may be no git at all, so a `git` command word in
+    one is not a style problem — it is a job that fails on the node, after the
+    queue time was already spent.
+    """
+    emitted = _emit(tmp_path, **kwargs)
+    assert _shell(emitted), "the generator emitted no shell script to check"
+    for script in _shell(emitted):
+        text = script.read_text()
+        hit = _GIT_COMMAND.search(text)
+        assert hit is None, (
+            f"{script.name} invokes git as a command word "
+            f"({text[max(0, hit.start() - 40):hit.end() + 40]!r}). A compute "
+            f"node is not required to have git (checkpointing.md I4).")
+
+    # Everything else that rides along to the node -- today the monitor -- gets
+    # the word-level check.  It runs there as well, so it may not need git
+    # either, and the shell-operator pattern would not see a Python call.
+    for other in emitted:
+        if other in _shell(emitted):
+            continue
+        hit = _GIT_WORD.search(other.read_text())
+        assert hit is None, (
+            f"{other.name} is shipped to the compute node and mentions git "
+            f"(checkpointing.md I4).")
+
+
+def test_the_check_does_not_fire_on_words_that_merely_contain_git(tmp_path):
+    """I4 names this trap itself: `digits` and `logging` are not violations.
+
+    A check that flags them is one somebody disables, and a disabled check
+    protects nothing.  Asserted directly so the pattern above cannot be
+    "tightened" into uselessness.
+    """
+    innocent = "echo digits\nLOG=logging.txt\necho legit\n"
+    assert _GIT_COMMAND.search(innocent) is None
+    for guilty in ("git rev-parse HEAD\n", "  git add -A\n",
+                   "x=$(git status)\n", "true && git commit\n",
+                   "if true; then git log; fi\n"):
+        assert _GIT_COMMAND.search(guilty) is not None, guilty
+
+
+def test_the_rendered_text_is_what_gets_written(tmp_path):
+    """`render_*` and `write_*` must not drift, or the check reads a draft."""
+    script = tmp_path / "job.fdf"
+    script.write_text("SystemLabel job\n")
+    rendered = render_run_wrapper(script, env="molbuilder-siesta")
+    written = write_run_wrapper(script, env="molbuilder-siesta",
+                                emit_sbatch=False)
+    assert written.read_text() == rendered
+
+
+@pytest.mark.skipif(not shutil.which("bash"), reason="bash not on PATH")
+def test_the_emitted_wrapper_is_valid_bash(tmp_path):
+    """A syntax check, because everything above reads the file as text.
+
+    A wrapper that greps clean and does not parse fails just as hard on the
+    node, and `bash -n` is the cheapest way to know it is a script at all.
+    """
+    for script in _shell(_emit(tmp_path, emit_sbatch=False)):
+        result = subprocess.run(["bash", "-n", str(script)],
+                                capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"{script.name} is not valid bash:\n{result.stderr}")
+
+
+# ------------------------------------------------------------------ #
+#  The coupling check — kept, but it is not I4                        #
+# ------------------------------------------------------------------ #
 
 
 def test_runwrap_does_not_import_checkpoint():
-    """Static import-graph check: runwrap.py source must not reference
-    the checkpoint module by name.  Catches any future refactor that
-    accidentally couples them."""
+    """Defence in depth, one layer above the emitted script.
+
+    If the wrapper generator cannot reach the checkpoint module, it cannot grow
+    a call that emits git by accident.  This does not replace the check above:
+    hard-coded bash needs no import.
+    """
     import molbuilder.runwrap as runwrap
     src = inspect.getsource(runwrap)
-    forbidden = (
-        "from molbuilder.checkpoint",
-        "import molbuilder.checkpoint",
-        "from .checkpoint",
-        "import .checkpoint",
-    )
-    for needle in forbidden:
+    for needle in ("from molbuilder.checkpoint", "import molbuilder.checkpoint",
+                   "from .checkpoint", "import .checkpoint"):
         assert needle not in src, (
-            f"P4 violation: runwrap.py contains {needle!r}.  The "
-            f"wrapper must be git-agnostic per docs/execution/"
-            f"running-a-job.md § 6 (P4).  SLURM compute nodes must "
-            f"be able to run the generated .run.sh without git."
-        )
+            f"runwrap.py contains {needle!r}; the wrapper must be git-agnostic "
+            f"(checkpointing.md I4).")
 
 
 def test_checkpoint_module_not_in_runwrap_namespace():
-    """Runtime check: after import, the runwrap module's namespace
-    has no ``Repo`` / ``checkpoint`` / ``CheckpointError`` exports
-    leaking from cross-import."""
+    """The same, at runtime: nothing from checkpoint is reachable via runwrap."""
     import molbuilder.runwrap as runwrap
-    forbidden_attrs = ("Repo", "checkpoint", "CheckpointError",
-                       "Checkpoint")
-    for name in forbidden_attrs:
-        # Allowed: a method or attribute that happens to share a name
-        # but is locally defined.  The strict check is that the
-        # checkpoint module itself isn't reachable via runwrap.
-        v = getattr(runwrap, name, None)
-        if v is None:
+    for name in ("Repo", "checkpoint", "CheckpointError", "Checkpoint"):
+        value = getattr(runwrap, name, None)
+        if value is None:
             continue
-        # If reachable, make sure it's NOT the one from checkpoint.
-        if getattr(v, "__module__", None) == "molbuilder.checkpoint":
-            raise AssertionError(
-                f"P4 violation: runwrap.{name} resolves to "
-                f"molbuilder.checkpoint.{name}.")
+        assert getattr(value, "__module__", None) != "molbuilder.checkpoint", (
+            f"runwrap.{name} resolves to molbuilder.checkpoint.{name}.")
 
 
-def test_checkpoint_module_importable_standalone():
-    """The checkpoint module loads without importing runwrap (loose
-    coupling in both directions; runwrap is heavy)."""
-    # Importing checkpoint should not also pull in runwrap as a
-    # side-effect.  We can't test "did runwrap import?" reliably
-    # after a prior test imported it; instead, check checkpoint's
-    # module-level source for any runwrap reference.
+def test_checkpoint_module_does_not_import_runwrap():
+    """Loose coupling in both directions; runwrap is heavy."""
     import molbuilder.checkpoint as cp
     src = inspect.getsource(cp)
     assert "from molbuilder.runwrap" not in src

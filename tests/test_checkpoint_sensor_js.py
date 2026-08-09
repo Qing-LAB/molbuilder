@@ -255,3 +255,25 @@ def test_checkpoint_js_has_no_polling_timer():
         "checkpoint.js must not poll -- refresh is explicit "
         "(directory-enter + manual Refresh) per docs/web/projects.md "
         "docs/web/projects.md")
+
+
+def test_the_panel_says_so_when_the_generated_ignore_block_was_edited():
+    """A hand edit inside the markers is not supposed to happen, so say so.
+
+    The block is rewritten from the classification on every save -- which is
+    what makes the edit detectable, and also what makes it disappear.  The
+    server sends `ignore_edited`; a panel that receives it and stays quiet
+    leaves somebody editing a file that never survives.
+    """
+    js = _js("checkpoint.js").read_text()
+    assert "ignore_edited" in js, (
+        "the panel must read the flag the route sends")
+    lowered = js.lower()
+    assert "rewritten from the classification" in lowered, (
+        "the note must say WHY the edit will not survive")
+    # A phrase short enough not to straddle a line break in the source: this
+    # file reads the JS as text, so an assertion spanning two concatenated
+    # string literals fails for the formatting rather than for the meaning.
+    assert "outside the molbuilder" in lowered, (
+        "and where to put entries that should survive -- a note with no way "
+        "to get what you wanted is just a scolding")

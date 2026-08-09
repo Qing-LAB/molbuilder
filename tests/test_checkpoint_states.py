@@ -19,6 +19,10 @@ from pathlib import Path
 
 import pytest
 
+from molbuilder.runtime_config import (
+    get_checkpoint,
+    get_checkpoint_engines,
+)
 from molbuilder.checkpoint import (
     CheckpointError,
     DirtyWorkingTreeError,
@@ -485,8 +489,11 @@ def test_a_tag_names_a_state_and_restores_it(calc):
 
     assert calc.restore("stage1-good", force=True).id == state.id
     assert [t.name for t in calc.tags()] == ["stage1-good"]
-    assert "stage1-good" in calc.states()[0].tags or any(
-        "stage1-good" in s.tags for s in calc.states())
+    # `A or any(...)` made the first clause unfalsifiable and asked only whether
+    # SOME state carries the tag.  The claim is that the tagged state carries it.
+    tagged = [s for s in calc.states() if "stage1-good" in s.tags]
+    assert [s.id for s in tagged] == [state.id], (
+        "the tag must sit on the state it was applied to, and on no other")
 
 
 def test_nothing_tags_a_state_on_your_behalf(calc):
@@ -1233,3 +1240,239 @@ def test_an_unreadable_file_stops_the_save_rather_than_being_skipped(calc):
         assert "locked.bin" in str(exc.value), "it must name the file"
     finally:
         os.chmod(victim, 0o644)
+
+
+# ================================================================== #
+#  § 13.1 — the fixture is GENERATED FROM THE CONFIG                 #
+#                                                                    #
+#  "A walk can only judge files the fixture created, and no fixture  #
+#  ever created a `.MD`."  Every test above uses an empty pattern    #
+#  list, so until now no test had ever exercised a real always-large #
+#  family at all -- `*.TBT.AVTRANS_*` was matched by nothing,        #
+#  anywhere.  These walk the shipped classification instead of a     #
+#  hand-written list, so adding a pattern extends them and adding an #
+#  engine gets a suite for free.                                     #
+# ================================================================== #
+
+
+def _a_name_matching(pattern, n):
+    """A concrete filename that the glob names.
+
+    `*.DM` -> `s0.DM`; `*.TBT.AVTRANS_*` -> `s1.TBT.AVTRANS_s1`.  Derived from
+    the pattern rather than listed beside it, because a list of example names is
+    a second copy of the classification (§ 13.3).
+    """
+    return pattern.replace("*", f"s{n}").replace("?", "q")
+
+
+@pytest.fixture()
+def shipped(tmp_path, checkpoint_config):
+    """A folder under the SHIPPED engine patterns and a tiny size limit.
+
+    Omitting `engines` leaves the real ones in place, so the patterns under test
+    are the ones molbuilder actually ships.  The limit is small only so the
+    unlisted-file half runs quickly.
+    """
+    checkpoint_config(size_limit_bytes=1024)
+    return tmp_path
+
+
+def test_every_pattern_the_config_names_is_archived(shipped):
+    """For every engine, for every pattern it names: a file, and it is stored.
+
+    The files are made deliberately **small** -- ten bytes, far under the limit
+    -- so only the pattern can send them to the archive.  If a family stopped
+    being matched, these land in git and the assertion fires; that is exactly
+    how `*.MD` should have been caught.
+    """
+    for engine in get_checkpoint_engines():
+        _one_engines_families_are_archived(shipped, engine)
+
+
+def _one_engines_families_are_archived(shipped, engine):
+    patterns = get_checkpoint(engine)["always_large"]
+    root = shipped / f"calc_{engine}"
+    root.mkdir()
+    (root / "job.fdf").write_text("SystemLabel job\n")
+    made = []
+    for n, pattern in enumerate(patterns):
+        name = _a_name_matching(pattern, n)
+        (root / name).write_bytes(b"tiny bytes")
+        made.append((pattern, name))
+
+    repo = Repo(str(root))
+    state = repo.init(engine=engine, note="every configured family, one file")
+    archived, tracked = _archived(repo, state), _tracked(repo)
+
+    for pattern, name in made:
+        assert name in archived, (
+            f"{engine}: {name!r} matches the configured family {pattern!r} and "
+            f"must be archived, but it is not in the MANIFEST")
+        assert name not in tracked, (
+            f"{engine}: {name!r} is archived AND tracked -- S1's other losing "
+            f"branch, a blob committed on every save from now on")
+    if not patterns:
+        assert engine == "generic", (
+            "only `generic` may name no family; § 4 says the others name the "
+            "ones that are always large")
+
+
+def test_the_size_gate_decides_for_a_file_no_pattern_names(shipped):
+    """S1b, per engine: an unlisted file either side of the limit.
+
+    No pattern is involved in either direction -- this is the measurement, and
+    it must give the same answer whichever engine is named, because an engine
+    entry may only let a family *skip* the measuring.
+    """
+    for engine in get_checkpoint_engines():
+        _the_gate_decides(shipped, engine)
+
+
+def _the_gate_decides(shipped, engine):
+    root = shipped / f"gate_{engine}"
+    root.mkdir()
+    (root / "job.fdf").write_text("SystemLabel job\n")
+    (root / "unlisted_over.xyz").write_bytes(b"\x01" * 4096)     # over 1 KB
+    (root / "unlisted_under.xyz").write_bytes(b"\x01" * 10)      # under
+
+    repo = Repo(str(root))
+    state = repo.init(engine=engine, note="one either side of the limit")
+    archived, tracked = _archived(repo, state), _tracked(repo)
+
+    assert "unlisted_over.xyz" in archived and "unlisted_over.xyz" not in tracked
+    assert "unlisted_under.xyz" in tracked and "unlisted_under.xyz" not in archived
+
+
+def test_the_generated_ignore_block_matches_the_engines_patterns(shipped):
+    """S1a per engine: git is told to skip exactly what the archive takes.
+
+    The block is compared against the configuration, not against a list written
+    here -- so a pattern that reaches `.gitignore` without reaching the archive
+    fails without any file existing.
+    """
+    for engine in get_checkpoint_engines():
+        _the_block_matches(shipped, engine)
+
+
+def _the_block_matches(shipped, engine):
+    from molbuilder.checkpoint import ARCHIVE_DIR
+    root = shipped / f"ignore_{engine}"
+    root.mkdir()
+    (root / "job.fdf").write_text("SystemLabel job\n")
+    repo = Repo(str(root))
+    repo.init(engine=engine, note="set up")
+
+    allowed = set(get_checkpoint(engine)["always_large"]) | {ARCHIVE_DIR + "/"}
+    text = (root / ".gitignore").read_text()
+    block = text.split("=== molbuilder checkpoint BEGIN ===")[1] \
+                .split("=== molbuilder checkpoint END ===")[0]
+    for line in block.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            assert line in allowed, (
+                f"{engine}: {line!r} is ignored by git and taken by nothing")
+
+
+# ------------------------------------------------------------------ #
+#  A5's three shapes name the FILE, not the store it happened to be in #
+# ------------------------------------------------------------------ #
+
+
+def test_a_file_that_grows_past_the_limit_reads_changed_not_added(calc):
+    """A5: *added* means the state held no file at this path — in either store.
+
+    `job.EIG` at 8 MB lives in git; it grows to 12 MB and belongs in the
+    archive.  Looking only at the archive record of the standing state finds
+    nothing and calls it "added" — but the state had that file all along, and
+    what actually happened to it is that its contents changed.
+    """
+    grows = calc.root / "job.EIG"
+    grows.write_bytes(b"x" * 100)
+    calc.save("small enough for git")
+    assert "job.EIG" in _tracked(calc), "precondition: the state holds it in git"
+
+    grows.write_bytes(BIG)                       # now over the limit
+    status = calc.status()
+    assert "job.EIG" in status.changed, (
+        "the state held this file; growing past the limit changed it, it did "
+        "not create it")
+    assert "job.EIG" not in status.added
+
+
+def test_a_file_that_only_gets_reclassified_is_not_unsaved(calc, checkpoint_config):
+    """Moving the limit must not make an untouched folder read as unsaved.
+
+    Nothing was written.  The state holds those exact bytes and a restore gives
+    them back, so there is nothing at risk — and a warning that fires when
+    nothing is wrong is how § 7.2 says people learn to ignore the real one.
+    """
+    steady = calc.root / "job.EIG"
+    steady.write_bytes(b"x" * 2000)              # over 1024: archived
+    calc.save("archived at the current limit")
+    assert calc.status().clean
+
+    checkpoint_config(size_limit_bytes=99_999_999, engines={"generic": []})
+    status = calc.status()                        # nothing on disk was touched
+    assert status.clean, (
+        f"moving the size limit made an untouched folder look unsaved: "
+        f"{status.unsaved()}")
+
+
+def test_a_tracked_file_the_config_reclassifies_leaves_git_on_the_next_save(
+        calc, checkpoint_config):
+    """S7 reached by a CONFIG change, and the path a git flag silently guards.
+
+    `git check-ignore` consults the index, so a tracked file is reported as NOT
+    ignored — which is what puts it on the save's exclusion list, which is what
+    keeps `git add` from writing its blob.  Adding `--no-index` there would call
+    it ignored, drop it from the list, and hand it straight back to `add`.
+    """
+    victim = calc.root / "job.DM"
+    victim.write_bytes(b"\x01" * 200)             # under the limit: git takes it
+    calc.save("small, so git holds it")
+    assert "job.DM" in _tracked(calc)
+    before = _loose_blob_bytes(calc)
+
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": ["*.DM"]})
+    victim.write_bytes(b"\x02" * 200_000)
+    state = calc.save("the classification now calls .DM always-large")
+
+    assert "job.DM" in _archived(calc, state), "it must reach the archive"
+    assert "job.DM" not in _tracked(calc), "and leave git (S7)"
+    assert _loose_blob_bytes(calc) - before < 200_000, (
+        "its blob was written into git on the way past")
+    assert calc.status().clean
+
+
+# ------------------------------------------------------------------ #
+#  I3 — restore is the only operation that changes a file you made    #
+# ------------------------------------------------------------------ #
+
+
+def test_only_restore_changes_a_file_you_made(calc):
+    """Saving reads your files; listing and tagging touch only the history.
+
+    The exception is named by WHAT may be written -- the generated `.gitignore`
+    and the two stores -- rather than by which verb writes it.  Excepting a verb
+    would pass a save that quietly rewrote an input.
+    """
+    (calc.root / "job.XV").write_text("coords\n")
+    (calc.root / "big.bin").write_bytes(BIG)
+    calc.save("something to look at")
+
+    def mine():
+        return {archive_key(calc.root, p): p.read_bytes()
+                for p in walk_files(calc.root)
+                if archive_key(calc.root, p) != ".gitignore"}
+
+    before = mine()
+    calc.status()
+    calc.status(deep=True)
+    calc.states()
+    calc.standing_at()
+    calc.tags()
+    calc.classification()
+    calc.calculation()
+    calc.tag("a-name", "why it matters")
+    calc.save("a second save reads, and writes only its own files")
+    assert mine() == before, "an operation other than restore changed a file"

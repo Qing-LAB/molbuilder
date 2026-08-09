@@ -78,6 +78,11 @@ def test_an_empty_manifest_is_legal_and_has_a_fixed_name():
     missing archive, which means the archive was lost (§ 6.1)."""
     assert parse_manifest(b"", "x") == {}
     assert format_manifest([]) == b""
+    # Pinned to the LITERAL, not to `sha256(b"")` -- comparing the constant to
+    # its own definition is a tautology that passes whatever the constant says.
+    # The contract calls this "a fixed, well-known value", so it is written out.
+    assert EMPTY_MANIFEST_DIGEST == (
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
     assert EMPTY_MANIFEST_DIGEST == hashlib.sha256(b"").hexdigest()
 
 
