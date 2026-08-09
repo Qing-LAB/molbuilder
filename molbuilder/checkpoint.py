@@ -33,6 +33,7 @@ Every git invocation goes through :func:`_run_git` -- argv list,
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import os
 import re
@@ -41,127 +42,100 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 
 # Big binary patterns (gitignored, archived by SHA on each checkpoint).
 # Mirrors the .gitignore policy in docs/execution/running-a-job.md § 6
-# Glob patterns; matched non-recursively against the working dir top level.
-# Big-binary classification is ENGINE-SPECIFIC and PERSISTED per repo
-# (``.mbcheckpoint.json``, git-tracked), so restore uses the SAME
-# classification the checkpoint used and the user can edit it.  These are the
-# built-in defaults seeded at ``init`` from the EXPLICIT engine (the web/CLI
-# caller already knows it -- a UI<->API contract); the persisted config is the
-# source of truth thereafter.  See docs/execution/running-a-job.md § 6
-_ENGINE_BIG_BINARY_GLOBS = {
-    "siesta": ("*.DM", "*.HSX", "*.TSHS",
-               "*.TBT.AVTRANS_*", "*.TBT.CC", "*.TBT.DOS"),
-    "pyscf":  ("*.chk", "*.cube"),
-}
-# Safe default when the engine is unspecified: the UNION of every engine's
-# patterns.  Over-archiving is harmless; under-archiving silently loses data.
-_DEFAULT_ARCHIVE_GLOBS = tuple(sorted({
-    g for globs in _ENGINE_BIG_BINARY_GLOBS.values() for g in globs}))
+# --------------------------------------------------------------------- #
+#  Classification -- which store a file goes to                         #
+#  Contract: checkpointing.md § 3, S1, S1a, S1b, S1c                    #
+# --------------------------------------------------------------------- #
 
-_CHECKPOINT_CONFIG = ".mbcheckpoint.json"
-_CHECKPOINT_CONFIG_SCHEMA = "molbuilder/checkpoint-config@1"
+#: The only two paths that are never stored (S1).  Not a policy about worth --
+#: a store cannot contain itself, and that is the entire list.  Anything else
+#: excluded here would be a file in no snapshot, which is S1's losing branch.
+NEVER_STORED = (".git", ".binsnapshots")
 
-# Engine-independent .gitignore tail: scratch, caches, editor noise, and the
-# archive dir itself.  The big-binary section is GENERATED from the repo's
-# archive globs (below) so git-ignore and sha-archive never drift apart.
-_GITIGNORE_FIXED_TAIL = """\
-# Pseudopotential cache files (deterministic from .psml)
-*.ion.nc
-*.ion.xml
+#: Where the archive lives, one directory per distinct content (§ 3).
+ARCHIVE_DIR = ".binsnapshots"
 
-# Scratch / rotating logs
-fdf.*.log
-WORK_*
-INPUT_TMP.*
-
-# Binary archive directory
-.binsnapshots/
-
-# Large MD trajectories
-*.MD
-*.MD_CAR
-
-# IDE / editor noise
-*.swp
-*~
-"""
-
-
-def _render_gitignore(archive_globs) -> str:
-    """Render ``.gitignore`` with the big-binary section generated from
-    ``archive_globs`` so the git-ignore set and the sha-archive set stay
-    consistent (checkpointing.md § 4)."""
-    head = ("# molbuilder run-checkpoints contract: this dir is managed by "
-            "git.\n"
-            "# Large binary state files are archived separately in "
-            ".binsnapshots/<sha>/.\n"
-            "# See docs/execution/running-a-job.md § 6 for rationale.\n\n"
-            "# Big binary state (archived by SHA, not committed) -- "
-            "engine-specific, editable\n")
-    return head + "\n".join(archive_globs) + "\n\n" + _GITIGNORE_FIXED_TAIL
-
-
-#: Marks molbuilder's own region of a .gitignore.  Everything between the two
-#: lines is regenerated from ``archive_globs``; everything outside is the
-#: user's and is preserved byte-for-byte.
-#: The first line of a pre-marker generated block -- how one is recognised so
-#: it can be excised rather than left in force beside a new section.
-_GITIGNORE_LEGACY_HEAD = "# molbuilder run-checkpoints contract:"
 _GITIGNORE_BEGIN = "# === molbuilder checkpoint BEGIN ==="
-_GITIGNORE_END   = "# === molbuilder checkpoint END ==="
+_GITIGNORE_END = "# === molbuilder checkpoint END ==="
 
 
-def _write_gitignore_section(gi: Path, archive_globs) -> None:
-    """Write molbuilder's marked section into ``gi``, preserving the rest.
+def classification(engine: Optional[str] = None,
+                   project_dir=None) -> Dict[str, object]:
+    """The size limit and always-large families for this calculation (§ 4).
 
-    S1 ("a regular file is tracked XOR archived") rests on the ignore set and
-    the archive set agreeing, and S1a makes that safe by having ONE writer
-    derive both from one resolved list.  This is that writer: a directory that
-    already has a ``.gitignore`` -- which every benchmark bundle and every
-    worked-in directory does -- must still end up ignoring exactly what the
-    archive claims, or the two drift and a big binary lands in git as a blob.
-
-    Three cases, in order:
-
-    1. **An UNMARKED block from before the markers existed is excised first.**
-       Repos initialised earlier have one, and appending a new section beside it
-       would leave the OLD patterns in force.  Narrow the globs and a file would
-       then be ignored by the stale block but no longer archived -- in NO
-       snapshot at all, which is S1's data-losing branch.  The legacy block is
-       deterministic (a fixed header, a fixed tail), so it can be cut exactly.
-    2. **A marked section is replaced in place**, leaving everything outside it
-       byte-for-byte.
-    3. **Otherwise the section is appended.**
+    Read from molbuilder's own config, never from the folder being saved
+    (S1c) -- a per-folder copy is a file somebody can edit between a save and a
+    restore, which is exactly the hazard I2c is about.
     """
-    body = (_GITIGNORE_BEGIN + "\n"
-            + _render_gitignore(archive_globs).rstrip("\n") + "\n"
-            + _GITIGNORE_END + "\n")
+    from .runtime_config import get_checkpoint
+    return get_checkpoint(engine, project_dir)
+
+
+def is_big(path: Path, size_limit: int, always_large=()) -> bool:
+    """Does *path* belong in the archive rather than in git?
+
+    **The size decides (S1b).**  ``always_large`` names families that are
+    always over the limit, so those skip the ``stat`` -- a hint that can make a
+    save faster and can never make it store less (§ 3).  A file matching no
+    hint is measured, which is why an unknown engine is merely slower.
+    """
+    if any(fnmatch.fnmatch(path.name, pat) for pat in always_large):
+        return True
+    try:
+        return path.stat().st_size > size_limit
+    except OSError:
+        # Unreadable is not "small": treat it as big so it is archived whole
+        # rather than committed, and let the archive's own verify complain.
+        return True
+
+
+def render_gitignore(always_large=()) -> str:
+    """The generated ignore block -- ONE source, and it is the classification.
+
+    S1a: what git skips must be exactly what the archive takes, or a file falls
+    between them and is in no snapshot at all.  So this renders **nothing but
+    archive patterns** plus the archive directory itself; there is no fixed
+    tail, because every line in one would be a file excluded by code nobody
+    agreed to (S1).
+
+    The size gate cannot be expressed as a gitignore pattern, so files that are
+    big *by measurement* are staged out per-save rather than named here.
+    """
+    lines = [
+        _GITIGNORE_BEGIN,
+        "# Generated by molbuilder -- do not edit.",
+        "# Rewritten from the classification on every save; edits are lost.",
+        "# See docs/execution/checkpointing.md S1a.",
+        "",
+        f"{ARCHIVE_DIR}/",
+    ]
+    lines += sorted(always_large)
+    lines += [_GITIGNORE_END, ""]
+    return "\n".join(lines)
+
+
+def write_gitignore(root: Path, always_large=()) -> None:
+    """Write the generated block, preserving anything outside the markers.
+
+    A user's own entries above or below the markers are theirs and are left
+    byte-for-byte; everything between them is regenerated, which is what makes
+    a hand edit inside detectable by recomputing rather than by a digest
+    (I2b).
+    """
+    gi = root / ".gitignore"
+    body = render_gitignore(always_large)
     if not gi.exists():
         gi.write_text(body, encoding="utf-8")
         return
     text = gi.read_text(encoding="utf-8")
-
-    # 1. excise a pre-marker molbuilder block, if one is there.
-    if _GITIGNORE_LEGACY_HEAD in text and _GITIGNORE_FIXED_TAIL in text:
-        s = text.index(_GITIGNORE_LEGACY_HEAD)
-        e = text.index(_GITIGNORE_FIXED_TAIL, s) + len(_GITIGNORE_FIXED_TAIL)
-        if e > s:
-            text = text[:s] + text[e:]
-
-    # 2. replace a marked section -- ``end > begin`` so a hand-edit that
-    #    reversed or duplicated the markers cannot splice head and tail into
-    #    each other.
-    b = text.find(_GITIGNORE_BEGIN)
-    e = text.find(_GITIGNORE_END)
+    b, e = text.find(_GITIGNORE_BEGIN), text.find(_GITIGNORE_END)
     if b != -1 and e > b:
-        text = (text[:b] + body
-                + text[e + len(_GITIGNORE_END):].lstrip("\n"))
-    # 3. otherwise append.
+        text = text[:b] + body + text[e + len(_GITIGNORE_END):].lstrip("\n")
     elif text.strip():
         text = text.rstrip("\n") + "\n\n" + body
     else:
@@ -169,38 +143,23 @@ def _write_gitignore_section(gi: Path, archive_globs) -> None:
     gi.write_text(text, encoding="utf-8")
 
 
-def _resolve_archive_globs(engine, archive_globs) -> tuple:
-    """Init-time resolution: explicit ``archive_globs`` win; else the
-    ``engine``'s built-in defaults; else (engine unspecified) the safe
-    union.  Raises for an unknown engine (better a loud error than a silently
-    wrong archive set)."""
-    if archive_globs:
-        return tuple(archive_globs)
-    if engine:
-        globs = _ENGINE_BIG_BINARY_GLOBS.get(engine)
-        if globs is None:
-            raise CheckpointError(
-                f"unknown engine {engine!r} for checkpoint archive globs; "
-                f"known: {sorted(_ENGINE_BIG_BINARY_GLOBS)}.  Pass explicit "
-                f"archive_globs=[...] to override.")
-        return globs
-    return _DEFAULT_ARCHIVE_GLOBS
+def gitignore_is_current(root: Path, always_large=()) -> bool:
+    """Does the marked block match what regenerating it would produce (I2b)?
 
+    `.gitignore` records a *derivation*, so the derivation is the check: a
+    stored digest could not catch an edit that rode into a save, because the
+    save would hash whatever it found and bless it.
+    """
+    gi = root / ".gitignore"
+    if not gi.is_file():
+        return False
+    text = gi.read_text(encoding="utf-8")
+    b, e = text.find(_GITIGNORE_BEGIN), text.find(_GITIGNORE_END)
+    if b == -1 or e <= b:
+        return False
+    return text[b:e + len(_GITIGNORE_END)] == render_gitignore(
+        always_large).rstrip("\n")
 
-def _read_archive_globs(path) -> tuple:
-    """The repo's persisted big-binary classification (``.mbcheckpoint.json``);
-    falls back to the safe union for repos created before this config existed
-    or if the config is unreadable (robust -- never crash a restore over it)."""
-    cfg = Path(path) / _CHECKPOINT_CONFIG
-    if cfg.is_file():
-        try:
-            from . import persist
-            globs = persist.read_json(cfg).get("archive_globs")
-            if globs:
-                return tuple(globs)
-        except Exception:
-            pass
-    return _DEFAULT_ARCHIVE_GLOBS
 
 # File markers indicating a directory is itself a working dir (must not
 # be subsumed by a parent's checkpoint repo per P5 lowest-directory rule).
@@ -238,26 +197,64 @@ class NestedRepoRefusedError(CheckpointError):
 # --------------------------------------------------------------------- #
 
 
-@dataclass
-class Checkpoint:
-    sha:           str
-    short_sha:     str
-    summary:       str
-    author_at:     str        # ISO timestamp
-    refs:          List[str]  # tags + branches pointing here
-    has_archive:   bool
-    archive_bytes: Optional[int] = None
+@dataclass(frozen=True)
+class State:
+    """One saved snapshot of the whole folder (§ 5).
+
+    ``id`` is git's own commit hash: permanent, never reused, and nothing
+    assigns or stores it.  ``archive`` is the sha256 of that state's MANIFEST —
+    a *name* and a *proof* in one value (I2b), present on every state including
+    those that archived nothing.
+    """
+    id:      str
+    note:    str
+    parent:  Optional[str]          # the state this one came from
+    at:      str                    # ISO-8601 UTC
+    archive: Optional[str] = None   # Manifest-SHA256; None only if damaged
+    tags:    Tuple[str, ...] = ()
+
+    @property
+    def short(self) -> str:
+        return self.id[:7]
 
 
-@dataclass
-class RepoState:
-    path:           str
-    initialized:    bool
-    head:           Optional[str] = None
-    current_branch: Optional[str] = None
-    dirty:          bool          = False
-    untracked:      int           = 0
-    archive_total_bytes: int      = 0
+@dataclass(frozen=True)
+class Tag:
+    """A name you gave a state so you could find it again (§ 5, L4).
+
+    Nothing creates one on your behalf; the namespace is yours alone.
+    """
+    name:  str
+    state: str
+    note:  str
+
+
+@dataclass(frozen=True)
+class FolderStatus:
+    """Where the folder stands, and what is unsaved (§ 5, A5).
+
+    ``standing_at`` is the one state the folder is currently at.  Everything
+    else is measured **against that state and never against the newest one** —
+    which is why going back does not make the whole folder read as modified.
+
+    The three lists are A5's three shapes, and all three are lost when a
+    restore makes the folder equal its target.
+    """
+    path:        str
+    initialized: bool
+    standing_at: Optional[str] = None
+    changed:     Tuple[str, ...] = ()
+    added:       Tuple[str, ...] = ()
+    deleted:     Tuple[str, ...] = ()
+
+    @property
+    def clean(self) -> bool:
+        return not (self.changed or self.added or self.deleted)
+
+    def unsaved(self) -> Tuple[str, ...]:
+        """Everything at risk, in one sorted list — what A5's warning names."""
+        return tuple(sorted(set(self.changed) | set(self.added)
+                            | set(self.deleted)))
 
 
 # --------------------------------------------------------------------- #
@@ -436,280 +433,141 @@ def _archive_dir(path: Path, sha: str) -> Path:
 
 
 # --------------------------------------------------------------------- #
-#  MANIFEST format -- the canonical spec is                             #
-#  docs/execution/job-contracts.md § 6.1.                               #
-#                                                                       #
-#  Exactly one format.  Strict parser raises on any deviation -- no     #
-#  silent skip, no fallback, no field-count tolerance.  Legacy 2-col    #
-#  sha256sum-style MANIFESTs are migrated via                           #
-#  ``Repo.migrate_manifest(ref)`` -- never transparently accepted.      #
+#  MANIFEST + the content-addressed archive                             #
+#  Format: job-contracts.md § 6.1.  Naming: checkpointing.md § 3.       #
 # --------------------------------------------------------------------- #
 
-_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
-_SIZE_INT_RE   = re.compile(r"^(0|[1-9][0-9]*)$")
-_FILENAME_RE   = re.compile(r"^[!-~]+$")    # ASCII printable, no spaces
-# --------------------------------------------------------------------- #
-#  Naming — every checkpoint says which calculation it belongs to       #
-#  (checkpointing.md L3/L4, engines/stages.md § 7.3)                     #
-# --------------------------------------------------------------------- #
+#: I2b: a record named so nobody mistakes it for a setting.  Chosen once, here;
+#: nothing has to read an older name.
+MANIFEST_NAME = "MANIFEST.do_not_edit"
 
-#: The separator in a commit message.  A middle dot rather than a colon or a
-#: slash: both of those already mean something in a ref or a path, and a
-#: message is read by people.
-_MSG_SEP = " · "
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_SIZE_RE   = re.compile(r"^(0|[1-9][0-9]*)$")
+_SEP       = "\t"
 
-#: An id and a stage name are already ref-safe -- the id is ``[A-Za-z0-9_-]+``
-#: (``run-identity.md § 3``) and a stage is ``[A-Za-z0-9_]+`` (``stages.md § 2``)
-#: -- so the set chosen to survive a filename survives a git ref unchanged.
-#: **Nothing here normalises.** A name that would need fixing is refused, because
-#: silently rewriting an id would decouple the history's name from the folder's.
-_REF_SAFE_ID    = re.compile(r"^[A-Za-z0-9_-]+$")
-_REF_SAFE_STAGE = re.compile(r"^[A-Za-z0-9_]+$")
+#: sha256 of b"" -- the archive every state with no big files points at.
+EMPTY_MANIFEST_DIGEST = hashlib.sha256(b"").hexdigest()
 
 
-def utc_stamp(when: Optional[datetime] = None) -> str:
-    """Compact UTC, ``YYYYMMDDThhmmssZ``.
+def _bad(where: str, why: str) -> "CheckpointError":
+    return CheckpointError(f"malformed MANIFEST in {where}: {why} "
+                           f"(job-contracts.md § 6.1).")
 
-    Compact because the ISO form's colons are not legal in a git ref, and this
-    is the convention ``job-contracts.md § 4.1`` already uses for
-    ``<basename>-restart-aside-<UTC>/``.
+
+def format_manifest(entries: Sequence[Tuple[str, int, str]]) -> bytes:
+    """Render entries as the canonical MANIFEST (job-contracts.md § 6.1).
+
+    One set of files has exactly **one** possible MANIFEST, byte for byte,
+    because its sha256 is the archive's directory name (§ 3).  Sorting and the
+    single spelling of every field are what make that true, so this refuses to
+    emit anything it could not read back.
     """
-    when = when or datetime.now(timezone.utc)
-    return when.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    seen = set()
+    lines = []
+    for sha256, size, key in sorted(entries, key=lambda e: e[2]):
+        if not _SHA256_RE.match(sha256):
+            raise CheckpointError(
+                f"cannot write MANIFEST: {sha256!r} is not 64 lowercase hex "
+                f"characters (job-contracts.md § 6.1).")
+        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+            raise CheckpointError(
+                f"cannot write MANIFEST: size {size!r} for {key!r} is not a "
+                f"non-negative integer (job-contracts.md § 6.1).")
+        _check_key(key, "cannot write MANIFEST")
+        if key in seen:
+            raise CheckpointError(
+                f"cannot write MANIFEST: {key!r} appears more than once; a key "
+                f"names one file (job-contracts.md § 6.1).")
+        seen.add(key)
+        lines.append(f"{sha256}{_SEP}{size}{_SEP}{key}")
+    return ("".join(ln + "\n" for ln in lines)).encode("ascii")
 
 
-def checkpoint_message(run_id: str, event: str, what_happened: str) -> str:
-    """``<id> · <stage or event> · <what happened>``.
-
-    The id is not decoration (L3). A folder can be moved, copied to a cluster or
-    opened a year later, and a history whose commits say only *"stage 2
-    converged"* cannot say which calculation that was.
-
-    ``what_happened`` is expected to be specific — *"relaxation converged, 41
-    steps"* rather than *"done"* — because whatever takes the checkpoint has just
-    decoded the run and already knows (`running-a-job.md § 4.2`).
-    """
-    if not _REF_SAFE_ID.match(run_id or ""):
+def _check_key(key: str, prefix: str) -> None:
+    """A key must never steer a restore out of the folder (job-contracts § 6.1)."""
+    if not key:
+        raise CheckpointError(f"{prefix}: an empty key is not a path.")
+    if any(ord(c) < 0x20 or ord(c) > 0x7E for c in key):
         raise CheckpointError(
-            f"run id {run_id!r} is not [A-Za-z0-9_-]+; it is used verbatim in "
-            f"commit messages and tags and is never rewritten "
-            f"(run-identity.md § 3).")
-    for part, label in ((event, "event"), (what_happened, "description")):
-        if not (part or "").strip():
-            raise CheckpointError(f"checkpoint message {label} must be non-empty")
-    return _MSG_SEP.join((run_id, event.strip(), what_happened.strip()))
-
-
-def stage_completion_tag(run_id: str, stage: str,
-                         when: Optional[datetime] = None) -> str:
-    """``<id>/<stage>/<UTC>`` — the name of a finished stage.
-
-    **Hierarchical on purpose**: ``git tag --list '<id>/tight/*'`` is every
-    checkpoint of one stage, oldest to newest, which is the question a user
-    returning to a mission actually asks.
-
-    Only stage *completions* are tagged (L4). A pre-produce checkpoint is a
-    safety net reachable through ``snapshot list``; a finished stage is a place
-    you meant to reach, and tagging both would bury the second among the first.
-    """
-    if not _REF_SAFE_ID.match(run_id or ""):
+            f"{prefix}: {key!r} contains non-printable or non-ASCII "
+            f"characters (job-contracts.md § 6.1).")
+    if key.startswith("/") or "\\" in key:
         raise CheckpointError(
-            f"run id {run_id!r} is not [A-Za-z0-9_-]+ (run-identity.md § 3).")
-    if not _REF_SAFE_STAGE.match(stage or ""):
-        raise CheckpointError(
-            f"stage name {stage!r} is not [A-Za-z0-9_]+ (stages.md § 2); it is "
-            f"used verbatim in the tag and is never rewritten.")
-    return f"{run_id}/{stage}/{utc_stamp(when)}"
-
-
-def parse_stage_completion_tag(tag: str) -> Optional[Tuple[str, str, str]]:
-    """``(run_id, stage, stamp)`` for a tag this module would have written, or
-    ``None`` for anything else — a hand-made tag is the user's business (L4).
-
-    L3's check reads back through here: every automatic tag parses into exactly
-    three parts, of which the first is the folder's id.
-    """
-    parts = tag.split("/")
-    if len(parts) != 3:
-        return None
-    run_id, stage, stamp = parts
-    if not (_REF_SAFE_ID.match(run_id) and _REF_SAFE_STAGE.match(stage)):
-        return None
-    try:
-        datetime.strptime(stamp, "%Y%m%dT%H%M%SZ")
-    except ValueError:
-        return None
-    return run_id, stage, stamp
-
-
-_MANIFEST_NAME = "MANIFEST"
-_MANIFEST_TMP  = "MANIFEST.tmp"
-_SHA_DIR_RE    = re.compile(r"^[0-9a-f]{40}$")
-
-
-def _format_canonical_manifest(entries: List[Tuple[str, int, str]]) -> str:
-    """Render entries as canonical-format text.
-
-    Entries are tuples ``(sha256_hex, size_bytes, filename)``.
-    Sorted by filename; one entry per line; ``\\n`` terminator; final
-    newline; no header / comments / blank lines.
-    """
-    sorted_entries = sorted(entries, key=lambda e: e[2])
-    return "".join(
-        f"{sha256}  {int(size)}  {name}\n"
-        for sha256, size, name in sorted_entries
-    )
-
-
-def _parse_canonical_manifest(raw: bytes,
-                              where: str) -> Dict[str, Tuple[str, int]]:
-    """Strict canonical MANIFEST parser.
-
-    Returns a dict ``{filename: (sha256_hex, size_bytes)}``.  Raises
-    :class:`CheckpointError` with a specific reason on ANY deviation
-    from job-contracts.md § 6.1 -- no field-count fallback, no header skip, no comment
-    skip, no BOM tolerance.
-
-    The 2-column legacy ``sha256sum > MANIFEST`` shape is detected
-    explicitly and raises with a pointer to the migrate-manifest CLI.
-
-    ``where`` is included in error messages so the user knows which
-    archive directory to look at.
-    """
-    # A ZERO-BYTE MANIFEST is the canonical "this commit archived nothing".
-    # Checked first: the trailing-LF rule below is about SEPARATING entries, and
-    # an empty file has none to separate.  Every commit gets an archive
-    # directory, so a missing one means the archive was LOST -- which is the
-    # ambiguity this shape exists to remove.
-    if raw == b"":
-        return {}
-    # BOM rejection (before utf-8 decode so the message names the bytes).
-    if raw.startswith(b"\xef\xbb\xbf"):
-        raise CheckpointError(
-            f"malformed MANIFEST in {where}: file starts with a UTF-8 "
-            f"BOM; canonical MANIFEST must be plain ASCII (job-contracts.md § 6.1).")
-    # CRLF rejection -- the design pins LF-only.
-    if b"\r" in raw:
-        raise CheckpointError(
-            f"malformed MANIFEST in {where}: contains CR bytes; "
-            f"canonical MANIFEST uses LF line terminators only "
+            f"{prefix}: {key!r} must be a repo-relative POSIX path "
             f"(job-contracts.md § 6.1).")
-    # Final newline required.
+    for part in key.split("/"):
+        if part in ("", ".", "..") or part.startswith("."):
+            raise CheckpointError(
+                f"{prefix}: {key!r} has an empty, dot or dot-prefixed "
+                f"component, which could reach outside the folder or into "
+                f"{'/'.join(NEVER_STORED)} (job-contracts.md § 6.1).")
+
+
+def parse_manifest(raw: bytes, where: str) -> Dict[str, Tuple[str, int]]:
+    """Strict reader.  Returns ``{key: (sha256, size)}``.
+
+    Refuses everything that is not exactly the canonical form — no field-count
+    fallback, no header, no comments, no BOM tolerance.  A reader that guesses
+    is a reader that restores the wrong bytes, and under content addressing a
+    reader that tolerates two spellings cannot agree with the writer about the
+    archive's name.
+    """
+    if raw == b"":
+        return {}                       # legal: this state archived nothing
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raise _bad(where, "starts with a UTF-8 BOM; the format is plain ASCII")
+    if b"\r" in raw:
+        raise _bad(where, "contains CR bytes; line endings are LF only")
     if not raw.endswith(b"\n"):
-        raise CheckpointError(
-            f"malformed MANIFEST in {where}: missing final newline "
-            f"(job-contracts.md § 6.1 requires a trailing LF).")
+        raise _bad(where, "missing the final newline")
     try:
         text = raw.decode("ascii")
     except UnicodeDecodeError as e:
-        raise CheckpointError(
-            f"malformed MANIFEST in {where}: non-ASCII byte at "
-            f"offset {e.start} (job-contracts.md § 6.1 requires ASCII-only)."
-        ) from e
-    lines = text.split("\n")
-    # split("\n") on a trailing-newline text gives a "" final element.
-    if lines and lines[-1] == "":
-        lines.pop()
-    if not lines:
-        # A ZERO-ENTRY MANIFEST IS LEGAL and means "this checkpoint archived
-        # nothing", which is different from "this checkpoint has no archive".
-        # Every commit gets an archive directory (``Repo.checkpoint``), so a
-        # MISSING directory is evidence of a lost archive rather than of a
-        # binary-free run -- the ambiguity ``missing_archive_warning`` has to
-        # guess around today.
-        return {}
+        raise _bad(where, f"non-ASCII byte at offset {e.start}") from e
+
     out: Dict[str, Tuple[str, int]] = {}
-    seen_order: List[str] = []
-    for idx, line in enumerate(lines, start=1):
-        if line == "":
-            raise CheckpointError(
-                f"malformed MANIFEST in {where}: line {idx} is blank "
-                f"(job-contracts.md § 6.1 forbids blank lines).")
-        # Legacy 2-column sha256sum default form -- detect explicitly so
-        # the user gets a useful error rather than "wrong field count".
-        # Pattern: ``<64-hex-sha>  <name>`` (exactly two-space separator
-        # is sha256sum's default).
-        if (len(line) >= 66
-                and line[0:64].count(" ") == 0
-                and _SHA256_HEX_RE.match(line[:64])
-                and line[64:66] == "  "
-                and " " not in line[66:]
-                and line[66:]):
-            raise CheckpointError(
-                f"malformed MANIFEST in {where}: line {idx} is the "
-                f"legacy 2-column sha256sum format (sha + name).  "
-                f"Canonical MANIFEST is 3-column "
-                f"(sha + bytes + name; job-contracts.md § 6.1).  Run "
-                f"`molbuilder snapshot migrate-manifest <ref>` to "
-                f"convert this archive in-place (checkpointing.md I1).")
-        # Canonical 3-column shape: <sha>__<size>__<name>, exactly two
-        # ASCII spaces between fields.  Strict split on the literal
-        # double-space separator.  Embedded whitespace in filename is
-        # forbidden so "  " is unambiguous as the field separator.
-        parts = line.split("  ")
+    keys: List[str] = []
+    for idx, line in enumerate(text.split("\n")[:-1], start=1):
+        if not line:
+            raise _bad(where, f"line {idx} is blank")
+        parts = line.split(_SEP)
         if len(parts) != 3:
-            raise CheckpointError(
-                f"malformed MANIFEST in {where}: line {idx} has "
-                f"{len(parts)} fields (separated by '  '); canonical "
-                f"requires exactly 3 (job-contracts.md § 6.1).")
-        sha256, size_s, name = parts
-        if not _SHA256_HEX_RE.match(sha256):
-            raise CheckpointError(
-                f"malformed MANIFEST in {where}: line {idx} sha256 "
-                f"field {sha256!r} is not 64 lowercase hex chars "
-                f"(job-contracts.md § 6.1).")
-        if not _SIZE_INT_RE.match(size_s):
-            raise CheckpointError(
-                f"malformed MANIFEST in {where}: line {idx} size "
-                f"field {size_s!r} is not a non-negative decimal "
-                f"integer without leading zeros (job-contracts.md § 6.1).")
-        if not _FILENAME_RE.match(name):
-            raise CheckpointError(
-                f"malformed MANIFEST in {where}: line {idx} filename "
-                f"{name!r} contains non-printable or whitespace "
-                f"characters (job-contracts.md § 6.1 requires ASCII printable, no "
-                f"spaces).")
-        # A key is a REPO-RELATIVE POSIX PATH.  A bare basename is one, which
-        # is why every archive written before nested run folders existed still
-        # parses.  Each component is validated separately: a traversal or a
-        # dot-directory in the middle would let a MANIFEST direct a restore
-        # outside the working tree or into .git/.binsnapshots.
-        if name.startswith("/") or "\\" in name:
-            raise CheckpointError(
-                f"malformed MANIFEST in {where}: line {idx} filename "
-                f"{name!r} is absolute or uses a backslash; keys are "
-                f"repo-relative POSIX paths (job-contracts.md § 6.1).")
-        parts = name.split("/")
-        for part in parts:
-            if part == "" or part == "." or part == "..":
-                raise CheckpointError(
-                    f"malformed MANIFEST in {where}: line {idx} filename "
-                    f"{name!r} has an empty, current- or parent-directory "
-                    f"component; a restore must not be able to escape the "
-                    f"run directory (job-contracts.md § 6.1).")
-            if part.startswith("."):
-                raise CheckpointError(
-                    f"malformed MANIFEST in {where}: line {idx} filename "
-                    f"{name!r} has a dot-prefixed component {part!r}; the "
-                    f"canonical archive contains no dotfiles or "
-                    f"dot-directories (job-contracts.md § 6.1).")
-        if name == _MANIFEST_NAME:
-            raise CheckpointError(
-                f"malformed MANIFEST in {where}: line {idx} lists the "
-                f"MANIFEST file itself; canonical MANIFEST must not "
-                f"self-reference (job-contracts.md § 6.1).")
-        if name in out:
-            raise CheckpointError(
-                f"malformed MANIFEST in {where}: filename {name!r} "
-                f"appears more than once (job-contracts.md § 6.1).")
-        out[name] = (sha256, int(size_s))
-        seen_order.append(name)
-    # Sort-order check (job-contracts.md § 6.1: lines are alphabetical by filename).
-    if seen_order != sorted(seen_order):
-        raise CheckpointError(
-            f"malformed MANIFEST in {where}: entries are not sorted "
-            f"alphabetically by filename (job-contracts.md § 6.1).")
+            raise _bad(where, f"line {idx} has {len(parts)} tab-separated "
+                              f"field(s); the format is exactly three")
+        sha256, size_s, key = parts
+        if not _SHA256_RE.match(sha256):
+            raise _bad(where, f"line {idx}: {sha256!r} is not 64 lowercase "
+                              f"hex characters")
+        if not _SIZE_RE.match(size_s):
+            raise _bad(where, f"line {idx}: {size_s!r} is not a decimal "
+                              f"integer without leading zeros")
+        _check_key(key, f"malformed MANIFEST in {where}, line {idx}")
+        if key in out:
+            raise _bad(where, f"line {idx}: {key!r} appears more than once")
+        out[key] = (sha256, int(size_s))
+        keys.append(key)
+    if keys != sorted(keys):
+        raise _bad(where, "lines are not sorted by key; two writers would "
+                          "otherwise produce two different archives")
     return out
+
+
+def manifest_digest(raw: bytes) -> str:
+    """The archive's name: the sha256 of its own MANIFEST (§ 3).
+
+    One value that locates the archive, proves it, and makes it impossible to
+    modify without becoming a different archive.
+    """
+    return hashlib.sha256(raw).hexdigest()
+
+
+def archive_dir(root: Path, digest: str) -> Path:
+    """``<root>/.binsnapshots/<digest>/`` — named by content, not by state."""
+    if not _SHA256_RE.match(digest):
+        raise CheckpointError(
+            f"archive name {digest!r} is not a sha256 digest; an archive is "
+            f"named by its MANIFEST's content (checkpointing.md § 3).")
+    return root / ARCHIVE_DIR / digest
 
 
 def _atomic_write_text(target: Path, text: str) -> None:
