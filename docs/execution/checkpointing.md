@@ -321,6 +321,11 @@ it is about to change; you confirm or edit it (§ 9).
 is the whole mechanism for branching, and it is covered in § 7.1: nothing was
 declared, nothing was named, and both attempts are intact.
 
+**`list` answers cheaply, and says so.** It compares size and timestamp, not
+content, because it runs constantly and nothing moves while it does (§ 7.2).
+`--check` compares content when you want certainty now; a save or a restore
+always does, regardless of what a list last said.
+
 **`restore` is a rewind, not a fetch.** It returns the *whole folder* to that
 state — it does not pull one file out. To read a single old file without moving
 anything, git already answers that: `git show <state>:<path>`.
@@ -454,6 +459,58 @@ and it is how you avoid hunting through notes a month from now.
 **And nothing you save can become unreachable** — not after any sequence of
 restores, not ever. Every state stays listed and restorable for as long as the
 folder exists (A6). That is what makes it safe to wander.
+
+### 7.2 How much is checked, and when
+
+Two questions wear the same words, and they deserve different answers:
+
+| | asked | answered from | being wrong costs |
+|---|---|---|---|
+| **Is anything unsaved?** | constantly — every folder you open, every list | **size and timestamp** | a sentence on a screen |
+| **What will this destroy?** | once, immediately before the folder changes | **content** | data |
+
+**A folder holds gigabytes of density matrices, and the panel reads it every
+time you enter the directory.** Hashing all of that to draw a badge is a cost
+the badge does not earn, and it would be paid over and over for an answer nobody
+acts on.
+
+**What the cheap read still sees.** Most changes announce themselves without any
+file being opened, because a different size is already an answer: a run that
+grew a density matrix, a file that appeared, a file that was deleted. Its one
+blind spot is a rewrite to *exactly the same size* inside the same second as the
+save.
+
+> **Why one second, and why it is resolution rather than slack.** A state's
+> timestamp is whole seconds; a file's is not. A file saved at 12:00:00.3 sits
+> in a state that records 12:00:00 — so comparing them directly calls the file
+> newer than the state that just saved it, and the folder would read *unsaved*
+> the instant after a save. That is the ordinary flow, not an edge case.
+
+**That blind spot cannot lose anything, and that is the whole argument.** A
+status call moves no bytes, so being briefly wrong is a sentence that corrects
+itself the next time something real happens. The operations that *can* lose
+something never trust it:
+
+| | |
+|---|---|
+| **`save`** | checksums every large file, always — it has no choice, since the digest **is** the archive's name (§ 3) |
+| **`restore`** | verifies the target archive (I2), then asks what is unsaved **by content**, so a folder called clean a second ago is still stopped |
+| **a Refresh** | asks the exact question on demand, for when you want certainty *now* rather than the system paying for it continuously |
+
+**The depth only concerns large files.** Everything in git is compared by git,
+which does this same dance itself and is not ours to second-guess. "Cheap" here
+means *the archive is not re-read*, and nothing else.
+
+**And an unreadable timestamp means check, not assume.** If a state's time
+cannot be parsed, the file is hashed rather than declared changed — slower,
+never wrong, and never a false alarm that trains people to ignore the real one.
+
+> **Say what is happening before it happens.** Checksumming gigabytes takes
+> time, and a pause nobody explained reads as a hang. The verbs announce the
+> slow part — *"verifying the archive, then checking what is unsaved here…"* —
+> so a wait is understood rather than endured.
+
+---
 
 ## 8. Why this matters far more in a flat folder
 
@@ -869,29 +926,10 @@ are taught to stop reading warnings. The alternative is also worse than untidy:
 a stage 2 `.DM` left lying in a folder that claims to be stage 1 is exactly the
 file a later run picks up without being asked to.
 
-**Exactness costs time, so it is spent where being wrong costs data.** Two
-different questions wear the same words:
-
-| | | |
-|---|---|---|
-| **Is anything unsaved?** — a badge, a list | size and timestamp | drawn constantly, and being briefly wrong costs **nothing**: no byte moves |
-| **What will this operation destroy?** | file **content** | asked once, immediately before the folder changes |
-
-A folder holds gigabytes of density matrices, and the panel reads it every time
-you enter the directory. Hashing all of it to draw a badge is a cost the badge
-does not earn. The cheap read has one blind spot — a file rewritten to the same
-size inside the same second as the save — and in interactive use that is both
-rare and **harmless**, because the display is a sentence on a screen, corrected
-the next time anything real happens.
-
-**A save and a restore always compare content**, whatever the display last said.
-And when somebody wants certainty *now*, a Refresh asks for the exact answer
-rather than the system paying for it continuously.
-
-> **Say what is happening before it happens.** Checksumming gigabytes takes time,
-> and a pause nobody explained reads as a hang. The verbs announce the slow part
-> — *"verifying the archive, then checking what is unsaved here…"* — so the wait
-> is understood rather than suffered.
+**Exactness costs time, so it is spent where being wrong costs data.** A
+*display* is answered from size and timestamp; an *operation* from content.
+§ 7.2 is the whole of that rule, and this one depends on it: the warning below
+is an operation's question, so it is always answered exactly.
 
 **Checkpointing is not responsible for work you did not save.** Calling
 `restore` without calling `snapshot save` is a decision, and the answer is
@@ -1127,7 +1165,7 @@ conclude there is nothing to do.
 | **A2** | verify before mutating, in order | ✅ |
 | **A3** | the save precedes the change | needs the prep prompt |
 | **A4** | a restore is whole or does not happen | ✅ on every surface — the HTTP route refuses `include_binaries` rather than ignoring it |
-| **A5** | make the folder equal the target; warn about what is lost, then obey | ✅ names the three shapes; `--force` accepts them; removes what the target lacks |
+| **A5** | make the folder equal the target; warn about what is lost, then obey | ✅ names the three shapes; `--force` accepts them; removes what the target lacks; the warning is answered by content while the display is not (§ 7.2) |
 | **A6** | every saved state stays listed and restorable | ✅ one ref per state, so nothing depends on where HEAD points |
 | **S2** | a stage writes only inside itself | needs the layout |
 | **S3** | a run records what it started from | needs the layout |
@@ -1336,7 +1374,7 @@ on is what stops them being forgotten on the day it lands.
 | **4** | the parts, and which of them you ever touch |
 | **5** | the commands |
 | **6** | what happens on a save, in order |
-| **7** | what happens on a restore — and § 7.1, going back and trying something else with the original intact |
+| **7** | what happens on a restore · § 7.1 going back and trying something else with the original intact · § 7.2 how much is checked, and when |
 | **8** | why a flat folder depends on this and a nested one merely benefits |
 | **9** | who decides to save, and when you are asked |
 | **10** | worked examples — several attempts from one state, and calling it from Python |

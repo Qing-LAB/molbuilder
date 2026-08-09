@@ -1000,21 +1000,25 @@ class Repo:
             if stat.st_size != want[1]:
                 changed.add(key)              # a different size is an answer
                 continue
-            if not deep:
-                # A state's timestamp has one-second resolution while a file's
-                # does not, so a rewrite inside that second is invisible here.
-                # That is accepted deliberately: this is a display, the case is
-                # rare in interactive use, and the operations that can lose
-                # data do their own exact check.
-                # One second of tolerance, and it is not slack -- it is the
-                # resolution difference.  A state's timestamp is whole seconds;
-                # a file's is not.  Save a file at 12:00:00.3 and the state
-                # records 12:00:00, so a bare `>` calls the file newer than the
-                # state that just saved it, and the folder reads unsaved the
-                # instant after a save.  That is the normal flow, not a corner.
-                if saved_at is None or stat.st_mtime > saved_at + 1:
+            if not deep and saved_at is not None:
+                # ONE SECOND of tolerance, and it is resolution rather than
+                # slack.  A state's timestamp is whole seconds; a file's is
+                # not.  Save a file at 12:00:00.3 and the state records
+                # 12:00:00, so a bare `>` calls the file newer than the state
+                # that just saved it -- the folder would read unsaved the
+                # instant after a save, which is the normal flow and not a
+                # corner case.
+                #
+                # What this cannot see is a same-size rewrite inside that
+                # second.  Accepted deliberately: nothing moves on a status
+                # call, so being briefly wrong costs a sentence and not a byte,
+                # and every operation that CAN lose something checks content.
+                if stat.st_mtime > saved_at + 1:
                     changed.add(key)
                 continue
+            # Falls through to the exact comparison when asked for it -- and
+            # also when the state's timestamp is unreadable, because "cannot
+            # rule it out cheaply" must mean *check*, not *assume changed*.
             if hashlib.sha256(path.read_bytes()).hexdigest() != want[0]:
                 changed.add(key)
 
