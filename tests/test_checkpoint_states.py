@@ -623,3 +623,221 @@ def test_the_generated_block_contains_nothing_but_archive_patterns(calc):
             continue
         assert line in set(always) | {ARCHIVE_DIR + "/"}, (
             f"{line!r} is ignored by git and taken by nothing")
+
+
+# ================================================================== #
+#  A realistic folder, not a two-file fixture                        #
+#                                                                    #
+#  Everything above proves a rule on the smallest case that can show #
+#  it.  A calculation folder is a nested staged tree with several    #
+#  stages, attempts, shared pseudopotentials linked rather than      #
+#  copied, and big files at depth -- and several rules only have     #
+#  teeth there (L2, S1's symlink carve-out, the dedup property).     #
+# ================================================================== #
+
+
+def _staged(root, stages=("01_coarse", "02_tight"), attempts=2, dm=BIG):
+    """A calculation folder shaped like `project-layout.md` § 1.1's nested form."""
+    (root / "task.json").write_text('{"engine": "siesta"}')
+    (root / "Au.psml").write_text("<pseudo/>\n")
+    (root / "job.fdf.template").write_text("SystemLabel job\n")
+    for stage in stages:
+        sdir = root / stage
+        sdir.mkdir(exist_ok=True)
+        (sdir / "job.fdf").write_text(f"# {stage}\n")
+        # a stage LINKS the shared pseudopotential rather than copying it
+        link = sdir / "Au.psml"
+        if not link.exists():
+            link.symlink_to("../Au.psml")
+        for n in range(attempts):
+            run = sdir / f"run-{n}"
+            run.mkdir(exist_ok=True)
+            (run / "run.json").write_text('{"mode": "local"}')
+            (run / "job.out").write_text(f"{stage} attempt {n}\n")
+            (run / "job.XV").write_text(f"{stage}-{n} coords\n")
+            (run / "job.DM").write_bytes(dm + stage.encode() + str(n).encode())
+    return root
+
+
+@pytest.fixture()
+def staged(tmp_path):
+    root = tmp_path / "BDT_Au_relax"
+    root.mkdir()
+    (root / PROJECT_CONFIG_FILENAME).write_text(json.dumps(
+        {"checkpoint": {"size_limit_bytes": 1024, "engines": {"generic": []}}}))
+    _staged(root)
+    repo = Repo(str(root))
+    repo.init(note="a staged calculation, two stages, two attempts each")
+    return repo
+
+
+def test_s1_holds_over_a_real_staged_tree(staged):
+    """L2 and S1 together, at depth, with symlinks in the tree.
+
+    A flat fixture cannot fail this: the defect it guards is that a gitignore
+    pattern with no slash matches at EVERY level while a top-level-only walk
+    matches at one, so a nested big file falls between the two stores.
+    """
+    state = staged.standing_at()
+    tracked, archived = _tracked(staged), _archived(staged, state)
+    for path in walk_files(staged.root):
+        key = archive_key(staged.root, path)
+        assert (key in tracked) != (key in archived), (
+            f"S1 violated at depth for {key!r}")
+    assert len([k for k in archived if k.endswith("job.DM")]) == 4, (
+        "every stage's every attempt must be archived, not just the top one")
+    assert "01_coarse/run-0/job.XV" in tracked, "small files at depth go to git"
+
+
+def test_symlinks_are_not_stored_and_survive_a_restore(staged):
+    """S1's carve-out: a link has no content of its own.
+
+    Storing it as a regular file would both duplicate the target and restore a
+    real file where a link belongs -- and a saved tree is full of links,
+    because a stage links the shared pseudopotentials rather than copying them.
+    """
+    state = staged.standing_at()
+    archived = _archived(staged, state)
+    assert "01_coarse/Au.psml" not in archived
+    link = staged.root / "01_coarse" / "Au.psml"
+    assert link.is_symlink()
+
+    (staged.root / "01_coarse" / "run-0" / "job.DM").write_bytes(b"\x09" * 5000)
+    staged.save("moved on")
+    staged.restore(state.id, force=True)
+    assert link.is_symlink(), "a restore turned a link into a real file"
+    assert link.resolve() == (staged.root / "Au.psml").resolve()
+
+
+def test_a_restore_recreates_directories_that_had_been_removed(staged):
+    """The archive's keys are paths, so a restore must rebuild the tree."""
+    state = staged.standing_at()
+    import shutil as _sh
+    (staged.root / "03_extra").mkdir()
+    (staged.root / "03_extra" / "job.DM").write_bytes(BIG)
+    staged.save("a third stage")
+    _sh.rmtree(staged.root / "01_coarse")
+    staged.save("removed the first stage entirely")
+
+    staged.restore(state.id, force=True)
+    assert (staged.root / "01_coarse" / "run-1" / "job.DM").is_file()
+    assert not (staged.root / "03_extra").exists()
+    assert staged.status().clean
+
+
+def test_identical_content_is_stored_once(staged):
+    """§ 12's *Disk cost* property: a second save of an unchanged 2 GB binary
+    costs a directory entry.  Untested until now, and it is the reason the
+    archive is content-addressed rather than merely checksummed."""
+    first = staged.standing_at()
+    (staged.root / "task.json").write_text('{"engine": "siesta", "v": 2}')
+    second = staged.save("only the description changed")
+
+    assert first.archive == second.archive, (
+        "the big files did not change, so it is the same archive")
+
+    # now change ONE of the four, and the other three must be shared by inode
+    (staged.root / "01_coarse" / "run-0" / "job.DM").write_bytes(b"\x07" * 5000)
+    third = staged.save("one attempt re-run")
+    assert third.archive != first.archive
+
+    old_dir = archive_dir(staged.root, first.archive)
+    new_dir = archive_dir(staged.root, third.archive)
+    shared = [k for k in _archived(staged, third)
+              if (old_dir / k).is_file()
+              and (old_dir / k).stat().st_ino == (new_dir / k).stat().st_ino]
+    assert len(shared) == 3, (
+        f"3 unchanged big files should be hard-linked, not copied; {len(shared)} were")
+
+
+# ------------------------------------------------------------------ #
+#  S7 — a file that changes category leaves the store it came from    #
+# ------------------------------------------------------------------ #
+
+
+def test_a_file_that_grows_past_the_limit_leaves_git(calc):
+    """The contract calls this routine once the gate is a size, because files
+    grow: an .EIG at 8 MB last save and 12 MB this one crosses by itself, with
+    nobody deciding anything.  Tracked *and* archived is S1's other losing
+    branch -- a large blob committed on every save from then on."""
+    small = calc.root / "grows.bin"
+    small.write_bytes(b"x" * 100)
+    first = calc.save("small enough for git")
+    assert "grows.bin" in _tracked(calc)
+    assert "grows.bin" not in _archived(calc, first)
+
+    small.write_bytes(BIG)
+    second = calc.save("now it is big")
+    assert "grows.bin" in _archived(calc, second)
+    assert "grows.bin" not in _tracked(calc), (
+        "it stayed in git as well -- a blob on every save from now on (S7)")
+
+
+def test_a_file_that_shrinks_below_the_limit_leaves_the_archive(calc):
+    """The same rule in the other direction, which is the half people forget."""
+    big = calc.root / "shrinks.bin"
+    big.write_bytes(BIG)
+    first = calc.save("big")
+    assert "shrinks.bin" in _archived(calc, first)
+
+    big.write_bytes(b"x" * 100)
+    second = calc.save("small now")
+    assert "shrinks.bin" in _tracked(calc)
+    assert "shrinks.bin" not in _archived(calc, second)
+
+
+# ------------------------------------------------------------------ #
+#  A history with real shape                                          #
+# ------------------------------------------------------------------ #
+
+
+def test_a_deep_forked_history_lists_children_before_parents(staged):
+    """`states()` is ordered topologically, not by date.
+
+    Several states can share a second -- a scripted sweep saves faster than the
+    clock ticks -- and a date tie would print a child above its own parent.
+    """
+    made = [staged.standing_at()]
+    for i in range(3):                                  # a trunk
+        (staged.root / "task.json").write_text(f'{{"v": {i}}}')
+        made.append(staged.save(f"trunk {i}"))
+    forks = []
+    for i in range(3):                                  # three from one point
+        staged.restore(made[1].id, force=True)
+        (staged.root / "task.json").write_text(f'{{"fork": {i}}}')
+        forks.append(staged.save(f"fork {i}"))
+
+    listed = [s.id for s in staged.states()]
+    assert len(listed) == len(made) + len(forks)
+    position = {sid: n for n, sid in enumerate(listed)}
+    for state in staged.states():
+        if state.parent in position:
+            assert position[state.id] < position[state.parent], (
+                "a state was listed after the state it came from")
+    assert {f.parent for f in forks} == {made[1].id}
+
+
+def test_i2c_the_warning_names_a_file_the_classification_no_longer_matches(calc):
+    """I2c's own stated test.
+
+    A `.DM` archived while `*.DM` was classified big; the classification is
+    narrowed; the file is modified and an earlier state restored.  The warning
+    must still name it, because the MANIFEST -- not the classification -- is
+    what says the restore will write over it.
+    """
+    cfg = calc.root / PROJECT_CONFIG_FILENAME
+    cfg.write_text(json.dumps({"checkpoint": {
+        "size_limit_bytes": 99_999_999, "engines": {"generic": ["*.DM"]}}}))
+    (calc.root / "job.DM").write_bytes(b"\x01" * 100)
+    first = calc.save("with a .DM")
+    (calc.root / "job.XV").write_text("moved on\n")
+    calc.save("moved on")
+
+    cfg.write_text(json.dumps({"checkpoint": {
+        "size_limit_bytes": 99_999_999, "engines": {"generic": []}}}))
+    (calc.root / "job.DM").write_bytes(b"\x02" * 100)
+
+    with pytest.raises(DirtyWorkingTreeError) as exc:
+        calc.restore(first.id)
+    assert "job.DM" in str(exc.value), (
+        "the warning omitted a file the restore will overwrite (I2c)")

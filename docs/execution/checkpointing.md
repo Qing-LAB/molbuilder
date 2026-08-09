@@ -1096,7 +1096,7 @@ conclude there is nothing to do.
 | **I2** | a MANIFEST is authoritative | ✅ |
 | **I2a** | a restore replays the save, and consults nothing | ✅ what a restore removes is decided by git and the MANIFEST, never by the classification |
 | **I2b** | the records themselves are tamper-evident | ✅ every state carries the digest; a tampered MANIFEST is refused, an edited ignore block detected |
-| **I2c** | the restore's gate reads the record, not the config | ⛔ the gate derives from the glob list; the copy derives from the MANIFEST |
+| **I2c** | the warning is measured against the records, not the config | ✅ the standing state's MANIFEST unioned with what is big now; a file the classification stopped matching is still named |
 | **I3** | `restore` is the only operation that writes into the folder | ✅ |
 | **I4** | no git in a generated wrapper | ✅ |
 | **A1** | build, verify, publish — create if absent, never overwrite | ✅ |
@@ -1115,7 +1115,7 @@ conclude there is nothing to do.
 | **L3** | every state carries a note, and names its calculation | ✅ the note is required; a `Calculation:` trailer names it, and a name needing repair is refused |
 | **L4** | a tag is yours; nothing tags on your behalf | ✅ nothing tags automatically |
 | **L7** | a big-file-only change still produces a state | ✅ |
-| **S7** | a file that changes category leaves the store it came from | ✅ a save stages a newly-big file out of git and a newly-small one back in; ⛔ untested |
+| **S7** | a file that changes category leaves the store it came from | ✅ tested in both directions — a file that grows leaves git, one that shrinks leaves the archive |
 | **S8** | a folder pulled out of step by bare git is refused, not believed | ⛔ no trailer to check against, so it proceeds |
 | **S9** | two saves cannot corrupt each other | ✅ by construction — same content, same digest, same path; ⛔ untested |
 | **L8** | a saved attempt never differs afterwards | needs the layout |
@@ -1249,12 +1249,12 @@ nobody is maintaining against this document, which is how the two drift.
 
 | Rule | Where |
 |---|---|
-| S1, S1a, L2 | `test_checkpoint_states.py` — the store-or-store walk over a real saved folder |
+| S1, S1a, L2 | `test_checkpoint_states.py` — the store-or-store walk over a **staged tree**: two stages, two attempts each, big files at depth, and symlinked pseudopotentials |
 | S1b, S1c | `test_checkpoint_config.py` — the size gate and the one home |
 | I1, I2, A1, A2 | `test_checkpoint_states.py` — corrupt the copy at save, corrupt the archive before a restore |
 | I2a | `test_checkpoint_states.py` — change the classification beyond recognition, restore, compare bytes |
 | I2b | `test_checkpoint_states.py` — a tampered MANIFEST, and a hand-edited ignore block |
-| I2c | **not yet written** — see § 12 |
+| I2c | `test_checkpoint_states.py` — narrow the classification, then the warning must still name the file |
 | I3 | **not yet written** — see § 12 |
 | I4 | `test_checkpoint_wrapper_isolation.py` |
 | A4, A5 | `test_checkpoint_cli.py` (no partial restore on any surface) and `test_checkpoint_states.py` (the three shapes, and `--force`) |
@@ -1262,12 +1262,15 @@ nobody is maintaining against this document, which is how the two drift.
 | L1 | `test_checkpoint_states.py` — independent calculations refused, one declared calculation accepted |
 | L3, L4 | `test_checkpoint_states.py` — the note, the calculation's name, and an empty tag list |
 | L7 | `test_checkpoint_states.py` — a big-file-only change |
-| S7, S8, S9 | **not yet written** — see § 12 |
+| S7 | `test_checkpoint_states.py` — a file grows past the limit, and one shrinks below it |
+| S8, S9 | **not yet written** — see § 12 |
 | A3, S2, S3, S4, S6, L8 | **not yet written** — each waits on a surface that does not exist; the table below says which |
 | the MANIFEST format | `test_checkpoint_manifest.py` |
 | the verbs as a printed surface | `test_checkpoint_cli.py` |
 | the HTTP routes | `test_checkpoint_routes.py` |
 | the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` |
+| *Disk cost* (§ 12) — identical content stored once | `test_checkpoint_states.py` — three of four unchanged big files share an inode across two archives |
+| symlinks are outside S1 and survive a restore | `test_checkpoint_states.py` |
 
 **A rule in no row is the same failure as a file in no row, and quieter.** These
 six are stated, tracked and deliberately unasserted — a test written against a
@@ -1288,6 +1291,8 @@ on is what stops them being forgotten on the day it lands.
 | the wrapper carries no git | `test_checkpoint_wrapper_isolation.py` |
 | the verbs end to end — init, save, tag, restore, and their refusals | `test_checkpoint_lifecycle.py` |
 | the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` |
+| *Disk cost* (§ 12) — identical content stored once | `test_checkpoint_states.py` — three of four unchanged big files share an inode across two archives |
+| symlinks are outside S1 and survive a restore | `test_checkpoint_states.py` |
 
 > **One of these tests contradicts this document, and that is worth knowing
 > before you read it.** `test_restore_include_binaries_false_skips_integrity_and_binaries`

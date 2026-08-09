@@ -926,18 +926,31 @@ class Repo:
                                      cls["always_large"])
         on_disk = {archive_key(self.root, p): p for p in big}
 
-        # git's view of the BIG files is noise and must be dropped.  A file
-        # that is big by *size* rather than by *name* cannot be named in
-        # .gitignore, so git sees it as untracked and would report it as added
-        # on every single status -- including immediately after it was saved.
-        # The archive is the record for these; the MANIFEST comparison below is
-        # the only thing entitled to speak about them (I2c).
+        expected: Dict[str, Tuple[str, int]] = {}
+        _archived_keys: set = set()
+        if here is not None and here.archive:
+            try:
+                man = archive_dir(self.root, here.archive) / MANIFEST_NAME
+                if man.is_file():
+                    expected = parse_manifest(man.read_bytes(), str(man))
+                    _archived_keys = set(expected)
+            except CheckpointError:
+                raise CheckpointError(
+                    "cannot say what is unsaved: the archive for the state "
+                    "this folder stands at is unreadable.  Nothing is safe "
+                    "to overwrite until that is resolved (I2b).")
+        # git's view of these files is noise and must be dropped.  A file that
+        # is big by *size* rather than by *name* cannot be named in .gitignore,
+        # so git sees it as untracked and would report it as added on every
+        # status -- including immediately after it was saved.  The archive is
+        # their record, and the comparison below is the only thing entitled to
+        # speak about them (I2c).
         for line in _run_git(["status", "--porcelain", "-uall"],
                              cwd=self.path).stdout.splitlines():
             if not line.strip():
                 continue
             code, name = line[:2], line[3:].strip()
-            if name in on_disk:
+            if name in on_disk or name in _archived_keys:
                 continue
             if code == "??" or code[0] == "A":
                 added.add(name)
@@ -946,27 +959,23 @@ class Repo:
             else:
                 changed.add(name)
 
-        expected: Dict[str, Tuple[str, int]] = {}
-        if here is not None and here.archive:
-            try:
-                man = archive_dir(self.root, here.archive) / MANIFEST_NAME
-                if man.is_file():
-                    expected = parse_manifest(man.read_bytes(), str(man))
-            except CheckpointError:
-                raise CheckpointError(
-                    "cannot say what is unsaved: the archive for the state "
-                    "this folder stands at is unreadable.  Nothing is safe "
-                    "to overwrite until that is resolved (I2b).")
-        for key, path in on_disk.items():
+        # I2c: what is unsaved is measured against the standing state's
+        # MANIFEST -- the record of what that state HELD -- unioned with what
+        # the classification says is big NOW, which is the only way a
+        # brand-new big file is noticed.  Iterating the classification alone
+        # would report a file as *deleted* the moment it stopped matching an
+        # always-large pattern, while it sat untouched on disk.
+        for key in set(expected) | set(on_disk):
+            path = self.root / key
+            if not path.is_file():
+                deleted.add(key)
+                continue
             want = expected.get(key)
             actual = hashlib.sha256(path.read_bytes()).hexdigest()
             if want is None:
                 added.add(key)
             elif want[0] != actual:
                 changed.add(key)
-        for key in expected:
-            if key not in on_disk:
-                deleted.add(key)
 
         return FolderStatus(
             path=self.path, initialized=True,
