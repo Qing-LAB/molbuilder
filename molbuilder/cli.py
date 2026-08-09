@@ -2527,8 +2527,12 @@ _PATH_OPT = click.option("-p", "--path", default=None, type=click.Path(),
                    "measured, which is always correct and merely slower.")
 @click.option("-m", "--note", default="set up",
               help="The note for the first state.")
+@click.option("--calculation", default=None,
+              help="Which calculation this folder's history belongs to.  "
+                   "Default: the folder's name.  Written verbatim into every "
+                   "state, so a name needing repair is refused.")
 @_PATH_OPT
-def cmd_snapshot_init(engine, note, path):
+def cmd_snapshot_init(engine, note, calculation, path):
     """Make this folder a checkpoint folder and save its first state.
 
     One repository per calculation.  A folder whose subdirectories are working
@@ -2545,7 +2549,8 @@ def cmd_snapshot_init(engine, note, path):
                    f"(standing at {here.short})" if here else repo.path)
         return
     try:
-        state = repo.init(engine=engine, note=note)
+        state = repo.init(engine=engine, note=note,
+                          calculation=calculation)
     except NestedRepoRefusedError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
@@ -2553,6 +2558,7 @@ def cmd_snapshot_init(engine, note, path):
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
     click.echo(f"initialised {repo.path}")
+    click.echo(f"  calculation  {state.calculation}")
     click.echo(f"  {state.short}  {state.note}")
 
 
@@ -2610,6 +2616,9 @@ def cmd_snapshot_list(limit, path):
     if not status.clean:
         click.echo(f"   {len(status.unsaved())} unsaved change(s) here; "
                    f"`snapshot save` keeps them.")
+    if status.ignore_edited:
+        click.echo("   note: .gitignore's generated block was edited by hand. "
+                   "The next save rewrites it from the classification.")
 
 
 @cmd_snapshot.command("tag", short_help="name a state so you can find it")
@@ -2685,6 +2694,7 @@ def cmd_snapshot_config(path):
     repo = _repo_or_exit(path)
     cls = repo._classification()
     limit = int(cls["size_limit_bytes"])
+    click.echo(f"calculation   {repo.calculation()}")
     click.echo(f"size limit    {limit} bytes ({limit / (1024 * 1024):.1f} MB)")
     click.echo("              over it -> the archive; under it -> git")
     always = cls["always_large"]

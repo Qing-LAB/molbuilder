@@ -205,12 +205,13 @@ class State:
     a *name* and a *proof* in one value (I2b), present on every state including
     those that archived nothing.
     """
-    id:      str
-    note:    str
-    parent:  Optional[str]          # the state this one came from
-    at:      str                    # ISO-8601 UTC
-    archive: Optional[str] = None   # Manifest-SHA256; None only if damaged
-    tags:    Tuple[str, ...] = ()
+    id:          str
+    note:        str
+    parent:      Optional[str]      # the state this one came from
+    at:          str                # ISO-8601 UTC
+    archive:     Optional[str] = None   # Manifest-SHA256; None if damaged
+    calculation: Optional[str] = None   # which calculation this belongs to
+    tags:        Tuple[str, ...] = ()
 
     @property
     def short(self) -> str:
@@ -242,9 +243,10 @@ class FolderStatus:
     path:        str
     initialized: bool
     standing_at: Optional[str] = None
-    changed:     Tuple[str, ...] = ()
-    added:       Tuple[str, ...] = ()
-    deleted:     Tuple[str, ...] = ()
+    changed:      Tuple[str, ...] = ()
+    added:        Tuple[str, ...] = ()
+    deleted:      Tuple[str, ...] = ()
+    ignore_edited: bool = False     # the generated block was hand-edited (I2b)
 
     @property
     def clean(self) -> bool:
@@ -672,31 +674,67 @@ def verify_archive(root: Path, digest: str) -> Dict[str, Tuple[str, int]]:
 # --------------------------------------------------------------------- #
 
 TRAILER = "Manifest-SHA256"
+CALC_TRAILER = "Calculation"
+_TRAILERS = (TRAILER, CALC_TRAILER)
+
+#: L3: used verbatim in every state's message and never rewritten, so a name
+#: needing repair is refused rather than quietly fixed -- silently normalising
+#: an id would decouple the history's name from the folder's.
+_CALC_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
-def message_with_trailer(note: str, digest: str) -> str:
-    """A state's message: the note you wrote, then the anchor.
+def check_calculation_name(name: str) -> str:
+    """L3: refuse a name that would have to be repaired to be used."""
+    if not _CALC_NAME_RE.match(name or ""):
+        raise CheckpointError(
+            f"calculation name {name!r} is not [A-Za-z0-9_-]+.  It is written "
+            f"verbatim into every state and never rewritten, so a name that "
+            f"needs repair is refused rather than quietly changed -- fixing it "
+            f"silently would decouple this history's name from the folder's "
+            f"(checkpointing.md L3).")
+    return name
 
-    The trailer is appended by the SAVE, never by a note helper: a save may
-    carry any note at all, and hanging the anchor off a helper would let every
-    save that skipped it ship unanchored (I2b).
+
+def message_with_trailers(note: str, digest: str, calculation: str) -> str:
+    """A state's message: your note, then what the state is *of* and *holds*.
+
+    Both trailers are appended by the SAVE, never by a note helper: a save may
+    carry any note at all, and hanging them off a helper would let every save
+    that skipped it ship unanchored and unnamed (I2b, L3).
     """
-    return f"{note.rstrip()}\n\n{TRAILER}: {digest}\n"
+    return (f"{note.rstrip()}\n\n"
+            f"{CALC_TRAILER}: {calculation}\n"
+            f"{TRAILER}: {digest}\n")
+
+
+def _trailer_value(message: str, key: str) -> Optional[str]:
+    for line in message.splitlines():
+        if line.startswith(key + ":"):
+            return line.split(":", 1)[1].strip() or None
+    return None
 
 
 def trailer_of(message: str) -> Optional[str]:
     """The archive digest a state names, or None if it carries no anchor."""
-    for line in message.splitlines():
-        if line.startswith(TRAILER + ":"):
-            value = line.split(":", 1)[1].strip()
-            return value if _SHA256_RE.match(value) else None
-    return None
+    value = _trailer_value(message, TRAILER)
+    return value if value and _SHA256_RE.match(value) else None
+
+
+def calculation_of(message: str) -> Optional[str]:
+    """Which calculation this state belongs to (L3).
+
+    Why a state carries it at all: a folder can be copied to a cluster or
+    opened a year later, and a history whose states say only "stage 2
+    converged" cannot say which calculation that was.
+    """
+    return _trailer_value(message, CALC_TRAILER)
 
 
 def note_of(message: str) -> str:
-    """The note, without the anchor -- what a person reads in a list."""
-    return "\n".join(ln for ln in message.splitlines()
-                     if not ln.startswith(TRAILER + ":")).strip()
+    """The note, without the trailers -- what a person reads in a list."""
+    return "\n".join(
+        ln for ln in message.splitlines()
+        if not any(ln.startswith(k + ":") for k in _TRAILERS)).strip()
 
 
 # --------------------------------------------------------------------- #
@@ -736,7 +774,8 @@ class Repo:
                 f"`molbuilder snapshot init` first.")
 
     def init(self, engine: Optional[str] = None,
-             note: str = "set up") -> "State":
+             note: str = "set up",
+             calculation: Optional[str] = None) -> "State":
         """Make this folder a checkpoint folder and save its first state.
 
         One repository per calculation (L1).  A folder whose subdirectories are
@@ -758,7 +797,9 @@ class Repo:
                 f"{working}, and nothing here says they belong to one "
                 f"calculation.  Its root should carry the description that "
                 f"says so ({', '.join(_BUNDLE_DESCRIPTORS)}) (L1).")
+        name = check_calculation_name(calculation or self.root.name)
         _run_git(["init", "-q"], cwd=self.path)
+        _run_git(["config", "molbuilder.calculation", name], cwd=self.path)
         if engine:
             _run_git(["config", "molbuilder.engine", engine], cwd=self.path)
         write_gitignore(self.root, self._classification()["always_large"])
@@ -783,6 +824,18 @@ class Repo:
                        cwd=self.path, check=False).stdout.strip()
         return out or None
 
+    def calculation(self) -> str:
+        """Which calculation this folder's history belongs to (L3).
+
+        Defaults to the folder's own name, which is what a person recognises,
+        and is fixed at init: it is written verbatim into every state, so
+        changing it later would make one history claim two names.
+        """
+        self._require_init()
+        out = _run_git(["config", "--get", "molbuilder.calculation"],
+                       cwd=self.path, check=False).stdout.strip()
+        return out or self.root.name
+
     def _classification(self) -> Dict[str, object]:
         return classification(self._engine(), self.root)
 
@@ -796,6 +849,7 @@ class Repo:
         return State(id=sha_full.strip(), note=note_of(message),
                      parent=parent, at=at.strip(),
                      archive=trailer_of(message),
+                     calculation=calculation_of(message),
                      tags=tuple(self._tag_names_at(sha_full.strip())))
 
     def _tag_names_at(self, sha: str) -> List[str]:
@@ -854,13 +908,28 @@ class Repo:
         if not self.initialized:
             return FolderStatus(path=self.path, initialized=False)
         here = self.standing_at()
+        edited = not gitignore_is_current(
+            self.root, self._classification()["always_large"])
         changed, added, deleted = set(), set(), set()
 
+        cls = self._classification()
+        big, _small = split_by_store(self.root, int(cls["size_limit_bytes"]),
+                                     cls["always_large"])
+        on_disk = {archive_key(self.root, p): p for p in big}
+
+        # git's view of the BIG files is noise and must be dropped.  A file
+        # that is big by *size* rather than by *name* cannot be named in
+        # .gitignore, so git sees it as untracked and would report it as added
+        # on every single status -- including immediately after it was saved.
+        # The archive is the record for these; the MANIFEST comparison below is
+        # the only thing entitled to speak about them (I2c).
         for line in _run_git(["status", "--porcelain", "-uall"],
                              cwd=self.path).stdout.splitlines():
             if not line.strip():
                 continue
             code, name = line[:2], line[3:].strip()
+            if name in on_disk:
+                continue
             if code == "??" or code[0] == "A":
                 added.add(name)
             elif "D" in code:
@@ -879,10 +948,6 @@ class Repo:
                     "cannot say what is unsaved: the archive for the state "
                     "this folder stands at is unreadable.  Nothing is safe "
                     "to overwrite until that is resolved (I2b).")
-        cls = self._classification()
-        big, _small = split_by_store(self.root, int(cls["size_limit_bytes"]),
-                                     cls["always_large"])
-        on_disk = {archive_key(self.root, p): p for p in big}
         for key, path in on_disk.items():
             want = expected.get(key)
             actual = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -898,7 +963,8 @@ class Repo:
             path=self.path, initialized=True,
             standing_at=here.id if here else None,
             changed=tuple(sorted(changed - added - deleted)),
-            added=tuple(sorted(added)), deleted=tuple(sorted(deleted)))
+            added=tuple(sorted(added)), deleted=tuple(sorted(deleted)),
+            ignore_edited=edited)
 
     # -- save ------------------------------------------------------ #
 
@@ -920,6 +986,9 @@ class Repo:
                 "defaulted (checkpointing.md L3).")
         cls = self._classification()
         always = cls["always_large"]
+        # I2b: `.gitignore` records a DERIVATION, so the derivation is the
+        # check -- regenerating it every save is what makes a hand edit
+        # harmless rather than a file silently dropped from every store.
         write_gitignore(self.root, always)
         big, _small = split_by_store(self.root,
                                      int(cls["size_limit_bytes"]), always)
@@ -943,7 +1012,8 @@ class Repo:
             return None                   # nothing changed, in either store
 
         _run_git(["commit", "-q", "--allow-empty", "-m",
-                  message_with_trailer(note, digest)], cwd=self.path)
+                  message_with_trailers(note, digest, self.calculation())],
+                 cwd=self.path)
         sha = _run_git(["rev-parse", "HEAD"], cwd=self.path).stdout.strip()
         _run_git(["update-ref", _STATE_REF + sha, sha], cwd=self.path)
         return self._state_from(sha)
@@ -1025,15 +1095,18 @@ class Repo:
 
     def tags(self) -> List["Tag"]:
         self._require_init()
+        # ``*objectname`` is the commit an annotated tag points AT; plain
+        # ``objectname`` would be the tag object itself, which is not a state.
         out = _run_git(["for-each-ref", "--format=%(refname:short)%x00"
-                        "%(objectname)%x00%(contents:subject)", "refs/tags"],
+                        "%(*objectname)%x00%(contents:subject)", "refs/tags"],
                        cwd=self.path, check=False).stdout
         found = []
         for line in out.splitlines():
             if not line.strip():
                 continue
-            name, obj, subject = (line.split("\x00") + ["", ""])[:3]
-            found.append(Tag(name=name, state=self.resolve(name), note=subject))
+            name, state, subject = (line.split("\x00") + ["", ""])[:3]
+            found.append(Tag(name=name, state=state or self.resolve(name),
+                             note=subject))
         return sorted(found, key=lambda t: t.name)
 
 
