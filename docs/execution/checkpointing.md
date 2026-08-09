@@ -743,18 +743,45 @@ than a restore — it is a **different** one, and the tool for it is `git show
 ### Nothing else touches the state
 
 **I3 — nothing moves warm state. `restore` replaces it. Nothing else touches
-it.** One operation, not two.
+it.**
 
-*This rule used to allow a mover*, because `--cold` relocated warm files so a run
-would not find them. That mechanism is gone — a checkpoint already holds the
-state, so moving files to protect them was work that bought nothing — and A5 says
-the same thing from the other side: molbuilder does not relocate your files on
-your behalf, ever. The permission outlived the thing it permitted.
+**Warm state** is the handful of files an engine leaves behind that a later run
+picks up to continue from — `<id>.DM`, the converged density matrix; `<id>.XV`,
+the relaxed geometry; `<id>.CG`, the optimiser's history. They are the difference
+between a stage that resumes in an hour and one that starts over in three days,
+and in a flat folder **nothing else on disk holds a copy**.
 
-A replacing produce may remove orphaned decks and wrappers. Never state.
+So exactly one operation may replace them: `restore`, whose entire purpose is
+putting the folder into a state you chose. Nothing else may move, rename, delete
+or truncate them.
 
+**The line this draws, and why it is not arbitrary.** A produce that rewrites a
+folder *may* delete decks and wrappers nothing refers to any more. Rename a stage
+from `tight` to `tighter` and `<id>_tight.fdf` is an orphan — removing it is
+tidying. It may not touch `<id>.DM`.
+
+> A deck is **derived**: `task.json` regenerates it in a second. A density matrix
+> is **earned**: the only way to get it back is to spend the afternoon again.
+> Both are files in the same directory and they are not the same kind of thing.
+
+**Starting a stage cold does not mean hiding the files.** This is the example the
+rule was written from. There used to be a `--cold` path that relocated `<id>.DM`
+and `<id>.XV` into a dated folder so the engine would not find them. It was
+deleted, because the deck can simply say so — `DM.UseSaveDM false` and the engine
+does not look — and because a checkpoint already holds that state, so moving
+files to protect them bought nothing and left a stray directory behind.
+
+**Telling the engine not to read a file is not the same as taking the file away,
+and it is strictly better**: the file stays exactly where it is, the next stage
+that *does* want it still finds it, and nothing has to be put back afterwards.
+
+- **Fails as:** somebody adds a *"clean up before re-running"* convenience to
+  produce — a glob over `<id>.*` and a delete. It looks tidy. Every test still
+  passes, because the decks regenerate. The density matrix does not, and nobody
+  learns that until a run that should have continued starts from scratch three
+  days later.
 - **Test:** every path that writes into a run directory is checked for a delete
-  or a truncating open that could match run state. `restore` is the only
+  or a truncating open that could match warm state. `restore` is the only
   permitted hit.
 
 **I4 — a generated wrapper contains no git.** A wrapper that committed would need
