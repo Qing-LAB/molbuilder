@@ -180,12 +180,15 @@ BDT_Au_relax_Au38C6H4S2/
 └── 02_tight/…
 ```
 
-And a MANIFEST is three columns — sha256, bytes, path — sorted by path:
+And a MANIFEST is three tab-separated columns — sha256, bytes, path — sorted by
+path (`job-contracts.md § 6.1` gives the rules and why each one is there):
 
 ```text
-7ef4c645…344a  8388608  01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM
-36c54395…a572  8388608  02_tight/run-0/BDT_Au_relax_Au38C6H4S2.DM
+7ef4c645…344a→8388608→01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM
+36c54395…a572→8388608→02_tight/run-0/BDT_Au_relax_Au38C6H4S2.DM
 ```
+
+*(`→` is the tab; it is drawn here only so you can see it.)*
 
 **The path is relative to the folder root, not a bare filename.** That is what
 lets one archive hold a `.DM` from every stage without them colliding. Every part
@@ -749,9 +752,7 @@ the first.
 
 **Verification has two outcomes, not three: it matches, or it is refused.**
 Every state carries a trailer from the first one onwards, so a state without one
-is not a legacy case to tolerate — it is damage, and it is named as such. (An
-earlier draft had a third outcome for states written before the anchor existed.
-There are none; this is the first draft.)
+is not a legacy case to tolerate — it is damage, and it is named as such.
 
 > **A commit that archived nothing still carries a trailer** — the digest of an
 > empty MANIFEST, which is a fixed, well-known value. That is what makes *"this
@@ -1135,18 +1136,29 @@ disk, or other commits have archives — it says so loudly rather than returning
 text-only and looking fine. It cannot distinguish "the archive was lost" from
 "this commit legitimately had no binaries", and it does not pretend to.
 
-**Archives are never reclaimed, and content addressing turns that from an
-oddity into an ordinary piece of unbuilt work.** Delete a branch or leave a
-commit unreachable and its archive stays on disk. There is no `prune` verb.
+**Nothing is ever reclaimed, and under A6 almost nothing can be.** A6 says every
+state you saved stays listed and restorable *forever*, so every state is
+permanent, so every archive a state names is permanently needed. There is no
+garbage to collect, and a `prune` that swept "unreachable" archives would find
+none.
 
-Not a correctness problem — nothing is lost, which is the direction this system
-errs in on purpose. And the shape of the fix is now the standard one, because
-the store is standard: **an archive is reachable when some reachable commit's
-trailer names it.** Mark from the refs, sweep what nothing points at — what
-`git gc` does for git's own objects. One consequence to keep in mind when it is
-built: an archive may be named by *many* commits, so reachability is a count and
-not a flag, and deleting on the first unreferenced commit would take an archive
-another one still needs.
+> **An earlier draft described mark-and-sweep from the reachable history, the way
+> `git gc` works.** That story came from a design where a line of work could be
+> deleted and take its states with it. There are no lines and there is no delete:
+> a state, once saved, is a state you can return to, and that is the promise in
+> § 1.
+
+**One kind of archive genuinely is garbage**, and it has a single cause: a save
+interrupted after the archive was written and before the state was recorded
+(§ 6). Nothing names that archive and nothing ever will. Sweeping *those* is a
+small, well-defined job — an archive directory that no state's trailer mentions —
+and it is the only thing a `prune` verb would ever do.
+
+**So the folder grows, and that is the design.** If a calculation's history
+becomes more than you want to carry, the answer is the one § 2 already gives:
+this is not a backup system, and a folder is a folder — copy what you want
+elsewhere, or delete the whole thing. Removing *part* of a history would make
+§ 1's promise conditional, and every rule here exists to keep it unconditional.
 
 ### Two things that are not rules
 
