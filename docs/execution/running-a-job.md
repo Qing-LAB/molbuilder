@@ -498,101 +498,120 @@ onto the chosen scope, re-validate, then write in place).
 
 ---
 
-## 6. Checkpointing a run — `molbuilder snapshot`
+## 6. Saving a calculation — `molbuilder snapshot`
 
-A run directory can be put under a lightweight, git-backed checkpoint system so
-you can snapshot converged states, tag "ready for transport", branch a
-what-if, and restore — with the large binary outputs handled separately from
-the text history.
+A calculation folder can be put under a git-backed snapshot system, so any state
+you saved is one you can come back to — rerun a stage, retune and try again, or
+start over from it. Large binaries are handled beside git rather than inside it,
+so a snapshot holds the density matrices too.
+
+**This section is the guide: what to type, and what the buttons do.** The rules
+it must not break — and which of them hold today — are
+[`checkpointing.md`](?doc=execution/checkpointing.md); the file formats are
+[`job-contracts.md § 6.1`](?doc=execution/job-contracts.md).
+
+### 6.1 Three ideas
+
+| | |
+|---|---|
+| a **state** | a saved snapshot of the whole folder: an id, a note you wrote, and the state it came from |
+| a **tag** | a name you give a state so you can find it again |
+| **where you stand** | the one state the folder is currently at |
+
+**Where you stand is what makes the other two work.** It decides what "unsaved"
+means — the folder differs from *that* state, never from the newest one — and it
+decides where a new state hangs: `save` records where you stood as the new
+state's parent. That is the whole of branching. There is **no branch verb**; you
+go back to a state, save from it, and both attempts stay listed.
 
 ```mermaid
 flowchart TD
-    RD["run directory"]
-    G[".git<br/>(text history:<br/>.fdf/.out/.molwatch.log/.XV/.CG …)"]
-    B[".binsnapshots/&lt;sha&gt;/<br/>(archived big binaries<br/>+ MANIFEST)"]
-    M[".mbcheckpoint.json<br/>(engine + archive_globs)"]
+    RD["the calculation folder"]
+    G[".git/<br/>everything small:<br/>.fdf .out .XV .CG run.json"]
+    B[".binsnapshots/&lt;digest&gt;/<br/>whole copies of everything large<br/>+ MANIFEST.do_not_edit"]
     RD --> G
     RD --> B
-    RD --> M
 ```
 
-### 6.1 The model
+Which store a file goes to is decided by **measuring it** against a size limit —
+10 MB by default, set in `molbuilder.json`. Nothing is left out: every file is
+in exactly one of the two stores.
 
-- **`.mbcheckpoint.json`** (`molbuilder/checkpoint-config@1`, git-tracked) holds
-  the `engine` and the `archive_globs` — the classification of which files are
-  "big binaries" archived by content rather than committed to git. Engine
-  defaults: SIESTA `*.DM` `*.HSX` `*.TSHS` `*.TBT.AVTRANS_*` `*.TBT.CC`
-  `*.TBT.DOS`; PySCF `*.chk` `*.cube`.
-  > ⚠ **This is what ships, not where it is going.** The classification moves
-  > into molbuilder's own config, one home for every folder, and the store is
-  > chosen by **measuring** a file rather than matching its name
-  > ([`checkpointing.md`](?doc=execution/checkpointing.md) S1b, S1c). Nothing
-  > already archived is affected — a restore replays what the save recorded and
-  > reads no configuration at all (I2a).
-- **Text is git-tracked**, including small warm-restart files (`.XV`, `.CG`) so
-  a restore brings back a resumable state; big binaries are **gitignored** and
-  archived under `.binsnapshots/<full-sha>/` with a `MANIFEST`
-  (`<sha256>  <bytes>  <name>`, 3-column — see
-  [`job-contracts.md § 6.1`](?doc=execution/job-contracts.md)). **Content
-  already archived is hard-linked rather than copied**, so checkpointing a
-  folder whose binaries did not change costs no disk
-  ([`checkpointing.md`](?doc=execution/checkpointing.md) § 12, *Disk cost*).
-- **Checkpoint** = `git add .` → commit → atomically archive the current
-  binaries (build in a `.tmp`, hash, copy, re-hash and *verify the copy*, write
-  MANIFEST, then `os.replace`).
-- **Restore = verify-before-mutate.** It refuses on an unknown ref and on an
-  archive that does not verify — **before touching anything** — then `git
-  restore`s the worktree and copies the verified binaries back. A restore does
-  **not** move `HEAD`: the folder rewinds, the history does not, and your next
-  checkpoint carries the rewound state forward
-  ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7.1).
-  > ⚠ **Two things here are the shipped behaviour and not the contract.**
-  > *Unsaved work:* today a dirty text tree or a changed big file is a **flat
-  > refusal**. The rule is that it warns, names exactly what will be lost, and
-  > then obeys `yes` or `--force` — checkpoint is not responsible for work you
-  > never saved, and it never stashes or sets anything aside (A5).
-  > *`--no-binaries`:* it ships, and it should not. It rewinds the text and
-  > leaves every big file, which is a folder no save ever produced; it also
-  > skips the archive verification. To read one old file, use `git show
-  > <ref>:<path>`, which touches nothing (A4).
+### 6.2 The verbs
 
-### 6.2 The CLI
-
-```
-molbuilder snapshot init --engine siesta            # seed .mbcheckpoint.json + .gitignore
-molbuilder snapshot config --set '*.DM,*.HSX,*.chk' # edit the archived-glob set
-molbuilder snapshot checkpoint -m "stage 3 converged"
-molbuilder snapshot tag stage3-converged -m "ready for transport"
-molbuilder snapshot branch what-if-tighter
-molbuilder snapshot list -n 20
-molbuilder snapshot restore stage3-converged        # verify archive -> git restore -> copy binaries
+```bash
+molbuilder snapshot init                                  # once, in the folder
+molbuilder snapshot save -m "stage 1 converged, 41 steps"  # the note is required
+molbuilder snapshot list                                   # what have I got?
+molbuilder snapshot tag stage1-good -m "geometry I trust"  # name one
+molbuilder snapshot restore 4f9ca71                        # or restore stage1-good
+molbuilder snapshot config                                 # which files count as big
 ```
 
-The same operations are exposed over HTTP (`/api/checkpoint/*`: `state`, `list`,
-`diff`, `config` GET; `init`, `config`, `commit`, `tag`, `branch`, `restore`,
-POST) and in the projects-sidebar run-history panel.
+Every verb takes `-p/--path` (default: the current directory).
 
-> **Current status.** The `Repo` core, the `molbuilder snapshot` CLI (including
-> `branch`), the HTTP routes, and the sidebar panel — with its lazy-loaded
-> commit-graph viewer — are shipped and tested. `branch` gained its HTTP route on 2026-08-06
-> (`POST /api/checkpoint/branch`); the **control that drives it** is still the
-> tab's to build ([`roadmap.md`](?doc=roadmap.md) workstream 1, Phase 2). A few items from
-> the original design remain **unbuilt**: archive pruning (`prune`), a
-> `snapshot verify` verb (the check exists and is reachable only by attempting a
-> restore, which is the worst moment to learn an archive is gone), a
-> `snapshot diff` *CLI* face (`diff` exists in Python and over HTTP, just not as
-> a subcommand), the wrapper-auto-bootstraps-git "Path B" (dropped — the wrapper
-> is deliberately git-agnostic, so init is CLI/UI-only), and a git-snippet
-> library.
->
-> **What this section still describes and the contract has moved past** is
-> flagged inline above, and tracked with a status per rule in
-> [`checkpointing.md`](?doc=execution/checkpointing.md) § 12: the store chosen by
-> size rather than name (S1b), one molbuilder-wide classification instead of a
-> per-folder file (S1c), a restore that warns rather than refuses (A5), and the
-> removal of `--no-binaries` (A4).
+- **`init`** — `--engine siesta|pyscf` names which config entry to use, so
+  families that are always large skip the measuring. Omit it and every file is
+  measured, which is always correct and merely slower. `--calculation` sets the
+  name written into every state; it defaults to the folder's, and a name that
+  would need repairing is **refused** rather than quietly fixed.
+- **`save -m`** — the note is required and never generated. It is the only thing
+  that answers the question you actually bring to a history a month later: *why
+  did I stop here, and what was I about to do?* Says plainly when nothing
+  changed rather than inventing a state.
+- **`list`** — newest first, each state naming the one it came from. Two states
+  showing the same parent are alternatives. It answers **cheaply**, from size and
+  timestamp, and says so; `--check` compares content when you want certainty now.
+- **`tag NAME -m`** — the note says why the state is worth returning to. Nothing
+  tags on your behalf, so the namespace is yours alone. `--at` names a state
+  other than where you stand.
+- **`restore STATE`** — STATE is a state id or a tag. The **whole folder**
+  returns; it is a rewind, not a fetch. To read one old file without moving
+  anything, `git show <state>:<path>` touches nothing at all.
+- **`config`** — prints the size limit, which families skip the measuring, and
+  where to change them. Read-only: the classification has one home.
 
----
+**What a restore asks you.** It refuses first on things about the *target* — an
+unknown state, or an archive that does not verify — because nobody should accept
+a loss for an operation that then fails for another reason. Only then does it
+name everything unsaved (changed, added and deleted alike) and ask. At a
+terminal you answer; a script passes `--force`. **Say yes and it is gone**:
+nothing is stashed, renamed or set aside. Files merely absent from the target are
+removed without a warning — they are still in the state that holds them.
+
+### 6.3 The panel, and the routes
+
+The projects sidebar's run-history panel does the same work for a run directory:
+a sensor pill reading `saved` or `N unsaved`, the states as a list or a graph
+drawn from parentage, and buttons for init, save, tag and restore. **Refresh is
+explicit** — it reads on directory-enter and when you press Refresh, which asks
+the exact content question rather than the cheap one. There is no polling.
+
+Over HTTP: `GET /api/checkpoint/state`, `list`, `config`; `POST
+/api/checkpoint/init`, `save`, `tag`, `restore`. The panel and the CLI go
+through one class, so a rule proved on one holds on the other.
+
+### 6.4 One rule for you: use the verbs, not bare git
+
+The folder **is** a git repository — that is how the snapshots are made — so
+nothing stops you, and molbuilder does not try to. But git alone sees half of
+it: the big files live in the archive, which git is told to ignore, so a `git
+checkout` of an older commit rewinds the text and leaves every large file where
+it was. The folder is then in a state no save ever produced, and **that mess is
+yours**. You will not be quietly fooled, though: the next restore checks content,
+refuses, and names the files that differ.
+
+### 6.5 What is not built
+
+- **`snapshot verify`** — the archive check exists and is reachable only by
+  attempting a restore, which is the worst moment to learn an archive is gone.
+- **`snapshot diff`** — no verb, on any surface.
+- **`prune`** — nothing is ever reclaimed, and under "every saved state stays
+  restorable" almost nothing can be. The one genuine case is an archive left by
+  a save interrupted before its state was recorded.
+- **A save offered at `prep`** — the moment a folder is about to be overwritten
+  is where a save should be offered, and nothing offers it yet. Until it does,
+  saving before a rerun is yours to remember.
 
 ## 7. A note on the design that superseded the cookbook
 

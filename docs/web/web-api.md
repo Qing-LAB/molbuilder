@@ -440,8 +440,9 @@ auth routes.
 **Checkpoint** — the run-history panel (its behavior is
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6`, its
 invariants [`execution/checkpointing.md`](?doc=execution/checkpointing.md);
-the routes are `GET /api/checkpoint/{state,list,diff,config}` and
-`POST /api/checkpoint/{init,config,commit,tag,branch,restore,migrate-manifest}`).
+the routes are `GET /api/checkpoint/{state,list,config}` and
+`POST /api/checkpoint/{init,save,tag,restore}`. `config` is **read-only** — the
+classification has one home, `molbuilder.json`).
 
 **System** — `GET /api/system/load` → `{ ok, data: { cpu, ram, gpu, … } }`, the
 1 Hz load strip's source. An empty `gpus` list has two causes, so the snapshot

@@ -141,7 +141,7 @@ current → target status matrix.
 
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
-| `checkpoint` | L1 | git-based run-dir **snapshot/restore** with sha-archived big binaries (engine-aware via parameterized glob tables, safety-critical) | `Repo.{init(engine=),checkpoint,tag,branch,restore,list_checkpoints,state,set_archive_globs}`; CLI `molbuilder snapshot …` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6 |
+| `checkpoint` | L1 | git-backed **snapshot/restore of a whole calculation folder**; files over a size limit are stored beside git in a content-named archive (safety-critical) | `Repo.{init,save,restore,status,states,standing_at,resolve,tag,tags,classification,calculation}`; CLI `molbuilder snapshot …`. **No `branch`** — a fork is what happens when you save from a restored state | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6 |
 | `validation/` | L2 | scientific-correctness analyzers + the per-engine `validate()` pass | `validation.validate(struct, cfg, prior=…)` (one gate per engine) | [`science/validation.md`](?doc=science/validation.md), [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) |
 | `pseudos` | L1 | PSML pseudopotential parse + coverage/version checks (C1–C6) | `pseudos.check_coverage` | [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) |
 | `chemistry`, `residues` | L1 | structure analysis (open-shell, charge, residues) | `chemistry.analyze_structure` (→ `ChemistryAnalysis`) | [`model/chemistry.md`](?doc=model/chemistry.md), [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) |

@@ -805,7 +805,7 @@ sequenceDiagram
     C->>E: run it
     E-->>T: .XV .DM .out
 
-    U->>C: status · snapshot checkpoint
+    U->>C: status · snapshot save
     Note over U,C: look, decide, and go back to prep
 ```
 
@@ -1155,7 +1155,6 @@ how a folder stops being trustworthy.
 | `<id>_<name>.run.sh` / `.sbatch` | derived | prep, from the deck + the machine's config | re-prep |
 | `job-set.json`, `STAGE-PLAN.md` | derived | the producer / prep | regenerate |
 | `*.psml`, `mb_monitor.py` | **input**, copied in | the producer | re-resolve from the project's cache |
-| `.mbcheckpoint.json` | **source** | `snapshot init` | the big-file classification is lost |
 | stage outputs (④) | **result** | the engine | gone — this is what the history is for |
 | trial outputs (⑥) | **scratch** | the engine | nothing lost; `bench-result.json` is the answer |
 
@@ -1174,7 +1173,6 @@ how a folder stops being trustworthy.
 | `task.json` | ③ calculation | `molbuilder/task@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
 | `<id>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
 | `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6); the edge fields serve the benchmark sweep |
-| `.mbcheckpoint.json` | ③ calculation | `molbuilder/checkpoint-config@1` | which patterns are big files |
 | `.molbuilder.json` | ⑤ benchmark bundle | same as project | **the activation the bundle carries to the target** — written by `_write_activation_config`, the single place that decision is persisted. A fourth scope in practice, and deliberate: the bundle must be runnable after `scp` |
 | `environment.json` | ⑤ benchmark bundle | `molbuilder/environment@1` | the machine as detected when this stage was measured |
 | `bench-manifest.json` | ⑤ benchmark bundle | `molbuilder/bench-manifest@2` | the two comparable points, and the source deck's hash |
@@ -1217,8 +1215,7 @@ BDT_Au_relax_Au38C6H4S2/
 │   ├── 01_coarse/run-0/<id>.DM   ← that attempt's density matrix
 │   ├── 01_coarse/run-1/<id>.DM   ← the retry's, kept separately
 │   ├── 02_tight/run-0/<id>.DM
-│   └── MANIFEST                  ← name, size, checksum for each
-└── .mbcheckpoint.json          which patterns count as big
+│   └── MANIFEST.do_not_edit      ← name, size, checksum for each
 ```
 
 *(A flat directory's archive is the same thing one level shallower —
