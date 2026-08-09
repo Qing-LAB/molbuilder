@@ -39,6 +39,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -571,7 +572,9 @@ def _existing_by_sha(root: Path) -> Dict[str, Path]:
         return index
     for adir in sorted(base.iterdir()):
         man = adir / MANIFEST_NAME
-        if not (adir.is_dir() and man.is_file()):
+        # A staging directory is not an archive until it is renamed into place;
+        # indexing one would offer a half-written file for reuse.
+        if not (adir.is_dir() and man.is_file()) or not _SHA256_RE.match(adir.name):
             continue
         try:
             entries = parse_manifest(man.read_bytes(), str(adir))
@@ -604,10 +607,19 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
     if (final / MANIFEST_NAME).is_file():
         return digest                    # already published; identical by name
 
-    tmp = final.with_name(digest + ".tmp")
-    if tmp.exists():
-        shutil.rmtree(tmp)
-    tmp.mkdir(parents=True)
+    # A UNIQUE staging directory per publisher, not `<digest>.tmp`.
+    #
+    # Content addressing makes the FINAL name safe to race for -- same content,
+    # same digest, same bytes -- but it makes the temporary name *collide*,
+    # because two publishers of the same content agree about that too.  Sharing
+    # it, one `rmtree`s the directory the other is still writing into: the
+    # loser sees a vanished file, and the winner can publish a half-copied
+    # archive under a name that promises the opposite.
+    #
+    # So the shared point is reduced to the single `os.replace` below, which is
+    # atomic and already handles "somebody else got there first".
+    final.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(dir=str(final.parent), prefix=digest + "."))
     index = _existing_by_sha(root)
     try:
         for sha256, _size, key in entries:

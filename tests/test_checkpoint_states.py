@@ -895,3 +895,107 @@ def test_i2c_the_warning_names_a_file_the_classification_no_longer_matches(calc)
         calc.restore(first.id)
     assert "job.DM" in str(exc.value), (
         "the warning omitted a file the restore will overwrite (I2c)")
+
+
+# ------------------------------------------------------------------ #
+#  S8 — bare git, and what molbuilder can honestly say about it       #
+# ------------------------------------------------------------------ #
+
+
+def test_a_folder_bare_git_pulled_out_of_step_is_not_acted_on(calc):
+    """§ 2.0 tells you not to; nothing stops you; this is what happens.
+
+    `git checkout` an earlier state and the text rewinds while every big file
+    stays where it was -- inputs from one state, files from another.  The
+    operation that would act on it checks CONTENT (§ 7.2) and refuses, naming
+    the files that differ.
+    """
+    (calc.root / "job.fdf").write_text("stage 1 inputs\n")
+    (calc.root / "big.bin").write_bytes(BIG)
+    first = calc.save("stage 1")
+    (calc.root / "job.fdf").write_text("stage 2 inputs\n")
+    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)
+    calc.save("stage 2")
+
+    subprocess.run(["git", "checkout", "--quiet", first.id],
+                   cwd=calc.path, check=True)
+    assert (calc.root / "job.fdf").read_text() == "stage 1 inputs\n"
+    assert (calc.root / "big.bin").read_bytes()[0] == 2, (
+        "precondition: git left the big file alone, which is the whole hazard")
+
+    with pytest.raises(DirtyWorkingTreeError) as exc:
+        calc.restore(first.id)
+    assert "big.bin" in str(exc.value), (
+        "it must name the file that differs, not merely refuse")
+
+
+def test_saving_such_a_folder_records_what_is_there_and_restores_correctly(calc):
+    """Not a refusal, deliberately.
+
+    § 1 promises to save what is on disk, not to adjudicate how it got there --
+    and the state that results is internally consistent, which the restore
+    proves.
+    """
+    (calc.root / "job.fdf").write_text("stage 1 inputs\n")
+    (calc.root / "big.bin").write_bytes(BIG)
+    first = calc.save("stage 1")
+    (calc.root / "job.fdf").write_text("stage 2 inputs\n")
+    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)
+    calc.save("stage 2")
+    subprocess.run(["git", "checkout", "--quiet", first.id],
+                   cwd=calc.path, check=True)
+
+    mixed = calc.save("what bare git left behind")
+    assert mixed is not None
+    (calc.root / "big.bin").write_bytes(b"\x09" * 5000)
+    calc.save("moved on again")
+
+    calc.restore(mixed.id, force=True)
+    assert (calc.root / "job.fdf").read_text() == "stage 1 inputs\n"
+    assert (calc.root / "big.bin").read_bytes()[0] == 2
+    assert calc.status(deep=True).clean
+
+
+# ------------------------------------------------------------------ #
+#  S9 — two saves of one folder cannot corrupt each other             #
+# ------------------------------------------------------------------ #
+
+
+def test_concurrent_saves_of_the_same_content_cannot_corrupt_the_archive(calc):
+    """Content addressing does this rather than a lock.
+
+    Two savers of the same big files compute the same digest and publish to the
+    same path with the same bytes -- the race has no wrong outcome to reach.
+    What must hold afterwards is that every archive present verifies (I2).
+    """
+    import threading
+    from molbuilder.checkpoint import publish_archive, split_by_store, verify_archive
+
+    (calc.root / "big.bin").write_bytes(BIG)
+    (calc.root / "other.bin").write_bytes(b"\x05" * 6000)
+    cls = calc._classification()
+    big, _ = split_by_store(calc.root, int(cls["size_limit_bytes"]),
+                            cls["always_large"])
+
+    results, errors = [], []
+
+    def publish():
+        try:
+            results.append(publish_archive(calc.root, big))
+        except Exception as exc:                      # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=publish) for _ in range(4)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+
+    assert not errors, f"a concurrent publish failed: {errors}"
+    assert len(set(results)) == 1, "same content must mean one archive name"
+    verify_archive(calc.root, results[0])             # raises if damaged
+
+    published = [d for d in (calc.root / ".binsnapshots").iterdir()
+                 if d.is_dir() and not d.name.endswith(".tmp")]
+    for adir in published:
+        verify_archive(calc.root, adir.name)

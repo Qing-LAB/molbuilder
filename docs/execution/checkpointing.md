@@ -1083,28 +1083,41 @@ nobody deciding anything.
   reverse: a file that shrinks below the limit is tracked and dropped from the
   archive.
 
-**S8 — a folder pulled out of step by bare git is refused, not believed.**
+**S8 — a folder pulled out of step by bare git is never *acted on* as if it
+were whole.**
 
 Using git directly in a calculation folder is outside the contract (§ 2.0), so
 molbuilder does not defend against it and does not repair it — **that mess is the
 user's, and so is owning it.** What it must never do is *proceed* over one.
 
-`.binsnapshots/` is gitignored, so `git checkout <older-commit>` rewinds the text
+`.binsnapshots/` is gitignored, so `git checkout <older-state>` rewinds the text
 and leaves every big file where it was: inputs from one state, files from
 another, a folder no save ever produced.
 
-**The protection is I2b's digest and nothing else is needed.** Every commit
-carries the digest of the archive that belongs with it, so the mismatch is a fact
-the next operation reads off the commit — no special detector, no scan, no rule
-the code has to remember. This rule exists to say the answer is a **refusal that
-names the archive**, not a shrug and not a repair.
+**What molbuilder can honestly say, and what it cannot.** The mismatch is real
+and it is detectable: the big files on disk do not match the MANIFEST of the
+state the folder now stands at, so a restore refuses and names them (§ 7.2's
+exact check), and the panel shows them as unsaved. What molbuilder **cannot** do
+is tell you *why*. A big file that differs from its state looks identical whether
+git moved the text underneath it or you edited the file yourself — and the
+contract does not let it guess, because a confident wrong diagnosis is worse than
+an accurate plain one.
+
+> **An earlier draft of this rule asked for a message saying "the archive does
+> not match the commit".** That is a distinction the system cannot draw, and
+> writing it down would have obliged the code to invent one. The truthful
+> version is narrower: *the files differ from the state, here they are.*
+
+**A save is not a refusal, and that is deliberate.** Saving a folder that bare
+git disturbed records exactly what is on disk, which is honest — the resulting
+state is internally consistent and restores correctly. § 1 promises to save what
+is there, not to adjudicate how it got there.
 
 - **Fails as:** the run that follows uses last week's inputs with this week's
-  state, converges, and is believed.
-- **Test:** `git checkout` an older commit by hand, then ask molbuilder to
-  restore or save — it refuses and says the archive does not match the commit. It
-  may not proceed, and it may not report this as a dirty working tree, which
-  explains nothing.
+  state, converges, and is believed. molbuilder cannot stop that run; what it can
+  do is never *pretend* the folder is whole.
+- **Test:** `git checkout` an older state by hand, then attempt a restore — it
+  refuses and names the files that differ. It may not proceed silently.
 
 **S9 — two saves of one folder cannot corrupt each other.** Two `prep` runs, or
 the CLI and the browser, can reach a folder at once.
@@ -1178,8 +1191,8 @@ conclude there is nothing to do.
 | **L4** | a tag is yours; nothing tags on your behalf | ✅ nothing tags automatically |
 | **L7** | a big-file-only change still produces a state | ✅ |
 | **S7** | a file that changes category leaves the store it came from | ✅ tested in both directions — a file that grows leaves git, one that shrinks leaves the archive |
-| **S8** | a folder pulled out of step by bare git is refused, not believed | ⛔ no trailer to check against, so it proceeds |
-| **S9** | two saves cannot corrupt each other | ✅ by construction — same content, same digest, same path; ⛔ untested |
+| **S8** | a folder out of step is never acted on as if whole | ✅ a restore checks content and refuses, naming the files; a save records what is there, which is honest |
+| **S9** | two saves cannot corrupt each other | ✅ unique staging per publisher, one atomic rename; tested with four concurrent publishers |
 | **L8** | a saved attempt never differs afterwards | needs the layout |
 
 ### What cannot be proved, and is flagged instead

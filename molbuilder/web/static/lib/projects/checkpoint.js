@@ -111,7 +111,10 @@ function _attach() {
     // draw a badge and cannot lose anything by being briefly wrong.  Pressing
     // Refresh says you want certainty.
     elRefreshBtn.addEventListener("click", () => _refresh({ deep: true }));
-    elSensor.addEventListener("click", _refresh);
+    // Explicit arg: bound bare, the click Event arrives as `opts` and only
+    // works because Event.deep happens to be undefined.  The pill is a quick
+    // re-read; the Refresh button is the one that asks for certainty.
+    elSensor.addEventListener("click", () => _refresh());
     elList.addEventListener("click", _onListClick);
     if (elViewListBtn)  elViewListBtn.addEventListener("click",
         () => _setViewMode("list"));
