@@ -27,12 +27,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request
 
 from molbuilder.checkpoint import (
-    Repo, Checkpoint, RepoState,
+    Repo,
     CheckpointError,
     DirtyWorkingTreeError,
     NestedRepoRefusedError,
@@ -67,32 +67,6 @@ def _resolve_path(raw: Optional[str]) -> Path:
     if not p.is_dir():
         raise ValueError(f"path is not a directory: {p}")
     return p
-
-
-def _serialise_checkpoint(cp: Checkpoint) -> Dict[str, Any]:
-    """Wire-format a Checkpoint for the JSON response."""
-    return {
-        "sha":           cp.sha,
-        "short_sha":     cp.short_sha,
-        "summary":       cp.summary,
-        "author_at":     cp.author_at,
-        "refs":          list(cp.refs),
-        "has_archive":   cp.has_archive,
-        "archive_bytes": cp.archive_bytes,
-    }
-
-
-def _serialise_state(st: RepoState) -> Dict[str, Any]:
-    """Wire-format a RepoState for the JSON response."""
-    return {
-        "path":                st.path,
-        "initialized":         st.initialized,
-        "head":                st.head,
-        "current_branch":      st.current_branch,
-        "dirty":               st.dirty,
-        "untracked":           st.untracked,
-        "archive_total_bytes": st.archive_total_bytes,
-    }
 
 
 def _advisory(message: str, where: str = "") -> tuple:
@@ -135,25 +109,49 @@ def _get_body() -> Dict[str, Any]:
 # --------------------------------------------------------------------- #
 
 
+def _state_json(state) -> Dict[str, Any]:
+    """One state, in the contract's vocabulary and nothing else (§ 5)."""
+    return {
+        "id":          state.id,
+        "short":       state.short,
+        "note":        state.note,
+        "parent":      state.parent,
+        "at":          state.at,
+        "archive":     state.archive,
+        "calculation": state.calculation,
+        "tags":        list(state.tags),
+    }
+
+
 @bp.get("/api/checkpoint/state")
 def api_checkpoint_state():
-    """Cheap snapshot of the working dir's checkpoint state.
+    """Where the folder stands, and what is unsaved (§ 5, A5).
 
-    Called by the sidebar sensor on directory-enter and manual Refresh
-    (docs/web/projects.md -- explicit refresh only, no background
-    polling) so the badge can show clean / dirty / N changes.  Cheap
-    by contract: a single ``git status`` + ``rev-parse``, with NO walk
-    of ``.binsnapshots/`` (archive size is the list/detail surface's
-    job -- docs/web/projects.md).
+    Called by the sidebar on directory-enter and on manual Refresh -- there is
+    no background polling (docs/web/projects.md).  Deliberately does NOT walk
+    the archive: that is an O(archived files) sweep for a number this does not
+    show.
     """
     try:
         path = _resolve_path(request.args.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
+    repo = Repo(str(path))
     try:
-        repo = Repo(str(path))
-        return jsonify({"ok": True,
-                        "state": _serialise_state(repo.state())})
+        status = repo.status()
+        here = repo.standing_at() if status.initialized else None
+        return jsonify({
+            "ok":            True,
+            "path":          str(path),
+            "initialized":   status.initialized,
+            "standing_at":   _state_json(here) if here else None,
+            "clean":         status.clean,
+            "changed":       list(status.changed),
+            "added":         list(status.added),
+            "deleted":       list(status.deleted),
+            "unsaved":       list(status.unsaved()),
+            "ignore_edited": status.ignore_edited,
+        })
     except CheckpointError as exc:
         return _server_fault(str(exc))
     except Exception as exc:                       # noqa: BLE001
@@ -163,32 +161,35 @@ def api_checkpoint_state():
 
 @bp.get("/api/checkpoint/list")
 def api_checkpoint_list():
-    """List checkpoints, most recent first.  Drives the run-history
-    list view + graph viewer."""
+    """Every state, newest first, each naming the state it came from.
+
+    Two states sharing a parent are alternatives from one point (§ 7.1); the
+    panel can draw that without anything having been named.
+    """
     try:
         path = _resolve_path(request.args.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
-    limit_raw = request.args.get("limit", "50")
+    limit_raw = request.args.get("limit")
+    limit = None
+    if limit_raw is not None:
+        try:
+            limit = int(limit_raw)
+        except (TypeError, ValueError):
+            return _protocol_error(f"invalid limit: {limit_raw!r}")
+    repo = Repo(str(path))
+    if not repo.initialized:
+        return _protocol_error(
+            "not a checkpoint folder; run init first", code=409)
     try:
-        limit = int(limit_raw)
-        if limit <= 0 or limit > 1000:
-            raise ValueError("limit out of range (1..1000)")
-    except ValueError:
-        return _protocol_error(f"invalid limit: {limit_raw!r}")
-    try:
-        repo = Repo(str(path))
-        if not repo.initialized:
-            return jsonify({
-                "ok":          True,
-                "initialized": False,
-                "checkpoints": [],
-            })
-        cps = repo.list_checkpoints(limit=limit)
+        here = repo.standing_at()
         return jsonify({
             "ok":          True,
-            "initialized": True,
-            "checkpoints": [_serialise_checkpoint(c) for c in cps],
+            "path":        str(path),
+            "standing_at": here.id if here else None,
+            "states":      [_state_json(s) for s in repo.states(limit=limit)],
+            "tags":        [{"name": t.name, "state": t.state, "note": t.note}
+                            for t in repo.tags()],
         })
     except CheckpointError as exc:
         return _server_fault(str(exc))
@@ -197,311 +198,176 @@ def api_checkpoint_list():
         return _server_fault(f"{type(exc).__name__}: {exc}")
 
 
-@bp.get("/api/checkpoint/diff")
-def api_checkpoint_diff():
-    """Unified diff between two refs (default: text-only pathspec).
+@bp.get("/api/checkpoint/config")
+def api_checkpoint_config():
+    """The classification this folder is saved under -- read only.
 
-    Powers the sidebar's "Diff vs HEAD" / "Diff vs working tree"
-    context-menu items.
+    There is no write route.  The classification lives in molbuilder.json and
+    has ONE home (S1c); a per-folder editor is what let two folders behave
+    differently for no recorded reason, and let somebody change the rules
+    between a save and a restore.
     """
     try:
         path = _resolve_path(request.args.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
-    ref_a = request.args.get("a")
-    ref_b = request.args.get("b")
-    if not ref_a or not ref_b:
-        return _protocol_error("missing required parameter: a or b")
-    pathspec_raw = request.args.get("pathspec", "")
-    pathspec: List[str] = (
-        [s.strip() for s in pathspec_raw.split(",") if s.strip()]
-        or ["*.fdf", "*.out", "*.molwatch.log", "*.parse.log",
-            "*.md", "*.molstruct.json", "*.transport.json",
-            "*.runtime_info.json", "*.CG", "*.XV"]
-    )
+    repo = Repo(str(path))
     try:
-        repo = Repo(str(path))
-        if not repo.initialized:
-            return _protocol_error(
-                "not a checkpoint repo; run init first", code=409)
-        diff_text = repo.diff(ref_a, ref_b, pathspec=pathspec)
-        return jsonify({"ok": True, "diff": diff_text})
-    except NoSuchRefError as exc:
-        return _protocol_error(str(exc), code=404)
+        cls = repo._classification()
+        return jsonify({
+            "ok":               True,
+            "path":             str(path),
+            "calculation":      repo.calculation() if repo.initialized else None,
+            "size_limit_bytes": int(cls["size_limit_bytes"]),
+            "always_large":     list(cls["always_large"]),
+            "edit_in":          "molbuilder.json",
+        })
     except CheckpointError as exc:
         return _server_fault(str(exc))
     except Exception as exc:                       # noqa: BLE001
-        _log.exception("checkpoint diff failed")
+        _log.exception("checkpoint config failed")
         return _server_fault(f"{type(exc).__name__}: {exc}")
 
 
 # --------------------------------------------------------------------- #
-#  Write routes                                                         #
+#  Write routes -- each one is an explicit act by the user (§ 9)        #
 # --------------------------------------------------------------------- #
 
 
 @bp.post("/api/checkpoint/init")
 def api_checkpoint_init():
-    """Phase 1 -- initialise this dir as a checkpoint repo.
-
-    Refuses on nested working dirs (checkpointing.md L1) -- bucket B advisory.
-    """
+    """Make a folder a checkpoint folder and save its first state."""
     body = _get_body()
     try:
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
-    # UI<->API contract: the web form already knows the engine at task setup
-    # and passes it here, so the right big-binary files are archived
-    # (checkpointing.md § 4).  Absent -> the safe union.
-    engine = body.get("engine")
     repo = Repo(str(path))
     if repo.initialized:
-        return jsonify({
-            "ok":    True,
-            "state": _serialise_state(repo.state()),
-            "note":  "already initialised; no-op",
-        })
+        here = repo.standing_at()
+        return jsonify({"ok": True, "path": str(path), "already": True,
+                        "standing_at": _state_json(here) if here else None})
     try:
-        repo.init(engine=engine)
+        state = repo.init(engine=body.get("engine"),
+                          note=body.get("note") or "set up",
+                          calculation=body.get("calculation"))
     except NestedRepoRefusedError as exc:
         return _advisory(str(exc), where="path")
     except CheckpointError as exc:
-        # unknown engine is user input -> advisory, not a server fault.
-        return _advisory(str(exc), where="engine")
+        return _advisory(str(exc), where="calculation")
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint init failed")
         return _server_fault(f"{type(exc).__name__}: {exc}")
-    return jsonify({"ok": True, "state": _serialise_state(repo.state()),
-                    "archive_globs": repo.archive_globs()})
+    return jsonify({"ok": True, "path": str(path), "already": False,
+                    "state": _state_json(state)})
 
 
-@bp.get("/api/checkpoint/config")
-def api_checkpoint_config_get():
-    """Read the big-binary archive classification (the user-editable table
-    the sidebar renders).  Unified accessor -- same data the CLI's
-    ``snapshot config`` shows (checkpointing.md § 4)."""
-    try:
-        path = _resolve_path(request.args.get("path"))
-    except ValueError as exc:
-        return _protocol_error(str(exc))
-    repo = Repo(str(path))
-    if not repo.initialized:
-        return _protocol_error(
-            "not a checkpoint repo; run init first", code=409)
-    return jsonify({"ok": True, "archive_globs": repo.archive_globs()})
+@bp.post("/api/checkpoint/save")
+def api_checkpoint_save():
+    """Save the folder as a new state.  The note is required (L3).
 
-
-@bp.post("/api/checkpoint/config")
-def api_checkpoint_config_set():
-    """Replace the big-binary archive classification (the UI table edit).
-    Body: ``{"path", "archive_globs": [...]}``.  Regenerates .gitignore to
-    match; the change is a normal edit the user then checkpoints."""
-    body = _get_body()
-    try:
-        path = _resolve_path(body.get("path"))
-    except ValueError as exc:
-        return _protocol_error(str(exc))
-    globs = body.get("archive_globs")
-    if not isinstance(globs, list):
-        return _protocol_error("archive_globs must be a list of glob strings")
-    repo = Repo(str(path))
-    if not repo.initialized:
-        return _protocol_error(
-            "not a checkpoint repo; run init first", code=409)
-    try:
-        updated = repo.set_archive_globs(globs)
-    except CheckpointError as exc:
-        return _advisory(str(exc), where="archive_globs")
-    except Exception as exc:                       # noqa: BLE001
-        _log.exception("checkpoint config set failed")
-        return _server_fault(f"{type(exc).__name__}: {exc}")
-    return jsonify({"ok": True, "archive_globs": updated})
-
-
-@bp.post("/api/checkpoint/commit")
-def api_checkpoint_commit():
-    """Phase 2 -- explicit user checkpoint.
-
-    Clean tree → ``{"checkpoint": null, "note": "nothing to checkpoint"}``
-    (HTTP 200 + ok:true).
+    A missing note is a protocol error, not a default: the note is the only
+    thing that answers the question you bring to a history a month later, and
+    a generated stand-in answers none of it.
     """
     body = _get_body()
     try:
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
-    message = (body.get("message") or "").strip() or None
+    note = (body.get("note") or "").strip()
+    if not note:
+        return _protocol_error(
+            "a state needs a note saying what happened and what you were "
+            "about to do (checkpointing.md L3)")
     repo = Repo(str(path))
     if not repo.initialized:
         return _protocol_error(
-            "not a checkpoint repo; run init first", code=409)
+            "not a checkpoint folder; run init first", code=409)
     try:
-        cp = repo.checkpoint(message=message)
+        state = repo.save(note)
     except CheckpointError as exc:
-        return _server_fault(str(exc))
+        return _advisory(str(exc), where="save")
     except Exception as exc:                       # noqa: BLE001
-        _log.exception("checkpoint commit failed")
+        _log.exception("checkpoint save failed")
         return _server_fault(f"{type(exc).__name__}: {exc}")
-    if cp is None:
-        return jsonify({
-            "ok":         True,
-            "checkpoint": None,
-            "note":       "nothing to checkpoint (working tree clean)",
-        })
-    return jsonify({
-        "ok":         True,
-        "checkpoint": _serialise_checkpoint(cp),
-    })
+    return jsonify({"ok": True, "path": str(path),
+                    "changed": state is not None,
+                    "state": _state_json(state) if state else None})
 
 
 @bp.post("/api/checkpoint/tag")
 def api_checkpoint_tag():
-    """Phase 3 -- annotated tag at HEAD (or at ``at``)."""
-    body = _get_body()
-    try:
-        path = _resolve_path(body.get("path"))
-    except ValueError as exc:
-        return _protocol_error(str(exc))
-    label   = (body.get("label") or "").strip()
-    message = (body.get("message") or "").strip()
-    at      = (body.get("at") or "HEAD").strip() or "HEAD"
-    if not label:
-        return _protocol_error("missing required parameter: label")
-    if not message:
-        return _protocol_error("missing required parameter: message")
-    repo = Repo(str(path))
-    if not repo.initialized:
-        return _protocol_error(
-            "not a checkpoint repo; run init first", code=409)
-    try:
-        repo.tag(label, message=message, at=at)
-    except NoSuchRefError as exc:
-        return _protocol_error(str(exc), code=404)
-    except CheckpointError as exc:
-        return _server_fault(str(exc))
-    except Exception as exc:                       # noqa: BLE001
-        _log.exception("checkpoint tag failed")
-        return _server_fault(f"{type(exc).__name__}: {exc}")
-    return jsonify({"ok": True, "label": label, "at": at})
-
-
-@bp.post("/api/checkpoint/branch")
-def api_checkpoint_branch():
-    """Phase 4 -- fork a branch to explore an alternative, and switch to it.
-
-    The operation the staged design turns on: a tagged stage completion is a
-    place you meant to reach, and branching from it is how a *what-if* gets its
-    own history instead of overwriting the one you have
-    (`engines/stages.md § 7.3`).  The CLI has had this since Phase 4; the
-    browser had no route, which made the branch-from-a-stage story unreachable
-    from the surface that tells you a stage finished.
-
-    The branch NAME is the caller's.  `stages.md § 7.3` proposes
-    `<stage>-<what you are trying>` and says it is editable, so the proposal is
-    the tab's to make and this route's job is only to refuse a bad one clearly.
-    """
+    """Give a state a name so it can be found again (§ 5, L4)."""
     body = _get_body()
     try:
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
     name = (body.get("name") or "").strip()
+    note = (body.get("note") or "").strip()
     if not name:
         return _protocol_error("missing required parameter: name")
+    if not note:
+        return _protocol_error(
+            "a tag needs a note saying why this state is worth returning to")
     repo = Repo(str(path))
     if not repo.initialized:
         return _protocol_error(
-            "not a checkpoint repo; run init first", code=409)
+            "not a checkpoint folder; run init first", code=409)
     try:
-        repo.branch(name)
+        tag = repo.tag(name, note, at=body.get("at"))
+    except NoSuchRefError as exc:
+        return _protocol_error(str(exc), code=404)
     except CheckpointError as exc:
-        # git's own message -- "already exists", "not a valid branch name".
-        # A bucket-B advisory: the user picked a name and can pick another.
-        return _advisory(str(exc), where="name")
+        return _advisory(str(exc), where="tag")
     except Exception as exc:                       # noqa: BLE001
-        _log.exception("checkpoint branch failed")
+        _log.exception("checkpoint tag failed")
         return _server_fault(f"{type(exc).__name__}: {exc}")
-    return jsonify({"ok": True, "name": name})
+    return jsonify({"ok": True, "tag": {"name": tag.name, "state": tag.state,
+                                        "note": tag.note}})
 
 
 @bp.post("/api/checkpoint/restore")
 def api_checkpoint_restore():
-    """Phase 5 -- rewind text + binaries to ``ref``.
+    """Make the folder equal a state exactly (A4, A5).
 
-    Refuses on dirty working tree (bucket B advisory).  Refuses on
-    legacy 2-col MANIFEST with the migrate-manifest hint (bucket B).
+    **There is no partial restore on this surface either.**  Text and big files
+    are one state; returning half of one and half of another produces a folder
+    no save ever held.  The old ``include_binaries`` flag did exactly that and
+    skipped the archive verification on the way, so it is gone rather than
+    defaulted.
+
+    Unsaved work is refused as an advisory naming every file, and ``force``
+    accepts the loss -- the decision is the user's, and the surface's job is to
+    make it an informed one.
     """
     body = _get_body()
     try:
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
-    ref = (body.get("ref") or "").strip()
-    if not ref:
-        return _protocol_error("missing required parameter: ref")
-    include_binaries = bool(body.get("include_binaries", True))
+    state = (body.get("state") or body.get("ref") or "").strip()
+    if not state:
+        return _protocol_error("missing required parameter: state")
+    if "include_binaries" in body:
+        return _protocol_error(
+            "include_binaries is not accepted: a restore returns the whole "
+            "folder or it does not happen (checkpointing.md A4)")
     repo = Repo(str(path))
     if not repo.initialized:
         return _protocol_error(
-            "not a checkpoint repo; run init first", code=409)
+            "not a checkpoint folder; run init first", code=409)
     try:
-        restored = repo.restore(ref, include_binaries=include_binaries)
+        target = repo.restore(state, force=bool(body.get("force")))
     except DirtyWorkingTreeError as exc:
-        return _advisory(str(exc), where="working-tree")
-    except NoSuchRefError as exc:
-        return _protocol_error(str(exc), code=404)
-    except CheckpointError as exc:
-        # Legacy MANIFEST refusal carries the migrate-manifest hint
-        # -- surface as advisory (the user can act on it).
-        msg = str(exc)
-        if "migrate-manifest" in msg:
-            return _advisory(msg, where=".binsnapshots")
-        return _server_fault(msg)
-    except Exception as exc:                       # noqa: BLE001
-        _log.exception("checkpoint restore failed")
-        return _server_fault(f"{type(exc).__name__}: {exc}")
-    return jsonify({
-        "ok":       True,
-        "ref":      ref,
-        "restored": restored,
-    })
-
-
-@bp.post("/api/checkpoint/migrate-manifest")
-def api_checkpoint_migrate_manifest():
-    """checkpointing.md I1 -- migrate a legacy 2-column MANIFEST to canonical
-    3-column form for the archive at ``ref``.
-    """
-    body = _get_body()
-    try:
-        path = _resolve_path(body.get("path"))
-    except ValueError as exc:
-        return _protocol_error(str(exc))
-    ref = (body.get("ref") or "").strip()
-    if not ref:
-        return _protocol_error("missing required parameter: ref")
-    repo = Repo(str(path))
-    if not repo.initialized:
-        return _protocol_error(
-            "not a checkpoint repo; run init first", code=409)
-    try:
-        entries = repo.migrate_manifest(ref)
+        return _advisory(str(exc), where="unsaved")
     except NoSuchRefError as exc:
         return _protocol_error(str(exc), code=404)
     except CheckpointError as exc:
         return _server_fault(str(exc))
     except Exception as exc:                       # noqa: BLE001
-        _log.exception("checkpoint migrate-manifest failed")
+        _log.exception("checkpoint restore failed")
         return _server_fault(f"{type(exc).__name__}: {exc}")
-    return jsonify({
-        "ok":      True,
-        "ref":     ref,
-        "entries": [
-            {"name": name, "sha256": sha256, "size_bytes": size}
-            for name, (sha256, size) in sorted(entries.items())
-        ],
-    })
-
-
-__all__ = ["bp"]
+    return jsonify({"ok": True, "path": str(path),
+                    "state": _state_json(target)})

@@ -1102,7 +1102,7 @@ conclude there is nothing to do.
 | **A1** | build, verify, publish — create if absent, never overwrite | ✅ |
 | **A2** | verify before mutating, in order | ✅ |
 | **A3** | the save precedes the change | needs the prep prompt |
-| **A4** | a restore is whole or does not happen | ✅ in the CLI and the module; ⛔ the HTTP route still accepts `include_binaries` |
+| **A4** | a restore is whole or does not happen | ✅ on every surface — the HTTP route refuses `include_binaries` rather than ignoring it |
 | **A5** | make the folder equal the target; warn about what is lost, then obey | ✅ names the three shapes; `--force` accepts them; removes what the target lacks |
 | **A6** | every saved state stays listed and restorable | ✅ one ref per state, so nothing depends on where HEAD points |
 | **S2** | a stage writes only inside itself | needs the layout |
@@ -1267,7 +1267,7 @@ nobody is maintaining against this document, which is how the two drift.
 | A3, S2, S3, S4, S6, L8 | **not yet written** — each waits on a surface that does not exist; the table below says which |
 | the MANIFEST format | `test_checkpoint_manifest.py` |
 | the verbs as a printed surface | `test_checkpoint_cli.py` |
-| the HTTP routes | `test_checkpoint_routes.py` |
+| the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` |
 | the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` |
 | *Disk cost* (§ 12) — identical content stored once | `test_checkpoint_states.py` — three of four unchanged big files share an inode across two archives |
 | symlinks are outside S1 and survive a restore | `test_checkpoint_states.py` |
@@ -1287,7 +1287,7 @@ on is what stops them being forgotten on the day it lands.
 | **L8** a saved attempt never differs afterwards | the hierarchical layout — and it must be marked *hierarchical only*, or it fails a flat folder that is working correctly |
 | the MANIFEST format | `test_checkpoint_manifest_format.py` |
 | repo boundaries | `test_checkpoint_repo_scope.py` |
-| the HTTP routes | `test_checkpoint_routes.py` |
+| the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` |
 | the wrapper carries no git | `test_checkpoint_wrapper_isolation.py` |
 | the verbs end to end — init, save, tag, restore, and their refusals | `test_checkpoint_lifecycle.py` |
 | the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` |
