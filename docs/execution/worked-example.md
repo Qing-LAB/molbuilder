@@ -361,9 +361,9 @@ Two weeks later you want a third stage — finer k-grid, from tight's result.
 
 ```mermaid
 flowchart LR
-    A["<b>coarse</b><br/>tagged, converged"] --> B["<b>tight</b><br/>tagged, converged"]
+    A["<b>coarse</b><br/>saved: converged"] --> B["<b>tight</b><br/>saved: converged"]
     B --> C["<b>03_finer</b><br/>appended: seq 3"]
-    B -.->|"snapshot branch<br/>tight-alt"| D["<b>03_other</b><br/>a different idea,<br/>on its own branch"]
+    B -.->|"restore tight,<br/>then save"| D["<b>03_other</b><br/>a different idea,<br/>same parent"]
 ```
 
 **Stages append; they never renumber.** Once tight has run, "insert something
@@ -372,17 +372,22 @@ be coarser, and it runs from where tight left off. Numbering it `03` is the
 truth. That also means an attempt's outputs stay attached to the stage that
 produced them, forever.
 
-⛔ **Gap 8.** The history cannot exist yet. The checkpoint setup **refuses** a
-folder with calculation files in its subdirectories — which this tree has at
-three levels — so none of § 7 runs. Checkpoints are also user-triggered only, and
-`snapshot branch` has no web route.
+✅ **Gap 8 — closed.** It read: *the history cannot exist, because the
+checkpoint setup refuses a folder with calculation files in its subdirectories,
+which this tree has at three levels.* It no longer refuses one that **says** its
+subdirectories are one calculation — a root carrying `task.json` (or
+`job-set.json`, or `bench-manifest.json`) is accepted, and this tree carries one.
+The rest of that gap dissolved with it: forking needs no web route, because it
+is restore-then-save and both are routed. What is still true, and is not a gap,
+is that **a save is always an explicit act** — nothing takes one for you
+(`checkpointing.md § 9`).
 
 ---
 
 ## 8. What this walkthrough found
 
 Eight gaps, in the order a user meets them. Four were on no list before this
-document was written.
+document was written. **One is now closed** — see #8.
 
 | # | Gap | Severity |
 |---|---|---|
@@ -393,7 +398,7 @@ document was written.
 | 5 | **Stage-to-stage carry is broken.** ⚠ `materialize` links `../<stage>/<id>.XV`; attempts moved outputs into `run-N/`, so the link dangles — and *which* N is unknowable at prep time. Fixed by resolving the attempt at **submit**, which knows both | **serious, and newly introduced by the attempt-directory change** |
 | 6 | **Stage directories are named `point-<name>`.** `job_dir_name` does not branch on `JobSet.kind` yet, so the ladder gets the sweep's naming | small, and in the same expression as #5 |
 | 7 | **No hand-run entry point for one stage.** The wrapper no longer makes its own directory, so running a single stage needs a molbuilder command that does not exist yet | must be answered before the shell block is retired |
-| 8 | **The history cannot be created.** Checkpoint init refuses this shape; no automatic checkpoints; no branch route | **blocking** — § 7 does not run at all |
+| 8 | ~~**The history cannot be created.**~~ **Closed by the checkpoint rework.** `init` accepts a folder whose root *declares* its subdirectories one calculation (`task.json`), which this tree carries; forking is restore-then-save, which needs no branch route. Saves stay explicit by design, which is § 9, not a gap | ✅ closed |
 
 ### The one to fix first
 

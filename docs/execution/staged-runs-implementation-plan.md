@@ -80,9 +80,10 @@ file closed**.
 4. **Write the tests from the obligation list, then the code.** Where the
    contract carries a worked example, **the document's own text is the fixture** —
    parse the block out of the `.md` file rather than retyping it, so the two
-   cannot drift. (`checkpoint_message()` and `stage_completion_tag()` already do
-   this against `engines/stages.md § 7.3`; reuse the pattern, do not invent a
-   second one.)
+   cannot drift. (`tests/test_checkpoint_manifest.py` does this against
+   `job-contracts.md § 6.1`; reuse the pattern, do not invent a second one.
+   `checkpoint_message()` and `stage_completion_tag()` used to be the example
+   here — the checkpoint rework retired automatic naming, so they are gone.)
 5. **Re-read the same sections at the end of the unit.** Drift is measured
    against the same text you started from, not against your memory of it.
 
@@ -457,8 +458,10 @@ names no machine).
    `("stages.json", …)` — the file was renamed to `task.json` in the contracts on
    2026-08-07 and the code has not moved, which is the intended state: the
    contract leads and P1 makes the code match. Pre-1.0, the old name is deleted
-   rather than accepted alongside. The one test fixture that writes it
-   (`tests/test_checkpoint_repo_scope.py`) changes in the same commit.
+   rather than accepted alongside. **Done by the checkpoint rework**, which
+   went further: there is no per-folder classification file at all, under any
+   name, and a `checkpoint` section in a project-scope config is refused
+   (`checkpointing.md` S1c).
 
 **Subtracts:** nothing yet — and this is the one phase that deliberately raises
 the mechanism count. `--stages-json` and `--stage-resources` cannot retire until
@@ -1219,7 +1222,7 @@ mislead a reader of the code.
 | § 8 10a | The archive-size display prints a number that is not true (hard links counted in full) and **feeds no decision — there is no `prune` verb**. Either drop it or make it match `du`. Two older faults ride along: `archive_total_bytes` is structurally always zero, and `missing_archive_warning` names `.DM/.HSX/.TSHS` whatever the engine |
 | § 8 12e | The checkpoint panel appears at a **fixed depth** (exactly 3 below the projects root) instead of wherever a repository is — so browsing into `01_coarse/` makes it vanish, in the shape where a checkpoint is load-bearing |
 | § 8 12c | If P7's subtraction does not resolve the two warm-file inventories, it becomes a real extraction here |
-| — | `tests/test_checkpoint_invariants.py`'s header names the wrong file for I1 and describes a twelve-invariant split the contract has outgrown (30 rules now, and L5 is not one) |
+| — | ~~`tests/test_checkpoint_invariants.py`'s header~~ — void: the checkpoint rework retired that file. The rule set is 31 and is mapped test-by-test in `checkpointing.md § 13.4` |
 
 **Milestone MZ** and its three reviews apply to the batch, not to each item.
 

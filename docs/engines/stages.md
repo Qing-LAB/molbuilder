@@ -1152,54 +1152,41 @@ node, which is exactly what the standalone contract forbids.
 
 #### What each checkpoint is called
 
-A history is only worth taking if you can find the point you want in it, so both
-boundaries name themselves. `molbuilder snapshot` already gives three surfaces —
-a commit message, an annotated tag with a name, and a branch name
-(`running-a-job.md § 6.2`) — and each carries a different part of the identity:
+A history is only worth taking if you can find the point you want in it. **This
+section once specified a naming scheme — an automatic commit message, an
+automatic tag per finished stage, and a branch name. The checkpoint rework
+retired all three**, and what replaced them is smaller and puts the naming where
+it belongs.
 
-| | Form | Example |
-|---|---|---|
-| **commit message** (both boundaries) | `<id> · <stage or event> · <what happened>` | `BDT_Au_relax_Au38C6H4S2 · tight · relaxation converged, 41 steps` |
-| **tag** (a stage that finished) | `<id>/<stage>/<UTC timestamp>` | `BDT_Au_relax_Au38C6H4S2/tight/20260806T221403Z` |
-| **branch** (a user forking a what-if) | proposed as `<stage>-<what you are trying>`, and editable | `tight-tighter-mesh` |
+| | What it is now |
+|---|---|
+| **the note** | *yours*, required, never generated — it is what a save records about why you stopped here and what you were about to do |
+| **the calculation's name** | carried in the state's own `Calculation:` trailer, so a folder opened a year later still says which calculation its history is |
+| **a tag** | *yours*, and only yours. Nothing tags on your behalf |
 
-Four things make that work rather than merely look tidy:
+**Why the automatic tags went** (`checkpointing.md` L4): every state already
+carried a note saying what happened, written by whoever took the save — so the
+tags added no information, and they filled the one namespace you were meant to be
+naming things in yourself. A history where most tags are machine-made is one
+where your own are hard to find, which is the opposite of what a tag is for.
 
-- **No new normalisation.** The id is `[A-Za-z0-9_-]+` and a stage name is
-  `[A-Za-z0-9_]+` (§ 2, `execution/run-identity.md § 3`) — both already
-  ref-safe, so the same set that was chosen to survive a filename survives a git
-  ref. The timestamp is compact UTC (`YYYYMMDDThhmmssZ`) for the same reason: the
-  ISO form's colons are not legal in a ref, and this matches the convention
-  `job-contracts.md § 4.1` already uses for `<basename>-restart-aside-<UTC>/`.
-- **The tag is hierarchical on purpose.** `git tag --list '<id>/tight/*'` is every
-  checkpoint of one stage, oldest to newest, which is the question a user
-  returning to a mission actually asks.
-- **The message says how it went, because something already knows.** The decoded
-  run reports `finished` / `failed` and its step counts
-  (`running-a-job.md § 4.2`); the checkpoint is taken by whatever observed that,
-  so it can say *converged* or *hit the step cap* rather than *stage 2 done*.
-- **Only stage completions are tagged.** A pre-produce checkpoint is a safety net,
-  reachable through `snapshot list`; a finished stage is a place you meant to
-  reach. Tagging both would bury the second in the first. And a tag that would
-  collide — two checkpoints of one stage inside the same second — is refused, not
-  suffixed, like every other name in this design.
+**What a stage boundary still buys you.** The decoded run reports `finished` /
+`failed` and its step counts (`running-a-job.md § 4.2`), so whatever offers the
+save at that moment knows enough to **draft** the note — *"tight converged, 41
+steps"* rather than *"stage 2 done"*. You confirm or edit it; nothing is written
+without you (`checkpointing.md` § 9, L3).
 
-**The identity in every message is not decoration.** A folder can be moved,
-copied to a cluster, or opened a year later; a history whose commits say only
-*"stage 2 converged"* cannot tell you which calculation that was, and the id is
-the one thing that can (`execution/run-identity.md § 1`).
-
-**What this buys is the thing a growing description most needs.** A tagged
-checkpoint per completed stage turns the folder from *the current state of one
-calculation* into a chain of states you can re-enter: `snapshot branch` at stage
-2 and try a different stage 3 without losing the first attempt. That is
-"switching between setups" in its strongest form, and it is why `branch` having
-no HTTP route (`running-a-job.md § 6.2`) is the most consequential gap in this
-whole design rather than a loose end.
+**And re-entering costs no new verb.** The folder stops being *the current state
+of one calculation* and becomes a chain of states you can go back into: restore
+the state you want, change what you like, and save. The new state's parent is the
+one you restored, so both attempts stay listed and the list shows them as
+alternatives — that *is* the fork (`checkpointing.md § 7.1`). There is nothing to
+declare and nothing to name, which is why the "no branch route" this section used
+to call the design's most consequential gap is not a gap at all.
 
 **R5 — a stage's name is its identity, and renaming is rewriting.** The name is
-in the deck's filename, in every output beside it, in the checkpoint tag, and in
-the detector above. Renaming a stage that has run moves all four at once, so it
+in the deck's filename, in every output beside it, in the notes on the states
+that recorded it, and in the detector above. Renaming a stage that has run moves all four at once, so it
 is an R4 event and takes an R4 checkpoint.
 This is also why the stage's position in the list must never appear in a
 filename: insert a stage at the front, or reorder two, and every positional

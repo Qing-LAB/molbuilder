@@ -784,23 +784,24 @@ merge into your config with `--write`.
 The `JobSet` model and persistence; the SIESTA ladder producer (`fdf --jobset`)
 and the benchmark sweep producer; all four verbs (`plan` / `prep` / `submit` /
 `status`) in both `submit` and `direct` modes; SLURM submission with dependency
-chains and routing domains; the full benchmark workflow; and checkpoint
-branching (`molbuilder snapshot branch`, see
-[`running-a-job.md § 6`](?doc=execution/running-a-job.md)).
+chains and routing domains; and the full benchmark workflow. Saving and
+re-entering a calculation's states is `molbuilder snapshot`
+([`running-a-job.md § 6`](?doc=execution/running-a-job.md)).
 
 ### Not built yet — the web, and other engines
 
 This is the migration the project is undertaking, planned in
 [`roadmap.md`](?doc=roadmap.md) (workstream 1, "Batch execution reaches the
 web"). Today there is **no `jobset` web blueprint, no `/api/jobset/*` route**,
-the web Build tab still renders a single `.fdf` (it drops the stage table), and
-there is **no `/api/checkpoint/branch`** route.
+and the web Build tab still renders a single `.fdf` (it drops the stage table).
 
 - **Phase 1 — a web bundle producer.** The Build tab's stage table becomes a real
   `JobSet` producer, calling the same `build_siesta_stage_bundle` seam (§ 4.1).
-- **Phase 2 — web Plan + Status (read-only) + a checkpoint-branch control.**
-  Reusing the *already-shipped* run decoder in the browser (no new parser) and
-  exposing `snapshot branch` over HTTP.
+- **Phase 2 — web Plan + Status (read-only).** Reusing the *already-shipped*
+  run decoder in the browser, with no new parser. **A branch control was
+  planned here and is not needed**: the checkpoint rework removed the verb, and
+  forking is restore-then-save — both already routed and both already in the
+  sidebar panel ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7.1).
 - **Phases 3–4 — other engines, gated on a cluster-validation milestone.**
   `transport --jobset`, `pyscf --jobset`, and `spectra --jobset` producers (with
   their tab mirrors), behind a hard gate: prove the SIESTA ladder end-to-end

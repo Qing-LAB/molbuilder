@@ -161,11 +161,16 @@ reads the same description, not the same runner (`engines/stages.md`).
 **Two decisions this workstream contributed, carried into the plan.** **D10 —
 the activation warning**: on a workstation, detect the conda activation and
 persist it; on HPC, warn if it is unset (the parked task #98; it lands with the
-plan's P5/P6, where the wrapper's environment is resolved). **D9 — the
-checkpoint-branch control**: the route landed 2026-08-06
-(`POST /api/checkpoint/branch`), and what remains is the sidebar affordance and
-the name it proposes — `<stage>-<what you are trying>`, editable (the plan's
-P8).
+plan's P5/P6, where the wrapper's environment is resolved). **D9 — trying an
+alternative from a chosen state**: reshaped by the checkpoint rework, which
+removed the branch verb and its route. **The capability is shipped**: you
+restore the state and save from it, and the new state's parent is the one you
+restored — that *is* the fork (`checkpointing.md § 7.1`), and both halves are
+already routed and already in the sidebar. What survives from the decision is
+the **drafted note**: when a save follows a restore, the panel can propose
+`<stage>-<what you are trying>` for you to confirm or edit, which the contract
+explicitly allows (`checkpointing.md` § 9, L3). That is the plan's P8, and it is
+smaller than what was written here.
 
 **Out of scope (D8).** Automated host → target file shipping (scp/rsync).
 Bundles are produced where the app runs; a co-located target needs no

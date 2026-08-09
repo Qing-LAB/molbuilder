@@ -174,11 +174,16 @@ the message it would write. molbuilder never takes one on its own
 (`checkpointing.md § 6`). A folder then stops being a state and becomes a chain
 of states you can re-enter: branch at coarse, try a different tight, keep both.
 
-Which is why **`snapshot branch` having no HTTP route** (`running-a-job.md § 6.2`)
-is the most consequential gap in this design rather than a loose end, and why
-`engines/stages.md § 7.4` has to change the checkpoint side: its archive globs
-were written flat (`*.DM`), and in this layout the big binaries are one level
-down, where those patterns do not reach.
+**Two gaps were named here, and the checkpoint rework closed both.** The first
+was that `snapshot branch` had no HTTP route: there is now no branch verb at all,
+because going back to a state and saving from it *is* the fork — the new state's
+parent is the one you restored (`checkpointing.md § 7.1`). Both halves are routed
+and both are in the sidebar panel, so the browser can do exactly what the CLI
+can. The second was that flat archive globs (`*.DM`) would not reach binaries one
+level down; they always did — a gitignore pattern with no slash matches at every
+level — and the store is now chosen by **measuring** a file rather than matching
+its name, so a nested `.DM` is archived whether any pattern names it or not
+(`checkpointing.md` S1b, L2, asserted over a staged tree).
 
 ## 4. The environment: nothing here changes it
 
@@ -410,9 +415,11 @@ carrying its description (`task.json`, `job-set.json`, `bench-manifest.json`)
 now owns its subdirectories; a directory declaring nothing is still refused, and
 a subdirectory that is already a repository is refused in either case. The fix
 also unblocked something already shipped: `jobset prep` bundles had never been
-checkpointable. Eight tests in `tests/test_checkpoint_repo_scope.py`, including a
-hierarchical round-trip — init, checkpoint, change a later stage, restore, and
-the first stage's `.DM` two levels down comes back.
+checkpointable. Now pinned in `tests/test_checkpoint_states.py`, including the
+hierarchical round-trip — init, save, change a later stage, restore, and the
+first stage's `.DM` two levels down comes back. (It was eight tests in
+`test_checkpoint_repo_scope.py`; the checkpoint rework retired that file and
+carried the cases over.)
 
 **Step 1b — the questions that gate code, in one place.** These are decisions
 rather than research, and each names what it holds up:
@@ -701,28 +708,27 @@ appear together, which is exactly where a person should be looking.
     **Two of the four parts are done (2026-08-06); the two that remain are the
     triggers, and they are the part that needs the producer.**
 
-    ✅ **The naming.** `checkpoint_message()` and `stage_completion_tag()` in
-    `checkpoint.py` produce `<id> · <stage> · <what happened>` and
-    `<id>/<stage>/<UTC>`, matching `engines/stages.md § 7.3`'s worked examples
-    byte for byte — the document's own strings are the test fixture, so the two
-    cannot drift. Names are **refused rather than normalised**, tags are
-    hierarchical and sort oldest-to-newest under
-    `git tag --list '<id>/tight/*'` (asserted against real git), a collision
-    inside one second is refused, and a hand-made tag is not mistaken for an
-    automatic one. `checkpointing.md` L3/L4.
+    ⛔ **The naming — retired, not shipped.** `checkpoint_message()` and
+    `stage_completion_tag()` produced `<id> · <stage> · <what happened>` and
+    `<id>/<stage>/<UTC>`. Both are gone: **nothing tags a state on your behalf**
+    any more. L4's reasoning is that every state already carries a note saying
+    what happened, written by whoever took the save, so the automatic tags added
+    nothing and filled the one namespace you were meant to be naming things in
+    yourself. A state's message is now your note plus two trailers, and the only
+    tags in a history are the ones you typed.
 
-    ✅ **`branch` over HTTP.** `POST /api/checkpoint/branch` — the CLI has had
-    `Repo.branch` since Phase 4, so the browser was the only surface that could
-    tell you a stage finished and not let you fork from it. An existing name is
-    a **bucket-B advisory** (HTTP 200 + `ok:false`, `where: "name"`), because the
-    user picked it and can pick another; uncommitted work carries onto the
-    branch, which is git's default and what lets someone branch mid-edit.
+    ⛔ **`branch` over HTTP — retired with the verb.** There is no
+    `POST /api/checkpoint/branch` and no `Repo.branch`. The browser is not
+    missing anything: forking is restore-then-save, and the new state's parent is
+    the state you restored (`checkpointing.md § 7.1`). Both halves are routed and
+    both are in the panel.
 
     ⬜ **The prompt** (was "the triggers" — **user decision 2026-08-07**, and it
-    is a subtraction). A checkpoint stays an **explicit act**; molbuilder never
+    is a subtraction). A save stays an **explicit act**; molbuilder never
     takes one on its own. What it gains is a **question at interactive `prep`**,
-    when prep is about to change a directory that already holds results — with
-    the message it would write, and the tag if a stage finished. Never at run or
+    when prep is about to change a directory that already holds results — with a
+    **drafted note** you confirm or edit (no tag: nothing tags for you). Never at
+    run or
     submit time: that may be a scheduled job, and blocking a queue to ask is the
     wrong party at the wrong moment. Non-interactive prep proceeds without one
     and **says so**.
@@ -960,8 +966,12 @@ appear together, which is exactly where a person should be looking.
     `_GITIGNORE_LEGACY_HEAD` and `_render_gitignore`'s emitted header were left
     byte-for-byte, per the warning above.
 
-14a. **The module's own hygiene, found by the same pass.** All predate this branch
-    except the last; none is urgent and all are one-liners.
+14a. **The module's own hygiene, found by the same pass.** ⛔ **Every item below
+    is void.** `checkpoint.py` was rewritten by the checkpoint rework, and each
+    of these names something that no longer exists — `list_checkpoints`,
+    `_checkpoint_from_sha`, `_render_gitignore`, `_GITIGNORE_LEGACY_HEAD`, the
+    `%H|||%h|||…` log format, and the three test files. Kept as a record of what
+    the pass found, not as work to do.
     * `checkpoint.py:1272` annotates `data: Dict[str, Any]` and **`Any` is not
       imported** — pyflakes reports an undefined name. It cannot raise today,
       because a local variable annotation is never evaluated, which is exactly why
@@ -987,23 +997,22 @@ appear together, which is exactly where a person should be looking.
       change what that number means anyway — worth resolving both at once, rather
       than leaving a size pass that is both duplicated and eagerly recomputed.
 15. **The checkpoint invariants become tests**
-    ([`checkpointing.md`](?doc=execution/checkpointing.md) `§ 6`). **Twenty-two**,
-    of which **fifteen can be asserted against the code as it stands** and need
-    none of this project's other work — **and all fifteen now have one**
-    (2026-08-06): nine in `tests/test_checkpoint_invariants.py`, five in
-    `tests/test_checkpoint_nested_layout.py`, **L1** in
-    `tests/test_checkpoint_repo_scope.py`. It was thirteen until **L3** and **L4**
-    split: their *forms* are pure functions of an id, a stage and a clock, so they
-    became assertable while their *triggers* still wait for the producer.
-    *Done when:* all twenty-two have an assertion; **each one
-    names the shape it holds in** (`project-layout.md § 7` marks them `[both]` or
-    `[hierarchical]`), because a check written for one shape that fails the other
-    is worse than no check — it fails a directory that is working correctly; and
-    the two that catch silent failures run over a real produced folder rather
-    than a fixture — **I2** (every MANIFEST entry matches its file by name, size
-    and sha256) and **S1** (tracked XOR archived, never both, never neither).
-    Worth starting **before** step 2 rather than after it: they are the check that
-    tells you whether items 10 and 11 broke anything.
+    ([`checkpointing.md`](?doc=execution/checkpointing.md) `§ 11`). ✅ **Done,
+    and by the checkpoint rework rather than by this plan.** The rule set grew
+    from twenty-two to **31**, the three test files named here were retired, and
+    the seven `tests/test_checkpoint_*.py` that replaced them are mapped rule by
+    rule in `checkpointing.md § 13.4`. Six rules remain deliberately unasserted
+    because each waits on a surface that does not exist yet — that table says
+    which. The two counted here as "forms of an id, a stage and a clock" no
+    longer exist as forms at all: nothing tags on your behalf (L4).
+    *The bar this item set still stands:* **each assertion
+    names the shape it holds in** (`project-layout.md § 7` marks them `[both]`
+    or `[hierarchical]`), because a check written for one shape that fails the
+    other is worse than no check — it fails a directory that is working
+    correctly; and the two that catch silent failures run over a real staged
+    folder rather than a flat fixture — **I2** (every MANIFEST entry matches its
+    file by name, size and sha256) and **S1** (tracked XOR archived, never both,
+    never neither). Both now do.
 
 16. **Saving a structure into the project tree.** The description *points at* a
     structure (`engines/stages.md § 6.3`), so a geometry that only exists in the

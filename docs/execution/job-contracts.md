@@ -1189,10 +1189,11 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 > so every archive written before this reads unchanged. What stays rejected is
 > anything that could direct a restore out of the run directory — absolute paths,
 > `..` or `.` components, empty components, backslashes, and dot-prefixed
-> components (which would reach `.git` or `.binsnapshots`). Pinned by
-> `tests/test_checkpoint_nested_layout.py` and the parser cases in
-> `tests/test_checkpoint_manifest_format.py`; the reasoning is
-> [`execution/checkpointing.md`](?doc=execution/checkpointing.md), L2.
+> components — but **not** dot-prefixed components in general: a `.scratch/`
+> directory is an ordinary directory and its files are stored like any other, so
+> only a component naming a store (`.git`, `.binsnapshots`) is refused. Pinned by
+> `tests/test_checkpoint_manifest.py`; the reasoning is
+> [`execution/checkpointing.md`](?doc=execution/checkpointing.md), S1 and L2.
 
 **The MANIFEST's canonical format, in full.** Every rule below exists so that
 **one set of files has exactly one possible MANIFEST**, byte for byte. That is
@@ -1316,7 +1317,7 @@ parser) split a name without knowing what is in it.
 | `_` | **joins parts of one name.** Neither side names the thing on its own | `bdt_au_relax`, `<id>_<stage>`, `01_coarse` |
 | `-` | **attaches a counter or qualifier** to a name that stands alone without it | `run-0`, `bench-G1K4C6`, `<id>-restart-aside-<UTC>` |
 | `.` | **introduces a type suffix** — what the file *is* | `.fdf`, `.XV`, `.molwatch.log`, `.fdf.template` |
-| `/` | **separates levels** — of a path, or of a history ref | `01_coarse/run-0/`, `<id>/<stage>/<UTC>` |
+| `/` | **separates levels of a path** | `01_coarse/run-0/`, `02_tight/run-1/` |
 
 **This is why a stage name may not contain a hyphen** (`engines/stages.md § 2`):
 a hyphen announces *"a counter follows"*, so one inside a name makes it
@@ -1366,8 +1367,7 @@ no convention of its own.
 
 | What | Form | Example |
 |---|---|---|
-| **commit message** | `<id> · <stage> · <what happened>` | `bdt_au · tight · relaxation converged, 41 steps` |
-| **stage-completion tag** | `<id>/<stage>/<UTC>` | `bdt_au/tight/20260806T221403Z` |
+| **a state's message** | your note, then the trailers | `relaxation converged, 41 steps` + `Calculation: bdt_au` + `Manifest-SHA256: <sha256>` |
 | **UTC stamp** | `YYYYMMDDThhmmssZ` — compact, because a ref forbids colons | `20260806T221403Z` |
 
 The id's character set was chosen to survive a filename, a shell line and a
