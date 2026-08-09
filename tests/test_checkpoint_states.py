@@ -33,11 +33,48 @@ from molbuilder.checkpoint import (
     archive_dir,
     archive_key,
     parse_manifest,
-    walk_files,
 )
 
 BIG = b"\x01" * 5000       # over the fixture's limit
 SMALL = "text\n"
+
+
+def walk_independently(root: Path):
+    """Every regular file, found WITHOUT the module's own walk.
+
+    **S1's test bullet says this in so many words:** *"The walk must not reuse
+    the same skip rule the classification uses, or it can only ever agree with
+    it."*  Importing `walk_files` and iterating it is exactly that reuse --
+    `big_files` is ``[p for p in walk_files(root) if ...]``, so a skip added
+    inside it vanishes from **both** sides of an S1 assertion at once and a
+    file in no store reads as compliant.  That is the `*.MD` failure one level
+    up: § 13.1 fixed *a walk can only judge files the fixture created*, and
+    this fixes *a walk can only judge files the classification looked at*.
+
+    So the exclusions are written here, literally, and they are the whole of
+    S1's list: the two stores, which cannot contain themselves.  Symlinks are
+    skipped because S1 carves them out by name -- *"regular is load-bearing"*.
+    Keys are derived with `relative_to` rather than `archive_key` for the same
+    independence reason.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames
+                       if d not in (".git", ".binsnapshots")]
+        for name in filenames:
+            path = Path(dirpath) / name
+            if path.is_symlink() or not path.is_file():
+                continue
+            yield path
+
+
+def key_of(root: Path, path: Path) -> str:
+    """The archive key, computed without the module that computes archive keys."""
+    return path.relative_to(root).as_posix()
+
+
+def tree_bytes(root: Path) -> dict:
+    """Every file you made, by key -- for before/after comparisons."""
+    return {key_of(root, p): p.read_bytes() for p in walk_independently(root)}
 
 
 @pytest.fixture()
@@ -112,8 +149,8 @@ def test_every_regular_file_is_in_exactly_one_store(calc):
     state = calc.save("everything at once")
 
     tracked, archived = _tracked(calc), _archived(calc, state)
-    for path in walk_files(calc.root):
-        key = archive_key(calc.root, path)
+    for path in walk_independently(calc.root):
+        key = key_of(calc.root, path)
         assert (key in tracked) != (key in archived), (
             f"S1 violated for {key!r}: tracked={key in tracked} "
             f"archived={key in archived}")
@@ -360,6 +397,55 @@ def test_an_unknown_state_is_refused_before_anything_else(calc):
         calc.restore("no-such-state")
 
 
+def test_all_three_shapes_are_named_then_force_makes_the_folder_equal(calc):
+    """A5's stated test, end to end and in one place.
+
+    *"With an unsaved edit, an unsaved new file AND a deleted one, a
+    non-interactive restore stops and changes nothing while naming all three;
+    `--force` completes; afterwards the folder equals the target state
+    exactly, with no rescue copies and no leftovers from where you stood."*
+
+    It existed only as four tests covering pieces, and **the deleted shape had
+    never reached a refusal message** -- `status.deleted` was asserted, the
+    warning was not.  A user consenting to a loss was told about two of the
+    three things they were about to lose.
+    """
+    (calc.root / "keep.txt").write_text(SMALL)
+    (calc.root / "gone.txt").write_text(SMALL)
+    (calc.root / "big.bin").write_bytes(BIG)
+    target = calc.save("the state to come back to")
+    expected = tree_bytes(calc.root)
+
+    (calc.root / "later.txt").write_text("from where I stood\n")
+    calc.save("moved on")
+
+    (calc.root / "keep.txt").write_text("edited\n")      # changed
+    (calc.root / "fresh.bin").write_bytes(BIG)           # added
+    (calc.root / "gone.txt").unlink()                    # deleted
+
+    before = tree_bytes(calc.root)
+    with pytest.raises(DirtyWorkingTreeError) as exc:
+        calc.restore(target.id)
+    message = str(exc.value)
+    for name in ("keep.txt", "fresh.bin", "gone.txt"):
+        assert name in message, (
+            f"the warning does not name {name!r}; nobody can consent to a "
+            f"loss they were not told about")
+    assert tree_bytes(calc.root) == before, "a refusal changed the folder"
+
+    calc.restore(target.id, force=True)
+    assert tree_bytes(calc.root) == expected, (
+        "the folder does not equal the target state exactly")
+    assert not (calc.root / "later.txt").exists(), (
+        "a leftover from where you stood survived the restore")
+    strays = sorted(k for k in tree_bytes(calc.root)
+                    if k.endswith((".orig", ".rej", ".bak", "~")))
+    assert strays == [], (
+        f"a rescue copy was left behind: {strays}.  A5 is explicit -- no "
+        f"stash, no move-aside, no automatic save-before-restore, no .orig")
+    assert calc.status(deep=True).clean
+
+
 # ------------------------------------------------------------------ #
 #  A6 — nothing you saved becomes unreachable                         #
 # ------------------------------------------------------------------ #
@@ -430,6 +516,158 @@ def test_a_calculation_name_needing_repair_is_refused(tmp_path):
 
 
 # ------------------------------------------------------------------ #
+#  L3 — the note and the name go through ONE parser (§ 15)            #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.parametrize("note", [
+    "one line",
+    "a note\nover several\nlines",
+    "trailing whitespace   ",
+    "a colon: in the middle",
+    "an em dash — and an é",
+    "stage 2 at 300 Ry -- forces now below 0.02",
+])
+def test_the_note_survives_the_round_trip_through_the_one_parser(note):
+    """§ 15: written and read through **one parser so the two cannot drift**.
+
+    Four functions implement that -- `message_with_trailers`, `note_of`,
+    `calculation_of`, `trailer_of` -- and **no test called any of them**.
+    Drift between the writer and the reader is precisely what a round trip
+    catches and an end-to-end save does not: a save that mangles a note still
+    saves, and the mangling is only visible a month later in a list.
+    """
+    from molbuilder.checkpoint import (calculation_of, message_with_trailers,
+                                       note_of, trailer_of)
+    digest = "a" * 64
+    message = message_with_trailers(note, digest, "BDT_Au_relax")
+    assert note_of(message) == note.strip()
+    assert calculation_of(message) == "BDT_Au_relax"
+    assert trailer_of(message) == digest
+
+
+def test_a_note_that_looks_like_a_trailer_stays_in_the_note(calc):
+    """The hazard the parser's own docstring names, and nothing tested it.
+
+    A note that begins *"Calculation: rerun with a tighter mesh"* must stay a
+    note.  Scanning the whole message for `Key: value` would eat it: the line
+    vanishes from what the person wrote **and becomes the calculation's
+    name**, so a history would claim to belong to a calculation nobody has.
+
+    What prevents it is that only the **last** block counts, and what makes
+    that hold is the blank line the writer inserts.  Nothing pinned it, so
+    changing that separator would forge a name with the suite green.
+    """
+    forged = "Calculation: not-the-real-one\nManifest-SHA256: " + "f" * 64
+    (calc.root / "job.XV").write_text("x\n")
+    state = calc.save(forged)
+
+    assert state.calculation == "BDT_Au_relax", (
+        "a note forged the calculation's name")
+    assert state.archive != "f" * 64, "a note forged the archive digest"
+    assert state.note == forged, (
+        "what the person wrote was eaten as metadata and is gone from the list")
+
+
+# ------------------------------------------------------------------ #
+#  S5 — identity is calculation-level, the run index is not           #
+# ------------------------------------------------------------------ #
+
+
+def test_the_calculation_is_named_the_same_however_many_runs_appear(staged):
+    """S5, in the half checkpointing owns and can answer today.
+
+    *"Identity is calculation-level; the run index is invocation-level.
+    Nothing about a run may change the id, or the files it produced would be
+    orphaned by the act of producing them."*  Attempts come and go inside the
+    folder -- `run-0`, `run-1`, more added later -- and every state must still
+    name one calculation, or a single calculation's history would split under
+    its own outputs.
+
+    The other half of S5 -- that the *run layer* never rewrites the id -- waits
+    on a run layer to test, and § 13.4 says so.
+    """
+    names = {staged.standing_at().calculation}
+    for n in (2, 3):
+        for stage in ("01_coarse", "02_tight"):
+            run = staged.root / stage / f"run-{n}"
+            run.mkdir()
+            (run / "run.json").write_text('{"mode": "local"}')
+            (run / "job.DM").write_bytes(BIG + stage.encode() + bytes([n]))
+        names.add(staged.save(f"attempt {n} in both stages").calculation)
+
+    assert names == {"BDT_Au_relax"}, (
+        f"the calculation's identity moved with a run index: {names}")
+    assert {s.calculation for s in staged.states()} == {"BDT_Au_relax"}
+
+
+# ------------------------------------------------------------------ #
+#  The Python surface itself (§ 10.4, § 15)                           #
+# ------------------------------------------------------------------ #
+
+
+def test_states_honours_the_limit_the_python_example_uses(calc):
+    """§ 10.4's example is literally `repo.states(limit=5)`.
+
+    A documented parameter no test ever passed is a promise nobody checked.
+    Both halves matter: that it truncates, and that it truncates from the
+    **newest** end -- a limit that returned an arbitrary slice would make the
+    documented call show the oldest five, which is the opposite of useful.
+    """
+    for n in range(6):
+        (calc.root / "job.XV").write_text(f"{n}\n")
+        calc.save(f"step {n}")
+    everything = calc.states()
+    assert len(everything) == 7, "six saves plus the state `init` made"
+
+    assert len(calc.states(limit=3)) == 3
+    assert [s.id for s in calc.states(limit=3)] == \
+           [s.id for s in everything[:3]], (
+        "a limit must take the newest states, not an arbitrary three")
+    assert len(calc.states(limit=99)) == 7, (
+        "a limit past the end is not an error")
+
+
+def test_no_python_caller_can_ask_for_a_text_only_restore(calc):
+    """A4 names **three** surfaces, and this is the third.
+
+    The CLI flag and the route field are each tested on their own surface.
+    The Python keyword is the one the other two called, and nothing asserted
+    it had gone -- **the absence of the parameter is the rule**, exactly as it
+    is for the classification's directory argument (S1c).
+    """
+    import inspect
+    params = set(inspect.signature(Repo.restore).parameters)
+    assert params == {"self", "state", "force"}, (
+        f"Repo.restore takes {sorted(params)}; a restore returns the whole "
+        f"folder or it does not happen (A4)")
+
+
+def test_a_missing_git_is_its_own_error_and_says_how_to_fix_it(calc,
+                                                               monkeypatch):
+    """One of the five subclasses § 15 names, referenced by no test.
+
+    It is separated from the rest *because it is one a person can act on* --
+    "a surface that cannot tell them apart reports 'fix your input' for a
+    broken disk."  That separation is worth nothing unless the class is
+    actually raised where git is actually absent.
+    """
+    import molbuilder.checkpoint as cp
+    from molbuilder.checkpoint import GitNotInstalledError
+
+    def no_git(*a, **k):
+        raise FileNotFoundError(2, "No such file or directory: 'git'")
+
+    monkeypatch.setattr(cp.subprocess, "run", no_git)
+    with pytest.raises(GitNotInstalledError) as exc:
+        calc.states()
+    message = str(exc.value).lower()
+    assert "git" in message
+    assert "install" in message or "conda" in message, (
+        "a refusal a person is meant to resolve must say how")
+
+
+# ------------------------------------------------------------------ #
 #  I2b — the records are checked, not trusted                         #
 # ------------------------------------------------------------------ #
 
@@ -460,6 +698,69 @@ def test_a_tampered_manifest_is_refused_on_restore(calc):
     with pytest.raises(CheckpointError) as exc:
         calc.restore(state.id, force=True)
     assert "MANIFEST" in str(exc.value) or "modified" in str(exc.value)
+
+
+def test_a_deleted_manifest_line_is_refused(calc):
+    """I2b's first named edit, and it was untested.
+
+    *"Delete a MANIFEST line and that file is simply not restored -- it reads
+    exactly like 'this archive never held it'."*  Under content addressing the
+    digest catches it, which is the design working rather than a second check;
+    asserting it is what keeps that true if the naming scheme ever moves.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    (calc.root / "other.bin").write_bytes(b"\x05" * 6000)
+    state = calc.save("two big files")
+    (calc.root / "job.XV").write_text("moved on\n")
+    calc.save("moved on")
+
+    man = archive_dir(calc.root, state.archive) / MANIFEST_NAME
+    kept = [ln for ln in man.read_bytes().splitlines(keepends=True)
+            if b"\tbig.bin" not in ln]
+    assert len(kept) == 1, "precondition: exactly one entry was removed"
+    man.write_bytes(b"".join(kept))
+
+    with pytest.raises(CheckpointError) as exc:
+        calc.restore(state.id, force=True)
+    assert MANIFEST_NAME in str(exc.value) or "modified" in str(exc.value)
+
+
+def test_a_sha_edited_to_match_a_swapped_file_is_still_refused(calc):
+    """I2b's worst named edit: the one that returns wrong bytes AND succeeds.
+
+    *"Change a sha AND the file to match and a restore returns the wrong bytes
+    and reports success."*  Self-consistency is exactly what a bad disk or a
+    deliberate edit produces, so the check cannot be the MANIFEST against its
+    own contents.  It is the MANIFEST against **the name it is stored under**,
+    which is the commit's trailer and inherits git's own hashing (I2b).
+
+    The precondition below is the point of the test: the archive is made
+    internally consistent first, so anything that only looked inward would
+    pass.
+    """
+    import hashlib
+    from molbuilder.checkpoint import parse_manifest as _parse
+
+    (calc.root / "big.bin").write_bytes(BIG)
+    state = calc.save("first")
+    (calc.root / "job.XV").write_text("moved on\n")
+    calc.save("moved on")
+
+    adir = archive_dir(calc.root, state.archive)
+    swapped = b"\x42" * 5000
+    (adir / "big.bin").write_bytes(swapped)
+    man = adir / MANIFEST_NAME
+    man.write_bytes(man.read_bytes().replace(
+        hashlib.sha256(BIG).hexdigest().encode(),
+        hashlib.sha256(swapped).hexdigest().encode()))
+    assert _parse(man.read_bytes(), "x")["big.bin"][0] == \
+        hashlib.sha256(swapped).hexdigest(), (
+        "precondition: the record and the bytes now agree with each other")
+
+    with pytest.raises(CheckpointError) as exc:
+        calc.restore(state.id, force=True)
+    assert MANIFEST_NAME in str(exc.value), (
+        "the refusal must name the RECORD as what failed, not the file")
 
 
 def test_a_hand_edited_ignore_block_is_detected_and_repaired(calc):
@@ -503,6 +804,31 @@ def test_nothing_tags_a_state_on_your_behalf(calc):
         (calc.root / "job.XV").write_text(f"{i}\n")
         calc.save(f"stage {i} converged")
     assert calc.tags() == []
+
+
+def test_a_whole_staged_calculation_tags_nothing(staged):
+    """L4's stated test: *"run a **full staged calculation** and assert the
+    tag list is empty until somebody types `snapshot tag`."*
+
+    Three plain saves in a flat folder cannot fail for the reason the rule
+    exists -- nothing in `save` was ever going to tag.  The retired mechanism
+    was per-**stage**, `<id>/<stage>/<UTC>`, so the fixture with stages and
+    attempts is the one this has to run over.  Then a tag is typed, and it is
+    the only one, which is what makes the empty list above meaningful rather
+    than a repo where tagging is simply broken.
+    """
+    for stage in ("01_coarse", "02_tight"):
+        for n in range(2):
+            run = staged.root / stage / f"run-{n}"
+            (run / "job.out").write_text(f"{stage} attempt {n} converged\n")
+            (run / "job.DM").write_bytes(BIG + stage.encode() + bytes([n + 7]))
+            staged.save(f"{stage} attempt {n} converged")
+
+    assert len(staged.states()) >= 4, "precondition: a history with shape"
+    assert staged.tags() == [], "something tagged a state on your behalf (L4)"
+
+    staged.tag("chosen", "the geometry I decided on")
+    assert [t.name for t in staged.tags()] == ["chosen"]
 
 
 # ------------------------------------------------------------------ #
@@ -564,8 +890,7 @@ def test_a_restore_ignores_the_configuration_entirely(calc, checkpoint_config):
     (calc.root / "big.bin").write_bytes(BIG)
     (calc.root / "small.txt").write_text(SMALL)
     state = calc.save("the state to come back to")
-    before = {archive_key(calc.root, p): p.read_bytes()
-              for p in walk_files(calc.root)}
+    before = tree_bytes(calc.root)
 
     (calc.root / "big.bin").write_bytes(b"\x09" * 5000)
     (calc.root / "stray.bin").write_bytes(BIG)
@@ -574,11 +899,55 @@ def test_a_restore_ignores_the_configuration_entirely(calc, checkpoint_config):
     # Change the classification beyond recognition: nothing is big any more.
     checkpoint_config(size_limit_bytes=99_999_999, engines={"generic": []})
     calc.restore(state.id, force=True)
-    after = {archive_key(calc.root, p): p.read_bytes()
-             for p in walk_files(calc.root)}
+    after = tree_bytes(calc.root)
     assert after == before, (
         "a restore re-derived what to do from the config instead of replaying "
         "what the save recorded (I2a)")
+
+
+def test_a_restore_replays_the_save_under_every_mutation_the_rule_names(
+        calc, checkpoint_config):
+    """I2a's stated test in full: *"change the engine, empty the hint list,
+    **delete the config outright** -- and assert the restored tree is
+    byte-identical either way."*
+
+    Only the first mutation was exercised.  Deleting the file is the decisive
+    one, and it is decisive for a different reason than the others: the other
+    two change the answer a config read would give, so a restore that read it
+    might still land in the same place by luck.  With no file at all, a read
+    on the restore path either falls back to a 10 MB default -- under which
+    nothing in this fixture is large -- or fails outright.  Neither can be
+    mistaken for replaying the record.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    (calc.root / "small.txt").write_text(SMALL)
+    target = calc.save("the state to come back to")
+    expected = tree_bytes(calc.root)
+
+    (calc.root / "big.bin").write_bytes(b"\x09" * 5000)
+    (calc.root / "stray.bin").write_bytes(BIG)
+    moved = calc.save("moved on")
+
+    cfg = checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
+
+    def a_different_engine():
+        # A hint list that names the file, under a name nothing else uses.
+        checkpoint_config(size_limit_bytes=1024,
+                          engines={"generic": ["*.txt"], "vasp": ["*.bin"]})
+
+    def an_empty_hint_list():
+        checkpoint_config(size_limit_bytes=99_999_999, engines={"generic": []})
+
+    def no_config_at_all():
+        cfg.unlink()
+
+    for mutate in (a_different_engine, an_empty_hint_list, no_config_at_all):
+        calc.restore(moved.id, force=True)         # go away again
+        mutate()
+        calc.restore(target.id, force=True)
+        assert tree_bytes(calc.root) == expected, (
+            f"a restore changed with the configuration ({mutate.__name__}); "
+            f"it must replay what the save recorded (I2a)")
 
 
 # ------------------------------------------------------------------ #
@@ -624,12 +993,10 @@ def test_a_corrupt_archive_is_refused_and_the_folder_is_untouched(calc):
     payload = archive_dir(calc.root, target.archive) / "big.bin"
     payload.write_bytes(b"\x00" * 5000)          # right size, wrong bytes
 
-    before = {archive_key(calc.root, p): p.read_bytes()
-              for p in walk_files(calc.root)}
+    before = tree_bytes(calc.root)
     with pytest.raises(CheckpointError):
         calc.restore(target.id, force=True)
-    after = {archive_key(calc.root, p): p.read_bytes()
-             for p in walk_files(calc.root)}
+    after = tree_bytes(calc.root)
     assert after == before, "the folder changed before the check refused"
 
 
@@ -649,6 +1016,161 @@ def test_a_partial_archive_never_appears_at_the_published_name(calc,
         assert (adir / MANIFEST_NAME).is_file(), (
             f"{adir.name} is published but has no MANIFEST -- a reader would "
             f"take it for complete")
+
+
+def test_a_save_killed_as_the_record_is_written_publishes_nothing(calc,
+                                                                  monkeypatch):
+    """A1 at the seam the copy test cannot reach.
+
+    *"Kill the process between EACH step"* -- and only the copy step had a
+    kill point.  Here every copy is made and verified and the process dies as
+    the MANIFEST is written, which is the last moment before the rename.
+    Nothing may appear under a published name: the staging directory is the
+    whole of what is lost.
+    """
+    import molbuilder.checkpoint as cp
+
+    (calc.root / "big.bin").write_bytes(BIG)
+    before = {d.name for d in _published(calc)}
+
+    def die(target, data):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(cp, "_atomic_write_bytes", die)
+    with pytest.raises(OSError):
+        calc.save("dies as the record is written")
+
+    assert {d.name for d in _published(calc)} == before, (
+        "an archive appeared at a published name after the save died")
+    assert not [p for p in (calc.root / ".binsnapshots").iterdir()
+                if not _SHA256_RE.match(p.name)], (
+        "the staging directory was left behind; it is cleaned up on any exit")
+
+
+def test_an_archive_published_but_never_committed_costs_nothing(calc,
+                                                                monkeypatch):
+    """The one interruption § 6 describes, and § 12 calls the only garbage.
+
+    *"The worst an interruption leaves behind is an archive nothing points at
+    yet -- no lost data, and the next save writes the identical bytes to the
+    identical path."*  Both halves asserted: the folder still works, and the
+    next save **adopts that exact archive** rather than building a second one,
+    which is what makes a repeat harmless by construction rather than by
+    locking (S9).
+    """
+    import molbuilder.checkpoint as cp
+    real = cp.publish_archive
+
+    def publish_then_die(root, big):
+        real(root, big)
+        raise OSError("killed after publishing, before the commit")
+
+    (calc.root / "big.bin").write_bytes(BIG)
+    monkeypatch.setattr(cp, "publish_archive", publish_then_die)
+    with pytest.raises(OSError):
+        calc.save("dies between publish and commit")
+    monkeypatch.undo()
+
+    orphans = {d.name for d in _published(calc)}
+    state = calc.save("the next save, after the interruption")
+    assert state is not None, "the interrupted work was not saveable afterwards"
+    assert state.archive in orphans, (
+        "the next save built a second archive instead of reusing the one the "
+        "interrupted save already published -- same content, same digest, "
+        "same path (§ 6)")
+    assert calc.status().clean
+
+
+# ------------------------------------------------------------------ #
+#  I2 — a MANIFEST is authoritative: exists, size, sha256             #
+# ------------------------------------------------------------------ #
+
+
+def test_verify_runs_over_every_archive_in_the_folder(calc):
+    """I2's own stated test, which the contract calls the most valuable one.
+
+    It had no test whose subject it was: `verify_archive` was reached as a
+    side assertion inside the concurrency test and by the restore path.  A
+    folder accumulates archives, and the claim is about all of them.
+    """
+    from molbuilder.checkpoint import verify_archive
+
+    digests = set()
+    for n in range(4):
+        (calc.root / "big.bin").write_bytes(bytes([n]) * 5000)
+        (calc.root / f"note{n}.txt").write_text(SMALL)
+        digests.add(calc.save(f"round {n}").archive)
+    assert len(digests) == 4, "precondition: four distinct archives"
+
+    on_disk = {d.name for d in _published(calc)}
+    assert digests <= on_disk
+    for name in on_disk:
+        verify_archive(calc.root, name)        # raises on any of the three
+
+
+def test_a_manifest_entry_whose_file_is_gone_is_refused(calc):
+    """I2's first condition: **the file exists**.
+
+    Losing one payload out of an otherwise healthy archive is not the same
+    failure as losing the archive, and only the per-entry check can see it:
+    the MANIFEST still hashes to its own name, so the digest check passes.
+    """
+    from molbuilder.checkpoint import verify_archive
+
+    (calc.root / "big.bin").write_bytes(BIG)
+    state = calc.save("with an archive")
+    (archive_dir(calc.root, state.archive) / "big.bin").unlink()
+
+    with pytest.raises(CheckpointError) as exc:
+        verify_archive(calc.root, state.archive)
+    assert "big.bin" in str(exc.value), "it must name the entry that is gone"
+
+
+def test_a_manifest_entry_whose_size_disagrees_is_refused(calc):
+    """I2's second condition: **its size matches**.
+
+    A truncated copy is the ordinary shape of a disk that filled up mid-write,
+    and it is cheaper to detect than a checksum -- so it is named for what it
+    is rather than reported as a content mismatch.
+    """
+    from molbuilder.checkpoint import verify_archive
+
+    (calc.root / "big.bin").write_bytes(BIG)
+    state = calc.save("with an archive")
+    (archive_dir(calc.root, state.archive) / "big.bin").write_bytes(BIG[:100])
+
+    with pytest.raises(CheckpointError) as exc:
+        verify_archive(calc.root, state.archive)
+    message = str(exc.value)
+    assert "big.bin" in message and "bytes" in message
+
+
+def test_a_corrupt_archive_is_refused_before_you_are_asked_to_accept_a_loss(
+        calc):
+    """§ 7: *two refusals, then one question, and **the order is the rule**.*
+
+    The reason is stated there: *"nobody should be asked to accept a loss for
+    an operation that then fails for an unrelated reason."*  The existing
+    corruption test passes `force=True`, which skips the question entirely --
+    so it proved the archive is checked, never that it is checked FIRST.
+
+    Both conditions are true here at once: the target's archive is corrupt AND
+    there is unsaved work.  The archive must be what refuses.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    target = calc.save("the state to come back to")
+    (calc.root / "big.bin").write_bytes(b"\x03" * 5000)   # a DIFFERENT archive,
+    calc.save("moved on")                                 # so only the target's
+    (archive_dir(calc.root, target.archive)               # is damaged
+     / "big.bin").write_bytes(b"\x00" * 5000)
+    (calc.root / "unsaved.txt").write_text("work I have not saved\n")
+
+    assert not calc.status().clean, "precondition: there is a loss to accept"
+    with pytest.raises(CheckpointError) as exc:
+        calc.restore(target.id)
+    assert not isinstance(exc.value, DirtyWorkingTreeError), (
+        "the user was asked to accept a loss for a restore that cannot happen")
+    assert "sha256" in str(exc.value) or "I2" in str(exc.value)
 
 
 # ------------------------------------------------------------------ #
@@ -767,8 +1289,8 @@ def test_s1_holds_over_a_real_staged_tree(staged):
     """
     state = staged.standing_at()
     tracked, archived = _tracked(staged), _archived(staged, state)
-    for path in walk_files(staged.root):
-        key = archive_key(staged.root, path)
+    for path in walk_independently(staged.root):
+        key = key_of(staged.root, path)
         assert (key in tracked) != (key in archived), (
             f"S1 violated at depth for {key!r}")
     assert len([k for k in archived if k.endswith("job.DM")]) == 4, (
@@ -1031,6 +1553,56 @@ def test_concurrent_saves_of_the_same_content_cannot_corrupt_the_archive(calc):
         verify_archive(calc.root, adir.name)
 
 
+def test_two_concurrent_saves_of_one_folder_cannot_corrupt_it(calc):
+    """S9's stated test is *"two concurrent **saves** of the same folder"*.
+
+    The test above races four `publish_archive` calls, which is the archive
+    half only.  A `save` also regenerates `.gitignore`, stages an index,
+    commits and writes a ref -- and the contract's claim that *"git serialises
+    its own index already"* was an assumption **no test checked**.
+
+    The rule is *cannot corrupt*, not *cannot interleave*, so a save losing a
+    race for git's index lock is a **refusal** and is allowed.  What is not
+    allowed: a failure that is anything other than a refusal, an archive that
+    does not verify afterwards, or a folder left unusable.
+    """
+    import threading
+    from molbuilder.checkpoint import verify_archive
+
+    (calc.root / "big.bin").write_bytes(BIG)
+    (calc.root / "other.bin").write_bytes(b"\x05" * 6000)
+
+    done, failures = [], []
+    ready = threading.Barrier(2)
+
+    def saver(n):
+        # A separate handle, the way two processes would reach one folder.
+        repo = Repo(str(calc.root))
+        try:
+            ready.wait()
+            done.append(repo.save(f"concurrent save {n}"))
+        except Exception as exc:                      # noqa: BLE001
+            failures.append(exc)
+
+    threads = [threading.Thread(target=saver, args=(n,)) for n in range(2)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+
+    assert all(isinstance(f, CheckpointError) for f in failures), (
+        f"a concurrent save failed with something that is not a refusal: "
+        f"{failures!r}")
+    for adir in _published(calc):
+        verify_archive(calc.root, adir.name)
+    assert any(s is not None for s in done) or failures, (
+        "neither save recorded anything and neither refused")
+
+    # Whatever the interleaving was, the folder is usable afterwards.
+    calc.save("after the race")
+    assert calc.status(deep=True).clean
+
+
 # ------------------------------------------------------------------ #
 #  § 3 — "exactly one store" is true of the object database too       #
 # ------------------------------------------------------------------ #
@@ -1090,6 +1662,36 @@ def test_repeated_saves_do_not_grow_git_by_the_big_file(calc):
         calc.save(f"rewrite {n}")
     assert _loose_blob_bytes(calc) - baseline < 200_000, (
         "each save added another copy of the big file to git's object store")
+
+
+def test_a_folder_with_many_big_files_saves_in_one_go(calc):
+    """Volume, at the one place the shape of the code makes it a question.
+
+    `save` names **every** big file as its own `:(exclude,literal)` pathspec
+    on a **single** `git add` command line, so the argument list grows with
+    the number of large files.  Every other test in this file has at most a
+    handful, and § 3.1's own prose contemplates a 500-file archive -- so this
+    runs that many.
+
+    Three things must hold at once, and the third is why the test is here
+    rather than being a benchmark: they are all archived, **none reaches
+    git's object database**, and the folder reads clean afterwards.  The
+    obvious remedy if this ever fails for argument length is to chunk the
+    `add`, and a chunk boundary is exactly where a big file slips back into
+    git -- so the assertion below is what makes that remedy safe to attempt.
+    """
+    for n in range(500):
+        (calc.root / f"run-{n:03d}.DM").write_bytes(BIG + bytes([n % 251]))
+    state = calc.save("five hundred large files")
+
+    archived, tracked = _archived(calc, state), _tracked(calc)
+    assert len([k for k in archived if k.endswith(".DM")]) == 500
+    assert not [k for k in tracked if k.endswith(".DM")], (
+        "a big file reached git's index")
+    assert _loose_blob_bytes(calc) < len(BIG), (
+        "big files' bytes are in .git/objects; `add` writes a blob for every "
+        "path it is handed")
+    assert calc.status().clean
 
 
 # ------------------------------------------------------------------ #
@@ -1461,9 +2063,8 @@ def test_only_restore_changes_a_file_you_made(calc):
     calc.save("something to look at")
 
     def mine():
-        return {archive_key(calc.root, p): p.read_bytes()
-                for p in walk_files(calc.root)
-                if archive_key(calc.root, p) != ".gitignore"}
+        return {k: v for k, v in tree_bytes(calc.root).items()
+                if k != ".gitignore"}
 
     before = mine()
     calc.status()

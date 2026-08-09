@@ -1050,6 +1050,18 @@ run may edit `task.json`.
 about a run may change the id, or the files it produced would be orphaned by the
 act of producing them.
 
+*This rule had no test bullet at all* — the only one in this section without
+one — while § 12 marked it ✅ and § 13.4 gave it no row. § 13.4's own sentence
+condemns that: *a rule in no row is the same failure as a file in no row, and
+quieter.* It has two halves and they are answerable at different times.
+
+- **Test, the half this document owns:** add attempts to a saved folder —
+  `run-2`, `run-3`, in every stage — and assert every state still names one
+  calculation. A history that split under its own outputs is this rule failing
+  where checkpointing can see it.
+- **The other half — that the run layer never rewrites the id — waits on a run
+  layer**, and is listed with the waiting rules below.
+
 ### A history you can read back
 
 **S3 — a run records what it started from.** `run.json`'s `continued_from` names
@@ -1226,7 +1238,7 @@ conclude there is nothing to do.
 | **S2** | a stage writes only inside itself | needs the layout |
 | **S3** | a run records what it started from | needs the layout |
 | **S4** | the description is never modified | needs the description |
-| **S5** | nothing about a run changes the id | ✅ |
+| **S5** | nothing about a run changes the id | ✅ **the half this owns** — attempts come and go and every state still names one calculation; the run-layer half waits with the six below |
 | **S6** | a restored folder explains itself | needs the description |
 | **L1** | one repository per calculation | ✅ |
 | **L2** | the archive matches at depth | ✅ |
@@ -1367,24 +1379,32 @@ nobody is maintaining against this document, which is how the two drift.
 
 | Rule | Where |
 |---|---|
-| S1, S1a, L2 | `test_checkpoint_states.py` — walk every file of a **staged tree** (two stages, two attempts each, big files at depth, symlinked pseudopotentials) and assert each is in exactly one store; the generated ignore block holds nothing the archive does not take; and a big file never reaches git's object database |
+| S1, S1a, L2 | `test_checkpoint_states.py` — walk every file of a **staged tree** (two stages, two attempts each, big files at depth, symlinked pseudopotentials) and assert each is in exactly one store; the generated ignore block holds nothing the archive does not take; and a big file never reaches git's object database. **The walk is the test's own `os.walk`**, excluding the two stores by literal name — never the module's `walk_files`, which is what the classification itself iterates (S1's bullet) |
 | S1b, the classification end to end | `test_checkpoint_states.py` — a fixture **generated from the config**: every engine, every pattern it names, one file each, all archived on size alone being wrong; plus an unlisted file either side of the limit |
 | S1b, S1c | `test_checkpoint_config.py` — the size gate and the one home |
-| I1, I2, A1, A2 | `test_checkpoint_states.py` — a copy corrupted on its way to disk is caught at save; a corrupted archive is refused before a restore touches anything; a save that dies mid-copy leaves no half-archive at a published name; changed content lands at a different name and the old archive still holds its bytes |
-| I2a | `test_checkpoint_states.py` — change the classification beyond recognition, restore, compare bytes |
-| I2b | `test_checkpoint_states.py` — a tampered MANIFEST, and a hand-edited ignore block |
+| I1 | `test_checkpoint_states.py` — changed content lands at a different name and the old archive still holds its bytes |
+| I2 | `test_checkpoint_states.py` — **its own three conditions, each on its own**: a listed file that is gone, a size that disagrees, a sha that does not match; plus a run of `verify_archive` over **every** archive a multi-state folder accumulated |
+| A1 | `test_checkpoint_states.py` — killed at **each** step: mid-copy, and as the MANIFEST is written; plus the interruption § 6 describes — an archive published but never committed, after which the next save adopts that exact archive instead of building a second |
+| A2 | `test_checkpoint_states.py` — a corrupted archive is refused and the folder is byte-identical; and, with unsaved work present too, **the archive is what refuses** — nobody is asked to accept a loss for an operation that cannot happen |
+| I2a | `test_checkpoint_states.py` — restore under **every mutation the rule names**: a different engine, an emptied hint list, and the config file deleted outright; the tree is byte-identical each time |
+| I2b | `test_checkpoint_states.py` — **all three named edits**: a deleted MANIFEST line, a sha edited to match a swapped file (made internally consistent first, so anything looking only inward would pass), and a hand-edited ignore block |
 | I2c | `test_checkpoint_states.py` — narrow the classification, then the warning must still name the file |
 | I3 | `test_checkpoint_states.py` — after `init`, every operation but `restore` leaves the files you made byte-identical |
 | I4 | `test_checkpoint_wrapper_isolation.py` — an **emitted** wrapper contains no `git` as a command word, and the wrapper module never reaches the checkpoint module |
-| A4, A5 | `test_checkpoint_cli.py` (no partial restore on any surface) and `test_checkpoint_states.py` (the three shapes, and `--force`) |
+| A4 | `test_checkpoint_cli.py` (no flag), `test_checkpoint_routes.py` (the route refuses the field) and `test_checkpoint_states.py` (**the Python surface: `Repo.restore` takes `state` and `force` and nothing else** — the third surface the rule names) |
+| A5 | `test_checkpoint_states.py` — the rule's own test in one place: an edit, a new file **and a deleted one**, all three named in the refusal, nothing changed by it, `--force` completes, the folder then equals the target exactly with no leftovers and no rescue copies |
 | A6 | `test_checkpoint_states.py` — restore, save, restore elsewhere, then `git gc --prune=now`: the state saved in between is still listed and still restorable |
 | L1 | `test_checkpoint_states.py` — independent calculations refused, one declared calculation accepted |
-| L3, L4 | `test_checkpoint_states.py` — a save with no note is refused, a state names its calculation without polluting the note, a name needing repair is refused, and the tag list stays empty until somebody types `snapshot tag` |
+| L3 | `test_checkpoint_states.py` — a save with no note is refused; a state names its calculation without polluting the note; a name needing repair is refused; the note **round-trips through the one parser** (§ 15) over several shapes; and a note that itself looks like a trailer stays a note rather than forging the calculation's name |
+| L4 | `test_checkpoint_states.py` — the tag list stays empty across a **staged** calculation, stages and attempts and all, until somebody types `snapshot tag` — the retired mechanism was per-stage, so a flat folder could not have caught it |
+| S5 | `test_checkpoint_states.py` — attempts are added to every stage and every state still names one calculation |
 | L7 | `test_checkpoint_states.py` — a big-file-only change |
 | S7 | `test_checkpoint_states.py` — a file grows past the limit, and one shrinks below it |
 | S8 | `test_checkpoint_states.py` — `git checkout` an older state by hand, then a restore must refuse and name the big file that differs; and a save of that folder records what is on disk and restores correctly |
-| S9 | `test_checkpoint_states.py` — four threads publish one archive at once: none errors, all agree on one name, and every archive on disk verifies |
-| A3, S2, S3, S4, S6, L8 | **not yet written** — each waits on a surface that does not exist; the table below says which |
+| S9 | `test_checkpoint_states.py` — four threads publish one archive at once; **and two concurrent `save`s of one folder**, which is the rule's own wording: losing a race for git's index is a refusal and is allowed, corruption is not |
+| the five refusals | `test_checkpoint_states.py` — `GitNotInstalledError` is raised where git is absent and says how to fix it, which is what makes it worth separating from the faults (§ 15) |
+| volume | `test_checkpoint_states.py` — 500 large files in one folder: all archived, none in git's object database, and the save does not fail for the length of its own `git add` |
+| A3, S2, S3, S4, S6, L8, S5's run-layer half | **not yet written** — each waits on a surface that does not exist; the table below says which |
 | the MANIFEST format | `test_checkpoint_manifest.py` — one content has exactly one MANIFEST; every deviation a lenient reader could "understand" is refused and names the archive; no key can steer a restore out of the folder or into a store |
 | the verbs as a printed surface | `test_checkpoint_cli.py` — what each verb prints and what it exits with, retired verbs gone, and the question asked at a terminal |
 | the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` |
@@ -1405,6 +1425,7 @@ on is what stops them being forgotten on the day it lands.
 | **S4** the description is never modified | `task.json` reaching a produced folder |
 | **S6** a restored folder explains itself | the same, plus a `dry_run` produce to compare against |
 | **L8** a saved attempt never differs afterwards | the hierarchical layout — and it must be marked *hierarchical only*, or it fails a flat folder that is working correctly |
+| **S5**, its second half — the *run layer* never rewrites the id | a produce and a run. The half checkpointing owns is asserted today (§ 13.4); this is the one that needs something to run |
 
 *This table lists only rules that are **waiting**. It used to carry a copy of
 the rows above it as well, naming three test files that no longer exist —
