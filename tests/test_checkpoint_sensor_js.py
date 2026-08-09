@@ -144,7 +144,7 @@ def test_state_git_failure_is_structured_error_not_crash(
     import molbuilder.web.blueprints.checkpoint as bp
     _seed_with_archive(tmp_path)
 
-    def _boom(self):
+    def _boom(self, deep=False):
         raise bp.CheckpointError("git rev-parse exploded (simulated)")
 
     monkeypatch.setattr(bp.Repo, "status", _boom)

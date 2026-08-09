@@ -2577,6 +2577,10 @@ def cmd_snapshot_save(note, path):
     """
     from molbuilder.checkpoint import CheckpointError
     repo = _repo_or_exit(path)
+    # Say what is happening before it happens.  A save checksums every big file
+    # to name the archive, so a folder with a few gigabytes of density matrices
+    # pauses here -- and a pause nobody explained reads as a hang.
+    click.echo("checking the folder and checksumming its large files…", err=True)
     try:
         state = repo.save(note)
     except CheckpointError as e:
@@ -2591,8 +2595,13 @@ def cmd_snapshot_save(note, path):
 @cmd_snapshot.command("list", short_help="the states you have saved")
 @click.option("-n", "--limit", default=None, type=int,
               help="Show only the newest N.")
+@click.option("--check", is_flag=True,
+              help="Compare file CONTENT rather than size and timestamp.  "
+                   "Slower on large folders, and only worth it when you want "
+                   "certainty right now -- a save or a restore always checks "
+                   "content regardless.")
 @_PATH_OPT
-def cmd_snapshot_list(limit, path):
+def cmd_snapshot_list(limit, check, path):
     """Every state, newest first, with the state each came from.
 
     Two states sharing a parent are alternatives from the same point -- that is
@@ -2612,10 +2621,15 @@ def cmd_snapshot_list(limit, path):
         click.echo(f"      {state.at}   from {parent}")
     if here:
         click.echo(f"\n-> is where this folder stands ({here.short}).")
-    status = repo.status()
+    status = repo.status(deep=check)
     if not status.clean:
         click.echo(f"   {len(status.unsaved())} unsaved change(s) here; "
                    f"`snapshot save` keeps them.")
+        for name in status.unsaved():
+            click.echo(f"     {name}")
+    elif not check:
+        click.echo("   nothing unsaved (by size and timestamp; --check "
+                   "compares content).")
     if status.ignore_edited:
         click.echo("   note: .gitignore's generated block was edited by hand. "
                    "The next save rewrites it from the classification.")
@@ -2668,6 +2682,8 @@ def cmd_snapshot_restore(state, force, path):
     from molbuilder.checkpoint import (
         CheckpointError, DirtyWorkingTreeError, NoSuchRefError)
     repo = _repo_or_exit(path)
+    click.echo("verifying the archive, then checking what is unsaved here…",
+               err=True)
     try:
         target = repo.restore(state, force=force)
     except DirtyWorkingTreeError as e:

@@ -136,9 +136,16 @@ def api_checkpoint_state():
         path = _resolve_path(request.args.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
+    # ``deep=1`` is what the panel's Refresh control asks for: compare content
+    # rather than size and timestamp.  The default is the cheap read, because
+    # this runs on every directory-enter and hashing gigabytes to draw a badge
+    # is a cost the badge does not earn.  Nothing can be lost by being briefly
+    # wrong here; the operations that CAN lose something check content
+    # themselves (A5).
+    deep = request.args.get("deep") in ("1", "true", "yes")
     repo = Repo(str(path))
     try:
-        status = repo.status()
+        status = repo.status(deep=deep)
         here = repo.standing_at() if status.initialized else None
         return jsonify({
             "ok":            True,
@@ -151,6 +158,7 @@ def api_checkpoint_state():
             "deleted":       list(status.deleted),
             "unsaved":       list(status.unsaved()),
             "ignore_edited": status.ignore_edited,
+            "checked":       "content" if deep else "size+timestamp",
         })
     except CheckpointError as exc:
         return _server_fault(str(exc))

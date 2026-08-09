@@ -152,11 +152,65 @@ def test_the_three_shapes_are_all_reported(calc):
 
 
 def test_a_changed_big_file_is_seen_even_though_git_cannot_see_it(calc):
-    """L7's sibling: big files are outside git, so the MANIFEST is their record."""
+    """L7's sibling: big files are outside git, so the MANIFEST is their record.
+
+    Asked exactly, because that is the guarantee -- see the two tests below for
+    which question gets asked when.
+    """
     (calc.root / "big.bin").write_bytes(BIG)
     calc.save("first")
     (calc.root / "big.bin").write_bytes(b"\x02" * 5000)
+    assert "big.bin" in calc.status(deep=True).changed
+
+
+def test_a_resized_big_file_is_seen_by_the_cheap_read_too(calc):
+    """The display does not need content to answer most of the time.
+
+    A different size IS an answer, so the common cases -- a run that grew a
+    density matrix, a file deleted, a file appearing -- all show without
+    anything being read.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    calc.save("first")
+    (calc.root / "big.bin").write_bytes(BIG + b"more")
     assert "big.bin" in calc.status().changed
+
+
+def test_the_cheap_read_may_miss_a_same_size_rewrite_and_that_is_the_deal(calc):
+    """The accepted blind spot, asserted so nobody "fixes" it by hashing.
+
+    A state's timestamp is whole seconds and a file's is not, so a same-size
+    rewrite inside that second is invisible to the display.  That costs
+    NOTHING: no byte moves on a status call, and the next real operation
+    compares content.  Paying for certainty here would mean reading gigabytes
+    every time a directory is opened.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    calc.save("first")
+    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)      # same size, now
+    assert calc.status().clean, (
+        "if this starts failing, the cheap read began hashing -- check that "
+        "the display is not paying for exactness it does not need")
+
+
+def test_a_restore_still_refuses_a_same_size_rewrite(calc):
+    """And this is why missing it in the display is safe.
+
+    The moment the folder is about to change, the question is asked exactly.
+    A user who was told "nothing unsaved" a second ago is still stopped here,
+    because the operation checks content and the badge never did.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    first = calc.save("first")
+    (calc.root / "job.XV").write_text("moved on\n")
+    calc.save("moved on")
+    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)      # same size, now
+
+    assert calc.status().clean, "precondition: the cheap read misses it"
+    with pytest.raises(DirtyWorkingTreeError) as exc:
+        calc.restore(first.id)
+    assert "big.bin" in str(exc.value), (
+        "the operation must check content, whatever the display said")
 
 
 def test_a_big_file_only_change_still_produces_a_state(calc):

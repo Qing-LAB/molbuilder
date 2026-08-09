@@ -869,6 +869,30 @@ are taught to stop reading warnings. The alternative is also worse than untidy:
 a stage 2 `.DM` left lying in a folder that claims to be stage 1 is exactly the
 file a later run picks up without being asked to.
 
+**Exactness costs time, so it is spent where being wrong costs data.** Two
+different questions wear the same words:
+
+| | | |
+|---|---|---|
+| **Is anything unsaved?** — a badge, a list | size and timestamp | drawn constantly, and being briefly wrong costs **nothing**: no byte moves |
+| **What will this operation destroy?** | file **content** | asked once, immediately before the folder changes |
+
+A folder holds gigabytes of density matrices, and the panel reads it every time
+you enter the directory. Hashing all of it to draw a badge is a cost the badge
+does not earn. The cheap read has one blind spot — a file rewritten to the same
+size inside the same second as the save — and in interactive use that is both
+rare and **harmless**, because the display is a sentence on a screen, corrected
+the next time anything real happens.
+
+**A save and a restore always compare content**, whatever the display last said.
+And when somebody wants certainty *now*, a Refresh asks for the exact answer
+rather than the system paying for it continuously.
+
+> **Say what is happening before it happens.** Checksumming gigabytes takes time,
+> and a pause nobody explained reads as a hang. The verbs announce the slow part
+> — *"verifying the archive, then checking what is unsaved here…"* — so the wait
+> is understood rather than suffered.
+
 **Checkpointing is not responsible for work you did not save.** Calling
 `restore` without calling `snapshot save` is a decision, and the answer is
 yours. There is no stash, no move-aside, no automatic save-before-restore, no

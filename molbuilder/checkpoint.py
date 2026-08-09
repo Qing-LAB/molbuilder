@@ -907,13 +907,27 @@ class Repo:
 
     # -- what is unsaved ------------------------------------------- #
 
-    def status(self) -> "FolderStatus":
+    def status(self, deep: bool = False) -> "FolderStatus":
         """Where the folder stands, and what differs from it (§ 5, A5).
 
         Three shapes -- changed, added, deleted -- covering text and big files
         alike.  Big files are gitignored, so git cannot see them; they are
         compared against the standing state's MANIFEST, which is the record
         that says what that state held (I2c).
+
+        **Two depths, and the difference is who pays for exactness.**
+
+        ``deep=False`` (the default) is the *display*: size and timestamp only,
+        never content.  It answers the sidebar on every directory-enter and the
+        CLI's ``list``, where reading a 2 GB density matrix to draw a badge is a
+        cost the answer does not earn.  Its one blind spot is a file rewritten
+        to the same size within the same second as the save -- and being wrong
+        there costs nothing, because **nothing is moving**: it is a sentence on
+        a screen, corrected the next time anything real happens.
+
+        ``deep=True`` hashes.  It is what runs before an operation that changes
+        the folder, where being wrong costs data rather than a sentence, and it
+        is what a Refresh control asks for when somebody wants certainty now.
         """
         if not self.initialized:
             return FolderStatus(path=self.path, initialized=False)
@@ -984,15 +998,23 @@ class Repo:
                 continue
             stat = path.stat()
             if stat.st_size != want[1]:
-                changed.add(key)
+                changed.add(key)              # a different size is an answer
                 continue
-            # STRICTLY older, because a state's timestamp has one-second
-            # resolution while a file's does not: something written 0.7 s into
-            # the same second the save happened cannot be ruled out by
-            # comparing them.  Same-second files are hashed -- slower, never
-            # wrong, and this is the classic racy-timestamp trap.
-            if saved_at is not None and stat.st_mtime < saved_at:
-                continue                      # untouched since the save
+            if not deep:
+                # A state's timestamp has one-second resolution while a file's
+                # does not, so a rewrite inside that second is invisible here.
+                # That is accepted deliberately: this is a display, the case is
+                # rare in interactive use, and the operations that can lose
+                # data do their own exact check.
+                # One second of tolerance, and it is not slack -- it is the
+                # resolution difference.  A state's timestamp is whole seconds;
+                # a file's is not.  Save a file at 12:00:00.3 and the state
+                # records 12:00:00, so a bare `>` calls the file newer than the
+                # state that just saved it, and the folder reads unsaved the
+                # instant after a save.  That is the normal flow, not a corner.
+                if saved_at is None or stat.st_mtime > saved_at + 1:
+                    changed.add(key)
+                continue
             if hashlib.sha256(path.read_bytes()).hexdigest() != want[0]:
                 changed.add(key)
 
@@ -1082,7 +1104,11 @@ class Repo:
                 f"that cannot be verified (I2b).")
         expected = verify_archive(self.root, target.archive)   # refusal 2
 
-        status = self.status()                        # the question, last
+        # DEEP, always.  This is the moment the folder is about to change, so
+        # the question "what will be lost" is answered by content and not by a
+        # timestamp -- the cheap read exists for drawing a badge, not for
+        # deciding what to destroy.
+        status = self.status(deep=True)               # the question, last
         if not status.clean and not force:
             raise DirtyWorkingTreeError(
                 "this folder has work that is not saved, and restoring will "

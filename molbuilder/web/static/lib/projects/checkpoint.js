@@ -106,7 +106,11 @@ function _attach() {
     elInitBtn.addEventListener("click", _onInitClick);
     elCommitBtn.addEventListener("click", _onCommitClick);
     elTagBtn.addEventListener("click", _onTagClick);
-    elRefreshBtn.addEventListener("click", _refresh);
+    // The Refresh control is the "check content now" affordance: the automatic
+    // read on directory-enter compares size and timestamp, which is enough to
+    // draw a badge and cannot lose anything by being briefly wrong.  Pressing
+    // Refresh says you want certainty.
+    elRefreshBtn.addEventListener("click", () => _refresh({ deep: true }));
     elSensor.addEventListener("click", _refresh);
     elList.addEventListener("click", _onListClick);
     if (elViewListBtn)  elViewListBtn.addEventListener("click",
@@ -484,12 +488,13 @@ async function _fetchJSON(method, url, body) {
     return { http: r.status, body: payload };
 }
 
-async function _refresh() {
+async function _refresh(opts = {}) {
     if (!_state.currentDir) return;
     _hideAdvisory();
     try {
         const stRes = await _fetchJSON("GET",
-            `/api/checkpoint/state?path=${encodeURIComponent(_state.currentDir)}`);
+            `/api/checkpoint/state?path=${encodeURIComponent(_state.currentDir)}`
+            + (opts.deep ? "&deep=1" : ""));
         if (stRes.http >= 500 || !stRes.body) {
             _renderError(stRes.body?.error || "HTTP " + stRes.http);
             return;
