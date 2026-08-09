@@ -1087,7 +1087,7 @@ conclude there is nothing to do.
 | Rule | | |
 |---|---|:--:|
 | **S1** | everything is stored; the two stores are the only exclusions | ⛔ several patterns are ignored and unarchived, so they are in no store at all |
-| **S1a** | `.gitignore` generated, one source | ⛔ a hand-kept list sits beside the generated block |
+| **S1a** | `.gitignore` generated, one source | ⛔ the generated block itself has two sources — the classification, and a fixed tail compiled into the module |
 | **S1b** | the store is chosen by measuring the file | ⛔ **not built** — there is no size limit anywhere; the gate is the glob list |
 | **S1c** | the classification lives in molbuilder's config, one home | ⛔ **not built** — every folder has its own `.mbcheckpoint.json`, writable from CLI and web |
 | **I1** | archived content is never modified | ⛔ holds by convention; becomes structural when the name is the content digest (§ 3) |
@@ -1097,7 +1097,7 @@ conclude there is nothing to do.
 | **I2c** | the restore's gate reads the record, not the config | ⛔ the gate derives from the glob list; the copy derives from the MANIFEST |
 | **I3** | `restore` is the only operation that writes into the folder | ✅ |
 | **I4** | no git in a generated wrapper | ✅ |
-| **A1** | build, verify, swap, delete | ✅ |
+| **A1** | build, verify, publish — create if absent, never overwrite | ⛔ builds and swaps over an existing archive; no content-addressed name to make that impossible |
 | **A2** | verify before mutating, in order | ✅ |
 | **A3** | the save precedes the change | needs the prep prompt |
 | **A4** | a restore is whole or does not happen | ⛔ `--no-binaries` ships on three surfaces and skips both checks |
@@ -1110,11 +1110,11 @@ conclude there is nothing to do.
 | **S6** | a restored folder explains itself | needs the description |
 | **L1** | one repository per calculation | ✅ |
 | **L2** | the archive matches at depth | ✅ |
-| **L3** | every save carries a note; every commit and tag names its calculation | ⛔ the note is optional and defaults to a timestamp |
+| **L3** | every state carries a note, and names its calculation | ⛔ the note is optional and defaults to a timestamp |
 | **L4** | a tag is yours; nothing tags on your behalf | ⛔ finished stages are tagged automatically |
 | **L7** | a big-file-only change still produces a state | ✅ two tests in `test_checkpoint_nested_layout.py` |
 | **S7** | a file that changes category leaves the store it came from | ⛔ nothing untracks; **routine once the gate is a size**, because files grow |
-| **S8** | using git directly does not silently desynchronise the two stores | ⛔ `git checkout` rewinds text and leaves every big file |
+| **S8** | a folder pulled out of step by bare git is refused, not believed | ⛔ no trailer to check against, so it proceeds |
 | **S9** | two saves cannot corrupt each other | ⛔ mostly dissolved by content addressing; what is left is A1's build-then-publish |
 | **L8** | a saved attempt never differs afterwards | needs the layout |
 
