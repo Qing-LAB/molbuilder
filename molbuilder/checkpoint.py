@@ -563,17 +563,30 @@ def _atomic_write_bytes(target: Path, data: bytes) -> None:
 # --------------------------------------------------------------------- #
 
 
-def _existing_by_sha(root: Path) -> Dict[str, Path]:
-    """Every already-archived file, indexed by content.
+def _existing_by_sha(root: Path, wanted: Sequence[str]) -> Dict[str, Path]:
+    """Where each of *wanted* already sits in the archive, if it does.
 
-    Serves the *Disk cost* property (§ 12): identical content is stored once,
-    so a second save of an unchanged 2 GB binary costs a directory entry.
+    Serves the *Disk cost* property (§ 12): identical content is stored once, so
+    a second save of an unchanged 2 GB binary costs a directory entry.
+
+    **Bounded, not exhaustive.**  It takes the hashes it is looking for and
+    stops as soon as it has them all, because the alternative is parsing every
+    MANIFEST of every archive on every save -- work that grows with the length
+    of the history rather than with what is being saved, and that is paid even
+    when the answer was found in the first directory.
     """
     index: Dict[str, Path] = {}
+    outstanding = set(wanted)
+    if not outstanding:
+        return index
     base = root / ARCHIVE_DIR
     if not base.is_dir():
         return index
-    for adir in sorted(base.iterdir()):
+    # Newest first: a file being saved again is likeliest to sit in a recent
+    # archive, so the common case reads one MANIFEST rather than all of them.
+    for adir in sorted(base.iterdir(), reverse=True):
+        if not outstanding:
+            break
         man = adir / MANIFEST_NAME
         # A staging directory is not an archive until it is renamed into place;
         # indexing one would offer a half-written file for reuse.
@@ -584,7 +597,9 @@ def _existing_by_sha(root: Path) -> Dict[str, Path]:
         except CheckpointError:
             continue                     # a damaged archive indexes nothing
         for key, (sha256, _size) in entries.items():
-            index.setdefault(sha256, adir / key)
+            if sha256 in outstanding:
+                index[sha256] = adir / key
+                outstanding.discard(sha256)
     return index
 
 
@@ -600,6 +615,14 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
     Re-hashing the copy is not belt-and-braces: if the MANIFEST's checksum came
     from the copy alone, a copy corrupted on the way to disk would be
     *self-consistent* and would verify against its own bad checksum forever.
+
+    **New content is therefore read twice and written once, and that is the
+    floor.** The source is hashed (its digest names the archive), copied, and
+    the copy read back *from disk* -- reading back is the whole point, so
+    hashing the buffer on the way past would prove nothing. Content already in
+    the archive is hard-linked instead: one read to identify it, no copy, and no
+    re-check, because a hard link is the same inode that was verified when it
+    was first written.
     """
     entries: List[Tuple[str, int, str]] = []
     for src in big:
@@ -624,7 +647,7 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
     # atomic and already handles "somebody else got there first".
     final.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(dir=str(final.parent), prefix=digest + "."))
-    index = _existing_by_sha(root)
+    index = _existing_by_sha(root, [sha for sha, _size, _key in entries])
     try:
         for sha256, _size, key in entries:
             src = root / key
@@ -892,21 +915,51 @@ class Repo:
 
     # -- states ---------------------------------------------------- #
 
-    def _state_from(self, sha: str) -> "State":
-        out = _run_git(["show", "-s", "--format=%H%x00%P%x00%aI%x00%B", sha],
-                       cwd=self.path).stdout
-        sha_full, parents, at, message = out.split("\x00", 3)
-        parent = parents.split()[0] if parents.strip() else None
-        return State(id=sha_full.strip(), note=note_of(message),
-                     parent=parent, at=at.strip(),
-                     archive=trailer_of(message),
-                     calculation=calculation_of(message),
-                     tags=tuple(self._tag_names_at(sha_full.strip())))
+    #: One record per state, one call for any number of them.  ``%D`` carries
+    #: the tags pointing at each commit, which is why nothing has to ask git a
+    #: second time per state -- listing fifty states used to cost a hundred and
+    #: one subprocesses.
+    _FORMAT = "%H%x1f%P%x1f%aI%x1f%D%x1f%B%x1e"
 
-    def _tag_names_at(self, sha: str) -> List[str]:
-        out = _run_git(["tag", "--points-at", sha], cwd=self.path,
-                       check=False).stdout
-        return sorted(n for n in out.split() if n)
+    @staticmethod
+    def _tags_from_decoration(decoration: str) -> Tuple[str, ...]:
+        """The tag names in a ``%D`` decoration.
+
+        ``%D`` also lists HEAD and the per-state ref; neither is a tag, and only
+        tags are a user's names for a state (L4).
+        """
+        names = []
+        for part in decoration.split(","):
+            part = part.strip()
+            if part.startswith("tag:"):
+                names.append(part[4:].strip())
+        return tuple(sorted(names))
+
+    @classmethod
+    def _parse_states(cls, out: str) -> List["State"]:
+        states = []
+        for record in out.split("\x1e"):
+            if not record.strip():
+                continue
+            sha, parents, at, decoration, message = (
+                record.split("\x1f", 4) + [""] * 5)[:5]
+            states.append(State(
+                id=sha.strip(),
+                note=note_of(message),
+                parent=parents.split()[0] if parents.strip() else None,
+                at=at.strip(),
+                archive=trailer_of(message),
+                calculation=calculation_of(message),
+                tags=cls._tags_from_decoration(decoration)))
+        return states
+
+    def _state_from(self, sha: str) -> "State":
+        out = _run_git(["show", "-s", "--format=" + self._FORMAT, sha],
+                       cwd=self.path).stdout
+        found = self._parse_states(out)
+        if not found:
+            raise NoSuchRefError(f"{sha!r} does not name a state in {self.path}.")
+        return found[0]
 
     def standing_at(self) -> Optional["State"]:
         """The one state the folder is currently at (§ 5).
@@ -921,19 +974,20 @@ class Repo:
         return self._state_from(sha) if r.returncode == 0 and sha else None
 
     def states(self, limit: Optional[int] = None) -> List["State"]:
-        """Every state, newest first.  Nothing is ever removed (A6)."""
+        """Every state, newest first.  Nothing is ever removed (A6).
+
+        Topological order, not date order.  Several states can share a second --
+        a scripted sweep saves faster than the clock ticks -- and a tie there
+        would print a child above its own parent.  Topology cannot tie: a state
+        always follows the state it came from.
+        """
         self._require_init()
-        # Topological order, not date order.  Several states can share a
-        # second -- a scripted sweep saves faster than the clock ticks -- and a
-        # tie there would print a child above its own parent.  Topology cannot
-        # tie: a state always follows the state it came from.
-        out = _run_git(["rev-list", "--topo-order",
-                        "--glob=" + _STATE_REF + "*"],
-                       cwd=self.path, check=False).stdout
-        shas = [s for s in out.split() if s]
+        argv = ["log", "--topo-order", "--format=" + self._FORMAT,
+                "--glob=" + _STATE_REF + "*"]
         if limit is not None:
-            shas = shas[:int(limit)]
-        return [self._state_from(s) for s in shas]
+            argv.insert(1, f"-n{int(limit)}")
+        out = _run_git(argv, cwd=self.path, check=False).stdout
+        return self._parse_states(out)
 
     def resolve(self, name: str) -> str:
         """A state id or a tag -> the state's id.  One kind of argument (§ 5)."""
