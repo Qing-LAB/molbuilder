@@ -120,6 +120,9 @@ def test_a_new_engine_can_be_added_without_touching_code(tmp_path):
     ({"engines": {"siesta": "*.DM"}},    "a bare string is not a list of globs"),
     ({"engines": {"siesta": [""]}},      "an empty glob matches nothing and hides intent"),
     ({"engines": {"siesta": [7]}},       "a glob is a string"),
+    ({"engines": {"siesta": ["runs/*.bin"]}},
+     "a slash makes git and the size check disagree, and the file lands nowhere"),
+    ({"engines": {"siesta": ["/abs/*.bin"]}}, "same, from the other end"),
 ])
 def test_a_malformed_section_is_refused_and_says_why(tmp_path, section, why):
     """Refused, not repaired.

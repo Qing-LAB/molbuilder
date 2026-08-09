@@ -555,7 +555,7 @@ _HOST = Recipe(
         # advisor's reading matches what the GPU env's wrapper will
         # actually do at runtime.
         "numactl",
-        # Git is required by the run-checkpoints subsystem
+        # Git is required by the checkpoint subsystem
         # (docs/execution/running-a-job.md § 6).
         #
         # DECLARED IN EVERY ENV, deliberately and uniformly, so there is
@@ -571,7 +571,7 @@ _HOST = Recipe(
         # git as a command word (checkpointing.md I4), not by leaving the
         # package out of a list -- absence enforces nothing anyway, since
         # a system git on PATH would satisfy a wrapper regardless.
-        # See checkpointing.md § 4.1 for who takes a checkpoint and when.
+        # See checkpointing.md § 9 for who decides to save, and when.
         #
         # HPC sites have inconsistent system git versions; the conda
         # env's git takes precedence via PATH ordering and is the only

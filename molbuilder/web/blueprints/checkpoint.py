@@ -8,13 +8,13 @@ Panel:    docs/web/projects.md.
 Envelope per web-api.md § 1 (four-bucket rule):
   * success                            -> HTTP 2xx + ok:true + data
   * scientific advisory -- state-shaped
-    refusal (dirty tree, nested-repo
-    refusal, legacy MANIFEST refusal)  -> HTTP 200 + ok:false +
+    refusal (unsaved work, several
+    calculations in one folder)        -> HTTP 200 + ok:false +
                                           error + issues[] +
                                           errors_only[]
                                           (web-api.md § 1 canonical shape)
   * protocol error (bad path, missing
-    param, unknown ref)                -> HTTP 4xx + ok:false +
+    param, unknown state)              -> HTTP 4xx + ok:false +
                                           error: "..."
   * server fault (crash, IO error,
     archive integrity failure)         -> HTTP 5xx + ok:false +
@@ -355,7 +355,10 @@ def api_checkpoint_restore():
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
-    state = (body.get("state") or body.get("ref") or "").strip()
+    # `state`, and only `state`.  Accepting the old `ref` key as well would be
+    # a compatibility shim for a vocabulary this contract removed, and there is
+    # no deployed caller to be compatible with.
+    state = (body.get("state") or "").strip()
     if not state:
         return _protocol_error("missing required parameter: state")
     if "include_binaries" in body:

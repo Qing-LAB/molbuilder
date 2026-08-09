@@ -17,19 +17,21 @@ Single user, one repository per calculation, no auto-commit.  **No git ever
 runs on a compute node** — a generated wrapper contains none, and initialising
 is a CLI/UI act (I4; the "wrapper bootstraps git" path was dropped).
 
-Three primitives:
-  * Phase 1 init         -- ``Repo.init()``
-  * Phase 2 checkpoint   -- ``Repo.checkpoint(message)``
-  * Phase 5 restore      -- ``Repo.restore(ref)``
+The whole surface is ``Repo``: ``init``, ``save``, ``restore``, ``status``,
+``states``, ``tag``.  A **state** is a saved snapshot of the folder, a **tag**
+is a name you gave one, and the folder always **stands at** exactly one state.
+There is no branch verb -- going back to a state and saving from it is how you
+fork (§ 7.1).
 
-Plus listing + tagging.  Big binaries (``.DM``, ``.HSX``, ``.TSHS``,
-``.TBT.AVTRANS_*``) are archived by SHA in ``.binsnapshots/<sha>/``
-keyed to their corresponding commit, NOT committed to the git
-object database.  Restore copies them back from the archive.
+Large files do not go into git.  Which files those are is decided by
+**measuring** them against a limit in molbuilder's own config (§ 4, S1b), and
+they are copied whole into ``.binsnapshots/<digest>/``, where the directory's
+name is the sha256 of its own MANIFEST -- so an archive is named by what it
+holds rather than by the state that refers to it (§ 3).
 
-Every git invocation goes through :func:`_run_git` -- argv list,
-``cwd`` pinned to the working dir, no shell strings.  Errors raise
-:class:`CheckpointError` subclasses with the git stderr verbatim.
+Every git invocation goes through :func:`_run_git` -- argv list, ``cwd`` pinned
+to the working dir, no shell strings.  Errors raise :class:`CheckpointError`
+subclasses with the git stderr verbatim.
 """
 from __future__ import annotations
 
@@ -46,8 +48,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 
-# Big binary patterns (gitignored, archived by SHA on each checkpoint).
-# Mirrors the .gitignore policy in docs/execution/running-a-job.md § 6
 # --------------------------------------------------------------------- #
 #  Classification -- which store a file goes to                         #
 #  Contract: checkpointing.md § 3, S1, S1a, S1b, S1c                    #
@@ -162,8 +162,9 @@ def gitignore_is_current(root: Path, always_large=()) -> bool:
         always_large).rstrip("\n")
 
 
-# File markers indicating a directory is itself a working dir (must not
-# be subsumed by a parent's checkpoint repo per P5 lowest-directory rule).
+#: A subdirectory holding one of these is somebody's working directory.  One
+#: repository covers one calculation (L1), so a folder full of these is only
+#: acceptable when the folder itself says they are one calculation's parts.
 _NESTED_WORKING_DIR_MARKERS = (".fdf", ".py", ".run.sh")
 
 
@@ -173,7 +174,7 @@ _NESTED_WORKING_DIR_MARKERS = (".fdf", ".py", ".run.sh")
 
 
 class CheckpointError(Exception):
-    """Base class for run-checkpoints errors."""
+    """Base class for every refusal this module raises."""
 
 
 class GitNotInstalledError(CheckpointError):
@@ -185,12 +186,12 @@ class DirtyWorkingTreeError(CheckpointError):
 
 
 class NoSuchRefError(CheckpointError):
-    """The named ref / tag / branch / SHA does not resolve."""
+    """The given name is neither a state id nor a tag (§ 5)."""
 
 
 class NestedRepoRefusedError(CheckpointError):
-    """Init refused because the directory contains nested working dirs
-    (per P5 lowest-directory rule)."""
+    """Init refused: this folder holds several independent calculations, and
+    one history over them would rewind all of them together (L1)."""
 
 
 # --------------------------------------------------------------------- #
@@ -350,16 +351,18 @@ def _scan_subtree(path: Path) -> Tuple[List[str], List[str]]:
             if (entry / ".git").is_dir():
                 repos.append(rel)
                 continue                      # never descend into another repo
-            if any(f.is_file() and f.name.endswith(_NESTED_WORKING_DIR_MARKERS)
-                   for f in entry.iterdir()):
+            try:
+                marked = any(
+                    f.is_file() and f.name.endswith(_NESTED_WORKING_DIR_MARKERS)
+                    for f in entry.iterdir())
+            except OSError:
+                marked = False            # unreadable: not our problem, as above
+            if marked:
                 working.append(rel)
             stack.append(entry)
     return sorted(working), sorted(repos)
 
 
-#: Directories the archive walk never descends into.  ``.binsnapshots`` would
-#: make the archive archive itself; ``.git`` holds packfiles that are git's own
-#: business.  Any other dot-directory is tooling scratch, not run state.
 def archive_key(root: Path, path: Path) -> str:
     """A file's key inside an archive: its path relative to the folder root.
 
@@ -588,10 +591,11 @@ def _existing_by_sha(root: Path) -> Dict[str, Path]:
 def publish_archive(root: Path, big: Sequence[Path]) -> str:
     """Write the archive for *big* and return its digest (§ 6).
 
-    Build in a ``.tmp``, hash the source, copy, **re-hash the copy** and
-    compare, write the MANIFEST, then publish at the digest — *create if
-    absent, never overwrite* (A1).  An archive at a given name always holds the
-    same content, so there is nothing to replace and nothing to move aside.
+    Hash the source, copy into a private staging directory, **re-hash the
+    copy** and compare, write the MANIFEST, then rename into place at the
+    digest — *create if absent, never overwrite* (A1).  An archive at a given
+    name always holds the same content, so there is nothing to replace and
+    nothing to move aside.
 
     Re-hashing the copy is not belt-and-braces: if the MANIFEST's checksum came
     from the copy alone, a copy corrupted on the way to disk would be
@@ -729,8 +733,30 @@ def message_with_trailers(note: str, digest: str, calculation: str) -> str:
             f"{TRAILER}: {digest}\n")
 
 
+def _trailer_block(message: str) -> Tuple[List[str], List[str]]:
+    """Split a message into ``(note_lines, trailer_lines)``.
+
+    Trailers are the **last** block of ``Key: value`` lines, which is git's own
+    convention and not a preference.  Scanning the whole message instead lets a
+    note that happens to begin *"Calculation: rerun with a tighter mesh"* be
+    eaten as a trailer -- vanishing from the note AND becoming the calculation's
+    name.  A note is free text a person wrote; only the tail is ours.
+    """
+    lines = message.splitlines()
+    end = len(lines)
+    while end and not lines[end - 1].strip():
+        end -= 1                                  # ignore trailing blank lines
+    start = end
+    while start and any(lines[start - 1].startswith(k + ":") for k in _TRAILERS):
+        start -= 1
+    if start == end:
+        return lines, []
+    return lines[:start], lines[start:end]
+
+
 def _trailer_value(message: str, key: str) -> Optional[str]:
-    for line in message.splitlines():
+    _note, trailers = _trailer_block(message)
+    for line in trailers:
         if line.startswith(key + ":"):
             return line.split(":", 1)[1].strip() or None
     return None
@@ -754,9 +780,8 @@ def calculation_of(message: str) -> Optional[str]:
 
 def note_of(message: str) -> str:
     """The note, without the trailers -- what a person reads in a list."""
-    return "\n".join(
-        ln for ln in message.splitlines()
-        if not any(ln.startswith(k + ":") for k in _TRAILERS)).strip()
+    note_lines, _trailers = _trailer_block(message)
+    return "\n".join(note_lines).strip()
 
 
 # --------------------------------------------------------------------- #
@@ -764,8 +789,9 @@ def note_of(message: str) -> str:
 # --------------------------------------------------------------------- #
 
 #: One ref per state, so **every state stays reachable forever** whatever else
-#: is restored afterwards (A6).  Nothing depends on where HEAD points, which is
-#: what lets a restore move the folder without any state becoming unreferenced.
+#: is restored afterwards (A6).  HEAD still says where the folder *stands*, but
+#: reachability no longer rides on it -- which is what lets a restore move the
+#: folder without leaving the state it moved away from unreferenced.
 _STATE_REF = "refs/molbuilder/state/"
 
 
@@ -797,7 +823,7 @@ class Repo:
 
     def init(self, engine: Optional[str] = None,
              note: str = "set up",
-             calculation: Optional[str] = None) -> "State":
+             calculation: Optional[str] = None) -> Optional["State"]:
         """Make this folder a checkpoint folder and save its first state.
 
         One repository per calculation (L1).  A folder whose subdirectories are
@@ -806,6 +832,9 @@ class Repo:
         independent calculations would share a history and rewind together.
         """
         if self.initialized:
+            # Idempotent, and honestly typed: a folder somebody ran `git init`
+            # in by hand is "initialised" with no state to stand at, so this is
+            # Optional rather than a State that might not be there.
             return self.standing_at()
         working, inner = _scan_subtree(self.root)
         if inner:
@@ -906,15 +935,15 @@ class Repo:
             shas = shas[:int(limit)]
         return [self._state_from(s) for s in shas]
 
-    def resolve(self, ref: str) -> str:
-        """A state id or a tag -> the state's id.  One kind of argument."""
+    def resolve(self, name: str) -> str:
+        """A state id or a tag -> the state's id.  One kind of argument (§ 5)."""
         self._require_init()
-        r = _run_git(["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+        r = _run_git(["rev-parse", "--verify", "--quiet", f"{name}^{{commit}}"],
                      cwd=self.path, check=False)
         sha = r.stdout.strip()
         if r.returncode != 0 or not sha:
             raise NoSuchRefError(
-                f"{ref!r} does not name a state or a tag in {self.path}.")
+                f"{name!r} does not name a state or a tag in {self.path}.")
         return sha
 
     # -- what is unsaved ------------------------------------------- #
@@ -944,11 +973,10 @@ class Repo:
         if not self.initialized:
             return FolderStatus(path=self.path, initialized=False)
         here = self.standing_at()
-        edited = not gitignore_is_current(
-            self.root, self._classification()["always_large"])
+        cls = self._classification()          # read once; it hits the filesystem
+        edited = not gitignore_is_current(self.root, cls["always_large"])
         changed, added, deleted = set(), set(), set()
 
-        cls = self._classification()
         big, _small = split_by_store(self.root, int(cls["size_limit_bytes"]),
                                      cls["always_large"])
         on_disk = {archive_key(self.root, p): p for p in big}
@@ -1096,8 +1124,10 @@ class Repo:
 
     # -- restore ---------------------------------------------------- #
 
-    def restore(self, ref: str, force: bool = False) -> "State":
-        """Make the folder equal *ref* exactly (A5), or refuse (A2, A4).
+    def restore(self, state: str, force: bool = False) -> "State":
+        """Make the folder equal *state* exactly (A5), or refuse (A2, A4).
+
+        ``state`` is a state id or a tag -- the one kind of argument there is.
 
         Order is the rule.  The two refusals come first because they are about
         the **target** -- an unknown state or an archive that does not verify
@@ -1111,7 +1141,7 @@ class Repo:
         a folder no save ever held.
         """
         self._require_init()
-        sha = self.resolve(ref)                       # refusal 1: unknown
+        sha = self.resolve(state)                     # refusal 1: unknown
         target = self._state_from(sha)
         if not target.archive:
             raise CheckpointError(
@@ -1124,12 +1154,12 @@ class Repo:
         # the question "what will be lost" is answered by content and not by a
         # timestamp -- the cheap read exists for drawing a badge, not for
         # deciding what to destroy.
-        status = self.status(deep=True)               # the question, last
-        if not status.clean and not force:
+        here = self.status(deep=True)                 # the question, last
+        if not here.clean and not force:
             raise DirtyWorkingTreeError(
                 "this folder has work that is not saved, and restoring will "
                 "lose it:\n"
-                + _describe(status)
+                + _describe(here)
                 + "\n\nSave it first with `molbuilder snapshot save -m \"…\"`, "
                   "or pass --force to accept the loss.")
 

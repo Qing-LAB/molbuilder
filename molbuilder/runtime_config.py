@@ -672,7 +672,27 @@ def _validate_checkpoint(raw: Mapping[str, Any]) -> Dict[str, Any]:
                     f"{CONFIG_FILENAME}: 'checkpoint.engines.{name}' must be a "
                     f"list of non-empty glob strings; got {pats!r}."
                 )
-            out["engines"][str(name)] = [x.strip() for x in pats]
+            cleaned = [x.strip() for x in pats]
+            for pat in cleaned:
+                # A FAMILY, matched on the file's name -- never a path.
+                #
+                # The same string is written verbatim into .gitignore and
+                # matched against basenames by the classifier, and a slash makes
+                # those two disagree: git honours `runs/*.bin` as a path, the
+                # classifier never matches it, and the file ends up gitignored
+                # AND unarchived -- in no store at all, which is S1's
+                # data-losing branch reached through a config typo.
+                if "/" in pat:
+                    raise RuntimeConfigError(
+                        f"{CONFIG_FILENAME}: "
+                        f"'checkpoint.engines.{name}' entry {pat!r} contains "
+                        f"'/'.  These name FAMILIES of files (`*.DM`), not "
+                        f"paths: git would read the slash as a path while the "
+                        f"size check reads only the file's name, and a file "
+                        f"they disagree about is stored nowhere "
+                        f"(checkpointing.md S1, S1a)."
+                    )
+            out["engines"][str(name)] = cleaned
     return out
 
 
