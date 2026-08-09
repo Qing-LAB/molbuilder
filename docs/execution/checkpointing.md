@@ -9,7 +9,7 @@ guide: what to type and what the buttons do, which this document never repeats;
 two moments a save is offered;
 [`project-layout.md`](?doc=execution/project-layout.md) § 6 — where the history
 sits in the project tree; [`run-identity.md`](?doc=execution/run-identity.md) —
-the id every commit and tag carries.
+the id every state and tag carries.
 
 A calculation lives in a folder: inputs, a relaxed geometry, a density matrix,
 logs. Checkpointing takes a **snapshot of that whole folder** when you say so, and
@@ -88,7 +88,7 @@ Two things make this a fair deal rather than a trap:
   verification the next time molbuilder is asked to do anything with it. It
   refuses and says the archive does not match, rather than proceeding.
 
-To read one old file, `git show <ref>:<path>` is safe — it prints and touches
+To read one old file, `git show <state>:<path>` is safe — it prints and touches
 nothing.
 
 ### 2.1 What it decides, and what it does not
@@ -119,30 +119,30 @@ flowchart LR
     F["<b>a file in the folder</b>"] --> Q{"bigger than<br/>the size limit?"}
     Q -->|"no"| G[("<b>git</b><br/>.git/<br/>diffable, cheap")]
     Q -->|"yes"| A[("<b>the archive</b><br/>.binsnapshots/&lt;digest&gt;/<br/>whole copies + a checksum list")]
-    G -.->|"the commit carries the digest,<br/>which is both the name and the proof"| A
+    G -.->|"the state carries the digest,<br/>which is both the name and the proof"| A
 ```
 
-**The archive is named by what it contains, not by the commit it belongs to.**
+**The archive is named by what it contains, not by the state it belongs to.**
 Its directory is the sha256 of its own MANIFEST. That one value does three jobs
 at once: it *locates* the archive, it *proves* the archive (I2b), and it makes an
 archive impossible to modify without becoming a different archive (I1).
 
 Three things follow, and each removes a problem rather than adding a mechanism:
 
-- **The archive can be published before the commit**, because it no longer needs
-  a commit's name. There is no window where a commit exists with nothing beside
-  it (§ 6).
-- **Two saves with the same big files share one archive.** Not a copy avoided —
-  the *same directory*, referred to by both commits.
+- **The archive can be written before the state is recorded**, because it no
+  longer needs the state's name. There is no moment where a state exists with
+  nothing beside it (§ 6).
+- **Two states with the same big files share one archive.** Not a copy avoided —
+  the *same directory*, referred to by both.
 - **A save that is interrupted and re-run writes the identical path with the
   identical bytes**, so a repeat is harmless by construction rather than by
   locking (S9).
 
 > ⚠ **This is an archive-format change**, and the rule for those is already
 > written into I2b's note: the reader accepts both forms, or every archive
-> written before it stops opening. A directory named for a 40-character commit
-> sha is a pre-digest archive and is read as one. Breaking them would violate
-> § 1 for folders that did nothing wrong.
+> written before it stops opening. An archive named for a state rather than for
+> its own content predates this and is read as such. Breaking those would
+> violate § 1 for folders that did nothing wrong.
 
 **Which store, by measuring — not by file type.** A file over the limit goes to
 the archive; everything else to git. Extensions are not consulted, because a name
@@ -209,10 +209,10 @@ it can tell.
 
 | Piece | What it is | Who writes it |
 |---|---|---|
-| **git** | the history of everything small | `checkpoint` |
-| **the archive** — `.binsnapshots/<digest>/` | whole copies of everything large, named by content | `checkpoint` |
-| **MANIFEST** | what is in one archive, with a sha256 each | `checkpoint` |
-| **`.gitignore`** | what git skips — *generated*, so it matches the archive exactly | `checkpoint` only |
+| **git** | the history of everything small | `snapshot save` |
+| **the archive** — `.binsnapshots/<digest>/` | whole copies of everything large, named by content | `snapshot save` |
+| **MANIFEST** | what is in one archive, with a sha256 each | `snapshot save` |
+| **`.gitignore`** | what git skips — *generated*, so it matches the archive exactly | `snapshot save` only |
 | **the config** | the size limit and the per-engine hints | you, in molbuilder's config |
 | **`molbuilder snapshot …`** | the verbs you type (§ 5) | — |
 | **`Repo`** (`molbuilder/checkpoint.py`) | the class every surface goes through | — |
@@ -323,29 +323,22 @@ anything, git already answers that: `git show <state>:<path>`.
 
 ```mermaid
 flowchart TB
-    S["checkpoint"] --> R{"is .gitignore<br/>what it should be?"}
+    S["snapshot save"] --> R{"is .gitignore<br/>what it should be?"}
     R -->|"edited by hand"| STOP1["refuse or repair<br/>— an edited ignore list<br/>silently drops files"]
     R -->|"yes"| M["measure every file"]
     M --> B["big ones → build the archive<br/>in a .tmp"]
     B --> V["hash the source, copy,<br/><b>re-hash the copy</b>, compare"]
     V -->|"differ"| STOP2["fail — a corrupt copy must<br/>never become self-consistent"]
     V -->|"match"| W["write MANIFEST"]
-    W --> D["the MANIFEST's sha256<br/>is the archive's name"]
-    D --> SW["publish it at that name<br/>— already there and identical?<br/>then there is nothing to do"]
-    SW --> C["commit the small files,<br/>carrying the same digest"]
+    W --> D["its sha256 is the<br/>archive's name (§ 3)"]
+    D --> SW["publish it there<br/>— already present and identical?<br/>then there is nothing to do"]
+    SW --> C["record the state,<br/>carrying the same digest"]
 ```
 
-**The archive is published before the commit, and that is the point of naming it
-by content.** It does not need the commit's name, so it does not need to wait for
-one. The only thing an interruption can leave behind is an archive nobody points
-at yet — no lost data, and the next save writes the identical bytes to the
-identical path.
-
-**Publishing is idempotent, which is what removes the need for a lock.** Same
-content, same digest, same directory: two saves racing to publish the same
-archive are writing the same thing. This is the standard property of a
-content-addressed store, and it is why git, Nix and container layers all work
-this way (S9).
+**The archive is written before the state is recorded.** It is named by its own
+content (§ 3), so it does not need the state's name and does not wait for it. The
+worst an interruption leaves behind is an archive nothing points at yet — no lost
+data, and the next save writes the identical bytes to the identical path.
 
 **Why the copy is re-hashed rather than trusted.** If the MANIFEST's checksum came
 from the copy alone, a copy corrupted on the way to disk would be
@@ -353,16 +346,11 @@ from the copy alone, a copy corrupted on the way to disk would be
 restored as truth. Hashing the source and re-hashing the copy makes that
 impossible.
 
-**No archive is ever replaced, so nothing has to be moved aside.** An archive at
-a given name always holds the same content — that is what naming it by that
-content means — so publishing is *create if absent*, never *overwrite*. The old
-scheme needed a careful delete-and-rename dance because a commit's archive could
-be rebuilt with different bytes; that whole class of problem is gone rather than
-handled.
-
-Build in a `.tmp` and rename it into place all the same: the rename is what makes
-a directory appear complete or not at all, so a reader never meets a half-written
-archive (A1).
+**Publishing is *create if absent*, never *overwrite*.** An archive at a given
+name always holds the same content, so there is nothing to replace and nothing to
+move aside. Build in a `.tmp` and rename it into place all the same: the rename
+is what makes a directory appear complete or not at all, so a reader never meets
+a half-written archive (A1).
 
 ---
 
@@ -475,14 +463,12 @@ Two consequences worth saying out loud:
 - **Saving before each stage is not housekeeping in a flat folder — it is the
   save point.** Miss one and that state is gone, because nothing else on disk
   holds it.
-- **A restore is a rewind, not a fetch.** It returns the *whole* folder to a past
-  state (S6). So going back means **save what you have, then restore the earlier
-  one** — skip the first step and you lose the present. The nested shape never
-  poses the question, because it never had to overwrite anything.
+- **Going back costs the present unless you save it first** (§ 7.1). The nested
+  shape never poses that question, because it never had to overwrite anything.
 
 ---
 
-## 9. Who takes a checkpoint, and when you are asked
+## 9. Who decides to save, and when you are asked
 
 > **A checkpoint is always an explicit act. Checkpointing never initiates one.**
 > It takes a snapshot when told to, and that is the whole of its part.
@@ -1267,10 +1253,11 @@ on is what stops them being forgotten on the day it lands.
 | **3** | the two stores, and why the choice between them is a measurement |
 | **4** | the parts, and which of them you ever touch |
 | **5** | the commands |
-| **6–7** | what actually happens on a save and on a restore, in order |
+| **6** | what happens on a save, in order |
+| **7** | what happens on a restore — and § 7.1, going back and trying something else with the original intact |
 | **8** | why a flat folder depends on this and a nested one merely benefits |
 | **9** | who decides to save, and when you are asked |
-| **10** | worked examples — going back, forking, and the mistake that loses today's work |
+| **10** | worked examples — several attempts from one state, and calling it from Python |
 | **11** | the rules a change must not break |
 | **12** | which of them hold right now |
 | **13** | how to test them |
@@ -1286,7 +1273,7 @@ on is what stops them being forgotten on the day it lands.
 | `molbuilder/checkpoint.py` | all of it — `Repo` is the class every surface goes through |
 | `Repo.init` / `.save` / `.restore` | the three verbs everything else is built on |
 | `Repo.tag` / `.states` / `.diff` | naming and reading a history. **No `branch`** — a fork is what happens when you save from a restored state (§ 7.1), not a verb |
-| `Repo.archive_globs` / `.set_archive_globs` | the classification, moving to molbuilder's config |
+| the classification accessor | which files are always large — reads `molbuilder.json`, never a per-folder file (S1c) |
 | the note + calculation-name builder | the naming rules (L3) — written and read through one parser so the two cannot drift |
 | `CheckpointError` and its four subclasses | what a refusal raises |
 | `molbuilder/web/blueprints/checkpoint.py` | the HTTP routes the sidebar calls |
