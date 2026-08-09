@@ -13,7 +13,7 @@ the id every commit and tag carries.
 
 A calculation lives in a folder: inputs, a relaxed geometry, a density matrix,
 logs. Checkpointing takes a **snapshot of that whole folder** when you say so, and
-any snapshot you took is a point you can come back to — to rerun a stage, retune
+any state you saved is one you can come back to — to rerun a stage, retune
 and try again, or start over from it.
 
 It is git underneath, with one addition: files too large for git are copied into
@@ -31,8 +31,8 @@ not break, how to test them, and where the code is.
 
 > ### The promise
 >
-> **A save you confirmed is a point you can return to.** Come back to it, change
-> what you like, run again — and save that as a new point if it is worth keeping.
+> **A state you saved is one you can return to.** Come back to it, change what
+> you like, run again — and save that as a new state if it is worth keeping.
 >
 > Every rule in this document exists to keep that sentence true.
 
@@ -67,6 +67,29 @@ folder that is cheap to store and wrong is worth nothing.
 - **It does not deal in files.** A state is the whole directory. Pulling one
   file out of the past is a different request with a different tool — `git show
   <ref>:<path>`.
+
+### 2.0 One rule for you: use the verbs, not git
+
+**A calculation folder is managed through `molbuilder snapshot`. Running bare
+git commands in it is outside this contract.**
+
+It *is* a git repository — that is how the snapshots are made — so nothing stops
+you, and molbuilder does not try to. But git alone sees only half of it: the big
+files live in the archive, which git is told to ignore, so a `git checkout` of an
+older commit rewinds the text and leaves every large file exactly where it was.
+The folder is then in a state no save ever produced, and **that mess is yours**.
+
+Two things make this a fair deal rather than a trap:
+
+- **The verbs cover the work.** Saving, going back, comparing, naming a state —
+  § 5 is the whole list, and none of it needs git.
+- **You will not be quietly fooled.** Every commit carries the digest of the
+  archive that belongs with it (I2b), so a folder pulled out of step fails
+  verification the next time molbuilder is asked to do anything with it. It
+  refuses and says the archive does not match, rather than proceeding.
+
+To read one old file, `git show <ref>:<path>` is safe — it prints and touches
+nothing.
 
 ### 2.1 What it decides, and what it does not
 
@@ -194,11 +217,18 @@ it can tell.
 | **`molbuilder snapshot …`** | the verbs you type (§ 5) | — |
 | **`Repo`** (`molbuilder/checkpoint.py`) | the class every surface goes through | — |
 
-**The config is molbuilder-wide, not per folder.** Three entries: **`generic`** —
-save everything, choose the store by size — plus **`siesta`** and **`pyscf`**,
-which name the file families that are always large so those can skip the
-measuring. A caller may name its engine to get the matching entry; with no name
-`generic` is used, which is always correct and merely measures more.
+**The config is molbuilder-wide, not per folder.** It sits in `molbuilder.json`
+with every other setting, and it holds the size limit and three entries:
+**`generic`** — save everything, choose the store by size — plus **`siesta`** and
+**`pyscf`**, which name the file families that are always large so those can skip
+the measuring. A caller may name its engine to get the matching entry; with no
+name `generic` is used, which is always correct and merely measures more.
+
+**The size limit is 10 MB, and you can change it.** That is the whole of the
+decision § 3's diagram turns on, so it is written here as a number rather than
+left for whoever writes the code to invent. It is a *storage* threshold and
+nothing else — moving it changes where a file is kept, never whether it is kept
+(§ 2.1).
 
 > A per-folder config would let one folder behave differently from another for no
 > recorded reason. That is a trap, not a feature.
@@ -212,81 +242,76 @@ measuring. A caller may name its engine to get the matching entry; with no name
 
 ## 5. Using it
 
+There are two words in this system and nothing else to learn.
+
+| | |
+|---|---|
+| a **state** | a saved snapshot of the whole folder. It has an id, a note you wrote, and the state it came from |
+| a **tag** | a name you give a state so you can find it again |
+
 ```bash
 # once, in the calculation folder
 molbuilder snapshot init
 
-# save the current state -- the note is required, and § 5.1 says why
-molbuilder snapshot checkpoint -m "stage 1 converged, 41 steps -- before retightening"
+# save the folder as a state -- the note is required, and § 5.1 says why
+molbuilder snapshot save -m "stage 1 converged, 41 steps -- before retightening"
 
 # what have I got?
 molbuilder snapshot list
 
-# go back to a point.  The whole folder returns, and you land on a line
-# started from there, so what you do next is an experiment and not an edit
-# to the past.  Anything unsaved here is named first and you are asked.
-molbuilder snapshot restore 2 --as tighter-mesh
-molbuilder snapshot restore 2               # same, with the line named for you
-
-# back to where you were
-molbuilder snapshot restore main
-
-# fork from HERE, before trying something -- see below
-molbuilder snapshot branch what-if-tighter
-
-# mark a point you will want by name later
+# name one you know you will come back to
 molbuilder snapshot tag stage1-good -m "geometry I trust"
+
+# go back to a state -- by id or by tag.  The whole folder returns.
+# Anything unsaved here is named first, and you are asked.
+molbuilder snapshot restore 4f9ca71
+molbuilder snapshot restore stage1-good
 
 # which files count as "big" here
 molbuilder snapshot config
 ```
 
-**`branch` and `restore` fork in opposite directions, and you need both.**
-`restore <point>` goes *back* and starts a line there — you already have the
-result and want to try a different route from it. `branch` starts a line *where
-you are now*, before you try something. Without it the only way to experiment is
-to work on `main` and retreat if it fails, which leaves the experiment on the
-main line and the retreat on a side one — backwards from how anyone reads a
-history afterwards.
+**A state's id is permanent and never reused.** It is git's own commit hash, so
+`restore 4f9ca71` means the same thing next month as it does today. Nothing
+assigns it, nothing stores it, and nothing can renumber it — a second numbering
+scheme would be a second identity for one thing, and two identities for one thing
+eventually disagree.
 
-**A point's number is assigned when it is saved, and never reused.** It is
-per line and it does not shift when later points are added, so `restore 2` means
-the same thing next month as it does today. (The same rule as attempt numbers in
-[`project-layout.md`](?doc=execution/project-layout.md) § 4.3, for the same
-reason: an identifier you can type is worthless if it drifts.) `snapshot tag`
-gives a point a name as well, for the ones you know you will come back to.
+> **Two hashes, two jobs, and it is worth keeping them apart.** A **state's id**
+> is git's commit hash and is a *name*. The **archive's digest** is a sha256 we
+> compute and is a *proof* — what the archive must contain (I2b). Nothing in this
+> contract depends on which hash git uses for the first, so if git ever changes
+> its default, none of this cares.
 
-### 5.1 Two labels, both yours
+### 5.1 The note, and why it is required
 
-A history is only useful if you can pick from it a month later, so **everything
-you read when you come back is something you wrote**:
-
-| | |
-|---|---|
-| the **line** | which experiment this is — `main`, `tighter-mesh` |
-| the **note** | why you stopped at this point, and what you were about to do |
+A history is only useful if you can pick from it a month later, and everything
+you read when you come back is something you wrote:
 
 ```text
 molbuilder snapshot list
 
-  main
-    3  stage 2 converged, forces < 0.02 -- mesh looks too coarse   14:02
-    2  stage 1 converged, 41 steps -- before retightening          11:40
-    1  set up                                                      09:15
-
-  tighter-mesh   (from 2)
-    4  stage 2 at 300 Ry -- testing whether stage 3 gets cheaper    16:30
+  4f9ca71  set up                                          09:15
+  b2e033d  stage 1 converged, 41 steps -- before            11:40   from 4f9ca71
+           retightening                            [stage1-good]
+  7a1c0e4  stage 2 at 200 Ry -- forces worse than stage 1   14:02   from b2e033d
+  e30bb92  stage 2 at 300 Ry -- forces now below 0.02       16:30   from b2e033d
 ```
 
-**The note is required.** The question you bring to this list is never *where was
-I* — the position answers that — it is **why did I stop here, and what was I
-about to do?** A generated note (`checkpoint 2026-08-08T14:02:11Z`) answers
-neither, and the timestamp is already in the column beside it. Five of those in a
-row is a list you cannot choose from.
+**The question you bring to this list is never *where was I*** — the list answers
+that — it is **why did I stop here, and what was I about to do?** So a generated
+note (`checkpoint 2026-08-08T14:02:11Z`) is worse than none: it answers neither,
+it repeats the timestamp column, and five of them in a row is a list you cannot
+choose from. A caller offering a save may **draft** the note, since it knows what
+it is about to change; you confirm or edit it (§ 9).
+
+**The last two states are visibly alternatives** — both say `from b2e033d`. That
+is the whole mechanism for branching, and it is covered in § 7.1: nothing was
+declared, nothing was named, and both attempts are intact.
 
 **`restore` is a rewind, not a fetch.** It returns the *whole folder* to that
-point — it does not pull one file out. To read a single old file without moving
-anything, git already answers that: `git show <ref>:<path>`.
+state — it does not pull one file out. To read a single old file without moving
+anything, git already answers that: `git show <state>:<path>`.
 
 > ⚠ **`snapshot restore --no-binaries` exists today and should not** (A4). It
 > rewinds the text and leaves every big file untouched, which is the mixed state
@@ -355,7 +380,6 @@ flowchart TB
     Q -->|"yes, or --force"| G
     D1 -->|"no"| G["restore the text from git"]
     G --> B["copy the big files back"]
-    B --> L["land on a line started here"]
 ```
 
 **Two refusals, then one question, and the order is the rule.** The refusals
@@ -374,53 +398,62 @@ system spells out rather than second-guesses (A5).
 from another, a state no save ever held and nothing can diagnose afterwards.
 That is why the archive is verified *before* the text is touched.
 
-### 7.1 A restore lands you on a line
+### 7.1 Going back and trying something else, with the original intact
 
-**Going back to a point starts a line from that point.** You name it, or
-molbuilder names it and says which. That is the last step of every restore, and
-it is not a git detail — it is what makes *"go back to stage 1 and try a tighter
-mesh"* a thing the history can show you afterwards.
+This is the thing the whole design exists for, so it is worth walking slowly.
 
-**Why it is not enough to just put the files back.** Suppose a restore only
-rewound the files and left the history pointer at the newest entry. Two
-experiments from stage 1 would then read:
+You have run two stages. Stage 2 used a 200 Ry mesh and the forces came out
+worse than you wanted. You want to go back to the geometry stage 1 produced and
+try 300 Ry instead — **without losing the 200 Ry attempt**, because it may turn
+out to have been the better answer.
 
-```text
-4  stage 2, mesh 300 Ry
-3  stage 2, mesh 200 Ry
-2  stage 1 converged
-1  set up
+```bash
+# 1. Keep what you have.  It costs nothing and you cannot get it back later.
+molbuilder snapshot save -m "stage 2 at 200 Ry -- forces worse than stage 1"
+
+# 2. Go back to stage 1's state.  The whole folder returns to that moment.
+molbuilder snapshot restore b2e033d
+
+# 3. Retune, rerun, and keep the result.
+molbuilder snapshot save -m "stage 2 at 300 Ry -- forces now below 0.02"
 ```
 
-Nothing there says 3 and 4 are **alternatives from the same point** — they look
-like four steps in a row, and you would have to remember which is which or write
-it into every note by hand. The mechanism could return the files but could not
-represent the thing you were actually doing.
+```text
+molbuilder snapshot list
 
-**Why it must never leave you nowhere.** Plain git has a state where you are *at*
-an old point but on no line at all; work saved there belongs to nothing, and
-moving away later lets git delete it as unreachable. That is a saved checkpoint
-disappearing on its own, which § 1 forbids outright. **Molbuilder never puts you
-there.** Every restore ends on a named line, so nothing you save can be
-unreachable.
+  4f9ca71  set up                                          09:15
+  b2e033d  stage 1 converged, 41 steps                     11:40   from 4f9ca71
+  7a1c0e4  stage 2 at 200 Ry -- forces worse than stage 1  14:02   from b2e033d
+  e30bb92  stage 2 at 300 Ry -- forces now below 0.02      16:30   from b2e033d
+```
 
-Three consequences, all of them plain:
+**Both attempts are there, and the list says they are alternatives** — they share
+a parent. You declared nothing, named nothing, and ran no extra command.
 
-- **After a restore the folder is clean.** You are somewhere, not floating with a
-  pile of pretend changes — so the unsaved-work question in § 7 only ever fires
-  when something is genuinely at risk, instead of crying wolf after every restore.
-- **Going back to where you were is another restore** — `snapshot restore main`.
-  There is no separate concept to learn.
-- **Restoring *is* branching.** They were two verbs for one intention, and the
-  second one stops being a thing you must remember to run first.
+**Why the original is intact: nothing is ever rewritten.** A state, once saved,
+is never modified or removed. Restoring `b2e033d` changed the *folder*; it did
+not touch `7a1c0e4`, which still holds every byte of the 200 Ry attempt. Going
+back to it is one more restore.
 
-**A restore reads only what the save wrote down.** It consults no configuration —
-not the size limit, not the engine hints, not any file you can edit. So the config
-can be changed, moved or deleted and every archive already written stays
-restorable. That holds for what a restore *does*; ⚠ it does not yet hold for what
-a restore *warns about*, which is I2c.
+**Where the fork comes from: every state records the state it came from.** Step 3
+saved while the folder stood at `b2e033d`, so the new state's parent is
+`b2e033d`. That is the entire branching mechanism — no branch verb, nothing to
+name, nothing to clean up afterwards. The shape of the history is a consequence
+of what you did, not a thing you had to declare in advance.
 
----
+**Comparing them later** is `restore 7a1c0e4`, look, `restore e30bb92`, look.
+Neither is more "real" than the other, and neither can shadow the other. If one
+turns out to be the one you care about, **tag it** — that is what tags are for,
+and it is how you avoid hunting through notes a month from now.
+
+> **The one thing to get right is step 1.** Restoring is not destructive to the
+> *history*, but it does overwrite the *folder*. Anything you had not saved when
+> you typed step 2 is named to you, once, and then gone if you say yes (A5).
+> Saving first is the whole of the discipline.
+
+**And nothing you save can become unreachable** — not after any sequence of
+restores, not ever. Every state stays listed and restorable for as long as the
+folder exists (A6). That is what makes it safe to wander.
 
 ## 8. Why this matters far more in a flat folder
 
@@ -457,7 +490,7 @@ Two consequences worth saying out loud:
 **The decision belongs to whatever is about to change the folder.** A script
 setting up a run knows what it is about to overwrite, whether the run will start
 fresh or continue from what is already there, and therefore whether this moment
-is worth a point you could come back to. **Checkpointing knows none of that and
+is worth a state you could come back to. **Checkpointing knows none of that and
 should not** — to it a folder is files, and *cold* and *warm* are the run layer's
 words for how a deck is written, not properties of a snapshot.
 
@@ -470,8 +503,8 @@ is saved until you say so.
 rewrite a folder that already holds results, it says what will change and offers
 to save first. You answer.
 
-> **What the confirmation buys you** is the promise in § 1: this point is one you
-> can return to, retune, and run again from — and save *that* as a new point if
+> **What the confirmation buys you** is the promise in § 1: this state is one you
+> can return to, retune, and run again from — and save *that* as a new state if
 > it earns one.
 
 | | |
@@ -496,94 +529,64 @@ a decision, and decisions are yours.
 
 ## 10. Worked examples
 
-### 10.1 Going back a stage to try something else
+### 10.1 Several attempts from one state
 
-The mistake this avoids: restoring straight away and discarding today's work.
-Nothing stops you — you would be told exactly what goes, once, and then it is
-gone (A5).
+Going back once is § 7.1. Going back to the *same* state repeatedly is the
+ordinary way a parameter gets swept by hand, and it needs nothing extra:
 
 ```bash
-# Stage 2 made things worse.  Keep it anyway: it costs nothing, it may turn out
-# to be the better answer, and you cannot get it back afterwards.
-molbuilder snapshot checkpoint -m "stage 2 at 200 Ry -- forces worse than stage 1"
+molbuilder snapshot restore b2e033d
+# run at 300 Ry
+molbuilder snapshot save -m "stage 2 at 300 Ry -- forces below 0.02"
 
-molbuilder snapshot list
-#   main
-#     3  stage 2 at 200 Ry -- forces worse than stage 1     14:02
-#     2  stage 1 converged, 41 steps -- before retightening  11:40
-#     1  set up                                              09:15
-
-# Go back to point 2 and carry on from there as a separate experiment.
-molbuilder snapshot restore 2 --as tighter-mesh
-#   restored to point 2; you are on line 'tighter-mesh'
-
-# retune the mesh, rerun stage 2, then keep the result
-molbuilder snapshot checkpoint -m "stage 2 at 300 Ry -- forces now below 0.02"
+molbuilder snapshot restore b2e033d
+# run at 400 Ry
+molbuilder snapshot save -m "stage 2 at 400 Ry -- no better than 300, 3x slower"
 ```
-
-Both attempts now exist, and the list says which point each started from:
 
 ```text
-  main
-    3  stage 2 at 200 Ry -- forces worse than stage 1      14:02
-    2  stage 1 converged, 41 steps -- before retightening  11:40
-    1  set up                                              09:15
-
-  tighter-mesh   (from 2)
-    4  stage 2 at 300 Ry -- forces now below 0.02          16:30
+  b2e033d  stage 1 converged, 41 steps                     11:40   from 4f9ca71
+  7a1c0e4  stage 2 at 200 Ry -- forces worse than stage 1  14:02   from b2e033d
+  e30bb92  stage 2 at 300 Ry -- forces below 0.02          16:30   from b2e033d
+  1f8d5c0  stage 2 at 400 Ry -- no better, 3x slower       18:05   from b2e033d
 ```
 
-### 10.2 Going back to where you were
+Three attempts, one parent, none of them privileged and none of them lost.
+
+**This is where tags earn their place.** Four ids and four notes are readable
+today and a puzzle in a month. Tag the one you decided on:
 
 ```bash
-molbuilder snapshot restore main
+molbuilder snapshot tag chosen-mesh -m "300 Ry: the cheapest that met the force tolerance"
 ```
 
-That is the whole of it. The `tighter-mesh` line stays exactly where it is, and
-`snapshot restore tighter-mesh` returns to it whenever you want to compare.
+and `restore chosen-mesh` works forever, whatever else you try afterwards.
 
-### 10.3 Forking before you try something, rather than after
-
-10.1 goes back to a point you already have. This is the other direction: you are
-at the tip of the main line, about to try something you are not sure about, and
-you want the main line to stay clean whatever happens.
-
-```bash
-molbuilder snapshot checkpoint -m "stage 2 converged -- about to try a tighter mesh"
-molbuilder snapshot branch tighter-mesh
-# edit task.json, rerun, save.  main is untouched; `snapshot restore main`
-# returns to it, and both lines stay in the list side by side.
-```
-
-**The difference from 10.1 is which line the experiment ends up on.** Fork first
-and the experiment is on `tighter-mesh` where it belongs. Work on `main` and
-retreat afterwards, and the experiment is on `main` while the *retreat* becomes
-the side line — a history that reads backwards a month later.
-
-### 10.3 From Python
+### 10.4 From Python
 
 ```python
 from molbuilder.checkpoint import Repo
 
 repo = Repo("projects/BDT-Au/optimization/bdt-relax")
 if not repo.initialized:
-    repo.init(engine="siesta")          # engine picks the size-limit hints
+    repo.init(engine="siesta")          # engine picks the always-large hints
 
-cp = repo.checkpoint(message="stage 1 converged")
-print(cp.sha if cp else "nothing changed")
+state = repo.save(note="stage 1 converged, 41 steps -- before retightening")
+print(state.id if state else "nothing changed")
 
-for c in repo.list_checkpoints(limit=5):
-    print(c.sha[:7], c.message)
+for s in repo.states(limit=5):
+    print(s.id[:7], s.note, "from", s.parent[:7] if s.parent else "-")
 
-repo.restore("stage1-good")             # text + binaries, or it refuses
+repo.restore("stage1-good")             # a tag or a state id; text + binaries
 ```
 
-`checkpoint()` returns `None` when there was nothing to save. `restore()` raises
-rather than half-completing — see § 7.
+`save()` returns `None` when there was nothing to save, and **raises when no note
+is given** — the note is not defaulted (L3). `restore()` raises rather than
+half-completing (§ 7), and every state it returns stays listed afterwards (A6).
 
 ## 11. The rules
 
-Each one names what it prevents and how to test it. **Status is in § 8.**
+Each one names what it prevents and how to test it. **Status is in § 12.**
 
 ### Everything is saved
 
@@ -864,15 +867,19 @@ than a restore — it is a **different** one, and the tool for it is `git show
 - **Status today:** it refuses on both, there is no `--force`, and the refusal
   for binaries reads as an error about something the user broke.
 
-**A6 — a restore ends on a named line, so nothing you save can become
-unreachable.** Going back to a point and carrying on is the ordinary way to run
-an experiment (§ 7.1), and it must never leave you *at* a point but on no line at
-all — work saved there belongs to nothing, and moving away later lets git discard
-it as unreachable. A saved checkpoint disappearing on its own is § 1 failing
-outright.
+**A6 — every state you saved stays listed and restorable, forever.** Going back
+and carrying on is the ordinary way to run an experiment (§ 7.1), and no sequence
+of restores may make an earlier state unreachable. A saved state disappearing on
+its own is § 1 failing outright.
+
+*The hazard is real and it is git-shaped, which is why the rule is stated in
+states rather than in git.* Saving while the folder sits at an old state, with
+nothing referring to the result, leaves that save unreferenced — and unreferenced
+objects are eventually discarded. Whatever keeps them referred to is
+implementation; that they **stay** referred to is the rule.
 
 - **Fails as:** you restore, retune, save, then restore something else. The save
-  in between is gone, with no message at any point, and the folder looks healthy.
+  in between is gone, with no message at any stage, and the folder looks healthy.
 - **Test:** restore, save, restore elsewhere, then list — the intermediate save
   is still there and still reachable by name.
 
@@ -939,26 +946,36 @@ so a restore brings back the description *together with* the decks it produced.
   no change. One exclusion only: PROVENANCE stamps `generated-at`, so that key is
   ignored.
 
-**L3 — every save carries a note, and every commit and tag names its
-calculation.** Two parts, and both are required.
+**L3 — every state carries a note, and names its calculation.** Two parts, both
+required.
 
 *The calculation's name*, so a folder moved to a cluster or opened a year later
-still says which calculation its history belongs to. A finished stage is tagged
-`<id>/<stage>/<UTC>`. Nothing is normalised — a name needing repair is
-**refused**, because silently fixing an id would decouple the history's name from
-the folder's.
+still says which calculation its history belongs to. Nothing is normalised — a
+name needing repair is **refused**, because silently fixing an id would decouple
+the history's name from the folder's ([`run-identity.md`](?doc=execution/run-identity.md)).
 
 *The note, in your words* — **required, never generated** (§ 5.1). It is the only
 thing that answers the question you actually bring to a history: *why did I stop
-here, and what was I about to do?* A generated stand-in (`checkpoint
+here, and what was I about to do?* A generated stand-in (`snapshot
 2026-08-08T14:02:11Z`) answers neither, duplicates the timestamp column, and
-makes a list of five points impossible to choose from. A caller that offers a
+makes a list of five states impossible to choose from. A caller that offers a
 save may **draft** the note — it knows what it is about to change — but you
 confirm or edit it, and a save with no note is refused rather than filled in.
 
-**L4 — tags are stage completions only.** Pre-produce saves are commits, reachable
-through `snapshot list`. Tagging them too would bury the points you meant to
-reach among the ones you passed through. A hand-made tag is your own business.
+**L4 — a tag is yours; nothing tags a state on your behalf.** A tag is a name you
+give a state so you can find it again (§ 5), and that only works if the namespace
+is yours alone.
+
+*Stage completions used to be tagged automatically*, as `<id>/<stage>/<UTC>`.
+That is retired. Every state already carries a note saying what happened —
+*"stage 2 converged, forces below 0.02"* — written by whoever took the save, so
+the information was never missing; the automatic tags only filled the one place
+you were meant to be naming things yourself. A history where most tags are
+machine-made is one where your own tags are hard to see, which is the opposite of
+what a tag is for.
+
+- **Test:** run a full staged calculation and assert the tag list is empty until
+  somebody types `snapshot tag`.
 
 ### The folder is also a real git repository
 
@@ -983,21 +1000,28 @@ nobody deciding anything.
   reverse: a file that shrinks below the limit is tracked and dropped from the
   archive.
 
-**S8 — using git directly must not silently desynchronise the two stores.**
-`.binsnapshots/` is gitignored, so `git checkout <older-commit>` in a
-calculation folder rewinds the text and **leaves every big file exactly where it
-was**. The result is a folder no save ever produced: inputs from one point,
-density matrix from another.
+**S8 — a folder pulled out of step by bare git is refused, not believed.**
 
-Nothing reports it, and the person who did it has no reason to suspect: they used
-a command that works correctly everywhere else.
+Using git directly in a calculation folder is outside the contract (§ 2.0), so
+molbuilder does not defend against it and does not repair it — **that mess is the
+user's, and so is owning it.** What it must never do is *proceed* over one.
+
+`.binsnapshots/` is gitignored, so `git checkout <older-commit>` rewinds the text
+and leaves every big file where it was: inputs from one state, files from
+another, a folder no save ever produced.
+
+**The protection is I2b's digest and nothing else is needed.** Every commit
+carries the digest of the archive that belongs with it, so the mismatch is a fact
+the next operation reads off the commit — no special detector, no scan, no rule
+the code has to remember. This rule exists to say the answer is a **refusal that
+names the archive**, not a shrug and not a repair.
 
 - **Fails as:** the run that follows uses last week's inputs with this week's
   state, converges, and is believed.
-- **Test:** `git checkout` an older commit by hand, then ask molbuilder for the
-  folder's state — it says the binaries do not match the checked-out commit, and
-  says which. It may not simply refuse the next operation with a message about a
-  dirty tree, which is what happens today and explains nothing.
+- **Test:** `git checkout` an older commit by hand, then ask molbuilder to
+  restore or save — it refuses and says the archive does not match the commit. It
+  may not proceed, and it may not report this as a dirty working tree, which
+  explains nothing.
 
 **S9 — two saves of one folder cannot corrupt each other.** Two `prep` runs, or
 the CLI and the browser, can reach a folder at once.
@@ -1059,7 +1083,7 @@ conclude there is nothing to do.
 | **A3** | the save precedes the change | needs the prep prompt |
 | **A4** | a restore is whole or does not happen | ⛔ `--no-binaries` ships on three surfaces and skips both checks |
 | **A5** | warn about unsaved work, then obey | ⛔ refuses instead of asking; no `--force` |
-| **A6** | a restore ends on a named line | ⛔ a restore rewinds files only; it lands nowhere |
+| **A6** | every saved state stays listed and restorable | ⛔ saving after a restore leaves the result unreferenced |
 | **S2** | a stage writes only inside itself | needs the layout |
 | **S3** | a run records what it started from | needs the layout |
 | **S4** | the description is never modified | needs the description |
@@ -1068,7 +1092,7 @@ conclude there is nothing to do.
 | **L1** | one repository per calculation | ✅ |
 | **L2** | the archive matches at depth | ✅ |
 | **L3** | every save carries a note; every commit and tag names its calculation | ⛔ the note is optional and defaults to a timestamp |
-| **L4** | tags are stage completions only | ✅ |
+| **L4** | a tag is yours; nothing tags on your behalf | ⛔ finished stages are tagged automatically |
 | **L7** | a big-file-only change still saves | ✅ fixed in `1e87e01e`; two tests in `test_checkpoint_nested_layout.py` |
 | **S7** | a file that changes category leaves the store it came from | ⛔ nothing untracks; **routine once the gate is a size**, because files grow |
 | **S8** | using git directly does not silently desynchronise the two stores | ⛔ `git checkout` rewinds text and leaves every big file |
@@ -1203,7 +1227,7 @@ nobody is maintaining against this document, which is how the two drift.
 | L3, L4 | `test_checkpoint_invariants.py` |
 | S5 | `test_checkpoint_invariants.py` |
 | S7, S8, S9 | **not yet written** — see § 12 |
-| A6 | **not yet written** — a restore does not land on a line yet (§ 7.1) |
+| A6 | **not yet written** — save-after-restore does not keep its result referenced (§ 7.1) |
 | A3, S2, S3, S4, S6, L8 | **not yet written** — each waits on a surface that does not exist; the table below says which |
 
 **A rule in no row is the same failure as a file in no row, and quieter.** These
@@ -1239,14 +1263,14 @@ on is what stops them being forgotten on the day it lands.
 | | |
 |---|---|
 | **1** | the one promise everything else serves |
-| **2** | the boundaries — what it will not do, and what it does not decide |
+| **2** | the boundaries — what it will not do, what it does not decide, and the one rule for you |
 | **3** | the two stores, and why the choice between them is a measurement |
 | **4** | the parts, and which of them you ever touch |
 | **5** | the commands |
 | **6–7** | what actually happens on a save and on a restore, in order |
 | **8** | why a flat folder depends on this and a nested one merely benefits |
 | **9** | who decides to save, and when you are asked |
-| **10** | worked examples, including the mistake that loses today's work |
+| **10** | worked examples — going back, forking, and the mistake that loses today's work |
 | **11** | the rules a change must not break |
 | **12** | which of them hold right now |
 | **13** | how to test them |
@@ -1260,10 +1284,10 @@ on is what stops them being forgotten on the day it lands.
 | | |
 |---|---|
 | `molbuilder/checkpoint.py` | all of it — `Repo` is the class every surface goes through |
-| `Repo.init` / `.checkpoint` / `.restore` | the three verbs everything else is built on |
-| `Repo.branch` / `.tag` / `.list_checkpoints` / `.diff` | navigating a history |
+| `Repo.init` / `.save` / `.restore` | the three verbs everything else is built on |
+| `Repo.tag` / `.states` / `.diff` | naming and reading a history. **No `branch`** — a fork is what happens when you save from a restored state (§ 7.1), not a verb |
 | `Repo.archive_globs` / `.set_archive_globs` | the classification, moving to molbuilder's config |
-| `checkpoint_message` / `stage_completion_tag` / `parse_stage_completion_tag` | the naming rules (L3, L4) — written and read through one parser so the two cannot drift |
+| the note + calculation-name builder | the naming rules (L3) — written and read through one parser so the two cannot drift |
 | `CheckpointError` and its four subclasses | what a refusal raises |
 | `molbuilder/web/blueprints/checkpoint.py` | the HTTP routes the sidebar calls |
 | `tests/test_checkpoint_*.py` | eight files — § 13.4 maps them to rules |
