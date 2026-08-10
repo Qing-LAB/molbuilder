@@ -2221,7 +2221,7 @@ bug is wherever a caller computes something a lower layer already knows.
 
 | | goal | done when |
 |---|---|---|
-| **G1** | A new **engine** costs one producer | PySCF's ladder is a `stages_to_jobset` sibling and no orchestration verb changes |
+| **G1** | A new **engine** costs one producer | a second engine's ladder is a `stages_to_jobset` sibling and no orchestration verb changes. *Stated as a property to preserve, not as work: § 7 puts the PySCF and transport producers out of this plan, and PySCF's ladder is an **in-script loop**, not a JobSet at all* |
 | **G2** | A new **surface** costs no layout, naming or launch logic | the web Build path calls the same producer the CLI does, and owns none of its own |
 | **G3** | The benchmark is a **kind**, not a parallel stack | `bench generate/prep/prep-run/summarize` are gone; `jobset <verb> bench <stage>` does the work |
 | **G4** | A contract sentence maps to **exactly one function** | you can point at the code for any rule in `project-layout.md` § 1–4 without a disjunction |
@@ -2320,13 +2320,59 @@ Honest mapping, not aspiration.
 Each step is separately shippable and separately revertible. **No step is
 allowed to be "and while we are there".**
 
-| | step | why here | done when |
-|---|---|---|---|
-| **T1** | `StageRef` + route the six callers | fully specced (§ 8f), contained, fixes two live display bugs | `plan`/`status` print `seq`; the CLI takes a name or a number; no caller computes an ordinal |
-| **T2** | `Shape` — a producer reads `task.shape` and emits **one** layout | unblocks P5, and A2 cannot be tested until it exists | a flat produce writes no `job-set.json` and vice versa |
-| **T3** | `LaunchSpec` — layer 3 hands layer 5 the launch it rendered for | fixes a bug that kills real runs; needs T2's single shape | a deck rendered for N ranks cannot be launched at M without a refusal |
-| **T4** | `Attempt` as a type; de-duplicate `submit.py`'s two loops | small, and it removes the author's own new smell before it spreads | one loop, one `Attempt`, no dict keys |
-| **T5** | fold `bench` into layers 3–6 as `kind=sweep` | **largest, last** — only once T1–T4 have proven the seams on the smaller path | `molbuilder bench` is gone; `jobset <verb> bench <stage>` does it |
+> ### ⚠ These are not a second plan
+>
+> *Corrected 2026-08-10, on the review pass immediately after this section was
+> written.* The first draft listed T1–T5 as an ordering of their own — beside
+> the eleven phases this document already has, with no mapping between them.
+> That is **precisely the defect § 9 exists to name**: two orderings that can
+> disagree, which § 9.7's own size test forbids. The section reproduced its
+> subject inside itself within an hour of being written, which is either
+> embarrassing or the best available evidence that the habit is real.
+>
+> So the value objects are **a cross-cutting concern mapped onto the phases**,
+> not a parallel schedule. The phase stays the unit of work; the object names
+> what that phase must produce so the next one can ask instead of re-derive.
+
+| object | the phase that lands it | what that phase gains |
+|---|---|---|
+| **`StageRef`** | **P9** (the command surface), pulled early — it is specced in § 8f and fixes two live display bugs | `plan`/`status` print `seq`; the CLI takes a name or a number; no caller computes an ordinal |
+| **`Shape`** | **P5** — *"one shape in, one shape out"*, which is this object under its phase name | a flat produce writes no `job-set.json`, and vice versa; A2 becomes testable |
+| **`LaunchSpec`** | ⛔ **no phase covers this** — see § 9.6a | a deck rendered for N ranks cannot be launched at M without a refusal |
+| **`Attempt`** | **P6** (`prep`: the five moves), whose first half landed 2026-08-10 | one loop in `submit.py`, one `Attempt` type, no dict keys |
+| **fold `bench` in** | **after P9**, and after all four objects exist | `molbuilder bench` is gone; `jobset <verb> bench <stage>` does it |
+
+**The dependency order among the objects still holds**, and it is why the phases
+run in the order they do: `Shape` before `LaunchSpec` (a launch cannot be pinned
+to a deck while two layouts are emitted at once), and the `bench` fold-in last —
+**largest, least revertible, and dependent on all four seams being right.**
+Doing it first would prove nothing and risk the one workflow that works end to
+end today.
+
+### 9.6a The gap this review found: nothing owns deck ↔ launch agreement
+
+`LaunchSpec` has no phase, and the defect it addresses is **live**: on
+2026-08-10 a deck rendered with `mpi_np` unset (so `BlockSize 4`) was launched by
+the wrapper at `-np 14`, and SIESTA refused at startup with *"You have too many
+processors for the system size"*. Neither layer was wrong alone. There is simply
+no object that says *this deck and this launch belong together*.
+
+**P4 is the nearest phase and does not cover it.** P4 unit 5 made the deck
+*record* the launch quantity it was rendered for — which is what makes the
+mismatch visible at all, and is why the failure was diagnosable — but recording
+is not agreeing. Nothing refuses the mismatch.
+
+Two candidate homes, and this needs a decision before the work is scheduled:
+
+| | |
+|---|---|
+| **extend P6** (`prep`, on the machine that will run it) | prep is where the machine becomes known, so it is where a deck could be rendered *for* the resolved launch rather than checked against it. Fits § 7.1's *"the deck is rendered where the machine is known"* |
+| **a new phase after P6** | keeps P6's five moves intact and makes the refusal an explicit step with its own tests |
+
+Related and separable: the clamp itself is wrong. `runwrap` resolves
+`min(physical_cores, n_atoms)`, but SIESTA's constraint is on **orbitals** per
+rank, not atoms. That is an engine-physics bug, out of scope by § 9.7, and it
+should be fixed on its own rather than inside this seam.
 
 **Why not T5 first**, though it removes the most code: it is the only step that
 cannot be reverted cheaply, and it depends on all four seams being right. Doing
@@ -2341,6 +2387,13 @@ it does.
 ### 9.7 Size and shape — the scope guard
 
 **In scope:** the seams between layers 1–6, and the surfaces' use of them.
+
+**§ 7 is the plan's scope and this does not replace it** — it narrows it for
+architectural work specifically. Where they overlap, § 7 wins. In particular § 7
+already puts the **transport and PySCF producers** out of this plan, so of the
+eight modules that call the wrapper builder, `transport/transiesta.py` and
+`envs/recipes.py` are **out**: the figure of eight measures the coupling, it does
+not define the work.
 
 **Not in scope, and not by accident:**
 
