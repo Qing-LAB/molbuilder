@@ -1589,6 +1589,7 @@ open.
 | 23 | ~~**Where is `required` checked?**~~ — **decided 2026-08-08 (user): in the directory the job runs in, immediately before the engine starts.** *"Based on how the job is run inside the stage run subdir, I think that's where the check is done."* Not at produce — the files do not exist and a `.TSHS` may come from a different calculation, so *"does an earlier stage produce this?"* is unanswerable and is not asked. **Not at prep either**, and this corrected a proposal of mine that was impossible rather than merely wrong: `Carry`'s symlink is laid *before* the producer runs and is **meant** to dangle (`job-system.md` D1). Reuses the shipped `_warm_check` pattern — warn by name, offer abort, `MOLBUILDER_FORCE=1` for unattended runs — in both emitters | ~~P3~~ contract; code in a follow-up |
 | 15 | ~~**When does normalisation refuse?**~~ — **decided 2026-08-08: when a letter or a digit is replaced, or when nothing is left.** § 3 rule 3 said only *"reduces to nothing"*, yet § 3.1 refused `Über` → `ber`, which does not. The line is **what was replaced**: a *separator* (space, `/`, `.`) becomes `_` silently — that is all `BDT/Au relax` does — while a character typed *inside a word* cannot be dropped, so `Über` and `Ω-shape` refuse. Mechanically: a character outside `[A-Za-z0-9_-]` that is nonetheless alphanumeric | ~~P3~~ |
 | 24 | ~~**Does the browser need its own identity mechanism, given that its `SystemLabel` field defaults to the literal `siesta`?**~~ — **decided 2026-08-09 (user): no. The identity half dissolves; what is left is a save that does not say what it replaced.** See § 8a below for the walk | ~~P3~~; the surviving unit is **P10** |
+| 25 | ~~**When is the next stage prepped, and what must be true of the previous one first?**~~ — **decided 2026-08-09 (user): stage N+1 is prepped after stage N is done and *confirmed*, and "confirmed" is a checkpoint question, not a convergence one.** *"The only reliable prep of a next stage is the one that is done when the previous stage is already confirmed."* Confirmed = the folder is **clean** (stage N's result is saved, or you are standing at a restored state), **or** you were shown what is unsaved and said go. This is the missing decision the dangling `Carry` symlink was standing in for. See § 8b below for the walk | **P6**, **P7**, **P8** |
 
 **Already decided, recorded so they are not reopened:** the shape is a required
 field in the description (`stages.md § 6.7`); the id is fixed once and a later
@@ -1647,3 +1648,113 @@ be regenerated, a deck is a pure function of the form still on screen.
 
 > This lands in **P10**, whose unit 3 already reduces this tab. It is not P3
 > work: P3's units 1–5 shipped and were reviewed at M3 (§ 5c).
+
+### 8b. Decision 25, walked — when the next stage is prepped
+
+**The question.** A stage's inputs are the previous stage's outputs. Prep every
+stage at the start and those files do not exist yet; prep each one when its turn
+comes and they do. Which is it, and what has to be true of the previous stage
+before the next is prepped at all?
+
+**This plan already answered half of it, and the code does the opposite.** P6
+unit 2: *"The carry is a real file copy, made at prep … **Copied, never
+linked** — the engine writes to these files, and a link would destroy the result
+you chose to build on."* P7 unit 2 retires the between-stage `depends_on` and
+`Carry` edges. § 8's already-decided list says **stages do not chain**. The
+shipped code chains them: `jobset/materialize.py:37` lays a symlink per carried
+file, `jobset/prep.py:96` hands the filenames to the wrapper, and
+`runwrap.py:3010` emits a run-time block that replaces each link with a copy.
+
+**The symlink is not a technique, it is a symptom.** Prep a stage whose inputs do
+not exist and something has to stand on disk where a file will later be — so the
+link is laid *deliberately dangling* and a second mechanism converts it at run
+time. Everything downstream follows from that one earliness: the wrapper cannot
+be told where to copy from, because prep computed the source path
+(`../point-<producer>/<file>`), encoded it as a symlink, and dropped it —
+`carry_in` carries only the basename, so bash reads the path back with
+`readlink -f`. **The link is being used as a variable.**
+
+**What it costs, measured rather than argued.** The localize block has no `else`
+on either guard: if the link is missing, or the producer's file is not there, it
+does nothing **and logs nothing**. A stage meant to continue warm starts cold,
+produces a correct-but-slower result, and no molbuilder surface says the chain
+broke. And until the fix in checkpointing this session, a link whose name matched
+an always-large family was in **no store** — gitignored by name, skipped by the
+archive as a link — so a restore did not bring it back, which is one more way
+the guard silently fails. The remaining exposure is worse than silence: run the
+engine outside the wrapper and the live link is written **through**, into the
+producer's directory.
+
+**The decision.** Stage N+1 is prepped when stage N is done and **confirmed**.
+The carry is then a plain copy between two paths that both exist, which is P6
+unit 2 as written, and no link is ever laid. Nothing about the earlier design is
+repaired — it stops existing: no dangling link, no `[ -L ]` guard, no
+`readlink`, no localize step, no silent no-op, and no dangling entries for
+`rsync`, `tar` or the file browser to trip over.
+
+**What "confirmed" means, and it is a checkpoint question.** Not *did it
+converge* — that is a different axis, below. Confirmed is:
+
+> the folder is **clean** — stage N's result is saved, or you are standing at a
+> state you restored — **or** you were shown what is unsaved and said go.
+
+Those are one question mechanically: `status()` is clean, or `status.unsaved()`
+was named and accepted. It is the same question `Repo.restore` already asks
+before it overwrites a folder from history, asked before the other destructive
+act — overwriting it with new results.
+
+**It is already specified. It is A3, and § 9 is its table.** *"Where it asks —
+interactive `prep`, **when the target already holds results**"*; *"Who decides —
+you, every time"*; *"Non-interactive (`--yes`, a script) — proceeds **without**
+saving and **says so**"*. That first row only means anything if prep runs again
+after results exist, which is this decision. And § 8 says why it is load-bearing
+rather than tidy: *"Saving before each stage is not housekeeping in a flat folder
+— it is **the save point**. Miss one and that state is gone."* Prep-all offers
+that moment exactly once, over an empty folder.
+
+**Two axes, kept apart.** Conflating them is how `afterok` — which means *exit
+0*, and SIESTA exits 0 without converging — came to stand for both.
+
+| | asks | answered by | on failure |
+|---|---|---|---|
+| **recoverability** | can I get stage N's result back? | checkpoint — `status()` | ask: save, or accept the loss out loud |
+| **scientific fitness** | did it converge? | the engine's own output | `on_nonconvergence`, declared per stage in advance |
+
+They are independent in both directions: proceeding from an unconverged state
+you deliberately saved is legitimate, and refusing to proceed from a converged
+one nothing holds is also legitimate.
+
+**What this costs: unattended chaining, and only on one axis.** Submitting the
+whole ladder at 17:00 needs something to prep stage N+1 at 03:00. The fitness
+axis needs nobody — `DEFAULT_NONCONVERGENCE` (`siesta/stages.py:49`) is a policy
+the scientist declares before anything runs. The recoverability axis is the one
+that wants a person, and § 9 already says what happens without one: proceed
+without saving **and say so**. So unattended is still available; it is an
+explicit choice with its loss stated, rather than the default that happens
+because the scheduler was the only thing awake. The candidate that would
+otherwise do the judging is already forbidden — § 9: *"`mb_monitor.py` … **What
+it must not do is act.**"*
+
+**What this does not decide.** Lifting convergence detection into something
+Python can call. It exists today only as string-matching inside emitted bash
+(`runwrap.py:2919`, *converged relax prints "Relaxed atomic coordinates"*),
+which is the wrong address for it — but it sits on the fitness axis and blocks
+nothing here. When it is built it needs a third answer, **unknown**, for output
+that cannot be read; unknown must never quietly become *converged*, for the
+reason `checkpointing.md § 7.2` gives about an unreadable timestamp.
+
+**Two stale pointers found while deciding, neither fixed here.** P8's re-anchor
+cites `checkpointing.md § 4.1`, `§ 5.0` and *"the twenty-two invariants"* of
+§ 6; after the 2026-08-09 rework those are § 9, § 8 and the 31 rules of §§ 11–12.
+And **14 citations across 7 live modules** point at `staged-execution.md`, which
+exists only under `docs/archive/old_docs/` — `runwrap.py:2998` says
+*"(staged-execution.md § 4)"* and following it lands in the archive. The live
+rule is `job-system.md`.
+
+> **Where the units land.** **P6** already carries the copy-at-prep unit and
+> needs no change. **P7** unit 2 already retires the chain edges. **P8** unit 1
+> *is* this gate — it is the prompt, and this decision is what it is gating.
+> Decision 23 reasoned from the dangling symlink as a given (*"`Carry`'s symlink
+> is laid before the producer runs and is **meant** to dangle"*); with no link
+> laid, its conclusion is unchanged — `required` is still checked in the run
+> directory immediately before the engine starts — but its premise is retired.
