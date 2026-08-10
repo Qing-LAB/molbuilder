@@ -1193,6 +1193,53 @@ guard 3 turns green.
 > shape. The `--shape` CLI option stays, but it **records into the description**
 > instead of selecting what is emitted.
 >
+> ##### ⚠ That order is wrong, and trying to execute it is what showed why
+> *(2026-08-10, immediately after unit 4b.)*
+>
+> **Unit 1 revised cannot come before `prep` learns the shape.** The moment the
+> produce emits a JobSet for a *flat* description, that bundle carries a
+> `job-set.json` whose `prep` would lay out `01_coarse/`, `02_medium/` —
+> **the hierarchical tree, inside a calculation whose description says flat.**
+> Shipping that is worse than the both-shapes bug it replaces: the old one
+> emitted two launchers and let the user pick, this one would emit a single
+> launcher that quietly builds the wrong layout.
+>
+> And unit 3 cannot come before it either: deleting the runner is what leaves
+> flat with `submit --chain` as its only launcher, so flat must already lay out
+> correctly by then.
+>
+> **Corrected order:** unit 4 ✅ → **`prep` (and the layout layer) learns the
+> shape** → unit 1 revised → unit 3.
+>
+> ##### What "learns the shape" turns out to require — and one consequence nobody wrote down
+>
+> The flat column of `project-layout.md § 1` is **depth 1**: no stage
+> directories, no attempt directories, attempts told apart by an **output
+> index**, one shared warm set, and *"continuing: free — the next stage finds
+> them lying there."* So for a flat calculation:
+>
+> | | |
+> |---|---|
+> | `job_dir_names` | every job's directory **is the bundle root** |
+> | `prepare_attempt` | does not apply — there is no attempt directory to open, and `--from` / `--cold` have nothing to name (continuing is free, and the warm set is shared) |
+> | `latest_attempt` | always `None` |
+>
+> **The consequence, and it is not a detail: `jobset status` cannot tell flat's
+> stages apart at all.** It observes a *directory* per stage and globs `*.out`
+> in it. In flat every stage shares one directory, so every stage would report
+> the same state — the state of whichever `.out` happens to be there. Flat
+> separates stages **by filename** (`<label>_<NN>_<name>-run<N>.out`), so the
+> observe layer has to match per-stage *names*, which it has no notion of.
+>
+> That is the same asymmetry M4 pass 1 found in the runner, arriving from the
+> other side: the flat shape's identity lives in filenames, and every layer
+> built for the hierarchy assumes it lives in paths. **It is the real content of
+> "prep learns the shape", and it is P6/P7-sized rather than a parameter.**
+>
+> Nothing was built for it here on purpose: Review 3's third question is *"does
+> anything exist only to serve a later phase? Delete it"*, and a shape-aware
+> `job_dir_names` with no flat JobSet to name would be exactly that.
+>
 > ---
 >
 > #### Unit 1 as built, 2026-08-10 — superseded above, kept for its findings
