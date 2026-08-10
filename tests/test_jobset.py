@@ -151,11 +151,31 @@ def test_job_dir_name():
 # --------------------------------------------------------------------- #
 
 
-def _token_ladder(*scripts):
-    from molbuilder.jobset.model import Job, JobSet
-    return JobSet(name="JOB", engine="siesta", kind="ladder",
-                  jobs=[Job(name=s.split("_", 2)[2].rsplit(".", 1)[0],
-                            script=s) for s in scripts])
+def _token_ladder(*scripts, optimizers=None):
+    """A ladder shaped like the one ``stages_to_jobset`` actually emits.
+
+    The warm declaration is part of that shape, not decoration: `prep` reads it
+    to decide what `--from` copies, so a fixture without one stands in for a
+    ladder no producer builds.  Mirrors the shipped rule -- the first stage is
+    ``restart: clean`` and declares nothing; every later one declares SIESTA's
+    group with ``.CG`` conditioned on the optimizer (`run-identity.md` § 4).
+
+    ``optimizers`` gives per-stage traits so a test can make two stages
+    disagree; by default they all match, which is the case that carries `.CG`.
+    """
+    from molbuilder.jobset.model import Job, JobSet, WarmFile
+    names = [s.split("_", 2)[2].rsplit(".", 1)[0] for s in scripts]
+    opt = dict(optimizers or {})
+    jobs = []
+    for i, (name, script) in enumerate(zip(names, scripts)):
+        jobs.append(Job(
+            name=name, script=script,
+            traits={"optimizer": opt.get(name, "CG")},
+            warm=([] if i == 0 else
+                  [WarmFile("JOB.XV"), WarmFile("JOB.DM"),
+                   WarmFile("JOB.CG", requires_same="optimizer")]),
+        ))
+    return JobSet(name="JOB", engine="siesta", kind="ladder", jobs=jobs)
 
 
 def test_job_dir_names_ladder_uses_the_decks_own_token():
@@ -1164,6 +1184,221 @@ def test_what_a_run_continues_from_is_copied_never_linked(tmp_path):
 
     carried.write_text("TIGHT-GEOM")            # what the engine does, step 1
     assert (coarse / "JOB.XV").read_text() == "COARSE-GEOM"
+
+
+# --------------------------------------------------------------------- #
+#  What a run continues from is decided by the PAIR (P6 unit 3)          #
+#                                                                        #
+#  `project-layout.md` § 2.3.4 states it as three rows, and only the     #
+#  third needs two stages:                                               #
+#    .XV  always | .DM  when the description says | .CG  ONLY if both    #
+#    stages use the same algorithm                                       #
+# --------------------------------------------------------------------- #
+
+def _shipped_ladder():
+    """The ladder a user actually gets — coarse (CG), medium + tight (Broyden).
+
+    Built through the real producer rather than by hand, because the claim
+    under test is about the SHIPPED science: the tiers really do change
+    optimizer between rung one and rung two, which is what makes `.CG` a live
+    question rather than a hypothetical one.
+    """
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import (default_siesta_stages,
+                                          stages_to_jobset)
+    js = stages_to_jobset(SiestaConfig(system_label="bdt"),
+                          default_siesta_stages("vib-quality"))
+    assert [j.traits["optimizer"] for j in js.jobs] == \
+        ["CG", "Broyden", "Broyden"], "the fixture's premise moved"
+    return js
+
+
+def _finished(base, stage_dir, label="bdt"):
+    """An attempt that has run: its three warm files, with tellable contents."""
+    d = base / stage_dir / "run-0"
+    d.mkdir(parents=True)
+    for ext in ("XV", "DM", "CG"):
+        (d / f"{label}.{ext}").write_text(f"{stage_dir}:{ext}")
+    return d
+
+
+def test_the_optimizer_rule_is_asked_of_the_pair_not_of_the_ladders_neighbour(
+        tmp_path):
+    """`job-system.md` § 4.1: `.CG` is carried *"only when consecutive stages
+    use the same relaxation method — a CG state is meaningless to a Broyden
+    stage, so blindly carrying it would corrupt the restart."*
+
+    **The stage you continue from is not always the one before you.** `--from`
+    names any finished attempt (§ 1.6), so continuing `tight` from `01_coarse`
+    skips `medium` entirely — and coarse relaxes with **CG** while tight uses
+    **Broyden**.
+
+    Until 2026-08-10 the set came off `Job.carry`, whose `from_job` is the
+    immediate predecessor and is fixed at produce time. `tight.carry` compares
+    tight against *medium* (Broyden vs Broyden → carry it), so this prep copied
+    a CG optimizer history into a Broyden stage on the strength of a comparison
+    with a stage that never ran.
+    """
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _shipped_ladder()
+    _finished(tmp_path, "01_coarse")
+
+    rep = prepare_attempt(js, tmp_path, "tight",
+                          continue_from="01_coarse/run-0")
+    assert rep["copied"] == ["bdt.XV", "bdt.DM"]
+    assert not (rep["dir"] / "bdt.CG").exists(), (
+        "a CG history reached a Broyden stage -- the restart it corrupts "
+        "still reports success")
+
+
+def test_and_the_same_prep_does_carry_it_when_the_two_agree(tmp_path):
+    """The other half, and it is not decoration: a system that carried `.CG`
+    **never** would pass the test above while quietly throwing away the
+    optimizer history every real continuation depends on.
+
+    `medium` and `tight` are both Broyden, so this is the case the rule
+    permits — and it is the ordinary one, since a ladder normally continues
+    from the rung below it.
+    """
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _shipped_ladder()
+    _finished(tmp_path, "02_medium")
+
+    rep = prepare_attempt(js, tmp_path, "tight",
+                          continue_from="02_medium/run-0")
+    assert rep["copied"] == ["bdt.XV", "bdt.DM", "bdt.CG"]
+    assert (rep["dir"] / "bdt.CG").read_text() == "02_medium:CG"
+
+
+def test_a_redo_of_one_stage_agrees_with_itself(tmp_path):
+    """§ 2.3.4: *"A redo is the same instruction."* `--from` inside the SAME
+    stage re-runs it from where the last attempt reached, and a stage always
+    matches its own optimizer — so the full group comes across, including the
+    history the rule exists to protect."""
+    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    js = _shipped_ladder()
+    first = _finished(tmp_path, "03_tight")
+    write_run_launch(first, mode="direct", command=["bash", "x"])
+
+    rep = prepare_attempt(js, tmp_path, "tight",
+                          continue_from="03_tight/run-0")
+    assert rep["dir"].name == "run-1"            # the launched one is immutable
+    assert rep["copied"] == ["bdt.XV", "bdt.DM", "bdt.CG"]
+
+
+def test_a_source_this_jobset_cannot_place_withholds_the_conditional_file(
+        tmp_path):
+    """Unverified is not the same as satisfied, and the mistake is not
+    symmetric: a `.CG` wrongly withheld costs some optimizer steps, while one
+    wrongly carried corrupts the restart and the run still reports success.
+
+    So a `--from` naming a directory this JobSet has no job for — a hand-made
+    path, a stage disabled since the bundle was produced — keeps the
+    unconditional files and drops the conditional one.
+    """
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _shipped_ladder()
+    d = tmp_path / "99_elsewhere" / "run-0"
+    d.mkdir(parents=True)
+    for ext in ("XV", "DM", "CG"):
+        (d / f"bdt.{ext}").write_text(ext)
+
+    rep = prepare_attempt(js, tmp_path, "tight",
+                          continue_from="99_elsewhere/run-0")
+    assert rep["copied"] == ["bdt.XV", "bdt.DM"]
+
+
+def test_a_clean_stage_refuses_from_instead_of_copying_nothing(tmp_path):
+    """`run-identity.md` § 4's silent pair — *present but not honoured*: the
+    files are right there, the parameter is off, and the stage starts from
+    scratch looking like it continued.
+
+    A `restart: clean` stage's deck omits `MD.UseSaveXV` / `DM.UseSaveDM` /
+    `MD.UseSaveCG` (the same `_continues` gate decides both), so anything
+    copied in would sit unread. Copying it anyway and reporting success is
+    the failure; the refusal is the fix.
+    """
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _shipped_ladder()
+    _finished(tmp_path, "01_coarse")
+
+    with pytest.raises(ValueError) as e:
+        prepare_attempt(js, tmp_path, "coarse",
+                        continue_from="01_coarse/run-0")
+    assert "declares no warm-restart files" in str(e.value)
+    assert "restart" in str(e.value)             # and what to change
+
+
+def test_the_edge_and_the_declaration_are_one_rule_in_two_renderings():
+    """`staged-runs-architecture.md` 12c's failure mode, prevented rather than
+    found later: two lists of warm files that *"agree today and nothing keeps
+    them agreeing."*
+
+    `Job.warm` is what a stage takes from whatever run it is pointed at;
+    `Job.carry` is that same rule projected onto the one source a **chain** can
+    know in advance. The producer derives the second from the first, so the
+    `.CG` rule cannot come out different on the two roads.
+    """
+    from molbuilder.jobset.materialize import warm_carry
+    js = _shipped_ladder()
+    for prev, job in zip(js.jobs, js.jobs[1:]):
+        assert [c.pattern for c in job.carry] == warm_carry(job, prev)
+        assert all(c.from_job == prev.name for c in job.carry)
+
+
+def test_validate_refuses_a_condition_the_job_could_never_meet():
+    """A `requires_same` naming a trait the job does not declare can never be
+    satisfied, so the file would simply never be carried — the wrong kind of
+    silence, because "fail safe" here means starting cold while everything
+    reports success. The comparison stays fail-safe; the DECLARATION is a
+    producer bug and is refused by name."""
+    from molbuilder.jobset.model import Job, JobSet, WarmFile
+    js = JobSet(name="JOB", engine="siesta", kind="ladder",
+                jobs=[Job(name="s1", script="JOB_01_s1.fdf",
+                          warm=[WarmFile("JOB.CG", requires_same="optimizer")])])
+    errs = js.validate()
+    assert len(errs) == 1
+    assert "optimizer" in errs[0] and "traits" in errs[0]
+
+
+def test_warm_and_traits_survive_job_set_at_1():
+    """`prep` runs on the target, from the persisted bundle — a declaration
+    that does not round-trip is one the machine that runs the job never sees."""
+    from molbuilder.jobset.model import JobSet
+    js = _shipped_ladder()
+    back = JobSet.from_dict(js.to_dict())
+    for a, b in zip(js.jobs, back.jobs):
+        assert a.traits == b.traits
+        assert [(w.name, w.requires_same) for w in a.warm] == \
+               [(w.name, w.requires_same) for w in b.warm]
+    # ABSENT, not null, for an unconditional file (checkpointing.md S3).
+    xv = js.to_dict()["jobs"][1]["warm"][0]
+    assert xv == {"name": "bdt.XV"}
+
+
+def test_re_prep_sweeps_the_whole_declared_set_not_the_pair_filtered_one(
+        tmp_path):
+    """Changing your mind from `--from 02_medium` to `--from 01_coarse` must
+    not leave medium's `.CG` behind: coarse would not have carried it, but the
+    file is there and SIESTA reads what it finds.
+
+    So the undo sweeps everything this stage DECLARES, not what this prep would
+    have copied — the previous prep may have named a different source.
+    """
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _shipped_ladder()
+    _finished(tmp_path, "01_coarse")
+    _finished(tmp_path, "02_medium")
+
+    warm = prepare_attempt(js, tmp_path, "tight",
+                           continue_from="02_medium/run-0")
+    assert (warm["dir"] / "bdt.CG").is_file()
+
+    again = prepare_attempt(js, tmp_path, "tight",
+                            continue_from="01_coarse/run-0")
+    assert again["dir"] == warm["dir"]           # same unlaunched attempt
+    assert not (again["dir"] / "bdt.CG").exists()
+    assert (again["dir"] / "bdt.XV").read_text() == "01_coarse:XV"
 
 
 def test_attempts_are_ordered_as_numbers_not_as_names(tmp_path):

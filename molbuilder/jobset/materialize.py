@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..identity import StageRef, parse_stage_token, resolve_stage_ref
-from .model import JobSet
+from .model import JobSet, warm_carry
 
 #: One attempt at running a stage.  ``project-layout.md`` § 1.5: immutable once
 #: it has run, so a re-run is a NEW directory rather than an overwrite.
@@ -322,10 +322,11 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     there is nothing to move aside, because a fresh attempt is empty unless
     something is put in it.
 
-    ``carry`` names the files to copy; it defaults to the engine's warm set for
-    this job's label. They are **copied, never linked** — the engine writes to
-    those very filenames, and writing through a link would destroy the result
-    you started from.
+    ``carry`` names the files to copy; it defaults to :func:`warm_carry` for
+    **this pair** — the stage being prepared and the stage that produced the
+    attempt named by ``continue_from``. They are **copied, never linked** — the
+    engine writes to those very filenames, and writing through a link would
+    destroy the result you started from.
 
     ``stage_name`` goes through the ONE resolver, so it takes a name, a number
     or a token — the same three spellings every other surface takes, and the
@@ -383,8 +384,12 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # by hand is touched.
     marker = attempt / ".continued-from"
     if not is_new and marker.is_file():
-        for name in _warm_names(jobset, job):
-            f = attempt / name
+        # The WHOLE declared set, not the pair-filtered one: the previous prep
+        # may have named a different source and so copied a conditional file
+        # this one would not, and a mind changed from `--from A` to `--cold`
+        # that leaves A's `.CG` behind has changed nothing.
+        for w in job.warm:
+            f = attempt / w.name
             if f.is_file() and not f.is_symlink():
                 f.unlink()
         marker.unlink()
@@ -397,7 +402,21 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                 f"--from {continue_from!r}: no such attempt under "
                 f"{base}. Name an attempt directory that has already run, "
                 f"e.g. '01_coarse/run-0'.")
-        names = carry if carry is not None else _warm_names(jobset, job)
+        # The pair, resolved here and nowhere else -- `--from` is what names
+        # the source, so this is the first moment both stages are known.
+        names = (carry if carry is not None
+                 else warm_carry(job, _source_job(jobset, dir_of,
+                                                  continue_from)))
+        if not names:
+            raise ValueError(
+                f"--from {continue_from!r}: {stage_name!r} declares no "
+                f"warm-restart files, so there is nothing to continue.\n"
+                f"  A stage whose description says `restart: clean` carries "
+                f"none of the group -- its deck omits MD.UseSaveXV / "
+                f"DM.UseSaveDM / MD.UseSaveCG, so files copied in would sit "
+                f"there unread (run-identity.md § 4, *present but not "
+                f"honoured*).  Set this stage's `restart` to `continue` in "
+                f"task.json and produce again, or drop --from.")
         for name in names:
             f = src / name
             if f.is_file():
@@ -407,7 +426,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
             raise ValueError(
                 f"--from {continue_from!r}: that attempt holds none "
                 f"of the files this stage would continue from "
-                f"({', '.join(names) or '(none named)'}). Did it run?")
+                f"({', '.join(names)}). Did it run?")
 
     # Leave the provenance where ``submit`` can find it: prep is what knows
     # which attempt this one continues from, and submit writes run.json.  A
@@ -428,17 +447,23 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     }
 
 
-def _warm_names(jobset: JobSet, job) -> List[str]:
-    """The engine's warm-restart files for this job, by name.
+def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
+    """Which job produced the attempt named by ``--from``, or ``None``.
 
-    Taken from the job's own ``carry`` patterns when it has them, so a
-    hand-built chained JobSet keeps working; otherwise SIESTA's standard three,
-    keyed on the label, which is what the staged producer stops declaring once
-    stages no longer chain.
+    ``continue_from`` is bundle-relative and always ``<stage dir>/run-<n>``
+    (`job-system.md` § 5.3), so the stage is its head component read back
+    through the SAME naming authority that wrote it. Nothing is parsed out of
+    the name: :func:`job_dir_names` is asked, and a head that matches no job
+    simply has no answer — which :func:`warm_carry` then treats as *unverified*
+    rather than guessing.
     """
-    if job.carry:
-        return [os.path.basename(c.pattern) for c in job.carry]
-    return [f"{jobset.name}.XV", f"{jobset.name}.DM", f"{jobset.name}.CG"]
+    if not continue_from:
+        return None
+    head = Path(continue_from).parts[0] if Path(continue_from).parts else ""
+    for j in jobset.jobs:
+        if dir_of.get(j.name) == head:
+            return j
+    return None
 
 
 def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],

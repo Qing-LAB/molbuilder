@@ -7,12 +7,17 @@ materialize / submit engines and the producers respectively.  Keeping
 this layer pure is what lets the bench sweep and the SIESTA stage ladder
 share one execution core without either knowing about the other.
 
-Shared information is modeled in exactly two sanctioned channels:
+Shared information is modeled in exactly three sanctioned channels:
   * ``JobSet.shared``  — static package files, identical for every job
     (pseudopotentials, geometry, monitor); symlinked into each job dir.
   * ``Carry``          — a runtime-produced file (one job's output) fed
-    to a dependent job; symlinked after the producer runs.
-Nothing reaches across jobs outside these two.
+    to a dependent job; symlinked after the producer runs.  It names the
+    producer, so it is only expressible when the producer is known at
+    produce time — which is a **chain**.
+  * ``WarmFile``       — the same information for a set that does NOT chain:
+    *what this job would take from a run it continues*, with the source left
+    open, because `--from` names it at prep (`project-layout.md` § 1.6).
+Nothing reaches across jobs outside these three.
 """
 
 from __future__ import annotations
@@ -94,19 +99,74 @@ class Carry:
 
 
 @dataclass
+class WarmFile:
+    """One file this job continues **from**, and what makes it safe to take.
+
+    **Not an edge.**  A :class:`Carry` says *take X from job Y* and is only
+    answerable once you have decided who Y is.  Stages do not chain
+    (`project-layout.md` § 1.6), so at produce time nobody knows: the run a
+    stage continues from is named at `prep`, by a person who has just looked
+    at it, and it may be any finished attempt -- ``02_medium/run-1``,
+    ``01_coarse/run-0``, or an earlier attempt of this same stage (§ 2.3.4's
+    *"a redo is the same instruction"*).  So what a job can state in advance is
+    **its own half**: which files it would take, and the condition on each.
+
+    ``requires_same`` names a key both jobs must agree on for this file to
+    mean anything -- looked up in :attr:`Job.traits`, compared as opaque
+    strings.  ``.CG`` is the whole reason it exists: *"a CG state is
+    meaningless to a Broyden stage, so blindly carrying it would corrupt the
+    restart"* (`job-system.md` § 4.1).  ``None`` is unconditional.
+
+    **Why the framework never spells the rule.**  `run-identity.md` § 4 rule 1
+    puts the warm group in *the engine's* contract -- *"a new engine that
+    cannot fill this in is a new engine whose restart behaviour nobody has
+    thought about yet"* -- and rule 4 records what the alternative cost:
+    *"the set used to be three suffixes written into the producer, which meant
+    a TranSIESTA ladder could not express its `.TSHS` dependency without
+    changing molbuilder's code."*  This class is the declaration those rules
+    ask for; `jobset` compares two strings and knows nothing else.
+    """
+    name:          str
+    requires_same: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        d: Dict[str, Any] = {"name": self.name}
+        # ABSENT, not null, when the file is unconditional -- the same reading
+        # `checkpointing.md` S3 asks for elsewhere: a key that is missing and a
+        # key that is null are different claims to anything testing for it.
+        if self.requires_same:
+            d["requires_same"] = self.requires_same
+        return d
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "WarmFile":
+        return cls(name=d["name"], requires_same=d.get("requires_same"))
+
+
+@dataclass
 class Job:
     """One unit of work.  ``name`` is unique within the set and becomes the
     job directory (``point-<name>/``) and the SLURM ``-J`` name.  ``script``
     is the per-job input filename (e.g. the rendered ``.fdf``).  ``depends_on``
     names the producer job this one waits for (None = independent);
     ``dep_kind`` is the SLURM dependency kind; ``carry`` lists the
-    restart files pulled from the producer (§ 5, § 8 D1)."""
+    restart files pulled from the producer (§ 5, § 8 D1).
+
+    ``warm`` is the same information asked the other way round -- *what would
+    this job take from a run it continues, whichever run that turns out to be*
+    -- and it is what `prep` reads, because `--from` names the source and a
+    produce-time edge cannot (see :class:`WarmFile`).  ``traits`` are the
+    opaque per-job values a ``WarmFile.requires_same`` is compared against;
+    SIESTA puts its optimizer there.
+    """
     name:       str
     script:     str
     resources:  Resources       = field(default_factory=Resources)
     depends_on: Optional[str]   = None
     dep_kind:   str             = "afterok"
     carry:      List[Carry]     = field(default_factory=list)
+    warm:       List[WarmFile]  = field(default_factory=list)
+    traits:     Dict[str, str]  = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -116,6 +176,8 @@ class Job:
             "depends_on": self.depends_on,
             "dep_kind": self.dep_kind,
             "carry": [c.to_dict() for c in self.carry],
+            "warm": [w.to_dict() for w in self.warm],
+            "traits": dict(self.traits),
         }
 
     @classmethod
@@ -127,7 +189,61 @@ class Job:
             depends_on=d.get("depends_on"),
             dep_kind=d.get("dep_kind", "afterok"),
             carry=[Carry.from_dict(c) for c in (d.get("carry") or [])],
+            warm=[WarmFile.from_dict(w) for w in (d.get("warm") or [])],
+            traits=dict(d.get("traits") or {}),
         )
+
+
+def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
+    """What ``job`` takes from ``source`` — the pair's answer, not an edge's.
+
+    `project-layout.md` § 2.3.4 states the rule as three rows, and only the
+    third needs two stages:
+
+    | `.XV` | the relaxed coordinates | **always** |
+    | `.DM` | the converged density | when the description says to reuse it |
+    | `.CG` | the optimiser's own history | **only if both stages use the same algorithm** |
+
+    A producer states rows one and two on the job itself — they are properties
+    of the destination alone — and row three as a :class:`WarmFile` condition.
+    **This function is the only place the third is evaluated**, because it is
+    the only place both stages are known: `--from` names the source at `prep`,
+    and it need not be the ladder's next-door neighbour — continuing `tight`
+    from `01_coarse` skips `medium` entirely, and comparing `tight` against
+    `medium` would then answer a question nobody asked.
+
+    That was the shape until 2026-08-10: the set came off ``Job.carry``, whose
+    ``from_job`` is the **immediate predecessor**, fixed at produce time. So a
+    ladder that skipped a rung carried `.CG` on the strength of a comparison
+    with a stage that never ran — § 9's diagnosis in its second form, *a caller
+    reads a field computed for a different question.*
+
+    ``source is None`` (an attempt this JobSet cannot place — a hand-made path,
+    or one naming a stage that is not here) drops **every** conditional file.
+    Unverified is not the same as satisfied, and the direction of the mistake
+    is not symmetric: a `.CG` wrongly withheld costs some optimizer steps; a
+    `.CG` wrongly carried *"would corrupt the restart"* (`job-system.md` § 4.1)
+    and the run still reports success.
+
+    It lives here, beside the declaration it reads, rather than in the engine
+    that lays the files down: it touches no filesystem and names no suffix,
+    which is exactly the line this module holds.
+    """
+    out: List[str] = []
+    for w in job.warm:
+        if w.requires_same:
+            if source is None:
+                continue
+            mine = job.traits.get(w.requires_same)
+            theirs = source.traits.get(w.requires_same)
+            # `mine is None` cannot happen through `validate()`, which refuses
+            # a condition on a trait the job lacks; the guard is here because
+            # `None == None` would otherwise read as agreement between two
+            # jobs that have each said nothing.
+            if mine is None or mine != theirs:
+                continue
+        out.append(w.name)
+    return out
 
 
 @dataclass
@@ -196,7 +312,8 @@ class JobSet:
           * unique job names (the dir + ``-J`` collide otherwise);
           * ``dep_kind`` known;
           * ``depends_on`` references a PRIOR job (acyclic, ordered);
-          * every ``carry.from_job`` references a prior job.
+          * every ``carry.from_job`` references a prior job;
+          * every ``warm.requires_same`` names a trait this job HAS.
         """
         errors: List[str] = []
         if self.kind not in _KINDS:
@@ -223,8 +340,23 @@ class JobSet:
                     errors.append(
                         f"{prefix}.carry from {c.from_job!r}: must reference "
                         f"a prior job")
+            for w in j.warm:
+                # A condition on a trait this job does not declare can never be
+                # satisfied, so the file would simply never arrive -- and the
+                # WRONG kind of silence, because "fail safe" here means the
+                # stage starts cold while everything reports success.  The
+                # comparison is fail-safe on purpose (:func:`warm_carry`); the
+                # DECLARATION being unsatisfiable is a producer bug, and the
+                # producer is who this message is for.
+                if w.requires_same and w.requires_same not in j.traits:
+                    errors.append(
+                        f"{prefix}.warm {w.name!r} requires the same "
+                        f"{w.requires_same!r}, which this job does not "
+                        f"declare in traits ({sorted(j.traits) or 'none'}): "
+                        f"the condition could never be met, so the file would "
+                        f"never be carried")
             seen.add(j.name)
         return errors
 
 
-__all__ = ["Resources", "Carry", "Job", "JobSet", "SCHEMA"]
+__all__ = ["Resources", "Carry", "WarmFile", "Job", "JobSet", "SCHEMA"]

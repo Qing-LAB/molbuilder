@@ -1443,6 +1443,53 @@ jobs, and what goes in and comes out) · § 1.6 (**stages do not chain**).
    never linked — the engine writes to these files, and a link would destroy the
    result you chose to build on. Copied *at prep* because stages do not chain,
    not as a separate decision.
+
+   > **Landed 2026-08-10.** The copy half already worked; **the rule did not**,
+   > and the third row is the one that needs two stages.
+   >
+   > **The live defect.** `prep` took the set off `Job.carry`, whose `from_job`
+   > is the **immediate predecessor**, fixed at produce time. But `--from` names
+   > *any* finished attempt, so `prep tight --from 01_coarse/run-0` skips
+   > `medium` — and the shipped ladder relaxes `coarse` with **CG** and `tight`
+   > with **Broyden**. The comparison that decided `.CG` was `tight` against
+   > `medium` (Broyden vs Broyden → carry it), so a **CG optimizer history was
+   > copied into a Broyden stage on the strength of a comparison with a stage
+   > that never ran.** § 9's diagnosis in its second form: *a caller reads a
+   > field computed for a different question.*
+   >
+   > **Who owns the rule was not a new decision.** `run-identity.md § 4` rule 1
+   > already says *"an engine declares its group"* — *"a new engine that cannot
+   > fill this in is a new engine whose restart behaviour nobody has thought
+   > about yet"* — and rule 4 records what the alternative cost: *"the set used
+   > to be three suffixes written into the producer, which meant a TranSIESTA
+   > ladder could not express its `.TSHS` dependency without changing
+   > molbuilder's code."* So `jobset` learned no suffixes. `Job` gained two
+   > declarative fields, and the framework compares two opaque strings:
+   >
+   > | | |
+   > |---|---|
+   > | `Job.warm` | `[WarmFile(name, requires_same=None)]` — what this job takes from **whatever** run it is pointed at |
+   > | `Job.traits` | `{"optimizer": "CG"}` — the values a `requires_same` is compared against |
+   >
+   > `warm_carry(job, source)` is the only place a condition is evaluated,
+   > because it is the only place both stages are known. A source this JobSet
+   > cannot place drops **every** conditional file: unverified is not satisfied,
+   > and the mistake is not symmetric — a `.CG` wrongly withheld costs optimizer
+   > steps; one wrongly carried corrupts the restart and still reports success.
+   >
+   > **Two things it also closed.** A `restart: clean` stage now **refuses**
+   > `--from` naming § 4's *"present but not honoured"*, instead of copying
+   > files its own deck omits `MD.UseSaveXV` for. And `Carry` is now **derived**
+   > from the declaration rather than spelled a second time — 12c's failure
+   > mode (*"two lists that agree today and nothing keeps them agreeing"*)
+   > prevented rather than found later, which also makes P7 unit 2 a deletion.
+   >
+   > **Still open, and it is P7 unit 2's:** `materialize` still lays the chained
+   > carry **symlinks**, so a produced tree still contains dangling links.
+   > `test_stages_do_not_chain` holds that xfail. Removing them also has to
+   > answer what `--chain` threads once no job carries a `depends_on` — under
+   > SLURM, edges dropped without replacement submit every stage **in
+   > parallel**, which is worse than the chain being retired.
 4. A benchmark **nests inside the stage it measures** (the best rank count
    depends on the science), and the bundle names the stage it came from.
 5. The measured verdict reaches **the description**, not just a script. The

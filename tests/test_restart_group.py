@@ -41,6 +41,36 @@ def _group_lines(deck: str):
                   if ln.split() and ln.split()[0] in SIESTA_RESTART_GROUP.keys)
 
 
+def _string_literals(mod):
+    """Every string a module BUILDS — literals and f-string pieces alike,
+    with docstrings and comments left out.
+
+    A grep for ``".XV"`` is not this test, and the difference is the whole
+    point: the code being prevented spelled it ``f"{jobset.name}.XV"``, which
+    contains no such substring. Reading the AST catches the interpolated form,
+    and skipping docstrings is what lets the modules go on *quoting* the
+    contract — which is where these suffixes belong.
+    """
+    import ast
+    import inspect
+
+    src = inspect.getsource(mod)
+    tree = ast.parse(src)
+    docs = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef)) and node.body:
+            first = node.body[0]
+            if (isinstance(first, ast.Expr)
+                    and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                docs.add(id(first.value))
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and id(node) not in docs):
+            yield node.value, node.lineno
+
+
 # --------------------------------------------------------------------- #
 #  Rule 1 — an engine declares its group                                #
 # --------------------------------------------------------------------- #
@@ -165,6 +195,72 @@ def test_prep_carries_state_only_into_a_stage_that_will_read_it():
     assert by_name["fresh"].carry == []       # told to start clean
     assert [c.pattern for c in by_name["warm"].carry] == [
         "job.XV", "job.DM", "job.CG"]
+
+
+# --------------------------------------------------------------------- #
+#  Rule 4 — what `continue` implies is a short fixed set, and the        #
+#  producer DECLARES it rather than the framework knowing it             #
+# --------------------------------------------------------------------- #
+
+def test_the_group_reaches_prep_as_a_declaration_not_as_engine_knowledge():
+    """§ 4 rule 1: *"an engine declares its group ... a new engine that cannot
+    fill this in is a new engine whose restart behaviour nobody has thought
+    about yet."*  Rule 4 records what the alternative cost: *"the set used to
+    be three suffixes written into the producer, which meant a TranSIESTA
+    ladder could not express its `.TSHS` dependency without changing
+    molbuilder's code."*
+
+    So `prep` must not know SIESTA's suffixes. It reads what the job carries,
+    which is why the declaration is on the JOB and travels in `job-set.json`
+    to the machine that will run it.
+    """
+    import importlib
+
+    from molbuilder.siesta.stages import stages_to_jobset
+    from molbuilder.task import Stage
+
+    # ``import_module``, not ``from molbuilder.jobset import materialize``:
+    # `jobset/__init__.py` re-exports a FUNCTION under that name, and the
+    # attribute wins over the submodule.  Written the obvious way, this check
+    # read one 43-line function body and passed on a module it never opened --
+    # found by a mutation that put the leak back and watched nothing happen.
+    _materialize, _model, _prep = (
+        importlib.import_module(f"molbuilder.jobset.{n}")
+        for n in ("materialize", "model", "prep"))
+
+    js = stages_to_jobset(
+        SiestaConfig(system_label="job", relax_type="CG"),
+        [Stage(name="coarse", overrides={"restart": "clean"}),
+         Stage(name="tight", overrides={"restart": "continue"})])
+    tight = next(j for j in js.jobs if j.name == "tight")
+    assert [w.name for w in tight.warm] == ["job.XV", "job.DM", "job.CG"]
+
+    # ...and the framework that consumes it builds none of them.
+    for mod in (_materialize, _model, _prep):
+        for text, where in _string_literals(mod):
+            for suffix in (".XV", ".DM", ".CG"):
+                assert suffix not in text, (
+                    f"{mod.__name__}:{where} builds {suffix!r} -- the engine's "
+                    f"group leaked back into the agnostic layer")
+
+
+def test_only_the_optimizer_history_is_conditional():
+    """§ 2.3.4's three rows: `.XV` *"always -- this is the point of
+    continuing"*, `.DM` when the description says, `.CG` *"only if both stages
+    use the same algorithm"*.
+
+    Only the third needs a second stage, so only the third carries a
+    condition — and a condition on the geometry would make a continuation
+    silently lose the very thing it exists to move forward.
+    """
+    from molbuilder.siesta.stages import stages_to_jobset
+    from molbuilder.task import Stage
+    js = stages_to_jobset(
+        SiestaConfig(system_label="job", relax_type="CG"),
+        [Stage(name="a", overrides={"restart": "clean"}),
+         Stage(name="b", overrides={"restart": "continue"})])
+    warm = {w.name: w.requires_same for w in js.jobs[1].warm}
+    assert warm == {"job.XV": None, "job.DM": None, "job.CG": "optimizer"}
 
 
 # --------------------------------------------------------------------- #

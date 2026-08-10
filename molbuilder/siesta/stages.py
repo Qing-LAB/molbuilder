@@ -11,9 +11,16 @@ into a ``ladder`` JobSet:
     (§ 5): ``proceed`` -> ``afterany`` (run the next stage regardless), else
     (``halt`` / ``continue``) -> ``afterok`` (next runs only if this stage
     ultimately converged; ``continue``'s terminal failure mode is halt);
-  * carry-forward restart files (§ 8 D1): ``.XV`` always; ``.DM`` when
-    ``cfg.use_save_dm``; ``.CG`` only when consecutive stages resolve to the
-    same ``relax_type`` (optimizer history is algorithm-specific).
+  * **the warm-restart declaration** — SIESTA's group, stated where
+    ``run-identity.md`` § 4 rule 1 says it belongs: ``restart: continue``
+    means ``.XV``, ``.DM`` and ``.CG``, and the last is conditioned on the
+    optimizer rather than resolved here, because the run it will be compared
+    against is named at ``prep`` and not at produce (:func:`_warm_declaration`).
+
+``Carry`` is still emitted, and is **derived** from that declaration rather
+than spelled a second time: it is the same rule projected onto the one source
+a chain can know in advance, the stage immediately before.  P7 unit 2 retires
+those edges, at which point the projection is a deletion.
 
 **Where the ladder comes from, and where it does not.**  An engine config
 carries no stage list (``engines/stages.md`` § 1.1) — the ladder is the
@@ -32,7 +39,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Mapping, Optional
 
-from ..jobset.model import Carry, Job, JobSet, Resources
+from ..jobset.model import (Carry, Job, JobSet, Resources, WarmFile,
+                            warm_carry)
 from ..task import Stage
 
 
@@ -126,6 +134,52 @@ def _dep_kind(prev_policy: str) -> str:
     return "afterany" if prev_policy == "proceed" else "afterok"
 
 
+#: The key a `.CG` carry is conditioned on.  Named once because two modules
+#: must spell it identically for the comparison to mean anything, and a typo
+#: on either side reads as *"the optimizers disagree"* -- which withholds the
+#: file silently rather than failing.  ``JobSet.validate`` catches the
+#: declaration half; this constant is why there is only one spelling to catch.
+OPTIMIZER_TRAIT = "optimizer"
+
+
+def _traits(eff) -> Dict[str, str]:
+    """The opaque per-job facts a warm file can be conditioned on (§ 4 rule 1).
+
+    One entry today: which relaxation algorithm this stage runs. The `jobset`
+    layer compares it as a string and never learns what it means, which is what
+    keeps SIESTA's restart group out of the engine-agnostic core.
+    """
+    return {OPTIMIZER_TRAIT: str(getattr(eff, "relax_type", "") or "")}
+
+
+def _warm_declaration(label: str, eff) -> List[WarmFile]:
+    """What a stage with this resolved config takes from a run it continues.
+
+    `run-identity.md` § 4 rule 4 fixes the set: *"`restart: continue` means the
+    geometry, the density and the optimizer's history — `.XV`, `.DM`, `.CG` —
+    because that is what continuing a relaxation *is*"*, and rule 2 makes
+    ``restart`` the ONE field that says so. A ``clean`` stage declares nothing,
+    and that is the same answer its deck gives: ``_continues`` gates
+    ``MD.UseSaveXV`` / ``DM.UseSaveDM`` / ``MD.UseSaveCG`` too, so files placed
+    for a ``clean`` stage would sit unread — § 4's *"present but not
+    honoured"*, the silent half of the pair.
+
+    Only `.CG` is conditional, and the condition is the pair's, not this
+    stage's: *"a CG state is meaningless to a Broyden stage, so blindly
+    carrying it would corrupt the restart"* (`job-system.md` § 4.1). Which
+    source it will be compared against is unknown here — `--from` names it at
+    `prep` — so what is declared is the **condition**, and
+    :func:`~molbuilder.jobset.materialize.warm_carry` evaluates it once both
+    stages are in hand.
+    """
+    from .input import _continues
+    if not _continues(eff):
+        return []
+    return [WarmFile(f"{label}.XV"),
+            WarmFile(f"{label}.DM"),
+            WarmFile(f"{label}.CG", requires_same=OPTIMIZER_TRAIT)]
+
+
 def stages_to_jobset(
     cfg,
     stages,
@@ -147,16 +201,18 @@ def stages_to_jobset(
     ``on_nonconvergence`` is this producer's own input (§ 3), keyed by stage
     name; a stage it does not name gets ``"halt"``.
 
-    The ``.CG`` carry compares the stages' **resolved** ``relax_type``, not
-    a stage field — a stage that does not override the optimizer has the
-    template's, and carrying CG history into a Broyden stage would corrupt
-    the restart either way.
+    The ``.CG`` condition is keyed on the stages' **resolved** ``relax_type``,
+    not on a stage field — a stage that does not override the optimizer has
+    the template's, and carrying CG history into a Broyden stage would corrupt
+    the restart either way.  It is a *condition*, evaluated by
+    :func:`~molbuilder.jobset.model.warm_carry` once ``--from`` has named the
+    source; the ``Carry`` list here is that same rule against the predecessor.
 
     Raises ``ValueError`` if no stage is enabled, or if a stage overrides a
     field the shared schema does not have (from ``effective_config``), so a
     producer can't emit a JobSet the engines would choke on.
     """
-    from .input import _continues, _enabled_stages, effective_config
+    from .input import _enabled_stages, effective_config
 
     label = cfg.system_label
     enabled = _enabled_stages(stages)
@@ -191,19 +247,6 @@ def stages_to_jobset(
     jobs = []
     prev = None
     for s in enabled:
-        carry = []
-        # What gets carried is decided by the stage that will READ it, and by
-        # its ``restart`` alone (P3 unit 4).  It used to key on the template's
-        # ``use_save_dm``, one of the three booleans § 4 rule 2 retired -- so
-        # a stage saying 'clean' still had the previous stage's density
-        # carried in beside it, which is the "present but not honoured"
-        # failure wearing its other face: state placed for a run that was
-        # told not to look.
-        if prev is not None and _continues(resolved[s.name]):
-            carry.append(Carry(f"{label}.XV", prev.name))
-            carry.append(Carry(f"{label}.DM", prev.name))
-            if resolved[prev.name].relax_type == resolved[s.name].relax_type:
-                carry.append(Carry(f"{label}.CG", prev.name))
         jobs.append(Job(
             # The JOB is named for the stage -- that is what a dependency edge
             # and a --stage-resources key point at.  The SCRIPT is named with
@@ -218,9 +261,24 @@ def stages_to_jobset(
             depends_on=(prev.name if prev is not None else None),
             dep_kind=(_dep_kind(policy_of.get(prev.name, "halt"))
                       if prev is not None else "afterok"),
-            carry=carry,
+            warm=_warm_declaration(label, resolved[s.name]),
+            traits=_traits(resolved[s.name]),
         ))
         prev = s
+
+    # The chained form, DERIVED from the declaration rather than written a
+    # second time.  ONE rule, two renderings: ``warm`` is what a stage takes
+    # from whatever run it is pointed at -- which `prep` resolves, because
+    # ``--from`` is where the source is named -- and ``carry`` is that same
+    # rule projected onto the one source a CHAIN can know in advance, the
+    # stage immediately before it.  They were two independent spellings of the
+    # `.XV`/`.DM`/`.CG` rule until 2026-08-10, which is
+    # `staged-runs-architecture.md` 12c's failure mode exactly: two lists that
+    # agree today with nothing keeping them agreeing.  When P7 unit 2 retires
+    # the inter-stage edges this loop is a deletion, not an untangling.
+    for i, job in enumerate(jobs[1:], start=1):
+        job.carry = [Carry(name, jobs[i - 1].name)
+                     for name in warm_carry(job, jobs[i - 1])]
 
     return JobSet(
         name=label,
@@ -347,6 +405,7 @@ def build_siesta_stage_bundle(
     )
 
 
-__all__ = ["DEFAULT_NONCONVERGENCE", "default_siesta_stages",
+__all__ = ["DEFAULT_NONCONVERGENCE", "OPTIMIZER_TRAIT",
+           "default_siesta_stages",
            "stages_to_jobset", "StageBundle",
            "build_siesta_stage_bundle"]
