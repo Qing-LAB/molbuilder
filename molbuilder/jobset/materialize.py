@@ -132,12 +132,18 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     same in either layout, which is why a bench bundle needs no description to
     be laid out.
 
-    ``None`` means *hierarchical*, and that is a **transitional** default, not
-    an inference: no producer emits a flat ladder yet (P5 unit 1 revised is
-    what starts), so every ladder reaching here today is hierarchical. It goes
-    away with that unit, when the surfaces resolve the shape from `task.json`
-    and pass it down — § 6.7 is that the shape is never inferred, and a default
-    that outlives the transition would be exactly that.
+    ``None`` means *hierarchical*, and it now means only one thing: **a ladder
+    with no description to read**. Every surface resolves the shape through
+    :func:`shape_of` and passes it down, so the default is reached by
+    hand-built JobSets (the tests) and by bundles produced before `task.json`
+    was written — both of which are hierarchical, because that is the only
+    shape a JobSet was emitted for.
+
+    It is not an inference from data, which § 6.7 forbids; it is the absence of
+    a file that is now always written. **This paragraph said "no producer emits
+    a flat ladder yet" until 2026-08-10, and that stopped being true in the
+    commit that made flat emit one** — the kind of sentence that survives the
+    change it describes because nothing executes it.
     """
     from .shape import Shape
     sh = shape or Shape.named("hierarchical")

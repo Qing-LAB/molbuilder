@@ -2,14 +2,19 @@
 ``molbuilder fdf ... --stages-json`` and ``--stage-strategy``.
 
 Pins:
-  * either flag triggers the multi-stage branch (N fdfs + 1 runner)
+  * either flag triggers the multi-stage branch (N fdfs + job-set.json +
+    task.json -- the SAME package for either shape, decision 29)
   * neither flag preserves the single-fdf behaviour
   * --stage and --stages-json / --stage-strategy are mutually exclusive
   * --stages-json accepts literal JSON or a path
   * SystemLabel inside every emitted fdf == ``Path(fdf_path).stem``
-  * runner has chmod +x
-  * runner's STAGES array matches the emitted fdf set
+  * the description round-trips through the one reader, carrying the shape
+  * the produce is transactional: a failure part-way publishes nothing
   * bad JSON gives a clean Click error (not a stack trace)
+
+The two runner lines that stood here -- "runner has chmod +x", "runner's
+STAGES array matches the emitted fdf set" -- went with the runner itself on
+2026-08-10.
 """
 from __future__ import annotations
 
@@ -109,9 +114,13 @@ def test_no_stage_flags_preserves_single_fdf(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf))
     assert r.exit_code == 0, r.output
     assert fdf.exists()
-    # No bundle artifacts should appear.
-    assert not (tmp_path / "JOB.run.sh").exists()   # never, since decision 29
+    # No LADDER artifacts appear -- the three the staged branch writes.
+    # `JOB.run.sh` used to be asserted here too; that became vacuous when the
+    # runner stopped being emitted at all (decision 29), so it was pinning
+    # nothing.  These three still separate the two paths.
     assert not (tmp_path / "JOB_01_coarse.fdf").exists()
+    assert not (tmp_path / "job-set.json").exists()
+    assert not (tmp_path / "task.json").exists()
 
 
 # --------------------------------------------------------------------- #
@@ -334,7 +343,10 @@ def test_jobset_flag_emits_runnable_job_set_json(xyz, tmp_path):
     assert "JOB.XV" in [c.pattern for c in js.jobs[1].carry]
 
 
-def test_jobset_flag_requires_multi_stage(xyz, tmp_path):
+def test_shape_hierarchical_requires_a_ladder(xyz, tmp_path):
+    """Named for `--jobset` until 2026-08-10, a flag that no longer
+    exists.  A test named for a removed thing is how the next reader
+    goes looking for it."""
     fdf = tmp_path / "JOB.fdf"
     r = CliRunner().invoke(
         cli, ["fdf", str(xyz), str(fdf), "--shape", "hierarchical"])
@@ -467,14 +479,35 @@ def test_stage_resources_rejects_unknown_stage_name(xyz, tmp_path):
     assert "unknown stage name" in r.output
 
 
-def test_stage_resources_requires_jobset(xyz, tmp_path):
+def test_stage_resources_need_a_ladder_not_a_particular_shape(xyz, tmp_path):
+    """They are per-STAGE scheduler asks, so they need stages.  They do NOT
+    need a particular layout: they ride on `Job.resources` in the job-set, and
+    since decision 29 both shapes carry one.
+
+    This asserted the opposite until 2026-08-10 -- that `--stage-resources`
+    required `--shape hierarchical` -- which was true only while the JobSet was
+    the hierarchy's own artifact.  It would have kept refusing a combination
+    that is now ordinary.
+    """
     b = tmp_path / "bundle"; b.mkdir()
+    # no ladder -> refused, and the message names what is missing
     r = CliRunner().invoke(cli, [
         "fdf", str(xyz), str(b / "JOB.fdf"),
-        "--stage-strategy", "publishable",
         "--stage-resources", '{"coarse": {"domain": "htc"}}'])
     assert r.exit_code != 0
-    assert "--shape hierarchical" in r.output
+    assert "--stage-strategy" in r.output and "ladder" in r.output
+
+    # with a ladder -> accepted, in EITHER shape
+    for shape in ("flat", "hierarchical"):
+        d = tmp_path / shape; d.mkdir()
+        r = CliRunner().invoke(cli, [
+            "fdf", str(xyz), str(d / "JOB.fdf"), "--shape", shape,
+            "--stage-strategy", "publishable",
+            "--stage-resources", '{"coarse": {"domain": "htc"}}'])
+        assert r.exit_code == 0, r.output
+        js = json.loads((d / "job-set.json").read_text())
+        coarse = next(j for j in js["jobs"] if j["name"] == "coarse")
+        assert coarse["resources"]["domain"] == "htc"
 
 
 def test_stage_resources_rejects_unknown_field(xyz, tmp_path):

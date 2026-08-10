@@ -321,11 +321,7 @@ def build_siesta_stage_bundle(
     Raises ``ValueError`` (from ``render_siesta_stage_fdfs`` /
     ``stages_to_jobset``) if no stage is enabled or the ladder is invalid.
     """
-    from .input import (
-        render_siesta_stage_fdfs,
-        render_siesta_stages_runner,
-        _detect_species,
-    )
+    from .input import render_siesta_stage_fdfs, _detect_species
 
     policy = (DEFAULT_NONCONVERGENCE if on_nonconvergence is None
               else on_nonconvergence)

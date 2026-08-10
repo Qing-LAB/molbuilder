@@ -213,7 +213,12 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         6, "molbuilder/siesta/input.py", "flat -- one deck per enabled stage"),
     "render_siesta_stages_runner": (
         6, "molbuilder/siesta/input.py",
-        "flat -- the bash loop; questions 3 and 4 both point here"),
+        "the flat shape's bash loop -- and ORPHANED since 2026-08-10 "
+        "(decision 29): no producer calls it, because flat runs through "
+        "`jobset prep` / `submit run --chain` like the hierarchy.  The row "
+        "stays only while the declaration does; deleting it is the rest of "
+        "P5 unit 3, and `test_no_generated_script_invokes_an_engine_directly` "
+        "is the strict xfail that turns green when it goes"),
     "_enabled_stages": (
         6, "molbuilder/siesta/input.py", "what both of those iterate"),
     "STAGES": (

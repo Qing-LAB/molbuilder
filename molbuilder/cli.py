@@ -551,7 +551,7 @@ def _make_pyscf_options_decorator():
 # --stage-strategy overlays enable flags positionally.
 # When either flag is set, cmd_fdf switches into multi-stage mode and
 # emits one ``<basename>_<stage>.fdf`` per enabled stage plus a
-# ``<basename>.run.sh`` bash runner instead of the single one-shot fdf.
+# one .fdf per enabled stage instead of the single one-shot fdf.
 @click.option("--stages-json", "stages_json", default=None,
               metavar="JSON_OR_PATH",
               help="override the ladder with a JSON list-of-dicts, one "
@@ -566,7 +566,7 @@ def _make_pyscf_options_decorator():
                    "file.  An unknown key is refused by name.  Applied "
                    "BEFORE --stage-strategy so you can combine them.  Sets "
                    "multi-stage mode (one fdf per enabled stage + a "
-                   ".run.sh runner).")
+                   "job-set.json, run via `molbuilder jobset`).")
 @click.option("--stage-strategy",
               type=click.Choice(["publishable", "loose-only", "vib-quality"]),
               default=None,
@@ -576,7 +576,7 @@ def _make_pyscf_options_decorator():
                    "1+2+3 (TIGHT tier for vib/IR/NEB Hessians).  "
                    "Mirrors the form's Stage strategy dropdown.  Sets "
                    "multi-stage mode (one fdf per enabled stage + a "
-                   ".run.sh runner).")
+                   "job-set.json, run via `molbuilder jobset`).")
 # --shape: WHICH LAYOUT this ladder is produced for (engines/stages.md § 6.7).
 # It replaced `--jobset` on 2026-08-10.  That flag was a boolean meaning "ALSO
 # write job-set.json", so `--jobset` emitted the flat runner AND the
@@ -587,7 +587,7 @@ def _make_pyscf_options_decorator():
 @click.option("--shape", "shape", default="flat",
               type=click.Choice(("flat", "hierarchical")),
               help="which layout to produce: `flat` (one directory, stages "
-                   "told apart by filename, plus the .run.sh runner) or "
+                   "told apart by filename) or "
                    "`hierarchical` (a directory per stage, run via "
                    "`molbuilder jobset prep/submit`).  Exactly one is "
                    "emitted.  Requires --stage-strategy / --stages-json.")
@@ -648,20 +648,27 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
         raise click.UsageError(
             "--stage is for a single-stage one-shot .fdf; "
             "--stages-json / --stage-strategy drive the multi-stage "
-            "pipeline (one .fdf per enabled stage + a .run.sh runner).  "
+            "pipeline (one .fdf per enabled stage + a job-set.json).  "
             "Pick one path -- they're mutually exclusive."
         )
     if shape == "hierarchical" and not multi_stage:
+        # ASYMMETRIC ON PURPOSE, and worth saying why: `--shape` is recorded in
+        # `task.json`, and the single-deck path writes none yet (P10).  So
+        # neither value has any effect there -- but `flat` is the default, so
+        # refusing it would refuse every plain `molbuilder fdf`.  Only the one
+        # a user typed on purpose, and would be misled by, is refused.
         raise click.UsageError(
-            "--shape hierarchical lays out a stage LADDER, a directory per "
-            "stage; it needs --stage-strategy or --stages-json (a "
-            "single-stage one-shot .fdf has no stages to keep apart)."
+            "--shape hierarchical needs a stage LADDER: pass --stage-strategy "
+            "or --stages-json.  A single-deck produce records no description "
+            "yet, so it has nowhere to put the shape and nothing would come "
+            "of asking (engines/stages.md § 6.7)."
         )
-    if stage_resources is not None and shape != "hierarchical":
+    if stage_resources is not None and not multi_stage:
         raise click.UsageError(
-            "--stage-resources are per-stage SCHEDULER asks, and they ride on "
-            "the job-set: pass --shape hierarchical (with --stage-strategy / "
-            "--stages-json) too."
+            "--stage-resources are per-STAGE scheduler asks, so they need a "
+            "ladder: pass --stage-strategy or --stages-json.  (They ride on "
+            "the job-set, which BOTH shapes now carry -- so this no longer "
+            "asks for --shape hierarchical, as it did until 2026-08-10.)"
         )
 
     # Apply --stage overlay AFTER cfg is built so the user's per-knob
@@ -799,12 +806,22 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     Pulled out of cmd_fdf so the logic is unit-testable independent
     of Click's runner state, and so cmd_fdf's body stays readable.
 
-    Side effects:
-      * Writes ``{stem}_{stage}.fdf`` for each enabled stage.
-      * Writes ``{stem}.run.sh`` (chmod +x) bash runner.
-      * Optionally copies psml files + writes molwatch preview log
-        next to the LAST enabled stage's fdf.
+    Side effects, and they are the SAME for either shape (decision 29 -- the
+    shape decides how `prep` lays the stages out, not what is produced):
+      * Writes ``{stem}_{NN}_{name}.fdf`` for each enabled stage.
+      * Writes ``job-set.json`` -- the ladder, which is what makes
+        ``jobset prep`` / ``submit run --chain`` the launcher for both shapes.
+      * Writes ``task.json`` -- the description, carrying the shape.
+      * Optionally copies psml files + writes a molwatch preview log per stage.
       * Prints a one-line summary per emitted file to stderr.
+
+    It wrote ``{stem}.run.sh`` (chmod +x) until 2026-08-10: a bash loop over
+    the stages, which was the flat shape's separate launcher.  It is gone --
+    give it activation, ranks, a monitor and a log and it *is* the wrapper.
+
+    Everything lands **transactionally** (`engines/stages.md` § 7.2): built in
+    a staging directory beside the target, published file by file only when all
+    of it succeeded.
 
     ``vacuum`` is the per-side isolation padding in Å, and it applies here
     exactly as it does in :func:`~molbuilder.siesta.input.convert` -- ONLY
@@ -982,56 +999,55 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
         #
         # The Job scripts are exactly the <label>_<NN>_<name>.fdf rendered
         # above; ``shared`` is the pseudopotentials present in the bundle root.
-        if True:
-            from .siesta.stages import stages_to_jobset
-            from .jobset.model import Resources
-            pseudos = sorted(p.name for ext in ("*.psml", "*.psf", "*.vps")
-                             for p in staging.glob(ext))
-            # --stage-resources: per-stage scheduler overrides (§ 6).  Validate
-            # the stage names against the actual ladder so a typo is a loud error,
-            # not a silently-ignored override.
-            resources_for = None
-            if stage_resources is not None:
-                spec = _parse_json_or_path(stage_resources, "--stage-resources")
-                if not isinstance(spec, dict):
+        from .siesta.stages import stages_to_jobset
+        from .jobset.model import Resources
+        pseudos = sorted(p.name for ext in ("*.psml", "*.psf", "*.vps")
+                         for p in staging.glob(ext))
+        # --stage-resources: per-stage scheduler overrides (§ 6).  Validate
+        # the stage names against the actual ladder so a typo is a loud error,
+        # not a silently-ignored override.
+        resources_for = None
+        if stage_resources is not None:
+            spec = _parse_json_or_path(stage_resources, "--stage-resources")
+            if not isinstance(spec, dict):
+                raise click.BadParameter(
+                    "--stage-resources must be a JSON object "
+                    "{stage_name: {resource fields}}",
+                    param_hint="--stage-resources")
+            valid = {s.name for s in stages if s.enabled}
+            unknown = [k for k in spec if k not in valid]
+            if unknown:
+                raise click.BadParameter(
+                    f"--stage-resources: unknown stage name(s) {unknown}; "
+                    f"enabled stages are {sorted(valid)}",
+                    param_hint="--stage-resources")
+            # Validate each stage's body is an object with KNOWN resource
+            # fields -- a typo'd field would otherwise be silently dropped by
+            # Resources.from_dict (loud errors, not silent no-ops).
+            import dataclasses as _dc
+            res_fields = {f.name for f in _dc.fields(Resources)}
+            for sname, body in spec.items():
+                if not isinstance(body, dict):
                     raise click.BadParameter(
-                        "--stage-resources must be a JSON object "
-                        "{stage_name: {resource fields}}",
+                        f"--stage-resources['{sname}'] must be an object of "
+                        f"resource fields; got {type(body).__name__}",
                         param_hint="--stage-resources")
-                valid = {s.name for s in stages if s.enabled}
-                unknown = [k for k in spec if k not in valid]
-                if unknown:
+                bad = [k for k in body if k not in res_fields]
+                if bad:
                     raise click.BadParameter(
-                        f"--stage-resources: unknown stage name(s) {unknown}; "
-                        f"enabled stages are {sorted(valid)}",
+                        f"--stage-resources['{sname}']: unknown field(s) "
+                        f"{bad}; valid fields are {sorted(res_fields)}",
                         param_hint="--stage-resources")
-                # Validate each stage's body is an object with KNOWN resource
-                # fields -- a typo'd field would otherwise be silently dropped by
-                # Resources.from_dict (loud errors, not silent no-ops).
-                import dataclasses as _dc
-                res_fields = {f.name for f in _dc.fields(Resources)}
-                for sname, body in spec.items():
-                    if not isinstance(body, dict):
-                        raise click.BadParameter(
-                            f"--stage-resources['{sname}'] must be an object of "
-                            f"resource fields; got {type(body).__name__}",
-                            param_hint="--stage-resources")
-                    bad = [k for k in body if k not in res_fields]
-                    if bad:
-                        raise click.BadParameter(
-                            f"--stage-resources['{sname}']: unknown field(s) "
-                            f"{bad}; valid fields are {sorted(res_fields)}",
-                            param_hint="--stage-resources")
-                res_map = {k: Resources.from_dict(v) for k, v in spec.items()}
-                resources_for = res_map.get
-            try:
-                from .siesta.stages import DEFAULT_NONCONVERGENCE
-                js = stages_to_jobset(cfg, stages, shared=pseudos,
-                                      resources_for=resources_for,
-                                      on_nonconvergence=DEFAULT_NONCONVERGENCE)
-            except ValueError as e:
-                raise click.ClickException(f"--shape hierarchical: {e}")
-            _staged.append(js.write(staging / "job-set.json"))
+            res_map = {k: Resources.from_dict(v) for k, v in spec.items()}
+            resources_for = res_map.get
+        try:
+            from .siesta.stages import DEFAULT_NONCONVERGENCE
+            js = stages_to_jobset(cfg, stages, shared=pseudos,
+                                  resources_for=resources_for,
+                                  on_nonconvergence=DEFAULT_NONCONVERGENCE)
+        except ValueError as e:
+            raise click.ClickException(f"the stage ladder: {e}")
+        _staged.append(js.write(staging / "job-set.json"))
 
         # Per-stage molwatch preview log, one per enabled stage.  Each
         # log carries the stage's own convergence targets so the watch-
