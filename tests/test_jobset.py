@@ -826,7 +826,7 @@ def test_job_dir_names_sweep_is_unchanged_by_the_total_refs():
     assert job_dir_names(js) == {"p1": "point-p1"}
 
 
-def test_a_sweep_point_prints_a_dash_not_its_row_under_seq():
+def test_a_sweep_point_prints_a_dash_not_its_row_under_seq(tmp_path):
     """The rename made `#` mean `seq`; falling back to the row for a kind that
     has no ordinal is the same defect wearing the new column's name."""
     from molbuilder.jobset.model import Job, JobSet
@@ -835,7 +835,9 @@ def test_a_sweep_point_prints_a_dash_not_its_row_under_seq():
                       Job(name="p2", script="JOB_p2.fdf")])
     body = [l for l in render_plan(js).splitlines() if "p2" in l]
     assert body[0].split()[0] == "-"          # NOT "1", which the row would be
-    out = render_status(jobset_status(js, "."))
+    # tmp_path, never ".": status READS the filesystem, and a repo that
+    # happened to hold a `point-p2/` would decide this test's outcome.
+    out = render_status(jobset_status(js, tmp_path))
     assert [l.split()[0] for l in out.splitlines() if "p2" in l] == ["-"]
 
 
@@ -898,7 +900,11 @@ def test_status_reads_the_attempt_because_that_is_where_the_run_happened(tmp_pat
 
     st = jobset_status(js, tmp_path).stages[0]
     assert st.attempt == "run-0"                 # says WHICH attempt it read
-    assert st.state != "pending"                 # not "prepped, not launched"
+    # A POSITIVE claim: the decoder was reached and returned one of its own
+    # verdicts.  `!= "pending"` would also pass for "unknown", which is what
+    # this reports when the decoder THROWS -- a broken decoder would look like
+    # a working fix.
+    assert st.state in ("running", "finished", "failed", "stale")
     assert "not launched" not in st.detail
 
 
@@ -969,6 +975,210 @@ def test_re_prepping_cold_removes_what_the_previous_prep_carried_in(tmp_path):
     assert cold["dir"] == attempt                # the same unlaunched attempt
     assert not (attempt / "JOB.XV").exists()     # and it is actually cold now
     assert not (attempt / ".continued-from").exists()
+
+
+def test_a_ladder_refuses_to_submit_all_of_itself_without_chain(tmp_path):
+    """`project-layout.md` § 1.6 is the headline rule -- *"Each stage is prepped
+    and submitted on its own"* -- and the reason is cost, not tidiness: *"a
+    chain that continues on its own can spend a week refining a geometry you
+    would have rejected in a minute."*
+
+    It was enforced in `_resolve_stage` and asserted nowhere, which for a rule
+    whose whole job is to stop an expensive accident is the wrong way round.
+    """
+    _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf").write(
+        tmp_path / "job-set.json")
+    runner, grp = _runner()
+
+    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path),
+                            "--mode", "direct", "--dry-run"])
+    assert r.exit_code != 0
+    assert "acts on ONE stage" in r.output
+    assert "01_coarse, 03_tight" in r.output      # ordinals, at the moment you choose
+    assert "--chain" in r.output                  # and how to say you meant it
+
+    # ...and saying it out loud is accepted.
+    r = runner.invoke(grp, ["submit", "run", "--chain", "--bundle",
+                            str(tmp_path), "--mode", "direct", "--dry-run"])
+    assert r.exit_code == 0, r.output
+    assert "coarse" in r.output and "tight" in r.output
+
+
+def test_what_a_run_continues_from_is_copied_never_linked(tmp_path):
+    """§ 1.6: *"they are **copied, never linked** -- the engine writes to those
+    very filenames, and writing through a link would destroy the result you
+    started from."*
+
+    ``is_file()`` is true for a symlink that resolves, so the only honest check
+    is to WRITE, the way the engine will, and look at what the producer still
+    holds afterwards. This is the difference between carrying a geometry
+    forward and overwriting the one you chose it from.
+    """
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    coarse = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    (coarse / "JOB.XV").write_text("COARSE-GEOM")
+
+    tight = prepare_attempt(js, tmp_path, "tight",
+                            continue_from="01_coarse/run-0")["dir"]
+    carried = tight / "JOB.XV"
+    assert not carried.is_symlink(), "carried warm state is a LINK back to it"
+    assert carried.read_text() == "COARSE-GEOM"
+
+    carried.write_text("TIGHT-GEOM")            # what the engine does, step 1
+    assert (coarse / "JOB.XV").read_text() == "COARSE-GEOM"
+
+
+def test_attempts_are_ordered_as_numbers_not_as_names(tmp_path):
+    """`run-10` comes after `run-9`, and lexically it does not.
+
+    Nothing reads these back as strings today, and that is the point of pinning
+    it: sorting by name makes `resolve_attempt` hand out `run-3` when `run-10`
+    already exists, so the next prep writes into a directory that has already
+    run -- § 1.5's one prohibition, reached by a sort order.
+    """
+    from molbuilder.jobset.materialize import (attempts, latest_attempt,
+                                               resolve_attempt)
+    d = tmp_path / "03_tight"
+    for n in (0, 1, 2, 9, 10):
+        (d / f"run-{n}").mkdir(parents=True)
+        (d / f"run-{n}" / "run.json").write_text("{}")   # all launched
+    (d / "notes.txt").write_text("")                     # not an attempt
+    (d / "run-x").mkdir()                                # nor is this
+
+    assert attempts(d) == [0, 1, 2, 9, 10]
+    assert latest_attempt(d).name == "run-10"
+    assert resolve_attempt(d) == (d / "run-11", True)
+
+
+def test_prepare_links_resolve_from_two_levels_down(tmp_path):
+    """The deck and the package are linked from ``<stage>/run-<n>/`` up to the
+    bundle root -- two levels, not one.  A wrong depth is a dangling link, and
+    nothing notices until the engine cannot find its input at launch, on the
+    cluster, in the queue."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    from molbuilder.jobset.model import Job, JobSet
+    js = JobSet(name="JOB", engine="siesta", kind="ladder",
+                shared=["C.psml"], jobs=[Job(name="tight",
+                                             script="JOB_03_tight.fdf")])
+    for f in ("JOB_03_tight.fdf", "C.psml", "mb_monitor.py",
+              "JOB_03_tight.run.sh"):
+        (tmp_path / f).write_text("x")
+
+    rep = prepare_attempt(js, tmp_path, "tight")
+    attempt = rep["dir"]
+    assert set(rep["linked"]) == {"JOB_03_tight.fdf", "C.psml",
+                                  "mb_monitor.py", "JOB_03_tight.run.sh"}
+    for name in rep["linked"]:
+        link = attempt / name
+        assert link.is_symlink(), f"{name} was copied, not linked"
+        assert link.resolve() == (tmp_path / name).resolve(), \
+            f"{name} points at {os.readlink(link)!r}, which does not resolve"
+
+
+def test_a_name_beats_a_number_when_a_stage_is_called_one(tmp_path):
+    """Stage names are ``[A-Za-z0-9_]+``, so a stage may legitimately be named
+    ``3``.  The name is the stage's identity (`engines/stages.md` R5), so it
+    wins -- the resolver checks names and tokens before it reads anything as an
+    ordinal."""
+    from molbuilder.identity import StageRef, resolve_stage_ref
+    refs = [StageRef(1, "3"), StageRef(3, "tight")]
+    assert resolve_stage_ref(refs, "3").name == "3"      # the NAME, seq 1
+    assert resolve_stage_ref(refs, "03_tight").name == "tight"
+    assert resolve_stage_ref(refs, "tight").seq == 3
+
+
+def test_run_launch_omits_continued_from_rather_than_writing_null(tmp_path):
+    """`checkpointing.md` S3 words its check as *"names a directory that exists
+    **or is absent**"*, and absent is not `null`: a reader that tests for the
+    key sees a starting-from-the-structure run as one that continued from
+    nothing-in-particular.  Two different claims, one of them false."""
+    import json
+    from molbuilder.jobset.materialize import (RUN_LAUNCH_SCHEMA,
+                                               write_run_launch)
+    p = write_run_launch(tmp_path, mode="direct", command=["bash", "x.sh"])
+    body = json.loads(p.read_text())
+    assert body["schema"] == RUN_LAUNCH_SCHEMA
+    assert "continued_from" not in body          # ABSENT, not None
+
+    p = write_run_launch(tmp_path, mode="direct", command=["bash", "x.sh"],
+                         continued_from="01_coarse/run-0")
+    assert json.loads(p.read_text())["continued_from"] == "01_coarse/run-0"
+
+
+def test_the_provenance_survives_the_prep_to_submit_handover(tmp_path):
+    """§ 1.6, *"How `continued_from` reaches it"*: prep is what knows which
+    attempt this one continues from, submit is what writes `run.json`, and a
+    private marker carries it across.  That seam has no other reader, so if it
+    breaks nothing complains -- the record just quietly says a run started from
+    the structure when it started from a geometry you chose."""
+    import json
+    from molbuilder.jobset.materialize import prepare_attempt
+    from molbuilder.jobset.submit import submit_jobset
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    coarse = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    (coarse / "JOB.XV").write_text("geometry from coarse\n")
+
+    tight = prepare_attempt(js, tmp_path, "tight",
+                            continue_from="01_coarse/run-0")["dir"]
+    # the wrapper prep would have linked in; submit only launches
+    (tight / "JOB_03_tight.run.sh").write_text("#!/bin/bash\nexit 0\n")
+    submit_jobset(js, tmp_path, mode="direct", only="tight")
+
+    body = json.loads((tight / "run.json").read_text())
+    assert body["continued_from"] == "01_coarse/run-0"
+    assert body["mode"] == "direct"
+
+
+def test_submit_refuses_an_attempt_that_has_already_been_launched(tmp_path):
+    """§ 1.5: *"A run directory is written once and never modified."*  Without
+    this refusal a second submit runs the engine straight into the results of
+    the first -- the one thing an attempt directory exists to make impossible.
+    """
+    from molbuilder.jobset.materialize import prepare_attempt
+    from molbuilder.jobset.submit import submit_jobset, SubmitError
+    js = _token_ladder("JOB_03_tight.fdf")
+    attempt = prepare_attempt(js, tmp_path, "tight")["dir"]
+    (attempt / "JOB_03_tight.run.sh").write_text("#!/bin/bash\nexit 0\n")
+    submit_jobset(js, tmp_path, mode="direct", only="tight")
+    (attempt / "JOB_03_tight.out").write_text("results of the first run\n")
+
+    with pytest.raises(SubmitError) as e:
+        submit_jobset(js, tmp_path, mode="direct", only="tight")
+    assert "already been launched" in str(e.value)
+    assert "prep run tight" in str(e.value)      # says how to get a fresh one
+    assert (attempt / "JOB_03_tight.out").read_text().startswith("results")
+
+
+def test_prepare_attempt_refuses_a_from_that_has_not_run(tmp_path):
+    """*"Did it run?"* -- an attempt directory that exists but holds none of the
+    warm files is a live mistake (naming the attempt you are ABOUT to run, or a
+    stage that failed before writing).  Copying nothing and reporting success
+    would start it cold while the user believed it continued."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    prepare_attempt(js, tmp_path, "coarse")      # exists, but produced nothing
+
+    with pytest.raises(ValueError) as e:
+        prepare_attempt(js, tmp_path, "tight", continue_from="01_coarse/run-0")
+    assert "Did it run?" in str(e.value)
+
+    with pytest.raises(ValueError) as e:
+        prepare_attempt(js, tmp_path, "tight", continue_from="01_coarse/run-9")
+    assert "no such attempt" in str(e.value)
+
+
+def test_a_corrupt_run_json_still_reads_as_launched(tmp_path):
+    """The file's PRESENCE is the answer to *has this been launched?* (§ 1.6).
+    Its contents are extra, so a truncated write must not demote the stage to
+    'never started' -- which would invite a submit on top of a running job."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_03_tight.fdf")
+    attempt = prepare_attempt(js, tmp_path, "tight")["dir"]
+    (attempt / "run.json").write_text('{"schema": "molbuilder/run-la')
+
+    st = jobset_status(js, tmp_path).stages[0]
+    assert st.state == "queued"                  # launched, details lost
 
 
 def test_submit_only_takes_the_same_three_spellings_as_every_surface(tmp_path):

@@ -41,8 +41,11 @@ VIEWER = (REPO / "molbuilder" / "web" / "static" / "structure-optimization"
 _SELECT_RE = re.compile(
     r"(const _seq = .*?const selStage =.*?;)", re.S)
 
-pytestmark = pytest.mark.skipif(shutil.which("node") is None,
-                                reason="node is not installed")
+#: Only the tests that EXECUTE the expression need Node.  The static guard
+#: below does not, and putting it under a module-level skip would retire the
+#: broadest check on the machines least likely to have run the others.
+requires_node = pytest.mark.skipif(shutil.which("node") is None,
+                                   reason="node is not installed")
 
 
 def _select_stage(stage, stages):
@@ -66,6 +69,7 @@ _LADDER = [{"name": "coarse", "on_nonconvergence": "continue",
            {"name": "tight", "on_nonconvergence": "halt"}]
 
 
+@requires_node
 def test_the_token_selects_its_own_stage_row():
     """``01_coarse`` must reach the coarse row.  It reached ``{}`` for every
     token from decision 27 until 2026-08-10, because the token was being used
@@ -75,6 +79,7 @@ def test_the_token_selects_its_own_stage_row():
     assert _select_stage("03_tight", _LADDER)["on_nonconvergence"] == "halt"
 
 
+@requires_node
 def test_the_ordinal_and_not_the_word_is_what_selects():
     """A stage's name is user-editable (`engines/stages.md` R5 makes it the
     stage's identity, not a fixed word), so a renamed row must still be found
@@ -83,6 +88,7 @@ def test_the_ordinal_and_not_the_word_is_what_selects():
     assert _select_stage("01_rough", renamed)["name"] == "rough"
 
 
+@requires_node
 def test_no_stage_selected_yields_an_empty_row_rather_than_a_wrong_one():
     """`custom` gives ``stage: null``.  The lift must then not happen at all --
     quietly borrowing stage 1's retry policy would attach a number the user
@@ -115,6 +121,7 @@ def test_the_token_is_never_used_in_arithmetic():
         f"it (project-layout.md § 4.2) instead of subtracting from it.")
 
 
+@requires_node
 def test_a_token_past_the_end_does_not_wrap_or_throw():
     """A ladder can be shorter than the token says (rows disabled and dropped
     before collection).  Missing is ``{}``, never the last row."""
