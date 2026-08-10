@@ -288,7 +288,7 @@ def build_siesta_stage_bundle(
     """Produce a multi-stage SIESTA bundle's contents as :class:`StageBundle`.
 
     PURE — no filesystem, no scheduler.  Reuses the existing tested
-    renderers (``render_siesta_stage_fdfs`` / ``render_siesta_stages_runner``)
+    renderer (``render_siesta_stage_fdfs``)
     + ``stages_to_jobset``; it only bundles them behind one seam so the CLI
     (``cli._emit_siesta_multi_stage``) and the web Build endpoint don't each
     re-glue the sequence (§ 15.3 Promotion A).

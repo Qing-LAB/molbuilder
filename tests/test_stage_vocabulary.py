@@ -211,20 +211,16 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "and default_siesta_stages) so one tier cannot have two names"),
     "render_siesta_stage_fdfs": (
         6, "molbuilder/siesta/input.py", "flat -- one deck per enabled stage"),
-    "render_siesta_stages_runner": (
-        6, "molbuilder/siesta/input.py",
-        "the flat shape's bash loop -- and ORPHANED since 2026-08-10 "
-        "(decision 29): no producer calls it, because flat runs through "
-        "`jobset prep` / `submit run --chain` like the hierarchy.  The row "
-        "stays only while the declaration does; deleting it is the rest of "
-        "P5 unit 3, and `test_no_generated_script_invokes_an_engine_directly` "
-        "is the strict xfail that turns green when it goes"),
+    #  ``render_siesta_stages_runner`` stood here.  DELETED 2026-08-10 with the
+    #  function, its 142-line bash template and its fourteen tests (P5 unit 3,
+    #  decision 29).  The row is removed rather than commented: its ABSENCE is
+    #  what proves the subtraction, and the guard below fails if the name comes
+    #  back.  Mechanism 6 is now the deck renderer alone.
     "_enabled_stages": (
         6, "molbuilder/siesta/input.py", "what both of those iterate"),
-    "STAGES": (
-        6, "molbuilder/siesta/input.py",
-        "the bash array in the emitted runner's template -- stage vocabulary "
-        "in generated TEXT, which is where questions 3 and 4 both look"),
+    #  ``STAGES`` -- the bash array in the runner's template -- went with the
+    #  template on 2026-08-10.  It was the only stage vocabulary that lived in
+    #  GENERATED TEXT, which is where questions 3 and 4 used to look.
     "default_siesta_stages": (
         11, "molbuilder/siesta/stages.py",
         "builds the shipped ladder as task.Stage objects, reading the tier "
@@ -557,9 +553,13 @@ def measure_direct_engine_invocations() -> list[str]:
             "tab or the trajectory viewer"]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "P5 -- one shape out.  The flat ladder runner calls `siesta < $fdf` with "
-    "no activation, no wrapper and no monitor."))
+# QUESTION 3 IS ANSWERED YES, 2026-08-10.  This was xfail(strict) from the day
+# the module was written: the flat ladder runner called `siesta < $fdf` with no
+# activation, no rank clamp, no monitor and no .molwatch.log.  P5 unit 3 deleted
+# it (decision 29 -- flat runs through `jobset prep` / `submit run --chain` like
+# the hierarchy), the probe below found nothing left to complain about, and the
+# strict marker did exactly what it is for: it FAILED, loudly, the moment the
+# behaviour started working, so the fix could not land without this being said.
 def test_no_generated_script_invokes_an_engine_directly():
     """Question 3."""
     offences = measure_direct_engine_invocations()
@@ -604,8 +604,10 @@ def measure_chaining_producers() -> list[str]:
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "P7 -- one attempt, no chain.  stages_to_jobset wires each stage to its "
-    "predecessor and the flat runner loops over all of them."))
+    "P7 -- one attempt, no chain.  stages_to_jobset still wires each stage "
+    "to its predecessor with depends_on.  (The other half of this -- the "
+    "flat runner looping over every stage -- went with the runner on "
+    "2026-08-10; what is left is the JobSet's own edges.)"))
 def test_stages_do_not_chain():
     """Question 4."""
     offences = measure_chaining_producers()

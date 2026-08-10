@@ -1,27 +1,29 @@
-"""Tests for the SIESTA multi-stage emitters (task #542, commit 2):
-:func:`render_siesta_stage_fdfs` + :func:`render_siesta_stages_runner`.
+"""Tests for the SIESTA multi-stage deck emitter,
+:func:`render_siesta_stage_fdfs`.
 
 Pins the per-stage emission contract:
-  * one .fdf per enabled stage, filename ``{system_label}_{stage}.fdf``
+  * one .fdf per enabled stage, filename ``{system_label}_{NN}_{name}.fdf``
   * every fdf shares the same SystemLabel (so SIESTA auto-reads .XV
     between stages without any file-renaming)
   * a stage's ``overrides`` beat the template's values
-  * runner is a valid bash script (``bash -n`` clean)
-  * runner array literals match the enabled stages in order
-  * LAST enabled stage's policy is force-halted in the runner
-  * disabled stages drop out of both fdf set and runner arrays
-  * empty-enabled-list raises (never silently emit a zero-stage run)
+  * disabled stages drop out of the fdf set
+  * an empty ladder raises rather than emitting nothing
 
-2026-08-07 (P2 unit 2): the ladder is an ARGUMENT now, not ``cfg.stages`` --
-an engine config carries no stage list (engines/stages.md § 1.1), and the
-non-convergence policy is the producer's own input rather than a stage field
-(§ 3).  Every assertion below survived that; only the wiring moved.
+**Fourteen runner tests were deleted from here on 2026-08-10**, with
+``render_siesta_stages_runner`` itself (P5 unit 3, decision 29).  They pinned a
+real contract -- bash validity, the STAGES/ON_NONCONV arrays, the force-halt of
+the last stage, the warm-restart guard and MOLBUILDER_FORCE -- for a launcher
+the flat shape no longer has.  Flat runs through ``jobset prep`` /
+``submit run --chain`` like the hierarchy, so what those tests protected is now
+the wrapper's, and the wrapper has its own suite.
+
+Deleted rather than adapted: a test whose subject is gone is not failing, it is
+orphaned, and its absence is what proves the subtraction
+(``process/testing.md``; the plan's Review 2).
 """
 from __future__ import annotations
 
 import dataclasses
-import shutil
-import subprocess
 
 import numpy as np
 import pytest
@@ -29,7 +31,6 @@ import pytest
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.siesta import (
     render_siesta_stage_fdfs,
-    render_siesta_stages_runner,
 )
 from molbuilder.siesta.stages import (
     DEFAULT_NONCONVERGENCE,
@@ -129,147 +130,3 @@ def test_fdfs_zero_enabled_raises(h2, cfg, stages):
     stages = [dataclasses.replace(s, enabled=False) for s in stages]
     with pytest.raises(ValueError, match="no enabled entries"):
         render_siesta_stage_fdfs(h2, cfg, stages)
-
-
-# --------------------------------------------------------------------- #
-#  render_siesta_stages_runner                                          #
-# --------------------------------------------------------------------- #
-
-
-def _bash():
-    bash = shutil.which("bash")
-    if bash is None:
-        pytest.skip("bash unavailable")
-    return bash
-
-
-def test_runner_is_valid_bash(cfg, stages):
-    script = render_siesta_stages_runner(
-        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    r = subprocess.run([_bash(), "-n"], input=script, text=True,
-                       capture_output=True)
-    assert r.returncode == 0, r.stderr
-
-
-def test_runner_arrays_match_enabled_stages(cfg, stages):
-    script = render_siesta_stages_runner(
-        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    # Defaults: 01_coarse + 02_medium enabled.
-    assert "STAGES=(01_coarse 02_medium)" in script
-    # stage1.on_nonconvergence='proceed' (preserved); 02_medium is the
-    # last enabled stage so it's force-halted (was already 'halt' here).
-    assert "ON_NONCONV=(proceed halt)" in script
-
-
-def test_runner_force_halts_last_enabled_stage_even_if_user_set_proceed(
-        cfg, stages):
-    """The last enabled stage must halt on non-convergence even if the
-    caller explicitly set its policy to 'proceed' -- the final tier is
-    the publishable result; silent fall-through is a bug."""
-    script = render_siesta_stages_runner(
-        cfg, stages,
-        on_nonconvergence={"coarse": "proceed", "medium": "proceed"})
-    # 01_coarse keeps 'proceed'; 02_medium is force-halted.
-    assert "ON_NONCONV=(proceed halt)" in script
-
-
-def test_runner_defaults_an_unnamed_stage_to_halt(cfg, stages):
-    """A policy mapping that says nothing about a stage means halt: the
-    producer's input is explicit, and the safe reading of silence is
-    'stop', not 'carry on with a geometry that did not converge'."""
-    script = render_siesta_stages_runner(cfg, stages)
-    assert "ON_NONCONV=(halt halt)" in script
-
-
-def test_runner_basename_threaded(stages):
-    cfg = SiestaConfig(system_label="TJ-BDT-Au111")
-    script = render_siesta_stages_runner(
-        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    assert "BASENAME='TJ-BDT-Au111'" in script
-
-
-def test_runner_has_warm_restart_guard(cfg, stages):
-    script = render_siesta_stages_runner(
-        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    # The cautious .XV check must be present:
-    assert "_warm_check" in script
-    # Stage 1 must short-circuit the check (idx == 0 returns).
-    assert "(( idx == 0 )) && return" in script
-    # The guard must look for stray *.XV files.
-    assert "*.XV" in script and "shopt -s nullglob" in script
-
-
-def test_runner_honors_molbuilder_force(cfg, stages):
-    script = render_siesta_stages_runner(
-        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    assert 'FORCE="${MOLBUILDER_FORCE:-0}"' in script
-    assert '"${FORCE}" == "1"' in script
-
-
-def test_runner_aborts_in_non_interactive_shell_without_force(cfg, stages):
-    script = render_siesta_stages_runner(
-        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    # The runner refuses to silently warm-restart in batch shells.
-    assert '! -t 0' in script
-    assert 'MOLBUILDER_FORCE=1' in script
-
-
-def test_runner_injects_siesta_cmd_verbatim(cfg, stages):
-    script = render_siesta_stages_runner(
-        cfg, stages, siesta_cmd="mpirun -np 8 siesta",
-        on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    assert 'mpirun -np 8 siesta < "$fdf" > "$log"' in script
-
-
-def test_runner_default_siesta_cmd_is_bare_siesta(cfg, stages):
-    script = render_siesta_stages_runner(
-        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    assert 'siesta < "$fdf" > "$log"' in script
-
-
-def test_runner_zero_enabled_raises(cfg, stages):
-    stages = [dataclasses.replace(s, enabled=False) for s in stages]
-    with pytest.raises(ValueError, match="no enabled entries"):
-        render_siesta_stages_runner(
-            cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-
-
-def test_runner_single_stage_collapses_to_one_element_arrays(cfg, stages):
-    for i in (1, 2):
-        stages[i] = dataclasses.replace(stages[i], enabled=False)
-    script = render_siesta_stages_runner(
-        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    assert "STAGES=(01_coarse)" in script
-    # Single enabled stage is ALSO the last -> force-halt applies.
-    assert "ON_NONCONV=(halt)" in script
-
-
-def test_runner_three_stage_ladder(cfg):
-    """vib-quality strategy = all three stages enabled.  Runner
-    arrays must reflect that, and the LAST entry is force-halted."""
-    stages = default_siesta_stages("vib-quality")
-    script = render_siesta_stages_runner(
-        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    assert "STAGES=(01_coarse 02_medium 03_tight)" in script
-    assert "ON_NONCONV=(proceed halt halt)" in script
-
-
-# --------------------------------------------------------------------- #
-#  Cross-emitter consistency                                             #
-# --------------------------------------------------------------------- #
-
-
-def test_fdfs_and_runner_agree_on_enabled_set(h2, cfg, stages):
-    """The runner's STAGES array and the fdf filename set must name
-    the same stages, in the same order.  If they ever diverged the
-    runner would try to run a missing .fdf (or skip an emitted one)."""
-    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
-    runner = render_siesta_stages_runner(
-        cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    fdf_stages = sorted(
-        name[len(cfg.system_label) + 1: -len(".fdf")]
-        for name in fdfs
-    )
-    # Stage names appear in the runner's STAGES=(...) literal.
-    for stage in fdf_stages:
-        assert f" {stage}" in runner or f"({stage}" in runner

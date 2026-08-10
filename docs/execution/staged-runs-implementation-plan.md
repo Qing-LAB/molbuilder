@@ -1186,13 +1186,39 @@ guard 3 turns green.
 > pinned the *opposite* of the rule now in force — a flat bundle without a
 > JobSet would be a flat bundle nobody could run.
 >
-> **Still open (the rest of unit 3):** `render_siesta_stages_runner`,
-> `_STAGES_RUNNER_TEMPLATE` and `_warm_check` are still in `siesta/input.py`
-> with no caller, and `test_no_generated_script_invokes_an_engine_directly` is
-> still `xfail` — it will turn green the moment they go, which is the strict
-> xfail doing its job. Deleting them is a subtraction review of its own
-> (P5's *"heaviest in the plan"*), and it is now a deletion with no behaviour
-> attached rather than a design change.
+> **Unit 3 completed 2026-08-10 — and it turned a guard green.**
+>
+> `render_siesta_stages_runner`, its 142-line `_STAGES_RUNNER_TEMPLATE` (with
+> the `_warm_check` prologue), the package export, fourteen tests, two ledger
+> rows and five stale references are **gone**. `siesta/input.py` lost 142
+> lines and gained none.
+>
+> **Question 3 — *"Does everything run through the wrapper?"* — is answered
+> YES**, and `test_no_generated_script_invokes_an_engine_directly` is no longer
+> `xfail(strict=True)`. That marker did exactly what strict is for: it
+> **failed, loudly, the moment the behaviour started working**, as `XPASS`, so
+> the deletion could not land without this being written down. And the probe
+> beside it (`_flat_runner_text`) had been authored to return `None` once the
+> import failed — a check written to survive its own subject.
+>
+> **What went, and why the coverage did not go with it.** The fourteen tests
+> pinned a real contract — bash validity, the `STAGES`/`ON_NONCONV` arrays, the
+> force-halt of the last stage, the warm-restart guard, `MOLBUILDER_FORCE`. All
+> of it was for a launcher the flat shape no longer has: flat runs through
+> `jobset prep` / `submit run --chain`, so what those tests protected is the
+> **wrapper's**, and the wrapper has its own suite. Deleted rather than
+> adapted, because a test whose subject is gone is not failing — it is
+> orphaned, and its absence is the proof.
+>
+> The two ledger rows (`render_siesta_stages_runner`, and `STAGES` — the only
+> stage vocabulary that lived in **generated text**) are removed rather than
+> commented out, which is what makes mechanism 6 measurably the deck renderer
+> alone.
+>
+> One sibling xfail's reason was **half false** afterwards and is corrected:
+> `test_stages_do_not_chain` blamed *"stages_to_jobset … and the flat runner
+> loops over all of them"*. The runner half is gone; what remains is the
+> JobSet's own `depends_on` edges, which is P7's.
 >
 > #### ⚠ Unit 1 was built at the wrong layer, and decision 29 corrects it
 >
