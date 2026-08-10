@@ -1597,6 +1597,7 @@ open.
 | 23 | ~~**Where is `required` checked?**~~ — **decided 2026-08-08 (user): in the directory the job runs in, immediately before the engine starts.** *"Based on how the job is run inside the stage run subdir, I think that's where the check is done."* Not at produce — the files do not exist and a `.TSHS` may come from a different calculation, so *"does an earlier stage produce this?"* is unanswerable and is not asked. **Not at prep either**, and this corrected a proposal of mine that was impossible rather than merely wrong: `Carry`'s symlink is laid *before* the producer runs and is **meant** to dangle (`job-system.md` D1). Reuses the shipped `_warm_check` pattern — warn by name, offer abort, `MOLBUILDER_FORCE=1` for unattended runs — in both emitters | ~~P3~~ contract; code in a follow-up |
 | 15 | ~~**When does normalisation refuse?**~~ — **decided 2026-08-08: when a letter or a digit is replaced, or when nothing is left.** § 3 rule 3 said only *"reduces to nothing"*, yet § 3.1 refused `Über` → `ber`, which does not. The line is **what was replaced**: a *separator* (space, `/`, `.`) becomes `_` silently — that is all `BDT/Au relax` does — while a character typed *inside a word* cannot be dropped, so `Über` and `Ω-shape` refuse. Mechanically: a character outside `[A-Za-z0-9_-]` that is nonetheless alphanumeric | ~~P3~~ |
 | 24 | ~~**Does the browser need its own identity mechanism, given that its `SystemLabel` field defaults to the literal `siesta`?**~~ — **decided 2026-08-09 (user): no. The identity half dissolves; what is left is a save that does not say what it replaced.** See § 8a below for the walk | ~~P3~~; the surviving unit is **P10** |
+| 26 | ~~**Is `SystemLabel` the id, or is the id something wider that `SystemLabel` is part of?**~~ — **decided 2026-08-09 (user): `SystemLabel` is the stem of every emitted name; the id (label + formula) is a *record* in `task.json`, not a filename.** *"From dir to the .fdf/script name, we all derive consistently from SystemLabel … the SystemLabel becomes one consistent scheme, and other information is simply attached to it."* This is what the code already does and what three contracts deny. It settles **decision 21** as the same rule seen from the other end, and it is P4's whole subject. See § 8c below | **P4**, and corrects **P1**'s decision 2 |
 | 25 | ~~**When is the next stage prepped, and what must be true of the previous one first?**~~ — **decided 2026-08-09 (user): stage N+1 is prepped after stage N is done and *confirmed*, and "confirmed" is a checkpoint question, not a convergence one.** *"The only reliable prep of a next stage is the one that is done when the previous stage is already confirmed."* Confirmed = the folder is **clean** (stage N's result is saved, or you are standing at a restored state), **or** you were shown what is unsaved and said go. This is the missing decision the dangling `Carry` symlink was standing in for. See § 8b below for the walk | **P6**, **P7**, **P8** |
 
 **Already decided, recorded so they are not reopened:** the shape is a required
@@ -1656,6 +1657,96 @@ be regenerated, a deck is a pure function of the form still on screen.
 
 > This lands in **P10**, whose unit 3 already reduces this tab. It is not P3
 > work: P3's units 1–5 shipped and were reviewed at M3 (§ 5c).
+
+### 8c. Decision 26, walked — one base name, everything else attached
+
+**The question.** P4's re-anchor turned up a contradiction: three contracts say a
+stage's deck in the hierarchical layout is `<id>.fdf` (*"the directory already
+said which stage"*), while **decision 21** (2026-08-08, user) says
+molbuilder-named files carry `_<stage>` in **both** shapes because
+`01_coarse/<id>_tight.fdf` is *wrong on sight*. Asking whether that was fallout
+from decision 25 or older, `git log -L` answered plainly: `8a682d23` and
+`b5861103` wrote the old rule on **2026-08-07**, `6d51c23e` recorded the
+decision on **2026-08-08** — into **one** of the four documents. Pre-existing,
+one day old, unrelated to prep timing.
+
+**The principle that settles it, in the user's words.** *"From dir to the
+.fdf/script name, we all derive consistently from SystemLabel (or equivalent in
+other engine setups), and each run/bench will have index or additional prefix to
+give correct sequence and info to separate them. From there, the SystemLabel
+becomes one consistent scheme, and other information is simply attached to it."*
+
+That is stronger than decision 21, which it contains. The 2026-08-07 rule — *a
+name says what its location does not* — makes a name depend on **where it sits**,
+so one artifact has two names and the Files table needs two columns:
+
+```
+flat          bdt_au_coarse.fdf
+hierarchical  01_coarse/bdt_au.fdf        <- a different name for the same thing
+```
+
+One base name plus attachments gives **one** column, and the misfile stays
+visible:
+
+```
+bdt_au/                         <- the folder: the user's arbitrary name
+├── 01_coarse/                  <- index orders, name says which
+│   ├── bdt_au_coarse.fdf       <- SystemLabel + what separates it
+│   ├── bdt_au_coarse.run.sh
+│   └── run-0/                  <- index again, for attempts
+│       ├── bdt_au.XV           <- SystemLabel bare: SIESTA names these
+│       └── bdt_au.DM
+└── 02_tight/bdt_au_tight.fdf
+```
+
+**The emitter already has this shape.** `siesta/input.py:549` is
+`f"{cfg.system_label}{_stage_suffix}.fdf"`, and the comment beside it already
+draws the split — *"The SystemLabel itself stays unsuffixed (so SIESTA's .XV /
+.DM / .CG restart files transfer cleanly between stages)."* Two things are wrong
+with it and both are P4 units: the separator is `-`, which § 6.3 reserves for
+*a counter follows*; and the qualifier is a **position** (`stage1`) where it
+should be the **name** (`coarse`). P4 is therefore a correction, not a rewrite.
+
+**The second half: `SystemLabel` is the label, not the id.** Traced rather than
+assumed:
+
+```
+cli.py:700    _label = normalise_id(_typed or Path(fdf_path).stem)   # one string
+cli.py:710    cfg = replace(cfg, system_label=_label)
+input.py:606  SystemLabel  {cfg.system_label}
+```
+
+`normalise_id` takes a single string; the **formula never enters it**. And
+`run_id(label, formula)` — which joins them — is called from **13 places, every
+one a test**, and from nothing in `molbuilder/`. `test_task_description.py:112`
+shows its intended home: `task.run.id == run_id(...)`, i.e. `task.json`.
+
+**So decision 2 is half wrong.** *"The id lives in `task.json` and is the stem of
+every file inside"* — lives there, yes; stems the files, no. **Decided: A.** The
+stem is `SystemLabel`; the id stays a record. The formula's job is telling two
+calculations apart, and `task.json` plus the folder the user named already do
+that — nothing has ever needed it *in a filename*, which is why `run_id` sat
+uncalled through four phases.
+
+**What must change, and it is wider than it first looked.** `run-identity.md`
+states the overturned claim three times, including its opening diagram (*"= the
+SystemLabel literal = the basename of every file"*, line 70), § 3's sentence
+(line 164) and the five-level flowchart (line 233); `worked-example.md:95`
+repeats it. Together with decision 21's three:
+
+| document | what it must say |
+|---|---|
+| `run-identity.md` §§ 2–3 | the id is `label + formula`, **recorded in `task.json`**; `SystemLabel` is the label and is the stem |
+| `worked-example.md:95` | the same |
+| `job-contracts.md § 6.3` | Files table: one column, `<id>_<stage>` for molbuilder-named files in **both** shapes; engine-named `.XV/.DM/.CG` bare |
+| `project-layout.md § 4.1` | the same table |
+| `engines/stages.md § 7` | the tree, and the § 874 / § 886 pair where the log appears in both forms |
+
+**And `run_id()` cannot stay as it is** — a function with 13 assertions that no
+production path reaches is a suite proving something nobody runs. Under A it is
+wired into `task.json`'s `run.id` or retired; that is P1's territory, not P4's.
+
+---
 
 ### 8b. Decision 25, walked — when the next stage is prepped
 
