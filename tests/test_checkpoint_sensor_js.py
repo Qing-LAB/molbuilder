@@ -142,8 +142,13 @@ def test_state_returns_the_shape_the_sensor_reads(client, tmp_path):
     from molbuilder.checkpoint import Repo
     (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n")
     Repo(str(tmp_path)).init(note="set up")
-    body = client.get("/api/checkpoint/state",
-                      query_string={"path": str(tmp_path)}).get_json()
+    r = client.get("/api/checkpoint/state",
+                   query_string={"path": str(tmp_path)})
+    # Guard BEFORE the body checks.  ``archive_total_bytes not in body`` is a
+    # negative assertion, and a 404 would satisfy it against Flask's error
+    # page while pinning nothing at all.
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
     for key in ("path", "initialized", "standing_at", "clean",
                 "changed", "added", "deleted", "unsaved", "ignore_edited"):
         assert key in body, f"sensor field {key!r} missing from /state"

@@ -354,7 +354,16 @@ Set on every response by an `after_request` hook (`app.py`):
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
-## 3. Endpoint index — all 80 routes
+## 3. Endpoint index — all 76 routes
+
+> **Three routes below no longer exist** (found 2026-08-10 while correcting this
+> heading, which said 80): `/api/files/result-list`,
+> `/api/selection/refresh-hash` and `/api/selection/save-sidecar`. The count
+> test compares a NUMBER against Flask's URL map, so it caught that the total
+> had drifted but not which rows were stale — and the heading had been wrong
+> long enough that the removals are not this session's. Each needs checking for
+> *retired* versus *renamed* before its row is deleted, which is task #38's
+> sweep, not a silent edit here.
 
 Section 4 groups the full catalogue by owner and purpose; update this count
 whenever a route is added or removed. (The count — pinned by `test_http_status_contract.py` — is taken
