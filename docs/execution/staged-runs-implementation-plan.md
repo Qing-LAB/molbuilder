@@ -1598,6 +1598,7 @@ open.
 | 15 | ~~**When does normalisation refuse?**~~ — **decided 2026-08-08: when a letter or a digit is replaced, or when nothing is left.** § 3 rule 3 said only *"reduces to nothing"*, yet § 3.1 refused `Über` → `ber`, which does not. The line is **what was replaced**: a *separator* (space, `/`, `.`) becomes `_` silently — that is all `BDT/Au relax` does — while a character typed *inside a word* cannot be dropped, so `Über` and `Ω-shape` refuse. Mechanically: a character outside `[A-Za-z0-9_-]` that is nonetheless alphanumeric | ~~P3~~ |
 | 24 | ~~**Does the browser need its own identity mechanism, given that its `SystemLabel` field defaults to the literal `siesta`?**~~ — **decided 2026-08-09 (user): no. The identity half dissolves; what is left is a save that does not say what it replaced.** See § 8a below for the walk | ~~P3~~; the surviving unit is **P10** |
 | 26 | ~~**Is `SystemLabel` the id, or is the id something wider that `SystemLabel` is part of?**~~ — **decided 2026-08-09 (user): `SystemLabel` is the stem of every emitted name; the id (label + formula) is a *record* in `task.json`, not a filename.** *"From dir to the .fdf/script name, we all derive consistently from SystemLabel … the SystemLabel becomes one consistent scheme, and other information is simply attached to it."* This is what the code already does and what three contracts deny. It settles **decision 21** as the same rule seen from the other end, and it is P4's whole subject. See § 8c below | **P4**, and corrects **P1**'s decision 2 |
+| 27 | ~~**What are the three shipped tiers called, and does an artifact name carry the stage's order?**~~ — **decided 2026-08-10 (user): a stage's artifact token is `<NN>_<name>` — the index travels with the name, in both shapes.** *"We may have many stages connected so i'd rather use names with index number and have comments somewhere for explaining what it is as scientific notation for each run."* Neither of the two options offered was taken: the question assumed the choice was which *strings* to use, and the answer is that a long ladder needs its **order** legible in a flat listing. It does **not** violate `stages.md` R5 — see § 8e — and it hands § 8d's decoder problem its answer. Overturns two lines of `project-layout.md § 4.1` | **P4** |
 | 25 | ~~**When is the next stage prepped, and what must be true of the previous one first?**~~ — **decided 2026-08-09 (user): stage N+1 is prepped after stage N is done and *confirmed*, and "confirmed" is a checkpoint question, not a convergence one.** *"The only reliable prep of a next stage is the one that is done when the previous stage is already confirmed."* Confirmed = the folder is **clean** (stage N's result is saved, or you are standing at a restored state), **or** you were shown what is unsaved and said go. This is the missing decision the dangling `Carry` symlink was standing in for. See § 8b below for the walk | **P6**, **P7**, **P8** |
 
 **Already decided, recorded so they are not reopened:** the shape is a required
@@ -1657,6 +1658,84 @@ be regenerated, a deck is a pure function of the form still on screen.
 
 > This lands in **P10**, whose unit 3 already reduces this tab. It is not P3
 > work: P3's units 1–5 shipped and were reviewed at M3 (§ 5c).
+
+### 8e. Decision 27, walked — the index travels with the name
+
+**The question I asked was the wrong one.** I offered `coarse/medium/tight`
+versus `stage1/2/3` and framed it as cosmetic — *"this only decides the
+strings"*. It was not about strings. The answer:
+
+> *"We may have many stages connected so i'd rather use names with index number
+> and have comments somewhere for explaining what it is as scientific notation
+> for each run."*
+
+Both of my options lose the same thing. `job-contracts.md § 2.3`'s worked flat
+listing has three decks and reads fine; **eight** decks named `bdt_au_coarse`,
+`bdt_au_refine`, `bdt_au_hires`, `bdt_au_final`, … sort alphabetically into an
+order that is not the order they ran. The hierarchical shape never had this
+problem — `01_coarse/` carries the order — and the flat shape was quietly
+relying on there being few enough stages to hold in your head.
+
+**The scheme.** A stage's **artifact token** is `<NN>_<name>` — the same token
+its directory already uses — and it is the same in both shapes:
+
+```
+flat            bdt_au_01_coarse.fdf   bdt_au_01_coarse.out
+                bdt_au_02_tight.fdf    bdt_au_02_tight.molwatch.log
+                bdt_au.XV  bdt_au.DM            <- engine-named, still bare
+
+hierarchical    01_coarse/bdt_au_01_coarse.fdf
+                02_tight/bdt_au_02_tight.fdf
+```
+
+**Why this does not violate R5, which is the first thing to check.** R5 says
+*"the stage's position in the list must never appear in a filename"*, and its
+reason is exact: *"insert a stage at the front, or reorder two, and every
+positional number after it shifts — silently reassigning outputs that already
+exist to stages that did not produce them."*
+
+`NN` is **not** a position in the list. `project-layout.md § 4.2` already fixes
+what it is: *"A `seq` is never changed, so a stage can only be added at the end
+… numbers are assigned when the directories are produced, not when the rows are
+typed"*, and — the sentence that settles it — *"insert something between 1 and 2
+is not an insertion; it is a new stage that happens to be coarser, and numbering
+it `03` is the truth."* A number that is assigned once and never reassigned
+cannot shift, so R5's failure mode cannot occur. **R5 stands; it just needs the
+distinction between a list position and an assigned ordinal written into it**,
+because today it is easy to read as forbidding both.
+
+**Where `NN` lives in the flat shape, and why `Stage` keeps three fields.**
+Not in `task.json`. It is assigned by the produce, read back off **what is
+already on disk** — the same rule § 4.2 gives for stage directories, extended to
+a shape that had no directories to read. So `engines/stages.md § 2`'s *"three
+fields, and no others"* survives, and `project-layout.md § 4.1`'s *"`seq` is not
+a fourth field"* survives with it. An existing stage keeps its number because
+its files already carry it.
+
+**What this overturns**, both in `project-layout.md § 4.1`:
+
+| line | why it goes |
+|---|---|
+| *"The deck does not carry the number: names are unique, so it would add nothing"* | unique is not ordered. With three stages the list order is memorable; with eight it is not, and the flat shape has nothing else to carry it |
+| *"[hierarchical] `seq` exists only where stage directories do. A flat calculation has no stage directories, so there is nothing to number and no `seq` at all"* | the flat shape is exactly where the number is load-bearing, because it is the shape with no directory to hold it |
+
+**And it answers § 8d.** The decoder's anchor rule needed an order after the
+position left the filename; under decision 27 the position never leaves. `NN` is
+a stable ordinal, so `_fdf_sort_key` keeps working — it re-points from
+`-stage(\d+)` to `_(\d+)_(\w+)` and gains the **name** alongside the number it
+already had. The hardest part of P4 as walked in § 8d dissolves.
+
+**The scientific comment — a proposal, not decided.** *"Comments somewhere for
+explaining what it is as scientific notation for each run"* needs a home, and
+the cheapest one adds no field: the emitter already writes a stage comment into
+the deck (`input.py:559`, today *"# Stage N of a staged relaxation"*). That line
+becomes a one-line summary **derived from the stage's own overrides** — e.g.
+*"# 01 coarse — mesh 150 Ry, force tol 0.04 eV/Å, CG, 600 steps"*. Derived rather
+than typed means it cannot drift from what the deck actually says, and it keeps
+`Stage` at three fields. If you want prose a person writes instead, that is a
+fourth field and a separate decision.
+
+---
 
 ### 8d. P4 walked — what the `-stage<N>` subtraction actually costs
 
