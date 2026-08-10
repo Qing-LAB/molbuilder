@@ -188,28 +188,27 @@ can make a save faster; it can never make it store less.**
 ### 3.1 A real folder, after two saves
 
 ```text
-BDT_Au_relax_Au38C6H4S2/
+bdt-relax/                           the folder: the user typed this name
 ├── .git/                            the text history
 ├── .gitignore                       generated — lists exactly what the archive holds
 ├── .binsnapshots/                   the archive
 │   ├── a19f0b72…c8e5/                 named by the sha256 of its own MANIFEST
-│   │   ├── 01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM
+│   │   ├── 01_coarse/run-0/BDT_Au_relax.DM
 │   │   └── MANIFEST.do_not_edit       what is in here, and a sha256 each
 │   └── 4d7ba930…1f62/
-│       ├── 01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM   ← unchanged since the
-│       │                                                   save above, so this is
-│       │                                                   a hard link: no disk
-│       ├── 02_tight/run-0/BDT_Au_relax_Au38C6H4S2.DM
+│       ├── 01_coarse/run-0/BDT_Au_relax.DM   ← unchanged since the save above,
+│       │                                        so this is a hard link: no disk
+│       ├── 02_tight/run-0/BDT_Au_relax.DM
 │       └── MANIFEST.do_not_edit
-├── task.json                             ┐
-├── BDT_Au_relax_Au38C6H4S2.fdf.template  │  small → git
-├── 01_coarse/                            │
-│   ├── BDT_Au_relax_Au38C6H4S2.fdf       │
-│   └── run-0/                            │
-│       ├── BDT_Au_relax_Au38C6H4S2.out   ┘
-│       ├── BDT_Au_relax_Au38C6H4S2.XV      small → git
-│       ├── run.json                        small → git
-│       └── BDT_Au_relax_Au38C6H4S2.DM      large → the archive
+├── task.json                        ┐  (and this is where the run id lives)
+├── BDT_Au_relax.fdf.template        │  small → git
+├── 01_coarse/                       │
+│   ├── BDT_Au_relax_coarse.fdf      │
+│   └── run-0/                       │
+│       ├── BDT_Au_relax_coarse.out  ┘
+│       ├── BDT_Au_relax.XV            small → git
+│       ├── run.json                   small → git
+│       └── BDT_Au_relax.DM            large → the archive
 └── 02_tight/…
 ```
 
@@ -217,8 +216,8 @@ And a MANIFEST is three tab-separated columns — sha256, bytes, path — sorted
 path (`job-contracts.md § 6.1` gives the rules and why each one is there):
 
 ```text
-7ef4c645…344a→8388608→01_coarse/run-0/BDT_Au_relax_Au38C6H4S2.DM
-36c54395…a572→8388608→02_tight/run-0/BDT_Au_relax_Au38C6H4S2.DM
+7ef4c645…344a→8388608→01_coarse/run-0/BDT_Au_relax.DM
+36c54395…a572→8388608→02_tight/run-0/BDT_Au_relax.DM
 ```
 
 *(`→` is the tab; it is drawn here only so you can see it.)*
@@ -1004,7 +1003,7 @@ created since the save is noticed at all. Never the glob list.
 
 **L8 — a saved attempt never differs afterwards.** This is I2 pointed at a
 directory the layout says is frozen. *Hierarchical only* — a flat folder's
-`<id>.DM` is *expected* to change every stage, so there a difference is news
+`<label>.DM` is *expected* to change every stage, so there a difference is news
 rather than a violation. Do not let a check written for one shape fail the other.
 
 ### A save or a restore completes, or does not happen

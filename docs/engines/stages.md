@@ -48,7 +48,7 @@ and that decision is not made here.
 complete engine input that does not need molbuilder to be interpreted and does
 not refer to a stage it follows.
 
-Precisely: the stage name survives in the **filename**, `<id>_<name>.fdf`, as a
+Precisely: the stage name survives in the **filename**, `<label>_<name>.fdf`, as a
 label — and nothing has to interpret it to run the file. The deck's *content*
 carries no stage marker at all. Anything that would require a downstream reader
 to understand the word "stage" in order to act correctly is outside this
@@ -284,7 +284,7 @@ written twice: every tab already has a schema, so every tab gets this.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen** | becomes the deck's suffix, `<id>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a checkpoint tag is `<id>/<name>/<UTC>`. A name free of hyphens means any of those can be split on one without knowing what it contains |
+| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen** | becomes the deck's suffix, `<label>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains |
 | `enabled` | bool | whether this stage is rendered at all |
 | `overrides` | map | schema field name → that stage's value |
 
@@ -363,7 +363,7 @@ schema; what the generator does with it is
 
 > **effective config = the template's values ⊕ that stage's `overrides`.**
 
-The template (`<id>.fdf.template`) is the science backbone the generating tab
+The template (`<label>.fdf.template`) is the science backbone the generating tab
 wrote — **everything a script owns, with values**: what the user set, or the
 default where they did not touch it. A stage supplies only the cells it changes.
 
@@ -674,7 +674,7 @@ description living only in a browser tab.
 
 **`stages` may be absent, and absent means one.** A description with no `stages`
 key is a calculation with a single parameter set — **the template, exactly** —
-and it produces one deck named `<id>.fdf`, with no stage suffix. Nothing about stages
+and it produces one deck named `<label>.fdf`, with no stage suffix. Nothing about stages
 has to be understood to read or write it.
 
 Three things follow, and they are one fact seen three times: the deck takes no
@@ -871,7 +871,7 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   it only works if each deck writes its *own* log. Two decks resolving to one
   basename would interleave into a single file and the boundary would be lost.
   **The rule: a run's log is named for the deck that produced it** —
-  `<id>_<name>.molwatch.log` beside `<id>_<name>.fdf`. One naming, derived rather
+  `<label>_<name>.molwatch.log` beside `<label>_<name>.fdf`. One naming, derived rather
   than declared, so there is nothing to keep in step.
 
   That is one rule instead of two, and it is a **small** correction — smaller
@@ -883,7 +883,7 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   | | |
   |---|---|
   | **In the hierarchical shape it does not bite at all** | the log sits in `01_coarse/run-0/`, so the path says which stage it is. Nothing needs to be looked up |
-  | **With default stage names it barely bites** | the defaults are `stage1` / `stage2` / `stage3`, so the deck is `<id>_stage1.fdf` and the log `<id>-stage1.molwatch.log` — the same information, differing by one character |
+  | **With default stage names it barely bites** | the defaults are `stage1` / `stage2` / `stage3`, so the deck is `<label>_stage1.fdf` and the log `<label>-stage1.molwatch.log` — the same information, differing by one character |
   | **It bites when a user names their stages** | call them `coarse` and `tight` and the deck says `coarse` while the log says `stage1`. That is the case worth fixing |
 
   So the rule is worth adopting for consistency and for the third row, not
@@ -917,22 +917,28 @@ refer to it. `project-layout.md` § 1 is the authority for both, and if the two
 ever disagree that one wins.
 
 ```
-projects/BDT-Au/optimization/BDT_Au_relax_Au38C6H4S2/
-├── <id>.fdf.template                  ← the science backbone
-├── task.json                        ← what each stage tunes
+projects/BDT-Au/optimization/bdt-relax/     ← the folder: the user typed this
+├── <label>.fdf.template               ← the science backbone
+├── task.json                          ← what each stage tunes, and the run id
 ├── Au.psml  S.psml  C.psml  H.psml    ← shared, stored ONCE
 ├── mb_monitor.py
 ├── 01_coarse/                         ← written by `prep`, on the target
-│   ├── <id>.fdf                       ← template ⊕ coarse ⊕ this machine
-│   ├── <id>.run.sh                    ← its wrapper, for this machine
+│   ├── <label>_coarse.fdf             ← template ⊕ coarse ⊕ this machine
+│   ├── <label>_coarse.run.sh          ← its wrapper, for this machine
 │   ├── Au.psml → ../Au.psml  …        ← shared, linked in
 │   └── run-0/  run-1/                 ← what each attempt produced
 └── 02_tight/
-    ├── <id>.fdf
+    ├── <label>_tight.fdf
     └── run-0/
-        ├── <id>.XV                    ← a real copy of the coarse run you chose
-        └── <id>.DM
+        ├── <label>.XV                 ← a real copy of the coarse run you chose
+        └── <label>.DM                    (SIESTA names these, so they are bare)
 ```
+
+**`<label>` is the `SystemLabel`, and it is the stem of every file here.** The
+**run id** — the label plus the structure's formula — is a field in `task.json`
+and never a filename (`run-identity.md § 2.0a`). A molbuilder-named file adds
+`_<stage>`; an engine-named one cannot, because SIESTA looks for
+`<SystemLabel>.XV` and nothing else.
 
 **One template, one deck per stage, and the fan-out happens at prep:**
 
@@ -941,8 +947,8 @@ flowchart LR
     T["<b>&lt;id&gt;.fdf.template</b><br/>functional · basis · k-grid<br/>everything no stage varies"]
     J["<b>task.json</b><br/>coarse: mesh 150, tol 0.04<br/>tight:  mesh 300, tol 0.01"]
     M["<b>this machine</b><br/>ranks · solver · GPU"]
-    DC["<b>01_coarse/&lt;id&gt;.fdf</b>"]
-    DT["<b>02_tight/&lt;id&gt;.fdf</b>"]
+    DC["<b>01_coarse/&lt;label&gt;_coarse.fdf</b>"]
+    DT["<b>02_tight/&lt;label&gt;_tight.fdf</b>"]
     T --> DC
     T --> DT
     J -->|"coarse's row"| DC
@@ -979,7 +985,7 @@ one. Two of its properties are the reason:
   does not carry five copies of a pseudopotential, and the shared set is
   obviously shared rather than coincidentally identical.
 - **What a stage continues from is copied, not linked.** Stage 2 writes to
-  `<id>.XV` itself; a link would send that write straight through into stage 1's
+  `<label>.XV` itself; a link would send that write straight through into stage 1's
   directory and destroy the result it started from. A real copy closes it.
   `prep` links instead, because it expects a whole chain submitted at once —
   **which this contract does not do** (below).
@@ -1203,7 +1209,7 @@ two were made and one came free. It is kept as a pointer rather than a proposal.
 | What this layout needed | Where it now lives |
 |---|---|
 | **the repository at the parent**, not in each subdirectory — a per-stage repository cannot restore a shared file above it, and cannot express *branch the workflow at stage 2*, because no repository contains the workflow | [`checkpointing.md`](?doc=execution/checkpointing.md) **L1** |
-| **archive globs that match at depth** — `*.DM` does not match `<stage>/<id>.DM`, so every big binary would have gone into git as a blob, the exact outcome the archive exists to prevent | [`checkpointing.md`](?doc=execution/checkpointing.md) **L2** |
+| **archive globs that match at depth** — `*.DM` does not match `<stage>/<label>.DM`, so every big binary would have gone into git as a blob, the exact outcome the archive exists to prevent | [`checkpointing.md`](?doc=execution/checkpointing.md) **L2** |
 | **nothing points at a file that does not exist** — this came free from stages not chaining (§ 7.1): whatever a stage continues from was copied in as a real file when that stage was set up, so a checkpoint always holds real files | [`project-layout.md`](?doc=execution/project-layout.md) § 1.6, invariant 4a |
 
 **The general rule this leaves behind**, which is what belongs in *this* contract:

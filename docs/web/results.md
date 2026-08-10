@@ -159,8 +159,8 @@ Two rules keep this from hiding anything:
 
 > **⚠ This module is the consumer of that name, and it is changing.** The
 > trajectory log will be named for **the deck that produced it** —
-> `<id>_<stage>.molwatch.log`, or `<id>.molwatch.log` where each stage has its
-> own directory — instead of carrying a `-stage<N>` infix
+> `<label>_<stage>.molwatch.log`, the same name whether stages share a directory
+> or each has its own — instead of carrying a `-stage<N>` infix
 > ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6.3).
 > **What that costs here:** the run decoder's stage regex keys on the hyphen
 > form, so it changes with the rename, and anything that groups a staged run's

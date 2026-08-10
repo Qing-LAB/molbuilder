@@ -85,15 +85,20 @@ Two things are worth noticing.
 is what stops the second stage quietly running different physics because someone
 edited one copy and not the other.
 
-**The id appears as you type.** From "BDT/Au relax" plus the formula:
+**The name appears as you type, and it splits in two.** From "BDT/Au relax" plus
+the formula:
 
 ```
-BDT_Au_relax_Au38C6H4S2
+label   BDT_Au_relax              ← the SystemLabel in every deck, and the
+                                     stem of every file the runs write
+id      BDT_Au_relax_Au38C6H4S2   ← recorded in task.json; never a filename
 ```
 
-That single name becomes the folder, the `SystemLabel` in every deck, and the
-stem of every file the runs write (`execution/run-identity.md`). It is what makes
-the tight stage able to pick up the coarse stage's geometry at all.
+The **label** is what makes the tight stage able to pick up the coarse stage's
+geometry at all — SIESTA looks for `<SystemLabel>.XV` and finds what coarse left.
+The **id** is how molbuilder knows *which calculation* that state belongs to, and
+it is a record rather than a name (`execution/run-identity.md § 2.0a`). **Neither
+of them names the folder** — you type that when you generate (§ 4).
 
 ---
 
@@ -103,10 +108,11 @@ Press **Check** — every stage is validated whole, and any complaint says which
 stage it is about. Then **Generate**:
 
 ```
-projects/BDT-Au/optimization/BDT_Au_relax_Au38C6H4S2/
-├── <id>.fdf.template               the science, minus what a stage varies
-│                                   and minus what the hardware decides
-├── task.json                     what each stage tunes, + resource intent
+projects/BDT-Au/optimization/bdt-relax/    ← the folder name is yours to pick
+├── BDT_Au_relax.fdf.template      the science, minus what a stage varies
+│                                  and minus what the hardware decides
+├── task.json                      what each stage tunes, + resource intent,
+│                                  and the id — BDT_Au_relax_Au38C6H4S2
 ├── Au.psml  S.psml  C.psml  H.psml the shared package, once
 └── mb_monitor.py
 ```
@@ -125,8 +131,9 @@ changes both the deck and which environment the wrapper activates. **A parameter
 that depends on the launch cannot be decided before the launch is known**, so a
 deck finished on a laptop is guessing at both (`project-layout.md § 2.2`).
 
-**One basename everywhere.** Every deck says `SystemLabel BDT_Au_relax_Au38C6H4S2`.
-That is not cosmetic: it is why a later stage can pick up an earlier one's `.XV`.
+**One basename everywhere.** Every deck says `SystemLabel BDT_Au_relax` — the
+label, not the id. That is not cosmetic: it is why a later stage can pick up an
+earlier one's `.XV`, and it is why the formula stays out of the filename (§ 3).
 
 > ### Which shape this walkthrough follows
 >
@@ -140,13 +147,13 @@ That is not cosmetic: it is why a later stage can pick up an earlier one's `.XV`
 > UI produces today. The same two stages, flat:
 >
 > ```text
-> BDT_Au_relax_Au38C6H4S2/
-> ├── BDT_Au_relax_Au38C6H4S2_coarse.fdf     stages told apart by the suffix
-> ├── BDT_Au_relax_Au38C6H4S2_tight.fdf
-> ├── BDT_Au_relax_Au38C6H4S2_coarse-run0.out   attempts by an output index
-> ├── BDT_Au_relax_Au38C6H4S2.XV             ← SHARED and unsuffixed: this is
-> ├── BDT_Au_relax_Au38C6H4S2.DM                what lets tight find coarse's
-> └── Au.psml  S.psml  C.psml  H.psml           geometry — and what overwrites it
+> bdt-relax/
+> ├── BDT_Au_relax_coarse.fdf        stages told apart by the suffix
+> ├── BDT_Au_relax_tight.fdf
+> ├── BDT_Au_relax_coarse-run0.out   attempts by an output index
+> ├── BDT_Au_relax.XV             ← SHARED and unsuffixed: this is what lets
+> ├── BDT_Au_relax.DM                tight find coarse's geometry — and what
+> └── Au.psml  S.psml  C.psml  H.psml   overwrites it
 > ```
 >
 > **Everything this walkthrough says still happens** — the same stages, the same
@@ -211,7 +218,7 @@ relabelling is not a leftover from when benchmarking was standalone; it is
 exactly what lets a trial live inside a stage's directory.
 
 ⛔ **Gap 3.** Every piece exists; nothing connects them. `bench generate` takes a
-deck and an output directory, so you *can* hand it `<id>_tight.fdf` and
+deck and an output directory, so you *can* hand it `<label>_tight.fdf` and
 `--out 02_tight/bench` — but no command does, nothing records that this bundle
 measures that stage, and getting it wrong is silent.
 
@@ -265,7 +272,7 @@ Which makes the hand-off simple. When you set tight up, coarse's `.XV` is
 run directory:
 
 ```
-02_tight/run-0/<id>.XV      a real copy of 01_coarse/run-0/<id>.XV
+02_tight/run-0/<label>.XV   a real copy of 01_coarse/run-0/<label>.XV
 ```
 
 Copied and not linked, because tight writes to that same filename and would
@@ -274,7 +281,7 @@ continuing from `run-0` and continuing from `run-2` are different scientific
 choices.
 
 ⛔ **Gap 5.** `materialize` still writes that hand-off as a symlink to
-`../<producer>/<id>.XV`, and `stages_to_jobset` still builds a chained ladder —
+`../<producer>/<label>.XV`, and `stages_to_jobset` still builds a chained ladder —
 `depends_on` on the previous stage, plus `.XV`/`.DM`/`.CG` carry edges. Since
 attempts moved outputs into `run-N/`, that link dangles. The fix is not a better
 link: the stage producer stops emitting a chain, and the copy happens when you
@@ -307,19 +314,25 @@ the manual path breaks (`project-layout.md` § 8, question 4).
 
 ## 7. Save points, and changing your mind
 
-A stage finishes. The history records it:
+A stage finishes. **You** save it, and the note is yours to write — nothing
+saves or tags on your behalf (`checkpointing.md` **L3**, **L4**):
 
 ```
-commit   BDT_Au_relax_Au38C6H4S2 · coarse · relaxation converged, 41 steps
-tag      BDT_Au_relax_Au38C6H4S2/coarse/20260806T221403Z
+coarse converged, 41 steps
+
+Calculation: bdt-relax
+Manifest-SHA256: 9f2c…
 ```
 
-The message carries the id, the stage and **how it went** — the run decoder
-already knows *converged* from *hit the step cap*, so the history can say it.
+The note says **how it went**; the two trailers are added for you — the folder
+this history belongs to, and the fingerprint of the archive this state points at.
+*(An earlier draft of this section showed a generated subject line and an
+automatic tag, `<id>/coarse/<UTC>`. Both are retired: a note you did not write
+answers nothing, and machine-made tags crowd out your own.)*
 
 **What is stored where.** Git takes the containers: decks, wrappers,
 `task.json`, the links, `bench-result.json` — all text. The archive takes the
-runs: `01_coarse/run-0/<id>.DM` and its siblings, by path, with checksums. The
+runs: `01_coarse/run-0/<label>.DM` and its siblings, by path, with checksums. The
 benchmark's throwaways are not this history's business.
 
 The split needs no marker file and no list of names, only **depth**: a container
@@ -338,7 +351,7 @@ saying so.
 > what changed. Skip one and you have a thinner history beside a folder that
 > still holds everything.
 >
-> In the **flat** shape there is one `<id>.XV` and one `<id>.DM`, and the tight
+> In the **flat** shape there is one `<label>.XV` and one `<label>.DM`, and the tight
 > stage **overwrote** them. The coarse geometry is not on disk anywhere. So:
 >
 > | | hierarchical | flat |
@@ -395,7 +408,7 @@ document was written. **One is now closed** — see #8.
 | 2 | **Produce/prep boundary is undefined locally.** Nothing says who creates the stage containers when host and target are the same machine | design decision, one sentence |
 | 3 | **Nothing connects a benchmark to the stage it measures.** The parts compose by hand and getting it wrong is silent | small |
 | 4 | **The measured answer reaches a script, never the description.** `bench prep-run` writes `run-production.sh`; `task.json` never learns, so the next `generate` reverts to defaults | medium — it is the point of measuring |
-| 5 | **Stage-to-stage carry is broken.** ⚠ `materialize` links `../<stage>/<id>.XV`; attempts moved outputs into `run-N/`, so the link dangles — and *which* N is unknowable at prep time. Fixed by resolving the attempt at **submit**, which knows both | **serious, and newly introduced by the attempt-directory change** |
+| 5 | **Stage-to-stage carry is broken.** ⚠ `materialize` links `../<stage>/<label>.XV`; attempts moved outputs into `run-N/`, so the link dangles — and *which* N is unknowable at prep time. Fixed by resolving the attempt at **submit**, which knows both | **serious, and newly introduced by the attempt-directory change** |
 | 6 | **Stage directories are named `point-<name>`.** `job_dir_name` does not branch on `JobSet.kind` yet, so the ladder gets the sweep's naming | small, and in the same expression as #5 |
 | 7 | **No hand-run entry point for one stage.** The wrapper no longer makes its own directory, so running a single stage needs a molbuilder command that does not exist yet | must be answered before the shell block is retired |
 | 8 | ~~**The history cannot be created.**~~ **Closed by the checkpoint rework.** `init` accepts a folder whose root *declares* its subdirectories one calculation (`task.json`), which this tree carries; forking is restore-then-save, which needs no branch route. Saves stay explicit by design, which is § 9, not a gap | ✅ closed |

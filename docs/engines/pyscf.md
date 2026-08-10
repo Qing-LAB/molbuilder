@@ -91,8 +91,8 @@ so `.chk`/`.log`/`_optimized.xyz` transfer across stages.
 
 > **This naming is changing, and this document is downstream of the change.**
 > The trajectory log will take **the deck's basename** rather than a
-> `-stage<N>` infix — `<id>_<stage>.molwatch.log` when stages share a
-> directory, `<id>.molwatch.log` when each has its own. One rule, derived
+> `-stage<N>` infix — `<label>_<stage>.molwatch.log`, the same name whether
+> stages share a directory or each has its own. One rule, derived
 > from the deck rather than declared separately. The table for every name
 > in the system is [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 > § 6.3; the reasoning is [`engines/stages.md`](?doc=engines/stages.md) § 7.

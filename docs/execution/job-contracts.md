@@ -137,7 +137,7 @@ engine ever navigates:
 
 | Path | How the directory is established |
 |---|---|
-| **workstation** | the launcher runs `<id>.run.sh` **with its working directory set to the job's directory** |
+| **workstation** | the launcher runs the job's `.run.sh` **with its working directory set to the job's directory** |
 | **SLURM** | the launcher runs `sbatch` **from** that directory, and SLURM lands the job in `SLURM_SUBMIT_DIR` — the same place |
 
 So one rule covers both: **the caller's working directory is the contract.** The
@@ -1173,7 +1173,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Benchmark manifest | `bench-manifest.json` | `molbuilder/bench-manifest@2` | `bench/generate.py` | `points.{cpu,gpu}` |
 | Benchmark result | `bench-result.json` | `molbuilder/bench-result@1` | `bench/result.py` | `points`, `choice`, `recommend` |
 | Job-set plan | `job-set.json` | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
-| Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]` — **what changes**; what does not is in `<id>.fdf.template` |
+| Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]` — **what changes**; what does not is in `<label>.fdf.template` |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair, bare-int `schema_version` = 6)* | `bundle_writer.py`, `sidecars/molstruct.py` | geometry; `regions` / `frozen_atoms` / `structure_hash` |
 | Checkpoint archive | `.binsnapshots/<digest>/MANIFEST.do_not_edit` | *(3-col tab-separated `<sha256>\t<bytes>\t<key>`)* | `checkpoint.py` | the directory is the sha256 of this file (§ 6.1) |
 | Run launch record | `<attempt>/run.json` | `molbuilder/run-launch@1` | *(proposed — `project-layout.md` § 1.6)* | `mode`, `command`, `job_id`, `launched_at`, `continued_from` |
@@ -1314,8 +1314,8 @@ parser) split a name without knowing what is in it.
 
 | | Means | Example |
 |:-:|---|---|
-| `_` | **joins parts of one name.** Neither side names the thing on its own | `bdt_au_relax`, `<id>_<stage>`, `01_coarse` |
-| `-` | **attaches a counter or qualifier** to a name that stands alone without it | `run-0`, `bench-G1K4C6`, `<id>-restart-aside-<UTC>` |
+| `_` | **joins parts of one name.** Neither side names the thing on its own | `bdt_au_relax`, `<label>_<stage>`, `01_coarse` |
+| `-` | **attaches a counter or qualifier** to a name that stands alone without it | `run-0`, `bench-G1K4C6`, `<label>-restart-aside-<UTC>` |
 | `.` | **introduces a type suffix** — what the file *is* | `.fdf`, `.XV`, `.molwatch.log`, `.fdf.template` |
 | `/` | **separates levels of a path** | `01_coarse/run-0/`, `02_tight/run-1/` |
 
@@ -1328,40 +1328,68 @@ append to them.
 
 | What | Set | Fixed by |
 |---|---|---|
-| **run id** | `[A-Za-z0-9_-]+`, single token | `run-identity.md § 3` — normalised **once**, refused rather than truncated |
+| **label** — the stem of every emitted file | `[A-Za-z0-9_-]+`, single token | `run-identity.md § 3` — normalised **once**, refused rather than truncated |
+| **run id** — a record, never a filename | `<label>_<formula>`, same set | `run-identity.md §§ 2–3` |
 | **stage name** | `[A-Za-z0-9_]+` — **no hyphen** | `engines/stages.md § 2` |
 | **project-tree path segment** | `[A-Za-z0-9_-]+`, topic from the fixed nine | § 2.5 |
 | **basename the wrapper accepts** | `[A-Za-z0-9._-]+` — wider, because a `SystemLabel` may carry a dot; sanitising here also blocks shell injection | § 4.3 |
 
+#### `<label>` is what is in a filename; the id is not
+
+Three names are easy to confuse and only one of them is ever a file stem:
+
+| Token | What it is | Where it lives |
+|---|---|---|
+| **`<label>`** | what the user typed, normalised — the engine's identity literal (`SystemLabel` for SIESTA, `JOB` for PySCF) | **every filename below**, and the `SystemLabel` line inside the deck |
+| **the id** | `<label>_<formula>` — which calculation this is | the `run` block of `task.json`. Nothing derives a filename from it |
+| **the folder** | whatever the user called the directory | the path. `checkpoint.py` reads it for the `Calculation:` trailer |
+
+*Decided 2026-08-09 (user).* Every emitted name derives from the **label**, and
+sequence or attempt information is attached to it — *"from there, the SystemLabel
+becomes one consistent scheme, and other information is simply attached to it."*
+
 #### Files
 
-| What | Flat | Hierarchical |
-|---|---|---|
-| **description** | `task.json` | `task.json` (at the calculation root) |
-| **deck template** | `<id>.fdf.template` | `<id>.fdf.template` (at the root) |
-| **deck** | `<id>_<stage>.fdf` | `<id>.fdf` — inside `<seq>_<stage>/` |
-| **wrapper** | `<id>_<stage>.run.sh` / `.sbatch` | `<id>.run.sh` / `.sbatch` |
-| **stdout** | `<id>_<stage>-run<N>.out` | `<id>.out` — inside `run-<n>/` |
-| **trajectory log** | `<id>_<stage>.molwatch.log` | `<id>.molwatch.log` |
-| **warm-restart state** | `<id>.XV` `.DM` `.CG` — **shared, unsuffixed** | `<id>.XV` `.DM` `.CG` — inside the attempt |
-| **launch record** | — | `run.json` — inside the attempt |
+`<label>` below is the stem defined above. **Every name carries its stage in both
+shapes** — what the shape changes is only where the file sits, and whether the
+attempt has to be spelled out (the stdout row is the single exception, and the
+last paragraph says why).
 
-**One rule generates the whole right-hand column: a name says what its location
-does not.** In the hierarchy the directory already names the stage, so the deck
-does not repeat it; flat has no such directory, so the suffix carries it. **The
-trajectory log takes the deck's basename in both shapes**, which is why it needs
-no convention of its own.
+| What | Name | Where it sits |
+|---|---|---|
+| **description** | `task.json` | the calculation root, both shapes |
+| **deck template** | `<label>.fdf.template` | the calculation root, both shapes |
+| **deck** | `<label>_<stage>.fdf` | flat: the root · hierarchical: inside `<seq>_<stage>/` |
+| **wrapper** | `<label>_<stage>.run.sh` / `.sbatch` | beside its deck |
+| **trajectory log** | `<label>_<stage>.molwatch.log` | beside its deck |
+| **stdout** | flat `<label>_<stage>-run<N>.out` · hierarchical `<label>_<stage>.out` | flat: beside the deck · hierarchical: inside `run-<n>/` |
+| **warm-restart state** | `<label>.XV` `.DM` `.CG` — **bare** | flat: shared at the root · hierarchical: inside the attempt |
+| **launch record** | `run.json` | hierarchical only, inside the attempt |
+
+**One rule generates the whole Name column: who names the file decides whether
+it carries the stage.** A file **SIESTA** names is bare, because SIESTA looks for
+`<SystemLabel>.XV` and molbuilder has no say. A file **molbuilder** names carries
+`_<stage>` — in the hierarchy that repeats what the directory says, and the
+repetition is the point: without it every stage directory holds an
+identically-named deck, and two swapped by a bad copy or a resumed `prep`
+disagree with nothing (`run-identity.md § 3.2`). **The trajectory log takes the
+deck's basename in both shapes**, which is why it needs no convention of its own.
+
+**The one thing still shape-dependent is the attempt**, and only because one
+shape has a directory for it: flat separates attempts with the `-run<N>` counter
+the wrapper assigns (§ 2.6), the hierarchy with `run-<n>/`. That is a mechanism
+for not clobbering a previous output, not a name for a stage.
 
 #### Directories
 
 | What | Form | Why that shape |
 |---|---|---|
-| **calculation** | `<id>/` | the folder *is* the id, so a listing identifies its contents (`run-identity.md § 3`) |
+| **calculation** | whatever the user types, `[A-Za-z0-9_-]+` | **the folder is not derived** — it holds `task.json`, and that is what says which calculation it is (`run-identity.md § 3.0`) |
 | **stage** *(hierarchical)* | `<seq>_<stage>` — zero-padded to two digits | `seq` **orders**, so it pads and sorts; assigned once and never reassigned (`project-layout.md § 4.2`) |
 | **attempt** *(hierarchical)* | `run-<n>` — **not** padded | a counter of invocations that happened, not a designed sequence; `run-` is reserved and its members are numbers, full stop |
 | **benchmark** | `bench/` inside the stage it measures | a benchmark nests in what it measures (`project-layout.md § 3`) |
 | **trial** | `bench-G<gpus>K<ranks-per-gpu>C<cores>` | a sweep has no order, so the name carries **what was tried** — which is what lets `summarize` map a directory back to its point |
-| **warm state moved aside** | `<id>-restart-aside-<UTC>/` | `--cold` moves, never deletes (`checkpointing.md` I3) |
+| **warm state moved aside** | `<label>-restart-aside-<UTC>/` | `--cold` moves, never deletes (`checkpointing.md` I3) |
 
 #### History
 
@@ -1370,9 +1398,10 @@ no convention of its own.
 | **a state's message** | your note, then the trailers | `relaxation converged, 41 steps` + `Calculation: bdt_au` + `Manifest-SHA256: <sha256>` |
 | **UTC stamp** | `YYYYMMDDThhmmssZ` — compact, because a ref forbids colons | `20260806T221403Z` |
 
-The id's character set was chosen to survive a filename, a shell line and a
+The label's character set was chosen to survive a filename, a shell line and a
 scheduler argument — and **it is therefore already git-ref-safe**, so no second
-sanitiser exists for tags (`run-identity.md § 3`).
+sanitiser exists for tags (`run-identity.md § 3`). The id shares the set, so a
+ref may carry either.
 
 #### Scheduler
 
@@ -1396,6 +1425,29 @@ sanitiser exists for tags (`run-identity.md § 3`).
 > directory listing. Both are renames with a parser cost — `summarize` maps trial
 > directories back to their settings — and both are worth it, because this table
 > is what other layers copy from.
+
+> **The Files table was one table with two columns until 2026-08-09**, giving a
+> hierarchical deck as `01_coarse/<id>.fdf` against flat's `<id>_coarse.fdf`, on
+> the rule *a name says what its location does not*. Two things were wrong with
+> it, decided a day apart and by the same person.
+>
+> **The stage belongs in both** (decision 21, 2026-08-08): that rule is about
+> **noise**, and the repetition here is a **self-check** — *"precisely a
+> self-checking to make sure no mixing."* One artifact having two names depending
+> on where it sits is also what forced the second column in the first place.
+>
+> **And `<id>` was never what was in those names** (decision 26, 2026-08-09). The
+> emitter has always written `f"{cfg.system_label}{suffix}.fdf"` and the label it
+> is handed is `normalise_id(typed_name)` — a single string, with the formula
+> nowhere in it. The composite `run_id(label, formula)` this table's `<id>`
+> described is called from thirteen places, **every one a test**. The token is now
+> `<label>` and the id is a record in `task.json`.
+>
+> The **calculation-directory** row went the same way and had been stale since
+> 2026-08-07: it still read *"the folder is the id"* after `run-identity.md § 3.0`
+> gave that level back to the user. Because this table declares itself the winner
+> in a disagreement, a stale row here does not merely disagree — it **overrules
+> the corrected document**, which is how the contradiction survived two days.
 
 ---
 

@@ -32,7 +32,7 @@ else follows from that one choice.
 
 | | **Flat** | **Hierarchical** |
 |---|---|---|
-| **Stages are separated by** | a **filename suffix** — `<id>_stage1.fdf`, `<id>_stage2.fdf` | a **directory** — `01_coarse/`, `02_tight/` |
+| **Stages are separated by** | a **filename suffix** — `<label>_stage1.fdf`, `<label>_stage2.fdf` | a **directory** — `01_coarse/`, `02_tight/` — and the suffix is kept too, as a self-check (`run-identity.md § 3.2`) |
 | **Attempts are separated by** | an **output index** — `-run0.out`, `-run1.out` | a **directory** — `run-0/`, `run-1/` |
 | **Warm files** (`.XV` `.DM` `.CG`) | **one shared set**, unsuffixed | one set per attempt |
 | **Continuing** | free — the next stage finds them lying there | you **name** the run, and its files are copied in |
@@ -73,18 +73,22 @@ flowchart LR
 
 ```
 au_bdt_relax/
-├── <id>_stage1.fdf              coarse   ─┐ the decks: one per stage,
-├── <id>_stage2.fdf              tight     │ told apart by SUFFIX
-├── <id>_stage1.run.sh                    ─┘
-├── <id>_stage2.run.sh
-├── <id>_stage1-run0.out         stage 1, first attempt   ─┐ told apart
-├── <id>_stage1-run1.out         stage 1, a redo           │ by INDEX
-├── <id>_stage2-run0.out         stage 2, first attempt   ─┘
+├── <label>_stage1.fdf              coarse   ─┐ the decks: one per stage,
+├── <label>_stage2.fdf              tight     │ told apart by SUFFIX
+├── <label>_stage1.run.sh                    ─┘
+├── <label>_stage2.run.sh
+├── <label>_stage1-run0.out         stage 1, first attempt   ─┐ told apart
+├── <label>_stage1-run1.out         stage 1, a redo           │ by INDEX
+├── <label>_stage2-run0.out         stage 2, first attempt   ─┘
 │
-├── <id>.XV   <id>.DM   <id>.CG  ⚠ ONE shared set, UNSUFFIXED
-├── <id>.STRUCT_OUT              ⚠ one, overwritten by each stage
-└── <id>.ANI  <id>.EIG           ⚠ likewise
+├── <label>.XV  <label>.DM  <label>.CG  ⚠ ONE shared set, UNSUFFIXED
+├── <label>.STRUCT_OUT              ⚠ one, overwritten by each stage
+└── <label>.ANI  <label>.EIG        ⚠ likewise
 ```
+
+*`<label>` is the `SystemLabel` — the stem of every file here. It is **not** the
+run id, which carries the formula as well and lives in `task.json`
+(`run-identity.md § 2.0a`).*
 
 **The unsuffixed warm files are the whole design, good and bad.** They are
 unsuffixed *on purpose* — that is exactly what lets stage 2 pick up stage 1's
@@ -95,25 +99,33 @@ exactly why stage 2 overwrites them.
 **Hierarchical** — the same stages and attempts, kept apart by directory:
 
 ```
-BDT_Au_relax_Au38C6H4S2/            the CALCULATION
-├── <id>.fdf.template               ─┐ written by the browser
-├── task.json                      │ portable: names no machine
-├── Au.psml  S.psml  mb_monitor.py  ─┘
+bdt-relax/                            the CALCULATION — the user typed this name
+├── <label>.fdf.template              ─┐ written by the browser
+├── task.json                         │ portable: names no machine, and
+├── Au.psml  S.psml  mb_monitor.py    ─┘ says the id — label plus formula
 │
-├── 01_coarse/                       a STAGE — written by `prep`
-│   ├── <id>.fdf                     the deck, rendered for THIS machine
-│   ├── <id>.run.sh                  its wrapper
-│   ├── Au.psml → ../Au.psml         shared, linked up
-│   ├── run-0/                       an ATTEMPT
-│   │   ├── run.json                 how it was launched, what it continued from
-│   │   └── <id>.XV .DM .out         this attempt's own everything
-│   ├── run-1/                       a redo — run-0 is untouched
-│   └── bench/                       a BENCHMARK — its own little world
+├── 01_coarse/                        a STAGE — written by `prep`
+│   ├── <label>_coarse.fdf            the deck, rendered for THIS machine
+│   ├── <label>_coarse.run.sh         its wrapper
+│   ├── Au.psml → ../Au.psml          shared, linked up
+│   ├── run-0/                        an ATTEMPT
+│   │   ├── run.json                  how it was launched, what it continued from
+│   │   ├── <label>.XV  <label>.DM    SIESTA named these: bare
+│   │   └── <label>_coarse.out        molbuilder named this: it says the stage
+│   ├── run-1/                        a redo — run-0 is untouched
+│   └── bench/                        a BENCHMARK — its own little world
 │
 └── 02_tight/
+    ├── <label>_tight.fdf
     └── run-0/
-        └── <id>.XV                  a real copy of 01_coarse/run-0's
+        └── <label>.XV                a real copy of 01_coarse/run-0's
 ```
+
+**The deck repeats the stage its directory already names, on purpose.** Without
+it every stage directory holds an identically-named deck, and two swapped by a
+bad copy or a resumed `prep` disagree with nothing; with it,
+`01_coarse/<label>_tight.fdf` is wrong on sight (`run-identity.md § 3.2`,
+decision 21).
 
 ```mermaid
 flowchart TB
@@ -364,7 +376,7 @@ finished** — that is what you just looked at. Its files are sitting on disk wh
 you prep the next stage, so they are **copied**, as real files, then and there.
 
 ```
-02_tight/run-0/<id>.XV     a real copy of 01_coarse/run-0/<id>.XV
+02_tight/run-0/<label>.XV  a real copy of 01_coarse/run-0/<label>.XV
 ```
 
 Copied and not linked for the same reason as always: the engine writes to that
@@ -763,8 +775,8 @@ right name.
 
 | Output | What it is |
 |---|---|
-| `<NN>_<stage>/<id>.fdf` | the deck, finally real — every value resolved |
-| `<NN>_<stage>/<id>.run.sh` (+ `.sbatch`) | the wrapper, activation baked in |
+| `<NN>_<stage>/<label>_<stage>.fdf` | the deck, finally real — every value resolved |
+| `<NN>_<stage>/<label>_<stage>.run.sh` (+ `.sbatch`) | the wrapper, activation baked in |
 | `<NN>_<stage>/run-<n>/` | a fresh attempt, inputs linked, warm files copied in |
 | `run.json` | what this attempt is: its mode, its command, and **what it continued from** |
 | the printed report | what was resolved, measured and copied — the thing you check before submitting |
@@ -799,7 +811,7 @@ sequenceDiagram
     Note over U: you read it and decide
 
     U->>C: prep tight --bench-result … --from 01_coarse/run-0
-    C->>T: 02_tight/<id>.fdf · run-0/ · copied .XV
+    C->>T: 02_tight/<label>_tight.fdf · run-0/ · copied .XV
     C-->>U: what it resolved, and what it copied
     U->>C: submit tight
     C->>E: run it
@@ -1030,36 +1042,55 @@ description does not carry it, and nothing needs it to identify a stage.
 That division is why nothing else needs the number, and § 4.1's table below is
 short as a result.
 
-**One rule decides every name below: say what the level does not already say.**
+**One rule decides every name below: who names the file decides whether it
+carries the stage** (`job-contracts.md § 6.3`). molbuilder's own files say which
+stage they belong to; the engine's cannot, because SIESTA gives no choice.
 
 | Where | Flat | Hierarchical |
 |---|---|---|
 | stage directory | — *(there are none)* | `<seq>_<name>` — `01_coarse`, `02_tight` |
-| deck | `<id>_<name>.fdf` — the suffix is the **only** thing telling two stages apart | `<id>.fdf` **inside `01_coarse/`** — the directory already said which stage, so the deck does not repeat it |
-| trajectory log | `<id>_<name>.molwatch.log` | `<id>.molwatch.log`, beside the deck |
-| checkpoint tag | `<id>/<name>/<UTC>` | `<id>/<name>/<UTC>` — the history has no directories, so it names the stage in both |
+| deck | `<label>_<name>.fdf` | `<label>_<name>.fdf` **inside `01_coarse/`** — the same name; the directory adds the order, and the repetition is a self-check |
+| trajectory log | `<label>_<name>.molwatch.log` | `<label>_<name>.molwatch.log`, beside the deck |
+| warm files | `<label>.XV` `.DM` `.CG` — bare, shared | `<label>.XV` `.DM` `.CG` — bare, inside the attempt |
 
 **The log is named for the deck that produced it, in either shape** — so it
 needs no convention of its own, and it lands wherever the deck's name is already
-correct. That is one rule, not two, and it is why the deck's name being
-shape-dependent costs nothing downstream.
+correct. That is one rule, not two.
 
-> **Corrected 2026-08-07.** This table used to give the deck as `<id>_<name>.fdf`
-> in both shapes, which contradicted `stages.md § 7.1`'s tree — where a
-> hierarchical deck is plainly `01_coarse/<id>.fdf`. The tree was right. Repeating
-> the stage in a filename *inside a directory named for that stage* says nothing
-> and invites the two to disagree.
+*The checkpoint-tag row was removed 2026-08-09.* It gave a derived form,
+`<id>/<name>/<UTC>`, which `checkpointing.md` **L4** retired — *nothing tags a
+state on your behalf*. A tag is typed by a person, so there is no shape for this
+table to specify.
+
+> **Superseded 2026-08-09 — the correction below went the wrong way, and the
+> token was wrong too.**
 >
-> It also shrank a complaint I had built on the wrong row. I had written that the
-> shipped log name `<id>-stage<N>` "cannot be read back to its stage without
-> opening the description". In the hierarchy that is simply false — the path says
-> it. And in the flat shape the **default stage names are `stage1` / `stage2` /
-> `stage3`** (`job-contracts.md § 2.3`), so the deck is `<id>_stage1.fdf` and the
-> shipped log is `<id>-stage1.molwatch.log`: **the same information, differing by
-> one character.** What remains is worth fixing and is small — a user who names
-> stages `coarse` and `tight` gets a deck saying `coarse` and a log saying
-> `stage1` — but it is a separator and a default, not the three-way problem I
-> described.
+> **The deck repeats its stage in both shapes** (decision 21, 2026-08-08, user):
+> *"That's precisely a self-checking to make sure no mixing."* Without the
+> repetition every stage directory holds an identically-named deck and a swap
+> disagrees with nothing. `job-contracts.md § 6.3`'s *a name says what its
+> location does not* is a rule about **noise**, and a mix-up check is not noise.
+>
+> **And the stem is `<label>`, not `<id>`** (decision 26, 2026-08-09, user): the
+> id carries the formula and lives in `task.json`; the label is the `SystemLabel`
+> and is what `input.py:550` has always written (`run-identity.md § 2.0a`).
+>
+> *The original note, 2026-08-07, kept because its second half still stands:*
+>
+> > This table used to give the deck as `<id>_<name>.fdf` in both shapes, which
+> > contradicted `stages.md § 7.1`'s tree — where a hierarchical deck is plainly
+> > `01_coarse/<id>.fdf`. The tree was right. *(It was not — see above.)*
+> >
+> > It also shrank a complaint I had built on the wrong row. I had written that
+> > the shipped log name `<id>-stage<N>` "cannot be read back to its stage without
+> > opening the description". In the hierarchy that is simply false — the path
+> > says it. And in the flat shape the **default stage names are `stage1` /
+> > `stage2` / `stage3`** (`job-contracts.md § 2.3`), so the deck is
+> > `<id>_stage1.fdf` and the shipped log is `<id>-stage1.molwatch.log`: **the
+> > same information, differing by one character.** What remains is worth fixing
+> > and is small — a user who names stages `coarse` and `tight` gets a deck saying
+> > `coarse` and a log saying `stage1` — but it is a separator and a default, not
+> > the three-way problem I described.
 
 The deck does not carry the number: names are unique, so it would add nothing,
 and a deck's filename is quoted in the wrapper, the log and the outputs.
@@ -1067,9 +1098,9 @@ and a deck's filename is quoted in the wrapper, the log and the outputs.
 > **`seq` orders; `name` identifies — and only one of them belongs in a file.**
 > The stage directory is the single place both appear, because a directory
 > listing is the one view where *order* is what you want to see. Everywhere else
-> — deck, stdout, trajectory log, checkpoint tag — keys on the **name**, so
-> every artifact of a stage can be read back to that stage without opening the
-> description to look a number up.
+> — deck, stdout, trajectory log — keys on the **name**, so every artifact of a
+> stage can be read back to that stage without opening the description to look a
+> number up.
 >
 > This corrects a real disagreement between the contracts (found 2026-08-07):
 > this table used to give the log as `<id>-stage<seq>`, adopted from the shipped
@@ -1151,8 +1182,8 @@ how a folder stops being trustworthy.
 | File | Kind | Written by | If you delete it |
 |---|---|---|---|
 | `task.json` | **source** | the user's surface | the calculation cannot be regenerated or reopened |
-| `<id>_<name>.fdf` | derived | the producer, from the source | regenerate |
-| `<id>_<name>.run.sh` / `.sbatch` | derived | prep, from the deck + the machine's config | re-prep |
+| `<label>_<name>.fdf` | derived | the producer, from the source | regenerate |
+| `<label>_<name>.run.sh` / `.sbatch` | derived | prep, from the deck + the machine's config | re-prep |
 | `job-set.json`, `STAGE-PLAN.md` | derived | the producer / prep | regenerate |
 | `*.psml`, `mb_monitor.py` | **input**, copied in | the producer | re-resolve from the project's cache |
 | stage outputs (④) | **result** | the engine | gone — this is what the history is for |
@@ -1169,9 +1200,9 @@ how a folder stops being trustworthy.
 |---|---|---|---|
 | `molbuilder.json` | outside the tree — cwd or `$XDG_CONFIG_HOME` | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
 | `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | machine settings for this project |
-| `<id>.fdf.template` | ③ calculation | engine deck, incomplete | **the science backbone** — everything fixed, nothing a stage varies, nothing the hardware decides |
+| `<label>.fdf.template` | ③ calculation | engine deck, incomplete | **the science backbone** — everything fixed, nothing a stage varies, nothing the hardware decides |
 | `task.json` | ③ calculation | `molbuilder/task@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
-| `<id>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
+| `<label>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
 | `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6); the edge fields serve the benchmark sweep |
 | `.molbuilder.json` | ⑤ benchmark bundle | same as project | **the activation the bundle carries to the target** — written by `_write_activation_config`, the single place that decision is persisted. A fourth scope in practice, and deliberate: the bundle must be runnable after `scp` |
 | `environment.json` | ⑤ benchmark bundle | `molbuilder/environment@1` | the machine as detected when this stage was measured |
@@ -1209,17 +1240,17 @@ anyway and the history is a safety net. Same machinery, different weight — and
 `checkpointing.md § 8` states the invariants for both.
 
 ```
-BDT_Au_relax_Au38C6H4S2/
+bdt-relax/
 ├── .git/                       the text: decks, wrappers, task.json, .XV, .CG
 ├── .binsnapshots/<save>/       the big files, by path:
-│   ├── 01_coarse/run-0/<id>.DM   ← that attempt's density matrix
-│   ├── 01_coarse/run-1/<id>.DM   ← the retry's, kept separately
-│   ├── 02_tight/run-0/<id>.DM
+│   ├── 01_coarse/run-0/<label>.DM   ← that attempt's density matrix
+│   ├── 01_coarse/run-1/<label>.DM   ← the retry's, kept separately
+│   ├── 02_tight/run-0/<label>.DM
 │   └── MANIFEST.do_not_edit      ← name, size, checksum for each
 ```
 
 *(A flat directory's archive is the same thing one level shallower —
-`.binsnapshots/<save>/<id>.DM`.)*
+`.binsnapshots/<save>/<label>.DM`.)*
 
 Three reasons the repository belongs at ③ **when there is a hierarchy**:
 
@@ -1262,7 +1293,7 @@ a 2 GB density matrix per stage pays for all of it every time. Immutable attempt
 make *"archive what is new"* both correct and obvious, where a content-addressed
 store would have been correct and hopeful.
 
-**Flat, and this is the honest asymmetry.** There is one `<id>.DM`, and every
+**Flat, and this is the honest asymmetry.** There is one `<label>.DM`, and every
 stage overwrites it. The path is stable while its contents are not, so a save
 point genuinely *has* to store a new copy — there is nothing to reference. **The
 optimisation above does not apply, and that is not a defect to fix**: it is what
@@ -1271,7 +1302,7 @@ bytes rather than in geometry.
 
 | | Flat | Hierarchical |
 |---|---|---|
-| the archived path `…/<id>.DM` | one path, new contents each save | a new path per attempt |
+| the archived path `…/<label>.DM` | one path, new contents each save | a new path per attempt |
 | a second save costs | a full copy of what changed | nothing for what already existed |
 | growth over five stages | five copies | five copies — but each is a *different* result you can still open |
 
@@ -1409,18 +1440,19 @@ than no invariant, because it fails a directory that is working correctly.
    sweeps. In practice a user measures one representative stage and reuses the
    answer for the rest. The layout allows both; nothing says which is expected,
    or how a stage records *"resources measured on 02_tight"*.
-3. **Does the deck still need the stage in its filename?** The old layout put
-   every deck in one directory, so they had to be `<id>_coarse.fdf`,
-   `<id>_tight.fdf` — and `job-contracts.md § 2.3`'s stage-suffix convention and
-   the decoder's regex both exist for that. Now each deck is rendered *into its
-   own stage directory*, so the directory already says which stage it is and the
-   deck can simply be `<id>.fdf`. That is simpler and it makes the per-stage
-   trajectory separation free rather than something the filenames have to carry —
-   but the decoder reads those names, so it is a change to verify, not to assume.
+3. ~~**Does the deck still need the stage in its filename?**~~ **Answered
+   2026-08-08 (user): yes, in both shapes.** The reasoning here — *the directory
+   already says which stage, so the deck can simply be `<id>.fdf`* — treated the
+   repetition as noise. It is a **self-check**: without it every stage directory
+   holds an identically-named deck, and two swapped by a bad copy or a resumed
+   `prep` disagree with nothing (decision 21; `run-identity.md § 3.2`). The
+   decoder's regex still changes, but toward `<label>_<name>`, not away from it.
 4. **May one calculation folder hold two ladders?** Nothing forbids two
-   descriptions side by side, and the layout would allow it, but the id names the
-   folder and warm files are shared, so a second ladder would continue from the
-   first's state. Probably refuse; not yet stated.
+   descriptions side by side, and the layout would allow it, but warm files are
+   shared, so a second ladder would continue from the first's state. Probably
+   refuse; not yet stated. *(The premise "the id names the folder" was removed
+   2026-08-07 — the folder is what the user typed, `run-identity.md § 3.0` — which
+   makes two ladders in one folder easier to create, not harder.)*
 5. ~~**How does a user ask for the shape?**~~ **Answered 2026-08-07: a
    required field in the description**, `"shape": "flat" | "hierarchical"`
    (`engines/stages.md § 6.7`). Not a `prep` flag, because prep is a hub you
