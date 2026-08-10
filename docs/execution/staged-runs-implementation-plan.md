@@ -1087,7 +1087,49 @@ rewritten.
 than by remembering what was typed. Guard 1's count drops to the agreed set;
 guard 3 turns green.
 
-> #### Unit 1 landed 2026-08-10 — M5's first half holds
+> #### ⚠ Unit 1 was built at the wrong layer, and decision 29 corrects it
+>
+> **What I built (below) branches the PRODUCER on `shape`.** `project-layout.md
+> § 1` says the branch is at `prep`: *"The browser **always writes the same
+> thing** … `prep` … translates that into a runnable directory **in whichever
+> shape you ask for**"*, and its table reads **Chosen: at `prep`** in *both*
+> columns. I read § 6.7 (*the shape is a required field, `prep` reads it*) and
+> § 1's tree, wrote the obligations for the **naming** authority, and never
+> wrote one for *which layer applies the shape* — so the check that would have
+> caught it was never on the list.
+>
+> **The corrected shape of the work:**
+>
+> | | emits | branches on `shape`? |
+> |---|---|---|
+> | produce (host) | the decks **and** `job-set.json` — one package, always the same | **no** |
+> | `prep` (target) | the runnable tree: `<NN>_<name>/run-<n>/` hierarchical · the bundle root, attempts as the `-run<N>` output index, flat | **yes — this is the only branch** |
+> | `submit` | identical verbs in both, `--chain` for the whole ladder | no |
+>
+> **Flat therefore keeps a JobSet**, which is what makes `jobset submit run
+> --chain` its runner — the user's decision, and the reason unit 3 can delete
+> the bash runner without leaving flat unrunnable. Flat's limits (one shared
+> warm set; only the latest state survives) are properties of the **layout**,
+> accepted and known; they never justified a second mechanism.
+>
+> **M5 restated.** *"A bundle never contains both a flat runner and a
+> `job-set.json`"* was written when the runner existed; unit 3 deletes it, so
+> the sentence goes vacuous rather than true. What M5 means now: **a produce
+> emits one package, and a `prep` emits one layout.** A *produced* folder is
+> told apart by `task.json`'s `shape`; a *prepped* folder by looking at it.
+> That is why unit 4 (the produce writes `task.json`) stops being independent
+> of unit 1 — it is where the shape is recorded, and nothing downstream can
+> read a field that is never written.
+>
+> **Order this implies:** unit 4 (produce `task.json`, carrying `shape`) →
+> unit 1 revised (drop the producer's branch; always emit decks + JobSet) →
+> unit 3 (delete the runner; flat runs on `submit --chain`) → `prep` learns the
+> shape. The `--shape` CLI option stays, but it **records into the description**
+> instead of selecting what is emitted.
+>
+> ---
+>
+> #### Unit 1 as built, 2026-08-10 — superseded above, kept for its findings
 >
 > `build_siesta_stage_bundle` takes `shape` as a **required keyword with no
 > default** and emits one layout: `flat` → the decks and the runner, `jobset`
@@ -1930,6 +1972,7 @@ open.
 | 26 | ~~**Is `SystemLabel` the id, or is the id something wider that `SystemLabel` is part of?**~~ — **decided 2026-08-09 (user): `SystemLabel` is the stem of every emitted name; the id (label + formula) is a *record* in `task.json`, not a filename.** *"From dir to the .fdf/script name, we all derive consistently from SystemLabel … the SystemLabel becomes one consistent scheme, and other information is simply attached to it."* This is what the code already does and what three contracts deny. It settles **decision 21** as the same rule seen from the other end, and it is P4's whole subject. See § 8c below | **P4**, and corrects **P1**'s decision 2 |
 | 27 | ~~**What are the three shipped tiers called, and does an artifact name carry the stage's order?**~~ — **decided 2026-08-10 (user): a stage's artifact token is `<NN>_<name>` — the index travels with the name, in both shapes.** *"We may have many stages connected so i'd rather use names with index number and have comments somewhere for explaining what it is as scientific notation for each run."* Neither of the two options offered was taken: the question assumed the choice was which *strings* to use, and the answer is that a long ladder needs its **order** legible in a flat listing. It does **not** violate `stages.md` R5 — see § 8e — and it hands § 8d's decoder problem its answer. Overturns two lines of `project-layout.md § 4.1` | **P4** |
 | 28 | ~~**How is a stage REFERRED TO, as opposed to named on disk?**~~ — **decided 2026-08-10 (user): `seq` stays DERIVED; the ordinal reaches every surface.** Decision 27 put `<NN>_<name>` on the artifacts and stopped there, so the number is in every filename and in no interface: `jobset prep run coarse` takes a bare name, and the refusal lists *"coarse, medium, tight"* with no order at the one moment you are choosing. Identity remains the name — `stages.md § 2`'s three fields, § 4.1's *"`seq` is not a fourth field"* and R5 all stand unchanged. The **rejected** alternative was making `seq` a stored field of `Stage`: it would let the UI *enforce* numbering rather than preview it, but it overturns those three sentences and makes the description carry a number it does not need. **And it is one piece of framework, not five patches** (user: *"this should not be a patching work but with unified api and framework design"*) — see § 8f | **P4 / P6** |
+| 29 | ~~**Where does the shape BRANCH — at the produce, or at `prep`?**~~ — **decided 2026-08-10 (user): at `prep`, and the flat shape runs through the same framework as the hierarchical one.** *"keep the flat shape runnable with `jobset submit run --chain` … the prep, deployment and execution chain of command is the same framework."* **This corrects P5 unit 1 as I built it earlier the same day**, which branched the PRODUCER on `shape` — flat got the bash runner and no JobSet, hierarchical got the JobSet and no runner. `project-layout.md § 1` says the opposite in two places: *"The browser **always writes the same thing**… `prep` translates that into a runnable directory in whichever shape you ask for"*, and its table gives **Chosen: at `prep`** for BOTH columns. So the produce is shape-INDEPENDENT — one package, decks plus a JobSet — and `prep` applies the layout. **Flat is not a lesser path with its own launcher; it is the same verbs over a flatter tree.** Its limits (one shared warm set, only the latest state survives) are real, known and accepted — they are a property of the LAYOUT, and the user is aware of them; they are not a reason for a second mechanism | **P5 (u1 revised, u3, u4) / P6** |
 | 25 | ~~**When is the next stage prepped, and what must be true of the previous one first?**~~ — **decided 2026-08-09 (user): stage N+1 is prepped after stage N is done and *confirmed*, and "confirmed" is a checkpoint question, not a convergence one.** *"The only reliable prep of a next stage is the one that is done when the previous stage is already confirmed."* Confirmed = the folder is **clean** (stage N's result is saved, or you are standing at a restored state), **or** you were shown what is unsaved and said go. This is the missing decision the dangling `Carry` symlink was standing in for. See § 8b below for the walk | **P6**, **P7**, **P8** |
 
 **Already decided, recorded so they are not reopened:** the shape is a required
