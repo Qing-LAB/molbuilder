@@ -78,7 +78,7 @@ def _shell(files):
 @pytest.mark.parametrize("kwargs", [
     {"emit_sbatch": False},
     {"emit_sbatch": True, "time": "01:00:00", "mem": "8G", "cpus_per_task": 4},
-    {"emit_sbatch": False, "attempt_dirs": True, "continue_retries": 2},
+    {"emit_sbatch": False, "continue_retries": 2},
     {"emit_sbatch": False, "mpi_np": 4, "omp_threads": 2},
 ])
 def test_no_emitted_wrapper_invokes_git(tmp_path, kwargs):

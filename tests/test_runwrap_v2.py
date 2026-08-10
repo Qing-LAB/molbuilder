@@ -260,12 +260,17 @@ def test_log_filename_does_not_hardcode_directory(sandbox):
     the wrapper was generated in.
 
     This used to assert the literal relative filename.  It now resolves through
-    ``$PWD``, which is the same directory -- ``$PWD`` is read before any ``cd``
-    -- and is required by attempt directories: with ``attempt_dirs=True`` the
-    wrapper cd's into ``run-<n>/`` after the log is opened, and a RELATIVE
-    ``$_runwrap_log`` would then resolve against the attempt, where the log is
-    not.  The failure-hint greps read ``"$_out_file" "$_runwrap_log"`` together,
-    so half their evidence would silently vanish.
+    ``$PWD``, which is the same directory -- ``$PWD`` is read before any ``cd``.
+
+    That was originally required by ``attempt_dirs=True``, where the wrapper
+    ``cd``'d into ``run-<n>/`` after the log was opened, so a RELATIVE
+    ``$_runwrap_log`` resolved against the attempt, where the log is not.
+    **P7 unit 1 retired that block and with it the only ``cd`` a wrapper ever
+    did** (`job-contracts.md § 2.1`: the caller's working directory is the
+    contract).  The ``$PWD`` form stays anyway, and not merely from inertia:
+    it is what makes the wrapper independent of where it is invoked from,
+    which is the property the launcher relies on when it runs a job inside an
+    attempt directory that Python -- not bash -- created.
 
     What the original test was protecting -- no generation-time directory baked
     into the text -- is what is asserted here.

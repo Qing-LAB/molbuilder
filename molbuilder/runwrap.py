@@ -59,141 +59,27 @@ class WrapperError(Exception):
     routing, missing script file, ..."""
 
 
-def _attempt_dir_block(basename: str, *, ext: str = ".out",
-                       script_name: str, carry: List[str]) -> str:
-    """Bash that resolves the next attempt, builds ``run-<n>/``, and cds in.
-
-    Replaces :func:`_run_index_resolver` when the wrapper is generated for a
-    STAGED calculation (``attempt_dirs=True``).  The two express the same idea
-    -- never overwrite a prior result -- at different granularities:
-
-      * the resolver keeps every attempt's stdout in ONE directory, indexed by
-        filename (``<basename>-run0.out``, ``-run1.out``, ...);
-      * this block gives every attempt its own DIRECTORY, immutable once
-        written (docs/execution/project-layout.md § 1.2).
-
-    Why the directory form is worth the extra bash: an attempt that cannot be
-    modified after it is written makes the saved history append-only, so a
-    checkpoint stores what appeared since the last one instead of re-copying
-    every large binary (checkpointing.md § 12, *Disk cost*).  Filename indexing
-    cannot give that, because every attempt keeps writing into one shared
-    directory.
-
-    THE REST OF THE WRAPPER IS UNCHANGED BY THIS.  Every later line works
-    relative to the current directory -- the launch, the monitor, the SCF tee,
-    the failure hints, the engine's own outputs -- so once this block has cd'd
-    into the attempt, they all land in the right place with no further edits.
-    That is the whole reason this is a prologue rather than a rewrite.
-
-    ``carry`` is the engine's warm-restart file list.  Those are the ONLY files
-    taken from the previous attempt, and they are COPIED, never linked: the
-    engine writes to them, and writing through a link would corrupt the attempt
-    that produced them -- the same trap ``jobset`` closes with localize-on-run
-    (job-system.md § 5.2).
-
-    ``--cold`` skips the carry entirely.  In this shape it needs no
-    move-aside: the previous attempt keeps its own state in its own directory,
-    untouched, because nothing is ever written back into it.
-    """
-    carry_list = " ".join(f'"{c}"' for c in carry) if carry else ""
-    return (
-        f"# --- Attempt directory ---------------------------------\n"
-        f"# Each invocation gets its own run-<n>/, immutable once written\n"
-        f"# (project-layout.md § 1.2).  Re-running NEVER overwrites a prior\n"
-        f"# result -- there is nothing to overwrite -- so there is no --force.\n"
-        f"#\n"
-        f"# WHERE THIS RUNS: the CONTAINER -- the stage directory, or the\n"
-        f"# calculation root for a single-stage run.  NEVER inside an attempt:\n"
-        f"# the attempt does not exist until this block creates it.  Invoked\n"
-        f"# from inside one by mistake it would nest run-0/run-0/, so refuse.\n"
-        f'case "${{PWD##*/}}" in\n'
-        f"    run-[0-9]*)\n"
-        f'        echo "[molbuilder] run this from the STAGE directory, not '
-        f'from inside an attempt.  You are in ${{PWD##*/}}/ -- cd .. and '
-        f're-run." >&2\n'
-        f"        exit 2\n"
-        f"        ;;\n"
-        f"esac\n"
-        f"\n"
-        f"# --force is REFUSED rather than ignored.  Its whole purpose is to\n"
-        f"# reset the sequence and clobber a previous result; silently doing\n"
-        f"# something else would leave a user who asked for a reset believing\n"
-        f"# they got one.\n"
-        f'if [ "$_force" = "1" ]; then\n'
-        f'    echo "[molbuilder] --force is not available here: every run gets '
-        f'its own run-<n>/ directory, so nothing is ever overwritten and there '
-        f'is nothing to reset.  Just re-run." >&2\n'
-        f"    exit 2\n"
-        f"fi\n"
-        f"_attempt_max=-1\n"
-        f"shopt -s nullglob 2>/dev/null || true\n"
-        f'for _d in run-*/; do\n'
-        f'    _n=${{_d#run-}}\n'
-        f'    _n=${{_n%/}}\n'
-        f"    case \"$_n\" in\n"
-        f"        ''|*[!0-9]*) continue ;;\n"
-        f"    esac\n"
-        f'    if [ "$_n" -gt "$_attempt_max" ]; then\n'
-        f"        _attempt_max=$_n\n"
-        f"    fi\n"
-        f"done\n"
-        f'_prev_dir=""\n'
-        f'if [ "$_attempt_max" -ge 0 ]; then\n'
-        f'    _prev_dir="run-$_attempt_max"\n'
-        f"fi\n"
-        f"_run_n=$((_attempt_max + 1))\n"
-        f'_attempt="run-$_run_n"\n'
-        f'if [ -e "$_attempt" ]; then\n'
-        f'    echo "[molbuilder] $_attempt already exists but was not counted; '
-        f'refusing to write into it." >&2\n'
-        f"    exit 1\n"
-        f"fi\n"
-        f'mkdir -p "$_attempt"\n'
-        f"\n"
-        f"# Inputs: linked in, so the attempt reads them without copying.\n"
-        f'for _f in "{script_name}" mb_monitor.py; do\n'
-        f'    [ -e "$_f" ] && ln -sfn "../$_f" "$_attempt/$_f"\n'
-        f"done\n"
-        f'for _p in *.psml *.psf *.vps *.ion.nc *.ion.xml; do\n'
-        f'    [ -e "$_p" ] && ln -sfn "../$_p" "$_attempt/$_p"\n'
-        f"done\n"
-        f"\n"
-        + (
-            f"# Warm state: COPIED from the previous attempt, never linked --\n"
-            f"# the engine writes to these, and writing through a link would\n"
-            f"# corrupt the attempt that produced them.\n"
-            f'if [ "$_cold" != "1" ] && [ -n "$_prev_dir" ]; then\n'
-            f'    for _w in {carry_list}; do\n'
-            f'        [ -f "$_prev_dir/$_w" ] && cp -p "$_prev_dir/$_w" '
-            f'"$_attempt/$_w"\n'
-            f"    done\n"
-            f'    echo "[molbuilder] carried warm state from $_prev_dir/" >&2\n'
-            f'elif [ "$_cold" = "1" ]; then\n'
-            f'    echo "[molbuilder] --cold: starting clean; $_prev_dir/ is '
-            f'untouched." >&2\n'
-            f"fi\n" if carry_list else ""
-        )
-        + f"\n"
-        f'cd "$_attempt" || exit 1\n'
-        f'echo "[molbuilder] attempt: $_attempt  (previous: ${{_prev_dir:-none}})"\n'
-        f'_out_file="{basename}{ext}"\n'
-        f"\n"
-        f"# The session log opened in the CONTAINER, because it records the\n"
-        f"# setup that built this attempt.  Move it in at exit so the finished\n"
-        f"# attempt owns every byte it produced (project-layout.md, invariant\n"
-        f"# 8) and the container does not accumulate one log per invocation.\n"
-        f"# rename keeps the tee's open descriptors valid on POSIX.\n"
-        f"_mb_claim_runwrap_log() {{\n"
-        f'    [ -f "$_runwrap_log" ] || return 0\n'
-        f'    mv "$_runwrap_log" "$PWD/" 2>/dev/null || true\n'
-        f"}}\n"
-        f"\n"
-    )
-
-
 def _run_index_resolver(basename: str, ext: str = ".out") -> str:
     """Bash block that resolves ``_out_file`` to
     ``{basename}-runN{ext}``.
+
+    **The only attempt mechanism a wrapper has**, since P7 unit 1 retired
+    ``_attempt_dir_block`` (2026-08-10).  That was ~130 lines of generated
+    bash resolving the next ``run-<n>/``, creating it, linking the inputs,
+    copying warm state and ``cd``-ing in -- ``jobset/materialize.py`` written
+    a second time, in bash, one level down, in the layer deliberately kept
+    free of filesystem logic.  It was also **the only thing in the system
+    that broke the cwd rule everything else holds** (`job-contracts.md § 2.1`:
+    the caller's working directory is the contract, and neither the wrapper
+    nor the engine ever navigates), so retiring it restores an invariant
+    rather than tidying one.  The behaviour it established is right and stays
+    -- an attempt per invocation, immutable once written, inputs linked, warm
+    state copied -- in Python, where `prepare_attempt` owns it.
+
+    This one indexes attempts inside ONE directory, which is exactly the flat
+    shape's rule (`project-layout.md` § 1: attempts told apart by an output
+    index).  The hierarchy tells them apart by directory, and that is the
+    layout layer's job, not the wrapper's.
 
     ``ext`` is the output-file suffix (with leading dot).  Defaults
     to ``.out`` for SIESTA wrappers; PySCF wrappers pass
@@ -350,18 +236,22 @@ _SIESTA_WARM_SUFFIXES = (
     ".HSX", ".WFSX", ".STRUCT_NEXT_ITER", ".TSHS", ".TSDE",
 )
 
-
-def _SIESTA_WARM_SUFFIX_FILES(basename: str) -> List[str]:
-    """The concrete filenames an attempt carries forward for SIESTA."""
-    return [f"{basename}{s}" for s in _SIESTA_WARM_SUFFIXES]
-
-
-def _PYSCF_WARM_FILES(basename: str) -> List[str]:
-    """The concrete filenames an attempt carries forward for PySCF
-    (job-contracts.md § 4.2: the five the ``--cold`` glob covers)."""
-    return [f"{basename}.chk", f"{basename}_optimized.xyz",
-            f"{basename}_geom_optim.xyz", f"{basename}_geom_optim.tmp",
-            f"{basename}_geom.tmp"]
+#: PySCF's warm-restart files, by SUFFIX rather than extension -- ``.chk`` is
+#: just ``.chk`` but the others end ``_optimized.xyz`` and the like, which no
+#: plain extension match would catch (job-contracts.md § 4.2).
+#:
+#: **Hoisted 2026-08-10 (P7 unit 5).**  These five were a local tuple inside
+#: ``_cold_restart_aside_block``, while the startup banner tested ``.chk``
+#: ALONE -- so a run holding ``<JOB>_optimized.xyz`` and no ``.chk`` announced
+#: itself as a clean start and then had that file moved aside by ``--cold`` as
+#: warm state.  The two halves of one contract disagreeing, and the half that
+#: was wrong is the one `run-identity.md § 5` says must never be weakened,
+#: because it is the one always present.  SIESTA's pair was derived from a
+#: single tuple by P3's Review 2 for exactly this reason; PySCF's was missed.
+_PYSCF_WARM_SUFFIXES = (
+    ".chk", "_optimized.xyz", "_geom_optim.xyz", "_geom_optim.tmp",
+    "_geom.tmp",
+)
 
 
 def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
@@ -460,13 +350,9 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         # "``.chk``" but the others end in ``_optimized.xyz`` etc.
         # The glob template below interpolates each suffix verbatim
         # against ``$_warm_label`` + the wrapper basename.
-        suffixes = (
-            ".chk",
-            "_optimized.xyz",
-            "_geom_optim.xyz",
-            "_geom_optim.tmp",
-            "_geom.tmp",
-        )
+        # DERIVED from the module's one tuple, not retyped -- same rule as
+        # SIESTA's above, and for the same reason.
+        suffixes = _PYSCF_WARM_SUFFIXES
     else:                                  # pragma: no cover
         raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
     # 2026-06-14 fix: SIESTA names its warm-start files after the
@@ -742,10 +628,19 @@ def _runtime_status_block(
         # PySCF's ``mf.chkfile`` is keyed on ``JOB`` (a Python
         # variable in the .py script), same naming-mismatch risk as
         # SIESTA's SystemLabel.  Mirror the dual test.
-        warmstart_test = (
-            f'[ -e "$_warm_label.chk" ] || [ -e "{basename}.chk" ]'
+        # DERIVED, mirroring SIESTA: the banner and the ``--cold`` mover
+        # read ONE list, so a run whose only warm file is
+        # ``<JOB>_optimized.xyz`` can no longer announce a clean start and
+        # then have that very file moved aside as warm state.
+        warmstart_test = " || ".join(
+            piece
+            for suf in _PYSCF_WARM_SUFFIXES
+            for piece in (f'[ -e "$_warm_label{suf}" ]',
+                          f'[ -e "{basename}{suf}" ]')
         )
-        warmstart_listing = f"{basename}.chk"
+        warmstart_listing = " ".join(
+            f"{basename}{suf}" for suf in _PYSCF_WARM_SUFFIXES
+        )
         # PySCF embeds the canonical frozen-atom list as a single-line
         # comment.  Counting digits in that comment is sufficient
         # since the indices are comma-separated inside ``[...]``.
@@ -1694,8 +1589,7 @@ def render_run_wrapper(script_path: Path, *,
                         n_atoms: Optional[int] = None,
                         mem_audit: Optional[Mapping[str, Any]] = None,
                         carry_in: Optional[List[str]] = None,
-                        continue_retries: Optional[int] = None,
-                        attempt_dirs: bool = False) -> str:
+                        continue_retries: Optional[int] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     Routing by file extension:
@@ -2153,10 +2047,7 @@ def render_run_wrapper(script_path: Path, *,
             f"    exit 1\n"
             f"fi\n"
             f"\n"
-            + (_attempt_dir_block(basename, ext=".out",
-                                  script_name=script_name,
-                                  carry=_SIESTA_WARM_SUFFIX_FILES(basename))
-               if attempt_dirs else _run_index_resolver(basename))
+            + _run_index_resolver(basename)
             + _cold_restart_aside_block(basename, engine="siesta")
             + _runtime_status_block(basename, engine="siesta",
                                      script_name=script_name)
@@ -2548,11 +2439,7 @@ def render_run_wrapper(script_path: Path, *,
             # Results-tab inspector dispatcher can tell PySCF output
             # apart from SIESTA's (which keeps ``.out``).  Per
             # docs/web/tabs.md (Phase C, 2026-06-07).
-            + (_attempt_dir_block(basename, ext=".pyscf.log",
-                                  script_name=script_name,
-                                  carry=_PYSCF_WARM_FILES(basename))
-               if attempt_dirs else
-               _run_index_resolver(basename, ext=".pyscf.log"))
+            + _run_index_resolver(basename, ext=".pyscf.log")
             + _cold_restart_aside_block(basename, engine="pyscf")
             + _runtime_status_block(basename, engine="pyscf",
                                      script_name=script_name)
@@ -3158,8 +3045,7 @@ def write_run_wrapper(script_path: Path, *,
                        exclusive: Optional[bool] = None,
                        carry_in: Optional[List[str]] = None,
                        emit_sbatch: bool = True,
-                       continue_retries: Optional[int] = None,
-                       attempt_dirs: bool = False) -> Path:
+                       continue_retries: Optional[int] = None) -> Path:
     """Render + write ``<basename>.run.sh`` next to ``script_path``.
 
     Returns the wrapper's path.  Sets executable bit (0o755) so the
@@ -3196,7 +3082,6 @@ def write_run_wrapper(script_path: Path, *,
         mem_audit=_build_mem_audit(script_path, gres=gres, env=env),
         carry_in=carry_in,
         continue_retries=continue_retries,
-        attempt_dirs=attempt_dirs,
     )
     # Defense-in-depth: every rendered wrapper goes through ``bash -n``
     # (parse-only, no execution) before we hand it back.  Catches the

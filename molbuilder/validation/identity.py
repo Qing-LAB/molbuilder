@@ -42,21 +42,29 @@ produce, and the reason that parameter is named ``label``. Same shape of imperfe
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Dict, List, Sequence
+from typing import Dict, List, Sequence
 
 from ..identity import is_ours
 from ..issues import Issue
-from ..runwrap import _PYSCF_WARM_FILES, _SIESTA_WARM_SUFFIX_FILES
+from ..runwrap import _PYSCF_WARM_SUFFIXES, _SIESTA_WARM_SUFFIXES
 
 
-#: engine -> the shipped function that names the files an id keys.
+#: engine -> the shipped warm-restart SUFFIXES an id keys.
 #:
-#: The two callables are ``runwrap``'s own, not a copy of its suffix tuple:
-#: a new warm-restart hook lands in one list there (with its ``--cold`` glob
-#: entry, per § 4.2's pinned lesson) and this sees it without being edited.
-_INVENTORY: Dict[str, Callable[[str], Sequence[str]]] = {
-    "siesta": _SIESTA_WARM_SUFFIX_FILES,
-    "pyscf":  _PYSCF_WARM_FILES,
+#: Still ``runwrap``'s own tuples, not a copy: a new warm hook lands in one
+#: list there (with its ``--cold`` glob entry, per § 4.2's pinned lesson) and
+#: this sees it without being edited.
+#:
+#: **It asked for filenames until 2026-08-10** — ``_SIESTA_WARM_SUFFIX_FILES``
+#: and ``_PYSCF_WARM_FILES``, two helpers that interpolated a basename into the
+#: tuples — and :func:`_foreign_state` then stripped the id back off to recover
+#: the suffixes it actually wanted. Building a name in order to undo the
+#: construction is a re-derivation with extra steps; those helpers existed for
+#: the shell attempt-directory block, which P7 unit 1 retired, and this reads
+#: the tuples directly now.
+_INVENTORY: Dict[str, Sequence[str]] = {
+    "siesta": _SIESTA_WARM_SUFFIXES,
+    "pyscf":  _PYSCF_WARM_SUFFIXES,
 }
 
 
@@ -242,17 +250,16 @@ def _cell_row(directory, run_id: str, engine: str, cell) -> List[Issue]:
 def _foreign_state(directory, run_id: str, engine: str) -> List[str]:
     """Restart files in *directory* keyed by some id other than *run_id*.
 
-    The suffixes are derived by subtracting the id from the shipped inventory's
-    own filenames rather than listed again — which keeps this correct for
-    PySCF, where a "suffix" is ``_optimized.xyz`` rather than an extension.
+    The suffixes come from the shipped inventory rather than being listed again
+    — which keeps this correct for PySCF, where a "suffix" is
+    ``_optimized.xyz`` rather than an extension.
     """
-    names = _INVENTORY.get(engine)
-    if not names:
+    suffixes = _INVENTORY.get(engine)
+    if not suffixes or not run_id:
         return []
     d = Path(directory)
     if not d.is_dir():
         return []
-    suffixes = [n[len(run_id):] for n in names(run_id)] if run_id else []
     found = set()
     for suffix in suffixes:
         for p in d.glob(f"*{suffix}"):

@@ -1566,6 +1566,23 @@ navigates).
    immutable once written, inputs linked, previous warm state copied. Only the
    address changes. Its eleven tests move with it; the two asserting wrapper
    text retire.
+
+   > **Landed 2026-08-10. 155 lines out of `runwrap.py`, and the cwd invariant
+   > is back**: no generated wrapper contains a `cd` — checked on both engines'
+   > emitted text, not on the source.
+   >
+   > **One claim above was wrong, and it nearly shipped a break.** *"The only
+   > callers are its own eleven tests"* is true of the **block**; it is not
+   > true of the two helpers that built filenames for it.
+   > `validation/identity.py::_foreign_state` imported both — and then stripped
+   > the run id back off the names to recover the **suffixes** it actually
+   > wanted. A grep for `attempt_dirs` does not find that, because that module
+   > never mentions `attempt_dirs`; only a collection error did.
+   >
+   > It now reads the suffix tuples directly, so the subtraction removed a
+   > re-derivation on the way out rather than leaving one behind. *The lesson is
+   > the plan's own: **a symbol's callers are found by searching for the symbol,
+   > not for the feature it belongs to.***
 2. `stages_to_jobset` stops emitting `depends_on` and `Carry` edges between
    stages. `carry_deref` stays for the chained ladder `jobset` can still build.
 
@@ -1626,6 +1643,30 @@ navigates).
    real extraction — and then it is one list both the mover and the carrier
    read. Rename `_SIESTA_WARM_SUFFIX_FILES` and `_PYSCF_WARM_FILES` if they
    survive; they are functions wearing constant names.
+
+   > **Landed 2026-08-10, and the subtraction worked for SIESTA but exposed a
+   > live PySCF defect it did not predict.**
+   >
+   > The two "functions wearing constant names" did not survive — unit 1 took
+   > them. SIESTA was then already correct: one tuple, with the `--cold` mover
+   > and the startup banner both **deriving** from it (P3's Review 2 had done
+   > that).
+   >
+   > **PySCF was not.** Its mover carried five suffixes as a local tuple while
+   > its banner tested `.chk` **alone** — so a run whose only warm file was
+   > `<JOB>_optimized.xyz` announced *"initial run (clean state)"* and then had
+   > that very file moved aside by `--cold` as warm state. That is § 5's
+   > *"present but not honoured"* inverted, and `run-identity.md § 5` names the
+   > banner as the half that must never be weakened, *because it is the one
+   > always present*. Fixed the same way SIESTA's was: `_PYSCF_WARM_SUFFIXES`
+   > hoisted to a module constant, both surfaces derived.
+   >
+   > *Done when* is now executed rather than described:
+   > `tests/test_warm_file_inventory.py` adds a suffix to each engine's tuple
+   > and asserts **both** behaviours change — with the two blocks split on
+   > their own headings, because the first version of that split matched the
+   > banner's text for the mover's assertion and two mutations survived. The
+   > module reproduced its own subject inside its test.
 
 **Subtracts:** the shell attempt-resolution block; the inter-stage edges; one
 warm-file inventory per engine.
