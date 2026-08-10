@@ -37,6 +37,7 @@ plan is reviewable before anything is irreversible.
 from __future__ import annotations
 
 import dataclasses
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -159,7 +160,7 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
     for job in jobset.jobs:
         job_dir, attempt = _launch_dir(jobset, base_dir, job)
         sbatch_name = _wrapper_name(job.script, ".sbatch")
-        gpu = bool(job.resources.gres)
+        gpu = _job_wants_gpu(job_dir, job)
         pq = _resolve_domain(domain, gpu=gpu, project_dir=base_dir)
 
         cmd = ["sbatch"]
@@ -225,6 +226,40 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
             f"prepare a fresh one:\n"
             f"    molbuilder jobset prep run {job.name} --from <attempt>")
     return last, last
+
+
+def _job_wants_gpu(job_dir: Path, job) -> bool:
+    """Whether this job asks for a GPU — **from its deck**, not from `gres`.
+
+    `job-contracts.md § 6.2` derives the GPU request *"from `.fdf` + GPU type"*,
+    and the two halves live in different places on purpose:
+
+    * the **`.fdf`** carries the decision (`engines/stages.md § 5`: a GPU choice
+      lands in the deck **and** the wrapper's env routing **and** a scheduler's
+      `--gres`), and it travels with the bundle;
+    * the **GPU type** is a fact about the cluster, and `job-system.md`
+      decision #3 (*target isolation*) keeps cluster facts out of what you
+      produce on a laptop.
+
+    So the ladder producer leaves ``gres`` unset **and is right to** —
+    ``siesta/stages.py`` says so in as many words: *"scheduler resources
+    (domain/time/exclusive/mem/gres) resolve at submit."*  What was missing is
+    that nothing here asked the deck instead: this read
+    ``bool(job.resources.gres)``, which is always false for a ladder, so **a
+    stage whose deck selects a GPU eigensolver was routed to the CPU
+    partition.**  Its rendered ``.sbatch`` header already carried the right
+    ``--gres`` (``runwrap`` derives it on the target from the same deck), so the
+    job asked for a GPU on a partition that has none.
+
+    A sweep point that states ``gres`` outright is honoured unchanged — the
+    benchmark knows its own grid, and `bench/to_jobset.py` is where a GPU
+    *count* is a swept parameter rather than a property of one deck.
+    """
+    if job.resources.gres:
+        return True
+    from ..runwrap import _fdf_requests_gpu          # heavy; jobset stays light
+    deck = Path(job_dir) / os.path.basename(job.script)
+    return deck.is_file() and _fdf_requests_gpu(deck)
 
 
 def _run_direct(jobset: JobSet, base_dir: Path, *,

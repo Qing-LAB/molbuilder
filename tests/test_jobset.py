@@ -978,6 +978,40 @@ def test_re_prepping_cold_removes_what_the_previous_prep_carried_in(tmp_path):
     assert not (attempt / ".continued-from").exists()
 
 
+def test_a_gpu_stage_is_routed_by_its_DECK_not_by_an_unset_gres(tmp_path):
+    """`job-contracts.md § 6.2` derives the GPU request *"from `.fdf` + GPU
+    type"*, and the halves live apart on purpose: the deck travels with the
+    bundle, the GPU **type** is a cluster fact that `job-system.md` decision #3
+    (target isolation) keeps out of what you produce on a laptop.
+
+    So the ladder producer leaves `gres` unset and is right to — `stages.py`
+    says *"scheduler resources … resolve at submit"*.  What was missing is that
+    submit asked `bool(job.resources.gres)`, always false for a ladder, so a
+    stage whose deck selects a GPU eigensolver went to the **CPU partition**
+    while its own rendered header asked for a GPU.
+    """
+    from molbuilder.jobset.submit import _job_wants_gpu
+    from molbuilder.jobset.model import Job, Resources
+
+    d = tmp_path / "03_tight"; d.mkdir()
+    gpu_job = Job(name="tight", script="JOB_03_tight.fdf")
+    (d / "JOB_03_tight.fdf").write_text(
+        "SystemLabel JOB\nDiag.Algorithm ELPA-2stage\nDiag.ELPA.GPU .true.\n")
+    assert _job_wants_gpu(d, gpu_job) is True
+
+    cpu = tmp_path / "01_coarse"; cpu.mkdir()
+    cpu_job = Job(name="coarse", script="JOB_01_coarse.fdf")
+    (cpu / "JOB_01_coarse.fdf").write_text(
+        "SystemLabel JOB\nDiag.Algorithm divide-and-conquer\n")
+    assert _job_wants_gpu(cpu, cpu_job) is False
+
+    # a sweep point that STATES its gres is honoured unchanged: the benchmark
+    # sweeps a GPU count, which is not a property of one deck
+    pt = tmp_path / "point-G1K1C4"; pt.mkdir()
+    assert _job_wants_gpu(pt, Job(name="p", script="job-gpu.fdf",
+                                  resources=Resources(gres="gpu:a100:1"))) is True
+
+
 def test_status_takes_a_stage_and_answers_the_other_question(tmp_path):
     """`job-system.md` § 5.3 reserves a per-stage form and marked it unbuilt.
 

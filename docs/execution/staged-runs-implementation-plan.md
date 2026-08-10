@@ -1019,6 +1019,40 @@ bootstrap, not a program**).
    > type"*) exists in `bench/to_jobset.py` and has no counterpart in the
    > ladder producer. Whoever writes unit 1 owns it, since it is the same
    > question as *what does this producer emit*.
+   >
+   > ##### ⚠ Corrected and closed 2026-08-10 — **the premise above is wrong**
+   >
+   > *"…has no counterpart in the ladder producer"* reads as a gap in the
+   > producer. **It is not one, and filling it would have been a regression.**
+   > `job-contracts.md § 6.2` derives the request from *"`.fdf` + GPU type"*,
+   > and the two halves live apart deliberately: the deck travels with the
+   > bundle, while the **GPU type is a cluster fact** that `job-system.md`
+   > decision #3 (*target isolation* — *"the bundle you produce on your laptop
+   > is target-agnostic"*) keeps out of a host produce. Writing `gres` into
+   > `job-set.json` on a laptop names a machine in a target-agnostic artifact.
+   >
+   > The producer already says so, in as many words —
+   > `siesta/stages.py`: *"scheduler resources (domain/time/exclusive/mem/gres)
+   > resolve at submit."* `gres=None` was **conformance, not an omission.**
+   >
+   > **The real defect was one layer later, and it was one line.**
+   > `submit.py` asked `gpu = bool(job.resources.gres)` — always false for a
+   > ladder — so a stage whose deck selects a GPU eigensolver was routed to the
+   > **CPU partition**, while its own rendered `.sbatch` header carried the
+   > right `--gres` (`runwrap` derives it on the target from that same deck).
+   > The job asked for a GPU on a partition that has none.
+   >
+   > Fixed by asking the deck: `submit._job_wants_gpu` reads it through the
+   > **already-built** `runwrap._fdf_requests_gpu`, and an explicit `gres` from
+   > a sweep point still wins, because a benchmark sweeps a GPU *count* and
+   > that is not a property of one deck. Nothing new was written — the
+   > derivation existed on the target the whole time, and no caller asked it.
+   >
+   > **This is § 9's diagnosis inverted, and worth naming as its own shape:**
+   > not *a caller re-derives what a layer knows*, but **a caller reads a field
+   > that was deliberately left empty, instead of asking the layer that knows.**
+   > The empty field looked like a bug in the producer; it was the contract
+   > being kept.
 
 3. **The flat ladder runner is deleted, not taught.** It emits
    `siesta < "$fdf" > "$log"` — no activation (so it fails on stage 1, since
