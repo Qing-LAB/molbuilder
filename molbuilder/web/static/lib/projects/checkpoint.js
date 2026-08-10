@@ -202,6 +202,11 @@ function _renderState(repoState) {
     if (!repoState || !repoState.initialized) {
         elSensor.textContent = "no states saved";
         elSensor.setAttribute("data-state", "uninit");
+        // Clear the tooltip too.  The other two branches SET it, so without
+        // this the pill kept the previous folder's list of unsaved files while
+        // reading "no states saved" -- naming files that are not in this
+        // directory at all.
+        elSensor.title    = "";
         elEmpty.hidden    = false;
         elActions.hidden  = true;
         elList.hidden     = true;
@@ -560,25 +565,56 @@ function _onCollapseClick() {
     }
 }
 
+/**
+ * Set the folder up -- and, when its own name cannot be used, ask for one.
+ *
+ * A calculation's name is written verbatim into every state and is never
+ * repaired silently (L3), so a folder called `BDT relax!` is refused.  Left at
+ * that, the panel was a dead end: the refusal is the same whichever button you
+ * press, and nothing here could supply the one thing that resolves it.  The
+ * server marks that refusal `where: "calculation"` precisely so a surface can
+ * tell it apart from the other one (a folder holding several calculations,
+ * which a name does NOT fix) and ask the right question.
+ *
+ * Two steps, the same shape `_restore` uses: try, and only if the server
+ * refuses for a reason the user can answer, ask -- with the reason in front of
+ * them.  The ordinary case never sees a prompt.
+ */
 async function _onInitClick() {
     if (!_state.currentDir) return;
     _hideAdvisory();
     elInitBtn.disabled = true;
     try {
-        const res = await _fetchJSON("POST", "/api/checkpoint/init",
+        let res = await _fetchJSON("POST", "/api/checkpoint/init",
             { path: _state.currentDir });
+        const refusal = (res.body && Array.isArray(res.body.errors_only)
+                         && res.body.errors_only.length)
+            ? res.body.errors_only[0] : null;
+        if (refusal && refusal.where === "calculation") {
+            const name = prompt(
+                "This folder's name cannot be used as a calculation name -- "
+                + "it is written into every saved state as you type it, and is "
+                + "never changed for you.\n\n"
+                + "Letters, digits, - and _ only:", "");
+            if (name === null) return;               // user cancelled
+            if (!name.trim()) {
+                _showAdvisory("A calculation needs a name. Nothing was set up.");
+                return;
+            }
+            res = await _fetchJSON("POST", "/api/checkpoint/init",
+                { path: _state.currentDir, calculation: name.trim() });
+        }
         if (res.body && res.body.ok) {
             await _refresh();
-        } else if (res.body && Array.isArray(res.body.errors_only)
-                   && res.body.errors_only.length) {
-            // Bucket B advisory (web-api.md § 1): surface inline.
-            _showAdvisory(res.body.errors_only[0].message);
-        } else {
-            _showAdvisory("Init failed: " +
-                (res.body?.error || "HTTP " + res.http));
+            return;
         }
+        const again = (res.body && Array.isArray(res.body.errors_only)
+                       && res.body.errors_only.length)
+            ? res.body.errors_only[0].message : null;
+        _showAdvisory(again || ("Set-up failed: " +
+            (res.body?.error || "HTTP " + res.http)));
     } catch (e) {
-        _showAdvisory("Init failed: " + String(e?.message || e));
+        _showAdvisory("Set-up failed: " + String(e?.message || e));
     } finally {
         elInitBtn.disabled = false;
     }

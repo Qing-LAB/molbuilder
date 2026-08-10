@@ -328,6 +328,56 @@ def test_save_refuses_a_bad_calculation_name_as_an_advisory_not_a_fault(
         "and the advisory has to say what to do about it")
 
 
+def test_init_can_name_a_folder_that_is_already_a_git_repository(
+        client, tmp_path, checkpoint_config):
+    """The panel's only way out of a refused save, and it was closed.
+
+    A folder somebody `git init`-ed by hand cannot be saved until it has a
+    calculation name (L3). This route answered `ok:true, already:true` and
+    **silently dropped the `calculation` in the request** — a dead end wearing
+    a success code, and the panel had no other control that could supply one.
+
+    The `where` on the refusal is load-bearing: it is how a surface tells *this
+    folder needs a name* (which a name fixes) from *this folder holds several
+    calculations* (which it does not), so it is asserted rather than assumed.
+    """
+    import subprocess
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
+    root = tmp_path / "has spaces!"
+    root.mkdir()
+    (root / "job.fdf").write_text("x\n")
+    subprocess.run(["git", "init", "-q", "."], cwd=root, check=True)
+
+    refused = _post(client, "save", root, note="stage 1").get_json()
+    assert refused["ok"] is False
+    assert refused["errors_only"][0]["where"] == "calculation", (
+        "the panel branches on this to decide whether to ask for a name")
+
+    no_name = _post(client, "init", root).get_json()
+    assert no_name["ok"] is False, (
+        "init without a usable name must refuse, not report success")
+
+    named = _post(client, "init", root, calculation="BDT_Au_relax").get_json()
+    assert named["ok"] and named["calculation"] == "BDT_Au_relax"
+
+    saved = _post(client, "save", root, note="stage 1 converged").get_json()
+    assert saved["ok"] and saved["state"]["calculation"] == "BDT_Au_relax", (
+        "naming the folder did not actually unblock the save")
+
+
+def test_init_on_a_named_folder_reports_it_and_changes_nothing(client, started):
+    """The repair above must not disturb the ordinary idempotent case."""
+    first = _get(client, "list", started).get_json()["states"]
+    body = _post(client, "init", started,
+                 calculation="SomethingElse").get_json()
+    assert body["ok"] and body["already"] is True
+    assert body["calculation"] == "BDT_Au_relax", (
+        "the name is fixed at init; a later one must not rewrite it")
+    after = _get(client, "list", started).get_json()["states"]
+    assert [s["id"] for s in after] == [s["id"] for s in first], (
+        "init made a second state")
+
+
 def test_a_bad_limit_is_the_callers_mistake_not_the_servers(client, started):
     """A negative count reached git as `-n-5` and came back as a 500.
 

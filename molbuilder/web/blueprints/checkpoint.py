@@ -264,10 +264,14 @@ def api_checkpoint_init():
     except ValueError as exc:
         return _protocol_error(str(exc))
     repo = Repo(str(path))
-    if repo.initialized:
-        here = repo.standing_at()
-        return jsonify({"ok": True, "path": str(path), "already": True,
-                        "standing_at": _state_json(here) if here else None})
+    # `init` IS THE REPAIR VERB, so this no longer answers before calling it.
+    #
+    # It used to return `already: true` here and stop -- which silently DROPPED
+    # the `calculation` the caller sent, so the panel had no way to name a
+    # folder somebody `git init`-ed by hand.  A save refuses such a folder (L3)
+    # and the only remedy is a name; answering "ok, already done" to the request
+    # that would supply one is a dead end with a success code on it.
+    already = repo.initialized
     try:
         state = repo.init(engine=body.get("engine"),
                           note=body.get("note") or "set up",
@@ -286,7 +290,13 @@ def api_checkpoint_init():
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint init failed")
         return _server_fault(f"{type(exc).__name__}: {exc}")
+    if already:
+        # An existing folder: `state` is where it stands, not something made.
+        return jsonify({"ok": True, "path": str(path), "already": True,
+                        "calculation": repo.calculation(),
+                        "standing_at": _state_json(state) if state else None})
     return jsonify({"ok": True, "path": str(path), "already": False,
+                    "calculation": state.calculation,
                     "state": _state_json(state)})
 
 

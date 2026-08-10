@@ -257,6 +257,45 @@ def test_checkpoint_js_has_no_polling_timer():
         "docs/web/projects.md")
 
 
+def test_the_panel_can_supply_a_calculation_name_when_the_folder_is_refused():
+    """The panel's only way out of a refused save (L3), and it had none.
+
+    A folder whose own name cannot be a calculation name is refused, and the
+    only thing that resolves it is a name — which the panel could not send,
+    because Set-up posted `{path}` and nothing else.  Every button gave the
+    same refusal and none of them could answer it.
+
+    The server marks that refusal `where: "calculation"` so a surface can tell
+    it from the other advisory on the same route — a folder holding several
+    calculations, which a name does **not** fix and where a prompt would be a
+    lie.  Branching on `where` is therefore the assertion, not the presence of
+    a prompt.
+    """
+    js = _js("checkpoint.js").read_text()
+    init = js.split("async function _onInitClick", 1)[1].split("\nasync function", 1)[0]
+    assert 'where === "calculation"' in init, (
+        "the panel must branch on WHICH refusal it got; prompting for a name "
+        "on the nested-calculations advisory would ask a question that cannot "
+        "help")
+    assert "calculation:" in init, (
+        "and it must actually send the name it collected")
+    assert "prompt(" in init
+
+
+def test_the_sensor_pill_does_not_keep_the_previous_folders_tooltip():
+    """Navigating to an un-set-up folder cleared the text and not the title.
+
+    The pill then read "no states saved" while its tooltip still listed the
+    unsaved files of the directory you just left -- naming files that are not
+    in this folder at all.
+    """
+    js = _js("checkpoint.js").read_text()
+    uninit = js.split("if (!repoState || !repoState.initialized) {", 1)[1] \
+               .split("return;", 1)[0]
+    assert "elSensor.title" in uninit, (
+        "the branch that sets the pill must clear the title the other two set")
+
+
 def test_the_panel_says_so_when_the_generated_ignore_block_was_edited():
     """A hand edit inside the markers is not supposed to happen, so say so.
 

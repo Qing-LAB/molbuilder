@@ -1164,6 +1164,15 @@ the history's name from the folder's ([`run-identity.md`](?doc=execution/run-ide
 > that, it is still broken"*, and § 2.0's promise that **the verbs cover the
 > work** fails quietly. So `snapshot init --calculation <name>` now names an
 > unnamed folder and leaves an already-named one alone.
+>
+> **On every surface.** The CLI and the route each had their own early return,
+> and the route's also *discarded the name the caller sent* while answering
+> `ok: true` — a dead end wearing a success code. The panel could not send one
+> at all. A refusal is only survivable if the surface the person is standing on
+> can answer it, which is why the advisory carries `where: "calculation"`: it
+> is how a surface tells *this folder needs a name* from *this folder holds
+> several calculations*, where a name would not help and asking for one would
+> be a lie.
 
 *The note, in your words* — **required, never generated** (§ 5.1). It is the only
 thing that answers the question you actually bring to a history: *why did I stop
@@ -1481,7 +1490,7 @@ nobody is maintaining against this document, which is how the two drift.
 | the MANIFEST format | `test_checkpoint_manifest.py` — one content has exactly one MANIFEST; every deviation a lenient reader could "understand" is refused and names the archive; no key can steer a restore out of the folder or into a store |
 | the verbs as a printed surface | `test_checkpoint_cli.py` — what each verb prints and what it exits with, retired verbs gone, the question asked at a terminal, and **that a remedy a refusal names actually works**: the whole round trip, refusal → repair → save, exit codes included, since 2 is *your input* and 1 is *the machine* |
 | the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` — **including which bucket each refusal lands in**: a name the user can repair and a folder of independent calculations are advisories the panel can act on, an unknown state and a bad `limit` are the caller's mistake, and everything else is a fault |
-| the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` — the state route does not open a big file it can rule out by size and timestamp, a failure is a structured envelope, the panel and its importer parse, and the panel speaks the routes' field names |
+| the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` — the state route does not open a big file it can rule out by size and timestamp, a failure is a structured envelope, the panel and its importer parse, the panel speaks the routes' field names, and **it can answer the refusals it is shown**: it branches on `where` rather than prompting for a name that would not help |
 | *Disk cost* (§ 12) — identical content stored once | `test_checkpoint_states.py` — three of four unchanged big files share an inode across two archives |
 | symlinks are outside S1 and survive a restore | `test_checkpoint_states.py` — and the link points at a file **over** the limit, which is the only size at which the two behaviours differ: follow it and the target is archived a second time under the link's path, and the restore writes a real file where a link belongs. A link to a small file cannot tell them apart |
 | § 7.2's cheap read after a restore | `test_checkpoint_states.py` — a restored large file keeps **its own** mtime, so the folder does not read *everything unsaved* the moment you return to an older state. The file is deliberately aged an hour before saving, or the assertion passes for a stamp of `now` whenever the test runs quickly |
