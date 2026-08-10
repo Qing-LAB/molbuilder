@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .materialize import job_dir_names
+from .materialize import job_dir_names, stage_refs
 from .model import JobSet
 
 # Engine-native warm-restart files keyed by the project id (system label),
@@ -45,6 +45,10 @@ class StageStatus:
     state:      str               # not-started/pending/running/stale/failed/finished
     detail:     str
     warm_files: List[str] = field(default_factory=list)  # restart files present
+    #: The stage's assigned ordinal, read back off its deck -- NOT its row.
+    #: ``None`` for a sweep point, which has no seq (project-layout.md § 4.1).
+    seq: Optional[int] = None
+
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -108,11 +112,13 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
     stages: List[StageStatus] = []
     first_incomplete: Optional[str] = None
     dirs = job_dir_names(jobset)
+    refs = stage_refs(jobset) if jobset.kind == "ladder" else {}
     for job in jobset.jobs:
         d = base / dirs[job.name]
         state, detail = _stage_state(d)
         stages.append(StageStatus(
             name=job.name, dir=d.name, state=state, detail=detail,
+            seq=(refs[job.name].seq if job.name in refs else None),
             warm_files=_warm_present(d, label, jobset.engine),
         ))
         if first_incomplete is None and state != _DONE:
@@ -131,8 +137,12 @@ def render_status(status: JobSetStatus) -> str:
         f"JOB-SET STATUS -- {status.name} ({status.engine})",
         "",
     ]
-    hdr = ("#", "stage", "state", "warm files", "detail")
-    rows = [(str(i), s.name, s.state,
+    # The stage's SEQ, never its row.  This printed `enumerate()` until
+    # 2026-08-10 -- a position where a reader reads an ordinal, which is the
+    # number `engines/stages.md` R5 forbids as an identifier.  A sweep point
+    # has no seq and keeps its row number, which is honest: it has no order.
+    hdr = ("seq", "stage", "state", "warm files", "detail")
+    rows = [(str(s.seq) if s.seq is not None else str(i), s.name, s.state,
              ", ".join(s.warm_files) or "-", s.detail)
             for i, s in enumerate(status.stages)]
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(5)]

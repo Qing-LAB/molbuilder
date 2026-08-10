@@ -44,12 +44,19 @@ def render_plan(jobset: JobSet) -> str:
         f"{', '.join(js.shared) or '(none)'}",
         "",
     ]
-    hdr = ("#", "job", "input", "depends on", "carries", "resources")
+    hdr = ("seq", "job", "input", "depends on", "carries", "resources")
     rows = []
+    # The column is the stage's SEQ, never its row.  It printed
+    # `enumerate()` until 2026-08-10 -- the stage's POSITION, which
+    # `engines/stages.md` R5 forbids as an identifier, in the column a
+    # reader takes for the ordinal.  Disable a stage and the two differ.
+    from .materialize import stage_refs
+    _refs = stage_refs(js) if js.kind == "ladder" else {}
     for i, j in enumerate(js.jobs):
+        _seq = str(_refs[j.name].seq) if j.name in _refs else str(i)
         dep = (f"{j.depends_on} ({j.dep_kind})" if j.depends_on else "-")
         carries = ", ".join(c.pattern for c in j.carry) or "-"
-        rows.append((str(i), j.name, j.script, dep, carries, _res_str(j.resources)))
+        rows.append((_seq, j.name, j.script, dep, carries, _res_str(j.resources)))
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(6)]
     def fmt(r):
         return "  ".join(s.ljust(w[k]) for k, s in enumerate(r))

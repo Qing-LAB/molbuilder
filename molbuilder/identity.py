@@ -352,3 +352,80 @@ def run_id(label: str, formula: str = "", *,
 
 __all__ = ["MAX_LABEL_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "is_ours",
            "normalise_id", "parse_stage_token", "run_id", "stage_token"]
+
+
+# --------------------------------------------------------------------- #
+#  StageRef — the one answer to "which stage is this"                    #
+#  Contract: staged-runs-implementation-plan.md § 8f + § 9 (decision 28) #
+# --------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class StageRef:
+    """A stage, as every surface should refer to it: ``seq`` and ``name``.
+
+    **Both halves, because each answers something the other cannot.** The name
+    is the stage's *identity* (``engines/stages.md`` R5) and is what a filename
+    can be read back to. The ``seq`` is what **sorts** — with eight stages, a
+    listing ordered by name tells you nothing about the order the work happens
+    in, which is the whole reason decision 27 put the ordinal in the token.
+
+    **``seq`` is derived, never stored** (decision 28). It comes from the
+    ladder's full list before a produce, and is read back off the artifacts
+    after one — `project-layout.md` § 4.1's *"`seq` is not a fourth field …
+    the description does not carry it"*. Constructing this object is therefore
+    always someone reading, never someone deciding.
+    """
+    seq: int
+    name: str
+
+    @property
+    def token(self) -> str:
+        """``<NN>_<name>`` — the artifact token, from the one namer."""
+        return stage_token(self.seq, self.name)
+
+    def __str__(self) -> str:                       # what a listing prints
+        return self.token
+
+
+def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
+    """The one stage ``text`` names, or ``ValueError`` naming every candidate.
+
+    Four spellings are accepted, because all four are things a person
+    reasonably types for the same stage::
+
+        tight        the name          — its identity
+        3  /  03     the seq           — what sorts, and what you read off a listing
+        03_tight     the whole token   — copied from a directory or a filename
+
+    A number is matched against ``seq`` and **never** against a position in the
+    list. That distinction is the one `engines/stages.md` R5 exists to protect:
+    with stage 2 disabled the ladder is ``01`` and ``03``, so ``3`` must mean
+    *tight* and never *"the third row"*.
+    """
+    want = str(text).strip()
+    if not want:
+        raise ValueError("no stage named; pass a name, a number, or a token")
+    for r in refs:
+        if want == r.name or want == r.token:
+            return r
+    if want.isdigit():
+        for r in refs:
+            if int(want) == r.seq:
+                return r
+    raise ValueError(
+        f"no stage matches {text!r}. This calculation has: "
+        f"{render_stage_refs(refs)}. Name it by its name (tight), its "
+        f"number (3), or its token (03_tight).")
+
+
+def render_stage_refs(refs: Sequence["StageRef"]) -> str:
+    """The one listing format every surface prints — ``01_coarse, 03_tight``.
+
+    One function so a refusal, a status table and a help string cannot show a
+    user three different vocabularies for one set of stages.
+    """
+    return ", ".join(r.token for r in refs)
+
+
+__all__ = __all__ + ["StageRef", "resolve_stage_ref", "render_stage_refs"]

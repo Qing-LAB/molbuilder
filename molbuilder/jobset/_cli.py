@@ -116,17 +116,29 @@ def _resolve_stage(js, stage, chain: bool, verb: str):
     § 1.6).  A SWEEP has no such ordering: its points are independent, so the
     whole set is the ordinary thing and needs no flag.
     """
-    names = [j.name for j in js.jobs]
+    from ..identity import render_stage_refs, resolve_stage_ref
+    from .materialize import stage_refs
+    refs = stage_refs(js) if js.kind == "ladder" else {}
+    ordered = [refs[j.name] for j in js.jobs if j.name in refs]
     if stage is not None:
-        if stage not in names:
+        # A name, a number, or a whole token -- one resolver, so the CLI, the
+        # listing and the refusal cannot speak three vocabularies (§ 8f).
+        if ordered:
+            try:
+                return resolve_stage_ref(ordered, stage).name
+            except ValueError as e:
+                raise click.ClickException(str(e))
+        if stage not in [j.name for j in js.jobs]:
             raise click.ClickException(
                 f"no stage named {stage!r} in this job-set; it has: "
-                f"{', '.join(names)}")
+                f"{', '.join(j.name for j in js.jobs)}")
         return stage
+    names = [j.name for j in js.jobs]
     if js.kind == "ladder" and not chain:
+        listing = render_stage_refs(ordered) if ordered else ", ".join(names)
         raise click.ClickException(
             f"this is a ladder, so `{verb}` acts on ONE stage: "
-            f"{', '.join(names)}.\n"
+            f"{listing}.\n"
             f"  molbuilder jobset {verb} run <stage>      one stage\n"
             f"  molbuilder jobset {verb} run --chain      the whole ladder, "
             f"unattended\n"

@@ -92,12 +92,30 @@ def job_dir_names(jobset: JobSet) -> Dict[str, str]:
     """
     if jobset.kind != "ladder":
         return {j.name: job_dir_name(j.name) for j in jobset.jobs}
-    from ..identity import parse_stage_token, stage_token
-    out: Dict[str, str] = {}
+    refs = stage_refs(jobset)
+    return {j.name: (refs[j.name].token if j.name in refs
+                     else job_dir_name(j.name))
+            for j in jobset.jobs}
+
+
+def stage_refs(jobset: JobSet) -> Dict[str, "object"]:
+    """``{job name: StageRef}`` for a ladder — **the ordinal, read back**.
+
+    This is the after-produce half of the resolver (§ 8f). ``seq`` is recovered
+    from each deck's own token, which is where `project-layout.md` § 4.1 says it
+    lives: *"read off the directory name and stored nowhere else"*. Nothing here
+    counts positions, so a disabled stage leaves a gap rather than renumbering.
+
+    A job whose script carries no token is **absent from the mapping** rather
+    than given an invented ``seq`` — § 4.2's number is assigned once and never
+    guessed. Callers fall back to the sweep convention.
+    """
+    from ..identity import StageRef, parse_stage_token
+    out: Dict[str, object] = {}
     for j in jobset.jobs:
         parsed = parse_stage_token(os.path.basename(j.script), jobset.name)
-        out[j.name] = (stage_token(*parsed) if parsed
-                       else job_dir_name(j.name))
+        if parsed:
+            out[j.name] = StageRef(*parsed)
     return out
 
 
@@ -323,6 +341,7 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
     return p
 
 
-__all__ = ["materialize", "job_dir_name", "job_dir_names", "relink",
+__all__ = ["materialize", "job_dir_name", "job_dir_names", "stage_refs",
+           "relink",
            "attempts", "was_launched", "resolve_attempt", "prepare_attempt",
            "write_run_launch", "RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE"]

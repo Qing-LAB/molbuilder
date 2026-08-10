@@ -765,3 +765,56 @@ def test_prep_writes_stage_plan_md(tmp_path):
     plan = tmp_path / "STAGE-PLAN.md"
     assert plan.is_file()
     assert "JOB-SET PLAN" in plan.read_text()
+
+
+# --------------------------------------------------------------------- #
+#  StageRef — one resolver, six callers (plan § 8f, decision 28)         #
+# --------------------------------------------------------------------- #
+
+
+def test_stage_refs_reads_the_seq_off_the_deck_not_the_row():
+    """The after-produce half: seq comes from each deck's token, so a disabled
+    stage leaves 01/03 rather than being renumbered to the rows 0/1."""
+    from molbuilder.jobset.materialize import stage_refs
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    refs = stage_refs(js)
+    assert (refs["coarse"].seq, refs["tight"].seq) == (1, 3)
+    assert refs["tight"].token == "03_tight"
+
+
+def test_stage_refs_omits_a_job_with_no_token_rather_than_inventing_one():
+    """§ 4.2's number is assigned once and never guessed."""
+    from molbuilder.jobset.materialize import stage_refs
+    from molbuilder.jobset.model import Job, JobSet
+    js = JobSet(name="JOB", engine="siesta", kind="ladder",
+                jobs=[Job(name="only", script="JOB.fdf")])
+    assert stage_refs(js) == {}
+
+
+def test_plan_prints_the_seq_not_the_row():
+    """The `#` column was `enumerate()` -- a POSITION where a reader reads the
+    ordinal, which is the number R5 forbids as an identifier."""
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    out = render_plan(js)
+    assert "seq" in out.splitlines()[3]
+    body = [l for l in out.splitlines() if "coarse" in l or "tight" in l]
+    assert body[0].split()[0] == "1"
+    assert body[1].split()[0] == "3"          # NOT "1", which the row would be
+
+
+def test_status_prints_the_seq_not_the_row(tmp_path):
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    st = jobset_status(js, tmp_path)
+    assert [s.seq for s in st.stages] == [1, 3]
+    out = render_status(st)
+    assert "seq" in out
+    assert [l.split()[0] for l in out.splitlines() if "tight" in l] == ["3"]
+
+
+def test_status_seq_is_none_for_a_sweep_point():
+    """A sweep point has no order, so it has no seq -- and says so rather than
+    borrowing a row number's authority."""
+    from molbuilder.jobset.model import Job, JobSet
+    js = JobSet(name="JOB", engine="siesta", kind="sweep",
+                jobs=[Job(name="p1", script="JOB.fdf")])
+    assert jobset_status(js, ".").stages[0].seq is None
