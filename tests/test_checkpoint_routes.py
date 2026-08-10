@@ -297,6 +297,48 @@ def test_init_refuses_a_calculation_name_needing_repair(client, tmp_path):
     assert body["ok"] is False and body["errors_only"]
 
 
+def test_save_refuses_a_bad_calculation_name_as_an_advisory_not_a_fault(
+        client, tmp_path, checkpoint_config):
+    """§ 15's rule, on the route where it was most recently broken.
+
+    A save validates the calculation's name too (L3), because a folder somebody
+    `git init`-ed by hand never passed through `init`'s gate. When that check
+    was added, this route had no clause for it — so a name the user fixes with
+    **one command** came back as HTTP 500, a *server fault*. That is exactly
+    the inversion § 15 names, pointed the other way: *"a surface that cannot
+    tell them apart reports 'fix your input' for a broken disk"*, and here it
+    reported a broken disk for a fixable input.
+
+    The panel renders a fault as "something went wrong" with nothing to do
+    about it, so the bucket is the whole of what the user gets.
+    """
+    import subprocess
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
+    root = tmp_path / "has spaces!"
+    root.mkdir()
+    (root / "job.fdf").write_text("x\n")
+    subprocess.run(["git", "init", "-q", "."], cwd=root, check=True)
+
+    r = _post(client, "save", root, note="stage 1 converged")
+    assert r.status_code == 200, (
+        "a name the user can repair is an advisory, not a server fault")
+    body = r.get_json()
+    assert body["ok"] is False and body["errors_only"]
+    assert "--calculation" in body["error"], (
+        "and the advisory has to say what to do about it")
+
+
+def test_a_bad_limit_is_the_callers_mistake_not_the_servers(client, started):
+    """A negative count reached git as `-n-5` and came back as a 500.
+
+    The server reporting its own fault for a caller's typo sends whoever is
+    debugging to the wrong side of the wire.
+    """
+    assert _get(client, "list", started, limit=-5).status_code == 400
+    assert _get(client, "list", started, limit="abc").status_code == 400
+    assert _get(client, "list", started, limit=2).status_code == 200
+
+
 def test_init_refuses_a_folder_of_independent_calculations_as_an_advisory(
         client, tmp_path):
     """L1 over the wire, and the **bucket** is the point (§ 15).

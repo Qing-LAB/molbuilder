@@ -1149,6 +1149,15 @@ still says which calculation its history belongs to. Nothing is normalised — a
 name needing repair is **refused**, because silently fixing an id would decouple
 the history's name from the folder's ([`run-identity.md`](?doc=execution/run-identity.md)).
 
+> **Refused on the *save*, not only at `init`.** `init` is the obvious gate and
+> it was the only one, so a folder somebody had already `git init`-ed — which
+> § 2.0 says people do — skipped it entirely and wrote its raw directory name
+> into every state: `Calculation: has spaces!`, in a history `init` would have
+> turned away. The check belongs where the name is *written into a state*.
+> Reading it stays unchecked, so `snapshot config` and the panel still work on
+> a folder in that condition, and `snapshot init --calculation <name>` is the
+> verb that repairs it.
+
 *The note, in your words* — **required, never generated** (§ 5.1). It is the only
 thing that answers the question you actually bring to a history: *why did I stop
 here, and what was I about to do?* A generated stand-in (`snapshot
@@ -1464,7 +1473,7 @@ nobody is maintaining against this document, which is how the two drift.
 | A3, S2, S3, S4, S6, L8, S5's run-layer half | **not yet written** — each waits on a surface that does not exist; the table below says which |
 | the MANIFEST format | `test_checkpoint_manifest.py` — one content has exactly one MANIFEST; every deviation a lenient reader could "understand" is refused and names the archive; no key can steer a restore out of the folder or into a store |
 | the verbs as a printed surface | `test_checkpoint_cli.py` — what each verb prints and what it exits with, retired verbs gone, and the question asked at a terminal |
-| the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` |
+| the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` — **including which bucket each refusal lands in**: a name the user can repair and a folder of independent calculations are advisories the panel can act on, an unknown state and a bad `limit` are the caller's mistake, and everything else is a fault |
 | the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` — the state route does not open a big file it can rule out by size and timestamp, a failure is a structured envelope, the panel and its importer parse, and the panel speaks the routes' field names |
 | *Disk cost* (§ 12) — identical content stored once | `test_checkpoint_states.py` — three of four unchanged big files share an inode across two archives |
 | symlinks are outside S1 and survive a restore | `test_checkpoint_states.py` — and the link points at a file **over** the limit, which is the only size at which the two behaviours differ: follow it and the target is archived a second time under the link's path, and the restore writes a real file where a link belongs. A link to a small file cannot tell them apart |
@@ -1530,7 +1539,7 @@ the rows above it as well, naming three test files that no longer exist —
 | `Repo.classification` | which files are large here — reads molbuilder's own config and takes **no directory**, which is the shape of S1c |
 | `Repo._manifest_of` | what a state held, and the one place damage to that record is named (I2b) |
 | the note + calculation-name builder | the naming rules (L3) — written and read through one parser so the two cannot drift |
-| `CheckpointError` and its five subclasses | what a refusal raises. `CalculationNameError` is separate because it is the only one a **user** resolves; the rest are faults, and a surface that cannot tell them apart reports "fix your input" for a broken disk |
+| `CheckpointError` and its five subclasses | what a refusal raises. `CalculationNameError` and `NestedRepoRefusedError` are the ones a **user** resolves; `GitNotInstalledError` and the rest are faults. **Every surface must bucket them by class, on every verb** — a blanket `except CheckpointError` reports "fix your input" for a broken disk, or a broken disk for a name the user fixes in one command. Both inversions have happened here, in both directions |
 | `molbuilder/web/blueprints/checkpoint.py` | the HTTP routes the sidebar calls |
 | `molbuilder/web/static/lib/projects/checkpoint.js` | the sidebar panel — the surface where L3's note is actually asked for |
 | `tests/test_checkpoint_*.py` | seven files — § 13.4 maps them to rules |

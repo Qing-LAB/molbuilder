@@ -36,6 +36,7 @@ from molbuilder.checkpoint import (
     CalculationNameError,
     CheckpointError,
     DirtyWorkingTreeError,
+    GitNotInstalledError,
     NestedRepoRefusedError,
     NoSuchRefError,
 )
@@ -189,6 +190,11 @@ def api_checkpoint_list():
             limit = int(limit_raw)
         except (TypeError, ValueError):
             return _protocol_error(f"invalid limit: {limit_raw!r}")
+        if limit < 0:
+            # Reached git as `-n-5`, which fails there and surfaced as a 500 --
+            # the server reporting its own fault for the caller's typo.
+            return _protocol_error(
+                f"invalid limit: {limit} (a count cannot be negative)")
     repo = Repo(str(path))
     if not repo.initialized:
         return _protocol_error(
@@ -308,11 +314,17 @@ def api_checkpoint_save():
             "not a checkpoint folder; run init first", code=409)
     try:
         state = repo.save(note)
+    except CalculationNameError as exc:
+        # A save validates the calculation's name too (L3), because a folder
+        # somebody `git init`-ed by hand never passed through `init`'s gate.
+        # That is the SECOND thing here a person can fix, and it arrived after
+        # the comment below was written: without this clause a name needing
+        # repair -- one command to fix -- was reported as a server fault, which
+        # is the exact inversion § 15 warns about, pointed the other way.
+        return _advisory(str(exc), where="calculation")
     except CheckpointError as exc:
-        # A fault, not an advisory.  The one thing a user can fix about a save
-        # -- the missing note -- was already refused above as a protocol error,
-        # so everything reaching here is the machine: git gone, a corrupt copy,
-        # an unreadable archive.  Reporting those as HTTP 200 "ok:false" put
+        # Everything else here is the machine: git gone, a corrupt copy, an
+        # unreadable archive.  Reporting those as HTTP 200 "ok:false" would put
         # integrity failures in the bucket meant for questions.
         return _server_fault(str(exc))
     except Exception as exc:                       # noqa: BLE001
@@ -346,6 +358,13 @@ def api_checkpoint_tag():
         tag = repo.tag(name, note, at=body.get("at"))
     except NoSuchRefError as exc:
         return _protocol_error(str(exc), code=404)
+    except GitNotInstalledError as exc:
+        # The one fault that reaches this route.  The blanket advisory below is
+        # right for the failure that actually happens here -- a tag name already
+        # in use, which the person fixes by choosing another -- but it also
+        # caught a machine with no git and answered "please pick a different
+        # name" for it.  Named separately rather than by widening the comment.
+        return _server_fault(str(exc))
     except CheckpointError as exc:
         return _advisory(str(exc), where="tag")
     except Exception as exc:                       # noqa: BLE001
