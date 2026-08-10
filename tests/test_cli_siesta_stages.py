@@ -418,8 +418,18 @@ def test_jobset_end_to_end_produce_prep_status_submit(xyz, tmp_path):
         '{"script_generation": {"preamble": "module load mamba", '
         '"activation": "source activate"}}')
     prep_jobset(js, b, emit_sbatch=False)
+    # A LADDER's stage directory is ``<seq>_<name>`` (project-layout.md § 4.1),
+    # not the sweep's ``point-<name>``.  This asserted ``point-{name}`` until
+    # 2026-08-10 -- correctly, of the behaviour of the day, which was
+    # worked-example.md's gap 6: `job_dir_name` did not branch on JobSet.kind,
+    # so a staged run got the benchmark's naming.
+    assert sorted(d.name for d in b.iterdir() if d.is_dir()) == \
+        ["01_coarse", "02_medium"]
+    # And the directory carries the SAME token as the deck inside it, which is
+    # the self-check § 4.1 asks for rather than a repetition.
     for j in js.jobs:
-        assert (b / f"point-{j.name}").is_dir()
+        seq_name = j.script[len("JOB_"):-len(".fdf")]     # e.g. 01_coarse
+        assert (b / seq_name / j.script).is_symlink()
 
     st = jobset_status(js, b)
     assert [s.state for s in st.stages] == ["pending", "pending"]

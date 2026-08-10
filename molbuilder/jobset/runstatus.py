@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .materialize import job_dir_name
+from .materialize import job_dir_names
 from .model import JobSet
 
 # Engine-native warm-restart files keyed by the project id (system label),
@@ -107,8 +107,9 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
     label = jobset.name
     stages: List[StageStatus] = []
     first_incomplete: Optional[str] = None
+    dirs = job_dir_names(jobset)
     for job in jobset.jobs:
-        d = base / job_dir_name(job.name)
+        d = base / dirs[job.name]
         state, detail = _stage_state(d)
         stages.append(StageStatus(
             name=job.name, dir=d.name, state=state, detail=detail,

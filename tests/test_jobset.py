@@ -146,6 +146,58 @@ def test_job_dir_name():
 
 
 # --------------------------------------------------------------------- #
+#  job_dir_names -- two kinds, two conventions (project-layout.md § 4.1) #
+# --------------------------------------------------------------------- #
+
+
+def _token_ladder(*scripts):
+    from molbuilder.jobset.model import Job, JobSet
+    return JobSet(name="JOB", engine="siesta", kind="ladder",
+                  jobs=[Job(name=s.split("_", 2)[2].rsplit(".", 1)[0],
+                            script=s) for s in scripts])
+
+
+def test_job_dir_names_ladder_uses_the_decks_own_token():
+    """A stage directory is ``<seq>_<name>``, and the seq is READ BACK off the
+    deck rather than counted here -- counting would reintroduce the shifting
+    number ``engines/stages.md`` R5 forbids."""
+    from molbuilder.jobset.materialize import job_dir_names
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_medium.fdf", "JOB_03_tight.fdf")
+    assert job_dir_names(js) == {"coarse": "01_coarse",
+                                 "medium": "02_medium",
+                                 "tight": "03_tight"}
+
+
+def test_job_dir_names_ladder_keeps_a_gap_a_gap():
+    """Disabling stage 2 leaves 01 and 03 -- the directory does NOT renumber to
+    01/02, because the seq belongs to the stage, not to its position."""
+    from molbuilder.jobset.materialize import job_dir_names
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    assert job_dir_names(js) == {"coarse": "01_coarse", "tight": "03_tight"}
+
+
+def test_job_dir_names_sweep_keeps_the_point_convention():
+    """The benchmark is untouched by the ladder's rule."""
+    from molbuilder.jobset.materialize import job_dir_names
+    from molbuilder.jobset.model import Job, JobSet
+    js = JobSet(name="JOB", engine="siesta", kind="sweep",
+                jobs=[Job(name="np4", script="JOB.fdf"),
+                      Job(name="np8", script="JOB.fdf")])
+    assert job_dir_names(js) == {"np4": "point-np4", "np8": "point-np8"}
+
+
+def test_job_dir_names_ladder_without_a_token_falls_back_rather_than_guessing():
+    """A hand-written ladder whose deck carries no token gets ``point-<name>``.
+    Inventing a seq for it would be guessing at the one number § 4.2 says is
+    assigned once and never reassigned."""
+    from molbuilder.jobset.materialize import job_dir_names
+    from molbuilder.jobset.model import Job, JobSet
+    js = JobSet(name="JOB", engine="siesta", kind="ladder",
+                jobs=[Job(name="only", script="JOB.fdf")])
+    assert job_dir_names(js) == {"only": "point-only"}
+
+
+# --------------------------------------------------------------------- #
 #  plan engine                                                          #
 # --------------------------------------------------------------------- #
 

@@ -25,7 +25,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
-from .materialize import job_dir_name, materialize, relink
+from .materialize import job_dir_names, materialize, relink
 from .model import JobSet
 
 
@@ -103,8 +103,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
 
     # ---- 3. link the rendered wrappers (+ monitor) into each job dir ---- #
     has_monitor = (base / "mb_monitor.py").exists()
+    # NOT named ``dirs``: step 2 above binds that to materialize's list of
+    # created Paths, which is this function's return value.
+    dir_of = job_dir_names(jobset)
     for job in jobset.jobs:
-        d = base / job_dir_name(job.name)
+        d = base / dir_of[job.name]
         stem = Path(job.script).stem
         for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):
             if (base / wrapper).exists():

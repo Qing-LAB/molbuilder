@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .materialize import job_dir_name
+from .materialize import job_dir_names
 from .model import JobSet, Resources
 
 
@@ -156,8 +156,9 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
     chains."""
     results: List[JobResult] = []
     ids: Dict[str, str] = {}            # job.name -> slurm job id
+    dirs = job_dir_names(jobset)
     for job in jobset.jobs:
-        job_dir = base_dir / job_dir_name(job.name)
+        job_dir = base_dir / dirs[job.name]
         sbatch_name = _wrapper_name(job.script, ".sbatch")
         gpu = bool(job.resources.gres)
         pq = _resolve_domain(domain, gpu=gpu, project_dir=base_dir)
@@ -205,8 +206,9 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
     ``afterany`` edge runs regardless."""
     results: List[JobResult] = []
     failed: set = set()                 # job names that failed / were skipped
+    dirs = job_dir_names(jobset)
     for job in jobset.jobs:
-        job_dir = base_dir / job_dir_name(job.name)
+        job_dir = base_dir / dirs[job.name]
         run_name = _wrapper_name(job.script, ".run.sh")
         cmd = ["bash", run_name] + _run_sh_args(job.resources)
         if job.depends_on in failed and job.dep_kind == "afterok":
