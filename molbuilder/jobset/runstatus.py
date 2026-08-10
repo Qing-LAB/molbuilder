@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 
 from ..identity import StageRef, seq_text
 from .materialize import (RUN_LAUNCH_FILE, attempts, job_dir_names,
-                          latest_attempt, stage_refs)
+                          latest_attempt, shape_of, stage_refs)
 from .model import JobSet
 
 # Engine-native warm-restart files keyed by the project id (system label),
@@ -161,7 +161,7 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
     label = jobset.name
     stages: List[StageStatus] = []
     first_incomplete: Optional[str] = None
-    dirs = job_dir_names(jobset)
+    dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
     refs = stage_refs(jobset)
     for job in jobset.jobs:
         d = base / dirs[job.name]

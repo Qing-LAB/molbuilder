@@ -1457,3 +1457,68 @@ def test_a_sweep_is_laid_out_the_same_way_in_either_shape():
     assert (job_dir_names(js, Shape.named("flat"))
             == job_dir_names(js, Shape.named("hierarchical"))
             == {"p1": "point-p1"})
+
+
+def _describe(base, shape, names=("coarse", "tight")):
+    """Write a real `task.json` beside a bundle, through the one codec."""
+    from molbuilder.task import (FILENAME, Stage, StructureRef, Task,
+                                 derive_run, write_task)
+    stages = tuple(Stage(name=n, overrides={"mesh_cutoff": 200}) for n in names)
+    write_task(Path(base) / FILENAME, Task(
+        engine="siesta", shape=shape,
+        run=derive_run("JOB", "H2", stage_names=names),
+        structure=StructureRef(source="h2.xyz", formula="H2", atoms=2),
+        varies=("mesh_cutoff",), stages=stages))
+
+
+def test_the_surfaces_read_the_shape_from_the_description(tmp_path):
+    """`engines/stages.md` § 6.7: *"`prep` **reads** it; it does not decide
+    it."*  `shape_of` is the one place a surface asks, and the layers below
+    take the answer as an argument rather than going looking a second time.
+
+    Pinned through `job_dir_names` on a REAL bundle, because the object being
+    correct proves nothing if nobody hands it the description's answer -- which
+    is what a mutation found: `shape_of` returning a constant left every test
+    green.
+    """
+    from molbuilder.jobset.materialize import job_dir_names, shape_of
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+
+    _describe(tmp_path, "flat")
+    assert shape_of(js, tmp_path).name == "flat"
+    assert job_dir_names(js, shape_of(js, tmp_path)) == {"coarse": ".",
+                                                          "tight": "."}
+
+    _describe(tmp_path, "hierarchical")
+    assert shape_of(js, tmp_path).name == "hierarchical"
+    assert job_dir_names(js, shape_of(js, tmp_path)) == {
+        "coarse": "01_coarse", "tight": "03_tight"}
+
+
+def test_a_sweep_asks_no_description_for_its_shape(tmp_path):
+    """`point-<name>` is the benchmark's convention in either layout, which is
+    why a bench bundle carries no `task.json` and needs none."""
+    from molbuilder.jobset.materialize import shape_of
+    from molbuilder.jobset.model import Job, JobSet
+    js = JobSet(name="JOB", engine="siesta", kind="sweep",
+                jobs=[Job(name="p1", script="JOB_p1.fdf")])
+    assert shape_of(js, tmp_path) is None          # no description, no problem
+
+
+def test_prepare_attempt_refuses_a_flat_calculation(tmp_path):
+    """Flat has no attempt directories (`project-layout.md` § 1): attempts are
+    the wrapper's output index, the warm files are one shared set, and
+    continuing is free.  So there is nothing to open and `--from` has nothing
+    to name -- and opening `run-0/` in the bundle root would invent a layer the
+    description did not ask for."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    _describe(tmp_path, "flat")
+
+    with pytest.raises(ValueError) as e:
+        prepare_attempt(js, tmp_path, "tight")
+    assert "flat" in str(e.value) and "output index" in str(e.value)
+    assert not (tmp_path / "03_tight").exists()    # and nothing was created
+
+    _describe(tmp_path, "hierarchical")            # ...the hierarchy still does
+    assert prepare_attempt(js, tmp_path, "tight")["dir"].name == "run-0"

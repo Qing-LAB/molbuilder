@@ -25,7 +25,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
-from .materialize import job_dir_names, materialize, relink
+from .materialize import job_dir_names, shape_of, materialize, relink
 from .model import JobSet
 
 
@@ -105,7 +105,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     has_monitor = (base / "mb_monitor.py").exists()
     # NOT named ``dirs``: step 2 above binds that to materialize's list of
     # created Paths, which is this function's return value.
-    dir_of = job_dir_names(jobset)
+    dir_of = job_dir_names(jobset, shape_of(jobset, base_dir))
     for job in jobset.jobs:
         d = base / dir_of[job.name]
         stem = Path(job.script).stem

@@ -940,8 +940,7 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
                                  param_hint=ladder_flag)
 
     from .siesta.stages import build_siesta_stage_bundle
-    bundle = build_siesta_stage_bundle(struct, cfg, stages, cell=cell,
-                                       shape=shape)
+    bundle = build_siesta_stage_bundle(struct, cfg, stages, cell=cell)
 
     # --- the produce is TRANSACTIONAL (engines/stages.md § 7.2) ----------
     # "every deck, every wrapper and the description are built somewhere else
@@ -964,15 +963,6 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
             p = staging / name
             p.write_text(body)
             _staged.append(p)
-        # The runner is the FLAT shape's own artifact and is absent from a
-        # hierarchical bundle -- writing one there is what made a produced folder
-        # impossible to tell apart by looking at it (M5).
-        if bundle.runner_text is not None:
-            runner_path = staging / bundle.runner_name
-            runner_path.write_text(bundle.runner_text)
-            _os.chmod(runner_path, 0o755)
-            _staged.append(runner_path)
-
         # Optional psml copy, mirroring convert()'s behaviour.
         if cfg.psml_lib and cfg.copy_psml:
             from .siesta.input import copy_pseudopotentials, _detect_species
@@ -983,14 +973,16 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
             if lib.is_dir():
                 copy_pseudopotentials(species, lib, staging)
 
-        # HIERARCHICAL: persist the ladder as a JobSet so `molbuilder jobset
-        # prep/submit` can run this bundle (job-system.md § 5).  The Job
-        # scripts are exactly the <label>_<NN>_<name>.fdf rendered above;
-        # ``shared`` is the pseudopotentials present in the bundle root
-        # (symlinked into each stage dir at prep).  This is the host-side
-        # producer the framework was missing -- it reuses stages_to_jobset +
-        # JobSet.write, no new logic.
-        if shape == "hierarchical":
+        # THE LADDER AS A JOBSET -- for EITHER shape (decision 29).  This is
+        # what makes `molbuilder jobset prep` / `submit run --chain` the
+        # launcher for both: "the prep, deployment and execution chain of
+        # command is the same framework" (user, 2026-08-10).  The shape decides
+        # only how `prep` lays the stages out -- a directory each, or all of
+        # them in the bundle root -- and it reads that from task.json.
+        #
+        # The Job scripts are exactly the <label>_<NN>_<name>.fdf rendered
+        # above; ``shared`` is the pseudopotentials present in the bundle root.
+        if True:
             from .siesta.stages import stages_to_jobset
             from .jobset.model import Resources
             pseudos = sorted(p.name for ext in ("*.psml", "*.psf", "*.vps")
@@ -1123,21 +1115,18 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     # both-shapes bug speaking: for a hierarchical bundle there is no runner
     # and that is not how you start it.
     click.echo(
-        f"Wrote a {shape} bundle: {len(bundle.fdf_files)} stage fdf(s)"
-        f"{' + 1 runner' if bundle.runner_text is not None else ''} to "
+        f"Wrote a {shape} bundle: {len(bundle.fdf_files)} stage fdf(s) to "
         f"{out_dir}: {', '.join(p.name for p in written)}",
         err=True,
     )
-    if shape == "flat":
-        click.echo(f"Run with: cd {out_dir} && ./{bundle.runner_name}",
-                   err=True)
-    else:
-        click.echo(
-            f"Run with: cd {out_dir} && molbuilder jobset prep run <stage>"
-            f"  then  molbuilder jobset submit run <stage> --mode direct\n"
-            f"         (molbuilder jobset plan  shows the stages and their "
-            f"numbers)",
-            err=True)
+    # ONE set of instructions, because there is one framework.  The shape
+    # changes where the files land, not how you run them (decision 29).
+    click.echo(
+        f"Run with: cd {out_dir} && molbuilder jobset prep run <stage>"
+        f"  then  molbuilder jobset submit run <stage> --mode direct\n"
+        f"         (`jobset plan` lists the stages and their numbers; "
+        f"`submit run --chain` runs the whole ladder unattended)",
+        err=True)
 
 
 # --------------------------------------------------------------------- #

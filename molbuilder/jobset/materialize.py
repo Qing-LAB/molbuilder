@@ -63,6 +63,33 @@ def job_dir_name(job_name: str) -> str:
     return f"point-{job_name}"
 
 
+def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
+    """The layout this bundle uses, read from its description.
+
+    **The one place a surface asks.** `engines/stages.md` § 6.7 puts the shape
+    in `task.json` and says *"`prep` **reads** it; it does not decide it"* —
+    so this reads it, and every layer below takes the answer as an argument
+    rather than going looking for it a second time.
+
+    ``None`` where the question does not arise: a **sweep** is laid out
+    ``point-<name>`` in either shape, which is why a benchmark bundle carries
+    no description and needs none. ``None`` also when a ladder has no
+    ``task.json`` — bundles produced before 2026-08-10, and the hand-built
+    JobSets in the tests — and :func:`job_dir_names` reads that as the
+    hierarchy, which is what they all are. That fallback is transitional and
+    dies with the last such bundle; it is **not** an inference from data, which
+    § 6.7 forbids, but the absence of a file that is now always written.
+    """
+    if jobset.kind != "ladder":
+        return None
+    from ..task import FILENAME, read_task
+    from .shape import Shape
+    desc = Path(base_dir) / FILENAME
+    if not desc.is_file():
+        return None
+    return Shape.named(read_task(desc).shape)
+
+
 def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     """``{job name: directory name}`` for a whole JobSet — the naming authority.
 
@@ -172,7 +199,7 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
             + "\n  - ".join(errors))
     base = Path(base_dir)
     created: List[Path] = []
-    dirs = job_dir_names(jobset)
+    dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
     for job in jobset.jobs:
         d = base / dirs[job.name]
         d.mkdir(parents=True, exist_ok=True)
@@ -288,7 +315,16 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     gap decision 28 names, and a second listing format is how it comes back.
     """
     base = Path(base_dir)
-    dir_of = job_dir_names(jobset)
+    sh = shape_of(jobset, base_dir)
+    if sh is not None and not sh.keeps_attempts_as_directories:
+        raise ValueError(
+            "this calculation's shape is 'flat', which has no attempt "
+            "directories to open: attempts are told apart by the wrapper's "
+            "output index (<label>_<NN>_<name>-run<N>.out), the warm files "
+            "are one shared set, and continuing is free -- the next stage "
+            "finds them lying there (project-layout.md § 1).  Prepare the "
+            "wrappers and submit; there is nothing to name with --from.")
+    dir_of = job_dir_names(jobset, sh)
     refs = stage_refs(jobset)
     stage_name = resolve_stage_ref([refs[j.name] for j in jobset.jobs],
                                    stage_name).name

@@ -1153,6 +1153,47 @@ rewritten.
 than by remembering what was typed. Guard 1's count drops to the agreed set;
 guard 3 turns green.
 
+> #### Units 1 (revised) and 3 landed together, 2026-08-10
+>
+> They could not land apart: dropping the producer's branch is what gives flat
+> a JobSet, and having a JobSet is what lets the bash runner go.
+>
+> **The producer emits one package** — decks and a `job-set.json` — for either
+> shape. `build_siesta_stage_bundle` takes no `shape`; `StageBundle` carries no
+> `shape` and no runner fields. **`render_siesta_stages_runner` is no longer
+> called by any producer** (its deletion from the tree is what remains of
+> unit 3, below).
+>
+> **`Shape` reaches the surfaces.** `materialize.shape_of(jobset, base_dir)`
+> reads `task.json` — the one place a surface asks — and `prep`, `submit`,
+> `status` and `materialize` pass the answer down. `prepare_attempt` **refuses**
+> for a flat calculation, naming why: flat has no attempt directories, its warm
+> files are one shared set, and continuing is free, so `--from` has nothing to
+> name.
+>
+> Verified live, and this is the whole decision in four lines:
+>
+> ```text
+> produce --shape flat          → decks · job-set.json · task.json   (identical)
+> produce --shape hierarchical  → decks · job-set.json · task.json   (identical)
+> jobset prep run  (flat)         → no directories        — depth 1
+> jobset prep run  (hierarchical) → 01_coarse/ 02_medium/
+> ```
+>
+> **Tests retired rather than adapted**, per `process/testing.md`: the four
+> runner tests (BASENAME, exec bit, `bash -n`, the STAGES array) pinned a thing
+> that no longer exists, and `test_jobset_flag_off_by_default_no_job_set_json`
+> pinned the *opposite* of the rule now in force — a flat bundle without a
+> JobSet would be a flat bundle nobody could run.
+>
+> **Still open (the rest of unit 3):** `render_siesta_stages_runner`,
+> `_STAGES_RUNNER_TEMPLATE` and `_warm_check` are still in `siesta/input.py`
+> with no caller, and `test_no_generated_script_invokes_an_engine_directly` is
+> still `xfail` — it will turn green the moment they go, which is the strict
+> xfail doing its job. Deleting them is a subtraction review of its own
+> (P5's *"heaviest in the plan"*), and it is now a deletion with no behaviour
+> attached rather than a design change.
+>
 > #### ⚠ Unit 1 was built at the wrong layer, and decision 29 corrects it
 >
 > **What I built (below) branches the PRODUCER on `shape`.** `project-layout.md

@@ -213,8 +213,8 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
     honest answer to *has this started?* -- a queued job has produced nothing
     yet, so absence of output proves nothing (§ 1.6).
     """
-    from .materialize import attempts, job_dir_names, was_launched
-    d = base_dir / job_dir_names(jobset)[job.name]
+    from .materialize import attempts, job_dir_names, shape_of, was_launched
+    d = base_dir / job_dir_names(jobset, shape_of(jobset, base_dir))[job.name]
     ns = attempts(d)
     if not ns:
         return d, None

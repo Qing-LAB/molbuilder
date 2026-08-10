@@ -80,7 +80,7 @@ def test_stage_strategy_publishable_emits_two_stage_bundle(xyz, tmp_path):
                 "--stage-strategy", "publishable")
     assert r.exit_code == 0, r.output
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
-    assert files == ["JOB.run.sh", "JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
+    assert files == ["JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
 
 
 def test_stage_strategy_loose_only_emits_one_stage_bundle(xyz, tmp_path):
@@ -89,7 +89,7 @@ def test_stage_strategy_loose_only_emits_one_stage_bundle(xyz, tmp_path):
                 "--stage-strategy", "loose-only")
     assert r.exit_code == 0, r.output
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
-    assert files == ["JOB.run.sh", "JOB_01_coarse.fdf"]
+    assert files == ["JOB_01_coarse.fdf"]
 
 
 def test_stage_strategy_vib_quality_emits_three_stage_bundle(xyz, tmp_path):
@@ -98,7 +98,7 @@ def test_stage_strategy_vib_quality_emits_three_stage_bundle(xyz, tmp_path):
                 "--stage-strategy", "vib-quality")
     assert r.exit_code == 0, r.output
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
-    assert files == ["JOB.run.sh",
+    assert files == [
                      "JOB_01_coarse.fdf",
                      "JOB_02_medium.fdf",
                      "JOB_03_tight.fdf"]
@@ -110,7 +110,7 @@ def test_no_stage_flags_preserves_single_fdf(xyz, tmp_path):
     assert r.exit_code == 0, r.output
     assert fdf.exists()
     # No bundle artifacts should appear.
-    assert not (tmp_path / "JOB.run.sh").exists()
+    assert not (tmp_path / "JOB.run.sh").exists()   # never, since decision 29
     assert not (tmp_path / "JOB_01_coarse.fdf").exists()
 
 
@@ -185,7 +185,7 @@ def test_stages_json_literal_overrides_ladder(xyz, tmp_path):
     assert r.exit_code == 0, r.output
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     # Stage names from the payload, not defaults.
-    assert files == ["JOB.run.sh",
+    assert files == [
                      "JOB_01_coarse.fdf",
                      "JOB_02_stage_final.fdf"]
     # Stage_final's MD block matches the payload's overrides.
@@ -270,54 +270,14 @@ def test_all_stage_fdfs_share_same_systemlabel(xyz, tmp_path):
         assert f"SystemLabel       {expected_label}" in body, stage_fdf
 
 
-def test_runner_BASENAME_matches_filename_stem(xyz, tmp_path):
-    fdf = tmp_path / "ChemR-2026.fdf"
-    r = _invoke("fdf", str(xyz), str(fdf),
-                "--stage-strategy", "publishable")
-    assert r.exit_code == 0, r.output
-    runner = (tmp_path / "ChemR-2026.run.sh").read_text()
-    assert "BASENAME='ChemR-2026'" in runner
-
-
-# --------------------------------------------------------------------- #
-#  Runner chmod + bash -n + array consistency                            #
-# --------------------------------------------------------------------- #
-
-
-def test_runner_is_executable(xyz, tmp_path):
-    fdf = tmp_path / "JOB.fdf"
-    r = _invoke("fdf", str(xyz), str(fdf),
-                "--stage-strategy", "publishable")
-    assert r.exit_code == 0, r.output
-    mode = (tmp_path / "JOB.run.sh").stat().st_mode
-    assert mode & stat.S_IXUSR, "runner is not user-executable"
-
-
-def test_runner_passes_bash_syntax_check(xyz, tmp_path):
-    bash = shutil.which("bash")
-    if bash is None:
-        pytest.skip("bash unavailable")
-    fdf = tmp_path / "JOB.fdf"
-    r = _invoke("fdf", str(xyz), str(fdf),
-                "--stage-strategy", "vib-quality")
-    assert r.exit_code == 0, r.output
-    runner_path = tmp_path / "JOB.run.sh"
-    check = subprocess.run([bash, "-n", str(runner_path)],
-                            capture_output=True, text=True)
-    assert check.returncode == 0, check.stderr
-
-
-def test_runner_stages_array_matches_emitted_fdfs(xyz, tmp_path):
-    fdf = tmp_path / "JOB.fdf"
-    r = _invoke("fdf", str(xyz), str(fdf),
-                "--stage-strategy", "vib-quality")
-    assert r.exit_code == 0, r.output
-    runner = (tmp_path / "JOB.run.sh").read_text()
-    assert "STAGES=(01_coarse 02_medium 03_tight)" in runner
-    # Default ON_NONCONV (with vib-quality enabling stage3, the runner's
-    # force-halt-last contract converts the would-be 'halt' to 'halt' --
-    # so all three policies are visible explicitly here).
-    assert "ON_NONCONV=(proceed halt halt)" in runner
+# The four runner tests that stood here are RETIRED (decision 29, 2026-08-10).
+# They pinned `<label>.run.sh` -- its BASENAME, its exec bit, `bash -n`, and its
+# STAGES array -- and the produce no longer emits one.  Flat is not a lesser
+# path with its own launcher; it runs through `jobset prep` / `submit run
+# --chain` like the hierarchy, so there is no second launcher to keep correct.
+# Deleted rather than adapted: a test whose subject is gone is not failing, it
+# is orphaned (process/testing.md).  What replaced their coverage is the
+# wrapper's own suite, which every stage of both shapes now goes through.
 
 
 # --------------------------------------------------------------------- #
@@ -338,7 +298,7 @@ def test_stages_json_then_stage_strategy_layers_correctly(xyz, tmp_path):
     assert r.exit_code == 0, r.output
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     # Only stage1's fdf survives the enable-flag overlay.
-    assert files == ["JOB.run.sh", "JOB_01_coarse.fdf"]
+    assert files == ["JOB_01_coarse.fdf"]
     # And its MD block reflects the payload's 01_coarse knobs, not the
     # SiestaConfig defaults.
     body = (tmp_path / "JOB_01_coarse.fdf").read_text()
@@ -382,11 +342,20 @@ def test_jobset_flag_requires_multi_stage(xyz, tmp_path):
     assert "--shape hierarchical" in r.output and "stage-strategy" in r.output
 
 
-def test_jobset_flag_off_by_default_no_job_set_json(xyz, tmp_path):
+def test_every_shape_gets_a_jobset_because_there_is_one_framework(xyz, tmp_path):
+    """Inverted by decision 29 (2026-08-10), and the inversion is the point.
+
+    This pinned *"no job-set.json unless you ask"*, from when the JobSet was
+    the hierarchical shape's own artifact.  It is now what makes `jobset prep`
+    / `submit run --chain` the launcher for BOTH shapes -- *"the prep,
+    deployment and execution chain of command is the same framework"* -- so a
+    flat bundle without one would be a flat bundle nobody could run.
+    """
     fdf = tmp_path / "JOB.fdf"
     r = _invoke("fdf", str(xyz), str(fdf), "--stage-strategy", "publishable")
     assert r.exit_code == 0, r.output
-    assert not (tmp_path / "job-set.json").exists()   # unchanged default
+    assert (tmp_path / "job-set.json").is_file()
+    assert not (tmp_path / "JOB.run.sh").exists()     # and no second launcher
 
 
 # --------------------------------------------------------------------- #

@@ -245,37 +245,32 @@ class StageBundle:
     concealed file-access framework), so the ONE producer serves both
     front-ends (job-system.md § 4.1).
 
-    **One shape in, one shape out** (P5). ``shape`` says which layout this
-    bundle is for, and exactly one of the two payloads is filled:
+    **ONE PACKAGE, for either layout** (decision 29). The decks and the JobSet
+    are the same whichever shape the description asks for; what differs is how
+    the stages are kept apart on disk, and `prep` applies that —
+    `project-layout.md` § 1: *"The browser **always writes the same thing** …
+    `prep` translates that into a runnable directory in whichever shape you ask
+    for"*, with **Chosen: at `prep`** in both of its columns.
 
-    | ``shape`` | carries | and NOT |
-    |---|---|---|
-    | ``flat`` | ``runner_name`` / ``runner_text`` | ``jobset`` |
-    | ``hierarchical`` | ``jobset`` | the runner |
-
-    Until 2026-08-10 it carried the flat runner **always** and a JobSet
-    whenever a caller passed ``emit_jobset``, so a produce emitted both
-    layouts at once and the shape was settled by whichever command the user
-    typed next. That is not a choice — `engines/stages.md` § 6.7 makes the
-    shape a **required field of the description, never inferred**, and a
-    producer that emits both has ignored it.
+    Two earlier shapes of this object were wrong in opposite directions, and
+    both are worth remembering. It first carried the flat runner **always** and
+    a JobSet whenever a caller passed ``emit_jobset`` — so a produce emitted
+    both layouts and the shape was settled by whatever command came next. The
+    fix for that branched the **producer** on ``shape``, which put the decision
+    one layer too early: flat then got a bash runner and no JobSet, so it could
+    not use the framework at all. Neither is a choice the description makes.
 
     * ``fdf_files`` — ``{filename: fdf_text}``, one entry per ENABLED stage
       (``<label>_<NN>_<name>.fdf``); all share ``cfg.system_label`` so SIESTA's
       ``.XV`` auto-read warm-restarts each stage.
-    * ``runner_name`` / ``runner_text`` — the ``<label>.run.sh`` bash runner
-      (write executable, 0o755).  **Flat only**, and P5 unit 3 deletes it
-      outright: give it activation, ranks, a monitor and a log and it *is* the
-      wrapper.
     * ``pseudo_species`` — the species the caller must place pseudos for
       (the bundle-root shared package).
-    * ``jobset`` — the ladder :class:`JobSet`.  **Hierarchical only**;
-      serialise with ``jobset.write(dir/'job-set.json')``.
+    * ``jobset`` — the ladder :class:`JobSet`, in **either** shape: it is what
+      makes ``jobset prep`` / ``submit run --chain`` the launcher for both,
+      which is the user's decision of 2026-08-10 (*"the prep, deployment and
+      execution chain of command is the same framework"*).
     """
-    shape: str
     fdf_files: Dict[str, str]
-    runner_name: Optional[str] = None
-    runner_text: Optional[str] = None
     pseudo_species: List[str] = field(default_factory=list)
     jobset: Optional[JobSet] = None
 
@@ -285,7 +280,6 @@ def build_siesta_stage_bundle(
     cfg,
     stages,
     *,
-    shape: str,
     cell=None,
     shared: Optional[List[str]] = None,
     resources_for: Optional[Callable[[str], Resources]] = None,
@@ -319,21 +313,13 @@ def build_siesta_stage_bundle(
     ``/api/siesta/install-pseudos``).  ``resources_for`` is the per-stage
     scheduler override seam (§ 6).
 
-    **``shape`` is required and has no default** — `engines/stages.md` § 6.7:
-    it is a required field of the description, and *"`prep` **reads** it; it
-    does not decide it"*.  The same is true one layer earlier, here: this
-    function reads what the description says and emits that layout, so a
-    produced folder can be told apart **by looking at it** rather than by
-    remembering which flag was typed (milestone M5).
+    **It takes no ``shape``.** § 6.7's *"`prep` **reads** it; it does not decide
+    it"* is a statement about which layer applies the layout, and the layer is
+    `prep` — not this one. The description still carries the shape; this
+    producer simply has no use for it.
 
-    A default would be an inference wearing a nicer name, and § 6.7 rejects
-    inference by name: *"Inferring the shape … would hand somebody a directory
-    tree they never asked for."*  A **surface** may propose a value; a producer
-    may not.
-
-    Raises ``ValueError`` if ``shape`` is not one of the two, or (from
-    ``render_siesta_stage_fdfs`` / ``stages_to_jobset``) if no stage is enabled
-    or the ladder is invalid.
+    Raises ``ValueError`` (from ``render_siesta_stage_fdfs`` /
+    ``stages_to_jobset``) if no stage is enabled or the ladder is invalid.
     """
     from .input import (
         render_siesta_stage_fdfs,
@@ -341,37 +327,22 @@ def build_siesta_stage_bundle(
         _detect_species,
     )
 
-    from ..task import SHAPES
-    if shape not in SHAPES:
-        raise ValueError(
-            f"shape {shape!r} is not one of {' / '.join(SHAPES)}. It is a "
-            f"required field of the description and is never inferred "
-            f"(engines/stages.md § 6.7); a producer that guesses hands "
-            f"somebody a directory tree they never asked for.")
-
     policy = (DEFAULT_NONCONVERGENCE if on_nonconvergence is None
               else on_nonconvergence)
 
-    # The decks are the same either way -- what differs is how they are KEPT
-    # APART (project-layout.md § 1), which is a layout question, not a
-    # science one.  Both shapes render the identical .fdf set.
+    # ONE PACKAGE, for either layout (decision 29).  The decks and the JobSet
+    # are the same whichever shape the description asks for -- what differs is
+    # how the stages are KEPT APART on disk, and `prep` is where that is
+    # applied (`project-layout.md` § 1: "the browser always writes the same
+    # thing ... prep translates that into a runnable directory in whichever
+    # shape you ask for", and its table reads "Chosen: at prep" in BOTH
+    # columns).
     fdf_files = render_siesta_stage_fdfs(struct, cfg, stages, cell=cell)
     species = (list(cfg.species_order) if getattr(cfg, "species_order", None)
                else _detect_species(struct.elements))
-
-    if shape == "flat":
-        return StageBundle(
-            shape=shape,
-            fdf_files=fdf_files,
-            runner_name=f"{cfg.system_label}.run.sh",
-            runner_text=render_siesta_stages_runner(
-                cfg, stages, siesta_cmd="siesta", on_nonconvergence=policy),
-            pseudo_species=species,
-        )
-
     _shared = shared if shared is not None else [f"{s}.psml" for s in species]
+
     return StageBundle(
-        shape=shape,
         fdf_files=fdf_files,
         pseudo_species=species,
         jobset=stages_to_jobset(cfg, stages, shared=_shared,
