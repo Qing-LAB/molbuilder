@@ -244,9 +244,19 @@ the run will write>` must fit the filesystem's name limit (255 bytes, in
 practice). Since rule 3 below **refuses** rather than truncating, the cap has to
 be checked where the label is made — a truncated label is a different calculation
 wearing the same name, which is the one failure this whole document exists to
-prevent. The **id** is capped by the same number and never binds first: it is
-longer than the label, but it goes in `task.json`, where nothing bounds it at
-all.
+prevent.
+
+**The id is not capped, and that follows from the line above rather than being
+a second rule.** The cap exists because a name has to fit *beside a stage suffix
+and an extension* — that is a fact about filenames, and since § 2.0a the only
+thing in a filename is the label. The id is longer, so capping the pair would
+refuse a perfectly good name because of the formula attached to it, and the
+refusal would blame the half that fitted. `identity.run_id` therefore normalises
+the two apart: the label against the cap, the formula against the alphabet only.
+*(Corrected 2026-08-09, in the commit that wired the id into `task.json` — this
+paragraph first read "the id is capped by the same number and never binds
+first", which is self-contradictory: the id is the longer string, so under one
+shared cap it is the one that binds first.)*
 
 **Case is preserved, and there is no lowercasing rule.** For the **id** the
 reason is absolute: **it carries a chemical formula, and in a formula the case

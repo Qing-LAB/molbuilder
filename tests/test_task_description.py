@@ -47,6 +47,7 @@ from molbuilder.task import (
     Stage,
     StructureRef,
     Task,
+    derive_run,
     read_task,
     write_task,
 )
@@ -382,6 +383,102 @@ def test_checkpoint_recognises_a_calculation_by_its_description(tmp_path,
 
 
 # --------------------------------------------------------------------- #
+#  run.id is derived, and the label is what is on disk                   #
+#  (run-identity.md § 2.0a and § 3 rule 1, decision 26 -- 2026-08-09)    #
+# --------------------------------------------------------------------- #
+
+def test_the_id_must_be_what_the_name_and_the_formula_derive(example):
+    """§ 3 rule 1 says the id is normalised ONCE and stored. Storing it only
+    means something if the stored value is checked against its inputs --
+    otherwise ``id`` is a free string and the file can say two things about
+    which calculation it is."""
+    example["run"]["id"] = "something_else"
+    with pytest.raises(ValueError) as e:
+        Task.from_dict(example)
+    msg = str(e.value)
+    assert "run.id" in msg and "something_else" in msg
+    # It names what the inputs derive, so the reader can see which half moved.
+    assert "BDT_Au_relax_Au38C6H4S2" in msg
+
+
+def test_editing_the_name_alone_is_caught(example):
+    """§ 1's second failure mode, at the description level. Hand-editing
+    ``task.json`` is supported (decision 3), so the edit that orphans a
+    geometry has to be caught by the reader rather than discovered days later
+    in a wall-clock cost."""
+    example["run"]["name"] = "BDT/Au relax v2"
+    with pytest.raises(ValueError) as e:
+        Task.from_dict(example)
+    assert "BDT/Au relax v2" in str(e.value)
+
+
+def test_editing_the_formula_alone_is_caught(example):
+    """The other half of the same pin. The formula is § 2.1's one entry
+    beyond the user's own name, so a description whose formula moved is a
+    description of a different molecule."""
+    example["structure"]["formula"] = "H2O"
+    with pytest.raises(ValueError) as e:
+        Task.from_dict(example)
+    assert "H2O" in str(e.value)
+
+
+def test_the_refusal_does_not_repair_it(example):
+    """§ 3 rule 3 one layer up: never patch a name and carry on. Which of the
+    three fields is the right one is not knowable from inside the file -- a
+    corrected formula and a renamed calculation look identical."""
+    example["run"]["id"] = "wrong"
+    with pytest.raises(ValueError) as e:
+        Task.from_dict(example)
+    assert "guess" in str(e.value)
+
+
+def test_the_label_is_the_stem_and_carries_no_formula(example):
+    """Decision 26. `SystemLabel` is what every file is named from, and the
+    formula is not in it -- that is the whole split, asserted on the
+    contract's own worked example."""
+    task = Task.from_dict(example)
+    assert task.label == "BDT_Au_relax"
+    assert task.structure.formula == "Au38C6H4S2"
+    assert task.structure.formula not in task.label
+
+
+def test_the_label_is_the_ids_first_half(example):
+    """Deriving the label is only safe because the id is stored and checked;
+    this is the relation that makes the two impossible to disagree."""
+    task = Task.from_dict(example)
+    assert task.run.id == f"{task.label}_{task.structure.formula}"
+
+
+def test_a_description_with_no_formula_has_label_equal_to_id(example):
+    """§ 2: the formula is optional, and a label alone is a legitimate id.
+    The two collapse to one string rather than the id growing a dangling
+    separator."""
+    example["structure"]["formula"] = ""
+    example["run"]["id"] = "BDT_Au_relax"
+    task = Task.from_dict(example)
+    assert task.label == task.run.id == "BDT_Au_relax"
+
+
+def test_derive_run_is_how_a_producer_makes_one(tmp_path):
+    """§ 3 rule 1 is *"there is one place it happens"*, which is only true if
+    producers have somewhere to call rather than spelling the join."""
+    run = derive_run("BDT/Au relax", "Au38C6H4S2")
+    assert run.id == "BDT_Au_relax_Au38C6H4S2"
+    assert run.name == "BDT/Au relax"       # kept verbatim, never normalised
+
+
+def test_a_task_whose_stages_are_long_still_derives_the_same_id(example):
+    """The ladder changes the CAP, not the string. § 3's cap is about what
+    ``<label>_<stage>.<ext>`` occupies, so knowing the stages can only change
+    whether a name is refused -- never what it normalises to."""
+    for s in example["stages"]:
+        s["name"] = s["name"] + "_" * 20
+    example["varies"] = list(example["varies"])
+    task = Task.from_dict(example)
+    assert task.run.id == "BDT_Au_relax_Au38C6H4S2"
+
+
+# --------------------------------------------------------------------- #
 #  Constructed by hand, not only parsed                                  #
 # --------------------------------------------------------------------- #
 
@@ -389,8 +486,11 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
     task = Task(
         engine="siesta",
         shape="flat",
-        run=Run(name="H2 relax", id="h2_relax_h2",
-                created="2026-08-07T10:00:00-07:00"),
+        # Derived, not retyped.  The literal here was ``h2_relax_h2``, which
+        # had been wrong since the id became case-preserving on 2026-08-08
+        # and was invisible while nothing checked it.
+        run=derive_run("H2 relax", "H2",
+                       created="2026-08-07T10:00:00-07:00"),
         structure=StructureRef(source="projects/x/structure/h2.xyz",
                                formula="H2", atoms=2),
         varies=("mesh_cutoff", "restart"),

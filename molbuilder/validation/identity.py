@@ -25,8 +25,8 @@ files stop matching, and gets out of the way.
 version and on which options are on, so a list is a snapshot of one build
 pretending to be a rule, and its failure is silent: a file nobody listed is a
 file nobody sees. :func:`warm_files_present` therefore asks the question by
-**subtraction** — anything named after the id that molbuilder did not write
-came from the run. That inversion works because the two halves are not
+**subtraction** — anything named after the label that molbuilder did not
+write came from the run. That inversion works because the two halves are not
 symmetric: we cannot know what an engine produces, and we always know what we
 produced (``identity.OUR_FILE_PATTERNS``).
 
@@ -36,7 +36,8 @@ calculation* — and answering it needs some notion of what engine state looks
 like, since a stranger's file is not named after our id. An incomplete list
 there under-reports a **warning**, which is mild; an incomplete list in
 `warm_files_present` would have wrongly said *nothing has run*, which is the
-dangerous direction. Same shape of imperfection, opposite consequence.
+dangerous direction — the same failure a composite id passed to it would
+produce, and the reason that parameter is named ``label``. Same shape of imperfection, opposite consequence.
 """
 from __future__ import annotations
 
@@ -59,13 +60,20 @@ _INVENTORY: Dict[str, Callable[[str], Sequence[str]]] = {
 }
 
 
-def warm_files_present(directory, run_id: str, engine: str = "") -> List[str]:
-    """What the **engine** left in *directory* under *run_id*, sorted.
+def warm_files_present(directory, label: str, engine: str = "") -> List[str]:
+    """What the **engine** left in *directory* under *label*, sorted.
 
     *"Has anything run here?"* — answered **by name, not by enumeration**
-    (`job-contracts.md § 4.2`, decided 2026-08-08). Anything named after the id
-    that molbuilder did not itself write came from the run, whatever version of
-    the engine produced it and whichever options were on.
+    (`job-contracts.md § 4.2`, decided 2026-08-08). Anything named after the
+    label that molbuilder did not itself write came from the run, whatever
+    version of the engine produced it and whichever options were on.
+
+    **The label, and never the run id** (`run-identity.md § 2.0a`, decision 26).
+    Every name this globs is a filename, and a filename's stem is the label; the
+    id carries the structure's formula as well and matches nothing on disk.
+    Handing this an id would return ``[]`` from a directory full of warm files —
+    and ``[]`` here means *nothing has run*, which is the one answer that makes
+    the caller destroy a geometry without asking.
 
     > **This replaced a per-engine list, and the reasoning behind that list was
     > wrong in a way worth keeping visible.** It named thirteen SIESTA suffixes
@@ -84,26 +92,30 @@ def warm_files_present(directory, run_id: str, engine: str = "") -> List[str]:
     file that does not resolve is not state to continue from, and ``runstatus``
     reads them the same way.
     """
-    if not run_id:
+    if not label:
         return []
     d = Path(directory)
     if not d.is_dir():
         return []
     return sorted(
-        p.name for p in d.glob(f"{run_id}*")
-        if p.is_file() and not is_ours(p.name, run_id))
+        p.name for p in d.glob(f"{label}*")
+        if p.is_file() and not is_ours(p.name, label))
 
 
-def check_id_change(directory, old_id: str, new_id: str,
+def check_id_change(directory, old_label: str, new_label: str,
                     engine: str) -> List[Issue]:
-    """§ 1. Warn when retyping an id stops being a rename.
+    """§ 1. Warn when retyping a calculation's name stops being a rename.
 
-    Before anything has run there is no state to orphan, so an id may be
+    Takes **labels**, not run ids, for :func:`warm_files_present`'s reason: the
+    files are keyed by the label. A user edits ``run.name``; the label and the
+    id both follow, and it is the label that is on disk (§ 2.0a).
+
+    Before anything has run there is no state to orphan, so a name may be
     edited freely and this returns nothing — that is the *"editable once"* half
     of the rule, and it is the common case: a person naming a calculation and
     then thinking better of it.
 
-    Once files keyed by ``old_id`` exist, the same edit means something else
+    Once files keyed by ``old_label`` exist, the same edit means something else
     entirely. The engine finds nothing under the new name and starts cold,
     which is the quiet failure § 1 opens with: **the run does not fail, it
     silently starts over**, and the only evidence is a wall-clock cost the user
@@ -113,21 +125,24 @@ def check_id_change(directory, old_id: str, new_id: str,
     files"* tells a user nothing; ``BDT_Au.XV`` tells them the relaxed geometry
     is what they are about to walk away from.
     """
-    if not old_id or not new_id or old_id == new_id:
+    if not old_label or not new_label or old_label == new_label:
         return []
-    orphaned = warm_files_present(directory, old_id, engine)
+    orphaned = warm_files_present(directory, old_label, engine)
     if not orphaned:
         return []
     return [Issue(
         "warn",
-        f"changing the id from {old_id!r} to {new_id!r} is not a rename. "
-        f"{len(orphaned)} file(s) here are named by the old id and would stop "
-        f"matching: {', '.join(orphaned)}. The engine keys its restart state "
-        f"on this literal, so the next run finds nothing under {new_id!r} and "
+        f"changing the name from {old_label!r} to {new_label!r} is not a "
+        f"rename. {len(orphaned)} file(s) here are named by the old one and "
+        f"would stop matching: {', '.join(orphaned)}. The engine keys its "
+        f"restart state on this literal, so the next run finds nothing under "
+        f"{new_label!r} and "
         f"starts cold rather than failing -- the work is not lost on disk, but "
-        f"it is no longer continued from. Rename the files too, or keep the id "
-        f"and change the folder instead",
-        where="run.id")]
+        f"it is no longer continued from. Rename the files too, or keep the "
+        f"name and change the folder instead",
+        where="run.id")]   # the anchor stays: a finding's `where` IS its
+                           # stable id (validation-findings), so it is not
+                           # retitled on a vocabulary change
 
 
 def check_prior_state(directory, run_id: str, engine: str,

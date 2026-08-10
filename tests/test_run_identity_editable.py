@@ -18,7 +18,14 @@ from molbuilder.runwrap import _SIESTA_WARM_SUFFIXES
 from molbuilder.validation.identity import check_id_change, warm_files_present
 
 
-ID = "BDT_Au_relax_C6H4S2Au38"
+#: A **label**, which is what a file stem is (§ 2.0a, decision 26).
+#:
+#: This was ``BDT_Au_relax_C6H4S2Au38`` until 2026-08-09 -- a composite run id,
+#: and in the hand-grouped formula order that § 2.0 replaced with alphabetical
+#: on 2026-08-08.  Nothing failed, because these functions glob whatever string
+#: they are handed; the fixture was simply teaching that a formula belongs in a
+#: filename, which is the thing decision 26 says it never does.
+ID = "BDT_Au_relax"
 
 
 @pytest.fixture

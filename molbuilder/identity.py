@@ -1,4 +1,11 @@
-"""The run id — built from inputs, and normalised exactly once.
+"""The label and the run id — built from inputs, and normalised exactly once.
+
+**Two names, and only one of them is ever a filename** (`run-identity.md`
+§ 2.0a, decision 26 — 2026-08-09).  :func:`normalise_id` makes the **label**:
+the ``SystemLabel`` / ``JOB`` literal, the stem of every file, and the thing
+:data:`OUR_FILE_PATTERNS` and :data:`MAX_LABEL_BYTES` are about.  :func:`run_id`
+attaches the structure's formula to it and makes the **id**, which is a record
+in ``task.json`` and never a name on disk.
 
 **Module:** L1. Imports the standard library and nothing else, which is what
 lets the L1 codec (``task``), the L2 producers and the L3 surfaces all ask the
@@ -12,11 +19,17 @@ module's test fixture — `tests/test_run_identity.py` parses it out of the
 document rather than retyping it).
 
 **Why this is a module and not two helpers on `task.py`.** ``task.py`` is the
-codec: it reads and writes a description that *already has* an id. Deriving one
-is a different job with its own contract, and putting it here keeps the
-document-to-module mapping one-to-one. It also means the CLI and the web tab
-reach the same normaliser — § 3's rule 1 is *"it happens once, and the result is
-stored"*, which is only true if there is one place it can happen.
+codec for a description; deriving its identity is a different job with its own
+contract, and putting it here keeps the document-to-module mapping one-to-one.
+It also means the CLI, the web tab and the codec reach the same normaliser —
+§ 3's rule 1 is *"it happens once, and the result is stored"*, which is only
+true if there is one place it can happen.
+
+Since 2026-08-09 ``task.py`` calls in rather than trusting what it parsed: it
+derives ``run.id`` from ``run.name`` and ``structure.formula`` and refuses a
+description that disagrees with itself (``Task._check_id``).  That is what makes
+*stored* mean anything — before it, ``id`` was a free string, and the header
+here still described a file that *"already has an id"*.
 
 **On the character set.** § 3 is explicit that the set *"is not a new
 decision"* — `job-contracts.md § 2.1` Rule 2 fixes it, and this module does not
@@ -86,7 +99,7 @@ _EDGE_SEPARATORS = re.compile(r"^[-_]+|[-_]+$")
 #: across ext4, xfs, APFS and NTFS.
 _NAME_LIMIT = 255
 
-#: The longest extension molbuilder writes beside an id, from
+#: The longest extension molbuilder writes beside a label, from
 #: `job-contracts.md § 4.2`'s SIESTA inventory.  ``.STRUCT_NEXT_ITER`` is the
 #: longest of the thirteen; PySCF's longest (``_geom_optim.xyz``) is shorter.
 _LONGEST_EXTENSION = ".STRUCT_NEXT_ITER"
@@ -94,61 +107,74 @@ _LONGEST_EXTENSION = ".STRUCT_NEXT_ITER"
 #: What ``_<stage name>`` may occupy when the ladder is not known yet.
 #:
 #: **This one is a budget, not a derivation, and the difference is worth
-#: stating.** § 3 derives the cap from ``<id>_<longest stage name>.<longest
+#: stating.** § 3 derives the cap from ``<label>_<longest stage name>.<longest
 #: extension>``, and nothing in the system bounds a stage name — ``STAGE_NAME_RE``
-#: is ``[A-Za-z0-9_]+`` with no length. An id is usually named before its
-#: stages exist, so when they are unknown this reserves a generous fixed
+#: is ``[A-Za-z0-9_]+`` with no length. A calculation is usually named before
+#: its stages exist, so when they are unknown this reserves a generous fixed
 #: budget; when they ARE known, pass ``stage_names`` and the real longest is
 #: used instead of this.
 _STAGE_BUDGET = 32
 
-#: The most an id may occupy, derived: the name limit, less the longest stage
-#: suffix and the longest extension that will be appended to it.
-MAX_ID_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
+#: The most a label may occupy, derived: the name limit, less the longest
+#: stage suffix and the longest extension that will be appended to it.
+#:
+#: Called ``MAX_ID_BYTES`` until 2026-08-09.  It never bounded the id -- it
+#: bounds what goes in a **filename**, and § 2.0a is that only the label does.
+#: The id is longer and goes in ``task.json``, where nothing bounds it.
+MAX_LABEL_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
 
 
-#: Glob patterns, keyed on the id, for **the files molbuilder itself writes**
-#: into a run directory — from `job-contracts.md § 2.2`'s catalogue.
+#: Glob patterns, keyed on the **label**, for **the files molbuilder itself
+#: writes** into a run directory — from `job-contracts.md § 2.2`'s catalogue.
+#: The label and not the id, because these are filenames and § 2.0a puts only
+#: the label in one.
 #:
 #: **This is the list that can be complete, and that is the whole point.** An
 #: engine's output set depends on its version and on which options are on, so
 #: enumerating *that* is a snapshot pretending to be a rule. What we write is
 #: knowable, because we write it. So every question of the form *"did the
 #: engine leave something here"* is answered by subtraction: anything named
-#: after the id that is **not** on this list came from the run.
+#: after the label that is **not** on this list came from the run.
 #:
 #: Ordered as § 2.2 lists them — inputs, wrapper, the canonical trajectory,
 #: then the run-indexed logs, which are **history and not state**: they are
 #: what a user goes back to read, and nothing here may treat them as leftovers.
 OUR_FILE_PATTERNS: Sequence[str] = (
     # inputs we generated
-    "{id}.fdf", "{id}_*.fdf", "{id}.fdf.template",
-    "{id}.py", "{id}_*.py",
+    "{label}.fdf", "{label}_*.fdf", "{label}.fdf.template",
+    "{label}.py", "{label}_*.py",
     # the wrapper and its scheduler header
-    "{id}.run.sh", "{id}_*.run.sh",
-    "{id}.sbatch", "{id}_*.sbatch",
+    "{label}.run.sh", "{label}_*.run.sh",
+    "{label}.sbatch", "{label}_*.sbatch",
     # the canonical trajectory -- written before the engine even starts
-    "{id}.molwatch.log", "{id}_*.molwatch.log",
+    "{label}.molwatch.log", "{label}_*.molwatch.log",
     # engine stdout, one file per run index -- the run's history
-    "{id}-run*.out", "{id}_*-run*.out",
-    "{id}-run*.pyscf.log", "{id}_*-run*.pyscf.log",
+    "{label}-run*.out", "{label}_*-run*.out",
+    "{label}-run*.pyscf.log", "{label}_*-run*.pyscf.log",
     # geomeTRIC's own optimizer log
-    "{id}.log", "{id}_geom_*.log",
+    "{label}.log", "{label}_geom_*.log",
 )
 
 
-def is_ours(name: str, run_id: str) -> bool:
+def is_ours(name: str, label: str) -> bool:
     """Did **molbuilder** write this file, rather than an engine?
 
     The inversion `job-contracts.md § 4.2` rests on: we cannot enumerate what
     SIESTA produces, but we always know what we produced.
+
+    ``label``, not the id: every pattern below is a **filename**, and since
+    § 2.0a the stem of a filename is the label. Handing this the composite id
+    would match nothing and report every warm file as the engine's — or, worse
+    in :func:`~molbuilder.validation.identity.warm_files_present`, report that
+    nothing has run at all.
     """
     import fnmatch
-    return any(fnmatch.fnmatchcase(name, p.format(id=run_id))
+    return any(fnmatch.fnmatchcase(name, p.format(label=label))
                for p in OUR_FILE_PATTERNS)
 
 
-def normalise_id(raw: str, *, stage_names: Sequence[str] = ()) -> str:
+def normalise_id(raw: str, *, stage_names: Sequence[str] = (),
+                 what: str = "name") -> str:
     """§ 3's normalisation, and its three rules. Refuses rather than guessing.
 
     ``raw`` is what a person typed. The result is the ``SystemLabel`` / ``JOB``
@@ -157,8 +183,13 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = ()) -> str:
 
     ``stage_names``, when the ladder is already known, replaces
     :data:`_STAGE_BUDGET` with the real longest name — the cap is about what
-    ``<id>_<stage>.<ext>`` will occupy, and guessing is only necessary while
+    ``<label>_<stage>.<ext>`` will occupy, and guessing is only necessary while
     the stages do not exist yet.
+
+    ``what`` names the thing being normalised, for the refusals only.
+    :func:`run_id` calls this twice — once for the label and once for the
+    formula (§ 2.0a) — and a person who mistyped a formula should not be told
+    to rename their calculation.
 
     Raises ``ValueError`` for every case § 3 rule 3 refuses. A refusal names
     the offending character, because this is a name a person chose and *"say so
@@ -173,7 +204,7 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = ()) -> str:
         if _ALLOWED_CHAR.fullmatch(ch) or not ch.isalnum():
             continue
         raise ValueError(
-            f"{raw!r} cannot become an id: {ch!r} is a letter or a digit "
+            f"{raw!r} is not a usable {what}: {ch!r} is a letter or a digit "
             f"outside [A-Za-z0-9_-], and dropping it would silently make a "
             f"different name. Rename it using unaccented ASCII "
             f"(run-identity.md § 3, rule 3)")
@@ -186,24 +217,24 @@ def normalise_id(raw: str, *, stage_names: Sequence[str] = ()) -> str:
     # -- rule 3, second half: nothing left, or over the cap ----------------
     if not out:
         raise ValueError(
-            f"{raw!r} cannot become an id: it is entirely separators, so "
+            f"{raw!r} is not a usable {what}: it is entirely separators, so "
             f"nothing is left to name the calculation "
             f"(run-identity.md § 3, rule 3)")
 
     cap = _cap_for(stage_names)
     if len(out.encode("utf-8")) > cap:
         raise ValueError(
-            f"{raw!r} cannot become an id: it normalises to {len(out)} "
+            f"{raw!r} is not a usable {what}: it normalises to {len(out)} "
             f"characters and the limit is {cap}. It is refused rather than "
-            f"truncated -- a shortened id is a different calculation wearing "
-            f"the same name (run-identity.md § 3)")
+            f"truncated -- a shortened name is a different calculation wearing "
+            f"the same one (run-identity.md § 3)")
     return out
 
 
 def _cap_for(stage_names: Sequence[str]) -> int:
     """The cap, derived against a real ladder where one is known."""
     if not stage_names:
-        return MAX_ID_BYTES
+        return MAX_LABEL_BYTES
     longest = max(len(n) for n in stage_names)
     return _NAME_LIMIT - (len("_") + longest) - len(_LONGEST_EXTENSION)
 
@@ -224,16 +255,31 @@ def run_id(label: str, formula: str = "", *,
     calculation rather than several.
 
     ``formula`` is optional because a label alone is a legitimate id; when
-    present it is joined with ``_`` and the pair is normalised **once**, so the
-    join cannot introduce a separator run the normaliser never sees.
+    absent the id and the label are the same string.
 
     The timestamp is not here on purpose. A description records when it was
     written (``task.Run.created``); putting that in the id would make every
     regeneration a new identity and therefore a cold start (§ 2).
+
+    **The two halves are normalised apart, and that is not a refactor**
+    (§ 2.0a, decision 26, 2026-08-09). The label becomes the ``SystemLabel``
+    and the stem of every file, so it carries the **filename cap** — 255 bytes
+    less what ``_<stage>.<longest extension>`` will occupy. The id goes into
+    ``task.json`` and never becomes a filename, so nothing bounds the pair.
+    Normalising the *joined* string, as this did until today, applied the
+    filename cap to a string that is not a filename: a long name plus a
+    long formula was refused for exceeding a limit neither of them would ever
+    meet on disk, and the message blamed the name.
+
+    The formula still goes through the same alphabet, because a witness a
+    person may hand-edit is a witness that can be wrong; splitting the call is
+    what lets each refusal name the half that is actually at fault.
     """
-    joined = "_".join(p for p in (label or "", formula or "") if p)
-    return normalise_id(joined, stage_names=stage_names)
+    stem = normalise_id(label, stage_names=stage_names, what="name")
+    if not formula:
+        return stem
+    return f"{stem}_{normalise_id(formula, what='formula')}"
 
 
-__all__ = ["MAX_ID_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "is_ours",
+__all__ = ["MAX_LABEL_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "is_ours",
            "normalise_id", "run_id"]

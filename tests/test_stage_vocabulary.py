@@ -173,10 +173,11 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "the filename-safe set § 6.6 requires of a stage name"),
 
     # -- not a way of expressing a stage -------------------------------
-    "stage_completion_tag": (
-        None, "molbuilder/checkpoint.py", "names a checkpoint tag"),
-    "parse_stage_completion_tag": (
-        None, "molbuilder/checkpoint.py", "reads one back"),
+    #  `stage_completion_tag` and `parse_stage_completion_tag` used to sit
+    #  here.  Both are GONE, retired with the auto-tagger by
+    #  `checkpointing.md` L4 -- *nothing tags a state on your behalf* -- and
+    #  their rows are deleted rather than annotated, because this ledger's
+    #  own rule is that the deletion IS the proof the subtraction happened.
     "_emit_siesta_multi_stage": (
         None, "molbuilder/cli.py", "the CLI's glue over 3, 4, 6 and 7"),
     "StageStatus": (

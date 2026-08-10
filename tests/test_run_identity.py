@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.checkpoint import _REF_SAFE_ID
-from molbuilder.identity import MAX_ID_BYTES, normalise_id, run_id
+from molbuilder.checkpoint import check_calculation_name
+from molbuilder.identity import MAX_LABEL_BYTES, normalise_id, run_id
 from molbuilder.projects import _NAME_PATTERN
 
 
@@ -112,6 +112,48 @@ def test_the_label_alone_is_a_legitimate_id():
     assert run_id("BDT-Au") == "BDT-Au"
 
 
+# --------------------------------------------------------------------- #
+#  The cap bounds a FILENAME, so it bounds the label -- not the id       #
+#  (§ 2.0a / § 3, decision 26 -- 2026-08-09)                             #
+# --------------------------------------------------------------------- #
+
+def test_the_formula_does_not_count_against_the_filename_cap():
+    """§ 3 derives the cap from ``<label>_<stage>.<ext>`` fitting 255 bytes,
+    and § 2.0a says the id is never a filename. So a name that fits, plus a
+    formula that pushes the pair past the cap, is fine: the pair goes in
+    ``task.json``, where nothing bounds it.
+
+    Until 2026-08-09 ``run_id`` normalised the JOINED string, which applied the
+    filename budget to something that never becomes a filename -- and refused
+    naming the *name*, which was the half that fitted."""
+    name = "a" * (MAX_LABEL_BYTES - 5)
+    formula = "C60H120O60"
+    out = run_id(name, formula)
+    assert out == f"{name}_{formula}"
+    assert len(out) > MAX_LABEL_BYTES
+
+
+def test_a_name_over_the_cap_is_still_refused():
+    """The other side of the same line: the label IS a filename, so it keeps
+    the cap. Splitting the normalisation must not have loosened this."""
+    with pytest.raises(ValueError):
+        run_id("a" * (MAX_LABEL_BYTES + 1), "H2")
+
+
+def test_a_refusal_names_the_half_that_is_wrong():
+    """A person who mistyped a formula should not be told to rename their
+    calculation. The two halves normalise apart precisely so each refusal can
+    say which one it is about."""
+    with pytest.raises(ValueError) as bad_formula:
+        run_id("BDT relax", "Ü2")
+    assert "formula" in str(bad_formula.value)
+
+    with pytest.raises(ValueError) as bad_name:
+        run_id("Über", "H2")
+    assert "name" in str(bad_name.value)
+    assert "formula" not in str(bad_name.value)
+
+
 def test_the_id_is_blind_to_everything_a_stage_tunes():
     """§ 2.1's fifth row, and the reason it matters: *that* is what makes
     several stages one calculation rather than several.
@@ -154,7 +196,14 @@ def test_every_id_this_makes_is_accepted_by_every_shipped_validator(raw):
     patterns. If any of the three spellings drifts apart, this fails."""
     out = normalise_id(raw)
     assert _NAME_PATTERN.match(out), f"{out!r} fails projects._NAME_PATTERN"
-    assert _REF_SAFE_ID.match(out), f"{out!r} fails checkpoint._REF_SAFE_ID"
+    # The PUBLIC gate, not the private regex behind it.  This line read
+    # ``_REF_SAFE_ID.match(out)`` until 2026-08-09, and cf7c1ea1 renamed that
+    # constant to ``_CALC_NAME_RE`` -- which did not fail this assertion, it
+    # stopped the whole module from IMPORTING, so every test in this file went
+    # quiet for a day.  Reaching for a private name is what made a rename able
+    # to do that; ``check_calculation_name`` is the seam checkpoint actually
+    # offers, and it raises rather than returning a match.
+    check_calculation_name(out)
 
 
 def test_case_is_preserved_because_a_formula_says_the_element():
@@ -221,10 +270,10 @@ def test_the_cap_is_derived_from_what_gets_appended_to_the_id():
     """§ 3: ``<id>_<longest stage name>.<longest extension>`` must fit the
     filesystem's limit. Asserted as arithmetic rather than as a magic number,
     so a longer extension in `job-contracts.md § 4.2` moves the cap."""
-    assert MAX_ID_BYTES == 255 - 32 - len(".STRUCT_NEXT_ITER")
-    assert normalise_id("x" * MAX_ID_BYTES)
+    assert MAX_LABEL_BYTES == 255 - 32 - len(".STRUCT_NEXT_ITER")
+    assert normalise_id("x" * MAX_LABEL_BYTES)
     with pytest.raises(ValueError, match="refused rather than truncated"):
-        normalise_id("x" * (MAX_ID_BYTES + 1))
+        normalise_id("x" * (MAX_LABEL_BYTES + 1))
 
 
 def test_a_known_ladder_tightens_the_cap_instead_of_guessing():
@@ -233,7 +282,7 @@ def test_a_known_ladder_tightens_the_cap_instead_of_guessing():
     is used — and a long stage name makes the id's room smaller, which is the
     honest direction for the error to go."""
     long_stage = "a_very_long_stage_name_indeed_beyond_the_budget"
-    at_default = "x" * MAX_ID_BYTES
+    at_default = "x" * MAX_LABEL_BYTES
     assert normalise_id(at_default)
     with pytest.raises(ValueError, match="the limit is"):
         normalise_id(at_default, stage_names=["coarse", long_stage])

@@ -10,13 +10,18 @@ is a calculation *of*, which settings the user chose to tune (``varies``), and
 the per-stage cells that differ (``stages[].overrides``).
 
 **It carries only what CHANGES.**  Everything that does not is in the template
-(``<id>.fdf.template``), written once — so there is no ``base`` key here, and a
+(``<label>.fdf.template``), written once — so there is no ``base`` key here, and a
 stage that omits a varied field renders with the template's value (§ 4).  It
 **names no machine** either: ranks, queues and walltimes are decided by ``prep``
 on the target (``execution/project-layout.md`` § 2.1).
 
-LAYER.  L1: it imports ``persist`` and the standard library, and nothing else.
+LAYER.  L1: it imports ``persist``, ``identity`` and the standard library, and
+nothing else — both of those are themselves L1 on stdlib, so this stays a leaf.
 That is deliberate rather than incidental — see *the split preflight* below.
+``identity`` joined the list on 2026-08-09, when ``run.id`` stopped being a free
+string and became something this module DERIVES and checks; it is the same
+normaliser the CLI and the browser call, which is what § 3 rule 1's *"it happens
+once"* actually requires.
 
 THE SPLIT PREFLIGHT.  § 6.6 lists eight checks "in order, and all of it before
 anything is written".  Four of them are answerable from the file alone and are
@@ -28,7 +33,9 @@ which already has the schema in hand:
   here    the schema string's major · ``shape`` present and legal · stage names
           in ``[A-Za-z0-9_]+`` and unique case-insensitively · no ``overrides``
           key naming a stage field · ``overrides`` a SUBSET of ``varies`` ·
-          unknown keys refused by name
+          unknown keys refused by name · ``run.id`` is what ``run.name`` and
+          ``structure.formula`` derive (§ 6.1's first rule -- the check needs
+          only ``identity``, which is L1 beside this one)
   P2      the engine has a generator · the schema fingerprint matches · every
           named field exists in the schema · every value is inside its bounds ·
           ``shape: "hierarchical"`` on an engine whose ladder runs in ONE
@@ -51,6 +58,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Mapping, NoReturn, Optional, Tuple
 
+from .identity import normalise_id, run_id
 from .persist import check_schema_major, read_json, write_json
 
 
@@ -84,7 +92,19 @@ class Run:
     ``id`` is derived once and then quoted everywhere
     (``execution/run-identity.md`` § 2).  Since 2026-08-07 it does **not**
     name the directory — the level-③ folder is typed by the user, and this
-    file is what says which calculation lives there (§ 3.0 there)."""
+    file is what says which calculation lives there (§ 3.0 there).
+
+    Since 2026-08-09 (§ 2.0a, decision 26) it does not name the **files**
+    either: the id is ``<label>_<formula>`` and lives here, while the label
+    alone is the ``SystemLabel`` and the stem of everything on disk.  The
+    label is not a field — it is :attr:`Task.label`, derived through the one
+    normaliser — because storing it would be a second place for the same
+    string to be wrong.  What makes deriving it safe is that ``id`` **is**
+    stored and :meth:`Task.__post_init__` checks the two against each other.
+
+    ``id`` is not defaulted.  A ``Run`` that filled it in from ``name`` would
+    be a second deriver, and § 3 rule 1 is that there is one; use
+    :func:`derive_run`."""
     name: str
     id: str
     created: str = ""
@@ -164,6 +184,57 @@ class Task:
             raise ValueError(
                 "task: 'stages' is present but empty. Omit it entirely for a "
                 "single parameter set (engines/stages.md 6.5)")
+        self._check_id()
+
+    # ----- identity (run-identity.md 2, 2.0a, 3) ---------------------- #
+
+    def _stage_names(self) -> Tuple[str, ...]:
+        """The ladder, for the cap -- see :func:`~molbuilder.identity._cap_for`.
+
+        The cap is derived from what ``<label>_<longest stage>.<longest
+        extension>`` will occupy, so knowing the real ladder beats the fixed
+        budget guessed when the stages do not exist yet.  Reading a
+        description is exactly the moment they DO exist."""
+        return tuple(s.name for s in self.stages) if self.stages else ()
+
+    @property
+    def label(self) -> str:
+        """The ``SystemLabel`` / ``JOB`` literal, and the stem of every file.
+
+        Derived rather than stored (see :class:`Run`), through the same
+        normaliser that built half of ``run.id`` -- so the two cannot disagree
+        about what the user's name normalises to, and ``__post_init__`` has
+        already proved it."""
+        return normalise_id(self.run.name, stage_names=self._stage_names(),
+                            what="name")
+
+    def _check_id(self) -> None:
+        """``run.id`` is what ``run.name`` and ``structure.formula`` derive.
+
+        § 3 rule 1 is *"it happens once, and the result is stored"* -- which
+        only means something if somebody checks the stored value against its
+        inputs.  Without this, ``id`` is a free string: a hand-edited ``name``
+        (supported since 2026-08-07, decision 3) leaves the id behind, and the
+        description then says two different things about which calculation it
+        is.  § 1's second failure mode is exactly that edit, and its cost is a
+        run that silently starts cold.
+
+        It refuses rather than repairing.  Which of the three fields is the
+        right one is not knowable here -- a corrected formula and a renamed
+        calculation look identical from inside the file -- and quietly
+        rewriting the id would be the *"append a digit and carry on"* that
+        § 3 rule 3 rules out, one layer up."""
+        expected = run_id(self.run.name, self.structure.formula,
+                          stage_names=self._stage_names())
+        if self.run.id != expected:
+            raise ValueError(
+                f"task: run.id {self.run.id!r} is not what this description "
+                f"derives. run.name {self.run.name!r} + structure.formula "
+                f"{self.structure.formula!r} give {expected!r}. The id is "
+                f"normalised once and then quoted everywhere, so a mismatch "
+                f"means one of the three was edited without the others -- and "
+                f"which one is right is not something this reader may guess "
+                f"(run-identity.md 2.0a and 3 rule 1)")
 
     # ----- persistence (task@1) -------------------------------------- #
     # ``to_dict`` / ``from_dict`` are the house names for a dataclass<->JSON
@@ -436,6 +507,24 @@ def _ladder_from_objs(payload: Any) -> Tuple[Tuple[str, ...],
     return frozen, stages
 
 
+def derive_run(name: str, formula: str = "", *, created: str = "",
+               stage_names: Tuple[str, ...] = ()) -> Run:
+    """Build a :class:`Run` with its id derived, not retyped.
+
+    The one place a description's id is *made*.  § 3 rule 1 -- *"it happens
+    once, when the description is written, and the result is stored"* -- is
+    only true if there is one place it can happen, and a producer spelling
+    ``Run(name=n, id=run_id(n, f))`` inline is a second place waiting to drift
+    (the browser and the CLI must write the same bytes, § 6.4).
+
+    ``stage_names`` is worth passing when the ladder is known: it makes the
+    cap the real one rather than the budget guessed for an unknown ladder.
+    :meth:`Task.__post_init__` re-derives with the stages it can see, so a
+    ``Run`` built without them still checks out."""
+    return Run(name=name, created=created,
+               id=run_id(name, formula, stage_names=stage_names))
+
+
 def read_task(path) -> Task:
     """Read and parse ``task.json``."""
     return Task.from_dict(read_json(path))
@@ -480,4 +569,4 @@ def write_task(path, task: Task):
 
 __all__ = ["SCHEMA", "FILENAME", "SHAPES", "STAGE_FIELDS",
            "Run", "StructureRef", "Stage", "Task",
-           "read_task", "write_task"]
+           "derive_run", "read_task", "write_task"]

@@ -543,8 +543,14 @@ rather than inventing a second mechanism.
 
   // What identifies this calculation, and what the user called it.
   // The rules are execution/run-identity.md.
+  //
+  // `id` is DERIVED -- run.name + structure.formula, normalised once
+  // (run-identity.md § 2.0a) -- and the reader CHECKS it rather than
+  // accepting whatever string is here.  There is no `label` key: the
+  // SystemLabel is the id's first half, and storing it would be a second
+  // place for the same string to be wrong.
   "run": { "name": "BDT/Au relax",                    // typed, kept verbatim
-           "id":   "BDT_Au_relax_Au38C6H4S2",         // normalised once, then quoted
+           "id":   "BDT_Au_relax_Au38C6H4S2",         // = run_id(name, formula)
            "created": "2026-08-06T22:14:03-07:00" },  // for tracing, not identity
 
   // Which schema the values were entered against — a witness, not a definition.
@@ -572,7 +578,25 @@ rather than inventing a second mechanism.
 }
 ```
 
-### 6.1 Three rules
+### 6.1 Four rules
+
+**The id is derived, and the reader proves it.** `run.id` is
+`run_id(run.name, structure.formula)` and nothing else, checked on every parse
+(`molbuilder/task.py::Task._check_id`). `run-identity.md § 3` rule 1 —
+*"normalisation happens once, and the result is stored"* — only means something
+if the stored value is compared against what made it; without the check, `id` is
+a free string and this file can say two different things about which calculation
+it is. Since hand-editing is supported (the plan's decision 3), the edit that
+matters most is the cheapest to make: **rename `run.name`, leave `id` behind,
+and every warm file on disk is orphaned** — § 1's second failure mode, whose
+cost is a run that silently starts cold. A mismatch is **refused, not repaired**:
+a corrected formula and a renamed calculation are indistinguishable from inside
+the file, so guessing which one is right would be `§ 3` rule 3's *append a digit
+and carry on* wearing a different hat.
+
+*The `SystemLabel` is not a key here.* It is the id's first half, derived through
+the same normaliser (`Task.label`), and what makes deriving it safe is precisely
+that `id` **is** stored and checked (§ 2.0a).
 
 **It names fields; it never defines them.** Every key in every `overrides` map,
 and every name in `varies`, must resolve to a field the shared schema already

@@ -15,14 +15,17 @@ import pytest
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.issues import ValidationError
-from molbuilder.task import Run, Stage, StructureRef, Task
+from molbuilder.task import Stage, StructureRef, Task, derive_run
 from molbuilder.template import schema_fingerprint
 from molbuilder.validation.task import preflight, refuse_on_error
 
 
 def _task(**kw) -> Task:
+    # ``derive_run``, not a hand-typed id.  This read
+    # ``Run(name="opt", id="opt-0001")`` until 2026-08-09 -- an id nothing
+    # derives, which was legal only while ``run.id`` was a free string.
     base = dict(engine="siesta", shape="flat",
-                run=Run(name="opt", id="opt-0001"),
+                run=derive_run("opt"),
                 structure=StructureRef(source="h2.xyz"))
     base.update(kw)
     return Task(**base)
