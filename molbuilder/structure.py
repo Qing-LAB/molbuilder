@@ -1080,17 +1080,31 @@ class Structure:
     def n_residues(self) -> int:
         return len(set(self.residue_ids)) if self.residue_ids else 0
 
-    def summary(self) -> str:
+    @property
+    def formula(self) -> str:
+        """The element counts as one string — ``C6H4S2``, elements sorted.
+
+        A **witness**, in `engines/stages.md § 6.3`'s sense: ``task.json``
+        records it beside the structure's path so a description opened against
+        a structure that has since changed can *say so* rather than silently
+        building a different calculation under the same id.  It is also half of
+        the run id (`run-identity.md § 2.0a`).
+
+        Sorted alphabetically rather than by Hill convention: this is compared
+        for equality and normalised into an identifier, never read as chemistry.
+        One property, so the description and ``summary()`` cannot disagree about
+        what this structure is — ``summary()`` spelled it inline until
+        2026-08-10, which made it the only definition and an unreachable one.
+        """
         from collections import Counter
-        formula = Counter(self.elements)
-        formula_str = "".join(
-            f"{el}{n}" if n > 1 else el
-            for el, n in sorted(formula.items())
-        )
+        return "".join(f"{el}{n}" if n > 1 else el
+                       for el, n in sorted(Counter(self.elements).items()))
+
+    def summary(self) -> str:
         return (
             f"<Structure {self.title!r}: "
             f"{self.n_atoms} atoms, {self.n_residues} residues, "
-            f"formula {formula_str}>"
+            f"formula {self.formula}>"
         )
 
     def __repr__(self) -> str:

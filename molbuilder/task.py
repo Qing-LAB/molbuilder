@@ -437,6 +437,32 @@ def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
                  overrides=overrides)
 
 
+def varies_for(overrides_seq) -> Tuple[str, ...]:
+    """The promoted columns of a ladder — every override key, first seen first.
+
+    § 6.2: ``varies`` is *"the set of fields the user chose to tune"*, and
+    ``overrides`` is a **subset** of it. A surface that supplies a ladder
+    without stating ``varies`` separately has already said what varies by
+    listing what each stage overrides, and asking for it twice would be a
+    second place to disagree.
+
+    **The union, and not one stage's keys**, because a stage may leave a
+    promoted cell empty — that means *"use the template's value"*, which is a
+    real state § 6.2 protects, not an absence of intent.
+
+    One function so the two surfaces that build a ladder without a description
+    — a dict payload (``--stages-json``, the web) and a ready-made
+    :class:`Stage` list (``--stage-strategy``) — cannot derive different
+    columns from the same ladder.
+    """
+    out: list = []
+    for overrides in overrides_seq:
+        for key in overrides or {}:
+            if key not in out:
+                out.append(key)
+    return tuple(out)
+
+
 def stages_from_dicts(payload: Any, *,
                       source: str = "stages") -> Tuple[Tuple[str, ...],
                                                        Tuple[Stage, ...]]:
@@ -484,12 +510,9 @@ def _ladder_from_objs(payload: Any) -> Tuple[Tuple[str, ...],
                 "for a single parameter set, do not pass one at all "
                 "(engines/stages.md 6.5)")
 
-    varies: list = []
-    for i, obj in enumerate(payload):
-        for key in _as_object(obj, where=f"stage {i}").get("overrides") or {}:
-            if key not in varies:
-                varies.append(key)
-    frozen = tuple(varies)
+    frozen = varies_for(
+        _as_object(obj, where=f"stage {i}").get("overrides") or {}
+        for i, obj in enumerate(payload))
 
     stages = tuple(_stage_from_obj(obj, frozen, i)
                    for i, obj in enumerate(payload))
@@ -569,4 +592,4 @@ def write_task(path, task: Task):
 
 __all__ = ["SCHEMA", "FILENAME", "SHAPES", "STAGE_FIELDS",
            "Run", "StructureRef", "Stage", "Task",
-           "derive_run", "read_task", "write_task"]
+           "derive_run", "read_task", "varies_for", "write_task"]

@@ -1056,6 +1056,37 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
             )
             written.append(mw_path)
 
+    # THE DESCRIPTION (P5 unit 4).  `task.json` is what makes the folder
+    # self-describing: which engine, which LAYOUT, what it is a calculation of,
+    # and the ladder.  Without it the shape lives only in the command someone
+    # typed, and `prep` -- which decision 29 makes the one place the shape
+    # branches -- has nothing to read (engines/stages.md § 6.7: "A field is
+    # what makes every prep agree, and it is the only place that can").
+    #
+    # `varies` is DERIVED here, not asked for again: the ladder already said
+    # what it tunes by listing each stage's overrides, and `task.varies_for` is
+    # the one rule both ladder surfaces use (§ 6.2).
+    from .task import (FILENAME as _TASK_FILE, Stage as _Stage,
+                       StructureRef, Task, derive_run, varies_for,
+                       write_task)
+    _stages = tuple(_Stage(name=s.name, enabled=bool(s.enabled),
+                           overrides=dict(s.overrides)) for s in stages)
+    _task = Task(
+        engine="siesta",
+        shape=shape,
+        run=derive_run(cfg.system_label, struct.formula,
+                       stage_names=tuple(s.name for s in _stages)),
+        structure=StructureRef(source=str(input_path),
+                               formula=struct.formula,
+                               atoms=struct.n_atoms),
+        varies=varies_for(s.overrides for s in _stages),
+        stages=_stages,
+    )
+    # The filename comes from the codec, never a literal here: exactly one
+    # module owns it, and `test_only_one_module_reads_or_writes_task_json`
+    # enforces that -- it caught this line spelling it out (2026-08-10).
+    written.append(write_task(out_dir / _TASK_FILE, _task))
+
     # Say the SHAPE out loud, and say how to run THIS shape.  A summary that
     # always claimed "+ 1 runner" and always told you to `./run.sh` was the
     # both-shapes bug speaking: for a hierarchical bundle there is no runner

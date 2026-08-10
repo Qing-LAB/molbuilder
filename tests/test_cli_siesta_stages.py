@@ -581,3 +581,56 @@ def test_vacuum_agrees_between_the_staged_and_single_branches(xyz, tmp_path):
     a = _cell_lengths((staged / "JOB_01_coarse.fdf").read_text())
     b = _cell_lengths((single / "JOB.fdf").read_text())
     assert a == pytest.approx(b, abs=1e-6)
+
+
+# --------------------------------------------------------------------- #
+#  task.json — the produce writes the description (P5 unit 4)            #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("shape", ["flat", "hierarchical"])
+def test_the_produce_writes_a_description_that_reads_back(xyz, tmp_path, shape):
+    """`engines/stages.md § 7` lists the description among what a generator
+    must produce, and § 6.7 puts the SHAPE in it — *"A field is what makes
+    every prep agree, and it is the only place that can."*
+
+    Without it the shape lives only in the command somebody typed, and
+    decision 29 makes `prep` the one place the shape branches: it would have
+    nothing to read.  Asserted through the ONE reader, so a file this produce
+    writes but the codec refuses is a failure here rather than at prep.
+    """
+    from molbuilder.task import read_task
+    fdf = tmp_path / "out" / "ch4.fdf"
+    r = _invoke("fdf", str(xyz), str(fdf),
+                "--stage-strategy", "publishable", "--shape", shape)
+    assert r.exit_code == 0, r.output
+
+    task = read_task(fdf.parent / "task.json")
+    assert task.shape == shape
+    assert task.engine == "siesta"
+    assert task.label == "ch4"                     # the stem of every deck
+    assert [s.name for s in task.stages] == ["coarse", "medium", "tight"]
+    # the witness: what this was a calculation OF, at the moment it was written
+    assert task.structure.formula == "CH4"
+    assert task.structure.atoms == 5
+    assert task.run.id == "ch4_CH4"
+
+
+def test_varies_records_every_promoted_column_not_just_one_stages(xyz, tmp_path):
+    """§ 6.2: `varies` is the COLUMN SET, and a stage may leave a promoted cell
+    empty — that means *"use the template's value"*, a real state rather than
+    an absence of intent.  So the union, never one stage's keys."""
+    from molbuilder.task import read_task
+    ladder = json.dumps([
+        {"name": "coarse", "overrides": {"mesh_cutoff": 150}},
+        {"name": "tight", "overrides": {"relax_force_tol": 0.01}},
+    ])
+    fdf = tmp_path / "out" / "ch4.fdf"
+    r = _invoke("fdf", str(xyz), str(fdf), "--stages-json", ladder)
+    assert r.exit_code == 0, r.output
+
+    task = read_task(fdf.parent / "task.json")
+    assert set(task.varies) == {"mesh_cutoff", "relax_force_tol"}
+    # ...and each stage keeps only its own cells (overrides ⊆ varies)
+    assert dict(task.stages[0].overrides) == {"mesh_cutoff": 150}
+    assert dict(task.stages[1].overrides) == {"relax_force_tol": 0.01}

@@ -1064,6 +1064,55 @@ bootstrap, not a program**).
 4. The produce is transactional: built elsewhere, moved into place only when
    every deck, wrapper and description succeeded.
 
+   > **Half landed 2026-08-10 — the description. The transaction has not.**
+   >
+   > **What this unit turned out to be two of.** *"…every deck, wrapper **and
+   > description**"* assumes a description is being written. **Nothing wrote
+   > one.** So unit 4 is two things, and decision 29 made the first urgent:
+   > `prep` is now the only place the shape branches, and it had nothing to
+   > read.
+   >
+   > `molbuilder fdf --stages-json/--stage-strategy` now writes `task.json`
+   > beside the decks, carrying `engine`, **`shape`**, the run identity, the
+   > structure witness (`formula`, `atoms`, `source`) and the ladder. Asserted
+   > through `read_task` — the one reader — so a file this produce writes but
+   > the codec refuses fails at the produce rather than at prep.
+   >
+   > **`varies` is derived, not asked for twice.** `task.varies_for` is now the
+   > single rule for the promoted column set, shared by the two surfaces that
+   > build a ladder without a description: a dict payload (`--stages-json`, the
+   > web) and a ready-made `Stage` list (`--stage-strategy`). It is the
+   > **union** across stages, because § 6.2 lets a stage leave a promoted cell
+   > empty — *"this stage uses the template's value"* — and one stage's keys
+   > would silently drop a column.
+   >
+   > **`Structure.formula` became a property.** It existed only inside
+   > `summary()`, which made it the sole definition and an unreachable one; the
+   > description needs the same string, and two spellings of *what is this a
+   > calculation of* is the defect this plan keeps removing.
+   >
+   > **Caught by a guard, and worth recording:** the first version spelled
+   > `"task.json"` in `cli.py`. `test_only_one_module_reads_or_writes_task_json`
+   > refused it — § 6.4's *"a single reader"* enforced as a source-text
+   > invariant. The filename comes from `task.FILENAME` now. Same class as the
+   > two column counts: a literal that must agree with another place.
+   >
+   > **Still owed here:** the transaction itself. The produce writes decks,
+   > wrappers, logs and now the description **directly into `out_dir`**, so a
+   > failure part-way leaves exactly the half-written folder § 7.2 calls *"worse
+   > than none"*. And § 7.2's second half — *a replacing produce checkpoints
+   > first, then removes what the description no longer contains* — is
+   > untouched; today a disabled stage's deck stays behind, describing a
+   > calculation the description no longer has.
+   >
+   > **And the single-deck produce writes none.** `molbuilder fdf` without a
+   > ladder flag emits one `.fdf` and no `task.json`, but § 6.5 is explicit
+   > that *"a description with no stages **is** a single-parameter-set
+   > calculation"* — it has a description, it simply has no `stages` key. So
+   > that folder is not self-describing either, and `prep` cannot read its
+   > shape. Not this phase's: the single-deck path is what P10 routes and the
+   > browser writes. Recorded so the gap is not mistaken for a decision.
+
 **Subtracts — narrowed 2026-08-07, and the reason is worth keeping.** This
 used to claim all ten mechanisms. It cannot: **mechanisms 1–5 all write
 `SiestaConfig.stages`, and P2 deletes that field**, so they die there or the tree
