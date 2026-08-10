@@ -1658,6 +1658,74 @@ be regenerated, a deck is a pure function of the form still on screen.
 > This lands in **P10**, whose unit 3 already reduces this tab. It is not P3
 > work: P3's units 1–5 shipped and were reviewed at M3 (§ 5c).
 
+### 8d. P4 walked — what the `-stage<N>` subtraction actually costs
+
+*Read in call order 2026-08-10, before touching anything. The phase is smaller
+than it looks in one place and larger in another, and the larger one has a
+design question inside it.*
+
+**The premise checks out, and it is sharper than P4 unit 2 states.**
+`viewer.js:1817` is literally:
+
+```js
+if (v === "coarse") return 1;      // the dropdown's value…
+if (v === "medium") return 2;
+if (v === "tight")  return 3;
+```
+
+The browser holds the name and converts it to a number **one line before** the
+number becomes a filename (`viewer.js:1806`, `` `-stage${stage}` ``). Nothing
+recovers it downstream.
+
+**Two paths exist and only one is wrong.** The flat ladder
+(`render_siesta_stage_fdfs`, `input.py:1634+`) already writes
+`<label>_<stage.name>.fdf` — correct under decisions 21 and 26, and
+`_enabled_stages` even refuses duplicate names *because* every per-stage
+artifact is keyed on them. The broken path is the **single-stage overlay**:
+`--stage N` → `apply_siesta_stage` → `cfg.stage = int` → `input.py:547`
+`f"-stage{int(cfg.stage)}"`. So P4 unit 3's *"three live conventions"* is really
+one correct convention plus one wrong one plus the log that follows the wrong
+one.
+
+**The tiers have no names, and that is the root of it.**
+`SIESTA_STAGE_PRESETS` is `Dict[int, Dict[str, Any]]` — keyed by position, with
+no name anywhere. `default_siesta_stages` invents one at the last moment
+(`f"stage{tier}"`); the browser invents a different one (`coarse`/`medium`/
+`tight`) and then discards it. **The same tier therefore has two names and a
+number depending on which door you came through**, which is the defect P4 is
+named after, sitting one level below where the phase looks for it.
+
+**What is determined, and what is a decision.**
+
+| | |
+|---|---|
+| **determined** | the *mechanism*: `cfg.stage` carries a **name**, `-stage<N>` becomes `_<name>` (§ 6.3 reserves `-` for *a counter follows*), the presets get names from **one** place so the two doors cannot drift, and the browser sends the name it already has |
+| **a decision, and cosmetic** | what the three shipped tiers are **called**. `stage1/2/3` is what `job-contracts.md § 2.3` records today; `coarse/medium/tight` is what every worked example in `stages.md` uses and what the dropdown already says. Doing the mechanism with the recorded defaults changes **one character** per filename and leaves the nicer names a pure data edit in one table |
+
+**The part that is bigger than the phase text suggests: the decoder cannot
+follow mechanically.** `parse/dirs/job.py::_detect_stage` returns an **int**, and
+two things depend on it being *ordered*, not merely present:
+
+```python
+_STAGE_RE = re.compile(r"-stage(\d+)(?:-run\d+)?\.(?:fdf|out)$")
+# _fdf_sort_key: "pick the highest-stage .fdf as the anchor"
+# and .out files are ordered by (stage number, name)
+```
+
+A name has no order. So *"read the stage from the deck's name"* (unit 4) removes
+the anchor rule's sort key rather than re-pointing it, and the anchor decides
+what the Results tab shows. **That needs its own answer** — the ladder's order
+lives in `task.json`, the hierarchical shape carries it in `<seq>_<name>/`, and
+the flat shape has neither once the number leaves the filename.
+
+**Therefore the phase does not split where it looks like it should.** Emitter and
+decoder must move in **one** commit: ship the emitter alone and every staged
+filename stops matching `_STAGE_RE`, which returns `None` silently — a
+regression wearing the shape of a rename. Slice it by *entry point* if it needs
+slicing, never by emitter-then-reader.
+
+---
+
 ### 8c. Decision 26, walked — one base name, everything else attached
 
 **The question.** P4's re-anchor turned up a contradiction: three contracts say a
