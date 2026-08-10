@@ -1155,8 +1155,15 @@ the history's name from the folder's ([`run-identity.md`](?doc=execution/run-ide
 > into every state: `Calculation: has spaces!`, in a history `init` would have
 > turned away. The check belongs where the name is *written into a state*.
 > Reading it stays unchecked, so `snapshot config` and the panel still work on
-> a folder in that condition, and `snapshot init --calculation <name>` is the
-> verb that repairs it.
+> a folder in that condition.
+>
+> **`init` is the verb that repairs it**, and that is a change to what `init`
+> means: it used to stop at *"already a checkpoint folder"* and do nothing,
+> which was right while it only ever created things. A refusal that names a
+> command which no-ops is worse than naming nothing — it reads as *"I tried
+> that, it is still broken"*, and § 2.0's promise that **the verbs cover the
+> work** fails quietly. So `snapshot init --calculation <name>` now names an
+> unnamed folder and leaves an already-named one alone.
 
 *The note, in your words* — **required, never generated** (§ 5.1). It is the only
 thing that answers the question you actually bring to a history: *why did I stop
@@ -1472,7 +1479,7 @@ nobody is maintaining against this document, which is how the two drift.
 | volume | `test_checkpoint_states.py` — 500 large files in one folder: all archived, none in git's object database, and the save does not fail for the length of its own `git add` |
 | A3, S2, S3, S4, S6, L8, S5's run-layer half | **not yet written** — each waits on a surface that does not exist; the table below says which |
 | the MANIFEST format | `test_checkpoint_manifest.py` — one content has exactly one MANIFEST; every deviation a lenient reader could "understand" is refused and names the archive; no key can steer a restore out of the folder or into a store |
-| the verbs as a printed surface | `test_checkpoint_cli.py` — what each verb prints and what it exits with, retired verbs gone, and the question asked at a terminal |
+| the verbs as a printed surface | `test_checkpoint_cli.py` — what each verb prints and what it exits with, retired verbs gone, the question asked at a terminal, and **that a remedy a refusal names actually works**: the whole round trip, refusal → repair → save, exit codes included, since 2 is *your input* and 1 is *the machine* |
 | the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` — **including which bucket each refusal lands in**: a name the user can repair and a folder of independent calculations are advisories the panel can act on, an unknown state and a bad `limit` are the caller's mistake, and everything else is a fault |
 | the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` — the state route does not open a big file it can rule out by size and timestamp, a failure is a structured envelope, the panel and its importer parse, and the panel speaks the routes' field names |
 | *Disk cost* (§ 12) — identical content stored once | `test_checkpoint_states.py` — three of four unchanged big files share an inode across two archives |

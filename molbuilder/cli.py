@@ -2561,11 +2561,15 @@ def cmd_snapshot_init(engine, note, calculation, path):
     from molbuilder.checkpoint import (
         Repo, CalculationNameError, CheckpointError, NestedRepoRefusedError)
     repo = Repo(_resolve_repo_path(path))
-    if repo.initialized:
-        here = repo.standing_at()
-        where = f" (standing at {here.short})" if here else " (no states yet)"
-        click.echo(f"{repo.path}: already a checkpoint folder{where}")
-        return
+    already = repo.initialized
+    # `init` IS THE REPAIR VERB, so this no longer returns before calling it.
+    #
+    # It used to print "already a checkpoint folder" and stop -- which was fine
+    # while init only ever created things.  Once a folder somebody `git init`-ed
+    # by hand needed a *name* before it could be saved (L3), `save` started
+    # telling people to run exactly this command, and this command did nothing.
+    # A remedy that no-ops is worse than no remedy: it reads as "I tried that,
+    # it is still broken", and the verbs stop covering the work (§ 2.0).
     try:
         state = repo.init(engine=engine, note=note,
                           calculation=calculation)
@@ -2579,6 +2583,11 @@ def cmd_snapshot_init(engine, note, calculation, path):
     except CheckpointError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
+    if already:
+        where = f"standing at {state.short}" if state else "no states yet"
+        click.echo(f"{repo.path}: already a checkpoint folder ({where})")
+        click.echo(f"  calculation  {repo.calculation()}")
+        return
     click.echo(f"initialised {repo.path}")
     click.echo(f"  calculation  {state.calculation}")
     click.echo(f"  {state.short}  {state.note}")
@@ -2597,7 +2606,7 @@ def cmd_snapshot_save(note, path):
     The new state's parent is wherever the folder currently stands, so saving
     after a restore forks -- and both attempts stay listed.
     """
-    from molbuilder.checkpoint import CheckpointError
+    from molbuilder.checkpoint import CalculationNameError, CheckpointError
     repo = _repo_or_exit(path)
     # Say what is happening before it happens.  A save checksums every big file
     # to name the archive, so a folder with a few gigabytes of density matrices
@@ -2605,6 +2614,13 @@ def cmd_snapshot_save(note, path):
     click.echo("checking the folder and checksumming its large files…", err=True)
     try:
         state = repo.save(note)
+    # Exit 2, the same split `init` draws: this is the person's input, and the
+    # message names the command that fixes it.  A save gained this refusal when
+    # L3's name check moved here, and without this clause a one-command fix
+    # exited 1 -- the code a script reads as "the machine is broken".
+    except CalculationNameError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(2)
     except CheckpointError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

@@ -107,6 +107,70 @@ def test_a_calculation_name_needing_repair_is_refused(tmp_path):
     assert result.exit_code != 0
 
 
+def test_the_remedy_a_refused_save_names_actually_works(tmp_path,
+                                                        checkpoint_config):
+    """A refusal that points at a command which does nothing is a dead end.
+
+    A folder somebody `git init`-ed by hand has no name molbuilder gave it, so
+    a save is refused (L3) and the message says to run
+    `snapshot init --calculation <name>`.  **That command used to print
+    "already a checkpoint folder" and return** — `init` bailed out before doing
+    any work whenever the folder was already a repository, which was fine while
+    `init` only ever created things and stopped being fine the moment it became
+    the repair verb.
+
+    The user was then in a loop: save refuses, the remedy no-ops, save refuses.
+    § 2.0 promises *the verbs cover the work*, and a dead end is that promise
+    failing quietly.
+
+    The whole round trip is asserted, including the **exit codes**, because
+    those are what a script reads: 2 is "your input", 1 is "the machine".
+    """
+    import subprocess
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
+    root = tmp_path / "has spaces!"
+    root.mkdir()
+    (root / "job.fdf").write_text("SystemLabel job\n")
+    subprocess.run(["git", "init", "-q", "."], cwd=root, check=True)
+
+    runner = CliRunner()
+
+    def run(*args):
+        return runner.invoke(cli, ["snapshot", *args, "-p", str(root)])
+
+    refused = run("save", "-m", "stage 1 converged")
+    assert refused.exit_code == 2, (
+        "a name the person fixes is exit 2; exit 1 tells a script the machine "
+        "is broken")
+    combined = refused.output + (refused.stderr or "")
+    assert "--calculation" in combined, "the refusal must name the way out"
+
+    repaired = run("init", "--calculation", "BDT_Au_relax")
+    assert repaired.exit_code == 0
+    assert "BDT_Au_relax" in repaired.output, (
+        "the repair must say what the folder is now called")
+
+    saved = run("save", "-m", "stage 1 converged")
+    assert saved.exit_code == 0, "the remedy did not actually unblock the save"
+    assert "stage 1 converged" in run("list").output
+
+
+def test_init_on_a_folder_molbuilder_already_named_changes_nothing(mb, calc):
+    """The repair above must not disturb the ordinary idempotent case.
+
+    A folder molbuilder initialised already carries its name, so `init` reads
+    it and reports; it does not rename, and it does not make a second state.
+    """
+    mb("init")
+    before = _ids(mb("list").output)
+    again = mb("init", "--calculation", "SomethingElse")
+    assert again.exit_code == 0
+    assert "already" in again.output.lower()
+    assert "BDT_Au_relax" in again.output, (
+        "the name is fixed at init; a later --calculation must not rewrite it")
+    assert _ids(mb("list").output) == before, "init made a second state"
+
+
 # ------------------------------------------------------------------ #
 #  save — the note is required (L3)                                   #
 # ------------------------------------------------------------------ #
