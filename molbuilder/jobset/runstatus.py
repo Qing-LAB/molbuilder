@@ -119,7 +119,8 @@ def _launch_record(attempt: Optional[Path]) -> Optional[Dict[str, Any]]:
         return {}                # present but unreadable: launched, details lost
 
 
-def _stage_state(observed: Path, launch: Optional[Dict[str, Any]]) -> tuple:
+def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
+                 out_glob: str = "*") -> tuple:
     """(state, detail) for the directory a stage's run actually happened in.
 
     ``observed`` is the latest attempt where there is one, and the stage
@@ -135,7 +136,13 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]]) -> tuple:
     """
     if not observed.is_dir():
         return ("not-started", "no directory yet (not prepped)")
-    has_output = any(observed.glob("*.out")) or any(observed.glob("*.log"))
+    # ``out_glob`` is `Shape.stage_glob` -- "*" in the hierarchy, where the
+    # directory has already selected the stage, and ``<label>_<NN>_<name>*`` in
+    # flat, where ONE directory holds every stage and the filename is what
+    # selects.  Without it a flat stage that has never run reports whatever its
+    # sibling's `.out` says, because the glob matched the sibling's file.
+    has_output = (any(observed.glob(out_glob + ".out"))
+                  or any(observed.glob(out_glob + ".log")))
     if not has_output:
         if launch is None:
             return ("pending", "prepped, not launched (no run.json)")
@@ -161,7 +168,8 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
     label = jobset.name
     stages: List[StageStatus] = []
     first_incomplete: Optional[str] = None
-    dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
+    sh = shape_of(jobset, base_dir)
+    dirs = job_dir_names(jobset, sh)
     refs = stage_refs(jobset)
     for job in jobset.jobs:
         d = base / dirs[job.name]
@@ -173,7 +181,13 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         attempt = latest_attempt(d)
         observed = attempt or d
         launch = _launch_record(attempt)
-        state, detail = _stage_state(observed, launch)
+        # WHICH FILES are this stage's, asked of the layout (§ 9's `Shape`).
+        # In the hierarchy the directory already answered; in flat every stage
+        # shares one, and the deck's token in each filename is the answer.
+        token = refs[job.name].token
+        out_glob = (sh.stage_glob(token, label)
+                    if (sh is not None and token) else "*")
+        state, detail = _stage_state(observed, launch, out_glob)
         stages.append(StageStatus(
             name=job.name, dir=d.name, state=state, detail=detail,
             seq=refs[job.name].seq,

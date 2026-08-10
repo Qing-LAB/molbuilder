@@ -1659,3 +1659,47 @@ def test_a_deck_with_no_bench_marks_says_nothing_and_is_not_refused(tmp_path):
                 jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
                           resources=Resources(mpi_np=99))])
     assert submit_jobset(js, tmp_path, mode="direct", dry_run=True)
+
+
+def test_a_flat_stage_that_never_ran_does_not_borrow_a_siblings_state(tmp_path):
+    """`project-layout.md` § 1: flat is **depth 1** — every stage shares one
+    directory and they are told apart by the deck's token in each filename.
+
+    The observe layer asked *"is there a `.out` in this stage's directory?"*,
+    which is right in the hierarchy (the directory already chose the stage) and
+    silently wrong in flat: `coarse` finishing made `tight` claim to be running
+    too, because the glob matched `coarse`'s file.
+
+    `Shape.stage_glob` is what answers *which files are this stage's*, and this
+    is the caller it was built for.
+    """
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    _describe(tmp_path, "flat")
+    # coarse ran; tight has not been touched
+    (tmp_path / "JOB_01_coarse-run0.out").write_text("Job completed\n")
+
+    by_name = {s.name: s for s in jobset_status(js, tmp_path).stages}
+    assert by_name["coarse"].state not in ("pending", "not-started")
+    assert by_name["tight"].state == "pending", (
+        "tight borrowed coarse's output: they share a directory in flat")
+    assert "not launched" in by_name["tight"].detail
+    # Deliberately NOT asserting `first_incomplete` here: that depends on the
+    # DECODER's verdict for coarse ("Job completed" is not necessarily
+    # `finished`), which is a different contract.  This test is about which
+    # files a stage owns, and asserting past that would make it fail for a
+    # reason it does not name.
+
+
+def test_the_hierarchy_is_unaffected_because_its_directory_already_chose(tmp_path):
+    """`stage_glob` is `*` there, so the behaviour is identical to before —
+    which is the point of one object answering for both."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    _describe(tmp_path, "hierarchical")
+    a = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    (a / "JOB_01_coarse.out").write_text("Job completed\n")
+
+    by_name = {s.name: s for s in jobset_status(js, tmp_path).stages}
+    assert by_name["coarse"].state not in ("pending", "not-started")
+    assert by_name["tight"].state == "not-started"      # no directory at all
