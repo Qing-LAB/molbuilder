@@ -2233,6 +2233,22 @@ displays what the resolver returns rather than computing a number of its own.
 
 ## 9. The architecture the phases are converging on
 
+> ### How to read this section against the rest of the plan
+>
+> **There is one plan, and the phase is its unit of work.** § 9 adds no schedule
+> and no numbering of its own: it names the *shape* the phases are converging
+> on, so that each phase knows what it must leave behind for the next one to ask
+> instead of re-derive. Every architectural item here is landed **by a phase**,
+> and § 9.6 is the map.
+>
+> Read § 9 when you want to know *why* a phase's unit is shaped the way it is.
+> Read the phase when you want to know *what to do next*. If the two ever
+> disagree, the phase is the work and § 9 is the explanation that needs fixing.
+>
+> *This paragraph exists because the first draft of § 9 got it wrong* — it
+> carried a second ordering (T1–T5) beside the eleven phases, which is the very
+> defect the section is about. See the correction in § 9.6.
+
 **Why this section exists.** Written 2026-08-10, after a day of walking the
 system end to end and fixing seven defects. Six of the seven were the same
 mistake wearing different clothes, and fixing them one at a time was making the
@@ -2356,7 +2372,7 @@ Honest mapping, not aspiration.
 | 7 surfaces | `cli.py`, `web/blueprints/build.py` | both re-implement parts of 3; web has no staged path at all |
 | — | **`bench/` (~3500 ln)** | a parallel 3–6 for sweeps; `bench prep-run` **is** `jobset prep run` written twice |
 
-### 9.6 The transition, in the order that de-risks it
+### 9.6 How this merges with the phases — one plan, not two
 
 Each step is separately shippable and separately revertible. **No step is
 allowed to be "and while we are there".**
@@ -2390,7 +2406,7 @@ to a deck while two layouts are emitted at once), and the `bench` fold-in last �
 Doing it first would prove nothing and risk the one workflow that works end to
 end today.
 
-### 9.6a The gap this review found: nothing owns deck ↔ launch agreement
+### 9.6a Deck ↔ launch agreement — the gap this review found, now owned by P6
 
 `LaunchSpec` has no phase, and the defect it addresses is **live**: on
 2026-08-10 a deck rendered with `mpi_np` unset (so `BlockSize 4`) was launched by
@@ -2427,15 +2443,15 @@ Related and separable: the clamp itself is wrong. `runwrap` resolves
 rank, not atoms. That is an engine-physics bug, out of scope by § 9.7, and it
 should be fixed on its own rather than inside this seam.
 
-**Why not T5 first**, though it removes the most code: it is the only step that
-cannot be reverted cheaply, and it depends on all four seams being right. Doing
-it first would prove nothing and risk the one workflow that currently works
-end to end.
+**Why the `bench` fold-in is last**, though it removes the most code: it is the
+only one that cannot be reverted cheaply, and it depends on all four objects
+being right. Doing it first would prove nothing and risk the one workflow that
+currently works end to end.
 
 **`runwrap.py` is deliberately untouched by every step.** At 3669 lines with 8
 direct callers it is the highest-risk surface in the repository, and it is also
-the part that works everywhere today. T3 changes what it is *told*, never what
-it does.
+the part that works everywhere today. P6 unit 2 changes what it is *told*, never
+what it does.
 
 ### 9.7 Size and shape — the scope guard
 
@@ -2451,8 +2467,8 @@ not define the work.
 **Not in scope, and not by accident:**
 
 - `runwrap.py`'s internals — see above;
-- engine physics — `BlockSize` heuristics, tier values, solver choice. T3 moves
-  *where the number is decided*, never *what it is*;
+- engine physics — `BlockSize` heuristics, tier values, solver choice. P6 unit 2
+  moves *where the number is decided*, never *what it is*;
 - a web rewrite. G2 says the web stops owning layout/naming/launch logic; it
   does not say the web is rebuilt;
 - the checkpoint system, which `checkpointing.md` owns and which this session
