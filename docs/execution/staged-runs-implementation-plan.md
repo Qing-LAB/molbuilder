@@ -815,6 +815,31 @@ and *a name says what its location does not*) · `engines/stages.md § 7` ·
 **Subtracts:** the `-stage<N>` filename convention, everywhere — emitter,
 browser, log, decoder.
 
+> **Units 2, 3 and 4 landed 2026-08-10** (`c7d445bb`), built to decision 27.
+> One token, `<NN>_<name>`, from `identity.stage_token`; read back by
+> `identity.parse_stage_token`; used by the emitter, the log, the browser and
+> the decoder. **Guard 2 is green and its `xfail` is gone.**
+>
+> **The subtraction was wider than this line says.** The phase text names two
+> producers; there were **four**, and the two extra were found by the full
+> batch rather than by reading:
+>
+> | | |
+> |---|---|
+> | `cli.py:1002` | built `f"{basename}-{stage.name}.molwatch.log"` **by hand**, never calling `molwatch_log_basename` — invisible to the log module's own tests *because* it did not use the module, and the direct reason a stage's deck and its log could not be matched |
+> | `stages_to_jobset` | built `script=` from `f"{label}_{s.name}.fdf"`, so after the rename every Job in a ladder JobSet pointed at a file the renderer no longer wrote |
+>
+> Both are the same lesson as § 8d's: *search by behaviour, not by name*. A
+> producer that spells the convention inline is exactly the one a grep for the
+> helper cannot see.
+>
+> **Still open in this phase:** unit 1 (one deck renderer — arguably already
+> true of `render_fdf`, needs confirming rather than building), unit 5
+> (resource-shaped overrides reaching the deck line, the wrapper environment
+> **and** BENCH-MARKS), and **M4's browser walk** — the review note says a
+> filename change is invisible to stubs, and the decoder's anchor rule is what
+> to watch in the Results tab.
+
 > **Three green tests pin the convention this phase removes, listed by P0 so
 > the phase does not meet them under pressure.** They are *not* failures to work
 > around: each is a correct test of today's behaviour, and each is retired or
