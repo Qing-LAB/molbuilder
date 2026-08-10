@@ -2008,10 +2008,21 @@ one). The eleven mutations run across this phase all went RED.
 **M5 status: passed.** One conformance defect, found and fixed; the rest of the
 milestone's claims hold on a live produce → prep in both shapes.
 
-**Still owed, and it is the next phase's:** `jobset status` cannot tell flat's
-stages apart — it observes a directory per stage, and flat's share one.
-`Shape.stage_glob` is built and answers exactly this, and **nothing calls it
-yet**. That is P6/P7's observe half.
+**The observe half landed 2026-08-10, in part.** `jobset status` asked *"is
+there a `.out` in this stage's directory?"* — right in the hierarchy, where the
+directory has already chosen the stage, and silently wrong in flat, where one
+directory holds every stage: `coarse` finishing made `tight` claim to be running
+too. The observe layer now asks the layout which files are this stage's, which
+is the caller `Shape.stage_glob` was built for.
+
+**What is still directory-wide, and it is a unit of its own.** Once a flat stage
+*does* have output, its verdict still comes from `decode_run_dir(<directory>)`,
+which enumerates the whole folder — so two flat stages that have both run report
+the same state. Making that per-stage needs `_enumerate_files` to take a filter
+**and** a decision about the files flat SHARES: `<label>.XV` is one set for the
+whole calculation (§ 1), so *"this stage's files"* is not simply *"the ones
+matching its token"*. That is a question, not a parameter, and guessing at it
+would be inventing contract.
 
 ## 5a. Where the code actually is — verified 2026-08-07
 
