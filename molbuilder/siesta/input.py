@@ -32,6 +32,7 @@ except ImportError as exc:  # pragma: no cover
         "molbuilder.siesta needs ASE; install with `pip install ase`"
     ) from exc
 
+from ..identity import stage_token
 from ..structure import Structure
 # SiestaConfig is the L1 dataclass; this module imports it for use by
 # the generator below.  External callers can import it from either
@@ -315,6 +316,35 @@ def _continues(cfg) -> bool:
     return getattr(cfg, "restart", "clean") == "continue"
 
 
+def _stage_science(cfg: "SiestaConfig") -> str:
+    """One line saying what this stage actually computes, in its own units.
+
+    Decided 2026-08-10 (user): *"have comments somewhere for explaining what it
+    is as scientific notation for each run."*  A stage's **name** says which
+    rung it is; this says what the rung IS -- the numbers that make a coarse
+    stage coarse.
+
+    **Derived from the config being rendered, never from the description.**
+    That is the whole design of it: the values quoted here are the same objects
+    the keyword lines below are written from, so the comment cannot drift from
+    the deck it sits in.  A prose note typed per stage could say
+    *"tight convergence"* over a deck someone had since loosened; this cannot.
+    It also keeps ``Stage`` at the three fields ``engines/stages.md`` § 2
+    allows -- a note would have been a fourth.
+
+    Units are the ones the deck itself writes a few lines down (``MeshCutoff
+    … Ry``, ``MD.MaxForceTol … eV/Ang``), so the comment and the keywords read
+    as one document.
+    """
+    bits = [f"MeshCutoff {cfg.mesh_cutoff} Ry",
+            f"force tol {cfg.relax_force_tol} eV/Ang"]
+    if getattr(cfg, "relax_type", None):
+        bits.append(str(cfg.relax_type))
+    if getattr(cfg, "relax_steps", None):
+        bits.append(f"max {cfg.relax_steps} steps")
+    return " \u00b7 ".join(bits)
+
+
 def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, cell: Optional[np.ndarray] = None) -> str:
     """Format a Structure as SIESTA .fdf text.
@@ -536,17 +566,22 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # stdout to ``<basename>.out`` (the Watch tab's discovery chain
     # also looks for that filename).  See docs/execution/job-contracts.md.
     #
-    # Stage-aware filenames: when ``cfg.stage`` is set (1/2/3), the
-    # FDF + stdout-redirect filenames pick up the ``-stage<N>`` suffix
-    # so a coarse->medium->tight workflow produces
-    # ``<basename>-stage1.fdf`` / ``…stage2…`` / ``…stage3…`` in one
-    # directory.  The SystemLabel itself stays unsuffixed (so SIESTA's
-    # .XV / .DM / .CG restart files transfer cleanly between stages).
+    # Stage-aware filenames: when ``cfg.stage`` carries a stage's artifact
+    # token (``01_coarse`` -- ``identity.stage_token``), every name MOLBUILDER
+    # chooses picks it up, so a ladder produces ``<label>_01_coarse.fdf``,
+    # ``…_01_coarse.out`` and ``…_01_coarse.molwatch.log`` and a stage's deck
+    # can be matched to its own log.
+    #
+    # The SystemLabel itself stays unsuffixed, which is the whole reason the
+    # ladder works: SIESTA writes and reads ``<SystemLabel>.XV`` / ``.DM`` /
+    # ``.CG``, so the next stage finds the last one's geometry with no copying
+    # and no instruction (decision 26 -- engine-named files stay bare).
+    #
+    # This wrote ``-stage<N>`` until 2026-08-10.  ``-`` announces *a counter
+    # follows* (``job-contracts.md`` § 6.3) and a stage is not a counter, and a
+    # bare position silently reassigns outputs when the ladder grows (R5).
     from ..trajectory_log.format import molwatch_log_basename
-    if cfg.stage is not None:
-        _stage_suffix = f"-stage{int(cfg.stage)}"
-    else:
-        _stage_suffix = ""
+    _stage_suffix = f"_{cfg.stage}" if cfg.stage else ""
     _fdf_name  = f"{cfg.system_label}{_stage_suffix}.fdf"
     _out_name  = f"{cfg.system_label}{_stage_suffix}.out"
     _mw_name   = molwatch_log_basename(cfg.system_label, cfg.stage)
@@ -556,13 +591,12 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# Run from this directory -- all outputs share the "
             "SystemLabel basename below.")
         out.append(f"#     mpirun -np 4 siesta < {_fdf_name} > {_out_name}")
-        if cfg.stage is not None:
+        if cfg.stage:
+            out.append(f"# Stage {cfg.stage} -- {_stage_science(cfg)}")
             out.append(
-                f"# Stage {int(cfg.stage)} of a staged relaxation; "
-                "SIESTA reads .XV / .DM from the previous stage")
-            out.append(
-                "# (same SystemLabel, same directory).  See the Watch "
-                "tab's 'Staged relaxation workflow' panel.")
+                "# SIESTA reads .XV / .DM from the previous stage (same "
+                "SystemLabel, same directory).  See the Watch")
+            out.append("# tab's 'Staged relaxation workflow' panel.")
         out.append(
             "# Watch the run live: open the Watch tab and point it "
             "at this directory")
@@ -1887,11 +1921,33 @@ def render_siesta_stage_fdfs(
     # template is a caller bug and says so.
     cfg = template
     out: Dict[str, str] = {}
-    for stage in _enabled_stages(stages):
-        staged_cfg = effective_config(cfg, stage)
-        filename = f"{cfg.system_label}_{stage.name}.fdf"
-        out[filename] = render_fdf(struct, staged_cfg, cell=cell)
+    for stage, token in _stage_tokens(stages):
+        staged_cfg = dataclasses.replace(effective_config(cfg, stage),
+                                         stage=token)
+        out[f"{cfg.system_label}_{token}.fdf"] = render_fdf(
+            struct, staged_cfg, cell=cell)
     return out
+
+
+def _stage_tokens(stages) -> List[Tuple[object, str]]:
+    """Each ENABLED stage paired with its artifact token, ``<NN>_<name>``.
+
+    ``NN`` is the stage's 1-based place in the **full** ladder, not in the
+    enabled subset, so disabling one leaves a gap rather than renumbering what
+    follows -- *"gaps are honest"* (``project-layout.md`` § 4.2).  Renumbering
+    is the exact failure ``engines/stages.md`` R5 forbids: it would hand an
+    existing output to a stage that did not produce it.
+
+    That makes the ordinal safe to put in a filename **because § 4.2 restricts
+    growth to appending** -- once a stage has run, "insert between 1 and 2" is
+    a new stage numbered 03, not a renumbering.  Reordering rows of a ladder
+    that has ALREADY produced is the case this cannot see from here; the
+    produce owns it (P5), because only the produce can read what is on disk.
+    """
+    enabled = {id(s) for s in _enabled_stages(stages)}
+    return [(s, stage_token(i, s.name))
+            for i, s in enumerate(list(stages or []), start=1)
+            if id(s) in enabled]
 
 
 def render_siesta_stages_runner(
@@ -1926,21 +1982,25 @@ def render_siesta_stages_runner(
 
     Raises ``ValueError`` if no stage is enabled.
     """
-    enabled = _enabled_stages(stages)
+    pairs = _stage_tokens(stages)
     policy_of = dict(on_nonconvergence or {})
-    # Force-halt last enabled stage -- see docstring.
-    last_idx = len(enabled) - 1
+    # Force-halt last enabled stage -- see docstring.  Keyed on the stage's
+    # NAME, which is what the caller passes and what the description carries;
+    # the token is a filename concern and never a key.
+    last_idx = len(pairs) - 1
     policies = [
         "halt" if i == last_idx else policy_of.get(s.name, "halt")
-        for i, s in enumerate(enabled)
+        for i, (s, _tok) in enumerate(pairs)
     ]
-    # Stage names are constrained to ``[A-Za-z0-9_]+`` by ``task.py``'s
-    # STAGE_NAME_RE, so they're shell-safe unquoted in the bash array
-    # literal.
+    # The array carries each stage's TOKEN, because the loop below builds
+    # ``${BASENAME}_${stage}.fdf`` from it and that is the deck's real name
+    # (decision 27).  Tokens are ``<NN>_<name>`` with the name constrained to
+    # ``[A-Za-z0-9_]+`` by ``task.py``'s STAGE_NAME_RE, so they stay shell-safe
+    # unquoted in the bash array literal.
     return _STAGES_RUNNER_TEMPLATE.format(
         basename=template.system_label,
-        stages=" ".join(s.name for s in enabled),
+        stages=" ".join(tok for _s, tok in pairs),
         policies=" ".join(policies),
-        n_stages=len(enabled),
+        n_stages=len(pairs),
         siesta_cmd=siesta_cmd,
     )

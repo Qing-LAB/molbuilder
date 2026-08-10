@@ -175,17 +175,20 @@ def test_stages_to_jobset_default_ladder():
                                           stages_to_jobset)
 
     cfg = SiestaConfig()                   # the template -- no ladder in it
-    stages = default_siesta_stages()       # stage1+stage2 on, stage3 off
+    stages = default_siesta_stages()       # coarse+medium on, tight off
     js = stages_to_jobset(cfg, stages, shared=["C.psml"],
                           on_nonconvergence=DEFAULT_NONCONVERGENCE)
     assert js.kind == "ladder" and js.engine == "siesta"
-    assert [j.name for j in js.jobs] == ["stage1", "stage2"]
-    assert js.jobs[0].script == "siesta_stage1.fdf"
-    # stage2 chains off stage1; stage1 policy "proceed" -> afterany edge.
-    assert js.jobs[1].depends_on == "stage1"
+    # The JOB keeps the stage's NAME; its SCRIPT carries the artifact
+    # token, because that is the file the renderer wrote (decision 27).
+    assert [j.name for j in js.jobs] == ["coarse", "medium"]
+    assert js.jobs[0].script == "siesta_01_coarse.fdf"
+    assert js.jobs[1].script == "siesta_02_medium.fdf"
+    # medium chains off coarse; coarse policy "proceed" -> afterany edge.
+    assert js.jobs[1].depends_on == "coarse"
     assert js.jobs[1].dep_kind == "afterany"
-    # carry: .XV always + .DM (use_save_dm default) ; NO .CG (stage1 CG vs
-    # stage2 Broyden -- different optimizer, history not carried).
+    # carry: .XV always + .DM (use_save_dm default) ; NO .CG (coarse CG vs
+    # medium Broyden -- different optimizer, history not carried).
     patterns = [c.pattern for c in js.jobs[1].carry]
     assert "siesta.XV" in patterns and "siesta.DM" in patterns
     assert "siesta.CG" not in patterns
@@ -201,7 +204,7 @@ def test_stages_to_jobset_carries_cg_when_same_relax_type():
                                           stages_to_jobset)
 
     stages = default_siesta_stages()
-    # make stage2 use CG too (same as stage1) -> .CG should carry forward.
+    # make medium use CG too (same as coarse) -> .CG should carry forward.
     stages[1] = dataclasses.replace(
         stages[1], overrides={**stages[1].overrides, "relax_type": "CG"})
     js = stages_to_jobset(SiestaConfig(), stages)
@@ -233,7 +236,7 @@ def test_stages_to_jobset_halt_policy_gives_afterok():
                                           stages_to_jobset)
 
     js = stages_to_jobset(SiestaConfig(), default_siesta_stages(),
-                          on_nonconvergence={"stage1": "halt"})
+                          on_nonconvergence={"coarse": "halt"})
     assert js.jobs[1].dep_kind == "afterok"
 
 
@@ -255,13 +258,13 @@ def test_stages_to_jobset_resources_injection():
 
     from molbuilder.siesta.stages import default_siesta_stages
 
-    overrides = {"stage2": Resources(domain="public", time="7-00:00:00",
+    overrides = {"medium": Resources(domain="public", time="7-00:00:00",
                                      exclusive=True)}
     js = stages_to_jobset(SiestaConfig(), default_siesta_stages(),
                           resources_for=overrides.get)
     assert js.jobs[1].resources.domain == "public"
     assert js.jobs[1].resources.exclusive is True
-    # stage1 (no override) inherits job-level defaults.
+    # coarse (no override) inherits job-level defaults.
     assert js.jobs[0].resources.domain is None
 
 
@@ -272,7 +275,7 @@ def test_stages_to_jobset_rejects_invalid_ladder():
                                           stages_to_jobset)
 
     stages = default_siesta_stages()
-    stages[1] = dataclasses.replace(stages[1], name="stage1")  # duplicate
+    stages[1] = dataclasses.replace(stages[1], name="coarse")  # duplicate
     with pytest.raises(ValueError, match="collide|silently"):
         stages_to_jobset(SiestaConfig(), stages)
 

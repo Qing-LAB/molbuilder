@@ -933,12 +933,16 @@ class PySCFConfig:
     # merge picks them up automatically.  ``None`` (default) keeps the
     # unsuffixed name for single-run workflows.  ``job_name`` (the
     # protocol basename) stays identical across stages.
-    stage: Optional[int] = field(default=None, metadata={
+    # A stage's ARTIFACT TOKEN -- ``<NN>_<name>``, e.g. ``01_coarse``.  Same
+    # field, same meaning and same one helper as SiestaConfig.stage: PySCF's
+    # emitter resolves the log name through ``molwatch_log_basename`` too, so
+    # the two engines cannot spell one rule two ways.  Held an int (1/2/3) and
+    # produced ``-stage<N>`` until 2026-08-10 (decision 27).
+    stage: Optional[str] = field(default=None, metadata={
         "label": "Relaxation stage",
-        "engine_key":  '(molbuilder: filename suffix + log naming)',
-        "help":  "stage marker (1/2/3) for the .molwatch.log filename; "
-                 "None keeps the unsuffixed name",
-        "range": (1, 3),
+        "engine_key":  '(molbuilder: filename token + log naming)',
+        "help":  "stage token <NN>_<name> (e.g. 01_coarse) for the "
+                 ".molwatch.log filename; None keeps the unsuffixed name",
     })
 
     # Back-compat: the field was named ``molwatch_log`` before the

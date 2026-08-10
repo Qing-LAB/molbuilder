@@ -854,13 +854,13 @@ def test_pyscf_molwatch_emitter_uses_stage_suffix(h2o):
     """When cfg.stage is 1/2/3 the inlined ``MolwatchEmitter(...)``
     call writes to ``<JOB>-stage<N>.molwatch.log`` so stages don't
     overwrite each other in a shared directory."""
-    text = render_script(h2o, PySCFConfig(stage=2, job_name="my-job"))
+    text = render_script(h2o, PySCFConfig(stage="02_medium", job_name="my-job"))
     # Quote style is repr()'s choice (single or double); the contract
     # is the JOB + "<suffix>" expression with the right suffix.
     # 2026-05-27: path arg now wraps in _mb_outfile() so the log
     # resolves against the script directory regardless of cwd.
-    assert ("MolwatchEmitter(_mb_outfile(JOB + '-stage2.molwatch.log')" in text
-            or 'MolwatchEmitter(_mb_outfile(JOB + "-stage2.molwatch.log")' in text)
+    assert ("MolwatchEmitter(_mb_outfile(JOB + '_02_medium.molwatch.log')" in text
+            or 'MolwatchEmitter(_mb_outfile(JOB + "_02_medium.molwatch.log")' in text)
 
 
 def test_pyscf_molwatch_emitter_unsuffixed_when_stage_is_none(h2o):

@@ -26,22 +26,33 @@ if TYPE_CHECKING:
 
 
 def molwatch_log_basename(system_label: str,
-                          stage: Optional[int] = None) -> str:
-    """Resolve the canonical ``<basename>[.stage<N>].molwatch.log``
-    filename for a given system label + optional stage marker.
+                          stage: Optional[str] = None) -> str:
+    """The canonical ``<label>[_<NN>_<name>].molwatch.log`` for this run.
 
-    Per ``docs/execution/job-contracts.md``: when the user is running a staged
-    coarse->medium->tight relaxation, each stage gets a uniquely-named
-    log file in the same directory (the basename stays identical so
-    SIESTA's restart files transfer; only the molwatch-log filename
-    grows the suffix).  ``stage=None`` returns the unsuffixed name.
+    ``stage`` is a stage's **artifact token** (``01_coarse``), the same one its
+    deck carries -- :func:`molbuilder.identity.stage_token` builds it.  So a
+    stage's log takes the basename of the deck that produced it, and the two
+    can be matched by name.  ``stage=None`` returns the unsuffixed name for a
+    single-run workflow.
+
+    **A run's log is named for its deck, and that is one rule rather than two**
+    (``engines/stages.md`` § 7).  Until 2026-08-10 this wrote
+    ``<label>-stage<N>.molwatch.log`` while the deck beside it was
+    ``<label>_<name>.fdf``: two spellings of one idea, and in a ladder whose
+    stages the user had named, a stage's deck and its own log could not be
+    matched at all.  The hyphen was wrong twice over -- ``job-contracts.md``
+    § 6.3 reserves ``-`` for *a counter follows*.
+
+    The basename stays identical across stages either way, so SIESTA's
+    restart files still transfer untouched; only molbuilder's own names carry
+    the stage.
 
     Returns just the filename, not a full path; callers join with the
     target directory.
     """
     if stage is None:
         return f"{system_label}.molwatch.log"
-    return f"{system_label}-stage{int(stage)}.molwatch.log"
+    return f"{system_label}_{stage}.molwatch.log"
 
 
 def write_initial_preview(

@@ -895,8 +895,11 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   it only works if each deck writes its *own* log. Two decks resolving to one
   basename would interleave into a single file and the boundary would be lost.
   **The rule: a run's log is named for the deck that produced it** —
-  `<label>_<name>.molwatch.log` beside `<label>_<name>.fdf`. One naming, derived rather
-  than declared, so there is nothing to keep in step.
+  `<label>_<NN>_<name>.molwatch.log` beside `<label>_<NN>_<name>.fdf`. One
+  naming, derived rather than declared, so there is nothing to keep in step.
+  **Landed 2026-08-10**: `molwatch_log_basename` takes the stage's artifact
+  token, the same one the deck carries, and the run decoder reads it back
+  through `identity.parse_stage_token` rather than keeping a second regex.
 
   That is one rule instead of two, and it is a **small** correction — smaller
   than an earlier draft of this section claimed. Today the log basename is
@@ -913,9 +916,12 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   So the rule is worth adopting for consistency and for the third row, not
   because anything is currently unreadable.
 
-  **Cost, stated rather than hidden:** the run decoder's stage regex keys on the
-  `-stage<N>` form, so it changes with this. That is code following a contract,
-  which is the direction that is allowed.
+  **Cost, stated rather than hidden:** the run decoder's stage regex keyed on
+  the `-stage<N>` form, so it changed with this. That is code following a
+  contract, which is the direction that is allowed. What it did **not** cost is
+  the decoder's ordering: decision 27 keeps the ordinal in the token, so
+  `_anchor_sort_key` still has a number to sort on and the Results tab keeps its
+  notion of *the active stage*.
 
 **The test:** the decks are portable — an engine with no molbuilder present runs
 them correctly. The wrappers are not, and are not meant to be: they are baked for
@@ -1218,12 +1224,33 @@ to call the design's most consequential gap is not a gap at all.
 in the deck's filename, in every output beside it, in the notes on the states
 that recorded it, and in the detector above. Renaming a stage that has run moves all four at once, so it
 is an R4 event and takes an R4 checkpoint.
-This is also why the stage's position in the list must never appear in a
+This is also why the stage's **position in the list** must never appear in a
 filename: insert a stage at the front, or reorder two, and every positional
 number after it shifts — silently reassigning outputs that already exist to
-stages that did not produce them. **Names are stable; positions are not.** Where
-the shipped trajectory log uses `-stage<N>` (§ 7, the log bullet), that is the
-half of the naming question growth decides: it has to key on the name.
+stages that did not produce them. **Names are stable; positions are not.**
+
+> **A list position and an assigned ordinal are not the same number, and this
+> rule only forbids the first.** *Clarified 2026-08-10 with decision 27, which
+> puts an ordinal in the filename and would read as violating this rule without
+> the distinction.*
+>
+> | | shifts when the ladder grows? | may it be in a filename? |
+> |---|:--:|:--:|
+> | **position in the list** — where a row happens to sit today | **yes** | **no** — this rule |
+> | **`seq`, assigned once by the produce** (`project-layout.md § 4.2`) | **no** | **yes** |
+>
+> § 4.2 is what makes the second row true: *"a `seq` is never changed, so a
+> stage can only be added at the end"*, and *"insert something between 1 and 2
+> is not an insertion — it is a new stage that happens to be coarser, and
+> numbering it `03` is the truth."* A number that cannot shift cannot cause the
+> failure this rule exists to prevent. So the artifact token is `<NN>_<name>`
+> (`identity.stage_token`), carrying **both** halves: the ordinal so a flat
+> listing of eight decks sorts into the order they ran, the name so every
+> artifact of a stage can still be read back to it.
+
+Where the shipped trajectory log used `-stage<N>` (§ 7, the log bullet), that
+was the half of the naming question growth decides — **resolved 2026-08-10**: it
+keys on the token, so a stage's deck and its own log now share a basename.
 
 ### 7.4 What the layout costs the checkpoint system
 

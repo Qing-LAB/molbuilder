@@ -80,7 +80,7 @@ def test_stage_strategy_publishable_emits_two_stage_bundle(xyz, tmp_path):
                 "--stage-strategy", "publishable")
     assert r.exit_code == 0, r.output
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
-    assert files == ["JOB.run.sh", "JOB_stage1.fdf", "JOB_stage2.fdf"]
+    assert files == ["JOB.run.sh", "JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
 
 
 def test_stage_strategy_loose_only_emits_one_stage_bundle(xyz, tmp_path):
@@ -89,7 +89,7 @@ def test_stage_strategy_loose_only_emits_one_stage_bundle(xyz, tmp_path):
                 "--stage-strategy", "loose-only")
     assert r.exit_code == 0, r.output
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
-    assert files == ["JOB.run.sh", "JOB_stage1.fdf"]
+    assert files == ["JOB.run.sh", "JOB_01_coarse.fdf"]
 
 
 def test_stage_strategy_vib_quality_emits_three_stage_bundle(xyz, tmp_path):
@@ -99,9 +99,9 @@ def test_stage_strategy_vib_quality_emits_three_stage_bundle(xyz, tmp_path):
     assert r.exit_code == 0, r.output
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     assert files == ["JOB.run.sh",
-                     "JOB_stage1.fdf",
-                     "JOB_stage2.fdf",
-                     "JOB_stage3.fdf"]
+                     "JOB_01_coarse.fdf",
+                     "JOB_02_medium.fdf",
+                     "JOB_03_tight.fdf"]
 
 
 def test_no_stage_flags_preserves_single_fdf(xyz, tmp_path):
@@ -111,7 +111,7 @@ def test_no_stage_flags_preserves_single_fdf(xyz, tmp_path):
     assert fdf.exists()
     # No bundle artifacts should appear.
     assert not (tmp_path / "JOB.run.sh").exists()
-    assert not (tmp_path / "JOB_stage1.fdf").exists()
+    assert not (tmp_path / "JOB_01_coarse.fdf").exists()
 
 
 # --------------------------------------------------------------------- #
@@ -127,7 +127,7 @@ def test_no_stage_flags_preserves_single_fdf(xyz, tmp_path):
 # and so the producer's own input (§ 3).  A format change, pre-1.0, not a
 # compatibility shim.
 _TWO_STAGE_PAYLOAD = [
-    {"name": "stage1", "enabled": True, "overrides": {
+    {"name": "coarse", "enabled": True, "overrides": {
         "relax_type": "CG", "relax_steps": 50,
         "relax_force_tol": 0.10, "relax_max_displ": 0.30}},
     {"name": "stage_final", "enabled": True, "overrides": {
@@ -151,8 +151,8 @@ def test_stages_json_can_vary_a_field_no_stage_type_ever_carried(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stages-json", json.dumps(_MESH_LADDER))
     assert r.exit_code == 0, r.output
-    coarse = (tmp_path / "JOB_coarse.fdf").read_text()
-    tight = (tmp_path / "JOB_tight.fdf").read_text()
+    coarse = (tmp_path / "JOB_01_coarse.fdf").read_text()
+    tight = (tmp_path / "JOB_02_tight.fdf").read_text()
     # NOT the deck text.  ``mesh_cutoff`` is a float field and JSON has one
     # number, so the payload above writes ``150`` and resolution widens it to
     # 150.0 -- the deck reads the same however the description spelled it.
@@ -186,10 +186,10 @@ def test_stages_json_literal_overrides_ladder(xyz, tmp_path):
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     # Stage names from the payload, not defaults.
     assert files == ["JOB.run.sh",
-                     "JOB_stage1.fdf",
-                     "JOB_stage_final.fdf"]
+                     "JOB_01_coarse.fdf",
+                     "JOB_02_stage_final.fdf"]
     # Stage_final's MD block matches the payload's overrides.
-    body = (tmp_path / "JOB_stage_final.fdf").read_text()
+    body = (tmp_path / "JOB_02_stage_final.fdf").read_text()
     assert "MD.TypeOfRun Broyden" in body
     assert "MD.NumCGsteps 100" in body
     assert "MD.MaxForceTol 0.02 eV/Ang" in body
@@ -203,7 +203,7 @@ def test_stages_json_file_path_overrides_ladder(xyz, tmp_path):
                 "--stages-json", str(payload_path))
     assert r.exit_code == 0, r.output
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
-    assert "JOB_stage_final.fdf" in files
+    assert "JOB_02_stage_final.fdf" in files
 
 
 def test_stages_json_bad_literal_gives_clean_click_error(xyz, tmp_path):
@@ -313,7 +313,7 @@ def test_runner_stages_array_matches_emitted_fdfs(xyz, tmp_path):
                 "--stage-strategy", "vib-quality")
     assert r.exit_code == 0, r.output
     runner = (tmp_path / "JOB.run.sh").read_text()
-    assert "STAGES=(stage1 stage2 stage3)" in runner
+    assert "STAGES=(01_coarse 02_medium 03_tight)" in runner
     # Default ON_NONCONV (with vib-quality enabling stage3, the runner's
     # force-halt-last contract converts the would-be 'halt' to 'halt' --
     # so all three policies are visible explicitly here).
@@ -330,7 +330,7 @@ def test_stages_json_then_stage_strategy_layers_correctly(xyz, tmp_path):
     enable flags.  Combined, the user gets custom knob values from
     the payload PLUS the preset's enable pattern."""
     fdf = tmp_path / "JOB.fdf"
-    # Payload has stage1 + stage_final both enabled.  loose-only
+    # Payload has coarse + stage_final both enabled.  loose-only
     # strategy should only keep the FIRST stage enabled.
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stages-json", json.dumps(_TWO_STAGE_PAYLOAD),
@@ -338,10 +338,10 @@ def test_stages_json_then_stage_strategy_layers_correctly(xyz, tmp_path):
     assert r.exit_code == 0, r.output
     files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     # Only stage1's fdf survives the enable-flag overlay.
-    assert files == ["JOB.run.sh", "JOB_stage1.fdf"]
-    # And its MD block reflects the payload's stage1 knobs, not the
+    assert files == ["JOB.run.sh", "JOB_01_coarse.fdf"]
+    # And its MD block reflects the payload's 01_coarse knobs, not the
     # SiestaConfig defaults.
-    body = (tmp_path / "JOB_stage1.fdf").read_text()
+    body = (tmp_path / "JOB_01_coarse.fdf").read_text()
     assert "MD.NumCGsteps 50" in body
     assert "MD.MaxForceTol 0.1 eV/Ang" in body
 
@@ -366,11 +366,11 @@ def test_jobset_flag_emits_runnable_job_set_json(xyz, tmp_path):
     assert js.kind == "ladder" and js.engine == "siesta"
     assert js.validate() == []                       # framework-valid
     # scripts match the <label>_<stage>.fdf actually rendered next to it.
-    assert [j.script for j in js.jobs] == ["JOB_stage1.fdf", "JOB_stage2.fdf"]
+    assert [j.script for j in js.jobs] == ["JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
     for j in js.jobs:
         assert (tmp_path / j.script).is_file()
-    # the chain + carry are wired (stage2 warm-starts from stage1).
-    assert js.jobs[1].depends_on == "stage1"
+    # the chain + carry are wired (stage2 warm-starts from 01_coarse).
+    assert js.jobs[1].depends_on == "coarse"
     assert "JOB.XV" in [c.pattern for c in js.jobs[1].carry]
 
 
@@ -409,7 +409,7 @@ def test_jobset_end_to_end_produce_prep_status_submit(xyz, tmp_path):
 
     js = JobSet.load(b / "job-set.json")
     # cross-consistency: every Job.script names a file that was actually rendered
-    assert [j.script for j in js.jobs] == ["JOB_stage1.fdf", "JOB_stage2.fdf"]
+    assert [j.script for j in js.jobs] == ["JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
     for j in js.jobs:
         assert (b / j.script).is_file()
 
@@ -423,7 +423,7 @@ def test_jobset_end_to_end_produce_prep_status_submit(xyz, tmp_path):
 
     st = jobset_status(js, b)
     assert [s.state for s in st.stages] == ["pending", "pending"]
-    assert st.first_incomplete == "stage1" and st.complete is False
+    assert st.first_incomplete == "coarse" and st.complete is False
 
     res = submit_jobset(js, b, mode="direct", dry_run=True)
     assert [x.status for x in res] == ["planned", "planned"]
@@ -460,8 +460,8 @@ def test_stage_resources_set_per_stage_in_jobset(xyz, tmp_path):
     from molbuilder.jobset.model import JobSet
 
     b = tmp_path / "bundle"; b.mkdir()
-    spec = ('{"stage1": {"domain": "htc", "time": "0-04:00:00"}, '
-            '"stage2": {"domain": "public", "time": "7-00:00:00", '
+    spec = ('{"coarse": {"domain": "htc", "time": "0-04:00:00"}, '
+            '"medium": {"domain": "public", "time": "7-00:00:00", '
             '"exclusive": true}}')
     r = _invoke("fdf", str(xyz), str(b / "JOB.fdf"),
                 "--stage-strategy", "publishable", "--jobset",
@@ -493,7 +493,7 @@ def test_stage_resources_requires_jobset(xyz, tmp_path):
     r = CliRunner().invoke(cli, [
         "fdf", str(xyz), str(b / "JOB.fdf"),
         "--stage-strategy", "publishable",
-        "--stage-resources", '{"stage1": {"domain": "htc"}}'])
+        "--stage-resources", '{"coarse": {"domain": "htc"}}'])
     assert r.exit_code != 0
     assert "--stage-resources only applies" in r.output
 
@@ -504,7 +504,7 @@ def test_stage_resources_rejects_unknown_field(xyz, tmp_path):
     r = CliRunner().invoke(cli, [
         "fdf", str(xyz), str(b / "JOB.fdf"),
         "--stage-strategy", "publishable", "--jobset",
-        "--stage-resources", '{"stage1": {"domian": "htc"}}'])  # typo
+        "--stage-resources", '{"coarse": {"domian": "htc"}}'])  # typo
     assert r.exit_code != 0
     assert "unknown field" in r.output and "domian" in r.output
 
@@ -514,6 +514,6 @@ def test_stage_resources_rejects_non_object_body(xyz, tmp_path):
     r = CliRunner().invoke(cli, [
         "fdf", str(xyz), str(b / "JOB.fdf"),
         "--stage-strategy", "publishable", "--jobset",
-        "--stage-resources", '{"stage1": "htc"}'])         # not an object
+        "--stage-resources", '{"coarse": "htc"}'])         # not an object
     assert r.exit_code != 0
     assert "must be an object" in r.output

@@ -1490,8 +1490,8 @@ import { mount as mvMount, formula as mvFormula }
             // and the system_label for downstream display.
             const fdfLabel = (r.system_label || "siesta").replace(
                 /[^A-Za-z0-9._-]+/g, "_");
-            const _stage = stageNumberFromPreset();
-            const _stageSuffix = _stage ? `-stage${_stage}` : "";
+            const _stage = stageTokenFromPreset();
+            const _stageSuffix = _stage ? `_${_stage}` : "";
             state.lastFdfSave = {
                 filename:    fdfLabel + _stageSuffix + ".fdf",
                 params:      params,
@@ -1803,21 +1803,33 @@ import { mount as mvMount, formula as mvFormula }
         // alongside the previous ones in one directory doesn't
         // overwrite (and matches the "Run with: ... <name>-stage<N>.fdf"
         // line emitted in the FDF body).
-        const stage = stageNumberFromPreset();
-        const suffix = stage ? `-stage${stage}` : "";
+        const stage = stageTokenFromPreset();
+        const suffix = stage ? `_${stage}` : "";
         downloadAs(state.fdf, label + suffix + ".fdf");
     });
 
-    // Map the Generate-input form's stage-preset selector value to
-    // the SiestaConfig / PySCFConfig ``stage`` integer.  Custom and
-    // single-run modes pass null so the unsuffixed ``.molwatch.log``
-    // filename is used.
-    function stageNumberFromPreset() {
+    // Map the Generate-input form's stage-preset selector to the
+    // SiestaConfig / PySCFConfig ``stage`` field, which since 2026-08-10
+    // carries a stage's ARTIFACT TOKEN -- ``<NN>_<name>`` -- rather than an
+    // integer.  Custom and single-run modes pass null so the unsuffixed
+    // filenames are used.
+    //
+    // This function used to be ``stageNumberFromPreset`` and read:
+    //     if (v === "coarse") return 1;
+    // It threw the name away one line before the number became a filename,
+    // and nothing downstream could get it back -- the deck said ``-stage1``
+    // while a ladder's deck for the same tier said ``coarse``.  The dropdown
+    // held the answer the whole time; it just was not asked for it.
+    //
+    // Keep the ordinals aligned with SIESTA_STAGE_NAMES in
+    // molbuilder/config/siesta.py -- that table is the authority and this is
+    // the one place the browser restates it.
+    const STAGE_TOKENS = { coarse: "01_coarse",
+                           medium: "02_medium",
+                           tight:  "03_tight" };
+    function stageTokenFromPreset() {
         const v = ($("p-stage-preset") || {}).value || "custom";
-        if (v === "coarse") return 1;
-        if (v === "medium") return 2;
-        if (v === "tight")  return 3;
-        return null;
+        return STAGE_TOKENS[v] || null;
     }
 
     function collectFdfParams() {
@@ -1833,7 +1845,7 @@ import { mount as mvMount, formula as mvFormula }
         const params = fs.collectForm(
             $("siesta-form-container"), formSchemas.siesta
         );
-        params.stage = stageNumberFromPreset();
+        params.stage = stageTokenFromPreset();
         // Lift the selected stage's convergence policy to top-level
         // so the Save pipeline can pass continue_retries to the
         // .run.sh wrapper generation.
@@ -2082,8 +2094,8 @@ import { mount as mvMount, formula as mvFormula }
         const label = ($("py-job-name").value.trim() || "pyscf_relax")
             .replace(/[^A-Za-z0-9._-]+/g, "_");
         // Stage-aware filename for the same reason as dl-fdf above.
-        const stage = stageNumberFromPreset();
-        const suffix = stage ? `-stage${stage}` : "";
+        const stage = stageTokenFromPreset();
+        const suffix = stage ? `_${stage}` : "";
         downloadAs(state.pyscf, label + suffix + ".py", "text/x-python");
     });
 
@@ -2106,7 +2118,7 @@ import { mount as mvMount, formula as mvFormula }
         const params = fs.collectForm(
             $("pyscf-form-container"), formSchemas.pyscf
         );
-        params.stage = stageNumberFromPreset();
+        params.stage = stageTokenFromPreset();
         if (params.dispersion === "none") params.dispersion = null;
         // Drop nulls.
         Object.keys(params).forEach(k => {

@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from molbuilder.identity import parse_stage_token
 from molbuilder.parse.base import DirParser
 from molbuilder.parse.types import JobResult, ParseWarning
 
@@ -83,7 +84,6 @@ class JobTypeAmbiguousError(ValueError):
 
 # Internal patterns ---------------------------------------------------- #
 
-_STAGE_RE = re.compile(r"-stage(\d+)(?:-run\d+)?\.(?:fdf|out)$")
 _KGRID_BLOCK_RE = re.compile(
     r"%block\s+kgrid_Monkhorst_Pack\s*\n(.*?)%endblock\s+kgrid_Monkhorst_Pack",
     re.S | re.IGNORECASE,
@@ -94,10 +94,30 @@ _KGRID_BLOCK_RE = re.compile(
 
 
 def _detect_stage(filename: str) -> Optional[int]:
-    """Extract stage number from a *-stage<N>(-run<M>)?.<ext> filename.
-    Returns None if the filename has no stage suffix."""
-    m = _STAGE_RE.search(filename)
-    return int(m.group(1)) if m else None
+    """A file's stage ORDINAL, or ``None`` when it carries no stage token.
+
+    The token is ``<NN>_<name>`` (``bdt_au_01_coarse.fdf``) and this returns
+    the ``NN``.  Read through :func:`molbuilder.identity.parse_stage_token`,
+    which is the one place the shape is written down -- the decoder used to
+    carry its own ``-stage(N)`` regex, a second spelling of the emitter's
+    convention that could and did drift from it.
+
+    **Still an int, and deliberately so.**  Decision 27 kept the ordinal in
+    the filename, so everything downstream that ORDERS by stage --
+    :func:`_anchor_sort_key`, the ``.out`` listing, the ``stage`` field of the
+    engine-input envelope -- keeps working unchanged.  Had the token carried
+    the name alone, the anchor rule would have lost its sort key and the
+    Results tab its notion of "the active stage"; that is the trap
+    ``staged-runs-implementation-plan.md`` § 8d walked into and § 8e closed.
+    """
+    hit = parse_stage_token(filename)
+    return hit[0] if hit else None
+
+
+def _detect_stage_name(filename: str) -> Optional[str]:
+    """A file's stage NAME, or ``None``.  The half a person reads."""
+    hit = parse_stage_token(filename)
+    return hit[1] if hit else None
 
 
 def _anchor_sort_key(p: Path) -> Tuple[bool, int, str]:

@@ -64,15 +64,15 @@ def h2():
 
 
 def test_stage_name_emits_stage_header(h2, tmp_path):
-    p = tmp_path / "JOB-stage1.molwatch.log"
+    p = tmp_path / "JOB_01_coarse.molwatch.log"
     write_initial_preview(h2, p, job="JOB", engine="siesta",
-                            stage_name="stage1")
+                            stage_name="01_coarse")
     text = p.read_text()
-    assert "# stage: stage1" in text
+    assert "# stage: 01_coarse" in text
 
 
 def test_convergence_targets_emit_namespaced_headers(h2, tmp_path):
-    p = tmp_path / "JOB-stage1.molwatch.log"
+    p = tmp_path / "JOB_01_coarse.molwatch.log"
     write_initial_preview(h2, p, job="JOB", engine="siesta",
                             convergence_targets={
                                 "max_force_ev_per_ang": 0.05,
@@ -116,17 +116,17 @@ def test_convergence_targets_empty_dict_emits_no_headers(h2, tmp_path):
 
 
 def test_stage_name_and_convergence_can_be_combined(h2, tmp_path):
-    p = tmp_path / "JOB-stage2.molwatch.log"
+    p = tmp_path / "JOB_02_medium.molwatch.log"
     write_initial_preview(h2, p, job="JOB", engine="siesta",
-                            stage_name="stage2",
+                            stage_name="02_medium",
                             convergence_targets={
                                 "max_force_ev_per_ang": 0.04,
                             })
     text = p.read_text()
-    assert "# stage: stage2" in text
+    assert "# stage: 02_medium" in text
     assert "# convergence.max_force_ev_per_ang: 0.04" in text
     # Headers appear before the step block.
-    stage_ix = text.find("# stage: stage2")
+    stage_ix = text.find("# stage: 02_medium")
     step_ix = text.find("==== molwatch step 0 begin ====")
     assert 0 < stage_ix < step_ix
 
@@ -148,7 +148,7 @@ def test_step_block_unchanged_by_new_kwargs(h2, tmp_path, monkeypatch):
     p2 = tmp_path / "with.log"
     write_initial_preview(h2, p1, job="J", engine="siesta")
     write_initial_preview(h2, p2, job="J", engine="siesta",
-                            stage_name="stage1",
+                            stage_name="01_coarse",
                             convergence_targets={"max_force_ev_per_ang": 0.05})
     body_marker = "==== molwatch step 0 begin ===="
     body1 = p1.read_text().split(body_marker, 1)[1]
@@ -166,16 +166,26 @@ def _invoke(*args):
 
 
 def test_multi_stage_cli_emits_per_stage_molwatch_logs(xyz, tmp_path):
-    """``molbuilder fdf ... --stage-strategy vib-quality`` produces
-    one ``<basename>-<stage>.molwatch.log`` per enabled stage."""
+    """``molbuilder fdf ... --stage-strategy vib-quality`` produces one
+    ``<label>_<NN>_<name>.molwatch.log`` per enabled stage.
+
+    The names carried a hyphen and a bare position (``JOB-stage1``) until
+    2026-08-10.  Both were wrong: ``-`` announces *a counter follows*
+    (`job-contracts.md` § 6.3), and a log named for a position could not be
+    matched to the deck that wrote it once a user named their stages.  P4
+    units 2-4."""
     fdf = tmp_path / "JOB.fdf"
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stage-strategy", "vib-quality")
     assert r.exit_code == 0, r.output
-    logs = sorted(p.name for p in tmp_path.glob("JOB-stage*.molwatch.log"))
-    assert logs == ["JOB-stage1.molwatch.log",
-                    "JOB-stage2.molwatch.log",
-                    "JOB-stage3.molwatch.log"]
+    logs = sorted(p.name for p in tmp_path.glob("JOB_*.molwatch.log"))
+    assert logs == ["JOB_01_coarse.molwatch.log",
+                    "JOB_02_medium.molwatch.log",
+                    "JOB_03_tight.molwatch.log"]
+    # And each one sits beside the deck that produced it, sharing its stem --
+    # the whole point of the rename (`engines/stages.md` § 7).
+    for log in logs:
+        assert (tmp_path / log.replace(".molwatch.log", ".fdf")).exists()
 
 
 def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
@@ -184,24 +194,24 @@ def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
     matches the stage that's currently running.
 
     Default ladder (siesta/stages.py::default_siesta_stages) per stage:
-      stage1: 0.05 (loose preopt)
-      stage2: 0.04 (publishable)
-      stage3: 0.01 (crystal-tight)
+      01_coarse: 0.05 (loose preopt)
+      02_medium: 0.04 (publishable)
+      03_tight:  0.01 (crystal-tight)
     """
     fdf = tmp_path / "JOB.fdf"
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stage-strategy", "vib-quality")
     assert r.exit_code == 0, r.output
-    text1 = (tmp_path / "JOB-stage1.molwatch.log").read_text()
-    text2 = (tmp_path / "JOB-stage2.molwatch.log").read_text()
-    text3 = (tmp_path / "JOB-stage3.molwatch.log").read_text()
+    text1 = (tmp_path / "JOB_01_coarse.molwatch.log").read_text()
+    text2 = (tmp_path / "JOB_02_medium.molwatch.log").read_text()
+    text3 = (tmp_path / "JOB_03_tight.molwatch.log").read_text()
     assert "# convergence.max_force_ev_per_ang: 0.05" in text1
     assert "# convergence.max_force_ev_per_ang: 0.04" in text2
     assert "# convergence.max_force_ev_per_ang: 0.01" in text3
     # And each carries its own stage label.
-    assert "# stage: stage1" in text1
-    assert "# stage: stage2" in text2
-    assert "# stage: stage3" in text3
+    assert "# stage: 01_coarse" in text1
+    assert "# stage: 02_medium" in text2
+    assert "# stage: 03_tight" in text3
 
 
 def test_per_stage_molwatch_log_carries_max_steps(xyz, tmp_path):
@@ -212,9 +222,9 @@ def test_per_stage_molwatch_log_carries_max_steps(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stage-strategy", "vib-quality")
     assert r.exit_code == 0, r.output
-    text1 = (tmp_path / "JOB-stage1.molwatch.log").read_text()
-    text2 = (tmp_path / "JOB-stage2.molwatch.log").read_text()
-    text3 = (tmp_path / "JOB-stage3.molwatch.log").read_text()
+    text1 = (tmp_path / "JOB_01_coarse.molwatch.log").read_text()
+    text2 = (tmp_path / "JOB_02_medium.molwatch.log").read_text()
+    text3 = (tmp_path / "JOB_03_tight.molwatch.log").read_text()
     assert "# convergence.max_steps: 600" in text1
     assert "# convergence.max_steps: 200" in text2
     assert "# convergence.max_steps: 100" in text3
@@ -227,9 +237,9 @@ def test_two_stage_strategy_emits_only_two_logs(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stage-strategy", "publishable")
     assert r.exit_code == 0, r.output
-    logs = sorted(p.name for p in tmp_path.glob("JOB-stage*.molwatch.log"))
-    assert logs == ["JOB-stage1.molwatch.log",
-                    "JOB-stage2.molwatch.log"]
+    logs = sorted(p.name for p in tmp_path.glob("JOB_*.molwatch.log"))
+    assert logs == ["JOB_01_coarse.molwatch.log",
+                    "JOB_02_medium.molwatch.log"]
 
 
 def test_single_stage_path_unchanged_by_c14(xyz, tmp_path):

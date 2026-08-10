@@ -74,12 +74,12 @@ def _need(p: Path) -> Path:
 
 def test_anchor_unstaged_does_not_beat_staged(tmp_path: Path) -> None:
     """B1 round-2: a `template.fdf` (unstaged, lex-late) must NOT
-    win over `device-stage1.fdf` (staged).  Pre-fix the sort key
+    win over `device_01_coarse.fdf` (staged).  Pre-fix the sort key
     `(_detect_stage(p) or 0, p.name)` gave template.fdf stage=0
-    and let lex tie-break elevate it over a real stage1."""
+    and let lex tie-break elevate it over a real staged deck."""
     template = tmp_path / "template.fdf"
     template.write_text("SystemLabel template\n")
-    staged1 = tmp_path / "device-stage1.fdf"
+    staged1 = tmp_path / "device_01_coarse.fdf"
     staged1.write_text("SystemLabel device\n")
     sorted_paths = sorted([template, staged1], key=_anchor_sort_key)
     # ascending sort, take [-1] = "highest" anchor — must be the
@@ -88,10 +88,10 @@ def test_anchor_unstaged_does_not_beat_staged(tmp_path: Path) -> None:
 
 
 def test_anchor_picks_highest_stage(tmp_path: Path) -> None:
-    """B1: with stage1, stage2, stage3 present, [-1] picks stage3."""
-    s1 = tmp_path / "device-stage1.fdf"; s1.write_text("SystemLabel d\n")
-    s2 = tmp_path / "device-stage2.fdf"; s2.write_text("SystemLabel d\n")
-    s3 = tmp_path / "device-stage3.fdf"; s3.write_text("SystemLabel d\n")
+    """B1: with three staged decks present, [-1] picks the highest."""
+    s1 = tmp_path / "device_01_coarse.fdf"; s1.write_text("SystemLabel d\n")
+    s2 = tmp_path / "device_02_medium.fdf"; s2.write_text("SystemLabel d\n")
+    s3 = tmp_path / "device_03_tight.fdf"; s3.write_text("SystemLabel d\n")
     sorted_paths = sorted([s2, s3, s1], key=_anchor_sort_key)
     assert sorted_paths[-1] == s3
 

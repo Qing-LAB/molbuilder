@@ -122,6 +122,36 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
     # what proves the subtraction, and the guard below fails if any of the
     # names comes back.  What replaced it is mechanism 11, which was
     # already here.
+    # -- decision 27's one naming rule (P4 units 2-4, 2026-08-10) ------
+    #  These are not an eleventh way to EXPRESS a stage -- they are the one
+    #  way to NAME one, which question 2 is about.  Mechanism 6 renders the
+    #  decks; these decide what those decks are called, in a single place
+    #  that the emitter, the log, the browser and the decoder all read.
+    "stage_token": (
+        None, "molbuilder/identity.py",
+        "builds `<NN>_<name>` -- the one token every per-stage artifact is "
+        "named from, and the same one a stage directory uses"),
+    "parse_stage_token": (
+        None, "molbuilder/identity.py",
+        "reads it back.  The decoder used to keep its own `-stage(N)` regex, "
+        "a second spelling of the emitter's convention that could drift"),
+    "_stage_tokens": (
+        None, "molbuilder/siesta/input.py",
+        "pairs each ENABLED stage with its token, numbering from its place "
+        "in the FULL ladder so disabling one leaves a gap rather than "
+        "renumbering what follows (project-layout 4.2)"),
+    "_detect_stage_name": (
+        None, "molbuilder/parse/dirs/job.py",
+        "the observing side -- the half of the token a person reads"),
+    "_stage_science": (
+        None, "molbuilder/siesta/input.py",
+        "the deck's one-line stage comment, DERIVED from the config being "
+        "rendered so it cannot drift from the keywords below it (decision "
+        "27's second half)"),
+    "SIESTA_STAGE_NAMES": (
+        1, "molbuilder/config/siesta.py",
+        "what each tier is CALLED -- read by both doors (the --stage overlay "
+        "and default_siesta_stages) so one tier cannot have two names"),
     "render_siesta_stage_fdfs": (
         6, "molbuilder/siesta/input.py", "flat -- one deck per enabled stage"),
     "render_siesta_stages_runner": (
@@ -401,9 +431,10 @@ def measure_positional_names() -> list[str]:
     return offences
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "P4 -- one naming rule.  Two producers key a filename on a stage's "
-    "position: molwatch_log_basename and the structure-optimization tab."))
+# Was ``xfail(strict=True)`` until 2026-08-10 with the reason: "P4 -- one naming
+# rule.  Two producers key a filename on a stage's position:
+# molwatch_log_basename and the structure-optimization tab."  P4 units 2-4
+# removed both, so the marker came off and this guards for real.
 def test_no_emitted_name_is_keyed_on_a_stage_position():
     """Question 2."""
     offences = measure_positional_names()

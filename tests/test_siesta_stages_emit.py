@@ -62,7 +62,7 @@ def cfg():
 
 @pytest.fixture
 def stages():
-    """The shipped ladder: stage1 + stage2 enabled, stage3 disabled."""
+    """The shipped ladder: 01_coarse + 02_medium enabled, 03_tight disabled."""
     return default_siesta_stages()
 
 
@@ -73,7 +73,7 @@ def stages():
 
 def test_fdfs_returns_one_per_enabled_stage(h2, cfg, stages):
     fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
-    assert sorted(fdfs) == ["JOB_stage1.fdf", "JOB_stage2.fdf"]
+    assert sorted(fdfs) == ["JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
 
 
 def test_fdfs_filename_uses_system_label(h2, stages):
@@ -92,12 +92,12 @@ def test_fdfs_share_systemlabel_for_warm_restart(h2, cfg, stages):
 
 
 def test_fdfs_per_stage_md_block_uses_stage_values(h2, cfg, stages):
-    """stage1 = CG / 600 / 0.05 / 0.20, stage2 = Broyden / 200 / 0.04
+    """stage1 = CG / 600 / 0.05 / 0.20, 02_medium = Broyden / 200 / 0.04
     / 0.05.  Each fdf's MD block reflects its own stage's values, NOT
     the cfg.relax_* default."""
     fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
-    s1 = fdfs["JOB_stage1.fdf"]
-    s2 = fdfs["JOB_stage2.fdf"]
+    s1 = fdfs["JOB_01_coarse.fdf"]
+    s2 = fdfs["JOB_02_medium.fdf"]
 
     assert "MD.TypeOfRun CG" in s1
     assert "MD.NumCGsteps 600" in s1
@@ -115,14 +115,14 @@ def test_fdfs_disabled_stages_drop_out(h2, cfg, stages):
     stages[1] = dataclasses.replace(stages[1], enabled=False)
     stages[2] = dataclasses.replace(stages[2], enabled=True)
     fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
-    assert sorted(fdfs) == ["JOB_stage1.fdf", "JOB_stage3.fdf"]
+    assert sorted(fdfs) == ["JOB_01_coarse.fdf", "JOB_03_tight.fdf"]
 
 
 def test_fdfs_single_enabled_stage_is_still_emitted(h2, cfg, stages):
     for i in (1, 2):
         stages[i] = dataclasses.replace(stages[i], enabled=False)
     fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
-    assert list(fdfs) == ["JOB_stage1.fdf"]
+    assert list(fdfs) == ["JOB_01_coarse.fdf"]
 
 
 def test_fdfs_zero_enabled_raises(h2, cfg, stages):
@@ -154,9 +154,9 @@ def test_runner_is_valid_bash(cfg, stages):
 def test_runner_arrays_match_enabled_stages(cfg, stages):
     script = render_siesta_stages_runner(
         cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    # Defaults: stage1 + stage2 enabled.
-    assert "STAGES=(stage1 stage2)" in script
-    # stage1.on_nonconvergence='proceed' (preserved); stage2 is the
+    # Defaults: 01_coarse + 02_medium enabled.
+    assert "STAGES=(01_coarse 02_medium)" in script
+    # stage1.on_nonconvergence='proceed' (preserved); 02_medium is the
     # last enabled stage so it's force-halted (was already 'halt' here).
     assert "ON_NONCONV=(proceed halt)" in script
 
@@ -168,8 +168,8 @@ def test_runner_force_halts_last_enabled_stage_even_if_user_set_proceed(
     the publishable result; silent fall-through is a bug."""
     script = render_siesta_stages_runner(
         cfg, stages,
-        on_nonconvergence={"stage1": "proceed", "stage2": "proceed"})
-    # stage1 keeps 'proceed'; stage2 is force-halted.
+        on_nonconvergence={"coarse": "proceed", "medium": "proceed"})
+    # 01_coarse keeps 'proceed'; 02_medium is force-halted.
     assert "ON_NONCONV=(proceed halt)" in script
 
 
@@ -239,7 +239,7 @@ def test_runner_single_stage_collapses_to_one_element_arrays(cfg, stages):
         stages[i] = dataclasses.replace(stages[i], enabled=False)
     script = render_siesta_stages_runner(
         cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    assert "STAGES=(stage1)" in script
+    assert "STAGES=(01_coarse)" in script
     # Single enabled stage is ALSO the last -> force-halt applies.
     assert "ON_NONCONV=(halt)" in script
 
@@ -250,7 +250,7 @@ def test_runner_three_stage_ladder(cfg):
     stages = default_siesta_stages("vib-quality")
     script = render_siesta_stages_runner(
         cfg, stages, on_nonconvergence=DEFAULT_NONCONVERGENCE)
-    assert "STAGES=(stage1 stage2 stage3)" in script
+    assert "STAGES=(01_coarse 02_medium 03_tight)" in script
     assert "ON_NONCONV=(proceed halt halt)" in script
 
 

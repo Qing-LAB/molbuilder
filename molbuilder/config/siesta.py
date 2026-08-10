@@ -738,21 +738,27 @@ class SiestaConfig:
         "help": "emit inline tuning hints and a Troubleshooting block in the FDF",
     })
 
-    # Staged-relaxation marker (job-layout v1, Cut 3+).  When 1, 2, or 3,
-    # the preview ``<basename>.molwatch.log`` is written as
-    # ``<basename>-stage<N>.molwatch.log`` so multiple stages of a
-    # coarse->medium->tight relaxation accumulate in one directory and
-    # the Watch tab's multi-stage merge picks them up automatically.
-    # ``None`` (default) keeps the unsuffixed filename for single-run
-    # workflows.  Constraints: SystemLabel stays identical across stages
-    # (so SIESTA's .XV / .DM / .CG restart files transfer cleanly); only
-    # the preview-log filename gets the suffix.
-    stage: Optional[int] = field(default=None, metadata={
+    # A stage's ARTIFACT TOKEN -- ``<NN>_<name>``, e.g. ``01_coarse``.  Every
+    # file molbuilder names for this stage carries it: the deck, the stdout and
+    # the trajectory log (``<label>_01_coarse.fdf`` and friends), so a stage's
+    # deck and its own log match by name.  ``None`` (default) keeps the
+    # unsuffixed names for a single-run workflow.
+    #
+    # It held an INT (1/2/3) until 2026-08-10 and produced ``-stage<N>``.  Two
+    # things were wrong with that and both are decisions:
+    #   * ``-`` announces *a counter follows* (``job-contracts.md`` § 6.3), and
+    #     a stage is not a counter -- it is part of one name, which is ``_``;
+    #   * a bare position is what R5 forbids in a filename.  The token carries
+    #     an ordinal that is ASSIGNED ONCE and never reassigned, which is a
+    #     different thing (decision 27; ``identity.stage_token``).
+    #
+    # SystemLabel stays identical across stages either way, so SIESTA's
+    # .XV / .DM / .CG still transfer between them untouched (decision 26).
+    stage: Optional[str] = field(default=None, metadata={
         "label": "Relaxation stage",
-        "engine_key":  '(molbuilder: filename suffix + log naming)',
-        "help":  "stage marker (1/2/3) for the preview .molwatch.log "
-                 "filename; None keeps the unsuffixed name",
-        "range": (1, 3),
+        "engine_key":  '(molbuilder: filename token + log naming)',
+        "help":  "stage token <NN>_<name> (e.g. 01_coarse) carried by this "
+                 "stage's deck, stdout and log; None keeps the unsuffixed name",
         # skip_cli: the CLI's ``--stage`` flag (cli.py::cmd_fdf) is
         # the richer entry point -- it sets cfg.stage AND applies the
         # tier-aligned overlay (relax_type / steps / force_tol /
@@ -1187,6 +1193,19 @@ SIESTA_RESTART_GROUP = RestartGroup(
 )
 
 
+#: What each tier is CALLED.  Decision 27 (2026-08-10) put the ordinal in the
+#: artifact token (``01_coarse``), which forces these to be descriptive rather
+#: than positional: ``bdt_au_01_stage1.fdf`` says the number twice and the
+#: science none.  These are the names the browser's preset dropdown has always
+#: shown (``index.html`` -- *Stage 1 — Coarse (fast descent)*) and the ones
+#: every worked example in ``engines/stages.md`` uses.
+#:
+#: ONE table, read by both doors: ``default_siesta_stages`` builds the ladder
+#: from it and the CLI's ``--stage N`` resolves through it, so the deck
+#: ``--stage 2`` writes and the deck tier 2 of the ladder writes cannot drift.
+SIESTA_STAGE_NAMES: Dict[int, str] = {1: "coarse", 2: "medium", 3: "tight"}
+
+
 SIESTA_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
     1: {
         "relax_type":      "CG",
@@ -1263,6 +1282,7 @@ SIESTA_STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
 __all__ = [
     "SiestaConfig",
     "Config",
+    "SIESTA_STAGE_NAMES",
     "SIESTA_STAGE_PRESETS",
     "apply_siesta_stage",
     "SIESTA_STAGE_STRATEGY_PRESETS",

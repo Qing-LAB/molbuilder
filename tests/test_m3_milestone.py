@@ -70,8 +70,8 @@ def test_a_two_stage_ladder_renders_all_of_the_group_and_none_of_it(h2o):
     # Keyed by FILENAME (`<label>_<stage>.fdf`), not by stage name -- which
     # is itself the § 3.2 rule that anything a stage produced carries
     # `_<stage>` while anything the engine resumes from carries the bare id.
-    assert _keys_in(decks[f"{ID}_coarse.fdf"]) == []
-    assert _keys_in(decks[f"{ID}_tight.fdf"]) == \
+    assert _keys_in(decks[f"{ID}_01_coarse.fdf"]) == []
+    assert _keys_in(decks[f"{ID}_02_tight.fdf"]) == \
         sorted(SIESTA_RESTART_GROUP.keys)
 
 

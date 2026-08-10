@@ -665,12 +665,21 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
     # ...) rides through.
     if stage is not None:
         import dataclasses as _dc
+        from .config.siesta import SIESTA_STAGE_NAMES
+        from .identity import stage_token
         cfg = apply_siesta_stage(cfg, int(stage))
-        # cfg.stage drives the molwatch-log filename suffix and the
-        # "# Stage N of a staged relaxation" header comment.  Setting
-        # it here (in addition to the overlay) makes ``--stage N``
-        # the one-flag way to produce a coherent stage-N fdf.
-        cfg = _dc.replace(cfg, stage=int(stage))
+        # cfg.stage is the stage's ARTIFACT TOKEN -- ``01_coarse`` -- and it
+        # drives the deck, the stdout and the molwatch-log filenames plus the
+        # deck's stage comment.  Setting it here (in addition to the overlay)
+        # makes ``--stage N`` the one-flag way to produce a coherent deck.
+        #
+        # The name comes from SIESTA_STAGE_NAMES, the SAME table
+        # ``default_siesta_stages`` builds the ladder from, so the deck
+        # ``--stage 2`` writes and the deck tier 2 of a ladder writes carry
+        # the same token.  Before 2026-08-10 this set the bare int and the two
+        # doors produced ``-stage2`` and ``_medium`` for one tier.
+        cfg = _dc.replace(
+            cfg, stage=stage_token(int(stage), SIESTA_STAGE_NAMES[int(stage)]))
 
     # ---- The id, resolved ONCE, before either branch ------------------
     #
@@ -982,20 +991,27 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     # tab live plot draws the correct horizontal threshold for the
     # currently-running stage (per #542 / C1.4).
     if cfg.write_molwatch_log:
+        from .siesta.input import _stage_tokens
         from .trajectory_log import write_initial_preview
-        for stage in _enabled_stages(stages):
+        from .trajectory_log.format import molwatch_log_basename
+        for stage, token in _stage_tokens(stages):
             # The preview's threshold line must be the one the stage's OWN
             # deck carries, so it comes from the resolved config -- not from
             # the stage, which only names the cells that differ.  A stage
             # that does not override the tolerance shows the template's,
             # which is exactly what its .fdf will say.
             eff = effective_config(cfg, stage)
-            mw_path = out_dir / f"{basename}-{stage.name}.molwatch.log"
+            # Through ``molwatch_log_basename``, and with the same token the
+            # deck carries.  This line built ``f"{basename}-{stage.name}"`` by
+            # hand until 2026-08-10 -- a THIRD spelling of the naming rule,
+            # invisible to the log module's own tests because it never called
+            # it, and the reason a stage's deck and its log did not match.
+            mw_path = out_dir / molwatch_log_basename(basename, token)
             write_initial_preview(
                 struct, mw_path,
                 job=basename,
                 engine="siesta",
-                stage_name=stage.name,
+                stage_name=token,
                 convergence_targets={
                     "max_force_ev_per_ang": eff.relax_force_tol,
                     "max_steps":            eff.relax_steps,

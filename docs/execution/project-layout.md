@@ -1033,11 +1033,18 @@ assigned by the produce that creates it so a listing sorts in the order the work
 happens. It is read off the directory name and stored nowhere else — the
 description does not carry it, and nothing needs it to identify a stage.
 
-> **[hierarchical] `seq` exists only where stage directories do.** A flat
-> calculation has no stage directories, so there is nothing to number and no
-> `seq` at all; the order of the work is the order of the list in the
-> description. A rule about `seq` is a rule about one shape, and § 7 marks it as
-> one.
+> **`seq` exists in both shapes** — *corrected 2026-08-10 with decision 27.*
+> This read *"a flat calculation has no stage directories, so there is nothing
+> to number and no `seq` at all; the order of the work is the order of the list
+> in the description."* That is exactly backwards about which shape needs it:
+> the hierarchical shape has a directory to carry the order, and **the flat
+> shape is the one with nowhere else to put it**. A `seq` a reader has to
+> reconstruct by opening `task.json` is not carried by the layout at all.
+>
+> What stays true is where it is *kept*: nowhere but the artifacts. The produce
+> assigns it by reading what is already there — a directory name in the
+> hierarchy, a deck's filename in the flat shape — so `Stage` keeps the three
+> fields § 2 allows and `seq` is still not a fourth.
 
 That division is why nothing else needs the number, and § 4.1's table below is
 short as a result.
@@ -1049,8 +1056,8 @@ stage they belong to; the engine's cannot, because SIESTA gives no choice.
 | Where | Flat | Hierarchical |
 |---|---|---|
 | stage directory | — *(there are none)* | `<seq>_<name>` — `01_coarse`, `02_tight` |
-| deck | `<label>_<name>.fdf` | `<label>_<name>.fdf` **inside `01_coarse/`** — the same name; the directory adds the order, and the repetition is a self-check |
-| trajectory log | `<label>_<name>.molwatch.log` | `<label>_<name>.molwatch.log`, beside the deck |
+| deck | `<label>_<NN>_<name>.fdf` | `<label>_<NN>_<name>.fdf` **inside `<NN>_<name>/`** — the same name, and the repetition is a self-check |
+| trajectory log | `<label>_<NN>_<name>.molwatch.log` | `<label>_<NN>_<name>.molwatch.log`, beside the deck |
 | warm files | `<label>.XV` `.DM` `.CG` — bare, shared | `<label>.XV` `.DM` `.CG` — bare, inside the attempt |
 
 **The log is named for the deck that produced it, in either shape** — so it
@@ -1092,8 +1099,17 @@ table to specify.
 > > `coarse` and a log saying `stage1` — but it is a separator and a default, not
 > > the three-way problem I described.
 
-The deck does not carry the number: names are unique, so it would add nothing,
-and a deck's filename is quoted in the wrapper, the log and the outputs.
+**The deck carries the number too** — *decided 2026-08-10 (user)*: *"we may
+have many stages connected so I'd rather use names with index number."*
+
+This section read *"the deck does not carry the number: names are unique, so it
+would add nothing"* until then, and the flaw is in that "nothing". **Unique is
+not ordered.** With three stages the list order is memorable; with eight,
+`bdt_au_coarse` · `bdt_au_final` · `bdt_au_hires` · `bdt_au_refine` sorts
+alphabetically into an order nothing ran in, and the **flat** shape has no
+directory to say otherwise. The ordinal is safe in a name because § 4.2 assigns
+it once and never reassigns it — see `engines/stages.md` R5's table, which draws
+the line between an assigned ordinal and a list position.
 
 > **`seq` orders; `name` identifies — and only one of them belongs in a file.**
 > The stage directory is the single place both appear, because a directory

@@ -6,7 +6,7 @@ This is the ONLY place SIESTA stage knowledge meets the engine-agnostic
 **ladder** (a list of :class:`molbuilder.task.Stage`, from ``task.json``)
 into a ``ladder`` JobSet:
 
-  * one ``Job`` per enabled stage, its input ``<label>_<name>.fdf``;
+  * one ``Job`` per enabled stage, its input ``<label>_<NN>_<name>.fdf``;
   * a dependency chain whose kind comes from the non-convergence policy
     (§ 5): ``proceed`` -> ``afterany`` (run the next stage regardless), else
     (``halt`` / ``continue``) -> ``afterok`` (next runs only if this stage
@@ -46,10 +46,13 @@ from ..task import Stage
 #: stage1 ``proceed``: a loose CG warm-up that runs out of steps has still
 #: improved the geometry, and stage2 continues from it.  stage2 / stage3
 #: ``halt``: a production tier that did not converge must fail loud.
+#  Keyed on the shipped ladder's stage NAMES (``SIESTA_STAGE_NAMES``), which
+#  became coarse/medium/tight on 2026-08-10 -- the policy is per stage, so its
+#  keys are stage names and they move when the ladder's do.
 DEFAULT_NONCONVERGENCE: Dict[str, str] = {
-    "stage1": "proceed",
-    "stage2": "halt",
-    "stage3": "halt",
+    "coarse": "proceed",
+    "medium": "halt",
+    "tight":  "halt",
 }
 
 
@@ -68,7 +71,7 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
 
     Raises ``ValueError`` on an unknown strategy.
     """
-    from ..config.siesta import (SIESTA_STAGE_PRESETS,
+    from ..config.siesta import (SIESTA_STAGE_NAMES, SIESTA_STAGE_PRESETS,
                                  SIESTA_STAGE_STRATEGY_PRESETS)
 
     if strategy not in SIESTA_STAGE_STRATEGY_PRESETS:
@@ -105,7 +108,11 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
         # True -- continuation by accident rather than by description, which
         # is exactly what § 4 rule 2 exists to end.
         overrides["restart"] = "clean" if i == 0 else "continue"
-        out.append(Stage(name=f"stage{tier}",
+        # The tier's NAME, from the one table -- not ``f"stage{tier}"``, which
+        # this built until 2026-08-10.  Decision 27 puts the ordinal in the
+        # artifact token, so a name that is itself a position says the number
+        # twice (``<label>_01_stage1.fdf``) and the science none.
+        out.append(Stage(name=SIESTA_STAGE_NAMES[tier],
                          enabled=bool(enables[i]) if i < len(enables) else False,
                          overrides=overrides))
     return out
@@ -176,6 +183,11 @@ def stages_to_jobset(
                          cpus_per_task=getattr(eff, "omp_threads", None),
                          continue_retries=getattr(eff, "continue_retries", None))
 
+    # The token each stage's files carry -- from the SAME helper the renderer
+    # uses, so the JobSet cannot name a script the renderer did not write.
+    from .input import _stage_tokens
+    _token_of = {st.name: tok for st, tok in _stage_tokens(stages)}
+
     jobs = []
     prev = None
     for s in enabled:
@@ -193,8 +205,15 @@ def stages_to_jobset(
             if resolved[prev.name].relax_type == resolved[s.name].relax_type:
                 carry.append(Carry(f"{label}.CG", prev.name))
         jobs.append(Job(
+            # The JOB is named for the stage -- that is what a dependency edge
+            # and a --stage-resources key point at.  The SCRIPT is named with
+            # the stage's artifact token, because that is what
+            # ``render_siesta_stage_fdfs`` actually wrote to disk.  The two
+            # were one string until 2026-08-10, and after decision 27 a JobSet
+            # built from the old rule would point every job at a file that
+            # does not exist.
             name=s.name,
-            script=f"{label}_{s.name}.fdf",
+            script=f"{label}_{_token_of[s.name]}.fdf",
             resources=_res(s.name),
             depends_on=(prev.name if prev is not None else None),
             dep_kind=(_dep_kind(policy_of.get(prev.name, "halt"))

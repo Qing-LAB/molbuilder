@@ -650,19 +650,22 @@ def test_cg_relax_does_not_emit_md_temperature_block():
 # ---- Staged-relaxation suffix (job-layout v1) ---------------------------- #
 #
 # When ``cfg.stage`` is 1/2/3 the FDF's "Run with:" hint advertises a
-# ``<basename>-stage<N>.fdf`` filename and the convert() preview-write
-# uses ``<basename>-stage<N>.molwatch.log`` so multiple stages
+# ``<label>_<NN>_<name>.fdf`` filename and the convert() preview-write
+# uses ``<label>_<NN>_<name>.molwatch.log`` so multiple stages
 # accumulate in one directory and the Watch tab's multi-stage merge
 # picks them up automatically.
 
 
 def test_fdf_stage_suffix_appears_in_run_with_block():
+    # ``stage`` is the stage's ARTIFACT TOKEN since 2026-08-10, not an int:
+    # ``-stage2`` was a hyphen (which § 6.3 reserves for a counter) plus a bare
+    # position (which R5 forbids in a filename).
     fdf = render_fdf(_h2_struct(),
-                     SiestaConfig(system_label="my-job", stage=2))
-    assert "my-job-stage2.fdf" in fdf
-    assert "my-job-stage2.out" in fdf
-    assert "my-job-stage2.molwatch.log" in fdf
-    assert "Stage 2" in fdf
+                     SiestaConfig(system_label="my-job", stage="02_medium"))
+    assert "my-job_02_medium.fdf" in fdf
+    assert "my-job_02_medium.out" in fdf
+    assert "my-job_02_medium.molwatch.log" in fdf
+    assert "Stage 02_medium" in fdf
 
 
 def test_fdf_no_stage_suffix_when_stage_is_none():
@@ -670,7 +673,7 @@ def test_fdf_no_stage_suffix_when_stage_is_none():
                      SiestaConfig(system_label="my-job", stage=None))
     assert "my-job.fdf" in fdf
     assert "my-job.molwatch.log" in fdf
-    assert "Stage 1" not in fdf and "Stage 2" not in fdf
+    assert "Stage 0" not in fdf
 
 
 def test_convert_writes_stage_suffixed_preview_log(tmp_path):
@@ -681,10 +684,10 @@ def test_convert_writes_stage_suffixed_preview_log(tmp_path):
     in_p.write_text("2\nh2\nH 0 0 0\nH 0 0 0.74\n")
     fdf_p = tmp_path / "deliberately_unrelated_name.fdf"
     summary = convert(str(in_p), str(fdf_p),
-                      SiestaConfig(system_label="my-job", stage=3),
+                      SiestaConfig(system_label="my-job", stage="03_tight"),
                       vacuum=(12.0, 12.0, 12.0))
     assert os.path.basename(summary["molwatch_log"]) \
-        == "my-job-stage3.molwatch.log"
+        == "my-job_03_tight.molwatch.log"
 
 
 # --------------------------------------------------------------------- #
@@ -1132,22 +1135,27 @@ class TestSiestaStageOverlay:
                     f"Stage {stage} must emit Broyden; got:\n"
                     f"{[ln for ln in text.splitlines() if 'TypeOfRun' in ln]}")
 
-            # (b) cfg.stage was set: filename-suffix downstream (the
-            # generator embeds the suffix in molwatch-log naming +
-            # output XYZ paths).  Probe for the ``-stage{N}`` token
-            # appearing in any emitted path / comment.
-            assert f"-stage{stage}" in text, (
-                f"--stage {stage} must propagate cfg.stage = {stage} "
-                f"into the rendered fdf so the molwatch / output "
-                f"filenames carry the -stage{stage} suffix.  Missing "
-                f"in:\n"
+            # (b) cfg.stage was set: the ARTIFACT TOKEN goes downstream into
+            # the deck, the stdout and the molwatch-log names.  ``--stage N``
+            # resolves the tier's name through SIESTA_STAGE_NAMES -- the same
+            # table the ladder reads -- so both doors emit one token.
+            from molbuilder.config.siesta import (SIESTA_STAGE_NAMES,
+                                                   SIESTA_STAGE_PRESETS)
+            from molbuilder.identity import stage_token
+            want = stage_token(int(stage), SIESTA_STAGE_NAMES[int(stage)])
+            assert f"_{want}" in text, (
+                f"--stage {stage} must propagate the token {want!r} into the "
+                f"rendered fdf so the molwatch / output filenames carry it.  "
+                f"Missing in:\n"
                 f"{[ln for ln in text.splitlines() if 'stage' in ln.lower()][:5]}")
 
             # (c) Stage header comment: catches a regression that
-            # drops the ``# Stage N of a staged relaxation`` line
-            # without losing the algorithm choice.
-            assert f"Stage {stage} of a staged relaxation" in text, (
-                f"--stage {stage} must emit the ``# Stage {stage} "
-                f"of a staged relaxation`` header comment.  Missing "
-                f"in:\n"
-                f"{[ln for ln in text.splitlines() if 'Stage' in ln][:5]}")
+            # drops a ``# Stage <token> -- <the science>`` line whose
+            # numbers are read off THE CONFIG BEING RENDERED, so the comment
+            # cannot drift from the keywords below it (decision 27).
+            assert f"# Stage {want} --" in text, (
+                f"--stage {stage} must emit its stage line.  Missing in:\n"
+                f"{[ln for ln in text.splitlines() if ln.startswith('# Stage')]}")
+            assert (f"force tol "
+                    f"{SIESTA_STAGE_PRESETS[int(stage)]['relax_force_tol']}"
+                    in text)

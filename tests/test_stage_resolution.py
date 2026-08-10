@@ -60,9 +60,18 @@ def _tpl(**shared) -> SiestaConfig:
 
 def _deck(h2: Structure, cfg: SiestaConfig, stage: str,
           stages=None) -> str:
-    return render_siesta_stage_fdfs(
-        h2, cfg, stages if stages is not None else _ladder(),
-    )[f"{cfg.system_label}_{stage}.fdf"]
+    """The deck for the stage NAMED *stage*, found by its name.
+
+    Looked up rather than spelled: since decision 27 a deck is
+    ``<label>_<NN>_<name>.fdf``, and hard-coding the ordinal here would make
+    every one of these tests depend on where the stage sits in ``_ladder()``
+    -- which is the coupling R5 is about.  The caller says "the tight one";
+    this finds it."""
+    decks = render_siesta_stage_fdfs(
+        h2, cfg, stages if stages is not None else _ladder())
+    hit = [k for k in decks if k.endswith(f"_{stage}.fdf")]
+    assert len(hit) == 1, f"no single deck for stage {stage!r} in {sorted(decks)}"
+    return decks[hit[0]]
 
 
 def _value(deck: str, key: str) -> str:

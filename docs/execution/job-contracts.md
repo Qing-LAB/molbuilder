@@ -267,34 +267,31 @@ paths — do not conflate them:
   [`engines/stages.md`](?doc=engines/stages.md) § 1.1) rendered by
   `siesta/input.py::render_siesta_stage_fdfs` plus its `.run.sh` stage runner,
   and the `stages_to_jobset` JobSet producer — names each stage's input `.fdf`
-  and stdout `.out` **`<label>_<stagename>`**: an **underscore** plus the
-  stage's *name* (the default names are `stage1` / `stage2` / `stage3`):
+  and stdout `.out` **`<label>_<NN>_<name>`**: an **underscore** joining the
+  label, the stage's assigned ordinal and its name (the shipped ladder's names
+  are `coarse` / `medium` / `tight`):
 
   ```
   bundle-or-dir/
-  ├── my-job_stage1.fdf   my-job_stage1.out
-  ├── my-job_stage2.fdf   my-job_stage2.out
+  ├── my-job_01_coarse.fdf   my-job_01_coarse.out
+  ├── my-job_02_medium.fdf   my-job_02_medium.out
   ├── my-job.XV / .DM / .CG          ← unsuffixed, carried between stages
   └── my-job.STRUCT_OUT              ← final geometry, after the last stage
   ```
 
-- **The single-stage overlay** (`molbuilder fdf --stage N`, which emits *one*
-  stage's `.fdf` on its own) and the **molwatch log** basename use
-  **`<label>-stage<N>`**: a **hyphen** plus the stage *number*. The log name is
-  produced by `trajectory_log/format.py::molwatch_log_basename(system_label,
-  stage)` → `<label>-stage<N>.molwatch.log`. The run decoder's stage regex
-  (`parse/dirs/job.py::_STAGE_RE`) keys on this hyphen `-stage<N>` form.
-
-  > **This second convention is being retired, not reconciled** (decided
-  > 2026-08-07). **A run's log takes the basename of the deck that produced it** —
-  > `<label>_<name>.molwatch.log` — so there is one naming instead of two and
-  > nothing to keep in step. The number is the wrong half to keep: every other
-  > artifact of a stage keys on the *name*, so the log is the only one that
-  > cannot be read back to its stage without opening the description. The
-  > reasoning is [`engines/stages.md`](?doc=engines/stages.md) § 7; the naming
-  > table is [`execution/project-layout.md`](?doc=execution/project-layout.md)
-  > § 4.1. `_STAGE_RE` changes with it. Until that lands, what is written above
-  > is what the files are called.
+  > **Retired 2026-08-10 — there is one convention now, and this is it.** A
+  > second one lived here: the single-stage overlay (`molbuilder fdf --stage N`)
+  > and the molwatch log wrote **`<label>-stage<N>`**, a *hyphen* plus the stage
+  > *number*, while the ladder wrote `<label>_<name>`. Two spellings of one
+  > idea, and in a ladder whose stages the user had named, **a stage's deck and
+  > its own log could not be matched by name at all**.
+  >
+  > Both now carry the stage's **artifact token**, `<NN>_<name>` — the deck, the
+  > stdout and the log alike (`identity.stage_token`; § 6.3's Files table).
+  > `molwatch_log_basename` takes the token, and the decoder reads it back
+  > through `identity.parse_stage_token` instead of keeping its own regex.
+  > The hyphen was wrong on this table's own terms: `-` announces *a counter
+  > follows*, and a stage is not a counter.
 
 **Two multi-stage execution shapes exist, deliberately:**
 
@@ -1314,7 +1311,7 @@ parser) split a name without knowing what is in it.
 
 | | Means | Example |
 |:-:|---|---|
-| `_` | **joins parts of one name.** Neither side names the thing on its own | `bdt_au_relax`, `<label>_<stage>`, `01_coarse` |
+| `_` | **joins parts of one name.** Neither side names the thing on its own | `bdt_au_relax`, `<label>_<NN>_<stage>`, `01_coarse` |
 | `-` | **attaches a counter or qualifier** to a name that stands alone without it | `run-0`, `bench-G1K4C6`, `<label>-restart-aside-<UTC>` |
 | `.` | **introduces a type suffix** — what the file *is* | `.fdf`, `.XV`, `.molwatch.log`, `.fdf.template` |
 | `/` | **separates levels of a path** | `01_coarse/run-0/`, `02_tight/run-1/` |
@@ -1359,10 +1356,10 @@ last paragraph says why).
 |---|---|---|
 | **description** | `task.json` | the calculation root, both shapes |
 | **deck template** | `<label>.fdf.template` | the calculation root, both shapes |
-| **deck** | `<label>_<stage>.fdf` | flat: the root · hierarchical: inside `<seq>_<stage>/` |
-| **wrapper** | `<label>_<stage>.run.sh` / `.sbatch` | beside its deck |
-| **trajectory log** | `<label>_<stage>.molwatch.log` | beside its deck |
-| **stdout** | flat `<label>_<stage>-run<N>.out` · hierarchical `<label>_<stage>.out` | flat: beside the deck · hierarchical: inside `run-<n>/` |
+| **deck** | `<label>_<NN>_<stage>.fdf` | flat: the root · hierarchical: inside `<NN>_<stage>/` |
+| **wrapper** | `<label>_<NN>_<stage>.run.sh` / `.sbatch` | beside its deck |
+| **trajectory log** | `<label>_<NN>_<stage>.molwatch.log` | beside its deck |
+| **stdout** | flat `<label>_<NN>_<stage>-run<N>.out` · hierarchical `<label>_<NN>_<stage>.out` | flat: beside the deck · hierarchical: inside `run-<n>/` |
 | **warm-restart state** | `<label>.XV` `.DM` `.CG` — **bare** | flat: shared at the root · hierarchical: inside the attempt |
 | **launch record** | `run.json` | hierarchical only, inside the attempt |
 
@@ -1374,6 +1371,13 @@ repetition is the point: without it every stage directory holds an
 identically-named deck, and two swapped by a bad copy or a resumed `prep`
 disagree with nothing (`run-identity.md § 3.2`). **The trajectory log takes the
 deck's basename in both shapes**, which is why it needs no convention of its own.
+
+**`<NN>_<stage>` is one token, not two fields** — a stage's *artifact token*,
+built by `identity.stage_token` and used verbatim as a path segment in the
+hierarchy and as part of a filename in both shapes. The ordinal is there so a
+flat listing of a long ladder sorts into the order it ran; it is assigned once
+and never reassigned, which is what keeps it clear of `engines/stages.md` R5
+(*decided 2026-08-10 — the plan's decision 27*).
 
 **The one thing still shape-dependent is the attempt**, and only because one
 shape has a directory for it: flat separates attempts with the `-run<N>` counter

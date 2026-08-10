@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 
 @dataclass(frozen=True)
@@ -154,6 +154,64 @@ OUR_FILE_PATTERNS: Sequence[str] = (
     # geomeTRIC's own optimizer log
     "{label}.log", "{label}_geom_*.log",
 )
+
+
+#: A stage's artifact token, ``<NN>_<name>`` — as it appears in a filename and
+#: as a stage directory is named.  Two capture groups: the ordinal and the name.
+#:
+#: The name may itself contain ``_`` (``STAGE_NAME_RE`` is ``[A-Za-z0-9_]+``),
+#: and so may the label — which is why this is only ever applied **anchored to
+#: the end** of a filename, never searched loosely.
+_STAGE_TOKEN = re.compile(r"(\d{2,})_([A-Za-z0-9_]+)")
+
+
+def stage_token(seq: int, name: str) -> str:
+    """``<NN>_<name>`` — the one token every per-stage artifact is named from.
+
+    Decision 27 (2026-08-10, user): *"we may have many stages connected so I'd
+    rather use names with index number."*  The ordinal travels **with** the
+    name, in both layouts, so a flat listing of eight decks sorts into the
+    order the stages ran rather than alphabetically.
+
+    This is the same token a stage *directory* uses (``01_coarse``), which is
+    the point: one token, one meaning, whether it is a path segment or part of
+    a filename.
+
+    **It is not the stage's position in the list**, which
+    ``engines/stages.md`` R5 forbids in a filename for a precise reason —
+    inserting at the front would shift every later number and reassign outputs
+    that already exist.  ``seq`` is assigned once and never reassigned
+    (``project-layout.md`` § 4.2: *"insert something between 1 and 2 is not an
+    insertion; it is a new stage that happens to be coarser, and numbering it
+    03 is the truth"*), so it cannot shift and R5's failure cannot occur.
+
+    Zero-padded to two digits because it **sorts** — the same reason the
+    directory pads (``job-contracts.md`` § 6.3).
+    """
+    return f"{int(seq):02d}_{name}"
+
+
+def parse_stage_token(filename: str,
+                      label: str = "") -> Optional[Tuple[int, str]]:
+    """The ``(seq, name)`` a filename's stage token carries, or ``None``.
+
+    Anchored at the tail: after the token comes an optional ``-run<N>``
+    counter, then the extension, and nothing else.
+
+    **Pass ``label`` whenever it is known.**  Both a label and a stage name may
+    contain ``_``, so without it a calculation the user called
+    ``run_01_setup`` has a plain deck ``run_01_setup.fdf`` that reads as stage
+    1 *"setup"*.  With it, everything before the token must be exactly the
+    label and the ambiguity is gone.  Callers that genuinely do not know the
+    label get the best-effort read, which is what the old ``-stage<N>`` regex
+    gave them too.
+    """
+    tail = r"_(\d{2,})_([A-Za-z0-9_]+?)(?:-run\d+)?\.[A-Za-z0-9.]+$"
+    m = (re.fullmatch(re.escape(label) + tail, filename) if label
+         else re.search(tail, filename))
+    if not m:
+        return None
+    return int(m.group(1)), m.group(2)
 
 
 def is_ours(name: str, label: str) -> bool:
@@ -282,4 +340,4 @@ def run_id(label: str, formula: str = "", *,
 
 
 __all__ = ["MAX_LABEL_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "is_ours",
-           "normalise_id", "run_id"]
+           "normalise_id", "parse_stage_token", "run_id", "stage_token"]

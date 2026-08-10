@@ -46,7 +46,7 @@ def test_producer_returns_stage_files_runner_species_jobset():
     b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable())
     assert isinstance(b, StageBundle)
     # one .fdf per enabled stage, all sharing the SystemLabel stem
-    assert sorted(b.fdf_files) == ["h2_stage1.fdf", "h2_stage2.fdf"]
+    assert sorted(b.fdf_files) == ["h2_01_coarse.fdf", "h2_02_medium.fdf"]
     assert all(txt.strip() for txt in b.fdf_files.values())
     assert b.runner_name == "h2.run.sh"
     assert b.runner_text.strip()
@@ -54,7 +54,7 @@ def test_producer_returns_stage_files_runner_species_jobset():
     # jobset is the ladder over the enabled stages
     assert b.jobset is not None
     assert b.jobset.kind == "ladder"
-    assert [j.name for j in b.jobset.jobs] == ["stage1", "stage2"]
+    assert [j.name for j in b.jobset.jobs] == ["coarse", "medium"]
 
 
 def test_jobset_shared_defaults_to_expected_psml_names():
