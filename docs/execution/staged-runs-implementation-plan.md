@@ -1500,6 +1500,32 @@ jobs, and what goes in and comes out) · § 1.6 (**stages do not chain**).
    numbers, the chosen geometry and the rendered deck appear together, which is
    what makes `submit` a plain yes.
 
+   > **Two of the three landed 2026-08-10**, and the third is honestly absent
+   > rather than faked. `prep` now reports the **resources** the stage will be
+   > launched with, and the **deck's own claim** about the launch it was
+   > rendered for — with the verdict.
+   >
+   > **It closes a gap unit 2 opened.** That unit made `submit` refuse a launch
+   > the deck was not rendered for, correctly and at the last honest moment.
+   > But a refusal that first appears when you are committing cluster time is
+   > exactly the surprise `prep` exists to prevent, so the warning now arrives
+   > while changing your mind is still free, and it says *what will happen*
+   > rather than only what is wrong.
+   >
+   > **One comparison, two surfaces.** `launch_agreement` moved out of `submit`
+   > into `prep` — the step that owns the deck and the wrapper (§ 2.3) — and
+   > `check_launch_matches_deck` is the raiser built on it. A parametrised test
+   > asserts the equivalence directly across all five shapes of the question,
+   > because two implementations of *"do these agree?"* drift the way 12c
+   > describes, and the drift is silent in the worst direction: a `prep` that
+   > reports no problem before a `submit` that refuses.
+   >
+   > **Still missing**, and named rather than stubbed: the report's first line
+   > (`reading 02_tight/bench/bench-result.json`) waits on unit 5, and *"the
+   > deck **rendered**"* waits on the deck moving into `prep`. Until then this
+   > reports what the deck *already says* — a weaker claim honestly made rather
+   > than the stronger one faked.
+
 **Subtracts:** `bench prep-run` as a separate verb — it *is* `prep run` written
 a second time; the second machine-detection path if one appears.
 
@@ -1542,6 +1568,43 @@ navigates).
    text retire.
 2. `stages_to_jobset` stops emitting `depends_on` and `Carry` edges between
    stages. `carry_deref` stays for the chained ladder `jobset` can still build.
+
+   > **Walked 2026-08-10, not started — and it is two changes, not one.** The
+   > `Carry` half is now pure subtraction: P6 unit 3 made `prep` read the
+   > per-job `warm` declaration instead, and derives the `Carry` list from it,
+   > so deleting the derivation removes a projection rather than a rule.
+   >
+   > **The `depends_on` half carries a question the plan had not asked.** With
+   > no edges, what does `submit run --chain` thread? Under SLURM, dropping
+   > them without replacement submits **every stage in parallel** — three
+   > stages sharing one `SystemLabel`, started at once — which is worse than
+   > the chain being retired. So `--chain` must *construct* the edges at
+   > launch: `job-system.md § 5.2`'s superseding table says exactly that,
+   > *"one stage at a time; `--chain` **to do it anyway**"*, and § 5's *"the
+   > chaining machinery itself stays … for anyone who wants a chain with their
+   > eyes open."* **The chain becomes something you ask for, not something the
+   > description stores.**
+   >
+   > Two things follow, and the second is the one to decide before coding:
+   >
+   > **(a) `dep_kind` is stored on the wrong job.** Today job *N* holds
+   > `_dep_kind(policy of job N-1)` — the predecessor's policy, kept on the
+   > successor. That is the same shape as the defect P6 unit 3 just fixed: a
+   > value computed for a pair, stored on one member, read by someone assuming
+   > a different pair. It should be each job's **own** outgoing policy, so
+   > `--chain` can compose edges from local facts.
+   >
+   > **(b) `--chain` may not mean the same thing in both shapes.**
+   > `project-layout.md § 1`'s table: continuing is **free** in flat — *"the
+   > next stage finds them lying there"* — and in the hierarchy *"you **name**
+   > the run, and its files are copied in"*. A named run must have finished, so
+   > a hierarchical `--chain` cannot copy anything at submit time: the file
+   > does not exist yet. That is the whole argument for stages not chaining,
+   > and it means hierarchical `--chain` today only works **because of the
+   > dangling carry symlinks this unit removes**. Flat needs none of it.
+   > *Options: refuse hierarchical `--chain` naming the reason; or keep the
+   > links for it alone, which makes 12b's "no dangling symlink" conditional.*
+   > **User call — it changes what a shipped flag does.**
 3. `submit` resolves **one** attempt for the stage it is starting: next unused
    number, create, link the deck and package, copy what was named, launch there.
 4. `materialize.job_dir_name` returns `point-<name>` for **every** job and must

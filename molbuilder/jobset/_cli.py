@@ -256,8 +256,66 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         click.echo("  cold start -- nothing copied in")
     else:
         click.echo("  nothing carried in (first stage, or none named)")
+    _echo_resolved(js, base, rep["stage"], rep["dir"])
     click.echo(f"next: molbuilder jobset submit run {stage} "
                f"--mode submit|direct")
+
+
+def _echo_resolved(js, base, stage_name: str, attempt) -> None:
+    """The resolved half of the prep report (P6 unit 6).
+
+    `job-system.md` § 2.3.3: *"**Printing what it resolved is what makes
+    `submit` a plain yes.**  It is the only place the measured numbers, the
+    chosen geometry and the rendered deck appear together, which is exactly
+    where a person should be looking before spending a week."*
+
+    Two of those three are available today, and this prints those two rather
+    than a placeholder for the third:
+
+    * the **resources** this stage will be launched with;
+    * the **deck's own claim** about the launch it was rendered for, and
+      whether the two agree.
+
+    **The second is the point.** P6 unit 2 made `submit` refuse a launch the
+    deck was not rendered for — correctly, and at the last honest moment. But
+    a refusal that first appears when you are committing cluster time is a
+    surprise, and `prep` is the step that exists so there are none. Both read
+    :func:`~molbuilder.jobset.prep.launch_agreement`, so the warning here and
+    the refusal there cannot disagree.
+
+    **What is still missing, and it is not this function's to invent.** The
+    contract's report opens with the measured verdict
+    (``reading 02_tight/bench/bench-result.json``) and says the deck was
+    ``rendered`` — both of which wait on P6 unit 5 and on the deck moving into
+    `prep`. Until then this reports what the deck *already says*, which is a
+    weaker claim honestly made rather than the stronger one faked.
+    """
+    from .prep import launch_agreement
+    job = next((j for j in js.jobs if j.name == stage_name), None)
+    if job is None:
+        return
+    r = job.resources
+    asks = [f"mpi_np {r.mpi_np if r.mpi_np else 'auto'}",
+            f"omp {r.cpus_per_task if r.cpus_per_task else 'auto'}"]
+    if r.continue_retries:
+        asks.append(f"retries {r.continue_retries}")
+    click.echo(f"  resources: {' | '.join(asks)}")
+
+    a = launch_agreement(attempt, job)
+    if a.verdict == "silent":
+        return                       # the deck makes no claim; say nothing
+    deck = Path(job.script).name
+    if a.verdict == "agrees":
+        click.echo(f"  {deck}: rendered for mpi_np {a.rendered_text} "
+                   f"-- agrees with this launch")
+        return
+    click.echo(click.style(
+        f"  {deck}: rendered for mpi_np {a.rendered_text}, but this launch "
+        f"asks {a.launch_text}\n"
+        f"    submit WILL REFUSE this -- a deck derives values from the rank "
+        f"count (BlockSize above all), so one rendered for a different launch "
+        f"is wrong for this one.  Re-render it, or launch at "
+        f"{a.rendered_text}.", fg="yellow"), err=True)
 
 
 @jobset_group.command("submit", short_help="launch a prepped stage")

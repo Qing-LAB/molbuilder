@@ -1896,6 +1896,129 @@ def test_a_deck_with_no_bench_marks_says_nothing_and_is_not_refused(tmp_path):
     assert submit_jobset(js, tmp_path, mode="direct", dry_run=True)
 
 
+# --------------------------------------------------------------------- #
+#  P6 unit 6 -- prep prints what it resolved, so submit is a plain yes    #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("deck,launch", [
+    (None, None),        # both defer to the wrapper
+    (8, 8),              # the same explicit count
+    (None, 14),          # THE live failure: a count imposed on an auto deck
+    (8, 32),             # two explicit counts that differ
+    (8, None),           # a deck rendered for 8, launched without saying so
+])
+def test_the_prep_warning_and_the_submit_refusal_cannot_disagree(
+        tmp_path, deck, launch):
+    """One comparison, two surfaces — the guard that keeps them one.
+
+    `job-system.md` § 2.3.3: *"Printing what it resolved is what makes `submit`
+    a plain yes."*  That only holds if what `prep` says and what `submit` does
+    are the same answer. Two implementations of *"do these agree?"* would drift
+    the way `staged-runs-architecture.md` 12c describes — agreeing today, with
+    nothing keeping them agreeing — and the drift is silent in the worst
+    direction: a prep that reports no problem before a submit that refuses.
+
+    So this asserts the equivalence directly, across every shape the question
+    has, rather than checking each surface's wording in isolation.
+    """
+    from molbuilder.jobset.prep import launch_agreement
+    from molbuilder.jobset.submit import submit_jobset, SubmitError
+
+    js = _one_stage_bundle(tmp_path, mpi_np_deck=deck, mpi_np_launch=launch)
+    warns = launch_agreement(tmp_path, js.jobs[0]).verdict == "differs"
+    try:
+        submit_jobset(js, tmp_path, mode="direct", dry_run=True)
+        refuses = False
+    except SubmitError:
+        refuses = True
+    assert warns == refuses, (
+        f"deck={deck} launch={launch}: prep "
+        f"{'warns' if warns else 'is quiet'} and submit "
+        f"{'refuses' if refuses else 'proceeds'}")
+
+
+def _prep_output(tmp_path, mpi_np_deck, mpi_np_launch):
+    """Run the real `jobset prep run coarse` on a hierarchical bundle and give
+    back everything it said (stdout and stderr are one stream here)."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.model import Job, JobSet, Resources
+
+    _describe(tmp_path, "hierarchical", names=("coarse",))
+    _deck_rendered_for(tmp_path / "JOB_01_coarse.fdf", mpi_np_deck)
+    (tmp_path / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
+    JobSet(name="JOB", engine="siesta", kind="ladder",
+           jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
+                     resources=Resources(mpi_np=mpi_np_launch))]
+           ).write(tmp_path / "job-set.json")
+    # `output` is stdout and stderr interleaved (click >= 8.2), which is what
+    # a person at a terminal actually sees -- and the warning goes to stderr on
+    # purpose, so a report piped to a file still carries it to the screen.
+    res = CliRunner().invoke(
+        jobset_group, ["prep", "run", "coarse", "--bundle", str(tmp_path),
+                       "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    return res.output
+
+
+def test_prep_names_both_numbers_and_says_submit_will_refuse(tmp_path):
+    """The gap P6 unit 2 opened: `submit` refuses correctly and at the last
+    honest moment, but a refusal that first appears when you are committing
+    cluster time is exactly the surprise `prep` exists to prevent.
+
+    So the warning arrives while it is still cheap to change your mind, and it
+    says what will happen rather than only what is wrong.
+    """
+    out = _prep_output(tmp_path, mpi_np_deck=None, mpi_np_launch=14)
+    assert "auto" in out and "14" in out          # BOTH numbers, as at submit
+    assert "REFUSE" in out                        # ...and what comes next
+    assert "BlockSize" in out                     # ...and why it matters
+
+
+def test_prep_says_the_deck_agrees_when_it_does(tmp_path):
+    """Not decoration: a report that mentioned the deck only on disagreement
+    would leave a reader unable to tell *checked and fine* from *not checked*,
+    which is the whole difference between a review step and a quiet one."""
+    out = _prep_output(tmp_path, mpi_np_deck=8, mpi_np_launch=8)
+    assert "agrees with this launch" in out
+    assert "REFUSE" not in out
+
+
+def test_prep_stays_quiet_about_a_deck_that_makes_no_claim(tmp_path):
+    """A deck with no BENCH-MARKS block has said nothing about its launch, so
+    there is nothing to report — and reporting *"agrees"* would be a claim
+    nobody made."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.model import Job, JobSet, Resources
+
+    _describe(tmp_path, "hierarchical", names=("coarse",))
+    (tmp_path / "JOB_01_coarse.fdf").write_text("SystemLabel JOB\n")
+    (tmp_path / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
+    JobSet(name="JOB", engine="siesta", kind="ladder",
+           jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
+                     resources=Resources(mpi_np=99))]
+           ).write(tmp_path / "job-set.json")
+    res = CliRunner().invoke(
+        jobset_group, ["prep", "run", "coarse", "--bundle", str(tmp_path),
+                       "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    out = res.output
+    assert "rendered for" not in out
+    assert "resources:" in out                    # the rest of the report stays
+
+
+def test_prep_reports_the_resources_this_stage_will_be_launched_with(tmp_path):
+    """The second of § 2.3.3's three — *"the measured numbers, the chosen
+    geometry and the rendered deck appear together"*. `auto` is printed as a
+    word rather than omitted, because a blank line and *"the wrapper decides"*
+    are different claims."""
+    out = _prep_output(tmp_path, mpi_np_deck=8, mpi_np_launch=8)
+    assert "resources: mpi_np 8" in out
+    assert "omp auto" in out
+
+
 def test_a_flat_stage_that_never_ran_does_not_borrow_a_siblings_state(tmp_path):
     """`project-layout.md` § 1: flat is **depth 1** — every stage shares one
     directory and they are told apart by the deck's token in each filename.

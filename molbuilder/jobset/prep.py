@@ -22,8 +22,10 @@ variation), so the two job-set kinds stay one mechanism.
 
 from __future__ import annotations
 
+import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Union
 
 from .materialize import job_dir_names, shape_of, materialize, relink
 from .model import JobSet
@@ -32,6 +34,119 @@ from .model import JobSet
 class PrepError(Exception):
     """A JobSet could not be prepped (invalid set, or a script missing from
     the bundle root)."""
+
+
+# --------------------------------------------------------------------- #
+#  Does the deck agree with the launch?  (P6 unit 2 · project-layout      #
+#  § 2.3.1 — "step 3 cannot precede step 1")                             #
+# --------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class LaunchAgreement:
+    """Whether a deck was rendered for the launch it is about to get.
+
+    ``verdict`` is one of:
+
+    | ``"silent"`` | the deck makes no claim about its launch, so there is nothing to disagree with — and nothing to refuse |
+    | ``"agrees"`` | the rank count it was rendered for is the one it will get |
+    | ``"differs"`` | the two are different numbers, or one is `auto` and the other is not |
+
+    ``rendered_for`` is what the deck's BENCH-MARKS block records (an int, or
+    the string ``"auto"``); ``launching_at`` is the job's ``mpi_np`` (an int,
+    or ``None`` meaning *let the wrapper decide*).
+    """
+    verdict:      str
+    rendered_for: Optional[Union[int, str]] = None
+    launching_at: Optional[int] = None
+
+    @staticmethod
+    def _fmt(v) -> str:
+        return "auto" if v in ("auto", None) else str(v)
+
+    @property
+    def rendered_text(self) -> str:
+        return self._fmt(self.rendered_for)
+
+    @property
+    def launch_text(self) -> str:
+        return self._fmt(self.launching_at)
+
+
+def launch_agreement(job_dir, job) -> LaunchAgreement:
+    """Read the deck's launch claim and compare it with this job's.
+
+    `project-layout.md § 2.3.1` states the five steps and says the order is
+    **forced**: *"Step 3 cannot precede step 1, because a deck carries values
+    that depend on how it will be launched — a block size derived from the rank
+    count … A parameter that depends on the launch cannot be decided before the
+    launch is known."*
+
+    Today step 3 happens at `molbuilder fdf`, on whatever machine typed it, and
+    the rank count is resolved hours later by the wrapper. **The two halves of
+    one ordered sequence run in different places, and nothing carried the
+    first's answer to the third.** On 2026-08-10 that produced a deck rendered
+    with no rank count — so ``BlockSize`` from the size-only branch — launched
+    at ``-np 14``, and SIESTA refused at startup with *"You have too many
+    processors for the system size"*.
+
+    P4 unit 5 put the launch quantity **into** the deck, which is why that
+    failure was diagnosable at all. **Recording is not agreeing**: this is the
+    comparison, and it lives here rather than in `submit` because `prep` is the
+    step that owns the deck and the wrapper (§ 2.3), and because a person is
+    owed the answer at the moment they are still deciding — not at the moment
+    they are committing cluster time.
+    """
+    deck = Path(job_dir) / os.path.basename(job.script)
+    if not deck.is_file():
+        return LaunchAgreement("silent")
+    from ..parse.scripts.bench_marks import _extract_bench_marks_dict
+    marks = _extract_bench_marks_dict(deck.read_text(encoding="utf-8",
+                                                     errors="replace"))
+    if not marks or "mpi_np" not in marks:
+        # A deck with no BENCH-MARKS block says nothing about its launch, so
+        # there is nothing to disagree with.  The check is an agreement between
+        # two statements, never a demand that every deck make one.
+        return LaunchAgreement("silent")
+    rendered_for = marks["mpi_np"]                 # an int, or the str "auto"
+    launching_at = job.resources.mpi_np            # an int, or None == auto
+    agree = ((rendered_for == "auto" and launching_at is None)
+             or rendered_for == launching_at)
+    return LaunchAgreement("agrees" if agree else "differs",
+                           rendered_for, launching_at)
+
+
+def check_launch_matches_deck(job_dir, job) -> None:
+    """Refuse a launch the deck was not rendered for (P6 unit 2).
+
+    Three outcomes, and the middle one is the live defect:
+
+    * deck ``auto`` + launch ``auto`` — both defer to the wrapper. Fine.
+    * deck ``auto`` + launch ``N`` — the deck's launch-derived values were
+      computed with **no** rank count, and now one is being imposed. Refused.
+    * deck ``N`` + launch ``M`` — refused, with both numbers named.
+
+    This is the last honest moment, not the first: :func:`launch_agreement`
+    answers the same question at `prep`, where it is still cheap to change
+    your mind. Both call one comparison, so the warning and the refusal cannot
+    come to different conclusions.
+    """
+    from .submit import SubmitError
+    a = launch_agreement(job_dir, job)
+    if a.verdict != "differs":
+        return
+    deck = os.path.basename(job.script)
+    raise SubmitError(
+        f"job {job.name!r}: this deck was rendered for mpi_np "
+        f"{a.rendered_text}, and you are launching it at "
+        f"{a.launch_text}.\n"
+        f"  {deck} derives values from the rank count -- BlockSize above "
+        f"all -- so a deck rendered for one launch is wrong for another "
+        f"(project-layout.md § 2.3.1: a parameter that depends on the launch "
+        f"cannot be decided before the launch is known).\n"
+        f"  Re-render the deck for this launch, or launch it at "
+        f"{a.rendered_text}.  The deck records what it assumed in its "
+        f"BENCH-MARKS block, which is what made this checkable.")
 
 
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
@@ -130,4 +245,6 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     return dirs
 
 
-__all__ = ["prep_jobset", "PrepError"]
+__all__ = ["prep_jobset", "PrepError",
+           "launch_agreement", "check_launch_matches_deck",
+           "LaunchAgreement"]
