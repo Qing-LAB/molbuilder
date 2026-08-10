@@ -1117,7 +1117,7 @@ molbuilder's rather than the engine's:
 > is still refused. See `execution/checkpointing.md` L1.
 
 **Both are asked for, never taken** (corrected 2026-08-07 — this paragraph used
-to say the opposite, and `execution/checkpointing.md § 6` is the decision).
+to say the opposite, and `execution/checkpointing.md § 9` is the decision).
 molbuilder never takes a checkpoint on its own. What these two boundaries are is
 the two moments where **`prep`, running interactively, asks** — showing the
 message it would write and the tag if a stage finished.

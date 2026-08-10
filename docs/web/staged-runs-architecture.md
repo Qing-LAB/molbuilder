@@ -171,7 +171,7 @@ big binaries archived by content. `engines/stages.md § 7.3` names the two
 boundaries that matter — before a replacing produce, and when a stage's run
 finishes — and **`prep`, running interactively, asks at each of them**, showing
 the message it would write. molbuilder never takes one on its own
-(`checkpointing.md § 6`). A folder then stops being a state and becomes a chain
+(`checkpointing.md § 9`). A folder then stops being a state and becomes a chain
 of states you can re-enter: branch at coarse, try a different tight, keep both.
 
 **Two gaps were named here, and the checkpoint rework closed both.** The first
@@ -488,7 +488,7 @@ and because you are meant to read that verdict and decide. Folding it into
 **`prep run` asks rather than reading the verdict silently.** A benchmark lives
 inside the stage it measured, so prep can always *find* one — but finding is not
 permission. It says a verdict exists and waits, the same way it asks before
-changing a directory that already holds results (`checkpointing.md § 6`).
+changing a directory that already holds results (`checkpointing.md § 9`).
 Explicit over implicit, every time.
 
 **Those four preps are one command because they are one act** — *assemble a
@@ -737,7 +737,7 @@ appear together, which is exactly where a person should be looking.
     the job ends at 3am with nothing local watching. Asking at the next prep needs
     no observer, because a finished run's state stays intact until prep touches
     it, which is exactly when the question is asked
-    (`checkpointing.md § 6`). Still needs `task.json` and the producer, but
+    (`checkpointing.md § 9`). Still needs `task.json` and the producer, but
     for the *message* — knowing which stage, and how the run went — not for a
     trigger.
 
@@ -750,7 +750,7 @@ appear together, which is exactly where a person should be looking.
     feature.** Item 11 is about a *staged* folder's history. The flat
     shape needs the same trigger for a different reason: it is the **only** way
     back to a previous state, because each stage overwrites the last's warm files
-    (`checkpointing.md § 5.1`). A missed checkpoint there is not a thinner history
+    (`checkpointing.md § 8`). A missed checkpoint there is not a thinner history
     — it is a state that no longer exists anywhere. *Done when:* the same
     boundary that triggers a checkpoint in a staged folder triggers one in a flat
     one, and the surface says plainly that this is the save point rather than
@@ -1001,7 +1001,7 @@ appear together, which is exactly where a person should be looking.
     and by the checkpoint rework rather than by this plan.** The rule set grew
     from twenty-two to **31**, the three test files named here were retired, and
     the seven `tests/test_checkpoint_*.py` that replaced them are mapped rule by
-    rule in `checkpointing.md § 13.4`. Six rules remain deliberately unasserted
+    rule in `checkpointing.md § 13.4`. Seven rules remain deliberately unasserted
     because each waits on a surface that does not exist yet — that table says
     which. The two counted here as "forms of an id, a stage and a clock" no
     longer exist as forms at all: nothing tags on your behalf (L4).

@@ -912,7 +912,7 @@ neither requires it nor gets in its way.
 > to"* is satisfied by returning to it over ssh, which is how people already
 > work; and *"who notices a run finished"* stopped being a question when a
 > checkpoint became an explicit act taken at the next prep
-> (`checkpointing.md § 6`). The error was treating a technical fact — two
+> (`checkpointing.md § 9`). The error was treating a technical fact — two
 > copies exist — as a user problem, for a user who dispatched the job and knows
 > exactly where it ran.
 
@@ -1206,7 +1206,7 @@ leaves them stale, which the recorded environment makes visible.
 by design, so each stage overwrites the last, and a state that was not
 checkpointed is simply gone. In the hierarchical shape every state is on disk
 anyway and the history is a safety net. Same machinery, different weight — and
-`checkpointing.md § 5.1` states the invariants for both.
+`checkpointing.md § 8` states the invariants for both.
 
 ```
 BDT_Au_relax_Au38C6H4S2/
@@ -1360,7 +1360,7 @@ than no invariant, because it fails a directory that is working correctly.
    output stays inside it; nothing a run writes appears above it.
 8a. **[hierarchical] An attempt is immutable.** Once written it never changes, and once archived
    it must never differ from its recorded checksum — which is
-   `checkpointing.md`'s I2 applied to a directory instead of a file (§ 6.2).
+   `checkpointing.md`'s I2 applied to a directory instead of a file (§ 11).
 9. **The description is the only source at ③.** No produce and no run modifies it
    (`checkpointing.md`, S4).
 

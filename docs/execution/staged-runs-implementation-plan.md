@@ -1026,11 +1026,19 @@ a named coarse run and confirm real files, not links).
 
 ### P8 — The history: the prompt, the coverage, the last invariants
 
-**Re-anchor:** [`checkpointing.md`](?doc=execution/checkpointing.md) § 4.1 (**who
-takes a checkpoint** — explicit, always; molbuilder never takes one on its own) ·
-§ 5.0 (**in the flat shape the checkpoint is the only way back**) · § 6 (the
-twenty-two invariants and the shape each holds in) · `engines/stages.md § 7.3`
-(the message and tag forms).
+**Re-anchor:** [`checkpointing.md`](?doc=execution/checkpointing.md) § 9 (**who
+decides to save, and when you are asked** — explicit, always; molbuilder never
+takes one on its own) · § 8 (**in the flat shape the save is the only way
+back**) · §§ 11–12 (the **31** rules and which hold right now) · § 13.4 (where
+each is asserted, and the table of the seven still waiting) ·
+`engines/stages.md § 7.3` (a description grows, and a stage that has run is a
+record).
+
+> **Repointed 2026-08-09.** This line cited § 4.1, § 5.0 and *"the twenty-two
+> invariants"* of § 6 — all three moved in the checkpoint rework, and § 6 now
+> names something else entirely (*Saving, step by step*), so the citation was
+> not merely stale but misleading. Ten more citations across five live
+> documents had drifted the same way and were repointed with it.
 
 **Units:**
 
@@ -1743,13 +1751,25 @@ nothing here. When it is built it needs a third answer, **unknown**, for output
 that cannot be read; unknown must never quietly become *converged*, for the
 reason `checkpointing.md § 7.2` gives about an unreadable timestamp.
 
-**Two stale pointers found while deciding, neither fixed here.** P8's re-anchor
-cites `checkpointing.md § 4.1`, `§ 5.0` and *"the twenty-two invariants"* of
-§ 6; after the 2026-08-09 rework those are § 9, § 8 and the 31 rules of §§ 11–12.
-And **14 citations across 7 live modules** point at `staged-execution.md`, which
-exists only under `docs/archive/old_docs/` — `runwrap.py:2998` says
-*"(staged-execution.md § 4)"* and following it lands in the archive. The live
-rule is `job-system.md`.
+**Stale pointers found while deciding.** P8's re-anchor cited
+`checkpointing.md § 4.1`, `§ 5.0` and *"the twenty-two invariants"* of § 6 —
+which the 2026-08-09 rework made § 9, § 8 and the 31 rules of §§ 11–12, and § 6
+now names *Saving, step by step*, so the citation had stopped being merely
+stale and started pointing at the wrong subject. Asking *"is every checkpoint
+reference in the project consistent with the contract?"* turned up **ten more**
+across five live documents, all drifting the same two ways: six `§ 6` that meant
+*who decides to save* (§ 9), two `§ 5.1` that meant *the flat shape is the only
+way back* (§ 8), one `§ 6.2` whose rule id `I2` was the stable anchor all along,
+and one count of the waiting rules that said six where § 13.4 now lists seven.
+**All eleven repointed 2026-08-09.**
+
+**Still outstanding: 14 citations across 7 live modules** point at
+`staged-execution.md`, which exists only under `docs/archive/old_docs/` —
+`runwrap.py:2998` says *"(staged-execution.md § 4)"* and following it lands in
+the archive. `docs/audit-2026-07-28-document-migration.md:207` records the
+target as `execution/job-system.md`; the section numbers need mapping one by
+one, and the `D`-numbers (`§ 13 D4`) are stable ids that survive the move
+(`roadmap.md`).
 
 > **Where the units land.** **P6** already carries the copy-at-prep unit and
 > needs no change. **P7** unit 2 already retires the chain edges. **P8** unit 1
