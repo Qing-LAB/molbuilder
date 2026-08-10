@@ -579,7 +579,7 @@ def _make_pyscf_options_decorator():
                    ".run.sh runner).")
 # --jobset: also emit job-set.json so the bundle is runnable by the
 # engine-agnostic framework (`molbuilder jobset prep/plan/submit`,
-# staged-execution.md).  Opt-in (doesn't change the default file set);
+# job-system.md).  Opt-in (doesn't change the default file set);
 # only meaningful in multi-stage mode.
 @click.option("--jobset", "emit_jobset", is_flag=True, default=False,
               help="also write job-set.json (the ladder as a JobSet) so the "
@@ -591,7 +591,7 @@ def _make_pyscf_options_decorator():
                    "object {stage_name: {domain?, time?, exclusive?, mem?, "
                    "gres?, mpi_np?, cpus_per_task?}} (literal or a .json "
                    "path).  This is HOW a ladder asks for a cheap warm-up + "
-                   "an expensive final (staged-execution.md § 6).  Requires "
+                   "an expensive final (job-system.md § 5.1).  Requires "
                    "--jobset; stages omitted here inherit the job-level config.")
 # --vacuum: the structure's isolation padding (Å, per side).  Vacuum comes with
 # the STRUCTURE, not the config (structure-periodicity.md) -- this is the CLI
@@ -869,7 +869,7 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
         struct, cell = _struct_from_file(resolved_input)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    # Promotion A (staged-execution.md § 15.3): render the ladder's files via
+    # Promotion A (job-system.md § 4.1): render the ladder's files via
     # the shared pure producer so the CLI and the web Build endpoint don't each
     # re-glue the sequence.  ``emit_jobset=False`` here -- the CLI builds its
     # own JobSet below from the pseudos actually present on disk (glob-fidelity
@@ -921,7 +921,7 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
             copy_pseudopotentials(species, lib, out_dir)
 
     # --jobset: persist the ladder as a JobSet so `molbuilder jobset
-    # prep/submit` can run this bundle (staged-execution.md § 5).  The Job
+    # prep/submit` can run this bundle (job-system.md § 5).  The Job
     # scripts are exactly the <label>_<stage>.fdf rendered above; ``shared``
     # is the pseudopotentials present in the bundle root (symlinked into each
     # stage dir at prep).  This is the host-side producer the framework was

@@ -87,7 +87,7 @@ def run_prep_bench(out_dir,
     # (`molbuilder jobset plan/prep/submit`) -- the SAME (G,K,c) grid as the
     # bash sweep above (both iterate adapters.sweep_grid) and the SAME
     # point-G<g>K<k>C<c>/ dirs summarize reads.  Bench = a jobset producer
-    # (staged-execution.md § 13 D4).
+    # (job-system.md § 4.2).
     from .to_jobset import sweep_to_jobset
     pseudos = sorted(p.name for ext in ("*.psml", "*.psf", "*.vps")
                      for p in out.glob(ext))

@@ -1,4 +1,4 @@
-"""Benchmark sweep -> :class:`JobSet` producer (staged-execution.md § 13 D4).
+"""Benchmark sweep -> :class:`JobSet` producer (job-system.md § 4.2).
 
 The benchmark GPU sweep is, structurally, a ``sweep`` JobSet: N independent
 jobs that share one package (the ``job-gpu.fdf`` + pseudos), each isolated in

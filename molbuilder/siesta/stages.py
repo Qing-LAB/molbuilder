@@ -213,7 +213,7 @@ def stages_to_jobset(
 
 
 # --------------------------------------------------------------------- #
-#  Pure bundle producer (staged-execution.md § 15.3 Promotion A)         #
+#  Pure bundle producer (job-system.md § 4.1, Promotion A)               #
 # --------------------------------------------------------------------- #
 
 
@@ -224,7 +224,7 @@ class StageBundle:
     Produced by :func:`build_siesta_stage_bundle`; the caller writes it
     through its own file layer (the CLI via raw paths, the web via the
     concealed file-access framework), so the ONE producer serves both
-    front-ends (staged-execution.md § 15.3).
+    front-ends (job-system.md § 4.1).
 
     * ``fdf_files`` — ``{filename: fdf_text}``, one entry per ENABLED stage
       (``<label>_<name>.fdf``); all share ``cfg.system_label`` so SIESTA's

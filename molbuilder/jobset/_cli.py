@@ -39,7 +39,7 @@ def _load(bundle: str) -> tuple:
         raise click.ClickException(
             f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
             "produces it (stages_to_jobset(...).write()); ship the bundle "
-            "here first (staged-execution.md § 5).")
+            "here first (job-system.md § 5.1).")
     try:
         return JobSet.load(jpath), base
     except ValueError as e:                      # bad schema / shape
@@ -49,7 +49,7 @@ def _load(bundle: str) -> tuple:
 @click.group("jobset", short_help="run a job-set bundle (stage ladder / sweep)")
 def jobset_group() -> None:
     """Operate on a bundle's ``job-set.json`` -- the engine-agnostic
-    execution framework (staged-execution.md).  Produce the JobSet on the
+    execution framework (job-system.md).  Produce the JobSet on the
     host; ``prep`` then ``submit`` it on the target."""
 
 
@@ -70,8 +70,8 @@ def status_cmd(bundle: str) -> None:
     """Show each stage's run state (finished / running / failed / pending /
     not-started), which warm-restart files are present, and the FIRST
     incomplete stage (the one to resume from).  Read-only -- molbuilder
-    informs; you decide whether to continue or switch (staged-execution.md
-    § 10).  Reuses the same directory decoder as the Results tab."""
+    informs; you decide whether to continue or switch (job-system.md
+    § 5.3).  Reuses the same directory decoder as the Results tab."""
     js, base = _load(bundle)
     click.echo(render_status(jobset_status(js, base)))
 

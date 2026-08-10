@@ -2995,7 +2995,7 @@ def render_run_wrapper(script_path: Path, *,
     )
     _user_custom = _sc.emit_user_custom_placeholder()
 
-    # Carry-forward localization (staged-execution.md § 4): when a job
+    # Carry-forward localization (job-system.md § 5.2): when a job
     # INHERITS restart files from a prior job, they arrive as symlinks into
     # the producer's dir.  Replace each with a real LOCAL copy before the
     # engine runs, so this job's writes to the same <SystemLabel> filename
@@ -3008,7 +3008,7 @@ def render_run_wrapper(script_path: Path, *,
         _carry_items = " ".join(shlex.quote(c) for c in _carry_in)
         carry_deref = (
             "# --- Carry-forward: localize inherited restart files "
-            "(staged-execution.md § 4) ---\n"
+            "(job-system.md § 5.2) ---\n"
             f"for _cf in {_carry_items}; do\n"
             '    if [ -L "$_cf" ]; then\n'
             '        _ct="$(readlink -f "$_cf" 2>/dev/null || true)"\n'

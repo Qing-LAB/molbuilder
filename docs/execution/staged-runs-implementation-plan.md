@@ -1763,13 +1763,25 @@ way back* (§ 8), one `§ 6.2` whose rule id `I2` was the stable anchor all alon
 and one count of the waiting rules that said six where § 13.4 now lists seven.
 **All eleven repointed 2026-08-09.**
 
-**Still outstanding: 14 citations across 7 live modules** point at
-`staged-execution.md`, which exists only under `docs/archive/old_docs/` —
-`runwrap.py:2998` says *"(staged-execution.md § 4)"* and following it lands in
-the archive. `docs/audit-2026-07-28-document-migration.md:207` records the
-target as `execution/job-system.md`; the section numbers need mapping one by
-one, and the `D`-numbers (`§ 13 D4`) are stable ids that survive the move
-(`roadmap.md`).
+**And 15 citations across 8 live files** pointed at `staged-execution.md`, which
+exists only under `docs/archive/old_docs/` — following `runwrap.py:2998` landed
+in the archive. `docs/audit-2026-07-28-document-migration.md:207` records the
+target as `execution/job-system.md`, whose numbering is its own, so each was
+mapped against that document's actual structure rather than renamed:
+
+| was | is | why |
+|---|---|---|
+| § 4 | **§ 5.2** | carry localization — what `prep` lays out on disk |
+| § 5 | **§ 5.1** / **§ 5** | *produce on the host, ship the bundle* / the workflow as a whole |
+| § 6 | **§ 5.1** | per-stage resources — § 5.1 is where `--stage-resources` is shown, and its example *is* a cheap `htc` warm-up plus an expensive final |
+| § 10 | **§ 5.3** | the read-only status roll-up |
+| § 13 D4 | **§ 4.2** | the benchmark sweep as a `JobSet` producer |
+| § 15.3 | **§ 4.1** | Promotion A — the pure bundle producer for the SIESTA ladder |
+
+**The `D`-number was dropped rather than carried.** `roadmap.md:256` has its own
+**D4** (*keep the internal model columnar*), so preserving the staged-execution
+one would have put two different decisions behind one id — the failure a stale
+pointer causes, arrived at by trying to avoid it. **All repointed 2026-08-09.**
 
 > **Where the units land.** **P6** already carries the copy-at-prep unit and
 > needs no change. **P7** unit 2 already retires the chain edges. **P8** unit 1

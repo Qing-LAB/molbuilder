@@ -1,4 +1,4 @@
-"""Promotion A (staged-execution.md § 15.3): the pure bundle producer
+"""Promotion A (job-system.md § 4.1): the pure bundle producer
 ``siesta.stages.build_siesta_stage_bundle``.
 
 This is the ONE producer the CLI (``cli._emit_siesta_multi_stage``) and the
