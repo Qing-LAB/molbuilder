@@ -2187,3 +2187,171 @@ is a display change users will notice, so it lands with the column renamed
 contract and everything citing it → the resolver → its callers → the UI, which
 displays what the resolver returns rather than computing a number of its own.
 
+
+---
+
+## 9. The architecture the phases are converging on
+
+**Why this section exists.** Written 2026-08-10, after a day of walking the
+system end to end and fixing seven defects. Six of the seven were the same
+mistake wearing different clothes, and fixing them one at a time was making the
+code worse, not better — each fix added a special case where a missing seam
+belonged. This section names the seams so the remaining phases build toward one
+shape instead of patching toward seven.
+
+**The diagnosis, in one measurement.**
+
+```
+jobset/      1536 lines   the framework
+bench/      ~3500 lines   a SECOND implementation of the same framework
+runwrap.py   3669 lines   one file, and EIGHT modules call into it directly
+```
+
+The contract is implemented three times — once as `jobset`, once as `bench`,
+once inline in `cli.py` and `web/blueprints/build.py`.
+
+**And one sentence names every defect found this session:**
+
+> **A layer's decision is re-derived by a caller instead of being asked for.**
+
+Not seven bugs. One habit, seven times. That is also why it predicts: the next
+bug is wherever a caller computes something a lower layer already knows.
+
+### 9.1 Goals — what "done" means
+
+| | goal | done when |
+|---|---|---|
+| **G1** | A new **engine** costs one producer | PySCF's ladder is a `stages_to_jobset` sibling and no orchestration verb changes |
+| **G2** | A new **surface** costs no layout, naming or launch logic | the web Build path calls the same producer the CLI does, and owns none of its own |
+| **G3** | The benchmark is a **kind**, not a parallel stack | `bench generate/prep/prep-run/summarize` are gone; `jobset <verb> bench <stage>` does the work |
+| **G4** | A contract sentence maps to **exactly one function** | you can point at the code for any rule in `project-layout.md` § 1–4 without a disjunction |
+
+### 9.2 Invariants — what must never break
+
+Each is stated so it can be tested, because an invariant nothing checks is a
+wish.
+
+- **A1 — one namer.** Every emitted name comes from `identity`. No module
+  builds one with an f-string. *Test:* no `f"…_{stage}…"` or `f"point-…"`
+  outside `identity.py` / `materialize.py`. (Violated four times before
+  2026-08-10; that is what made the `-stage<N>` rename cost a full batch.)
+- **A2 — one shape per calculation.** A produce reads `task.shape` and emits
+  exactly one layout's artifacts. *Test:* a flat produce writes no
+  `job-set.json`; a hierarchical one writes no bash ladder runner.
+- **A3 — a deck and its launch travel together.** Anything a deck derived from a
+  launch quantity is recorded **with that quantity**. *Test:* BENCH-MARKS'
+  `mpi_np` equals what the wrapper resolves, or the mismatch is refused before
+  the engine sees it.
+- **A4 — a caller asks; it does not re-derive.** *Test:* the value objects in
+  § 9.4 have exactly one construction site each.
+- **A5 — `seq` is derived, never stored** (decision 28). *Test:* `task@1` has no
+  `seq`; `Stage` keeps three fields.
+- **A6 — an attempt is immutable once launched.** *Test:* `run.json` present ⇒
+  prepare opens a new `run-<n>`.
+- **A7 — dependencies point down only.** No layer imports a layer above it.
+  *Test:* an import-direction check, the same shape as `test_layering.py`.
+
+### 9.3 The layers, and what each one owns
+
+```mermaid
+flowchart TD
+    L7["<b>7 · surfaces</b><br/>CLI · web"]
+    L6["<b>6 · observe</b><br/>state from a directory"]
+    L5["<b>5 · launch</b><br/>directory → running process"]
+    L4["<b>4 · layout</b><br/>dirs · links · copies · attempts"]
+    L3["<b>3 · plan</b><br/>description × machine → JobSet"]
+    L2["<b>2 · description</b><br/>what the user wants"]
+    L1["<b>1 · naming</b><br/>pure strings"]
+    L7 --> L6 --> L5 --> L4 --> L3 --> L2 --> L1
+    L7 -.-> L3
+    L4 --> L1
+    L5 --> L1
+```
+
+| # | layer | owns | entry point | must never |
+|---|---|---|---|---|
+| 1 | **naming** | tokens, ids, "is this ours" | `identity` | know what a directory is |
+| 2 | **description** | Stage, shape, id, overrides | `task` | name a machine |
+| 3 | **plan** | description × machine → JobSet | the producers | touch the filesystem |
+| 4 | **layout** | dirs, links, copies, attempts | `jobset/materialize` | know a scheduler |
+| 5 | **launch** | wrapper, sbatch/bash, `run.json` | `jobset/submit` + `runwrap` | decide physics |
+| 6 | **observe** | state, resume point | `jobset/runstatus` + `parse/dirs` | write anything |
+| 7 | **surfaces** | asking the user, showing the answer | `cli`, `web` | compute a name, a layout or a launch |
+
+**The one rule that makes it a layering:** *a layer may call downward and return
+upward; it may never reach across.* Layer 5 deciding a rank count that layer 3
+already assumed is the reach that cost a run on 2026-08-10.
+
+### 9.4 The four value objects
+
+Each replaces a re-derivation with an answer.
+
+| object | layer | replaces | kills |
+|---|---|---|---|
+| **`StageRef(seq, name)`** | 1 | six hand-rolled ordinal computations | decision 28's whole class of defect |
+| **`Shape`** | 3 | a producer emitting flat *and* hierarchical at once | *"the shape is never chosen"* |
+| **`LaunchSpec`** | 3 → 5 | the wrapper choosing ranks alone | the `-np 14` failure, permanently |
+| **`Attempt`** | 4 | `prepare_attempt` returning `Dict[str, object]` | a bag the CLI unpacks by string key |
+
+> **`Attempt` is the author's own smell, recorded rather than excused.**
+> `prepare_attempt` landed on 2026-08-10 returning a dict, and `submit.py` grew
+> `_launch_dir` and `_record_launch` **twice** — once in each of two
+> near-identical loops. Both were noticed while being written and shipped
+> anyway. The habit this section names reproduces under anyone's hands, which is
+> the argument for naming it.
+
+### 9.5 Where the code actually is
+
+Honest mapping, not aspiration.
+
+| layer | today | gap |
+|---|---|---|
+| 1 naming | `identity.py` (354 ln) — **exists and is right** | callers bypassed it four times; `StageRef` not built |
+| 2 description | `task.py` — solid; `shape` field defined | **nothing reads `shape`** |
+| 3 plan | `stages_to_jobset` + `sweep_to_jobset` | emits both shapes; `--vacuum` lost in a second branch of `cmd_fdf`; no `LaunchSpec` |
+| 4 layout | `materialize.py` (328 ln) — attempts landed 2026-08-10 | `Attempt` is a dict; `job_dir_name` and `job_dir_names` coexist |
+| 5 launch | `submit.py` (344) + `runwrap.py` (**3669**, 8 direct callers) | resolves ranks itself; two near-identical loops |
+| 6 observe | `runstatus.py` + `parse/dirs/job.py` | prints `enumerate()` as `#` |
+| 7 surfaces | `cli.py`, `web/blueprints/build.py` | both re-implement parts of 3; web has no staged path at all |
+| — | **`bench/` (~3500 ln)** | a parallel 3–6 for sweeps; `bench prep-run` **is** `jobset prep run` written twice |
+
+### 9.6 The transition, in the order that de-risks it
+
+Each step is separately shippable and separately revertible. **No step is
+allowed to be "and while we are there".**
+
+| | step | why here | done when |
+|---|---|---|---|
+| **T1** | `StageRef` + route the six callers | fully specced (§ 8f), contained, fixes two live display bugs | `plan`/`status` print `seq`; the CLI takes a name or a number; no caller computes an ordinal |
+| **T2** | `Shape` — a producer reads `task.shape` and emits **one** layout | unblocks P5, and A2 cannot be tested until it exists | a flat produce writes no `job-set.json` and vice versa |
+| **T3** | `LaunchSpec` — layer 3 hands layer 5 the launch it rendered for | fixes a bug that kills real runs; needs T2's single shape | a deck rendered for N ranks cannot be launched at M without a refusal |
+| **T4** | `Attempt` as a type; de-duplicate `submit.py`'s two loops | small, and it removes the author's own new smell before it spreads | one loop, one `Attempt`, no dict keys |
+| **T5** | fold `bench` into layers 3–6 as `kind=sweep` | **largest, last** — only once T1–T4 have proven the seams on the smaller path | `molbuilder bench` is gone; `jobset <verb> bench <stage>` does it |
+
+**Why not T5 first**, though it removes the most code: it is the only step that
+cannot be reverted cheaply, and it depends on all four seams being right. Doing
+it first would prove nothing and risk the one workflow that currently works
+end to end.
+
+**`runwrap.py` is deliberately untouched by every step.** At 3669 lines with 8
+direct callers it is the highest-risk surface in the repository, and it is also
+the part that works everywhere today. T3 changes what it is *told*, never what
+it does.
+
+### 9.7 Size and shape — the scope guard
+
+**In scope:** the seams between layers 1–6, and the surfaces' use of them.
+
+**Not in scope, and not by accident:**
+
+- `runwrap.py`'s internals — see above;
+- engine physics — `BlockSize` heuristics, tier values, solver choice. T3 moves
+  *where the number is decided*, never *what it is*;
+- a web rewrite. G2 says the web stops owning layout/naming/launch logic; it
+  does not say the web is rebuilt;
+- the checkpoint system, which `checkpointing.md` owns and which this session
+  found **ahead of** the implementation rather than behind it.
+
+**The size test for any change made under this section:** if it does not delete
+more than it adds, or remove a place where two things can disagree, it is not
+this work.
