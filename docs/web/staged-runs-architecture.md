@@ -509,7 +509,7 @@ A session, from inside the calculation folder on the target:
 
 ```
 molbuilder jobset prep bench tight            # measure first
-molbuilder jobset submit tight --mode direct
+molbuilder jobset submit bench tight --mode direct
 molbuilder bench summarize --bundle 02_tight/bench
 
 molbuilder jobset prep run tight \
@@ -518,7 +518,7 @@ molbuilder jobset prep run tight \
     resources  elpa · G=1 K=4 C=6 · mem 96G     (measured here, 2026-08-06)
     02_tight/<id>.fdf   rendered   BlockSize 256, Diag.Algorithm elpa
     02_tight/run-0/     ready      copied in: <id>.XV  <id>.DM
-molbuilder jobset submit tight --mode submit --domain public
+molbuilder jobset submit run tight --mode submit --domain public
 ```
 
 **Prep printing what it resolved is what makes submit a plain yes** — and it is
@@ -527,8 +527,13 @@ appear together, which is exactly where a person should be looking.
 
 **Three shapes still open**, all cosmetic:
 
-1. **Stage as the positional** (`jobset prep tight`, folder defaults to cwd), or
-   folder positional with `--stage`? Pre-1.0, so changing it is allowed.
+1. ~~**Stage as the positional**, or folder positional with `--stage`?~~
+   **Decided 2026-08-10 (user): the stage is the positional**, the folder
+   defaults to the current directory, and `--bundle` names it when you are not
+   standing in it. Running a whole ladder unattended takes an explicit
+   `--chain`, which is new here and specified in
+   [`execution/job-system.md`](?doc=execution/job-system.md) § 5.3 — now the
+   authority for what you type.
 2. **`jobset`, or promote `prep` to top level?** It is no longer really about job
    *sets* — it is the one verb of the execution loop, and `molbuilder prep tight`
    reads like what it is. Against: `jobset` also serves benchmark sweeps, and a

@@ -240,7 +240,7 @@ starts from the structure. It tells you what it did. Then, on the machine that
 will run it:
 
 ```
-molbuilder jobset submit coarse --mode direct
+molbuilder jobset submit run coarse --mode direct
 ```
 
 **Why the terminal for this half.** The browser writes a package that names no

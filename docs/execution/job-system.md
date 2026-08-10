@@ -682,11 +682,12 @@ molbuilder jobset <verb> <kind> [<stage>]  [options]
                     │      └────────── what is being prepped or submitted:
                     │                  `run` (the calculation) or `bench`
                     │                  (the measurement of it)
-                    └───────────────── describe · prep · submit · summarize · status
+                    └───────────────── describe · prep · submit · summarize
+                                       · status · plan
 ```
 
-`describe` and `status` take no *kind* — they are about the calculation, not
-about one run of it. **The kind is a positional, not a `--bench` flag**, because
+`describe`, `status` and `plan` take no *kind* — they are about the calculation,
+not about one run of it. **The kind is a positional, not a `--bench` flag**, because
 `prep bench` and `prep run` are peers: measuring and running are the same act
 over different parameters (`project-layout.md § 2.3.1a`).
 
@@ -726,10 +727,19 @@ attempt, so an earlier stage's geometry is still openable after a later one has
 run. Equally, an HPC job can be `flat`. Nothing in molbuilder infers one from the
 other.
 
-> `--mode` is **required** today. `molbuilder.json` already carries
-> `execution.mode` (`job-execution.md § 8.13`) and `get_execution()` returns it,
-> but only `bench` reads it; wiring `submit` to fall back on it — flag, then
-> config, then detected scheduler — is recorded work, not shipped behaviour.
+> `--mode` is **required** today. `molbuilder.json` already carries an
+> `execution.mode`, and `runtime_config.get_execution()` reads, validates and
+> returns it — but **only `bench` consults it**, and wiring `submit` to fall
+> back on it (flag, then config, then detected scheduler) is recorded work
+> rather than shipped behaviour.
+>
+> ⚠ **That key has no live contract.** It is validated by code and cited
+> throughout `molbuilder/bench/` as *"job-execution.md § 8.13"* — a document
+> **retired in the 2026-07 migration** (`audit-2026-07-28-document-migration.md`
+> maps it to `execution/running-a-job.md`, whose section numbers did not
+> survive). So `execution` is a config section the code enforces and no live
+> document defines. Writing that contract is the first half of wiring `submit`
+> to it; you cannot resolve against a rule nobody has written down.
 
 #### The loop
 
