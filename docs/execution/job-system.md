@@ -741,8 +741,49 @@ ladder unattended needs `--chain`, said out loud. The reason is money and time,
 not tidiness: a chain that continues on its own can spend a week refining a
 geometry you would have rejected in a minute (`project-layout.md § 1.6`).
 
-A **sweep** is the opposite and needs no flag: its points are independent, so
-submitting all of them is the ordinary thing.
+**`--chain` is flat-and-local, and both halves of that are forced.** It is
+refused **at a scheduler** by the rule in the box below, and refused **in the
+hierarchy** by § 1's own table: continuing there means *"you **name** the run,
+and its files are copied in"*, and a chain has no finished run to name — the
+one it would continue from has not happened yet. A chained hierarchical launch
+would start every stage from the deck's own coordinates and report success.
+**Flat is where a chain costs nothing**, because the warm files are one shared
+set and the next stage finds them lying there. Both refusals name the shape and
+say what to do instead.
+
+A **sweep** is the opposite in one respect only: its points are independent, so
+naming which one you mean is optional — `submit run` resolves to all of them
+without a flag.
+
+> ### ⚠ A scheduler is handed ONE job at a time — decided 2026-08-10 (user)
+>
+> > *"SLURM should never submit jobs in parallel. Submission is manual and one
+> > by one. It is a disaster to do parallel job submission on HPC."*
+>
+> **This paragraph used to end *"so submitting all of them is the ordinary
+> thing"*, and `_submit_slurm` did exactly that** — one command, one `sbatch`
+> per point, no dependency between them. Its own docstring called the result
+> intended: *"its jobs queue in parallel."*
+>
+> Two reasons that is wrong, and the second is scientific:
+>
+> - **On a shared cluster it is antisocial.** N jobs entering the queue
+>   together start together if there is room, and the allocation goes with
+>   them.
+> - **For a benchmark it is not merely rude, it is invalid.** Points that run
+>   concurrently contend for the same cores, memory bandwidth and interconnect,
+>   so the sweep measures **contention rather than scaling** — and reports a
+>   number that looks fine.
+>
+> So `--mode submit` refuses more than one job per invocation, whatever the
+> kind, and names which jobs it refused. **`--mode direct` is untouched**: it
+> runs each job here, in order, waiting for each, which is not submission at
+> all. The refusal lives in `submit_jobset`, not in the CLI, so the web surface
+> and any other caller get it too.
+>
+> The benchmark already worked this way by hand — `bench generate` **emits**
+> `job-cpu.sbatch` and tells you to `sbatch` it yourself — so this makes the
+> framework agree with the workflow it already recommends.
 
 **2. What a stage continues from is something you say.** `--from
 01_coarse/run-0` names the attempt whose results this run starts from. Those
@@ -835,7 +876,8 @@ molbuilder jobset prep   run tight --from 01_coarse/run-0   # -> 02_tight/run-1
 molbuilder jobset prep   run tight --cold                   # -> a clean attempt
 ```
 
-And the whole ladder unattended, when you have decided you want that:
+And the whole ladder unattended, when you have decided you want that — **flat
+shape, local mode**, for the reasons in § 5.3:
 
 ```bash
 molbuilder jobset submit run --chain --mode direct
@@ -899,7 +941,24 @@ nothing"* (`checkpointing.md` S3).
 
 ### 5.4 The dependency chain, as a sequence
 
-For the 2-stage ladder, `--mode submit` does this:
+> ⚠ **Superseded 2026-08-10 (user).** `--mode submit` no longer does this, and
+> cannot: **a scheduler is handed one job at a time** (the box in § 5.3). The
+> diagram below shows two `sbatch` calls from one command, which is the shape
+> that was retired — dependency-threaded rather than free-running, but still
+> two jobs entering the queue from one keystroke.
+>
+> **What replaces it is not a different mechanism, it is you.** You submit
+> `coarse`, you look at what it produced, and then you `prep tight --from
+> 01_coarse/run-0` and submit that. `project-layout.md § 1.6` is the reason
+> and it has not changed: *a stage is a long job, and a chain that continues by
+> itself can spend a week refining a geometry you would have rejected in a
+> minute.*
+>
+> Kept for the reader who finds `--dependency` in the code: it is still
+> threaded for a **hand-built chained ladder**, one job per invocation, so a
+> single `sbatch` can still be told to wait on an id you already have.
+
+For the 2-stage ladder, `--mode submit` did this:
 
 ```mermaid
 sequenceDiagram

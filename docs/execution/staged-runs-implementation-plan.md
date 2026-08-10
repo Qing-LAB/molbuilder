@@ -1585,26 +1585,34 @@ navigates).
    > eyes open."* **The chain becomes something you ask for, not something the
    > description stores.**
    >
-   > Two things follow, and the second is the one to decide before coding:
+   > **DECIDED 2026-08-10 (user), and the decision is wider than `--chain`:**
    >
-   > **(a) `dep_kind` is stored on the wrong job.** Today job *N* holds
-   > `_dep_kind(policy of job N-1)` — the predecessor's policy, kept on the
-   > successor. That is the same shape as the defect P6 unit 3 just fixed: a
-   > value computed for a pair, stored on one member, read by someone assuming
-   > a different pair. It should be each job's **own** outgoing policy, so
-   > `--chain` can compose edges from local facts.
+   > > *"Refuse hierarchical `--chain`, and SLURM should never submit jobs in
+   > > parallel. Submission is manual and one by one. It is a disaster to do
+   > > parallel job submission on HPC."*
    >
-   > **(b) `--chain` may not mean the same thing in both shapes.**
-   > `project-layout.md § 1`'s table: continuing is **free** in flat — *"the
-   > next stage finds them lying there"* — and in the hierarchy *"you **name**
-   > the run, and its files are copied in"*. A named run must have finished, so
-   > a hierarchical `--chain` cannot copy anything at submit time: the file
-   > does not exist yet. That is the whole argument for stages not chaining,
-   > and it means hierarchical `--chain` today only works **because of the
-   > dangling carry symlinks this unit removes**. Flat needs none of it.
-   > *Options: refuse hierarchical `--chain` naming the reason; or keep the
-   > links for it alone, which makes 12b's "no dangling symlink" conditional.*
-   > **User call — it changes what a shipped flag does.**
+   > **Both refusals landed the same day**, in `submit_jobset` rather than the
+   > CLI, so the web surface and any other caller get them too:
+   >
+   > | | |
+   > |---|---|
+   > | **a scheduler takes one job at a time** | `--mode submit` refuses more than one job per invocation, whatever the kind, naming which it refused. `--mode direct` is untouched — it runs them here, in order, waiting for each, which is not submission |
+   > | **the hierarchy does not chain** | in **either** mode, because it is a property of the layout: § 1's table says continuing there means *"you **name** the run"*, and a chain has no finished run to name |
+   >
+   > **The sweep is why the first rule is not merely etiquette.** Points that
+   > run concurrently contend for the same cores and interconnect, so a sweep
+   > submitted all at once measures **contention rather than scaling** and
+   > reports a number that looks fine. `job-system.md § 5.3` used to say
+   > *"submitting all of them is the ordinary thing"*; that sentence is
+   > replaced, and § 5.4's threaded-`sbatch` sequence is marked superseded.
+   >
+   > **What this leaves for the unit itself.** Removing the edges no longer
+   > risks a parallel fan-out, because the fan-out is refused independently of
+   > where `depends_on` comes from. One thing still to fix while there:
+   > **`dep_kind` is stored on the wrong job** — job *N* holds
+   > `_dep_kind(policy of job N-1)`, the predecessor's policy kept on the
+   > successor. Same shape as the defect unit 3 fixed: a value computed for a
+   > pair, stored on one member, read by someone assuming a different pair.
 3. `submit` resolves **one** attempt for the stage it is starting: next unused
    number, create, link the deck and package, copy what was named, launch there.
 4. `materialize.job_dir_name` returns `point-<name>` for **every** job and must

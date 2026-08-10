@@ -159,7 +159,15 @@ def _resolve_stage(js, stage, chain: bool, verb: str):
     A LADDER is a sequence you look at between steps, so acting on all of it is
     not a default -- ``--chain`` says you want it anyway (project-layout.md
     § 1.6).  A SWEEP has no such ordering: its points are independent, so the
-    whole set is the ordinary thing and needs no flag.
+    whole set is the ordinary thing and needs no flag *here*.
+
+    **Neither answer decides whether that many jobs may be LAUNCHED**, and
+    keeping the two apart is the point: this resolves *which jobs did you
+    mean*, and ``submit_jobset`` owns *may this many go at once* (a scheduler
+    takes one at a time; a hierarchical ladder does not chain).  A sweep still
+    resolves to all its points here, and ``--mode submit`` still refuses to
+    hand them over together -- because the refusal has to hold for the web
+    surface and any other caller, not only for what is typed.
 
     Both kinds go through the ONE resolver (§ 8f).  A sweep's refs simply carry
     no ordinal, so it resolves by name and the refusal stops offering numbers --
@@ -179,7 +187,7 @@ def _resolve_stage(js, stage, chain: bool, verb: str):
             f"{render_stage_refs(ordered)}.\n"
             f"  molbuilder jobset {verb} run <stage>      one stage\n"
             f"  molbuilder jobset {verb} run --chain      the whole ladder, "
-            f"unattended\n"
+            f"unattended -- FLAT only, and never to a scheduler\n"
             "Stages do not chain by default because a chain that continues on "
             "its own can spend a week refining a geometry you would have "
             "rejected in a minute (project-layout.md § 1.6).")
@@ -335,9 +343,12 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
               help="scheduler.routing domain -> -p/-q (submit mode; EXPLICIT, "
                    "never auto-picked).")
 @click.option("--chain", is_flag=True,
-              help="run EVERY stage of a ladder back to back.  Off by design "
-                   "(project-layout.md § 1.6); pass this to do it anyway, with "
-                   "your eyes open.")
+              help="run EVERY stage of a FLAT ladder back to back, locally.  "
+                   "Off by design (project-layout.md § 1.6).  Two things it "
+                   "will not do: a scheduler is handed one job at a time "
+                   "(--mode submit), and a hierarchical ladder does not chain "
+                   "at all -- there, each stage continues from a run you NAME, "
+                   "and a chain has none to name.")
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
                    "nothing.")
@@ -351,7 +362,7 @@ def submit_cmd(kind: str, stage, bundle: str, mode: str, domain, chain: bool,
     only = _resolve_stage(js, stage, chain, "submit")
     try:
         results = submit_jobset(js, base, mode=mode, domain=domain,
-                                dry_run=dry_run, only=only)
+                                dry_run=dry_run, only=only, chain=chain)
     except SubmitError as e:
         raise click.ClickException(str(e))
     verb = "WOULD run" if dry_run else "result"

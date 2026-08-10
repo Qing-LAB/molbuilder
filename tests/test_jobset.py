@@ -479,48 +479,63 @@ def test_render_plan_surfaces_per_job_ranks_and_cores():
 #  submit engine                                                        #
 # --------------------------------------------------------------------- #
 
-def test_submit_dry_run_threads_dependency_and_emits_J(tmp_path):
-    # ladder, SLURM, dry-run: threaded --dependency + per-job -J, no files.
-    res = submit_jobset(_ladder(), tmp_path, mode="submit", dry_run=True)
-    assert [r.status for r in res] == ["planned", "planned"]
+def test_submit_dry_run_emits_J_and_writes_nothing(tmp_path):
+    """One job, SLURM, dry-run: the per-job ``-J`` and no side effects.
+
+    This asserted the threaded ``--dependency`` across a whole ladder until
+    2026-08-10, when handing a scheduler more than one job at a time was
+    retired (user rule). The ``-J`` half is untouched and still worth pinning;
+    the threading half is now covered by the refusal that replaced it.
+    """
+    res = submit_jobset(_ladder(), tmp_path, mode="submit", dry_run=True,
+                        only="s1")
+    assert [r.status for r in res] == ["planned"]
     assert res[0].command[0] == "sbatch"
     assert res[0].command[res[0].command.index("-J") + 1] == "s1"
-    dep = [a for a in res[1].command if a.startswith("--dependency=")]
-    assert dep == ["--dependency=afterok:<s1>"]
     assert list(tmp_path.iterdir()) == []          # wrote nothing
 
 
 def test_submit_dry_run_sweep_per_job_flags_vary(tmp_path):
-    # the F2 fix: a SHARED-script sweep must still get per-job -n via CLI.
-    res = submit_jobset(_sweep(), tmp_path, mode="submit", dry_run=True)
-    for r in res:
-        assert not any(a.startswith("--dependency=") for a in r.command)
-        assert "--gres=gpu:a100:1" in r.command
-    assert res[0].command[res[0].command.index("-n") + 1] == "1"
-    assert res[1].command[res[1].command.index("-n") + 1] == "2"   # varies
+    """The F2 fix: a SHARED-script sweep must still get per-job ``-n`` via the
+    CLI flags, so one rendered ``.sbatch`` serves every point.
+
+    Exercised one point per invocation, which is now the only way a point
+    reaches a scheduler — and the invariant is the same one: the flags are
+    per-JOB, so two points of one sweep must come out different.
+    """
+    cmds = {}
+    for name, want in (("G1K1C4", "1"), ("G1K2C4", "2")):
+        res = submit_jobset(_sweep(), tmp_path, mode="submit", dry_run=True,
+                            only=name)
+        assert len(res) == 1
+        cmds[name] = res[0].command
+        assert not any(a.startswith("--dependency=") for a in res[0].command)
+        assert "--gres=gpu:a100:1" in res[0].command
+        assert res[0].command[res[0].command.index("-n") + 1] == want
+    assert cmds["G1K1C4"] != cmds["G1K2C4"], "per-job flags did not vary"
 
 
-def test_submit_slurm_parses_ids_and_threads_real_dep(tmp_path, monkeypatch):
+def test_submit_slurm_parses_the_id_and_records_the_launch(tmp_path,
+                                                           monkeypatch):
+    """The id comes back from ``sbatch`` stdout and lands on the result.
+
+    Paired with the threaded-dependency assertion until 2026-08-10; that half
+    went with batch submission, and this half is what `status` reads back.
+    """
     js = _ladder()
-    for d in (tmp_path / "point-s1", tmp_path / "point-s2"):
-        d.mkdir()
+    (tmp_path / "point-s1").mkdir()
     (tmp_path / "point-s1" / "demo_s1.sbatch").write_text("x")
-    (tmp_path / "point-s2" / "demo_s2.sbatch").write_text("x")
-    ids = iter(["111", "222"])
     monkeypatch.setattr(_submit.subprocess, "run",
-                        lambda *a, **k: _CP(stdout=f"Submitted batch job {next(ids)}"))
-    res = submit_jobset(js, tmp_path, mode="submit")
-    assert res[0].job_id == "111" and res[0].status == "submitted"
-    # the second sbatch threads the REAL producer id, not the symbolic ref.
-    assert "--dependency=afterok:111" in res[1].command
-    assert res[1].job_id == "222"
+                        lambda *a, **k: _CP(stdout="Submitted batch job 111"))
+    res = submit_jobset(js, tmp_path, mode="submit", only="s1")
+    assert [(r.job_id, r.status) for r in res] == [("111", "submitted")]
 
 
 def test_submit_slurm_errors_when_not_prepped(tmp_path):
     # real run (not dry): a missing wrapper is a friendly error, not a crash.
     (tmp_path / "point-s1").mkdir()
     with pytest.raises(SubmitError, match="prep first"):
-        submit_jobset(_ladder(), tmp_path, mode="submit")
+        submit_jobset(_ladder(), tmp_path, mode="submit", only="s1")
 
 
 def test_submit_slurm_raises_on_sbatch_failure(tmp_path, monkeypatch):
@@ -530,7 +545,101 @@ def test_submit_slurm_raises_on_sbatch_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(_submit.subprocess, "run",
                         lambda *a, **k: _CP(returncode=1, stderr="boom"))
     with pytest.raises(SubmitError, match="sbatch failed"):
-        submit_jobset(js, tmp_path, mode="submit")
+        submit_jobset(js, tmp_path, mode="submit", only="s1")
+
+
+# --------------------------------------------------------------------- #
+#  One at a time, and the hierarchy does not chain (user rule 2026-08-10)#
+# --------------------------------------------------------------------- #
+
+def test_a_scheduler_is_never_handed_more_than_one_job(tmp_path):
+    """*"SLURM should never submit jobs in parallel.  Submission is manual and
+    one by one.  It is a disaster to do parallel job submission on HPC."*
+
+    `_submit_slurm` looped over every job, and its own docstring called the
+    result intended: *"a sweep submits with no dependency, so its jobs queue in
+    parallel."*  One command, N ``sbatch`` calls, all racing for the same
+    nodes.  For a **benchmark** that is not merely antisocial — points running
+    concurrently contend for the same cores and interconnect, so the sweep
+    measures contention and the numbers are quietly wrong.
+    """
+    with pytest.raises(SubmitError) as e:
+        submit_jobset(_sweep(), tmp_path, mode="submit", dry_run=True)
+    msg = str(e.value)
+    assert "G1K1C4" in msg and "G1K2C4" in msg      # WHICH jobs it refused
+    assert "one at a time" in msg
+    assert "--mode direct" in msg                   # ...and what still works
+
+
+def test_the_refusal_holds_for_a_dry_run_too(tmp_path):
+    """A dry run previews the real thing.  Printing the commands for a launch
+    that would be refused is a preview of something that cannot happen."""
+    with pytest.raises(SubmitError):
+        submit_jobset(_sweep(), tmp_path, mode="submit", dry_run=True)
+
+
+def test_direct_mode_is_untouched_because_it_is_not_submission(tmp_path,
+                                                               monkeypatch):
+    """The rule is about handing work to a SCHEDULER.  ``--mode direct`` runs
+    each job here, in order, waiting for each — nothing queues, nothing races,
+    and the user's 2026-08-10 directive keeps the flat shape runnable this
+    way."""
+    for d in ("point-G1K1C4", "point-G1K2C4"):
+        (tmp_path / d).mkdir()
+        (tmp_path / d / "job-gpu.run.sh").write_text("x")
+    monkeypatch.setattr(_submit.subprocess, "run", lambda *a, **k: _CP())
+    res = submit_jobset(_sweep(), tmp_path, mode="direct")
+    assert [r.status for r in res] == ["ran", "ran"]
+
+
+@pytest.mark.parametrize("mode", ["submit", "direct"])
+def test_a_hierarchical_ladder_refuses_to_chain_in_either_mode(tmp_path, mode):
+    """`project-layout.md` § 1's table, and the reason is structural.
+
+    Continuing is *"free"* in **flat** — *"the next stage finds them lying
+    there"*, because the warm files are one shared set at the root.  In the
+    **hierarchy** *"you **name** the run, and its files are copied in"*, and a
+    named run must have already finished. So a chained hierarchical launch
+    would have to copy a file that does not exist yet: every stage would start
+    from the deck's own coordinates and report success.
+
+    Both modes, because this is a property of the LAYOUT, not of the channel.
+    """
+    _describe(tmp_path, "hierarchical", names=("coarse", "tight"))
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
+    with pytest.raises(SubmitError) as e:
+        submit_jobset(js, tmp_path, mode=mode, dry_run=True, chain=True)
+    msg = str(e.value)
+    assert "hierarchical" in msg
+    assert "--from" in msg                      # what to do instead
+    assert "FLAT" in msg or "flat" in msg       # ...and where chaining lives
+
+
+def test_a_flat_ladder_still_chains_locally(tmp_path, monkeypatch):
+    """The user's directive of 2026-08-10: *"keep the flat shape runnable with
+    `jobset submit run --chain` … the prep, deployment and execution chain of
+    command is the same framework."*
+
+    Flat is the shape where a chain costs nothing, because stage 2 finds stage
+    1's warm files lying in the same directory. Refusing it here would take
+    the working path away in the name of protecting the other one.
+    """
+    _describe(tmp_path, "flat", names=("coarse", "tight"))
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
+    for stem in ("JOB_01_coarse", "JOB_02_tight"):
+        (tmp_path / f"{stem}.run.sh").write_text("x")
+    monkeypatch.setattr(_submit.subprocess, "run", lambda *a, **k: _CP())
+    res = submit_jobset(js, tmp_path, mode="direct", chain=True)
+    assert [r.status for r in res] == ["ran", "ran"]
+
+
+def test_a_flat_ladder_chained_at_a_scheduler_is_still_refused(tmp_path):
+    """Flat chains, but not by handing SLURM the whole ladder.  The two rules
+    are independent: one is about the LAYOUT, the other about the CHANNEL."""
+    _describe(tmp_path, "flat", names=("coarse", "tight"))
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
+    with pytest.raises(SubmitError, match="one at a time"):
+        submit_jobset(js, tmp_path, mode="submit", dry_run=True, chain=True)
 
 
 def test_run_direct_afterok_skips_dependent_after_failure(tmp_path, monkeypatch):
@@ -631,15 +740,47 @@ def test_cli_prep_lays_out_dirs(tmp_path):
 
 
 def test_cli_submit_dry_run_lists_commands(tmp_path):
+    """A sweep still RESOLVES to all its points without naming one -- that is
+    the CLI's question, *which jobs did you mean* -- and the scheduler still
+    gets exactly one.  Naming the point is how you say which."""
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    # A SWEEP needs no stage: its points are independent, so the whole set is
-    # the ordinary thing.  Only a ladder requires a stage or --chain.
-    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path),
-                            "--mode", "submit", "--dry-run"])
+    r = runner.invoke(grp, ["submit", "run", "G1K1C4", "--bundle",
+                            str(tmp_path), "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
     assert "planned" in r.output and "sbatch" in r.output
     assert "-J" in r.output and "G1K1C4" in r.output
+
+
+def test_cli_chain_on_a_hierarchical_bundle_refuses(tmp_path):
+    """Through the CLI, because that is the surface a person types.
+
+    The library owns the rule, but a flag the CLI forgets to pass is a rule
+    that only holds when called directly -- which is the shape of defect that
+    made this whole guard live in `submit_jobset` rather than in
+    `_resolve_stage`. A mutation dropping `chain=chain` from the CLI call left
+    every library-level test green.
+    """
+    _describe(tmp_path, "hierarchical", names=("coarse", "tight"))
+    _token_ladder("JOB_01_coarse.fdf",
+                  "JOB_02_tight.fdf").write(tmp_path / "job-set.json")
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path),
+                            "--mode", "direct", "--chain", "--dry-run"])
+    assert r.exit_code != 0
+    assert "hierarchical" in r.output and "--from" in r.output
+
+
+def test_cli_submit_of_a_whole_sweep_refuses_and_says_which(tmp_path):
+    """The refusal has to reach the person who typed it, with the names -- a
+    library error that the CLI swallowed into a stack trace would be the same
+    disaster with worse ergonomics."""
+    _sweep().write(tmp_path / "job-set.json")
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path),
+                            "--mode", "submit", "--dry-run"])
+    assert r.exit_code != 0
+    assert "one at a time" in r.output and "G1K1C4" in r.output
 
 
 def test_cli_submit_requires_mode(tmp_path):

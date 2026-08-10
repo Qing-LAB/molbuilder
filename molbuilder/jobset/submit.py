@@ -152,10 +152,20 @@ def _parse_sbatch_id(stdout: str) -> str:
 
 def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                   dry_run: bool) -> List[JobResult]:
-    """SLURM path: sbatch each job with per-job CLI flags, threading
-    ``--dependency`` from the producer's id.  A sweep (no ``depends_on``)
-    submits with no dependency, so its jobs queue in parallel; a ladder
-    chains."""
+    """SLURM path: ``sbatch`` **one** job, with its resources as CLI flags.
+
+    **One per invocation** — :func:`_refuse_batch_submission` is what makes
+    that true, and this loop keeps its shape only because a caller may narrow
+    to a single job by several routes.  Until 2026-08-10 this docstring said
+    *"a sweep submits with no dependency, so its jobs queue in parallel"*, and
+    the code did exactly that: one command, N ``sbatch`` calls, every one of
+    them racing the others for the same nodes.
+
+    The ``--dependency`` threading below is reachable only for a job whose set
+    still declares an edge — a hand-built chained ladder — and never for more
+    than one job at a time, so it can no longer be the mechanism by which a
+    whole ladder is handed over at once.
+    """
     results: List[JobResult] = []
     ids: Dict[str, str] = {}            # job.name -> slurm job id
     for job in jobset.jobs:
@@ -323,10 +333,79 @@ def _record_launch(attempt: Path, *, mode: str, command: List[str],
 #  public entry point                                                   #
 # --------------------------------------------------------------------- #
 
+def _refuse_batch_submission(jobset: JobSet, base_dir: Path, *, mode: str,
+                             chain: bool) -> None:
+    """The two things a launch may not do (user rule, 2026-08-10).
+
+    **1. A scheduler is handed one job at a time.**  *"SLURM should never
+    submit jobs in parallel.  Submission is manual and one by one.  It is a
+    disaster to do parallel job submission on HPC."*  Firing N ``sbatch``
+    calls from one command puts N jobs in the queue that will start whenever
+    the scheduler finds room — together, if there is room — and on a shared
+    cluster that is antisocial at best.  For a **benchmark** it is worse than
+    antisocial: points that run concurrently contend for the same cores,
+    memory bandwidth and interconnect, so the sweep measures contention rather
+    than scaling and the numbers are quietly wrong.
+
+    This is a rule about the **scheduler**, not about doing several things.
+    ``--mode direct`` runs each job here, in order, waiting for each — that is
+    not submission at all, and it is untouched.
+
+    **2. A hierarchical ladder does not chain, in either mode.**
+    `project-layout.md § 1`'s table is the reason, and it is structural rather
+    than a matter of taste: continuing is *"free"* in **flat** — *"the next
+    stage finds them lying there"*, because the warm files are one shared set
+    at the root — while in the **hierarchy** *"you **name** the run, and its
+    files are copied in."*  A named run must have already finished.  So a
+    chained hierarchical launch would have to copy a file that does not exist
+    yet, and the only way it ever appeared to work is the dangling carry
+    symlinks P7 unit 2 removes.  Refusing says so instead of producing three
+    stages that each started from the deck's own coordinates.
+    """
+    if len(jobset.jobs) <= 1 and not chain:
+        return
+    from .materialize import shape_of
+    sh = shape_of(jobset, base_dir)
+
+    if chain and sh is not None and sh.keeps_attempts_as_directories:
+        raise SubmitError(
+            "this calculation's shape is 'hierarchical', which does not "
+            "chain.\n"
+            "  Each stage there continues from a run you NAME -- `prep run "
+            "<stage> --from 02_medium/run-0` -- and a chain has none to "
+            "name, because the run it would continue from has not happened "
+            "yet (project-layout.md § 1).  A chained hierarchical launch "
+            "would start every stage from the deck's own coordinates and "
+            "report success.\n"
+            "  Run it a stage at a time, looking in between -- which is what "
+            "this shape is for:\n"
+            "    molbuilder jobset prep   run <stage> --from <attempt>\n"
+            "    molbuilder jobset submit run <stage> --mode ...\n"
+            "  A FLAT calculation does chain: its warm files are one shared "
+            "set, so the next stage finds them lying there.")
+
+    if mode == "submit" and len(jobset.jobs) > 1:
+        names = ", ".join(j.name for j in jobset.jobs)
+        raise SubmitError(
+            f"refusing to hand {len(jobset.jobs)} jobs to the scheduler at "
+            f"once ({names}).\n"
+            "  Submission is one at a time, by hand.  Jobs queued together "
+            "start together whenever the scheduler finds room, which on a "
+            "shared cluster is antisocial -- and for a benchmark it is "
+            "wrong, because points that run concurrently contend for the "
+            "same cores and interconnect, so the sweep measures contention "
+            "rather than scaling.\n"
+            "  Name the one you mean:\n"
+            "    molbuilder jobset submit run <stage> --mode submit\n"
+            "  `--mode direct` is not affected: it runs them here, in order, "
+            "waiting for each.")
+
+
 def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                   domain: Optional[str] = None,
                   dry_run: bool = False,
-                  only: Optional[str] = None) -> List[JobResult]:
+                  only: Optional[str] = None,
+                  chain: bool = False) -> List[JobResult]:
     """Launch a prepped ``jobset`` rooted at ``base_dir``.
 
     ``mode`` is ``"submit"`` (SLURM ``sbatch`` + per-job CLI flags +
@@ -340,6 +419,13 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
     (``project-layout.md`` § 1.6); the CLI refuses to act on a whole ladder
     without ``--chain``.  A job launched this way has no dependency to thread,
     because the thing it depended on has already finished and you have read it.
+
+    ``chain`` is the caller saying *run the whole ladder back to back*.  It is
+    honoured only where it can be honoured -- see
+    :func:`_refuse_batch_submission`, which owns both standing refusals: **a
+    scheduler is handed one job at a time**, and **a hierarchical ladder does
+    not chain in either mode**.  Those live here rather than in the CLI because
+    a guard only a surface applies is one the next surface skips.
 
     Returns one :class:`JobResult` per job (the inform layer reads these).
     Refuses an invalid JobSet (same gate as prep/materialize).
@@ -375,6 +461,11 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
         lone = _dc.replace(next(j for j in jobset.jobs if j.name == only),
                            depends_on=None)
         jobset = _dc.replace(jobset, jobs=[lone])
+
+    # AFTER the narrowing, so `only` is what makes a launch single -- and
+    # BEFORE either path, so a refusal costs nothing and a dry run previews
+    # the real thing rather than a launch that would be refused.
+    _refuse_batch_submission(jobset, base, mode=mode, chain=chain)
 
     if mode == "submit":
         return _submit_slurm(jobset, base, domain=domain, dry_run=dry_run)
