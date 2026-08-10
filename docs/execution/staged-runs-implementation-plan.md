@@ -1408,6 +1408,36 @@ jobs, and what goes in and comes out) · § 1.6 (**stages do not chain**).
    > along — in the very section P6 re-anchors on. *Find the sentence before
    > designing the mechanism.* The gap § 9.6a found was real; what was wrong was
    > calling it a design gap rather than a conformance one.
+   > **The agreement landed 2026-08-10; the migration behind it did not.**
+   >
+   > `submit._check_launch_matches_deck` reads the deck's BENCH-MARKS `mpi_np`
+   > — the value P4 unit 5 put there — and compares it with the rank count the
+   > launch is about to use. Three outcomes, and the middle one is the live
+   > failure:
+   >
+   > | deck rendered for | launching at | |
+   > |---|---|---|
+   > | `auto` | `auto` | fine — both defer to the wrapper |
+   > | `auto` | `14` | **refused**: the deck's launch-derived values were computed with *no* rank count, and one is now being imposed |
+   > | `8` | `32` | **refused**, both numbers named |
+   >
+   > A deck with no BENCH-MARKS block makes no claim about its launch, so there
+   > is nothing to disagree with. The check is an agreement between two
+   > statements, never a demand that every deck make one.
+   >
+   > **This closes *"recording is not agreeing"* and not more.** The deeper half
+   > of the unit — *the deck is rendered FOR the launch*, i.e. step 3 moving
+   > from the produce into `prep` — is untouched. `molbuilder fdf` still renders
+   > a finished deck on whatever machine typed it, which is step 3 with step 1
+   > never run; the check catches the consequence at the last honest moment
+   > instead of removing the cause. `project-layout.md § 1` calls that migration
+   > *"the one real migration"*: the browser stops writing the deck and starts
+   > writing the template plus `task.json`.
+   >
+   > Its cost is now bounded and visible rather than latent: until it lands,
+   > any bundle whose stages carry an explicit `mpi_np` is refused at submit
+   > unless the deck was rendered for that same count.
+
 3. **The carry is a real file copy, made at prep**: `.XV` always, `.DM` when the
    description says, `.CG` **only when both stages share an algorithm**. Copied,
    never linked — the engine writes to these files, and a link would destroy the

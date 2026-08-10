@@ -1571,3 +1571,91 @@ def test_prep_leaves_every_job_a_readable_deck_and_wrapper(tmp_path, shape):
              if p.is_symlink() and not p.exists()
              and not p.name.startswith("JOB.")]
     assert stray == [], f"{shape}: dangling links that are not carry-forwards: {stray}"
+
+
+# --------------------------------------------------------------------- #
+#  P6 unit 2 -- the deck and its launch must agree                       #
+# --------------------------------------------------------------------- #
+
+
+def _deck_rendered_for(path, mpi_np):
+    """A real deck, rendered through the shipped renderer at a given rank
+    count -- so the BENCH-MARKS block is the emitter's, not a fixture's."""
+    import numpy as np
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.input import render_fdf
+    from molbuilder.structure import Structure
+    s = Structure(elements=["H"] * 20,
+                  positions=np.linspace(0, 6, 60).reshape(20, 3))
+    s.vacuum = (9.0, 9.0, 9.0)
+    Path(path).write_text(
+        render_fdf(s, SiestaConfig(system_label="JOB", mpi_np=mpi_np)))
+
+
+def _one_stage_bundle(base, mpi_np_deck, mpi_np_launch):
+    from molbuilder.jobset.model import Job, JobSet, Resources
+    # FLAT, so the stage runs in the bundle root and the deck sits where the
+    # launch looks for it -- a described bundle, which is what a real one is.
+    _describe(base, "flat", names=("coarse",))
+    _deck_rendered_for(Path(base) / "JOB_01_coarse.fdf", mpi_np_deck)
+    (Path(base) / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
+    return JobSet(name="JOB", engine="siesta", kind="ladder",
+                  jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
+                            resources=Resources(mpi_np=mpi_np_launch))])
+
+
+def test_a_deck_rendered_for_no_rank_count_refuses_an_explicit_one(tmp_path):
+    """THE LIVE FAILURE OF 2026-08-10, caught before the engine.
+
+    `project-layout.md § 2.3.1`: *"a parameter that depends on the launch
+    cannot be decided before the launch is known"* -- step 3 cannot precede
+    step 1.  A deck rendered with no rank count derived its `BlockSize` from
+    the system size alone; launching it at 14 ranks made SIESTA refuse at
+    startup with *"You have too many processors for the system size"*.
+
+    P4 unit 5 put `mpi_np` INTO the deck, which is why the failure was
+    diagnosable.  Recording is not agreeing -- this is the agreement.
+    """
+    from molbuilder.jobset.submit import submit_jobset, SubmitError
+    js = _one_stage_bundle(tmp_path, mpi_np_deck=None, mpi_np_launch=14)
+
+    with pytest.raises(SubmitError) as e:
+        submit_jobset(js, tmp_path, mode="direct", dry_run=True)
+    msg = str(e.value)
+    assert "auto" in msg and "14" in msg          # BOTH numbers named
+    assert "BlockSize" in msg                     # ...and what depends on it
+
+
+def test_a_deck_and_a_launch_that_agree_are_not_refused(tmp_path):
+    """Both spellings of agreement: an explicit match, and both deferring to
+    the wrapper.  A check that refused these would make every ordinary bundle
+    unlaunchable."""
+    from molbuilder.jobset.submit import submit_jobset
+    for deck, launch in ((8, 8), (None, None)):
+        d = tmp_path / f"{deck}-{launch}"; d.mkdir()
+        js = _one_stage_bundle(d, mpi_np_deck=deck, mpi_np_launch=launch)
+        res = submit_jobset(js, d, mode="direct", dry_run=True)
+        assert [r.status for r in res] == ["planned"]
+
+
+def test_two_explicit_rank_counts_that_differ_are_refused(tmp_path):
+    from molbuilder.jobset.submit import submit_jobset, SubmitError
+    js = _one_stage_bundle(tmp_path, mpi_np_deck=8, mpi_np_launch=32)
+    with pytest.raises(SubmitError) as e:
+        submit_jobset(js, tmp_path, mode="direct", dry_run=True)
+    assert "8" in str(e.value) and "32" in str(e.value)
+
+
+def test_a_deck_with_no_bench_marks_says_nothing_and_is_not_refused(tmp_path):
+    """A deck that never recorded its launch cannot disagree with one.  The
+    check is an agreement between two statements, not a demand that every deck
+    make one."""
+    from molbuilder.jobset.model import Job, JobSet, Resources
+    from molbuilder.jobset.submit import submit_jobset
+    _describe(tmp_path, "flat", names=("coarse",))
+    (tmp_path / "JOB_01_coarse.fdf").write_text("SystemLabel JOB\n")
+    (tmp_path / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
+    js = JobSet(name="JOB", engine="siesta", kind="ladder",
+                jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
+                          resources=Resources(mpi_np=99))])
+    assert submit_jobset(js, tmp_path, mode="direct", dry_run=True)

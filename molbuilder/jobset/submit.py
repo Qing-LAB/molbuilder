@@ -160,6 +160,7 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
     for job in jobset.jobs:
         job_dir, attempt = _launch_dir(jobset, base_dir, job)
         sbatch_name = _wrapper_name(job.script, ".sbatch")
+        _check_launch_matches_deck(job_dir, job)
         gpu = _job_wants_gpu(job_dir, job)
         pq = _resolve_domain(domain, gpu=gpu, project_dir=base_dir)
 
@@ -262,6 +263,66 @@ def _job_wants_gpu(job_dir: Path, job) -> bool:
     return deck.is_file() and _fdf_requests_gpu(deck)
 
 
+def _check_launch_matches_deck(job_dir: Path, job) -> None:
+    """Refuse a launch the deck was not rendered for (P6 unit 2).
+
+    `project-layout.md § 2.3.1` states the five steps and says the order is
+    **forced**: *"Step 3 cannot precede step 1, because a deck carries values
+    that depend on how it will be launched — a block size derived from the rank
+    count … A parameter that depends on the launch cannot be decided before the
+    launch is known."*
+
+    Today step 3 happens at `molbuilder fdf`, on whatever machine typed it, and
+    the rank count is resolved hours later by the wrapper. **The two halves of
+    one ordered sequence run in different places, and nothing carried the
+    first's answer to the third.** On 2026-08-10 that produced a deck rendered
+    with no rank count — so ``BlockSize`` from the size-only branch — launched
+    at ``-np 14``, and SIESTA refused at startup with *"You have too many
+    processors for the system size"*.
+
+    P4 unit 5 put the launch quantity **into** the deck (BENCH-MARKS carries
+    ``mpi_np``), which is why that failure was diagnosable at all. **Recording
+    is not agreeing**: this is the agreement, and it happens before the engine
+    is started rather than being discovered by it.
+
+    Three outcomes, and the middle one is the live defect:
+
+    * deck ``auto`` + launch ``auto`` — both defer to the wrapper. Fine.
+    * deck ``auto`` + launch ``N`` — the deck's launch-derived values were
+      computed with **no** rank count, and now one is being imposed. Refused.
+    * deck ``N`` + launch ``M`` — refused, with both numbers named.
+
+    A deck with no BENCH-MARKS block says nothing about its launch, so there is
+    nothing to disagree with and nothing is refused.
+    """
+    deck = Path(job_dir) / os.path.basename(job.script)
+    if not deck.is_file():
+        return
+    from ..parse.scripts.bench_marks import _extract_bench_marks_dict
+    marks = _extract_bench_marks_dict(deck.read_text(encoding="utf-8",
+                                                     errors="replace"))
+    if not marks or "mpi_np" not in marks:
+        return
+    rendered_for = marks["mpi_np"]                 # an int, or the str "auto"
+    launching_at = job.resources.mpi_np            # an int, or None == auto
+    if rendered_for == "auto" and launching_at is None:
+        return
+    if rendered_for == launching_at:
+        return
+    _fmt = lambda v: "auto" if v in ("auto", None) else str(v)   # noqa: E731
+    raise SubmitError(
+        f"job {job.name!r}: this deck was rendered for mpi_np "
+        f"{_fmt(rendered_for)}, and you are launching it at "
+        f"{_fmt(launching_at)}.\n"
+        f"  {deck.name} derives values from the rank count -- BlockSize above "
+        f"all -- so a deck rendered for one launch is wrong for another "
+        f"(project-layout.md § 2.3.1: a parameter that depends on the launch "
+        f"cannot be decided before the launch is known).\n"
+        f"  Re-render the deck for this launch, or launch it at "
+        f"{_fmt(rendered_for)}.  The deck records what it assumed in its "
+        f"BENCH-MARKS block, which is what made this checkable.")
+
+
 def _run_direct(jobset: JobSet, base_dir: Path, *,
                 dry_run: bool) -> List[JobResult]:
     """Local path: run each ``<stem>.run.sh`` sequentially in dependency
@@ -272,6 +333,7 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
     failed: set = set()                 # job names that failed / were skipped
     for job in jobset.jobs:
         job_dir, attempt = _launch_dir(jobset, base_dir, job)
+        _check_launch_matches_deck(job_dir, job)
         run_name = _wrapper_name(job.script, ".run.sh")
         cmd = ["bash", run_name] + _run_sh_args(job.resources)
         if job.depends_on in failed and job.dep_kind == "afterok":
