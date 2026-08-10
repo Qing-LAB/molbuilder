@@ -386,7 +386,7 @@ flowchart TB
     V -->|"differ"| STOP2["fail — a corrupt copy must<br/>never become self-consistent"]
     V -->|"match"| W["write MANIFEST"]
     W --> D["its sha256 is the<br/>archive's name (§ 3)"]
-    D --> SW["publish it there<br/>— already present and identical?<br/>then there is nothing to do"]
+    D --> SW["publish it there<br/>— already present?<br/><b>verify before reusing it</b>"]
     SW --> C["record the state,<br/>carrying the same digest"]
 ```
 
@@ -400,6 +400,18 @@ from the copy alone, a copy corrupted on the way to disk would be
 *self-consistent* — it would verify against its own bad checksum forever and be
 restored as truth. Hashing the source and re-hashing the copy makes that
 impossible.
+
+**An archive that is already there is verified before it is reused, not
+assumed.** Its name proves what it *should* hold; only reading it proves
+what it still holds. A save that adopted a damaged archive on the strength
+of the name recorded a state the user was told they could return to and
+could not — § 1's promise broken by the very operation that makes it, and
+I2b's *matches or is refused* answered with a third option: never asked.
+The same goes for content reused by **hard link** — a link avoids the copy,
+not the check. Where the verification fails the save is **refused**, and
+the way out is cheap precisely because the archive is content-addressed:
+delete it and save again, and it is rebuilt byte-identically from the files
+still in the folder.
 
 **Publishing is *create if absent*, never *overwrite*.** An archive at a given
 name always holds the same content, so there is nothing to replace and nothing to
@@ -1253,7 +1265,7 @@ conclude there is nothing to do.
 | **I1** | archived content is never modified | ✅ structural — the name is the content digest, so changed content is a different archive |
 | **I2** | a MANIFEST is authoritative | ✅ existence, size and sha256 for every entry, run over every archive in the folder |
 | **I2a** | a restore replays the save, and consults nothing | ✅ what a restore removes is decided by git and the MANIFEST, never by the classification |
-| **I2b** | the records themselves are tamper-evident | ✅ every state carries the digest; a tampered or missing MANIFEST is named on the cheap read as well as at restore, an edited ignore block detected |
+| **I2b** | the records themselves are tamper-evident | ✅ every state carries the digest; a tampered or missing MANIFEST is named on the cheap read as well as at restore, an edited ignore block detected; **and a save verifies an archive it would reuse rather than trusting its name** |
 | **I2c** | the warning is measured against the records, not the config | ✅ the standing state's MANIFEST unioned with what is big now; a file the classification stopped matching is still named |
 | **I3** | `restore` is the only operation that writes into the folder | ✅ |
 | **I4** | no git in a generated wrapper | ✅ |
@@ -1270,12 +1282,12 @@ conclude there is nothing to do.
 | **S6** | a restored folder explains itself | needs the description |
 | **L1** | one repository per calculation | ✅ |
 | **L2** | the archive matches at depth | ✅ |
-| **L3** | every state carries a note, and names its calculation | ✅ the note is required; a `Calculation:` trailer names it, and a name needing repair is refused |
+| **L3** | every state carries a note, and names its calculation | ✅ the note is required; a `Calculation:` trailer names it, and a name needing repair is refused — **on the save as well as at `init`**, since a folder somebody `git init`-ed by hand never reached `init`'s gate |
 | **L4** | a tag is yours; nothing tags on your behalf | ✅ nothing tags automatically |
 | **L7** | a big-file-only change still produces a state | ✅ |
 | **S7** | a file that changes category leaves the store it came from | ✅ tested in both directions — a file that grows leaves git, one that shrinks leaves the archive |
 | **S8** | a folder out of step is never acted on as if whole | ✅ a restore checks content and refuses, naming the files; a save records what is there, which is honest |
-| **S9** | two saves cannot corrupt each other | ✅ unique staging per publisher, one atomic rename; tested with four concurrent publishers |
+| **S9** | two saves cannot corrupt each other | ✅ unique staging per publisher, one atomic rename, and **every atomic write uses a unique temp name** — a derived one is the same collision one level down; tested with four concurrent publishers and with two concurrent `save`s |
 | **L8** | a saved attempt never differs afterwards | needs the layout |
 
 ### A lost archive is a fact now, not a suspicion

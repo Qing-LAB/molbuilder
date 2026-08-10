@@ -24,6 +24,7 @@ from molbuilder.runtime_config import (
     get_checkpoint_engines,
 )
 from molbuilder.checkpoint import (
+    CalculationNameError,
     CheckpointError,
     DirtyWorkingTreeError,
     MANIFEST_NAME,
@@ -646,6 +647,39 @@ def test_a_calculation_name_needing_repair_is_refused(tmp_path):
         Repo(str(root)).init(note="set up")
 
 
+def test_a_bare_git_init_does_not_smuggle_a_bad_name_into_the_history(
+        tmp_path, checkpoint_config):
+    """L3's refusal had a way around it, and § 2.0 says people take that road.
+
+    `init` refuses a name needing repair — but only on a folder it is
+    initialising. Somebody who ran `git init` here by hand (which § 2.0 says
+    happens, and does not forbid) reached an already-initialised folder, so
+    `init` returned early and `save` wrote the raw directory name straight into
+    every state: `Calculation: has spaces!`, in a history `init` would have
+    refused outright.
+
+    Both halves are asserted, because a refusal with no way forward would just
+    move the problem: the save is refused, and `init --calculation` is the verb
+    that repairs the folder.
+    """
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
+    root = tmp_path / "has spaces!"
+    root.mkdir()
+    (root / "job.fdf").write_text("SystemLabel job\n")
+    subprocess.run(["git", "init", "-q", "."], cwd=root, check=True)
+
+    repo = Repo(str(root))
+    with pytest.raises(CalculationNameError) as exc:
+        repo.save("stage 1 converged")
+    assert "--calculation" in str(exc.value), (
+        "the refusal must name the verb that fixes it")
+    assert not repo.states(), "nothing may have been recorded"
+
+    repo.init(calculation="BDT_Au_relax", note="named at last")
+    state = repo.save("stage 1 converged")
+    assert state.calculation == "BDT_Au_relax"
+
+
 # ------------------------------------------------------------------ #
 #  L3 — the note and the name go through ONE parser (§ 15)            #
 # ------------------------------------------------------------------ #
@@ -1224,6 +1258,82 @@ def test_an_archive_published_but_never_committed_costs_nothing(calc,
 # ------------------------------------------------------------------ #
 #  I2 — a MANIFEST is authoritative: exists, size, sha256             #
 # ------------------------------------------------------------------ #
+
+
+def test_a_save_refuses_to_adopt_a_damaged_archive(calc):
+    """§ 1's promise, broken by the one operation that makes it.
+
+    Publishing is *create if absent*, and the absent check was the file being
+    there — so a save whose big files had not changed **returned the existing
+    digest on the strength of the name alone**. The name proves what an archive
+    *should* hold, never that it still does: with the archive damaged, the new
+    state carried a digest that no longer verified, and the save said *saved*
+    about a state that could not be returned to.
+
+    I2b allows two outcomes and not three — *it matches, or it is refused* —
+    and skipping the question was the third. The refusal has to be usable, so
+    it names the remedy: the archive is content-addressed, so deleting it and
+    saving again rebuilds it byte-identically from the files still on disk.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    first = calc.save("state 1")
+
+    # Damage the payload, same size, so only a checksum can tell.
+    (archive_dir(calc.root, first.archive) / "big.bin").write_bytes(
+        b"\x99" * len(BIG))
+
+    # Move away and bring the same big content back: the save would otherwise
+    # reuse that archive, because identical content means an identical digest.
+    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)
+    calc.save("state 2")
+    (calc.root / "big.bin").write_bytes(BIG)
+    (calc.root / "note.txt").write_text(SMALL)
+
+    with pytest.raises(CheckpointError) as exc:
+        calc.save("state 3 -- same big content as state 1")
+    message = str(exc.value)
+    assert "damaged" in message or "does not match" in message
+    assert "rm -rf" in message and ".binsnapshots" in message, (
+        "a refusal with no way out is a dead end; the archive is named by its "
+        "content, so removing it and saving again is the remedy")
+
+    # And the remedy actually works, which is what makes it a remedy.
+    import shutil as _sh
+    _sh.rmtree(archive_dir(calc.root, first.archive))
+    rebuilt = calc.save("state 3, after removing the damaged archive")
+    assert rebuilt is not None
+    from molbuilder.checkpoint import verify_archive
+    verify_archive(calc.root, rebuilt.archive)
+
+
+def test_a_reused_inode_is_checked_like_a_copied_one(calc):
+    """The same assumption, in the hard-link path.
+
+    Unchanged content is hard-linked rather than copied, and the link used to
+    skip the re-hash on the grounds that it is *"the same inode that was
+    verified when it was first written."*  Verified **when written** is true;
+    unchanged **since** is the assumption, and I2b exists because that
+    assumption fails. A damaged inode would be linked into a brand-new archive
+    whose MANIFEST disagrees with its own bytes from the moment it appears.
+
+    Two big files here, and only one of them changes — so the other is the one
+    offered for reuse, which is the path under test.
+    """
+    steady = calc.root / "steady.bin"
+    moving = calc.root / "moving.bin"
+    steady.write_bytes(BIG)
+    moving.write_bytes(b"\x05" * 6000)
+    first = calc.save("two large files")
+
+    # Damage the file that will be offered for reuse next time.
+    (archive_dir(calc.root, first.archive) / "steady.bin").write_bytes(
+        b"\x99" * len(BIG))
+    moving.write_bytes(b"\x06" * 6000)          # a genuinely new archive
+
+    with pytest.raises(CheckpointError) as exc:
+        calc.save("only the moving file changed")
+    assert "steady.bin" in str(exc.value), (
+        "the damaged inode was linked into the new archive unchecked")
 
 
 def test_verify_runs_over_every_archive_in_the_folder(calc):

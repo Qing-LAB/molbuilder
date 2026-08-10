@@ -53,13 +53,18 @@ from typing import Dict, List, Optional, Sequence, Tuple
 #  Contract: checkpointing.md § 3, S1, S1a, S1b, S1c                    #
 # --------------------------------------------------------------------- #
 
+#: Where the archive lives, one directory per distinct content (§ 3).
+ARCHIVE_DIR = ".binsnapshots"
+
 #: The only two paths that are never stored (S1).  Not a policy about worth --
 #: a store cannot contain itself, and that is the entire list.  Anything else
 #: excluded here would be a file in no snapshot, which is S1's losing branch.
-NEVER_STORED = (".git", ".binsnapshots")
-
-#: Where the archive lives, one directory per distinct content (§ 3).
-ARCHIVE_DIR = ".binsnapshots"
+#:
+#: Derived from :data:`ARCHIVE_DIR` rather than spelling it again: two literals
+#: for one directory are two things that can disagree, and the one that would
+#: go stale is the exclusion -- leaving the archive walkable by the save that
+#: is writing it.
+NEVER_STORED = (".git", ARCHIVE_DIR)
 
 _GITIGNORE_BEGIN = "# === molbuilder checkpoint BEGIN ==="
 _GITIGNORE_END = "# === molbuilder checkpoint END ==="
@@ -130,11 +135,18 @@ def write_gitignore(root: Path, always_large=()) -> None:
     byte-for-byte; everything between them is regenerated, which is what makes
     a hand edit inside detectable by recomputing rather than by a digest
     (I2b).
+
+    **Written atomically**, like the MANIFEST and for the same reason (S9).
+    ``write_text`` truncates and then writes, so a second saver -- or the
+    ``git add`` of the save already running -- can read the file in the window
+    between the two and find it empty, which is an ignore list that excludes
+    nothing. Two savers write identical bytes here, so the race has no wrong
+    *content* to reach; it had a wrong *moment*.
     """
     gi = root / ".gitignore"
     body = render_gitignore(always_large)
     if not gi.exists():
-        gi.write_text(body, encoding="utf-8")
+        _atomic_write_bytes(gi, body.encode("utf-8"))
         return
     text = gi.read_text(encoding="utf-8")
     b, e = text.find(_GITIGNORE_BEGIN), text.find(_GITIGNORE_END)
@@ -144,7 +156,7 @@ def write_gitignore(root: Path, always_large=()) -> None:
         text = text.rstrip("\n") + "\n\n" + body
     else:
         text = body
-    gi.write_text(text, encoding="utf-8")
+    _atomic_write_bytes(gi, text.encode("utf-8"))
 
 
 def gitignore_is_current(root: Path, always_large=()) -> bool:
@@ -168,6 +180,18 @@ def gitignore_is_current(root: Path, always_large=()) -> bool:
 #: A subdirectory holding one of these is somebody's working directory.  One
 #: repository covers one calculation (L1), so a folder full of these is only
 #: acceptable when the folder itself says they are one calculation's parts.
+#:
+#: **`.py` is here for PySCF, whose deck IS a `.py`**, and it is the entry with
+#: a known false positive: an ordinary `analysis/` or `scripts/` subdirectory
+#: holding any Python file reads as a working directory too.  Narrowing it is
+#: not free -- dropping `.py` would let a folder of PySCF runs be initialised
+#: as one history with nothing declaring them one calculation, which is the
+#: failure L1 exists for, and no extension can tell `<id>.py` from `plot.py`.
+#:
+#: So the breadth is deliberate and the remedy is one file: the refusal names
+#: the directories it found and says to put a description at the root, which is
+#: what a real staged calculation has anyway.  Dot-directories are skipped
+#: before this is consulted, which is what stopped `.venv/` tripping it.
 _NESTED_WORKING_DIR_MARKERS = (".fdf", ".py", ".run.sh")
 
 
@@ -587,10 +611,43 @@ def archive_dir(root: Path, digest: str) -> Path:
 
 
 def _atomic_write_bytes(target: Path, data: bytes) -> None:
-    """Write via a sibling temp + ``os.replace`` so readers never see a partial."""
-    tmp = target.with_name(target.name + ".tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, target)
+    """Write via a **unique** sibling temp + ``os.replace``.
+
+    Two properties, and the second was missing: a reader never sees a partial
+    file, and two writers never collide.
+
+    **A DERIVED temp name is the trap § 6 names**, and it is not only about
+    archives.  This wrote ``<target>.tmp``, which is fine while every caller
+    owns a private directory — and the moment ``write_gitignore`` started using
+    it, two concurrent saves agreed on one temp path in a *shared* directory:
+    one renamed it into place, and the other's ``os.replace`` failed on a file
+    that was no longer there.  A unique name reduces the shared moment to the
+    rename itself, which is atomic and where last-writer-wins is the right
+    answer, because both wrote the same bytes (S9).
+
+    ``mkstemp`` creates 0600, which is not what a config file should end up as,
+    so the mode is set to the target's own if it already exists and 0644 if it
+    does not — matching what an ordinary create under a normal umask gives.
+    """
+    parent = target.parent
+    try:
+        mode = target.stat().st_mode & 0o777
+    except OSError:
+        mode = 0o644
+    fd, tmp_name = tempfile.mkstemp(dir=str(parent),
+                                    prefix=target.name + ".", suffix=".tmp")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.chmod(tmp, mode)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 #: Big enough that the syscall overhead disappears, small enough that a 2 GB
@@ -726,7 +783,40 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
     digest = manifest_digest(raw)
     final = archive_dir(root, digest)
     if (final / MANIFEST_NAME).is_file():
-        return digest                    # already published; identical by name
+        # ALREADY PUBLISHED -- BUT THE NAME PROVES WHAT IT SHOULD HOLD, NOT
+        # THAT IT STILL DOES.
+        #
+        # This used to `return digest` on the strength of the name alone, and
+        # that made a save adopt a damaged archive and report success: the new
+        # state carried a digest whose archive no longer verified, so a state
+        # the user was told they could return to was not restorable.  § 1's
+        # promise, broken by the one operation that makes it.
+        #
+        # I2b allows two outcomes and not three -- "it matches, or it is
+        # refused" -- and skipping the question was the third.  § 1 also
+        # settles the cost: "if a rule here and a saving of disk ever disagree,
+        # the rule wins", and the same goes for a saving of time.
+        #
+        # The way out is cheap and safe *because* the archive is content-
+        # addressed: delete the damaged directory and save again, and it is
+        # rebuilt byte-identically from the files still in the folder -- which
+        # are the very files whose content matched, or this branch would not
+        # have been reached.  Repairing it here instead would be molbuilder
+        # quietly writing over an archive, which I1 does not allow it to do.
+        try:
+            verify_archive(root, digest)
+        except CheckpointError as exc:
+            raise CheckpointError(
+                f"the archive this save would reuse is damaged, so the state "
+                f"would not be restorable: {exc}\n\n"
+                f"Nothing was saved.  The archive is named by its content, so "
+                f"removing it and saving again rebuilds it from the files in "
+                f"this folder:\n"
+                f"    rm -rf {archive_dir(root, digest)}\n"
+                f"    molbuilder snapshot save -m \"…\"\n"
+                f"(checkpointing.md I2b, § 1)."
+            ) from exc
+        return digest
 
     # A UNIQUE staging directory per publisher, not `<digest>.tmp`.
     #
@@ -748,13 +838,27 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
             dst = tmp / key
             dst.parent.mkdir(parents=True, exist_ok=True)
             reuse = index.get(sha256)
+            linked = False
             if reuse is not None and reuse.is_file():
                 try:
                     os.link(reuse, dst)
-                    continue              # same inode: already verified once
+                    linked = True         # no copy: the same inode, reused
                 except OSError:
                     pass                  # cross-device or unsupported: copy
-            shutil.copy2(src, dst)
+            if not linked:
+                shutil.copy2(src, dst)
+            # CHECKED THE SAME WAY WHETHER IT WAS COPIED OR LINKED.
+            #
+            # This used to `continue` past the check after a link, reasoning
+            # that a hard link is "the same inode that was verified when it was
+            # first written".  Verified *when written* is true; unchanged
+            # *since* is the assumption, and I2b exists precisely because that
+            # assumption fails -- bit rot, or somebody tidying a directory.
+            # Reusing a damaged inode would build a new archive whose MANIFEST
+            # disagrees with its own bytes from the moment it is published.
+            #
+            # A link still avoids the write, which is the expensive half; what
+            # it no longer avoids is the read.
             if sha256_of(dst) != sha256:
                 raise CheckpointError(
                     f"archive copy of {key!r} is corrupt: it does not match "
@@ -952,6 +1056,19 @@ class Repo:
             # Idempotent, and honestly typed: a folder somebody ran `git init`
             # in by hand is "initialised" with no state to stand at, so this is
             # Optional rather than a State that might not be there.
+            #
+            # THAT FOLDER IS ALSO THE ONE L3 WAS ESCAPING THROUGH.  § 2.0 says
+            # people run bare git in these directories, and a folder they had
+            # already `git init`-ed never reached the name check below: `save`
+            # then wrote the raw folder name into every state's trailer, so
+            # `Calculation: has spaces!` shipped in a history that `init` would
+            # have refused outright.  Setting it here makes `init` the verb
+            # that repairs such a folder -- and `--calculation` the way to give
+            # it a name its directory cannot spell.
+            if not self._configured_calculation():
+                _run_git(["config", "molbuilder.calculation",
+                          check_calculation_name(calculation or self.root.name)],
+                         cwd=self.path)
             return self.standing_at()
         working, inner = _scan_subtree(self.root)
         if inner:
@@ -994,17 +1111,27 @@ class Repo:
                        cwd=self.path, check=False).stdout.strip()
         return out or None
 
+    def _configured_calculation(self) -> Optional[str]:
+        """The name this folder was given, or None if it was never set."""
+        out = _run_git(["config", "--get", "molbuilder.calculation"],
+                       cwd=self.path, check=False).stdout.strip()
+        return out or None
+
     def calculation(self) -> str:
         """Which calculation this folder's history belongs to (L3).
 
         Defaults to the folder's own name, which is what a person recognises,
         and is fixed at init: it is written verbatim into every state, so
         changing it later would make one history claim two names.
+
+        **Read-only and unvalidated on purpose.**  ``snapshot config`` and the
+        panel show this on folders that may be in any condition, and a reader
+        that raises turns "your name needs fixing" into "this folder cannot be
+        looked at".  The refusal L3 asks for belongs where the name is
+        *written into a state*, which is :meth:`save`.
         """
         self._require_init()
-        out = _run_git(["config", "--get", "molbuilder.calculation"],
-                       cwd=self.path, check=False).stdout.strip()
-        return out or self.root.name
+        return self._configured_calculation() or self.root.name
 
     def classification(self) -> Dict[str, object]:
         """Which files this folder's saves send to the archive (§ 4, S1c).
@@ -1354,6 +1481,21 @@ class Repo:
                 "about to do -- it is the only thing that answers the question "
                 "you bring to a history a month later, and it is not "
                 "defaulted (checkpointing.md L3).")
+        # L3's other half, checked HERE because this is where the name is
+        # written verbatim into a state.  `init` refuses a name needing repair,
+        # but a folder somebody had already `git init`-ed skipped that gate
+        # entirely (§ 2.0 says they do), so the raw directory name reached the
+        # trailer.  `calculation()` stays unvalidated so read-only surfaces
+        # still work on such a folder; the refusal lands on the write.
+        try:
+            check_calculation_name(self.calculation())
+        except CalculationNameError as exc:
+            raise CalculationNameError(
+                f"{exc}\n\nThis folder is a git repository that molbuilder did "
+                f"not name -- most likely `git init` was run here by hand. "
+                f"Give it one, and nothing else changes:\n"
+                f"    molbuilder snapshot init --calculation <name>\n"
+                f"Nothing was saved.") from exc
         cls = self.classification()
         always = cls["always_large"]
         # I2b: `.gitignore` records a DERIVATION, so the derivation is the
