@@ -108,6 +108,12 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     dir_of = job_dir_names(jobset, shape_of(jobset, base_dir))
     for job in jobset.jobs:
         d = base / dir_of[job.name]
+        if d.resolve() == base.resolve():
+            # FLAT: the wrappers step 1 just rendered, and the monitor, are
+            # already in the directory this job runs in.  Linking here would
+            # unlink the real files and point at the bundle's PARENT -- the
+            # same destruction `materialize` guards against, one step later.
+            continue
         stem = Path(job.script).stem
         for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):
             if (base / wrapper).exists():

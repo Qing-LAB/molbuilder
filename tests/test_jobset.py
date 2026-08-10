@@ -1522,3 +1522,52 @@ def test_prepare_attempt_refuses_a_flat_calculation(tmp_path):
 
     _describe(tmp_path, "hierarchical")            # ...the hierarchy still does
     assert prepare_attempt(js, tmp_path, "tight")["dir"].name == "run-0"
+
+
+@pytest.mark.parametrize("shape", ["flat", "hierarchical"])
+def test_prep_leaves_every_job_a_readable_deck_and_wrapper(tmp_path, shape):
+    """`job-system.md` decision #2: *"Each job in a JobSet is launched by
+    exactly the `.run.sh` / `.sbatch` wrapper … built by the same function."*
+    A job whose deck or wrapper is a **dangling symlink** is launched by
+    nothing.
+
+    This is M5 pass 1's finding, and it was severe: in the flat shape a job's
+    directory IS the bundle root, so `relink(d, "../<name>", …)` unlinked the
+    real file and pointed at the bundle's PARENT.  A flat prep destroyed its
+    own decks, its wrappers and the monitor — every one of them.
+
+    It was invisible to the check I ran at the time, which asked *"does prep
+    make the right directories?"* (flat: none, correct) and never asked whether
+    the files survived.  So the assertion here is about **what a job can
+    actually open**, in both shapes, which is the obligation rather than the
+    mechanism.
+    """
+    from molbuilder.jobset.materialize import job_dir_names, shape_of
+    from molbuilder.jobset.prep import prep_jobset
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    _describe(tmp_path, shape, names=("coarse", "tight"))
+    for deck in ("JOB_01_coarse.fdf", "JOB_03_tight.fdf"):
+        (tmp_path / deck).write_text("SystemLabel JOB\n")
+    (tmp_path / "mb_monitor.py").write_text("# monitor\n")
+    (tmp_path / ".molbuilder.json").write_text(
+        '{"script_generation": {"preamble": "x", '
+        '"activation": "source activate"}}')
+
+    prep_jobset(js, tmp_path, emit_sbatch=False)
+
+    dir_of = job_dir_names(js, shape_of(js, tmp_path))
+    for job in js.jobs:
+        d = tmp_path / dir_of[job.name]
+        deck = d / job.script
+        assert deck.exists(), f"{shape}: {job.name}'s deck does not resolve"
+        assert deck.read_text().strip(), f"{shape}: {job.name}'s deck is empty"
+        wrapper = d / (Path(job.script).stem + ".run.sh")
+        assert wrapper.exists(), f"{shape}: {job.name} has no runnable wrapper"
+
+    # ...and nothing anywhere points outside the bundle.  The ONLY dangling
+    # links a correct tree may hold are the hierarchy's carry-forwards, which
+    # are meant to dangle until the producer runs (job-system.md D1).
+    stray = [str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*")
+             if p.is_symlink() and not p.exists()
+             and not p.name.startswith("JOB.")]
+    assert stray == [], f"{shape}: dangling links that are not carry-forwards: {stray}"

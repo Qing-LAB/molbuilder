@@ -209,6 +209,21 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
     for job in jobset.jobs:
         d = base / dirs[job.name]
         d.mkdir(parents=True, exist_ok=True)
+        created.append(d)
+        if d.resolve() == base.resolve():
+            # FLAT: depth 1 (`project-layout.md` § 1) -- the job runs in the
+            # bundle root, where every file it needs ALREADY SITS.  There is
+            # nothing to link, and linking would DESTROY: `relink` unlinks the
+            # existing entry first, and ``../<name>`` points outside the
+            # bundle.  Without this guard a flat prep replaced its own decks,
+            # wrappers and monitor with dangling symlinks to the parent
+            # directory -- found by M5 pass 1, 2026-08-10.
+            #
+            # The carry is skipped for the same reason and a second one: flat's
+            # warm files are ONE SHARED SET at the root (§ 1), so the next
+            # stage finds them lying there; there is no producer directory to
+            # reach into.
+            continue
         # static package + this job's own input script: same bytes, one
         # level up in the bundle root.
         for fname in list(jobset.shared) + [job.script]:
@@ -217,7 +232,6 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
         for c in job.carry:
             target = os.path.join("..", dirs[c.from_job], c.pattern)
             relink(d, target, os.path.basename(c.pattern))
-        created.append(d)
     return created
 
 

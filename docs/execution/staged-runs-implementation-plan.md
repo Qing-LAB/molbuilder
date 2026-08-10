@@ -1938,6 +1938,51 @@ Review 3's live half, which needs `molbuilder serve` and the BDT-Au data.
 
 ---
 
+## 5e. M5 — the milestone review, 2026-08-10
+
+**Pass 2 ran first** (the previous turn's fresh-eyes read of all of P5): nine
+descriptions of a thing that no longer happens, two of them live defects — a
+`--stage-resources` gate still keyed on the shape, and an `if True:` left by a
+mechanical edit. Recorded in `44cdfe89`.
+
+### Pass 1 — conformance, with the diff closed
+
+Governing sections read first: `engines/stages.md` § 6.7 and § 7/7.2 ·
+`project-layout.md` § 1 · **`job-system.md` decision #2** · **`running-a-job.md`
+§ 2.2a**. The last two had not been read at all during the phase, and one of
+them is where the finding came from.
+
+| # | Lens | What is wrong | Evidence | Disposition |
+|---|---|---|---|---|
+| 1 | R1 | **A flat prep destroyed its own bundle.** decision #2: *"Each job in a JobSet is launched by exactly the `.run.sh` / `.sbatch` wrapper … built by the same function."* In flat a job's directory **is** the bundle root, so `relink(d, "../<name>", …)` unlinked the real file and pointed at the bundle's **parent**. Both decks, both wrappers and the monitor became dangling symlinks; the carry links landed as `.././<label>.XV`. The calculation was gone | verified live: 6 of 13 files `resolves=False` after `jobset prep run` | **Fixed** — `materialize` and `prep` both skip the link step when the job directory is the root, because the files are already where the job runs |
+
+**Why the phase's own checks missed it.** I verified the shape work by asking
+*"does prep make the right directories?"* — flat makes none, which was correct
+and which I recorded as proof. **Nothing asked whether the files survived.** The
+test now asserts the obligation instead of the mechanism: after `prep`, every
+job's deck and wrapper must be a file it can actually open, in both shapes.
+
+**A win, recorded because pass 1 also confirms what is right.**
+`running-a-job.md` § 2.2a — *"the wrapper does two things: it makes the
+environment right, and it execs; everything else belongs to Python"* — was
+**violated by the deleted bash runner**, which resolved directories, scanned for
+warm files and prompted the user, all in shell. Unit 3 removed the violation
+rather than documenting around it.
+
+### Pass 3 — the tests
+
+Covered in pass 2's sweep: one vacuous assertion found and replaced (a
+`not …run.sh.exists()` that became true for every path once nothing emitted
+one). The eleven mutations run across this phase all went RED.
+
+**M5 status: passed.** One conformance defect, found and fixed; the rest of the
+milestone's claims hold on a live produce → prep in both shapes.
+
+**Still owed, and it is the next phase's:** `jobset status` cannot tell flat's
+stages apart — it observes a directory per stage, and flat's share one.
+`Shape.stage_glob` is built and answers exactly this, and **nothing calls it
+yet**. That is P6/P7's observe half.
+
 ## 5a. Where the code actually is — verified 2026-08-07
 
 Not the plan's own markers: each row was **checked against the code** by
