@@ -1575,6 +1575,78 @@ def test_a_file_that_shrinks_below_the_limit_leaves_the_archive(calc):
 # ------------------------------------------------------------------ #
 
 
+def test_a_file_that_crossed_the_limit_restores_from_either_state(calc):
+    """S7's round trip, which the two tests above do not attempt.
+
+    They assert *which store* the file lands in and stop — neither restores
+    anything. But a file that crossed the limit is held **in git by one state
+    and in the archive by the next**, so the history contains two states that
+    disagree about which store owns that path. A restore then has to fetch it
+    from a different place depending on which state you asked for, and the two
+    mechanisms that could get it wrong are the ones that *delete*: git's own
+    checkout, and the leftover sweep that removes anything neither record
+    claims.
+
+    Both directions of the crossing, and both directions of travel.
+    """
+    small_bytes = b"x" * 100
+    grows = calc.root / "grows.bin"
+    shrinks = calc.root / "shrinks.bin"
+
+    grows.write_bytes(small_bytes)          # git
+    shrinks.write_bytes(BIG)                # archive
+    before = calc.save("one small, one large")
+    assert "grows.bin" in _tracked(calc)
+    assert "shrinks.bin" in _archived(calc, before)
+
+    grows.write_bytes(BIG)                  # -> archive
+    shrinks.write_bytes(small_bytes)        # -> git
+    after = calc.save("they swapped stores")
+    assert "grows.bin" in _archived(calc, after)
+    assert "shrinks.bin" in _tracked(calc)
+
+    # Back to the state where the sizes -- and the stores -- were the other way.
+    calc.restore(before.id, force=True)
+    assert grows.read_bytes() == small_bytes, (
+        "the small version did not come back from git")
+    assert shrinks.read_bytes() == BIG, (
+        "the large version did not come back from the archive")
+    assert calc.status(deep=True).clean, (
+        f"the folder does not equal the state it stands at: "
+        f"{calc.status(deep=True).unsaved()}")
+
+    # And forward again, which is the crossing in the other direction.
+    calc.restore(after.id, force=True)
+    assert grows.read_bytes() == BIG
+    assert shrinks.read_bytes() == small_bytes
+    assert calc.status(deep=True).clean
+
+
+def test_a_file_that_crossed_the_limit_is_still_only_in_one_store_afterwards(
+        calc):
+    """The other half: S1 must hold in **every** state, not just the newest.
+
+    A restore that brought the file back from the archive while git's checkout
+    also wrote it would leave one path claimed by both stores — S1's *never
+    both*, reached by travelling rather than by saving. The walk here is the
+    independent one, for the reason S1's bullet gives.
+    """
+    grows = calc.root / "grows.bin"
+    grows.write_bytes(b"x" * 100)
+    small_state = calc.save("small enough for git")
+    grows.write_bytes(BIG)
+    big_state = calc.save("now it is big")
+
+    for state in (small_state, big_state, small_state):
+        calc.restore(state.id, force=True)
+        tracked, archived = _tracked(calc), _archived(calc, state)
+        for path in walk_independently(calc.root):
+            key = key_of(calc.root, path)
+            assert (key in tracked) != (key in archived), (
+                f"after restoring {state.short}, {key!r} is "
+                f"tracked={key in tracked} archived={key in archived}")
+
+
 def test_a_deep_forked_history_lists_children_before_parents(staged):
     """`states()` is ordered topologically, not by date.
 

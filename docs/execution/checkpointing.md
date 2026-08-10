@@ -1427,7 +1427,7 @@ nobody is maintaining against this document, which is how the two drift.
 | L4 | `test_checkpoint_states.py` — the tag list stays empty across a **staged** calculation, stages and attempts and all, until somebody types `snapshot tag` — the retired mechanism was per-stage, so a flat folder could not have caught it |
 | S5 | `test_checkpoint_states.py` — attempts are added to every stage and every state still names one calculation |
 | L7 | `test_checkpoint_states.py` — a big-file-only change |
-| S7 | `test_checkpoint_states.py` — a file grows past the limit, and one shrinks below it |
+| S7 | `test_checkpoint_states.py` — a file grows past the limit, and one shrinks below it; **and the round trip**, which the two store-membership tests do not attempt: a file held in git by one state and in the archive by the next comes back correctly from *either*, travelling in both directions, and S1 still holds in every state along the way |
 | S8 | `test_checkpoint_states.py` — `git checkout` an older state by hand, then a restore must refuse and name the big file that differs; and a save of that folder records what is on disk and restores correctly |
 | S9 | `test_checkpoint_states.py` — four threads publish one archive at once; **and two concurrent `save`s of one folder**, which is the rule's own wording: losing a race for git's index is a refusal and is allowed, corruption is not |
 | the five refusals | `test_checkpoint_states.py` — `GitNotInstalledError` is raised where git is absent and says how to fix it, which is what makes it worth separating from the faults (§ 15) |
