@@ -192,9 +192,19 @@ All four, or the next phase does not start:
 
 ## 3. The review protocol
 
-**Three lenses at every milestone**, plus a fourth where the phase moves a
-scientific parameter or a default. They are different *readings*, not the same
-reading three times — that is what makes three of them worth the cost.
+**A review has two axes, and a milestone needs both.**
+
+- **Three lenses** — *what you are looking for*: conformance (Review 1),
+  subtraction (Review 2), the seams (Review 3), plus a fourth where the phase
+  moves a scientific parameter or a default. They are different *readings*, and
+  that is what makes three of them worth the cost.
+- **Three passes** — *what you are looking at*: the same review, run three
+  times with fresh eyes, each pass widening its subject (§ 3.0). This is not
+  the lenses again; it is the discovery that **one pass finds what one pass can
+  find**, and stops.
+
+The per-phase line **Reviews: 1 · 2 · 3** names the *lenses*. Every milestone
+runs them through the three-pass cycle below.
 
 Each produces a finding ledger:
 
@@ -211,6 +221,48 @@ silently:**
   three of which were simply false.
 
 A finding that says **the document is wrong** stops the phase (outcome 2 of § 0).
+
+---
+
+### 3.0 R×3 — the review runs three times, and the subject widens
+
+**No milestone is passed on one review.** Run it three times, with fresh eyes,
+and **widen the subject at each pass** — a second pass over the same subject
+mostly re-confirms the first, which is how repetition becomes ritual.
+
+| Pass | Subject | The question it can answer that the previous one cannot |
+|---|---|---|
+| **1** | the unit just written | Does this do what the contract says? |
+| **2** | **every commit since the last milestone**, not just this unit | What did the earlier units break that their own review had no reason to look at? |
+| **3** | **the tests themselves** | Which contract rules has nothing asserted — and which of my assertions would pass against broken code? |
+
+**Fresh eyes, operationally:** close the diff and re-read the governing
+sections first (Review 1's direction rule), and where the work spanned a
+session, start pass 2 from `git log` rather than from memory of what you
+intended. A pass that begins by re-reading your own reasoning is not a pass.
+
+**Pass 3 is paired with mutation testing, not a substitute for it.** Break the
+code and watch each new test fail; a test that stays green is blind, whatever
+its docstring claims.
+
+#### The evidence this rule is written from (2026-08-10)
+
+Three successive fresh-eye reviews of one day's work, each finding what the
+previous could not:
+
+| Pass | Found | Where the defects came from |
+|---|---|---|
+| 1 — the unit | the resolver shipped **partial**, so four callers each invented a fallback and two printed a row number under a column headed `seq` | the unit just written |
+| 2 — the session | **six** defects, incl. `status` blind to the whole attempt layer, `--cold` silently leaving warm files, and a stage token used in JS arithmetic (`NaN`, so `continue_retries` stopped reaching the wrapper) | **five of the six were from earlier commits**, none had a test |
+| 3 — the tests | **three** of my own tests weak (one read the repo root; one passed for a *thrown* decoder), and **nine** contract rules with no test at all — including *"copied, never linked"*, which I believed was covered and was asserted with `is_file()`, true for a symlink | the tests written beside the code |
+
+The pattern, and the reason pass 2 exists: **a review written beside the code
+tests what the code does.** The rules with no test were, almost without
+exception, the ones saying what must *never* happen — and those are invisible
+from inside the implementation.
+
+Two tests were **still blind after pass 3** and only the mutation run caught
+them. That is the pairing rule above, learned the same day.
 
 ---
 
@@ -1446,6 +1498,16 @@ flowchart TB
 | M10 | M11, and a single-stage user's whole workflow in the browser | — |
 | M11 | **every later engine** — Transport and Spectra inherit this tab rather than copying it | — |
 
+> **Every milestone above is gated on R×3** (§ 3.0): the review is run **three
+> times with fresh eyes**, widening from the unit, to every commit since the
+> last milestone, to the tests themselves. **A milestone with fewer than three
+> recorded passes is not passed** — its ledger is incomplete, not merely short.
+>
+> This is stated once, here, rather than repeated on each row: two copies of a
+> rule are two places for it to drift, which is the defect § 9 is about. The
+> milestone reviews already written (§ 5b for M2, § 5c for M3) are the format
+> each one's ledger takes.
+
 ---
 
 ## 5b. M2 — the milestone review, 2026-08-07
@@ -1543,6 +1605,38 @@ recovering from a rename, not an id being constructed. Nothing to remove.
 stage-shaped name, `normalise_id(..., stage_names=)`, is a parameter and the
 vocabulary guard detects only classes, defs, constants and click options; that
 is the guard's own declared blind spot rather than a new hole.
+
+---
+
+## 5d. M4 — the milestone review is OWED, and R×3 is what says so
+
+**The first thing the new rule (§ 3.0) found was a missing review of its own
+plan.** M2 and M3 have written milestone reviews above; **M4 has none**, though
+its work landed 2026-08-10 (decision 27 — one naming rule, the stage token). It
+was never written up, and nothing noticed until every milestone was gated on a
+recorded three-pass ledger.
+
+**What has effectively run, and what it found.** M4's surfaces were reviewed
+inside the whole-session passes of 2026-08-10 rather than under an M4 heading,
+and those passes found **four M4 defects** — all of them the naming rule failing
+to arrive somewhere:
+
+| | |
+|---|---|
+| `viewer.js` did arithmetic on the stage token | `NaN`, so `continue_retries` silently stopped reaching the wrapper on every staged browser save |
+| `parse/dirs/job.py` decoded the token and dropped the **name** | the envelope could say *stage 3* and never *tight* — decision 27 inverted |
+| `identity._STAGE_TOKEN` | a dead second spelling of the token pattern that **disagreed** with the live one |
+| `project-layout.md § 1`'s flat column | still `<label>_stage1.fdf`, the naming M4 replaced — found while re-anchoring P5 |
+
+**What is still owed:** pass 1 proper — the naming contract read with the diff
+closed, obligations written out first, then checked. The four above came from
+passes 2 and 3 (the session's commits, and the tests), which is exactly the
+asymmetry § 3.0 predicts: **a defect that a surface fails to receive is
+invisible to the unit that emits it correctly.**
+
+M4 is therefore **not passed**, and P5's own milestone review must not be
+written as though it were. This section is the ledger stub; it closes when pass
+1 is run and recorded.
 
 ---
 
