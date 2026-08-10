@@ -186,6 +186,52 @@ def _auto_block_size(n_atoms: int,
     return pow2
 
 
+def _block_size_bounds(n_atoms: int,
+                       mpi_np: Optional[int] = None,
+                       gpu_mode: bool = False,
+                       *,
+                       emitted: Optional[int] = None) -> Tuple[int, int]:
+    """The power-of-two window a ``BlockSize`` override may use **for this
+    deck** — what BENCH-MARKS declares as ``range=[lo,hi]``.
+
+    ``job-contracts.md`` § 3.3 calls ``range`` *"advisory bounds for
+    validating a requested override"*.  Advice about a value that was derived
+    from the launch has to be derived from the same launch, and until
+    2026-08-10 it was not: the range was the module constant ``(16, 256)``
+    while the default came from :func:`_auto_block_size`.  The two disagree
+    routinely rather than exceptionally — ``_auto_block_size(200, mpi_np=16)``
+    is 8 and ``(20, mpi_np=32)`` is 1, both below the declared floor — so the
+    block advised a *validator* that its own emitted value was illegal, and
+    advised a *bench tool* it could climb to 256 when this deck's rank
+    constraint caps it at 4.  Climbing is the dangerous direction: above
+    ``floor(n_atoms / mpi_np)`` some ranks get no block at all.
+
+    **One derivation, not two.**  The upper bound IS
+    :func:`_auto_block_size`'s answer, because that function already picks the
+    largest legal power of two — so "the generator's choice" and "the top of
+    the window" are the same number by construction, and cannot drift apart
+    the way a second constant did.  That gives the block a checkable
+    invariant: ``lo <= default <= hi``, always.
+
+    The floor is the picker's own: 1 on CPU (the empirical sweep in
+    :func:`_auto_block_size` swept 1, 2, 4), 8 in GPU mode, where the ELPA-CUDA
+    branch never goes below 8.
+
+    ``emitted`` is the value the deck actually carries.  It differs from the
+    derived one only when the user set ``parallel_block_size``, which
+    :func:`render_fdf` honours verbatim; the window is widened to contain it,
+    because a block whose range excludes its own default is the defect this
+    function exists to end — the user's number is a *decision*, not an error
+    to advertise as out of bounds.
+    """
+    hi = _auto_block_size(n_atoms, mpi_np, gpu_mode=gpu_mode)
+    lo = 8 if gpu_mode else 1
+    if emitted is not None:
+        lo = min(lo, int(emitted))
+        hi = max(hi, int(emitted))
+    return (lo, hi)
+
+
 def _detect_species(elements: Iterable[str]) -> List[str]:
     """Unique species, sorted by atomic number, preserving first-seen order
     only as a tiebreaker."""
@@ -1441,13 +1487,36 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             ),
         },
     )
+    # BlockSize is the one declared field derived from a LAUNCH quantity
+    # (``engines/stages.md`` § 5.2), so its declaration is per deck, not per
+    # engine: the window comes from this deck's own rank count, through the
+    # same picker that chose the value.  Every other field is a plain config
+    # value and keeps the engine-wide declaration unchanged.
+    _bs_range = _block_size_bounds(struct.n_atoms, cfg.mpi_np,
+                                   gpu_mode=bool(cfg.enable_gpu),
+                                   emitted=block_size)
+    _bench_fields = [
+        (dataclasses.replace(f, range_=_bs_range) if f.anchor == "BlockSize"
+         else f)
+        for f in _sc.SIESTA_BENCH_FIELDS
+    ]
     _bench_marks = _sc.emit_bench_marks(
         metadata={
             "n_atoms":        struct.n_atoms,
             "n_orbitals_est": 10 * struct.n_atoms,
             "gpu_mode":       str(bool(cfg.enable_gpu)).lower(),
+            # The launch quantity BlockSize was derived FROM.  § 5.2's whole
+            # point is that a later change of launch can re-derive the coupled
+            # lines "instead of silently leaving them stale" -- and
+            # ``_auto_block_size`` takes three inputs while this block used to
+            # record two, so re-derivation was not actually possible from what
+            # the deck carried.  PROVENANCE has said this since the beginning,
+            # but PROVENANCE is the record for a human reading the file;
+            # BENCH-MARKS is the one a tool parses.
+            "mpi_np":         ("auto" if cfg.mpi_np is None
+                               else str(int(cfg.mpi_np))),
         },
-        fields=_sc.SIESTA_BENCH_FIELDS,
+        fields=_bench_fields,
         defaults={
             "BlockSize":         block_size,
             "MaxSCFIterations":  cfg.max_scf_iter,

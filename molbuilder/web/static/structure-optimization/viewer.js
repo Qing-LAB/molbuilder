@@ -294,10 +294,12 @@ import { mount as mvMount, formula as mvFormula }
     // the user can't accidentally download stale text from the prior
     // structure.
     /* Compute the BlockSize molbuilder's backend would auto-pick for a
-       structure of n_atoms.  Mirrors `_auto_block_size` in
-       molbuilder/siesta.py -- if either side changes the rule, the
-       other must follow.  Used only to label the BlockSize textbox's
-       placeholder; the actual value still comes from the backend. */
+       structure of n_atoms.  Mirrors the SIZE-ONLY branch of
+       `_auto_block_size` in molbuilder/siesta/input.py (the one taken
+       when no rank count is set) -- if either side changes the rule,
+       the other must follow.  Used only to label the BlockSize
+       textbox's placeholder; the actual value still comes from the
+       backend, which also knows mpi_np and the GPU toggle. */
     function autoBlockSize(n) {
         if (n >= 16) return 8;
         if (n >= 8)  return 4;

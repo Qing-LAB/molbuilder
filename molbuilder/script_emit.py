@@ -173,7 +173,16 @@ class BenchField:
 # decision-log 2026-06-23 in design.md.  Task #486 is closed by
 # this realization.
 SIESTA_BENCH_FIELDS: List[BenchField] = [
-    BenchField("BlockSize",        "BlockSize",        "pow2",  (16, 256)),
+    # NO range here, and that is the declaration.  BlockSize is the one field
+    # in this list derived from a LAUNCH quantity (``engines/stages.md``
+    # § 5.2), so its legal window is a fact about one deck's rank count, not
+    # about the engine -- ``siesta/input.py`` supplies it per deck through
+    # ``_block_size_bounds``.  It carried ``(16, 256)`` until 2026-08-10, a
+    # constant that disagreed with the emitted default routinely rather than
+    # exceptionally (``_auto_block_size(200, mpi_np=16)`` is 8), so the block
+    # declared its own value out of bounds.  Leaving it None means a renderer
+    # that forgets emits NO range rather than a wrong one.
+    BenchField("BlockSize",        "BlockSize",        "pow2"),
     BenchField("MaxSCFIterations", "MaxSCFIterations", "int"),
     BenchField("MD.NumCGsteps",    "MD.NumCGsteps",    "int"),
     BenchField("MeshCutoff",       "MeshCutoff",       "float", None, "Ry"),

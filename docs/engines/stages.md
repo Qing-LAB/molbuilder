@@ -527,6 +527,25 @@ That block already exists and already declares `BlockSize`, because the benchmar
 sweep varies ranks per point and has the same problem. This contract adopts it
 rather than inventing a second mechanism.
 
+> **Landed 2026-08-10, and adopting it turned up what it was missing.** A stage
+> ladder is the first thing that renders two decks at *different* rank counts,
+> so it is where "declares the coupled fields" got tested rather than assumed.
+> Two halves were absent:
+>
+> - the block recorded `n_atoms` and `gpu_mode` but **not the rank count**,
+>   and the picker takes three inputs — so nothing downstream could re-derive
+>   the value the block was declaring;
+> - the declared **bound** was a module constant `[16,256]` while the value
+>   beside it was derived, so the two disagreed whenever
+>   `floor(n_atoms / mpi_np) < 16` — which is most small-and-wide runs, not a
+>   corner. The block advised climbing to 256 on a deck whose ranks empty
+>   above 4.
+>
+> Both are now derived from the same picker (`job-contracts.md § 3.3`). The
+> shape of the fix is this section's own rule seen once more: **whatever
+> derives the value derives the bound**, so there is one number and not two
+> that can drift.
+
 ---
 
 ## 6. `task.json` — the description on disk

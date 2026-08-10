@@ -833,12 +833,65 @@ browser, log, decoder.
 > producer that spells the convention inline is exactly the one a grep for the
 > helper cannot see.
 >
-> **Still open in this phase:** unit 1 (one deck renderer — arguably already
-> true of `render_fdf`, needs confirming rather than building), unit 5
-> (resource-shaped overrides reaching the deck line, the wrapper environment
-> **and** BENCH-MARKS), and **M4's browser walk** — the review note says a
+> **Unit 1 confirmed 2026-08-10, not built.** There is exactly one `.fdf`
+> renderer, `render_fdf`, and three callers reach it: `write_fdf` (the CLI's
+> single job), `render_siesta_stage_fdfs` (each stage, through
+> `effective_config`), and the web Build endpoint. The staged path adds no
+> renderer of its own — it resolves a config and hands it over, which is § 4
+> R1's *one object is validated and rendered*. The web surface has **no
+> staged path at all**: it writes one deck, and the fan-out is `prep`'s
+> (§ 7.1). Nothing to subtract.
+>
+> **Unit 5 landed 2026-08-10.** All three destinations were already reached —
+> and walking them turned up a fourth thing that was not, in the destination
+> the unit names last.
+>
+> | Destination | State found |
+> |---|---|
+> | the deck line | ✅ already per stage. `effective_config` → `render_fdf` means `diag_algorithm` and the `BlockSize` *derived from* `mpi_np` both come out per deck, with no stage-aware code below the resolve |
+> | the wrapper's environment | ✅ already per stage, and by the strongest possible route: `prep_jobset` renders one wrapper **per distinct script**, and `write_run_wrapper` reads the solver back **out of that deck** (§ 5.1). Nothing passes the routing along a parameter where it could be dropped. Two stages, ScaLAPACK then CPU-ELPA, give `molbuilder-siesta` and `molbuilder-siesta-gpu` |
+> | the BENCH-MARKS block | ⚠ **the value arrived; the declaration around it did not** |
+>
+> **The finding.** BENCH-MARKS is where a deck states which of its lines came
+> from a launch quantity, *so that a later change of launch can re-derive them*
+> (`engines/stages.md` § 5.2). It could not:
+>
+> - the block recorded `n_atoms` and `gpu_mode` but **not the rank count**,
+>   while `_auto_block_size` takes three inputs. The one thing the block exists
+>   to enable was not possible from what it carried. `mpi_np` was in
+>   PROVENANCE — the block a *human* reads — and absent from the one a tool
+>   parses;
+> - `range` was the module constant `(16, 256)` while `default` beside it was
+>   derived, so the block **declared its own emitted value out of bounds**
+>   whenever `floor(n_atoms / mpi_np) < 16`. Not a corner: `(200 atoms, 16
+>   ranks)` gives 8 and `(20, 32)` gives 1. And the advice erred **upward**,
+>   past the point where ranks receive no block at all.
+>
+> A stage ladder is simply the first thing that renders two decks at different
+> rank counts, which is why a defect older than this phase surfaced in it. Both
+> halves now derive from the same picker (`_block_size_bounds`), so the
+> invariant `lo <= default <= hi` holds by construction rather than by
+> agreement between two constants. `SIESTA_BENCH_FIELDS` no longer carries a
+> range for `BlockSize` at all — a renderer that forgets emits **no** range
+> instead of a wrong one. Contract: `job-contracts.md § 3.3` (two new rules),
+> `engines/stages.md § 5.2`.
+>
+> **For Review 4.** The numbers moved: a bench tool told `[16,256]` is now told
+> `[1, floor(n_atoms/mpi_np)]` rounded down to a power of two. No shipped
+> consumer reads the field — `bench siesta-gpu` parses the block only to check
+> it is present and sweeps `DEFAULT_POINTS` — so this changes advice, not
+> behaviour. The bound is the one `_auto_block_size` already enforced on
+> itself; what changed is that the deck now *says* it.
+>
+> Pinned by `tests/test_stage_resource_destinations.py` (18 tests, one per
+> destination plus the invariant), mutation-tested five ways: static field
+> list, missing `mpi_np`, bounds ignoring a user-set value, a fixed rank count
+> in the derivation, and the CPU-ELPA routing blindness — all five RED.
+>
+> **Still open in this phase:** **M4's browser walk** — the review note says a
 > filename change is invisible to stubs, and the decoder's anchor rule is what
-> to watch in the Results tab.
+> to watch in the Results tab. It needs `molbuilder serve` and the live BDT-Au
+> data.
 
 > **Three green tests pin the convention this phase removes, listed by P0 so
 > the phase does not meet them under pressure.** They are *not* failures to work

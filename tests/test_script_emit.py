@@ -452,10 +452,19 @@ def test_siesta_bench_fields_cover_the_four_bench_knobs():
     assert {"BlockSize", "MaxSCFIterations", "MD.NumCGsteps", "MeshCutoff"} <= names
 
 
-def test_blocksize_field_constrains_pow2_and_range():
+def test_blocksize_field_constrains_pow2_and_leaves_the_range_to_the_deck():
+    """Rewritten 2026-08-10.  This pinned ``range_ == (16, 256)`` -- a
+    constant the emitted decks contradicted routinely, because the default
+    beside it is derived from the rank count while the bound was not
+    (``_auto_block_size(200, mpi_np=16)`` is 8, below the declared floor).
+
+    The engine-wide list now declares the TYPE and leaves the window to the
+    renderer that knows the launch (``siesta/input.py::_block_size_bounds``),
+    so a forgotten range is an absent one rather than a wrong one.  The
+    per-deck window is pinned in ``test_stage_resource_destinations.py``."""
     bs = next(f for f in sc.SIESTA_BENCH_FIELDS if f.name == "BlockSize")
     assert bs.type_ == "pow2"
-    assert bs.range_ == (16, 256)
+    assert bs.range_ is None
 
 
 # --------------------------------------------------------------------- #

@@ -562,8 +562,9 @@ what limits:
 #   n_atoms             212
 #   n_orbitals_est      2120       # 10 * n_atoms, rough DZP heuristic
 #   gpu_mode            true
+#   mpi_np              4          # the launch BlockSize was derived from
 #
-#   field BlockSize        anchor=BlockSize        type=pow2  range=[16,256]  default=256
+#   field BlockSize        anchor=BlockSize        type=pow2  range=[8,256]  default=256
 #   field MaxSCFIterations anchor=MaxSCFIterations type=int   default=500
 #   field MD.NumCGsteps    anchor=MD.NumCGsteps    type=int   default=200
 #   field MeshCutoff       anchor=MeshCutoff       type=float unit=Ry  default=400.0
@@ -583,6 +584,25 @@ what limits:
 - `type` ∈ `{int, float, str, pow2, enum}` (`pow2` = power of two; `enum` was
   added for `Diag.Algorithm`). `range=[a,b]` and `unit=…` are advisory bounds
   for validating a requested override.
+- **A bound on a derived field is derived too, and `default` is always inside
+  it** *(2026-08-10)*. `BlockSize` is the one field here computed from a
+  **launch** quantity rather than read off the config, so its window is a fact
+  about *this deck's* rank count — `[1, floor(n_atoms / mpi_np)]` rounded to
+  powers of two on CPU, the ELPA-CUDA window on GPU. It was a fixed
+  `[16,256]` until this date, which the emitted `default` contradicted
+  routinely rather than exceptionally: at 200 atoms on 16 ranks the generator
+  writes `BlockSize 8`, below the floor it declared legal. A reader could
+  neither validate the block against itself nor trust the advice, and the
+  advice erred **upward** — past the point where ranks start receiving no
+  block at all. The rule now: whatever derives the value derives the bound, so
+  there is one number in the system and not two that can drift.
+- **The metadata carries what a derived field was derived FROM.** `mpi_np`
+  joins `n_atoms` and `gpu_mode` for exactly this reason
+  ([`engines/stages.md`](?doc=engines/stages.md) § 5.2 — the block exists so a
+  later change of launch can *re-derive* the coupled lines instead of leaving
+  them stale, and re-derivation needs every input). PROVENANCE has recorded
+  the rank count since the beginning; that block is the record a **human**
+  reads, and this is the one a **tool** parses.
 
 > **Gap:** the PySCF `.py` does not yet carry a BENCH-MARKS block. When it
 > lands, its `field` declarations get listed here.
