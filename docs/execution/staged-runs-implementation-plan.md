@@ -1022,18 +1022,55 @@ jobs, and what goes in and comes out) · § 1.6 (**stages do not chain**).
    benchmarking is prep, specialised. *(Which direction the refactor moves the
    code is an implementation matter — but the general case must not end up
    looking like a special case of the special case.)*
-2. **The carry is a real file copy, made at prep**: `.XV` always, `.DM` when the
+2. **The deck is rendered FOR the launch — steps 1→2→3, in that order.**
+   *(Placed here 2026-08-10 by user decision; § 9.6a.)*
+
+   **This is not new design. `project-layout.md § 2.3.1` already specifies it**,
+   and finding that sentence changed what this unit is: the five steps are
+   **resolve the machine → resolve the parameters → render the deck → render the
+   wrapper → build the directory**, and the contract states the order is forced,
+   not chosen — *"step 3 cannot precede step 1"*. So there is no `LaunchSpec` to
+   invent; there is a **conformance gap** to close.
+
+   **What the code does instead.** The deck is rendered by `molbuilder fdf` on
+   whatever machine typed the command — step 3 with step 1 never run — and the
+   wrapper then resolves ranks on its own at step 4. The two halves of one
+   ordered sequence execute in different places, hours apart, with nothing
+   carrying the first's answer to the third.
+
+   **The live defect this closes.** On 2026-08-10 a deck rendered with `mpi_np`
+   unset — so `BlockSize 4` from the size-only branch — was launched by the
+   wrapper at `-np 14`, and SIESTA refused at startup: *"You have too many
+   processors for the system size"*. Neither layer was wrong alone; nothing said
+   the two belonged together.
+
+   **P4 made this visible and did not fix it**, and the distinction is the unit:
+   P4 unit 5 put the launch quantity into BENCH-MARKS, which is why the failure
+   was diagnosable at all — but **recording is not agreeing**. A run resolved to
+   a launch the deck was not rendered for is refused here, with both numbers
+   named, before the engine is started.
+
+   *Not this unit:* `runwrap`'s clamp is separately wrong — it resolves
+   `min(physical_cores, n_atoms)` where SIESTA constrains **orbitals** per rank.
+   That is engine physics (§ 9.7), and fixing it inside this seam would hide it.
+
+   > **The lesson, since it is the third time today.** This was written up as a
+   > new value object needing a new phase, and the contract had specified it all
+   > along — in the very section P6 re-anchors on. *Find the sentence before
+   > designing the mechanism.* The gap § 9.6a found was real; what was wrong was
+   > calling it a design gap rather than a conformance one.
+3. **The carry is a real file copy, made at prep**: `.XV` always, `.DM` when the
    description says, `.CG` **only when both stages share an algorithm**. Copied,
    never linked — the engine writes to these files, and a link would destroy the
    result you chose to build on. Copied *at prep* because stages do not chain,
    not as a separate decision.
-3. A benchmark **nests inside the stage it measures** (the best rank count
+4. A benchmark **nests inside the stage it measures** (the best rank count
    depends on the science), and the bundle names the stage it came from.
-4. The measured verdict reaches **the description**, not just a script. The
+5. The measured verdict reaches **the description**, not just a script. The
    shipped chain stops one step short: `bench summarize` writes
    `bench-result.json`, `bench prep-run` turns it into `run-production.sh`, and
    `task.json` never learns — so the next produce silently reverts to defaults.
-5. **`prep` prints what it resolved.** It is the only place the measured
+6. **`prep` prints what it resolved.** It is the only place the measured
    numbers, the chosen geometry and the rendered deck appear together, which is
    what makes `submit` a plain yes.
 
@@ -1043,11 +1080,15 @@ a second time; the second machine-detection path if one appears.
 **Milestone M6.** `prep run tight --from 01_coarse/run-0` produces the printed
 report of `staged-runs-architecture.md § 8` step 1c verbatim, **real files** in
 the attempt directory (no links), and re-producing keeps the measured
-configuration rather than reverting.
+configuration rather than reverting. **And the deck it rendered names the launch
+it was rendered for**, so launching that attempt at a different rank count is
+refused with both numbers named rather than discovered by the engine.
 
 **Reviews:** 1 · 2 · 3 (walk jobs one, two and three of § 2.3 in both shapes) ·
 **4** (is the `.CG`-only-when-algorithms-match rule still right? does the
-benchmark grid still mean what `job-system.md § 7` says?).
+benchmark grid still mean what `job-system.md § 7` says? **and is the resolved
+launch defensible** — the rank count a deck is rendered against is now a
+scientific choice this phase makes, not a runtime accident).
 
 ---
 
@@ -2338,7 +2379,7 @@ allowed to be "and while we are there".**
 |---|---|---|
 | **`StageRef`** | **P9** (the command surface), pulled early — it is specced in § 8f and fixes two live display bugs | `plan`/`status` print `seq`; the CLI takes a name or a number; no caller computes an ordinal |
 | **`Shape`** | **P5** — *"one shape in, one shape out"*, which is this object under its phase name | a flat produce writes no `job-set.json`, and vice versa; A2 becomes testable |
-| **`LaunchSpec`** | ⛔ **no phase covers this** — see § 9.6a | a deck rendered for N ranks cannot be launched at M without a refusal |
+| **`LaunchSpec`** | **P6** unit 2 — *decided 2026-08-10; § 9.6a.* Not a missing object but a **conformance gap**: `project-layout.md § 2.3.1` already orders resolve-machine → resolve-parameters → render-deck and calls the order forced | a deck rendered for N ranks cannot be launched at M without a refusal |
 | **`Attempt`** | **P6** (`prep`: the five moves), whose first half landed 2026-08-10 | one loop in `submit.py`, one `Attempt` type, no dict keys |
 | **fold `bench` in** | **after P9**, and after all four objects exist | `molbuilder bench` is gone; `jobset <verb> bench <stage>` does it |
 
@@ -2362,12 +2403,24 @@ no object that says *this deck and this launch belong together*.
 mismatch visible at all, and is why the failure was diagnosable — but recording
 is not agreeing. Nothing refuses the mismatch.
 
-Two candidate homes, and this needs a decision before the work is scheduled:
+**Decided 2026-08-10 (user): extend P6** — *"that is where the machine becomes
+known"*. It is now **P6 unit 2**.
 
-| | |
-|---|---|
-| **extend P6** (`prep`, on the machine that will run it) | prep is where the machine becomes known, so it is where a deck could be rendered *for* the resolved launch rather than checked against it. Fits § 7.1's *"the deck is rendered where the machine is known"* |
-| **a new phase after P6** | keeps P6's five moves intact and makes the refusal an explicit step with its own tests |
+**And reading § 2.3.1 to place it corrected what it is.** The contract already
+specifies this exactly: five steps, *resolve the machine → resolve the parameters
+→ render the deck → …*, in an order it states is **forced, not chosen** — *"step
+3 cannot precede step 1"*. So `LaunchSpec` is not an object the design was
+missing. It is the **carrier of an ordering the contract already requires and
+the code does not follow**: today step 3 runs at `molbuilder fdf` time with step
+1 never run, and the wrapper redoes the resolution at step 4.
+
+A phase of its own would have been wrong for the same reason: the refusal is not
+a step beside prep. Inside prep, in the specified order, **the disagreement
+cannot arise** — the deck is rendered *for* the resolution instead of checked
+against it afterwards.
+
+P6 therefore has six units, and M6 gained a clause: launching an attempt at a
+rank count its deck was not rendered for is refused, with both numbers named.
 
 Related and separable: the clamp itself is wrong. `runwrap` resolves
 `min(physical_cores, n_atoms)`, but SIESTA's constraint is on **orbitals** per
