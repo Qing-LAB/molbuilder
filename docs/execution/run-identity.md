@@ -217,7 +217,7 @@ starting point, agreed as one; the plan records what would force it to grow.
 
 What the user types becomes the **label**; the label becomes the `SystemLabel`,
 and that becomes the stem of every file: `<label>.XV`, `<label>.DM`,
-`<label>_tight.fdf`. The formula is appended to the label to make the **id**,
+`<label>_02_tight.fdf`. The formula is appended to the label to make the **id**,
 which goes in `task.json` (§ 2.0a). A name with a space or a slash in it breaks a
 shell line, a glob or a scheduler argument. **What the user types is never used
 raw.**
@@ -359,9 +359,9 @@ is `BDT_Au_relax_Au38C6H4S2` — in the flat shape:
 projects/BDT-Au/optimization/bdt-relax/   ← the folder is what the user typed
 ├── task.json                             ← and this says the id, formula and all
 ├── BDT_Au_relax.fdf.template
-├── BDT_Au_relax_coarse.fdf               ┐ what MOLBUILDER named
-├── BDT_Au_relax_tight.fdf                │ carries the stage: <label>_<stage>
-├── BDT_Au_relax_coarse-run0.out          ┘
+├── BDT_Au_relax_01_coarse.fdf               ┐ what MOLBUILDER named
+├── BDT_Au_relax_02_tight.fdf                │ carries the stage: <label>_<stage>
+├── BDT_Au_relax_01_coarse-run0.out       ┘
 ├── BDT_Au_relax.XV                       ┐ what the ENGINE named
 └── BDT_Au_relax.DM                       ┘ carries the label ALONE
 ```
@@ -370,7 +370,7 @@ projects/BDT-Au/optimization/bdt-relax/   ← the folder is what the user typed
 holds the id; the folder holds the label. That is § 2.0a, seen in a listing.
 
 The **hierarchical** shape gives each stage a directory, and **the filenames do
-not change** — `01_coarse/BDT_Au_relax_coarse.fdf`. The repetition between the
+not change** — `01_coarse/BDT_Au_relax_01_coarse.fdf`. The repetition between the
 directory and the deck is a self-check, not noise; the rule generating both
 shapes is `job-contracts.md § 6.3`.
 
@@ -424,7 +424,7 @@ shapes:**
 > Without it, every stage directory holds a file with an identical name. Two
 > decks swapped by a bad copy, a resumed `prep` or a hand-edit would be
 > **invisible** — nothing in either folder disagrees with anything. With it,
-> `01_coarse/<label>_tight.fdf` is wrong on sight.
+> `01_coarse/<label>_02_tight.fdf` is wrong on sight.
 >
 > *Corrected 2026-08-08 (user).* This section used to read *"there every name is
 > the bare id and the directory says which stage"*, and `job-contracts.md § 6.3`'s

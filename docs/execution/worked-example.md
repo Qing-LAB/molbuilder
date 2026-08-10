@@ -148,9 +148,9 @@ earlier one's `.XV`, and it is why the formula stays out of the filename (§ 3).
 >
 > ```text
 > bdt-relax/
-> ├── BDT_Au_relax_coarse.fdf        stages told apart by the suffix
-> ├── BDT_Au_relax_tight.fdf
-> ├── BDT_Au_relax_coarse-run0.out   attempts by an output index
+> ├── BDT_Au_relax_01_coarse.fdf        stages told apart by the suffix
+> ├── BDT_Au_relax_02_tight.fdf
+> ├── BDT_Au_relax_01_coarse-run0.out  attempts by an output index
 > ├── BDT_Au_relax.XV             ← SHARED and unsuffixed: this is what lets
 > ├── BDT_Au_relax.DM                tight find coarse's geometry — and what
 > └── Au.psml  S.psml  C.psml  H.psml   overwrites it
@@ -218,7 +218,7 @@ relabelling is not a leftover from when benchmarking was standalone; it is
 exactly what lets a trial live inside a stage's directory.
 
 ⛔ **Gap 3.** Every piece exists; nothing connects them. `bench generate` takes a
-deck and an output directory, so you *can* hand it `<label>_tight.fdf` and
+deck and an output directory, so you *can* hand it `<label>_02_tight.fdf` and
 `--out 02_tight/bench` — but no command does, nothing records that this bundle
 measures that stage, and getting it wrong is silent.
 

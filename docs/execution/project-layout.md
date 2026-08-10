@@ -105,18 +105,18 @@ bdt-relax/                            the CALCULATION — the user typed this na
 ├── Au.psml  S.psml  mb_monitor.py    ─┘ says the id — label plus formula
 │
 ├── 01_coarse/                        a STAGE — written by `prep`
-│   ├── <label>_coarse.fdf            the deck, rendered for THIS machine
-│   ├── <label>_coarse.run.sh         its wrapper
+│   ├── <label>_01_coarse.fdf            the deck, rendered for THIS machine
+│   ├── <label>_01_coarse.run.sh         its wrapper
 │   ├── Au.psml → ../Au.psml          shared, linked up
 │   ├── run-0/                        an ATTEMPT
 │   │   ├── run.json                  how it was launched, what it continued from
 │   │   ├── <label>.XV  <label>.DM    SIESTA named these: bare
-│   │   └── <label>_coarse.out        molbuilder named this: it says the stage
+│   │   └── <label>_01_coarse.out        molbuilder named this: it says the stage
 │   ├── run-1/                        a redo — run-0 is untouched
 │   └── bench/                        a BENCHMARK — its own little world
 │
 └── 02_tight/
-    ├── <label>_tight.fdf
+    ├── <label>_02_tight.fdf
     └── run-0/
         └── <label>.XV                a real copy of 01_coarse/run-0's
 ```
@@ -124,7 +124,7 @@ bdt-relax/                            the CALCULATION — the user typed this na
 **The deck repeats the stage its directory already names, on purpose.** Without
 it every stage directory holds an identically-named deck, and two swapped by a
 bad copy or a resumed `prep` disagree with nothing; with it,
-`01_coarse/<label>_tight.fdf` is wrong on sight (`run-identity.md § 3.2`,
+`01_coarse/<label>_02_tight.fdf` is wrong on sight (`run-identity.md § 3.2`,
 decision 21).
 
 ```mermaid
@@ -811,7 +811,7 @@ sequenceDiagram
     Note over U: you read it and decide
 
     U->>C: prep tight --bench-result … --from 01_coarse/run-0
-    C->>T: 02_tight/<label>_tight.fdf · run-0/ · copied .XV
+    C->>T: 02_tight/<label>_02_tight.fdf · run-0/ · copied .XV
     C-->>U: what it resolved, and what it copied
     U->>C: submit tight
     C->>E: run it
@@ -1198,7 +1198,7 @@ how a folder stops being trustworthy.
 | File | Kind | Written by | If you delete it |
 |---|---|---|---|
 | `task.json` | **source** | the user's surface | the calculation cannot be regenerated or reopened |
-| `<label>_<name>.fdf` | derived | the producer, from the source | regenerate |
+| `<label>_<NN>_<name>.fdf` | derived | the producer, from the source | regenerate |
 | `<label>_<name>.run.sh` / `.sbatch` | derived | prep, from the deck + the machine's config | re-prep |
 | `job-set.json`, `STAGE-PLAN.md` | derived | the producer / prep | regenerate |
 | `*.psml`, `mb_monitor.py` | **input**, copied in | the producer | re-resolve from the project's cache |
@@ -1462,7 +1462,7 @@ than no invariant, because it fails a directory that is working correctly.
    repetition as noise. It is a **self-check**: without it every stage directory
    holds an identically-named deck, and two swapped by a bad copy or a resumed
    `prep` disagree with nothing (decision 21; `run-identity.md § 3.2`). The
-   decoder's regex still changes, but toward `<label>_<name>`, not away from it.
+   decoder's regex still changes, but toward `<label>_<NN>_<name>`, not away from it.
 4. **May one calculation folder hold two ladders?** Nothing forbids two
    descriptions side by side, and the layout would allow it, but warm files are
    shared, so a second ladder would continue from the first's state. Probably

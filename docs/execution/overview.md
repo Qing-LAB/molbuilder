@@ -184,7 +184,7 @@ the eight documents here were written in August 2026.
 
 **What ships today is the flat shape.** One directory holds everything. Several
 stages live side by side, told apart by a suffix in the filename
-(`job_stage1.fdf`, `job_stage2.fdf`); several attempts at one stage are told apart
+(`job_01_coarse.fdf`, `job_02_medium.fdf`); several attempts at one stage are told apart
 by a number in the output name (`job-run0.out`, `job-run1.out`); and the warm
 files a run continues from — `job.XV`, `job.DM` — carry **no suffix at all** and
 are shared by every stage.
@@ -200,7 +200,7 @@ a subdirectory inside it, so nothing overwrites anything.
 ```
 FLAT (ships today)                    HIERARCHICAL (proposed)
 bdt_au/                               bdt_au/
-├── bdt_au_stage1.fdf                 ├── task.json
+├── bdt_au_01_coarse.fdf                 ├── task.json
 ├── bdt_au_stage2.fdf                 ├── bdt_au.psml
 ├── bdt_au-run0.out   ← stage 1       ├── 01_coarse/
 ├── bdt_au-run1.out   ← stage 2       │   ├── bdt_au.fdf

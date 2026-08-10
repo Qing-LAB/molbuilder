@@ -282,7 +282,7 @@ paths — do not conflate them:
   > **Retired 2026-08-10 — there is one convention now, and this is it.** A
   > second one lived here: the single-stage overlay (`molbuilder fdf --stage N`)
   > and the molwatch log wrote **`<label>-stage<N>`**, a *hyphen* plus the stage
-  > *number*, while the ladder wrote `<label>_<name>`. Two spellings of one
+  > *number*, while the ladder wrote `<label>_<NN>_<name>`. Two spellings of one
   > idea, and in a ladder whose stages the user had named, **a stage's deck and
   > its own log could not be matched by name at all**.
   >

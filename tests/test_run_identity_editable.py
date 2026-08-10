@@ -310,3 +310,31 @@ def test_the_structure_witness_row_is_deliberately_not_here():
         wheres = {i.where for i in check_prior_state(_P(d), ID, "siesta")}
     assert wheres, "the fixture should have produced findings"
     assert all(w.startswith("identity.") for w in wheres), wheres
+
+
+# --------------------------------------------------------------------- #
+#  The inversion only works if OUR list is complete (2026-08-10)         #
+# --------------------------------------------------------------------- #
+
+def test_a_runs_own_stdout_is_not_reported_as_warm_state(calc):
+    """`job-contracts.md § 4.2`'s inversion answers *has anything run here* by
+    SUBTRACTION -- so every file molbuilder writes must be on the list, or it
+    comes back as the engine's restart state.
+
+    All three stdout shapes count: the wrapper's run-indexed redirect, the flat
+    ladder runner's ``> ${BASENAME}_${stage}.out``, and an unstaged run's bare
+    ``.out``.  Only the first was listed until 2026-08-10, so a stage's own log
+    was offered to the user as a warm file to continue from -- and counted
+    among what renaming the calculation would orphan."""
+    for name in (f"{ID}.out", f"{ID}_01_coarse.out", f"{ID}_01_coarse-run0.out"):
+        (calc / name).write_text("SIESTA said things\n")
+    assert warm_files_present(calc, ID, "siesta") == []
+    assert check_id_change(calc, ID, "other", "siesta") == []
+
+
+def test_engine_state_beside_our_stdout_is_still_found(calc):
+    """The other direction, so the fix above cannot have widened the list into
+    swallowing what it exists to find."""
+    (calc / f"{ID}_01_coarse.out").write_text("log\n")
+    (calc / f"{ID}.XV").write_text("coords\n")
+    assert warm_files_present(calc, ID, "siesta") == [f"{ID}.XV"]

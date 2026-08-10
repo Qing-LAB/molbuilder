@@ -48,7 +48,7 @@ and that decision is not made here.
 complete engine input that does not need molbuilder to be interpreted and does
 not refer to a stage it follows.
 
-Precisely: the stage name survives in the **filename**, `<label>_<name>.fdf`, as a
+Precisely: the stage name survives in the **filename**, `<label>_<NN>_<name>.fdf`, as a
 label — and nothing has to interpret it to run the file. The deck's *content*
 carries no stage marker at all. Anything that would require a downstream reader
 to understand the word "stage" in order to act correctly is outside this
@@ -284,7 +284,7 @@ written twice: every tab already has a schema, so every tab gets this.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen** | becomes the deck's suffix, `<label>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains |
+| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen** | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains |
 | `enabled` | bool | whether this stage is rendered at all |
 | `overrides` | map | schema field name → that stage's value |
 
@@ -901,11 +901,12 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   token, the same one the deck carries, and the run decoder reads it back
   through `identity.parse_stage_token` rather than keeping a second regex.
 
-  That is one rule instead of two, and it is a **small** correction — smaller
-  than an earlier draft of this section claimed. Today the log basename is
-  `<label>-stage<N>` while the deck is `<label>_<name>` (`job-contracts.md § 2.3`
-  records both). Two spellings of one idea is one too many, but note how close
-  they already are:
+  That was one rule instead of two, and it was a **small** correction — smaller
+  than an earlier draft of this section claimed. *Until it landed*, the log
+  basename was `<label>-stage<N>` while the deck was `<label>_<name>`: two
+  spellings of one idea, one too many. They were closer than that sounds, and
+  the three rows below are why the fix was worth doing anyway rather than
+  urgent:
 
   | | |
   |---|---|
@@ -953,12 +954,12 @@ projects/BDT-Au/optimization/bdt-relax/     ← the folder: the user typed this
 ├── Au.psml  S.psml  C.psml  H.psml    ← shared, stored ONCE
 ├── mb_monitor.py
 ├── 01_coarse/                         ← written by `prep`, on the target
-│   ├── <label>_coarse.fdf             ← template ⊕ coarse ⊕ this machine
-│   ├── <label>_coarse.run.sh          ← its wrapper, for this machine
+│   ├── <label>_01_coarse.fdf             ← template ⊕ coarse ⊕ this machine
+│   ├── <label>_01_coarse.run.sh          ← its wrapper, for this machine
 │   ├── Au.psml → ../Au.psml  …        ← shared, linked in
 │   └── run-0/  run-1/                 ← what each attempt produced
 └── 02_tight/
-    ├── <label>_tight.fdf
+    ├── <label>_02_tight.fdf
     └── run-0/
         ├── <label>.XV                 ← a real copy of the coarse run you chose
         └── <label>.DM                    (SIESTA names these, so they are bare)

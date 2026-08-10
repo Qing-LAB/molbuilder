@@ -148,7 +148,18 @@ OUR_FILE_PATTERNS: Sequence[str] = (
     "{label}.sbatch", "{label}_*.sbatch",
     # the canonical trajectory -- written before the engine even starts
     "{label}.molwatch.log", "{label}_*.molwatch.log",
-    # engine stdout, one file per run index -- the run's history
+    # engine stdout -- the run's history.  Three shapes, because three things
+    # create one: the wrapper's run-indexed redirect, the flat ladder runner's
+    # ``> ${BASENAME}_${stage}.out``, and a single unstaged run's ``.out``.
+    #
+    # The last two were MISSING until 2026-08-10 -- a pre-existing gap, not
+    # fallout from the stage rename (``<label>-stage1.out`` did not match
+    # either).  It matters because ``warm_files_present`` answers *has anything
+    # run here* by SUBTRACTION: anything named after the label that is not on
+    # this list is reported as the engine's restart state.  So a run's own
+    # stdout was being offered back to the user as a warm file, and counted
+    # among what a rename would orphan.
+    "{label}.out", "{label}_*.out",
     "{label}-run*.out", "{label}_*-run*.out",
     "{label}-run*.pyscf.log", "{label}_*-run*.pyscf.log",
     # geomeTRIC's own optimizer log

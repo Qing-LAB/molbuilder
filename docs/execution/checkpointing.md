@@ -203,9 +203,9 @@ bdt-relax/                           the folder: the user typed this name
 ├── task.json                        ┐  (and this is where the run id lives)
 ├── BDT_Au_relax.fdf.template        │  small → git
 ├── 01_coarse/                       │
-│   ├── BDT_Au_relax_coarse.fdf      │
+│   ├── BDT_Au_relax_01_coarse.fdf      │
 │   └── run-0/                       │
-│       ├── BDT_Au_relax_coarse.out  ┘
+│       ├── BDT_Au_relax_01_coarse.out  ┘
 │       ├── BDT_Au_relax.XV            small → git
 │       ├── run.json                   small → git
 │       └── BDT_Au_relax.DM            large → the archive
