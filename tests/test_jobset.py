@@ -243,28 +243,29 @@ def test_render_plan_sweep_says_independent():
 
 def test_stages_to_jobset_default_ladder():
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import (DEFAULT_NONCONVERGENCE,
-                                          default_siesta_stages,
+    from molbuilder.siesta.stages import (default_siesta_stages,
                                           stages_to_jobset)
 
     cfg = SiestaConfig()                   # the template -- no ladder in it
     stages = default_siesta_stages()       # coarse+medium on, tight off
-    js = stages_to_jobset(cfg, stages, shared=["C.psml"],
-                          on_nonconvergence=DEFAULT_NONCONVERGENCE)
+    js = stages_to_jobset(cfg, stages, shared=["C.psml"])
     assert js.kind == "ladder" and js.engine == "siesta"
     # The JOB keeps the stage's NAME; its SCRIPT carries the artifact
     # token, because that is the file the renderer wrote (decision 27).
     assert [j.name for j in js.jobs] == ["coarse", "medium"]
     assert js.jobs[0].script == "siesta_01_coarse.fdf"
     assert js.jobs[1].script == "siesta_02_medium.fdf"
-    # medium chains off coarse; coarse policy "proceed" -> afterany edge.
-    assert js.jobs[1].depends_on == "coarse"
-    assert js.jobs[1].dep_kind == "afterany"
-    # carry: .XV always + .DM (use_save_dm default) ; NO .CG (coarse CG vs
-    # medium Broyden -- different optimizer, history not carried).
-    patterns = [c.pattern for c in js.jobs[1].carry]
-    assert "siesta.XV" in patterns and "siesta.DM" in patterns
-    assert "siesta.CG" not in patterns
+    # NO edge of any kind: stages do not chain, so nothing here says the
+    # scheduler should start the next one (P7 unit 2).
+    assert all(j.depends_on is None and not j.carry for j in js.jobs)
+    # What medium WOULD take from a run it is pointed at: .XV and .DM
+    # unconditionally, .CG only if the source agrees on the optimizer -- which
+    # coarse (CG) does not, medium being Broyden.  The condition travels; the
+    # comparison happens at prep, where the source is known.
+    warm = {w.name: w.requires_same for w in js.jobs[1].warm}
+    assert warm == {"siesta.XV": None, "siesta.DM": None,
+                    "siesta.CG": "optimizer"}
+    assert js.jobs[0].traits["optimizer"] != js.jobs[1].traits["optimizer"]
     assert js.validate() == []             # framework-valid
 
 
@@ -273,6 +274,7 @@ def test_stages_to_jobset_carries_cg_when_same_relax_type():
     a stage that does not override ``relax_type`` has the template's."""
     import dataclasses
     from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset.model import warm_carry
     from molbuilder.siesta.stages import (default_siesta_stages,
                                           stages_to_jobset)
 
@@ -281,7 +283,11 @@ def test_stages_to_jobset_carries_cg_when_same_relax_type():
     stages[1] = dataclasses.replace(
         stages[1], overrides={**stages[1].overrides, "relax_type": "CG"})
     js = stages_to_jobset(SiestaConfig(), stages)
-    assert "siesta.CG" in [c.pattern for c in js.jobs[1].carry]
+    # Same optimizer, so `warm_carry` lets the history across when medium is
+    # pointed at coarse.  Asserted through the resolver rather than off a
+    # produce-time edge: the edge is gone (P7 unit 2) and the SOURCE is named
+    # at prep, which is the whole reason the condition travels.
+    assert "siesta.CG" in warm_carry(js.jobs[1], js.jobs[0])
 
 
 def test_stages_to_jobset_carries_cg_when_neither_stage_overrides_it():
@@ -289,6 +295,7 @@ def test_stages_to_jobset_carries_cg_when_neither_stage_overrides_it():
     case the old field-comparison could not even express, since every
     stage carried its own ``relax_type`` whether or not it meant to."""
     from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset.model import warm_carry
     from molbuilder.siesta.stages import stages_to_jobset
     from molbuilder.task import Stage
 
@@ -300,28 +307,30 @@ def test_stages_to_jobset_carries_cg_when_neither_stage_overrides_it():
     js = stages_to_jobset(SiestaConfig(relax_type="Broyden"),
                           [Stage(name="a"),
                            Stage(name="b", overrides={"restart": "continue"})])
-    assert "siesta.CG" in [c.pattern for c in js.jobs[1].carry]
+    assert "siesta.CG" in warm_carry(js.jobs[1], js.jobs[0])
 
 
-def test_stages_to_jobset_halt_policy_gives_afterok():
+def test_a_staged_ladder_declares_no_edge_of_any_kind():
+    """Two tests lived here, asserting that `on_nonconvergence` became an
+    ``afterok`` / ``afterany`` dependency kind.  P7 unit 2 retired the edges,
+    and the policy went with them: `engines/stages.md § 3` says *"its entire
+    effect is the edge between one attempt and the next"*, so with no edge it
+    had no effect -- and it was never reachable by a user, being absent from
+    `task.json`'s three stage fields.
+
+    What replaces those assertions is this one: nothing in a produced ladder
+    says the scheduler should start the next stage. A person does.
+    """
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.siesta.stages import (default_siesta_stages,
                                           stages_to_jobset)
 
-    js = stages_to_jobset(SiestaConfig(), default_siesta_stages(),
-                          on_nonconvergence={"coarse": "halt"})
-    assert js.jobs[1].dep_kind == "afterok"
-
-
-def test_stages_to_jobset_defaults_an_unnamed_stage_to_afterok():
-    """Silence in the policy input means halt, and halt means the next
-    stage runs only on success -- the safe reading."""
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import (default_siesta_stages,
-                                          stages_to_jobset)
-
-    js = stages_to_jobset(SiestaConfig(), default_siesta_stages())
-    assert js.jobs[1].dep_kind == "afterok"
+    js = stages_to_jobset(SiestaConfig(), default_siesta_stages("vib-quality"))
+    assert len(js.jobs) == 3
+    for j in js.jobs:
+        assert j.depends_on is None
+        assert j.carry == []
+        assert j.dep_kind == "afterok"     # the model default, never set here
 
 
 def test_stages_to_jobset_resources_injection():
@@ -357,6 +366,7 @@ def test_stages_to_jobset_rejects_an_override_the_schema_has_no_field_for():
     """The refusal arrives BEFORE any Job is built, and names the field --
     the preflight rule applied at the producer (stages.md § 6.6)."""
     from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset.model import warm_carry
     from molbuilder.siesta.stages import stages_to_jobset
     from molbuilder.task import Stage
 
@@ -1470,21 +1480,19 @@ def test_a_clean_stage_refuses_from_instead_of_copying_nothing(tmp_path):
     assert "restart" in str(e.value)             # and what to change
 
 
-def test_the_edge_and_the_declaration_are_one_rule_in_two_renderings():
-    """`staged-runs-architecture.md` 12c's failure mode, prevented rather than
-    found later: two lists of warm files that *"agree today and nothing keeps
-    them agreeing."*
+def test_the_declaration_is_now_the_only_rendering_of_the_rule():
+    """This asserted that the derived ``Carry`` list and ``warm_carry`` agreed
+    -- `staged-runs-architecture.md` 12c's *"two lists that agree today and
+    nothing keeps them agreeing"*, held in step by derivation.
 
-    `Job.warm` is what a stage takes from whatever run it is pointed at;
-    `Job.carry` is that same rule projected onto the one source a **chain** can
-    know in advance. The producer derives the second from the first, so the
-    `.CG` rule cannot come out different on the two roads.
+    P7 unit 2 deleted the second rendering, which is the better end state: a
+    guard against drift is only needed while there are two things to drift.
+    What is left to assert is that the projection really is gone, so nobody
+    reintroduces it as a convenience.
     """
-    from molbuilder.jobset.materialize import warm_carry
     js = _shipped_ladder()
-    for prev, job in zip(js.jobs, js.jobs[1:]):
-        assert [c.pattern for c in job.carry] == warm_carry(job, prev)
-        assert all(c.from_job == prev.name for c in job.carry)
+    assert all(not j.carry for j in js.jobs)
+    assert all(j.warm for j in js.jobs[1:])      # ...and the rule still travels
 
 
 def test_validate_refuses_a_condition_the_job_could_never_meet():

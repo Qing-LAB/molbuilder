@@ -338,9 +338,10 @@ def test_jobset_flag_emits_runnable_job_set_json(xyz, tmp_path):
     assert [j.script for j in js.jobs] == ["JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
     for j in js.jobs:
         assert (tmp_path / j.script).is_file()
-    # the chain + carry are wired (stage2 warm-starts from 01_coarse).
-    assert js.jobs[1].depends_on == "coarse"
-    assert "JOB.XV" in [c.pattern for c in js.jobs[1].carry]
+    # NO chain and NO carry edge (P7 unit 2): medium DECLARES what it would
+    # take from a run it is pointed at, and `prep --from` decides which.
+    assert all(j.depends_on is None and not j.carry for j in js.jobs)
+    assert "JOB.XV" in [w.name for w in js.jobs[1].warm]
 
 
 def test_shape_hierarchical_requires_a_ladder(xyz, tmp_path):
@@ -436,8 +437,9 @@ def test_jobset_systemlabel_carry_consistency(xyz, tmp_path):
         body = (b / j.script).read_text()
         assert any("SystemLabel" in ln and "JOB" in ln
                    for ln in body.splitlines())          # label baked in fdf
-    # the carried restart files use that SAME shared label.
-    assert "JOB.XV" in [c.pattern for c in js.jobs[1].carry]
+    # the warm-restart files a stage declares use that SAME shared label --
+    # which is what makes them findable by SIESTA at all (run-identity.md).
+    assert "JOB.XV" in [w.name for w in js.jobs[1].warm]
 
 
 # --------------------------------------------------------------------- #

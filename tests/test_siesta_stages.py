@@ -37,10 +37,7 @@ from molbuilder.config.siesta import (
     SIESTA_STAGE_STRATEGY_PRESETS,
     apply_siesta_stage,
 )
-from molbuilder.siesta.stages import (
-    DEFAULT_NONCONVERGENCE,
-    default_siesta_stages,
-)
+from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.task import Stage
 
 
@@ -231,11 +228,28 @@ def test_no_stage_carries_a_nonconvergence_policy():
                                        for f in dataclasses.fields(SiestaConfig)}
 
 
-def test_the_shipped_policy_names_the_shipped_stages():
-    """The producer's default input and the producer's default ladder
-    describe one ladder, so every stage in it is named."""
-    assert set(DEFAULT_NONCONVERGENCE) == {
-        s.name for s in default_siesta_stages("vib-quality")}
+def test_the_nonconvergence_policy_left_with_the_edges_it_was():
+    """§ 3: *"its entire effect is the edge between one attempt and the next."*
+
+    P7 unit 2 removed those edges, so the policy had no effect left — and it
+    was never reachable by a user in the first place, being absent from
+    `task.json`'s three stage fields (asserted above). A parameter accepted,
+    resolved and then dropped is the *"present but not honoured"* shape this
+    phase keeps deleting, so it was subtracted rather than left inert.
+
+    Reinstating a per-stage policy means giving it a home in the description
+    **and** a reader that does something with it. This test is what fails if
+    half of that lands.
+    """
+    import molbuilder.siesta.stages as stages_mod
+    assert not hasattr(stages_mod, "DEFAULT_NONCONVERGENCE")
+    assert not hasattr(stages_mod, "_dep_kind")
+
+    import inspect
+    sig = inspect.signature(stages_mod.stages_to_jobset)
+    assert "on_nonconvergence" not in sig.parameters
+    sig = inspect.signature(stages_mod.build_siesta_stage_bundle)
+    assert "on_nonconvergence" not in sig.parameters
 
 
 def test_continue_retries_is_a_shared_field_not_a_stage_one():

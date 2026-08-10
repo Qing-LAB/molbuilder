@@ -189,11 +189,11 @@ def test_prep_carries_state_only_into_a_stage_that_will_read_it():
         Stage(name="coarse", overrides={"restart": "clean"}),
         Stage(name="fresh",  overrides={"restart": "clean"}),
         Stage(name="warm",   overrides={"restart": "continue"}),
-    ], shared=[], resources_for=None, on_nonconvergence=None)
+    ], shared=[], resources_for=None)
     by_name = {j.name: j for j in js.jobs}
-    assert by_name["coarse"].carry == []      # nothing before it
-    assert by_name["fresh"].carry == []       # told to start clean
-    assert [c.pattern for c in by_name["warm"].carry] == [
+    assert by_name["coarse"].warm == []       # nothing before it
+    assert by_name["fresh"].warm == []        # told to start clean
+    assert [w.name for w in by_name["warm"].warm] == [
         "job.XV", "job.DM", "job.CG"]
 
 

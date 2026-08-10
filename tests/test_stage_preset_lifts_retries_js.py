@@ -1,128 +1,74 @@
-"""The Save pipeline's stage lookup, RUN rather than grepped.
+"""``continue_retries`` reaches the wrapper as an ORDINARY field.
 
-``collectFdfParams`` in ``structure-optimization/viewer.js`` picks one row out
-of the stages table so the selected stage's non-convergence policy can be
-lifted to the top level -- that is how ``continue_retries`` reaches the
-``.run.sh`` wrapper (`job-contracts.md § 6.2`: it is the one Resources field
-that becomes no sbatch flag at all, so if it does not ride along here it is
-simply lost).
+**This file used to assert the opposite mechanism, and the correction is the
+point.** `collectFdfParams` in ``structure-optimization/viewer.js`` carried a
+block that looked up one row of a stages table, read its
+``on_nonconvergence``, and copied the retry budget to the top level. This file
+ran that lookup expression in Node and pinned its behaviour.
 
-**Why this file exists.** Decision 27 changed ``params.stage`` from a stage
-NUMBER to the artifact TOKEN (``01_coarse``). The selection line kept doing
-``(params.stage || 1) - 1`` -- a string minus one, which is ``NaN`` -- so the
-lookup returned ``undefined``, ``selStage`` fell back to ``{}``, and every
-staged save from the browser quietly dropped the retry policy. Nothing failed;
-the wrapper was just generated without it.
+Two things were wrong with the thing it guarded, and neither was the lookup:
 
-A regex over the source would not have caught that: the line *looked* right and
-still parses. So this extracts the shipped selection expression **out of
-viewer.js itself** and runs it in Node against a stub ``params``. What is
-asserted is the behaviour of the real source text, not a copy of it kept in
-step by hand (`docs/execution/checkpointing.md` § 13.3 -- *run the thing and
-look at what moved*).
+1. **``params.stages`` never existed on the SIESTA path.** ``SiestaConfig``
+   has had no ``stages`` field since P2 deleted ``SiestaStageSpec``, and the
+   collector returns *"one entry per dataclass field"* — so the array was
+   ``undefined``, ``selStage`` fell back to ``{}``, and the gate could not
+   fire whatever the index was. The earlier fix to the *indexing* (a token
+   minus one is ``NaN``) was necessary and not sufficient.
+2. **The lift was never needed.** ``continue_retries`` is an ordinary
+   ``SiestaConfig`` field in the *Compute & budget* section, so ``collectForm``
+   already returns it. `engines/stages.md § 3` says so outright: *"it is an
+   ordinary shared field; what made it look special is only where it lands."*
+
+So the block was gated on a lookup that always failed, for a value that did
+not need lifting — and deleting it (P7 unit 2, with ``on_nonconvergence``) is
+what makes the retry budget actually arrive.
+
+**Why the old test passed anyway**, which is the lesson worth keeping: it
+*supplied* a stages array as a stub input. It proved the expression worked
+given a ladder, and never asked whether the SIESTA path had one. That is
+`feedback_test_depth`'s *don't stub the seam that matters*, committed by me
+earlier the same day.
 """
 from __future__ import annotations
 
-import json
+import dataclasses
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from molbuilder.config.siesta import SiestaConfig
 
 REPO = Path(__file__).resolve().parents[1]
 VIEWER = (REPO / "molbuilder" / "web" / "static" / "structure-optimization"
           / "viewer.js")
 
-#: The shipped expression, delimited by the two statements it lies between.
-#: Anchored on code rather than comments so a reworded comment does not
-#: silently empty the extraction.
-_SELECT_RE = re.compile(
-    r"(const _seq = .*?const selStage =.*?;)", re.S)
 
-#: Only the tests that EXECUTE the expression need Node.  The static guard
-#: below does not, and putting it under a module-level skip would retire the
-#: broadest check on the machines least likely to have run the others.
-requires_node = pytest.mark.skipif(shutil.which("node") is None,
-                                   reason="node is not installed")
+def test_continue_retries_is_an_ordinary_collected_field():
+    """The whole mechanism, in one assertion: the form collector returns one
+    entry per dataclass field, and this is one — in a rendered section, with
+    no flag holding it back."""
+    fields = {f.name: f for f in dataclasses.fields(SiestaConfig)}
+    assert "continue_retries" in fields
+    md = fields["continue_retries"].metadata or {}
+    assert md.get("section"), "a field with no section is not rendered at all"
+    assert not md.get("skip_cli") and not md.get("hidden")
 
 
-def _select_stage(stage, stages):
-    """Run viewer.js's own selection expression with these inputs."""
+def test_the_siesta_form_has_no_stages_field_to_look_a_policy_up_in():
+    """The premise the deleted block rested on, pinned so it cannot come back
+    quietly. If a SIESTA stage table is ever reintroduced, this fails and
+    whoever does it has to say what reads it."""
+    assert "stages" not in {f.name for f in dataclasses.fields(SiestaConfig)}
+
+
+def test_the_viewer_no_longer_lifts_a_policy_out_of_a_stages_table():
+    """Source-level, because the failure being prevented is a *reintroduced*
+    lookup rather than a wrong one: any read of ``params.stages`` in the
+    SIESTA collector is a read of ``undefined``."""
     src = VIEWER.read_text(encoding="utf-8")
-    m = _SELECT_RE.search(src)
-    assert m, ("could not find the stage-selection expression in viewer.js -- "
-               "if it was renamed, update this test rather than deleting it")
-    js = (f"const params = {json.dumps({'stage': stage, 'stages': stages})};\n"
-          f"{m.group(1)}\n"
-          "process.stdout.write(JSON.stringify(selStage));\n")
-    out = subprocess.run(["node", "-e", js], capture_output=True, text=True,
-                         check=True)
-    return json.loads(out.stdout)
-
-
-_LADDER = [{"name": "coarse", "on_nonconvergence": "continue",
-            "continue_retries": 2},
-           {"name": "medium", "on_nonconvergence": "continue",
-            "continue_retries": 5},
-           {"name": "tight", "on_nonconvergence": "halt"}]
-
-
-@requires_node
-def test_the_token_selects_its_own_stage_row():
-    """``01_coarse`` must reach the coarse row.  It reached ``{}`` for every
-    token from decision 27 until 2026-08-10, because the token was being used
-    in arithmetic."""
-    assert _select_stage("01_coarse", _LADDER)["name"] == "coarse"
-    assert _select_stage("02_medium", _LADDER)["continue_retries"] == 5
-    assert _select_stage("03_tight", _LADDER)["on_nonconvergence"] == "halt"
-
-
-@requires_node
-def test_the_ordinal_and_not_the_word_is_what_selects():
-    """A stage's name is user-editable (`engines/stages.md` R5 makes it the
-    stage's identity, not a fixed word), so a renamed row must still be found
-    by the token that names its files."""
-    renamed = [dict(_LADDER[0], name="rough"), _LADDER[1], _LADDER[2]]
-    assert _select_stage("01_rough", renamed)["name"] == "rough"
-
-
-@requires_node
-def test_no_stage_selected_yields_an_empty_row_rather_than_a_wrong_one():
-    """`custom` gives ``stage: null``.  The lift must then not happen at all --
-    quietly borrowing stage 1's retry policy would attach a number the user
-    never chose."""
-    assert _select_stage(None, _LADDER) == {}
-
-
-def test_the_token_is_never_used_in_arithmetic():
-    """The bug in one line: ``(params.stage || 1) - 1``.
-
-    The tests above run the *current* expression, so they prove it behaves --
-    but they find it by shape, and a future rewrite that reintroduced
-    arithmetic could move the anchor with it. This asks the question that does
-    not depend on shape: nothing in this function may do maths on the token.
-    It parses, it reads like an index, and it is ``NaN`` for every real token.
-    """
-    src = VIEWER.read_text(encoding="utf-8")
-    body = re.search(r"function collectFdfParams\(\).*?\n    \}", src, re.S)
-    assert body, "collectFdfParams not found in viewer.js"
-    # Comments are stripped first: the code below explains the old bug by
-    # quoting it, and a scanner that reads prose finds offences in the very
-    # note warning against them.
-    code = re.sub(r"//[^\n]*", "", body.group(0))
-    # `\b` matters: `params.stage` is a prefix of `params.stages`, and the
-    # correct indexing expression subtracts 1 from an ordinal off that list.
-    offenders = re.findall(r"params\.stage\b[^;\n]*?[-+*/]\s*\d", code)
-    assert not offenders, (
-        f"arithmetic on the stage TOKEN: {offenders}. Since decision 27 "
-        f"`params.stage` is `01_coarse`, not a number; parse the ordinal off "
-        f"it (project-layout.md § 4.2) instead of subtracting from it.")
-
-
-@requires_node
-def test_a_token_past_the_end_does_not_wrap_or_throw():
-    """A ladder can be shorter than the token says (rows disabled and dropped
-    before collection).  Missing is ``{}``, never the last row."""
-    assert _select_stage("09_extra", _LADDER) == {}
+    body = src[src.index("function collectFdfParams()"):
+               src.index("function collectPyscfParams()")]
+    # Comments explain the removal and legitimately name it; code must not.
+    code = "\n".join(ln for ln in body.splitlines()
+                     if not ln.lstrip().startswith("//"))
+    assert not re.search(r"params\.stages", code)
+    assert "on_nonconvergence" not in code

@@ -472,11 +472,11 @@ def measure_positional_names() -> list[str]:
             f"render_siesta_stage_fdfs emits {positional_decks} -- the deck "
             "and its log would then key on different things")
 
-    runner = _flat_runner_text()
-    if runner is not None and _POSITIONAL.search(runner):
-        offences.append(
-            "render_siesta_stages_runner writes a positional name into the "
-            "outputs it redirects")
+    # The flat runner had a probe here until 2026-08-10; P5 unit 3 deleted the
+    # function, so the probe could only ever return None.  What it guarded --
+    # a positional name reaching an output redirect -- is now covered by the
+    # deck scan above, because flat and hierarchical emit the SAME decks
+    # (decision 29) and there is no second namer left to disagree with them.
 
     viewer = STATIC / "structure-optimization" / "viewer.js"
     src = viewer.read_text(encoding="utf-8", errors="replace")
@@ -524,33 +524,45 @@ WRAPPER_MARKERS = ("conda activate", "source activate", "module load",
 ENGINE_INVOCATION = re.compile(r"^\s*(?:if\s+!\s+)?(\S*siesta)\s*<", re.M)
 
 
-def _flat_runner_text() -> str | None:
-    """The rendered flat ladder runner, or None once P5 has deleted it."""
-    try:
-        from molbuilder.siesta.input import render_siesta_stages_runner
-    except ImportError:
-        return None
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import (DEFAULT_NONCONVERGENCE,
-                                          default_siesta_stages)
-    return render_siesta_stages_runner(
-        SiestaConfig(system_label="JOB"), default_siesta_stages(),
-        on_nonconvergence=DEFAULT_NONCONVERGENCE)
+#: The ONE module allowed to emit an engine invocation.  It is the wrapper
+#: generator, so the invocation it writes arrives with activation, the rank
+#: clamp, the monitor and the run index around it -- which is the entire
+#: content of question 3.
+ENGINE_EMITTER = "runwrap.py"
 
 
 def measure_direct_engine_invocations() -> list[str]:
-    script = _flat_runner_text()
-    if script is None:
-        return []
-    if not ENGINE_INVOCATION.search(script):
-        return []
-    if any(m in script for m in WRAPPER_MARKERS):
-        return []
-    return ["render_siesta_stages_runner: invokes the engine directly and "
-            "shows no sign of the wrapper -- no environment activation (so "
-            "`siesta` must already be on PATH, and it lives in a conda env), "
-            "no rank clamp, no monitor, so no .molwatch.log for the Results "
-            "tab or the trajectory viewer"]
+    """Any module that writes ``siesta <`` into a script, other than the
+    wrapper generator.
+
+    **Widened 2026-08-10, when the old probe went vacuous.** It rendered
+    `render_siesta_stages_runner` and inspected the text; P5 deleted that
+    function, so the probe found nothing and the question passed *because
+    there was nothing left to ask*. A guard that can no longer fail is worse
+    than no guard, because it reads as coverage.
+
+    So it now scans the package: a module emitting the engine directly is one
+    whose output has no activation, no rank clamp and no monitor -- and
+    therefore no `.molwatch.log` for the Results tab or the trajectory
+    viewer -- whether or not that module is the one this file was written
+    against.
+    """
+    offences = []
+    for path in sorted(PKG.rglob("*.py")):
+        if path.name == ENGINE_EMITTER:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if not ENGINE_INVOCATION.search(text):
+            continue
+        if any(m in text for m in WRAPPER_MARKERS):
+            continue
+        offences.append(
+            f"{path.relative_to(REPO)}: emits an engine invocation and shows "
+            "no sign of the wrapper -- no environment activation (so `siesta` "
+            "must already be on PATH, and it lives in a conda env), no rank "
+            "clamp, no monitor, so no .molwatch.log for the Results tab or "
+            "the trajectory viewer")
+    return offences
 
 
 # QUESTION 3 IS ANSWERED YES, 2026-08-10.  This was xfail(strict) from the day
@@ -593,21 +605,25 @@ def measure_chaining_producers() -> list[str]:
             f"depends_on ({', '.join(chained)}) -- the ladder is wired "
             "stage-to-stage, so the scheduler starts the next one, not a person")
 
-    script = _flat_runner_text()
-    if script is not None and re.search(r'for\s+\w+\s+in\s+"\$\{!STAGES\[@\]\}"',
-                                        script):
+    # A `Carry` is an edge too, and the more dangerous one: it points at a file
+    # in another stage's directory before that stage has run, so a produced
+    # tree holds dangling symlinks and whatever runs there writes THROUGH one.
+    carried = [j.name for j in js.jobs if j.carry]
+    if carried:
         offences.append(
-            "render_siesta_stages_runner: the emitted bash loops over every "
-            "stage in one invocation")
+            f"stages_to_jobset: {len(carried)} job(s) carry a Carry edge "
+            f"({', '.join(carried)}) -- what a stage continues from is a real "
+            "file copied in at prep, from the run you name")
 
     return offences
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "P7 -- one attempt, no chain.  stages_to_jobset still wires each stage "
-    "to its predecessor with depends_on.  (The other half of this -- the "
-    "flat runner looping over every stage -- went with the runner on "
-    "2026-08-10; what is left is the JobSet's own edges.)"))
+# QUESTION 4 IS ANSWERED YES, 2026-08-10.  This was xfail(strict) from the day
+# the module was written.  P5 unit 3 removed one of the two chaining producers
+# with the flat runner; P7 unit 2 removed the other -- `stages_to_jobset` now
+# emits neither `depends_on` nor `Carry`, so nothing starts a stage but a
+# person.  The strict marker did its job again: it FAILED the moment the
+# behaviour started working, so the fix could not land without this being said.
 def test_stages_do_not_chain():
     """Question 4."""
     offences = measure_chaining_producers()

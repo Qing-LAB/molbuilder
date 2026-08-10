@@ -68,15 +68,30 @@ def render_plan(jobset: JobSet) -> str:
     lines.append("  " + "  ".join("-" * n for n in w))
     lines += ["  " + fmt(r) for r in rows]
 
-    # dependency graph (the chain, or "independent" for a sweep).
+    # How these are launched.  NOT "submit in parallel", which this said until
+    # 2026-08-10 and which is now the one thing that never happens: a scheduler
+    # is handed ONE job per invocation (job-system.md § 5.3, user rule).  A
+    # plan that ends by recommending the refused thing is worse than one that
+    # ends without advice.
     lines.append("")
     if any(j.depends_on for j in js.jobs):
         chain = " -> ".join(j.name for j in js.jobs)
         lines.append(f"Order: {chain}  (each waits for the prior per its "
                      "dependency kind)")
+    elif js.kind == "ladder":
+        # A staged ladder declares no edges (P7 unit 2) and that is the design,
+        # not an omission -- so say what to do rather than leaving a reader to
+        # infer that unrelated jobs may all be started at once.
+        lines.append(f"Order: {len(js.jobs)} stage(s), run ONE AT A TIME -- "
+                     "look at each before setting up the next "
+                     "(project-layout.md § 1.6):")
+        lines.append("       molbuilder jobset prep   run <stage> "
+                     "--from <attempt>")
+        lines.append("       molbuilder jobset submit run <stage> --mode ...")
     else:
-        lines.append(f"Order: {len(js.jobs)} independent job(s) (submit in "
-                     "parallel)")
+        lines.append(f"Order: {len(js.jobs)} independent job(s) -- no ordering "
+                     "between them.  Submit one at a time; a scheduler is "
+                     "never handed several at once (job-system.md § 5.3).")
     return "\n".join(lines)
 
 

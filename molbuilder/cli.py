@@ -1041,10 +1041,8 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
             res_map = {k: Resources.from_dict(v) for k, v in spec.items()}
             resources_for = res_map.get
         try:
-            from .siesta.stages import DEFAULT_NONCONVERGENCE
             js = stages_to_jobset(cfg, stages, shared=pseudos,
-                                  resources_for=resources_for,
-                                  on_nonconvergence=DEFAULT_NONCONVERGENCE)
+                                  resources_for=resources_for)
         except ValueError as e:
             raise click.ClickException(f"the stage ladder: {e}")
         _staged.append(js.write(staging / "job-set.json"))

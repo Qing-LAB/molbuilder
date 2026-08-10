@@ -6,21 +6,24 @@ This is the ONLY place SIESTA stage knowledge meets the engine-agnostic
 **ladder** (a list of :class:`molbuilder.task.Stage`, from ``task.json``)
 into a ``ladder`` JobSet:
 
-  * one ``Job`` per enabled stage, its input ``<label>_<NN>_<name>.fdf``;
-  * a dependency chain whose kind comes from the non-convergence policy
-    (§ 5): ``proceed`` -> ``afterany`` (run the next stage regardless), else
-    (``halt`` / ``continue``) -> ``afterok`` (next runs only if this stage
-    ultimately converged; ``continue``'s terminal failure mode is halt);
+  * one ``Job`` per enabled stage, its input ``<label>_<NN>_<name>.fdf``,
+    and **no edge to any other** -- no ``depends_on``, no ``dep_kind``, no
+    ``Carry`` (P7 unit 2).  Stages do not chain (`project-layout.md` § 1.6);
+    what a stage continues from is a real file copied in at `prep`, from the
+    run you name with ``--from``;
   * **the warm-restart declaration** — SIESTA's group, stated where
     ``run-identity.md`` § 4 rule 1 says it belongs: ``restart: continue``
     means ``.XV``, ``.DM`` and ``.CG``, and the last is conditioned on the
     optimizer rather than resolved here, because the run it will be compared
     against is named at ``prep`` and not at produce (:func:`_warm_declaration`).
 
-``Carry`` is still emitted, and is **derived** from that declaration rather
-than spelled a second time: it is the same rule projected onto the one source
-a chain can know in advance, the stage immediately before.  P7 unit 2 retires
-those edges, at which point the projection is a deletion.
+**What went with the edges.**  ``on_nonconvergence`` and its
+``DEFAULT_NONCONVERGENCE`` table: `engines/stages.md § 3` says *"its entire
+effect is the edge between one attempt and the next"*, so with no edge it had
+no effect -- and it was never reachable by a user anyway, being absent from
+`task.json`'s three stage fields.  The derived ``Carry`` projection went too:
+it existed only to render the declaration onto the one source a chain can know
+in advance.
 
 **Where the ladder comes from, and where it does not.**  An engine config
 carries no stage list (``engines/stages.md`` § 1.1) — the ladder is the
@@ -37,31 +40,10 @@ continue_retries), everything else resolved at submit time.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Mapping, Optional
+from typing import Callable, Dict, List, Optional
 
-from ..jobset.model import (Carry, Job, JobSet, Resources, WarmFile,
-                            warm_carry)
+from ..jobset.model import Job, JobSet, Resources, WarmFile
 from ..task import Stage
-
-
-#: The shipped ladder's per-stage non-convergence policy, keyed by stage
-#: name.  It is **not** a stage field and **not** a shared-schema field
-#: (``engines/stages.md`` § 3): its entire effect is the edge between one
-#: attempt and the next, so it belongs to the JobSet producer's own input.
-#: This constant is the shipped default FOR that input, and lives beside
-#: :func:`default_siesta_stages` because the two describe one ladder.
-#:
-#: stage1 ``proceed``: a loose CG warm-up that runs out of steps has still
-#: improved the geometry, and stage2 continues from it.  stage2 / stage3
-#: ``halt``: a production tier that did not converge must fail loud.
-#  Keyed on the shipped ladder's stage NAMES (``SIESTA_STAGE_NAMES``), which
-#  became coarse/medium/tight on 2026-08-10 -- the policy is per stage, so its
-#  keys are stage names and they move when the ladder's do.
-DEFAULT_NONCONVERGENCE: Dict[str, str] = {
-    "coarse": "proceed",
-    "medium": "halt",
-    "tight":  "halt",
-}
 
 
 def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
@@ -126,14 +108,6 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
     return out
 
 
-def _dep_kind(prev_policy: str) -> str:
-    """SLURM dependency kind for the edge OUT of a stage with the given
-    ``on_nonconvergence`` policy (§ 5).  ``proceed`` lets the next stage run
-    regardless (afterany); ``halt`` and ``continue`` both end in
-    success-or-failure, so the next stage runs only on success (afterok)."""
-    return "afterany" if prev_policy == "proceed" else "afterok"
-
-
 #: The key a `.CG` carry is conditioned on.  Named once because two modules
 #: must spell it identically for the comparison to mean anything, and a typo
 #: on either side reads as *"the optimizers disagree"* -- which withholds the
@@ -186,7 +160,6 @@ def stages_to_jobset(
     *,
     shared: Optional[list] = None,
     resources_for: Optional[Callable[[str], Resources]] = None,
-    on_nonconvergence: Optional[Mapping[str, str]] = None,
 ) -> JobSet:
     """Build the ladder :class:`JobSet` from a template and a stage list.
 
@@ -198,15 +171,31 @@ def stages_to_jobset(
     :class:`Resources` override (keyed by stage name); absent → each stage
     inherits the job-level config.
 
-    ``on_nonconvergence`` is this producer's own input (§ 3), keyed by stage
-    name; a stage it does not name gets ``"halt"``.
+    **No edges between stages** (P7 unit 2). Each job stands alone: no
+    ``depends_on``, no ``dep_kind``, no ``Carry``.  What a stage continues
+    from is a **real file copied in at `prep`**, from the run you name with
+    ``--from`` — see ``warm`` below and `project-layout.md` § 1.6.
+
+    ``on_nonconvergence`` went with them, and that is subtraction rather than
+    loss.  `engines/stages.md § 3`: *"its entire effect is the edge between
+    one attempt and the next"* — with no edge it had no effect, and it was
+    never reachable by a user in the first place: it is not a `task.json`
+    stage field (§ 2's *"three fields, and no others"*), so the only value it
+    ever took was a hard-coded default table.  Reinstating a per-stage policy
+    means giving it a home in the description and a reader that does something
+    with it; keeping a parameter that is accepted, resolved and dropped is the
+    *"present but not honoured"* shape this phase keeps deleting.
+
+    *(PySCF is untouched and rightly so: its ladder runs in ONE process
+    (§ 6.7), so its own `on_nonconvergence` becomes real control flow in the
+    generated script rather than a scheduler edge.)*
 
     The ``.CG`` condition is keyed on the stages' **resolved** ``relax_type``,
     not on a stage field — a stage that does not override the optimizer has
     the template's, and carrying CG history into a Broyden stage would corrupt
     the restart either way.  It is a *condition*, evaluated by
     :func:`~molbuilder.jobset.model.warm_carry` once ``--from`` has named the
-    source; the ``Carry`` list here is that same rule against the predecessor.
+    source.
 
     Raises ``ValueError`` if no stage is enabled, or if a stage overrides a
     field the shared schema does not have (from ``effective_config``), so a
@@ -216,9 +205,8 @@ def stages_to_jobset(
 
     label = cfg.system_label
     enabled = _enabled_stages(stages)
-    policy_of = dict(on_nonconvergence or {})
     # Resolve once, up front: the refusal for an unknown override should
-    # arrive before any Job is built, and the ``.CG`` carry needs the
+    # arrive before any Job is built, and the warm declaration needs the
     # resolved optimizer anyway.
     resolved = {s.name: effective_config(cfg, s) for s in enabled}
 
@@ -244,41 +232,23 @@ def stages_to_jobset(
     from .input import _stage_tokens
     _token_of = {st.name: tok for st, tok in _stage_tokens(stages)}
 
-    jobs = []
-    prev = None
-    for s in enabled:
-        jobs.append(Job(
-            # The JOB is named for the stage -- that is what a dependency edge
-            # and a --stage-resources key point at.  The SCRIPT is named with
-            # the stage's artifact token, because that is what
-            # ``render_siesta_stage_fdfs`` actually wrote to disk.  The two
-            # were one string until 2026-08-10, and after decision 27 a JobSet
-            # built from the old rule would point every job at a file that
-            # does not exist.
+    jobs = [
+        Job(
+            # The JOB is named for the stage -- that is what a
+            # --stage-resources key and every CLI surface point at.  The
+            # SCRIPT is named with the stage's artifact token, because that is
+            # what ``render_siesta_stage_fdfs`` actually wrote to disk.  The
+            # two were one string until 2026-08-10, and after decision 27 a
+            # JobSet built from the old rule would point every job at a file
+            # that does not exist.
             name=s.name,
             script=f"{label}_{_token_of[s.name]}.fdf",
             resources=_res(s.name),
-            depends_on=(prev.name if prev is not None else None),
-            dep_kind=(_dep_kind(policy_of.get(prev.name, "halt"))
-                      if prev is not None else "afterok"),
             warm=_warm_declaration(label, resolved[s.name]),
             traits=_traits(resolved[s.name]),
-        ))
-        prev = s
-
-    # The chained form, DERIVED from the declaration rather than written a
-    # second time.  ONE rule, two renderings: ``warm`` is what a stage takes
-    # from whatever run it is pointed at -- which `prep` resolves, because
-    # ``--from`` is where the source is named -- and ``carry`` is that same
-    # rule projected onto the one source a CHAIN can know in advance, the
-    # stage immediately before it.  They were two independent spellings of the
-    # `.XV`/`.DM`/`.CG` rule until 2026-08-10, which is
-    # `staged-runs-architecture.md` 12c's failure mode exactly: two lists that
-    # agree today with nothing keeping them agreeing.  When P7 unit 2 retires
-    # the inter-stage edges this loop is a deletion, not an untangling.
-    for i, job in enumerate(jobs[1:], start=1):
-        job.carry = [Carry(name, jobs[i - 1].name)
-                     for name in warm_carry(job, jobs[i - 1])]
+        )
+        for s in enabled
+    ]
 
     return JobSet(
         name=label,
@@ -341,7 +311,6 @@ def build_siesta_stage_bundle(
     cell=None,
     shared: Optional[List[str]] = None,
     resources_for: Optional[Callable[[str], Resources]] = None,
-    on_nonconvergence: Optional[Mapping[str, str]] = None,
 ) -> StageBundle:
     """Produce a multi-stage SIESTA bundle's contents as :class:`StageBundle`.
 
@@ -353,8 +322,7 @@ def build_siesta_stage_bundle(
 
     ``cfg`` is the template and ``stages`` the ladder — see this module's
     docstring for why the second is an argument rather than a field of the
-    first.  ``on_nonconvergence`` is the producers' shared policy input
-    (§ 3), defaulting to :data:`DEFAULT_NONCONVERGENCE`.
+    first.
 
     ``cfg.system_label`` MUST already be the on-disk stem — the caller aligns
     it (the CLI to the ``.fdf`` filename, the web to the bundle basename), the
@@ -381,9 +349,6 @@ def build_siesta_stage_bundle(
     """
     from .input import render_siesta_stage_fdfs, _detect_species
 
-    policy = (DEFAULT_NONCONVERGENCE if on_nonconvergence is None
-              else on_nonconvergence)
-
     # ONE PACKAGE, for either layout (decision 29).  The decks and the JobSet
     # are the same whichever shape the description asks for -- what differs is
     # how the stages are KEPT APART on disk, and `prep` is where that is
@@ -400,12 +365,10 @@ def build_siesta_stage_bundle(
         fdf_files=fdf_files,
         pseudo_species=species,
         jobset=stages_to_jobset(cfg, stages, shared=_shared,
-                                resources_for=resources_for,
-                                on_nonconvergence=policy),
+                                resources_for=resources_for),
     )
 
 
-__all__ = ["DEFAULT_NONCONVERGENCE", "OPTIMIZER_TRAIT",
-           "default_siesta_stages",
+__all__ = ["OPTIMIZER_TRAIT", "default_siesta_stages",
            "stages_to_jobset", "StageBundle",
            "build_siesta_stage_bundle"]

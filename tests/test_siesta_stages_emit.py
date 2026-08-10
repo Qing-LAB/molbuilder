@@ -32,10 +32,7 @@ from molbuilder.config.siesta import SiestaConfig
 from molbuilder.siesta import (
     render_siesta_stage_fdfs,
 )
-from molbuilder.siesta.stages import (
-    DEFAULT_NONCONVERGENCE,
-    default_siesta_stages,
-)
+from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
 
