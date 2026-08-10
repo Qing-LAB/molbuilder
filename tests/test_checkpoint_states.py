@@ -1288,9 +1288,10 @@ def test_a_save_refuses_to_adopt_a_damaged_archive(calc):
     (calc.root / "big.bin").write_bytes(BIG)
     first = calc.save("state 1")
 
-    # Damage the payload, same size, so only a checksum can tell.
-    (archive_dir(calc.root, first.archive) / "big.bin").write_bytes(
-        b"\x99" * len(BIG))
+    # Truncated, which is what a disk that filled up leaves behind -- and what
+    # the save's CHEAP check is for.  Same-size damage is deliberately not
+    # caught here; the test below pins that half.
+    (archive_dir(calc.root, first.archive) / "big.bin").write_bytes(BIG[:100])
 
     # Move away and bring the same big content back: the save would otherwise
     # reuse that archive, because identical content means an identical digest.
@@ -1314,6 +1315,52 @@ def test_a_save_refuses_to_adopt_a_damaged_archive(calc):
     assert rebuilt is not None
     from molbuilder.checkpoint import verify_archive
     verify_archive(calc.root, rebuilt.archive)
+
+
+def test_the_save_checks_cheaply_and_the_restore_checks_exactly(calc):
+    """The other half of the split, pinned so neither side drifts back.
+
+    **This is git's own model, and the reason is git's own too.**  A commit
+    never re-reads the object store — corrupt a loose object and `git commit`
+    exits 0, while `git checkout` answers *"inflate: data stream error"* and
+    restores nothing.  Verification lives on the read, where zlib hands it over
+    for free, and in `fsck`.
+
+    Ours cannot be free on the read, because the archive is raw bytes — so the
+    restore asks explicitly, and that is what this asserts.  The save asks
+    cheaply: the record's own digest, then existence and size.  A same-size
+    byte flip is therefore **invisible at save time on purpose**, and the save
+    that follows it succeeds.
+
+    Both halves are here in one test because they are one decision.  Assert
+    only the second and somebody "hardens" the save and doubles every save in
+    the system; assert only the first and the restore's exactness looks
+    optional.
+    """
+    (calc.root / "big.bin").write_bytes(BIG)
+    first = calc.save("state 1")
+
+    # Same size, different bytes: only a checksum can tell.
+    (archive_dir(calc.root, first.archive) / "big.bin").write_bytes(
+        b"\x99" * len(BIG))
+
+    (calc.root / "big.bin").write_bytes(b"\x02" * 5000)
+    calc.save("state 2")
+    (calc.root / "big.bin").write_bytes(BIG)          # back to state 1's bytes
+    (calc.root / "note.txt").write_text(SMALL)
+
+    reused = calc.save("state 3 -- reuses state 1's archive")
+    assert reused is not None, (
+        "the save must not pay for a full re-hash of an archive it is only "
+        "pointing at; that is the doubling this split exists to avoid")
+    assert reused.archive == first.archive
+
+    # ...and the exact question is asked where the bytes are about to be used.
+    with pytest.raises(CheckpointError) as exc:
+        calc.restore(first.id, force=True)
+    assert "sha256" in str(exc.value), (
+        "the restore must compare content -- it is our inflate check, and "
+        "nothing else in the system performs it")
 
 
 def test_a_reused_inode_is_checked_like_a_copied_one(calc):

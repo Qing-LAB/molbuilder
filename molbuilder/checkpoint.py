@@ -806,9 +806,17 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
         # promise, broken by the one operation that makes it.
         #
         # I2b allows two outcomes and not three -- "it matches, or it is
-        # refused" -- and skipping the question was the third.  § 1 also
-        # settles the cost: "if a rule here and a saving of disk ever disagree,
-        # the rule wins", and the same goes for a saving of time.
+        # refused" -- and skipping the question entirely was the third.
+        #
+        # SHALLOW, and that is the considered answer rather than a shortcut.
+        # Git commits over a corrupt object store without looking at it:
+        # verification lives on the READ, where zlib gives it away for free,
+        # and in `fsck`.  Our archive is raw, so the read cannot be free -- but
+        # putting a full re-hash HERE would double the commonest save there is
+        # (a tweak to an input, gigabytes of density matrices untouched) to
+        # catch, one save earlier, damage that `restore` refuses anyway.  What
+        # the cheap check still buys is the moment: right now the files that
+        # could rebuild this archive are on disk.
         #
         # The way out is cheap and safe *because* the archive is content-
         # addressed: delete the damaged directory and save again, and it is
@@ -817,7 +825,7 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
         # have been reached.  Repairing it here instead would be molbuilder
         # quietly writing over an archive, which I1 does not allow it to do.
         try:
-            verify_archive(root, digest)
+            verify_archive(root, digest, deep=False)
         except CheckpointError as exc:
             raise CheckpointError(
                 f"the archive this save would reuse is damaged, so the state "
@@ -892,11 +900,36 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
     return digest
 
 
-def verify_archive(root: Path, digest: str) -> Dict[str, Tuple[str, int]]:
+def verify_archive(root: Path, digest: str, *,
+                   deep: bool = True) -> Dict[str, Tuple[str, int]]:
     """Check an archive against its MANIFEST, touching nothing (I2).
 
-    Existence, size and sha256 for every entry.  Returns the expected map so a
-    caller can act on what it just verified rather than reading it twice.
+    Returns the expected map, so a caller can act on what it just verified
+    rather than reading the record twice.
+
+    **Two depths, and it is § 7.2's split pointed at the archive** — who pays
+    for exactness, and what being wrong costs.
+
+    ``deep=True`` reads every file and compares its sha256.  This is what runs
+    before a **restore**, and there it is not optional: unlike git's own
+    objects, these are stored raw.  Git objects are zlib-compressed, so reading
+    one validates it as a side effect — corrupt one and `git checkout` answers
+    *"inflate: data stream error"* and restores nothing.  Ours would hand the
+    bytes over, so the check has to be explicit.  This *is* our inflate check,
+    not extra caution.
+
+    ``deep=False`` reads the MANIFEST — one small file, whose digest is the
+    archive's own name — and then checks existence and size.  It catches a lost
+    archive, a truncated file, a deleted entry: the damage that actually
+    happens, for a stat each.
+
+    **A save uses the shallow one, and that is deliberate.** Git commits over a
+    corrupt object store without looking at it; verification belongs on the
+    read and in `fsck`, not on every write.  Re-hashing here would double the
+    cost of the commonest save there is — a tweak to an input, with gigabytes
+    of density matrices untouched — to catch, one save earlier, damage the
+    restore refuses anyway.  What the shallow check still buys is the moment:
+    at save time the files that could rebuild the archive are still on disk.
     """
     adir = archive_dir(root, digest)
     man = adir / MANIFEST_NAME
@@ -922,7 +955,7 @@ def verify_archive(root: Path, digest: str) -> Dict[str, Tuple[str, int]]:
             raise CheckpointError(
                 f"archive {digest[:12]}…: {key!r} is {src.stat().st_size} "
                 f"bytes, the record says {size}; refusing to restore (I2).")
-        if sha256_of(src) != sha256:
+        if deep and sha256_of(src) != sha256:
             raise CheckpointError(
                 f"archive {digest[:12]}…: {key!r} does not match its recorded "
                 f"sha256; refusing to restore (I2).")
