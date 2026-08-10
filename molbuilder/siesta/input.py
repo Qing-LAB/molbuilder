@@ -1768,7 +1768,7 @@ _STAGES_RUNNER_TEMPLATE = r"""#!/usr/bin/env bash
 # (molbuilder.siesta.input.render_siesta_stages_runner).
 #
 # Run from the directory containing the per-stage .fdf files:
-#   {basename}_<stage>.fdf  e.g.  {basename}_stage1.fdf
+#   {basename}_<NN>_<name>.fdf  e.g.  {basename}_01_coarse.fdf
 #
 # Override behaviour via environment:
 #   MOLBUILDER_FORCE=1   skip the warm-restart consistency prompt

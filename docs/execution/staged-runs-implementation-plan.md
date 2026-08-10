@@ -1608,18 +1608,51 @@ is the guard's own declared blind spot rather than a new hole.
 
 ---
 
-## 5d. M4 — the milestone review is OWED, and R×3 is what says so
+## 5d. M4 — the milestone review, 2026-08-10
 
-**The first thing the new rule (§ 3.0) found was a missing review of its own
-plan.** M2 and M3 have written milestone reviews above; **M4 has none**, though
-its work landed 2026-08-10 (decision 27 — one naming rule, the stage token). It
-was never written up, and nothing noticed until every milestone was gated on a
-recorded three-pass ledger.
+**R×3 (§ 3.0) found a missing review of its own plan on the day it was
+written.** M2 and M3 had written milestone reviews; **M4 had none**, though its
+work landed the same day (decision 27 — one naming rule, the stage token).
+Nothing noticed until every milestone was gated on a recorded three-pass ledger.
 
-**What has effectively run, and what it found.** M4's surfaces were reviewed
-inside the whole-session passes of 2026-08-10 rather than under an M4 heading,
-and those passes found **four M4 defects** — all of them the naming rule failing
-to arrive somewhere:
+### Pass 1 — conformance, run 2026-08-10 with the diff closed
+
+**Method, as Review 1 specifies it:** the governing sections were read first
+(`job-contracts.md § 6.3` — *the naming authority, which wins where any other
+document disagrees* · `engines/stages.md § 7` · `project-layout.md § 4.1`) and
+the obligations written out **before** any code was opened. Thirty-one
+obligations; the three that failed are below, and all three failed in the
+**flat** shape — the one that ships today.
+
+| # | Lens | What is wrong | Evidence | Disposition |
+|---|---|---|---|---|
+| 1 | R1 | **The flat runner writes the hierarchical stdout name.** § 6.3's table: flat stdout is `<label>_<NN>_<stage>-run<N>.out`, hierarchical is `<label>_<NN>_<stage>.out`. The runner emits `log="${BASENAME}_${stage}.out"` — no `-run<N>`. So **re-running a stage overwrites the previous attempt's stdout**, in the shape whose *entire* means of telling attempts apart is that index (`project-layout.md § 1`: *"Attempts are separated by an output index — `-run0.out`, `-run1.out`"*) | `siesta/input.py` `_STAGES_RUNNER_TEMPLATE`, the `log=` line | **Deferred → P5 unit 3** (the runner is deleted; a per-deck wrapper from `runwrap` is where the run index comes from) |
+| 2 | R1 | **No wrapper per deck in the flat shape.** § 6.3: wrapper = `<label>_<NN>_<stage>.run.sh`, *beside its deck*. `engines/stages.md § 7`: *"**a run wrapper per deck**, built by the shipped builder"*. A flat produce emits one `<label>.run.sh` for the whole ladder, built by neither | verified live: a flat produce writes `h2.run.sh`, and no `h2_01_coarse.run.sh` | **Deferred → P5 unit 3** (same root) |
+| 3 | R2 | The generated runner's own header told the user the **retired** convention — `{basename}_stage1.fdf`, in an artifact a user reads | same template, header comment | **Fixed** here — it ships in generated output today, and unit 3's deletion is not yet done |
+
+**What pass 1 adds to P5 unit 3, and it is the point of running it.** The plan
+argues for deleting the flat runner from what it *lacks* — no activation, no
+rank clamp, no monitor, no `.molwatch.log`. Pass 1 says something stronger: it
+**violates the naming authority twice**, and one of those violations *silently
+destroys a previous attempt's stdout*. That is not a missing feature; it is data
+loss in the shape the UI ships. Unit 3's justification is now conformance, not
+convenience.
+
+**The other twenty-eight held**, including the ones this milestone is named for:
+the deck, the log and the directory agree on `<label>_<NN>_<name>` (verified on a
+real produce); `seq` is read off the artifacts and stored nowhere; a stage name
+admits no hyphen; the warm files stay bare because SIESTA names them; and
+inserting a stage renames nothing, because the ordinal is assigned once.
+
+Two obligations are **not applicable to M4** and are owned elsewhere: nothing
+yet writes `<label>.fdf.template` or `task.json` at produce time (P5 unit 4 /
+P10). Their *names* are right where they appear; they simply do not appear yet.
+
+### Passes 2 and 3 — already run, under a different heading
+
+M4's surfaces were reviewed inside the whole-session passes of 2026-08-10, which
+found **four** more M4 defects — all of them the naming rule failing to arrive
+somewhere:
 
 | | |
 |---|---|
@@ -1628,15 +1661,24 @@ to arrive somewhere:
 | `identity._STAGE_TOKEN` | a dead second spelling of the token pattern that **disagreed** with the live one |
 | `project-layout.md § 1`'s flat column | still `<label>_stage1.fdf`, the naming M4 replaced — found while re-anchoring P5 |
 
-**What is still owed:** pass 1 proper — the naming contract read with the diff
-closed, obligations written out first, then checked. The four above came from
-passes 2 and 3 (the session's commits, and the tests), which is exactly the
-asymmetry § 3.0 predicts: **a defect that a surface fails to receive is
-invisible to the unit that emits it correctly.**
+Those four came from passes 2 and 3 — the session's commits, and the tests —
+and **not one of them was findable from pass 1**, which is the asymmetry § 3.0
+predicts working in both directions:
 
-M4 is therefore **not passed**, and P5's own milestone review must not be
-written as though it were. This section is the ledger stub; it closes when pass
-1 is run and recorded.
+- **Passes 2 and 3 found what pass 1 could not:** every one of the four is a
+  defect at a surface that *receives* a name, and a surface failing to receive
+  is invisible to the unit emitting it correctly. Pass 1 reads the emitter
+  against the contract and finds the emitter conformant, because it is.
+- **Pass 1 found what passes 2 and 3 could not:** findings 1 and 2 above are
+  names that are *wrong against the table* while being perfectly consistent
+  with themselves everywhere they appear. No amount of cross-surface walking
+  surfaces them, because every surface agrees — with each other, and not with
+  the contract. Only reading the authority first and writing the obligations
+  down catches that.
+
+**M4 status: passed, with two conformance findings deferred to P5 unit 3 and
+their owner named.** Its remaining item is the browser walk (§ 5's M4 row) —
+Review 3's live half, which needs `molbuilder serve` and the BDT-Au data.
 
 ---
 
