@@ -2195,7 +2195,7 @@ reader will take it for the ordinal. Disable one stage and the screen says
 | `materialize.job_dir_names` | directory per job, branching on `JobSet.kind` |
 | `siesta/input._stage_tokens` | enabled stages paired with tokens, numbered from the FULL ladder |
 | `jobset/plan.py` | `enumerate()` as `#` — **wrong number** |
-| `jobset/runstatus.py` | `enumerate()` as `#` — **wrong number** |
+| `jobset/runstatus.py:135-137` | `str(i)` from `enumerate(status.stages)` as `#` — **wrong number** |
 | `jobset/_cli._resolve_stage` | exact-name lookup, no ordinal accepted |
 
 Adding "show the seq" to each of those is six edits and a seventh place for them
@@ -2329,7 +2329,7 @@ flowchart TD
 |---|---|---|---|---|
 | 1 | **naming** | tokens, ids, "is this ours" | `identity` | know what a directory is |
 | 2 | **description** | Stage, shape, id, overrides | `task` | name a machine |
-| 3 | **plan** | description × machine → JobSet | the producers | touch the filesystem |
+| 3 | **plan** | description × machine → JobSet | the producers — `siesta/stages.py::stages_to_jobset`, `bench/to_jobset.py::sweep_to_jobset` | touch the filesystem |
 | 4 | **layout** | dirs, links, copies, attempts | `jobset/materialize` | know a scheduler |
 | 5 | **launch** | wrapper, sbatch/bash, `run.json` | `jobset/submit` + `runwrap` | decide physics |
 | 6 | **observe** | state, resume point | `jobset/runstatus` + `parse/dirs` | write anything |
