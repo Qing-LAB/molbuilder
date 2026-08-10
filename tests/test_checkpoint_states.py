@@ -31,7 +31,6 @@ from molbuilder.checkpoint import (
     Repo,
     _SHA256_RE,
     archive_dir,
-    archive_key,
     parse_manifest,
 )
 
@@ -1038,49 +1037,27 @@ def test_a_repository_inside_a_repository_is_refused(tmp_path):
 # ------------------------------------------------------------------ #
 
 
-def test_a_restore_ignores_the_configuration_entirely(calc, checkpoint_config):
-    """The contract's own test for I2a: save, then change the classification
-    beyond recognition -- and the restored tree must be byte-identical.
-
-    This is what makes the classification's single home safe (S1c): every
-    archive already written stays restorable, because a restore replays what
-    the save recorded rather than re-deriving it.
-
-    The comparison is now over the WHOLE tree with no exclusions.  It used to
-    exempt the config file, because the config lived inside the folder being
-    compared -- an exemption that existed only to hide the rule S1c is about.
-    """
-    (calc.root / "big.bin").write_bytes(BIG)
-    (calc.root / "small.txt").write_text(SMALL)
-    state = calc.save("the state to come back to")
-    before = tree_bytes(calc.root)
-
-    (calc.root / "big.bin").write_bytes(b"\x09" * 5000)
-    (calc.root / "stray.bin").write_bytes(BIG)
-    calc.save("moved on")
-
-    # Change the classification beyond recognition: nothing is big any more.
-    checkpoint_config(size_limit_bytes=99_999_999, engines={"generic": []})
-    calc.restore(state.id, force=True)
-    after = tree_bytes(calc.root)
-    assert after == before, (
-        "a restore re-derived what to do from the config instead of replaying "
-        "what the save recorded (I2a)")
-
-
 def test_a_restore_replays_the_save_under_every_mutation_the_rule_names(
         calc, checkpoint_config):
     """I2a's stated test in full: *"change the engine, empty the hint list,
-    **delete the config outright** -- and assert the restored tree is
+    **delete the config outright** — and assert the restored tree is
     byte-identical either way."*
 
-    Only the first mutation was exercised.  Deleting the file is the decisive
-    one, and it is decisive for a different reason than the others: the other
-    two change the answer a config read would give, so a restore that read it
-    might still land in the same place by luck.  With no file at all, a read
-    on the restore path either falls back to a 10 MB default -- under which
-    nothing in this fixture is large -- or fails outright.  Neither can be
+    Only the middle mutation used to be exercised, by a separate test this
+    one **replaces**: its whole body is the `an_empty_hint_list` case below,
+    so keeping both would have been one assertion wearing two names, and the
+    weaker name is the one a later reader trusts.
+
+    Deleting the file is the decisive case, and for a different reason than
+    the other two: those change the answer a config read would *give*, so a
+    restore that consulted it might still land in the right place by luck.
+    With no file at all a read either falls back to the 10 MB default — under
+    which nothing in this fixture is large — or fails outright. Neither can be
     mistaken for replaying the record.
+
+    The comparison is over the WHOLE tree with no exclusions. It used to
+    exempt the config file, because the config lived *inside* the folder being
+    compared — an exemption that existed only to hide the rule S1c is about.
     """
     (calc.root / "big.bin").write_bytes(BIG)
     (calc.root / "small.txt").write_text(SMALL)
@@ -1624,7 +1601,7 @@ def test_a_deep_forked_history_lists_children_before_parents(staged):
     assert {f.parent for f in forks} == {made[1].id}
 
 
-def test_i2c_the_warning_names_a_file_the_classification_no_longer_matches(
+def test_the_warning_names_a_file_the_classification_no_longer_matches(
         calc, checkpoint_config):
     """I2c's own stated test.
 
