@@ -2645,6 +2645,7 @@ def cmd_snapshot_list(limit, check, path):
     Two states sharing a parent are alternatives from the same point -- that is
     what a fork looks like here, and nothing had to be named for it.
     """
+    from molbuilder.checkpoint import CheckpointError
     repo = _repo_or_exit(path)
     states = repo.states(limit=limit)
     if not states:
@@ -2657,8 +2658,23 @@ def cmd_snapshot_list(limit, check, path):
     # One call answers both questions: `status` has to read where the folder
     # stands in order to say what is unsaved, so asking git again for the same
     # state was a second pair of subprocesses for a value already in hand.
-    status = repo.status(deep=check)
-    here = status.standing_at
+    #
+    # AND IT IS THE ONE CALL HERE THAT CAN FAIL.  It reads the standing state's
+    # MANIFEST, and a lost or tampered archive is *named* rather than absorbed
+    # (I2b) -- which arrived here as an uncaught exception, so `snapshot list`
+    # answered a damaged folder with a Python traceback while the HTTP route
+    # returned a structured error for the identical condition.
+    #
+    # The STATES are unaffected by that damage and are exactly what somebody
+    # recovering needs to read, so they are printed either way and the damage
+    # is reported after them.  `standing_at` is asked separately because it
+    # reads only the commit, never the archive.
+    status, damage = None, None
+    try:
+        status = repo.status(deep=check)
+        here = status.standing_at
+    except CheckpointError as e:
+        damage, here = str(e), repo.standing_at()
     for state in states:
         mark = "->" if here and state.id == here.id else "  "
         parent = state.parent[:7] if state.parent else "-"
@@ -2667,6 +2683,11 @@ def cmd_snapshot_list(limit, check, path):
         click.echo(f"      {state.at}   from {parent}")
     if here:
         click.echo(f"\n-> is where this folder stands ({here.short}).")
+    if damage:
+        # Named where it was found (I2b), with the history above it intact and
+        # readable.  Exit 1, not 2: this is the machine, not the person's input.
+        click.echo(f"\nError: {damage}", err=True)
+        sys.exit(1)
     if not status.clean:
         click.echo(f"   {len(status.unsaved())} unsaved change(s) here; "
                    f"`snapshot save` keeps them.")
@@ -2740,10 +2761,14 @@ def cmd_snapshot_restore(state, force, path):
         # A5 IN TWO STEPS, and the order is the rule (§ 7).  The refusals about
         # the target come first; only once they have passed is anything asked,
         # and by then the files are named and in front of the person deciding.
-        # Answering yes runs the restore again -- which verifies the archive a
+        #
+        # Answering yes runs the restore again, which verifies the archive a
         # second time.  That is the honest cost of putting the question last:
         # the check that guards the folder happens immediately before the
-        # folder changes, not before a prompt somebody sat reading.
+        # folder changes, not before a prompt somebody sat reading.  What the
+        # second pass no longer repeats is the EXPENSIVE half -- `force` is the
+        # answer, so it does not re-hash the working tree to re-ask a question
+        # this branch has already had answered.
         click.echo(str(e), err=True)
         if not _stdin_is_a_terminal():
             # No terminal, no --force: nothing may be assumed either way.

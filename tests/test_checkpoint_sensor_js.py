@@ -3,15 +3,18 @@ test design: docs/execution/checkpointing.md § 13).
 
 This file pins the *refresh model* the checkpoint sensor depends on,
 after the 2026-06-26 decision to replace background polling with
-explicit refresh (docs/web/projects.md).  Three
-guarantees, all server-side except the last (a cheap source guard):
+explicit refresh (docs/web/projects.md).  Four
+guarantees, the last two about the panel's own source and behaviour:
 
   1. ``/api/checkpoint/state`` is CHEAP: it returns the documented
-     fields and does NOT walk ``.binsnapshots/`` -- archive size stays
-     at its ``0`` default even when an archive exists on disk.  This is
-     the regression gate for the Option-A fix (the walk used to run on
-     every 5 s poll; it now would run on every directory-enter, so it
-     was moved off the refresh path entirely).
+     fields and does NOT read a big file it can rule out by size and
+     timestamp.  It reports no archive total **at all** -- this used to
+     say "archive size stays at its ``0`` default", describing a field
+     that has since been removed rather than defaulted (checkpointing.md
+     § 12: the number was never true, since hard links counted in full,
+     and it fed no decision because nothing prunes).  The two assertions
+     below are therefore *the file is never opened* and *the field is
+     absent*, which is what the section now claims.
   2. A git failure inside ``state()`` surfaces as a structured
      ``{ok:false, error}`` envelope (HTTP 500, web-api.md bucket D)
      that the JS sensor renders as a 🔴 error pill -- NOT an unhandled
@@ -71,8 +74,14 @@ def client():
 
 
 def _seed_with_archive(tmp_path: Path) -> Path:
-    """A run dir with a tracked .fdf and a binary .DM that init()
-    archives into .binsnapshots/<sha>/ (2048 bytes)."""
+    """A plain run dir: an .fdf and a 2048-byte .DM beside it.
+
+    The name is historical and the old docstring claimed ``init()``
+    archived the .DM -- neither is true of its one caller, which stubs
+    ``Repo.status`` to raise and never initialises anything.  What the
+    test needs is a directory that exists and is not a checkpoint
+    folder; nothing here is saved, tracked or archived.
+    """
     (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n")
     (tmp_path / "siesta-test.DM").write_bytes(b"\x00" * 2048)
     return tmp_path

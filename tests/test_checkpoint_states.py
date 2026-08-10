@@ -107,11 +107,15 @@ def _published(repo):
 def _as_of_the_state(path, repo):
     """Give `path` the timestamp of the state the folder stands at.
 
-    § 7.2 defines the cheap read's blind spot against the STATE's clock -- "a
-    rewrite to exactly the same size inside the same second as the save" -- so
-    a test of it has to set that relationship rather than hope for it.  Left to
-    the wall clock these pass or fail on where the save's sub-second fraction
-    happened to land, which is a coin toss dressed as an assertion.
+    § 7.2 measures the cheap read against the STATE's clock, not the wall
+    clock, so a test of the blind spot's **near edge** has to set that
+    relationship rather than hope for it.  Left to the wall clock these pass or
+    fail on where the save's sub-second fraction happened to land, which is a
+    coin toss dressed as an assertion.
+
+    Only the near edge needs this.  The far edge -- a timestamp *older* than
+    the state -- is reached by ageing the file outright, since any amount of
+    "older" does, and its test says so.
     """
     from molbuilder.checkpoint import _epoch_of
     at = _epoch_of(repo.standing_at().at)
@@ -246,13 +250,17 @@ def test_a_resized_big_file_is_seen_by_the_cheap_read_too(calc):
 
 
 def test_the_cheap_read_may_miss_a_same_size_rewrite_and_that_is_the_deal(calc):
-    """The accepted blind spot, asserted so nobody "fixes" it by hashing.
+    """The accepted blind spot at its NEAR edge, asserted so nobody "fixes" it
+    by hashing.
 
     A state's timestamp is whole seconds and a file's is not, so a same-size
     rewrite inside that second is invisible to the display.  That costs
     NOTHING: no byte moves on a status call, and the next real operation
     compares content.  Paying for certainty here would mean reading gigabytes
     every time a directory is opened.
+
+    **This is one edge of the blind spot, not the whole of it** -- the two tests
+    below hold the other edge and the door § 7.2 closes.
     """
     (calc.root / "big.bin").write_bytes(BIG)
     calc.save("first")
@@ -261,6 +269,94 @@ def test_the_cheap_read_may_miss_a_same_size_rewrite_and_that_is_the_deal(calc):
     assert calc.status().clean, (
         "if this starts failing, the cheap read began hashing -- check that "
         "the display is not paying for exactness it does not need")
+
+
+def test_the_blind_spot_reaches_a_timestamp_older_than_the_state(calc):
+    """§ 7.2's real width, which the test above understates.
+
+    That test pins a file dated *at* the state, so it passes for a blind spot
+    one second wide **and** for one that is unbounded in the other direction.
+    The comparison is *newer than the state*, so a file dated BEFORE the state
+    slips through however old it is -- and the contract now says so rather than
+    calling it "a rewrite inside the same second".
+
+    **Not hypothetical.**  § 2 sends you to `rsync` for moving a calculation
+    between machines, and `rsync -a` -- like `cp -p` and `tar -x` -- carries the
+    source's timestamp along with the bytes.  So a folder can receive a
+    different density matrix of the same size, dated an hour before the state it
+    lands in, and the badge says saved.
+
+    Both halves are asserted: the display misses it, and the exact read does
+    not.  Without the second half this would pass for a hole rather than a
+    blind spot.
+    """
+    import time
+
+    big = calc.root / "big.bin"
+    big.write_bytes(BIG)
+    calc.save("first")
+
+    big.write_bytes(b"\x02" * 5000)                  # same size, other bytes...
+    an_hour_ago = time.time() - 3600                 # ...dated BEFORE the state
+    os.utime(big, (an_hour_ago, an_hour_ago))
+
+    assert calc.status().clean, (
+        "the cheap read either began hashing, or started comparing timestamps "
+        "for equality -- and equality reports every restored folder as unsaved, "
+        "which is the false alarm § 7.2 exists to prevent")
+    assert "big.bin" in calc.status(deep=True).changed, (
+        "the exact read must still see it; a blind spot the operations share "
+        "is not a blind spot, it is a hole")
+
+
+def test_a_rerun_that_writes_identical_bytes_still_reads_clean(calc):
+    """The door § 7.2 closes, held shut.
+
+    The tempting repair for the test above is to compare each big file against
+    the archive's own copy rather than against the state's clock: one `copy2`
+    makes both, so their timestamps agree by construction, and an `rsync -a`
+    arrival would be caught exactly.
+
+    **Identical content is stored once (§ 12) is what breaks it.**  An archive's
+    copy carries the timestamp of the FIRST time those bytes were archived --
+    here by the hard-link route, because `moving.bin` changed so a genuinely new
+    archive was built while `steady.bin` was linked into it.  The archive's
+    timestamp therefore stays behind the working file's from then on, and under
+    that repair this folder would read unsaved permanently, with nothing a user
+    could do about it.
+
+    So this asserts the outcome the repair would destroy.  `steady.bin` is aged
+    an hour before the first save, or the two timestamps land close enough
+    together that the test passes without the mechanism ever being exercised.
+    """
+    import time
+
+    steady, moving = calc.root / "steady.bin", calc.root / "moving.bin"
+    steady.write_bytes(BIG)
+    moving.write_bytes(b"\x05" * 6000)
+    an_hour_ago = time.time() - 3600
+    os.utime(steady, (an_hour_ago, an_hour_ago))
+    first = calc.save("first")
+
+    steady.write_bytes(BIG)                    # byte-identical, timestamp = now
+    moving.write_bytes(b"\x06" * 6000)         # and something else really moved
+    second = calc.save("a rerun -- one output identical, one not")
+
+    assert second.archive != first.archive, (
+        "precondition: a new archive, so the link path is what carries "
+        "steady.bin across rather than the whole directory being reused")
+    old_copy = archive_dir(calc.root, first.archive) / "steady.bin"
+    new_copy = archive_dir(calc.root, second.archive) / "steady.bin"
+    assert old_copy.stat().st_ino == new_copy.stat().st_ino, (
+        "precondition: unchanged content is hard-linked, not copied (§ 12)")
+    assert new_copy.stat().st_mtime < steady.stat().st_mtime - 60, (
+        "precondition: the archive's copy is dated well before the working "
+        "file, which is exactly what the repair would trip over")
+
+    assert calc.status().clean, (
+        "a rerun that produced byte-identical output read as unsaved.  That is "
+        "what comparing against the archive's own copy would do -- and it would "
+        "never clear (§ 7.2)")
 
 
 def test_an_unreadable_state_timestamp_means_check_rather_than_assume(
@@ -521,6 +617,72 @@ def test_a_restore_that_refuses_changes_nothing(calc):
     with pytest.raises(DirtyWorkingTreeError):
         calc.restore(first.id)
     assert (calc.root / "job.XV").read_text() == before
+
+
+def test_force_does_not_ask_and_so_cannot_be_refused_by_where_you_stand(calc):
+    """§ 7: *`--force` is that answer given in advance, so the question is not
+    asked at all.*
+
+    Working out what is unsaved reads the **standing** state's record.  Asking
+    anyway made a forced restore fail for a reason about the state you are
+    LEAVING: lose that archive and `restore`, `status` and `list` all refused
+    together, so no verb could move the folder anywhere — while the target's
+    archive verified perfectly the whole time.  § 2.0 promises the verbs cover
+    the work.
+
+    The target is damaged in **no** way here; only the standing state is.  That
+    separation is the test: A2 must still refuse for the target (asserted in
+    its own tests), and must not refuse for this.
+    """
+    import shutil as _sh
+    from molbuilder.checkpoint import verify_archive
+
+    (calc.root / "a.bin").write_bytes(BIG)
+    target = calc.save("a state I want to come back to")
+    (calc.root / "a.bin").write_bytes(b"\x02" * 5000)
+    standing = calc.save("where the folder stands now")
+    _sh.rmtree(archive_dir(calc.root, standing.archive))
+
+    verify_archive(calc.root, target.archive)      # precondition: target is fine
+    with pytest.raises(CheckpointError) as exc:
+        calc.status()
+    assert standing.short in str(exc.value), (
+        "precondition: the STANDING state is what is damaged")
+
+    assert calc.restore(target.id, force=True).id == target.id, (
+        "a forced restore was refused because of the state it was leaving")
+    assert (calc.root / "a.bin").read_bytes() == BIG
+    assert calc.status().clean, "and the folder is usable again afterwards"
+
+
+def test_force_does_not_read_the_working_tree_it_is_about_to_overwrite(calc):
+    """The other half of the same sentence: asking costs, and force skips it.
+
+    On a real calculation "what is unsaved" hashes the whole density-matrix set
+    — end to end, for a message `--force` guarantees nobody will see.  § 6
+    refuses to double a *save* for less than that.
+
+    Asserted behaviourally rather than by counting hashes: a large file that
+    **cannot be read** is left in the folder.  Computing the answer opens it and
+    dies; skipping the question does not.  The file is not in the target, so the
+    restore's job is to remove it — which needs the directory, not the file.
+    """
+    (calc.root / "keep.bin").write_bytes(BIG)
+    target = calc.save("the state to come back to")
+
+    victim = calc.root / "unreadable.bin"
+    victim.write_bytes(b"\x07" * 5000)
+    calc.save("with a file the target does not have")
+    os.chmod(victim, 0o000)
+    try:
+        with pytest.raises(PermissionError):
+            calc.status(deep=True)               # precondition: asking opens it
+        calc.restore(target.id, force=True)
+    finally:
+        if victim.exists():
+            os.chmod(victim, 0o644)
+    assert not victim.exists(), "the leftover was not removed"
+    assert (calc.root / "keep.bin").read_bytes() == BIG
 
 
 def test_an_unknown_state_is_refused_before_anything_else(calc):
@@ -1658,6 +1820,216 @@ def test_a_symlink_to_a_big_file_is_not_followed_into_the_archive(calc):
     assert link.is_symlink(), "a restore turned a link into a real file"
     assert link.resolve() == real.resolve()
     assert link.read_bytes() == BIG
+
+
+def test_a_link_an_ignore_pattern_would_swallow_is_still_saved(
+        tmp_path, checkpoint_config):
+    """S1's carve-out is from the ARCHIVE, not from the snapshot.
+
+    An always-large entry matches a **name**, and a name says nothing about a
+    link: `stage2/job.DM -> ../stage1/job.DM` is twenty bytes of path text that
+    `.gitignore` sent to the store which does not take links.  It landed in
+    NEITHER -- `add` skipped it as ignored, the archive skipped it as a link --
+    so a restore neither brought it back nor removed it, and § 3's *exactly one
+    store* quietly did not hold.
+
+    **Every symlink fixture in this file names no always-large family**, so
+    nothing here could reach it: with no pattern, a link is not ignored and git
+    takes it without being asked.  The engine entry is the whole test.
+
+    These are the links `jobset/materialize.py` lays to carry a file forward
+    from the stage that produced it, so the shape is the real one.
+    """
+    checkpoint_config(size_limit_bytes=1024,
+                      engines={"generic": [], "siesta": ["*.DM"]})
+    root = tmp_path / "BDT_Au_relax"
+    (root / "stage1").mkdir(parents=True)
+    (root / "stage2").mkdir()
+    (root / "task.json").write_text('{"engine": "siesta"}')
+    (root / "stage1" / "job.DM").write_bytes(BIG)
+    (root / "stage2" / "job.DM").symlink_to("../stage1/job.DM")
+
+    repo = Repo(str(root))
+    state = repo.init(engine="siesta", note="a stage carrying the one before it")
+
+    tracked, archived = _tracked(repo), _archived(repo, state)
+    assert "stage1/job.DM" in archived, "the real file goes to the archive"
+    assert "stage2/job.DM" not in archived, (
+        "the link was followed and its target archived a second time")
+    assert "stage2/job.DM" in tracked, (
+        "the link is in NO store: `.gitignore` matched its name and the "
+        "archive does not take links, so nothing holds it (S1)")
+
+    # And it survives the round trip AS A LINK.
+    link = root / "stage2" / "job.DM"
+    link.unlink()
+    repo.save("the link was removed")
+    repo.restore(state.id, force=True)
+    assert link.is_symlink(), (
+        "a state that held a link came back without it -- a restore must "
+        "recreate the layout, which is what S1 leans on")
+    assert link.resolve() == (root / "stage1" / "job.DM").resolve()
+
+
+def test_a_stray_link_that_no_state_holds_is_removed_by_a_restore(
+        tmp_path, checkpoint_config):
+    """A5's removal half, for the link nothing ever saved.
+
+    **This test was written wrong first, and mutation testing is what said
+    so.**  It saved the link before restoring — which makes it *tracked*, so
+    git's own checkout removes it and the sweep under test never ran.  Green,
+    and proving nothing.
+
+    The real gap is the link that was **never saved** and whose name an ignore
+    pattern matches: `git checkout` does not know it, `git clean` without `-x`
+    will not touch it, and the leftover sweep walked only regular files.  So a
+    stray `job.DM -> ../stage1/job.DM` — the shape `jobset/materialize.py` lays
+    at prep time — survived a restore of a state that never had it, pointing
+    the next run at another stage's output.
+
+    No `force` is needed, and that is the point rather than a convenience: git
+    says nothing about an ignored untracked path and the archive holds no
+    links, so the folder reads **clean**.  It is a leftover, not unsaved work,
+    and A5 removes leftovers without asking because they are not a loss.
+    """
+    checkpoint_config(size_limit_bytes=1024,
+                      engines={"generic": [], "siesta": ["*.DM"]})
+    root = tmp_path / "BDT_Au_relax"
+    (root / "stage1").mkdir(parents=True)
+    (root / "stage2").mkdir()
+    (root / "task.json").write_text('{"engine": "siesta"}')
+    (root / "stage1" / "job.DM").write_bytes(BIG)
+    repo = Repo(str(root))
+    early = repo.init(engine="siesta", note="no link yet")
+
+    stray = root / "stage2" / "job.DM"
+    stray.symlink_to("../stage1/job.DM")          # laid, never saved
+    assert "stage2/job.DM" not in _tracked(repo), (
+        "precondition: untracked, so git's checkout cannot be what removes it")
+    assert repo.status().clean, (
+        "precondition: invisible to status, so this is a leftover rather than "
+        "unsaved work -- and no force is needed to walk past it")
+
+    repo.restore(early.id)
+    assert not stray.is_symlink() and not stray.exists(), (
+        "a stray link survived a restore of a state that never held it; the "
+        "next run would pick it up unasked (A5)")
+
+
+def test_a_restore_never_writes_through_a_hard_link_in_its_way(
+        tmp_path, checkpoint_config):
+    """A5: the folder equals the target **exactly** — and `copy2` did not.
+
+    It truncates its destination in place, so it writes *through* a hard link.
+    Two archived paths sharing an inode, restored to a state that held them
+    with **different** content: the second copy lands in both, one path ends up
+    holding the other's bytes, and the restore reports success. § 1's promise
+    is that a state you saved is one you can return to.
+
+    **The names must match an always-large family or the bug cannot appear** —
+    otherwise `git clean` removes both files before the copy, and every
+    ordinary fixture in this file is in exactly that position. That is why
+    nothing here found it.
+    """
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": ["*.DM"]})
+    root = tmp_path / "BDT_Au_relax"
+    root.mkdir()
+    (root / "job.fdf").write_text("x\n")
+    a, b = root / "a.DM", root / "b.DM"
+    a.write_bytes(b"\xAA" * 5000)
+    b.write_bytes(b"\xBB" * 5000)
+    repo = Repo(str(root))
+    target = repo.init(note="two large files, holding different bytes")
+
+    b.unlink()
+    os.link(a, b)                            # one inode under two names
+    assert a.stat().st_ino == b.stat().st_ino, "precondition: hard-linked"
+    (root / "note.txt").write_text("moved on\n")
+    repo.save("the two paths were linked together")
+
+    repo.restore(target.id, force=True)
+    assert a.read_bytes() == b"\xAA" * 5000, (
+        "the restore wrote b.DM's bytes through the shared inode and into "
+        "a.DM; the folder does not equal the target state (A5)")
+    assert b.read_bytes() == b"\xBB" * 5000
+    assert a.stat().st_ino != b.stat().st_ino, (
+        "the target held two independent files, so the restore must leave two")
+    assert repo.status(deep=True).clean
+
+
+def test_a_restore_never_follows_a_symlink_standing_where_a_file_belongs(
+        tmp_path, checkpoint_config):
+    """The same flaw, pointed outward — and this one can leave the folder.
+
+    `copy2` follows a symlink at the destination, so the restored bytes land on
+    whatever it points at while the link stays where a real file belongs. The
+    state's own file is then not restored *and* an unrelated file is
+    overwritten, which may be outside the calculation entirely.
+    """
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": ["*.DM"]})
+    root = tmp_path / "BDT_Au_relax"
+    root.mkdir()
+    (root / "job.fdf").write_text("x\n")
+    (root / "job.DM").write_bytes(BIG)
+    repo = Repo(str(root))
+    target = repo.init(note="a real large file")
+
+    bystander = tmp_path / "not-even-in-the-calculation.dat"
+    bystander.write_bytes(b"\x33" * 5000)
+    (root / "job.DM").unlink()
+    (root / "job.DM").symlink_to(bystander)
+    # NOT saved, and that is the whole setup.  A link that was saved is
+    # tracked, so git's own checkout removes it before the copy runs and this
+    # can never fire -- the first version of this test saved it, passed
+    # without the fix, and pinned nothing.  Untracked *and* matching an
+    # always-large name is what survives: `git clean` leaves ignored paths
+    # alone, and the leftover sweep keeps anything the target state holds.
+    assert (root / "job.DM").is_symlink()
+
+    repo.restore(target.id, force=True)
+    assert not (root / "job.DM").is_symlink(), (
+        "the link was left standing where the state holds a real file")
+    assert (root / "job.DM").read_bytes() == BIG
+    assert bystander.read_bytes() == b"\x33" * 5000, (
+        "the restore wrote through the link and overwrote a file outside the "
+        "calculation folder")
+
+
+def test_identical_content_in_one_save_is_stored_once(calc):
+    """§ 12's *Disk cost*, inside a single save.
+
+    The property held only ACROSS saves: the index of what is already archived
+    is built from **published** archives, so two paths carrying the same bytes
+    in the same save were each copied in full. A stage that carries its
+    predecessor's 2 GB density matrix forward — by copy, or by a hard link,
+    which the walk sees as two ordinary files — cost 4 GB of archive, every
+    save.
+    """
+    from molbuilder.checkpoint import verify_archive
+
+    (calc.root / "s1").mkdir()
+    (calc.root / "s2").mkdir()
+    (calc.root / "s1" / "job.DM").write_bytes(BIG)
+    (calc.root / "s2" / "job.DM").write_bytes(BIG)     # same bytes, other path
+    state = calc.save("two stages holding the same output")
+
+    adir = archive_dir(calc.root, state.archive)
+    one, two = adir / "s1" / "job.DM", adir / "s2" / "job.DM"
+    assert one.is_file() and two.is_file(), "both paths are in the archive"
+    assert one.read_bytes() == two.read_bytes() == BIG
+    assert one.stat().st_ino == two.stat().st_ino, (
+        "identical content was copied twice inside one archive (§ 12)")
+    verify_archive(calc.root, state.archive)      # and it is still a valid one
+
+    # The archive is named by its MANIFEST, and that did not change -- so this
+    # is a storage detail, not a new archive format.
+    calc.restore(state.id, force=True)
+    assert (calc.root / "s1" / "job.DM").read_bytes() == BIG
+    assert (calc.root / "s2" / "job.DM").read_bytes() == BIG
+    assert (calc.root / "s1" / "job.DM").stat().st_ino != \
+           (calc.root / "s2" / "job.DM").stat().st_ino, (
+        "sharing an inode is the ARCHIVE's business; the restored folder gets "
+        "independent files, which is what the state describes")
 
 
 def test_a_restore_recreates_directories_that_had_been_removed(staged):

@@ -415,17 +415,12 @@ def archive_key(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
-def walk_files(root: Path):
-    """Every regular file that belongs in a store (S1).
+def walk_entries(root: Path):
+    """Every entry outside the two stores — regular files **and symlinks**.
 
-    Skips only :data:`NEVER_STORED` — the two stores themselves — and symlinks.
-    **No other exclusion**: "no category of file is exempt", and a walk with a
-    private skip list is a walk that agrees with itself about files nobody
-    stores.
-
-    Symlinks are outside S1 by its own wording: a link has no content of its
-    own, the real file is stored once wherever it lives, and recreating the
-    layout is what a restore does anyway.
+    The one traversal the two walks below share, and the one a **restore**
+    sweeps with: deciding what is a leftover is a question about everything in
+    the folder, not only about the things a store holds.
 
     **Pruned, not filtered.**  ``rglob`` descends into every directory and lets
     the caller discard what it collected, which means walking the whole archive
@@ -448,11 +443,48 @@ def walk_files(root: Path):
             if entry.name in NEVER_STORED:
                 continue
             if entry.is_symlink():
-                continue                      # and never descend through one
-            if entry.is_dir():
+                # Yielded, never descended through: a link to an ancestor would
+                # make the walk infinite, and what is inside the target is the
+                # target's business.  Checked BEFORE `is_dir`/`is_file`, which
+                # follow the link and would classify a dangling one as neither.
+                yield entry
+            elif entry.is_dir():
                 stack.append(entry)
             elif entry.is_file():
                 yield entry
+
+
+def walk_files(root: Path):
+    """Every regular file that belongs in a store (S1).
+
+    Skips only :data:`NEVER_STORED` — the two stores themselves — and symlinks.
+    **No other exclusion**: "no category of file is exempt", and a walk with a
+    private skip list is a walk that agrees with itself about files nobody
+    stores.
+
+    Symlinks are excluded because a link has no content of its own: the real
+    file is stored once wherever it lives, and following the link would archive
+    that content a *second* time under the link's path.  The link itself is
+    still saved -- to git, by :meth:`Repo.save`, which is what makes S1's
+    carve-out a carve-out from the **archive** rather than from the snapshot.
+    """
+    for entry in walk_entries(root):
+        if not entry.is_symlink():
+            yield entry
+
+
+def walk_symlinks(root: Path):
+    """Every symlink outside the two stores.
+
+    A save needs these by name: an always-large hint matches on a *name*, and a
+    name says nothing about a link.  A carry link called ``job.DM`` is twenty
+    bytes of path text that `.gitignore` would send to the store that does not
+    take links -- so it would land in neither, and a restore would neither
+    bring it back nor remove it (S1).
+    """
+    for entry in walk_entries(root):
+        if entry.is_symlink():
+            yield entry
 
 
 def big_files(root: Path, size_limit: int, always_large=()) -> List[Path]:
@@ -769,10 +801,17 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
     **New content is therefore read twice and written once, and that is the
     floor.** The source is hashed (its digest names the archive), copied, and
     the copy read back *from disk* -- reading back is the whole point, so
-    hashing the buffer on the way past would prove nothing. Content already in
-    the archive is hard-linked instead: one read to identify it, no copy, and no
-    re-check, because a hard link is the same inode that was verified when it
-    was first written.
+    hashing the buffer on the way past would prove nothing.
+
+    **Content already in the archive is hard-linked instead of copied, and it
+    is checked exactly the same way.**  A link avoids the *write*, never the
+    read.  This paragraph used to end *"...and no re-check, because a hard link
+    is the same inode that was verified when it was first written"* -- which is
+    what the body did until the check moved below the branch, and it survived
+    here describing behaviour that is gone.  Verified *when written* is true;
+    unchanged *since* is the assumption I2b exists because it fails, so a
+    damaged inode would otherwise be linked into a brand-new archive whose
+    MANIFEST disagrees with its own bytes from the moment it is published.
     """
     entries: List[Tuple[str, int, str]] = []
     for src in big:
@@ -886,6 +925,21 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
                     f"the source it was copied from.  Refusing to publish an "
                     f"archive that would verify against its own bad checksum "
                     f"(checkpointing.md § 6).")
+            # AND THIS ARCHIVE'S OWN COPIES ARE OFFERED FOR REUSE TOO.
+            #
+            # *Identical content is stored once* (§ 12) was only ever true
+            # ACROSS saves: the index is built from already-PUBLISHED archives,
+            # so two paths holding the same bytes in the SAME save were each
+            # copied in full.  A stage that carries its predecessor's 2 GB
+            # density matrix forward -- by copy, or by a hard link in the
+            # working tree, which the walk sees as two ordinary files -- cost
+            # 4 GB of archive, on every save.
+            #
+            # Added only after the verify, so nothing unchecked is ever offered
+            # as a link target.  The MANIFEST is untouched by this: same shas,
+            # same sizes, same keys, so the digest is identical and every
+            # archive already on disk stays exactly as valid as it was.
+            index.setdefault(sha256, dst)
         _atomic_write_bytes(tmp / MANIFEST_NAME, raw)
         try:
             os.replace(tmp, final)
@@ -1216,8 +1270,15 @@ class Repo:
                 f"the archive for state {state.short} is missing: no "
                 f"{MANIFEST_NAME} at {adir}.  The state records that archive, "
                 f"so it was lost rather than never written, and nothing here "
-                f"can be called saved or unsaved until that is resolved "
-                f"(checkpointing.md I2b).")
+                f"can be called saved or unsaved until that is resolved.\n\n"
+                f"Two ways on, and neither needs git:\n"
+                f"    molbuilder snapshot save -m \"…\"\n"
+                f"        records what is on disk now -- and rebuilds THIS "
+                f"archive byte-identically if those large files are "
+                f"unchanged, since an archive is named by its content;\n"
+                f"    molbuilder snapshot restore <other-state> --force\n"
+                f"        leaves this state, accepting whatever is here.\n"
+                f"(checkpointing.md I2b, § 2.0.)")
         raw = man.read_bytes()
         if manifest_digest(raw) != state.archive:
             raise CheckpointError(
@@ -1331,10 +1392,20 @@ class Repo:
         ``deep=False`` (the default) is the *display*: size and timestamp only,
         never content.  It answers the sidebar on every directory-enter and the
         CLI's ``list``, where reading a 2 GB density matrix to draw a badge is a
-        cost the answer does not earn.  Its one blind spot is a file rewritten
-        to the same size within the same second as the save -- and being wrong
-        there costs nothing, because **nothing is moving**: it is a sentence on
-        a screen, corrected the next time anything real happens.
+        cost the answer does not earn.
+
+        **Its blind spot is a same-size file whose mtime is not more than a
+        second past the standing state's timestamp** -- which is wider than
+        "rewritten inside the same second", the way this used to be written.
+        The comparison is ``>``, and it has to be: a restore writes archived
+        files with ``copy2``, so a legitimately restored file carries an mtime
+        far OLDER than the state, and anything stricter would call every
+        restored folder unsaved.  The cost of that is that an mtime-preserving
+        arrival -- ``cp -p``, ``tar -x``, or the ``rsync`` § 2 recommends for
+        moving a folder between machines -- lands under the threshold whatever
+        its content.  Being wrong here still costs nothing, because **nothing
+        is moving**: it is a sentence on a screen, and every operation that can
+        lose something asks with ``deep=True``.
 
         ``deep=True`` hashes.  It is what runs before an operation that changes
         the folder, where being wrong costs data rather than a sentence, and it
@@ -1464,10 +1535,29 @@ class Repo:
                 # instant after a save, which is the normal flow and not a
                 # corner case.
                 #
-                # What this cannot see is a same-size rewrite inside that
-                # second.  Accepted deliberately: nothing moves on a status
-                # call, so being briefly wrong costs a sentence and not a byte,
-                # and every operation that CAN lose something checks content.
+                # What this cannot see is a same-size file whose mtime is not
+                # more than a second past the state -- which includes an mtime
+                # OLDER than the state, not merely a rewrite inside the same
+                # second.  `>` is deliberate and cannot be tightened: `restore`
+                # copies with `copy2`, so a correctly restored file carries the
+                # mtime it had when it was archived, and `!=` would report an
+                # entire folder unsaved the moment you went back to it.  So an
+                # mtime-preserving arrival (`cp -p`, `tar -x`, `rsync -a`)
+                # passes here whatever it contains.
+                #
+                # AND DO NOT COMPARE AGAINST THE ARCHIVE'S OWN COPY INSTEAD.
+                # It looks exact and free -- one `copy2` makes both, so the two
+                # mtimes agree by construction -- but identical content is
+                # stored once (§ 12), so an archive's copy carries the mtime of
+                # the FIRST time those bytes were archived, whether the whole
+                # directory was reused or the one file hard-linked.  A rerun
+                # writing byte-identical output would then read unsaved
+                # PERMANENTLY.  § 7.2 records that door and the test is
+                # `test_a_rerun_that_writes_identical_bytes_still_reads_clean`.
+                #
+                # All of it accepted deliberately: nothing moves on a status
+                # call, so being wrong costs a sentence and not a byte, and
+                # every operation that CAN lose something checks content.
                 if stat.st_mtime > saved_at + 1:
                     changed.add(key)
                 continue
@@ -1572,6 +1662,28 @@ class Repo:
         excludes = [f":(exclude,literal){key}"
                     for key in keys if key not in ignored]
         _run_git(["add", "-A", "--", ".", *excludes], cwd=self.path)
+
+        # A SYMLINK IS NEVER LARGE, so an always-large hint must not reach it.
+        #
+        # S1b lets a name skip a *measurement* for a family that is always big.
+        # A link has no size worth measuring -- it is twenty bytes of path text
+        # -- so for a link the hint is simply wrong, and `.gitignore` was
+        # sending `stage2/job.DM -> ../stage1/job.DM` to the store that does
+        # not take links.  It was then in NEITHER store: `add` skipped it as
+        # ignored, the archive skipped it as a link, and a restore neither
+        # brought it back (git never had it) nor removed it (`git clean`
+        # without `-x` leaves ignored paths alone).  § 3's "exactly one store"
+        # quietly did not hold, for exactly the links `jobset/materialize.py`
+        # lays between stages.
+        #
+        # `-f` ONLY for links, and that limit is the whole safety of it: forcing
+        # a big *file* past the ignore rules is S1's losing branch, a blob in
+        # `.git/objects` on every save.
+        links = [archive_key(self.root, path)
+                 for path in walk_symlinks(self.root)]
+        swallowed = sorted(self._ignored(links))
+        if swallowed:
+            _run_git(["add", "-f", "--", *swallowed], cwd=self.path)
         # S7: a file that was small last save and is big now is still in the
         # index, and the pathspec above cannot remove it -- excluded means
         # untouched.  This is the half that makes a category change complete:
@@ -1624,18 +1736,35 @@ class Repo:
                 f"that cannot be verified (I2b).")
         expected = verify_archive(self.root, target.archive)   # refusal 2
 
-        # DEEP, always.  This is the moment the folder is about to change, so
-        # the question "what will be lost" is answered by content and not by a
-        # timestamp -- the cheap read exists for drawing a badge, not for
-        # deciding what to destroy.
-        here = self.status(deep=True)                 # the question, last
-        if not here.clean and not force:
-            raise DirtyWorkingTreeError(
-                "this folder has work that is not saved, and restoring will "
-                "lose it:\n"
-                + _describe(here)
-                + "\n\nSave it first with `molbuilder snapshot save -m \"…\"`, "
-                  "or pass --force to accept the loss.")
+        # THE QUESTION, LAST -- AND ONLY WHEN THERE IS A QUESTION TO ASK.
+        #
+        # `force` IS the answer (§ 5: "--force ... answers yes, for a script"),
+        # so asking is pure cost once it is set.  This used to compute the
+        # answer unconditionally and then discard it, which cost twice:
+        #
+        #   * every large file in the folder was hashed for a message nobody
+        #     would see -- on a real calculation, the whole density-matrix set,
+        #     read end to end and thrown away.  § 6 refuses to double a SAVE for
+        #     less than this;
+        #   * and it made a forced restore fail for a reason about the state
+        #     you are LEAVING.  `status` reads the standing state's MANIFEST, so
+        #     a damaged archive over there refused a restore whose target was
+        #     perfectly intact -- and since `status` and `list` fail the same
+        #     way, there was no verb left that could move the folder anywhere.
+        #     § 2.0 promises the verbs cover the work.
+        #
+        # DEEP when it is asked, because this is the moment the folder is about
+        # to change: "what will be lost" is answered by content, never by a
+        # timestamp.  The cheap read exists for drawing a badge (§ 7.2).
+        if not force:
+            here = self.status(deep=True)
+            if not here.clean:
+                raise DirtyWorkingTreeError(
+                    "this folder has work that is not saved, and restoring "
+                    "will lose it:\n"
+                    + _describe(here)
+                    + "\n\nSave it first with `molbuilder snapshot save "
+                      "-m \"…\"`, or pass --force to accept the loss.")
 
         # --- from here on the folder is being changed --------------- #
         _run_git(["checkout", "--force", "--detach", sha], cwd=self.path)
@@ -1662,7 +1791,16 @@ class Repo:
         tracked = {name for name in
                    _run_git(["ls-files", "-z"], cwd=self.path).stdout.split("\0")
                    if name}
-        for path in walk_files(self.root):
+        # `walk_entries`, not `walk_files`: SYMLINKS ARE LEFTOVERS TOO.
+        #
+        # `git clean` above removes an untracked link, but only when no ignore
+        # pattern matches its name -- so a stray `job.DM -> ../stage1/job.DM`
+        # survived a restore of a state that never held it, pointing a later
+        # run at the wrong stage's output.  A link the target did not hold is a
+        # leftover exactly like a file, and A5 removes leftovers without asking
+        # because they are not a loss.  `unlink` on a link removes the LINK; the
+        # file it pointed at is somebody else's entry in this same walk.
+        for path in walk_entries(self.root):
             key = archive_key(self.root, path)
             if key not in tracked and key not in expected:
                 path.unlink()
@@ -1671,6 +1809,32 @@ class Repo:
         for key in sorted(expected):
             dst = self.root / key
             dst.parent.mkdir(parents=True, exist_ok=True)
+            # REMOVE FIRST -- NEVER WRITE THROUGH WHAT IS ALREADY THERE.
+            #
+            # `copy2` opens the destination and truncates it *in place*, so it
+            # writes through both kinds of link, and each fails differently:
+            #
+            #   * a HARD LINK shares its inode with another path, so the copy
+            #     lands in both.  Restore a state that held `a.DM` and `b.DM`
+            #     with different content, over a folder where somebody linked
+            #     them together, and the second copy overwrites the first --
+            #     one path ends up holding the other's bytes and the restore
+            #     reports SUCCESS.  A5 says the folder equals the target
+            #     exactly, and it did not.
+            #   * a SYMLINK is followed, so the bytes land on whatever it
+            #     points at -- possibly outside the folder entirely -- while
+            #     the link itself stays where a real file belongs.
+            #
+            # Unlinking makes every restored file a fresh inode, which is what
+            # the target state actually describes: independent paths.  It also
+            # turns a directory sitting at an archived path into a loud error
+            # rather than `copy2` quietly writing `job.DM/job.DM`.
+            #
+            # `is_symlink()` first, and `or` rather than `and`: `exists()`
+            # follows the link, so a DANGLING symlink reports False and would
+            # otherwise be left in the way.
+            if dst.is_symlink() or dst.exists():
+                dst.unlink()
             shutil.copy2(adir / key, dst)
         return target
 

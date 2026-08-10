@@ -475,6 +475,15 @@ Nothing is rescued, stashed, renamed or set aside. If you say yes, it is gone �
 you called `restore` without calling `snapshot save`, and that is a choice the
 system spells out rather than second-guesses (A5).
 
+**`--force` is that answer given in advance, so the question is not asked at
+all** — not asked and then ignored. This is worth stating because it decides
+what a forced restore can be stopped by. Working out what is unsaved means
+reading the *standing* state's record and hashing every large file in the
+folder; doing it anyway would make a forced restore pay for a message nobody
+will see, and — worse — let damage to the state you are **leaving** refuse a
+restore whose target verified perfectly. § 2.0 promises the verbs cover the
+work, and a folder no verb can move is that promise failing.
+
 **What must never happen is a half-restore**: text from one save and binaries
 from another, a state no save ever held and nothing can diagnose afterwards.
 That is why the archive is verified *before* the text is touched.
@@ -552,25 +561,56 @@ acts on.
 
 **What the cheap read still sees.** Most changes announce themselves without any
 file being opened, because a different size is already an answer: a run that
-grew a density matrix, a file that appeared, a file that was deleted. Its one
-blind spot is a rewrite to *exactly the same size* inside the same second as the
-save.
+grew a density matrix, a file that appeared, a file that was deleted. What is
+left is a file of *exactly the same size*, and for those the question becomes
+whether its timestamp is newer than the state's.
 
-> **Why one second, and why it is resolution rather than slack.** A state's
+**So the blind spot is a same-size file whose timestamp is not newer than the
+state.** That is wider than *"rewritten inside the same second"*, which is how
+this section used to put it, and the difference is not academic: it includes a
+timestamp that is **older**. `cp -p`, `tar -x` and the `rsync` § 2 sends you to
+for moving a folder between machines all carry the source's timestamp along
+with the bytes — so a file can arrive holding different content and dated
+*before* the state it lands in, and the cheap read will call it saved.
+
+> **Both halves of that comparison are forced, and it is worth recording by
+> what — so nobody tightens one and breaks the other.**
+>
+> **Why *newer than*, rather than *different from*.** A restore copies each big
+> file back out of the archive with its own timestamp intact, so a correctly
+> restored file is dated *before* the state you just returned to. That is the
+> ordinary result of going back, not a modification. Requiring the two to match
+> would report every large file in the folder as unsaved the instant you
+> restored anything — the false alarm this whole section exists to avoid, fired
+> by the one operation the warning matters most for.
+>
+> **Why one second of slack, which is resolution rather than laxity.** A state's
 > timestamp is whole seconds; a file's is not. A file saved at 12:00:00.3 sits
-> in a state that records 12:00:00 — so comparing them directly calls the file
-> newer than the state that just saved it, and the folder would read *unsaved*
-> the instant after a save. That is the ordinary flow, not an edge case.
+> in a state that records 12:00:00, so a bare comparison calls the file newer
+> than the state that just saved it and the folder reads *unsaved* the instant
+> after a save. That is the ordinary flow, not an edge case.
+>
+> **And the obvious repair is worse than the gap.** Compare each file against
+> the archive's own copy instead — their timestamps agree by construction, since
+> one `copy` makes both — and *identical content is stored once* (§ 12) breaks
+> it. An archive's copy of a file carries the timestamp from the **first** time
+> those bytes were archived, by both of the routes § 3 describes: the whole
+> archive is reused when nothing large changed, and the single file is
+> hard-linked when something *else* did. So a rerun that writes byte-identical
+> output leaves the archive's timestamp behind the working file's from then on,
+> and under that repair the folder would read unsaved **permanently**, with
+> nothing the user could do about it. A false alarm that never clears is worse
+> than one missed change, for the reason the next paragraph gives.
 
-**That blind spot cannot lose anything, and that is the whole argument.** A
-status call moves no bytes, so being briefly wrong is a sentence that corrects
-itself the next time something real happens. The operations that *can* lose
-something never trust it:
+**None of that width changes the argument, and that is why it is safe to write
+it down plainly.** A status call moves no bytes, so being wrong here is a
+sentence on a screen that corrects itself the next time something real happens
+— and the operations that *can* lose something never trust it:
 
 | | |
 |---|---|
 | **`save`** | checksums every large file, always — it has no choice, since the digest **is** the archive's name (§ 3) |
-| **`restore`** | verifies the target archive (I2), then asks what is unsaved **by content**, so a folder called clean a second ago is still stopped |
+| **`restore`** | verifies the target archive (I2), then asks what is unsaved **by content**, so a folder called clean a second ago is still stopped — unless `--force` already answered, in which case it does not ask (§ 7) |
 | **a Refresh** | asks the exact question on demand, for when you want certainty *now* rather than the system paying for it continuously |
 
 **The depth only concerns large files.** Everything in git is compared by git,
@@ -739,10 +779,28 @@ snapshot of the folder.
 > a constant inside a module. A file excluded by code nobody agreed to is
 > indistinguishable from a file lost.
 
-*Symlinks are outside this, and "regular" is load-bearing.* A stage links its
-deck and the shared pseudopotentials rather than copying them, so a saved tree is
-full of links. A link has no content of its own — the real file is stored once,
-wherever it lives — and recreating the layout is what a restore does anyway.
+*Symlinks are outside the **archive**, and "regular" is load-bearing.* A stage
+links its deck and the shared pseudopotentials rather than copying them, and a
+job links the file it continues from, so a saved tree is full of links. A link
+has no content of its own — the real file is stored once, wherever it lives —
+so following one would archive that content a *second* time under the link's
+path, and a restore would then write a real file where a link belongs.
+
+**The link itself is still saved. It goes to git, which stores it as the short
+piece of path text it is.** That sentence used to read *"recreating the layout
+is what a restore does anyway"*, which assumed the thing it needed to require.
+
+> **The assumption failed for exactly the links this system exists around.** An
+> always-large entry matches a **name**, and a name says nothing about a link: a
+> carry link called `job.DM` is twenty bytes of path, and `.gitignore` was
+> sending it to the store that does not take links. It landed in **neither** —
+> `git add` skipped it as ignored, the archive skipped it as a link — so § 3's
+> *exactly one store* quietly did not hold, and a restore neither brought the
+> link back nor removed it. S1b already says the answer: **a hint may only skip
+> a measurement**, and a symlink's measurement is never in doubt. So a save
+> force-adds any link an ignore pattern would otherwise swallow, and that force
+> is for links only — forcing a big *file* past the ignore rules is this rule's
+> other losing branch.
 
 - **Fails as:** both → a multi-gigabyte blob in git history forever. Neither →
   the file is in no snapshot, and a restore silently does not bring it back.
@@ -750,6 +808,10 @@ wherever it lives — and recreating the layout is what a restore does anyway.
   `.git/` and `.binsnapshots/` the only excluded paths. **No allow-list** — a
   file is stored or the test fails. The walk must not reuse the same skip rule
   the classification uses, or it can only ever agree with it.
+- **Test, the links:** give a link a name an always-large entry matches, and
+  assert it is in git, not in the archive, and comes back **as a link** after a
+  restore. A fixture whose engine names no family cannot fail this, because
+  nothing there is ignored by name.
 
 **S1a — `.gitignore` is generated from the classification, never hand-kept
 beside it.** One *source*, not merely one writer.
@@ -1492,8 +1554,10 @@ nobody is maintaining against this document, which is how the two drift.
 | the HTTP routes — the verbs over the wire, and the retired ones absent | `test_checkpoint_routes.py` — **including which bucket each refusal lands in**: a name the user can repair and a folder of independent calculations are advisories the panel can act on, an unknown state and a bad `limit` are the caller's mistake, and everything else is a fault |
 | the sidebar's read is cheap and does not poll | `test_checkpoint_sensor_js.py` — the state route does not open a big file it can rule out by size and timestamp, a failure is a structured envelope, the panel and its importer parse, the panel speaks the routes' field names, and **it can answer the refusals it is shown**. The last section **runs** the panel — imported into Node against a stub DOM and a stub `fetch` — and asserts the requests it makes and the DOM it writes: the activation gate costs zero requests, re-entering a directory costs none, a refusal the user can answer gets exactly one question, and one it cannot gets none. § 13.3 rules out grepping for behaviour, and these were greps |
 | *Disk cost* (§ 12) — identical content stored once | `test_checkpoint_states.py` — three of four unchanged big files share an inode across two archives |
-| symlinks are outside S1 and survive a restore | `test_checkpoint_states.py` — and the link points at a file **over** the limit, which is the only size at which the two behaviours differ: follow it and the target is archived a second time under the link's path, and the restore writes a real file where a link belongs. A link to a small file cannot tell them apart |
+| symlinks are outside the **archive** and survive a restore | `test_checkpoint_states.py` — three, because each catches a different half. (a) The link points at a file **over** the limit, the only size at which following it is observable: the target would be archived a second time under the link's path, and the restore would write a real file where a link belongs. (b) The link's own **name matches an always-large entry**, which is what made it fall out of both stores — a fixture whose engine names no family cannot fail this, and none of the older ones did. (c) A stray link that **no state ever held** is removed like any other leftover. The precision matters and mutation testing is what found it: a link that *was* saved is tracked, so git's own checkout removes it and the sweep never runs — the first version of this test saved the link, passed, and proved nothing. The gap is the never-saved link an ignore pattern matches, which `git checkout` does not know and `git clean` will not touch |
+| § 7 — `--force` is the answer, so the question is not asked | `test_checkpoint_states.py` — two, one per consequence. Damage the **standing** state's archive while the target's verifies, and a forced restore must still complete: asking reads the record of the state you are *leaving*, and refusing on it left no verb able to move the folder at all. Then leave an unreadable large file the target does not hold, and a forced restore must still complete — computing the answer opens it, so finishing proves the working tree was never read for a message `--force` guarantees nobody sees |
 | § 7.2's cheap read after a restore | `test_checkpoint_states.py` — a restored large file keeps **its own** mtime, so the folder does not read *everything unsaved* the moment you return to an older state. The file is deliberately aged an hour before saving, or the assertion passes for a stamp of `now` whenever the test runs quickly |
+| § 7.2's blind spot, at **both** edges and with its door shut | `test_checkpoint_states.py` — three tests, because one of them alone reads as a narrower promise than the section makes. A same-size rewrite dated *at* the state is missed (the near edge); one dated **an hour before** it is missed too and the exact read still catches it (the far edge — this is the `rsync -a` case, and pinning it is what keeps the section's wording honest); and a rerun writing byte-identical output reads clean, which is the outcome destroyed by the one repair that would close the far edge — comparing against the archive's own copy, whose mtime is stuck at the first time those bytes were archived (§ 12). All three mutation-checked: tightening `>` to `!=`, adopting that repair, or hashing on the display each fails at least two of them |
 
 **A rule in no row is the same failure as a file in no row, and quieter.** The
 seven entries below are stated, tracked and deliberately unasserted — a test

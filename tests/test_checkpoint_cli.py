@@ -249,6 +249,47 @@ def test_list_on_a_folder_that_is_not_a_checkpoint_folder_says_so(mb):
     assert "init" in result.output
 
 
+def test_list_names_a_lost_archive_instead_of_dying_on_it(mb, calc):
+    """§ 12: a lost archive is *named where it is found*, not absorbed (I2b).
+
+    `list` reads the standing state's MANIFEST in order to say what is unsaved,
+    and it was the one snapshot verb with no handler — so a folder whose archive
+    had gone answered with an **uncaught Python traceback**, while the HTTP
+    route returned a structured error for the identical condition. A traceback
+    is not naming it.
+
+    Both halves are asserted, and the first is the one that matters to somebody
+    recovering: **the history still prints.** Those states are unaffected by the
+    damage and are exactly what they need to read in order to choose where to go
+    next. Reporting the fault is worth nothing if it takes the list with it.
+    """
+    import shutil
+    from molbuilder.checkpoint import Repo, archive_dir
+
+    mb("init")
+    (calc / "big.bin").write_bytes(BIG)
+    mb("save", "-m", "stage 1 converged")
+    repo = Repo(str(calc))
+    shutil.rmtree(archive_dir(repo.root, repo.standing_at().archive))
+
+    result = mb("list")
+    # `SystemExit` is how click reports a deliberate exit, so the distinction
+    # is not "did it raise" but "did it raise something it MEANT to".  Anything
+    # else here is the traceback a real terminal would print.
+    assert result.exception is None or isinstance(result.exception, SystemExit), (
+        f"`snapshot list` died instead of reporting: {result.exception!r}")
+    assert result.exit_code == 1, (
+        "exit 1 is the machine; 2 is the person's input, and a lost archive "
+        "is not something they typed")
+    combined = result.output + (result.stderr or "")
+    assert "stage 1 converged" in result.output, (
+        "the history must still print -- it is what somebody recovering reads")
+    assert "missing" in combined or "lost" in combined
+    assert "snapshot save" in combined, (
+        "a refusal with no way out is a dead end; a save records what is on "
+        "disk and rebuilds the archive if those files are unchanged")
+
+
 # ------------------------------------------------------------------ #
 #  restore — A5 through the surface                                   #
 # ------------------------------------------------------------------ #
