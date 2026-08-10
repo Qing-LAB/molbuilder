@@ -15,8 +15,9 @@ fit when nobody is looking at them one at a time, and — because a walkthrough
 touches every seam — to **find the places where they do not fit yet**. § 8 is
 that list, and it is the more valuable half.
 
-**Status: the story is the target. Eight of its steps do not work today**, and each
-is marked ⛔ where it appears, with the whole list in § 8.
+**Status: the story is the target. Six of its steps do not work today**, and each
+is marked ⛔ where it appears, with the whole list in § 8. Two are closed — #7
+(the commands, which were specified elsewhere all along) and #8.
 
 ---
 
@@ -304,11 +305,36 @@ invocation gets `run-1`, then `run-2`, carrying the previous attempt's warm stat
 unless you ask for a cold start. `run-0` is byte-identical afterwards. There is
 no `--force`, because there is nothing to reset.
 
-⛔ **Gap 7.** How you re-run *one* stage by hand is unstated. Since the wrapper
-no longer makes its own directory, a single stage needs a molbuilder command in
-front of it — `jobset submit --only <stage>`, a new `molbuilder run <stage>`, or
-both. Unanswered, and it has to be answered before the shell block is retired or
-the manual path breaks (`project-layout.md` § 8, question 4).
+✅ **Gap 7 — closed 2026-08-10, and it was half-answered already.** It read:
+*how you re-run one stage by hand is unstated*, and offered `jobset submit --only
+<stage>` or a new `molbuilder run <stage>`.
+
+Neither was needed, because **the grammar was specified elsewhere and this
+document had not caught up**:
+[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) step 1c
+fixes `jobset <verb> <kind> [<stage>]`, and `project-layout.md` § 8 and
+`web/task-setup-plan.md` were both already writing `jobset prep run <stage>
+--from <run>`. What was genuinely open was one shape question — stage as the
+positional, or folder with `--stage` — **decided 2026-08-10 (user): the stage is
+the positional**, and running a whole ladder unattended takes an explicit
+`--chain`.
+
+So the entry point is:
+
+```bash
+molbuilder jobset prep   run tight --from 01_coarse/run-0   # or --cold
+molbuilder jobset submit run tight --mode direct|submit
+```
+
+`job-system.md` § 5.3 is now the authority for the commands, and the ordering
+constraint this gap carried still holds: that entry point must exist **before**
+the wrapper's directory-making prologue is retired, or the manual path breaks
+with nothing behind it.
+
+> **The lesson is the one this document keeps teaching.** The gap was not a
+> missing design — it was four documents describing one act in three grammars,
+> with the newest of them calling it unanswered. A walkthrough finds that;
+> reading any single file does not.
 
 ---
 
@@ -400,7 +426,13 @@ is that **a save is always an explicit act** — nothing takes one for you
 ## 8. What this walkthrough found
 
 Eight gaps, in the order a user meets them. Four were on no list before this
-document was written. **One is now closed** — see #8.
+document was written. **Two are now closed** — #7 and #8.
+
+The two that closed did so in opposite ways, and the contrast is worth keeping:
+#8 needed the checkpoint rework, real code. #7 needed nobody to build anything —
+the answer was already written in two other documents, and this one had gone on
+calling it unanswered. **A gap list is only as good as its last reconciliation
+against its neighbours.**
 
 | # | Gap | Severity |
 |---|---|---|
@@ -410,7 +442,7 @@ document was written. **One is now closed** — see #8.
 | 4 | **The measured answer reaches a script, never the description.** `bench prep-run` writes `run-production.sh`; `task.json` never learns, so the next `generate` reverts to defaults | medium — it is the point of measuring |
 | 5 | **Stage-to-stage carry is broken.** ⚠ `materialize` links `../<stage>/<label>.XV`; attempts moved outputs into `run-N/`, so the link dangles — and *which* N is unknowable at prep time. Fixed by resolving the attempt at **submit**, which knows both | **serious, and newly introduced by the attempt-directory change** |
 | 6 | **Stage directories are named `point-<name>`.** `job_dir_name` does not branch on `JobSet.kind` yet, so the ladder gets the sweep's naming | small, and in the same expression as #5 |
-| 7 | **No hand-run entry point for one stage.** The wrapper no longer makes its own directory, so running a single stage needs a molbuilder command that does not exist yet | must be answered before the shell block is retired |
+| 7 | ~~**No hand-run entry point for one stage.**~~ **Closed 2026-08-10.** The grammar was already fixed in `staged-runs-architecture.md` step 1c and used by two other documents; this file had not caught up. `jobset prep run <stage> --from <run>` / `jobset submit run <stage>`, stage as the positional (user, 2026-08-10), `--chain` to run a ladder unattended. The ordering constraint stands: it must exist before the wrapper's directory-making prologue is retired | ✅ closed |
 | 8 | ~~**The history cannot be created.**~~ **Closed by the checkpoint rework.** `init` accepts a folder whose root *declares* its subdirectories one calculation (`task.json`), which this tree carries; forking is restore-then-save, which needs no branch route. Saves stay explicit by design, which is § 9, not a gap | ✅ closed |
 
 ### The one to fix first

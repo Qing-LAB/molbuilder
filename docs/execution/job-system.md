@@ -573,6 +573,24 @@ laptop, not on the cluster (design decision #4).
 
 ### 5.2 What `prep` lays out on disk
 
+> ⚠ **This section describes the SWEEP, and the ladder as it was before stages
+> stopped chaining.** Read it for the benchmark, where every point is independent
+> and submitting the whole set at once is correct.
+>
+> **For a stage ladder, three things below are superseded**, and § 5.3 plus
+> [`project-layout.md`](?doc=execution/project-layout.md) § 1.6 are the current
+> answer:
+>
+> | here | for a ladder, today |
+> |---|---|
+> | job directory `point-<name>/` | **`<seq>_<name>/`** — `01_coarse`, `02_tight` (`project-layout.md` § 4.1) |
+> | carry as a **dangling symlink**, localized to a copy at run time by the wrapper | **a real copy, made at `prep`, from the attempt you name with `--from`.** Nothing points at a file that does not exist yet, so there is nothing to localize |
+> | one `submit` hands the whole chain to the scheduler with `--dependency` | **one stage at a time**; `--chain` to do it anyway |
+>
+> The chaining machinery itself stays — it is the right answer for a sweep, and
+> for anyone who wants a chain with their eyes open. What changed is what the
+> **staged-science producer** builds, not what `jobset` can do.
+
 `prep` turns the flat bundle into the materialized tree the scheduler runs. Two
 ideas make it safe and small:
 
@@ -615,15 +633,136 @@ flowchart LR
     S1 --> L --> C
 ```
 
-### 5.3 plan, submit, status
+### 5.3 The execution loop — one grammar, one stage at a time
+
+> **This section is the authority for what you type.** `project-layout.md` § 1.6
+> owns *what happens on disk*; this owns *the commands*. Where § 5.2 above still
+> describes a submitted chain with dangling carry links, § 5.2 is the older
+> model — see the note at its head.
+
+#### The grammar
+
+```
+molbuilder jobset <verb> <kind> [<stage>]  [options]
+                    │      │        │
+                    │      │        └─ which stage: coarse, tight, …
+                    │      └────────── what is being prepped or submitted:
+                    │                  `run` (the calculation) or `bench`
+                    │                  (the measurement of it)
+                    └───────────────── describe · prep · submit · summarize · status
+```
+
+`describe` and `status` take no *kind* — they are about the calculation, not
+about one run of it. **The kind is a positional, not a `--bench` flag**, because
+`prep bench` and `prep run` are peers: measuring and running are the same act
+over different parameters (`project-layout.md § 2.3.1a`).
+
+#### Three ideas, in plain language
+
+**1. A stage at a time — because you are meant to look in between.** A ladder is
+not a pipeline. You run `coarse`, you *look* at what it produced, and only then
+do you set up `tight`. So `submit run` names one stage, and running the whole
+ladder unattended needs `--chain`, said out loud. The reason is money and time,
+not tidiness: a chain that continues on its own can spend a week refining a
+geometry you would have rejected in a minute (`project-layout.md § 1.6`).
+
+A **sweep** is the opposite and needs no flag: its points are independent, so
+submitting all of them is the ordinary thing.
+
+**2. What a stage continues from is something you say.** `--from
+01_coarse/run-0` names the attempt whose results this run starts from. Those
+files are **copied** into the new attempt, not linked — the engine writes to
+those very filenames, and writing through a link would destroy the result you
+started from. `--cold` means *start clean*, which with a directory per attempt is
+simply **skip the copy**; there is nothing to move aside.
+
+Continuing from `run-0` and from `run-2` are different scientific choices, so
+molbuilder does not guess between them.
+
+**3. `--mode` is the channel, and it is not the layout.** This is the one people
+conflate, so it is worth saying flatly:
+
+| | what it decides | where it comes from |
+|---|---|---|
+| **`--mode direct` / `submit`** | *how the job is launched* — a local `bash`, or the machine's submission system | the machine you are on |
+| **`shape: flat` / `hierarchical`** | *how the results are kept on disk* | the **description** (`task.json`), and it is never inferred (`engines/stages.md § 6.7`) |
+
+They are independent, and every combination is ordinary. **A workstation running
+`hierarchical` is a normal thing to want** — you get a directory per stage and per
+attempt, so an earlier stage's geometry is still openable after a later one has
+run. Equally, an HPC job can be `flat`. Nothing in molbuilder infers one from the
+other.
+
+> `--mode` is **required** today. `molbuilder.json` already carries
+> `execution.mode` (`job-execution.md § 8.13`) and `get_execution()` returns it,
+> but only `bench` reads it; wiring `submit` to fall back on it — flag, then
+> config, then detected scheduler — is recorded work, not shipped behaviour.
+
+#### The loop
+
+```mermaid
+flowchart TD
+    D["<b>describe</b><br/>the portable package:<br/>template · task.json · shape"]
+    PB["<b>prep bench</b> &lt;stage&gt;<br/>build the measurement"]
+    SB["<b>submit bench</b> &lt;stage&gt;<br/>measure this machine"]
+    SM["<b>summarize bench</b> &lt;stage&gt;<br/>write the verdict"]
+    PR["<b>prep run</b> &lt;stage&gt; --from &lt;attempt&gt;<br/>render the deck · make run-n<br/>· COPY the warm files in"]
+    SR["<b>submit run</b> &lt;stage&gt;<br/>--mode direct | submit"]
+    L["<b>look</b><br/>status · the trajectory · the forces"]
+    D --> PR
+    D -.optional.-> PB --> SB --> SM -.verdict.-> PR
+    PR --> SR --> L
+    L -->|"good — next stage"| PR
+    L -->|"not good — retry differently"| PR
+```
+
+**`prep` prints what it resolved, which is what makes `submit` a plain yes.** It
+is the only place the measured numbers, the chosen starting geometry and the
+rendered deck appear together — exactly where a person should be looking before
+committing cluster time.
+
+#### Examples
+
+A two-stage relaxation on a **workstation**, `shape: hierarchical`:
 
 ```bash
-molbuilder jobset plan   ./bundle                    # read-only table: chain, per-job resources, carry
-molbuilder jobset submit ./bundle --mode submit --domain public --dry-run   # preview the exact sbatch lines
-molbuilder jobset submit ./bundle --mode submit --domain public             # go: hand the chain to SLURM
-#   or on a workstation with no scheduler:
-molbuilder jobset submit ./bundle --mode direct      # run the stages in order, locally
-molbuilder jobset status ./bundle                    # per-stage state + the first incomplete stage
+molbuilder jobset prep   run coarse                  # 01_coarse/run-0, nothing carried in
+molbuilder jobset submit run coarse --mode direct    # runs here, locally
+molbuilder jobset status                             # look before deciding
+
+molbuilder jobset prep   run tight --from 01_coarse/run-0
+#   reading from 01_coarse/run-0  (finished, converged)
+#   02_tight/<label>_02_tight.fdf   rendered   BlockSize 256
+#   02_tight/run-0/                 ready      copied in: <label>.XV  <label>.DM
+molbuilder jobset submit run tight --mode direct
+```
+
+The same calculation on a **cluster** — same words, different channel:
+
+```bash
+molbuilder jobset submit run tight --mode submit --domain public --dry-run
+molbuilder jobset submit run tight --mode submit --domain public
+```
+
+Redoing a stage differently — a new attempt, and `run-0` is untouched:
+
+```bash
+molbuilder jobset prep   run tight --from 01_coarse/run-0   # -> 02_tight/run-1
+molbuilder jobset prep   run tight --cold                   # -> a clean attempt
+```
+
+And the whole ladder unattended, when you have decided you want that:
+
+```bash
+molbuilder jobset submit run --chain --mode direct
+```
+
+#### The read-only verbs
+
+```bash
+molbuilder jobset plan     ./bundle    # the jobs, resources and carry set — changes nothing
+molbuilder jobset status   ./bundle    # per-stage state + which stage is next
+molbuilder jobset status   tight       # one stage
 ```
 
 - **`plan`** prints the chain, each job's resources, and its carry set. It
