@@ -32,7 +32,7 @@ else follows from that one choice.
 
 | | **Flat** | **Hierarchical** |
 |---|---|---|
-| **Stages are separated by** | a **filename suffix** — `<label>_stage1.fdf`, `<label>_stage2.fdf` | a **directory** — `01_coarse/`, `02_tight/` — and the suffix is kept too, as a self-check (`run-identity.md § 3.2`) |
+| **Stages are separated by** | a **filename token** — `<label>_01_coarse.fdf`, `<label>_02_tight.fdf` | a **directory** — `01_coarse/`, `02_tight/` — and the token is kept in the filename too, as a self-check (`run-identity.md § 3.2`) |
 | **Attempts are separated by** | an **output index** — `-run0.out`, `-run1.out` | a **directory** — `run-0/`, `run-1/` |
 | **Warm files** (`.XV` `.DM` `.CG`) | **one shared set**, unsuffixed | one set per attempt |
 | **Continuing** | free — the next stage finds them lying there | you **name** the run, and its files are copied in |
@@ -73,13 +73,14 @@ flowchart LR
 
 ```
 au_bdt_relax/
-├── <label>_stage1.fdf              coarse   ─┐ the decks: one per stage,
-├── <label>_stage2.fdf              tight     │ told apart by SUFFIX
-├── <label>_stage1.run.sh                    ─┘
-├── <label>_stage2.run.sh
-├── <label>_stage1-run0.out         stage 1, first attempt   ─┐ told apart
-├── <label>_stage1-run1.out         stage 1, a redo           │ by INDEX
-├── <label>_stage2-run0.out         stage 2, first attempt   ─┘
+├── <label>_01_coarse.fdf           coarse   ─┐ the decks: one per stage,
+├── <label>_03_tight.fdf            tight     │ told apart by their TOKEN
+├── <label>.run.sh                           ─┘ (decision 27 — the ordinal
+│                                               travels WITH the name, and
+│                                               a gap stays a gap)
+├── <label>_01_coarse-run0.out      stage 1, first attempt   ─┐ told apart
+├── <label>_01_coarse-run1.out      stage 1, a redo           │ by INDEX
+├── <label>_03_tight-run0.out       tight, first attempt     ─┘
 │
 ├── <label>.XV  <label>.DM  <label>.CG  ⚠ ONE shared set, UNSUFFIXED
 ├── <label>.STRUCT_OUT              ⚠ one, overwritten by each stage

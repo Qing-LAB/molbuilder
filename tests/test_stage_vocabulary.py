@@ -268,10 +268,11 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         None, "molbuilder/siesta/stages.py", "the carrier the producer returns"),
     "build_siesta_stage_bundle": (
         None, "molbuilder/siesta/stages.py",
-        "composition of 6 and 7 that calls BOTH -- flat decks and a flat "
-        "runner, plus a hierarchical JobSet whenever emit_jobset, which "
-        "defaults true.  Not an eleventh mechanism: the code that decides "
-        "the shape by not deciding it.  P5"),
+        "composition of 6 and 7, and since 2026-08-10 (P5 unit 1) it READS "
+        "the shape and emits ONE layout: flat -> decks + the runner, "
+        "hierarchical -> decks + the JobSet.  It used to call both and let "
+        "whatever command you typed next settle it -- the code that decided "
+        "the shape by not deciding it"),
     "check_identical_stages": (
         None, "molbuilder/validation/stages.py",
         "§ 6.6a's check that a stage does not recompute the one before it -- "

@@ -577,14 +577,20 @@ def _make_pyscf_options_decorator():
                    "Mirrors the form's Stage strategy dropdown.  Sets "
                    "multi-stage mode (one fdf per enabled stage + a "
                    ".run.sh runner).")
-# --jobset: also emit job-set.json so the bundle is runnable by the
-# engine-agnostic framework (`molbuilder jobset prep/plan/submit`,
-# job-system.md).  Opt-in (doesn't change the default file set);
-# only meaningful in multi-stage mode.
-@click.option("--jobset", "emit_jobset", is_flag=True, default=False,
-              help="also write job-set.json (the ladder as a JobSet) so the "
-                   "bundle runs via `molbuilder jobset prep/submit`.  "
-                   "Requires --stage-strategy / --stages-json.")
+# --shape: WHICH LAYOUT this ladder is produced for (engines/stages.md § 6.7).
+# It replaced `--jobset` on 2026-08-10.  That flag was a boolean meaning "ALSO
+# write job-set.json", so `--jobset` emitted the flat runner AND the
+# hierarchical ladder in one call and the shape was settled by whichever
+# command was typed next -- which is not a choice.  § 6.7 makes the shape a
+# required field of the description; a surface may PROPOSE a value, so this
+# defaults to `flat`, which is what the UI ships today (project-layout.md § 1).
+@click.option("--shape", "shape", default="flat",
+              type=click.Choice(("flat", "hierarchical")),
+              help="which layout to produce: `flat` (one directory, stages "
+                   "told apart by filename, plus the .run.sh runner) or "
+                   "`hierarchical` (a directory per stage, run via "
+                   "`molbuilder jobset prep/submit`).  Exactly one is "
+                   "emitted.  Requires --stage-strategy / --stages-json.")
 @click.option("--stage-resources", "stage_resources", default=None,
               metavar="JSON_OR_PATH",
               help="per-stage scheduler resources for the job-set, as a JSON "
@@ -592,7 +598,8 @@ def _make_pyscf_options_decorator():
                    "gres?, mpi_np?, cpus_per_task?}} (literal or a .json "
                    "path).  This is HOW a ladder asks for a cheap warm-up + "
                    "an expensive final (job-system.md § 5.1).  Requires "
-                   "--jobset; stages omitted here inherit the job-level config.")
+                   "--shape hierarchical; stages omitted here inherit the "
+                   "job-level config.")
 # --vacuum: the structure's isolation padding (Å, per side).  Vacuum comes with
 # the STRUCTURE, not the config (structure-periodicity.md) -- this is the CLI
 # equivalent of the Modify -> Cell tab.  Needed for a flat/linear molecule loaded
@@ -603,7 +610,7 @@ def _make_pyscf_options_decorator():
                    "Required for a flat/linear molecule from a bare XYZ.")
 @_make_siesta_options_decorator()
 def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
-            stages_json, stage_strategy, emit_jobset, stage_resources,
+            stages_json, stage_strategy, shape, stage_resources,
             vacuum, **fields):
     """Convert an XYZ or PDB structure into a SIESTA .fdf input.
 
@@ -644,16 +651,17 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
             "pipeline (one .fdf per enabled stage + a .run.sh runner).  "
             "Pick one path -- they're mutually exclusive."
         )
-    if emit_jobset and not multi_stage:
+    if shape == "hierarchical" and not multi_stage:
         raise click.UsageError(
-            "--jobset writes the job-set.json for a stage LADDER; it needs "
-            "--stage-strategy or --stages-json (a single-stage one-shot .fdf "
-            "is not a job-set)."
+            "--shape hierarchical lays out a stage LADDER, a directory per "
+            "stage; it needs --stage-strategy or --stages-json (a "
+            "single-stage one-shot .fdf has no stages to keep apart)."
         )
-    if stage_resources is not None and not emit_jobset:
+    if stage_resources is not None and shape != "hierarchical":
         raise click.UsageError(
-            "--stage-resources only applies to the job-set; pass --jobset "
-            "(and --stage-strategy / --stages-json) too."
+            "--stage-resources are per-stage SCHEDULER asks, and they ride on "
+            "the job-set: pass --shape hierarchical (with --stage-strategy / "
+            "--stages-json) too."
         )
 
     # Apply --stage overlay AFTER cfg is built so the user's per-knob
@@ -731,7 +739,7 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
             fdf_path=fdf_path,
             stages_json=stages_json,
             stage_strategy=stage_strategy,
-            emit_jobset=emit_jobset,
+            shape=shape,
             stage_resources=stage_resources,
             vacuum=vacuum,
         )
@@ -784,7 +792,7 @@ def _parse_json_or_path(value: str, hint: str):
 
 def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
                               stages_json, stage_strategy,
-                              emit_jobset=False, stage_resources=None,
+                              shape="flat", stage_resources=None,
                               vacuum=None):
     """Helper for cmd_fdf's multi-stage branch.
 
@@ -904,9 +912,11 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     out_dir.mkdir(parents=True, exist_ok=True)
     # Promotion A (job-system.md § 4.1): render the ladder's files via
     # the shared pure producer so the CLI and the web Build endpoint don't each
-    # re-glue the sequence.  ``emit_jobset=False`` here -- the CLI builds its
-    # own JobSet below from the pseudos actually present on disk (glob-fidelity
-    # for legacy .psf/.vps), so the job-set.json stays byte-identical.
+    # re-glue the sequence.  The SHAPE is passed straight through -- the
+    # producer emits one layout, and this branch writes exactly what it got
+    # back (P5 unit 1).  The hierarchical JobSet is still rebuilt below from
+    # the pseudos actually present on disk (glob-fidelity for legacy
+    # .psf/.vps), which is why the producer's own is not used for it.
     # Resolve the ladder FIRST, on its own, so the caller's typo leaves as a
     # clean error naming the flag they typed rather than a traceback: a stage
     # overriding a field the schema does not have is refused by name, and so
@@ -929,19 +939,21 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
 
     from .siesta.stages import build_siesta_stage_bundle
     bundle = build_siesta_stage_bundle(struct, cfg, stages, cell=cell,
-                                       emit_jobset=False)
-    fdfs = bundle.fdf_files
-    runner = bundle.runner_text
-    runner_path = out_dir / bundle.runner_name
+                                       shape=shape)
 
     written: list = []
-    for name, body in fdfs.items():
+    for name, body in bundle.fdf_files.items():
         p = out_dir / name
         p.write_text(body)
         written.append(p)
-    runner_path.write_text(runner)
-    _os.chmod(runner_path, 0o755)
-    written.append(runner_path)
+    # The runner is the FLAT shape's own artifact and is absent from a
+    # hierarchical bundle -- writing one there is what made a produced folder
+    # impossible to tell apart by looking at it (M5).
+    if bundle.runner_text is not None:
+        runner_path = out_dir / bundle.runner_name
+        runner_path.write_text(bundle.runner_text)
+        _os.chmod(runner_path, 0o755)
+        written.append(runner_path)
 
     # Optional psml copy, mirroring convert()'s behaviour.
     if cfg.psml_lib and cfg.copy_psml:
@@ -953,13 +965,14 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
         if lib.is_dir():
             copy_pseudopotentials(species, lib, out_dir)
 
-    # --jobset: persist the ladder as a JobSet so `molbuilder jobset
+    # HIERARCHICAL: persist the ladder as a JobSet so `molbuilder jobset
     # prep/submit` can run this bundle (job-system.md § 5).  The Job
-    # scripts are exactly the <label>_<stage>.fdf rendered above; ``shared``
-    # is the pseudopotentials present in the bundle root (symlinked into each
-    # stage dir at prep).  This is the host-side producer the framework was
-    # missing -- it reuses stages_to_jobset + JobSet.write, no new logic.
-    if emit_jobset:
+    # scripts are exactly the <label>_<NN>_<name>.fdf rendered above;
+    # ``shared`` is the pseudopotentials present in the bundle root
+    # (symlinked into each stage dir at prep).  This is the host-side
+    # producer the framework was missing -- it reuses stages_to_jobset +
+    # JobSet.write, no new logic.
+    if shape == "hierarchical":
         from .siesta.stages import stages_to_jobset
         from .jobset.model import Resources
         pseudos = sorted(p.name for ext in ("*.psml", "*.psf", "*.vps")
@@ -1007,7 +1020,7 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
                                   resources_for=resources_for,
                                   on_nonconvergence=DEFAULT_NONCONVERGENCE)
         except ValueError as e:
-            raise click.ClickException(f"--jobset: {e}")
+            raise click.ClickException(f"--shape hierarchical: {e}")
         written.append(js.write(out_dir / "job-set.json"))
 
     # Per-stage molwatch preview log, one per enabled stage.  Each
@@ -1043,15 +1056,26 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
             )
             written.append(mw_path)
 
+    # Say the SHAPE out loud, and say how to run THIS shape.  A summary that
+    # always claimed "+ 1 runner" and always told you to `./run.sh` was the
+    # both-shapes bug speaking: for a hierarchical bundle there is no runner
+    # and that is not how you start it.
     click.echo(
-        f"Wrote {len(fdfs)} stage fdf(s) + 1 runner to "
+        f"Wrote a {shape} bundle: {len(bundle.fdf_files)} stage fdf(s)"
+        f"{' + 1 runner' if bundle.runner_text is not None else ''} to "
         f"{out_dir}: {', '.join(p.name for p in written)}",
         err=True,
     )
-    click.echo(
-        f"Run with: cd {out_dir} && ./{runner_path.name}",
-        err=True,
-    )
+    if shape == "flat":
+        click.echo(f"Run with: cd {out_dir} && ./{bundle.runner_name}",
+                   err=True)
+    else:
+        click.echo(
+            f"Run with: cd {out_dir} && molbuilder jobset prep run <stage>"
+            f"  then  molbuilder jobset submit run <stage> --mode direct\n"
+            f"         (molbuilder jobset plan  shows the stages and their "
+            f"numbers)",
+            err=True)
 
 
 # --------------------------------------------------------------------- #

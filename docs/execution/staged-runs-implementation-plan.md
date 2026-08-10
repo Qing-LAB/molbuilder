@@ -1001,6 +1001,47 @@ rewritten.
 than by remembering what was typed. Guard 1's count drops to the agreed set;
 guard 3 turns green.
 
+> #### Unit 1 landed 2026-08-10 — M5's first half holds
+>
+> `build_siesta_stage_bundle` takes `shape` as a **required keyword with no
+> default** and emits one layout: `flat` → the decks and the runner, `jobset`
+> `None`; `hierarchical` → the decks and the JobSet, no runner. `StageBundle`
+> carries its own `shape`, so the object says which it is rather than leaving a
+> reader to infer it from which fields are populated.
+>
+> **What the flag was.** `emit_jobset: bool = True` meant *"also write
+> job-set.json"* — so the runner came out **every** time and `--jobset` gave you
+> both layouts at once. The shape was then settled by whichever command you
+> typed next, which § 6.7 is precise about: *"`prep` **reads** it; it does not
+> decide it."* The CLI's `--jobset` becomes `--shape flat|hierarchical`, which
+> § 6.7 permits as *"a surface may propose a value"* — a stated default is a
+> proposal; deriving one from the data would be the inference it forbids.
+>
+> Verified by producing both from the same inputs:
+>
+> ```text
+> flat          h2.run.sh  h2_01_coarse.fdf  h2_02_medium.fdf   (no job-set.json)
+> hierarchical  job-set.json  h2_01_coarse.fdf  h2_02_medium.fdf  (no runner)
+> ```
+>
+> The decks are byte-identical across the two — pinned by a test, because the
+> shape decides **how stages are kept apart**, never what is computed.
+>
+> The CLI's closing summary said *"+ 1 runner"* and *"Run with: ./run.sh"*
+> unconditionally; both were the both-shapes bug speaking, and both now follow
+> the shape.
+>
+> **Still P5's, not done here:** unit 2a (a promoted `enable_gpu` reaches the
+> deck and stops — no `--gres`), unit 3 (delete the flat runner), unit 4 (the
+> transactional produce). Unit 2 is recorded above as vacuous.
+>
+> **Found while re-anchoring:** `project-layout.md § 1`'s flat column and its
+> tree still showed `<label>_stage1.fdf` and `<label>_stage1-run0.out` — the
+> naming decision 27 replaced. The hierarchical column had been updated and the
+> flat one had not, so the doc described two different conventions as if they
+> were one design. Fixed with this unit, since the shape section is what P5
+> re-anchors on.
+
 **Reviews:** 1 · 2 (the heaviest subtraction review in the plan — every retired
 flag, every orphaned test, every comment describing a deleted mechanism) · 3.
 

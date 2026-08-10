@@ -42,25 +42,57 @@ def _publishable():
     return default_siesta_stages("publishable")
 
 
-def test_producer_returns_stage_files_runner_species_jobset():
-    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable())
-    assert isinstance(b, StageBundle)
-    # one .fdf per enabled stage, all sharing the SystemLabel stem
-    assert sorted(b.fdf_files) == ["h2_01_coarse.fdf", "h2_02_medium.fdf"]
-    assert all(txt.strip() for txt in b.fdf_files.values())
-    assert b.runner_name == "h2.run.sh"
-    assert b.runner_text.strip()
-    assert b.pseudo_species == ["H"]
-    # jobset is the ladder over the enabled stages
-    assert b.jobset is not None
-    assert b.jobset.kind == "ladder"
-    assert [j.name for j in b.jobset.jobs] == ["coarse", "medium"]
+def test_the_decks_are_the_same_whichever_shape_is_asked_for():
+    """The shape decides how stages are KEPT APART, not what is computed
+    (project-layout.md § 1).  Both shapes render the identical .fdf set."""
+    flat = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable(),
+                                     shape="flat")
+    hier = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable(),
+                                     shape="hierarchical")
+    assert isinstance(flat, StageBundle)
+    assert sorted(flat.fdf_files) == ["h2_01_coarse.fdf", "h2_02_medium.fdf"]
+    assert flat.fdf_files == hier.fdf_files
+    assert all(txt.strip() for txt in flat.fdf_files.values())
+    assert flat.pseudo_species == hier.pseudo_species == ["H"]
+
+
+def test_one_shape_in_one_shape_out():
+    """P5's milestone M5: a bundle never carries both layouts, so a produced
+    folder can be told apart BY LOOKING AT IT rather than by remembering which
+    flag was typed.  Until 2026-08-10 the runner came out every time and the
+    JobSet came out whenever a caller passed `emit_jobset`, so `--jobset` gave
+    you both and the shape was settled by whatever you typed next."""
+    flat = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable(),
+                                     shape="flat")
+    assert flat.shape == "flat"
+    assert flat.runner_name == "h2.run.sh" and flat.runner_text.strip()
+    assert flat.jobset is None
+
+    hier = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable(),
+                                     shape="hierarchical")
+    assert hier.shape == "hierarchical"
+    assert hier.runner_name is None and hier.runner_text is None
+    assert hier.jobset is not None and hier.jobset.kind == "ladder"
+    assert [j.name for j in hier.jobset.jobs] == ["coarse", "medium"]
+
+
+def test_the_shape_is_required_and_never_guessed():
+    """`engines/stages.md` § 6.7: required, no default, never inferred --
+    *"Inferring the shape … would hand somebody a directory tree they never
+    asked for."*  A producer may not propose one; only a surface may."""
+    with pytest.raises(TypeError):                 # no default to fall back on
+        build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable())
+    with pytest.raises(ValueError) as e:
+        build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable(),
+                                  shape="nested")
+    assert "flat" in str(e.value) and "hierarchical" in str(e.value)
 
 
 def test_jobset_shared_defaults_to_expected_psml_names():
     """When ``shared`` is not given, the JobSet's static package defaults to
     the expected ``<species>.psml`` (PSML-first, matching install-pseudos)."""
-    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable())
+    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable(),
+                                  shape="hierarchical")
     assert b.jobset.shared == ["H.psml"]
 
 
@@ -68,24 +100,15 @@ def test_explicit_shared_is_honored():
     """A caller that knows its on-disk package (e.g. the CLI's glob picking
     up legacy .psf) overrides the default."""
     b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable(),
-                              shared=["H.psf"])
+                                  shape="hierarchical", shared=["H.psf"])
     assert b.jobset.shared == ["H.psf"]
-
-
-def test_emit_jobset_false_skips_the_jobset():
-    """The CLI renders files via the producer but builds its own JobSet from
-    the pseudos actually on disk -> it asks for files only."""
-    b = build_siesta_stage_bundle(_h2(), _publishable_cfg(), _publishable(),
-                              emit_jobset=False)
-    assert b.jobset is None
-    assert b.fdf_files and b.runner_text  # files still produced
 
 
 def test_system_label_drives_filenames():
     """cfg.system_label is the stem the caller aligns; the producer uses it
     for both the .fdf names and the runner (the .XV warm-restart contract)."""
     b = build_siesta_stage_bundle(_h2(), _publishable_cfg(label="bdt"),
-                              _publishable())
+                              _publishable(), shape="flat")
     assert b.runner_name == "bdt.run.sh"
     assert all(name.startswith("bdt_") for name in b.fdf_files)
 
@@ -114,9 +137,9 @@ def test_cell_rides_on_the_structure_no_separate_input():
     tight = _h2(vacuum=(4.0, 4.0, 4.0))
     roomy = _h2(vacuum=(9.0, 9.0, 9.0))
     tight_bundle = build_siesta_stage_bundle(tight, _publishable_cfg(),
-                                     _publishable())
+                                     _publishable(), shape="flat")
     roomy_bundle = build_siesta_stage_bundle(roomy, _publishable_cfg(),
-                                     _publishable())
+                                     _publishable(), shape="flat")
 
     assert _lattices(tight_bundle), "no stage files produced"
     for lat in _lattices(tight_bundle):
@@ -134,8 +157,9 @@ def test_no_enabled_stage_raises():
     """An empty/all-disabled ladder can't produce a bundle."""
     cfg = SiestaConfig(system_label="h2")
     with pytest.raises(ValueError):
-        build_siesta_stage_bundle(_h2(), cfg, [])
+        build_siesta_stage_bundle(_h2(), cfg, [], shape="flat")
     with pytest.raises(ValueError):
         build_siesta_stage_bundle(
             _h2(), cfg,
-            [dc.replace(s, enabled=False) for s in _publishable()])
+            [dc.replace(s, enabled=False) for s in _publishable()],
+            shape="flat")

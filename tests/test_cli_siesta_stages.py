@@ -347,7 +347,7 @@ def test_stages_json_then_stage_strategy_layers_correctly(xyz, tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  --jobset: emit job-set.json so the bundle runs via `molbuilder jobset` #
+#  --shape hierarchical: the ladder as a JobSet (P5 unit 1)            #
 # --------------------------------------------------------------------- #
 
 
@@ -356,7 +356,7 @@ def test_jobset_flag_emits_runnable_job_set_json(xyz, tmp_path):
 
     fdf = tmp_path / "JOB.fdf"
     r = _invoke("fdf", str(xyz), str(fdf),
-                "--stage-strategy", "publishable", "--jobset")
+                "--stage-strategy", "publishable", "--shape", "hierarchical")
     assert r.exit_code == 0, r.output
     jpath = tmp_path / "job-set.json"
     assert jpath.is_file()                          # opt-in artifact present
@@ -377,9 +377,9 @@ def test_jobset_flag_emits_runnable_job_set_json(xyz, tmp_path):
 def test_jobset_flag_requires_multi_stage(xyz, tmp_path):
     fdf = tmp_path / "JOB.fdf"
     r = CliRunner().invoke(
-        cli, ["fdf", str(xyz), str(fdf), "--jobset"])
+        cli, ["fdf", str(xyz), str(fdf), "--shape", "hierarchical"])
     assert r.exit_code != 0
-    assert "--jobset" in r.output and "stage-strategy" in r.output
+    assert "--shape hierarchical" in r.output and "stage-strategy" in r.output
 
 
 def test_jobset_flag_off_by_default_no_job_set_json(xyz, tmp_path):
@@ -395,7 +395,7 @@ def test_jobset_flag_off_by_default_no_job_set_json(xyz, tmp_path):
 
 
 def test_jobset_end_to_end_produce_prep_status_submit(xyz, tmp_path):
-    """Pin the WHOLE loop on one bundle: produce (--jobset) -> the plan's
+    """Pin the WHOLE loop on one bundle: produce (--shape hierarchical) -> the plan's
     scripts are the real rendered files -> prep lays out the dirs -> status
     reports pending + the right resume point -> submit(dry-run) plans every
     stage. This is the composition the per-layer unit tests don't cover."""
@@ -404,7 +404,7 @@ def test_jobset_end_to_end_produce_prep_status_submit(xyz, tmp_path):
 
     b = tmp_path / "bundle"; b.mkdir()
     r = _invoke("fdf", str(xyz), str(b / "JOB.fdf"),
-                "--stage-strategy", "publishable", "--jobset")
+                "--stage-strategy", "publishable", "--shape", "hierarchical")
     assert r.exit_code == 0, r.output
 
     js = JobSet.load(b / "job-set.json")
@@ -447,7 +447,7 @@ def test_jobset_systemlabel_carry_consistency(xyz, tmp_path):
 
     b = tmp_path / "bundle"; b.mkdir()
     _invoke("fdf", str(xyz), str(b / "JOB.fdf"),
-            "--stage-strategy", "publishable", "--jobset")
+            "--stage-strategy", "publishable", "--shape", "hierarchical")
     js = JobSet.load(b / "job-set.json")
 
     assert js.name == "JOB"
@@ -474,7 +474,7 @@ def test_stage_resources_set_per_stage_in_jobset(xyz, tmp_path):
             '"medium": {"domain": "public", "time": "7-00:00:00", '
             '"exclusive": true}}')
     r = _invoke("fdf", str(xyz), str(b / "JOB.fdf"),
-                "--stage-strategy", "publishable", "--jobset",
+                "--stage-strategy", "publishable", "--shape", "hierarchical",
                 "--stage-resources", spec)
     assert r.exit_code == 0, r.output
 
@@ -492,7 +492,7 @@ def test_stage_resources_rejects_unknown_stage_name(xyz, tmp_path):
     b = tmp_path / "bundle"; b.mkdir()
     r = CliRunner().invoke(cli, [
         "fdf", str(xyz), str(b / "JOB.fdf"),
-        "--stage-strategy", "publishable", "--jobset",
+        "--stage-strategy", "publishable", "--shape", "hierarchical",
         "--stage-resources", '{"stageX": {"domain": "htc"}}'])
     assert r.exit_code != 0
     assert "unknown stage name" in r.output
@@ -505,7 +505,7 @@ def test_stage_resources_requires_jobset(xyz, tmp_path):
         "--stage-strategy", "publishable",
         "--stage-resources", '{"coarse": {"domain": "htc"}}'])
     assert r.exit_code != 0
-    assert "--stage-resources only applies" in r.output
+    assert "--shape hierarchical" in r.output
 
 
 def test_stage_resources_rejects_unknown_field(xyz, tmp_path):
@@ -513,7 +513,7 @@ def test_stage_resources_rejects_unknown_field(xyz, tmp_path):
     b = tmp_path / "bundle"; b.mkdir()
     r = CliRunner().invoke(cli, [
         "fdf", str(xyz), str(b / "JOB.fdf"),
-        "--stage-strategy", "publishable", "--jobset",
+        "--stage-strategy", "publishable", "--shape", "hierarchical",
         "--stage-resources", '{"coarse": {"domian": "htc"}}'])  # typo
     assert r.exit_code != 0
     assert "unknown field" in r.output and "domian" in r.output
@@ -523,7 +523,7 @@ def test_stage_resources_rejects_non_object_body(xyz, tmp_path):
     b = tmp_path / "bundle"; b.mkdir()
     r = CliRunner().invoke(cli, [
         "fdf", str(xyz), str(b / "JOB.fdf"),
-        "--stage-strategy", "publishable", "--jobset",
+        "--stage-strategy", "publishable", "--shape", "hierarchical",
         "--stage-resources", '{"coarse": "htc"}'])         # not an object
     assert r.exit_code != 0
     assert "must be an object" in r.output
