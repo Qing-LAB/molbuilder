@@ -691,6 +691,28 @@ not about one run of it. **The kind is a positional, not a `--bench` flag**, bec
 `prep bench` and `prep run` are peers: measuring and running are the same act
 over different parameters (`project-layout.md § 2.3.1a`).
 
+> **What of this grammar runs today**, checked against the CLI on 2026-08-10.
+> The grammar is the target; three of its cells are not built, and a reader
+> should not have to discover that by typing.
+>
+> | | `run` | `bench` | no kind |
+> |---|:--:|:--:|:--:|
+> | `prep` | ✅ | ⛔ `molbuilder bench generate` + `bench prep` | ✅ (lays out every container) |
+> | `submit` | ✅ | ⛔ `molbuilder bench siesta-gpu` | — |
+> | `summarize` | — | ⛔ `molbuilder bench summarize` | — |
+> | `describe` | — | — | ⛔ **not built** — today `molbuilder fdf … --stages-json --jobset` writes the bundle, and it emits *both* shapes at once |
+> | `status` | — | — | ✅ whole calculation · ⛔ **no per-stage form yet** |
+> | `plan` | — | — | ✅ |
+>
+> `prep|submit bench` refuse with a pointer at the bench command that works,
+> rather than reporting an unknown word — the fold-in is designed
+> (`web/staged-runs-architecture.md` step 1c), not done. **`status <stage>` is
+> the one that misleads**: `status` takes the folder as its positional, so
+> `jobset status tight` reports *"Directory 'tight' does not exist"* rather than
+> saying it wants a folder. That is a defect of this section's own making, and
+> it is why the per-stage row is marked rather than quietly shown working in the
+> examples below.
+
 #### Three ideas, in plain language
 
 **1. A stage at a time — because you are meant to look in between.** A ladder is
@@ -805,8 +827,13 @@ molbuilder jobset submit run --chain --mode direct
 ```bash
 molbuilder jobset plan     ./bundle    # the jobs, resources and carry set — changes nothing
 molbuilder jobset status   ./bundle    # per-stage state + which stage is next
-molbuilder jobset status   tight       # one stage
+molbuilder jobset status              # the same, from inside the folder
 ```
+
+⛔ A per-stage `status <stage>` is in the grammar and **not built** — see the
+table above. Both verbs still take the folder as their positional, so they have
+not moved to `--bundle` the way `prep` and `submit` have; that inconsistency is
+real and is part of decision 28's caller sweep.
 
 - **`plan`** prints the chain, each job's resources, and its carry set. It
   changes nothing — it is the "look before you leap" step.
