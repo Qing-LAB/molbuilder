@@ -733,6 +733,7 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
             stage_strategy=stage_strategy,
             emit_jobset=emit_jobset,
             stage_resources=stage_resources,
+            vacuum=vacuum,
         )
         return
 
@@ -783,7 +784,8 @@ def _parse_json_or_path(value: str, hint: str):
 
 def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
                               stages_json, stage_strategy,
-                              emit_jobset=False, stage_resources=None):
+                              emit_jobset=False, stage_resources=None,
+                              vacuum=None):
     """Helper for cmd_fdf's multi-stage branch.
 
     Pulled out of cmd_fdf so the logic is unit-testable independent
@@ -795,6 +797,21 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
       * Optionally copies psml files + writes molwatch preview log
         next to the LAST enabled stage's fdf.
       * Prints a one-line summary per emitted file to stderr.
+
+    ``vacuum`` is the per-side isolation padding in Å, and it applies here
+    exactly as it does in :func:`~molbuilder.siesta.input.convert` -- ONLY
+    when the input file carried no cell of its own, because an imported cell
+    wins over an invented box (``structure-periodicity.md``).
+
+    It was **not a parameter at all until 2026-08-10**, so ``--vacuum`` was
+    parsed, range-checked and then dropped the moment a ladder flag turned
+    this branch on: a user asking for 8 Å got the 3 Å default and a molecule
+    whose periodic images interact.  Not silent -- the cell validator warns --
+    but the warning reads *"none set"*, which denies the setting the user
+    made.  Found by the end-to-end walk (M4), and it is the same shape as the
+    two producers the P4 batch caught: a second branch that re-reads the
+    structure itself and skips a step the first branch does, so no grep for
+    the helper can see the omission.
     """
     import dataclasses as _dc
     import json as _json
@@ -876,6 +893,13 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
 
     with _resolve_input_path(input_path) as resolved_input:
         struct, cell = _struct_from_file(resolved_input)
+
+    # Same rule as ``convert``: the padding applies only when the file brought
+    # no cell, because an imported cell wins over an invented box.  ``cell`` is
+    # already the answer to that question, so the two branches cannot disagree
+    # about what "isolated" means.
+    if vacuum is not None and cell is None:
+        struct.vacuum = (float(vacuum), float(vacuum), float(vacuum))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     # Promotion A (job-system.md § 4.1): render the ladder's files via

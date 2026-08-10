@@ -517,3 +517,57 @@ def test_stage_resources_rejects_non_object_body(xyz, tmp_path):
         "--stage-resources", '{"coarse": "htc"}'])         # not an object
     assert r.exit_code != 0
     assert "must be an object" in r.output
+
+
+# --------------------------------------------------------------------- #
+#  --vacuum reaches the staged branch (found by the M4 walk, 2026-08-10) #
+# --------------------------------------------------------------------- #
+
+
+def _cell_lengths(deck: str):
+    """The three orthorhombic cell lengths, read off %block LatticeVectors."""
+    lines = deck.splitlines()
+    i = next(n for n, ln in enumerate(lines)
+             if ln.strip().startswith("%block LatticeVectors"))
+    return [float(lines[i + 1 + k].split()[k]) for k in range(3)]
+
+
+def test_vacuum_reaches_the_staged_branch(xyz, tmp_path):
+    """``--vacuum`` was accepted, range-checked and then DROPPED the moment a
+    ladder flag turned the multi-stage branch on: it was not a parameter of
+    ``_emit_siesta_multi_stage`` at all, while the single-stage branch passed
+    it to ``convert``.  A user asking for 8 A of isolation got the 3 A default
+    and a molecule whose periodic images interact.
+
+    Not caught by any existing test because both branches emit a *valid* deck
+    -- only the cell differs, and nothing compared the two branches' cells.
+    """
+    wide = tmp_path / "wide"
+    narrow = tmp_path / "narrow"
+    for out, args in ((wide, ["--vacuum", "8"]), (narrow, [])):
+        r = _invoke("fdf", str(xyz), str(out / "JOB.fdf"),
+                    "--stage-strategy", "loose-only", *args)
+        assert r.exit_code == 0, r.output
+
+    w = _cell_lengths((wide / "JOB_01_coarse.fdf").read_text())
+    n = _cell_lengths((narrow / "JOB_01_coarse.fdf").read_text())
+    # 8 A per side vs the 3 A default -> every axis grows by exactly 2*(8-3).
+    for axis, (wv, nv) in enumerate(zip(w, n)):
+        assert wv == pytest.approx(nv + 10.0, abs=1e-6), (axis, w, n)
+
+
+def test_vacuum_agrees_between_the_staged_and_single_branches(xyz, tmp_path):
+    """The two branches must resolve the SAME cell from the same input, which
+    is the invariant the bug broke.  Comparing them is what a test of either
+    branch alone could not do."""
+    staged = tmp_path / "staged"
+    single = tmp_path / "single"
+    assert _invoke("fdf", str(xyz), str(staged / "JOB.fdf"),
+                   "--stage-strategy", "loose-only",
+                   "--vacuum", "7.5").exit_code == 0
+    assert _invoke("fdf", str(xyz), str(single / "JOB.fdf"),
+                   "--vacuum", "7.5").exit_code == 0
+
+    a = _cell_lengths((staged / "JOB_01_coarse.fdf").read_text())
+    b = _cell_lengths((single / "JOB.fdf").read_text())
+    assert a == pytest.approx(b, abs=1e-6)
