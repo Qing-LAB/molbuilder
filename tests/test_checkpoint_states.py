@@ -1206,9 +1206,19 @@ def test_a_save_killed_as_the_record_is_written_publishes_nothing(calc,
 
     (calc.root / "big.bin").write_bytes(BIG)
     before = {d.name for d in _published(calc)}
+    real = cp._atomic_write_bytes
 
-    def die(target, data):
-        raise OSError("disk full")
+    def die(target, data, tmp_dir=None):
+        """Fail on the MANIFEST only — the seam this test is named for.
+
+        A stub that failed on *every* atomic write would kill the save at
+        `.gitignore` instead, which is a different moment with a different
+        guarantee, and the test would still be green while asserting nothing
+        about the archive.
+        """
+        if target.name == MANIFEST_NAME:
+            raise OSError("disk full")
+        return real(target, data, tmp_dir)
 
     monkeypatch.setattr(cp, "_atomic_write_bytes", die)
     with pytest.raises(OSError):

@@ -146,7 +146,7 @@ def write_gitignore(root: Path, always_large=()) -> None:
     gi = root / ".gitignore"
     body = render_gitignore(always_large)
     if not gi.exists():
-        _atomic_write_bytes(gi, body.encode("utf-8"))
+        _atomic_write_bytes(gi, body.encode("utf-8"), tmp_dir=root / ".git")
         return
     text = gi.read_text(encoding="utf-8")
     b, e = text.find(_GITIGNORE_BEGIN), text.find(_GITIGNORE_END)
@@ -156,7 +156,7 @@ def write_gitignore(root: Path, always_large=()) -> None:
         text = text.rstrip("\n") + "\n\n" + body
     else:
         text = body
-    _atomic_write_bytes(gi, text.encode("utf-8"))
+    _atomic_write_bytes(gi, text.encode("utf-8"), tmp_dir=root / ".git")
 
 
 def gitignore_is_current(root: Path, always_large=()) -> bool:
@@ -610,8 +610,9 @@ def archive_dir(root: Path, digest: str) -> Path:
     return root / ARCHIVE_DIR / digest
 
 
-def _atomic_write_bytes(target: Path, data: bytes) -> None:
-    """Write via a **unique** sibling temp + ``os.replace``.
+def _atomic_write_bytes(target: Path, data: bytes,
+                        tmp_dir: Optional[Path] = None) -> None:
+    """Write via a **unique** temp + ``os.replace``.
 
     Two properties, and the second was missing: a reader never sees a partial
     file, and two writers never collide.
@@ -628,8 +629,20 @@ def _atomic_write_bytes(target: Path, data: bytes) -> None:
     ``mkstemp`` creates 0600, which is not what a config file should end up as,
     so the mode is set to the target's own if it already exists and 0644 if it
     does not — matching what an ordinary create under a normal umask gives.
+
+    ``tmp_dir`` puts the temp file somewhere **that is never stored**, which
+    matters for a target inside the folder being saved. A save killed hard
+    between the write and the rename leaves the temp behind, and S1 stores
+    everything — so the next save committed `.gitignore.a1b2c3.tmp` into the
+    history, permanently, for a file that was never anybody's. § 6 says the
+    worst an interruption leaves is *an archive nothing points at*; debris in
+    every future state is worse than that. Callers writing into the working
+    tree pass ``.git``, which :data:`NEVER_STORED` excludes; the MANIFEST needs
+    nothing, since its whole staging directory is already private.
     """
-    parent = target.parent
+    parent = Path(tmp_dir) if tmp_dir is not None else target.parent
+    if not parent.is_dir():
+        parent = target.parent
     try:
         mode = target.stat().st_mode & 0o777
     except OSError:
