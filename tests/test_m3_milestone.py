@@ -143,12 +143,14 @@ def test_the_refusal_says_the_files_are_safe(tmp_path):
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "P5 -- the CHECK exists and is asserted above, but no producer calls it: "
-    "`molbuilder fdf` writes over an existing deck silently.  Wiring it in "
-    "belongs to P5, which rewrites the produce path entirely ('one shape in, "
-    "one shape out'), and adding a guard plus an --overwrite flag to a path "
-    "P5 replaces would be work done twice.  This xfail is what makes the gap "
-    "impossible to forget."))
+    "P10 (reason corrected 2026-08-10) -- the CHECK exists and is asserted "
+    "above, but no producer calls it: `molbuilder fdf` writes over an existing "
+    "deck silently.  This said 'P5, which rewrites the produce path entirely', "
+    "and P5 has now rewritten one: the STAGED branch is transactional and "
+    "writes a description.  It did NOT touch the path this test exercises -- "
+    "`fdf` with no ladder flag, the single-deck produce -- which is P10's, and "
+    "which also still writes no task.json.  Same owner, same gap, and the old "
+    "reason would have expired silently the moment P5 closed."))
 def test_the_cli_produce_path_refuses_a_second_time(tmp_path):
     from click.testing import CliRunner
 

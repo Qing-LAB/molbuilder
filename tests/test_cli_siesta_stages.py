@@ -634,3 +634,65 @@ def test_varies_records_every_promoted_column_not_just_one_stages(xyz, tmp_path)
     # ...and each stage keeps only its own cells (overrides ⊆ varies)
     assert dict(task.stages[0].overrides) == {"mesh_cutoff": 150}
     assert dict(task.stages[1].overrides) == {"relax_force_tol": 0.01}
+
+
+# --------------------------------------------------------------------- #
+#  the produce is transactional (engines/stages.md § 7.2)               #
+# --------------------------------------------------------------------- #
+
+
+def test_a_produce_that_fails_partway_leaves_nothing_behind(xyz, tmp_path,
+                                                            monkeypatch):
+    """§ 7.2: *"every deck, every wrapper and the description are built
+    somewhere else and moved into place only when all of them succeeded. On
+    failure nothing is moved."*
+
+    The failure is injected at the LAST step, so the decks and the runner have
+    already been written — that is the case a non-transactional produce gets
+    wrong, and the one that leaves *"a half-written folder"* § 7.2 calls worse
+    than none.
+    """
+    import molbuilder.task as _task_mod
+
+    def _boom(path, task):
+        raise OSError("disk full")
+    monkeypatch.setattr(_task_mod, "write_task", _boom)
+
+    out = tmp_path / "out"
+    out.mkdir()
+    # catch_exceptions=True, unlike `_invoke`: an OSError mid-produce is not a
+    # UsageError, and letting it escape the runner would end the test before it
+    # could look at the directory -- which is the whole assertion.
+    r = CliRunner().invoke(cli, ["fdf", str(xyz), str(out / "ch4.fdf"),
+                                 "--stage-strategy", "publishable"],
+                           catch_exceptions=True)
+    assert r.exit_code != 0
+    assert isinstance(r.exception, OSError)                 # ...and it propagated
+
+    assert sorted(p.name for p in out.iterdir()) == []      # nothing published
+    # ...and the staging directory did not leak
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".")] == []
+
+
+def test_producing_twice_keeps_the_warm_files_that_were_already_there(xyz,
+                                                                      tmp_path):
+    """§ 7.2 is explicit about the one thing the transaction must NOT do:
+    *"it must not remove warm files that were already there; producing twice is
+    run-identity.md § 6, and those files are the point."*
+
+    So the publish moves file by file into the target — a directory swap would
+    take the previous run's geometry with it.
+    """
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "ch4.XV").write_text("GEOMETRY FROM THE LAST RUN")
+
+    for _ in range(2):
+        r = _invoke("fdf", str(xyz), str(out / "ch4.fdf"),
+                    "--stage-strategy", "publishable")
+        assert r.exit_code == 0, r.output
+
+    assert (out / "ch4.XV").read_text() == "GEOMETRY FROM THE LAST RUN"
+    assert (out / "ch4_01_coarse.fdf").is_file()
+    assert (out / "task.json").is_file()
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".")] == []

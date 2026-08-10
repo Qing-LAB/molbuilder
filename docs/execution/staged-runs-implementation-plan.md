@@ -1097,13 +1097,30 @@ bootstrap, not a program**).
    > invariant. The filename comes from `task.FILENAME` now. Same class as the
    > two column counts: a literal that must agree with another place.
    >
-   > **Still owed here:** the transaction itself. The produce writes decks,
-   > wrappers, logs and now the description **directly into `out_dir`**, so a
-   > failure part-way leaves exactly the half-written folder § 7.2 calls *"worse
-   > than none"*. And § 7.2's second half — *a replacing produce checkpoints
-   > first, then removes what the description no longer contains* — is
-   > untouched; today a disabled stage's deck stays behind, describing a
-   > calculation the description no longer has.
+   > **The transaction landed the same day (4b).** Every deck, wrapper, log,
+   > pseudopotential, `job-set.json` and the description are written into a
+   > staging directory **beside** the target, and published only when all of
+   > them succeeded. On failure the staging tree is removed and the target is
+   > exactly as it was.
+   >
+   > **Published file by file, deliberately, and this is the whole subtlety.**
+   > Swapping the directory would be simpler and is *wrong*: § 7.2 forbids the
+   > one thing a swap does — *"it must **not** remove warm files that were
+   > already there; producing twice is `run-identity.md § 6`, and those files
+   > are the point."* A produce into a folder holding a previous run's `.XV`
+   > must leave that `.XV` alone. The mutation that swaps the directory is in
+   > the suite and is RED.
+   >
+   > Staged beside the target rather than in `/tmp` so the publish is a
+   > same-filesystem `os.replace` — the discipline `job-contracts.md § 5.4`
+   > already uses for a single file, applied to a directory.
+   >
+   > **Still owed:** § 7.2's *second* half — *a replacing produce checkpoints
+   > first, then removes what the description no longer contains*. Today a
+   > disabled stage's deck stays behind, describing a calculation the
+   > description does not have. That needs `molbuilder snapshot` in the produce
+   > path and is a bigger question than the transaction (§ 7.2 itself notes the
+   > binary half of checkpointing *"is not cheap, today"*).
    >
    > **And the single-deck produce writes none.** `molbuilder fdf` without a
    > ladder flag emits one `.fdf` and no `task.json`, but § 6.5 is explicit

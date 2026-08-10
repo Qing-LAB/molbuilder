@@ -824,6 +824,8 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     import dataclasses as _dc
     import json as _json
     import os as _os
+    import shutil as _shutil
+    import tempfile as _tempfile
     from pathlib import Path as _Path
 
     from .siesta.input import _struct_from_file
@@ -941,151 +943,180 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     bundle = build_siesta_stage_bundle(struct, cfg, stages, cell=cell,
                                        shape=shape)
 
-    written: list = []
-    for name, body in bundle.fdf_files.items():
-        p = out_dir / name
-        p.write_text(body)
-        written.append(p)
-    # The runner is the FLAT shape's own artifact and is absent from a
-    # hierarchical bundle -- writing one there is what made a produced folder
-    # impossible to tell apart by looking at it (M5).
-    if bundle.runner_text is not None:
-        runner_path = out_dir / bundle.runner_name
-        runner_path.write_text(bundle.runner_text)
-        _os.chmod(runner_path, 0o755)
-        written.append(runner_path)
-
-    # Optional psml copy, mirroring convert()'s behaviour.
-    if cfg.psml_lib and cfg.copy_psml:
-        from .siesta.input import copy_pseudopotentials, _detect_species
-        from pathlib import Path as _P
-        species = (list(cfg.species_order) if cfg.species_order
-                   else _detect_species(struct.elements))
-        lib = _P(cfg.psml_lib).expanduser()
-        if lib.is_dir():
-            copy_pseudopotentials(species, lib, out_dir)
-
-    # HIERARCHICAL: persist the ladder as a JobSet so `molbuilder jobset
-    # prep/submit` can run this bundle (job-system.md § 5).  The Job
-    # scripts are exactly the <label>_<NN>_<name>.fdf rendered above;
-    # ``shared`` is the pseudopotentials present in the bundle root
-    # (symlinked into each stage dir at prep).  This is the host-side
-    # producer the framework was missing -- it reuses stages_to_jobset +
-    # JobSet.write, no new logic.
-    if shape == "hierarchical":
-        from .siesta.stages import stages_to_jobset
-        from .jobset.model import Resources
-        pseudos = sorted(p.name for ext in ("*.psml", "*.psf", "*.vps")
-                         for p in out_dir.glob(ext))
-        # --stage-resources: per-stage scheduler overrides (§ 6).  Validate
-        # the stage names against the actual ladder so a typo is a loud error,
-        # not a silently-ignored override.
-        resources_for = None
-        if stage_resources is not None:
-            spec = _parse_json_or_path(stage_resources, "--stage-resources")
-            if not isinstance(spec, dict):
-                raise click.BadParameter(
-                    "--stage-resources must be a JSON object "
-                    "{stage_name: {resource fields}}",
-                    param_hint="--stage-resources")
-            valid = {s.name for s in stages if s.enabled}
-            unknown = [k for k in spec if k not in valid]
-            if unknown:
-                raise click.BadParameter(
-                    f"--stage-resources: unknown stage name(s) {unknown}; "
-                    f"enabled stages are {sorted(valid)}",
-                    param_hint="--stage-resources")
-            # Validate each stage's body is an object with KNOWN resource
-            # fields -- a typo'd field would otherwise be silently dropped by
-            # Resources.from_dict (loud errors, not silent no-ops).
-            import dataclasses as _dc
-            res_fields = {f.name for f in _dc.fields(Resources)}
-            for sname, body in spec.items():
-                if not isinstance(body, dict):
-                    raise click.BadParameter(
-                        f"--stage-resources['{sname}'] must be an object of "
-                        f"resource fields; got {type(body).__name__}",
-                        param_hint="--stage-resources")
-                bad = [k for k in body if k not in res_fields]
-                if bad:
-                    raise click.BadParameter(
-                        f"--stage-resources['{sname}']: unknown field(s) "
-                        f"{bad}; valid fields are {sorted(res_fields)}",
-                        param_hint="--stage-resources")
-            res_map = {k: Resources.from_dict(v) for k, v in spec.items()}
-            resources_for = res_map.get
-        try:
-            from .siesta.stages import DEFAULT_NONCONVERGENCE
-            js = stages_to_jobset(cfg, stages, shared=pseudos,
-                                  resources_for=resources_for,
-                                  on_nonconvergence=DEFAULT_NONCONVERGENCE)
-        except ValueError as e:
-            raise click.ClickException(f"--shape hierarchical: {e}")
-        written.append(js.write(out_dir / "job-set.json"))
-
-    # Per-stage molwatch preview log, one per enabled stage.  Each
-    # log carries the stage's own convergence targets so the watch-
-    # tab live plot draws the correct horizontal threshold for the
-    # currently-running stage (per #542 / C1.4).
-    if cfg.write_molwatch_log:
-        from .siesta.input import _stage_tokens
-        from .trajectory_log import write_initial_preview
-        from .trajectory_log.format import molwatch_log_basename
-        for stage, token in _stage_tokens(stages):
-            # The preview's threshold line must be the one the stage's OWN
-            # deck carries, so it comes from the resolved config -- not from
-            # the stage, which only names the cells that differ.  A stage
-            # that does not override the tolerance shows the template's,
-            # which is exactly what its .fdf will say.
-            eff = effective_config(cfg, stage)
-            # Through ``molwatch_log_basename``, and with the same token the
-            # deck carries.  This line built ``f"{basename}-{stage.name}"`` by
-            # hand until 2026-08-10 -- a THIRD spelling of the naming rule,
-            # invisible to the log module's own tests because it never called
-            # it, and the reason a stage's deck and its log did not match.
-            mw_path = out_dir / molwatch_log_basename(basename, token)
-            write_initial_preview(
-                struct, mw_path,
-                job=basename,
-                engine="siesta",
-                stage_name=token,
-                convergence_targets={
-                    "max_force_ev_per_ang": eff.relax_force_tol,
-                    "max_steps":            eff.relax_steps,
-                },
-            )
-            written.append(mw_path)
-
-    # THE DESCRIPTION (P5 unit 4).  `task.json` is what makes the folder
-    # self-describing: which engine, which LAYOUT, what it is a calculation of,
-    # and the ladder.  Without it the shape lives only in the command someone
-    # typed, and `prep` -- which decision 29 makes the one place the shape
-    # branches -- has nothing to read (engines/stages.md § 6.7: "A field is
-    # what makes every prep agree, and it is the only place that can").
+    # --- the produce is TRANSACTIONAL (engines/stages.md § 7.2) ----------
+    # "every deck, every wrapper and the description are built somewhere else
+    # and moved into place only when all of them succeeded.  On failure nothing
+    # is moved."  A half-written folder is worse than none: every rule about
+    # what a folder contains stops being true of it, and it may already hold
+    # warm files from a previous calculation.
     #
-    # `varies` is DERIVED here, not asked for again: the ladder already said
-    # what it tunes by listing each stage's overrides, and `task.varies_for` is
-    # the one rule both ladder surfaces use (§ 6.2).
-    from .task import (FILENAME as _TASK_FILE, Stage as _Stage,
-                       StructureRef, Task, derive_run, varies_for,
-                       write_task)
-    _stages = tuple(_Stage(name=s.name, enabled=bool(s.enabled),
-                           overrides=dict(s.overrides)) for s in stages)
-    _task = Task(
-        engine="siesta",
-        shape=shape,
-        run=derive_run(cfg.system_label, struct.formula,
-                       stage_names=tuple(s.name for s in _stages)),
-        structure=StructureRef(source=str(input_path),
-                               formula=struct.formula,
-                               atoms=struct.n_atoms),
-        varies=varies_for(s.overrides for s in _stages),
-        stages=_stages,
-    )
-    # The filename comes from the codec, never a literal here: exactly one
-    # module owns it, and `test_only_one_module_reads_or_writes_task_json`
-    # enforces that -- it caught this line spelling it out (2026-08-10).
-    written.append(write_task(out_dir / _TASK_FILE, _task))
+    # Staged BESIDE the target so the publish is a same-filesystem os.replace,
+    # the discipline job-contracts.md § 5.4 already uses for a single file,
+    # applied to a directory.  Published file BY FILE rather than by swapping
+    # the directory, because § 7.2 forbids the one thing a directory swap would
+    # do: "it must NOT remove warm files that were already there" -- producing
+    # twice is ordinary (run-identity.md § 6) and those files are the point.
+    staging = _Path(_tempfile.mkdtemp(prefix=f".{out_dir.name}.produce-",
+                                      dir=out_dir.parent))
+    try:
+        _staged: list = []
+        for name, body in bundle.fdf_files.items():
+            p = staging / name
+            p.write_text(body)
+            _staged.append(p)
+        # The runner is the FLAT shape's own artifact and is absent from a
+        # hierarchical bundle -- writing one there is what made a produced folder
+        # impossible to tell apart by looking at it (M5).
+        if bundle.runner_text is not None:
+            runner_path = staging / bundle.runner_name
+            runner_path.write_text(bundle.runner_text)
+            _os.chmod(runner_path, 0o755)
+            _staged.append(runner_path)
+
+        # Optional psml copy, mirroring convert()'s behaviour.
+        if cfg.psml_lib and cfg.copy_psml:
+            from .siesta.input import copy_pseudopotentials, _detect_species
+            from pathlib import Path as _P
+            species = (list(cfg.species_order) if cfg.species_order
+                       else _detect_species(struct.elements))
+            lib = _P(cfg.psml_lib).expanduser()
+            if lib.is_dir():
+                copy_pseudopotentials(species, lib, staging)
+
+        # HIERARCHICAL: persist the ladder as a JobSet so `molbuilder jobset
+        # prep/submit` can run this bundle (job-system.md § 5).  The Job
+        # scripts are exactly the <label>_<NN>_<name>.fdf rendered above;
+        # ``shared`` is the pseudopotentials present in the bundle root
+        # (symlinked into each stage dir at prep).  This is the host-side
+        # producer the framework was missing -- it reuses stages_to_jobset +
+        # JobSet.write, no new logic.
+        if shape == "hierarchical":
+            from .siesta.stages import stages_to_jobset
+            from .jobset.model import Resources
+            pseudos = sorted(p.name for ext in ("*.psml", "*.psf", "*.vps")
+                             for p in staging.glob(ext))
+            # --stage-resources: per-stage scheduler overrides (§ 6).  Validate
+            # the stage names against the actual ladder so a typo is a loud error,
+            # not a silently-ignored override.
+            resources_for = None
+            if stage_resources is not None:
+                spec = _parse_json_or_path(stage_resources, "--stage-resources")
+                if not isinstance(spec, dict):
+                    raise click.BadParameter(
+                        "--stage-resources must be a JSON object "
+                        "{stage_name: {resource fields}}",
+                        param_hint="--stage-resources")
+                valid = {s.name for s in stages if s.enabled}
+                unknown = [k for k in spec if k not in valid]
+                if unknown:
+                    raise click.BadParameter(
+                        f"--stage-resources: unknown stage name(s) {unknown}; "
+                        f"enabled stages are {sorted(valid)}",
+                        param_hint="--stage-resources")
+                # Validate each stage's body is an object with KNOWN resource
+                # fields -- a typo'd field would otherwise be silently dropped by
+                # Resources.from_dict (loud errors, not silent no-ops).
+                import dataclasses as _dc
+                res_fields = {f.name for f in _dc.fields(Resources)}
+                for sname, body in spec.items():
+                    if not isinstance(body, dict):
+                        raise click.BadParameter(
+                            f"--stage-resources['{sname}'] must be an object of "
+                            f"resource fields; got {type(body).__name__}",
+                            param_hint="--stage-resources")
+                    bad = [k for k in body if k not in res_fields]
+                    if bad:
+                        raise click.BadParameter(
+                            f"--stage-resources['{sname}']: unknown field(s) "
+                            f"{bad}; valid fields are {sorted(res_fields)}",
+                            param_hint="--stage-resources")
+                res_map = {k: Resources.from_dict(v) for k, v in spec.items()}
+                resources_for = res_map.get
+            try:
+                from .siesta.stages import DEFAULT_NONCONVERGENCE
+                js = stages_to_jobset(cfg, stages, shared=pseudos,
+                                      resources_for=resources_for,
+                                      on_nonconvergence=DEFAULT_NONCONVERGENCE)
+            except ValueError as e:
+                raise click.ClickException(f"--shape hierarchical: {e}")
+            _staged.append(js.write(staging / "job-set.json"))
+
+        # Per-stage molwatch preview log, one per enabled stage.  Each
+        # log carries the stage's own convergence targets so the watch-
+        # tab live plot draws the correct horizontal threshold for the
+        # currently-running stage (per #542 / C1.4).
+        if cfg.write_molwatch_log:
+            from .siesta.input import _stage_tokens
+            from .trajectory_log import write_initial_preview
+            from .trajectory_log.format import molwatch_log_basename
+            for stage, token in _stage_tokens(stages):
+                # The preview's threshold line must be the one the stage's OWN
+                # deck carries, so it comes from the resolved config -- not from
+                # the stage, which only names the cells that differ.  A stage
+                # that does not override the tolerance shows the template's,
+                # which is exactly what its .fdf will say.
+                eff = effective_config(cfg, stage)
+                # Through ``molwatch_log_basename``, and with the same token the
+                # deck carries.  This line built ``f"{basename}-{stage.name}"`` by
+                # hand until 2026-08-10 -- a THIRD spelling of the naming rule,
+                # invisible to the log module's own tests because it never called
+                # it, and the reason a stage's deck and its log did not match.
+                mw_path = staging / molwatch_log_basename(basename, token)
+                write_initial_preview(
+                    struct, mw_path,
+                    job=basename,
+                    engine="siesta",
+                    stage_name=token,
+                    convergence_targets={
+                        "max_force_ev_per_ang": eff.relax_force_tol,
+                        "max_steps":            eff.relax_steps,
+                    },
+                )
+                _staged.append(mw_path)
+
+        # THE DESCRIPTION (P5 unit 4).  `task.json` is what makes the folder
+        # self-describing: which engine, which LAYOUT, what it is a calculation of,
+        # and the ladder.  Without it the shape lives only in the command someone
+        # typed, and `prep` -- which decision 29 makes the one place the shape
+        # branches -- has nothing to read (engines/stages.md § 6.7: "A field is
+        # what makes every prep agree, and it is the only place that can").
+        #
+        # `varies` is DERIVED here, not asked for again: the ladder already said
+        # what it tunes by listing each stage's overrides, and `task.varies_for` is
+        # the one rule both ladder surfaces use (§ 6.2).
+        from .task import (FILENAME as _TASK_FILE, Stage as _Stage,
+                           StructureRef, Task, derive_run, varies_for,
+                           write_task)
+        _stages = tuple(_Stage(name=s.name, enabled=bool(s.enabled),
+                               overrides=dict(s.overrides)) for s in stages)
+        _task = Task(
+            engine="siesta",
+            shape=shape,
+            run=derive_run(cfg.system_label, struct.formula,
+                           stage_names=tuple(s.name for s in _stages)),
+            structure=StructureRef(source=str(input_path),
+                                   formula=struct.formula,
+                                   atoms=struct.n_atoms),
+            varies=varies_for(s.overrides for s in _stages),
+            stages=_stages,
+        )
+        # The filename comes from the codec, never a literal here: exactly one
+        # module owns it, and `test_only_one_module_reads_or_writes_task_json`
+        # enforces that -- it caught this line spelling it out (2026-08-10).
+        _staged.append(write_task(staging / _TASK_FILE, _task))
+    except BaseException:
+        # Nothing is published, so the target is exactly as it was.
+        _shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+    # Every artifact succeeded -- publish.
+    written = []
+    for _src in sorted(staging.iterdir()):
+        _dst = out_dir / _src.name
+        _os.replace(_src, _dst)
+        written.append(_dst)
+    staging.rmdir()
+
 
     # Say the SHAPE out loud, and say how to run THIS shape.  A summary that
     # always claimed "+ 1 runner" and always told you to `./run.sh` was the
