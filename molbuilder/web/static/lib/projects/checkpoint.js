@@ -82,6 +82,17 @@ function _attach() {
 
     if (!elPanel) return false;   // template not loaded; skip wiring
 
+    // BIND ONCE.  `initCheckpointPanel` documents itself as safe to call from
+    // several bootstrap paths, and this function is what that promise rests
+    // on -- but every listener below was added unconditionally, so a second
+    // call would double-bind them and one click on Save would POST twice.
+    // Only one caller exists today; the docstring invites a second, which is
+    // exactly how a latent trap gets sprung by an unrelated change.
+    if (elPanel.dataset && elPanel.dataset.psCheckpointWired === "1") {
+        return true;
+    }
+    if (elPanel.dataset) elPanel.dataset.psCheckpointWired = "1";
+
     // Restore view-mode preference from sessionStorage.
     try {
         const saved = sessionStorage.getItem("ws.ui.checkpoint.view");

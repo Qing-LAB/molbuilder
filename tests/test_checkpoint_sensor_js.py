@@ -17,11 +17,23 @@ guarantees, all server-side except the last (a cheap source guard):
      that the JS sensor renders as a 🔴 error pill -- NOT an unhandled
      crash or empty body.
   3. ``checkpoint.js`` contains no ``setInterval`` -- there is no
-     background poll loop to reintroduce.  The full JS refresh
-     behaviour (fires on directory-enter, fires on manual Refresh,
-     gated to rel-depth-3 run dirs) is browser-scope and belongs to
-     the Playwright graph/sensor E2E; this is the cheap structural
-     guard that the polling timer does not come back.
+     background poll loop to reintroduce.
+  4. **The panel, RUN.**  The last section imports the module into
+     Node against a stub DOM and a stub ``fetch``, drives it, and
+     asserts on the requests it made and the DOM it wrote.
+
+That fourth part replaces a claim this file used to make: that the
+refresh behaviour "is browser-scope and belongs to the Playwright
+E2E".  It does not, entirely -- which requests fire on
+directory-enter, whether re-entering the same directory re-reads it,
+and whether a refusal the user can answer actually gets a question,
+are all decidable in Node in milliseconds.  Deferring them to an E2E
+meant deferring them indefinitely, and § 13.3 is explicit: *run the
+thing and look at what moved*, because a grep passes for a panel that
+contains the right words in the wrong order or throws on first click.
+
+What genuinely does need a browser -- layout, the lazy @gitgraph
+render, focus and keyboard behaviour -- is still not covered here.
 
 Real Flask test client + real filesystem + real git, mirroring the
 no-mocks discipline of test_checkpoint_routes.py.
@@ -316,3 +328,256 @@ def test_the_panel_says_so_when_the_generated_ignore_block_was_edited():
     assert "outside the molbuilder" in lowered, (
         "and where to put entries that should survive -- a note with no way "
         "to get what you wanted is just a scolding")
+
+
+# ================================================================== #
+#  The panel RUN, not grepped                                        #
+#                                                                    #
+#  § 13.3 rules out "asserting on emitted text where the end result  #
+#  is what matters -- run the thing and look at what moved."  Every  #
+#  test above this line reads checkpoint.js as a STRING: they would  #
+#  pass for a panel that contains the right words in the wrong       #
+#  order, or that throws on the first click.  These import the       #
+#  module into Node against a stub DOM and a stub fetch, drive it,   #
+#  and assert on the requests it made and the DOM it wrote.          #
+# ================================================================== #
+
+from _node_esm import run_node                              # noqa: E402
+
+#: A DOM small enough to read and real enough to drive the panel.  Only the
+#: handful of methods checkpoint.js actually touches; anything it reaches for
+#: that is missing shows up as a Node error rather than a silent pass.
+_DOM = r"""
+const _els = {};
+function _mk(id) {
+  const el = {
+    id, textContent: "", innerHTML: "", hidden: false, title: "", type: "",
+    className: "", dataset: {}, children: [], _events: {},
+    addEventListener(ev, fn) { (this._events[ev] ||= []).push(fn); },
+    setAttribute(k, v) { this.dataset["attr_" + k] = String(v); },
+    getAttribute(k) { return this.dataset["attr_" + k]; },
+    appendChild(c) { this.children.push(c); return c; },
+    classList: { toggle() {}, add() {}, remove() {} },
+    closest() { return null; },
+    click() { for (const fn of (this._events.click || [])) fn({}); },
+  };
+  return el;
+}
+globalThis.document = {
+  getElementById: (id) => (_els[id] ||= _mk(id)),
+  createElement: (t) => _mk("new:" + t),
+  createElementNS: (ns, t) => _mk("ns:" + t),
+  documentElement: _mk("html"),
+  head: _mk("head"),
+};
+globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
+globalThis.sessionStorage = {
+  _d: {}, getItem(k) { return this._d[k] ?? null; },
+  setItem(k, v) { this._d[k] = String(v); }, removeItem(k) { delete this._d[k]; },
+};
+globalThis.__els = _els;
+
+// Every request the panel makes, in order, with its body.
+globalThis.__calls = [];
+globalThis.__replies = [];      // [{match, http, body}] -- first match wins
+globalThis.fetch = async (url, opts = {}) => {
+  const body = opts.body ? JSON.parse(opts.body) : null;
+  __calls.push({ url, method: opts.method || "GET", body });
+  const hit = __replies.find(r => url.includes(r.match)) || {};
+  return { status: hit.http ?? 200, json: async () => hit.body ?? { ok: true } };
+};
+globalThis.__prompts = [];      // answers handed to prompt(), in order
+globalThis.__asked   = [];      // the questions it asked
+globalThis.prompt = (q) => { __asked.push(q); return __prompts.shift() ?? null; };
+globalThis.confirm = () => true;
+globalThis.molbuilder = {
+  projects: { getProjectsRoot: () => "/p", onChange() {}, getCurrentDir: () => null },
+};
+"""
+
+_PANEL = (Path(__file__).resolve().parent.parent / "molbuilder" / "web"
+          / "static" / "lib" / "projects" / "checkpoint.js")
+
+_RUN_DIR = "/p/BDT-Au/optimization/relax"      # rel-depth 3: the gate opens
+
+
+def test_entering_a_run_dir_reads_the_state_then_the_list():
+    """The panel's whole job on directory-enter, executed.
+
+    Two requests in a fixed order and no more: the cheap state read that draws
+    the pill, then the list -- and the list ONLY when the folder is set up.
+    A third request here would be the background polling the refresh model
+    forbids; the grep above can only tell you `setInterval` is absent, not that
+    nothing else fires.
+    """
+    out = run_node([_PANEL], r"""
+      __replies = [
+        {match: "/state", body: {ok: true, initialized: true, clean: true,
+                                 unsaved: [], changed: [], added: [], deleted: [],
+                                 standing_at: {id: "abc1234", short: "abc1234",
+                                               note: "set up", parent: null,
+                                               tags: []}}},
+        {match: "/list",  body: {ok: true, states: [
+            {id: "abc1234", short: "abc1234", note: "set up",
+             parent: null, tags: []}]}},
+      ];
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 30));
+      console.log(JSON.stringify({
+        calls: __calls.map(c => c.method + " " + c.url.split("?")[0]),
+        pill:  __els["ps-checkpoint-sensor"].textContent,
+        rows:  __els["ps-checkpoint-list"].children.length,
+      }));
+    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["calls"] == ["GET /api/checkpoint/state",
+                            "GET /api/checkpoint/list"], out["calls"]
+    assert out["pill"] == "saved"
+    assert out["rows"] == 1
+
+
+def test_a_shallower_directory_never_reaches_the_network():
+    """The activation gate, executed rather than described.
+
+    A project or category directory is not a run dir, so the panel hides and
+    asks nothing.  Asserting the REQUEST COUNT is what makes this real: the
+    gate could be drawn correctly and still fetch.
+    """
+    out = run_node([_PANEL], r"""
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      for (const d of ["/p", "/p/BDT-Au", "/p/BDT-Au/optimization", null]) {
+        await m.onDirectoryChange(d);
+      }
+      await new Promise(r => setTimeout(r, 20));
+      console.log(JSON.stringify({calls: __calls.length,
+                                  hidden: __els["ps-checkpoint"].hidden}));
+    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["calls"] == 0, "the panel fetched for a directory it does not serve"
+    assert out["hidden"] is True
+
+
+def test_re_entering_the_same_directory_does_not_re_fetch():
+    """The no-op guard, executed.
+
+    `projects.onChange` fires on every single-click FILE selection too -- the
+    cursor moves inside the same directory -- so without this guard the panel
+    re-reads the folder on every click in the file list.
+    """
+    out = run_node([_PANEL], r"""
+      __replies = [{match: "/state", body: {ok: true, initialized: false}}];
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      for (let i = 0; i < 4; i++) {
+        await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      }
+      await new Promise(r => setTimeout(r, 20));
+      console.log(JSON.stringify({calls: __calls.length}));
+    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["calls"] == 1, (
+        "entering the same directory four times cost four reads")
+
+
+def test_setup_asks_for_a_name_only_when_a_name_is_what_is_missing():
+    """The refusal→prompt→retry path, executed end to end.
+
+    The grep above proves the branch is *written*.  This proves it *works*:
+    the first POST carries no name, the server refuses with
+    `where: "calculation"`, the panel asks, and the SECOND POST carries what
+    the person typed.  Nothing above this line would notice if the retry sent
+    the name under the wrong key, or never sent it at all.
+    """
+    out = run_node([_PANEL], r"""
+      let seen = 0;
+      globalThis.fetch = async (url, opts = {}) => {
+        const body = opts.body ? JSON.parse(opts.body) : null;
+        __calls.push({url, method: opts.method || "GET", body});
+        if (url.includes("/init")) {
+          seen++;
+          if (seen === 1) return {status: 200, json: async () => ({
+            ok: false, error: "bad name",
+            errors_only: [{severity: "error", message: "bad name",
+                           where: "calculation"}]})};
+          return {status: 200, json: async () => ({ok: true, already: true,
+                                                   calculation: "BDT_Au_relax"})};
+        }
+        return {status: 200, json: async () => ({ok: true, initialized: false})};
+      };
+      __prompts = ["BDT_Au_relax"];
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 20));
+      __els["ps-checkpoint-init"].click();
+      await new Promise(r => setTimeout(r, 40));
+      const inits = __calls.filter(c => c.url.includes("/init"));
+      console.log(JSON.stringify({
+        n: inits.length,
+        first_had_name: inits[0] ? ("calculation" in inits[0].body) : null,
+        second_name: inits[1] ? inits[1].body.calculation : null,
+        asked: __asked.length,
+      }));
+    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["n"] == 2, "the panel did not retry after the refusal"
+    assert out["first_had_name"] is False, "the ordinary attempt sends no name"
+    assert out["second_name"] == "BDT_Au_relax", (
+        "the retry did not carry the name the person typed")
+    assert out["asked"] == 1, "exactly one question, and only because of `where`"
+
+
+def test_setup_does_not_ask_for_a_name_when_a_name_would_not_help():
+    """The other advisory on the same route, and the reason `where` exists.
+
+    A folder holding several independent calculations is refused too — and a
+    name does not fix that. Prompting for one would be asking a question whose
+    answer cannot help, which is how a surface teaches people that its
+    questions are noise.
+    """
+    out = run_node([_PANEL], r"""
+      globalThis.fetch = async (url, opts = {}) => {
+        const body = opts.body ? JSON.parse(opts.body) : null;
+        __calls.push({url, method: opts.method || "GET", body});
+        if (url.includes("/init")) return {status: 200, json: async () => ({
+          ok: false, error: "several calculations",
+          errors_only: [{severity: "error", message: "several calculations",
+                         where: "path"}]})};
+        return {status: 200, json: async () => ({ok: true, initialized: false})};
+      };
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 20));
+      __els["ps-checkpoint-init"].click();
+      await new Promise(r => setTimeout(r, 40));
+      console.log(JSON.stringify({
+        inits: __calls.filter(c => c.url.includes("/init")).length,
+        asked: __asked.length,
+        advisory: __els["ps-checkpoint-advisory"].textContent,
+      }));
+    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["asked"] == 0, "it asked for a name that cannot help"
+    assert out["inits"] == 1, "and it must not retry blindly"
+    assert "several calculations" in out["advisory"]
+
+
+def test_wiring_the_panel_twice_does_not_double_every_click():
+    """`initCheckpointPanel` says it is safe to call from several bootstrap
+    paths; before the guard, a second call double-bound every listener and one
+    click on Set-up posted twice.  One caller exists today — the docstring
+    invites the second."""
+    out = run_node([_PANEL], r"""
+      __replies = [{match: "/", body: {ok: true, initialized: false}}];
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      m.initCheckpointPanel();
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 20));
+      __calls.length = 0;
+      __els["ps-checkpoint-init"].click();
+      await new Promise(r => setTimeout(r, 40));
+      console.log(JSON.stringify({
+        inits: __calls.filter(c => c.url.includes("/init")).length}));
+    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["inits"] == 1, (
+        "one click produced more than one request; the panel was wired twice")
