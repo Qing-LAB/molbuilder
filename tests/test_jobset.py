@@ -598,7 +598,12 @@ def test_cli_prep_lays_out_dirs(tmp_path):
     _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["prep", str(tmp_path), "--no-sbatch"])
+    # Grammar: `jobset <verb> <kind> [<stage>]` (job-system.md § 5.3).  The
+    # bundle moved to --bundle because a session runs from inside the
+    # calculation folder; the KIND is a positional because `prep bench` and
+    # `prep run` are peers.
+    r = runner.invoke(grp, ["prep", "run", "--bundle", str(tmp_path),
+                            "--no-sbatch"])
     assert r.exit_code == 0, r.output
     assert "prepped 2 job dir(s)" in r.output
     assert (tmp_path / "point-G1K1C4" / "job-gpu.run.sh").is_symlink()
@@ -607,8 +612,10 @@ def test_cli_prep_lays_out_dirs(tmp_path):
 def test_cli_submit_dry_run_lists_commands(tmp_path):
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", str(tmp_path), "--mode", "submit",
-                            "--dry-run"])
+    # A SWEEP needs no stage: its points are independent, so the whole set is
+    # the ordinary thing.  Only a ladder requires a stage or --chain.
+    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path),
+                            "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
     assert "planned" in r.output and "sbatch" in r.output
     assert "-J" in r.output and "G1K1C4" in r.output
@@ -617,7 +624,7 @@ def test_cli_submit_dry_run_lists_commands(tmp_path):
 def test_cli_submit_requires_mode(tmp_path):
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", str(tmp_path)])
+    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path)])
     assert r.exit_code != 0                                # --mode required
 
 

@@ -40,7 +40,7 @@ import dataclasses
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .materialize import job_dir_names
 from .model import JobSet, Resources
@@ -156,9 +156,8 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
     chains."""
     results: List[JobResult] = []
     ids: Dict[str, str] = {}            # job.name -> slurm job id
-    dirs = job_dir_names(jobset)
     for job in jobset.jobs:
-        job_dir = base_dir / dirs[job.name]
+        job_dir, attempt = _launch_dir(jobset, base_dir, job)
         sbatch_name = _wrapper_name(job.script, ".sbatch")
         gpu = bool(job.resources.gres)
         pq = _resolve_domain(domain, gpu=gpu, project_dir=base_dir)
@@ -194,8 +193,38 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                 f"{cp.stderr.strip()}")
         jid = _parse_sbatch_id(cp.stdout)
         ids[job.name] = jid
+        if attempt is not None:
+            _record_launch(attempt, mode="submit", command=cmd, job_id=jid)
         results.append(JobResult(job.name, cmd, "submitted", job_id=jid))
     return results
+
+
+def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Path]]:
+    """Where this job runs, and the attempt to record the launch into.
+
+    Two layouts meet here.  A SWEEP has no attempt layer -- ``prep`` lays out
+    ``point-<name>/`` and the point runs there, as it always has.  A LADDER
+    stage prepped with ``jobset prep run <stage>`` has ``<seq>_<name>/run-<n>/``,
+    and that is where it runs, because an attempt is immutable once it has run
+    (``project-layout.md`` § 1.5) and a re-run must not land on top of one.
+
+    Refuses an attempt that has already been launched.  ``run.json`` is the only
+    honest answer to *has this started?* -- a queued job has produced nothing
+    yet, so absence of output proves nothing (§ 1.6).
+    """
+    from .materialize import attempts, job_dir_names, was_launched
+    d = base_dir / job_dir_names(jobset)[job.name]
+    ns = attempts(d)
+    if not ns:
+        return d, None
+    last = d / f"run-{ns[-1]}"
+    if was_launched(last):
+        raise SubmitError(
+            f"job {job.name!r}: {last.name} has already been launched "
+            f"({last / 'run.json'}).  An attempt is immutable once it has run; "
+            f"prepare a fresh one:\n"
+            f"    molbuilder jobset prep run {job.name} --from <attempt>")
+    return last, last
 
 
 def _run_direct(jobset: JobSet, base_dir: Path, *,
@@ -206,9 +235,8 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
     ``afterany`` edge runs regardless."""
     results: List[JobResult] = []
     failed: set = set()                 # job names that failed / were skipped
-    dirs = job_dir_names(jobset)
     for job in jobset.jobs:
-        job_dir = base_dir / dirs[job.name]
+        job_dir, attempt = _launch_dir(jobset, base_dir, job)
         run_name = _wrapper_name(job.script, ".run.sh")
         cmd = ["bash", run_name] + _run_sh_args(job.resources)
         if job.depends_on in failed and job.dep_kind == "afterok":
@@ -223,6 +251,10 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
                 f"job {job.name!r}: {run_name} not in {job_dir} "
                 "(run prep_jobset first).")
         cp = subprocess.run(cmd, cwd=str(job_dir))
+        if attempt is not None:
+            # AFTER the launch, so a failed start leaves the attempt exactly as
+            # prepare left it -- still safe to prepare again (§ 1.6).
+            _record_launch(attempt, mode="direct", command=cmd)
         if cp.returncode != 0:
             failed.add(job.name)
             results.append(JobResult(job.name, cmd, "failed",
@@ -232,13 +264,31 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
     return results
 
 
+def _record_launch(attempt: Path, *, mode: str, command: List[str],
+                   job_id: Optional[str] = None) -> None:
+    """Write ``run.json`` into the attempt, carrying its provenance.
+
+    ``continued_from`` is read back from what ``prep`` copied in rather than
+    passed down: prep is what knows, and re-deriving it here would be a second
+    answer to one question.
+    """
+    from .materialize import write_run_launch
+    src = None
+    marker = attempt / ".continued-from"
+    if marker.is_file():
+        src = marker.read_text(encoding="utf-8").strip() or None
+    write_run_launch(attempt, mode=mode, command=command, job_id=job_id,
+                     continued_from=src)
+
+
 # --------------------------------------------------------------------- #
 #  public entry point                                                   #
 # --------------------------------------------------------------------- #
 
 def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                   domain: Optional[str] = None,
-                  dry_run: bool = False) -> List[JobResult]:
+                  dry_run: bool = False,
+                  only: Optional[str] = None) -> List[JobResult]:
     """Launch a prepped ``jobset`` rooted at ``base_dir``.
 
     ``mode`` is ``"submit"`` (SLURM ``sbatch`` + per-job CLI flags +
@@ -246,6 +296,12 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
     ``domain`` is a ``scheduler.routing`` name resolved to ``-p/-q``
     (``submit`` mode only).  ``dry_run`` returns the planned command for each
     job without launching.
+
+    ``only`` names ONE job to launch.  For a ladder that is the normal case --
+    stages do not chain, so each is submitted after you have looked at the last
+    (``project-layout.md`` § 1.6); the CLI refuses to act on a whole ladder
+    without ``--chain``.  A job launched this way has no dependency to thread,
+    because the thing it depended on has already finished and you have read it.
 
     Returns one :class:`JobResult` per job (the inform layer reads these).
     Refuses an invalid JobSet (same gate as prep/materialize).
@@ -257,6 +313,21 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
     base = Path(base_dir).resolve()
     if not base.is_dir():
         raise SubmitError(f"base dir not found (prep first): {base}")
+
+    if only is not None:
+        names = [j.name for j in jobset.jobs]
+        if only not in names:
+            raise SubmitError(
+                f"no job named {only!r} in this job-set; it has: "
+                f"{', '.join(names)}")
+        # One job, on its own: `dataclasses.replace` would share the job
+        # objects, which is what we want -- the SAME Job, just alone, so its
+        # resources and script are untouched.  The dependency is dropped
+        # because there is nothing left to wait for.
+        import dataclasses as _dc
+        lone = _dc.replace(next(j for j in jobset.jobs if j.name == only),
+                           depends_on=None)
+        jobset = _dc.replace(jobset, jobs=[lone])
 
     if mode == "submit":
         return _submit_slurm(jobset, base, domain=domain, dry_run=dry_run)

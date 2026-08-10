@@ -369,6 +369,19 @@ prints it.
 It is written **after** the launch succeeds, so a failed submission leaves the
 attempt exactly as prepare left it — still safe to prepare again.
 
+> **How `continued_from` reaches it** *(added 2026-08-10 with the
+> implementation, because the contract asked for the field without saying who
+> carries it)*. **Prepare** is what knows which attempt the files were copied
+> from; **submit** is what writes `run.json`. `run.json` itself cannot be the
+> carrier — its *presence* is what marks an attempt as launched, so it must not
+> exist beforehand. So prepare leaves a one-line `.continued-from` in the
+> attempt and submit reads it back into the record.
+>
+> It is a private carrier between two steps of one act, not a second history:
+> the answer a reader is meant to consult is `run.json`'s field
+> (`checkpointing.md` **S3**). Small text either way, so it lands in git with
+> the rest of the container.
+
 #### Continuing from an earlier run is a copy, not a link
 
 Because stages are set up one at a time, **the run you continue from has already

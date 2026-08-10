@@ -124,11 +124,18 @@ stage 1; stage 2 starts automatically only if stage 1 converged, reusing stage
 > changes is that **`stages_to_jobset` stops emitting those edges between the
 > stages of one calculation.**
 >
-> Not done yet: this is item 12b in
-> [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md), and
+> **Partly landed, 2026-08-10.** What ships now: stage directories are
+> `<seq>_<name>` rather than `point-<name>`; `prep run <stage>` opens a
+> `run-<n>` attempt and **copies** in what you name with `--from`; `submit run
+> <stage>` launches one stage inside that attempt and writes `run.json`. What
+> has NOT landed: **`stages_to_jobset` still emits `depends_on` and `Carry`
+> between the stages of one calculation** — so the JobSet on disk still
+> describes a chain even though nothing follows it any more. That last edit is
+> item 12b in
+> [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md);
 > the contract is
-> [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.
-> Until it lands, what this document describes is what the code does.
+> [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6, and
+> the commands are § 5.3 below.
 
 ---
 
@@ -358,6 +365,32 @@ bdt_au-bundle/                       ← the bundle root: the real files live he
     ├── bdt_au.XV           → ../point-coarse/bdt_au.XV   ← the carry
     └── bdt_au.DM           → ../point-coarse/bdt_au.DM   ← the carry
 ```
+
+> ⚠ **The tree above is a SWEEP's, and the paragraphs after it describe the
+> ladder as it was before stages stopped chaining.** Keep reading them for the
+> benchmark, where the points are independent and the whole set is submitted at
+> once. **A stage ladder looks different today** — § 5.3 and
+> [`project-layout.md`](?doc=execution/project-layout.md) § 1.6 are the current
+> answer:
+>
+> ```text
+> 01_coarse/                        ← <seq>_<name>, not point-<name>
+> │   bdt_au_01_coarse.fdf              the deck, and its wrapper
+> └── run-0/                        ← one directory per ATTEMPT, immutable once run
+>     ├── bdt_au_01_coarse.fdf  →  ../bdt_au_01_coarse.fdf
+>     ├── run.json                      written by submit: how, when, and what
+>     │                                 this run continued from
+>     └── bdt_au.XV  bdt_au.DM  …       what the run produced
+>
+> 02_tight/
+> └── run-0/
+>     ├── bdt_au.XV                 ← a real COPY of 01_coarse/run-0/bdt_au.XV,
+>     └── bdt_au.DM                    made by `prep run tight --from …`
+> ```
+>
+> Nothing dangles, because nothing points at a file that does not exist yet.
+> The copy is made when you set the next stage up, from an attempt that has
+> already finished and that you have already looked at.
 
 **The two carry links point at files that do not exist yet, and that is
 deliberate.** `prep` runs before anything has been computed, so
