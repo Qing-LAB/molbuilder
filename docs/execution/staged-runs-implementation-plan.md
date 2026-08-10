@@ -2747,9 +2747,17 @@ wish.
   builds one with an f-string. *Test:* no `f"…_{stage}…"` or `f"point-…"`
   outside `identity.py` / `materialize.py`. (Violated four times before
   2026-08-10; that is what made the `-stage<N>` rename cost a full batch.)
-- **A2 — one shape per calculation.** A produce reads `task.shape` and emits
+- **A2 — one shape per calculation.** ~~A produce reads `task.shape` and emits
   exactly one layout's artifacts. *Test:* a flat produce writes no
-  `job-set.json`; a hierarchical one writes no bash ladder runner.
+  `job-set.json`; a hierarchical one writes no bash ladder runner.~~
+  **Restated 2026-08-10 by decision 29.** That test was written when the shape
+  branched at the *produce*; it branches at `prep`. A produce emits **one
+  package** — decks and a `job-set.json` — for either shape, and flat gets the
+  same JobSet precisely so `submit run --chain` is its runner. The invariant is
+  unchanged in substance: **one calculation, one layout, and nothing infers
+  which.** *Test:* the layout every consumer computes comes from
+  `Shape.named(task.shape)` — a `job_dir_names` handed the flat shape puts every
+  stage in the bundle root, and no module reaches the decision any other way.
 - **A3 — a deck and its launch travel together.** Anything a deck derived from a
   launch quantity is recorded **with that quantity**. *Test:* BENCH-MARKS'
   `mpi_np` equals what the wrapper resolves, or the mismatch is refused before
@@ -2849,7 +2857,7 @@ allowed to be "and while we are there".**
 | object | the phase that lands it | what that phase gains |
 |---|---|---|
 | **`StageRef`** | **P9** (the command surface), pulled early — it is specced in § 8f and fixes two live display bugs | `plan`/`status` print `seq`; the CLI takes a name or a number; no caller computes an ordinal |
-| **`Shape`** | **P5** — *"one shape in, one shape out"*, which is this object under its phase name | a flat produce writes no `job-set.json`, and vice versa; A2 becomes testable |
+| **`Shape`** | **P5** — landed 2026-08-10 as `jobset/shape.py` | it answers the two questions a layout answers — `stage_dir` (**where**) and `stage_glob` (**which files**) — so a caller is right in both shapes instead of asking "which directory" and being right in one. ~~a flat produce writes no `job-set.json`~~ **superseded by decision 29**: the shape branches at `prep`, so both shapes get a JobSet and flat runs on `submit --chain` |
 | **`LaunchSpec`** | **P6** unit 2 — *decided 2026-08-10; § 9.6a.* Not a missing object but a **conformance gap**: `project-layout.md § 2.3.1` already orders resolve-machine → resolve-parameters → render-deck and calls the order forced | a deck rendered for N ranks cannot be launched at M without a refusal |
 | **`Attempt`** | **P6** (`prep`: the five moves), whose first half landed 2026-08-10 | one loop in `submit.py`, one `Attempt` type, no dict keys |
 | **fold `bench` in** | **after P9**, and after all four objects exist | `molbuilder bench` is gone; `jobset <verb> bench <stage>` does it |

@@ -63,7 +63,7 @@ def job_dir_name(job_name: str) -> str:
     return f"point-{job_name}"
 
 
-def job_dir_names(jobset: JobSet) -> Dict[str, str]:
+def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     """``{job name: directory name}`` for a whole JobSet — the naming authority.
 
     Two kinds, two conventions, and `project-layout.md` § 4.1 is explicit about
@@ -97,9 +97,26 @@ def job_dir_names(jobset: JobSet) -> Dict[str, str]:
     named by it; a job without one has no token and falls back. Branching on
     ``jobset.kind`` a second time here is how the directory and the deck get to
     disagree about what a job is.
+
+    ``shape`` decides where a **ladder's** stages sit: hierarchical gives each
+    one a directory, flat is depth 1 and they all sit in the bundle root
+    (:class:`~molbuilder.jobset.shape.Shape`). It is **not consulted for a
+    sweep** — ``point-<name>`` is the benchmark's own convention and is the
+    same in either layout, which is why a bench bundle needs no description to
+    be laid out.
+
+    ``None`` means *hierarchical*, and that is a **transitional** default, not
+    an inference: no producer emits a flat ladder yet (P5 unit 1 revised is
+    what starts), so every ladder reaching here today is hierarchical. It goes
+    away with that unit, when the surfaces resolve the shape from `task.json`
+    and pass it down — § 6.7 is that the shape is never inferred, and a default
+    that outlives the transition would be exactly that.
     """
+    from .shape import Shape
+    sh = shape or Shape.named("hierarchical")
     refs = stage_refs(jobset)
-    return {j.name: (refs[j.name].token or job_dir_name(j.name))
+    return {j.name: (sh.stage_dir(refs[j.name].token)
+                     if refs[j.name].token else job_dir_name(j.name))
             for j in jobset.jobs}
 
 

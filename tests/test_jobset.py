@@ -1384,3 +1384,76 @@ def test_status_seq_is_none_for_a_sweep_point():
     js = JobSet(name="JOB", engine="siesta", kind="sweep",
                 jobs=[Job(name="p1", script="JOB.fdf")])
     assert jobset_status(js, ".").stages[0].seq is None
+
+
+# --------------------------------------------------------------------- #
+#  Shape — where a stage's files live (§ 9's object, P5)                 #
+# --------------------------------------------------------------------- #
+
+
+def test_shape_refuses_anything_that_is_not_one_of_the_two():
+    """`engines/stages.md` § 6.7: required, never inferred.  A constructor that
+    accepted a third word would let a typo become a layout."""
+    from molbuilder.jobset.shape import Shape
+    assert Shape.named("flat").name == "flat"
+    assert Shape.named("hierarchical").name == "hierarchical"
+    with pytest.raises(ValueError) as e:
+        Shape.named("nested")
+    assert "flat" in str(e.value) and "hierarchical" in str(e.value)
+
+
+def test_hierarchical_tells_stages_apart_by_PATH_and_flat_by_NAME():
+    """`project-layout.md` § 1, the one difference everything else follows
+    from.  Hierarchical gives each stage a directory, so anything inside it
+    belongs to it.  Flat is DEPTH 1 -- one directory holds every stage, and the
+    deck's token in each filename is what selects one.
+
+    A layer that only asks *which directory* is right in the hierarchy and
+    silently wrong in flat: it answers about every stage at once.
+    """
+    from molbuilder.jobset.shape import Shape
+    hier, flat = Shape.named("hierarchical"), Shape.named("flat")
+
+    assert hier.stage_dir("03_tight") == "03_tight"
+    assert hier.stage_glob("03_tight", "JOB") == "*"      # the dir already chose
+
+    assert flat.stage_dir("03_tight") == "."             # a joinable path, not None
+    assert flat.stage_glob("03_tight", "JOB") == "JOB_03_tight*"
+
+
+def test_only_the_hierarchy_keeps_attempts_as_directories():
+    """§ 1: flat separates attempts by an OUTPUT INDEX (`-run0.out`) the
+    wrapper writes, so there is no attempt directory to open and `--from` has
+    nothing to name -- *"continuing: free, the next stage finds them lying
+    there."*"""
+    from molbuilder.jobset.shape import Shape
+    assert Shape.named("hierarchical").keeps_attempts_as_directories is True
+    assert Shape.named("flat").keeps_attempts_as_directories is False
+
+
+def test_a_flat_ladder_lays_every_stage_out_in_the_bundle_root():
+    """Depth 1.  This is what makes a flat `job-set.json` safe to emit: without
+    it the bundle's own prep would build `01_coarse/`, `02_medium/` inside a
+    calculation whose description says flat."""
+    from molbuilder.jobset.materialize import job_dir_names
+    from molbuilder.jobset.shape import Shape
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+
+    assert job_dir_names(js, Shape.named("flat")) == {"coarse": ".",
+                                                      "tight": "."}
+    assert job_dir_names(js, Shape.named("hierarchical")) == {
+        "coarse": "01_coarse", "tight": "03_tight"}
+
+
+def test_a_sweep_is_laid_out_the_same_way_in_either_shape():
+    """`point-<name>` is the benchmark's own convention and says nothing about
+    flat or hierarchical -- which is why a bench bundle needs no description to
+    be laid out at all."""
+    from molbuilder.jobset.materialize import job_dir_names
+    from molbuilder.jobset.model import Job, JobSet
+    from molbuilder.jobset.shape import Shape
+    js = JobSet(name="JOB", engine="siesta", kind="sweep",
+                jobs=[Job(name="p1", script="JOB_p1.fdf")])
+    assert (job_dir_names(js, Shape.named("flat"))
+            == job_dir_names(js, Shape.named("hierarchical"))
+            == {"p1": "point-p1"})

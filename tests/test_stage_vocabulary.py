@@ -167,6 +167,17 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
     #  detector cannot see it and the reverse check would call the row stale.
     #  That is this module's stated blind spot, not an omission; the guard on
     #  it is question 2, which asks about behaviour rather than names.
+    #  `Shape.stage_dir` / `Shape.stage_glob` (molbuilder/jobset/shape.py, the
+    #  § 9 object, 2026-08-10) belong to this group and are NOT rows here.
+    #  They are METHODS, and the function detector is `^def` -- anchored at
+    #  column 0, because what it inventories is a declaration, and a method is
+    #  part of its class's.  `Shape` itself carries no "stage" in its name, so
+    #  nothing here sees it either.  Adding rows makes the REVERSE check fail
+    #  ("the ledger names a symbol the package no longer declares"), which is
+    #  the guard telling the truth: it cannot see them.  Same blind spot as
+    #  `identity.seq_text` above, and question 2 is what covers the pair --
+    #  they exist so a stage is found by NAME in flat and by PATH in the
+    #  hierarchy, which is a behaviour, not a vocabulary.
     "stage_refs": (
         None, "molbuilder/jobset/materialize.py",
         "the after-produce half: every job's ref, with seq READ BACK off "
