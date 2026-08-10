@@ -26,6 +26,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ..identity import StageRef, parse_stage_token, resolve_stage_ref
 from .model import JobSet
 
 #: One attempt at running a stage.  ``project-layout.md`` § 1.5: immutable once
@@ -75,7 +76,8 @@ def job_dir_names(jobset: JobSet) -> Dict[str, str]:
 
     Until 2026-08-10 every kind got ``point-<name>``, so a staged run's
     directories came out ``point-coarse/`` (`worked-example.md` gap 6). The
-    contract's fix is *"branch on ``JobSet.kind``"*, and this is that branch.
+    contract's fix is *"branch on ``JobSet.kind``"* — and that branch lives in
+    :func:`stage_refs`, once, rather than here as well.
 
     **The seq is read back off the deck, not counted here.** ``job.script`` is
     ``<label>_<NN>_<name>.fdf`` (decision 27), so the token the directory is
@@ -89,33 +91,52 @@ def job_dir_names(jobset: JobSet) -> Dict[str, str]:
     That is not a staged-producer JobSet — hand-written, or older than decision
     27 — and inventing a seq for it would be guessing at the one number that
     must never be guessed.
+
+    **The two conventions meet in one expression**, because :func:`stage_refs`
+    already answered which applies: a job with an ordinal has a token and is
+    named by it; a job without one has no token and falls back. Branching on
+    ``jobset.kind`` a second time here is how the directory and the deck get to
+    disagree about what a job is.
     """
-    if jobset.kind != "ladder":
-        return {j.name: job_dir_name(j.name) for j in jobset.jobs}
     refs = stage_refs(jobset)
-    return {j.name: (refs[j.name].token if j.name in refs
-                     else job_dir_name(j.name))
+    return {j.name: (refs[j.name].token or job_dir_name(j.name))
             for j in jobset.jobs}
 
 
-def stage_refs(jobset: JobSet) -> Dict[str, "object"]:
-    """``{job name: StageRef}`` for a ladder — **the ordinal, read back**.
+def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
+    """``{job name: StageRef}`` for **every** job — *which stage is this?*
 
-    This is the after-produce half of the resolver (§ 8f). ``seq`` is recovered
-    from each deck's own token, which is where `project-layout.md` § 4.1 says it
-    lives: *"read off the directory name and stored nowhere else"*. Nothing here
-    counts positions, so a disabled stage leaves a gap rather than renumbering.
+    This is the after-produce half of the resolver (§ 8f) and **the only place
+    the two kinds are told apart**. ``seq`` is recovered from each deck's own
+    token, which is where `project-layout.md` § 4.1 says it lives: *"read off
+    the directory name and stored nowhere else"*. Nothing here counts
+    positions, so a disabled stage leaves a gap rather than renumbering.
 
-    A job whose script carries no token is **absent from the mapping** rather
-    than given an invented ``seq`` — § 4.2's number is assigned once and never
-    guessed. Callers fall back to the sweep convention.
+    **Total on purpose.** Every job gets a ref; one with no assigned ordinal
+    gets ``seq=None`` rather than being left out of the mapping. Omission was
+    the shape until 2026-08-10, and it pushed the same question — *what if
+    there is no ordinal?* — out to four callers, who answered it four different
+    ways: ``point-<name>`` here, the row number in ``plan``, ``None`` in
+    ``runstatus``, and a whole second lookup-and-refusal branch in the CLI.
+    Two of those four printed a **position** where a reader reads an ordinal.
+    A total answer is what lets each caller read one and never test membership.
+
+    ``seq=None`` is still never a guess: a sweep point has no order at all, and
+    a ladder job whose deck carries no token has an ordinal nobody assigned
+    (§ 4.2's number is assigned once and never invented).
+
+    The ref carries the **job's** name, not the token's. They are the same
+    string for anything a producer built — ``siesta/stages.py`` names each job
+    for its stage — and where they could differ it is the job name that
+    dependency edges, ``--stage-resources`` keys and the CLI all point at, so
+    resolving to the other one would hand back a name this JobSet does not have.
     """
-    from ..identity import StageRef, parse_stage_token
-    out: Dict[str, object] = {}
+    ladder = jobset.kind == "ladder"
+    out: Dict[str, StageRef] = {}
     for j in jobset.jobs:
-        parsed = parse_stage_token(os.path.basename(j.script), jobset.name)
-        if parsed:
-            out[j.name] = StageRef(*parsed)
+        parsed = (parse_stage_token(os.path.basename(j.script), jobset.name)
+                  if ladder else None)
+        out[j.name] = StageRef(parsed[0] if parsed else None, j.name)
     return out
 
 
@@ -222,14 +243,20 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     this job's label. They are **copied, never linked** — the engine writes to
     those very filenames, and writing through a link would destroy the result
     you started from.
+
+    ``stage_name`` goes through the ONE resolver, so it takes a name, a number
+    or a token — the same three spellings every other surface takes, and the
+    same refusal when it matches none of them. It spelled its own lookup and
+    its own refusal until 2026-08-10, listing *"coarse, medium, tight"* with no
+    order at the one moment you are choosing which stage to run. That is the
+    gap decision 28 names, and a second listing format is how it comes back.
     """
     base = Path(base_dir)
     dir_of = job_dir_names(jobset)
-    job = next((j for j in jobset.jobs if j.name == stage_name), None)
-    if job is None:
-        known = ", ".join(j.name for j in jobset.jobs)
-        raise ValueError(
-            f"no stage named {stage_name!r} in this job-set; it has: {known}")
+    refs = stage_refs(jobset)
+    stage_name = resolve_stage_ref([refs[j.name] for j in jobset.jobs],
+                                   stage_name).name
+    job = next(j for j in jobset.jobs if j.name == stage_name)
 
     stage_dir = base / dir_of[stage_name]
     stage_dir.mkdir(parents=True, exist_ok=True)

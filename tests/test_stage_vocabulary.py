@@ -143,6 +143,40 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
     "_detect_stage_name": (
         None, "molbuilder/parse/dirs/job.py",
         "the observing side -- the half of the token a person reads"),
+    # -- decision 28's one RESOLVER (§ 8f, 2026-08-10) -----------------
+    #  Not an eleventh way to express a stage either: these are the one way
+    #  to REFER to one.  The token above says what a stage's files are
+    #  called; these say what a person types and what a screen prints, and
+    #  they exist because six places were answering that separately -- two
+    #  of them with the stage's ROW, which question 2 is about.
+    "StageRef": (
+        None, "molbuilder/identity.py",
+        "the pair every surface refers to a stage by -- the assigned "
+        "ordinal and the name.  `seq` is None where none is assigned (a "
+        "sweep point), never filled in from a position"),
+    "resolve_stage_ref": (
+        None, "molbuilder/identity.py",
+        "`tight` | `3` | `03` | `03_tight` -> one StageRef.  A NUMBER "
+        "MATCHES seq AND NEVER A ROW, which is R5's whole point"),
+    "render_stage_refs": (
+        None, "molbuilder/identity.py",
+        "the one listing format, so a refusal, a status table and a help "
+        "string cannot show three vocabularies for one set of jobs"),
+    #  `identity.seq_text` -- what a `seq` column prints -- belongs to this
+    #  group but is NOT a row here: it carries no "stage" in its name, so the
+    #  detector cannot see it and the reverse check would call the row stale.
+    #  That is this module's stated blind spot, not an omission; the guard on
+    #  it is question 2, which asks about behaviour rather than names.
+    "stage_refs": (
+        None, "molbuilder/jobset/materialize.py",
+        "the after-produce half: every job's ref, with seq READ BACK off "
+        "its own deck.  Total over the JobSet, and the only place the two "
+        "kinds are told apart"),
+    "_resolve_stage": (
+        None, "molbuilder/jobset/_cli.py",
+        "the CLI's single door onto the resolver -- which jobs a verb acts "
+        "on, and the ladder's refusal to act on all of them without "
+        "--chain (project-layout 1.6)"),
     "_stage_science": (
         None, "molbuilder/siesta/input.py",
         "the deck's one-line stage comment, DERIVED from the config being "

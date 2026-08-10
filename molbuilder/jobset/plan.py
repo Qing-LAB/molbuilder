@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import List
 
+from .materialize import stage_refs
 from .model import JobSet
 
 
@@ -46,17 +47,18 @@ def render_plan(jobset: JobSet) -> str:
     ]
     hdr = ("seq", "job", "input", "depends on", "carries", "resources")
     rows = []
-    # The column is the stage's SEQ, never its row.  It printed
-    # `enumerate()` until 2026-08-10 -- the stage's POSITION, which
-    # `engines/stages.md` R5 forbids as an identifier, in the column a
-    # reader takes for the ordinal.  Disable a stage and the two differ.
-    from .materialize import stage_refs
-    _refs = stage_refs(js) if js.kind == "ladder" else {}
-    for i, j in enumerate(js.jobs):
-        _seq = str(_refs[j.name].seq) if j.name in _refs else str(i)
+    # The column is the stage's SEQ, never its row.  It printed `enumerate()`
+    # until 2026-08-10 -- the stage's POSITION, which `engines/stages.md` R5
+    # forbids as an identifier, in the column a reader takes for the ordinal.
+    # Disable a stage and the two differ.  A job with no ordinal prints `-`
+    # rather than falling back to the row, which would be the same mistake
+    # wearing the new column's name.
+    refs = stage_refs(js)
+    for j in js.jobs:
         dep = (f"{j.depends_on} ({j.dep_kind})" if j.depends_on else "-")
         carries = ", ".join(c.pattern for c in j.carry) or "-"
-        rows.append((_seq, j.name, j.script, dep, carries, _res_str(j.resources)))
+        rows.append((refs[j.name].seq_text, j.name, j.script, dep, carries,
+                     _res_str(j.resources)))
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(6)]
     def fmt(r):
         return "  ".join(s.ljust(w[k]) for k, s in enumerate(r))

@@ -782,13 +782,130 @@ def test_stage_refs_reads_the_seq_off_the_deck_not_the_row():
     assert refs["tight"].token == "03_tight"
 
 
-def test_stage_refs_omits_a_job_with_no_token_rather_than_inventing_one():
-    """§ 4.2's number is assigned once and never guessed."""
+def test_stage_refs_gives_a_tokenless_job_no_seq_rather_than_inventing_one():
+    """§ 4.2's number is assigned once and never guessed -- so a deck with no
+    token yields ``seq=None``, and no token to name a directory from."""
     from molbuilder.jobset.materialize import stage_refs
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="ladder",
                 jobs=[Job(name="only", script="JOB.fdf")])
-    assert stage_refs(js) == {}
+    ref = stage_refs(js)["only"]
+    assert (ref.seq, ref.token, ref.label) == (None, None, "only")
+
+
+def test_stage_refs_is_total_so_no_caller_has_to_ask_whether_a_job_is_in_it():
+    """Every job gets a ref, both kinds.  Omission was what pushed *what if
+    there is no ordinal?* out to four callers, who answered it four ways."""
+    from molbuilder.jobset.materialize import stage_refs
+    from molbuilder.jobset.model import Job, JobSet
+    sweep = JobSet(name="JOB", engine="siesta", kind="sweep",
+                   jobs=[Job(name="p1", script="JOB_p1.fdf"),
+                         Job(name="p2", script="JOB_p2.fdf")])
+    refs = stage_refs(sweep)
+    assert set(refs) == {"p1", "p2"}
+    assert [r.seq for r in refs.values()] == [None, None]
+    assert refs["p1"].token is None          # a point has no token to be named from
+
+
+def test_stage_refs_carries_the_jobs_name_not_the_tokens():
+    """The CLI resolves to a name and then looks the JOB up by it, so a ref must
+    never hand back a string this JobSet does not have."""
+    from molbuilder.jobset.materialize import stage_refs
+    from molbuilder.jobset.model import Job, JobSet
+    js = JobSet(name="JOB", engine="siesta", kind="ladder",
+                jobs=[Job(name="tight", script="JOB_03_renamed.fdf")])
+    ref = stage_refs(js)["tight"]
+    assert (ref.seq, ref.name) == (3, "tight")
+
+
+def test_job_dir_names_sweep_is_unchanged_by_the_total_refs():
+    from molbuilder.jobset.materialize import job_dir_names
+    from molbuilder.jobset.model import Job, JobSet
+    js = JobSet(name="JOB", engine="siesta", kind="sweep",
+                jobs=[Job(name="p1", script="JOB_p1.fdf")])
+    assert job_dir_names(js) == {"p1": "point-p1"}
+
+
+def test_a_sweep_point_prints_a_dash_not_its_row_under_seq():
+    """The rename made `#` mean `seq`; falling back to the row for a kind that
+    has no ordinal is the same defect wearing the new column's name."""
+    from molbuilder.jobset.model import Job, JobSet
+    js = JobSet(name="JOB", engine="siesta", kind="sweep",
+                jobs=[Job(name="p1", script="JOB_p1.fdf"),
+                      Job(name="p2", script="JOB_p2.fdf")])
+    body = [l for l in render_plan(js).splitlines() if "p2" in l]
+    assert body[0].split()[0] == "-"          # NOT "1", which the row would be
+    out = render_status(jobset_status(js, "."))
+    assert [l.split()[0] for l in out.splitlines() if "p2" in l] == ["-"]
+
+
+def test_prepare_attempt_takes_the_same_three_spellings_as_every_surface():
+    """It had its own lookup and its own refusal until 2026-08-10, so `prep run
+    3` failed where `submit run 3` worked -- one question, two vocabularies."""
+    import tempfile
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    with tempfile.TemporaryDirectory() as td:
+        for spelling in ("tight", "3", "03", "03_tight"):
+            rep = prepare_attempt(js, td, spelling)
+            assert rep["stage"] == "tight"           # the NAME, always
+            assert rep["dir"].parent.name == "03_tight"
+
+
+def test_prepare_attempt_refuses_with_the_one_listing_that_carries_ordinals():
+    """decision 28's gap verbatim: the refusal listed 'coarse, medium, tight'
+    with no order, at the one moment you are choosing which stage to run."""
+    import tempfile
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    with tempfile.TemporaryDirectory() as td:
+        with pytest.raises(ValueError) as e:
+            prepare_attempt(js, td, "bogus")
+    assert "01_coarse, 03_tight" in str(e.value)
+
+
+def test_an_unlaunched_attempt_is_reused_and_a_launched_one_is_never_touched():
+    """§ 1.5: an attempt is immutable once it has run, so a re-run is a NEW
+    directory.  Before it has run there is nothing to preserve, and minting
+    run-1 beside an empty run-0 would just litter."""
+    import tempfile
+    from pathlib import Path
+    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    js = _token_ladder("JOB_03_tight.fdf")
+    with tempfile.TemporaryDirectory() as td:
+        first = prepare_attempt(js, td, "tight")["dir"]
+        assert first.name == "run-0"
+        assert prepare_attempt(js, td, "tight")["dir"] == first   # reused
+        write_run_launch(first, mode="direct", command=["bash", "x.sh"])
+        second = prepare_attempt(js, td, "tight")["dir"]
+        assert second.name == "run-1"                             # never reused
+        assert (Path(first) / "run.json").is_file()               # left intact
+
+
+def test_a_number_resolves_to_the_seq_and_never_to_the_row():
+    """R5's whole point, and the two differ the moment a stage is disabled: the
+    ladder is 01/03, so `1` is coarse (row 1 would be tight) and `3` is tight
+    (there is no row 3 at all)."""
+    from molbuilder.identity import StageRef, resolve_stage_ref
+    refs = [StageRef(1, "coarse"), StageRef(3, "tight")]
+    assert resolve_stage_ref(refs, "1").name == "coarse"
+    assert resolve_stage_ref(refs, "3").name == "tight"
+    assert resolve_stage_ref(refs, "03").name == "tight"        # zero-padded
+    assert resolve_stage_ref(refs, "03_tight").name == "tight"  # the whole token
+    assert resolve_stage_ref(refs, "tight").name == "tight"     # its identity
+    with pytest.raises(ValueError):
+        resolve_stage_ref(refs, "2")            # the row of tight; not its seq
+
+
+def test_resolver_refuses_a_number_a_sweep_cannot_have():
+    """One resolver serves both kinds, so the refusal must stop offering
+    ordinals to a job-set that has none."""
+    from molbuilder.identity import StageRef, resolve_stage_ref
+    refs = [StageRef(None, "p1"), StageRef(None, "p2")]
+    assert resolve_stage_ref(refs, "p2").name == "p2"
+    with pytest.raises(ValueError) as e:
+        resolve_stage_ref(refs, "2")
+    assert "p1, p2" in str(e.value) and "number" not in str(e.value)
 
 
 def test_plan_prints_the_seq_not_the_row():

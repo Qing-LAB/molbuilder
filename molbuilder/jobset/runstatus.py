@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..identity import seq_text
 from .materialize import job_dir_names, stage_refs
 from .model import JobSet
 
@@ -48,7 +49,6 @@ class StageStatus:
     #: The stage's assigned ordinal, read back off its deck -- NOT its row.
     #: ``None`` for a sweep point, which has no seq (project-layout.md § 4.1).
     seq: Optional[int] = None
-
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -112,13 +112,13 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
     stages: List[StageStatus] = []
     first_incomplete: Optional[str] = None
     dirs = job_dir_names(jobset)
-    refs = stage_refs(jobset) if jobset.kind == "ladder" else {}
+    refs = stage_refs(jobset)
     for job in jobset.jobs:
         d = base / dirs[job.name]
         state, detail = _stage_state(d)
         stages.append(StageStatus(
             name=job.name, dir=d.name, state=state, detail=detail,
-            seq=(refs[job.name].seq if job.name in refs else None),
+            seq=refs[job.name].seq,
             warm_files=_warm_present(d, label, jobset.engine),
         ))
         if first_incomplete is None and state != _DONE:
@@ -140,11 +140,11 @@ def render_status(status: JobSetStatus) -> str:
     # The stage's SEQ, never its row.  This printed `enumerate()` until
     # 2026-08-10 -- a position where a reader reads an ordinal, which is the
     # number `engines/stages.md` R5 forbids as an identifier.  A sweep point
-    # has no seq and keeps its row number, which is honest: it has no order.
+    # has no order, so it prints `-` from the one rule the plan table uses.
     hdr = ("seq", "stage", "state", "warm files", "detail")
-    rows = [(str(s.seq) if s.seq is not None else str(i), s.name, s.state,
+    rows = [(seq_text(s.seq), s.name, s.state,
              ", ".join(s.warm_files) or "-", s.detail)
-            for i, s in enumerate(status.stages)]
+            for s in status.stages]
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(5)]
     def fmt(r):
         return "  ".join(s.ljust(w[k]) for k, s in enumerate(r))

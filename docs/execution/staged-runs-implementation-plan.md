@@ -2187,12 +2187,14 @@ headed `#`. That is the stage's **position in the list** — the number
 reader will take it for the ordinal. Disable one stage and the screen says
 `0 coarse / 1 tight` while the disk says `01_coarse/ 03_tight/`.
 
-**Five places already answer "which stage is this", each in its own way:**
+**Six places already answer "which stage is this", each in its own way** — on
+top of `identity`, which owns the string itself:
 
 | | today |
 |---|---|
-| `identity.stage_token` / `parse_stage_token` | the string, both directions |
+| `identity.stage_token` / `parse_stage_token` | the string, both directions — **the base, not one of the six** |
 | `materialize.job_dir_names` | directory per job, branching on `JobSet.kind` |
+| `materialize.prepare_attempt` | exact-name lookup + its own refusal, listing *"coarse, medium, tight"* — decision 28's gap, verbatim |
 | `siesta/input._stage_tokens` | enabled stages paired with tokens, numbered from the FULL ladder |
 | `jobset/plan.py` | `enumerate()` as `#` — **wrong number** |
 | `jobset/runstatus.py:135-137` | `str(i)` from `enumerate(status.stages)` as `#` — **wrong number** |
@@ -2227,6 +2229,56 @@ is a display change users will notice, so it lands with the column renamed
 **Order of work** (the user's, and it is the dependency order): the stage
 contract and everything citing it → the resolver → its callers → the UI, which
 displays what the resolver returns rather than computing a number of its own.
+
+#### What landed, and what the fresh-eyes review changed (2026-08-10)
+
+The resolver shipped in `9e8aa7b5` and was **reworked the same day** after a
+review, because the first cut left the defect it was written to remove.
+
+`stage_refs` returned a **partial** mapping — ladder jobs with a token, and
+nobody else. That pushed one question, *what if there is no ordinal?*, back out
+to four callers, who answered it four different ways: `point-<name>` in
+`job_dir_names`, the **row number** in `plan`, `None` in `runstatus`, and a
+whole second lookup-and-refusal branch in the CLI. Two of those four printed a
+position under a column newly headed `seq` — the same defect § 8f names, wearing
+the new column's name. *A layer's decision re-derived by a caller* (§ 9), one
+commit after writing that sentence down.
+
+The rework makes the mapping **total**: every job gets a `StageRef`, and one
+with no assigned ordinal carries `seq=None` rather than being left out. `seq` is
+still never guessed — `None` is a real state (a sweep point has no order; a
+hand-written deck has an ordinal nobody assigned), and it stays `None` all the
+way to the screen, where it prints `-`. What that deletes:
+
+| | before | after |
+|---|---|---|
+| `job_dir_names` | branch on `kind`, then membership test | `refs[n].token or job_dir_name(n)` |
+| `plan` / `status` | `enumerate()` fallback under a `seq` header | `seq_text`, one rule, `-` when there is none |
+| `_cli._resolve_stage` | resolver **or** a second lookup, with its own refusal and its own listing | one path, both kinds |
+| `prepare_attempt` | its own lookup, its own refusal, its own listing | the same resolver, so `prep run 3` and `submit run 3` mean the same thing |
+
+`prepare_attempt` was the seventh place and was **not in the table above until
+this review** — it is the one that made `prep run 3` fail while `submit run 3`
+worked, and its refusal was decision 28's complaint quoted back verbatim.
+
+Two more findings, recorded because neither is about this resolver:
+
+- `tests/test_stage_vocabulary.py`'s ledger guard had been **red since
+  `b8998d7a`** — `_resolve_stage` was added without an entry, and `9e8aa7b5`
+  added four more names on top. Targeted suites were run; the file that
+  inventories these names was not. All six names are now attributed.
+- `prepare_attempt` and the whole attempt-directory group (`attempts`,
+  `was_launched`, `resolve_attempt`, `write_run_launch`) shipped in `b8998d7a`
+  with **no tests at all**. Resolution and attempt reuse are covered now; the
+  carry-copy path still is not.
+
+**Still open on this surface**, and it is the before-produce half:
+`siesta/input._stage_tokens` returns `(stage, str)` pairs where the after-produce
+half returns `StageRef`s. It is not *wrong* — it is the one place the ladder is
+numbered, and it numbers from the full list correctly — but the two halves speak
+different types, so a surface that wants to list a ladder **before** it is
+produced cannot use `render_stage_refs`. No caller wants that today; the UI
+preview (decision 28's last clause) is the one that will.
 
 
 ---

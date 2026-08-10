@@ -167,13 +167,22 @@ OUR_FILE_PATTERNS: Sequence[str] = (
 )
 
 
-#: A stage's artifact token, ``<NN>_<name>`` — as it appears in a filename and
-#: as a stage directory is named.  Two capture groups: the ordinal and the name.
+# --------------------------------------------------------------------- #
+#  How a stage is NAMED, and how every surface REFERS to one.            #
+#  Contract: decision 27 (the token) and decision 28 / § 8f (the         #
+#  resolver) in `execution/staged-runs-implementation-plan.md`.          #
+# --------------------------------------------------------------------- #
+
+#: A stage token at the **tail** of a filename: ``_<NN>_<name>``, then the
+#: optional ``-run<N>`` attempt counter, then the extension, and nothing else.
 #:
-#: The name may itself contain ``_`` (``STAGE_NAME_RE`` is ``[A-Za-z0-9_]+``),
-#: and so may the label — which is why this is only ever applied **anchored to
-#: the end** of a filename, never searched loosely.
-_STAGE_TOKEN = re.compile(r"(\d{2,})_([A-Za-z0-9_]+)")
+#: **One pattern, and it is anchored on purpose.** A label and a stage name may
+#: both contain ``_`` (``STAGE_NAME_RE`` is ``[A-Za-z0-9_]+``), so a loose
+#: search reads a calculation called ``run_01_setup`` as stage 1 *"setup"*.
+#: Anchoring at the end — and, when the label is known, at the front too — is
+#: what removes that ambiguity, which is why the token pattern is written once,
+#: here, rather than as a bare ``(\d{2,})_(\w+)`` a caller could point anywhere.
+_STAGE_TOKEN_TAIL = r"_(\d{2,})_([A-Za-z0-9_]+?)(?:-run\d+)?\.[A-Za-z0-9.]+$"
 
 
 def stage_token(seq: int, name: str) -> str:
@@ -217,12 +226,127 @@ def parse_stage_token(filename: str,
     label get the best-effort read, which is what the old ``-stage<N>`` regex
     gave them too.
     """
-    tail = r"_(\d{2,})_([A-Za-z0-9_]+?)(?:-run\d+)?\.[A-Za-z0-9.]+$"
-    m = (re.fullmatch(re.escape(label) + tail, filename) if label
-         else re.search(tail, filename))
+    m = (re.fullmatch(re.escape(label) + _STAGE_TOKEN_TAIL, filename) if label
+         else re.search(_STAGE_TOKEN_TAIL, filename))
     if not m:
         return None
     return int(m.group(1)), m.group(2)
+
+
+def seq_text(seq: Optional[int]) -> str:
+    """What a ``seq`` column prints: the ordinal, or ``-`` where there is none.
+
+    A sweep point has no order, and a ladder job whose deck carries no token has
+    no assigned ordinal. Both must print *something*, and the one thing they
+    must not print is the row they happen to occupy — that is the number
+    ``engines/stages.md`` R5 forbids as an identifier, and putting it under a
+    column headed ``seq`` is exactly how it gets read as one.
+
+    ``-`` is the same *not applicable* these tables already print for an absent
+    dependency or an absent carry, so it needs no explaining to a reader.
+    """
+    return "-" if seq is None else str(seq)
+
+
+@dataclass(frozen=True)
+class StageRef:
+    """A stage, as every surface refers to one: an ordinal and a name.
+
+    **Both halves, because each answers something the other cannot.** The name
+    is the stage's *identity* (``engines/stages.md`` R5) and is what a filename
+    can be read back to. The ``seq`` is what **sorts** — with eight stages, a
+    listing ordered by name says nothing about the order the work happens in,
+    which is the whole reason decision 27 put the ordinal in the token.
+
+    **``seq`` is derived, never stored** (decision 28). Before a produce it
+    comes from the ladder's full list; after one it is read back off the
+    artifacts — `project-layout.md` § 4.1's *"`seq` is not a fourth field …
+    the description does not carry it"*. Constructing this is therefore always
+    someone reading, never someone deciding.
+
+    **``seq`` is ``None`` where there is no assigned ordinal**, and that is a
+    real state rather than a missing value: a sweep point's points are
+    independent and have no order at all, and a hand-written ladder job may
+    carry no token. It is never filled in from a position — § 4.2's number is
+    assigned once and never guessed, so *unknown* stays unknown all the way out
+    to the screen (:func:`seq_text`).
+    """
+    seq: Optional[int]
+    name: str
+
+    @property
+    def token(self) -> Optional[str]:
+        """``<NN>_<name>`` — or ``None``, when there is no ordinal to put in it.
+
+        Optional rather than a bare name, because a job without an ordinal has
+        no token: it is named by the *other* convention (``point-<name>``), and
+        handing back something token-shaped would invite a caller to write it
+        into a path.
+        """
+        return None if self.seq is None else stage_token(self.seq, self.name)
+
+    @property
+    def label(self) -> str:
+        """What a listing prints — the token where there is one, else the name."""
+        return self.token or self.name
+
+    @property
+    def seq_text(self) -> str:
+        """What a ``seq`` column prints, from the one rule."""
+        return seq_text(self.seq)
+
+    def __str__(self) -> str:                       # what a listing prints
+        return self.label
+
+
+def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
+    """The one job ``text`` names, or ``ValueError`` naming every candidate.
+
+    Three spellings, because all three are what a person reasonably types::
+
+        tight        the name          — its identity
+        3  /  03     the seq           — what sorts, and what a listing shows
+        03_tight     the whole token   — copied from a directory or a filename
+
+    A number is matched against ``seq`` and **never** against a position in the
+    list. That distinction is the one `engines/stages.md` R5 exists to protect:
+    with stage 2 disabled the ladder is ``01`` and ``03``, so ``3`` must mean
+    *tight* and can never mean *"the third row"*.
+
+    A set with no ordinals — a sweep — resolves by name through this same
+    function, and the refusal stops offering numbers it does not have. One
+    resolver for both kinds is the point: a second lookup for the kind without
+    ordinals is a second refusal wording and a second listing format waiting to
+    disagree with this one.
+    """
+    want = str(text).strip()
+    if not want:
+        raise ValueError("no stage named; pass a name, a number, or a token")
+    for r in refs:
+        if want == r.name or want == r.token:
+            return r
+    if want.isdigit():
+        for r in refs:
+            if r.seq is not None and int(want) == r.seq:
+                return r
+    if not refs:
+        raise ValueError(f"no stage named {text!r}: this job-set has no jobs")
+    how = ("Name it by its name (tight), its number (3), or its token "
+           "(03_tight)." if any(r.seq is not None for r in refs)
+           else "Name it by its name.")
+    raise ValueError(
+        f"no stage named {text!r} in this job-set; it has: "
+        f"{render_stage_refs(refs)}. {how}")
+
+
+def render_stage_refs(refs: Sequence["StageRef"]) -> str:
+    """The one listing format every surface prints — ``01_coarse, 03_tight``.
+
+    One function so a refusal, a status table and a help string cannot show a
+    user three different vocabularies for one set of jobs. Where there are no
+    ordinals it degrades to the names, which is what a sweep has.
+    """
+    return ", ".join(r.label for r in refs)
 
 
 def is_ours(name: str, label: str) -> bool:
@@ -350,82 +474,6 @@ def run_id(label: str, formula: str = "", *,
     return f"{stem}_{normalise_id(formula, what='formula')}"
 
 
-__all__ = ["MAX_LABEL_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "is_ours",
-           "normalise_id", "parse_stage_token", "run_id", "stage_token"]
-
-
-# --------------------------------------------------------------------- #
-#  StageRef — the one answer to "which stage is this"                    #
-#  Contract: staged-runs-implementation-plan.md § 8f + § 9 (decision 28) #
-# --------------------------------------------------------------------- #
-
-
-@dataclass(frozen=True)
-class StageRef:
-    """A stage, as every surface should refer to it: ``seq`` and ``name``.
-
-    **Both halves, because each answers something the other cannot.** The name
-    is the stage's *identity* (``engines/stages.md`` R5) and is what a filename
-    can be read back to. The ``seq`` is what **sorts** — with eight stages, a
-    listing ordered by name tells you nothing about the order the work happens
-    in, which is the whole reason decision 27 put the ordinal in the token.
-
-    **``seq`` is derived, never stored** (decision 28). It comes from the
-    ladder's full list before a produce, and is read back off the artifacts
-    after one — `project-layout.md` § 4.1's *"`seq` is not a fourth field …
-    the description does not carry it"*. Constructing this object is therefore
-    always someone reading, never someone deciding.
-    """
-    seq: int
-    name: str
-
-    @property
-    def token(self) -> str:
-        """``<NN>_<name>`` — the artifact token, from the one namer."""
-        return stage_token(self.seq, self.name)
-
-    def __str__(self) -> str:                       # what a listing prints
-        return self.token
-
-
-def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
-    """The one stage ``text`` names, or ``ValueError`` naming every candidate.
-
-    Four spellings are accepted, because all four are things a person
-    reasonably types for the same stage::
-
-        tight        the name          — its identity
-        3  /  03     the seq           — what sorts, and what you read off a listing
-        03_tight     the whole token   — copied from a directory or a filename
-
-    A number is matched against ``seq`` and **never** against a position in the
-    list. That distinction is the one `engines/stages.md` R5 exists to protect:
-    with stage 2 disabled the ladder is ``01`` and ``03``, so ``3`` must mean
-    *tight* and never *"the third row"*.
-    """
-    want = str(text).strip()
-    if not want:
-        raise ValueError("no stage named; pass a name, a number, or a token")
-    for r in refs:
-        if want == r.name or want == r.token:
-            return r
-    if want.isdigit():
-        for r in refs:
-            if int(want) == r.seq:
-                return r
-    raise ValueError(
-        f"no stage matches {text!r}. This calculation has: "
-        f"{render_stage_refs(refs)}. Name it by its name (tight), its "
-        f"number (3), or its token (03_tight).")
-
-
-def render_stage_refs(refs: Sequence["StageRef"]) -> str:
-    """The one listing format every surface prints — ``01_coarse, 03_tight``.
-
-    One function so a refusal, a status table and a help string cannot show a
-    user three different vocabularies for one set of stages.
-    """
-    return ", ".join(r.token for r in refs)
-
-
-__all__ = __all__ + ["StageRef", "resolve_stage_ref", "render_stage_refs"]
+__all__ = ["MAX_LABEL_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "StageRef",
+           "is_ours", "normalise_id", "parse_stage_token", "render_stage_refs",
+           "resolve_stage_ref", "run_id", "seq_text", "stage_token"]

@@ -115,30 +115,28 @@ def _resolve_stage(js, stage, chain: bool, verb: str):
     not a default -- ``--chain`` says you want it anyway (project-layout.md
     § 1.6).  A SWEEP has no such ordering: its points are independent, so the
     whole set is the ordinary thing and needs no flag.
+
+    Both kinds go through the ONE resolver (§ 8f).  A sweep's refs simply carry
+    no ordinal, so it resolves by name and the refusal stops offering numbers --
+    which is the same code path, not a second one.  Until 2026-08-10 the sweep
+    had its own lookup, its own refusal wording and its own listing format, so
+    a user could be shown two vocabularies for one question.
     """
     from ..identity import render_stage_refs, resolve_stage_ref
     from .materialize import stage_refs
-    refs = stage_refs(js) if js.kind == "ladder" else {}
-    ordered = [refs[j.name] for j in js.jobs if j.name in refs]
+    refs = stage_refs(js)
+    ordered = [refs[j.name] for j in js.jobs]
     if stage is not None:
         # A name, a number, or a whole token -- one resolver, so the CLI, the
         # listing and the refusal cannot speak three vocabularies (§ 8f).
-        if ordered:
-            try:
-                return resolve_stage_ref(ordered, stage).name
-            except ValueError as e:
-                raise click.ClickException(str(e))
-        if stage not in [j.name for j in js.jobs]:
-            raise click.ClickException(
-                f"no stage named {stage!r} in this job-set; it has: "
-                f"{', '.join(j.name for j in js.jobs)}")
-        return stage
-    names = [j.name for j in js.jobs]
+        try:
+            return resolve_stage_ref(ordered, stage).name
+        except ValueError as e:
+            raise click.ClickException(str(e))
     if js.kind == "ladder" and not chain:
-        listing = render_stage_refs(ordered) if ordered else ", ".join(names)
         raise click.ClickException(
             f"this is a ladder, so `{verb}` acts on ONE stage: "
-            f"{listing}.\n"
+            f"{render_stage_refs(ordered)}.\n"
             f"  molbuilder jobset {verb} run <stage>      one stage\n"
             f"  molbuilder jobset {verb} run --chain      the whole ladder, "
             f"unattended\n"

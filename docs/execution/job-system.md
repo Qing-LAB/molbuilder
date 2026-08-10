@@ -678,13 +678,27 @@ flowchart LR
 ```
 molbuilder jobset <verb> <kind> [<stage>]  [options]
                     │      │        │
-                    │      │        └─ which stage: coarse, tight, …
+                    │      │        └─ which stage — by its NAME (`tight`), its
+                    │      │           NUMBER (`3`, or `03`), or the whole token
+                    │      │           (`03_tight`), whichever you have in front
+                    │      │           of you.  All three reach one resolver
                     │      └────────── what is being prepped or submitted:
                     │                  `run` (the calculation) or `bench`
                     │                  (the measurement of it)
                     └───────────────── describe · prep · submit · summarize
                                        · status · plan
 ```
+
+**A number here is the stage's `seq`, never its row.** With stage 2 disabled the
+ladder is `01_coarse` and `03_tight`, so `3` means *tight* and there is no `2`
+to type — the same number you see in the directory, in the deck's filename, and
+in the `seq` column of `plan` and `status`. That is what
+[`engines/stages.md`](?doc=engines/stages.md) R5 is protecting: a
+position shifts when the ladder changes, and an assigned ordinal does not.
+
+A **sweep** has no ordinals — its points are independent and have no order — so
+its points resolve by name, and a refusal there does not offer you numbers it
+does not have.
 
 `describe`, `status` and `plan` take no *kind* — they are about the calculation,
 not about one run of it. **The kind is a positional, not a `--bench` flag**, because
