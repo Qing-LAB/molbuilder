@@ -1676,6 +1676,7 @@ open.
 | 15 | ~~**When does normalisation refuse?**~~ — **decided 2026-08-08: when a letter or a digit is replaced, or when nothing is left.** § 3 rule 3 said only *"reduces to nothing"*, yet § 3.1 refused `Über` → `ber`, which does not. The line is **what was replaced**: a *separator* (space, `/`, `.`) becomes `_` silently — that is all `BDT/Au relax` does — while a character typed *inside a word* cannot be dropped, so `Über` and `Ω-shape` refuse. Mechanically: a character outside `[A-Za-z0-9_-]` that is nonetheless alphanumeric | ~~P3~~ |
 | 24 | ~~**Does the browser need its own identity mechanism, given that its `SystemLabel` field defaults to the literal `siesta`?**~~ — **decided 2026-08-09 (user): no. The identity half dissolves; what is left is a save that does not say what it replaced.** See § 8a below for the walk | ~~P3~~; the surviving unit is **P10** |
 | 26 | ~~**Is `SystemLabel` the id, or is the id something wider that `SystemLabel` is part of?**~~ — **decided 2026-08-09 (user): `SystemLabel` is the stem of every emitted name; the id (label + formula) is a *record* in `task.json`, not a filename.** *"From dir to the .fdf/script name, we all derive consistently from SystemLabel … the SystemLabel becomes one consistent scheme, and other information is simply attached to it."* This is what the code already does and what three contracts deny. It settles **decision 21** as the same rule seen from the other end, and it is P4's whole subject. See § 8c below | **P4**, and corrects **P1**'s decision 2 |
+| 28 | ~~**How is a stage REFERRED TO, as opposed to named on disk?**~~ — **decided 2026-08-10 (user): `seq` stays DERIVED; the ordinal reaches every surface.** Decision 27 put `<NN>_<name>` on the artifacts and stopped there, so the number is in every filename and in no interface: `jobset prep run coarse` takes a bare name, and the refusal lists *"coarse, medium, tight"* with no order at the one moment you are choosing. Identity remains the name — `stages.md § 2`'s three fields, § 4.1's *"`seq` is not a fourth field"* and R5 all stand unchanged. The **rejected** alternative was making `seq` a stored field of `Stage`: it would let the UI *enforce* numbering rather than preview it, but it overturns those three sentences and makes the description carry a number it does not need. **And it is one piece of framework, not five patches** (user: *"this should not be a patching work but with unified api and framework design"*) — see § 8f | **P4 / P6** |
 | 27 | ~~**What are the three shipped tiers called, and does an artifact name carry the stage's order?**~~ — **decided 2026-08-10 (user): a stage's artifact token is `<NN>_<name>` — the index travels with the name, in both shapes.** *"We may have many stages connected so i'd rather use names with index number and have comments somewhere for explaining what it is as scientific notation for each run."* Neither of the two options offered was taken: the question assumed the choice was which *strings* to use, and the answer is that a long ladder needs its **order** legible in a flat listing. It does **not** violate `stages.md` R5 — see § 8e — and it hands § 8d's decoder problem its answer. Overturns two lines of `project-layout.md § 4.1` | **P4** |
 | 25 | ~~**When is the next stage prepped, and what must be true of the previous one first?**~~ — **decided 2026-08-09 (user): stage N+1 is prepped after stage N is done and *confirmed*, and "confirmed" is a checkpoint question, not a convergence one.** *"The only reliable prep of a next stage is the one that is done when the previous stage is already confirmed."* Confirmed = the folder is **clean** (stage N's result is saved, or you are standing at a restored state), **or** you were shown what is unsaved and said go. This is the missing decision the dangling `Carry` symlink was standing in for. See § 8b below for the walk | **P6**, **P7**, **P8** |
 
@@ -2132,3 +2133,57 @@ pointer causes, arrived at by trying to avoid it. **All repointed 2026-08-09.**
 > is laid before the producer runs and is **meant** to dangle"*); with no link
 > laid, its conclusion is unchanged — `required` is still checked in the run
 > directory immediately before the engine starts — but its premise is retired.
+
+---
+
+### 8f. One resolver for "which stage" — decision 28's framework
+
+**The gap decision 28 closes.** `<NN>_<name>` reached every artifact and no
+interface. Worse, the two surfaces that *do* print a number print the wrong one:
+`jobset plan` and `jobset status` both render `enumerate(js.jobs)` in a column
+headed `#`. That is the stage's **position in the list** — the number
+`engines/stages.md` R5 says must never identify a stage — displayed where a
+reader will take it for the ordinal. Disable one stage and the screen says
+`0 coarse / 1 tight` while the disk says `01_coarse/ 03_tight/`.
+
+**Five places already answer "which stage is this", each in its own way:**
+
+| | today |
+|---|---|
+| `identity.stage_token` / `parse_stage_token` | the string, both directions |
+| `materialize.job_dir_names` | directory per job, branching on `JobSet.kind` |
+| `siesta/input._stage_tokens` | enabled stages paired with tokens, numbered from the FULL ladder |
+| `jobset/plan.py` | `enumerate()` as `#` — **wrong number** |
+| `jobset/runstatus.py` | `enumerate()` as `#` — **wrong number** |
+| `jobset/_cli._resolve_stage` | exact-name lookup, no ordinal accepted |
+
+Adding "show the seq" to each of those is six edits and a seventh place for them
+to disagree. **The unit is one resolver**, and every surface asks it.
+
+```
+StageRef(seq, name)          →  .token == "01_coarse"
+
+stage_refs(ladder)           the ladder, BEFORE produce — seq is the 1-based
+                             place in the FULL list, so disabling leaves a gap
+stage_refs(jobset)           after produce — seq is READ BACK off each deck,
+                             which is where § 4.1 says it lives
+resolve(refs, text)          "tight" | "3" | "03" | "03_tight" → one StageRef,
+                             or a refusal that lists BOTH halves
+render(refs)                 the one listing format every surface prints
+```
+
+**Why this keeps decision 28's answer honest.** `seq` is still stored nowhere:
+before produce it is derived from the ladder, after produce from the artifacts.
+The resolver is the single place that knows which source applies, so no caller
+has to. `Stage` keeps three fields.
+
+**What it costs, stated:** the two `#` columns change meaning — from a row
+number to the stage's ordinal — and a reader who had learned the old column is
+reading a different number afterwards. That is the point of the change, but it
+is a display change users will notice, so it lands with the column renamed
+`seq` rather than silently redefined.
+
+**Order of work** (the user's, and it is the dependency order): the stage
+contract and everything citing it → the resolver → its callers → the UI, which
+displays what the resolver returns rather than computing a number of its own.
+
