@@ -315,11 +315,20 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
         raise SubmitError(f"base dir not found (prep first): {base}")
 
     if only is not None:
-        names = [j.name for j in jobset.jobs]
-        if only not in names:
-            raise SubmitError(
-                f"no job named {only!r} in this job-set; it has: "
-                f"{', '.join(names)}")
+        # Through the ONE resolver, so a name, a number and a token all reach
+        # the same job here as they do at every other surface -- and the
+        # refusal carries the ordinals (§ 8f).  This spelled its own lookup and
+        # its own listing until 2026-08-10, which is the same defect
+        # `prepare_attempt` had: a library entry point quietly speaking a
+        # second vocabulary for the one question.
+        from ..identity import resolve_stage_ref
+        from .materialize import stage_refs
+        refs = stage_refs(jobset)
+        try:
+            only = resolve_stage_ref([refs[j.name] for j in jobset.jobs],
+                                     only).name
+        except ValueError as e:
+            raise SubmitError(str(e))
         # One job, on its own: `dataclasses.replace` would share the job
         # objects, which is what we want -- the SAME Job, just alone, so its
         # resources and script are untouched.  The dependency is dropped

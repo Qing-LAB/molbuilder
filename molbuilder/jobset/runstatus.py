@@ -18,12 +18,14 @@ it inspects the tree, changes nothing.
 from __future__ import annotations
 
 import dataclasses
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..identity import seq_text
-from .materialize import job_dir_names, stage_refs
+from .materialize import (RUN_LAUNCH_FILE, job_dir_names, latest_attempt,
+                          stage_refs)
 from .model import JobSet
 
 # Engine-native warm-restart files keyed by the project id (system label),
@@ -43,12 +45,19 @@ class StageStatus:
     """One stage's status (read-only snapshot)."""
     name:       str
     dir:        str
-    state:      str               # not-started/pending/running/stale/failed/finished
+    #: not-started/pending/queued/running/stale/failed/finished.  ``queued`` is
+    #: the contract's own word (project-layout.md § 1.6, *"queued as job
+    #: 481923"*) for launched-but-no-output-yet, which is exactly the state an
+    #: empty directory cannot be read for.
+    state:      str
     detail:     str
     warm_files: List[str] = field(default_factory=list)  # restart files present
     #: The stage's assigned ordinal, read back off its deck -- NOT its row.
     #: ``None`` for a sweep point, which has no seq (project-layout.md § 4.1).
     seq: Optional[int] = None
+    #: Which attempt this status was read from (``run-0``), or ``None`` for a
+    #: flat run, which happens in the container itself (§ 1.5).
+    attempt: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -83,19 +92,51 @@ def _warm_present(stage_dir: Path, label: str, engine: str) -> List[str]:
     return out
 
 
-def _stage_state(stage_dir: Path) -> tuple:
-    """(state, detail) for one stage dir, reusing the directory decoder.
-    Maps the decoder's "running/no .out yet" onto the more honest
-    'not-started' / 'pending' the inform layer needs."""
-    if not stage_dir.is_dir():
+def _launch_record(attempt: Optional[Path]) -> Optional[Dict[str, Any]]:
+    """``run.json`` from an attempt, or ``None`` — fail-soft on a bad file.
+
+    `project-layout.md` § 1.6: *"Has this been launched? has no honest answer
+    from the directory alone"*, so this file is the answer and status must read
+    it rather than infer from an absence of output.
+    """
+    if attempt is None:
+        return None
+    p = attempt / RUN_LAUNCH_FILE
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}                # present but unreadable: launched, details lost
+
+
+def _stage_state(observed: Path, launch: Optional[Dict[str, Any]]) -> tuple:
+    """(state, detail) for the directory a stage's run actually happened in.
+
+    ``observed`` is the latest attempt where there is one, and the stage
+    container for a flat run (`project-layout.md` § 1.5) — the caller resolves
+    that, because *where a run happens* is a layout question and this layer
+    only reads.
+
+    ``launch`` is the attempt's ``run.json``. It is what separates *queued* from
+    *never started*, which no amount of looking at an empty directory can do:
+    § 1.6's *"a queued cluster job has produced nothing yet, so 'no output' and
+    'not started' look identical"*, and its promise that status can then say
+    *"queued as job 481923"* rather than guessing from an absence.
+    """
+    if not observed.is_dir():
         return ("not-started", "no directory yet (not prepped)")
-    # no engine .out at all -> prepped but not launched (decoder calls this
-    # "running", which is misleading before anything has run).
-    if not any(stage_dir.glob("*.out")) and not any(stage_dir.glob("*.log")):
-        return ("pending", "prepped, not launched (no .out)")
+    has_output = any(observed.glob("*.out")) or any(observed.glob("*.log"))
+    if not has_output:
+        if launch is None:
+            return ("pending", "prepped, not launched (no run.json)")
+        jid = launch.get("job_id")
+        mode = launch.get("mode") or "?"
+        return ("queued", (f"queued as job {jid}" if jid
+                           else f"launched ({mode}), no output yet"))
     try:
         from ..parse.dirs.job import decode_run_dir
-        res = decode_run_dir(stage_dir)
+        res = decode_run_dir(observed)
     except Exception as e:                    # decoder is fail-soft; stay informative
         return ("unknown", f"could not decode: {e}")
     st = res.status or {}
@@ -115,11 +156,20 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
     refs = stage_refs(jobset)
     for job in jobset.jobs:
         d = base / dirs[job.name]
-        state, detail = _stage_state(d)
+        # WHERE the run happened, asked of the layer that decides layout --
+        # the latest attempt where there is one, the container for a flat run
+        # (project-layout.md § 1.5).  Globbing `d` regardless was blind to the
+        # whole attempt layer: a finished hierarchical stage read as "prepped,
+        # not launched" because its .out is one level down.
+        attempt = latest_attempt(d)
+        observed = attempt or d
+        launch = _launch_record(attempt)
+        state, detail = _stage_state(observed, launch)
         stages.append(StageStatus(
             name=job.name, dir=d.name, state=state, detail=detail,
             seq=refs[job.name].seq,
-            warm_files=_warm_present(d, label, jobset.engine),
+            attempt=(attempt.name if attempt else None),
+            warm_files=_warm_present(observed, label, jobset.engine),
         ))
         if first_incomplete is None and state != _DONE:
             first_incomplete = job.name
@@ -141,15 +191,23 @@ def render_status(status: JobSetStatus) -> str:
     # 2026-08-10 -- a position where a reader reads an ordinal, which is the
     # number `engines/stages.md` R5 forbids as an identifier.  A sweep point
     # has no order, so it prints `-` from the one rule the plan table uses.
-    hdr = ("seq", "stage", "state", "warm files", "detail")
-    rows = [(seq_text(s.seq), s.name, s.state,
+    # `attempt` is which run-<n> the row was READ FROM.  Without it the table
+    # says "finished" without saying finished *when* -- and after a re-run the
+    # difference between run-0 and run-2 is the whole question.  `-` for a flat
+    # run, which happens in the container itself (project-layout.md § 1.5).
+    hdr = ("seq", "stage", "attempt", "state", "warm files", "detail")
+    rows = [(seq_text(s.seq), s.name, s.attempt or "-", s.state,
              ", ".join(s.warm_files) or "-", s.detail)
             for s in status.stages]
-    w = [max(len(r[k]) for r in rows + [hdr]) for k in range(5)]
+    # Widths and the rule are both driven off `hdr`, never off a literal count.
+    # They were two hand-written numbers until 2026-08-10, and adding the
+    # `attempt` column desynchronised them immediately: six headings over a
+    # five-segment rule.
+    w = [max(len(r[k]) for r in rows + [hdr]) for k in range(len(hdr))]
     def fmt(r):
         return "  ".join(s.ljust(w[k]) for k, s in enumerate(r))
     lines.append("  " + fmt(hdr))
-    lines.append("  " + "  ".join("-" * w[k] for k in range(5)))
+    lines.append("  " + "  ".join("-" * n for n in w))
     lines += ["  " + fmt(r) for r in rows]
     lines.append("")
     if status.complete:

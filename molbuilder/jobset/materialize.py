@@ -199,6 +199,25 @@ def was_launched(attempt_dir: Path) -> bool:
     return (Path(attempt_dir) / RUN_LAUNCH_FILE).is_file()
 
 
+def latest_attempt(stage_dir: Path) -> Optional[Path]:
+    """The newest attempt under ``stage_dir``, or ``None`` if there are none.
+
+    **Where a stage's state actually is.** `project-layout.md` § 1.5 is flat
+    about it — *"Where a run happens: inside the attempt directory"* — and
+    *"everything the run writes"* is *"created in place"*, because the wrapper
+    is invoked there. So anything asking *what happened to this stage?* asks
+    here first, and only falls back to the container for a flat run, which
+    § 1.5 says is untouched and *"is a run"* in its own right.
+
+    This is a layout question, so it is answered in the layout layer rather
+    than by each observer working out where to look. ``runstatus`` globbed the
+    container until 2026-08-10 and therefore reported a finished hierarchical
+    stage as *"prepped, not launched"* — forever.
+    """
+    ns = attempts(stage_dir)
+    return (Path(stage_dir) / f"run-{ns[-1]}") if ns else None
+
+
 def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     """The attempt directory to prepare into, and whether it is a fresh one.
 
@@ -281,12 +300,28 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
             relink(attempt, os.path.join("..", "..", wrapper), wrapper)
             linked.append(wrapper)
 
+    # Re-preparing an attempt that was already carried into: UNDO the previous
+    # carry first.  § 1.6 makes re-prep *"changing your mind about the setup"*,
+    # and a mind changed from ``--from A`` to ``--cold`` that leaves A's ``.XV``
+    # lying in the directory has changed nothing -- the engine finds it and
+    # warm-starts anyway.  That is the *"present but not honoured"* failure
+    # wearing its other face, and it is silent.  Only files the marker says we
+    # carried in are removed, and never a symlink, so nothing a user put here
+    # by hand is touched.
+    marker = attempt / ".continued-from"
+    if not is_new and marker.is_file():
+        for name in _warm_names(jobset, job):
+            f = attempt / name
+            if f.is_file() and not f.is_symlink():
+                f.unlink()
+        marker.unlink()
+
     copied: List[str] = []
     if continue_from and not cold:
         src = base / continue_from
         if not src.is_dir():
             raise ValueError(
-                f"--continue-from {continue_from!r}: no such attempt under "
+                f"--from {continue_from!r}: no such attempt under "
                 f"{base}. Name an attempt directory that has already run, "
                 f"e.g. '01_coarse/run-0'.")
         names = carry if carry is not None else _warm_names(jobset, job)
@@ -297,19 +332,16 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                 copied.append(name)
         if not copied:
             raise ValueError(
-                f"--continue-from {continue_from!r}: that attempt holds none "
+                f"--from {continue_from!r}: that attempt holds none "
                 f"of the files this stage would continue from "
-                f"({', '.join(names)}). Did it run?")
+                f"({', '.join(names) or '(none named)'}). Did it run?")
 
     # Leave the provenance where ``submit`` can find it: prep is what knows
     # which attempt this one continues from, and submit writes run.json.  A
     # marker file beats threading the value through a launch argument that
     # every caller would have to remember to pass.
-    marker = attempt / ".continued-from"
     if copied:
         marker.write_text(str(continue_from) + "\n", encoding="utf-8")
-    elif marker.exists():
-        marker.unlink()
 
     return {
         "stage": stage_name,
@@ -370,5 +402,6 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
 
 __all__ = ["materialize", "job_dir_name", "job_dir_names", "stage_refs",
            "relink",
-           "attempts", "was_launched", "resolve_attempt", "prepare_attempt",
+           "attempts", "was_launched", "latest_attempt", "resolve_attempt",
+           "prepare_attempt",
            "write_run_launch", "RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE"]

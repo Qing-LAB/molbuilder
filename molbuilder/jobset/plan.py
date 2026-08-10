@@ -59,11 +59,13 @@ def render_plan(jobset: JobSet) -> str:
         carries = ", ".join(c.pattern for c in j.carry) or "-"
         rows.append((refs[j.name].seq_text, j.name, j.script, dep, carries,
                      _res_str(j.resources)))
-    w = [max(len(r[k]) for r in rows + [hdr]) for k in range(6)]
+    # Off `hdr`, not off a literal count -- the same two hand-written numbers
+    # in `runstatus` disagreed the moment a column was added.
+    w = [max(len(r[k]) for r in rows + [hdr]) for k in range(len(hdr))]
     def fmt(r):
         return "  ".join(s.ljust(w[k]) for k, s in enumerate(r))
     lines.append("  " + fmt(hdr))
-    lines.append("  " + "  ".join("-" * w[k] for k in range(6)))
+    lines.append("  " + "  ".join("-" * n for n in w))
     lines += ["  " + fmt(r) for r in rows]
 
     # dependency graph (the chain, or "independent" for a sweep).

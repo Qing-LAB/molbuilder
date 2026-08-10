@@ -382,7 +382,14 @@ def _build_source_files(files: Dict[str, List[Path]],
             entry: Dict[str, Any] = {
                 "path":       path.name,
                 "kind":       kind_label,
+                # BOTH halves of the token.  The ordinal is what SORTS and what
+                # `_anchor_sort_key` has always used; the name is the stage's
+                # IDENTITY (`engines/stages.md` R5), and it is what a reader
+                # recognises -- "tight", not "3".  Decoding the token and then
+                # dropping the name left every surface downstream able to say
+                # only *stage 3*, which is decision 27's whole point inverted.
                 "stage":      _detect_stage(path.name),
+                "stage_name": _detect_stage_name(path.name),
                 "mtime":      _iso_z(path.stat().st_mtime),
                 "size_bytes": path.stat().st_size,
             }

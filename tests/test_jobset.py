@@ -882,6 +882,108 @@ def test_an_unlaunched_attempt_is_reused_and_a_launched_one_is_never_touched():
         assert (Path(first) / "run.json").is_file()               # left intact
 
 
+# --------------------------------------------------------------------- #
+#  The observe layer vs the attempt layer (project-layout.md § 1.5, 1.6) #
+# --------------------------------------------------------------------- #
+
+
+def test_status_reads_the_attempt_because_that_is_where_the_run_happened(tmp_path):
+    """`project-layout.md` § 1.5, *"Where a run happens: inside the attempt
+    directory"* -- so a stage whose output is in run-0 has RUN, and status that
+    globs the container reports it as never launched, forever."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_03_tight.fdf")
+    attempt = prepare_attempt(js, tmp_path, "tight")["dir"]
+    (attempt / "JOB_03_tight.out").write_text("Job completed\n")
+
+    st = jobset_status(js, tmp_path).stages[0]
+    assert st.attempt == "run-0"                 # says WHICH attempt it read
+    assert st.state != "pending"                 # not "prepped, not launched"
+    assert "not launched" not in st.detail
+
+
+def test_every_table_column_gets_a_rule_segment(tmp_path):
+    """The widths and the rule were two hand-written column counts, and adding
+    `attempt` desynchronised them at once: six headings over a five-segment
+    rule.  Both are driven off the header now, so this cannot recur."""
+    import re
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    for out in (render_plan(js), render_status(jobset_status(js, tmp_path))):
+        lines = out.splitlines()
+        # Find the rule rather than index it: the two tables do not start at
+        # the same offset, which is how this test's own first draft made the
+        # very mistake it exists to catch.
+        rule = next(l for l in lines if l.strip() and set(l.strip()) <= {"-", " "})
+        header = lines[lines.index(rule) - 1]
+        assert len(rule.split()) == len(re.split(r"\s{2,}", header.strip()))
+
+
+def test_warm_files_are_read_from_the_attempt_not_the_container(tmp_path):
+    """Same sentence, other half: what a run WRITES is created in place, so the
+    restart files a user is deciding on are in the attempt."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_03_tight.fdf")
+    attempt = prepare_attempt(js, tmp_path, "tight")["dir"]
+    (attempt / "JOB.XV").write_text("")
+    (attempt / "JOB_03_tight.out").write_text("Job completed\n")
+
+    assert jobset_status(js, tmp_path).stages[0].warm_files == ["JOB.XV"]
+
+
+def test_a_launched_attempt_with_no_output_is_queued_not_not_started(tmp_path):
+    """`project-layout.md` § 1.6: *"a queued cluster job has produced nothing
+    yet, so 'no output' and 'not started' look identical"* -- run.json is what
+    tells them apart, and status *"can say queued as job 481923 instead of
+    guessing from an absence"*."""
+    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    js = _token_ladder("JOB_03_tight.fdf")
+    attempt = prepare_attempt(js, tmp_path, "tight")["dir"]
+
+    before = jobset_status(js, tmp_path).stages[0]
+    assert before.state == "pending"             # prepped, genuinely not launched
+
+    write_run_launch(attempt, mode="submit", command=["sbatch", "x"],
+                     job_id="481923")
+    after = jobset_status(js, tmp_path).stages[0]
+    assert after.state == "queued"
+    assert "481923" in after.detail              # the contract's own sentence
+
+
+def test_re_prepping_cold_removes_what_the_previous_prep_carried_in(tmp_path):
+    """§ 1.6 makes re-prep *"changing your mind about the setup"*.  A mind
+    changed from `--from A` to `--cold` that leaves A's .XV in the directory has
+    changed nothing: the engine finds it and warm-starts anyway.  That is the
+    *"present but not honoured"* failure inverted, and it is silent."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    coarse = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    (coarse / "JOB.XV").write_text("geometry from coarse\n")
+
+    warm = prepare_attempt(js, tmp_path, "tight",
+                           continue_from="01_coarse/run-0")
+    attempt = warm["dir"]
+    assert warm["copied"] == ["JOB.XV"]
+    assert (attempt / "JOB.XV").is_file()
+
+    cold = prepare_attempt(js, tmp_path, "tight", cold=True)
+    assert cold["dir"] == attempt                # the same unlaunched attempt
+    assert not (attempt / "JOB.XV").exists()     # and it is actually cold now
+    assert not (attempt / ".continued-from").exists()
+
+
+def test_submit_only_takes_the_same_three_spellings_as_every_surface(tmp_path):
+    """`only` is a library entry point, and it had its own lookup and its own
+    listing -- the same defect prepare_attempt had (§ 8f)."""
+    from molbuilder.jobset.submit import submit_jobset, SubmitError
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    res = submit_jobset(js, tmp_path, mode="direct", dry_run=True, only="3")
+    assert [r.name for r in res] == ["tight"]
+
+    with pytest.raises(SubmitError) as e:
+        submit_jobset(js, tmp_path, mode="direct", dry_run=True, only="bogus")
+    assert "01_coarse, 03_tight" in str(e.value)
+
+
 def test_a_number_resolves_to_the_seq_and_never_to_the_row():
     """R5's whole point, and the two differ the moment a stage is disabled: the
     ladder is 01/03, so `1` is coarse (row 1 would be tight) and `3` is tight

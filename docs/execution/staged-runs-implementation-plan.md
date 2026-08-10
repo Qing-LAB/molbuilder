@@ -2272,6 +2272,42 @@ Two more findings, recorded because neither is about this resolver:
   with **no tests at all**. Resolution and attempt reuse are covered now; the
   carry-copy path still is not.
 
+#### Fresh-eyes code review of the whole session (2026-08-10)
+
+Reading every code commit of the day end to end, against the contract rather
+than against the diffs. Six defects, and **only one of them was in the resolver
+work** — the rest came in with the attempt layer (`b8998d7a`) and with decision
+27's rename (`c7d445bb`), and none had a test.
+
+| | what was wrong | contract it broke |
+|---|---|---|
+| **1** | **`jobset status` was blind to the attempt layer.** `_stage_state` globbed the *container* for `*.out`, but a run happens in `<seq>_<name>/run-<n>/`. A finished hierarchical stage read as *"prepped, not launched"* — **forever**, and its warm files never showed either | § 1.5 *"Where a run happens: inside the attempt directory"*; § 1.6 *"molbuilder informs; the user decides"* |
+| **2** | **`run.json` was written but never read.** Status inferred *not launched* from an absence of output, which is the one thing § 1.6 says an empty directory cannot tell you | § 1.6, *"`status` can say **queued as job 481923** instead of guessing from an absence"* |
+| **3** | **`--cold` on a reused attempt left the previous carry in place.** Prep `--from A`, change your mind, prep `--cold`, submit — and the engine warm-starts from A's `.XV`, still sitting there. Silent, and in the dangerous direction | § 1.6 *"re-preparing is just changing your mind about the setup"*; `identity.RestartGroup`'s *"present but not honoured"* |
+| **4** | **`viewer.js` did arithmetic on the stage token.** `(params.stage \|\| 1) - 1` was correct while `stage` was a number; decision 27 made it `01_coarse`, so it became `NaN`, `selStage` was always `{}`, and **`continue_retries` silently stopped reaching the wrapper** on every staged save from the browser | decision 27; `job-contracts.md § 6.2` (the one Resources field that becomes no sbatch flag, so losing it here loses it entirely) |
+| **5** | **`submit_jobset(only=…)` was an eighth "which stage" lookup**, with its own refusal and its own ordinal-free listing — the same defect as `prepare_attempt` | § 8f |
+| **6** | **Two hand-written column counts.** `render_status` sized six columns and ruled five the moment a column was added; `render_plan` had the same pair waiting | — (a place where two things can disagree, § 9.7) |
+
+Both display fixes are driven off the header now, so the count exists once.
+Defect 4's fix takes the ordinal **off the token** rather than matching the
+preset's word, which also survives a stage being renamed.
+
+**On testing.** Every fix is pinned by a test that quotes the sentence it
+protects, and all twelve were mutation-tested — including two for defect 4,
+one restoring the exact historical line and one an off-by-one of the same
+shape. Defect 4's test **runs the shipped expression in Node** rather than
+grepping for it, because the bug's whole character is that the line still
+parsed and still looked like an index (`checkpointing.md` § 13.3, *run the
+thing and look at what moved*).
+
+**Still open, recorded not fixed:** in `direct` mode `_record_launch` runs
+after `subprocess.run` *returns* — which for a local job is after the whole run
+finishes, not after it starts. Interrupt one and no `run.json` is ever written,
+so the next `submit` reuses that attempt and lands on top of a run that did
+happen. `submit` mode is unaffected (`sbatch` returns immediately). Fixing it
+means deciding what *launched* means for a blocking call, which is P6's
+`LaunchSpec` question, not this one's.
+
 **Still open on this surface**, and it is the before-produce half:
 `siesta/input._stage_tokens` returns `(stage, str)` pairs where the after-produce
 half returns `StageRef`s. It is not *wrong* — it is the one place the ladder is

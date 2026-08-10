@@ -1851,8 +1851,18 @@ import { mount as mvMount, formula as mvFormula }
         // Lift the selected stage's convergence policy to top-level
         // so the Save pipeline can pass continue_retries to the
         // .run.sh wrapper generation.
-        const stageIdx = (params.stage || 1) - 1;
-        const selStage = ((params.stages || [])[stageIdx]) || {};
+        //
+        // ``params.stage`` is a TOKEN (``01_coarse``) since decision 27, and
+        // this read ``(params.stage || 1) - 1`` until 2026-08-10 -- a string
+        // minus one, which is NaN, so ``selStage`` was ALWAYS ``{}`` and
+        // ``continue_retries`` silently stopped reaching the wrapper.  The
+        // ordinal is the stage's 1-based place in the FULL ladder
+        // (project-layout.md § 4.2), which is exactly what indexes these rows;
+        // taking it off the token also survives a stage being renamed, which
+        // matching on the preset's word would not.
+        const _seq = /^(\d+)_/.exec(String(params.stage || ""));
+        const selStage =
+            (_seq ? (params.stages || [])[Number(_seq[1]) - 1] : null) || {};
         if (selStage.on_nonconvergence === "continue"
             && selStage.continue_retries > 0) {
             params.continue_retries = selStage.continue_retries;
