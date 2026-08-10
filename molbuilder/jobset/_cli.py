@@ -25,7 +25,7 @@ from .model import JobSet
 from .plan import render_plan
 from .prep import prep_jobset, PrepError
 from .submit import submit_jobset, SubmitError
-from .runstatus import jobset_status, render_status
+from .runstatus import jobset_status, render_stage_status, render_status
 
 _JOBSET_FILE = "job-set.json"
 
@@ -53,9 +53,24 @@ def jobset_group() -> None:
     host; ``prep`` then ``submit`` it on the target."""
 
 
+#: The calculation folder, spelled the same way on every verb.
+#:
+#: It was a POSITIONAL on ``plan`` and ``status`` until 2026-08-10 while
+#: ``prep``/``submit`` took ``--bundle``, so one word meant the folder on two
+#: verbs and the stage on the other two.  `job-system.md` § 5.3 calls that *"a
+#: defect of this section's own making"*: the grammar is
+#: ``jobset <verb> <kind> [<stage>]``, and a positional that is sometimes a
+#: path has no place in it.  `jobset status tight` answered *"Directory 'tight'
+#: does not exist"*, which tells a user they mistyped a path they never meant.
+_bundle_option = click.option(
+    "--bundle", "bundle", default=".",
+    type=click.Path(exists=True, file_okay=False),
+    help="the calculation folder (default: the current directory, which is "
+         "where a session is normally run from).")
+
+
 @jobset_group.command("plan", short_help="show the plan (jobs, resources, deps)")
-@click.argument("bundle", type=click.Path(exists=True, file_okay=False),
-                default=".")
+@_bundle_option
 def plan_cmd(bundle: str) -> None:
     """Print the job-set plan: one row per job (resources, dependency,
     carry) + the order.  Reads only ``job-set.json`` -- changes nothing."""
@@ -64,16 +79,27 @@ def plan_cmd(bundle: str) -> None:
 
 
 @jobset_group.command("status", short_help="show per-stage status + resume point")
-@click.argument("bundle", type=click.Path(exists=True, file_okay=False),
-                default=".")
-def status_cmd(bundle: str) -> None:
-    """Show each stage's run state (finished / running / failed / pending /
-    not-started), which warm-restart files are present, and the FIRST
+@click.argument("stage", required=False, default=None)
+@_bundle_option
+def status_cmd(stage, bundle: str) -> None:
+    """Show each stage's run state (finished / running / failed / queued /
+    pending / not-started), which warm-restart files are present, and the FIRST
     incomplete stage (the one to resume from).  Read-only -- molbuilder
     informs; you decide whether to continue or switch (job-system.md
-    § 5.3).  Reuses the same directory decoder as the Results tab."""
+    § 5.3).  Reuses the same directory decoder as the Results tab.
+
+    With a STAGE -- by name, number or token, like every other verb -- it
+    answers the other question instead: *what happened to this one*, with its
+    attempts, its launch record and what it continued from.  That form is only
+    answerable because a try is a directory and a launch is a record
+    (project-layout.md § 1.5, § 1.6).
+    """
     js, base = _load(bundle)
-    click.echo(render_status(jobset_status(js, base)))
+    status = jobset_status(js, base)
+    if stage is None:
+        click.echo(render_status(status))
+        return
+    click.echo(render_stage_status(status, _resolve_stage_name(js, stage)))
 
 
 # --------------------------------------------------------------------- #
@@ -108,6 +134,25 @@ def _check_kind(kind: str) -> None:
             "peers; see job-system.md § 5.3.")
 
 
+def _resolve_stage_name(js, stage: str) -> str:
+    """The job ``stage`` names, through the ONE resolver (§ 8f).
+
+    Split out from :func:`_resolve_stage` because two different questions were
+    living in one function: *which job did the user name* (every verb that takes
+    a STAGE asks this) and *may this verb act on the whole set* (only ``prep``
+    and ``submit`` ask, and ``status`` legitimately may). Keeping them together
+    would have made ``status <stage>`` either refuse a whole-ladder status or
+    grow a second lookup -- and a second lookup is the thing § 8f is about.
+    """
+    from ..identity import resolve_stage_ref
+    from .materialize import stage_refs
+    refs = stage_refs(js)
+    try:
+        return resolve_stage_ref([refs[j.name] for j in js.jobs], stage).name
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+
 def _resolve_stage(js, stage, chain: bool, verb: str):
     """Which jobs a verb acts on, and the refusal when that is ambiguous.
 
@@ -122,17 +167,12 @@ def _resolve_stage(js, stage, chain: bool, verb: str):
     had its own lookup, its own refusal wording and its own listing format, so
     a user could be shown two vocabularies for one question.
     """
-    from ..identity import render_stage_refs, resolve_stage_ref
+    from ..identity import render_stage_refs
     from .materialize import stage_refs
+    if stage is not None:
+        return _resolve_stage_name(js, stage)
     refs = stage_refs(js)
     ordered = [refs[j.name] for j in js.jobs]
-    if stage is not None:
-        # A name, a number, or a whole token -- one resolver, so the CLI, the
-        # listing and the refusal cannot speak three vocabularies (§ 8f).
-        try:
-            return resolve_stage_ref(ordered, stage).name
-        except ValueError as e:
-            raise click.ClickException(str(e))
     if js.kind == "ladder" and not chain:
         raise click.ClickException(
             f"this is a ladder, so `{verb}` acts on ONE stage: "

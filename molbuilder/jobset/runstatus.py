@@ -23,9 +23,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..identity import seq_text
-from .materialize import (RUN_LAUNCH_FILE, job_dir_names, latest_attempt,
-                          stage_refs)
+from ..identity import StageRef, seq_text
+from .materialize import (RUN_LAUNCH_FILE, attempts, job_dir_names,
+                          latest_attempt, stage_refs)
 from .model import JobSet
 
 # Engine-native warm-restart files keyed by the project id (system label),
@@ -58,6 +58,15 @@ class StageStatus:
     #: Which attempt this status was read from (``run-0``), or ``None`` for a
     #: flat run, which happens in the container itself (§ 1.5).
     attempt: Optional[str] = None
+    #: Every attempt present, ascending -- the stage's history.  A re-run makes
+    #: a new directory and leaves the old one exactly as it was (§ 1.5), so
+    #: this is the list of tries, not a counter that can be off.
+    attempts: List[int] = field(default_factory=list)
+    #: The attempt's ``run.json``, whole, or ``None`` if it has not been
+    #: launched.  Carried rather than picked apart so the per-stage view has
+    #: the record without a SECOND reader of the same file -- the schema is
+    #: versioned (``molbuilder/run-launch@1``) and may grow fields.
+    launch: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -169,6 +178,8 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
             name=job.name, dir=d.name, state=state, detail=detail,
             seq=refs[job.name].seq,
             attempt=(attempt.name if attempt else None),
+            attempts=attempts(d),
+            launch=launch,
             warm_files=_warm_present(observed, label, jobset.engine),
         ))
         if first_incomplete is None and state != _DONE:
@@ -221,4 +232,55 @@ def render_status(status: JobSetStatus) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["StageStatus", "JobSetStatus", "jobset_status", "render_status"]
+def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
+    """One stage, in full — the per-stage form `job-system.md` § 5.3 reserves.
+
+    The table answers *where is this calculation up to*; this answers *what
+    happened to this stage*, which is a different question and the one you ask
+    before deciding whether to run it again. It is only answerable at all
+    because of the attempt layer: the tries are directories, and the launch is
+    a record rather than an inference from an empty folder (§ 1.5, § 1.6).
+
+    Everything printed comes off the :class:`StageStatus` the reader already
+    built. Nothing here opens a file — a second reader of ``run.json`` would be
+    a second answer to *was this launched?*
+    """
+    s = next(x for x in status.stages if x.name == stage_name)
+    rows: List[tuple] = []
+
+    tries = ", ".join(f"run-{n}" for n in s.attempts) or "-"
+    rows.append(("attempt", f"{s.attempt or '-'}"
+                            + (f"   (of {tries})" if len(s.attempts) > 1
+                               else "")))
+    if s.launch:
+        jid = s.launch.get("job_id")
+        rows.append(("launched", f"{s.launch.get('mode', '?')}"
+                                 + (f" as job {jid}" if jid else "")
+                                 + f" at {s.launch.get('launched_at', '?')}"))
+        cmd = s.launch.get("command")
+        if cmd:
+            rows.append(("command", " ".join(cmd)))
+        # ABSENT means started from the structure (checkpointing.md S3), which
+        # is a different claim from "continued from nothing" -- so it is only
+        # printed when there is something to print.
+        if s.launch.get("continued_from"):
+            rows.append(("continued from", s.launch["continued_from"]))
+    else:
+        rows.append(("launched", "no  (no run.json -- prepared, not started)"))
+    rows.append(("warm files", ", ".join(s.warm_files) or "-"))
+    rows.append(("detail", s.detail or "-"))
+
+    # The pad comes off the longest label, never a literal.  Hand-written and
+    # it was 14 -- exactly the width of "continued from", so the one row that
+    # had something to say ran its value straight into its own name.
+    w = max(len(k) for k, _ in rows) + 2
+    lines = [f"STAGE {StageRef(s.seq, s.name).label} -- {s.state}", ""]
+    lines += [f"  {k.ljust(w)}{v}" for k, v in rows]
+    lines.append("")
+    lines.append(
+        f"Directory: {s.dir}" + (f"/{s.attempt}" if s.attempt else ""))
+    return "\n".join(lines)
+
+
+__all__ = ["StageStatus", "JobSetStatus", "jobset_status", "render_status",
+           "render_stage_status"]

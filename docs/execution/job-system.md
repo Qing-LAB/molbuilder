@@ -715,17 +715,22 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > | `submit` | ✅ | ⛔ `molbuilder bench siesta-gpu` | — |
 > | `summarize` | — | ⛔ `molbuilder bench summarize` | — |
 > | `describe` | — | — | ⛔ **not built** — today `molbuilder fdf … --stages-json --jobset` writes the bundle, and it emits *both* shapes at once |
-> | `status` | — | — | ✅ whole calculation · ⛔ **no per-stage form yet** |
+> | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
 > | `plan` | — | — | ✅ |
 >
 > `prep|submit bench` refuse with a pointer at the bench command that works,
 > rather than reporting an unknown word — the fold-in is designed
-> (`web/staged-runs-architecture.md` step 1c), not done. **`status <stage>` is
-> the one that misleads**: `status` takes the folder as its positional, so
-> `jobset status tight` reports *"Directory 'tight' does not exist"* rather than
-> saying it wants a folder. That is a defect of this section's own making, and
-> it is why the per-stage row is marked rather than quietly shown working in the
-> examples below.
+> (`web/staged-runs-architecture.md` step 1c), not done.
+>
+> **`status <stage>` landed 2026-08-10**, and with it the last inconsistency in
+> this grammar: `plan` and `status` took the *folder* as their positional while
+> `prep` and `submit` took `--bundle`, so one word meant a path on two verbs and
+> a stage on the other two. `jobset status tight` answered *"Directory 'tight'
+> does not exist"* — a complaint about a path the user never meant to type. All
+> four verbs now take `--bundle`, and the positional is always a stage.
+>
+> ⚠ **That is a breaking change** to `jobset plan <dir>` / `jobset status <dir>`;
+> write `--bundle <dir>`, or run from inside the folder, which needs neither.
 
 #### Three ideas, in plain language
 
@@ -839,15 +844,39 @@ molbuilder jobset submit run --chain --mode direct
 #### The read-only verbs
 
 ```bash
-molbuilder jobset plan     ./bundle    # the jobs, resources and carry set — changes nothing
-molbuilder jobset status   ./bundle    # per-stage state + which stage is next
-molbuilder jobset status              # the same, from inside the folder
+molbuilder jobset plan   --bundle ./bundle   # the jobs, resources and carry set — changes nothing
+molbuilder jobset status --bundle ./bundle   # per-stage state + which stage is next
+molbuilder jobset status                     # the same, from inside the folder
+
+molbuilder jobset status tight               # ...and what happened to ONE stage
+molbuilder jobset status 3                   # the same stage, by its ordinal
 ```
 
-⛔ A per-stage `status <stage>` is in the grammar and **not built** — see the
-table above. Both verbs still take the folder as their positional, so they have
-not moved to `--bundle` the way `prep` and `submit` have; that inconsistency is
-real and is part of decision 28's caller sweep.
+The per-stage form answers a different question from the table. The table says
+*where is this calculation up to*; `status <stage>` says *what happened to this
+one* — which attempt it is on, whether it was launched and how, what geometry it
+continued from, and what it left behind:
+
+```text
+STAGE 03_tight -- running
+
+  attempt         run-1   (of run-0, run-1)
+  launched        submit as job 481923 at 2026-08-10T19:04:08Z
+  command         sbatch -J tight -p public … tight.sbatch
+  continued from  01_coarse/run-0
+  warm files      bdt_relax.XV, bdt_relax.DM
+  detail          running
+
+Directory: 03_tight/run-1
+```
+
+None of that is inferred. It is only answerable because a try is a directory and
+a launch is a record (§ 1.5, § 1.6) — before those, *"has this been launched?"*
+had no honest answer and *"which try am I looking at?"* had no answer at all.
+A line is printed only when there is something to print: a run that started from
+the structure has **no** `continued from` line, because `continued_from` is
+*absent* rather than null, and absent is a different claim from *"continued from
+nothing"* (`checkpointing.md` S3).
 
 - **`plan`** prints the chain, each job's resources, and its carry set. It
   changes nothing — it is the "look before you leap" step.

@@ -177,6 +177,18 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "the CLI's single door onto the resolver -- which jobs a verb acts "
         "on, and the ladder's refusal to act on all of them without "
         "--chain (project-layout 1.6)"),
+    "_resolve_stage_name": (
+        None, "molbuilder/jobset/_cli.py",
+        "the half of that door every verb needs -- WHICH job did the user "
+        "name.  Split out because `status <stage>` must resolve a name "
+        "without inheriting the whole-set refusal: a whole-ladder status is "
+        "a legitimate thing to ask for, unlike a whole-ladder submit"),
+    "render_stage_status": (
+        None, "molbuilder/jobset/runstatus.py",
+        "the per-stage view (job-system.md 5.3) -- what happened to ONE "
+        "stage: its attempts, its launch record and what it continued from.  "
+        "Answerable only because a try is a directory and a launch is a "
+        "record (project-layout 1.5, 1.6)"),
     "_stage_science": (
         None, "molbuilder/siesta/input.py",
         "the deck's one-line stage comment, DERIVED from the config being "

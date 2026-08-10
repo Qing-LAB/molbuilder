@@ -5,6 +5,7 @@ stage-ladder producer."""
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -580,14 +581,14 @@ def _runner():
 def test_cli_plan_reads_jobset_json(tmp_path):
     _ladder().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["plan", str(tmp_path)])
+    r = runner.invoke(grp, ["plan", "--bundle", str(tmp_path)])
     assert r.exit_code == 0, r.output
     assert "JOB-SET PLAN" in r.output and "Order: s1 -> s2" in r.output
 
 
 def test_cli_errors_without_jobset_json(tmp_path):
     runner, grp = _runner()
-    r = runner.invoke(grp, ["plan", str(tmp_path)])
+    r = runner.invoke(grp, ["plan", "--bundle", str(tmp_path)])
     assert r.exit_code != 0
     assert "no job-set.json" in r.output
 
@@ -690,7 +691,7 @@ def test_render_status_shows_resume_pointer(tmp_path):
 def test_cli_status(tmp_path):
     _ladder().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["status", str(tmp_path)])
+    r = runner.invoke(grp, ["status", "--bundle", str(tmp_path)])
     assert r.exit_code == 0, r.output
     assert "JOB-SET STATUS" in r.output and "First incomplete" in r.output
 
@@ -975,6 +976,108 @@ def test_re_prepping_cold_removes_what_the_previous_prep_carried_in(tmp_path):
     assert cold["dir"] == attempt                # the same unlaunched attempt
     assert not (attempt / "JOB.XV").exists()     # and it is actually cold now
     assert not (attempt / ".continued-from").exists()
+
+
+def test_status_takes_a_stage_and_answers_the_other_question(tmp_path):
+    """`job-system.md` § 5.3 reserves a per-stage form and marked it unbuilt.
+
+    The table answers *where is this calculation up to*; this answers *what
+    happened to this stage*, which is what you ask before deciding to run it
+    again.  It is only answerable because a try is a directory and a launch is
+    a record (§ 1.5, § 1.6) -- so it prints the attempt, the launch and the
+    provenance, not just the row.
+    """
+    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    from molbuilder.jobset.runstatus import render_stage_status
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    coarse = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    (coarse / "JOB.XV").write_text("COARSE-GEOM")
+    tight = prepare_attempt(js, tmp_path, "tight",
+                            continue_from="01_coarse/run-0")["dir"]
+    write_run_launch(tight, mode="submit", command=["sbatch", "x.sbatch"],
+                     job_id="481923", continued_from="01_coarse/run-0")
+
+    out = render_stage_status(jobset_status(js, tmp_path), "tight")
+    assert out.splitlines()[0].startswith("STAGE 03_tight")
+    assert "run-0" in out
+    assert "481923" in out                       # the launch record, not a guess
+    assert "01_coarse/run-0" in out              # where this geometry came from
+    assert "03_tight/run-0" in out               # and where to go look
+
+
+def test_a_never_launched_stage_says_so_instead_of_showing_a_blank_record(tmp_path):
+    """Prepared but not started is its own state, and it is what `run.json`'s
+    absence means (§ 1.6)."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    from molbuilder.jobset.runstatus import render_stage_status
+    js = _token_ladder("JOB_03_tight.fdf")
+    prepare_attempt(js, tmp_path, "tight")
+
+    out = render_stage_status(jobset_status(js, tmp_path), "tight")
+    assert "no run.json" in out
+    assert "continued from" not in out
+
+
+def test_a_cold_run_prints_no_provenance_line_at_all(tmp_path):
+    """`continued_from` is ABSENT, not null, when a run starts from the
+    structure (checkpointing.md S3) -- and the view must not turn that absence
+    into *"continued from: nothing"*, which is a different claim.
+
+    This is the LAUNCHED-but-cold case.  Testing it on a never-launched stage
+    proves nothing: that path stops before provenance is ever considered, so a
+    view that printed a blank line for every cold run would still pass.
+    """
+    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    from molbuilder.jobset.runstatus import render_stage_status
+    js = _token_ladder("JOB_03_tight.fdf")
+    attempt = prepare_attempt(js, tmp_path, "tight", cold=True)["dir"]
+    write_run_launch(attempt, mode="direct", command=["bash", "x.sh"])
+
+    out = render_stage_status(jobset_status(js, tmp_path), "tight")
+    assert "launched" in out and "direct" in out      # it DID start
+    assert "continued from" not in out                # from the structure
+
+
+def test_every_label_in_the_per_stage_view_is_padded_off_the_longest(tmp_path):
+    """The pad was hand-written as 14 -- exactly the width of `continued from`,
+    so the one row with provenance to report ran its value into its own name.
+    Same defect as the table's two column counts, one screen over."""
+    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    from molbuilder.jobset.runstatus import render_stage_status
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    coarse = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    (coarse / "JOB.XV").write_text("x")
+    tight = prepare_attempt(js, tmp_path, "tight",
+                            continue_from="01_coarse/run-0")["dir"]
+    write_run_launch(tight, mode="direct", command=["bash", "x.sh"],
+                     continued_from="01_coarse/run-0")
+
+    body = [l for l in render_stage_status(jobset_status(js, tmp_path),
+                                           "tight").splitlines()
+            if l.startswith("  ")]
+    # every indented row separates its label from its value by real whitespace
+    assert body, "no rows rendered"
+    for line in body:
+        assert re.match(r"^ {2}\S.*?\s{2,}\S", line), f"label runs into value: {line!r}"
+
+
+def test_plan_and_status_take_the_bundle_the_same_way_every_verb_does(tmp_path):
+    """One word cannot mean the folder on two verbs and the stage on two others.
+    `jobset status tight` answered *"Directory 'tight' does not exist"* -- a
+    complaint about a path the user never meant to type (§ 5.3)."""
+    _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf").write(
+        tmp_path / "job-set.json")
+    runner, grp = _runner()
+    for verb in ("plan", "status"):
+        r = runner.invoke(grp, [verb, "--bundle", str(tmp_path)])
+        assert r.exit_code == 0, r.output
+        assert "coarse" in r.output
+    # ...and the positional is a STAGE, resolved the way every other verb
+    # resolves one.  A NUMBER, deliberately: an exact name would pass even if
+    # the command took the string verbatim and never reached the resolver.
+    r = runner.invoke(grp, ["status", "3", "--bundle", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    assert r.output.splitlines()[0].startswith("STAGE 03_tight")
 
 
 def test_a_ladder_refuses_to_submit_all_of_itself_without_chain(tmp_path):
