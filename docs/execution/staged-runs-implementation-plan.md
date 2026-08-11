@@ -128,11 +128,25 @@ the full suite.
 
 ---
 
-## 2. The layers, and why this order
+## 2. The build order, and why this one
 
-The system is a stack. Each layer reads the one below it and never reaches past
-it, which is exactly why it can be built bottom-up: nothing above exists yet to
-be broken.
+> **⚠ This section is a *schedule*, not the architecture.** It answers *what can
+> be written before what*, and its boxes are groups of **phases**. § 9 answers
+> *what may depend on what*, and its boxes are **floors** of the running system.
+> They are close relatives and they are not the same picture: § 2's "acts"
+> — produce, prep, submit — are § 9's **routes**, which cross floors by design,
+> while § 2's "identity" and "rendering" are floors. **Putting both in one stack
+> is exactly the mix § 9.2 exists to undo**; this section keeps doing it because
+> as a build order it is right, and renaming it is cheaper than redrawing it.
+>
+> This document was written with **three** different things called a "layer" —
+> import depth (`test_layering`), architectural floor (§ 9), and this build
+> order — and this one, met first, was the one with no warning attached. If you
+> want the structure, read § 9. If you want the order of work, read on.
+
+The work is a stack. Each group is written against the one below it and never
+reaches past it, which is exactly why it can be built bottom-up: nothing above
+exists yet to be broken.
 
 ```mermaid
 flowchart TB
@@ -1698,8 +1712,25 @@ navigates).
    > that SIESTA's was live.
 3. `submit` resolves **one** attempt for the stage it is starting: next unused
    number, create, link the deck and package, copy what was named, launch there.
+
+   > **Landed 2026-08-10, split across two verbs instead of one — and the split
+   > is better than the unit as written.** `prep run <stage>` *creates* the
+   > attempt (`prepare_attempt`: next unused number, link, copy what was named,
+   > and print what it resolved); `submit run <stage>` *launches into* the
+   > newest one and **refuses one that has already been launched**, naming
+   > `run.json` as the evidence.
+   >
+   > Writing it as one verb would have put creation inside launch, and then
+   > `run-identity.md`'s *an attempt is immutable once it has run* would have
+   > had nowhere to be enforced — the same call that starts a run cannot also
+   > be the call that refuses to start it twice. **The unit described one act;
+   > the contract needed two**, and following the contract is what found that.
 4. `materialize.job_dir_name` returns `point-<name>` for **every** job and must
    branch on `JobSet.kind` — `01_<name>` for stages, `point-*` for bench trials.
+
+   > **Landed 2026-08-10** (`5ca935a8`). `job_dir_names` branches on the kind:
+   > `<seq>_<name>` for a ladder, `point-<name>` for a sweep. Until then a
+   > staged run's folders came out `point-coarse/` — `worked-example.md`'s gap 6.
 5. **One warm-file inventory per engine.** Two exist per engine today and they
    agree by luck: add a warm hook to the carry list alone and a `--cold` run
    silently warm-starts from it — a contaminated calculation that reports
