@@ -45,7 +45,7 @@ def render_plan(jobset: JobSet) -> str:
         f"{', '.join(js.shared) or '(none)'}",
         "",
     ]
-    hdr = ("seq", "job", "input", "depends on", "carries", "resources")
+    hdr = ("seq", "job", "input", "warm files", "resources")
     rows = []
     # The column is the stage's SEQ, never its row.  It printed `enumerate()`
     # until 2026-08-10 -- the stage's POSITION, which `engines/stages.md` R5
@@ -55,9 +55,12 @@ def render_plan(jobset: JobSet) -> str:
     # wearing the new column's name.
     refs = stage_refs(js)
     for j in js.jobs:
-        dep = (f"{j.depends_on} ({j.dep_kind})" if j.depends_on else "-")
-        carries = ", ".join(c.pattern for c in j.carry) or "-"
-        rows.append((refs[j.name].seq_text, j.name, j.script, dep, carries,
+        # WHAT this job would take from a run it is continued from -- never
+        # WHICH run.  The two columns here used to be `depends_on (dep_kind)`
+        # and the carry patterns; both named another job, and both went with
+        # the edges on 2026-08-10.
+        warm = ", ".join(w.name for w in j.warm) or "-"
+        rows.append((refs[j.name].seq_text, j.name, j.script, warm,
                      _res_str(j.resources)))
     # Off `hdr`, not off a literal count -- the same two hand-written numbers
     # in `runstatus` disagreed the moment a column was added.
@@ -74,11 +77,7 @@ def render_plan(jobset: JobSet) -> str:
     # plan that ends by recommending the refused thing is worse than one that
     # ends without advice.
     lines.append("")
-    if any(j.depends_on for j in js.jobs):
-        chain = " -> ".join(j.name for j in js.jobs)
-        lines.append(f"Order: {chain}  (each waits for the prior per its "
-                     "dependency kind)")
-    elif js.kind == "ladder":
+    if js.kind == "ladder":
         # A staged ladder declares no edges (P7 unit 2) and that is the design,
         # not an omission -- so say what to do rather than leaving a reader to
         # infer that unrelated jobs may all be started at once.

@@ -5,7 +5,7 @@ The thin CLI/bundle wrapper the framework needed: the engine-agnostic
 target-side verbs over a persisted JobSet, mirroring ``molbuilder bench``.
 Each command loads ``<bundle>/job-set.json`` and calls one engine:
 
-  * ``plan``    -> ``render_plan``    (the chain + per-job resources, dry)
+  * ``plan``    -> ``render_plan``    (the jobs + per-job resources, dry)
   * ``prep``    -> ``prep_jobset``    (render launchers + lay out point dirs)
   * ``submit``  -> ``submit_jobset``  (launch; ``--dry-run`` shows commands)
 
@@ -153,27 +153,31 @@ def _resolve_stage_name(js, stage: str) -> str:
         raise click.ClickException(str(e))
 
 
-def _resolve_stage(js, stage, chain: bool, verb: str):
+def _resolve_stage(js, stage, verb: str):
     """Which jobs a verb acts on, and the refusal when that is ambiguous.
 
     A LADDER is a sequence you look at between steps, so acting on all of it is
-    not a default -- ``--chain`` says you want it anyway (project-layout.md
-    § 1.6).  A SWEEP has no such ordering: its points are independent, so the
-    whole set is the ordinary thing and needs no flag *here*.
+    not merely off by default -- **there is no way to ask for it**.  ``--chain``
+    was the way, and it was deleted 2026-08-10 (user) in both modes: whether a
+    later stage should pick up an earlier one cannot be settled without
+    reviewing the earlier one's result (`project-layout.md` § 1.6).
 
-    **Neither answer decides whether that many jobs may be LAUNCHED**, and
+    A SWEEP has no such ordering: its points are independent, so the whole set
+    is the ordinary thing to name here.
+
+    **That still does not decide whether they may all be LAUNCHED**, and
     keeping the two apart is the point: this resolves *which jobs did you
-    mean*, and ``submit_jobset`` owns *may this many go at once* (a scheduler
-    takes one at a time; a hierarchical ladder does not chain).  A sweep still
-    resolves to all its points here, and ``--mode submit`` still refuses to
-    hand them over together -- because the refusal has to hold for the web
-    surface and any other caller, not only for what is typed.
+    mean*, and ``submit_jobset`` owns *may this many go at once* -- a scheduler
+    takes one per invocation.  A sweep resolves to all its points here and
+    ``--mode submit`` still refuses to hand them over together, because the
+    refusal has to hold for the web surface and any other caller, not only for
+    what is typed.
 
     Both kinds go through the ONE resolver (§ 8f).  A sweep's refs simply carry
     no ordinal, so it resolves by name and the refusal stops offering numbers --
-    which is the same code path, not a second one.  Until 2026-08-10 the sweep
-    had its own lookup, its own refusal wording and its own listing format, so
-    a user could be shown two vocabularies for one question.
+    the same code path, not a second one.  Until 2026-08-10 the sweep had its
+    own lookup, its own refusal wording and its own listing format, so a user
+    could be shown two vocabularies for one question.
     """
     from ..identity import render_stage_refs
     from .materialize import stage_refs
@@ -181,16 +185,15 @@ def _resolve_stage(js, stage, chain: bool, verb: str):
         return _resolve_stage_name(js, stage)
     refs = stage_refs(js)
     ordered = [refs[j.name] for j in js.jobs]
-    if js.kind == "ladder" and not chain:
+    if js.kind == "ladder":
         raise click.ClickException(
             f"this is a ladder, so `{verb}` acts on ONE stage: "
             f"{render_stage_refs(ordered)}.\n"
-            f"  molbuilder jobset {verb} run <stage>      one stage\n"
-            f"  molbuilder jobset {verb} run --chain      the whole ladder, "
-            f"unattended -- FLAT only, and never to a scheduler\n"
-            "Stages do not chain by default because a chain that continues on "
-            "its own can spend a week refining a geometry you would have "
-            "rejected in a minute (project-layout.md § 1.6).")
+            f"  molbuilder jobset {verb} run <stage>\n"
+            "Stages do not chain, and there is no flag that makes them: a "
+            "run that continues on its own can spend a week refining a "
+            "geometry you would have rejected in a minute "
+            "(project-layout.md § 1.6).")
     return None
 
 
@@ -225,7 +228,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     **Prep printing what it resolved is what makes submit a plain yes** -- it is
     the only place the chosen geometry and the rendered deck appear together.
 
-    With no STAGE (and ``--chain`` semantics not applying to prep) it lays out
+    With no STAGE it lays out
     every stage's container without opening an attempt, which is what a sweep
     wants and what a ladder needs before its first stage.
     """
@@ -342,27 +345,20 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
 @click.option("--domain", default=None,
               help="scheduler.routing domain -> -p/-q (submit mode; EXPLICIT, "
                    "never auto-picked).")
-@click.option("--chain", is_flag=True,
-              help="run EVERY stage of a FLAT ladder back to back, locally.  "
-                   "Off by design (project-layout.md § 1.6).  Two things it "
-                   "will not do: a scheduler is handed one job at a time "
-                   "(--mode submit), and a hierarchical ladder does not chain "
-                   "at all -- there, each stage continues from a run you NAME, "
-                   "and a chain has none to name.")
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
                    "nothing.")
-def submit_cmd(kind: str, stage, bundle: str, mode: str, domain, chain: bool,
+def submit_cmd(kind: str, stage, bundle: str, mode: str, domain,
                dry_run: bool) -> None:
     """Launch a prepped stage: local ``bash`` (direct) or the machine's
     submission system (submit).  Run ``prep`` first.  ``--dry-run`` shows the
     exact command before anything is irreversible."""
     _check_kind(kind)
     js, base = _load(bundle)
-    only = _resolve_stage(js, stage, chain, "submit")
+    only = _resolve_stage(js, stage, "submit")
     try:
         results = submit_jobset(js, base, mode=mode, domain=domain,
-                                dry_run=dry_run, only=only, chain=chain)
+                                dry_run=dry_run, only=only)
     except SubmitError as e:
         raise click.ClickException(str(e))
     verb = "WOULD run" if dry_run else "result"

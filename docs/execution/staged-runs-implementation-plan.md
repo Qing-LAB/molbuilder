@@ -1639,17 +1639,35 @@ navigates).
 2. `stages_to_jobset` stops emitting `depends_on` and `Carry` edges between
    stages. `carry_deref` stays for the chained ladder `jobset` can still build.
 
-   > **⚠ That second sentence is now the plan's own open question, not a
-   > statement.** `carry_deref`, `Carry`, `depends_on` and `dep_kind` are all
-   > still in the code — but after this unit landed, **nothing in molbuilder
-   > builds a chained ladder**: `stages_to_jobset` emits no edges, and
-   > `sweep_to_jobset` never did, because a sweep's points are independent.
-   > The machinery is kept for a caller that does not exist. `job-system.md`
-   > § 2's keep-justification — *"a benchmark sweep and an explicitly-chained
-   > workflow both still want them"* — **is wrong about the sweep**, found on
-   > the fresh contract read of 2026-08-10. Retiring it is a subtraction from
-   > the contract rather than a cleanup, so it is **decision 30 in § 8** and
-   > waits for the user.
+   > **⚠ That second sentence is gone, and so is everything it named.**
+   > **Decision 30, decided and executed 2026-08-10 (user): retire all of it.**
+   > `carry_deref`, `Carry`, `depends_on`, `dep_kind` and `--chain` are deleted
+   > — the flag in **both** modes, not narrowed to the shape where it was safe.
+   >
+   > The finding that forced it: after this unit landed, **nothing in molbuilder
+   > built a chained ladder**. `stages_to_jobset` emitted no edges and
+   > `sweep_to_jobset` never had, its points being independent — so
+   > `job-system.md` § 2's keep-justification (*"a benchmark sweep and an
+   > explicitly-chained workflow both still want them"*) was **wrong about the
+   > sweep** and named nobody on the workflow.
+   >
+   > **An opt-in flag was considered and rejected**, on the user's reasoning:
+   > a flag is typed before any stage has run, which is the moment you know
+   > least. The judgement belongs between two stages, where the evidence is.
+   >
+   > **What the deletion bought, and it is the argument in miniature: three
+   > mechanisms became one copy.** A dangling carry symlink needed a scheduler
+   > dependency to stop the consumer starting early, *and* a run-time
+   > `carry_deref` so the engine could not write back through the link into the
+   > producer's directory. `prep run <stage> --from <attempt>` needs none of
+   > them — the file is real, the source has finished, and you have looked at
+   > it. Net −112 lines across library and tests.
+   >
+   > **Guards, mutation-tested:** a `Job` that declares `depends_on` fails
+   > `test_a_job_cannot_name_another_job_at_all` *and* question 4; a `--chain`
+   > flag put back fails `test_the_cli_has_no_chain_flag_at_all`; a
+   > carry-forward block re-emitted into a wrapper fails the emitted-text
+   > guard. Four mutants, four kills.
 
    > **Landed 2026-08-10, and it was two changes, not one.** The
    > `Carry` half is now pure subtraction: P6 unit 3 made `prep` read the

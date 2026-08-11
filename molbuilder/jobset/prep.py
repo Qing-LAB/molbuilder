@@ -251,9 +251,6 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             # `job-system.md § 4.1` recorded the SIESTA ladder as never
             # having implemented `continue` (2026-08-07, P2 unit 3).
             continue_retries=r.continue_retries,
-            # localize carried restart files at run time so this job's writes
-            # never clobber the producer's dir (job-system.md § 5.2).
-            carry_in=[c.pattern for c in job.carry],
             emit_sbatch=emit_sbatch,
         )
         rendered.add(job.script)

@@ -10,8 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.jobset.model import (Carry, Job, JobSet, Resources,
-                                     SCHEMA)
+from molbuilder.jobset.model import Job, JobSet, Resources, SCHEMA, WarmFile
 from molbuilder.jobset.materialize import job_dir_name, materialize
 from molbuilder.jobset.plan import render_plan
 from molbuilder.jobset import submit as _submit
@@ -39,8 +38,10 @@ def _ladder() -> JobSet:
                 resources=Resources(domain="htc", time="0-04:00:00")),
             Job(name="s2", script="demo_s2.fdf",
                 resources=Resources(domain="public", exclusive=True),
-                depends_on="s1", dep_kind="afterok",
-                carry=[Carry("demo.XV", "s1"), Carry("demo.DM", "s1")]),
+                # WHAT it would take from a run it is continued from -- never
+                # WHICH job.  The fixture used to carry `depends_on="s1"` and
+                # two `Carry`s; all of it was deleted 2026-08-10 (user).
+                warm=[WarmFile("demo.XV"), WarmFile("demo.DM")]),
         ],
     )
 
@@ -51,7 +52,7 @@ def test_jobset_roundtrips_through_job_set_at_1():
     assert d["schema"] == SCHEMA
     back = JobSet.from_dict(d)
     assert back.to_dict() == d           # lossless
-    assert back.jobs[1].carry[0].pattern == "demo.XV"
+    assert back.jobs[1].warm[0].name == "demo.XV"
     assert back.jobs[1].resources.exclusive is True
 
 
@@ -72,19 +73,53 @@ def test_validate_catches_duplicate_names():
     assert any("duplicate" in e for e in js.validate())
 
 
-def test_validate_catches_forward_dependency():
-    js = _ladder()
-    js.jobs[0].depends_on = "s2"          # references a LATER job
-    assert any("PRIOR job" in e for e in js.validate())
+def test_a_job_cannot_name_another_job_at_all():
+    """The strongest form of *stages do not chain*: there is no field for it.
+
+    Two validation tests stood here -- a forward `depends_on` is refused, a bad
+    `dep_kind` is refused -- and both were retired on 2026-08-10 when the
+    fields were deleted (user decision 30).  **A rule enforced by a validator
+    is weaker than a rule enforced by the schema**: the validator refuses a
+    malformed edge, the schema refuses the concept.  So this asserts the
+    concept is gone rather than that a bad instance of it is caught.
+
+    Checked on the dataclass fields, not on an instance, because
+    `job.depends_on = "s1"` on a plain dataclass would simply create the
+    attribute and prove nothing.
+    """
+    import dataclasses
+    names = {f.name for f in dataclasses.fields(Job)}
+    gone = {"depends_on", "dep_kind", "carry"} & names
+    assert not gone, (
+        f"Job still declares {sorted(gone)} -- a job that can name another job "
+        "can express a chain, which is the thing decision 30 removed")
+    assert names == {"name", "script", "resources", "warm", "traits"}, names
+
+    # ...and the wire form carries no edge either, so a hand-written
+    # job-set.json cannot smuggle one back in.
+    d = _ladder().to_dict()["jobs"][1]
+    assert set(d) == {"name", "script", "resources", "warm", "traits"}, d
 
 
-def test_validate_catches_bad_dep_kind_and_carry():
-    js = _ladder()
-    js.jobs[1].dep_kind = "afterbogus"
-    js.jobs[1].carry = [Carry("x.XV", "nope")]
-    errs = js.validate()
-    assert any("dep_kind" in e for e in errs)
-    assert any("prior job" in e for e in errs)
+def test_an_edge_in_a_job_set_json_is_ignored_not_honoured():
+    """An OLD job-set.json still parses, and its edges do not come back.
+
+    This is the case a reader will actually hit: a bundle produced before
+    2026-08-10 has `depends_on` / `dep_kind` / `carry` keys in it.
+    `Job.from_dict` reads only the fields it knows, so the file loads and the
+    edge is simply not there -- which is the right outcome for a pre-1.0
+    deletion, and is worth pinning so nobody "helpfully" restores the keys.
+    """
+    old = {"schema": SCHEMA, "name": "demo", "engine": "siesta",
+           "kind": "ladder", "shared": [],
+           "jobs": [{"name": "s1", "script": "a.fdf"},
+                    {"name": "s2", "script": "b.fdf",
+                     "depends_on": "s1", "dep_kind": "afterok",
+                     "carry": [{"pattern": "demo.XV", "from_job": "s1"}]}]}
+    js = JobSet.from_dict(old)
+    assert js.validate() == []
+    assert not hasattr(js.jobs[1], "depends_on")
+    assert "depends_on" not in js.to_dict()["jobs"][1]
 
 
 def test_validate_catches_empty_and_bad_kind():
@@ -113,17 +148,31 @@ def test_materialize_creates_dirs_and_symlinks(tmp_path):
     assert (tmp_path / "point-s2" / "demo_s2.fdf").is_symlink()
 
 
-def test_materialize_carry_symlink_points_at_producer_dir(tmp_path):
+def test_materialize_lays_no_link_into_another_job(tmp_path):
+    """The inverse of what this test used to assert, and that is the change.
+
+    It read: the carry symlink exists, points at `../point-s1/demo.XV`, and
+    **dangles** -- *"dangling is fine (s1 hasn't run yet)"*.  It was fine only
+    because a scheduler dependency stopped the consumer starting early and a
+    run-time step localized the link before the engine could write through it.
+    Decision 30 deleted all three (2026-08-10).
+
+    So: a job's directory contains its own inputs and the shared package, and
+    **nothing that reaches into a sibling**.  What a stage continues from is a
+    real file copied by `prepare_attempt` from an attempt you name.
+    """
     js = _ladder()
     for f in js.shared + [j.script for j in js.jobs]:
         (tmp_path / f).write_text("x")
     materialize(js, tmp_path)
-    xv = tmp_path / "point-s2" / "demo.XV"
-    # carry symlink exists and targets the producer (s1) dir -- dangling
-    # is fine (s1 hasn't "run" yet).
-    assert xv.is_symlink()
-    assert os.readlink(xv) == os.path.join("..", "point-s1", "demo.XV")
-    assert not xv.exists()                 # dangling until s1 produces it
+    d = tmp_path / "point-s2"
+    assert not (d / "demo.XV").exists() and not (d / "demo.XV").is_symlink()
+    strays = [e.name for e in d.iterdir()
+              if e.is_symlink() and "point-s1" in os.readlink(e)]
+    assert not strays, f"links into another job's directory: {strays}"
+    # ...and the legitimate links are untouched: shared package + own deck.
+    assert sorted(e.name for e in d.iterdir()) == ["C.psml", "demo_s2.fdf",
+                                                   "mb_monitor.py"]
 
 
 def test_materialize_is_idempotent(tmp_path):
@@ -132,7 +181,7 @@ def test_materialize_is_idempotent(tmp_path):
         (tmp_path / f).write_text("x")
     materialize(js, tmp_path)
     materialize(js, tmp_path)              # no exception, no duplication
-    assert (tmp_path / "point-s2" / "demo.XV").is_symlink()
+    assert (tmp_path / "point-s2" / "demo_s2.fdf").is_symlink()
 
 
 def test_materialize_rejects_invalid_jobset(tmp_path):
@@ -222,13 +271,23 @@ def test_job_dir_names_ladder_without_a_token_falls_back_rather_than_guessing():
 #  plan engine                                                          #
 # --------------------------------------------------------------------- #
 
-def test_render_plan_shows_deps_carries_and_order():
+def test_render_plan_shows_warm_files_and_no_order():
+    """The plan shows what each job would take, and never an order it waits on.
+
+    It used to print a `depends on` column, a `carries` column and an
+    `Order: s1 -> s2` line.  All three named another job; all three went with
+    the edges.  What replaces them says the same useful thing -- *this stage
+    continues from something* -- without claiming to know what.
+    """
     txt = render_plan(_ladder())
     assert "JOB-SET PLAN -- demo (siesta, ladder)" in txt
     assert "C.psml" in txt                 # shared package
-    assert "s1 (afterok)" in txt           # dependency + kind
-    assert "demo.XV" in txt                # carry
-    assert "Order: s1 -> s2" in txt        # chain
+    assert "demo.XV" in txt                # the warm declaration
+    assert "warm files" in txt             # ...under its own heading
+    assert "afterok" not in txt            # no dependency kind survives
+    assert "s1 -> s2" not in txt           # and no order it waits on
+    # It still says how to run them, because a ladder IS ordered for a person.
+    assert "ONE AT A TIME" in txt
 
 
 def test_render_plan_sweep_says_independent():
@@ -256,8 +315,10 @@ def test_stages_to_jobset_default_ladder():
     assert js.jobs[0].script == "siesta_01_coarse.fdf"
     assert js.jobs[1].script == "siesta_02_medium.fdf"
     # NO edge of any kind: stages do not chain, so nothing here says the
-    # scheduler should start the next one (P7 unit 2).
-    assert all(j.depends_on is None and not j.carry for j in js.jobs)
+    # scheduler should start the next one (P7 unit 2; the fields themselves
+    # were deleted 2026-08-10 -- see test_a_job_cannot_name_another_job_at_all).
+    assert not any(hasattr(j, "depends_on") or hasattr(j, "carry")
+                   for j in js.jobs)
     # What medium WOULD take from a run it is pointed at: .XV and .DM
     # unconditionally, .CG only if the source agrees on the optimizer -- which
     # coarse (CG) does not, medium being Broyden.  The condition travels; the
@@ -328,9 +389,7 @@ def test_a_staged_ladder_declares_no_edge_of_any_kind():
     js = stages_to_jobset(SiestaConfig(), default_siesta_stages("vib-quality"))
     assert len(js.jobs) == 3
     for j in js.jobs:
-        assert j.depends_on is None
-        assert j.carry == []
-        assert j.dep_kind == "afterok"     # the model default, never set here
+        assert not hasattr(j, "depends_on") and not hasattr(j, "carry")
 
 
 def test_stages_to_jobset_resources_injection():
@@ -559,7 +618,7 @@ def test_submit_slurm_raises_on_sbatch_failure(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------- #
-#  One at a time, and the hierarchy does not chain (user rule 2026-08-10)#
+#  A scheduler is handed ONE job at a time (user rule, 2026-08-10)       #
 # --------------------------------------------------------------------- #
 
 def test_a_scheduler_is_never_handed_more_than_one_job(tmp_path):
@@ -602,111 +661,58 @@ def test_direct_mode_is_untouched_because_it_is_not_submission(tmp_path,
     assert [r.status for r in res] == ["ran", "ran"]
 
 
-@pytest.mark.parametrize("mode", ["submit", "direct"])
-def test_a_hierarchical_ladder_refuses_to_chain_in_either_mode(tmp_path, mode):
-    """`project-layout.md` § 1's table, and the reason is structural.
+#  RETIRED 2026-08-10 with `--chain` itself (user decision 30).  Four tests
+#  stood here and every one of them took `chain=True`:
+#
+#    test_a_hierarchical_ladder_refuses_to_chain_in_either_mode
+#    test_a_chained_ladder_stops_at_the_first_failure
+#    test_a_flat_ladder_still_chains_locally
+#    test_a_flat_ladder_chained_at_a_scheduler_is_still_refused
+#
+#  They are DELETED rather than adapted, because their subject is gone: three
+#  described what a chain does and the fourth described when a chain is
+#  refused, and there is no chain to do or refuse anything.  Adapting them
+#  would have produced four tests of `--chain`-shaped nothing.
+#
+#  Two of them were load-bearing, and where their intent survives it moved:
+#
+#    * the halt-on-failure one caught a real regression the day it was written
+#      -- a chain whose first stage died computed the next two from it and
+#      reported success.  Its intent is now structural: a ladder cannot reach
+#      `_run_direct` with more than one job (`_resolve_stage` refuses), so
+#      there is no second stage to wrongly continue.  Pinned by
+#      `test_a_ladder_refuses_to_act_on_all_of_itself` below.
+#    * the scheduler refusal is still live and still tested, as
+#      `test_a_scheduler_is_handed_one_job_at_a_time` -- that rule survived the
+#      deletion untouched, because it is about the CHANNEL, not the chain.
 
-    Continuing is *"free"* in **flat** — *"the next stage finds them lying
-    there"*, because the warm files are one shared set at the root.  In the
-    **hierarchy** *"you **name** the run, and its files are copied in"*, and a
-    named run must have already finished. So a chained hierarchical launch
-    would have to copy a file that does not exist yet: every stage would start
-    from the deck's own coordinates and report success.
 
-    Both modes, because this is a property of the LAYOUT, not of the channel.
+def test_a_failure_skips_nothing_because_nothing_depends_on_anything(tmp_path,
+                                                                    monkeypatch):
+    """The inverse of what stood here, and it is not a weakening.
+
+    This asserted the SLURM `afterok` meaning reproduced locally: s1 fails,
+    so s2 is *skipped*.  That was right while `s2 --afterok--> s1` existed.
+    With the edges deleted (2026-08-10) there is nothing to reproduce, and
+    skipping would be the framework inventing an order nobody declared.
+
+    **The protection did not go away, it moved up.** A ladder can no longer
+    reach this loop with two jobs at all -- `_resolve_stage` refuses to act on
+    one without a named stage -- so the case this test guarded (a second stage
+    computing from a failed first) is now unreachable rather than handled.
+    A `_sweep` is used here because it is the only kind that legitimately
+    arrives with several jobs, and its points are independent by definition:
+    one bad point says nothing about the next.
     """
-    _describe(tmp_path, "hierarchical", names=("coarse", "tight"))
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
-    with pytest.raises(SubmitError) as e:
-        submit_jobset(js, tmp_path, mode=mode, dry_run=True, chain=True)
-    msg = str(e.value)
-    assert "hierarchical" in msg
-    assert "--from" in msg                      # what to do instead
-    assert "FLAT" in msg or "flat" in msg       # ...and where chaining lives
-
-
-def test_a_chained_ladder_stops_at_the_first_failure(tmp_path, monkeypatch):
-    """**A regression P7 unit 2 introduced and this session shipped.**
-
-    `_run_direct` skipped on ``job.depends_on in failed``. A ladder declares no
-    `depends_on` any more, so `None in failed` is false and the test could
-    never fire: a `--chain` whose first stage died went on to compute the next
-    two from it, and reported them as having run.
-
-    It is not a missing edge — it is the ladder's own meaning. **Stage N
-    continues from stage N-1's warm files**, so if N-1 failed there is nothing
-    to continue from: at best stale state, at worst none, and either way an
-    answer that reports success. `project-layout.md` § 1.6 objects to chaining
-    because *"a chain that continues by itself can spend a week refining a
-    geometry you would have rejected in a minute"* — continuing past a
-    **failure** is that argument at its strongest.
-
-    This is the intent `on_nonconvergence: halt` used to carry. It was deleted
-    with the edges it rendered into and nothing replaced it.
-    """
-    _describe(tmp_path, "flat", names=("coarse", "tight"))
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
-    for stem in ("JOB_01_coarse", "JOB_02_tight"):
-        (tmp_path / f"{stem}.run.sh").write_text("x")
-    monkeypatch.setattr(_submit.subprocess, "run",
-                        lambda *a, **k: _CP(returncode=1))
-    res = submit_jobset(js, tmp_path, mode="direct", chain=True)
-    assert [(r.name, r.status) for r in res] == [("coarse", "failed"),
-                                                 ("tight", "skipped")]
-
-
-def test_a_sweeps_points_are_independent_of_each_other(tmp_path, monkeypatch):
-    """The other half, and it is what makes the rule above a rule rather than
-    a blanket stop: a sweep's points do not continue from one another, so one
-    bad point says nothing about the next and must not suppress it."""
     for d in ("point-G1K1C4", "point-G1K2C4"):
         (tmp_path / d).mkdir()
         (tmp_path / d / "job-gpu.run.sh").write_text("x")
     monkeypatch.setattr(_submit.subprocess, "run",
-                        lambda *a, **k: _CP(returncode=1))
-    res = submit_jobset(_sweep(), tmp_path, mode="direct")
-    assert [r.status for r in res] == ["failed", "failed"]   # ran, both failed
-
-
-def test_a_flat_ladder_still_chains_locally(tmp_path, monkeypatch):
-    """The user's directive of 2026-08-10: *"keep the flat shape runnable with
-    `jobset submit run --chain` … the prep, deployment and execution chain of
-    command is the same framework."*
-
-    Flat is the shape where a chain costs nothing, because stage 2 finds stage
-    1's warm files lying in the same directory. Refusing it here would take
-    the working path away in the name of protecting the other one.
-    """
-    _describe(tmp_path, "flat", names=("coarse", "tight"))
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
-    for stem in ("JOB_01_coarse", "JOB_02_tight"):
-        (tmp_path / f"{stem}.run.sh").write_text("x")
-    monkeypatch.setattr(_submit.subprocess, "run", lambda *a, **k: _CP())
-    res = submit_jobset(js, tmp_path, mode="direct", chain=True)
-    assert [r.status for r in res] == ["ran", "ran"]
-
-
-def test_a_flat_ladder_chained_at_a_scheduler_is_still_refused(tmp_path):
-    """Flat chains, but not by handing SLURM the whole ladder.  The two rules
-    are independent: one is about the LAYOUT, the other about the CHANNEL."""
-    _describe(tmp_path, "flat", names=("coarse", "tight"))
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
-    with pytest.raises(SubmitError, match="one at a time"):
-        submit_jobset(js, tmp_path, mode="submit", dry_run=True, chain=True)
-
-
-def test_run_direct_afterok_skips_dependent_after_failure(tmp_path, monkeypatch):
-    js = _ladder()                                 # s2 --afterok--> s1
-    for d in (tmp_path / "point-s1", tmp_path / "point-s2"):
-        d.mkdir()
-    (tmp_path / "point-s1" / "demo_s1.run.sh").write_text("x")
-    (tmp_path / "point-s2" / "demo_s2.run.sh").write_text("x")
-    # s1 fails -> afterok edge means s2 must be SKIPPED, never executed.
-    monkeypatch.setattr(_submit.subprocess, "run",
                         lambda *a, **k: _CP(returncode=2))
-    res = submit_jobset(js, tmp_path, mode="direct")
-    assert res[0].status == "failed"
-    assert res[1].status == "skipped" and res[1].returncode is None
+    res = submit_jobset(_sweep(), tmp_path, mode="direct")
+    assert [r.status for r in res] == ["failed", "failed"], (
+        "a failed point must not skip the next -- sweep points are independent")
+    assert all(r.returncode == 2 for r in res)
 
 
 def test_submit_direct_dry_run_passes_np_omp(tmp_path):
@@ -765,7 +771,12 @@ def test_cli_plan_reads_jobset_json(tmp_path):
     runner, grp = _runner()
     r = runner.invoke(grp, ["plan", "--bundle", str(tmp_path)])
     assert r.exit_code == 0, r.output
-    assert "JOB-SET PLAN" in r.output and "Order: s1 -> s2" in r.output
+    assert "JOB-SET PLAN" in r.output
+    # Not "Order: s1 -> s2" -- that line named an order one job waited on, and
+    # it went with the edges (2026-08-10).  A ladder still prints an order,
+    # but it is an instruction to a PERSON, not a dependency.
+    assert "s1 -> s2" not in r.output
+    assert "ONE AT A TIME" in r.output
 
 
 def test_cli_errors_without_jobset_json(tmp_path):
@@ -805,23 +816,28 @@ def test_cli_submit_dry_run_lists_commands(tmp_path):
     assert "-J" in r.output and "G1K1C4" in r.output
 
 
-def test_cli_chain_on_a_hierarchical_bundle_refuses(tmp_path):
-    """Through the CLI, because that is the surface a person types.
+def test_the_cli_has_no_chain_flag_at_all(tmp_path):
+    """Not "refuses `--chain` here" -- **does not accept the word**.
 
-    The library owns the rule, but a flag the CLI forgets to pass is a rule
-    that only holds when called directly -- which is the shape of defect that
-    made this whole guard live in `submit_jobset` rather than in
-    `_resolve_stage`. A mutation dropping `chain=chain` from the CLI call left
-    every library-level test green.
+    This test used to check that `--chain` on a hierarchical bundle was
+    refused, which was the right guard while flat could still be chained.
+    Decision 30 removed the flag from both shapes and both modes, so the
+    guard that replaces it is stronger and simpler: click itself rejects an
+    unknown option, and no bundle, shape or mode can make it appear.
+
+    Kept at the CLI rather than the library because this is the surface a
+    person types, and a flag quietly still parsed -- ignored, or worse,
+    honoured -- would be invisible to every library-level test.
     """
     _describe(tmp_path, "hierarchical", names=("coarse", "tight"))
     _token_ladder("JOB_01_coarse.fdf",
                   "JOB_02_tight.fdf").write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path),
-                            "--mode", "direct", "--chain", "--dry-run"])
+    r = runner.invoke(grp, ["submit", "run", "coarse", "--bundle",
+                            str(tmp_path), "--mode", "direct", "--chain",
+                            "--dry-run"])
     assert r.exit_code != 0
-    assert "hierarchical" in r.output and "--from" in r.output
+    assert "no such option" in r.output.lower(), r.output
 
 
 def test_cli_submit_of_a_whole_sweep_refuses_and_says_which(tmp_path):
@@ -926,67 +942,34 @@ def test_status_finished_with_real_siesta_out(tmp_path):
 #  carry-forward BEHAVIOR (the §4 isolation guarantee, end-result)       #
 # --------------------------------------------------------------------- #
 
-def test_carry_deref_localizes_and_isolates_producer(tmp_path):
-    """DEPTH: run the ACTUAL deref bash the generated wrapper emits, and prove
-    § 4's guarantee holds — the consumer gets a real local copy, and a later
-    write to it does NOT reach back and clobber the producer.
+def test_no_generated_wrapper_localizes_a_carried_file(tmp_path):
+    """`carry_deref` is gone, and no wrapper emits its block any more.
 
-    **This is the path `carry_deref` still exists for, and its reason changed
-    on 2026-08-10.** It used to be justified by *"`jobset` can submit a whole
-    chain at once, so the producer has not run when the links are laid"*.
-    Nothing submits a chain at once any more — a scheduler takes one job per
-    invocation — so what it protects now is the other half, which never
-    depended on batching: a **hand-built chained JobSet** lays carry symlinks
-    at materialize, and an engine writing through one writes into the
-    producer's directory (`running-a-job.md` § 2.2a).
+    Two tests stood here: one dereferenced a real symlink and checked the
+    producer's file survived, one checked the block appeared only in the
+    consumer's wrapper.  Both tested a **mechanism that existed to make
+    dangling carry symlinks safe** -- and with `Carry` deleted (2026-08-10)
+    nothing lays a dangling symlink, so nothing needs localizing.
 
-    A **staged** ladder reaches none of this: it emits no `Carry` at all
-    (P7 unit 2), so its wrapper gets no `carry_in` and no deref block.
+    Replaced by a guard rather than deleted outright, because the block was
+    generated bash: a subtraction from a template is exactly the kind that
+    leaves a fragment behind, and no unit test of the Python would see it.
+    Checked on the EMITTED TEXT of both engines' wrappers.
     """
-    import os
-    import subprocess
-    from molbuilder.runwrap import render_run_wrapper
-
-    (tmp_path / "point-s1").mkdir()
-    (tmp_path / "point-s1" / "JOB.XV").write_text("STAGE1-GEOM")
-    c = tmp_path / "point-s2"; c.mkdir()
-    os.symlink("../point-s1/JOB.XV", c / "JOB.XV")     # as materialize lays it
-    assert (c / "JOB.XV").is_symlink()
-
-    (tmp_path / ".molbuilder.json").write_text(
-        '{"script_generation": {"preamble": "x", "activation": "source activate"}}')
-    fdf = tmp_path / "JOB_s2.fdf"
-    fdf.write_text("SystemLabel JOB\nNumberOfAtoms 1\n")
-    txt = render_run_wrapper(fdf, carry_in=["JOB.XV"])
-    start = txt.index("# --- Carry-forward")
-    block = "_log(){ :; }\n" + txt[start:txt.index("\n\n", start)]
-    subprocess.run(["bash", "-eu", "-c", block], cwd=str(c), check=True)
-
-    # localized to a REAL file holding the producer's content
-    assert not (c / "JOB.XV").is_symlink()
-    assert (c / "JOB.XV").read_text() == "STAGE1-GEOM"
-    # this stage writes its OWN geometry -> producer untouched (§4 holds)
-    (c / "JOB.XV").write_text("STAGE2-GEOM")
-    assert (tmp_path / "point-s1" / "JOB.XV").read_text() == "STAGE1-GEOM"
-
-
-def test_prep_carry_deref_only_in_consumer_wrapper(tmp_path):
-    """The deref preamble appears ONLY in the carrying job's wrapper.
-
-    ``_ladder()`` is **hand-built and declares `carry`**, which since P7 unit 2
-    is the only kind of JobSet that does — the staged producer emits none. So
-    this is the surviving path exercised deliberately, not a leftover fixture.
-    """
-    js = _ladder()                               # s1: no carry; s2: carries .XV/.DM
-    _write_config(tmp_path)
-    for s in ("demo_s1.fdf", "demo_s2.fdf"):
-        _write_fdf(tmp_path / s)
-    prep_jobset(js, tmp_path, emit_sbatch=False)
-    s1 = (tmp_path / "demo_s1.run.sh").read_text()
-    s2 = (tmp_path / "demo_s2.run.sh").read_text()
-    assert "Carry-forward: localize" not in s1
-    assert "Carry-forward: localize" in s2
-    assert "demo.XV" in s2 and "demo.DM" in s2
+    from molbuilder.runwrap import write_run_wrapper
+    for engine, script in (("siesta", "JOB.fdf"), ("pyscf", "JOB.py")):
+        d = tmp_path / engine
+        d.mkdir()
+        (d / script).write_text("x")
+        txt = write_run_wrapper(d / script, env="e").read_text()
+        assert "Carry-forward" not in txt, engine
+        assert "carry: localized" not in txt, engine
+        assert "cp --remove-destination" not in txt, engine
+        # NOT asserted: `readlink -f`.  The wrapper uses it legitimately to
+        # resolve its own path for re-exec, so forbidding it would be a guard
+        # that fails for a reason unrelated to what it claims to check.  The
+        # first draft of this test did exactly that and failed on a clean
+        # tree -- which is the test working, one step before it was right.
 
 
 def test_prep_writes_stage_plan_md(tmp_path):
@@ -1346,14 +1329,20 @@ def test_plan_and_status_take_the_bundle_the_same_way_every_verb_does(tmp_path):
     assert r.output.splitlines()[0].startswith("STAGE 03_tight")
 
 
-def test_a_ladder_refuses_to_submit_all_of_itself_without_chain(tmp_path):
-    """`project-layout.md` § 1.6 is the headline rule -- *"Each stage is prepped
-    and submitted on its own"* -- and the reason is cost, not tidiness: *"a
-    chain that continues on its own can spend a week refining a geometry you
-    would have rejected in a minute."*
+def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
+    """`project-layout.md` § 1.6 -- *"Each stage is prepped and submitted on
+    its own"* -- and the reason is cost, not tidiness: *"a chain that continues
+    on its own can spend a week refining a geometry you would have rejected in
+    a minute."*
 
-    It was enforced in `_resolve_stage` and asserted nowhere, which for a rule
-    whose whole job is to stop an expensive accident is the wrong way round.
+    **The refusal now has no escape hatch**, and that is the change of
+    2026-08-10: it read *"...without `--chain`"* and offered the flag in its
+    own message.  The flag is gone, so the refusal is the end of the road, and
+    the message must not advertise a way round it that no longer exists.
+
+    This also carries the intent of the retired halt-on-failure test: because a
+    ladder can never reach `_run_direct` with more than one job, there is no
+    second stage that could wrongly continue from a failed first.
     """
     _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf").write(
         tmp_path / "job-set.json")
@@ -1363,14 +1352,12 @@ def test_a_ladder_refuses_to_submit_all_of_itself_without_chain(tmp_path):
                             "--mode", "direct", "--dry-run"])
     assert r.exit_code != 0
     assert "acts on ONE stage" in r.output
-    assert "01_coarse, 03_tight" in r.output      # ordinals, at the moment you choose
-    assert "--chain" in r.output                  # and how to say you meant it
-
-    # ...and saying it out loud is accepted.
-    r = runner.invoke(grp, ["submit", "run", "--chain", "--bundle",
-                            str(tmp_path), "--mode", "direct", "--dry-run"])
-    assert r.exit_code == 0, r.output
-    assert "coarse" in r.output and "tight" in r.output
+    assert "01_coarse, 03_tight" in r.output   # ordinals, at the moment you choose
+    assert "--chain" not in r.output, (
+        "the refusal offers a flag that was deleted -- a reader who follows "
+        "the advice gets `no such option`")
+    # There is no second invocation to make, which is the point: no phrasing
+    # of this command runs both stages.
 
 
 def test_what_a_run_continues_from_is_copied_never_linked(tmp_path):
@@ -1552,7 +1539,7 @@ def test_the_declaration_is_now_the_only_rendering_of_the_rule():
     reintroduces it as a convenience.
     """
     js = _shipped_ladder()
-    assert all(not j.carry for j in js.jobs)
+    assert not any(hasattr(j, "carry") for j in js.jobs)
     assert all(j.warm for j in js.jobs[1:])      # ...and the rule still travels
 
 

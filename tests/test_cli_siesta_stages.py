@@ -338,9 +338,12 @@ def test_jobset_flag_emits_runnable_job_set_json(xyz, tmp_path):
     assert [j.script for j in js.jobs] == ["JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
     for j in js.jobs:
         assert (tmp_path / j.script).is_file()
-    # NO chain and NO carry edge (P7 unit 2): medium DECLARES what it would
-    # take from a run it is pointed at, and `prep --from` decides which.
-    assert all(j.depends_on is None and not j.carry for j in js.jobs)
+    # NO chain and NO carry edge: medium DECLARES what it would take from a
+    # run it is pointed at, and `prep --from` decides which.  Asserted as the
+    # ABSENCE OF THE FIELDS (deleted 2026-08-10) rather than as their being
+    # None -- a job that cannot name another job cannot express a chain at all.
+    assert not any(hasattr(j, "depends_on") or hasattr(j, "carry")
+                   for j in js.jobs)
     assert "JOB.XV" in [w.name for w in js.jobs[1].warm]
 
 

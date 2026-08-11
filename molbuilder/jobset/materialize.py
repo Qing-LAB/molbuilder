@@ -229,10 +229,11 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
         # level up in the bundle root.
         for fname in list(jobset.shared) + [job.script]:
             relink(d, os.path.join("..", fname), os.path.basename(fname))
-        # runtime-produced carry-forward from the producing job's dir.
-        for c in job.carry:
-            target = os.path.join("..", dirs[c.from_job], c.pattern)
-            relink(d, target, os.path.basename(c.pattern))
+        # NOTHING ELSE IS LINKED IN.  A second loop here laid the `Carry`
+        # symlinks -- into a producer's directory, before the producer had
+        # run, so they dangled by design.  Deleted 2026-08-10 with `Carry`
+        # itself: what a stage continues from is a real file COPIED by
+        # `prepare_attempt` from the attempt you name (project-layout.md 1.6).
     return created
 
 

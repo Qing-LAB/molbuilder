@@ -7,17 +7,21 @@ materialize / submit engines and the producers respectively.  Keeping
 this layer pure is what lets the bench sweep and the SIESTA stage ladder
 share one execution core without either knowing about the other.
 
-Shared information is modeled in exactly three sanctioned channels:
+Shared information is modeled in exactly two sanctioned channels:
   * ``JobSet.shared``  — static package files, identical for every job
     (pseudopotentials, geometry, monitor); symlinked into each job dir.
-  * ``Carry``          — a runtime-produced file (one job's output) fed
-    to a dependent job; symlinked after the producer runs.  It names the
-    producer, so it is only expressible when the producer is known at
-    produce time — which is a **chain**.
-  * ``WarmFile``       — the same information for a set that does NOT chain:
-    *what this job would take from a run it continues*, with the source left
-    open, because `--from` names it at prep (`project-layout.md` § 1.6).
-Nothing reaches across jobs outside these three.
+  * ``WarmFile``       — *what this job would take from a run it continues*,
+    with the source left OPEN, because `--from` names it at prep
+    (`project-layout.md` § 1.6).
+Nothing reaches across jobs outside these two.
+
+There used to be a third, ``Carry``: *take file X from job Y*.  It named the
+producer, so it was only expressible once the producer was known at produce
+time — which is a **chain**.  Deleted 2026-08-10 (user) along with
+``depends_on``, ``dep_kind`` and the wrapper's ``carry_deref``: **a JobSet has
+no edges**.  Whether a later stage should pick up an earlier one cannot be
+settled without reviewing the earlier one's result, so no field is allowed to
+settle it (`job-system.md` § 2, decision 6).
 """
 
 from __future__ import annotations
@@ -31,7 +35,6 @@ from typing import Any, Dict, List, Optional
 # bench/environment.py and bench/result.py (same major-version check).
 SCHEMA = "molbuilder/job-set@1"
 
-_DEP_KINDS = ("afterok", "afterany")
 _KINDS = ("sweep", "ladder")
 
 
@@ -81,29 +84,11 @@ class Resources:
 
 
 @dataclass
-class Carry:
-    """One runtime-produced file carried forward: ``pattern`` (a concrete
-    filename, e.g. ``"job.XV"``) taken from job ``from_job``'s directory and
-    symlinked into the consuming job's directory.  Concrete, not a glob: the
-    symlink is laid at materialize time (before the producer runs) and
-    resolves once the file appears (docs/execution/job-system.md D1)."""
-    pattern:  str
-    from_job: str
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {"pattern": self.pattern, "from_job": self.from_job}
-
-    @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "Carry":
-        return cls(pattern=d["pattern"], from_job=d["from_job"])
-
-
-@dataclass
 class WarmFile:
     """One file this job continues **from**, and what makes it safe to take.
 
-    **Not an edge.**  A :class:`Carry` says *take X from job Y* and is only
-    answerable once you have decided who Y is.  Stages do not chain
+    **Not an edge.**  The deleted ``Carry`` said *take X from job Y* and was
+    only answerable once you had decided who Y is.  Stages do not chain
     (`project-layout.md` § 1.6), so at produce time nobody knows: the run a
     stage continues from is named at `prep`, by a person who has just looked
     at it, and it may be any finished attempt -- ``02_medium/run-1``,
@@ -147,24 +132,20 @@ class WarmFile:
 class Job:
     """One unit of work.  ``name`` is unique within the set and becomes the
     job directory (``point-<name>/``) and the SLURM ``-J`` name.  ``script``
-    is the per-job input filename (e.g. the rendered ``.fdf``).  ``depends_on``
-    names the producer job this one waits for (None = independent);
-    ``dep_kind`` is the SLURM dependency kind; ``carry`` lists the
-    restart files pulled from the producer (§ 5, § 8 D1).
+    is the per-job input filename (e.g. the rendered ``.fdf``).
 
-    ``warm`` is the same information asked the other way round -- *what would
-    this job take from a run it continues, whichever run that turns out to be*
-    -- and it is what `prep` reads, because `--from` names the source and a
-    produce-time edge cannot (see :class:`WarmFile`).  ``traits`` are the
-    opaque per-job values a ``WarmFile.requires_same`` is compared against;
-    SIESTA puts its optimizer there.
+    **A Job names no other Job.**  There is no ``depends_on``, no ``dep_kind``
+    and no ``carry`` -- all three were deleted 2026-08-10 (user).  What a job
+    declares instead is ``warm``: *what would this job take from a run it
+    continues, whichever run that turns out to be* -- which is what `prep`
+    reads, because `--from` names the source and a produce-time edge cannot
+    (see :class:`WarmFile`).  ``traits`` are the opaque per-job values a
+    ``WarmFile.requires_same`` is compared against; SIESTA puts its optimizer
+    there.
     """
     name:       str
     script:     str
     resources:  Resources       = field(default_factory=Resources)
-    depends_on: Optional[str]   = None
-    dep_kind:   str             = "afterok"
-    carry:      List[Carry]     = field(default_factory=list)
     warm:       List[WarmFile]  = field(default_factory=list)
     traits:     Dict[str, str]  = field(default_factory=dict)
 
@@ -173,9 +154,6 @@ class Job:
             "name": self.name,
             "script": self.script,
             "resources": self.resources.to_dict(),
-            "depends_on": self.depends_on,
-            "dep_kind": self.dep_kind,
-            "carry": [c.to_dict() for c in self.carry],
             "warm": [w.to_dict() for w in self.warm],
             "traits": dict(self.traits),
         }
@@ -186,9 +164,6 @@ class Job:
             name=d["name"],
             script=d["script"],
             resources=Resources.from_dict(d.get("resources")),
-            depends_on=d.get("depends_on"),
-            dep_kind=d.get("dep_kind", "afterok"),
-            carry=[Carry.from_dict(c) for c in (d.get("carry") or [])],
             warm=[WarmFile.from_dict(w) for w in (d.get("warm") or [])],
             traits=dict(d.get("traits") or {}),
         )
@@ -249,8 +224,10 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
 @dataclass
 class JobSet:
     """A set of related jobs sharing a static package.  ``kind`` is
-    ``"sweep"`` (independent jobs, e.g. the benchmark) or ``"ladder"``
-    (a dependency chain, e.g. the SIESTA stage relaxation).  ``shared``
+    ``"sweep"`` (the benchmark's independent points) or ``"ladder"`` (the
+    SIESTA stage relaxation).  **Both are sets of independent jobs**; the kind
+    says how the directories are named and whether a PERSON should take them in
+    order, never whether one job waits for another -- neither does.  ``shared``
     are package files symlinked into every job directory."""
     name:   str
     engine: str
@@ -310,10 +287,10 @@ class JobSet:
 
           * non-empty; ``kind`` known;
           * unique job names (the dir + ``-J`` collide otherwise);
-          * ``dep_kind`` known;
-          * ``depends_on`` references a PRIOR job (acyclic, ordered);
-          * every ``carry.from_job`` references a prior job;
           * every ``warm.requires_same`` names a trait this job HAS.
+
+        The acyclic/ordered checks went with the edges on 2026-08-10: with no
+        job naming another, there is no graph left to be cyclic.
         """
         errors: List[str] = []
         if self.kind not in _KINDS:
@@ -327,19 +304,6 @@ class JobSet:
             if j.name in seen:
                 errors.append(
                     f"{prefix}.name: duplicate; job dirs / -J names collide")
-            if j.dep_kind not in _DEP_KINDS:
-                errors.append(
-                    f"{prefix}.dep_kind = {j.dep_kind!r}: must be one of "
-                    f"{_DEP_KINDS}")
-            if j.depends_on is not None and j.depends_on not in seen:
-                errors.append(
-                    f"{prefix}.depends_on = {j.depends_on!r}: must reference "
-                    f"a PRIOR job (forward / unknown / self reference)")
-            for c in j.carry:
-                if c.from_job not in seen:
-                    errors.append(
-                        f"{prefix}.carry from {c.from_job!r}: must reference "
-                        f"a prior job")
             for w in j.warm:
                 # A condition on a trait this job does not declare can never be
                 # satisfied, so the file would simply never arrive -- and the
@@ -359,4 +323,4 @@ class JobSet:
         return errors
 
 
-__all__ = ["Resources", "Carry", "WarmFile", "Job", "JobSet", "SCHEMA"]
+__all__ = ["Resources", "WarmFile", "Job", "JobSet", "SCHEMA"]

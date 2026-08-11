@@ -591,29 +591,64 @@ def test_no_generated_script_invokes_an_engine_directly():
 
 
 def measure_chaining_producers() -> list[str]:
+    """Question 4, measured on the SCHEMA as well as on a built JobSet.
+
+    It used to read ``j.depends_on is not None`` and ``j.carry`` off a built
+    ladder.  Those fields were deleted on 2026-08-10 (user decision 30), so
+    that measurement would now raise ``AttributeError`` rather than report
+    zero -- and, worse, a version of it written defensively (``getattr(j,
+    "depends_on", None)``) would report zero forever without ever looking at
+    anything.
+
+    So the question is asked of the **model** first: *can a job express an edge
+    at all?*  A field that does not exist cannot be emitted by any producer,
+    present or future, which is a stronger answer than "this one producer
+    happens not to".  The built-JobSet check stays underneath it for the case
+    the field comes back under another name.
+    """
     offences = []
+
+    import dataclasses
+    from molbuilder.jobset.model import Job
+    edge_fields = ({"depends_on", "dep_kind", "carry"}
+                   & {f.name for f in dataclasses.fields(Job)})
+    if edge_fields:
+        offences.append(
+            f"jobset.model.Job declares {sorted(edge_fields)} -- a job that "
+            "can name another job can express a chain, whatever the producers "
+            "currently emit (decision 30)")
 
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.siesta.stages import (default_siesta_stages,
                                           stages_to_jobset)
     js = stages_to_jobset(SiestaConfig(system_label="JOB"),
                           default_siesta_stages())
-    chained = [j.name for j in js.jobs if j.depends_on is not None]
-    if chained:
-        offences.append(
-            f"stages_to_jobset: {len(chained)} of {len(js.jobs)} jobs carry "
-            f"depends_on ({', '.join(chained)}) -- the ladder is wired "
-            "stage-to-stage, so the scheduler starts the next one, not a person")
+    # Anything on a produced job that names ANOTHER job is an edge wearing a
+    # new name.  Checked by value, not by field name, so a rename does not
+    # slip past: a job's own name and its script are the only strings here
+    # that may legitimately match another job's name.
+    names = {j.name for j in js.jobs}
+    for j in js.jobs:
+        for f in dataclasses.fields(j):
+            if f.name in ("name", "script", "traits"):
+                continue
+            val = getattr(j, f.name)
+            hits = [o for o in names if o != j.name and o == val]
+            if hits:
+                offences.append(
+                    f"stages_to_jobset: job {j.name!r} field {f.name!r} names "
+                    f"another job ({hits}) -- that is an edge")
 
-    # A `Carry` is an edge too, and the more dangerous one: it points at a file
-    # in another stage's directory before that stage has run, so a produced
-    # tree holds dangling symlinks and whatever runs there writes THROUGH one.
-    carried = [j.name for j in js.jobs if j.carry]
-    if carried:
-        offences.append(
-            f"stages_to_jobset: {len(carried)} job(s) carry a Carry edge "
-            f"({', '.join(carried)}) -- what a stage continues from is a real "
-            "file copied in at prep, from the run you name")
+    # A produced tree must also hold no link into a sibling's directory, which
+    # is what a `Carry` became on disk.  Cheapest check available: the warm
+    # declaration says WHAT, never FROM WHOM.
+    for j in js.jobs:
+        for w in j.warm:
+            if getattr(w, "from_job", None) is not None:
+                offences.append(
+                    f"stages_to_jobset: {j.name!r} declares a warm file with a "
+                    "from_job -- what a stage continues from is named by a "
+                    "person at prep, not by the producer")
 
     return offences
 
