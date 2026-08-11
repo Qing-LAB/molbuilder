@@ -2146,11 +2146,25 @@ on.** Units 1–5 landed 2026-08-10.
    **The contract decides which fields belong**, and it is a membership rule
    rather than a list — `project-layout.md` § 2.1: the deck template is *"the
    science backbone — **everything the calculation fixes and no stage
-   varies**."* Applied: `species_order` and the three write flags are the
-   template's; `copy_psml` is produce-time behaviour and correctly absent; and
-   `cfg.stage` should not exist at all — `engines/stages.md` § 1.1 says *"the
-   emitter that reads it never learns the word"*, and the renderer reads it in
-   six places.
+   varies**."*
+
+   **And each field resolves by its KIND, which the template already states.**
+   `job-contracts.md` § 3.7 now names the classification the `anchor` has always
+   carried — the engine's, molbuilder's deck-shaping, or molbuilder's but not
+   the deck's — so a layer filters by reading a block rather than by knowing a
+   field list:
+
+   | field | its anchor says | kind | so |
+   |---|---|---|---|
+   | `write_forces` · `write_coor_step` | `WriteForces` · `WriteCoorStep` | **the engine's** | in the template, and must round-trip exactly |
+   | `species_order` | *(molbuilder: ChemicalSpeciesLabel block ordering)* | **deck-shaping** | in the template — `run-identity.md` § 4 is why: a `.XV` read against a different species order lands every coordinate on the wrong atom |
+   | `write_molwatch_log` | *(molbuilder: writes the preview)* | **deck-shaping** | in the template: the monitor reads what it turns on |
+   | `copy_psml` | *(molbuilder: triggers .psml staging)* | **not the deck's** | carried and legible; correctly absent from the deck |
+   | `stage` | *(molbuilder: filename token + log naming)* | — | should not be a config field at all: `engines/stages.md` § 1.1, *"the emitter that reads it never learns the word"*, and the renderer reads it in six places |
+
+   **Losslessness is therefore per kind**: deck-affecting items must round-trip
+   exactly; the rest must be carried and legible. Demanding one standard of the
+   whole file is what made "is the template lossless?" unanswerable.
 
    **But the step is not "add the metadata", because of what that metadata
    also does.** A field is in the template iff it carries `section`
