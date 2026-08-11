@@ -133,28 +133,26 @@ needs the activated environment. It is Python's.
 **The test, when adding to a wrapper:** *does this need the activated shell?* If
 it computes, decides, or arranges files, the answer is no and it belongs upstream.
 
-> **One block looks like an exception and no longer is.** `runwrap.py`'s
-> `carry_deref` replaces an inherited restart-file symlink with a real local copy
-> at run start. It stays, and **its reason changed on 2026-08-10.**
+> **One block looked like an exception, and as of 2026-08-10 nothing reaches
+> it.** `runwrap.py`'s `carry_deref` replaces an inherited restart-file symlink
+> with a real local copy at run start. Its stated reason was *"`jobset` can
+> submit a whole chain at once, so the producer has not run when the links are
+> laid"*. **Both halves of that are now false**: a scheduler is handed one job
+> per invocation ([`job-system.md`](?doc=execution/job-system.md) § 5.3), and
+> **no producer in molbuilder emits a `Carry` at all** — the staged ladder
+> stopped (P7 unit 2) and a sweep never did, its points being independent.
 >
-> It used to be justified by *"`jobset` can submit a whole chain at once, so the
-> producer has not run when the links are laid."* **Nothing can submit a chain at
-> once any more** — a scheduler is handed one job per invocation
-> ([`job-system.md`](?doc=execution/job-system.md) § 5.3, user rule), so by the
-> time a consumer is submitted its producer has already finished and the link
-> resolves.
+> It is therefore reachable only from a hand-authored `job-set.json`.
+> `job-system.md` § 2's *"the mechanism is not being deleted … a benchmark
+> sweep and an explicitly-chained workflow both still want them"* is the
+> sentence that keeps it, **and that sentence is now wrong on the sweep** and
+> unevidenced on the workflow. ⚠ **Open: whether `Carry` / `carry_deref` /
+> `depends_on` should be retired outright.** It is left standing rather than
+> quietly re-justified — deciding it is a contract change, not a cleanup.
 >
-> What it still protects is the other half, and that half never depended on
-> batching: a **hand-built chained JobSet** lays carry symlinks at materialize,
-> and an engine writing to `job.XV` through one would write **into the
-> producer's directory**, destroying the result being continued from. Localising
-> at run start is what stops that.
->
-> The **staged** framework needs none of it: it emits no `Carry` at all (P7
-> unit 2), and what a stage continues from is a real file copied in at `prep`
-> from the run you name ([`project-layout.md`](?doc=execution/project-layout.md)
-> § 1.6). The exception belongs to the chained ladder `jobset` can still build,
-> not to this design.
+> **What the staged framework does instead** is unchanged and is the point:
+> what a stage continues from is a real file copied in at `prep`, from the run
+> you name ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6).
 
 **This is forced, not stylistic.** Two facts make the compute node the wrong
 place for logic:

@@ -274,6 +274,39 @@ def _job_wants_gpu(job_dir: Path, job) -> bool:
     return deck.is_file() and _fdf_requests_gpu(deck)
 
 
+def _blocked_by_a_failure(jobset: JobSet, job, failed: set) -> bool:
+    """Should this job be skipped because something before it failed?
+
+    **Two shapes, and the second was silently lost on 2026-08-10.**
+
+    A job with an explicit ``afterok`` edge is skipped when its named producer
+    failed — the SLURM dependency meaning reproduced locally (`job-system.md`
+    § 5.3), and the only case this function handled.
+
+    A **ladder** now declares no edges at all (P7 unit 2), so that test could
+    never fire for one: `None in failed` is false, and a `--chain` whose first
+    stage died went on to compute the next two from it. That is not a missing
+    edge, it is the ladder's own meaning: **stage N continues from stage N-1's
+    warm files**, so if N-1 failed there is nothing to continue from — at best
+    stale state, at worst none, and either way the answer is garbage that
+    reports success. `project-layout.md` § 1.6 argues chaining is dangerous
+    because *"a chain that continues by itself can spend a week refining a
+    geometry you would have rejected in a minute"*; continuing past a **failure**
+    is that argument at its strongest.
+
+    A **sweep** is untouched and must be: its points are independent by
+    definition, so one bad point says nothing about the next.
+
+    *This is the gap `on_nonconvergence: halt` used to cover. It was deleted
+    with the edges it rendered into, and nothing replaced the intent — the
+    defect was found by asking who still benefits from a mechanism whose
+    stated justification had expired, rather than by a test.*
+    """
+    if job.depends_on is not None:
+        return job.depends_on in failed and job.dep_kind == "afterok"
+    return jobset.kind == "ladder" and bool(failed)
+
+
 def _run_direct(jobset: JobSet, base_dir: Path, *,
                 dry_run: bool) -> List[JobResult]:
     """Local path: run each ``<stem>.run.sh`` sequentially in dependency
@@ -287,7 +320,7 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
         check_launch_matches_deck(job_dir, job)
         run_name = _wrapper_name(job.script, ".run.sh")
         cmd = ["bash", run_name] + _run_sh_args(job.resources)
-        if job.depends_on in failed and job.dep_kind == "afterok":
+        if _blocked_by_a_failure(jobset, job, failed):
             results.append(JobResult(job.name, cmd, "skipped"))
             failed.add(job.name)        # propagate down the chain
             continue

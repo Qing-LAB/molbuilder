@@ -625,6 +625,49 @@ def test_a_hierarchical_ladder_refuses_to_chain_in_either_mode(tmp_path, mode):
     assert "FLAT" in msg or "flat" in msg       # ...and where chaining lives
 
 
+def test_a_chained_ladder_stops_at_the_first_failure(tmp_path, monkeypatch):
+    """**A regression P7 unit 2 introduced and this session shipped.**
+
+    `_run_direct` skipped on ``job.depends_on in failed``. A ladder declares no
+    `depends_on` any more, so `None in failed` is false and the test could
+    never fire: a `--chain` whose first stage died went on to compute the next
+    two from it, and reported them as having run.
+
+    It is not a missing edge — it is the ladder's own meaning. **Stage N
+    continues from stage N-1's warm files**, so if N-1 failed there is nothing
+    to continue from: at best stale state, at worst none, and either way an
+    answer that reports success. `project-layout.md` § 1.6 objects to chaining
+    because *"a chain that continues by itself can spend a week refining a
+    geometry you would have rejected in a minute"* — continuing past a
+    **failure** is that argument at its strongest.
+
+    This is the intent `on_nonconvergence: halt` used to carry. It was deleted
+    with the edges it rendered into and nothing replaced it.
+    """
+    _describe(tmp_path, "flat", names=("coarse", "tight"))
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
+    for stem in ("JOB_01_coarse", "JOB_02_tight"):
+        (tmp_path / f"{stem}.run.sh").write_text("x")
+    monkeypatch.setattr(_submit.subprocess, "run",
+                        lambda *a, **k: _CP(returncode=1))
+    res = submit_jobset(js, tmp_path, mode="direct", chain=True)
+    assert [(r.name, r.status) for r in res] == [("coarse", "failed"),
+                                                 ("tight", "skipped")]
+
+
+def test_a_sweeps_points_are_independent_of_each_other(tmp_path, monkeypatch):
+    """The other half, and it is what makes the rule above a rule rather than
+    a blanket stop: a sweep's points do not continue from one another, so one
+    bad point says nothing about the next and must not suppress it."""
+    for d in ("point-G1K1C4", "point-G1K2C4"):
+        (tmp_path / d).mkdir()
+        (tmp_path / d / "job-gpu.run.sh").write_text("x")
+    monkeypatch.setattr(_submit.subprocess, "run",
+                        lambda *a, **k: _CP(returncode=1))
+    res = submit_jobset(_sweep(), tmp_path, mode="direct")
+    assert [r.status for r in res] == ["failed", "failed"]   # ran, both failed
+
+
 def test_a_flat_ladder_still_chains_locally(tmp_path, monkeypatch):
     """The user's directive of 2026-08-10: *"keep the flat shape runnable with
     `jobset submit run --chain` … the prep, deployment and execution chain of
