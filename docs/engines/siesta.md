@@ -68,6 +68,53 @@ flowchart LR
   and then `render_fdf`. `SiestaConfig`'s field metadata drives the form (no
   SIESTA-specific form code — see § 7).
 
+### 1.1 Where the config comes from — the emitter starts from the template
+
+*Stated 2026-08-11 (user), as the design the backend is built to. Not yet code.*
+
+> **`render_fdf` no longer starts from a config somebody typed. It starts from
+> the layered description** — the template's items, resolved through this stage
+> and this machine into an ordinary `SiestaConfig`.
+
+**The seam does not move, and that is the point.** `render_fdf(struct, config)`
+keeps its signature: the config dataclass stays the one object handed to the
+emitter, which is what lets the *same* object be validated and rendered
+([`stages.md § 4`](?doc=engines/stages.md) R1). What changes is the layer above
+it — who builds that object, and from what.
+
+```mermaid
+flowchart LR
+    T["<b>&lt;label&gt;.template.toml</b><br/><i>every parameter, one item each,<br/>each carrying its kind</i><br/>floor 2 · portable"]
+    O["<b>task.json</b><br/>this stage's overrides"]
+    M["<b>this machine</b><br/>ranks · GPUs · env<br/>floor 1"]
+    C["<b>SiestaConfig</b><br/><i>an ordinary instance —<br/>not a new type</i>"]
+    V["validate(struct, cfg)"]
+    R["<b>render_fdf</b><br/>siesta/input.py"]
+    D["the deck"]
+    T -->|"prep step 2"| C
+    O -->|"prep step 2"| C
+    M -->|"prep step 2"| C
+    C --> V --> R --> D
+    C -.->|"filtered: kind in {engine, deck}"| R
+```
+
+**Three things follow for the emitter, and each is a subtraction:**
+
+| | what the emitter must stop doing | why |
+|---|---|---|
+| **1** | **reading anything outside the config.** `cfg.stage` and its five read sites go ([`stages.md § 1.1`](?doc=engines/stages.md): the emitter never learns the word), and the USER-CUSTOM read-back merge cannot run at all — at `prep` there is no previous deck to harvest from, so the text arrives as an **item** ([`template.md § 9.2`](?doc=engines/template.md)) | the template is meant to be complete. Anything the emitter fetches for itself is a value the description does not record, and therefore a deck nothing can reproduce |
+| **2** | **always computing, always emitting.** A keyword like `BlockSize` now has **three** states — set by you, unset so `prep` proposes one, or **omitted entirely** so SIESTA uses its own default ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | an emitter that always writes a line cannot express the third, and the third is a legitimate scientific answer |
+| **3** | **seeing items that are not its own.** Only `kind` in `{engine, deck}` reaches the deck writer; `wrapper`, `produce` and `monitor` items belong to other layers ([`template.md § 6`](?doc=engines/template.md)) | *"a SIESTA producer must not try to emit a `wrapper` item as a keyword — SIESTA would not understand it"* |
+
+**What it does not change:** every block in § 3, the charge contract (§ 4), the
+spin contract (§ 5), the lattice and k-grid (§ 6), and the eigensolver rules
+(§ 7). Those are about turning a config into text, and that job is unchanged —
+which is exactly why the config object is the right seam to keep.
+
+The work item is
+[`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+P12 unit 6b (R3 — the contract holds the rule, the plan holds the order).
+
 ---
 
 ## 2. Public API + a worked example

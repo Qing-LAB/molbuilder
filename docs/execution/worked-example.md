@@ -437,7 +437,9 @@ is that **a save is always an explicit act** — nothing takes one for you
 ## 8. What this walkthrough found
 
 Eight gaps, in the order a user meets them. Four were on no list before this
-document was written. **Four are now closed** — #5, #6, #7 and #8.
+document was written. **Four are now closed** — #5, #6, #7 and #8. **§ 8.1 adds
+the eight the rest of the domain had recorded separately**, so this is the whole
+workflow's list rather than one walkthrough's.
 
 They closed in three different ways, and the contrast is worth keeping: #8
 needed the checkpoint rework, real code. #5 and #6 needed the producer to stop
@@ -481,6 +483,51 @@ an elaborate way to make a chained hand-off work when the answer was not to
 chain. Both rules are now written where they can be pointed at:
 [`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a and
 [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.
+
+### 8.1 The rest of the workflow's gaps, collected from where they were recorded
+
+*Added 2026-08-11. The eight above are what **this walkthrough** found. Eight
+more were recorded honestly by their owning documents and never gathered, so
+nobody could see the workflow's total shape. **A gap list spread over eight files
+is not a list.** Each row names its owner; the owner keeps the reasoning, this
+table keeps the count.*
+
+| # | Gap | Recorded in | Blocks |
+|---|---|---|---|
+| 9 | **Nothing writes a template.** The format is settled and no code emits one, so § 4's folder cannot be produced at all | `template.md` · plan P12 u6b | **everything downstream** — this is the keystone |
+| 10 | **`jobset describe` does not exist**, and its predecessor `fdf --jobset` is now deleted. So there is no verb at all for §§ 3–4 | `job-system.md § 5.1`, § 5.3's grammar | gap 9's other half |
+| 11 | **Nothing computes the schema fingerprint.** `task.json` reserves the field and the preflight checks it; no writer fills it, so the check either never fires or always complains | `stages.md § 6.6` | the *"written against a different schema"* warning |
+| 12 | **`user_custom` has no schema field.** It must be an ordinary item for USER-CUSTOM text to survive `prep`; no engine config declares one | `template.md § 9.2`, § 12 | the reserved-block completeness claim (G6) |
+| 13 | **The `required` check is unbuilt.** A stage may declare what it cannot run without; nothing verifies it in the run directory | `job-contracts.md § 4.4` · `stages.md § 5` | a TranSIESTA ladder starting without its `.TSHS` |
+| 14 | **Nothing offers a save before `prep` overwrites a folder.** Invariant **A3** — *the save precedes the change it protects* — has no trigger | `checkpointing.md § 9`, § 12 | A3, and the flat shape's only safety net |
+| 15 | **`snapshot verify` has no verb.** The archive check exists and is reachable only by attempting a restore — the worst moment to learn an archive is gone | `checkpointing.md § 12` | knowing a history is intact |
+| 16 | **`submit --mode` is required and ignores `execution.mode`.** The config key is validated and read, and only `bench` consults it — a section the code enforces and no live document defines | `job-system.md § 5.3` | the one-command workstation path |
+
+**Five of checkpointing's own invariants are untestable until the layout lands**
+— **S2**, **S3**, **S4**, **S6** and **L8** are stated, tracked and deliberately
+unasserted (`checkpointing.md § 13.4`). They are not gaps in the design; they are
+the design waiting for a surface to be asserted against, and that surface is
+gap 9.
+
+```mermaid
+flowchart LR
+    G9["<b>9</b> nothing writes<br/>a template"] --> G10["<b>10</b> no<br/>describe verb"]
+    G9 --> G11["11 · fingerprint"]
+    G9 --> G12["12 · user_custom"]
+    G9 --> INV["S2 · S3 · S4 · S6 · L8<br/><i>five invariants,<br/>untestable until then</i>"]
+    G9 --> G2["<b>2</b> produce/prep<br/>boundary"]
+    G2 --> G4["4 · the measured answer<br/>reaches no description"]
+    G13["13 · required check"]:::indep
+    G14["14 · no save before prep"]:::indep
+    G15["15 · no verify verb"]:::indep
+    G16["16 · mode not wired"]:::indep
+    classDef indep stroke-dasharray: 4 3;
+```
+
+**Read the shape, not the count.** Four of the sixteen are independent and small
+(dashed). **Everything else hangs off gap 9** — a template writer — which is why
+the plan puts P12 unit 6b where it does: it is not one item among sixteen, it is
+the one that unblocks eleven.
 
 ### What the shape of this list says
 

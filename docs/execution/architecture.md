@@ -22,6 +22,57 @@ depth** (`L1`/`L2`/`L3`), a different and coarser grouping than this one;
 
 ---
 
+## 0. The goal: one workflow, flexible in four directions
+
+*Stated 2026-08-11 (user): **"we need a unified and flexible workflow."** Every
+rule below serves this; if a rule and this section disagree, this section is what
+the rule was for.*
+
+> **There is ONE way to run a calculation, and it bends in four places rather
+> than forking into four systems.**
+
+```mermaid
+flowchart TB
+    W["<b>one workflow</b><br/><code>describe → prep → submit → observe</code><br/><i>same words, same files, same formats</i>"]
+    W --> A1["<b>surface</b><br/>browser · terminal"]
+    W --> A2["<b>environment</b><br/>workstation · HPC"]
+    W --> A3["<b>shape</b><br/>flat · hierarchical"]
+    W --> A4["<b>engine</b><br/>SIESTA · PySCF · …"]
+    A1 --> R["<b>the same run directory,<br/>the same deck, the same wrapper</b>"]
+    A2 --> R
+    A3 --> R
+    A4 --> R
+```
+
+**What each axis is allowed to change, and what it may never touch:**
+
+| axis | what it changes | what stays identical | where it is decided |
+|---|---|---|---|
+| **surface** — browser or terminal | how you *say* it | the files written (§ 11) | you |
+| **environment** — workstation or HPC | one flag, one extra file, two floor-1 facts (§ 9) | floors 2, 3, 4, 6, 7 — and the inner `.run.sh` **byte for byte** | detected at `prep` |
+| **shape** — flat or hierarchical | where results sit, and what survives | every rule in `project-layout.md`; only *depth* differs | `task.json`'s `shape`, once |
+| **engine** — SIESTA, PySCF, … | which items exist and what keyword each becomes | the template format, the routes, the verbs, the layout | the engine's own metadata |
+
+**One property makes it unified, and it is worth naming because everything else
+follows from it:** *every axis is a **value read at one point**, never a branch
+that grows a second code path.* A shape is a field somebody set; an environment
+is what floor 1 found; an engine is a `kind` on an item. **No axis is a fork.**
+
+**And one property makes it flexible: the contract stays small, and the
+directory structure carries the variety.** Two reasons for a directory — the
+science changed, or you continued (`project-layout.md § 1.5a`) — is the whole
+rule, and you can read a folder and know what happened without opening a file.
+
+> **The failure this is written against** is the one that shows up in every
+> system that grew instead of being designed: a *web path* and a *CLI path*, a
+> *laptop mode* and a *cluster mode*, a *simple* case and a *staged* case — four
+> pairs, sixteen combinations, and a bug fixed in one of them. Hence *there is no
+> `molbuilder run`* and *there is no `molbuilder fdf`*
+> ([`process/conventions.md § 3`](?doc=process/conventions.md)): a second way in
+> is the first crack in the first axis.
+
+---
+
 ## 1. The one idea: two questions, two different answers
 
 People ask two things about this system, and **an answer to one is not an
@@ -235,16 +286,31 @@ history is not handed to a Broyden stage.
 
 A route owns **an order**, not a floor.
 
-| route | the job it does | its order | floors it visits |
-|---|---|---|---|
-| **produce** | turn a description into a portable folder | check → render → write | 2 → 3 |
-| **prep** | assemble a runnable folder **on the machine that will run it** | the five steps below | 1 → 2 → 3 → 5 → 4 |
-| **submit** | one job becomes one running program | find the folder → check it agrees → launch → record | 4 → 5 |
-| **observe** | answer *where has this got to* | newest attempt → read it → add up | 4 → 6 |
+| route | you type | the job it does | its order | floors it visits |
+|---|---|---|---|---|
+| **describe** | `jobset describe` | **write** the portable description — the template, `task.json`, the data files | ask → check → write | **2 only** |
+| **prep** | `jobset prep` | assemble a runnable folder **on the machine that will run it** | the five steps below | 1 → 2 → 3 → 5 → 4 |
+| **submit** | `jobset submit` | one job becomes one running program | find the folder → check it agrees → launch → record | 4 → 5 |
+| **observe** | `jobset status` | answer *where has this got to* | newest attempt → read it → add up | 4 → 6 |
+
+> **The first route is named `describe`, and it stops at floor 2** *(corrected
+> 2026-08-11)*. This row read *"**produce** — turn a description into a portable
+> folder · check → **render** → write · floors 2 → 3"*, which is the **old**
+> design: the browser wrote finished decks, so describing reached floor 3.
+> **Rendering moved to `prep` step 3**, so describing renders nothing and never
+> leaves floor 2 — which is what makes *the description names no machine* a
+> structural fact rather than a rule to remember.
+>
+> **And "a produce" was undefined jargon**, used as a noun ~50 times across these
+> documents without ever being introduced. Where it survives in older passages it
+> means **this route**: the act of writing the description down. Read *"a produce
+> is transactional"* as *"describing a calculation writes every file or none"*.
 
 `prep` is the important one, and
 [`project-layout.md`](?doc=execution/project-layout.md) § 2.3 calls it **the
-hub**: you come back to it after every look at a result.
+hub**: you come back to it after every look at a result. **Notice that only
+`describe` is off the target machine** — the other three all require it, which
+is the whole shape of the split.
 
 ### 4.1 `prep` — the same five steps, every time
 

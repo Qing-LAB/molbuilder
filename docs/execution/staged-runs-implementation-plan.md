@@ -2277,6 +2277,27 @@ on.** Units 1–5 landed 2026-08-10.
    4. **`prep` resolves and renders** — values ⊕ overrides ⊕ this machine → one
       config object → validate → the shipped emitter. Not substitution: option
       (b) above, rejected because R1 and R2 cannot hold without a config object.
+
+      > **And the emitter is rebased on that, which is the half this step used to
+      > leave implicit** *(user, 2026-08-11: "render_fdf should start now from the
+      > new layered metadata/template — this is how the backend should fit into
+      > the new design")*. The **signature does not change** — the config
+      > dataclass stays the seam — but three things inside `siesta/input.py` do,
+      > and all three are subtractions. The contract is
+      > [`engines/siesta.md`](?doc=engines/siesta.md) § 1.1.
+      >
+      > | | change | sites |
+      > |---|---|---|
+      > | **a** | stop reading anything outside the config | `cfg.stage` × 5 (630, 633, 640, 641, 1724) — already listed in step 3; **plus** `merge_user_custom_from_target`, which cannot run at `prep` (no previous deck) and is replaced by a `type="text"` item |
+      > | **b** | let a keyword be **omitted**, not only computed | `_auto_block_size` becomes a *proposal* for an unset item; a set item wins; an item asking for the engine's own default emits **no line** ([`tuning.md § 2.11`](?doc=engines/tuning.md)) |
+      > | **c** | never see an item that is not the deck's | filter on `kind ∈ {engine, deck}` before the config is built, so a `wrapper` item cannot reach a SIESTA keyword writer |
+      >
+      > **(b) is the one with a behaviour change a test can see**, and it is the
+      > mutation to write: build a template whose `block_size` item has no
+      > `value` and assert the deck carries a proposed line; set it and assert the
+      > line is verbatim; mark it *engine-default* and assert **no `BlockSize`
+      > line is emitted at all**. The third case fails today, because the emitter
+      > has no way to say nothing.
    5. **The guard is the second completeness, as a comparison**: *render a
       stage's deck from the template and from the config a surface held; the
       text is identical.* One assertion, and it subsumes field-by-field

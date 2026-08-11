@@ -918,8 +918,8 @@ now archived. Both are about `task.json`, so they belong here.*
 > transactional rule that they all appear or none does — is this contract's, and
 > that is § 7 proper and § 7.2. **Where those files land is not**: the levels of
 > the tree, how each is named, and who may write at each one belong to
-> [`project-layout.md`](?doc=execution/project-layout.md) — § 7.1 below defers
-> to it rather than restating it.
+> [`project-layout.md`](?doc=execution/project-layout.md). § 7.1 below defers to
+> that contract rather than restating it.
 > **Nor is the saved history**: [`checkpointing.md`](?doc=execution/checkpointing.md)
 > owns it, and § 7.4 is a pointer rather than a specification. What stays here in
 > § 7.3 is only the part that is about a *stage* — that a stage's name is its
