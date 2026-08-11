@@ -22,8 +22,8 @@ never interact with either directly.
 
 **This document is written for two readers.** §§ 1–10 are for anyone using
 molbuilder — what it does, when to reach for it, and what the commands do, with
-worked examples. §§ 11–15 are for anyone changing the code: the rules that must
-not break, how to test them, and where the code is.
+worked examples. §§ 11–16 are for anyone changing the code: the rules that must
+not break, how to test them, where the code is, and what this does not own.
 
 ---
 
@@ -283,16 +283,32 @@ Three ideas, and nothing else to learn.
 | a **tag** | a name you give a state so you can find it again |
 | **where you stand** | the one state the folder is currently at. `init` puts you at the first state, `save` puts you at the one it just made, `restore` puts you at the one you asked for |
 
-**Where you stand is what makes the other two work**, so it is worth thirty
+**Where you stand is what makes the other two work**, and it is worth thirty
 seconds even though you never type it:
 
+```mermaid
+flowchart LR
+    S1(["<b>state</b> a1b2c3<br/><i>after stage 1</i>"])
+    S2(["<b>state</b> 4f9ca71<br/><i>stage 1 converged</i>"])
+    S3(["<b>state</b> 9e0c34d<br/><i>tighter mesh — did not help</i>"])
+    S4(["<b>state</b> 7d5b210<br/><i>tighter force tol — better</i>"])
+    T{{"tag<br/><b>stage1-good</b>"}}
+    S1 --> S2
+    S2 --> S3
+    S2 --> S4
+    T -.->|"a name you gave it"| S2
+    S4 -.->|"<b>where you stand</b>"| HERE(["the folder, right now"])
+```
+
 - **It decides what "unsaved" means** — the folder differs from the state it
-  stands at. Nothing is ever compared against the *newest* state, which is why
-  going back does not make the whole folder look modified (§ 7, A5).
+  stands at, never from the *newest* one. Stand at `4f9ca71` above and the
+  folder is clean, even though two later states exist. That is why going back
+  does not make everything look modified (§ 7, A5).
 - **It decides where a new state hangs.** `save` records where you stood as the
-  new state's parent, then moves you onto it. That is the entire branching
-  mechanism (§ 7.1) — you never declare a fork, you just save from wherever you
-  are.
+  new state's parent, then moves you onto it. **You never declare a fork** —
+  two states hang off `4f9ca71` because somebody stood there twice: restore it,
+  try a tighter mesh, save; restore it again, try a tighter force tolerance,
+  save. Going back and trying again *is* the fork (§ 7.1).
 
 ```bash
 # once, in the calculation folder

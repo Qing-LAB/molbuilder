@@ -189,6 +189,25 @@ say so.
 > and writes, the monitor watches and tells.** Everything that *decides* runs
 > where the user is (`checkpointing.md § 9`).
 
+```mermaid
+flowchart TB
+    subgraph DIR["<b>one run directory</b> — the engine's whole world"]
+      direction TB
+      W["<b>the wrapper</b> .run.sh<br/><i>activates, then execs</i><br/>changes no directory · reads no config"]
+      E["<b>the engine</b> siesta / python<br/><i>reads what is here, writes beside it</i><br/>knows nothing of stages or descriptions"]
+      M["<b>the monitor</b> mb_monitor.py<br/><i>watches the launcher's PID, appends to a log</i><br/>never decides · never edits the calculation"]
+      W -->|"exec"| E
+      W -.->|"backgrounds, low priority"| M
+      M -.->|"observes"| E
+    end
+    U["<b>you</b>, wherever you are<br/>every DECISION happens here"]
+    M -.->|"notifies — a run ending at 3am can say so"| U
+```
+
+**Three parties, three verbs: the wrapper activates and execs, the engine reads
+and writes, the monitor watches and tells.** Nothing in that directory decides
+anything — a compute node is where work happens, not where judgement happens.
+
 **Rule 1 — one job per directory.** Every job lives in its own directory. A
 directory may hold *several inputs* (one per stage of a staged relaxation,
 § 2.3) plus the engine's outputs and restart files, but never inputs for a
@@ -261,14 +280,13 @@ A staged relaxation (coarse → tight) keeps its stages together, and the
 `SystemLabel` / `JOB` basename stays **unsuffixed** — so SIESTA's `.XV` / `.DM`
 / `.CG` restart files transfer cleanly between stages (`MD.UseSaveXV`,
 `DM.UseSaveDM`, `MD.UseSaveCG`). Only per-stage *derived* files carry a suffix,
-and the codebase uses **two distinct suffix conventions** for two different
-paths — do not conflate them:
+and **there is one convention for it**:
 
 - **The staged ladder** — the ladder from `task.json` (an engine config carries
   no stage list; that field was **deleted** 2026-08-07 —
   [`engines/stages.md`](?doc=engines/stages.md) § 1.1) rendered by
-  `siesta/input.py::render_siesta_stage_fdfs` plus its `.run.sh` stage runner,
-  and the `stages_to_jobset` JobSet producer — names each stage's input `.fdf`
+  `siesta/input.py::render_siesta_stage_fdfs` (the decks) and
+  `siesta/stages.py::stages_to_jobset` (the JobSet) — names each stage's input `.fdf`
   and stdout `.out` **`<label>_<NN>_<name>`**: an **underscore** joining the
   label, the stage's assigned ordinal and its name (the shipped ladder's names
   are `coarse` / `medium` / `tight`):
@@ -281,19 +299,15 @@ paths — do not conflate them:
   └── my-job.STRUCT_OUT              ← final geometry, after the last stage
   ```
 
-  > **Retired 2026-08-10 — there is one convention now, and this is it.** A
-  > second one lived here: the single-stage overlay (`molbuilder fdf --stage N`)
-  > and the molwatch log wrote **`<label>-stage<N>`**, a *hyphen* plus the stage
-  > *number*, while the ladder wrote `<label>_<NN>_<name>`. Two spellings of one
-  > idea, and in a ladder whose stages the user had named, **a stage's deck and
-  > its own log could not be matched by name at all**.
+  > **The deck, the stdout and the monitor log all carry the same token.**
+  > `molwatch_log_basename` takes it, and the decoder reads it back through
+  > `identity.parse_stage_token` rather than keeping a second regex — so a
+  > stage's files can always be matched to each other by name
+  > (`identity.stage_token`; § 6.3's Files table).
   >
-  > Both now carry the stage's **artifact token**, `<NN>_<name>` — the deck, the
-  > stdout and the log alike (`identity.stage_token`; § 6.3's Files table).
-  > `molwatch_log_basename` takes the token, and the decoder reads it back
-  > through `identity.parse_stage_token` instead of keeping its own regex.
-  > The hyphen was wrong on this table's own terms: `-` announces *a counter
-  > follows*, and a stage is not a counter.
+  > **The underscore is load-bearing.** A hyphen announces *a counter follows*
+  > on this document's own terms, and a stage is not a counter — it is a name
+  > with an assigned ordinal.
 
 **Two multi-stage execution shapes exist, deliberately:**
 
