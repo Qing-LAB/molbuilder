@@ -84,7 +84,12 @@ def test_stage_strategy_publishable_emits_two_stage_bundle(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stage-strategy", "publishable")
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*")
+                   # the DECKS: not the monitor log, and not the
+                   # `.fdf.template` (the portable half, a different
+                   # artifact -- these tests are about which STAGES
+                   # were emitted)
+                   if not p.name.endswith((".molwatch.log", ".fdf.template")))
     assert files == ["JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
 
 
@@ -93,7 +98,12 @@ def test_stage_strategy_loose_only_emits_one_stage_bundle(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stage-strategy", "loose-only")
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*")
+                   # the DECKS: not the monitor log, and not the
+                   # `.fdf.template` (the portable half, a different
+                   # artifact -- these tests are about which STAGES
+                   # were emitted)
+                   if not p.name.endswith((".molwatch.log", ".fdf.template")))
     assert files == ["JOB_01_coarse.fdf"]
 
 
@@ -102,7 +112,12 @@ def test_stage_strategy_vib_quality_emits_three_stage_bundle(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stage-strategy", "vib-quality")
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*")
+                   # the DECKS: not the monitor log, and not the
+                   # `.fdf.template` (the portable half, a different
+                   # artifact -- these tests are about which STAGES
+                   # were emitted)
+                   if not p.name.endswith((".molwatch.log", ".fdf.template")))
     assert files == [
                      "JOB_01_coarse.fdf",
                      "JOB_02_medium.fdf",
@@ -192,7 +207,12 @@ def test_stages_json_literal_overrides_ladder(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stages-json", json.dumps(_TWO_STAGE_PAYLOAD))
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*")
+                   # the DECKS: not the monitor log, and not the
+                   # `.fdf.template` (the portable half, a different
+                   # artifact -- these tests are about which STAGES
+                   # were emitted)
+                   if not p.name.endswith((".molwatch.log", ".fdf.template")))
     # Stage names from the payload, not defaults.
     assert files == [
                      "JOB_01_coarse.fdf",
@@ -211,7 +231,12 @@ def test_stages_json_file_path_overrides_ladder(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stages-json", str(payload_path))
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*")
+                   # the DECKS: not the monitor log, and not the
+                   # `.fdf.template` (the portable half, a different
+                   # artifact -- these tests are about which STAGES
+                   # were emitted)
+                   if not p.name.endswith((".molwatch.log", ".fdf.template")))
     assert "JOB_02_stage_final.fdf" in files
 
 
@@ -305,7 +330,12 @@ def test_stages_json_then_stage_strategy_layers_correctly(xyz, tmp_path):
                 "--stages-json", json.dumps(_TWO_STAGE_PAYLOAD),
                 "--stage-strategy", "loose-only")
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*")
+                   # the DECKS: not the monitor log, and not the
+                   # `.fdf.template` (the portable half, a different
+                   # artifact -- these tests are about which STAGES
+                   # were emitted)
+                   if not p.name.endswith((".molwatch.log", ".fdf.template")))
     # Only stage1's fdf survives the enable-flag overlay.
     assert files == ["JOB_01_coarse.fdf"]
     # And its MD block reflects the payload's 01_coarse knobs, not the
@@ -700,3 +730,62 @@ def test_producing_twice_keeps_the_warm_files_that_were_already_there(xyz,
     assert (out / "ch4_01_coarse.fdf").is_file()
     assert (out / "task.json").is_file()
     assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".")] == []
+
+
+def test_the_produce_writes_the_template_the_contract_promises(xyz, tmp_path):
+    """`project-layout.md` § 1: the portable folder is "a **template** plus
+    `task.json`" -- the thing you copy to a cluster, which names no machine.
+
+    Nothing wrote one until 2026-08-11, so `prep` had no choice but to require
+    finished decks and the "one real migration" had an unbuilt prerequisite.
+    This is that prerequisite: the template lands beside the decks, and it is
+    DERIVED from the base config's own deck, so the two cannot disagree.
+    """
+    fdf = tmp_path / "JOB.fdf"
+    r = _invoke("fdf", str(xyz), str(fdf),
+                "--stage-strategy", "publishable", "--shape", "hierarchical")
+    assert r.exit_code == 0, r.output
+
+    tpl = tmp_path / "JOB.fdf.template"
+    assert tpl.is_file(), sorted(q.name for q in tmp_path.iterdir())
+
+    # It reads back through the one codec, and what it carries is the config --
+    # not a copy of a deck, which would be the second representation this
+    # program keeps deleting.
+    from molbuilder.template import config_from_template
+    from molbuilder.config.siesta import SiestaConfig
+    cfg = config_from_template(tpl.read_text(), SiestaConfig)
+    assert cfg.system_label == "JOB"
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "OPEN -- P12 unit 6, the one real migration.  The template carries "
+    "`mpi_np`: a RANK COUNT, which `project-layout.md` § 2.3.1b calls an "
+    "ALLOCATION and puts as an input to `prep`, not a field of the portable "
+    "description.  It is there because the producer still runs at PRODUCE, "
+    "where the allocation is baked in -- which is exactly the gap unit 6 "
+    "closes.  Strict, so it fails loudly the moment the producer moves."))
+def test_the_template_names_no_machine():
+    """`project-layout.md` § 2.1: the portable folder names no machine.
+
+    Checked on the VALUES the template carries, not on its prose --
+    `continue_retries`' help text legitimately explains that it never becomes
+    an sbatch flag, and a word-anywhere check reads that explanation as a
+    violation.
+
+    `continue_retries` itself is excluded from the comparison: it is the ONE
+    `Resources` field that is not a scheduler flag (`job-contracts.md` § 6.2
+    marks it as the row with no SLURM name, because it is baked into the
+    wrapper's retry loop), so it belongs in the template.
+    """
+    import dataclasses
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset.model import Resources
+    from molbuilder.template import declarations_for
+
+    allocation = {f.name for f in dataclasses.fields(Resources)
+                  } - {"continue_retries"}
+    carried = {d.name for d in declarations_for(SiestaConfig)}
+    assert not (carried & allocation), (
+        f"the template carries {sorted(carried & allocation)} -- an allocation "
+        "belongs to `prep`, not to the folder you copy to a cluster")

@@ -70,7 +70,12 @@ def test_the_producer_emits_ONE_PACKAGE_for_either_layout():
     # second one arriving without a decision.
     import dataclasses
     assert {f.name for f in dataclasses.fields(StageBundle)} == {
-        "fdf_files", "jobset", "pseudo_species"}
+        "fdf_files", "jobset", "pseudo_species", "template"}
+    # `template` arrived 2026-08-11 (P12 unit 6a) and this equality is what
+    # made it a decision rather than an accretion: the guard failed, the field
+    # was argued for, the set was updated.  It is the portable half of the
+    # package `project-layout.md` § 1 promises -- the science that does not
+    # vary, which `prep` turns into decks for the machine it stands on.
 
 
 def test_jobset_shared_defaults_to_expected_psml_names():

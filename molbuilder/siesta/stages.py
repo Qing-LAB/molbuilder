@@ -301,6 +301,16 @@ class StageBundle:
     fdf_files: Dict[str, str]
     pseudo_species: List[str] = field(default_factory=list)
     jobset: Optional[JobSet] = None
+    #: ``<label>.fdf.template`` -- the science that does NOT vary, as a
+    #: readable annotated deck (`job-contracts.md` § 3.7).  It is DERIVED from
+    #: the base config's own rendered deck, so the template and the decks
+    #: cannot disagree: both come from one ``cfg`` in one call.
+    #:
+    #: `project-layout.md` § 1 says the portable folder is "a template plus
+    #: `task.json`" -- until 2026-08-11 nothing wrote one, so `prep` had no
+    #: choice but to require finished decks.  This is the half that makes the
+    #: other half possible.
+    template: Optional[str] = None
 
 
 def build_siesta_stage_bundle(
@@ -347,7 +357,8 @@ def build_siesta_stage_bundle(
     Raises ``ValueError`` (from ``render_siesta_stage_fdfs`` /
     ``stages_to_jobset``) if no stage is enabled or the ladder is invalid.
     """
-    from .input import render_siesta_stage_fdfs, _detect_species
+    from .input import (render_siesta_stage_fdfs, render_fdf,
+                        _detect_species)
 
     # ONE PACKAGE, for either layout (decision 29).  The decks and the JobSet
     # are the same whichever shape the description asks for -- what differs is
@@ -361,11 +372,23 @@ def build_siesta_stage_bundle(
                else _detect_species(struct.elements))
     _shared = shared if shared is not None else [f"{s}.psml" for s in species]
 
+    # The template is lifted OUT of the base config's own deck (no stage
+    # overrides applied), so `payload == what lands in a deck` holds by
+    # construction rather than by a second implementation agreeing with the
+    # first.  Best-effort: a config the declaration table does not cover yet
+    # must not stop a produce that works today.
+    from ..template import render_template
+    try:
+        template = render_template(render_fdf(struct, cfg, cell=cell), cfg)
+    except Exception:                       # pragma: no cover - defensive
+        template = None
+
     return StageBundle(
         fdf_files=fdf_files,
         pseudo_species=species,
         jobset=stages_to_jobset(cfg, stages, shared=_shared,
                                 resources_for=resources_for),
+        template=template,
     )
 
 

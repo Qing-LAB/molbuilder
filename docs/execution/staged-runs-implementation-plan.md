@@ -2102,9 +2102,33 @@ on.** Units 1–5 landed 2026-08-10.
 6. **The producer moves from *produce* to `prep`.** The one real migration
    (§ 9.3). It closes floor 3's asymmetry, `LaunchSpec`, M4's allocation-fixed-
    at-produce, and M2a's capability-assembled-twice; it makes the `bench`
-   fold-in a subtraction. **Its shape is known** — the route gains a step it
-   currently skips, exactly as step 1 was added. It touches the web surface, so
-   it is sequenced last and wants an explicit go.
+   fold-in a subtraction.
+
+   > **⚠ It had an unbuilt prerequisite, found on starting it 2026-08-11.**
+   > `project-layout.md` § 1 says the portable folder is *"a template plus
+   > `task.json`"*, and **nothing wrote a template**. `molbuilder/template.py`'s
+   > round-trip works and has 43 passing tests — it simply had no caller, so
+   > `prep` had no choice but to require finished decks
+   > (`PrepError: render the inputs before prep`). The migration was never
+   > "move a call"; it is "build the template path, then move the call".
+
+   **6a ✅ landed.** The producer emits the template, derived from the base
+   config's own rendered deck — so `payload == what lands in a deck` holds by
+   construction rather than by a second implementation agreeing with the first
+   — and the CLI writes it as `<label>.fdf.template`.
+
+   > **Two guards earned their keep here.** `StageBundle`'s field-set equality
+   > failed on the new field, which is what made it a decision rather than an
+   > accretion. And the new test found the gap unit 6 exists to close: **the
+   > template carries `mpi_np`** — a rank count, which § 2.3.1b calls an
+   > *allocation* and puts as an input to `prep`. It is there because the
+   > producer still runs at produce. Held as a strict xfail naming this unit,
+   > so it fails loudly the moment the producer moves.
+
+   **6b** — `prep` renders the deck from template + `task.json`, after
+   resolving the machine (step 1 already does that). **6c** — produce stops
+   writing finished decks. **6d** — the web follows. Each touches the web
+   surface progressively, so they are taken one at a time with a go.
 
 **Subtracts:** the second assembly of capability (unit 6 folds the `scheduler`
 block into the machine record, so `environment.json` and the emitted header

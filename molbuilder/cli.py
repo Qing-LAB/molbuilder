@@ -980,6 +980,15 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
             p = staging / name
             p.write_text(body)
             _staged.append(p)
+        # The portable half of the package: `project-layout.md` § 1 says the
+        # folder you copy to a cluster is "a template plus task.json".  The
+        # template is the science that does NOT vary, annotated so it can be
+        # read back -- it names no machine, and `prep` is what turns it into
+        # decks for the machine it is standing on.
+        if bundle.template:
+            t = staging / f"{cfg.system_label}.fdf.template"
+            t.write_text(bundle.template)
+            _staged.append(t)
         # Optional psml copy, mirroring convert()'s behaviour.
         if cfg.psml_lib and cfg.copy_psml:
             from .siesta.input import copy_pseudopotentials, _detect_species
