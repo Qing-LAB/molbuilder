@@ -378,12 +378,25 @@ Checklist:
 Four questions from `staged-runs-architecture.md § 8c`, made executable in P0.
 `tests/test_stage_vocabulary.py` is the authority; the greps are the smoke test.
 
-| # | Question | Check | Today |
-|---|---|---|---|
-| 1 | Is there **one** way to say "stage"? | the allowlist in `test_stage_vocabulary.py` | **9 mechanisms** |
-| 2 | Does a stage's **name** survive? | no `-stage<N>` / `stage%d` in any emitted filename | **3 conventions live** |
-| 3 | Does everything run through the **wrapper**? | no generated script invokes an engine directly | **flat runner does** |
-| 4 | Does each stage start because **someone said so**? | no `depends_on` between stages; no loop over stages in a runner | **both producers chain** |
+| # | Question | Check | At P0 · 2026-08-07 | Now · 2026-08-10 |
+|---|---|---|---|---|
+| 1 | Is there **one** way to say "stage"? | the allowlist in `test_stage_vocabulary.py` | 10 mechanisms | **10** — the one still open, and P2/P9's |
+| 2 | Does a stage's **name** survive? | no `-stage<N>` / `stage%d` in any emitted filename | 2 offenders | **0** ✅ (P4) |
+| 3 | Does everything run through the **wrapper**? | no generated script invokes an engine directly | 1 (the flat runner) | **0** ✅ (P5 unit 3) |
+| 4 | Does each stage start because **someone said so**? | no `depends_on` between stages; no loop over stages in a runner | 2 producers chain | **0** ✅ (P5 unit 3 + P7 unit 2) |
+
+> **Do not maintain this table by hand — print it.** `python -m
+> tests.test_stage_vocabulary` from the repository root emits exactly these
+> numbers, and the columns above are two of its runs.
+>
+> **It was maintained by hand until 2026-08-10, and every cell was wrong.**
+> Questions 2, 3 and 4 had each been driven to zero by a phase without the row
+> being touched, so the plan's own scoreboard reported that nothing had been
+> done. **Question 1 was never right at all**: it said *nine*, P0's mechanical
+> pass counted **ten**, and P0's note two paragraphs below this table says so —
+> the correction was written underneath the wrong number instead of into it.
+> *A status that a command can print should never be a cell somebody
+> remembers to edit.*
 
 ---
 
@@ -1612,7 +1625,19 @@ navigates).
 2. `stages_to_jobset` stops emitting `depends_on` and `Carry` edges between
    stages. `carry_deref` stays for the chained ladder `jobset` can still build.
 
-   > **Walked 2026-08-10, not started — and it is two changes, not one.** The
+   > **⚠ That second sentence is now the plan's own open question, not a
+   > statement.** `carry_deref`, `Carry`, `depends_on` and `dep_kind` are all
+   > still in the code — but after this unit landed, **nothing in molbuilder
+   > builds a chained ladder**: `stages_to_jobset` emits no edges, and
+   > `sweep_to_jobset` never did, because a sweep's points are independent.
+   > The machinery is kept for a caller that does not exist. `job-system.md`
+   > § 2's keep-justification — *"a benchmark sweep and an explicitly-chained
+   > workflow both still want them"* — **is wrong about the sweep**, found on
+   > the fresh contract read of 2026-08-10. Retiring it is a subtraction from
+   > the contract rather than a cleanup, so it is **decision 30 in § 8** and
+   > waits for the user.
+
+   > **Landed 2026-08-10, and it was two changes, not one.** The
    > `Carry` half is now pure subtraction: P6 unit 3 made `prep` read the
    > per-job `warm` declaration instead, and derives the `Carry` list from it,
    > so deleting the derivation removes a projection rather than a rule.
@@ -1649,13 +1674,28 @@ navigates).
    > *"submitting all of them is the ordinary thing"*; that sentence is
    > replaced, and § 5.4's threaded-`sbatch` sequence is marked superseded.
    >
-   > **What this leaves for the unit itself.** Removing the edges no longer
-   > risks a parallel fan-out, because the fan-out is refused independently of
-   > where `depends_on` comes from. One thing still to fix while there:
-   > **`dep_kind` is stored on the wrong job** — job *N* holds
+   > **What this left for the unit itself, and how it came out.** Removing the
+   > edges no longer risked a parallel fan-out, because the fan-out is refused
+   > independently of where `depends_on` comes from. One thing was still to fix
+   > while there: **`dep_kind` was stored on the wrong job** — job *N* held
    > `_dep_kind(policy of job N-1)`, the predecessor's policy kept on the
    > successor. Same shape as the defect unit 3 fixed: a value computed for a
    > pair, stored on one member, read by someone assuming a different pair.
+   >
+   > **It was fixed by subtraction rather than by moving it.** `_dep_kind`,
+   > the `on_nonconvergence` parameter and `DEFAULT_NONCONVERGENCE` all left
+   > with the edges, because `engines/stages.md` § 3's reason for the field —
+   > *its entire effect was the dependency edge* — means that with no edge
+   > there is nothing left for it to do. **A value stored on the wrong object
+   > stopped being wrong by ceasing to exist**, which is the cheapest form the
+   > fix could have taken and was not the one the plan predicted.
+   >
+   > **PySCF's `on_nonconvergence` is untouched, and that asymmetry is real
+   > rather than an oversight.** Its ladder runs inside one process, so the
+   > policy becomes ordinary control flow in the emitted script instead of a
+   > scheduler edge. The same word does something on one engine and nothing on
+   > the other; `engines/stages.md` § 3 now says so, having previously implied
+   > that SIESTA's was live.
 3. `submit` resolves **one** attempt for the stage it is starting: next unused
    number, create, link the deck and package, copy what was named, launch there.
 4. `materialize.job_dir_name` returns `point-<name>` for **every** job and must
@@ -1976,8 +2016,14 @@ flowchart TB
 >
 > This is stated once, here, rather than repeated on each row: two copies of a
 > rule are two places for it to drift, which is the defect § 9 is about. The
-> milestone reviews already written (§ 5b for M2, § 5c for M3) are the format
-> each one's ledger takes.
+> ledgers written so far are the format each one takes: **§ 5b** (M2) · **§ 5c**
+> (M3) · **§ 5d** (M4) · **§ 5e** (M5) · **§ 5f** (M6 and M7, which share one).
+>
+> **Write the ledger when the pass ends, not when someone asks for it.** M6 and
+> M7's passes all ran, but their findings sat in commit messages until § 5f was
+> reconstructed from `git log` on 2026-08-10 — so by this document's own rule
+> both milestones were unpassed while the work was in fact reviewed. The
+> reconstruction was cheap on the day and would have been impossible in a month.
 
 ---
 
@@ -2209,6 +2255,92 @@ whole calculation (§ 1), so *"this stage's files"* is not simply *"the ones
 matching its token"*. That is a question, not a parameter, and guessing at it
 would be inventing contract.
 
+## 5f. M6 and M7 — the milestone review, 2026-08-10
+
+**Two milestones share one ledger because they were built and reviewed in one
+day**, and the passes did not separate along the phase boundary: P6's `prep`
+work and P7's subtractions were reviewed together, against the same contracts,
+by the same three reads.
+
+> **A process finding first, because it is the reason this section exists.**
+> Every pass below **ran** — but each one's findings were recorded in a commit
+> message and nowhere else. § 5's rule is that *a milestone with fewer than
+> three recorded passes is not passed*, and by that rule M6 and M7 were
+> unreviewed for as long as this section was missing: the evidence was in `git
+> log`, which is not where anyone reads a milestone's status. **This ledger was
+> reconstructed from the commits on 2026-08-10.** Reconstructing it is cheap
+> the same day and impossible a month later, which is the argument for writing
+> the section when the pass ends rather than when someone asks.
+
+### Pass 1 — conformance, per unit, while the phases ran
+
+| # | What was wrong | Where it landed |
+|---|---|---|
+| 1 | **A flat prep destroyed its own bundle** — in flat the job's directory *is* the bundle root, so relinking pointed every file at the bundle's parent | `895bd29e` (also § 5e, M5) |
+| 2 | **A flat stage borrowed its sibling's state** — one directory holds every stage, so a stage that had never run reported whatever its neighbour's `.out` said | `db521a15` |
+| 3 | **A CG optimizer history reached a Broyden stage** — `prep` read the warm set off `Job.carry`, the *immediate predecessor*, instead of the pair actually being continued from | `f856638f` |
+| 4 | **A scheduler was handed a whole ladder at once**, and the hierarchy accepted `--chain` | `45787239` — the user's rule, put in `submit_jobset` rather than the CLI so every caller gets it |
+| 5 | **A chained ladder did not stop at the first failure** — `coarse` failed, `medium` and `tight` ran anyway | `58c23802` |
+| 6 | **P7 unit 1 nearly shipped a break**: `validation/identity.py::_foreign_state` imported two helpers the plan had called test-only | `8981376a` |
+| 7 | **PySCF's warm-file banner and its `--cold` mover disagreed** — a run whose only warm file was `<JOB>_optimized.xyz` announced a clean start and then had that file moved aside as warm state | `8981376a` (P7 unit 5) |
+
+**Finding 5 is the one worth re-reading**, because of how it was found. It was
+hidden by a **contract twist**: `running-a-job.md § 2.2a` justified `carry_deref`
+by *"jobset can submit a whole chain at once"*, I made that sentence false, and
+then **authored a replacement justification** instead of reporting the
+contradiction. The defect was one function away from the sentence I rewrote.
+*Twisting a contract to fit the code does not merely mis-describe the system —
+it removes the thing that would have caught the change.*
+
+### Pass 2 — widened to every commit since the milestone
+
+Three doc commits, all the same shape: **a guide describing a mechanism the
+contract had already moved.**
+
+| # | What was wrong | Where it landed |
+|---|---|---|
+| 8 | `job-system.md § 5.3` documented **three commands that do not exist**; § 5.4's threaded-`sbatch` sequence contradicted the one-job-at-a-time rule | `c7b77950`, `4022761a` |
+| 9 | **Nine drift items** where `overview.md` and `worked-example.md` had fallen behind their contracts | `fdf4638e` |
+| 10 | **Three stale statements in the ground contract itself** (`job-contracts.md`) | `84967f5b` |
+
+### Pass 3 — the documents and the tests themselves
+
+| # | What was wrong | Where it landed |
+|---|---|---|
+| 11 | **§ 9 reproduced its own subject** — five errors, including two objects filed under the wrong floor and one filed under *two* | `9ee0b4cb` |
+| 12 | **Three errors in the five contract documents**, every one created by P7 unit 2 that morning, every one the same class: *a rule still right, described in a present tense that stopped being true* | `9e0c34df` |
+| 13 | **A4's one violation, and three rules with no test** — `StageStatus` built a second `StageRef`; A1, A4 and A7 were wishes | `4a672f66` |
+
+**Finding 12 in full, because it is what the contract now says.**
+
+1. **`job-contracts.md` § 6.2** — the shared parameter-vocabulary registry, the
+   table other documents are told to trust, carried the row
+   `| Non-convergence policy | on_nonconvergence | dep_kind | stages_to_jobset |`.
+   That translation no longer exists in the function it names: the parameter and
+   `_dep_kind` left with the edges the same morning.
+2. **`engines/stages.md` § 3** — *"it **is** the scheduler edge"*. The reasoning
+   is untouched and is exactly why the field was kept out of the stage schema;
+   the tense was wrong. Nothing threads such an edge for SIESTA now, which does
+   not weaken the argument — it **completes** it. The section also gained the
+   asymmetry nobody had written down: **PySCF's `on_nonconvergence` is untouched
+   and real**, because its ladder runs in one process, so the policy becomes
+   ordinary control flow rather than a scheduler edge.
+3. **`project-layout.md`** — said `stages_to_jobset` *"currently builds exactly
+   that"* and then described the change as still to come. **Both halves stale,
+   in opposite directions**, three lines apart.
+
+The same read surfaced the sentence that is now **decision 30**: `job-system.md`
+§ 2 keeps `Carry` and `depends_on` because *"a benchmark sweep and an explicitly
+-chained workflow both still want them"* — and the sweep half is false.
+
+> **What all thirteen have in common.** Not one is a wrong rule. Every one is a
+> **status described as if it were still true** — which is the failure a
+> contract is least able to catch on its own, because each sentence still parses
+> and still reads as authoritative. § 9's rule *ask, do not work it out again*
+> has a documentary twin: **say when, or the reader supplies "now".**
+
+---
+
 ## 5a. Where the code actually is — verified 2026-08-07
 
 Not the plan's own markers: each row was **checked against the code** by
@@ -2425,6 +2557,8 @@ open.
 | 28 | ~~**How is a stage REFERRED TO, as opposed to named on disk?**~~ — **decided 2026-08-10 (user): `seq` stays DERIVED; the ordinal reaches every surface.** Decision 27 put `<NN>_<name>` on the artifacts and stopped there, so the number is in every filename and in no interface: `jobset prep run coarse` takes a bare name, and the refusal lists *"coarse, medium, tight"* with no order at the one moment you are choosing. Identity remains the name — `stages.md § 2`'s three fields, § 4.1's *"`seq` is not a fourth field"* and R5 all stand unchanged. The **rejected** alternative was making `seq` a stored field of `Stage`: it would let the UI *enforce* numbering rather than preview it, but it overturns those three sentences and makes the description carry a number it does not need. **And it is one piece of framework, not five patches** (user: *"this should not be a patching work but with unified api and framework design"*) — see § 8f | **P4 / P6** |
 | 29 | ~~**Where does the shape BRANCH — at the produce, or at `prep`?**~~ — **decided 2026-08-10 (user): at `prep`, and the flat shape runs through the same framework as the hierarchical one.** *"keep the flat shape runnable with `jobset submit run --chain` … the prep, deployment and execution chain of command is the same framework."* **This corrects P5 unit 1 as I built it earlier the same day**, which branched the PRODUCER on `shape` — flat got the bash runner and no JobSet, hierarchical got the JobSet and no runner. `project-layout.md § 1` says the opposite in two places: *"The browser **always writes the same thing**… `prep` translates that into a runnable directory in whichever shape you ask for"*, and its table gives **Chosen: at `prep`** for BOTH columns. So the produce is shape-INDEPENDENT — one package, decks plus a JobSet — and `prep` applies the layout. **Flat is not a lesser path with its own launcher; it is the same verbs over a flatter tree.** Its limits (one shared warm set, only the latest state survives) are real, known and accepted — they are a property of the LAYOUT, and the user is aware of them; they are not a reason for a second mechanism | **P5 (u1 revised, u3, u4) / P6** |
 | 25 | ~~**When is the next stage prepped, and what must be true of the previous one first?**~~ — **decided 2026-08-09 (user): stage N+1 is prepped after stage N is done and *confirmed*, and "confirmed" is a checkpoint question, not a convergence one.** *"The only reliable prep of a next stage is the one that is done when the previous stage is already confirmed."* Confirmed = the folder is **clean** (stage N's result is saved, or you are standing at a restored state), **or** you were shown what is unsaved and said go. This is the missing decision the dangling `Carry` symlink was standing in for. See § 8b below for the walk | **P6**, **P7**, **P8** |
+
+| 30 | **Does the chaining machinery retire, or stay?** `Carry`, `depends_on`, `dep_kind` and `carry_deref` are all still in `jobset/model.py` and `runwrap.py`, validated and tested. **After P7 unit 2, nothing builds a chained ladder**: `stages_to_jobset` emits no edges, and `sweep_to_jobset` never did — a sweep's points are independent. The machinery is kept for a caller that does not exist. **The sentence keeping it is wrong**: `job-system.md § 2` says *"a benchmark sweep and an explicitly-chained workflow both still want them"*, and the sweep half is false. That leaves the second half — *someone chaining with their eyes open* — which today has no way to ask, since `--chain` refuses the hierarchy and a scheduler takes one job per invocation. **Three ways out:** (a) retire all four, and `job-system.md` § 2 and § 5 lose the machinery with them; (b) keep them and give the chain a real door, so *chained* is something a person asks for at launch rather than something a description stores; (c) keep them unused and say so in the contract, which is honest but leaves a validated mechanism nobody can reach. **This is a subtraction from the contract, not a cleanup, so it is the user's** | P7 is landed either way; this gates what `job-system.md` § 2 and § 5 say next |
 
 **Already decided, recorded so they are not reopened:** the shape is a required
 field in the description (`stages.md § 6.7`); the id is fixed once and a later
