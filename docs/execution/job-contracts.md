@@ -752,6 +752,49 @@ MeshCutoff   300.0 Ry
 # === molbuilder item mesh_cutoff END ===
 ```
 
+#### What the template is for, who uses it, and what complete means
+
+*Written down 2026-08-11, because "is the template lossless?" turned out to be
+unanswerable until these three were stated.*
+
+**Its function: the calculation's own catalogue.** Every item a script owns,
+each with the value in force, the declaration that describes it, and the prose
+that explains it. **One file that is both the reference and the source** — the
+reference because you can read what the calculation is, the source because the
+payload lines *are* the deck text.
+
+**Its two consumers, and they ask different things of it:**
+
+| consumer | what it needs from the template |
+|---|---|
+| **a generating surface** — building `task.json` without asking a server | the **declarations**: `type` and `choices` to pick a control, `range`/`unit` to bound it, `default` to show what untouched means, `group` to decide whether *vary per stage* starts ticked |
+| **`prep`** — turning the description into each stage's deck, on the target | the **payloads and anchors**: a stage's overrides are substituted at their anchors, and what comes out is that stage's deck |
+
+**The second consumer is what makes anchors load-bearing.** `anchor=` is not
+documentation — it is how an override finds its site, **by anchor and not by
+line number**, so a template a person has edited still substitutes correctly.
+
+**So "complete" means two different things, and both must hold:**
+
+- **Complete for the surface** — every item a script owns has a block. A field
+  the config carries and the template omits is a control the surface cannot
+  offer and a value the user cannot see.
+- **Complete for `prep`** — substituting a stage's overrides into the template
+  yields **exactly** the deck that stage would otherwise have been rendered
+  with. This is the testable form: *render a stage's deck both ways and compare
+  the text.*
+
+**The second implies the first but is not implied by it**, which is why the
+weaker one is not enough on its own: a template can list every field and still
+substitute to a different deck if an item's payload is not the text that lands.
+
+> **Measured 2026-08-11:** `SiestaConfig` has 45 fields and 39 have blocks.
+> `species_order`, `write_coor_step`, `write_forces` and `write_molwatch_log`
+> are read by the deck renderer and have none — so the template is complete for
+> neither consumer today. `copy_psml` is correctly absent (it is a produce-time
+> file copy, not deck content), and `stage` should not be a config field at all
+> (`engines/stages.md` § 1.1).
+
 **Each block carries a `field` declaration line and then prose**, and the
 declaration is **the grammar § 3.3 already defines** — `field <name>
 anchor=… type=… range=[a,b] unit=… default=…`, `type ∈ {int, float, str, pow2,

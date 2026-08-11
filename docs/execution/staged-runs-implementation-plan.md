@@ -2168,15 +2168,37 @@ on.** Units 1–5 landed 2026-08-10.
    on the very next line, has one — which reads as an omission rather than a
    decision precisely because the key means two things and neither is stated.
 
-   **So 6b step 1 is: give the template its own membership test**, derived from
-   § 2.1's rule, instead of borrowing the form's heading. Then the four fields
-   join the template without also landing on a form nobody asked to change —
-   which matters now that the browser is deliberately out of scope until the
-   framework is finished.
+   **And "lossless" was my word, not the contract's.** Asked to define it, the
+   answer came out of `job-contracts.md` § 3.7 — now written down there as
+   *what the template is for, who uses it, and what complete means*:
 
-   Only then does the guard mean anything: *every field the deck renderer reads
-   is either in the template or named, with its reason, as deliberately
-   absent.*
+   - **its function** — the calculation's own catalogue: every item a script
+     owns, with its value, its declaration and its prose. One file that is both
+     the reference and the source.
+   - **its two consumers** — a **generating surface** needs the *declarations*
+     (type, range, default, group) to build `task.json` without a server;
+     **`prep`** needs the *payloads and anchors*, because a stage's deck is made
+     by **substituting that stage's overrides at their anchors**.
+   - **complete, twice over** — for the surface, every item has a block; for
+     `prep`, substituting a stage's overrides yields **exactly** the deck that
+     stage would otherwise have been rendered with.
+
+   **That corrects the mechanism I had assumed.** `prep` does not rebuild a
+   config and re-render — § 3.7 says `anchor=` exists so an override finds its
+   site *by anchor, not by line*. The 6b I wrote and reverted reconstructed a
+   config, which is why its correctness rested on a round-trip the contract
+   never promised.
+
+   **So 6b, restated:**
+
+   1. Give the template its own membership test derived from § 2.1's rule,
+      instead of borrowing `section` from the form — which also keeps four
+      fields off a form nobody asked to change, the browser being out of scope.
+   2. Bring the four deck-affecting fields in through it.
+   3. `prep` renders a stage's deck **by substitution at anchors**.
+   4. The guard is the second completeness, stated as a comparison: *render a
+      stage's deck both ways and the text is identical.* That is one assertion
+      and it subsumes the field-by-field checking.
 
    **The guard this wants** is an equality: every field the deck renderer reads
    is either declared in the template or named, with its reason, as
