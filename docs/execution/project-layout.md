@@ -415,18 +415,17 @@ This is the same shape one level down: a redo of a stage — `run-1` after
 **The flat case.** A plain run directory *is* a run (§ 1.4), so `bash job.run.sh`
 in it behaves exactly as it does today.
 
-**The chained ladder `jobset` can still build.** `jobset` can thread SLURM
-dependencies and carry files between queued jobs. **`stages_to_jobset` stopped
-building one on 2026-08-10** — no `depends_on`, no `Carry` — which is a change
-to what the staged producer *builds*, not a removal of what `jobset` *can do*.
+**Nothing chains, and the machinery to chain is gone.** Decided 2026-08-10
+(user): `depends_on`, `dep_kind`, `Carry` and `carry_deref` are deleted, and
+`jobset` can no longer thread a scheduler dependency or carry a file between
+queued jobs. `stages_to_jobset` had already stopped emitting edges; a sweep
+never emitted any; what was left was a mechanism reachable only by hand-writing
+`job-set.json`.
 
-> ⚠ **But nothing builds one now.** No producer in molbuilder emits a `Carry` or
-> a `depends_on`: the staged ladder stopped, and a sweep never did, its points
-> being independent. The machinery is reachable only from a hand-written
-> `job-set.json`. `job-system.md § 2` keeps it on the grounds that *"a benchmark
-> sweep and an explicitly-chained workflow both still want them"* — **and that
-> is now wrong about the sweep.** Whether to retire `Carry` / `depends_on`
-> outright is open, and is a contract decision rather than a cleanup.
+**The reason is scientific rather than technical.** Whether stage 2 should start
+depends on what stage 1 actually produced, and that is a judgement — so no field
+in a description, and no flag at launch, is permitted to make it. **A stage
+starts because a person prepped it and submitted it.**
 
 #### `--cold`, and running a stage by hand
 
@@ -615,6 +614,77 @@ at them. That is § 2.2 restated as a sequencing rule, and it is the whole reaso
 
 Step 4 follows step 3 for the same reason one level up: the wrapper's environment
 is chosen by a value the deck decides.
+
+#### 2.3.1b Capability and allocation — two different things called "resources"
+
+**Decided 2026-08-10 (user).** One word covers two things that change at
+different times, live in different files, and are decided by different people.
+Naming them apart is what makes step 1 answerable.
+
+##### Definitions
+
+- **D1 · Capability** — **what a machine has.** Cores per node, GPUs and their
+  type, the scheduler, which queues you may use, which account to charge, the
+  activation command. It is a property of *the machine*, and it is the same for
+  every calculation you run there.
+- **D2 · Allocation** — **what one run asks for**, chosen from inside a
+  capability. Ranks, cores per rank, GPUs, wall time, memory, which queue. It is
+  a property of *this run*, and two runs on the same machine routinely differ.
+- **D3 · The machine record** — `environment.json`
+  (`molbuilder/environment@1`), written by step 1 into the run directory. It
+  holds the capability **as resolved**, plus a `source` field saying where each
+  fact came from.
+- **D4 · The machine config** — the `scheduler` block of `molbuilder.json`
+  (`running-a-job.md` § 5.3). It holds capability that **cannot be detected** —
+  the queue you are entitled to, the account, site quirks — and anything you
+  want to override detection with.
+
+##### Rules
+
+| | rule | why |
+|---|---|---|
+| **M1** | **Capability is resolved on the machine that will run the job, never before.** | The bundle you produce names no machine (§ 2.1). This is target isolation — `job-system.md` § 2, decision 3 |
+| **M2** | **Capability comes from detection and config, and config wins.** Detection fills in what it can see (`lscpu`, `nvidia-smi`, `scontrol`); the config overrides it. Never the other way round | The machine can report what it *has*; only you know what you are *allowed to use*. A 64-core node you may only take 16 of is invisible to detection |
+| **M3** | **What was detected and what was declared must both be recoverable.** `environment.json` records the source of every fact | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
+| **M4** | **Allocation is an input to `prep`, not a field of the description and not a decision at submit.** | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size, and which eigensolver — which in turn picks the environment the wrapper activates). A deck written before the allocation is known has guessed |
+| **M5** | **`submit` decides nothing. It checks that the deck and the launch still agree, refuses if they do not, and starts one job.** | The check already exists (`LaunchAgreement`). A launch that quietly disagrees with its deck is the failure M4 exists to prevent, arriving one step later |
+| **M6** | **A workstation needs no config file.** Detection alone is a complete capability there, and asking for a file would be the nanny behaviour § 0 forbids | There is one machine, you are on it, and nothing is rationed |
+
+##### What this looks like in practice
+
+```mermaid
+flowchart TB
+    subgraph cap["CAPABILITY — what the machine has"]
+      direction LR
+      W["<b>workstation</b><br/>detected: lscpu, nvidia-smi<br/><i>no config needed</i>"]
+      H["<b>HPC</b><br/>detected: scontrol, sinfo<br/>+ molbuilder.json scheduler block:<br/>queue, account, GPU partition"]
+    end
+    A["<b>ALLOCATION — what this run asks for</b><br/>8 ranks · 1 GPU · 4 h<br/><i>given to prep</i>"]
+    P["<b>prep</b><br/>step 1 resolves capability → environment.json<br/>steps 3-4 render the deck and wrapper<br/><b>against this allocation</b>"]
+    S["<b>submit</b><br/>checks the deck still agrees<br/>launches ONE job"]
+    cap --> P
+    A --> P
+    P --> S
+```
+
+*"The machine has 64 cores, but this run uses 8 and one GPU"* is **`prep` with
+that allocation**, producing a deck sized for it. Benchmarking is the same act
+repeated — § 2.3.1a, which is why it is not a separate machine.
+
+##### Conformance, 2026-08-10
+
+| | status |
+|---|---|
+| M1 | ✅ `jobset/prep.py::resolve_target` — step 1, added 2026-08-10 |
+| M2 | ⚠ **half.** `resolve_environment(overrides=…)` implements the precedence, and `bench` passes overrides — but `jobset/prep.py` calls it with **none**, so the staged path detects the machine and never reads `molbuilder.json`. The config file exists; the staged path is not wired to it |
+| M3 | ✅ `Environment.source` records probe-vs-declared per fact |
+| M4 | ⚠ the allocation is fixed at **produce**, on a laptop, before any machine is known. This is *"the one real migration"* (§ 1) |
+| M5 | ✅ `LaunchAgreement`, `prep.py::check_launch_matches_deck` |
+| M6 | ✅ detection needs no file |
+
+**The two gaps are one change.** When the producer moves from *produce* to
+`prep`, the allocation moves with it — and the same call that resolves the
+machine gains the config the CLI already knows how to read.
 
 #### 2.3.1a `prep` is the framework; benchmarking is one thing you prep
 

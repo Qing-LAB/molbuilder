@@ -1325,8 +1325,13 @@ concept, one name" framing here is the SLURM mapping, not a Python rename.)
 The `jobset.Resources` dataclass holds exactly **seven** fields — `domain`,
 `time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`. `partition` and
 `qos` are **not** `Resources` fields; they are config `directives.*` resolved
-from `domain` by the submit engine. `dep_kind` is a per-**job** edge field, not
-a resource.
+from `domain` by the submit engine.
+
+> **`dep_kind` used to be named here as *"a per-job edge field, not a
+> resource"*.** It is deleted (2026-08-10) along with `depends_on`, `Carry` and
+> `carry_deref` — **a `Job` has no edge field of any kind**. What a job declares
+> instead is `warm`: which files it would take from a run it is continued from,
+> and the condition on each. Which run that is, is named by a person at `prep`.
 
 ### 6.3 Identifier & path conventions — every name in the system
 
@@ -1443,7 +1448,7 @@ ref may carry either.
 | What | Form |
 |---|---|
 | **SLURM job name** | a directly-submitted `.sbatch` carries `-J <script-stem>`; via the submit engine it is **overridden** per job on the command line — a stage is its bare stage name, a trial is `job-gpu-G<g>K<k>C<c>` / `job-cpu` |
-| **Dependency kind** | `afterok` / `afterany` (`execution/job-system.md`) |
+| ~~**Dependency kind**~~ | **deleted 2026-08-10.** `afterok` / `afterany` were the two values of `Job.dep_kind`; nothing in molbuilder emits a `--dependency` flag now, so the vocabulary has no referent |
 
 #### Persisted-file schema strings
 

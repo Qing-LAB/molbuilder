@@ -1070,11 +1070,17 @@ does not exist yet. When you set the next stage up, the run it continues from
 **has already finished** — you just looked at it and named it — so its files are
 copied in there and then.
 
-Which files: `.XV` always, `.DM` when the config saves it, `.CG` only between
-stages using the same relaxation method, *"a CG state is meaningless to a
-Broyden stage"* (`job-system.md § 4.1`). The scheduling machinery —
-`depends_on`, `dep_kind`, the edges — stays outside this contract (§ 3) and
-remains the right tool for a benchmark sweep.
+Which files: `.XV` always, `.DM` when the config saves it, `.CG` only when the
+run it continues from used the same relaxation method, *"a CG state is
+meaningless to a Broyden stage"* (`job-system.md § 4.1`). The stage declares
+that as its `warm` list; the comparison is made at `prep`, against the attempt
+you named.
+
+> **The scheduling machinery is not merely outside this contract — it is
+> gone.** `depends_on`, `dep_kind`, `Carry` and `carry_deref` were deleted on
+> 2026-08-10. This paragraph used to add that they *"remain the right tool for a
+> benchmark sweep"*, which was wrong: a sweep's points are independent and
+> `sweep_to_jobset` never emitted an edge.
 
 **And `restart` gets sharper.** In one directory, *continue* could only mean
 "whatever ran here last" — order-of-execution dependent, and wrong if you re-ran

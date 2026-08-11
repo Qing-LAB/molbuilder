@@ -288,9 +288,10 @@ to `../<producer>/<label>.XV` and `stages_to_jobset` built a chained ladder —
 into `run-N/` the link dangled. The fix was not a better link: **the producer
 emits no chain and no carry at all**, and the copy happens exactly as described
 above, when you set the stage up. A produced tree now contains no dangling
-symlink. (The chaining machinery itself stays in `jobset` — though see
-`running-a-job.md` § 2.2a: no producer emits a `Carry` any more, and whether it
-should be retired outright is open.)
+symlink. **The chaining machinery was then deleted outright** (2026-08-10,
+user): no `Carry`, no `depends_on`, no `dep_kind`, no `carry_deref` — so the
+mechanism that made the dangling link possible no longer exists to be got
+wrong again.
 
 ✅ **Gap 6, in the same code — closed 2026-08-10.** `job_dir_names` branches on
 `JobSet.kind`, so a ladder's stage directories are `01_coarse/`, `02_medium/`,
@@ -322,8 +323,8 @@ fixes `jobset <verb> <kind> [<stage>]`, and `project-layout.md` § 8 and
 `web/task-setup-plan.md` were both already writing `jobset prep run <stage>
 --from <run>`. What was genuinely open was one shape question — stage as the
 positional, or folder with `--stage` — **decided 2026-08-10 (user): the stage is
-the positional**, and running a whole ladder unattended takes an explicit
-`--chain`.
+the positional**. There is no way to run a whole ladder
+unattended: `--chain` was deleted the same day, in both modes.
 
 So the entry point is:
 

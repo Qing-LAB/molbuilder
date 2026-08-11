@@ -133,22 +133,23 @@ needs the activated environment. It is Python's.
 **The test, when adding to a wrapper:** *does this need the activated shell?* If
 it computes, decides, or arranges files, the answer is no and it belongs upstream.
 
-> **One block looked like an exception, and as of 2026-08-10 nothing reaches
-> it.** `runwrap.py`'s `carry_deref` replaces an inherited restart-file symlink
-> with a real local copy at run start. Its stated reason was *"`jobset` can
-> submit a whole chain at once, so the producer has not run when the links are
-> laid"*. **Both halves of that are now false**: a scheduler is handed one job
-> per invocation ([`job-system.md`](?doc=execution/job-system.md) § 5.3), and
-> **no producer in molbuilder emits a `Carry` at all** — the staged ladder
-> stopped (P7 unit 2) and a sweep never did, its points being independent.
+> **One block looked like an exception, and it is now deleted.**
+> `runwrap.py`'s `carry_deref` replaced an inherited restart-file symlink with a
+> real local copy at run start. Its stated reason was *"`jobset` can submit a
+> whole chain at once, so the producer has not run when the links are laid"*.
+> **Both halves of that became false**: a scheduler is handed one job per
+> invocation ([`job-system.md`](?doc=execution/job-system.md) § 5.3), and no
+> producer emitted a `Carry` at all — the staged ladder stopped (P7 unit 2) and
+> a sweep never did, its points being independent.
 >
-> It is therefore reachable only from a hand-authored `job-set.json`.
-> `job-system.md` § 2's *"the mechanism is not being deleted … a benchmark
-> sweep and an explicitly-chained workflow both still want them"* is the
-> sentence that keeps it, **and that sentence is now wrong on the sweep** and
-> unevidenced on the workflow. ⚠ **Open: whether `Carry` / `carry_deref` /
-> `depends_on` should be retired outright.** It is left standing rather than
-> quietly re-justified — deciding it is a contract change, not a cleanup.
+> **Retired 2026-08-10 (user).** `Carry`, `carry_deref`, `depends_on` and
+> `dep_kind` are deleted. The sentence that had kept them — `job-system.md`
+> § 2's *"a benchmark sweep and an explicitly-chained workflow both still want
+> them"* — was wrong on the sweep and named nobody on the workflow, so what
+> remained was a validated, tested mechanism reachable only by hand-writing
+> `job-set.json`. The decision is scientific: *whether a later stage should
+> pick up an earlier one cannot be settled without reviewing the earlier one's
+> result*, so no data structure is allowed to settle it.
 >
 > **What the staged framework does instead** is unchanged and is the point:
 > what a stage continues from is a real file copied in at `prep`, from the run
