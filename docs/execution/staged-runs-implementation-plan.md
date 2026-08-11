@@ -2,13 +2,18 @@
 
 **Role:** plan
 **Domain:** execution
-**Companions:** [`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md)
-(the design and the audit evidence) ·
+**Companions — the contracts this plan serves:**
 [`engines/stages.md`](?doc=engines/stages.md) ·
+[`engines/template.md`](?doc=engines/template.md) ·
 [`execution/project-layout.md`](?doc=execution/project-layout.md) ·
 [`execution/run-identity.md`](?doc=execution/run-identity.md) ·
 [`execution/checkpointing.md`](?doc=execution/checkpointing.md) ·
-[`execution/job-contracts.md`](?doc=execution/job-contracts.md)
+[`execution/job-contracts.md`](?doc=execution/job-contracts.md) ·
+[`execution/architecture.md`](?doc=execution/architecture.md)
+*(**History**, not a companion: the superseded design draft is
+[`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md).
+It is cited below only for its dated audits — never for a rule. Listing it as a
+companion is what let it be quoted as design twice in one session.)*
 
 ---
 
@@ -26,43 +31,37 @@ document's job is to point at that sentence at the right moment.
 | **The acceptance criteria** | **this document**, per phase and unit | *When is this unit done?* |
 | **The order and the gates** | **this document** | *What do I build first, and how do I know it worked?* |
 
-> **⚠ That last row is the one thing keeping `archive/2026-08-11-staged-runs-architecture.md` alive,
-> and it should not stay that way** (2026-08-11). **That document is superseded as
-> design** — it was written against the **flat** shape before the hierarchical one
-> existed (36 mentions against 9), which is the pre-job-system picture: one tab
-> writing one flat directory. It carries a banner saying so, and
-> `execution/overview.md` no longer routes to it for the design.
+> **✅ The move is done (2026-08-11), and this is the record of it.** The design
+> draft was archived, and this blockquote used to describe the move as work still
+> to do — which is the same staleness it was written to complain about.
 >
-> **It was still being cited as design on 2026-08-11** — twice in one session, as
-> the source of a decision it explicitly says it does not hold (*"It holds no
-> durable decisions… where this plan and a contract disagree, the contract
-> wins"*). A retired document left in the map gets read as current; that is the
-> whole reason to finish the move.
+> **What it was:** a document written against the **flat** shape before the
+> hierarchical one existed (36 mentions against 9) — the pre-job-system picture,
+> one tab writing one flat directory. **What made it urgent:** it was still being
+> cited as *design* on 2026-08-11, twice in one session, as the source of a
+> decision it explicitly disclaims (*"It holds no durable decisions… where this
+> plan and a contract disagree, the contract wins"*). **A retired document left
+> in the map gets read as current.**
 >
-> **⚠ I claimed archiving was blocked on migrating § 8's acceptance criteria.
-> That was wrong, and checking took one grep.** This plan cites a numbered item
-> **seven times in 3,600 lines** — `item 11` once, and Track Z's five labels —
-> and **Track Z already states each item in full in its own table**. The `§ 8 `
-> prefix is a *label*, not a lookup: a reader learns what item 12e is from the
-> row, not from the other document. Everything else here is scheduled by this
-> plan's own phases and units.
+> **What was actually required, once measured rather than assumed:** I had
+> claimed archiving was blocked on migrating § 8's acceptance criteria. It was
+> not, and checking took one grep — this plan cited a numbered item **seven times
+> in 3,600 lines**, and Track Z already states each item in full in its own
+> table. The `§ 8 ` prefix was a *label*, not a lookup.
 >
-> **So nothing live is stranded, and archiving is cheap:** drop the `§ 8 `
-> prefixes below, then repoint the 36 inbound references across 13 documents and
-> archive with an R4 row. The dated audits in § 8a–8b travel with it as history.
+> **Done:** the five still-open questions migrated to the contracts that own them
+> (`engines/stages.md` § 6b for the description, `execution/run-identity.md`
+> § 6a for the id); every inbound reference was repointed by what it needed; the
+> file moved with an R4 row. Its dated audits travelled with it as history.
 >
-> **The lesson is the one this session keeps paying for:** *"the plan depends on
-> it"* was inherited from the header row above rather than measured, and the row
-> had simply gone stale when this plan grew its own units.
->
-> **Already done, so the trap is closed even before the move:** the banner, the
-> map correction, and the five still-open questions migrated to the contracts
-> that own them — `engines/stages.md` § 6b (the description) and
-> `execution/run-identity.md` § 6a (the id).
+> **The lesson, which this session paid for more than once:** *"the plan depends
+> on it"* was inherited from a header row rather than measured, and the row had
+> gone stale when this plan grew its own units.
 
 
-So an item's **"*Done when:*"** sentence stays in § 8 and is cited here rather
-than copied — one place to change when it changes.
+So an item's **"*Done when:*"** sentence lives with the unit that owes it —
+Track Z states each of its items in full, and every other unit's bar is written
+in its own phase below. Nothing is looked up in another document.
 
 ### The one rule this document exists to enforce
 
@@ -2907,12 +2906,12 @@ open.
 | # | Decision | Gates |
 |---|---|---|
 | 1 | Is **`task.json`** the right name? It sidesteps the four-way collision *plan* already has here (`jobset plan` the verb, `STAGE-PLAN.md` the file, the registry label for `job-set.json`) | P1 |
-| 2 | ~~Is the **folder named by the id**?~~ — **decided 2026-08-07: no.** The **level-③** directory (`job-contracts.md § 2.5`'s `<structure>/`) is a name the user types; the id lives in `task.json` — ~~and is the stem of every file inside~~ **corrected by decision 26 (2026-08-09): the id is a record only; the stem is the `SystemLabel`, i.e. the label half**. `run-identity.md § 3.0` now names all five directory levels and records the reversal — the old rule's premise (*a folder whose name is not the id cannot be identified from outside*) was removed by `task.json` itself, and it had been costing `bdt-relax-pbe/` vs `bdt-relax-blyp/`, which derive one id | ~~P1~~ |
+| 2 | ~~Is the **folder named by the id**?~~ — **decided 2026-08-07: no.** The **level-③** directory (`job-contracts.md § 2.5`'s innermost segment, renamed `<calculation>/` on 2026-08-11) is a name the user types; the id lives in `task.json` — ~~and is the stem of every file inside~~ **corrected by decision 26 (2026-08-09): the id is a record only; the stem is the `SystemLabel`, i.e. the label half**. `run-identity.md § 3.0` now names all five directory levels and records the reversal — the old rule's premise (*a folder whose name is not the id cannot be identified from outside*) was removed by `task.json` itself, and it had been costing `bdt-relax-pbe/` vs `bdt-relax-blyp/`, which derive one id | ~~P1~~ |
 | 3 | ~~Is a description **editable by hand**?~~ — **decided 2026-08-07: yes, supported.** So `read_task` owes a person exactly what it owes the browser: the offending key **named**, and a suggestion where there is an obvious one (`'mesh_cutof' -- did you mean 'mesh_cutoff'?`). This is P1 unit 2's acceptance bar, not a nicety | ~~P1~~ |
 | 4 | ~~May **two enabled stages be identical**?~~ — **decided 2026-08-07: allowed, and warned about only when the later one starts `clean`.** Two identical stages where the second **continues** is a real workflow — more steps at the same settings — and refusing it would force a token difference to say *keep going*. Where the second starts clean it recomputes the first and discards it, which is always a mistake. **The `start from` field is what separates them**, so the check is on the resolved pair, not on the overrides alone | ~~P1~~ |
 | 5 | ~~Where does a per-stage **`continue_retries`** travel?~~ — **decided 2026-08-07: `Resources` gains a field.** It rides the road `mpi_np` and `omp_threads` already ride, which is what `stages.md § 5`'s third row groups it with — *a field the deck never carries → the wrapper*. ⚠ **It is the one field on `Resources` that is not a scheduler flag**: it never becomes a `-x`, it is baked into the wrapper at install. `Resources`' docstring and `job-contracts.md § 6.2`'s translation table both say so, or the next reader tries to render it into an sbatch line | ~~P2~~ |
 | 6 | Must **every stage be measured**, or is a benchmark optional per stage? | P6 |
-| 7 | ~~The three cosmetic **command shapes**~~ — **CLOSED 2026-08-11 (user): everything is a job set.** **There is no `molbuilder run`** — it is deleted, not deprecated, because a second way in is a second way to lose your results. **A single job is a job set of one**, so one calculation and a hundred go through the same commands: `jobset prep` builds the directory and its wrapper, `jobset submit` runs it (`--mode direct` here, `--mode submit` queued). **`jobset` stays the prefix** — `prep`/`submit` are not promoted to top level. Contracts updated: `conventions.md` § 3 (14 commands, `run` removed), `job-contracts.md` § 2.2/2.6 (`prep` writes the wrapper), `execution/overview.md` § 3 (rewritten as *everything is a job set*), `job-system.md` § 1, `running-a-job.md` § 1. **Code follow-up:** delete the `run` command and `runwrap._fdf_requests_gpu` with it — with one writer there is never a wrapper written without a description, so `read_by` suffices with no exception clause | P9 |
+| 7 | ~~The three cosmetic **command shapes**~~ — **CLOSED 2026-08-11 (user): everything is a job set.** **There is no `molbuilder run`** — it is deleted, not deprecated, because a second way in is a second way to lose your results. **A single job is a job set of one**, so one calculation and a hundred go through the same commands: `jobset prep` builds the directory and its wrapper, `jobset submit` runs it (`--mode direct` here, `--mode submit` queued). **`jobset` stays the prefix** — `prep`/`submit` are not promoted to top level. Contracts updated: `conventions.md` § 3 (`run` removed), `job-contracts.md` § 2.2/2.6 (`prep` writes the wrapper), `execution/overview.md` § 3 (rewritten as *everything is a job set*), `job-system.md` § 1, `running-a-job.md` § 1. **Code follow-up:** delete the `run` command and `runwrap._fdf_requests_gpu` with it — with one writer there is never a wrapper written without a description, so `read_by` suffices with no exception clause. **⚠ `molbuilder fdf` went the same way on the same day — see decision 34**, which is why `conventions.md` § 3 now counts **13** top-level commands rather than the 14 this row first recorded | P9 |
 | 8 | **`bench siesta-gpu`'s** disposition — it is not part of this loop and needs its own call | P9 |
 | 8a | **The shared tab's name.** *Task Setup* is the working name. Not *Task Prep* — `prep` is the verb it does not do. *Job* is taken twice (a `Job` in a `JobSet`; the scheduler's word). *Calculation* names the unit and covers a sweep as well as a ladder | P11 |
 | 8b | ~~**The description file's name**~~ — **decided 2026-08-07: `task.json`** (`molbuilder/task@1`). The file describes one **task**, and the stage list is how that task is broken up; the `stages` key inside it is unchanged, because a stage is established vocabulary and only the file needed a name that covers a sweep as well as a ladder | ~~P1~~ |
@@ -2929,7 +2928,7 @@ open.
 | 20 | ~~**Who shows the normalised id back?**~~ — **decided 2026-08-08 (user): every surface, the CLI included.** *"That's a UI issue; for command line we can display that too."* § 3 rule 2 had been read as a web obligation. A printed line is as good as a form field; what matters is that it appears **before** anything is written | ~~P3~~ contract; code in a follow-up |
 | 21 | ~~**Do nested-layout decks repeat the stage their folder already names?**~~ — **decided 2026-08-08 (user): yes, and it is a self-check, not redundancy.** *"That's precisely a self-checking to make sure no mixing."* Without it every stage folder holds an identically-named deck, and two swapped by a bad copy or a resumed `prep` disagree with nothing; with it, `01_coarse/<id>_tight.fdf` is wrong on sight. The split is by **who names the file**: engine-named files (`.XV`/`.DM`/`.CG`) carry the bare stem because SIESTA gives no choice; molbuilder-named files carry `_<stage>` in **both** shapes. *(That stem is the **label**, not the id — decision 26.)* `job-contracts.md § 6.3`'s *a name says what its location does not* is a rule about **noise**, and applying it to a safety mechanism is how a check gets designed away | ~~P3~~ |
 | 22 | ~~**How does a stage say it needs a file the standard restart set does not cover?**~~ — **decided 2026-08-08 (user): a config field called `required`.** A TranSIESTA scattering stage cannot start without an electrode run's `.TSHS`, and `restart: continue` says nothing about it. It is an **ordinary config field**, so a stage sets it through `overrides` and `stages.md § 2`'s *"name, enabled, overrides — and no others"* survives untouched: no new stage mechanism, no fourth key. Extensions rather than filenames, so the id is always prepended and a stage cannot name another calculation's file by accident. **The name matters**: `required` is a *claim* the wrapper can verify, where a `carry_also` would have been an *instruction* that can only be obeyed | ~~P3~~ contract; code in a follow-up |
-| 23 | ~~**Where is `required` checked?**~~ — **decided 2026-08-08 (user): in the directory the job runs in, immediately before the engine starts.** *"Based on how the job is run inside the stage run subdir, I think that's where the check is done."* Not at produce — the files do not exist and a `.TSHS` may come from a different calculation, so *"does an earlier stage produce this?"* is unanswerable and is not asked. **Not at prep either**, and this corrected a proposal of mine that was impossible rather than merely wrong: `Carry`'s symlink is laid *before* the producer runs and is **meant** to dangle (`job-system.md` D1). Reuses the shipped `_warm_check` pattern — warn by name, offer abort, `MOLBUILDER_FORCE=1` for unattended runs — in both emitters | ~~P3~~ contract; code in a follow-up |
+| 23 | ~~**Where is `required` checked?**~~ — **decided 2026-08-08 (user): in the directory the job runs in, immediately before the engine starts.** *"Based on how the job is run inside the stage run subdir, I think that's where the check is done."* Not at produce — the files do not exist and a `.TSHS` may come from a different calculation, so *"does an earlier stage produce this?"* is unanswerable and is not asked. **Not at prep either**, and this corrected a proposal of mine that was impossible rather than merely wrong: `Carry`'s symlink is laid *before* the producer runs and is **meant** to dangle (`job-system.md` D1). Warn by name, offer abort, `MOLBUILDER_FORCE=1` for unattended runs. ⚠ **Two clauses of this row were wrong and were corrected in the contracts on 2026-08-11 — this, the third copy, was missed until the plan was reviewed against them.** It said the check *"reuses the shipped `_warm_check` pattern"* **in both emitters**: `render_siesta_stages_runner` and its `_warm_check` were **deleted 2026-08-10** (decision 30 — the shape branches at `prep`, so both shapes run through **one** emitter, `runwrap.render_run_wrapper`), and the *"not at prep"* reasoning rested on `Carry`'s symlink being meant to dangle, which no producer has emitted since the same date. The conclusion stands on the reason above it; **the check itself is unbuilt**. `job-contracts.md § 4.4` and `stages.md § 5` carry the same correction | ~~P3~~ contract; code in a follow-up |
 | 15 | ~~**When does normalisation refuse?**~~ — **decided 2026-08-08: when a letter or a digit is replaced, or when nothing is left.** § 3 rule 3 said only *"reduces to nothing"*, yet § 3.1 refused `Über` → `ber`, which does not. The line is **what was replaced**: a *separator* (space, `/`, `.`) becomes `_` silently — that is all `BDT/Au relax` does — while a character typed *inside a word* cannot be dropped, so `Über` and `Ω-shape` refuse. Mechanically: a character outside `[A-Za-z0-9_-]` that is nonetheless alphanumeric | ~~P3~~ |
 | 24 | ~~**Does the browser need its own identity mechanism, given that its `SystemLabel` field defaults to the literal `siesta`?**~~ — **decided 2026-08-09 (user): no. The identity half dissolves; what is left is a save that does not say what it replaced.** See § 8a below for the walk | ~~P3~~; the surviving unit is **P10** |
 | 26 | ~~**Is `SystemLabel` the id, or is the id something wider that `SystemLabel` is part of?**~~ — **decided 2026-08-09 (user): `SystemLabel` is the stem of every emitted name; the id (label + formula) is a *record* in `task.json`, not a filename.** *"From dir to the .fdf/script name, we all derive consistently from SystemLabel … the SystemLabel becomes one consistent scheme, and other information is simply attached to it."* This is what the code already does and what three contracts deny. It settles **decision 21** as the same rule seen from the other end, and it is P4's whole subject. See § 8c below | **P4**, and corrects **P1**'s decision 2 |
@@ -2940,8 +2939,10 @@ open.
 | 30 | ~~**Does the chaining machinery retire, or stay?**~~ — **decided 2026-08-10 (user): retire it, all four.** `Carry`, `depends_on`, `dep_kind` and `carry_deref` are deleted, and `--chain` with them — in **both** modes, so nothing hands off between stages on a cluster or on a laptop. *"It is really difficult to justify that a later stage should automatically pick up the earlier stage, because without reviewing the result carefully and validating, we can't make that decision easily. Manual, explicit and controlled sequential execution is the right way to go."* **The reason is scientific, and it is why an opt-in flag was rejected too**: a flag is typed *before* any stage has run, which is the moment you know least. The judgement belongs between two stages, where the evidence is. **What connects stages instead is `prep`, and it does it differently per shape** — hierarchical: build the next stage's attempt directory and copy in the run you name; flat: no new directory and no copy (the warm files are one shared set), so it is a checkpoint plus the next stage's deck under its own name | contracts rewritten 2026-08-10; code follows |
 | 31 | **Where does the allocation come from, once it stops being fixed at produce?** § 2.3.1b now defines capability (what the machine has) and allocation (what one run asks for) and rules M1–M6, which settle *where* each is resolved — capability at `prep` step 1, allocation as an input to `prep`, and nothing at submit. What is **not** settled is the surface: how a person states an allocation, and whether a per-project default belongs in `molbuilder.json` beside the `scheduler` block. M2's gap (the staged path never reads that block) is code, not decision | the migration; P9 for the grammar |
 | 33 | ~~**The template's declaration format needs a Python floor decision.**~~ — **decided 2026-08-11 (user): raise the floor to 3.11, consistently, for all environments.** `job-contracts.md` § 3.7's marking is a **TOML inline table** with `kind=` (closed vocabulary) and `read_by=`, parsed by **`tomllib`** — standard library from 3.11, so no dependency is added. **The survey found the inconsistency was only in the declaration:** `pyproject.toml` said `>=3.9` while **all four env recipes already pin `python=3.12`**, so no environment changed and none had to. The package carries no `sys.version_info` gate and no `tomli` fallback, so nothing was written against the old floor either. `requires-python` is now `>=3.11` and the classifiers name 3.11 and 3.12 — the support statement and the environments finally agree | closed; **P12 unit 6b is unblocked** |
-| 32 | ~~**324 bare citations of 32 archived-only documents.**~~ — **`slurm-integration.md` closed 2026-08-10; the rest remain open.** Found while auditing one redundant import: the 2026-07 migration repointed ~319 *path* references, and `tests/test_no_retired_doc_paths.py` has guarded paths ever since — but `slurm-integration.md § 4.3` carries no `docs/` prefix, so it matched no pattern and read exactly like a live contract citation. The guard now measures them and holds the count as a strict xfail. **⚠ My first reading of this was WRONG and nearly cost a bad decision.** I sampled the successors for a few keywords, found `CUDA_VISIBLE_DEVICES` mentioned three times, and concluded *"the narrative merged; the specification did not"* — recommending the document be **un-archived**. It had migrated in full, and `job-system.md` § 6 says where in its first sentence: *the wrapper file shapes and the meaning of each `#SBATCH` line are owned by `running-a-job.md` § 5.3 and `job-contracts.md` § 2.6*. I did not read the sections it pointed at. All 18 cited sections have a live home — the `scheduler` block schema and the refuse-to-emit rule in `running-a-job.md` § 5.3, the memory band in § 5.3.1 (richer than the original: Sol node figures and the fairshare argument), GPU load-balance / MPS / NUMA pinning in § 3.3, submission and routing in `job-system.md` § 6, benchmarking in § 7. **51 citations repointed accordingly**, including one emitted into a wrapper's runtime error text, where a user hits it on a failed run. **The lesson is the one this plan already records:** a document's successor is found by reading what it points at, not by grepping for words I expect to see | 31 documents still to map; each needs its own read |
-
+| 32 | ~~**324 bare citations of 32 archived-only documents.**~~ — **`slurm-integration.md` closed 2026-08-10; the rest remain open.** Found while auditing one redundant import: the 2026-07 migration repointed ~319 *path* references, and `tests/test_no_retired_doc_paths.py` has guarded paths ever since — but `slurm-integration.md § 4.3` carries no `docs/` prefix, so it matched no pattern and read exactly like a live contract citation. The guard now measures them and holds the count as a strict xfail. **⚠ My first reading of this was WRONG and nearly cost a bad decision.** I sampled the successors for a few keywords, found `CUDA_VISIBLE_DEVICES` mentioned three times, and concluded *"the narrative merged; the specification did not"* — recommending the document be **un-archived**. It had migrated in full, and `job-system.md` § 6 says where in its first sentence: *the wrapper file shapes and the meaning of each `#SBATCH` line are owned by `running-a-job.md` § 5.3 and `job-contracts.md` § 2.6*. I did not read the sections it pointed at. All 18 cited sections have a live home — the `scheduler` block schema and the refuse-to-emit rule in `running-a-job.md` § 5.3, the memory band in § 5.3.1 (richer than the original: Sol node figures and the fairshare argument), GPU load-balance / MPS / NUMA pinning in § 3.3, submission and routing in `job-system.md` § 6, benchmarking in § 7. **51 citations repointed accordingly**, including one emitted into a wrapper's runtime error text, where a user hits it on a failed run. **The lesson is the one this plan already records:** a document's successor is found by reading what it points at, not by grepping for words I expect to see | **15 of the 31 mapped 2026-08-11** — 54 citations in the test suite repointed by subject to the contract that owns each rule, with two left deliberately unaimed because the rule they cite lives in no live contract (the picker-roots sandbox, `execution.mode`). Guarded by `test_docs_structure.py`'s rule 6. 16 documents still to map |
+| 34 | ~~**Does `molbuilder fdf` survive alongside `jobset`?**~~ — **decided 2026-08-11 (user): no, it is deleted.** *"molbuilder fdf is gone — this is obsolete residue from the flat dir design."* It is decision 7's shape one step earlier: it rendered a **finished deck** straight from CLI flags, and `fdf --jobset` wrote a whole flat bundle — both skipping the description, and both finishing a deck on a machine that cannot know the rank count (`project-layout.md § 2.2`). **Describing is `jobset describe`**, and `prep` renders. **The emitter is untouched** — `render_fdf` / `convert` are the Python API and stay; what is deleted is the *verb* that reached them without a description. `conventions.md § 3` now counts **13** top-level commands. `pyscf` survives only because its ladder runs inside one emitted script, and goes the same way when that path is reworked. **Code follow-up:** delete the command; `tests/test_cli_run.py` and `tests/test_cli_siesta_stages.py` were deleted 2026-08-11 as guards for verbs that no longer exist | **P9**, with decision 7 |
+| 35 | ~~**Is `BlockSize` derived, or is it a knob?**~~ — **decided 2026-08-11 (user): a knob, measured and then chosen — "just like gpu and cpu assignment".** It is **not** a value molbuilder hands you. Three states: you set it and it is honoured verbatim; you leave it unset and `prep` **proposes** one; or the keyword is **omitted entirely** so SIESTA uses its own default — the third of which the old design could not express. It becomes an ordinary template item with no `value` (closing `template.md § 12`'s open question) and a **fourth axis of the benchmark grid**. **And the bound is orbitals, not atoms**: `job-contracts.md § 3.3` declared `floor(n_atoms / mpi_np)` while its own PROVENANCE example derived from `10 × n_atoms` — a factor of ten, in the paragraph whose rule is that the value and its bound come from one place. The block distributes the **Hamiltonian**, so the quantity is `n_orbitals_est`. Values and the three states: `tuning.md § 2.11`. **Code follow-up, with its mutation:** derive value and bound from **one** call, assert the emitted `default` is inside its own declared `range`, and swap the divisor back to `n_atoms` to watch it fail — a test that only reads the emitted block cannot catch this, because both readings produce a well-formed block | **P4 / P6**, and P12 u6b for the item |
+| 36 | ~~**Is a stage's deck rendered per attempt, or linked into each one?**~~ — **decided 2026-08-11 (user): linked.** Every attempt of a stage runs the **same** deck — a different deck means different science, and different science is a **stage** (`project-layout.md § 1.5a`). So the deck, the wrapper, the monitor and the pseudopotentials are **linked** from the container and only the warm files are **copied**; *link what the engine only reads, copy what it writes*. This closes the question left open when the over-built alternative — per-attempt overrides, a `run.json` field, a three-level merge — was reverted for being three new things to keep true in exchange for saving one directory | ~~P6~~ |
 
 
 **Already decided, recorded so they are not reopened:** the shape is a required
@@ -3591,6 +3592,19 @@ once inline in `cli.py` and the web build route. Three copies cannot disagree
 | **G2** | a new **surface** costs no new rules | the web build path calls the same code the terminal does, and owns none of its own |
 | **G3** | the benchmark is a **kind of job**, not a second program | `molbuilder bench …` is gone; `jobset <verb> bench <stage>` does the work |
 | **G4** | a sentence in a contract maps to **exactly one function** | you can point at the code for any rule in `project-layout.md` §§ 1–4 without saying "either here or there" |
+
+> **G3 is the answer to a problem named elsewhere on 2026-08-11.**
+> [`process/conventions.md § 3`](?doc=process/conventions.md) now tabulates
+> **three** orchestration lifecycles where the design says one — `jobset`,
+> `bench`, and `transport` — and separates them: **`bench` is a merge**
+> (the same act with two spellings, and G3 is its *done when*), while
+> **`transport` is a gap** (`run-transport.sh` chains three coupled runs the
+> `JobSet` model cannot describe, since it carries no edges —
+> [`engines/transport.md § 8`](?doc=engines/transport.md)). **G3 does not
+> cover the second**, and no goal here does: lifting the single-parent limit
+> is `job-system.md § 8`'s phase 3–4, gated on the SIESTA ladder proving out.
+> Recorded so nobody reads a finished G3 as a finished unification.
+
 
 ---
 
