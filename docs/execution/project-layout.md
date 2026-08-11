@@ -26,6 +26,84 @@ restate the rules inside a single run directory — those are `job-contracts.md`
 
 ## 1. Two shapes, and how to choose
 
+### 1.0 What the run directory is, and what may be in it
+
+*Stated by the user, 2026-08-11. Everything below is an arrangement of this.*
+
+> **The run directory hands the engine everything it needs and holds everything
+> it produces. That is what makes it one — not which files happen to be in it.**
+
+**Two origins, and there is no third.** Every file in it is either:
+
+| origin | examples |
+|---|---|
+| **rendered** — translated out of the template and the other sources | the deck, the run script, the monitor script |
+| **copied** — raw data the engine needs, taken as-is | pseudopotentials, the structure, warm files from a run you named |
+
+**So the inventory is not a list anybody maintains** — it follows from those two
+origins and the shape. A list would drift; this cannot.
+
+**Why anything is kept outside it: the engine does not see or understand the
+layer we use to organise our information.** It opens what is there and writes
+beside it. So the template, `task.json` and the rest of the *starting point* for
+rendering belong to the **parent**, and only rendered files and copies go down to
+where the engine runs.
+
+> **The directory boundary is where the translation happens.** Above it, our
+> vocabulary — template items, the description. Below it, the engine's
+> vocabulary — its own keywords — plus raw bytes.
+> [`architecture.md`](?doc=execution/architecture.md) § 10 names every
+> translation in the system; this is the one that is a **wall you can see**, and
+> `prep` is what crosses it.
+
+```mermaid
+flowchart TB
+    subgraph PARENT["<b>the parent</b> — the starting point for rendering"]
+      T["the template"]; TJ["task.json"]; DATA["the data files"]
+    end
+    P{{"<b>prep</b> — the translator"}}
+    subgraph RUN["<b>the run directory</b> — the engine's whole world"]
+      R["<i>rendered</i><br/>the deck · the run script · the monitor"]
+      C["<i>copied</i><br/>pseudopotentials · structure · warm files"]
+      O["<i>produced</i><br/>everything the engine writes"]
+    end
+    PARENT --> P --> R & C
+    R -.->|"the engine runs"| O
+```
+
+**Once it is prepared it needs nothing but the engine's environment and a
+shell.** That is why the run script and the monitor script sit inside it rather
+than being invoked from somewhere clever.
+
+**A follow-up stage takes two inputs**, and `prep` writes a whole new directory
+from them:
+
+1. the **parent's** template and sources, and
+2. the **latest results** from the run you name.
+
+**The two shapes are two answers to one question: is that boundary a directory
+wall, or a filename convention?**
+
+| | where the boundary is |
+|---|---|
+| **hierarchical** | **a real wall.** The starting point stays in the parent; each run directory sees only rendered files and copies |
+| **flat** | **not built.** One directory holds both sides at once — the template sits beside the results, and stages and attempts are told apart by **filename** |
+
+**That is also why the flat shape's results overlap on purpose.** With one
+directory there is one set of warm files, so the geometry is simply *the latest*
+— the next stage finds it lying there, and overwrites it in turn.
+
+> **A note on the word "calculation".** This document calls the whole folder
+> *the calculation* and the directory the engine runs in *the run directory*.
+> In conversation the second is often called the calculation directory too.
+> Same thing, opposite ends of the tree — the contract's names are used below.
+
+> **This is why molbuilder must know its own files by name.** In the flat shape
+> the template sits beside the engine's output. `--cold` and *"has anything run
+> here?"* both work by subtracting **what molbuilder wrote** from what is present
+> ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.1–4.2), so that list
+> is what stops a template being mistaken for engine leftovers.
+
 A project directory is one of exactly two shapes. **Both hold several stages and
 several attempts** — they differ in *how those are kept apart*, and everything
 else follows from that one choice.
