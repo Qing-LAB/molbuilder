@@ -591,7 +591,107 @@ in the framework ties a shape to a machine.
 
 ---
 
-## 10. How this serves the other contracts
+## 10. The vocabularies, and where one becomes another
+
+**§ 8 answered *which config section reaches which floor*. This answers a
+different question: *what language is spoken where, and who translates.***
+
+One fact — *how many cores this job gets* — is called `omp_threads` by a
+scientist, `cpus_per_task` by an exchange file, and `-c` by SLURM. Every rename
+is a place drift can enter, and **the renames are the joints of the system**: a
+new engine, a new scheduler or a new surface is mostly a question of which
+vocabulary it speaks and who translates for it.
+
+### 10.1 The nine vocabularies
+
+| | vocabulary | what it names | owned by |
+|---|---|---|---|
+| **V1** | **form fields** | what a person sets on a surface | [`web/form-schema.md`](?doc=web/form-schema.md) |
+| **V2** | **the config object** | the same values as a Python dataclass — `SiestaConfig`, `PySCFConfig` | `engines/`, per engine |
+| **V3** | **template items** | the same values **on disk and portable**, each with a `kind` | [`engines/template.md`](?doc=engines/template.md) |
+| **V4** | **engine keywords** | what the engine itself reads — `MeshCutoff`, `%block …` | [`engines/siesta.md`](?doc=engines/siesta.md), [`pyscf.md`](?doc=engines/pyscf.md) |
+| **V5** | **exchange / scheduler** | what a queue understands — `cpus_per_task`, `-c` | [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.2 |
+| **V6** | **the job model** | `JobSet` · `Job` · `Resources` · `WarmFile` | § 3 of this document |
+| **V7** | **names on disk** | labels, stage tokens, filenames | [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3 |
+| **V8** | **structure labels** | regions, frozen atoms, annotations | `model/` |
+| **V9** | **observed state** | `JobResult` · `StageStatus` | floor 6 |
+
+### 10.2 Every point where one becomes another
+
+```mermaid
+flowchart LR
+    V1["V1 · form fields"] --> V2["V2 · the config object"]
+    V2 --> V3["V3 · template items"]
+    V3 -->|"prep step 2"| V2
+    V2 -->|"prep step 3"| V4["V4 · engine keywords"]
+    V8["V8 · structure labels"] -->|"prep step 3"| V4
+    V2 -->|"floor 3"| V6["V6 · the job model"]
+    V6 --> V5["V5 · exchange"]
+    V5 -->|"submit"| SL["SLURM flags"]
+    V7["V7 · names on disk"] -.->|"identity only"| V4
+    V4 -->|"observe"| V9["V9 · observed state"]
+```
+
+| translation | where it happens | route · step | who owns it | derivable? |
+|---|---|---|---|:--:|
+| **V1 → V2** | the schema builder | produce | the web schema builder | ✅ one metadata source |
+| **V2 → V3** | writing the template | produce | the template writer | ✅ from the field metadata |
+| **V3 → V2** | reading it back | **prep step 2** | `prep` | ✅ the item names the field |
+| **V2 → V4** | rendering the deck | **prep step 3** | the deck writer, via `anchor` / `expands` | ✅ the item carries its keyword |
+| **V8 → V4** | ATOM-METADATA + `Geometry.Constraints` | **prep step 3** | the deck writer | ✅ |
+| **0-based → 1-based** | the single conversion boundary | **prep step 3** | `model/overview.md` | ✅ one point, stated once |
+| **V2 → V6** | asked-for + machine → a list of jobs | floor 3 | a producer | ✅ |
+| **V2 → V5** | building the job's resources | floor 3 | `stages_to_jobset` | ❌ **a maintained table** — § 6.2 |
+| **V5 → SLURM** | building the command | **submit** | `render_sbatch` | ✅ from § 6.2 |
+| **label → V7** | naming any file | every route | **`identity` and nothing else** (A1) | ✅ |
+| **run dir → V9** | reading it back | observe | `decode_run_dir` | ✅ |
+
+### 10.3 The rule, and why it is the flexible part
+
+> **One translation per pair, in one place — and it is derivable unless the two
+> vocabularies are genuinely independent.**
+
+**Ten of the eleven are derivable**, which is what makes the framework flexible
+rather than a maintenance burden: the mapping is carried *on the thing being
+translated* — an item's `anchor`, a field's `engine_key`, a label handed to
+`identity` — so **adding an engine adds items, not translations.**
+
+**V2 → V5 is the one genuine exception, and it earns it.** A scientist's word
+for a resource and a scheduler's word for it are independent languages; neither
+can be derived from the other, so § 6.2 keeps a table. **It is also the one that
+actually drifted** — a job-set field once read `omp` / `walltime` while every
+other exchange file said `cpus_per_task` / `time`. That is not an argument
+against the table; it is the argument *for* keeping it in exactly one place.
+
+**What this buys, concretely:**
+
+| you are adding… | what you touch |
+|---|---|
+| **a new engine** | items in V3/V4 with their `kind` and `anchor`. **No new translation** |
+| **a new scheduler** | one column in § 6.2's table, and `render_sbatch` |
+| **a new surface** | it reads V3. It never learns V4, and never speaks V5 |
+| **a new parameter** | one field's metadata. V1, V3 and BENCH-MARKS all follow from it |
+
+### 10.4 The failure this framework exists to catch
+
+**When a rule about a translation is written in two documents, one copy gets
+fixed and the other does not.** That is not hypothetical — it is the single
+mechanism behind every cross-document defect found on 2026-08-11:
+
+| the rule | fixed in | left stale in |
+|---|---|---|
+| *why `required` cannot be checked at `prep`* — the reason rested on `Carry`, deleted 2026-08-10 | `job-contracts.md` § 4.4 (2026-08-10) | `engines/stages.md` § 5 — **found a day later** |
+| *the template holds every parameter* | `engines/template.md` | four docs still said *"everything no stage varies"* |
+| *BENCH-MARKS and the template come from one source* | — | had fallen **into the archive**, live nowhere |
+
+**So the diagnostic is simple: if you are about to write down how one vocabulary
+becomes another, check this table first.** If the pair is already there, the
+statement belongs in the owning document and nowhere else — a second copy is a
+future inconsistency with a date on it.
+
+---
+
+## 11. How this serves the other contracts
 
 Every contract sentence should land on **one** floor. Where it takes a route to
 make several sentences true in order, that is named too — and a sentence that

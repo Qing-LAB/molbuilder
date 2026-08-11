@@ -602,7 +602,7 @@ flowchart TB
     subgraph steps["The five steps, always in this order"]
       direction TB
       S1["<b>1. Resolve the machine</b><br/>detect cores, GPUs, scheduler, conda<br/>→ environment.json"]
-      S2["<b>2. Resolve the parameters</b><br/>base ⊕ this stage's overrides<br/>⊕ what the benchmark measured"]
+      S2["<b>2. Resolve the parameters</b><br/>the template's values ⊕ this stage's overrides<br/>⊕ what the benchmark measured"]
       S3["<b>3. Render the deck</b><br/>the template becomes a real .fdf —<br/>BlockSize, Diag.Algorithm, everything"]
       S4["<b>4. Render the wrapper</b><br/>activation baked in verbatim"]
       S5["<b>5. Build the run directory</b><br/>create it, link the inputs,<br/><b>copy in what you named</b>"]

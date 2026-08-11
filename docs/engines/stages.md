@@ -428,7 +428,7 @@ whole or not at all, so there is no such thing as writing the stages that passed
 
 ---
 
-## 5. Where a promoted field lands — three destinations
+## 5. Where a promoted field lands — four destinations
 
 A promoted field is not always a line in the deck, and assuming it is writes
 decks that are subtly wrong for the machine they run on.
@@ -463,17 +463,25 @@ decks that are subtly wrong for the machine they run on.
 > Not at produce: the files do not exist yet, and a `.TSHS` may legitimately
 > arrive from a different calculation the user copies in, so *"does an earlier
 > stage produce this?"* is unanswerable and is deliberately not asked. **Not at
-> prep either** — `Carry`'s symlink is laid *before* the producer runs and is
-> *meant* to dangle until the file appears (`job-system.md` D1), so prep has
-> nothing to check.
+> prep either, for the same reason** — a declared file may come from a different
+> calculation entirely, so at prep its absence proves nothing.
 >
 > This is also why `required` is phrased as a **claim** rather than an
 > instruction. *"Carry this file for me"* can only be obeyed; *"this stage
-> cannot run without this file"* can be verified, and the shipped
-> `_warm_check` in the staged runner already verifies exactly this class of
-> thing — warn by name, offer abort, `MOLBUILDER_FORCE=1` to proceed
-> unattended. `required` extends that check to declared files rather than
-> adding a mechanism beside it.
+> cannot run without this file"* can be **verified** — warn by name, offer
+> abort, `MOLBUILDER_FORCE=1` to proceed unattended.
+>
+> > ⚠ **Corrected 2026-08-11.** This paragraph rested on `Carry`'s symlink
+> > *"being meant to dangle until the producer ran"*, and said the check
+> > *"reuses the shipped `_warm_check` in the staged runner"*. **Neither exists:**
+> > `Carry` was deleted 2026-08-10 and prep copies real files, and
+> > `render_siesta_stages_runner` with its `_warm_check` went the same day
+> > (there is one wrapper emitter, `runwrap.render_run_wrapper`). The
+> > conclusion is unchanged; the reason is now the one above, and **the check
+> > itself is unbuilt** — [`job-contracts.md`](?doc=execution/job-contracts.md)
+> > § 4.4 carries the same correction, made a day earlier. *Two documents held
+> > one argument and only one was fixed, which is what § 11 of
+> > [`architecture.md`](?doc=execution/architecture.md) exists to prevent.*
 
 **The routing is derivable, never a second list.** A field carries an
 `engine_key` when it is a line in the deck; the config ↔ exchange translation for
