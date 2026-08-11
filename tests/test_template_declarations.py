@@ -1,29 +1,31 @@
-"""The template's declarations, and the fingerprint of the schema they describe.
+"""The schema behind a template: what every parameter must declare, and the
+fingerprint of the shape they were written against.
 
-.. warning::
+**Every test here is derived from a live contract**, and the ones that were not
+were removed on 2026-08-11 rather than updated (see the retirement note at the
+foot of this file). The rule that decided each: *a guard asserts what the
+contract says. It must never assert what the contract says should NOT be true* —
+a test pinning a retired format makes replacing it harder and reads to the next
+person as policy.
 
-   **These tests guard a RETIRED format, and they are kept only because the code
-   still implements it.** ``job-contracts.md`` § 3.7 used to specify the template
-   as an ``.fdf`` whose metadata rode in ``# === molbuilder item … ===`` comment
-   blocks. That design was retired on 2026-08-11 —
-   ``docs/archive/2026-08-11-template-item-blocks.md`` says why — and replaced by
-   ``docs/engines/template.md``: **one TOML file**, one table per parameter, each
-   value stored once.
+Contracts:
 
-   **Do not read anything here as policy.** The item-block assertions below —
-   ``MARKER_RE``, the ``field <name> key=value`` declaration line, the payload —
-   describe what ``molbuilder/template.py`` does today, not what the contract
-   says. **P12 unit 6b replaces both**, and this file is rewritten from the new
-   contract at that point rather than patched.
+* ``docs/engines/template.md`` — what a template **is**. § 3 (the required keys,
+  and *a missing* ``value`` *means explicitly unset*), § 5 (the `type`
+  vocabulary and where every key comes from), § 7 (membership is **total**, and
+  the three things that are not items), § 10 (complete, lossless, and the
+  fingerprint).
+* ``docs/execution/job-contracts.md`` § 3.1 (the reserved blocks of a generated
+  script, which the shared marker finds) · § 3.3 (BENCH-MARKS, whose
+  declarations come from the **same** field metadata — so the two cannot drift).
+* ``docs/engines/stages.md`` § 6.6 — the preflight row *"the schema fingerprint
+  matches"*, the only row there that reports rather than refuses.
 
-   **The fingerprint half survives the move unchanged** (``template.md`` § 10),
-   as does the *"every allowed parameter has a place in the file"* premise
-   (§ 7) — those tests are about the schema, not about the file format.
-
-Contract for what is still live: ``docs/engines/template.md`` (the format) ·
-``docs/execution/job-contracts.md`` § 3.3 (BENCH-MARKS, whose declarations come
-from the same field metadata) · ``docs/engines/stages.md`` § 6.6 (the preflight
-row *"the schema fingerprint matches"*, the only one that does not refuse).
+**What this file does NOT guard, deliberately.** The template's *file format* is
+one TOML file (``template.md`` § 4), and nothing here asserts its serialization:
+``molbuilder/template.py`` still emits the retired ``.fdf`` shape, and the
+replacement is the plan's **P12 unit 6b**. Tests for the TOML writer are
+designed from ``template.md`` when that lands — not patched out of these.
 
 P2 unit 4a.
 """
@@ -77,17 +79,6 @@ def _is_ladder(cls, f) -> bool:
     args = typing.get_args(ann)
     return (typing.get_origin(ann) in (list, tuple)
             and bool(args) and dataclasses.is_dataclass(args[0]))
-
-
-@pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
-def test_an_internal_field_gets_no_declaration(cls):
-    """A field with no ``section`` is internal (`web/form-schema.md § 1a`) —
-    no surface renders it, so a template listing it would offer the user
-    something no tab can show."""
-    internal = {f.name for f in dataclasses.fields(cls)
-                if not f.metadata.get("section")}
-    assert internal, "this test is vacuous if the config has no internal fields"
-    assert not (internal & set(_decls(cls)))
 
 
 def test_a_stage_ladder_is_not_a_template_item():
@@ -252,24 +243,20 @@ def test_an_absent_fingerprint_matches_anything():
 
 
 # --------------------------------------------------------------------- #
-#  The marker carries the field's name                                  #
+#  The reserved script blocks — job-contracts.md § 3.1                  #
 # --------------------------------------------------------------------- #
 
-def test_the_marker_accepts_an_item_block_naming_its_field():
-    """§ 3.7 property 2, and *"this is the whole reason the design works"*:
-    the marker carries the field's name, so ``prep`` rebuilds a config by
-    scanning rather than by parsing an ``.fdf`` — which nothing in molbuilder
-    can do."""
-    m = MARKER_RE.match("# === molbuilder item mesh_cutoff BEGIN ===")
-    assert m and m.group(1) == "item mesh_cutoff" and m.group(2) == "BEGIN"
-    m = MARKER_RE.match("# === molbuilder item kgrid END ===")
-    assert m and m.group(1) == "item kgrid" and m.group(2) == "END"
+def test_the_reserved_block_markers_match_the_documented_set():
+    """`job-contracts.md` § 3.1 names the reserved blocks of a **generated
+    script**, and every one of them must be findable by the shared marker.
 
-
-def test_the_reserved_block_markers_still_match_unchanged():
-    for name in ("header", "provenance", "bench-marks", "user-custom"):
+    These are live: a deck still carries PROVENANCE, BENCH-MARKS,
+    ATOM-METADATA and USER-CUSTOM, and HEADER is reserved-but-unemitted.
+    """
+    for name in ("header", "provenance", "bench-marks",
+                 "atom-metadata", "user-custom"):
         m = MARKER_RE.match(f"# === molbuilder {name} BEGIN ===")
-        assert m and m.group(1) == name
+        assert m and m.group(1) == name, name
 
 
 @pytest.mark.parametrize("line", [
@@ -277,10 +264,42 @@ def test_the_reserved_block_markers_still_match_unchanged():
     "# Just a comment",
     "# === something else BEGIN ===",
     "# === molbuilder ===",
-    "# === molbuilder item one two three BEGIN ===",
 ])
-def test_the_marker_still_rejects_what_it_rejected(line):
-    """Widening the name to admit ``item <field>`` must not admit anything
-    else — a template's payload is verbatim, so a payload line that matched
-    the marker would silently truncate a block."""
+def test_the_marker_rejects_what_is_not_a_block_marker(line):
+    """A block's payload is copied verbatim, so a payload line that matched
+    the marker would silently truncate the block."""
     assert MARKER_RE.match(line) is None
+
+
+# --------------------------------------------------------------------- #
+#  RETIRED 2026-08-11 — the item-block template format                  #
+# --------------------------------------------------------------------- #
+#
+#  Three tests stood here and were deleted rather than updated:
+#
+#    test_the_marker_accepts_an_item_block_naming_its_field
+#    test_the_marker_still_rejects_what_it_rejected   (the `item one two
+#        three` case only — the rest survives above)
+#    test_an_internal_field_gets_no_declaration
+#
+#  They asserted that the marker admits `# === molbuilder item <field> ===`
+#  and that a field without a `section` gets no declaration.  BOTH ARE NOW
+#  THINGS THE CONTRACT SAYS MUST **NOT** BE TRUE:
+#
+#    * `engines/template.md` D2/D3 retires the `.fdf`-with-item-blocks
+#      template outright (archive/2026-08-11-template-item-blocks.md).  A
+#      template is ONE TOML FILE; there is no item block to mark, and the
+#      value is stored once so it cannot disagree with a payload line.
+#    * membership is TOTAL and reads `kind`, not `section` (§ 7, and the
+#      plan's P12 unit 6b).  `species_order`, `write_forces`,
+#      `write_coor_step` and `write_molwatch_log` are items precisely
+#      BECAUSE `section` went back to answering only *where on the form*.
+#      The retired test asserted the opposite and would fail the correct
+#      implementation.
+#
+#  Kept as a comment rather than deleted silently: a guard removed with no
+#  record reads later as a guard nobody wrote.  `molbuilder/template.py`
+#  still implements the old format, and P12 unit 6b replaces it — until then
+#  that code is simply unguarded here, which is the honest state.  A test
+#  that pins a format the contract rejects makes the replacement harder and
+#  states policy that is not policy.

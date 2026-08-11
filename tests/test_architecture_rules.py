@@ -1,6 +1,6 @@
-"""The § 9.6 rules that had no test — A1, A4 and A7.
+"""The architecture rules that had no test — A1, A4 and A7.
 
-``docs/execution/staged-runs-implementation-plan.md`` § 9.6 opens by saying that
+``docs/execution/architecture.md`` § 7 opens by saying that
 **a rule nobody checks is a wish**, and then listed three of its seven rules with
 *(no test)* or *measured by hand* in the "checked by" column.  This file is the
 answer to that.  Each test below names its rule, states what it can see, and --
@@ -21,7 +21,7 @@ it.
 The failure they share
 ======================
 
-All three are the § 9 diagnosis in different clothes: *somebody worked out an
+All three are one diagnosis in different clothes: *somebody worked out an
 answer that another part of the system already had*.  A1 is that habit applied
 to a **name**, A4 to an **object**, A7 to a **decision**.  Catching them needs
 the same tool, so they are tested together.
@@ -273,7 +273,8 @@ def _imported_modules(rel: Path, tree: ast.AST) -> set[str]:
 def test_a7_nothing_imports_from_a_higher_floor(rel: Path):
     """**A7 -- nothing depends upwards.**
 
-    § 9.3's rule is *a layer may call down and return up; it may never reach
+    `execution/architecture.md` § 2.1's rule is *a floor may call down and
+    return up; it may never reach
     across*.  In import terms that is: a file on floor N may import files on
     floor N or below, never above.  Same-floor imports are allowed and normal
     -- ``submit`` (5) asking ``prep`` (5) for the launch agreement is two files
@@ -302,8 +303,8 @@ def test_a7_nothing_imports_from_a_higher_floor(rel: Path):
 
     assert not bad, (
         f"{rel} is on floor {mine} and imports upward: {sorted(set(bad))}.  "
-        "Either move the import down, or change § 9.3's table and this map "
-        "together (§ 9.6 rule A7)."
+        "Either move the import down, or change § 2.1's floor table and this "
+        "map together (§ 7 rule A7)."
     )
 
 
@@ -338,7 +339,7 @@ def test_a7_the_floor_map_still_matches_the_document():
 
     mapped = {k.rstrip("/").removesuffix(".py") for k in _FLOOR}
     assert documented == mapped, (
-        "§ 9.3's table and the floor map in this file disagree.\n"
+        "§ 2.1's floor table and the floor map in this file disagree.\n"
         f"  in the doc, not in the map: {sorted(documented - mapped)}\n"
         f"  in the map, not in the doc: {sorted(mapped - documented)}")
 

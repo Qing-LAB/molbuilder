@@ -35,7 +35,8 @@ header, inside the domain.
   line here, added **in the same commit** that adds, moves, merges, or
   archives the doc. The master index is updated at EVERY step — it is never
   allowed to drift from the tree (the structure test fails on unindexed or
-  dangling entries; the old design.md §0 index rotted to ⅔ coverage because
+  dangling entries; the index that `design.md` used to carry in its own § 0
+  rotted to ⅔ coverage because
   updating it was a separate chore).
 - **R2 — provenance header.** Every doc starts with a header block naming
   its **Role** (`contract` | `guide` | `overview` | `plan` | `process`), its

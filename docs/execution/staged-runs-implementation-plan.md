@@ -24,6 +24,7 @@ document's job is to point at that sentence at the right moment.
 | **The design** | the five contracts above | *What is a stage? What does `prep` do? What may a name contain?* |
 | **The findings** | `archive/2026-08-11-staged-runs-architecture.md` § 8a–8b — **dated audits, history** | *What was built, and where did it disagree, as of 2026-08-07?* |
 | **The acceptance criteria** | **this document**, per phase and unit | *When is this unit done?* |
+| **The order and the gates** | **this document** | *What do I build first, and how do I know it worked?* |
 
 > **⚠ That last row is the one thing keeping `archive/2026-08-11-staged-runs-architecture.md` alive,
 > and it should not stay that way** (2026-08-11). **That document is superseded as
@@ -58,7 +59,7 @@ document's job is to point at that sentence at the right moment.
 > map correction, and the five still-open questions migrated to the contracts
 > that own them — `engines/stages.md` § 6b (the description) and
 > `execution/run-identity.md` § 6a (the id).
-| **The order and the gates** | **this document** | *What do I build first, and how do I know it worked?* |
+
 
 So an item's **"*Done when:*"** sentence stays in § 8 and is cited here rather
 than copied — one place to change when it changes.
@@ -413,7 +414,7 @@ Catches: a refactor that is correct in software and wrong in chemistry.
 
 Checklist:
 - [ ] A moved default still carries its justification
-      ([`engines/tuning.md`](?doc=engines/tuning.md) § 2.3.1 for the tier
+      ([`engines/tuning.md`](?doc=engines/tuning.md) § 2.3 for the tier
       values).
 - [ ] A stage is judged as a **resolved whole**, never as a diff — two overrides
       can each be reasonable and jointly under-converged.
@@ -2736,6 +2737,7 @@ table when it matters.
 | P2 | 6 · which parameters must not loosen | ✅ | the four `tuning.md` § 2 gives an explicit tier table for: `relax_force_tol`, `relax_max_displ`, `dm_tolerance` (tighter = smaller) and `mesh_cutoff` (tighter = larger). **`basis_size` and `pao_energy_shift` are deliberately NOT checked** — tuning.md gives them no tier ladder, and a direction invented in code would be a science claim with no source |
 | P2 | 7 · the preflight's schema half | ✅ | `validation/task.py::preflight` — engine-has-a-generator, § 6.7's one-process `shape`, the fingerprint (the ONE non-refusal, a `warn`), every name in **`varies` and** `overrides` exists, every value inside its `range` **or** `choices`. Each names what it refused; `refuse_on_error` is the caller's one line |
 | P2 | 7 · the two halves cannot diverge | ✅ | `task.py`'s docstring lists P2's rows and a test asserts this module implements exactly those; a second test pins that the L1 codec still imports no engine |
+| P2 | 8 · § 6.6a's identical-stage warning | ✅ | `validation/stages.py::check_identical_stages`, wired into `validate_ladder`. Adjacent pairs, over the **resolved** configs, `restart` excluded from the equality test because it is the discriminator — the reading is now written into § 6.6a rather than left in code |
 
 > **The preflight has no caller yet, and that is sequencing rather than
 > speculation.** Nothing reads a `task.json` until `prep` (P6) and the web route
@@ -2744,7 +2746,7 @@ table when it matters.
 > matters — Review 3's question 3 (*"does anything exist only to serve a later
 > phase? delete it"*) already deleted `default_siesta_varies`, which duplicated
 > a one-line derivation. This is the unit's stated deliverable.
-| P2 | 8 · § 6.6a's identical-stage warning | ✅ | `validation/stages.py::check_identical_stages`, wired into `validate_ladder`. Adjacent pairs, over the **resolved** configs, `restart` excluded from the equality test because it is the discriminator — the reading is now written into § 6.6a rather than left in code |
+
 
 > **One plan row was wrong, and the code is what corrected it.**
 > `_stagespec_to_field_schemas` is listed under *deleted in P2*, and it is
@@ -2917,7 +2919,6 @@ open.
 | 9 | **When does the readable id stop being enough?** A formula does not tell two isomers apart, and does not pin the *order* species are declared in — and a `.XV` read against a different order lands every coordinate on the wrong atom | P3, if it lands here at all |
 | 11 | ~~**What happens to the Build tab's stage table when a stage becomes three fields?**~~ — **dissolved 2026-08-07: the question was malformed.** All four options were ways to cope with `stages` being a field of `SiestaConfig`. It is not one: the stage list lives in `task.json`, the form generator never meets a stage, and `_stagespec_to_field_schemas` is deleted rather than patched (`stages.md § 1.1`–`1.2`) | ~~P2~~ |
 | 10 | **What are the "components" of a composite system?** A junction is a molecule *and* two electrodes; naming it by total formula loses that structure. **P3 decided 2026-08-08 to build the id from label + formula and leave this open** — § 2.1 already calls the formula *"a starting point, agreed as one"*. The phrase *"or by named components"* appears twice in `run-identity.md` and is defined nowhere; it stays undefined until a real composite case forces it | still open, after P3 |
-
 | 12 | ~~**Does the `.fdf.template` survive, and what may it contain?**~~ — **answered 2026-08-07 (user), and the question should not have been asked.** The template carries what does not change; `task.json` carries what does. The contract contradicted itself — § 4 said *effective config = `base` ⊕ `overrides`* while § 7.1's own diagram said *template ⊕ the stage's row ⊕ this machine*, three sections apart — and I quoted § 4 as settled instead of reporting the contradiction. **`base` is deleted** from the contract, from `molbuilder/task.py` and from its tests | ~~P2~~ |
 | 13 | ~~**Is the P2→P6 window acceptable?**~~ — **dissolved 2026-08-07 (user): the window was manufactured.** P2 is a *model* phase; deleting a CLI flag is a *surface* change and belongs to P9's grammar. The flags are four input syntaxes for one thing — *here is the ladder* — and every one expresses what `task.json` expresses, so retiring them switches where a user says it, never whether they can. P2 repoints them at `Task`; P9 retires them. **The rule that generalises it:** change the model when the model changes, change the surface when the grammar changes, and never leave a moment where a user can express something in neither | ~~P2~~ |
 | 14 | ~~**Is the id lowercased?**~~ — **decided 2026-08-08: no, case is preserved.** `run-identity.md § 3` stated *"there is no lowercasing rule"* while **every** worked example in the same document lowercased — § 2's diagram, all six § 3.1 rows, § 3.2's listing. The sentence wins, and the reason found while deciding is stronger than the one it carried: **the id embeds a chemical formula, and there case *is* the element** — lowercasing `Co` (cobalt) yields the same token `CO` (carbon monoxide) does, erasing the one thing the formula is in the id to say. The examples were rewritten, here and in five companion docs | ~~P3~~ |
@@ -2936,12 +2937,12 @@ open.
 | 28 | ~~**How is a stage REFERRED TO, as opposed to named on disk?**~~ — **decided 2026-08-10 (user): `seq` stays DERIVED; the ordinal reaches every surface.** Decision 27 put `<NN>_<name>` on the artifacts and stopped there, so the number is in every filename and in no interface: `jobset prep run coarse` takes a bare name, and the refusal lists *"coarse, medium, tight"* with no order at the one moment you are choosing. Identity remains the name — `stages.md § 2`'s three fields, § 4.1's *"`seq` is not a fourth field"* and R5 all stand unchanged. The **rejected** alternative was making `seq` a stored field of `Stage`: it would let the UI *enforce* numbering rather than preview it, but it overturns those three sentences and makes the description carry a number it does not need. **And it is one piece of framework, not five patches** (user: *"this should not be a patching work but with unified api and framework design"*) — see § 8f | **P4 / P6** |
 | 29 | ~~**Where does the shape BRANCH — at the produce, or at `prep`?**~~ — **decided 2026-08-10 (user): at `prep`, and the flat shape runs through the same framework as the hierarchical one.** *"keep the flat shape runnable with `jobset submit run --chain` … the prep, deployment and execution chain of command is the same framework."* **This corrects P5 unit 1 as I built it earlier the same day**, which branched the PRODUCER on `shape` — flat got the bash runner and no JobSet, hierarchical got the JobSet and no runner. `project-layout.md § 1` says the opposite in two places: *"The browser **always writes the same thing**… `prep` translates that into a runnable directory in whichever shape you ask for"*, and its table gives **Chosen: at `prep`** for BOTH columns. So the produce is shape-INDEPENDENT — one package, decks plus a JobSet — and `prep` applies the layout. **Flat is not a lesser path with its own launcher; it is the same verbs over a flatter tree.** Its limits (one shared warm set, only the latest state survives) are real, known and accepted — they are a property of the LAYOUT, and the user is aware of them; they are not a reason for a second mechanism | **P5 (u1 revised, u3, u4) / P6** |
 | 25 | ~~**When is the next stage prepped, and what must be true of the previous one first?**~~ — **decided 2026-08-09 (user): stage N+1 is prepped after stage N is done and *confirmed*, and "confirmed" is a checkpoint question, not a convergence one.** *"The only reliable prep of a next stage is the one that is done when the previous stage is already confirmed."* Confirmed = the folder is **clean** (stage N's result is saved, or you are standing at a restored state), **or** you were shown what is unsaved and said go. This is the missing decision the dangling `Carry` symlink was standing in for. See § 8b below for the walk | **P6**, **P7**, **P8** |
-
 | 30 | ~~**Does the chaining machinery retire, or stay?**~~ — **decided 2026-08-10 (user): retire it, all four.** `Carry`, `depends_on`, `dep_kind` and `carry_deref` are deleted, and `--chain` with them — in **both** modes, so nothing hands off between stages on a cluster or on a laptop. *"It is really difficult to justify that a later stage should automatically pick up the earlier stage, because without reviewing the result carefully and validating, we can't make that decision easily. Manual, explicit and controlled sequential execution is the right way to go."* **The reason is scientific, and it is why an opt-in flag was rejected too**: a flag is typed *before* any stage has run, which is the moment you know least. The judgement belongs between two stages, where the evidence is. **What connects stages instead is `prep`, and it does it differently per shape** — hierarchical: build the next stage's attempt directory and copy in the run you name; flat: no new directory and no copy (the warm files are one shared set), so it is a checkpoint plus the next stage's deck under its own name | contracts rewritten 2026-08-10; code follows |
 | 31 | **Where does the allocation come from, once it stops being fixed at produce?** § 2.3.1b now defines capability (what the machine has) and allocation (what one run asks for) and rules M1–M6, which settle *where* each is resolved — capability at `prep` step 1, allocation as an input to `prep`, and nothing at submit. What is **not** settled is the surface: how a person states an allocation, and whether a per-project default belongs in `molbuilder.json` beside the `scheduler` block. M2's gap (the staged path never reads that block) is code, not decision | the migration; P9 for the grammar |
-
 | 33 | ~~**The template's declaration format needs a Python floor decision.**~~ — **decided 2026-08-11 (user): raise the floor to 3.11, consistently, for all environments.** `job-contracts.md` § 3.7's marking is a **TOML inline table** with `kind=` (closed vocabulary) and `read_by=`, parsed by **`tomllib`** — standard library from 3.11, so no dependency is added. **The survey found the inconsistency was only in the declaration:** `pyproject.toml` said `>=3.9` while **all four env recipes already pin `python=3.12`**, so no environment changed and none had to. The package carries no `sys.version_info` gate and no `tomli` fallback, so nothing was written against the old floor either. `requires-python` is now `>=3.11` and the classifiers name 3.11 and 3.12 — the support statement and the environments finally agree | closed; **P12 unit 6b is unblocked** |
 | 32 | ~~**324 bare citations of 32 archived-only documents.**~~ — **`slurm-integration.md` closed 2026-08-10; the rest remain open.** Found while auditing one redundant import: the 2026-07 migration repointed ~319 *path* references, and `tests/test_no_retired_doc_paths.py` has guarded paths ever since — but `slurm-integration.md § 4.3` carries no `docs/` prefix, so it matched no pattern and read exactly like a live contract citation. The guard now measures them and holds the count as a strict xfail. **⚠ My first reading of this was WRONG and nearly cost a bad decision.** I sampled the successors for a few keywords, found `CUDA_VISIBLE_DEVICES` mentioned three times, and concluded *"the narrative merged; the specification did not"* — recommending the document be **un-archived**. It had migrated in full, and `job-system.md` § 6 says where in its first sentence: *the wrapper file shapes and the meaning of each `#SBATCH` line are owned by `running-a-job.md` § 5.3 and `job-contracts.md` § 2.6*. I did not read the sections it pointed at. All 18 cited sections have a live home — the `scheduler` block schema and the refuse-to-emit rule in `running-a-job.md` § 5.3, the memory band in § 5.3.1 (richer than the original: Sol node figures and the fairshare argument), GPU load-balance / MPS / NUMA pinning in § 3.3, submission and routing in `job-system.md` § 6, benchmarking in § 7. **51 citations repointed accordingly**, including one emitted into a wrapper's runtime error text, where a user hits it on a failed run. **The lesson is the one this plan already records:** a document's successor is found by reading what it points at, not by grepping for words I expect to see | 31 documents still to map; each needs its own read |
+
+
 
 **Already decided, recorded so they are not reopened:** the shape is a required
 field in the description (`stages.md § 6.7`); the id is fixed once and a later
@@ -3357,9 +3358,9 @@ nothing here. When it is built it needs a third answer, **unknown**, for output
 that cannot be read; unknown must never quietly become *converged*, for the
 reason `checkpointing.md § 7.2` gives about an unreadable timestamp.
 
-**Stale pointers found while deciding.** P8's re-anchor cited
-`checkpointing.md § 4.1`, `§ 5.0` and *"the twenty-two invariants"* of § 6 —
-which the 2026-08-09 rework made § 9, § 8 and the 31 rules of §§ 11–12, and § 6
+**Stale pointers found while deciding.** P8's re-anchor cited, in
+`checkpointing.md`, sections 4.1 and 5.0 and *"the twenty-two invariants"* of
+§ 6 — which the 2026-08-09 rework made § 9, § 8 and the 31 rules of §§ 11–12, and § 6
 now names *Saving, step by step*, so the citation had stopped being merely
 stale and started pointing at the wrong subject. Asking *"is every checkpoint
 reference in the project consistent with the contract?"* turned up **ten more**
