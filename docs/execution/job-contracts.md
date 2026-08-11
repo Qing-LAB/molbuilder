@@ -774,6 +774,26 @@ payload lines *are* the deck text.
 documentation — it is how an override finds its site, **by anchor and not by
 line number**, so a template a person has edited still substitutes correctly.
 
+**The template says what KIND each item is, and the anchor is where it says
+it.** Not every item is the engine's: some are molbuilder's own, and a layer
+must be able to tell which without carrying a list of field names.
+
+| the anchor reads | the item is | who acts on it |
+|---|---|---|
+| a bare engine keyword — `MeshCutoff`, `WriteForces`, `PAO.BasisSize` | **the engine's** | the deck: the payload is copied in verbatim |
+| `(molbuilder: …)` and the prose says it shapes the deck — *"expands to DM.UseSaveDM / MD.UseSaveXV / MD.UseSaveCG"*, *"ChemicalSpeciesLabel block ordering"*, *"pre-emission positioning"* | **molbuilder's, deck-shaping** | the deck, but through molbuilder's own rule rather than one keyword |
+| `(molbuilder: …)` and the prose says it shapes something else — *"triggers .psml staging"*, *"baked into the run wrapper at install time"* | **molbuilder's, not the deck's** | whichever layer the prose names — the wrapper, the produce step, the monitor |
+
+**This is what lets a producer refuse cleanly.** A SIESTA producer emits engine
+anchors and the keywords molbuilder-owned items expand to, **and must not try to
+emit a `(molbuilder: …)` item as a keyword** — SIESTA would not understand it.
+An item it cannot place is not an error in the template; it is an item that
+belongs to a different layer, and the block says so on its own face.
+
+**So a layer filters by reading the block, never by knowing a field list.**
+That is what *self-explanatory* buys: a new engine, a new surface or a new
+environment reader can be written against the template alone.
+
 **So "complete" means two different things, and both must hold:**
 
 - **Complete for the surface** — every item a script owns has a block. A field
@@ -783,6 +803,13 @@ line number**, so a template a person has edited still substitutes correctly.
   yields **exactly** the deck that stage would otherwise have been rendered
   with. This is the testable form: *render a stage's deck both ways and compare
   the text.*
+
+**Losslessness is per kind, not per file.** The **deck-affecting** items — the
+engine's, plus molbuilder's deck-shaping ones — must round-trip exactly, because
+the deck is the calculation. The rest must be **carried and legible**: a
+`(molbuilder: …)` item that shapes the wrapper is not lost if the deck does not
+contain it, so long as the layer that owns it can still read it. Demanding one
+standard of both is how the question became unanswerable.
 
 **The second implies the first but is not implied by it**, which is why the
 weaker one is not enough on its own: a template can list every field and still
