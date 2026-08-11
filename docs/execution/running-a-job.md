@@ -207,12 +207,54 @@ rank count `N` is resolved by precedence, **highest wins**:
 ```
 
 When `mpi_np` was left auto at generation, the baked default is the machine's
-**physical core count** — but **clamped to the atom count**. A run with more MPI
-ranks than atoms aborts inside SIESTA at `propor IMAX = 0` (no `BlockSize` can
-fix it), so the wrapper caps the auto default at `n_atoms` (parsed from
-`NumberOfAtoms` in the `.fdf`) and prints a note. A user who *explicitly* sets
-`mpi_np > n_atoms` is honoured but gets a loud runtime warning that SIESTA will
-abort — the fix is to lower `mpi_np` to ≤ `n_atoms`.
+**physical core count**, **clamped to the atom count** (`n_atoms`, parsed from
+`NumberOfAtoms` in the `.fdf`), with a printed note. A user who *explicitly*
+sets `mpi_np > n_atoms` is honoured and warned.
+
+> ### ⚠ The clamp is a heuristic guard, not the mechanism — corrected 2026-08-11
+>
+> This section used to say *"a run with more MPI ranks than atoms **aborts**
+> inside SIESTA at `propor IMAX = 0` (no `BlockSize` can fix it)"*, presenting
+> the atom count as the physical constraint. **The project's own empirical sweep
+> says otherwise**, and it is recorded in
+> `siesta/input.py::_auto_block_size`'s 2026-05-28 note:
+>
+> | | |
+> |---|---|
+> | **where the crash is** | `matel_table.F90`'s MPI de-duplication of **radial-function tables** — not in any BLACS distribution |
+> | **what it depends on** | `mpi_np` against the molecule's **species count and radial-table size** |
+> | **what it does not depend on** | `BlockSize` — *"SIESTA crashes identically with BlockSize = 1, 2, 4 at `mpi_np` = 15 on hemeC-dithiol"* |
+>
+> So `n_atoms` is **not** the quantity the failure is a function of. It is a
+> cheap, usually-conservative proxy: a molecule with few species and many atoms
+> can exceed it safely, and one with many species and few atoms can crash below
+> it. **The clamp is worth keeping** — it costs nothing and prevents the common
+> case — but stating it as the mechanism is what made a *guess* read as physics,
+> and would send someone with a `propor` crash to lower their rank count when
+> their species count is what matters.
+>
+> **This is the second place `n_atoms` stood where a different quantity belongs.**
+> The first was `BlockSize`'s bound, which is **orbitals** over ranks
+> ([`tuning.md § 2.11`](?doc=engines/tuning.md), settled 2026-08-11) — and note
+> that the two are *different* corrections, not one: the block bound is about
+> **matrix distribution**, this is about **radial tables**. What they share is a
+> habit of reaching for the atom count because it is the number to hand.
+>
+> **What is not settled**, and is recorded rather than guessed: whether the auto
+> clamp should become a species-aware bound, and what the wrapper's post-run
+> `propor` hint should say instead of *"too many MPI ranks"*
+> ([`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+> § 5g, C12). The `.fdf` carries `NumberOfSpecies`, so the input exists.
+>
+> **And `propor: IMAX = 0` has at least three causes, only one of which is
+> ranks.** The wrapper's own failure hint (§ 4.1) already orders them correctly
+> and this section did not: a **defective or XC-mismatched pseudopotential**
+> ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), the rank
+> count against the species/radial tables, and **zero net spin on an open-shell
+> metal** ([`science/overview.md`](?doc=science/overview.md) § 4). Reading § 3.1
+> alone, a user met one cause presented as *the* cause — and it is the one the
+> hint list deliberately ranks **second**, because the pseudopotential is both
+> commoner and cheaper to check.
 
 ### 3.2 OMP threads and BLAS
 

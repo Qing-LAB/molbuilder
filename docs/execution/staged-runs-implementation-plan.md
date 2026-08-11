@@ -2753,6 +2753,7 @@ contract is in doubt.***
 | **C9** | describing a calculation is **`jobset describe`** (`job-system.md` § 5.1) | the verb does not exist | **P10** |
 | **C10** | *"whatever writes the template computes the fingerprint"* (`stages.md` § 6.6) | `schema_fingerprint()` exists and `validation/task.py` **reads** it; **nothing writes it** — a check with no producer either never fires or always complains | **P12 u6b, with C4** |
 | **C11** | `execution.mode` is what gates submission (`running-a-job.md` § 5.4) | `submit`'s docstring says `mode == execution.mode`, but only `bench` consults the config; `--mode` stays required | **P9** |
+| **C12** | the auto rank clamp is a **heuristic**, and `propor: IMAX = 0` depends on the **species count and radial-table size**, not the atom count (`running-a-job.md` § 3.1, corrected 2026-08-11 from the code's own 2026-05-28 empirical sweep) | `runwrap` clamps to `n_atoms`, and the post-run hint says *"too many MPI ranks for the system size"* — the right advice for the wrong reason. **Unscheduled, and deliberately so:** the clamp is cheap and usually conservative, so this is a *message and a bound* to improve, not a break to fix. `NumberOfSpecies` is already in the `.fdf`, so the input exists | **open — needs a call**, not a phase |
 
 ### The order, and why this one
 
