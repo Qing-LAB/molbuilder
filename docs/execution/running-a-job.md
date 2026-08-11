@@ -12,8 +12,10 @@ framework that runs **batches** of jobs on top of this same wrapper;
 current → target status picture.
 
 **This is the path that works today.** The web UI generates and installs a
-run wrapper for **one** task at a time; the CLI does the same with
-`molbuilder fdf` / `molbuilder pyscf` → `molbuilder run`. Everything here — the
+run wrapper for **one** task at a time; on the CLI, one task is
+`molbuilder jobset prep` then `molbuilder jobset submit --mode direct` — **a job
+set of one, through the same commands as a hundred** (there is no
+`molbuilder run`; decided 2026-08-11). Everything here — the
 self-contained wrapper, the runtime resource resolution, `molbuilder.json`
 config, checkpoints, and watching a run — is shipped and usable now. Running
 **many** parameterised jobs (sweeps, staged ladders, HPC deployment,

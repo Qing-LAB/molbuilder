@@ -248,26 +248,36 @@ worse than no check: it fails a directory that is working correctly.
 
 ---
 
-## 3. The three surfaces, and how they share
+## 3. Everything is a job set
 
-Read across the domain, there are three ways a job runs, and they deliberately
-share one foundation:
+> **Decided 2026-08-11 (user): there is no separate single-job path. A single
+> job is a job set of one, and it goes through the same commands as a hundred.**
 
-1. **The web single-task path** — generate in the browser, install a run
-   wrapper, run and watch.
-2. **The CLI single-job path** — `molbuilder fdf` / `pyscf` → `molbuilder run` →
-   watch; plus checkpoints. *(Pre-job-system; `run` retires into `prep` — plan
-   decision 7.)*
-3. **The CLI job system** — `molbuilder fdf --shape flat|hierarchical`
-   (or a benchmark) →
-   `molbuilder jobset prep / plan / submit / status`.
+**One calculation, one ladder of stages, or a benchmark sweep are the same
+thing at different sizes**, so there is one way in and one vocabulary:
 
-All three produce the **same run directory** (`job-contracts.md § 2`), the
-**same wrapper files** built by the same function (`running-a-job.md § 2`), and
-read/write the **same formats and vocabulary** (`job-contracts.md`). That shared
-foundation is exactly why the target — the *web* job system — is additive rather
-than a rewrite: it will drive the same producers and decoders that already work
-from the terminal.
+```
+describe it   →  molbuilder jobset prep    run <stage> [--from <run>]
+run it        →  molbuilder jobset submit  run <stage> --mode direct|submit
+look at it    →  molbuilder jobset status
+```
+
+`--mode direct` runs it here and you wait; `--mode submit` queues it. **That is
+the only difference between a workstation and a cluster at this level**
+([`architecture.md`](?doc=execution/architecture.md) § 9).
+
+**There is no `molbuilder run`.** It was the pre-job-system entry point — a
+wrapper for one hand-made deck — and a second way in is a second way to lose
+your results: it skips the description, so nothing records what was run, nothing
+can reproduce it, and the folder stops being able to tell you what happened.
+
+**Why this is worth stating as a rule rather than a tidy-up:** every surface
+then reads and writes the **same run directory** (`job-contracts.md § 2`), the
+**same wrapper** built by the same function, and the **same formats**
+(`job-contracts.md`). That is exactly why the *web* job system is additive
+rather than a rewrite — it drives the producers and decoders that already work
+from the terminal, instead of a parallel single-task path that would have to be
+kept in step.
 
 ---
 

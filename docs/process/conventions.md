@@ -92,17 +92,26 @@ are the only two top-layer modules, both sitting above one shared API.
 
 ### The command catalogue (an index — behaviour lives in the domain docs)
 
-**15 top-level commands:**
+**14 top-level commands:**
 
 | | | |
 |---|---|---|
 | `peptide` `dna` `rna` `smiles` `name` | build a structure | ([`web/tabs.md`](?doc=web/tabs.md)) |
 | `fdf` `pyscf` | XYZ/PDB → a SIESTA/PySCF run script | ([`execution/`](?doc=execution/overview.md)) |
-| `run` | emit the `.run.sh` wrapper that executes it — **⚠ pre-job-system; retiring into `jobset prep`, which is the only writer of a wrapper in the staged design** (plan decision 7, P9) | ([`execution/running-a-job.md`](?doc=execution/running-a-job.md)) |
 | `validate` | geometry (+ optional engine) checks → Issue JSON | ([`science/validation.md`](?doc=science/validation.md)) |
 | `modify` | one structure-edit op per call | |
 | `xv2xyz` `runtime-info` `monitor` | SIESTA `.XV`→xyz · dump a runtime-info sidecar · watch a job | |
 | `auth-setup` `serve` | generate the auth config · run the web UI | ([`ops/deployment.md`](?doc=ops/deployment.md)) |
+
+> **There is no `molbuilder run`** *(decided 2026-08-11, user)*. **Everything
+> about running a job goes through `molbuilder jobset …`**: `prep` writes the
+> directory and its wrapper, and `submit` runs it — `--mode direct` on a
+> workstation, `--mode submit` on a scheduler
+> ([`execution/job-system.md`](?doc=execution/job-system.md)). `run` was the
+> pre-job-system entry point: it emitted a wrapper for one hand-made deck, which
+> only something that knows the target machine may do
+> ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.1). It is deleted,
+> not deprecated — there is no second path to keep working.
 
 **7 sub-groups:** `envs` (conda-env management → [`ops/installation.md`](?doc=ops/installation.md)),
 `bench` (the CPU-vs-GPU benchmark), `jobset` (staged execution →

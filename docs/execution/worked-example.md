@@ -314,7 +314,7 @@ no `--force`, because there is nothing to reset.
 
 ✅ **Gap 7 — closed 2026-08-10, and it was half-answered already.** It read:
 *how you re-run one stage by hand is unstated*, and offered `jobset submit --only
-<stage>` or a new `molbuilder run <stage>`.
+<stage>` or a new top-level run command.
 
 Neither was needed, because **the grammar was specified elsewhere and this
 document had not caught up**:

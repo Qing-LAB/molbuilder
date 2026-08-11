@@ -17,6 +17,11 @@ the staged ladders (this page covers only how they are *scheduled*).
 
 ## 1. What the job system is, and why it exists
 
+> **Everything is a job set** *(decided 2026-08-11, user)*. One calculation is
+> not a smaller, different thing than a ladder or a sweep — **it is a job set of
+> one**, and it goes through these commands, not a shortcut beside them. There
+> is no `molbuilder run`.
+
 ### The problem it solves
 
 [`running-a-job.md`](?doc=execution/running-a-job.md) covers running **one**

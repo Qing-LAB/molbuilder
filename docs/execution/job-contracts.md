@@ -409,10 +409,11 @@ extension:
 > written by something that knows the target machine — which is `prep`, and
 > nothing else is in a position to.
 >
-> ⚠ **`molbuilder run` is the pre-job-system entry point and is retiring into
-> `prep`** (plan decision 7, P9). It still exists and still writes a wrapper for
-> a single hand-made deck; it is not a second design, it is the one this one
-> replaced. Nothing new should be built against it.
+> ⚠ **There is no `molbuilder run`** *(decided 2026-08-11, user)*. Everything
+> about running a job is `molbuilder jobset …` — `prep` builds the directory and
+> its wrapper, `submit` runs it (`--mode direct` locally, `--mode submit` on a
+> scheduler). `run` was the pre-job-system entry point and is **deleted, not
+> deprecated**: a second way in is a second way to lose your results.
 
 - **`.fdf` → `molbuilder-siesta`**, run as `mpirun -np N siesta …` (or serial
   if `N < 2`). A `.fdf` that requests **ELPA or GPU** eigensolving is re-routed
