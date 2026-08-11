@@ -44,7 +44,7 @@ Two entry points, one engine:
 
 ```mermaid
 flowchart TB
-    P["SIESTA preflight — validation/siesta.py:25<br/>(every render_fdf / Build / molbuilder run)"]
+    P["SIESTA preflight — validation/siesta.py:25<br/>(every render_fdf / Build / jobset prep)"]
     C["CLI — molbuilder pseudo check &lt;dir&gt; — cli.py:342<br/>(manual audit)"]
     CC["pseudos.check_coverage(elements, dir, …) — pseudos.py:443<br/>→ List[CoverageEntry(element, status, message, path)]"]
     ST["8 statuses: ok · missing · dead_projector · xc_family_mismatch ·<br/>xc_mismatch · relativistic_mismatch · generator_mismatch · parse_warning"]
