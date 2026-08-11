@@ -118,8 +118,9 @@ Three consequences shaped everything:
   id right and puts the files where it will look (`run-identity.md § 1`). The
   *layout* that puts them there is a stage per subdirectory with the shared files
   above — `engines/stages.md § 7.1`, which is `job-system.md § 5.2`'s materializer
-  reused rather than a second one. What stays outside is the **scheduling** half:
-  edges, `dep_kind`, submission.
+  reused rather than a second one. What stays outside is **submission**. (This
+  used to read *"edges, `dep_kind`, submission"*; there are no edges any more —
+  all four pieces were deleted 2026-08-10.)
 - **Correctness is the deliverable, not a step.** Two gates, both in
   `engines/stages.md`: the deck is complete and stands alone
   (`engines/stages.md § 7`), and every config that will be rendered gets the full
@@ -368,8 +369,8 @@ this framework does not:
 
 | The export needs | Where it comes from |
 |---|---|
-| `on_nonconvergence` per stage | **only the export.** It becomes the scheduler edge — `proceed → afterany`, `halt → afterok` — and there is no edge without a scheduler (`engines/stages.md § 3`) |
-| `Job.carry` per stage | **already in the layout.** Carry is a *layout* mechanism, not a scheduling one — § 3.1 uses it — so the export inherits it rather than asking for it (`engines/stages.md § 7.1`) |
+| ~~`on_nonconvergence` per stage~~ | **nothing needs it — deleted 2026-08-10.** It became the scheduler edge and nothing else, so with no edge there is nothing left for it to do. (PySCF's is untouched: its ladder runs in one process, where the policy is real control flow.) |
+| `Job.warm` per stage | **already in the layout.** What a stage would take from a run it continues is a *layout* fact, not a scheduling one, so the export inherits it rather than asking (`engines/stages.md § 7.1`). It replaced `Job.carry`, which named the source job and so could only be written by something that had already decided the order |
 | `Job.resources` per stage | **already in the description.** The export applies the translation `job-contracts.md § 6.2` already fixes, at its own boundary |
 
 Only the first describes *having something else run it* rather than the
@@ -530,10 +531,10 @@ appear together, which is exactly where a person should be looking.
 1. ~~**Stage as the positional**, or folder positional with `--stage`?~~
    **Decided 2026-08-10 (user): the stage is the positional**, the folder
    defaults to the current directory, and `--bundle` names it when you are not
-   standing in it. Running a whole ladder unattended takes an explicit
-   `--chain`, which is new here and specified in
+   standing in it. **There is no way to run a whole ladder unattended**:
+   `--chain` was deleted on 2026-08-10 in both modes, and
    [`execution/job-system.md`](?doc=execution/job-system.md) § 5.3 — now the
-   authority for what you type.
+   authority for what you type — says why an opt-in flag was rejected too.
 2. **`jobset`, or promote `prep` to top level?** It is no longer really about job
    *sets* — it is the one verb of the execution loop, and `molbuilder prep tight`
    reads like what it is. Against: `jobset` also serves benchmark sweeps, and a
@@ -1115,7 +1116,7 @@ layouts in one object**, and both are produced by default:
 | What it returns | Which shape it is | How it runs the stages |
 |---|---|---|
 | `fdf_files` = `{<label>_<stage>.fdf: text}` + `runner_text` = `<label>.run.sh` | **flat** — every stage in one directory, all sharing `cfg.system_label` so `.XV` is found automatically | a bash `for` loop over `STAGES=(…)`, **one stage straight after the next, in one process** |
-| `jobset` = a `ladder` JobSet | **hierarchical** — `materialize` gives each stage `point-<name>/` and symlinks the carry across | the **scheduler**, via `depends_on` + `Carry` |
+| `jobset` = a `ladder` JobSet | **hierarchical** — `materialize` gives each stage `<seq>_<name>/` and an attempt directory inside it | **you**, one `prep run` and one `submit run` at a time. It used to be the scheduler, via `depends_on` + `Carry`; both were deleted 2026-08-10 |
 
 So a produced bundle contains, side by side: N decks named for the flat shape, a
 runner that runs them all flat, and a `job-set.json` saying each stage has its own
