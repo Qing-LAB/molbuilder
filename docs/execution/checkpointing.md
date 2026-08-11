@@ -1650,5 +1650,5 @@ the rows above it as well, naming three test files that no longer exist —
 - **The folder being saved, and the two moments a save is offered** —
   [`engines/stages.md`](?doc=engines/stages.md) § 7.
 - **Phasing and open questions** —
-  [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) and
+  [`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).

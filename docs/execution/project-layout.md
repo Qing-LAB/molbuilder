@@ -1514,7 +1514,7 @@ two names for one idea across layers (`job-contracts.md § 6.3`).
 naming** — and it always does, because a set of jobs is either ordered or it is
 not, and that is a property of the set rather than something to infer per
 directory. *(How that reaches the code is scheduling, not contract:
-[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
+[`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md)
 item 12b.)*
 
 ---
@@ -1825,5 +1825,5 @@ than no invariant, because it fails a directory that is working correctly.
    (§ 2.3, § 2.5): preparing and submitting are separate steps, each naming its
    stage — `jobset prep run <stage>` then `jobset submit run <stage>`, with `--cold` on
    prepare because skipping the copy is a setup decision. The exact spelling is
-   in `web/staged-runs-architecture.md § 8`, step 1c; only cosmetic choices
+   in [`job-system.md`](?doc=execution/job-system.md); only cosmetic choices
    remain.

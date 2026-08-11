@@ -98,7 +98,7 @@ are the only two top-layer modules, both sitting above one shared API.
 |---|---|---|
 | `peptide` `dna` `rna` `smiles` `name` | build a structure | ([`web/tabs.md`](?doc=web/tabs.md)) |
 | `fdf` `pyscf` | XYZ/PDB → a SIESTA/PySCF run script | ([`execution/`](?doc=execution/overview.md)) |
-| `run` | emit the `.run.sh` wrapper that executes it | ([`execution/running-a-job.md`](?doc=execution/running-a-job.md)) |
+| `run` | emit the `.run.sh` wrapper that executes it — **⚠ pre-job-system; retiring into `jobset prep`, which is the only writer of a wrapper in the staged design** (plan decision 7, P9) | ([`execution/running-a-job.md`](?doc=execution/running-a-job.md)) |
 | `validate` | geometry (+ optional engine) checks → Issue JSON | ([`science/validation.md`](?doc=science/validation.md)) |
 | `modify` | one structure-edit op per call | |
 | `xv2xyz` `runtime-info` `monitor` | SIESTA `.XV`→xyz · dump a runtime-info sidecar · watch a job | |

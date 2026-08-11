@@ -7,7 +7,7 @@ disagree those win:** [`engines/stages.md`](?doc=engines/stages.md) — what a
 stage is, the effective config, `task.json`;
 [`execution/run-identity.md`](?doc=execution/run-identity.md) — the id this page
 displays and the parameters that decide whether a stage continues;
-[`staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) — the plan
+[`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md) — the plan
 that schedules both, and the order this page comes in;
 [`job-contracts.md`](?doc=execution/job-contracts.md) — what a stage *is* on disk
 (`job-contracts.md § 2.1` and `job-contracts.md § 2.3`);
@@ -256,7 +256,7 @@ whole difference.
 **And the page has to be reachable from an existing folder**, not only from a
 blank form — that is the *open* operation in
 [`task-setup-plan.md`](?doc=web/task-setup-plan.md) § 7, and it is what makes the
-promoted set worth storing at all (`staged-runs-architecture.md § 5.2`). A user
+promoted set worth storing at all (`execution/project-layout.md § 2.1`). A user
 who ran a two-stage relaxation last week and wants a third stage should reopen the
 description, not rebuild it from a screenshot of the old one.
 
@@ -424,7 +424,7 @@ should not offer what the design removed on purpose** — what it can offer is t
 next single command, which is what the block above shows.
 
 **Handing a sequence to a scheduler remains a separate, later feature** — the
-JobSet export in `staged-runs-architecture.md` § 7 — and it is gated on proving
+JobSet export in `execution/job-system.md` — and it is gated on proving
 the SIESTA ladder end-to-end on a real cluster first. A page that led with it
 would be describing a system the user did not ask for.
 

@@ -8,7 +8,7 @@ restart banner (§ 4), all of which this document builds on and none of which it
 changes; [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — how a
 run is actually launched and what the wrapper does with the files;
 [`engines/stages.md`](?doc=engines/stages.md) — the description this id is
-derived from; [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
+derived from; [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
 — the plan that motivates this contract and schedules the work.
 
 **Status: proposed, not built.** Written first, built to. `job-contracts.md § 4`
@@ -602,8 +602,8 @@ artifact being replaced wholesale, not a folder being worked in.
 
 ## 6a. Open questions about the id
 
-*Migrated here 2026-08-11 from `web/staged-runs-architecture.md` § 9, which is
-superseded as design. They are about the id, so they belong to the contract that
+*Migrated here 2026-08-11 from `archive/2026-08-11-staged-runs-architecture.md` § 9, which is
+now archived. They are about the id, so they belong to the contract that
 owns it.*
 
 1. **Should the folder really be named by the id** (§ 3)? It removes a second
@@ -633,5 +633,5 @@ owns it.*
 - **What a stage is, and the description the id is derived from** —
   [`engines/stages.md`](?doc=engines/stages.md).
 - **Phasing and open questions** —
-  [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) and
+  [`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).

@@ -2,7 +2,7 @@
 
 **Role:** plan
 **Domain:** execution
-**Companions:** [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
+**Companions:** [`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md)
 (the design and the audit evidence) ·
 [`engines/stages.md`](?doc=engines/stages.md) ·
 [`execution/project-layout.md`](?doc=execution/project-layout.md) ·
@@ -22,10 +22,10 @@ document's job is to point at that sentence at the right moment.
 | | Where it lives | What it answers |
 |---|---|---|
 | **The design** | the five contracts above | *What is a stage? What does `prep` do? What may a name contain?* |
-| **The findings** | `staged-runs-architecture.md` § 8a–8b — **dated audits, history** | *What was built, and where did it disagree, as of 2026-08-07?* |
+| **The findings** | `archive/2026-08-11-staged-runs-architecture.md` § 8a–8b — **dated audits, history** | *What was built, and where did it disagree, as of 2026-08-07?* |
 | **The acceptance criteria** | **this document**, per phase and unit | *When is this unit done?* |
 
-> **⚠ That last row is the one thing keeping `staged-runs-architecture.md` alive,
+> **⚠ That last row is the one thing keeping `archive/2026-08-11-staged-runs-architecture.md` alive,
 > and it should not stay that way** (2026-08-11). **That document is superseded as
 > design** — it was written against the **flat** shape before the hierarchical one
 > existed (36 mentions against 9), which is the pre-job-system picture: one tab
@@ -221,7 +221,7 @@ stating, because both were violated by earlier drafts of this work:
   the overrides, the per-stage resources and the retry budget live in four
   different places today. Until they live in one, every layer above has to know
   about four.
-- **The surfaces are last.** The gate `staged-runs-architecture.md § 8` names
+- **The surfaces are last.** The gate this plan names
   between its steps 2 and 3 is the reason: *the backend must be able to render a
   stage that overrides a parameter the stage type never carried, before any of
   it is drawn.* Draw first and the UI gets designed around what the model
@@ -425,7 +425,7 @@ Checklist:
 
 ### The standing guards
 
-Four questions from `staged-runs-architecture.md § 8c`, made executable in P0.
+Four questions inherited from the archived design draft, made executable in P0.
 `tests/test_stage_vocabulary.py` is the authority; the greps are the smoke test.
 
 | # | Question | Check | At P0 · 2026-08-07 | Now · 2026-08-10 |
@@ -475,7 +475,7 @@ regression is caught by a test rather than by the next fresh-eyes review — and
 it gives the subtraction reviews something to point at instead of an opinion.
 
 **Re-anchor before writing any code:**
-`staged-runs-architecture.md` § 8b (the ten mechanisms, the three filename
+`archive/2026-08-11-staged-runs-architecture.md` § 8b (the ten mechanisms, the three filename
 conventions) and § 8c (*what "done" would look like*) ·
 [`process/testing.md`](?doc=process/testing.md) (the source-text-invariant
 pattern) · [`checkpointing.md`](?doc=execution/checkpointing.md) § 6.
@@ -1619,7 +1619,7 @@ jobs, and what goes in and comes out) · § 1.6 (**stages do not chain**).
 a second time; the second machine-detection path if one appears.
 
 **Milestone M6.** `prep run tight --from 01_coarse/run-0` produces the printed
-report of `staged-runs-architecture.md § 8` step 1c verbatim, **real files** in
+report of `job-system.md`'s command grammar verbatim, **real files** in
 the attempt directory (no links), and re-producing keeps the measured
 configuration rather than reverting. **And the deck it rendered names the launch
 it was rendered for**, so launching that attempt at a different rank count is
@@ -1887,7 +1887,7 @@ message it would write; a non-interactive one proceeds and says it did not.
 
 ### P9 — The command surface
 
-**Re-anchor:** `staged-runs-architecture.md § 8` step 1c (the table and the
+**Re-anchor:** `job-system.md`'s command grammar (the table and the
 grammar) · [`process/conventions.md`](?doc=process/conventions.md) (the CLI
 doctrine: a thin shell over the web API; `click`).
 
@@ -1927,7 +1927,7 @@ because other producers are cheap to add and expensive to debug remotely.
 ### P10 — The web, part one: the route and the description
 
 **Cannot start before M2**, and realistically not before M5. This is the gate
-`staged-runs-architecture.md § 8` names between its steps 2 and 3.
+`job-system.md`'s lifecycle names between prep and submit.
 
 **Re-anchor:** `engines/stages.md § 6.4` (**one reader for both surfaces**) ·
 [`structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)
@@ -1952,7 +1952,7 @@ doctrine) · [`web/tabs.md`](?doc=web/tabs.md) ·
    identical folder.
 
    ⚠ **What the route writes is a template and a description, not decks and
-   wrappers.** `staged-runs-architecture.md § 5.2`'s response example still shows
+   wrappers.** `project-layout.md § 2.1`'s package still shows
    `decks` and `wrappers` keys; that predates the boundary in
    `project-layout.md § 2.2` and is corrected in the same commit as this unit.
 3. **The Structure-optimization tab, reduced to its half**: the physics, the
@@ -2009,7 +2009,7 @@ come from**) · `checkpointing.md` L1 (what makes a directory a calculation root
    speculative generality Review 3 says to delete.
 
    ⚠ **Start by reading `form-schema.js`'s `stage-table`, because most of this
-   table already exists** — P0's mechanical count found it (`staged-runs-architecture.md`
+   table already exists** — P0's mechanical count found it (`archive/2026-08-11-staged-runs-architecture.md`
    § 8b, mechanism 10). It is generic over any `List[<dataclass>]`, and it already
    lays out **rows as the per-stage parameters, columns as the stages**, which is
    the orientation `task-setup-plan.md § 6` asks for. The gap is the data source:
@@ -2046,7 +2046,7 @@ they are worth taking early because three of them are one-liners that currently
 mislead a reader of the code.
 
 > **The `Z` codes are this plan's own** (renamed 2026-08-11). They carried a
-> `§ 8 ` prefix pointing into `staged-runs-architecture.md`, which is superseded
+> `§ 8 ` prefix pointing into `archive/2026-08-11-staged-runs-architecture.md`, which is superseded
 > as design — and the prefix was never a lookup, since each row already says what
 > its item is. Renaming them is what removes the last live reference to that
 > document from this plan.
@@ -2889,7 +2889,7 @@ open.
 | 4 | ~~May **two enabled stages be identical**?~~ — **decided 2026-08-07: allowed, and warned about only when the later one starts `clean`.** Two identical stages where the second **continues** is a real workflow — more steps at the same settings — and refusing it would force a token difference to say *keep going*. Where the second starts clean it recomputes the first and discards it, which is always a mistake. **The `start from` field is what separates them**, so the check is on the resolved pair, not on the overrides alone | ~~P1~~ |
 | 5 | ~~Where does a per-stage **`continue_retries`** travel?~~ — **decided 2026-08-07: `Resources` gains a field.** It rides the road `mpi_np` and `omp_threads` already ride, which is what `stages.md § 5`'s third row groups it with — *a field the deck never carries → the wrapper*. ⚠ **It is the one field on `Resources` that is not a scheduler flag**: it never becomes a `-x`, it is baked into the wrapper at install. `Resources`' docstring and `job-contracts.md § 6.2`'s translation table both say so, or the next reader tries to render it into an sbatch line | ~~P2~~ |
 | 6 | Must **every stage be measured**, or is a benchmark optional per stage? | P6 |
-| 7 | The three cosmetic **command shapes**: stage as the positional or the folder with `--stage`; `jobset` or promoting `prep` to top level; and that **`molbuilder run` does not run** — it writes a wrapper | P9 |
+| 7 | ~~The three cosmetic **command shapes**~~ — **half-decided 2026-08-11 (user).** **`molbuilder run` folds into `prep`**: `running-a-job.md` § 2.1 fixes tool/module/config at prep and bakes them into the wrapper, so only something that knows the target machine can write one — and that is `prep`. `run` is the pre-job-system entry point, not a second design; the contracts now say `prep` writes the wrapper and mark `run` as retiring. **`runwrap._fdf_requests_gpu` is deleted with it, not kept as a fallback** — with one writer there is never a wrapper written without a description, so `read_by` (`engines/template.md` § 6.1) is sufficient with no exception clause. **Still open:** whether `prep`/`submit` are promoted to top level or stay under `jobset` | P9 |
 | 8 | **`bench siesta-gpu`'s** disposition — it is not part of this loop and needs its own call | P9 |
 | 8a | **The shared tab's name.** *Task Setup* is the working name. Not *Task Prep* — `prep` is the verb it does not do. *Job* is taken twice (a `Job` in a `JobSet`; the scheduler's word). *Calculation* names the unit and covers a sweep as well as a ladder | P11 |
 | 8b | ~~**The description file's name**~~ — **decided 2026-08-07: `task.json`** (`molbuilder/task@1`). The file describes one **task**, and the stage list is how that task is broken up; the `stages` key inside it is unchanged, because a stage is established vocabulary and only the file needed a name that covers a sweep as well as a ladder | ~~P1~~ |
@@ -3232,7 +3232,7 @@ with them — `checkpointing.md` § 3.1's tree and MANIFEST, and the
 different names for the two shapes and now claim one.
 
 **Deferred, deliberately:** the *plan* documents still write `<id>` for a stem —
-`staged-runs-architecture.md`, `structure-optimization-ui-plan.md`,
+`archive/2026-08-11-staged-runs-architecture.md`, `structure-optimization-ui-plan.md`,
 `task-setup-plan.md`, and this file's own decision rows. They are records of what
 was decided when, and P1/P4 rewrite them as they are executed.
 

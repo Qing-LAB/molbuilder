@@ -21,32 +21,34 @@ engine parameters that decide whether a stage continues);
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — the shipped
 ground everything rests on.
 
-> # ⚠ SUPERSEDED — do not read this as design
+> # Archived 2026-08-11 — history, not policy
 >
-> **This document was written against the FLAT directory shape**, before the
-> hierarchical one existed — 36 mentions of *flat* against 9 of *hierarchical* —
-> and unifying the system on the hierarchical shape is the whole of the current
-> work. **Its design sections are the pre-job-system picture: one tab writing one
-> flat directory.**
+> **This was `web/staged-runs-architecture.md`.** It was written against the
+> **flat** directory shape before the hierarchical one existed — 36 mentions of
+> *flat* against 9 of *hierarchical* — so its design sections are the
+> pre-job-system picture: **one tab writing one flat directory.** Unifying the
+> system on the hierarchical shape is the whole of the work that replaced it.
 >
-> **Where the design lives now:**
+> **What replaced it, by what you want:**
 >
 > | you want | read |
 > |---|---|
-> | who owns which decision — floors, routes, vocabularies | [`execution/architecture.md`](?doc=execution/architecture.md) |
-> | what a directory *is*, the two shapes, what `prep` does | [`execution/project-layout.md`](?doc=execution/project-layout.md) |
-> | what a stage is, and the description on disk | [`engines/stages.md`](?doc=engines/stages.md) |
-> | the order the work is built in, and the gates | [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md) |
+> | who owns which decision — floors, routes, vocabularies | `execution/architecture.md` |
+> | what a directory *is*, the two shapes, what `prep` does | `execution/project-layout.md` |
+> | what a stage is, and the description on disk | `engines/stages.md` |
+> | the order the work is built in, its items and its gates | `execution/staged-runs-implementation-plan.md` |
+> | the CLI grammar it called *step 1c* | `execution/job-system.md` |
 >
-> **Two things here are still live and are why this file has not been archived:**
-> **§ 8**'s per-item acceptance criteria, which the implementation plan cites by
-> item (*"when is item N done?"*), and the **dated code audits** in § 8a–8b,
-> which are history and are kept as written. Everything else is superseded.
+> **It never held decisions** — its own status line below says so. It was still
+> being cited as design on 2026-08-11, which is what prompted the move.
 >
-> **It never held decisions in the first place** — its own status line says so,
-> and says the contracts win. It was still being cited as design on 2026-08-11,
-> which is what prompted this banner. Archiving is blocked on moving § 8's
-> acceptance criteria into the plan; that is recorded there.
+> **Its live substance left before it did**, per the archive's substance-first
+> rule: the five open questions went to `engines/stages.md` § 6b (the
+> description) and `execution/run-identity.md` § 6a (the id); the work items and
+> their acceptance criteria were already in the implementation plan, which
+> renamed their labels to its own `Z` codes. **§ 8a–8b are dated code audits and
+> are kept as written** — they are the record of what the code looked like on
+> 2026-08-07.
 
 **Status: a proposal.** Nothing here is built. This document holds the *why*, the
 order of work, and the open questions. **It holds no durable decisions** — those

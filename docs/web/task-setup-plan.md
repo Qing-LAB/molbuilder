@@ -273,7 +273,7 @@ Four things the table has to get right:
 > `_stagespec_to_field_schemas`) already emits the per-column field shape, and
 > [`web/form-schema.md`](?doc=web/form-schema.md) contracts it as one of the field
 > kinds. Found by P0's mechanical count, recorded as mechanism 10 in
-> [`staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) § 8b.
+> [`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md) § 8b.
 >
 > **The gap is the data source, not the layout.** That widget lays out a schema's
 > `default`; this tab lays out a `task.json` read off a folder, and the two

@@ -53,7 +53,6 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | You want to know… | Open |
 |---|---|
 | **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)** |
-| Each work item's *"done when"*, and the dated code audits — **⚠ superseded as design** (written against the flat shape only; see its banner) | **[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)** |
 | What the Structure-optimization tab will look like — the page that **writes** a description | **[`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)** |
 | The shared tab that **finishes** one — starts from a folder, fills in the per-stage values | **[`web/task-setup-plan.md`](?doc=web/task-setup-plan.md)** |
 
@@ -61,13 +60,13 @@ you are reading tells you how much to trust it and what to do when two disagree.
 [`architecture.md`](?doc=execution/architecture.md), a contract, because it says
 what the system *is*.
 
-> **⚠ `staged-runs-architecture.md` is superseded as design** (2026-08-11). It
-> was written against the **flat** shape before the hierarchical one existed, so
-> its design sections describe the pre-job-system picture: one tab writing one
-> flat directory. What is still live in it is **§ 8**'s per-item acceptance
-> criteria and its **dated code audits**. Read the design in
-> `architecture.md`, `project-layout.md` and `engines/stages.md`; read the order
-> in the plan.
+> **⚠ `staged-runs-architecture.md` was archived 2026-08-11**
+> (`archive/2026-08-11-staged-runs-architecture.md`). It was written against the
+> **flat** shape before the hierarchical one existed, so its design sections are
+> the pre-job-system picture: one tab writing one flat directory. **Two
+> documents now do its job** — the contract states the design, the plan holds the
+> items, the order and the gates. What is left in the archive is its **dated code
+> audits** (2026-08-07), which are history.
 
 ### How they stack
 
@@ -78,7 +77,6 @@ reaches past it. Arrows point from a document to the ones it depends on.
 flowchart TB
     subgraph plans["Plans — not built yet"]
       IMP["staged-runs-implementation-plan.md<br/>the order + the gates"]
-      SRA["staged-runs-architecture.md<br/>the design + the audit"]
       UIP["structure-optimization-ui-plan.md<br/>writes a description"]
       TSP["task-setup-plan.md<br/>finishes one — shared"]
     end
@@ -95,10 +93,8 @@ flowchart TB
       TPL["engines/template.md<br/>the parameter catalogue"]
       JC["job-contracts.md<br/>the file formats"]
     end
-    UIP --> SRA
-    TSP --> SRA & ST
-    IMP --> SRA & ST & PL & CP & RI
-    SRA --> ST & RI & PL
+    TSP --> ST
+    IMP --> ST & PL & CP & RI
     WE --> PL & CP
     JS --> JC
     RAJ --> JC
@@ -260,7 +256,8 @@ share one foundation:
 1. **The web single-task path** — generate in the browser, install a run
    wrapper, run and watch.
 2. **The CLI single-job path** — `molbuilder fdf` / `pyscf` → `molbuilder run` →
-   watch; plus checkpoints.
+   watch; plus checkpoints. *(Pre-job-system; `run` retires into `prep` — plan
+   decision 7.)*
 3. **The CLI job system** — `molbuilder fdf --shape flat|hierarchical`
    (or a benchmark) →
    `molbuilder jobset prep / plan / submit / status`.

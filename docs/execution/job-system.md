@@ -700,7 +700,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 >
 > `prep|submit bench` refuse with a pointer at the bench command that works,
 > rather than reporting an unknown word — the fold-in is designed
-> (`web/staged-runs-architecture.md` step 1c), not done.
+> (this section's grammar), not done.
 >
 > **`status <stage>` landed 2026-08-10**, and with it the last inconsistency in
 > this grammar: `plan` and `status` took the *folder* as their positional while

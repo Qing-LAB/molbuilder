@@ -86,7 +86,7 @@ authoritative.
 > is), [`execution/run-identity.md`](?doc=execution/run-identity.md) (the id) and
 > [`execution/checkpointing.md`](?doc=execution/checkpointing.md) (the history)
 > before building any of this. The design and each item's *"done when"* is
-> [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md);
+> [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md);
 > **the order, the milestones and the reviews are
 > [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)**,
 > which is the one build order for this workstream.
@@ -110,7 +110,7 @@ authoritative.
   authority** — for anything still open, the live owners are
   [`engines/stages.md`](?doc=engines/stages.md),
   [`execution/project-layout.md`](?doc=execution/project-layout.md) and
-  [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md).
+  [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md).
 
 ### Phasing
 

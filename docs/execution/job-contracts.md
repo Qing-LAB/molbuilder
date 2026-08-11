@@ -152,8 +152,7 @@ header: *"this wrapper does NOT change cwd… the caller's cwd is the contract."
 It is written down here because it was true everywhere and stated nowhere — and
 because the one place it was broken (a rendered block that `cd`s into an attempt
 it created) was retired for exactly this reason
-([`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
-item 12a). ✅ **Since 2026-08-10 the rule has no exception**: no generated
+([`project-layout.md`](?doc=execution/project-layout.md) invariant 6a). ✅ **Since 2026-08-10 the rule has no exception**: no generated
 wrapper contains a `cd` on either engine, which is `project-layout.md`
 invariant 6a.
 
@@ -240,8 +239,8 @@ For a job with basename `my-job` (`N` is the auto-advancing run index, § 2.6):
 |---|---|---|---|
 | `my-job.fdf` | Build tab / `molbuilder fdf` | SIESTA | input deck (SIESTA) |
 | `my-job.py` | Build tab / `molbuilder pyscf` | Python | input script (PySCF) |
-| `my-job.run.sh` | `molbuilder run` | shell / SLURM | wrapper: activates the env and runs the engine (§ 2.6) |
-| `my-job.sbatch` | `molbuilder run` (SLURM path) | `sbatch` | outer resource header that inner-execs the `.run.sh` (§ 2.6) |
+| `my-job.run.sh` | **`prep`** (§ 2.6) | shell / SLURM | wrapper: activates the env and runs the engine |
+| `my-job.sbatch` | **`prep`**, on a cluster (§ 2.6) | `sbatch` | outer resource header that inner-execs the `.run.sh` |
 | `my-job.molwatch.log` | both generators (initial preview) + live frames (PySCF's inlined emitter; SIESTA via the parser-on-stdout path) | the run viewer, `molbuilder watch parse` / `tail` | **canonical trajectory source** — preferred by every reader |
 | `my-job-runN.out` | the SIESTA wrapper's stdout redirect | the run viewer (fallback) | SIESTA engine stdout, one file per run index |
 | `my-job-runN.pyscf.log` | the PySCF wrapper's stdout redirect | the run viewer (fallback) | PySCF process stdout, one file per run index |
@@ -398,9 +397,22 @@ tree for reusable geometries matching `*_optimized.xyz`, `*.STRUCT_OUT`, and
 
 ### 2.6 The run wrapper — `.run.sh` and `.sbatch`
 
-`molbuilder run my-job.fdf` (or `.py`) emits a sibling `my-job.run.sh` that
-activates the routed conda env and executes the tool
-(`molbuilder/runwrap.py::render_run_wrapper`). Routing is by extension:
+**`prep` writes the wrapper**, on the machine that will run the job, and it is
+the only thing that does. The wrapper activates the routed conda env and
+executes the tool (`molbuilder/runwrap.py::render_run_wrapper`). Routing is by
+extension:
+
+> **One writer, and that is the design rather than an implementation detail.**
+> `running-a-job.md` § 2.1 fixes tool availability, modules and config at
+> **prep** and bakes them into the wrapper as literals; at runtime the wrapper
+> may read only the allocation and the hardware. So the wrapper can only be
+> written by something that knows the target machine — which is `prep`, and
+> nothing else is in a position to.
+>
+> ⚠ **`molbuilder run` is the pre-job-system entry point and is retiring into
+> `prep`** (plan decision 7, P9). It still exists and still writes a wrapper for
+> a single hand-made deck; it is not a second design, it is the one this one
+> replaced. Nothing new should be built against it.
 
 - **`.fdf` → `molbuilder-siesta`**, run as `mpirun -np N siesta …` (or serial
   if `N < 2`). A `.fdf` that requests **ELPA or GPU** eigensolving is re-routed
@@ -470,7 +482,7 @@ The wrapper is **plain, readable bash**. Two properties are load-bearing:
   > results cannot collide. A flat run directory keeps today's behaviour.
 
 **Two-layer SLURM.** On a cluster the `.run.sh` is the *inner* launcher. The
-same `molbuilder run` also emits an outer `my-job.sbatch` — the `#SBATCH`
+same `prep` step also emits an outer `my-job.sbatch` — the `#SBATCH`
 resource header — which simply `bash`-execs the `.run.sh`. You submit the
 outer file: `sbatch my-job.sbatch`. On a workstation there is no `.sbatch`;
 you run the `.run.sh` directly (`bash my-job.run.sh`, or backgrounded with

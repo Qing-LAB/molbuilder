@@ -225,9 +225,6 @@
           "path": "web/structure-optimization-ui-plan.md"
         },
         {
-          "path": "web/staged-runs-architecture.md"
-        },
-        {
           "path": "web/task-setup-plan.md"
         }
       ]
@@ -335,6 +332,11 @@
           "path": "archive/2026-08-10-stage-chaining.md",
           "label": "Stage chaining — the retired design",
           "subtitle": "Stage chaining — the retired design"
+        },
+        {
+          "path": "archive/2026-08-11-staged-runs-architecture.md",
+          "label": "Staged runs — one system, several parameter sets, one folder",
+          "subtitle": "Staged runs — one system, several parameter sets, one folder"
         },
         {
           "path": "archive/2026-08-11-template-item-blocks.md",

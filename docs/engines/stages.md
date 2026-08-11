@@ -10,7 +10,7 @@ effective config; [`execution/run-identity.md`](?doc=execution/run-identity.md) 
 the id every stage in a folder shares, and the engine parameters that decide
 whether a stage continues; [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 — the run directory the decks land in and the persisted-artifact registry;
-[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) — the
+[`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md) — the
 plan that motivates this contract and schedules the work.
 
 **Status: proposed, not built.** This document is written first and the code is
@@ -894,8 +894,8 @@ separate question and still open (`project-layout.md § 8`).
 
 ## 6b. Open questions about the description
 
-*Migrated here 2026-08-11 from `web/staged-runs-architecture.md` § 9, which is
-superseded as design. Both are about `task.json`, so they belong here.*
+*Migrated here 2026-08-11 from `archive/2026-08-11-staged-runs-architecture.md` § 9, which is
+now archived. Both are about `task.json`, so they belong here.*
 
 1. **Is `task.json` the right name?** It sidesteps the collision the word *plan*
    already has in this domain — `jobset plan` the verb, and *"Job-set plan"* the
@@ -1369,5 +1369,5 @@ were written for a flat directory and would silently have lost data in a tree.
   says *when* a checkpoint is taken and *what it is called*; that one says what
   must be true of it afterwards, in a form a test can assert.
 - **Phasing, status, and what is built when** —
-  [`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md) and
+  [`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).
