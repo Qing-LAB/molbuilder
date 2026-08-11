@@ -415,12 +415,18 @@ This is the same shape one level down: a redo of a stage — `run-1` after
 **The flat case.** A plain run directory *is* a run (§ 1.4), so `bash job.run.sh`
 in it behaves exactly as it does today.
 
-**The shipped chained ladder.** `jobset` can thread SLURM dependencies and carry
-files between queued jobs, and `stages_to_jobset` currently builds exactly that
-(`depends_on=prev.name`, plus `.XV`/`.DM`/`.CG` carries). That machinery stays —
-it is the right answer for a benchmark sweep, and for anyone who wants a chain
-with their eyes open. **The staged-science producer stops emitting one**, which
-is a change to what it builds, not a removal of what `jobset` can do.
+**The chained ladder `jobset` can still build.** `jobset` can thread SLURM
+dependencies and carry files between queued jobs. **`stages_to_jobset` stopped
+building one on 2026-08-10** — no `depends_on`, no `Carry` — which is a change
+to what the staged producer *builds*, not a removal of what `jobset` *can do*.
+
+> ⚠ **But nothing builds one now.** No producer in molbuilder emits a `Carry` or
+> a `depends_on`: the staged ladder stopped, and a sweep never did, its points
+> being independent. The machinery is reachable only from a hand-written
+> `job-set.json`. `job-system.md § 2` keeps it on the grounds that *"a benchmark
+> sweep and an explicitly-chained workflow both still want them"* — **and that
+> is now wrong about the sweep.** Whether to retire `Carry` / `depends_on`
+> outright is open, and is a contract decision rather than a cleanup.
 
 #### `--cold`, and running a stage by hand
 

@@ -1295,7 +1295,7 @@ them; within a layer, one concept has exactly one name.
 | Routing domain | `routing[].name` / `execution.domain` | `domain` (in `jobset.Resources`) | `--domain` → `-p`/`-q` |
 | GPU request | `enable_gpu` + `diag_algorithm` | `gres` → `--gres` | derived from `.fdf` + GPU type |
 | Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
-| Non-convergence policy | `on_nonconvergence` (`proceed`/`continue`/`halt`) | `dep_kind` (`afterany`/`afterok`) | `stages_to_jobset` |
+| ~~Non-convergence policy~~ | ~~`on_nonconvergence`~~ | ~~`dep_kind`~~ | **retired 2026-08-10** — `stages_to_jobset` no longer performs this translation. `engines/stages.md § 3`: *"its entire effect is the edge between one attempt and the next"*, and a staged ladder emits no edge, so the policy had no effect left. It was never reachable by a user either — not a `task.json` stage field. *(PySCF's own `on_nonconvergence` is untouched: its ladder runs in one process, so its policy becomes real control flow rather than a scheduler edge.)* |
 | Warm-retry budget | `continue_retries` (1–5) | `continue_retries` — **not a SLURM flag** | `stages_to_jobset` |
 
 > **One row in this table becomes no scheduler flag at all, and it is not an

@@ -328,14 +328,25 @@ description of something that will still exist.
 | `relax_force_tol` | yes | yes | the shared schema |
 | `relax_max_displ` | yes | yes | the shared schema |
 | `continue_retries` | yes — `running-a-job.md § 3.5` | yes | the shared schema, routed to the **wrapper** (§ 5) |
-| `on_nonconvergence` | **no** — it *is* the scheduler edge | — | **outside this contract** — `job-system.md § 4.1` |
+| `on_nonconvergence` | **no** — its only effect was the scheduler edge | — | **outside this contract** — and, for SIESTA, **retired with the edges on 2026-08-10** |
 
 Two of those are worth stating explicitly, because both were on the stage type
 and neither belonged there.
 
-**`on_nonconvergence` fails question 1.** Its entire effect is the dependency
+**`on_nonconvergence` fails question 1.** Its entire effect was the dependency
 edge a JobSet threads (`proceed → afterany`, `halt → afterok`). Without a
 scheduler there is nothing for it to mean.
+
+> **And on 2026-08-10 that argument finished the job.** A staged ladder stopped
+> emitting edges (`project-layout.md` § 1.6), so the policy had **no effect at
+> all** — accepted, resolved, and dropped. It was removed from the SIESTA
+> producer rather than left inert. Reinstating a per-stage policy means giving
+> it a home in the description *and* a reader that does something with it.
+>
+> **PySCF is untouched and rightly so.** Its ladder runs in **one process**
+> (§ 6.7), so its `on_nonconvergence` becomes generated control flow rather
+> than a scheduler edge — a real effect, and the reason the same word means
+> something on one engine and nothing on the other.
 
 Leaving the stage is not enough, though: if it stayed a field of the **shared
 schema** it would be promotable through `overrides` like anything else, and § 2's
