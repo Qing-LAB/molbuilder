@@ -381,15 +381,22 @@ of it is in place before the engine sees the directory:
 
 | | How | Why |
 |---|---|---|
-| the monitor, the pseudopotentials | **linked** from the container | they are the same for every attempt, and the engine only reads them |
-| the deck | **linked** from the container | every attempt of a stage runs the same deck — a different deck means a different stage (§ 1.5a) |
+| the deck, **the wrapper**, the monitor, the pseudopotentials | **linked** from the container | one real copy each, shared by every attempt, and the engine only reads them. The deck is shared because a different deck would mean different science, and different science is a stage (§ 1.5a) |
 | whatever this run continues from | **copied** | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
 | everything the run writes | created in place | it is already the working directory |
 
 **One rule generates that whole table: link what the engine only reads, copy
-what it writes.** A pseudopotential and a deck are read, so one copy serves every
+what it writes.** A deck and a pseudopotential are read, so one copy serves every
 attempt. A `.XV` is written, so a link would reach back and destroy the result
 you built on.
+
+**Everything is *reachable from inside the attempt*, including the wrapper and
+the monitor.** That is the point of linking them rather than invoking them from
+a level up: once the directory is prepared it needs **nothing but the engine's
+environment and a shell**, so `cd`ing into it and running the wrapper by hand is
+an ordinary thing to do — on a laptop, on a login node, or inside a scheduler's
+job script. A directory that only worked when launched from elsewhere would be
+one you could not debug.
 
 #### 1.5a Two levels, two reasons — the directory says what happened
 
