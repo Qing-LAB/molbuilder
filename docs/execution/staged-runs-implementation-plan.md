@@ -3140,6 +3140,54 @@ flowchart TD
 upward; it may never reach across.* Layer 5 deciding a rank count that layer 3
 already assumed is the reach that cost a run on 2026-08-10.
 
+### 9.3a ⚠ The hole this table has, found 2026-08-10
+
+**`prep` has no layer.** It appears in neither the table above nor § 9.5's
+*"where the code actually is"* — while `project-layout.md` § 2.3 calls it
+**the hub** and § 2.3.1a calls it **the framework**, owning all five steps.
+A responsibility the contract names as *the framework* is absent from the
+architecture section written to describe that framework.
+
+**That hole is where a step fell.** `prep_jobset` did not resolve the machine
+at all until 2026-08-10 — step 1 of five existed only inside `bench/prep.py`.
+It was not forgotten by a careless hand; **it had no owner to be forgotten
+by.**
+
+**And the table already says where the machine belongs.** Layer 3 is defined
+as **"description × machine → JobSet"**. Its two declared entry points
+disagree with each other about that:
+
+| entry point | takes a machine? |
+|---|---|
+| `bench/to_jobset.py::sweep_to_jobset(adapter, **env**, …)` | ✅ yes |
+| `siesta/stages.py::stages_to_jobset(cfg, stages, …)` | ❌ no |
+
+So the machine resolution living only on the bench side was not an accident of
+history: **the bench producer's signature demanded it and the staged
+producer's did not.** One of layer 3's two entry points has never met its own
+layer's definition.
+
+**Why `stages_to_jobset` cannot simply grow an `env` parameter today**, and
+this is the part that matters: it runs at **produce**, on the laptop, where
+there is no machine to pass. `job-system.md` decision #3 (*target isolation*)
+and layer 2's *"must never name a machine"* both hold — the producer is not
+wrong to lack a machine *where it currently runs*.
+
+> **Which makes these one problem, not four.** The layer-3 asymmetry,
+> `LaunchSpec`'s unlanded half, P6 units 2/4/5, and P10 are all the same
+> unlanded change: **the producer runs at produce and must run at `prep`.**
+> `project-layout.md` § 1 already calls it *"the one real migration"*. When it
+> lands, `stages_to_jobset` runs where a machine exists, takes one like its
+> sibling does, and layer 3's definition becomes true of both its entry points.
+
+**⛔ Open, and it is a framework decision rather than a code change:** does
+`prep` become a layer in the table, or is it the *hub that calls* layers 1→5
+and therefore correctly absent? The contract describes it as a hub
+(§ 2.3, *"not step four of a line"*), which argues the second — but then
+`resolve_target` sitting in `jobset/prep.py` is a function in a module the
+architecture does not place, which is how it got there: **by convenience, not
+by right.** Recorded rather than decided.
+
 ### 9.4 The four value objects
 
 Each replaces a re-derivation with an answer.
