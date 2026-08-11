@@ -32,11 +32,10 @@ system-wide vocabulary for persisted files and parameters.
 
 These formats are deliberately **surface-agnostic and workflow-agnostic**.
 The same run directory, the same `.fdf` blocks, and the same handoff object
-are produced whether you clicked *Generate* in the web UI, typed
-`molbuilder fdf`, or let the JobSet framework fan a batch across a cluster.
-That is the point of pinning them here once: the surfaces above (single-job,
-JobSet, CLI, web) all read and write to this contract instead of inventing
-their own.
+are produced whether you described the calculation in the web UI or from a
+terminal, and whether it is one stage or a hundred. That is the point of pinning
+them here once: every surface reads and writes to this contract instead of
+inventing its own.
 
 ---
 
@@ -237,7 +236,7 @@ For a job with basename `my-job` (`N` is the auto-advancing run index, § 2.6):
 
 | File | Written by | Read by | Purpose |
 |---|---|---|---|
-| `my-job.fdf` | Build tab / `molbuilder fdf` | SIESTA | input deck (SIESTA) |
+| `my-job.fdf` | **`prep`** (§ 2.6), from the template | SIESTA | input deck (SIESTA) |
 | `my-job.py` | Build tab / `molbuilder pyscf` | Python | input script (PySCF) |
 | `my-job.run.sh` | **`prep`** (§ 2.6) | shell / SLURM | wrapper: activates the env and runs the engine |
 | `my-job.sbatch` | **`prep`**, on a cluster (§ 2.6) | `sbatch` | outer resource header that inner-execs the `.run.sh` |
@@ -653,6 +652,18 @@ what limits:
   advice erred **upward** — past the point where ranks start receiving no
   block at all. The rule now: whatever derives the value derives the bound, so
   there is one number in the system and not two that can drift.
+  > **`BlockSize` is *proposed*, not dictated — clarified 2026-08-11 (user).**
+  > The rule above is unchanged and is exactly why it survives: whatever derives
+  > the value derives the bound. What changed is that deriving it is the
+  > **fallback**, not the only path. `BlockSize` is a tunable knob a person may
+  > set and a benchmark may measure
+  > ([`tuning.md § 2.11`](?doc=engines/tuning.md)), so this block's `field` line
+  > may declare any of three states: a value the user set, a value `prep`
+  > proposed, or — when the keyword is deliberately omitted so SIESTA uses its own
+  > default — **no `field BlockSize` line at all**. A tool reading this block must
+  > treat an absent field as *"not offered for override"* rather than as an error,
+  > which § 3.1's *"every reserved block is optional"* already requires of it.
+
 - **The metadata carries what a derived field was derived FROM.** `mpi_np`
   joins `n_atoms` and `gpu_mode` for exactly this reason
   ([`engines/stages.md`](?doc=engines/stages.md) § 5.2 — the block exists so a

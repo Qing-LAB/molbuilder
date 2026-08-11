@@ -296,6 +296,64 @@ conventional form in prose ("ωB97M-V"); the spelling traps are in
 | **SCF (inner)** | PySCF `mf.max_cycle` | **100** | plenty for a well-conditioned SCF; hitting 100 means the *system* is the problem (broken-symmetry open shell, level-shift needed) — 500 won't help |
 | | SIESTA `MaxSCFIterations` | **500** | SIESTA's generous default; each outer step runs at most this many inner cycles until `DM.Tolerance` is met |
 
+### 2.11 Block size (SIESTA — the ScaLAPACK / ELPA distribution block)
+
+> **Decided 2026-08-11 (user): `BlockSize` is a tunable parameter, measured by a
+> benchmark and then chosen — like the GPU and core assignment beside it.** It is
+> **not** a value molbuilder derives and hands you. Every other document that
+> described it as *"derived from the rank count"* is corrected to the three states
+> below.
+
+**What it controls.** SIESTA distributes the Hamiltonian over MPI ranks in square
+blocks of `BlockSize` orbitals. It is the one knob here that is about **parallel
+efficiency rather than accuracy** — it cannot change the answer, only how long it
+takes to get and whether the ranks are evenly fed.
+
+**The guidance, and it is not tier-dependent — it is scale- and
+hardware-dependent:**
+
+| | Rule | Why |
+|---|---|---|
+| **Powers of two** | 16 · 32 · 64 · 128 | they align with cache lines and memory alignment on modern CPUs; a non-power-of-two block wastes both |
+| **Small systems** (few orbitals) | **16 or 32** | a large block on a small matrix leaves late ranks with nothing — **load imbalance**, which costs more than the communication it saved |
+| **Large systems** (thousands of orbitals) | **64 or 128** | fewer, bigger messages — **less ScaLAPACK communication overhead**, which is what dominates at scale |
+| **Match the hardware** | pick a block the orbital count divides reasonably into, given the core count and the node's memory layout | a remainder block is a rank doing a fraction of everyone else's work |
+
+**A rough sanity ceiling, not a formula:** with `N` orbitals over `R` ranks, a
+block above `N / R` means some rank receives **no block at all**. That is the
+bound BENCH-MARKS declares ([`job-contracts.md § 3.3`](?doc=execution/job-contracts.md)) —
+and it is a ceiling to stay under, not a target to aim at.
+
+#### The three states, and the third one is new
+
+**`BlockSize` has three legitimate answers, and a design that can only express
+two is why this section exists.**
+
+| state | what the deck says | when |
+|---|---|---|
+| **you set it** | `BlockSize <your value>` | you benchmarked it, or you know this machine. **Honoured verbatim** — nothing overrides an explicit setting |
+| **you did not, and molbuilder proposes one** | `BlockSize <derived>` | the ordinary case: `prep` picks a power of two from the orbital count, the rank count and whether there is a GPU, and PROVENANCE records what it derived it *from* |
+| **you asked for SIESTA's own** | *the keyword is not emitted at all* | SIESTA's built-in default (traditionally ~32–64, version-dependent) is **safe for routine runs**, and omitting the line is how you say *"the engine knows better than a guess"* |
+
+The third state is the one no earlier draft could express, because `BlockSize` was
+treated as a value molbuilder always computes. **Omitting a keyword is a real
+answer** — the same shape as `Diag.Algorithm ScaLAPACK`, which
+[`siesta.md § 7`](?doc=engines/siesta.md) also emits as *nothing*.
+
+#### Why it is worth benchmarking rather than deriving
+
+**Manual tuning via short test jobs is what yields peak parallel efficiency**,
+and no formula reaches it: the right block depends on the matrix, the rank count,
+the interconnect and the node's memory layout at once. So `BlockSize` joins the
+benchmark's swept axes — `bench-result.json`'s `choice` carries the measured
+value alongside the rank and GPU counts, and `prep` uses it the same way it uses
+those ([`job-system.md § 7`](?doc=execution/job-system.md)).
+
+> **This is the same trade as the rest of this document, one level down.** A tier
+> table tells you what value to *start* from; a measurement tells you what value
+> is *right here*. For accuracy knobs the table is enough because physics is
+> portable. For a parallel-efficiency knob it is not, because the hardware is not.
+
 ---
 
 ## 3. Cross-engine parameter map
@@ -331,30 +389,47 @@ default**.
 - **PySCF:** `config/pyscf.py::_default_stages`, still a field of the config —
   its ladder runs inside one process ([`stages.md § 1.1`](?doc=engines/stages.md)).
 
-The non-convergence policy (`proceed` / `continue` / `halt`) is **not a stage
-field** for SIESTA: its whole effect is the edge between one attempt and the
-next, so it is the JobSet producer's own input
-([`stages.md § 3`](?doc=engines/stages.md); the shipped default is
-`siesta/stages.py::DEFAULT_NONCONVERGENCE`). PySCF's in-script loop still
-carries it per stage, because there the loop *is* the scheduler.
+> **The non-convergence policy is PySCF's alone**, and the table below says so in
+> its own column. `proceed` / `continue` / `halt` decided the **edge** between one
+> attempt and the next; a SIESTA ladder emits no edges
+> ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)), so on
+> 2026-08-10 the field was **removed from the SIESTA producer** rather than left
+> inert ([`stages.md § 3`](?doc=engines/stages.md)). PySCF keeps it because there
+> the ladder is a loop inside one process, so the policy is real control flow.
+>
+> **What replaces it for SIESTA is you.** A stage that exhausts its step budget
+> stops, and the next stage exists only because you looked at the result and
+> prepared it. That is the same judgement the policy was trying to encode,
+> made where the evidence is.
 
-| Stage (tier) | SIESTA | PySCF |
-|---|---|---|
-| **stage 1** (loose preopt) | CG · 600 steps · force 0.05 eV/Å · Δx 0.20 Å · **proceed** | `geometric` · 50 steps · `gmax` 2×10⁻³ · `conv_tol` 1×10⁻⁷ · **proceed** |
-| **stage 2** (publishable) | Broyden · 200 · 0.04 eV/Å · 0.05 Å · **halt** | `geometric` · 200 · `gmax` 4.5×10⁻⁴ · `conv_tol` 1×10⁻⁹ · **halt** |
-| **stage 3** (tight, *off*) | Broyden · 100 · 0.01 eV/Å · 0.02 Å · **halt** | `geometric` · 100 · `gmax` 2×10⁻⁴ · `conv_tol` 1×10⁻¹⁰ · **halt** |
+| Stage (tier) | SIESTA | PySCF | on running out of steps |
+|---|---|---|---|
+| **stage 1** (loose preopt) | CG · 600 steps · force 0.05 eV/Å · Δx 0.20 Å | `geometric` · 50 steps · `gmax` 2×10⁻³ · `conv_tol` 1×10⁻⁷ | SIESTA: stops, you decide · PySCF: **proceed** |
+| **stage 2** (publishable) | Broyden · 200 · 0.04 eV/Å · 0.05 Å | `geometric` · 200 · `gmax` 4.5×10⁻⁴ · `conv_tol` 1×10⁻⁹ | SIESTA: stops, you decide · PySCF: **halt** |
+| **stage 3** (tight, *off*) | Broyden · 100 · 0.01 eV/Å · 0.02 Å | `geometric` · 100 · `gmax` 2×10⁻⁴ · `conv_tol` 1×10⁻¹⁰ | SIESTA: stops, you decide · PySCF: **halt** |
 
-The stages chain by geometry: each stage's relaxed coordinates feed the next, the
-optimizer history is reset at the boundary (§ 5), and the non-convergence policy
-tightens from `proceed` to `halt`:
+**The geometry flows from each stage to the next, and the optimizer history is
+reset at the boundary (§ 5) — but *how* it flows differs by engine, and that is
+the one place these two ladders are not the same thing.**
 
 ```mermaid
-flowchart LR
-    S1["stage 1 · loose<br/>CG / geometric<br/>proceed"] -->|"relaxed geometry"| S2["stage 2 · publishable<br/>Broyden / geometric<br/>halt"]
-    S2 -->|"relaxed geometry"| S3["stage 3 · tight (off)<br/>Broyden / geometric<br/>halt"]
-    S1 -.->|"if max_steps hit"| P["proceed → hand the<br/>partial geometry forward"]
-    S2 -.->|"if max_steps hit"| H["halt → stop + raise<br/>(don't fake convergence)"]
+flowchart TB
+    subgraph PY["<b>PySCF</b> — one process, one script"]
+      direction LR
+      P1["stage 1 · loose<br/>proceed"] -->|"in memory"| P2["stage 2 · publishable<br/>halt"] -->|"in memory"| P3["stage 3 · tight (off)<br/>halt"]
+    end
+    subgraph SI["<b>SIESTA</b> — one job per stage, started by a person"]
+      direction LR
+      S1["stage 1 · loose"] --> L1{{"you look at it"}}
+      L1 -->|"prep run tight --from …<br/>copies the .XV / .DM"| S2["stage 2 · publishable"]
+      S2 --> L2{{"you look at it"}} -->|"prep run …"| S3["stage 3 · tight (off)"]
+    end
 ```
+
+Read the two rows against each other: **PySCF's ladder is a loop and SIESTA's is
+a workflow.** That is why `on_nonconvergence` means something on one and nothing
+on the other, and why only PySCF can ship a policy that decides what happens
+next without asking.
 
 What the values look like emitted — PySCF's per-stage list and SIESTA's stage-2
 `.fdf` MD block:

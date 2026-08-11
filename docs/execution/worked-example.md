@@ -184,7 +184,7 @@ fastest.
 ```mermaid
 flowchart LR
     T["02_tight/<br/>the deck: mesh 300, Broyden"] --> X["<b>transform</b><br/>SCF capped at 5 · convergence off<br/>MD steps zeroed · cold start forced<br/>relabelled job-gpu / job-cpu"]
-    X --> P["point-G1K2C5/ · point-G1K4C5/ · point-G2K4C5/ · …<br/>each one timed"]
+    X --> P["bench-G1K2C5/ · bench-G1K4C5/ · bench-G2K4C5/ · …<br/>each one timed"]
     P --> W["<b>bench-result.json</b><br/><i>choice</i>: elpa, G=1 K=4 C=6 — portable<br/><i>recommend</i>: mem 96 GB, time 0-08:20:00 — sized here"]
 ```
 
@@ -204,9 +204,13 @@ The trials live **under the stage they measure**, in their own container:
 ├── bench/                    a self-contained benchmark bundle
 │   ├── job-gpu.fdf  job-cpu.fdf
 │   ├── bench-result.json     ← the answer; a few kilobytes of text
-│   └── point-G1K4C5/         ← a trial: a throwaway run
+│   └── bench-G1K4C5/         ← a trial: a throwaway run
 └── run-0/                    ← the real run, later
 ```
+
+*The trial prefix is `bench-` ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md),
+the cross-layer authority); the shipped code still writes `point-` and the rename
+carries a parser cost in `summarize`.*
 
 **Why under the stage, and not once per project.** The best rank count depends on
 the science: mesh cutoff changes the grid, basis size changes the matrix, and
@@ -295,7 +299,7 @@ wrong again.
 
 ✅ **Gap 6, in the same code — closed 2026-08-10.** `job_dir_names` branches on
 `JobSet.kind`, so a ladder's stage directories are `01_coarse/`, `02_medium/`,
-`03_tight/` while a benchmark's points stay `point-*`. The seq is read back off
+`03_tight/` while a benchmark's trials keep a settings-based name. The seq is read back off
 the deck's own token rather than counted, so disabling a stage leaves a gap
 rather than renumbering.
 
@@ -370,7 +374,7 @@ benchmark's throwaways are not this history's business.
 
 The split needs no marker file and no list of names, only **depth**: a container
 is anything with a container below it, a run is a leaf. That is the whole rule,
-and it is why the benchmark's `point-*/` — two levels down, inside a container
+and it is why the benchmark's trials — two levels down, inside a container
 that is itself inside a stage — falls out on the right side without anyone
 saying so.
 

@@ -318,7 +318,7 @@ Every directory in this tree is one of two things:
   produced, and nothing else holds that.
 
 A calculation is a container. A stage is a container. A benchmark bundle is a
-container. The leaves — `run-N/`, `point-<knobs>/` — are runs.
+container. The leaves — `run-N/`, `bench-<knobs>/` — are runs.
 
 **This is what makes everything downstream simple.** Setup is text, so git handles
 it entirely. Only a run holds anything big. There is no directory where the two
@@ -449,105 +449,6 @@ same `continued_from` record, different depth.
 > no warm files copied. Otherwise § 1.5's *"a redo is `run-2`"* would have
 > nowhere to land. Continuation is why a `run-x` normally exists; the record is
 > what says when it did not.
-
-#### Where a run happens
-
-**Inside the attempt directory**, which was created and filled when you prepared
-the stage (§ 1.6, and § 2.5 step 4). By the time anything is launched it already
-holds its inputs. The wrapper is invoked there; it activates and execs, and every
-later line of it — the launch, the monitor, the SCF tee, the failure hints —
-works relative to the current directory, so everything lands in the attempt with
-no change to the wrapper at all.
-
-```
-prepare  →  01_coarse/run-0/ exists, deck linked, inputs copied
-submit   →  launched there
-```
-
-Launching in a chosen directory is what `jobset submit` already does one level
-up: `subprocess.run(cmd, cwd=<job dir>)` for the local path, and `sbatch` from
-the same place for SLURM, which lands the job in `SLURM_SUBMIT_DIR`. Pointing it
-at the attempt instead of the container is a change in the caller, not in the
-wrapper.
-
-**Everything the attempt needs is put there before the wrapper starts**, and all
-of it is in place before the engine sees the directory:
-
-| | How | Why |
-|---|---|---|
-| the monitor, the pseudopotentials | **linked** from the container | they are the same for every attempt, and the engine only reads them |
-| the deck | **linked** from the container | every attempt of a stage runs the same deck — a different deck means a different stage (§ 1.5a) |
-| whatever this run continues from | **copied** | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
-| everything the run writes | created in place | it is already the working directory |
-
-**One rule generates that whole table: link what the engine only reads, copy
-what it writes.** A pseudopotential and a deck are read, so one copy serves every
-attempt. A `.XV` is written, so a link would reach back and destroy the result
-you built on.
-
-#### 1.5a `run-0` is the stage; a later `run-x` is a continuation
-
-*Simplified by the user, 2026-08-11.* **A `run-x` beyond `run-0` exists for one
-reason: you looked at the previous result and chose to keep going.** That single
-sentence settles what an attempt directory means, and everything below follows
-from it.
-
-| | `run-0` | `run-x`, x > 0 |
-|---|---|---|
-| **why it exists** | the stage was prepared and submitted | **you chose to continue** |
-| **its deck** | the stage's, **linked** | linked if you changed nothing; **rendered into the attempt** if you varied a parameter |
-| **warm files** | copied at prep from the earlier *stage* you named, if any | copied from the run it continues |
-| **`continued_from`** | that earlier stage's run, or empty | the run it continues |
-
-**Continuing is one act at two levels.** Across stages it lands in
-`02_tight/run-0`; within a stage it lands in `01_coarse/run-1`. Same decision,
-same record, different depth — and in both cases a directory appears **because a
-person decided something**, which is the whole of § 1.6.
-
-**And the case that motivates varying a parameter is exactly a continuation.**
-Coarse hit its step limit and you want to keep going with a tighter force
-tolerance. That is not a new rung of the ladder — it is the same rung, continued
-differently, in reaction to a result you just looked at.
-
-**So an attempt may carry its own overrides, and `prep` renders it its own
-deck.** Everything else is unchanged: the pseudopotentials are still linked, the
-warm files are still copied from the run it continues, the outputs still land in
-place.
-
-> **The one case this rule does not name, extended rather than left silent.** A
-> **cold** redo — running the stage again from scratch after a crash that left
-> nothing worth keeping — is still a `run-x`, with `continued_from` **empty** and
-> no warm files copied. Otherwise it would have no home, and § 1.5's *"a redo is
-> `run-2`"* would have nowhere to land. **Continuation is why a `run-x` normally
-> exists; the record is what says when it did not.**
-
-> **Forcing this into a new stage would be the wrong shape.** A stage is a
-> **planned** rung, declared before anything ran; an attempt override is a
-> **reaction** to a result. If every nudge appended a stage, `task.json` would
-> stop being the ladder you designed and become a log of what you tried.
-
-**That makes three levels of override, and each is recorded where it belongs:**
-
-| level | what it says | recorded in |
-|---|---|---|
-| the **template** | every parameter's base value | `<label>.template.toml`, at the parent |
-| the **stage** | what this rung changes — **planned** | `task.json` |
-| the **attempt** | what this try changes — **a reaction**, usually while continuing | `run.json` (§ 1.6) |
-| the **machine** | ranks, block size, the environment | resolved at `prep`; recorded in the deck's PROVENANCE |
-
-**The attempt's overrides must be written down, and that is the only part of
-this proposal that needed adding.** If the change lived solely in the rendered
-deck, three things this contract relies on would quietly stop being true:
-`task.json` would no longer describe the calculation, nothing could reproduce the
-attempt, and § 1.0's *"every file is rendered from the template or copied in"*
-would be false — a hand-edited deck is neither.
-
-**`prep` stays the only thing that writes a deck**, so § 1.0's two origins hold
-exactly as before. What varies is an *input* to `prep`, never an edit to its
-output.
-
-**A flat run directory is untouched.** It *is* a run (§ 1.4), so `bash job.run.sh`
-in it behaves exactly as it does today.
 
 > ✅ **The one violation is gone (2026-08-10).** `runwrap.py`'s `attempt_dirs`
 > prologue created and arranged an attempt in shell — scanning for run
@@ -725,12 +626,21 @@ brings in whatever you told it to continue from.
 
 Because some of what goes *inside* the deck is a fact about the machine.
 
-`BlockSize` is the clearest case: `siesta/input.py`'s `_auto_block_size(n_atoms,
-mpi_np, gpu_mode)` derives it from **the rank count and whether there is a GPU**,
-and the answer is written into the `.fdf`. The eigensolver is another — ScaLAPACK
-or ELPA changes both the deck *and* which conda environment the wrapper
-activates. A deck rendered on a laptop is either wrong for the cluster or a
-guess.
+`BlockSize` is the clearest case. It is a **tunable** knob — you may set it, and
+a benchmark may measure it ([`tuning.md § 2.11`](?doc=engines/tuning.md)) — but
+when you have not set one, `prep` proposes a value from **the orbital count, the
+rank count and whether there is a GPU**, and that number is written into the
+`.fdf`. The eigensolver is another: ScaLAPACK or ELPA changes both the deck *and*
+which conda environment the wrapper activates. A deck rendered on a laptop is
+either wrong for the cluster or a guess.
+
+> **Note which half of that makes the argument.** It is not that molbuilder
+> *derives* `BlockSize` — it is that **the inputs to any sensible value only
+> exist on the target**. A user who sets it explicitly has answered the question
+> themselves and their value is honoured verbatim; a user who has not still
+> cannot get a good one from a laptop, because the rank count and the hardware
+> are the answer. *(Corrected 2026-08-11 — this paragraph read as though the
+> value were always molbuilder's to compute.)*
 
 So the parent holds a **template**, and the final `.fdf` is produced where its
 last unknowns are known.
@@ -985,8 +895,8 @@ You submit them with `jobset submit bench tight`, then
 
 ```jsonc
 { "choice": { "mpi_np": 32, "cpus_per_task": 4, "gpu_mode": "mps",
-              "diag_algorithm": "elpa" },
-  "recommend": "elpa · G=1 K=4 C=6 · 2.3× faster than the ScaLAPACK baseline" }
+              "diag_algorithm": "elpa", "block_size": 128 },
+  "recommend": "elpa · G=1 K=4 C=6 · block 128 · 2.3× faster than the ScaLAPACK baseline" }
 ```
 
 **You read it. You decide.** Nothing acts on it until you hand it back.
@@ -1020,7 +930,7 @@ resources are not "just scheduler flags" here (`engines/stages.md § 5`).
 ```
   reading      02_tight/bench/bench-result.json  (measured here, 2026-08-06)
   resources    elpa · G=1 K=4 C=6 · mem 96G
-  02_tight/bdt_au.fdf   rendered   BlockSize 256, Diag.Algorithm elpa
+  02_tight/bdt_au.fdf   rendered   BlockSize 128, Diag.Algorithm elpa
   02_tight/run-0/       ready      (nothing carried — cold start)
 ```
 
@@ -1184,7 +1094,7 @@ on the science.
 | ④ **stage** | `<seq>_<name>` (§ 4) | **`prep`** — the rendered deck and wrapper land here | its deck, its wrapper, its attempts — **a container** |
 | ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **`prep`** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable** |
 | — **benchmark** | `bench` | `prep --bench` | its own decks, wrappers, config and results — a self-contained **container** |
-| — **trial** | `point-<knobs>` (§ 4.4) | the sweep script, then the engine | one throwaway **run** |
+| — **trial** | `bench-<knobs>` (§ 4.4) | the sweep script, then the engine | one throwaway **run** |
 
 Three rules, and everything else follows:
 
@@ -1298,7 +1208,8 @@ mechanism:
 |---|---|---|
 | `Diag.Algorithm` (ScaLAPACK / ELPA) | yes | which conda environment the wrapper activates — any ELPA variant needs the GPU build (`running-a-job.md § 2.3`) |
 | GPU on/off | yes (`Diag.ELPA.GPU`) | the scheduler's `--gres` |
-| MPI ranks | **no**, but `BlockSize` is derived from them | the scheduler's `-n`, and the launch |
+| MPI ranks | **no**, but an unset `BlockSize` is proposed from them | the scheduler's `-n`, and the launch |
+| `BlockSize` | **yes** — a tunable knob, set by you or measured by a benchmark ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | nothing else; it is pure parallel efficiency |
 
 ### 3.2 A trial's deck is the stage's deck, made measurable
 
@@ -1617,7 +1528,7 @@ other. A container holds setup: decks, wrappers, the description, links, the
 shared package. All text or small, all git's.
 
 **Which runs?** The ones this calculation owns: the calculation root itself when
-it is flat, otherwise each stage's `run-N/`. A benchmark's `point-*/` is a run of
+it is flat, otherwise each stage's `run-N/`. A benchmark's `bench-*/` is a run of
 a **nested container**, one level deeper, and its `.DM` is a five-iteration
 throwaway — so the calculation's archive does not reach it. What survives a
 benchmark is `bench-result.json`, text, which git tracks wherever it sits.
@@ -1764,7 +1675,7 @@ than no invariant, because it fails a directory that is working correctly.
     never neither** (`checkpointing.md`, S1) — and after the 2026-08-06 fix that
     holds at every depth, so a stage's result is covered.
 16. **[both] The archive covers runs this calculation owns** — a flat root, or a
-    stage's `run-N/`. A nested container's runs (a benchmark's `point-*/`) are
+    stage's `run-N/`. A nested container's runs (a benchmark's `bench-*/`) are
     not its business (§ 6.1). **Not held today**: the walk classifies by pattern
     and archives a trial's `.DM` like any other.
 17. **[hierarchical] A save stores only what is new** (§ 6.2) — in a flat directory

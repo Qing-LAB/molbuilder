@@ -387,17 +387,27 @@ made by `prep run <stage>`, and that is the command where you name what it
 continues from. So the tree above is what a ladder looks like **after** you have
 run coarse, looked at it, and set tight up.
 
-> **A SWEEP's tree differs in two ways**: its folders are `point-<name>` (its
-> points have no order, so no ordinal), and there is no attempt layer — a point
-> is prepped and run in its own folder. Nothing is copied between points.
+> **A SWEEP's tree differs in two ways**: its folders are named by their
+> **settings** rather than by a position (its points have no order, so no
+> ordinal), and there is no attempt layer — a point is prepped and run in its own
+> folder. Nothing is copied between points.
 >
 > ```text
-> point-G1K2C4/                     ← G<gpus>K<ranks-per-gpu>C<cores-per-rank>,
+> bench-G1K2C4/                     ← G<gpus>K<ranks-per-gpu>C<cores-per-rank>,
 > │                                   named by its SETTINGS, not a position
 > │   bdt_au.fdf  →  ../bdt_au.fdf
 > │   C.psml      →  ../C.psml      (and the other three)
 > └── bdt_au.run.sh → ../bdt_au.run.sh
 > ```
+>
+> ⚠ **The prefix is `bench-`; the shipped code still writes `point-`.**
+> [`job-contracts.md § 6.3`](?doc=execution/job-contracts.md) renamed it on
+> 2026-08-07 and is the cross-layer authority — *point* is grid vocabulary that
+> names nothing a person would recognise in a directory listing, while `bench-`
+> says which container the directory belongs to. It is a rename with a parser
+> cost (`summarize` maps a trial directory back to its point), so this page
+> spells the contract's name and you will see the old one on disk until that
+> lands. Every trial tree below reads the same way.
 
 **Nothing dangles, because nothing points at a file that has not been written.**
 Every path in that tree either belongs to the job or is a link to the shared
@@ -497,10 +507,15 @@ an argument rather than a field ([`engines/stages.md`](?doc=engines/stages.md)
   (conjugate-gradient optimizer state) carries `requires_same: "optimizer"` —
   a CG state is meaningless to a Broyden stage, so carrying it blindly corrupts
   the restart. The comparison is made at `prep`, between **this stage and the
-  attempt you named with `--from`**, over each one's resolved config. Note what
-  changed: the old rule compared *consecutive* stages, which silently assumed
-  **this stage and the attempt you named with `--from`**, over each one's
-  resolved config.
+  attempt you named with `--from`**, over each one's resolved config.
+
+  > **What changed, and why the old rule could not survive `--from`.** It
+  > compared *consecutive* stages in the ladder — which silently assumed the
+  > previous rung is what this one continues from. Once you name the source
+  > yourself, that assumption is simply false: `prep run tight --from
+  > 01_coarse/run-2` may continue a stage two rungs back, or an earlier attempt
+  > of this same stage. So the comparison moved to the pair that actually
+  > matters.
 - **Resources are per-stage**, defaulting to inherit the config's ranks/threads
   and otherwise resolved at submit — so a coarse stage and a tight stage can be
   sized differently.
@@ -552,8 +567,10 @@ system pointed at a resource grid.
 > **A ladder that is *not* a JobSet — PySCF.** PySCF also supports staged
 > relaxation, but it runs its stages as an **in-script loop inside the single
 > `.py`** (see [`engines/tuning.md`](?doc=engines/tuning.md)), not as separate
-> scheduled jobs — `molbuilder pyscf` has no `--jobset` flag. So "a ladder
-> scheduled as a dependency chain" is a **SIESTA-only** reality right now.
+> scheduled jobs. So **"a ladder of separately-scheduled jobs" is a SIESTA-only
+> reality right now** — and the two are genuinely different objects, not two
+> spellings of one: PySCF's stages advance in memory inside a single process,
+> SIESTA's advance because a person prepped the next one.
 > PySCF, transport, and spectra producers are planned (§ 8).
 
 ---
@@ -567,11 +584,11 @@ step is pure file-writing; scheduler contact happens only at `submit`.
 ```mermaid
 flowchart LR
     subgraph host["HOST — laptop or login node"]
-      P["produce<br/>fdf --jobset<br/>→ job-set.json + stage .fdf's"]
+      P["<b>describe</b><br/>→ the template · task.json<br/>· the data files"]
     end
     subgraph target["TARGET — cluster or workstation"]
       direction LR
-      PR["prep<br/>lay out point-*/ + wrappers"]
+      PR["prep<br/>lay out the stage/point folders<br/>+ their wrappers"]
       PL["plan<br/>review the chain"]
       SU["submit<br/>--mode submit | direct"]
       ST["status<br/>per-stage roll-up"]
@@ -580,20 +597,36 @@ flowchart LR
     P -->|"scp the bundle"| PR
 ```
 
-### 5.1 Produce (host)
+### 5.1 Describe (host)
+
+**`molbuilder jobset describe` writes the portable package** — the template,
+`task.json`, and the data files — into the calculation folder. Nothing in it
+names a machine, so it means the same thing wherever you copy it
+([`project-layout.md § 2.1`](?doc=execution/project-layout.md)).
 
 ```bash
-# Render the stage .fdf's + job-set.json into ./bundle
-molbuilder fdf bdt.xyz bundle/bdt.fdf --stage-strategy publishable --jobset \
-    --psml-lib ~/pseudos \
-    --stage-resources '{"stage1": {"domain": "htc",    "time": "0-04:00:00"},
-                        "stage2": {"domain": "public", "time": "7-00:00:00", "exclusive": true}}'
+molbuilder jobset describe bdt.xyz projects/BDT-Au/optimization/bdt-relax \
+    --stage-strategy publishable \
+    --shape hierarchical \
+    --psml-lib ~/pseudos
 ```
 
-`--jobset` requires a multi-stage config (a single deck has nothing to chain);
-`--stage-resources` requires `--jobset`, and its stage names and fields are
-validated against the actual ladder — a typo like `"stage9"` fails here, on your
-laptop, not on the cluster (design decision #4).
+Names and values are validated **here, on your laptop, not on the cluster**
+(design decision #4): a stage name outside `[A-Za-z0-9_]+`, a duplicate stage, an
+`overrides` key the schema does not know, or a value outside its bounds is
+refused with the field named ([`stages.md § 6.6`](?doc=engines/stages.md)).
+
+> ⚠ **This verb is not built** (§ 5.3's grammar table). What it replaces —
+> `molbuilder fdf … --jobset`, which wrote a finished flat bundle of decks — is
+> **gone** *(decided 2026-08-11, user: "obsolete residue from the flat-dir
+> design")*. It skipped the description, so nothing recorded what was asked for,
+> and it finished the decks on a machine that could not know the rank count. The
+> rule and the reasoning are [`process/conventions.md § 3`](?doc=process/conventions.md).
+>
+> **Per-stage resources are not part of describing.** They were
+> `--stage-resources` on the old verb, which put a walltime and a queue inside a
+> folder that is supposed to name no machine. An allocation is an **input to
+> `prep`** ([`project-layout.md § 2.3.1b`](?doc=execution/project-layout.md), M4).
 
 ### 5.2 What `prep` lays out on disk
 
@@ -699,7 +732,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > | `prep` | ✅ | ⛔ `molbuilder bench generate` + `bench prep` | ✅ (lays out every container) |
 > | `submit` | ✅ | ⛔ `molbuilder bench siesta-gpu` | — |
 > | `summarize` | — | ⛔ `molbuilder bench summarize` | — |
-> | `describe` | — | — | ⛔ **not built** — today `molbuilder fdf … --stages-json --jobset` writes the bundle, and it emits *both* shapes at once |
+> | `describe` | — | — | ⛔ **not built.** Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once. Until `describe` lands, a description is written by hand or by the planned tabs |
 > | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
 > | `plan` | — | — | ✅ |
 >
@@ -831,7 +864,7 @@ molbuilder jobset status                             # look before deciding
 
 molbuilder jobset prep   run tight --from 01_coarse/run-0
 #   reading from 01_coarse/run-0  (finished, converged)
-#   02_tight/<label>_02_tight.fdf   rendered   BlockSize 256
+#   02_tight/<label>_02_tight.fdf   rendered   BlockSize 128
 #   02_tight/run-0/                 ready      copied in: <label>.XV  <label>.DM
 molbuilder jobset submit run tight --mode direct
 ```
@@ -850,7 +883,12 @@ molbuilder jobset prep   run tight --from 01_coarse/run-0   # -> 02_tight/run-1
 molbuilder jobset prep   run tight --cold                   # -> a clean attempt
 ```
 
-And the whole ladder unattended, when you have decided you want that — **flat
+**And there is no command for the whole ladder unattended, in either shape.**
+`--chain` was deleted on 2026-08-10, in both modes — see the box above on
+handing a scheduler one job at a time, and `project-layout.md § 1.6` for why
+the judgement belongs *between* two stages rather than in a flag typed before
+either has run.
+
 #### The read-only verbs
 
 ```bash
@@ -930,19 +968,25 @@ on?*
 ### 5.5 Watching a stage while it runs
 
 `status` is a roll-up you pull on demand. To watch a *single* stage live, point
-the run viewer (the web run view, or `molbuilder watch`) at its
-`point-<name>/` folder — it resolves and streams the trajectory exactly as for a
-stand-alone job ([`running-a-job.md § 4`](?doc=execution/running-a-job.md)).
+the run viewer (the web run view, or `molbuilder watch`) at the directory the
+engine is running in — `<NN>_<stage>/run-<n>/` in the hierarchy, the calculation
+directory itself when flat. It resolves and streams the trajectory exactly as for
+a stand-alone job ([`running-a-job.md § 4`](?doc=execution/running-a-job.md)).
 Every job also carries **`mb_monitor.py`** (one of the `shared` files, symlinked
 into each folder): its wrapper launches it in the background to sample GPU/CPU
 utilisation into a `.util.csv` while the stage runs, so an under-utilised or
 stalled stage is visible without waiting for it to finish.
 
-Because each `point-<name>/` is a self-contained run directory, it can also be
-**checkpointed on its own** — `molbuilder snapshot` treats a stage folder like
-any other run dir ([`running-a-job.md § 6`](?doc=execution/running-a-job.md)), so
-you can tag a converged stage or branch a what-if from it independently of the
-rest of the ladder.
+> **What you cannot do is checkpoint one stage on its own**, and that is a
+> contract rather than a missing feature. **The history is rooted at the
+> calculation** ([`project-layout.md § 6`](?doc=execution/project-layout.md),
+> [`checkpointing.md`](?doc=execution/checkpointing.md) **L1**) — one repository,
+> covering the root and every stage beneath it — because a history rooted inside
+> `01_coarse/` cannot restore the pseudopotentials that live one level up, and
+> *"go back to coarse and try a different tight"* needs a history containing
+> both. Tagging a converged stage is `molbuilder snapshot tag` at the
+> calculation; the tag names a state of the whole folder, which is the only thing
+> a restore can put back.
 
 ---
 
@@ -1021,7 +1065,18 @@ flowchart LR
   of the socket's core count (so ranks divide evenly); `c` = CPU cores per rank,
   tried as a **starved / one-socket / cross-socket** triple
   (`{1, cores//K, 2·cores//K}`) to bracket the useful range. Each point runs in
-  its own `point-G<g>K<k>C<c>/` folder.
+  its own `bench-G<g>K<k>C<c>/` folder.
+
+  > **`BlockSize` belongs on this grid too** *(decided 2026-08-11, user; not yet
+  > built)*. It is a parallel-efficiency knob whose right value depends on the
+  > matrix, the rank count, the interconnect and the node's memory layout at once
+  > — so no formula reaches it and **a short test job does**
+  > ([`tuning.md § 2.11`](?doc=engines/tuning.md)). It is a fourth axis of exactly
+  > the same kind as the three above: powers of two, bounded above by the point
+  > where a rank receives no block at all, and reported in `choice` beside the
+  > rank and GPU counts so `prep` consumes it the same way. **The name of a trial
+  > directory grows with the grid**, which § 6.3's *a sweep has no order, so the
+  > name carries what was tried* already anticipates.
 - **Measure → `bench-result.json`** (`molbuilder/bench-result@1`): each point is
   parsed for its SCF wall-time **per iteration** (averaged over iterations 3–5 to
   skip warm-up), plus a utilisation reading and peak memory. The **winner is the
@@ -1046,12 +1101,18 @@ merge into your config with `--write`.
 
 ### Shipped today (command line)
 
-The `JobSet` model and persistence; the SIESTA ladder producer (`fdf --jobset`)
-and the benchmark sweep producer; all four verbs (`plan` / `prep` / `submit` /
-`status`) in both `submit` and `direct` modes; SLURM submission with dependency
-chains and routing domains; and the full benchmark workflow. Saving and
+The `JobSet` model and persistence; the SIESTA ladder producer
+(`stages_to_jobset`) and the benchmark sweep producer; all four verbs (`plan` / `prep` / `submit` /
+`status`) in both `submit` and `direct` modes; SLURM submission with routing
+domains, **one job per invocation**; and the full benchmark workflow. Saving and
 re-entering a calculation's states is `molbuilder snapshot`
 ([`running-a-job.md § 6`](?doc=execution/running-a-job.md)).
+
+> **Not "dependency chains" — that line said so until 2026-08-11 and had been
+> wrong since 2026-08-10.** `Carry`, `depends_on`, `dep_kind`, `carry_deref` and
+> `--chain` were all deleted that day (§ 2, decision 6; § 3's *"there is no edge
+> anywhere in this picture"*). What ships is one `sbatch` per invocation with the
+> job's own resources as flags.
 
 ### Not built yet — the web, and other engines
 
@@ -1068,8 +1129,9 @@ and the web Build tab still renders a single `.fdf` (it drops the stage table).
   forking is restore-then-save — both already routed and both already in the
   sidebar panel ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7.1).
 - **Phases 3–4 — other engines, gated on a cluster-validation milestone.**
-  `transport --jobset`, `pyscf --jobset`, and `spectra --jobset` producers (with
-  their tab mirrors), behind a hard gate: prove the SIESTA ladder end-to-end
+  transport, PySCF and spectra **producers** — one function each, turning that
+  engine's config into a `JobSet` (§ 9) — with their tab mirrors, behind a hard
+  gate: prove the SIESTA ladder end-to-end
   (produce → prep → submit → monitor) on a real cluster *before* broadening.
   Reaching transport is also where the single-parent limit (§ 2, design decision
   #6) is lifted to a branching graph.
@@ -1094,10 +1156,10 @@ Where each responsibility lives, for someone extending the framework:
 | The data model + `job-set.json` read/write + `validate()` | `molbuilder/jobset/model.py` |
 | SIESTA ladder producer + the pure `build_siesta_stage_bundle` seam | `molbuilder/siesta/stages.py` |
 | Benchmark sweep producer | `molbuilder/bench/to_jobset.py` |
-| Lay out the materialized tree (`point-*/` + symlinks) | `molbuilder/jobset/materialize.py` |
+| Lay out the materialized tree (job folders + symlinks, and `prepare_attempt`) | `molbuilder/jobset/materialize.py` |
 | Render wrappers once + carry-in + `STAGE-PLAN.md` | `molbuilder/jobset/prep.py` |
 | The human-readable plan table | `molbuilder/jobset/plan.py` |
-| Submit (SLURM chain / direct) + dependency threading + domain routing | `molbuilder/jobset/submit.py` |
+| Submit **one** job (SLURM or direct) + domain routing + the refusal to submit more than one per invocation | `molbuilder/jobset/submit.py` |
 | Per-stage status roll-up (reuses `decode_run_dir`) | `molbuilder/jobset/runstatus.py` |
 | The CLI verbs (`molbuilder jobset …`) | `molbuilder/jobset/_cli.py` |
 | The `.sbatch` header emission (shared with single-job) | `molbuilder/runwrap.py::render_sbatch` |

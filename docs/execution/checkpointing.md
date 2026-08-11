@@ -748,7 +748,7 @@ molbuilder snapshot tag chosen-mesh -m "300 Ry: the cheapest that met the force 
 
 and `restore chosen-mesh` works forever, whatever else you try afterwards.
 
-### 10.4 From Python
+### 10.2 From Python
 
 ```python
 from molbuilder.checkpoint import Repo
@@ -1615,7 +1615,7 @@ the rows above it as well, naming three test files that no longer exist —
 | **7** | what happens on a restore · § 7.1 going back and trying something else with the original intact · § 7.2 how much is checked, and when |
 | **8** | why a flat folder depends on this and a nested one merely benefits |
 | **9** | who decides to save, and when you are asked |
-| **10** | worked examples — several attempts from one state, and calling it from Python |
+| **10** | worked examples — § 10.1 several attempts from one state, § 10.2 calling it from Python |
 | **11** | the rules a change must not break |
 | **12** | which of them hold right now |
 | **13** | how to test them |
@@ -1649,6 +1649,6 @@ the rows above it as well, naming three test files that no longer exist —
 - **The file formats** — [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1.
 - **The folder being saved, and the two moments a save is offered** —
   [`engines/stages.md`](?doc=engines/stages.md) § 7.
-- **Phasing and open questions** —
-  [`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md) and
+- **Phasing and what is built when** —
+  [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).

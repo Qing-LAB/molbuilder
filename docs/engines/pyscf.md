@@ -85,18 +85,22 @@ by the config flag in column 2):
 | `<job>.thermo.txt` | `compute_frequencies` (default off) | post-relax harmonic frequencies + RRHO (rigid-rotor-harmonic-oscillator) thermochemistry (`_emit_frequencies_block`, `:969`), wrapped in try/except so a Hessian failure never loses the converged energy |
 
 The script's header `Outputs:` block lists **exactly** this set for the active
-config — no under- or over-promising. The stage-aware name is
-`<job>-stage<N>.molwatch.log` when `cfg.stage` is set; `job_name` stays unsuffixed
-so `.chk`/`.log`/`_optimized.xyz` transfer across stages.
+config — no under- or over-promising. `job_name` stays unsuffixed so
+`.chk`/`.log`/`_optimized.xyz` transfer across stages.
 
-> **This naming is changing, and this document is downstream of the change.**
-> The trajectory log will take **the deck's basename** rather than a
-> `-stage<N>` infix — `<label>_<stage>.molwatch.log`, the same name whether
-> stages share a directory or each has its own. One rule, derived
-> from the deck rather than declared separately. The table for every name
-> in the system is [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
-> § 6.3; the reasoning is [`engines/stages.md`](?doc=engines/stages.md) § 7.
-> Until it lands, what is written above is what the files are called.
+> **PySCF writes ONE unified log, and that is the difference from SIESTA.** Its
+> ladder runs inside a single process, so all stages append to one
+> `<job>.molwatch.log` with no per-stage suffix
+> ([`job-contracts.md § 2.3`](?doc=execution/job-contracts.md), the second of the
+> two multi-stage execution shapes). A per-stage name is only meaningful where a
+> stage is a separate process — which is SIESTA's shape, where the log takes the
+> deck's own token, `<label>_<NN>_<stage>.molwatch.log`
+> ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)).
+>
+> The `cfg.stage` single-stage marker path still emits `<job>-stage<N>.molwatch.log`.
+> **That field is being deleted** — it is the last user of the retired `-stage<N>`
+> spelling ([`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md),
+> P12 unit 6b) — so do not build on it.
 
 ---
 

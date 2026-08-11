@@ -78,9 +78,22 @@ The template is a **floor 2 — description** object
   partition, a wall-time — none of these is a parameter of the calculation. They
   are resolved at `prep` step 1 on the machine that will run the job (floor 1),
   and a description carrying one would not be portable **(G1)**.
-- **A value derived from a machine fact is not an item either.** `BlockSize` is
-  computed from the rank count, so it is decided at `prep` step 3 from the
-  resolved machine — not written into a description on a laptop.
+- **But a parameter molbuilder can *propose* a value for is still an item.**
+  `BlockSize` is the case that makes the distinction sharp: a rank count is a
+  machine fact and never an item, while `BlockSize` is an ordinary SIESTA keyword
+  a person may set, benchmark, or leave to the engine
+  ([`tuning.md § 2.11`](?doc=engines/tuning.md)). It is an item with **no
+  `value`** until somebody supplies one — which is exactly what *"a missing
+  `value` means explicitly unset"* (§ 3) is for. `prep` fills an unset one from
+  the resolved machine; it never overwrites a set one.
+
+  > **Corrected 2026-08-11 (user).** This bullet read *"a value derived from a
+  > machine fact is not an item either — `BlockSize` is computed from the rank
+  > count"*, and that made a tunable knob unsettable: there was nowhere in a
+  > portable description to record *"I measured 128 on this class of machine"*,
+  > and no way at all to ask for SIESTA's own default. **The test is not
+  > *"could a machine decide this?"* but *"may a person?"*** — and for
+  > `BlockSize` they may.
 
 **And the template is not a deck.** A deck is a **floor 3 (plan)** product,
 written by the engine's deck writer at `prep` step 3, on the target machine.
@@ -384,7 +397,7 @@ Three things are **not** items, each excluded by a rule that already exists:
 
 | not an item | why | where it lives instead |
 |---|---|---|
-| **a machine fact, or anything derived from one** — ranks, GPUs, queue, `BlockSize` | floor 2 must never name a machine (§ 2, G1) | resolved at `prep`, from `environment.json` and `molbuilder.json` |
+| **a machine fact** — ranks, GPUs, queue, partition, wall time | floor 2 must never name a machine (§ 2, G1) | resolved at `prep`, from `environment.json` and `molbuilder.json` |
 | **the ladder** — the list of stages | an item is a parameter; a list of stages is the mission | `task.json` ([`stages.md`](?doc=engines/stages.md) § 1.1) |
 | **the structure** — which atoms exist, and their labels | an input to the calculation, never edited by the generator, and it travels as its own file (§ 9.1) | the data files ([`project-layout.md`](?doc=execution/project-layout.md) § 2.1) |
 
@@ -552,7 +565,7 @@ than a special case:**
 > discovering.** In the staged path, editing the custom zone of a *rendered
 > deck* does not survive the next `prep` — the template is what survives. The
 > **single-deck paths keep the read-back merge** (the web Build tab and
-> `molbuilder fdf` regenerate one file in place, where *"the target"* is one
+> `molbuilder pyscf` regenerate one file in place, where *"the target"* is one
 > well-defined file and the merge is exactly right). What is not allowed is
 > `prep` harvesting from a deck it is about to overwrite.
 
@@ -695,13 +708,31 @@ description.
 - **A hand-edited value is the authority, and that now needs no rule.** The file
   is meant to be edited and each value appears once, so editing it is simply
   editing it. This was an open question only while the value was stored twice.
-- **A parameter whose default is *derived* rather than literal.** `BlockSize` is
-  the example, and § 7 excludes it as a machine-derived value. What is not yet
-  settled is whether such a parameter should appear as an item with no `value`
-  and `default = "derived"` so a surface can *show* that it exists and is decided
-  later — or be absent from the template entirely. The rule it must respect
-  either way (user, 2026-08-07): **an explicit user setting is honoured;
-  otherwise the value is derived at `prep`, where both are available.**
+- ~~**A parameter whose default is *derived* rather than literal.**~~
+  **Answered 2026-08-11 (user): it is an ordinary item with no `value`.**
+  `BlockSize` was the example and it is now the pattern. A surface shows the item,
+  its `type = "pow2"` and its guidance; an empty `value` reads as *nobody has
+  chosen, so `prep` will propose one*; a value the user or a benchmark supplies is
+  honoured verbatim. That satisfies the 2026-08-07 rule unchanged — **an explicit
+  user setting is honoured; otherwise the value is derived at `prep`, where both
+  are available** — and it adds the third state the earlier framing could not
+  express: *omit the keyword and let the engine use its own default*
+  ([`tuning.md § 2.11`](?doc=engines/tuning.md)).
+
+  ```toml
+  [item.block_size]
+  kind    = "engine"
+  anchor  = "BlockSize"
+  type    = "pow2"
+  # no `value` — unset, so prep proposes one from the orbital and rank counts
+  range   = [16, 128]
+  group   = "budget"
+  help    = """
+  The ScaLAPACK/ELPA distribution block, in orbitals.  Powers of two only.
+  Small systems: 16-32 (avoids load imbalance).  Large: 64-128 (less
+  communication).  Leave unset and prep proposes one; a benchmark can measure
+  it (tuning.md 2.11)."""
+  ```
 - **`user_custom` needs a schema field** (§ 9.2) before it can be an ordinary
   item rather than an exception.
 - **PySCF's `stages`.** Its ladder runs inside one process, so for PySCF the

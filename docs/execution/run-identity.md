@@ -288,7 +288,7 @@ guess.*
 | ② | **topic** | `optimization` | **the user picks** one of a fixed nine | `job-contracts.md § 2.5` |
 | ③ | **calculation** — `job-contracts.md § 2.5` calls this segment `<structure>/`, the *one-job directory* | `bdt-relax` | **the user types it** *(decided 2026-08-07 — this row is what changed)* | `[A-Za-z0-9_-]+`. This is the level that holds `task.json`, and `task.json` is what makes it a calculation rather than a directory — `checkpointing.md` **L1** |
 | ④ | **stage** *(hierarchical only)* | `01_coarse` | **derived** — `<seq>_<name>`, `seq` assigned once by the produce that creates it | `project-layout.md § 4.1`. A flat calculation has no level ④ at all |
-| ⑤ | **attempt** *(hierarchical only)* | `run-0` | **derived** — a counter | `project-layout.md § 2.2`. Flat separates attempts by an output index instead, `-run0.out` |
+| ⑤ | **attempt** *(hierarchical only)* | `run-0` | **derived** — a counter | `project-layout.md § 4.3`. Flat separates attempts by an output index instead, `-run0.out` |
 
 **Levels ④ and ⑤ are derived and this section does not touch them.** A stage
 directory legitimately carries a *number* alongside its name, which is the one
@@ -606,10 +606,12 @@ artifact being replaced wholesale, not a folder being worked in.
 now archived. They are about the id, so they belong to the contract that
 owns it.*
 
-1. **Should the folder really be named by the id** (§ 3)? It removes a second
-   name and makes a directory listing self-describing — at the cost of a folder
-   called `BDT_Au_relax_Au38C6H4S2` where somebody would have typed
-   `bdt-relax`.
+1. ~~**Should the folder really be named by the id?**~~ **Answered
+   2026-08-07 (user): no — level ③ is what you type.** § 3.0 is the decision and
+   its reasoning; the question is kept struck through because it arrived from the
+   archive already settled, and a reader who meets it elsewhere should be able to
+   see that. What it cost is stated there too: an `ls` of a topic no longer says
+   what each calculation computes, and `task.json` is what does.
 2. **What are the "components" of a composite system?** A junction is a molecule
    *and* two electrodes. Naming it by total formula loses that structure; naming
    it by parts needs a convention for what a part is.
@@ -632,6 +634,7 @@ owns it.*
   §§ 2, 3 and 5. Unchanged here.
 - **What a stage is, and the description the id is derived from** —
   [`engines/stages.md`](?doc=engines/stages.md).
-- **Phasing and open questions** —
-  [`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md) and
-  [`roadmap.md`](?doc=roadmap.md) (R3).
+- **Phasing and what is built when** —
+  [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md) and
+  [`roadmap.md`](?doc=roadmap.md) (R3). *(Open questions about the **id** are
+  § 6a above, because they are this contract's to answer.)*

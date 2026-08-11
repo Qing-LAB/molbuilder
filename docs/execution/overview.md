@@ -190,7 +190,7 @@ Two facts keep the picture honest:
 
 The status matrix above is about *which surface* can run a job. There is a second
 change in flight, about *what the folder looks like*, and it is the reason four of
-the nine documents here were written in August 2026.
+the eleven documents here were written in August 2026.
 
 **What ships today is the flat shape.** One directory holds everything. Several
 stages live side by side, told apart by a suffix in the filename

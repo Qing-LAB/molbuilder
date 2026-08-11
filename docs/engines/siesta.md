@@ -42,7 +42,7 @@ flowchart LR
         S["Structure<br/>(atoms + optional cell)"]
         C["SiestaConfig<br/>(config/siesta.py:114)"]
     end
-    CLI["CLI: molbuilder fdf JOB.fdf …"]
+    CLI["CLI: molbuilder jobset prep<br/>(via the template)"]
     WEB["web Structure-optimization tab<br/>→ /api/build/fdf"]
     R["render_fdf(struct, config, *, cell=None)<br/>siesta/input.py:329"]
     OUT["JOB.fdf<br/>(+ sibling JOB.molwatch.log,<br/> + copied &lt;Element&gt;.psml)"]
@@ -55,7 +55,14 @@ flowchart LR
 
 - **Backend (Python / CLI).** `render_fdf` returns the text; `convert(input_path,
   fdf_path, config)` (`:1486`) reads an `.xyz`/`.pdb`, writes the `.fdf`, and copies
-  matching pseudopotentials. The CLI is `molbuilder fdf`.
+  matching pseudopotentials.
+
+  > **These are the Python API and they are unchanged. The `molbuilder fdf` CLI
+  > verb is deleted** *(2026-08-11, user — obsolete residue from the flat-dir
+  > design; [`process/conventions.md § 3`](?doc=process/conventions.md))*. It let
+  > a person render a finished deck straight from flags, skipping the description
+  > and guessing at values only the target machine knows. A deck now comes from
+  > `molbuilder jobset prep`, which calls exactly these functions.
 - **Frontend (web).** The Structure-optimization tab posts to `/api/build/fdf`,
   which runs the validation preflight ([`science/validation.md`](?doc=science/validation.md))
   and then `render_fdf`. `SiestaConfig`'s field metadata drives the form (no
@@ -97,10 +104,12 @@ NumberOfAtoms     42
 NumberOfSpecies   3
 ```
 
-`convert` is the file-to-file path the CLI uses; it returns a summary and (when
+`convert` is the file-to-file path; it returns a summary and (when
 `cfg.psml_lib` is set + `cfg.copy_psml=True`) copies each `<Element>.psml` into the
-`.fdf`'s directory. Missing pseudopotentials are listed in `missing_psml` and the
-CLI exits with code 2.
+`.fdf`'s directory. Missing pseudopotentials are listed in `missing_psml`, and the
+caller — today `jobset prep` — exits 2 on a non-empty list, because a deck whose
+pseudopotentials are absent cannot run
+([`conventions.md § 3`](?doc=process/conventions.md)).
 
 ---
 
@@ -127,7 +136,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 9 | Spin | `SpinPolarized .true.` + optional `Spin.Fix`/`Spin.Total` | only if `spin_polarized` — § 5 |
 | 10 | NetCharge | `NetCharge ±N` | only if resolved charge ≠ 0 — § 4 |
 | 11 | k-grid | `%block kgrid_Monkhorst_Pack` from `cfg.kgrid` | § 6 |
-| 12 | **Parallel (MPI)** | `BlockSize`, `Diag.ParallelOverK` | ScaLAPACK orbital-distribution block |
+| 12 | **Parallel (MPI)** | `BlockSize`, `Diag.ParallelOverK` | the ScaLAPACK/ELPA orbital-distribution block. **Tunable, and omitted entirely when you want SIESTA's own default** — the three states and the guidance are [`tuning.md § 2.11`](?doc=engines/tuning.md) |
 | 13 | Diagonalizer | `Diag.Algorithm` / `Diag.ELPA.GPU` | § 7 |
 | 14 | Geometry opt / dynamics | relax: `MD.TypeOfRun` + `MD.NumCGsteps` + `MD.MaxForceTol`; dynamics (Verlet/Nose): `MD.LengthTimeStep`, `MD.InitialTemperature`, `MD.TargetTemperature` (Nosé) | skipped if `relax_type == "none"` |
 | 15 | Output flags | `WriteForces`, `WriteCoorXmol`, `SaveHS`, … | |
@@ -335,8 +344,17 @@ env, keep ELPA recent.
 
 ## 8. Staged optimization
 
-A single CLI call can emit one `.fdf` per relaxation **stage** plus a
-`<basename>.run.sh` runner that walks the ladder — mirroring PySCF's staged-opt.
+A single CLI call can emit one `.fdf` per relaxation **stage**. Each is an
+ordinary complete deck; **nothing walks the ladder for you**, and that is the
+design rather than a missing piece — you prepare and submit one stage, look at
+what it produced, and then prepare the next
+([`project-layout.md § 1.6`](?doc=execution/project-layout.md)).
+
+> **The `<basename>.run.sh` stage runner is gone** — `render_siesta_stages_runner`
+> and its `_warm_check` were deleted on 2026-08-10 with the rest of the chaining
+> machinery ([`job-contracts.md § 4.4`](?doc=execution/job-contracts.md)). There
+> is **one** wrapper emitter, `runwrap.render_run_wrapper`, and `prep` renders one
+> per deck. This section described the runner as shipped until 2026-08-11.
 
 > **The ladder does not live in this engine's config, and that is the whole
 > shape of this section.** `SiestaConfig.stages` and `SiestaStageSpec` were
@@ -370,28 +388,34 @@ A single CLI call can emit one `.fdf` per relaxation **stage** plus a
   deck and stage N of the ladder cannot drift apart. The preset names + masks
   also live in the PySCF config and `form-schema.js`, kept in lock-step by
   `tests/test_siesta_stage_strategy_presets_drift.py`.
-- **Non-convergence policy** is **not** a stage field and not a shared-schema
-  field (§ 3): its entire effect is the edge between one attempt and the next,
-  so it is the producer's own input — `DEFAULT_NONCONVERGENCE` is the shipped
-  default for it. A stage the mapping does not name gets `halt`.
+- **Non-convergence policy does not exist for SIESTA**, and that is a decision
+  rather than an omission. Its entire effect was the scheduler edge between one
+  attempt and the next; a SIESTA ladder emits no edges
+  ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)), so on
+  2026-08-10 the field was **removed from the producer rather than left inert**
+  ([`stages.md § 3`](?doc=engines/stages.md)). A stage that runs out of steps
+  simply stops, and you decide what to do — which is what you were doing between
+  stages anyway. **PySCF keeps it** (`pyscf.md § 3`), because there the ladder is
+  a loop inside one process and the policy is real control flow.
 - **Validation.** A stage is validated as a **resolved whole, never as a
   diff** (§ 4 R2): the caller resolves it and runs the ordinary single-config
   validator on the result, so there is no parallel copy of the knob rules to
   drift. The two checks that are about the *ladder* rather than a member of it
   — nothing enabled, and duplicate names (a collision would silently overwrite
   a per-stage `.fdf`) — are refused by `_enabled_stages`.
-- **CLI** `molbuilder fdf JOB.fdf --stage-strategy publishable` emits
-  `JOB_stage1.fdf`, `JOB_stage2.fdf`, and `JOB.run.sh`. `--stages-json` takes
+- **How a ladder is asked for.** `--stage-strategy publishable` picks the enable
+  mask; `--stages-json` takes
   **literal JSON or a file path** — a list of `{name, enabled, overrides}` —
   and replaces the ladder wholesale (combinable with `--stage-strategy`: the
   ladder from the JSON, the enable mask from the preset); both are **mutually
   exclusive** with the single-stage `--stage {1,2,3}` overlay. The
   `SystemLabel` stays unsuffixed across stages so SIESTA's `.XV`/`.DM`/`.CG`
-  warm-restart files carry forward. The runner rewrites the final stage's
-  policy to `halt` (never overshoot). It runs each stage as a bare serial
-  `siesta` invocation — MPI-rank control (`MB_NP` / `SLURM_NTASKS` / `PBS_NP`)
-  is a job-set / `runwrap` concern, handled by `execution/`, not this
-  direct-mode runner.
+  warm-restart files carry forward — which is what lets a later stage find an
+  earlier one's geometry with nobody instructing it
+  ([`run-identity.md § 1`](?doc=execution/run-identity.md)). How each deck is
+  then wrapped, sized and launched is `execution/`'s: `molbuilder jobset prep`
+  renders the wrapper against the target machine, and `jobset submit` starts one
+  stage ([`job-system.md § 5.3`](?doc=execution/job-system.md)).
 - **Form widget.** There is none, and its absence is the fix. The form-schema
   generator answers *what settings exist and how is each drawn*; when
   `SiestaConfig` carried a `List[SiestaStageSpec]` the generator walked into
@@ -401,10 +425,12 @@ A single CLI call can emit one `.fdf` per relaxation **stage** plus a
   per-stage grid belongs to the shared Task Setup tab, fed by the catalogue
   from here and the selection from `task.json`.
 
-Running the ladder as a real *job-set* on a scheduler (per-stage dirs,
-dependency chain, per-stage resources) is `execution/` territory
-(`siesta/stages.py::build_siesta_stage_bundle:144` produces the `JobSet`); the
-`run.sh` runner above is its single-job `direct`-mode fallback.
+Running the ladder as a real *job-set* — per-stage directories, per-stage
+resources, and **one submission per stage, by hand** — is `execution/` territory
+(`siesta/stages.py::build_siesta_stage_bundle:144` produces the `JobSet`).
+**There are no dependency edges between stages**: a `JobSet` carries none, and
+nothing can ask for one ([`job-system.md § 2`](?doc=execution/job-system.md),
+decision 6).
 
 ---
 
@@ -413,18 +439,22 @@ dependency chain, per-stage resources) is `execution/` territory
 Alongside `<basename>.fdf`, `convert(...)` also writes (unless
 `cfg.write_molwatch_log=False`) a `<basename>.molwatch.log` — one *initial-state
 preview block* (step 0: coordinates only, `kind: initial_preview`) so the Results
-tab can render the structure before SIESTA produces any output. The stage-aware
-name is `<basename>-stage<N>.molwatch.log`. The `.molwatch.log` format itself is
-engine-agnostic and specified in `pyscf.md`.
+tab can render the structure before SIESTA produces any output. The `.molwatch.log`
+format itself is engine-agnostic and specified in `pyscf.md`.
 
-> **This naming is changing, and this document is downstream of the change.**
-> The trajectory log will take **the deck's basename** rather than a
-> `-stage<N>` infix — `<label>_<stage>.molwatch.log`, the same name whether
-> stages share a directory or each has its own. One rule, derived
-> from the deck rather than declared separately. The table for every name
-> in the system is [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
-> § 6.3; the reasoning is [`engines/stages.md`](?doc=engines/stages.md) § 7.
-> Until it lands, what is written above is what the files are called.
+**A stage's log is named for the deck that produced it** —
+`<label>_<NN>_<stage>.molwatch.log` beside `<label>_<NN>_<stage>.fdf`, the same
+name whether the stages share a directory or each has its own. One rule, derived
+from the deck rather than declared separately, which is what lets a directory's
+logs be merged in order with a boundary per stage
+([`job-contracts.md § 2.3`](?doc=execution/job-contracts.md)); the table for every
+name in the system is [`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)
+and the reasoning is [`stages.md § 7`](?doc=engines/stages.md).
+
+> **Landed 2026-08-10.** The log used to carry a `-stage<N>` infix while the deck
+> carried `_<name>` — two spellings of one idea. `molwatch_log_basename` now takes
+> the stage's artifact token, and the run decoder reads it back through
+> `identity.parse_stage_token` rather than keeping a second regex.
 
 When the resolved charge ≠ 0, `convert()` also drops a `makov_payne_correction.py`
 script next to the `.fdf` (returned as `summary["makov_payne_script"]`, § 4). And

@@ -388,7 +388,7 @@ ignored.
 > which is [`ops/deployment.md`](?doc=ops/deployment.md) § 5 and
 > [`ops/access-control.md`](?doc=ops/access-control.md). The complete map of
 > every section, who reads it, and which step of the workflow it reaches is
-> [`architecture.md`](?doc=execution/architecture.md) § 7.
+> [`architecture.md`](?doc=execution/architecture.md) § 8.
 
 ### 5.1 Where config lives, and merge order
 

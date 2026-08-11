@@ -66,9 +66,8 @@ dropped — the stage table POSTs a ladder that goes nowhere.
 **Where the work stands.** The whole engine-agnostic framework already
 exists on the command line: the `jobset` model and its `job-set.json`
 persistence, the `molbuilder jobset plan/prep/submit/status` verbs (both
-local `bash` execution and SLURM submission with dependency chaining), the
-SIESTA stage producer, and the SIESTA host producer (`molbuilder fdf …
---jobset`). What is missing is the **web front-end** onto that framework —
+local `bash` execution and SLURM submission, **one job per invocation**), and
+the SIESTA stage producer (`stages_to_jobset`). What is missing is the **web front-end** onto that framework —
 the setup tabs cannot yet produce a bundle, show its plan, or report its
 run status. What is built lives in
 [`execution/job-system.md`](?doc=execution/job-system.md) (the JobSet framework
@@ -615,8 +614,8 @@ domain doc, not here.
   `/api/structure/resolve-cell`.
 - **JobSet CLI framework** — `plan` / `prep` / `submit` / `status` over a
   bundle's `job-set.json`; both execution modes (local `bash`, SLURM
-  submit with dependency threading); carry-forward between stages; the
-  SIESTA host producer (`fdf --jobset`); checkpoints and branching.
+  submit — one job at a time); the SIESTA stage producer; checkpoints and
+  re-entering a saved state.
 - **SLURM / sbatch submission** — a thin `.sbatch` wrapping the unchanged
   run script, driven by the scheduler config block (verified live on ASU
   Sol). Reference: the SLURM-integration contract.

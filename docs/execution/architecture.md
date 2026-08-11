@@ -305,8 +305,10 @@ Here is what happens, and **who decides each thing**:
 from the floor that owns it, which is what makes it possible to change one answer
 without hunting through the others.
 
-**Why a copy and not a link** (step 4): the engine writes to that very filename.
-A link would reach back and overwrite the coarse result you chose to build on.
+**Why coarse's geometry is copied rather than linked** is
+[`project-layout.md § 1.6`](?doc=execution/project-layout.md), which owns that
+rule and the reasoning behind it. In one line: the engine writes to that very
+filename.
 
 ---
 
@@ -538,7 +540,72 @@ the error where you can act on it.
 ## 9. The same design on a workstation and on a cluster
 
 **Nothing in §§ 2–4 changes between them.** The same floors, the same routes,
-the same five steps. What differs is what two floors *find*, and one flag.
+the same five steps. What differs is what **two floors find**, and one flag.
+
+### 9.0 The whole thing in one picture
+
+This is §§ 2–4 and § 8 assembled: what you write, what crosses the wall, and
+where the two environments diverge. **Read it left to right and notice that the
+divergence starts as late as possible** — everything before `prep` is one path.
+
+```mermaid
+flowchart LR
+    subgraph PORT["<b>1 · what you write</b> — floor 2, portable, names NO machine"]
+      direction TB
+      T["the template<br/><i>every parameter, with a value</i>"]
+      TJ["task.json<br/><i>what varies · which stages · the shape</i>"]
+      DAT["the data files<br/><i>structure · pseudopotentials</i>"]
+    end
+
+    CFG[("molbuilder.json<br/><b>this machine</b><br/><i>outside the tree</i>")]
+
+    subgraph PREP["<b>2 · prep</b> — the only step that knows where it is"]
+      direction TB
+      S1["1 · resolve the machine — floor 1"]
+      S2["2 · resolve the parameters — floors 2→3"]
+      S3["3 · render the deck — floor 3"]
+      S4["4 · render the wrapper — floor 5"]
+      S5["5 · build the run directory — floor 4"]
+      S1 --> S2 --> S3 --> S4 --> S5
+    end
+
+    subgraph WS["<b>3a · workstation</b>"]
+      direction TB
+      WA["<code>.run.sh</code> only"]
+      WB["submit --mode <b>direct</b><br/><i>bash …run.sh — you wait</i>"]
+      WA --> WB
+    end
+    subgraph HPC["<b>3b · HPC cluster</b>"]
+      direction TB
+      HA["<code>.run.sh</code> <b>+</b> <code>.sbatch</code>"]
+      HB["submit --mode <b>submit</b><br/><i>ONE sbatch, ONE job</i>"]
+      HC["the queue → a compute node"]
+      HA --> HB --> HC
+    end
+
+    RUN["<b>4 · the run directory</b><br/>the engine's whole world<br/><i>the SAME .run.sh in both</i>"]
+    OBS["<b>5 · you look</b> — floor 6<br/><code>jobset status</code>"]
+
+    PORT -->|"scp — it means the<br/>same thing anywhere"| PREP
+    CFG -->|"activation · envs → step 4<br/>scheduler · execution → submit"| PREP
+    PREP --> WS & HPC
+    WS --> RUN
+    HPC --> RUN
+    RUN --> OBS
+    OBS -.->|"and only then, the next stage"| PREP
+```
+
+**Three things that picture is trying to make obvious:**
+
+1. **Box 1 is byte-identical on both machines.** That is the whole point of floor
+   2's *must never name a machine*. `scp` it anywhere and it still describes the
+   same calculation.
+2. **The divergence is inside box 2 and it is small** — one floor finds different
+   facts, and one extra file gets written. Boxes 4 and 5 are the same again.
+3. **The dotted arrow at the bottom is a person.** Nothing advances on its own
+   (§ 6, and `project-layout.md § 1.6`).
+
+### 9.1 What actually differs — two floors and one flag
 
 | | **workstation** | **HPC cluster** |
 |---|---|---|
@@ -547,6 +614,7 @@ the same five steps. What differs is what two floors *find*, and one flag.
 | **floor 5 — how it starts** | `--mode direct`: `bash …run.sh`, and you wait | `--mode submit`: one `sbatch`, one job |
 | **what is emitted** | `.run.sh` | `.run.sh` **and** `.sbatch` — the outer one is a header whose body is a single line calling the inner one |
 | **many jobs at once** | a sweep runs in order, locally | **never** — one job per invocation, by hand |
+| **floors 2, 3, 4, 6, 7** | *identical* | *identical* |
 
 **The wrapper is the same file.** That is the point of the two-layer split: the
 inner `.run.sh` owns activation and launch and is byte-identical whether a
@@ -555,39 +623,78 @@ the cluster performs. *(Checked — `test_jobset::test_the_inner_wrapper_is_byte
 identical_on_both`, and its companion that a workstation gets no `.sbatch` at
 all.)*
 
-```mermaid
-flowchart TB
-    subgraph WS["<b>workstation</b>"]
-      direction TB
-      W1["prep → the deck and .run.sh"]
-      W2["submit --mode direct"]
-      W3["bash …run.sh — it runs here, you wait"]
-      W1 --> W2 --> W3
-    end
-    subgraph HPC["<b>HPC cluster</b>"]
-      direction TB
-      H1["prep → the deck, .run.sh AND .sbatch"]
-      H2["submit --mode submit"]
-      H3["sbatch → the queue → a compute node"]
-      H4["the node runs the SAME .run.sh"]
-      H1 --> H2 --> H3 --> H4
-    end
-```
-
 **A workstation needs no `scheduler` block at all**, and with none configured no
 `.sbatch` is written — asking for one would be the nanny behaviour this project
 refuses. **A cluster needs one**, because `partition` and `qos` cannot be
 guessed and a header without them is rejected by the scheduler rather than by
 molbuilder; so molbuilder refuses first, where the message is useful.
 
-### 9.1 The two shapes are the same on both
+### 9.2 The same two commands, on both — a worked pair
+
+You wrote one folder. Here is what the *same* two stages look like in each place,
+side by side, with nothing edited between them.
+
+**On your workstation**, 8 cores, one GPU, no queue:
+
+```bash
+molbuilder jobset prep   run coarse
+#   machine      8 cores · 1× RTX A4000 · no scheduler
+#   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 32 (proposed), Diag.Algorithm ScaLAPACK
+#   01_coarse/run-0/                 ready      (nothing carried — cold start)
+molbuilder jobset submit run coarse --mode direct     # runs here; you wait
+molbuilder jobset status                              # look before deciding
+molbuilder jobset prep   run tight --from 01_coarse/run-0
+molbuilder jobset submit run tight  --mode direct
+```
+
+**On the cluster**, after `scp -r bdt-relax/ cluster:~/`, with a `scheduler`
+block in `molbuilder.json`:
+
+```bash
+molbuilder jobset prep   run coarse
+#   machine      64 cores · 4× A100 · slurm (partition public, qos public)
+#   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 128 (measured), Diag.Algorithm ELPA-1STAGE
+#   01_coarse/bdt_au_01_coarse.sbatch  written  -p public -q public -n 64 --gres=gpu:a100:1
+#   01_coarse/run-0/                 ready      (nothing carried — cold start)
+molbuilder jobset submit run coarse --mode submit     # Submitted job 4021
+molbuilder jobset status                              # look before deciding
+molbuilder jobset prep   run tight --from 01_coarse/run-0
+molbuilder jobset submit run tight  --mode submit     # Submitted job 4022
+```
+
+**The words you typed are the same. Four values in the printed report are not**,
+and every one of them was decided by floor 1 on the machine it was decided on:
+
+| | workstation | cluster | decided by |
+|---|---|---|---|
+| ranks | 8 | 64 | floor 1, at `prep` step 1 |
+| `BlockSize` in the deck | 32 | 128 | floor 3, at step 3 — *proposed from the orbital and rank counts, unless you set or measured one* ([`tuning.md § 2.11`](?doc=engines/tuning.md)) |
+| `Diag.Algorithm` | ScaLAPACK | ELPA-1STAGE | you, but only the cluster has the GPU build |
+| the env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` | floor 5, at step 4 — *derived from the solver* |
+| `.sbatch` | not written | written | floor 5, from `scheduler` being present |
+| **the template, `task.json`** | **byte-identical** | **byte-identical** | — |
+
+**Read the second and fourth rows together and § 4.1's forced ordering falls
+out.** The ranks decide the block size, and the solver decides the environment —
+so the machine must be resolved before the deck, and the deck before the
+wrapper. That is why `prep` exists at all instead of the browser finishing the
+job.
+
+### 9.3 The two shapes are the same on both
 
 The **flat** and **hierarchical** layouts (`project-layout.md` § 1) are a
-separate choice from where you run. Either shape works on either machine:
-`prep` builds what you asked for, and `submit` starts one stage of it. You would
-pick flat on a laptop for a quick relaxation where only the final state matters,
-and hierarchical when you need to compare stages or go back to one — but nothing
-in the framework ties a shape to a machine.
+separate choice from where you run — they are `task.json`'s `shape` field, and
+the machine never sees it. Either shape works on either machine: `prep` builds
+what you asked for, and `submit` starts one stage of it.
+
+|  | `--mode direct` | `--mode submit` |
+|---|---|---|
+| **`shape: flat`** | a quick relaxation on a laptop, one directory, only the latest state kept | ordinary — a single production ladder where you keep the checkpoints |
+| **`shape: hierarchical`** | ordinary — a laptop where you want to compare stages afterwards | the long mission: every stage and attempt on disk, benchmarked per stage |
+
+**All four cells are normal.** `--mode` is *how the job is launched*; `shape` is
+*how the results are kept*. Nothing in the framework infers one from the other,
+and a workstation running `hierarchical` is not an unusual thing to want.
 
 ---
 

@@ -2086,7 +2086,7 @@ makes; the middle column is what enforces it today.
 | § 8.3 · no wrapper without `activation` | `require_activation`'s own tests | ✅ |
 | § 9 · a workstation needs no scheduler block | unit 3 | ✅ |
 | § 9 · the inner `.run.sh` is byte-identical on both | unit 3 | ✅ |
-| § 9.1 · shape and machine are independent | `test_jobset` shape tests | ✅ for shape; the crossing with mode is untested |
+| § 9.3 · shape and machine are independent | `test_jobset` shape tests | ✅ for shape; the crossing with mode is untested |
 
 **Units, smallest first — the last one is the migration everything else waits
 on.** Units 1–5 landed 2026-08-10.

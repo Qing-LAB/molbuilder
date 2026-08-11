@@ -10,8 +10,10 @@ effective config; [`execution/run-identity.md`](?doc=execution/run-identity.md) 
 the id every stage in a folder shares, and the engine parameters that decide
 whether a stage continues; [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 — the run directory the decks land in and the persisted-artifact registry;
-[`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md) — the
-plan that motivates this contract and schedules the work.
+[`engines/template.md`](?doc=engines/template.md) — the file the effective config
+is resolved *from*, and the format every engine's parameters share;
+[`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+— the plan that motivates this contract and schedules the work.
 
 **Status: proposed, not built.** This document is written first and the code is
 built to it, the way `web/spectrumchart.md` and `web/vibrationview.md` were.
@@ -225,7 +227,8 @@ engine's own:
 | the catalogue | the form-schema generator | **its config class and its `workflow_group` tags** |
 | resolution | template ⊕ `overrides` → one config | — |
 | the per-stage table | one tab, driven by `varies` | — |
-| the backbone | — | **its template's format** (`.fdf` for SIESTA, `.py` for PySCF) |
+| the backbone | **the template's format** — one TOML file, the same for every engine ([`template.md`](?doc=engines/template.md)) | **which items are in it**, and what each one's `anchor` is |
+| the deck | — | **the file the engine reads** (`.fdf` for SIESTA, `.py` for PySCF) |
 | correctness | the *structural* preflight (§ 6.6) | **the science** — is this basis adequate for that cutoff, does this ladder loosen |
 
 **Everything generic happens first; the engine-specific judgement happens last,
@@ -437,22 +440,23 @@ decks that are subtly wrong for the machine they run on.
 |---|---|---|
 | an ordinary deck line | `mesh_cutoff` → `MeshCutoff` | the stage's deck, and nowhere else |
 | **a deck line that is also a resource decision** | `diag_algorithm` → `Diag.Algorithm`; `enable_gpu` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
+| a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at prep (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
+| **a field that is a claim about the run directory** | `required` | **the check the wrapper runs in the directory the job runs in**, immediately before the engine starts — and nowhere else (`job-contracts.md § 2.1`, § 4.4) |
 
-> **This row is about where a value *lands*, not about who *chooses* it**
+> **The second row is about where a value *lands*, not about who *chooses* it**
 > (clarified 2026-08-07, because the wording invited the other reading).
 > `diag_algorithm` is an **ordinary explicit option** — the user picks it, and
 > nothing derives it from the machine. What makes it a resource decision is only
-> that the choice is *read* in three places downstream. **And whether the engine
-> can honour it is the engine's business**: a deck asking for an ELPA solver a
-> build does not have fails when SIESTA runs, which is the right place to fail.
-> The generator does not check.
+> that the choice is *read* in three places downstream, which is exactly what
+> [`template.md`](?doc=engines/template.md) § 6.1's `read_by` records on the item
+> itself. **And whether the engine can honour it is the engine's business**: a
+> deck asking for an ELPA solver a build does not have fails when SIESTA runs,
+> which is the right place to fail. The generator does not check.
 >
 > **A genuinely derived value is a different case** — `BlockSize` from the rank
-> count. There the default is computed at generation, an explicit user setting
-> wins, and both are available at that moment
+> count. There the default is computed at `prep`, an explicit user setting wins,
+> and both are available at that moment
 > ([`template.md`](?doc=engines/template.md) § 12).
-| a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at install (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
-| **a field that is a claim about the run directory** | `required` | **the check the wrapper runs in the directory the job runs in**, immediately before the engine starts — and nowhere else (`job-contracts.md § 2.1`, § 4.4) |
 
 > **Why the fourth row is not the third one wearing a hat** *(added 2026-08-08)*.
 > The third row's fields are **values the wrapper uses**: a rank count becomes an
@@ -914,7 +918,8 @@ now archived. Both are about `task.json`, so they belong here.*
 > transactional rule that they all appear or none does — is this contract's, and
 > that is § 7 proper and § 7.2. **Where those files land is not**: the levels of
 > the tree, how each is named, and who may write at each one belong to
-> [`project-layout.md`](?doc=execution/project-layout.md), which § 7.1 defers to.
+> [`project-layout.md`](?doc=execution/project-layout.md) — § 7.1 below defers
+> to it rather than restating it.
 > **Nor is the saved history**: [`checkpointing.md`](?doc=execution/checkpointing.md)
 > owns it, and § 7.4 is a pointer rather than a specification. What stays here in
 > § 7.3 is only the part that is about a *stage* — that a stage's name is its
@@ -1027,11 +1032,11 @@ and never a filename (`run-identity.md § 2.0a`). A molbuilder-named file adds
 
 ```mermaid
 flowchart LR
-    T["<b>&lt;id&gt;.template.toml</b><br/>functional · basis · k-grid<br/>every parameter, with its base value"]
+    T["<b>&lt;label&gt;.template.toml</b><br/>functional · basis · k-grid<br/>every parameter, with its base value"]
     J["<b>task.json</b><br/>coarse: mesh 150, tol 0.04<br/>tight:  mesh 300, tol 0.01"]
     M["<b>this machine</b><br/>ranks · solver · GPU"]
-    DC["<b>01_coarse/&lt;label&gt;_coarse.fdf</b>"]
-    DT["<b>02_tight/&lt;label&gt;_tight.fdf</b>"]
+    DC["<b>01_coarse/&lt;label&gt;_01_coarse.fdf</b>"]
+    DT["<b>02_tight/&lt;label&gt;_02_tight.fdf</b>"]
     T --> DC
     T --> DT
     J -->|"coarse's row"| DC
@@ -1069,9 +1074,12 @@ one. Two of its properties are the reason:
   obviously shared rather than coincidentally identical.
 - **What a stage continues from is copied, not linked.** Stage 2 writes to
   `<label>.XV` itself; a link would send that write straight through into stage 1's
-  directory and destroy the result it started from. A real copy closes it.
-  `prep` links instead, because it expects a whole chain submitted at once —
-  **which this contract does not do** (below).
+  directory and destroy the result it started from. A real copy closes it, and
+  `prep` can make one *then and there* because the run you named has already
+  finished — which is the whole payoff of stages not being chained
+  ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)). The read-only
+  files — the deck, the wrapper, the monitor, the pseudopotentials — are still
+  linked; **link what the engine only reads, copy what it writes.**
 
 **Why not one flat directory.** A flat folder was the earlier answer here, on the
 grounds that a shared basename makes continuing free (`job-contracts.md § 2.1`
@@ -1083,24 +1091,18 @@ one set of results — the last — plus three `.out` logs. For a framework whos
 purpose is managing a mission across several parameter sets, losing every
 intermediate result is not a trade, it is a defect.
 
-**Stages are not chained, and this is the load-bearing decision.** Each stage is
-set up and started on its own, *after* you have looked at the one before it
-(`project-layout.md § 1.6`). A stage is a long job; a chain that continues by
-itself can spend a week refining a geometry you would have rejected in a minute.
-So no `depends_on`, no queued follow-on, and no file pointing at a result that
-does not exist yet. When you set the next stage up, the run it continues from
-**has already finished** — you just looked at it and named it — so its files are
-copied in there and then.
+**Stages are not chained**, and what that means on disk —
+no `depends_on`, no queued follow-on, nothing pointing at a file that does not
+exist yet, and a **copy** made at `prep` from the run you name — is
+[`project-layout.md § 1.6`](?doc=execution/project-layout.md)'s, which owns the
+rule and the reasoning.
 
-Which files: `.XV` always, `.DM` when the config saves it, `.CG` only when the
-run it continues from used the same relaxation method, *"a CG state is
-meaningless to a Broyden stage"* (`job-system.md § 4.1`). The stage declares
-that as its `warm` list; the comparison is made at `prep`, against the attempt
-you named.
-
-> **Nothing schedules a stage after another**, here or anywhere: a sweep's
-> points are independent, and a ladder's stages are started one at a time by a
-> person (`job-system.md` § 2, decision 6).
+**What this contract owns is only the part that is about a *stage*: which files
+it declares.** `.XV` always, `.DM` when the config saves it, and `.CG` **only
+when the run it continues from used the same relaxation method** — *"a CG state
+is meaningless to a Broyden stage"*. The stage declares that as its `warm` list
+with `requires_same: "optimizer"`, and the comparison is made at `prep` against
+the attempt you named (`job-system.md § 4.1`).
 
 **And `restart` gets sharper.** In one directory, *continue* could only mean
 "whatever ran here last" — order-of-execution dependent, and wrong if you re-ran
@@ -1345,15 +1347,17 @@ were written for a flat directory and would silently have lost data in a tree.
   project tree** — [`execution/job-contracts.md`](?doc=execution/job-contracts.md).
 - **What values a stage should carry** —
   [`engines/tuning.md`](?doc=engines/tuning.md).
-- **The dependency chain, `Job.carry`, `Job.resources`, and every scheduler
-  concern** — [`execution/job-system.md`](?doc=execution/job-system.md). A
-  JobSet export reads this file and asks for the one thing it does not carry
-  (`on_nonconvergence`, § 3).
+- **`Job.warm`, `Job.traits`, `Job.resources`, and every scheduler concern** —
+  [`execution/job-system.md`](?doc=execution/job-system.md). A producer reads
+  this file and turns each enabled stage into a `Job`; **it asks for nothing this
+  file does not carry**, because there are no edges left to thread. *(That bullet
+  read "the dependency chain, `Job.carry` … and asks for `on_nonconvergence`"
+  until 2026-08-11; all three were deleted on 2026-08-10 — § 3.)*
 - **Carrying a finished run into the next calculation** — the handoff bundle,
-  [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 5. It reads a
-  run directory and fuses the final coordinates with the labels from the script
-  that produced them, and a folder of stages is a run directory, so it works
-  unchanged.
+  [`execution/handoff-bundle.md`](?doc=execution/handoff-bundle.md) (it moved out
+  of `job-contracts.md § 5` on 2026-08-10). It reads a run directory and fuses the
+  final coordinates with the labels from the script that produced them, and a
+  folder of stages is a run directory, so it works unchanged.
 
   > **One interaction to settle before this ships.** `handoff-bundle.md § 4`
   > resolves *which* script to read when a directory holds several: **largest by
@@ -1369,5 +1373,5 @@ were written for a flat directory and would silently have lost data in a tree.
   says *when* a checkpoint is taken and *what it is called*; that one says what
   must be true of it afterwards, in a form a test can assert.
 - **Phasing, status, and what is built when** —
-  [`archive/2026-08-11-staged-runs-architecture.md`](?doc=archive/2026-08-11-staged-runs-architecture.md) and
+  [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).

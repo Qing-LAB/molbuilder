@@ -327,7 +327,7 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
 ### 2.5 CLI
 
 ```bash
-molbuilder dna ATGC | molbuilder fdf - out.fdf     # Structure over stdin/stdout
+molbuilder dna ATGC | molbuilder pyscf - out.py     # Structure over stdin/stdout
 molbuilder peptide ASEQ                            # → XYZ on stdout
 ```
 

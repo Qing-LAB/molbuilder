@@ -86,18 +86,19 @@ it calls the **same lower-layer functions the blueprints call**, never a private
 copy. For example: the `peptide`/`dna`/`smiles`/`name` commands and the Build
 blueprint both dispatch to `build_peptide` / `build_dna` / `build_from_smiles` /
 `build_from_name`; `modify` and the Modify blueprint both call
-`molbuilder.modify`; `run` and the Build blueprint both call
-`runwrap.write_run_wrapper`. The layering test guarantees this — `cli` and `web`
-are the only two top-layer modules, both sitting above one shared API.
+`molbuilder.modify`; `jobset prep` and the Build blueprint both reach
+`runwrap.write_run_wrapper` through the same seam. The layering test guarantees
+this — `cli` and `web` are the only two top-layer modules, both sitting above one
+shared API.
 
 ### The command catalogue (an index — behaviour lives in the domain docs)
 
-**14 top-level commands:**
+**13 top-level commands:**
 
 | | | |
 |---|---|---|
 | `peptide` `dna` `rna` `smiles` `name` | build a structure | ([`web/tabs.md`](?doc=web/tabs.md)) |
-| `fdf` `pyscf` | XYZ/PDB → a SIESTA/PySCF run script | ([`execution/`](?doc=execution/overview.md)) |
+| `pyscf` | XYZ/PDB → a PySCF run script | ([`execution/`](?doc=execution/overview.md)) |
 | `validate` | geometry (+ optional engine) checks → Issue JSON | ([`science/validation.md`](?doc=science/validation.md)) |
 | `modify` | one structure-edit op per call | |
 | `xv2xyz` `runtime-info` `monitor` | SIESTA `.XV`→xyz · dump a runtime-info sidecar · watch a job | |
@@ -113,6 +114,24 @@ are the only two top-layer modules, both sitting above one shared API.
 > ([`running-a-job.md`](?doc=execution/running-a-job.md) § 2.1). It is deleted,
 > not deprecated — there is no second path to keep working.
 
+> **And there is no `molbuilder fdf`** *(decided 2026-08-11, user: "obsolete
+> residue from the flat-dir design")*. It is the same shape as `run` one step
+> earlier: it wrote a **finished deck** straight from CLI flags, and
+> `fdf --jobset` wrote a whole flat bundle — both skipping the description that
+> makes a calculation reproducible. **Describing a calculation is
+> `molbuilder jobset describe`**, which writes the portable package — the
+> template, `task.json`, the data files — and `prep` renders the deck from it on
+> the machine that will run it
+> ([`project-layout.md § 2.1`](?doc=execution/project-layout.md)).
+>
+> **The emitter is untouched.** `render_fdf` and `convert`
+> ([`engines/siesta.md`](?doc=engines/siesta.md) § 2) are the Python API and stay
+> exactly as they are — what is deleted is the *top-level verb* that let a person
+> reach them without a description. `pyscf` survives for now because PySCF's
+> ladder runs inside one emitted script rather than as a job set
+> ([`stages.md § 1`](?doc=engines/stages.md)); it goes the same way when that
+> path is reworked.
+
 **7 sub-groups:** `envs` (conda-env management → [`ops/installation.md`](?doc=ops/installation.md)),
 `bench` (the CPU-vs-GPU benchmark), `jobset` (staged execution →
 [`execution/job-system.md`](?doc=execution/job-system.md)), `transport`
@@ -124,15 +143,18 @@ are the only two top-layer modules, both sitting above one shared API.
 
 - **Exit codes:** `--help` → 0; a usage / unknown-command / bad-argument error → 2;
   a domain error → 1. A few commands deliberately use 2 for a *domain* problem the
-  user must fix before anything runs (e.g. `fdf` with a missing pseudopotential,
-  `validate --exit-on-error`) — the number tells a script "stop, this won't work."
+  user must fix before anything runs (e.g. a missing pseudopotential at
+  `jobset prep`, `validate --exit-on-error`) — the number tells a script "stop,
+  this won't work."
 - **stdout vs stderr:** structure/data output goes to **stdout**, the human summary
   to **stderr**, and `-` means stdin/stdout — so `molbuilder … | molbuilder …`
   pipes cleanly.
-- **`--help` is generated from the config dataclasses.** The `fdf`/`pyscf` flags are
+- **`--help` is generated from the config dataclasses.** The engine flags are
   derived from `SiestaConfig`/`PySCFConfig` field metadata, so a `choices=` field
   becomes a `click.Choice` that fails at parse time (exit 2) — the CLI and the web
-  form expose the *same* options from one source.
+  form expose the *same* options from one source. That is also what makes
+  `jobset describe` possible without a second flag list: the template it writes is
+  generated from the same metadata ([`template.md § 5`](?doc=engines/template.md)).
 
 ## 4. Where the guards live (test map)
 
