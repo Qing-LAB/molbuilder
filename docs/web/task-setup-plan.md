@@ -103,7 +103,7 @@ closure variables that nothing wrote down
 The table's rows are parameters. **Which** parameters is read from `varies` in
 the description — the user picked them. What each one is **called**, what unit it
 carries, what values it accepts, is read from the item's own declaration in the
-**template** ([`engines/template.md`](?doc=engines/template.md) § 3.3: each item
+**template** ([`engines/template.md`](?doc=engines/template.md) § 5: each item
 carries `type` · `range` · `unit` · `default` · `choices` · `group`), which is
 itself generated from the Python dataclass (`form-schema.md`).
 

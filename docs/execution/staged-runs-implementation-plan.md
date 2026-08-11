@@ -2183,7 +2183,7 @@ on.** Units 1–5 landed 2026-08-10.
    decision precisely because the key means two things and neither is stated.
 
    **"Lossless" was my word, and defining it moved the contract.** The answer is
-   now [`engines/template.md`](?doc=engines/template.md) § 7, and getting there
+   now [`engines/template.md`](?doc=engines/template.md) § 10, and getting there
    corrected the mechanism *and* the format — see the closed decision above.
 
    - **its function** — the calculation's own catalogue: every parameter the

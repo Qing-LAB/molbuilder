@@ -450,7 +450,7 @@ decks that are subtly wrong for the machine they run on.
 > **A genuinely derived value is a different case** — `BlockSize` from the rank
 > count. There the default is computed at generation, an explicit user setting
 > wins, and both are available at that moment
-> ([`template.md`](?doc=engines/template.md) § 9).
+> ([`template.md`](?doc=engines/template.md) § 12).
 | a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at install (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
 | **a field that is a claim about the run directory** | `required` | **the check the wrapper runs in the directory the job runs in**, immediately before the engine starts — and nowhere else (`job-contracts.md § 2.1`, § 4.4) |
 
