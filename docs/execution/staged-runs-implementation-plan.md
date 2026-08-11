@@ -2125,10 +2125,38 @@ on.** Units 1–5 landed 2026-08-10.
    > producer still runs at produce. Held as a strict xfail naming this unit,
    > so it fails loudly the moment the producer moves.
 
-   **6b** — `prep` renders the deck from template + `task.json`, after
-   resolving the machine (step 1 already does that). **6c** — produce stops
-   writing finished decks. **6d** — the web follows. Each touches the web
-   surface progressively, so they are taken one at a time with a go.
+   **6b — BLOCKED, and the block is a correctness one.** `prep` cannot render
+   the deck from the template, because **the template is lossy**. Found by
+   static analysis 2026-08-11, before writing anything: `SiestaConfig` has 45
+   fields and the declaration table covers **39**. All six of the rest are read
+   by the deck renderer:
+
+   | field | why it matters |
+   |---|---|
+   | `species_order` | the order species are declared in. `run-identity.md` § 4: *"a `.XV` read against a different order lands every coordinate on the wrong atom"* |
+   | `write_coor_step` · `write_forces` · `write_molwatch_log` | SIESTA write flags — they change what the run produces, and the monitor reads one of them |
+   | `stage` | the retired single-stage marker, still read in six places |
+   | `copy_psml` | produce-time behaviour, not deck content — the only one that is genuinely out of scope |
+
+   **So a deck rendered at `prep` would silently differ from the one produced**,
+   falling back to defaults for five fields that change the calculation. A test
+   on a one-species molecule with default flags passes anyway, which is exactly
+   how this would have shipped.
+
+   **6b's real first step is therefore: make the template lossless** — declare
+   the five deck-affecting fields, or prove each does not belong in the
+   portable half and remove it from the config. That is a per-field judgement
+   about what the *description* owns versus what the *machine* owns, and it is
+   the same question § 2.3.1b answered for capability and allocation. `stage`
+   is probably a deletion (the retired marker); `species_order` is plainly the
+   description's; the three write flags need a call.
+
+   **The guard this wants** is an equality: every field the deck renderer reads
+   is either declared in the template or named, with its reason, as
+   deliberately absent. Without it "lossless" is an intention.
+
+   **6c** — produce stops writing finished decks — waits on 6b. **6d**, the
+   browser, is out of scope until the framework is finished (user, 2026-08-11).
 
 **Subtracts:** the second assembly of capability (unit 6 folds the `scheduler`
 block into the machine record, so `environment.json` and the emitted header
