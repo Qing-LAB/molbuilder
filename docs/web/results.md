@@ -86,19 +86,15 @@ file is current" twice, by two different routes.**
 
 ```mermaid
 flowchart TD
-  T["the folder changed · Refresh · tab re-entry"] --> S["scan it — list the folder,
-keep the result-class files, newest first"]
+  T["the folder changed · Refresh · tab re-entry"] --> S["scan it — list the folder,<br/>keep the result-class files, newest first"]
   S --> E{"any results?"}
-  E -->|"none"| N["say so in the menu AND announce
-'nothing selected' — the panel clears"]
-  E -->|"some"| K{"is the file we were
-already showing one of them?"}
+  E -->|"none"| N["say so in the menu AND announce<br/>'nothing selected' — the panel clears"]
+  E -->|"some"| K{"is the file we were<br/>already showing one of them?"}
   K -->|"yes"| KEEP["keep it"]
   K -->|"no"| NEW["take the newest"]
-  KEEP --> ONE["**one** chosen file"]
+  KEEP --> ONE["<b>one</b> chosen file"]
   NEW --> ONE
-  ONE --> A["label the menu with it
-**and** announce it — same value, one step"]
+  ONE --> A["label the menu with it<br/><b>and</b> announce it — same value, one step"]
   A --> M["the viewer mounts what was announced"]
 ```
 
