@@ -64,7 +64,7 @@ def test_run_prep_bench_workstation(tmp_path):
 
 
 def test_summary_surfaces_readiness_with_gpu(tmp_path):
-    # prep must POINT at the existing envs readiness checks (job-execution.md
+    # prep must POINT at the existing envs readiness checks (running-a-job.md
     # § 3.4); with GPUs detected, both doctor and the GPU-env validate show.
     env, written = prep.run_prep_bench(
         tmp_path, overrides={"cores_per_socket": 24, "gpus_per_node": 4,
@@ -144,7 +144,7 @@ def test_gpu_instance_scaling_allows_oversubscription(tmp_path):
 
 def test_run_prep_bench_core(tmp_path, monkeypatch):
     # The on-target shim calls `molbuilder bench prep`, which calls this core
-    # (job-execution.md § 8.3); there is no standalone entry to test.
+    # (execution/job-system.md § 7); there is no standalone entry to test.
     monkeypatch.setattr(env_mod, "_run", lambda *a, **k: None)
     env, written = prep.run_prep_bench(
         tmp_path, scheduler_override="workstation",
@@ -164,7 +164,7 @@ def test_utc_now_iso_format():
 
 
 # --------------------------------------------------------------------- #
-#  bake_target_wrappers -- prep-time wrapper baking (job-execution.md §7) #
+#  bake_target_wrappers -- prep-time wrapper baking (execution/job-system.md § 7) #
 #  The wrappers moved from generate to prep; THIS is where one portable   #
 #  bundle gets specialised for the machine it will run on.                #
 # --------------------------------------------------------------------- #

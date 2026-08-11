@@ -1057,10 +1057,10 @@ class TestSiestaStageOverlay:
             f"got {s1['relax_type']!r}")
         assert s1["relax_force_tol"] == 0.05, (
             f"stage 1 force_tol must be 0.05 eV/A (loose preopt tier "
-            f"per optim-tuning.md sect. 2.3); got {s1['relax_force_tol']}")
+            f"per engines/tuning.md sect. 2.3); got {s1['relax_force_tol']}")
         assert s1["relax_max_displ"] == 0.20, (
             f"stage 1 max_displ must be 0.20 A (loose preopt per "
-            f"optim-tuning.md sect. 2.2); got {s1['relax_max_displ']}")
+            f"engines/tuning.md sect. 2.2); got {s1['relax_max_displ']}")
 
         # Stage 2: Broyden publishable (Gaussian-OPT default).
         s2 = SIESTA_STAGE_PRESETS[2]
@@ -1069,11 +1069,11 @@ class TestSiestaStageOverlay:
             f"got {s2['relax_type']!r}")
         assert s2["relax_force_tol"] == 0.04, (
             f"stage 2 force_tol must be 0.04 eV/A (publishable per "
-            f"optim-tuning.md sect. 2.3; Gaussian-OPT default); "
+            f"engines/tuning.md sect. 2.3; Gaussian-OPT default); "
             f"got {s2['relax_force_tol']}")
         assert s2["relax_max_displ"] == 0.05, (
             f"stage 2 max_displ must be 0.05 A (publishable per "
-            f"optim-tuning.md sect. 2.2); got {s2['relax_max_displ']}")
+            f"engines/tuning.md sect. 2.2); got {s2['relax_max_displ']}")
 
         # Stage 3: Broyden tight (crystal/surface production).
         s3 = SIESTA_STAGE_PRESETS[3]
@@ -1082,13 +1082,13 @@ class TestSiestaStageOverlay:
             f"got {s3['relax_type']!r}")
         assert s3["relax_force_tol"] == 0.01, (
             f"stage 3 force_tol must be 0.01 eV/A (crystal/surface "
-            f"production per optim-tuning.md sect. 2.3.1; matches "
+            f"production per engines/tuning.md sect. 2.3.1; matches "
             f"VASP EDIFFG=-0.01).  Pre-realignment was 0.001 eV/A "
             f"which is GAU_TIGHT and chases SCF noise on 100+ atom "
             f"metals.  Got {s3['relax_force_tol']}")
         assert s3["relax_max_displ"] == 0.02, (
             f"stage 3 max_displ must be 0.02 A (crystal-tight per "
-            f"optim-tuning.md sect. 2.2); got {s3['relax_max_displ']}")
+            f"engines/tuning.md sect. 2.2); got {s3['relax_max_displ']}")
 
     def test_cli_stage_flag_emits_broyden_for_stage_2_and_3(self, tmp_path):
         """End-to-end: ``molbuilder fdf --stage N`` does THREE things

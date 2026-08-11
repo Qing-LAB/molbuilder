@@ -1,5 +1,5 @@
 """Single-point engine atom-index translation (engine_atom_index.py) +
-the display↔engine consistency binding (data-vocabulary.md § 3.1)."""
+the display↔engine consistency binding (model/overview.md § 2)."""
 from pathlib import Path
 
 from molbuilder import engine_atom_index as eai

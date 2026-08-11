@@ -1,5 +1,5 @@
 """probe-scheduler: parse live sinfo/sacctmgr -> proposed scheduler block
-(slurm-integration.md § 4.5).  Fixtures are the REAL ASU Sol output captured
+(execution/job-system.md § 7).  Fixtures are the REAL ASU Sol output captured
 2026-06-29, so the derivation is validated against the actual cluster."""
 
 from molbuilder.bench.probe import (best_gpu_type, derive_scheduler_block,

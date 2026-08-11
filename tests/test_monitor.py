@@ -1,6 +1,6 @@
 """Tests for the background job-monitor + notifier hooks
 (``molbuilder.monitor``) -- the PoC front end of the job-monitor/watcher
-+ notifier surface (slurm-integration.md § 11.0b, item F).
++ notifier surface (execution/running-a-job.md § 4.1, item F).
 
 Deterministic: ``run_monitor`` takes injectable ``sleep``/``clock`` and a
 ``max_ticks`` bound, so no real time passes and no real process is spawned.

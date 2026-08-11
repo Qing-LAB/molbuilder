@@ -41,7 +41,7 @@ class TestSiestaParserNoEtotFallback:
         # legacy ``molbuilder/parsers/siesta.py`` → ``molbuilder/
         # parse/engines/siesta.py`` (absorbed body lives at the
         # ``SiestaParser`` class — public surface for the body
-        # parser; see parse-module.md § 8).
+        # parser; see model/parse.md § 3).
         path = (Path(__file__).resolve().parent.parent
                 / "molbuilder" / "parse" / "engines" / "siesta.py")
         return path.read_text()

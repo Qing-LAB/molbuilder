@@ -527,7 +527,7 @@ class TestWorkflowGroupSchemaConsistency:
         on the form (carries a ``section`` metadata key) MUST also
         carry ``workflow_group`` so the corresponding validator
         Issues route to the Profile / Stage / Budget cards per
-        web-ui-coherence.md Rule 2.
+        web/ui-contract.md Rule 2.
 
         Pre-2026-06-17 17 fields drifted into the residual ("Other")
         panel because the metadata fan-out from sections to
@@ -629,7 +629,7 @@ class TestWorkflowGroupSchemaConsistency:
         assert "molbuilder.detectionChip" in transport, (
             "transport/core.js does not call the shared chip helper "
             "— Au junctions silently skip the chip again "
-            "(see web-ui-coherence.md Rule 1).")
+            "(see web/ui-contract.md Rule 1).")
 
 
 class TestTrajectoryInspectorClaimsOptimXyz:

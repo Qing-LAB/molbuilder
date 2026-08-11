@@ -1,4 +1,4 @@
-"""Phase 1 of the viewer/selection merge (atom-annotations.md): the
+"""Phase 1 of the viewer/selection merge (model/structure-annotations.md): the
 Structure per-atom annotations layer + all-channel remap."""
 import numpy as np
 import pytest
@@ -48,7 +48,7 @@ def test_channels_unify_every_label_and_the_extras():
     assert ch["L-electrode"].kind == "tag" and ch["L-electrode"].data == [0, 1]
     # The reserved label is a `tag` like every other label -- same kind, same
     # shape.  It was a `flag` channel synthesised beside the labels while it had
-    # a store of its own (atom-annotations.md § 2).
+    # a store of its own (model/structure-annotations.md § 2).
     assert ch[FROZEN_LABEL].kind == "tag" and ch[FROZEN_LABEL].data == [4]
     assert ch["charge"].kind == "value" and ch["charge"].data == {0: -1.0, 1: 0.5}
 

@@ -94,7 +94,7 @@ def _keyword(fdf_text: str, key: str):
 def test_solver_override_reaches_each_deck(slab, template, ladder):
     fdfs = render_siesta_stage_fdfs(slab, template, ladder)
     # ScaLAPACK is SIESTA's built-in Divide-and-Conquer and is emitted by
-    # OMITTING the keyword (engines/siesta.md § 13), so the coarse deck
+    # OMITTING the keyword (engines/siesta.md § 7), so the coarse deck
     # asserts absence -- the honest form of "this stage did not opt in".
     assert _keyword(fdfs["JOB_01_coarse.fdf"], "Diag.Algorithm") is None
     assert _keyword(fdfs["JOB_02_tight.fdf"], "Diag.Algorithm") == "ELPA-2STAGE"

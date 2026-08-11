@@ -378,7 +378,7 @@ def _xyz_with_region_sidecar(tmp_path, peptide_xyz):
 
 def test_fdf_surfaces_info_when_structure_carries_regions(
         web_client, peptide_xyz, tmp_path, monkeypatch):
-    """Three-stage Pattern B (sidecar-contract.md § 6 B): the
+    """Three-stage Pattern B (engines/overview.md § 3 B): the
     SCF/relaxation deck does NOT consume transport region labels.
     Generating the .fdf for a structure that carries L-electrode /
     R-electrode / bridge regions used to absorb them silently;
@@ -1159,13 +1159,13 @@ def test_modify_delete_returns_workspace_payload(web_client):
 
 # --------------------------------------------------------------------- #
 #  Atom-count-changing ops emit NO selection_remap (retired)           #
-#  (molview-module.md §19.3.2 -- the client clears the selection)      #
+#  (web/molview.md § 11 -- the client clears the selection)      #
 # --------------------------------------------------------------------- #
 
 
 def test_modify_count_changing_ops_emit_no_selection_remap(web_client):
     """selection_remap was retired: the client CLEARS the selection on any
-    atom-count change (molview-module.md §19.3.2), so a cleared selection can
+    atom-count change (web/molview.md § 11), so a cleared selection can
     never mis-point at a shifted index.  Neither delete nor add_atom (nor the
     electrode ops) may carry a ``selection_remap`` in ``extra`` anymore."""
     r = web_client.post("/api/modify/delete", json={

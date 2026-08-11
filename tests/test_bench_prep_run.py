@@ -78,7 +78,7 @@ def test_prep_run_rejects_unsafe_script_base(tmp_path):
 
 def test_run_prep_run_core(tmp_path, monkeypatch):
     # The on-target shim calls `molbuilder bench prep-run`, which calls this
-    # core (job-execution.md § 8.3); there is no standalone entry to test.
+    # core (execution/job-system.md § 7); there is no standalone entry to test.
     monkeypatch.setattr(env_mod, "_run", lambda *a, **k: None)
     brp = _write_bench_result(
         tmp_path, {"engine": "gpu", "knobs": {"gpus": 1, "ranks_per_gpu": 8},

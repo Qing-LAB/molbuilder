@@ -26,7 +26,7 @@ class TestTransportSchemaEndpoint:
         assert "schema" in body
 
     def test_every_field_carries_engine_key_metadata(self):
-        """Per the 2026-05-26 decision (web-api.md § 4.7) + the
+        """Per the 2026-05-26 decision (web-api.md § 4) + the
         2026-06-10 post-ship review: every form field MUST declare
         an ``engine_key`` in its metadata so users see exactly
         which keyword the field writes into the generated script.

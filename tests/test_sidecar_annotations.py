@@ -1,4 +1,4 @@
-"""Phase 2 (atom-annotations.md § 3): .molstruct.json v4 annotations --
+"""Phase 2 (model/structure-annotations.md § 3): .molstruct.json v4 annotations --
 round-trip + v3 back-read + dual-write."""
 import json
 import numpy as np

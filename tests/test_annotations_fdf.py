@@ -1,4 +1,4 @@
-"""Phase 3 (atom-annotations.md § 4): the fdf emit-strategy registry for
+"""Phase 3 (model/structure-annotations.md § 4): the fdf emit-strategy registry for
 extensible annotation channels (additive; built-in frozen/region untouched)."""
 import numpy as np
 

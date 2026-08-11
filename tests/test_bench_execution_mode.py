@@ -1,4 +1,5 @@
-"""Execution mode -- the run-vs-submit launch policy (job-execution.md § 8.13).
+"""Execution mode -- the run-vs-submit launch policy (execution/job-system.md § 5.3 -- which records that this key has no live
+contract of its own).
 
 Covers the four moving parts of the feature:
 * ``get_execution`` reads + validates ``execution`` from .molbuilder.json

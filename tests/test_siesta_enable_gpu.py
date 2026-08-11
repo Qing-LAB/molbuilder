@@ -176,7 +176,7 @@ def test_render_fdf_scalapack_default_omits_diag_keywords():
 
 
 def test_render_fdf_cpu_elpa_emits_algorithm_and_gpu_false():
-    """CPU-ELPA (engines/siesta.md § 13): selecting an ELPA algorithm
+    """CPU-ELPA (engines/siesta.md § 7): selecting an ELPA algorithm
     WITHOUT GPU must emit ``Diag.Algorithm`` AND an EXPLICIT
     ``Diag.ELPA.GPU .false.`` -- the source ELPA build defaults to the
     GPU codepath, so an omitted flag crashes a CPU run (Sol job 57852378).
@@ -663,7 +663,7 @@ def test_cpu_mode_wrapper_falls_back_to_safe_gpu_default_if_toggled(
 
 
 # --------------------------------------------------------------------- #
-#  ELPA decoupled from GPU: CPU-ELPA routing (engines/siesta.md § 13)    #
+#  ELPA decoupled from GPU: CPU-ELPA routing (engines/siesta.md § 7)    #
 # --------------------------------------------------------------------- #
 
 

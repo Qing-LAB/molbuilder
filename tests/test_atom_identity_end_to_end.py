@@ -1,4 +1,4 @@
-"""End-to-end atom-identity binding (data-vocabulary.md § 3.2): the atom a user
+"""End-to-end atom-identity binding (model/overview.md § 2): the atom a user
 freezes (internal 0-based) MUST be the same physical atom (element + position)
 constrained in the generated engine input -- across BOTH engines, whose index
 conventions differ (SIESTA .fdf 1-based; geomeTRIC $freeze 1-based; PySCF

@@ -15,7 +15,7 @@ the workspace-state migration plan (§ 6).  Phase 2 will pin the
 endpoint-level migration (build/load + build/molecule + modify/*
 emit ``workspace_payload`` directly).  (Phase 3's ``selection_remap``
 was later retired: the client clears the selection on any atom-count
-change, molview-module.md §19.3.2.)  Later phases extend this file
+change, web/molview.md § 11.)  Later phases extend this file
 rather than replacing it.
 """
 from __future__ import annotations
@@ -111,7 +111,7 @@ class TestWorkspacePayloadCanonicalKeys:
 
 
     def test_atoms_carry_coordinates_on_the_atom(self):
-        """workspace-contract.md §1.2.1 (MANDATORY): each atom row carries its own
+        """web/workspace.md § 5 (MANDATORY): each atom row carries its own
         x/y/z as numbers -- the atom is the geometric truth, not a re-parsed xyz
         string."""
         s = _h2o()
@@ -354,7 +354,7 @@ class TestOkStructureResponse:
 
 # --------------------------------------------------------------------- #
 #  apply_companion_labels_if_present + companion-wins-over-sidecar      #
-#  (bundle-contract.md § 4.2 + § 5.3)                                   #
+#  (execution/handoff-bundle.md § 4 + § 5.3)                                   #
 # --------------------------------------------------------------------- #
 
 

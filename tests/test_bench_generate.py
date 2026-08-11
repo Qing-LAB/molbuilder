@@ -168,7 +168,7 @@ def _make_out_with_config(tmp_path) -> Path:
 def test_generate_emits_portable_inputs_not_wrappers(tmp_path):
     # generate writes the TARGET-NEUTRAL bundle: fdf inputs + manifest +
     # sweep placeholder + README + pseudos.  The run wrappers are baked at
-    # PREP, on the target (job-execution.md § 7) -- so they are absent here.
+    # PREP, on the target (execution/job-system.md § 7) -- so they are absent here.
     fdf = _make_src(tmp_path)
     out = _make_out_with_config(tmp_path)
 
@@ -253,7 +253,7 @@ def _no_server_config(monkeypatch):
 def test_generate_cold_start_is_target_neutral(tmp_path, monkeypatch):
     # No config, no flags -> generate must NOT autodetect the host's conda
     # and must NOT write a .molbuilder.json.  Activation is decided at PREP,
-    # on the target (job-execution.md § 7); generate stays target-neutral.
+    # on the target (execution/job-system.md § 7); generate stays target-neutral.
     import molbuilder.runtime_config as rc
     _no_server_config(monkeypatch)
     # Even if a host conda is detectable, generate must not consult it.
@@ -346,7 +346,7 @@ def test_detect_conda_activation_finds_local_conda():
 # NOTE: the sbatch CONTENT tests (estimated --mem, -c 1 / -n for CPU,
 # gpu --gres / -n=K*G / -c=cores//K, --exclusive) moved to
 # tests/test_bench_prep.py::TestBakeTargetWrappers -- the wrappers are now
-# baked at PREP, on the target, from the detected topology (job-execution.md
+# baked at PREP, on the target, from the detected topology (job-system.md
 # § 7).  They are no longer produced by `generate`.
 
 

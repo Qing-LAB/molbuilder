@@ -624,7 +624,7 @@ class TestPseudosEndpoint:
         assert sug["method"] == "UKS"
         assert "Fe" in sug["rationale"]
         # The rationale is engine-AGNOSTIC after the Phase-1c refactor
-        # (scientific-validation.md § 3) — it says "open-shell
+        # (science/validation.md § 3) — it says "open-shell
         # treatment", not "UKS" / "RKS" (those are PySCF strings that
         # belong in the adapter output, not the analyzer's rationale).
         # The UKS / RKS choice is pinned by the assert on

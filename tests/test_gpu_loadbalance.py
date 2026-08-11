@@ -1,5 +1,5 @@
 """Static-text contract tests for the GPU load-balance + --dry-run
-additions to the SIESTA run-wrapper (slurm-integration.md § 7.5.1).
+additions to the SIESTA run-wrapper (execution/running-a-job.md § 3.3).
 
 These assert on the GENERATED bash (no execution) -- the docstrings of
 the extracted block-emitters are the contracts; these tests pin them:

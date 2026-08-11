@@ -40,7 +40,7 @@ def _run_node(snippet: str) -> object:
             }}, initial || {{}});
             const calls = [];
             // save.js's SAVE door is the GLOBAL ``projects.parser.saveMolecule``
-            // (structure-load-save-contract.md) -- NOT a canvas method.  Mount a fake
+            // (web/tabs.md § 6) -- NOT a canvas method.  Mount a fake
             // there that records each call (path + overwrite) and returns a configurable
             // envelope queue (default: success), so these tests pin save.js's COMPOSITION
             // (name normalisation, overwrite retry, refresh, result mapping).  The write
@@ -116,7 +116,7 @@ def _run_node(snippet: str) -> object:
                 _calls:      () => calls.slice(),
             }};
         }}
-        // save-flow.md §1: a Save now REQUIRES the name dialog (no default
+        // web/tabs.md § 6: a Save now REQUIRES the name dialog (no default
         // filename).  Mount a fake that returns ``chosenName`` and records the
         // ``initial`` it was shown (must be blank) + overwrite confirmations.
         function _mountDialog(chosenName, opts) {{
@@ -452,7 +452,7 @@ class TestConfigurationErrors:
             console.log(JSON.stringify({rejected, msg}));
         ''')
         assert out["rejected"] is True
-        # Phase 10 (workspace-contract.md §1): renamed from
+        # Phase 10 (web/workspace.md § 1): renamed from
         # "canvas" to "workspace" — the legacy structureCanvas
         # store is no longer the save panel's dependency.
         assert "workspace" in out["msg"]

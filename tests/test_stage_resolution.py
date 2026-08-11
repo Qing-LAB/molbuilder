@@ -153,7 +153,7 @@ def test_the_template_is_not_mutated_by_rendering(h2):
 def test_a_stage_can_vary_a_parameter_the_stage_type_never_carried(h2):
     """**The gate the whole design named**, and it is green.
 
-    `staged-runs-architecture.md § 8` puts this between its steps 2 and 3:
+    `engines/stages.md § 1.2` puts this between its steps 2 and 3:
     the backend must be able to render a stage that overrides a parameter
     the stage type never carried, *before any of it is drawn*.  Draw first
     and the UI gets designed around what the model happens to allow.

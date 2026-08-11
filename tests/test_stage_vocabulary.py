@@ -28,7 +28,7 @@ is not installed into the env -- see docs/process/testing.md.)
 
 WHAT THE LEDGERS BELOW ARE FOR.  Question 1 is answered by attributing every
 declaration in the package whose name carries "stage" to one of the ten
-mechanisms ``staged-runs-architecture.md`` § 8b enumerates, or to a role that
+mechanisms `the implementation plan` § 8b enumerates, or to a role that
 is not a mechanism at all.  Removing a mechanism is then a one-line edit --
 which is what makes phase P5's "these nine names are gone" provable rather
 than intended -- and growing an eleventh fails until somebody writes down what

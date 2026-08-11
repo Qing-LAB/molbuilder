@@ -1488,7 +1488,7 @@ def test_a_clean_stage_refuses_from_instead_of_copying_nothing(tmp_path):
 
 def test_the_declaration_is_now_the_only_rendering_of_the_rule():
     """The warm declaration is the one rendering of the warm-start rule.
-    -- `staged-runs-architecture.md` 12c's *"two lists that agree today and
+    -- the plan's item 12c's *"two lists that agree today and
     nothing keeps them agreeing"*, held in step by derivation.
 
     P7 unit 2 deleted the second rendering, which is the better end state: a
@@ -2066,10 +2066,10 @@ def test_the_prep_warning_and_the_submit_refusal_cannot_disagree(
         tmp_path, deck, launch):
     """One comparison, two surfaces — the guard that keeps them one.
 
-    `job-system.md` § 2.3.3: *"Printing what it resolved is what makes `submit`
+    `project-layout.md` § 2.3.3: *"Printing what it resolved is what makes `submit`
     a plain yes."*  That only holds if what `prep` says and what `submit` does
     are the same answer. Two implementations of *"do these agree?"* would drift
-    the way `staged-runs-architecture.md` 12c describes — agreeing today, with
+    the way the plan's item 12c describes — agreeing today, with
     nothing keeping them agreeing — and the drift is silent in the worst
     direction: a prep that reports no problem before a submit that refuses.
 

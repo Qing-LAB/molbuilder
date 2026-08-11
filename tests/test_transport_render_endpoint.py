@@ -180,7 +180,7 @@ def test_render_blocks_when_regions_missing(web):
     # which is what transport must refuse (F2: absence is the body's claim).
     r = client.post("/api/transport/render", json=_render_body(
         xyz, {"engine": "transiesta", "job_name": "unlabeled"}))
-    # web-api.md § 1.6 (b): validator hard-fail is scientific
+    # web-api.md § 1 (Status codes) (b): validator hard-fail is scientific
     # advisory — HTTP 200 + ok:false, not 4xx.
     assert r.status_code == 200, r.get_data(as_text=True)
     body = r.get_json()
@@ -355,7 +355,7 @@ def test_render_preflight_error_envelope_carries_top_level_error(web):
     # No regions in the body -> struct.regions empty -> preflight errors (F2).
     r = client.post("/api/transport/render", json=_render_body(
         xyz, {"engine": "transiesta", "job_name": "envelope"}))
-    # web-api.md § 1.6 (b): scientific advisory at HTTP 200.
+    # web-api.md § 1 (Status codes) (b): scientific advisory at HTTP 200.
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is False

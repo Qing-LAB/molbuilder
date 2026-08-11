@@ -468,7 +468,7 @@ def test_blocksize_field_constrains_pow2_and_leaves_the_range_to_the_deck():
 
 
 # --------------------------------------------------------------------- #
-#  PROVENANCE extract (bundle-contract.md § 5.1)                        #
+#  PROVENANCE extract (execution/job-contracts.md § 3.2)                        #
 # --------------------------------------------------------------------- #
 
 
@@ -500,7 +500,7 @@ def test_extract_provenance_dict_returns_empty_dict_for_present_but_empty():
     """Audit IMPORTANT 10: present-but-empty PROVENANCE returns ``{}``,
     NOT ``None``.  Pre-fix the function used ``out or None`` which
     collapsed "block present, no parseable k/v" into "block absent",
-    contradicting bundle-contract.md § 5.1's None-vs-empty semantics."""
+    contradicting execution/job-contracts.md § 3.2's None-vs-empty semantics."""
     text = (
         "# === molbuilder provenance BEGIN ===\n"
         "# === molbuilder provenance END ===\n"
@@ -524,7 +524,7 @@ def test_extract_provenance_dict_handles_no_defaults_section():
 
 
 # --------------------------------------------------------------------- #
-#  ScriptSource umbrella (bundle-contract.md § 5.1)                     #
+#  ScriptSource umbrella (execution/job-contracts.md § 3.2)                     #
 # --------------------------------------------------------------------- #
 
 
@@ -621,7 +621,7 @@ def test_extract_script_source_empty_blocks_present_but_empty():
     """Present-but-empty regions distinct from missing.
 
     The emitter NEVER writes an empty atom-metadata block (per
-    script-contract.md § 4.4 emission rule), so we hand-craft one
+    execution/job-contracts.md § 3.1 emission rule), so we hand-craft one
     here to pin the extractor's behavior if a future schema /
     third-party writer does emit empty arrays.  Distinct from the
     no-block case above where regions is ``None``."""

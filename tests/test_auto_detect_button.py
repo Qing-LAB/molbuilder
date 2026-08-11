@@ -323,7 +323,7 @@ def test_auto_analyze_runs_on_load_without_filling_forms(
     until the user clicks the Auto-detect button.
 
     Pins the "earlier surfacing" contract documented in
-    scientific-validation.md § 2.5: chemistry conclusions are
+    science/validation.md § 2: chemistry conclusions are
     always visible after load, but form-fill stays gated behind
     explicit user action so we never silently mutate the user's
     params.
@@ -410,7 +410,7 @@ def test_spectrum_auto_detect_markup_present():
 
     Rationale: the hemeC-dithiol incident was on this page;
     Auto-detect is the scientific-guard step that prevents the
-    silent-defaults class of bugs (science.md § 2.3 + § 2.5).
+    silent-defaults class of bugs (science/chemistry-correctness.md § 2 + § 2.5).
     """
     pytest.importorskip("flask")
     from molbuilder.web.app import create_app

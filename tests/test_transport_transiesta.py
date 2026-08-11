@@ -244,7 +244,7 @@ def test_preflight_errors_on_device_transport_kz_gt_1(labeled_device):
 
 
 def test_preflight_warns_on_unknown_region_label(labeled_device, default_cfg):
-    """No silent absorption (sidecar-contract.md § 6): a region label
+    """No silent absorption (engines/overview.md § 3): a region label
     TranSIESTA does NOT consume (anything beyond L-electrode /
     R-electrode / bridge) is ignored for the calculation, so preflight
     must WARN rather than drop it silently -- and the unknown label

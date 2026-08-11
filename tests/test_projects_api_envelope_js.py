@@ -682,7 +682,7 @@ class TestNoStoreCache:
 
 
 class TestNoRawFetchInPreview:
-    """projects-sidebar.md Principle 6: api.js is the SOLE fetch caller
+    """web/projects.md Principle 6: api.js is the SOLE fetch caller
     for the /api/files/* endpoints.  preview.js (edit-save + the two read
     paths) must route every file call through the envelope wrappers so the
     uniform {ok,error,aborted} shape + no-store cache apply everywhere --

@@ -185,7 +185,7 @@ class TestExplicitStatus:
                     f"...}}) has no explicit status code; Flask default 200 "
                     f"is wrong unless this is the scientific-advisory bucket "
                     f"(in which case state ``, 200`` explicitly so the intent "
-                    f"is visible).  See web-api.md § 1.6."
+                    f"is visible).  See web-api.md § 1 (Status codes)."
                 )
         assert not violations, "\n".join(violations)
 
@@ -205,7 +205,7 @@ class TestStatusInAllowedSet:
             if int_status not in ALLOWED_STATUS_CODES:
                 violations.append(
                     f"{py_path.name}:{line_no} — status {int_status} is not "
-                    f"in the web-api.md § 1.6 set "
+                    f"in the web-api.md § 1 (Status codes) set "
                     f"{sorted(ALLOWED_STATUS_CODES)}.  Either pick a "
                     f"semantically-correct status from the set, or update "
                     f"§ 1.6 + ALLOWED_STATUS_CODES here to add it."
@@ -299,7 +299,7 @@ class TestKnownServerFaultSitesAreHTTP500:
             src,
         ), (
             "watch.py::api_data: the parse-error return must be 500 per "
-            "web-api.md § 1.6 (d).  Sibling /api/watch/load returns 500 "
+            "web-api.md § 1 (Status codes) (d).  Sibling /api/watch/load returns 500 "
             "on the same failure class; aligning the two closes the gap "
             "that motivated § 1.6 itself."
         )

@@ -97,7 +97,7 @@ def test_snapshot_gpu_entries_have_required_fields():
 
 def test_endpoint_returns_envelope(monkeypatch):
     """/api/system/load wraps the snapshot in the documented
-    ``{ok, data}`` envelope (web-api.md § 1.1.1)."""
+    ``{ok, data}`` envelope (web-api.md § 1 (the response envelope))."""
     from molbuilder.web.app import create_app
     app = create_app(config={})
     client = app.test_client()

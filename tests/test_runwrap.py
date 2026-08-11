@@ -987,8 +987,7 @@ _PYSCF_WARM_RESTART_INVENTORY = (
 
 def test_pyscf_cold_aside_block_covers_full_warm_restart_inventory():
     """The PySCF ``--cold`` glob must move EVERY file in the
-    warm-restart inventory aside (per script-execution.md "Required
-    tests" item 2).  A future warm-restart hook added in the
+    warm-restart inventory aside (per job-contracts.md § 4.2's warm-file inventory).  A future warm-restart hook added in the
     generator without a matching glob entry here would silently
     state-leak: the user runs ``--cold`` expecting a fresh start but
     geomeTRIC's append-mode (or the script's _atom_block override)

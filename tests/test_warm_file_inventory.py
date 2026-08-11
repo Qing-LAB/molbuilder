@@ -1,6 +1,6 @@
 """One warm-file inventory per engine, and every surface derives from it.
 
-Contract: `staged-runs-architecture.md` item 12c, whose *Done when* is stated
+Contract: `execution/staged-runs-implementation-plan.md`, item 12c, whose *Done when* is stated
 as a mutation and is written that way here — **add a suffix to the list and
 watch both behaviours change.**
 

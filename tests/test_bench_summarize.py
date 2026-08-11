@@ -20,7 +20,7 @@ def _timing(per_iter: float) -> str:
 def _make_point(bundle, g, k, c, per_iter, sm, cpu, bound, mem, *,
                 completed=True):
     # points are G x K x c (independent cores/rank axis); the dir + knobs
-    # carry all three (benchmark-workflow.md § 8, "knobs": {gpus, ranks_per_gpu,
+    # carry all three (execution/job-system.md § 7, "knobs": {gpus, ranks_per_gpu,
     # cores_per_rank}).
     d = bundle / f"point-G{g}K{k}C{c}"
     d.mkdir()

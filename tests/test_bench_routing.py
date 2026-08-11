@@ -1,5 +1,5 @@
 """Submission-domain routing -- recommend + explicit select + per-point job
-names (slurm-integration.md § 4.3, § 4.4; job-execution.md § 8.14).
+names (execution/job-system.md § 6, § 4.4; execution/job-system.md § 6).
 
 * ``get_routing`` reads/validates the named-domain menu (survives the
   scheduler-block normalisation);

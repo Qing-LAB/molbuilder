@@ -209,7 +209,7 @@ def test_bundle_endpoint_rejects_target_dir_pointing_at_file(web_client, tmp_pat
 
 
 def test_bundle_endpoint_rejects_path_outside_picker_roots(web_client, tmp_path, monkeypatch):
-    """Picker-roots security boundary per bundle-contract.md § 7.1.
+    """Picker-roots security boundary per web/web-api.md (the picker-roots sandbox) and handoff-bundle.md § 6.
     ``_resolve_within_roots`` rejects ``/etc/passwd`` style paths."""
     _set_picker_root(monkeypatch, tmp_path)
     r = web_client.post("/api/results/bundle", json={

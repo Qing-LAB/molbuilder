@@ -959,7 +959,7 @@ class TestSidebarCreateUI:
     folder / Upload) in the sidebar header.  Replaces the earlier
     v1 single "+" dropdown which hid the actions behind an extra
     click.  Each button opens its modal dialog directly.  See
-    projects-sidebar.md § Mutation UX."""
+    web/projects.md § Mutation UX."""
 
     def test_create_bar_in_partial(self, web, picker_root):
         body = web.get("/spectrum-calculation").get_data(as_text=True)
@@ -1226,7 +1226,7 @@ class TestFilesRenameSidecarPairing:
     """2026-06-12: rename of a .xyz/.pdb file MUST move its paired
     .molstruct.json sidecar to match the new stem -- otherwise the
     sidecar orphans (load can't find it; user's labels silently
-    disappear).  See projects-sidebar.md § Rename + the
+    disappear).  See web/projects.md § Rename + the
     file-tree-ops contract there."""
 
     def _rename(self, web, path: Path, new_name: str):

@@ -1,4 +1,4 @@
-"""Drift-guard: workspace-contract.md §4.1 names ``molbuilder.workspace.v1``
+"""Drift-guard: web/workspace.md § 9 names ``molbuilder.workspace.v1``
 as the sole sessionStorage persistence key.  Pre-Phase-10 the modify
 viewer wrote ``modify-state`` and canvas-state wrote
 ``molbuilder.structure_canvas`` as parallel mirrors; both retired.
@@ -26,7 +26,7 @@ def test_no_legacy_persistence_key_writes():
             offenders.append((path.relative_to(_STATIC).as_posix(), key))
     assert not offenders, (
         f"legacy sessionStorage keys still referenced: {offenders}. "
-        f"workspace-contract.md §4.1 names molbuilder.workspace.v1 as "
+        f"web/workspace.md § 9 names molbuilder.workspace.v1 as "
         f"the sole persistence key. Read/write goes through the workspace "
         f"dispatcher (lib/workspace/dispatcher.js); other modules must "
         f"call it through the tag-naming doors the dispatcher exposes "

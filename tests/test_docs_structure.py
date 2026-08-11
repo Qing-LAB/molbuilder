@@ -239,3 +239,62 @@ def test_no_markdown_table_has_rows_orphaned_from_its_header():
         "between two rows of one table:\n  " + "\n  ".join(orphans)
         + "\n\nMove the interrupting prose or blockquote BELOW the whole "
           "table; do not drop the rows.")
+
+
+# --------------------------------------------------------------------- #
+#  6. The test suite cites the LIVE contract                            #
+# --------------------------------------------------------------------- #
+
+
+def test_no_test_cites_a_retired_document():
+    """A test names the contract it pins.  That citation must resolve.
+
+    **A test that can only be explained by an archived document is old enough
+    to retire** (user, 2026-08-11).  So a dead citation is never cosmetic: it
+    is either a rule that moved -- repoint it -- or a rule that no longer
+    exists, and then the guard beneath it is asserting something no contract
+    says.
+
+    Forty-one of these were found on 2026-08-11, frozen at their pre-migration
+    names: ``job-execution.md``, ``slurm-integration.md``, ``bundle-contract.md``
+    and eleven more.  The 2026-07 migration moved the docs; ``README.md``'s
+    protocol step 7 says inbound refs are repointed "docs, code comments, AND
+    TESTS, in the same commit", and the tests were the half left behind.
+
+    Only ``§``-bearing citations are checked -- a bare filename in a test is as
+    often a fixture (``STAGE-PLAN.md``) or a real repo file (``INSTALL.md``) as
+    it is a citation, and a guard that cannot tell them apart is one somebody
+    disables.  Archive paths are allowed: naming what was superseded is how a
+    retirement stays legible (R4).
+    """
+    tests_dir = Path(__file__).resolve().parent
+    live = {p.name for p in _new_tree_mds()}
+    headings = {p.name: _headings(p) for p in _new_tree_mds()}
+    seen_twice = {n for n in live
+                  if sum(1 for p in _new_tree_mds() if p.name == n) > 1}
+
+    dead_doc, dead_section = [], []
+    for t in sorted(tests_dir.glob("*.py")):
+        text = t.read_text(encoding="utf-8", errors="replace")
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if "archive/" in line:
+                continue
+            for m in _CITATION.finditer(line):
+                name = Path(m.group(1)).name
+                section = m.group(2)
+                where = f"{t.name}:{lineno} -> {m.group(1)} § {section}"
+                if name not in live:
+                    dead_doc.append(where)
+                elif name not in seen_twice and section not in headings[name]:
+                    dead_section.append(where)
+
+    assert not dead_doc, (
+        "these tests cite a document that is not in the live tree:\n  "
+        + "\n  ".join(sorted(dead_doc))
+        + "\n\nRepoint to the contract that owns the rule now "
+          "(docs/archive/MIGRATION.md maps the 2026-07 moves) -- or, if the "
+          "rule did not survive, RETIRE the test rather than aiming its "
+          "citation somewhere plausible.")
+    assert not dead_section, (
+        "these tests cite a section that does not exist in a live document:\n  "
+        + "\n  ".join(sorted(dead_section)))

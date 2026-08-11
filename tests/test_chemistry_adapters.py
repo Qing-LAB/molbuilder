@@ -206,7 +206,7 @@ def test_all_adapters_agree_on_treatment(elements):
     but the conclusion is identical.
 
     This is the structural realisation of the cross-engine
-    consistency rule (science.md § 2.4) extended to the auto-detect
+    consistency rule (science/chemistry-correctness.md § 2) extended to the auto-detect
     surface.  An adapter that returned treatment='open' translated
     to RKS (a closed-shell method) would fail this test.
     """
@@ -309,7 +309,7 @@ def test_registration_works_with_synthetic_adapter():
 
 
 def test_adapter_modules_do_not_import_analyzer():
-    """Adapters are PURE translators (scientific-validation.md § 4.4).
+    """Adapters are PURE translators (science/validation.md § 3).
     They must not import ``analyze_structure`` or
     ``detect_open_shell_metals`` — chemistry logic belongs in the
     analyzer.  Pinned by AST-parsing each adapter module and

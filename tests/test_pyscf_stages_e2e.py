@@ -319,7 +319,7 @@ class TestApiBuildPyscfRejectsBadStages:
 #  error, NOT a runtime NameError on `mol_eq` from an empty STAGES      #
 #  literal.  Validation errors travel via render_script's               #
 #  ValidationError path, which returns HTTP 200 + ok=false + issues     #
-#  (per web-api.md § 1.6).                                              #
+#  (per web-api.md § 1 (Status codes)).                                              #
 # --------------------------------------------------------------------- #
 
 

@@ -202,8 +202,8 @@ def test_preflight_clean_on_au_bdt_au_fixture():
 
     Au has no entry in the open-shell-metals set (5d¹⁰ closed),
     so the shared open-shell-metal check also returns clean —
-    confirming the cross-engine consistency rule from science.md
-    § 2.4 doesn't false-positive on closed-shell transition
+    confirming the cross-engine consistency rule from science/chemistry-correctness.md
+    § 2 doesn't false-positive on closed-shell transition
     metals.
     """
     from molbuilder.config.transport import TransportConfig

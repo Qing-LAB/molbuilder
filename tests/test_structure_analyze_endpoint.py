@@ -48,7 +48,7 @@ def _post_analyze(web, body):
 
 
 def test_response_shape_carries_every_documented_key(web):
-    """Every key documented in web-api.md § 10 must appear in the
+    """Every key documented in web-api.md § 4 (the route catalogue) must appear in the
     response on the happy path.  Pin against a refactor that
     silently drops a field."""
     xyz = "1\nFe\nFe 0 0 0\n"
@@ -115,7 +115,7 @@ def test_metal_hints_are_dicts_not_dataclasses(web):
 
 def test_analyzer_rationale_does_not_leak_engine_strings(web):
     """The analyzer's rationale is engine-agnostic by design
-    (scientific-validation.md § 3.1).  Engine-specific keywords
+    (science/validation.md § 3).  Engine-specific keywords
     ("UKS", "RKS", "SpinPolarized") belong in the per-engine
     ``suggested.<engine>`` block, not in the analyzer's rationale.
 
