@@ -774,6 +774,108 @@ payload lines *are* the deck text.
 documentation — it is how an override finds its site, **by anchor and not by
 line number**, so a template a person has edited still substitutes correctly.
 
+#### The marking format: one key, a closed vocabulary, inside the comment
+
+**Why the file cannot be JSON or YAML, and it is not a preference.** The rule
+above — *every item appears exactly as it will be copied* — makes the payload
+lines the engine's own input. The template **is** the deck's source, so the file
+must stay in the engine's format and every marking must live where that format
+puts comments. A `.fdf` in JSON would be a description of a deck rather than a
+deck, and `prep` would be transcribing instead of substituting.
+
+**Four formats were weighed. The scores are not close, and one axis turns out
+not to discriminate at all.**
+
+| | **correctness** | **performance** | **readability** |
+|---|---|---|---|
+| **`key=value` in engine comments** *(chosen)* | one file cannot drift from itself; values are tokens once `kind=` exists | irrelevant | highest — the declaration sits directly above the line it produces |
+| **JSON inside the comment** | strongest as pure parsing: a spec, any string, no quoting rules to get wrong | irrelevant | poor — quote-dense, and a person editing it breaks it silently |
+| **a sidecar `template.json`** | **worst: two files, and they can disagree** | irrelevant | fine, but you must read both to know one thing |
+| **YAML in the comment** | weakest: `no` parses as false, versions differ | irrelevant | good |
+
+**Correctness decides it, and not the way "easier to parse" suggests.** The
+failure mode this format must prevent is not a parse error — it is a template
+that *parses cleanly and describes a different deck than the one beside it*. A
+sidecar makes that failure structural: the description and the payload live in
+different files and nothing keeps them in step. Everything else here is a
+recoverable syntax problem; that one is silent and produces a wrong
+calculation. **One file cannot drift from itself** is worth more than any
+parser's strictness.
+
+JSON is genuinely better at parsing, and it loses anyway for two reasons that
+belong to this file specifically: the values are **tokens by construction** once
+the kind stops being prose — so the quoting JSON exists to handle is not
+needed — and `project-layout.md` treats the template as something **a person
+edits**, where a missing brace is a corrupted calculation rather than a typo.
+
+**Performance is not a discriminator and it would be dishonest to claim it
+is.** A template is a few hundred lines, read once per `prep`. Every candidate
+here costs microseconds. The only version of this question with a real answer
+is a surface listing many calculations at once — and even there the cost is
+reading files, not parsing them.
+
+**Readability is the tiebreak, and it is load-bearing rather than cosmetic**:
+§ 3.7's *"one file that is both the reference and the source"* only holds if a
+person can read the reference. The declaration sitting immediately above the
+line it produces is what lets you check a template by eye — the same property
+that makes the payload copyable makes the file reviewable.
+
+**Inside the comment, the grammar is the one § 3.3 already defines** —
+`field <name> key=value …`, space separated. Keeping it is the point: a second
+notation for the same job is the duplication this whole contract exists to
+prevent, and `key=value` parses in one line anyway.
+
+**What was genuinely unparseable was the KIND**, because it was written as
+English inside the anchor: `anchor=(molbuilder: ChemicalSpeciesLabel block
+ordering)`. A layer had to read prose to learn whose parameter it was. So the
+marking is **one more key with a closed vocabulary**:
+
+```fdf
+# === molbuilder item mesh_cutoff BEGIN ===
+#   field mesh_cutoff  kind=engine  anchor=MeshCutoff  type=float  unit=Ry
+#                      range=[50,2000]  default=300.0  group=stage
+#   Mesh cutoff — the real-space integration grid, in Ry.
+MeshCutoff   300.0 Ry
+# === molbuilder item mesh_cutoff END ===
+
+# === molbuilder item species_order BEGIN ===
+#   field species_order  kind=deck  expands=ChemicalSpeciesLabel  type=str
+#   The order species are declared in. A .XV read against a different order
+#   lands every coordinate on the wrong atom (run-identity.md § 4).
+%block ChemicalSpeciesLabel
+  1  6  C
+%endblock ChemicalSpeciesLabel
+# === molbuilder item species_order END ===
+
+# === molbuilder item continue_retries BEGIN ===
+#   field continue_retries  kind=wrapper  type=int  range=[1,5]  default=1
+#   How many times the run wrapper retries a stage that did not converge.
+#   No payload: this item shapes the wrapper, not the deck.
+# === molbuilder item continue_retries END ===
+```
+
+| `kind=` | the item is | payload | who reads it |
+|---|---|---|---|
+| `engine` | one of the engine's own keywords | the keyword line, copied verbatim | the deck |
+| `deck` | molbuilder's, but it shapes the deck — by expanding to keywords or ordering a block | the text it produces; `expands=` names the keywords | the deck |
+| `wrapper` | shapes the run script | none | `runwrap` |
+| `produce` | shapes what the produce step does | none | the producer |
+| `monitor` | shapes what the monitor writes | none | `mb_monitor.py` |
+
+**Three properties make it universal:**
+
+- **A layer filters on one token.** *"Emit every `kind=engine` and `kind=deck`
+  item; ignore the rest"* is the SIESTA producer's whole rule, and PySCF's, and
+  any later engine's. No field lists, no prose.
+- **The vocabulary is closed**, so an unknown `kind=` is an error a reader can
+  report rather than something it silently drops.
+- **`anchor` goes back to being an anchor.** It is a keyword or it is absent —
+  never a sentence. Values become tokens, which is what keeps the `key=value`
+  grammar sufficient and is why a richer format is not needed.
+
+**And it states losslessness mechanically:** the items that must round-trip
+exactly are `kind ∈ {engine, deck}`. The rest must be carried and legible.
+
 **The template says what KIND each item is, and the anchor is where it says
 it.** Not every item is the engine's: some are molbuilder's own, and a layer
 must be able to tell which without carrying a list of field names.
