@@ -874,7 +874,7 @@ molbuilder jobset status                             # look before deciding
 
 molbuilder jobset prep   run tight --from 01_coarse/run-0
 #   reading from 01_coarse/run-0  (finished, converged)
-#   02_tight/<label>_02_tight.fdf   rendered   BlockSize 128
+#   02_tight/<label>_02_tight.fdf   rendered   BlockSize 32   (500 orbitals / 8 ranks)
 #   02_tight/run-0/                 ready      copied in: <label>.XV  <label>.DM
 molbuilder jobset submit run tight --mode direct
 ```

@@ -527,7 +527,9 @@ flowchart LR
 **Read the shape, not the count.** Four of the sixteen are independent and small
 (dashed). **Everything else hangs off gap 9** — a template writer — which is why
 the plan puts P12 unit 6b where it does: it is not one item among sixteen, it is
-the one that unblocks eleven.
+the one that unblocks **ten** — gaps 10, 11, 12 and 2 directly, gap 4 through
+gap 2, and the five invariants that have nothing to be asserted against until a
+described folder exists.
 
 ### What the shape of this list says
 

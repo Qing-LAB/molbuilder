@@ -961,7 +961,8 @@ resources are not "just scheduler flags" here (`engines/stages.md § 5`).
 ```
   reading      02_tight/bench/bench-result.json  (measured here, 2026-08-06)
   resources    elpa · G=1 K=4 C=6 · mem 96G
-  02_tight/bdt_au.fdf   rendered   BlockSize 128, Diag.Algorithm elpa
+  02_tight/bdt_au.fdf   rendered   BlockSize 8, Diag.Algorithm elpa
+                                   (500 orbitals / 32 ranks = 15 -> 8)
   02_tight/run-0/       ready      (nothing carried — cold start)
 ```
 

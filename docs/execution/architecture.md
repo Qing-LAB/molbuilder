@@ -71,6 +71,20 @@ rule, and you can read a folder and know what happened without opening a file.
 > ([`process/conventions.md § 3`](?doc=process/conventions.md)): a second way in
 > is the first crack in the first axis.
 
+> #### ⚠ Two things breach this today, and stating the rule without them would
+> #### be the overclaim this section exists to prevent
+>
+> | | what it is | which kind |
+> |---|---|---|
+> | **`bench`** | a whole second lifecycle for measuring — build · run · read · use-the-answer, each with two spellings | **a merge.** The resolution is already settled: *benchmarking is `prep`, specialised* (`project-layout.md § 2.3.1a`) |
+> | **`transport`** | `transport bundle` emits `run-transport.sh`, which **chains** three coupled runs outside the job system entirely | **a gap.** A `JobSet` carries no edges, so there is nothing for it to be expressed as ([`engines/transport.md`](?doc=engines/transport.md) § 8) |
+>
+> **They are not the same problem, and a plan that treated them alike would
+> either delete a working capability or bless a permanent second path.** One is
+> duplicated machinery; the other is the only shipped work this model cannot
+> describe. The full comparison is
+> [`process/conventions.md § 3`](?doc=process/conventions.md).
+
 ---
 
 ## 1. The one idea: two questions, two different answers
@@ -700,12 +714,16 @@ molbuilder; so molbuilder refuses first, where the message is useful.
 You wrote one folder. Here is what the *same* two stages look like in each place,
 side by side, with nothing edited between them.
 
-**On your workstation**, 8 cores, one GPU, no queue:
+**On your workstation** — 8 cores, one GPU, no queue. `bdt_au` is
+`Au38C6H4S2`: **50 atoms, ~500 orbitals at DZP**, and every number below is
+checkable against that:
 
 ```bash
 molbuilder jobset prep   run coarse
 #   machine      8 cores · 1× RTX A4000 · no scheduler
-#   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 32 (proposed), Diag.Algorithm ScaLAPACK
+#   allocation   8 ranks
+#   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 32, Diag.Algorithm ScaLAPACK
+#                                    (500 orbitals / 8 ranks = 62 -> 32, the pow2 below it)
 #   01_coarse/run-0/                 ready      (nothing carried — cold start)
 molbuilder jobset submit run coarse --mode direct     # runs here; you wait
 molbuilder jobset status                              # look before deciding
@@ -719,8 +737,10 @@ block in `molbuilder.json`:
 ```bash
 molbuilder jobset prep   run coarse
 #   machine      64 cores · 4× A100 · slurm (partition public, qos public)
-#   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 128 (measured), Diag.Algorithm ELPA-1STAGE
-#   01_coarse/bdt_au_01_coarse.sbatch  written  -p public -q public -n 64 --gres=gpu:a100:1
+#   allocation   16 ranks · 1 GPU        <- what THIS run asks for, not what the node has
+#   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 16, Diag.Algorithm ELPA-1STAGE
+#                                    (500 orbitals / 16 ranks = 31 -> 16)
+#   01_coarse/bdt_au_01_coarse.sbatch  written  -p public -q public -n 16 --gres=gpu:a100:1
 #   01_coarse/run-0/                 ready      (nothing carried — cold start)
 molbuilder jobset submit run coarse --mode submit     # Submitted job 4021
 molbuilder jobset status                              # look before deciding
@@ -733,8 +753,9 @@ and every one of them was decided by floor 1 on the machine it was decided on:
 
 | | workstation | cluster | decided by |
 |---|---|---|---|
-| ranks | 8 | 64 | floor 1, at `prep` step 1 |
-| `BlockSize` in the deck | 32 | 128 | floor 3, at step 3 — *proposed from the orbital and rank counts, unless you set or measured one* ([`tuning.md § 2.11`](?doc=engines/tuning.md)) |
+| the machine's **capability** | 8 cores | 64 cores · 4 GPUs | floor 1, at `prep` step 1 |
+| this run's **allocation** | 8 ranks | 16 ranks · 1 GPU | **you**, as an input to `prep` (§ 2.3.1b, M4) |
+| `BlockSize` in the deck | 32 | 16 | floor 3, at step 3 — the ceiling is *orbitals ÷ ranks*, so **more ranks means a smaller block** ([`tuning.md § 2.11`](?doc=engines/tuning.md)) |
 | `Diag.Algorithm` | ScaLAPACK | ELPA-1STAGE | you, but only the cluster has the GPU build |
 | the env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` | floor 5, at step 4 — *derived from the solver* |
 | `.sbatch` | not written | written | floor 5, from `scheduler` being present |
