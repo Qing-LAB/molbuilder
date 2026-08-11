@@ -1,7 +1,9 @@
 """The four questions that decide whether the staged-run design landed.
 
-``docs/web/staged-runs-architecture.md`` § 8c states them as things a reader
-should be able to *check*, not believe:
+``docs/execution/staged-runs-implementation-plan.md`` carries them as standing
+guards -- things a reader should be able to *check*, not believe.  They
+originated in a design draft archived 2026-08-11 as
+``docs/archive/2026-08-11-staged-runs-architecture.md`` § 8c:
 
   1. Is there one way to say "stage"?
   2. Does a stage's name survive -- is no file named by a stage's *position*?
@@ -671,7 +673,7 @@ def baseline() -> list[tuple[str, str, int, str, str]]:
 
 if __name__ == "__main__":  # pragma: no cover -- the reporting surface
     rows = baseline()
-    print("staged-run baseline -- docs/web/staged-runs-architecture.md § 8c")
+    print("staged-run baseline -- docs/execution/staged-runs-implementation-plan.md")
     print()
     for q, measure, count, target, phase in rows:
         flag = "!!" if target == "0" and count else "  "
