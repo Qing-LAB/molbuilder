@@ -212,6 +212,12 @@ flowchart LR
 It reads **one file, not both** — the first one it finds wins. A malformed
 file refuses to start rather than silently misconfiguring.
 
+**These are the server's sections.** The same file also carries what
+*calculations* need — `script_generation`, `scheduler`, `execution`, `envs`,
+`checkpoint` — which are [`execution/running-a-job.md`](?doc=execution/running-a-job.md)
+§ 5. The complete map of every section, who reads it, and where it lands in the
+workflow is [`execution/architecture.md`](?doc=execution/architecture.md) § 7.
+
 | Key | Controls |
 |---|---|
 | `tls: {cert, key}` | HTTPS (CLI `--cert/--key` overrides) |

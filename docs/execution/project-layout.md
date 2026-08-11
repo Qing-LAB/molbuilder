@@ -39,11 +39,18 @@ else follows from that one choice.
 | **What survives** | the **latest** state only | every stage's, every attempt's |
 | **Depth** | 1 | 3 |
 | **Chosen** | at `prep` | at `prep` |
-| **Status** | **ships today** | **proposed** |
+| **Wrappers** | one per stage, beside its deck | one per stage, in the stage's directory |
+| **Built by** | `prep` | `prep` |
 
-**Flat is what the UI ships today.** The Build tab writes a `.fdf` and its
-paired `.run.sh` straight into one directory, and you run them there. Everything
-in the flat column below is describing working software, not a plan.
+**Both shapes are built by `prep`, and both run today.** You pick one when you
+prepare, and `prep` lays out whichever you asked for — flat puts every stage in
+one directory and tells them apart by filename; hierarchical gives each stage a
+directory and each attempt a directory inside it.
+
+**Where the browser still differs.** The Build tab writes a *finished* `.fdf`
+and its paired `.run.sh` into one directory — a single job, not a described
+calculation. That is the one real migration below: it will write a **template
+plus `task.json`** and let `prep` render the deck.
 
 **What changes, and it is the one real migration.** Today the UI writes the
 *finished* deck. Under this design it writes a **template plus `task.json`**,
@@ -74,10 +81,15 @@ flowchart LR
 ```
 au_bdt_relax/
 ├── <label>_01_coarse.fdf           coarse   ─┐ the decks: one per stage,
-├── <label>_03_tight.fdf            tight     │ told apart by their TOKEN
-├── <label>.run.sh                           ─┘ (decision 27 — the ordinal
+├── <label>_03_tight.fdf            tight     ─┘ told apart by their TOKEN
+│                                               (decision 27 — the ordinal
 │                                               travels WITH the name, and
 │                                               a gap stays a gap)
+├── <label>_01_coarse.run.sh        ─┐ ONE WRAPPER PER STAGE, beside its deck.
+├── <label>_03_tight.run.sh         ─┘ `prep` renders one per distinct deck, so
+│                                      each stage is started on its own — which
+│                                      is what makes "one stage at a time" the
+│                                      same act in both shapes.
 ├── <label>_01_coarse-run0.out      stage 1, first attempt   ─┐ told apart
 ├── <label>_01_coarse-run1.out      stage 1, a redo           │ by INDEX
 ├── <label>_03_tight-run0.out       tight, first attempt     ─┘

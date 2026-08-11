@@ -381,6 +381,13 @@ The server reads config to bake site-specifics into wrappers. It is validated
 by `molbuilder/runtime_config.py`; every section is optional, unknown keys are
 ignored.
 
+> **The sections below are the four a *calculation* uses.** The same file also
+> configures the *server* — sign-in, TLS, the rate limiter, the admin list —
+> which is [`ops/deployment.md`](?doc=ops/deployment.md) § 5 and
+> [`ops/access-control.md`](?doc=ops/access-control.md). The complete map of
+> every section, who reads it, and which step of the workflow it reaches is
+> [`architecture.md`](?doc=execution/architecture.md) § 7.
+
 ### 5.1 Where config lives, and merge order
 
 - **Server-wide** `molbuilder.json` — looked up in the current directory first,
@@ -391,7 +398,7 @@ ignored.
   (`script_generation` has a bespoke merge: preambles concatenate server-then-
   project; activation is project-if-set-else-server.)
 
-### 5.2 `script_generation` — activation is required to emit HPC wrappers
+### 5.2 `script_generation` — activation is required to emit ANY wrapper
 
 ```json
 { "script_generation": {
@@ -402,8 +409,10 @@ ignored.
 
 Exactly two keys. `activation` must be `"source activate"` or
 `"conda activate"` and has **no default** — if it is unset in every scope,
-generating an HPC wrapper **refuses** with an operator message pointing here
-(`require_activation`). `preamble` is arbitrary shell run before activation (the
+rendering **any** wrapper refuses with an operator message pointing here
+(`require_activation`, called from `render_run_wrapper`, which every wrapper
+goes through). On a fresh install that is the *"the `.fdf` saved but no
+`.run.sh` appeared"* symptom, and it bites a workstation first. `preamble` is arbitrary shell run before activation (the
 `module load` lines). (Legacy `preactivate` is accepted as an alias for
 `preamble` for one release; `preactivate_format` / `autodetect_conda` are
 dropped with a warning.)

@@ -365,7 +365,149 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 
 ---
 
-## 7. How this serves the other contracts
+## 7. Configuration — one file, and which floor reads each part
+
+**There is one config file, and it serves two different audiences.** Half of it
+configures the *server* (who may sign in, what the rate limiter does). Half
+configures *running calculations* (how to activate an environment, what the
+scheduler wants). Neither half knows about the other, and no document listed
+both until now — `deployment.md` § 5 showed six sections and
+`running-a-job.md` § 5 showed four, and neither said it was showing a subset.
+
+### 7.1 Where it is found, and how two files become one
+
+```mermaid
+flowchart LR
+    A["<b>server-wide</b><br/>./molbuilder.json<br/><i>else</i> ~/.config/molbuilder/molbuilder.json"]
+    B["<b>this project</b><br/>&lt;project&gt;/.molbuilder.json"]
+    M{{"merge:<br/>objects deep-merge<br/>scalars and lists replace<br/><b>the project wins</b>"}}
+    R["the effective settings"]
+    A --> M
+    B --> M --> R
+```
+
+**Only one server-wide file is read** — the current directory first, the XDG
+location second, and the first one found wins. A malformed file refuses to start
+rather than half-configuring something.
+
+`script_generation` merges by its own rule, because concatenating is the useful
+answer there: **preambles join, server first, then project**; `activation` is
+the project's if set, otherwise the server's.
+
+### 7.2 The complete map — section, reader, and where it lands
+
+| section | read by | reaches | what it decides |
+|---|---|---|---|
+| `script_generation` | `get_script_generation`, `require_activation` | **floor 5**, `prep` step 4 | the lines baked into every wrapper: `preamble` (e.g. `module load mamba/latest`), then `activation` verbatim |
+| `scheduler` | `get_scheduler`, `get_routing` | **floor 5**, at `submit` | the `#SBATCH` header: `directives` (partition, qos, mail), `gpu` (partition, type, memory band), `defaults` (time, cores, memory), `mem_model`, and `routing` — the named domains |
+| `execution` | `get_execution` | **floor 5**, at `submit` | `mode` (`direct` or `submit`), and the default `domain` |
+| `envs` | `get_envs` | **floor 5**, `prep` step 4 | which conda environment each engine runs in |
+| `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol | the size at which a file goes to the archive instead of git, and the per-engine hints |
+| `auth`, `providers` | `get_auth`, `get_providers` | the **server** | who may sign in (`ops/access-control.md` § 3) |
+| `secret_key_file` | `get_secret_key_file` | the **server** | the path to the session-signing key — a path, never the secret itself |
+| `tls` | `get_tls` | the **server** | the certificate and key for HTTPS |
+| `rate_limit` | `get_rate_limit` | the **server** | how the limiter judges traffic (§ 4 there) |
+| `admin_emails` | `get_admin_emails` | the **server** | who may clear the block list and restart the process |
+
+**Read the first four rows as one thing.** They are the whole of what a
+calculation needs from config, and they arrive at exactly two moments:
+`prep` step 4 bakes `script_generation` and `envs` into the wrapper, and
+`submit` reads `scheduler` and `execution` to build the command. **Nothing
+reads config at run time** — the wrapper is self-contained by then
+(`job-contracts.md` § 2.1).
+
+```mermaid
+flowchart TB
+    C[("molbuilder.json")]
+    subgraph PREP["prep — on the machine that will run it"]
+      S4["step 4 · Render the wrapper"]
+    end
+    subgraph SUB["submit"]
+      H["build the sbatch command"]
+    end
+    W["the wrapper<br/><i>activation baked in, verbatim</i>"]
+    C -->|"script_generation · envs"| S4 --> W
+    C -->|"scheduler · execution"| H
+    W -.->|"reads NOTHING at run time"| W
+```
+
+### 7.3 The one setting that stops everything
+
+`script_generation.activation` has **no default**, and rendering *any* wrapper
+refuses without it — not only a cluster one. On a fresh install that is the
+*"the `.fdf` saved but no `.run.sh` appeared"* symptom.
+
+```json
+{ "script_generation": {
+    "preamble":   "source ~/miniconda3/etc/profile.d/conda.sh",
+    "activation": "conda activate"
+} }
+```
+
+**Why no default:** the wrapper runs in a non-interactive shell that never reads
+your `~/.bashrc`, so `conda activate` is an undefined function unless something
+loaded conda's hook first. A guessed default would produce a wrapper that dies
+on the compute node with `CondaError: Run 'conda init' before 'conda activate'`
+— far from the machine where it could be fixed. Refusing at generate time puts
+the error where you can act on it.
+
+---
+
+## 8. The same design on a workstation and on a cluster
+
+**Nothing in §§ 2–4 changes between them.** The same floors, the same routes,
+the same five steps. What differs is what two floors *find*, and one flag.
+
+| | **workstation** | **HPC cluster** |
+|---|---|---|
+| **floor 1 — the machine** | detected: `lscpu`, `nvidia-smi` | detected: `scontrol`, `sinfo` — plus what detection cannot know, which you declare in `scheduler` (queue, account) |
+| **config you must write** | `script_generation` only | `script_generation` **and** `scheduler` |
+| **floor 5 — how it starts** | `--mode direct`: `bash …run.sh`, and you wait | `--mode submit`: one `sbatch`, one job |
+| **what is emitted** | `.run.sh` | `.run.sh` **and** `.sbatch` — the outer one is a header whose body is a single line calling the inner one |
+| **many jobs at once** | a sweep runs in order, locally | **never** — one job per invocation, by hand |
+
+**The wrapper is the same file.** That is the point of the two-layer split: the
+inner `.run.sh` owns activation and launch and is byte-identical whether a
+scheduler is involved or not, so a run you debugged on your laptop is the run
+the cluster performs.
+
+```mermaid
+flowchart TB
+    subgraph WS["<b>workstation</b>"]
+      direction TB
+      W1["prep → the deck and .run.sh"]
+      W2["submit --mode direct"]
+      W3["bash …run.sh — it runs here, you wait"]
+      W1 --> W2 --> W3
+    end
+    subgraph HPC["<b>HPC cluster</b>"]
+      direction TB
+      H1["prep → the deck, .run.sh AND .sbatch"]
+      H2["submit --mode submit"]
+      H3["sbatch → the queue → a compute node"]
+      H4["the node runs the SAME .run.sh"]
+      H1 --> H2 --> H3 --> H4
+    end
+```
+
+**A workstation needs no `scheduler` block at all**, and with none configured no
+`.sbatch` is written — asking for one would be the nanny behaviour this project
+refuses. **A cluster needs one**, because `partition` and `qos` cannot be
+guessed and a header without them is rejected by the scheduler rather than by
+molbuilder; so molbuilder refuses first, where the message is useful.
+
+### 8.1 The two shapes are the same on both
+
+The **flat** and **hierarchical** layouts (`project-layout.md` § 1) are a
+separate choice from where you run. Either shape works on either machine:
+`prep` builds what you asked for, and `submit` starts one stage of it. You would
+pick flat on a laptop for a quick relaxation where only the final state matters,
+and hierarchical when you need to compare stages or go back to one — but nothing
+in the framework ties a shape to a machine.
+
+---
+
+## 9. How this serves the other contracts
 
 Every contract sentence should land on **one** floor. Where it takes a route to
 make several sentences true in order, that is named too — and a sentence that
