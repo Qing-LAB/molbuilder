@@ -139,6 +139,38 @@ shared API.
 [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), `snapshot`
 (git run-checkpoints), `watch` (trajectory parse to JSON/NDJSON).
 
+#### The one overlap left, and it is a whole lifecycle
+
+> ⚠ **`bench` and `jobset` are two CLI lifecycles for one act.** *Named as a
+> design problem 2026-08-11; the resolution was already decided and is not built.*
+
+| the act | `jobset` says | `bench` says |
+|---|---|---|
+| build it | `jobset prep bench <stage>` | `bench generate` **+** `bench prep` |
+| run it | `jobset submit bench <stage>` | `bench siesta-gpu` |
+| read it | `jobset summarize bench <stage>` | `bench summarize` |
+| use the answer | `jobset prep run <stage>` | `bench prep-run` |
+
+**Four acts, two spellings each, and the `jobset` column is the one that does
+not exist yet** — `jobset prep|submit bench` refuse today with a pointer at the
+`bench` command that works ([`job-system.md § 5.3`](?doc=execution/job-system.md)).
+
+**The design that resolves it is already settled:
+[`project-layout.md § 2.3.1a`](?doc=execution/project-layout.md) — *benchmarking
+is `prep`, specialised.*** A normal prep resolves one configuration and renders
+one deck; a benchmark prep resolves a **grid** and renders one deck per point.
+Machine detection, activation and the directory build are the *same framework*
+doing the same thing. So `bench` is not a second system that should be
+integrated — **it is where that framework was built first**, because the need
+appeared there, and the general part needs lifting out of it.
+
+**Why this matters beyond tidiness.** It is the only surviving breach of
+[`architecture.md § 0`](?doc=execution/architecture.md)'s rule that *every axis
+is a value read at one point, never a branch*: measuring and running are the same
+act over different parameters, and today they are two code paths that can drift.
+`bench probe-scheduler` is the deliberate exception and keeps its own verb — it
+reads a live cluster and proposes config, which is not a calculation at all.
+
 ### The CLI-wide conventions
 
 - **Exit codes:** `--help` → 0; a usage / unknown-command / bad-argument error → 2;

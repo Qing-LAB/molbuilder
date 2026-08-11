@@ -98,6 +98,37 @@ directory there is one set of warm files, so the geometry is simply *the latest*
 > In conversation the second is often called the calculation directory too.
 > Same thing, opposite ends of the tree — the contract's names are used below.
 
+> #### ⚠ "Bundle" and "calculation" are the same directory, and the word
+> #### **bundle** is retired for it *(2026-08-11)*
+>
+> [`job-system.md`](?doc=execution/job-system.md) draws a `bdt_au-bundle/` root
+> holding `job-set.json`, the decks, the shared package and the stage
+> directories. This document draws
+> `projects/<project>/<topic>/<calculation>/` holding the template, `task.json`,
+> the shared package and the stage directories. **They are one directory**, and
+> nothing said so — so a reader following one produced a `-bundle` folder outside
+> the project tree, and a reader following the other produced a calculation
+> inside it.
+>
+> | | **calculation** *(this contract's name)* | ~~bundle~~ |
+> |---|---|---|
+> | where | `projects/<p>/<t>/<calc>/` — inside the tree | anywhere |
+> | what declares it | **`task.json`** | `job-set.json` |
+> | who names it | the user | the producer, `<label>-bundle` |
+>
+> **`calculation` wins, for a reason that is not taste.** `task.json` is the
+> **source** and `job-set.json` is **derived** from it (§ 5) — so naming the
+> folder after the derived file names it after something you can delete and
+> regenerate. It is also what `checkpoint.py` already looks for to decide a
+> directory owns its subdirectories (`checkpointing.md` **L1**).
+>
+> **And *bundle* was already overloaded twice over**: a **handoff bundle** is one
+> finished run carried forward ([`handoff-bundle.md`](?doc=execution/handoff-bundle.md)),
+> a **benchmark bundle** is a self-contained measurement (§ 2.6). A third sense
+> for *the calculation folder itself* is the one that had to go — `README.md` R5
+> forbids exactly this collision. What keeps the name legitimately is the
+> **benchmark** bundle, which really is a self-contained package that travels.
+
 > **This is why molbuilder must know its own files by name.** In the flat shape
 > the template sits beside the engine's output. `--cold` and *"has anything run
 > here?"* both work by subtracting **what molbuilder wrote** from what is present

@@ -355,8 +355,18 @@ out the tree. Every arrow below is a **symlink**, which is the point: nothing is
 copied, so a 4 GB pseudopotential set exists once no matter how many jobs there
 are.
 
+> ⚠ **The root drawn below is the *calculation* directory**
+> (`projects/<project>/<topic>/<calculation>/`), not a folder of its own. This
+> page called it a *bundle* and put it nowhere in particular; the two are the
+> same directory, and **`calculation` is the name that wins** — `task.json` is
+> the source and `job-set.json` is derived from it, so naming the folder after
+> the derived file names it after something you can delete and regenerate. The
+> reasoning is [`project-layout.md § 1.0`](?doc=execution/project-layout.md); the
+> `-bundle` spelling is kept in the trees below only because it is what the code
+> writes today. *Corrected 2026-08-11.*
+
 ```
-bdt_au-bundle/                       ← the bundle root: the real files live here
+bdt_au-bundle/                       ← this is the CALCULATION directory
 ├── job-set.json                     the description above
 ├── bdt_au_01_coarse.fdf             the two decks, each carrying its token
 ├── bdt_au_02_tight.fdf

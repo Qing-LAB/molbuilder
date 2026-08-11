@@ -319,10 +319,19 @@ hardware-dependent:**
 | **Large systems** (thousands of orbitals) | **64 or 128** | fewer, bigger messages — **less ScaLAPACK communication overhead**, which is what dominates at scale |
 | **Match the hardware** | pick a block the orbital count divides reasonably into, given the core count and the node's memory layout | a remainder block is a rank doing a fraction of everyone else's work |
 
-**A rough sanity ceiling, not a formula:** with `N` orbitals over `R` ranks, a
-block above `N / R` means some rank receives **no block at all**. That is the
-bound BENCH-MARKS declares ([`job-contracts.md § 3.3`](?doc=execution/job-contracts.md)) —
-and it is a ceiling to stay under, not a target to aim at.
+**A rough sanity ceiling, not a formula:** with `N` **orbitals** over `R` ranks,
+a block above `N / R` means some rank receives **no block at all**. It is a
+ceiling to stay under, not a target to aim at.
+
+> **Orbitals, not atoms — and `job-contracts.md § 3.3` currently says both.**
+> The block distributes the **Hamiltonian**, whose dimension is the orbital
+> count; SIESTA's DZP basis is roughly ten orbitals per atom, which is why
+> BENCH-MARKS records `n_orbitals_est` beside `n_atoms` at all. That section
+> declares the bound as `n_atoms / mpi_np` while its own PROVENANCE example
+> derives the value as `10 * n_atoms / mpi_np` — **a factor of ten, in the
+> paragraph whose rule is that the value and its bound come from one place.**
+> The physics decides it in favour of orbitals; which one the code does is an
+> open follow-up recorded there.
 
 #### The three states, and the third one is new
 

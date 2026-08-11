@@ -350,19 +350,40 @@ chain only runs for directories.
 
 ### 2.5 The project tree and the canonical topics
 
-A single run directory sits at the bottom of a three-level tree under the
-(git-ignored) `projects/` root:
+A calculation sits at the bottom of a three-level tree under the (git-ignored)
+`projects/` root:
 
 ```
 projects/
-└── <project>/            e.g. "Au-thiol-junctions"
-    └── <topic>/          one of the fixed names below
-        └── <structure>/  ← the one-job directory (§ 2.1–2.4 live here, flat)
+└── <project>/              e.g. "Au-thiol-junctions"
+    └── <topic>/            one of the fixed names below
+        └── <calculation>/  ← what the user typed. Its INSIDE is
+                              project-layout.md § 1 — flat or hierarchical
 ```
 
-The hierarchy is **organisational only**; the innermost `<structure>/` is
-exactly the flat one-job-per-directory shape of § 2.1 (no sub-directories, no
-nesting of restart files).
+**The three levels above are organisational only.** What is *inside* the
+innermost one is not this section's to say: it is
+[`project-layout.md`](?doc=execution/project-layout.md) § 1, and it has **two
+shapes**. Flat is one directory — the one-job shape of § 2.1, which is what
+§§ 2.1–2.4 describe. Hierarchical gives each stage a directory and each attempt
+a directory inside it.
+
+> ⚠ **Corrected 2026-08-11.** This read *"the innermost `<structure>/` is exactly
+> the flat one-job-per-directory shape of § 2.1 (**no sub-directories**, no
+> nesting of restart files)"* — written when the flat shape was the only one, and
+> never revisited. It is not a stale detail: **§ 6.3 declares this document the
+> winner in any disagreement**, so a contract saying *no sub-directories* did not
+> merely disagree with `project-layout.md`'s three-level tree — it **overruled
+> it**, and by that reading the hierarchical shape was forbidden by the very
+> document the rest of the design rests on.
+>
+> **The segment is also renamed here.** `<structure>/` said what the level held
+> when a directory was one job about one structure; the level is the
+> **calculation**, the name is what the user typed, and what makes it a
+> calculation is the `task.json` inside it
+> ([`run-identity.md § 3.0`](?doc=execution/run-identity.md), level ③).
+> `projects.py` still spells the API `structure_dir` / `list_structures`; that is
+> a code follow-up, not a second meaning.
 
 Each path segment must match `[A-Za-z0-9_-]+`, and `<topic>` must be one of a
 **fixed set of nine** canonical topics (`molbuilder/projects.py::
@@ -652,6 +673,38 @@ what limits:
   advice erred **upward** — past the point where ranks start receiving no
   block at all. The rule now: whatever derives the value derives the bound, so
   there is one number in the system and not two that can drift.
+  > ### ⚠ This document states that derivation TWICE, a factor of ten apart
+  >
+  > *Found 2026-08-11, in the third review pass, by writing
+  > [`tuning.md § 2.11`](?doc=engines/tuning.md) against it.*
+  >
+  > | where | the quantity per rank |
+  > |---|---|
+  > | § 3.2's PROVENANCE example | `10 * 212 atoms / mpi_np, capped pow2` — **ten times the atom count**, i.e. `n_orbitals_est` |
+  > | the paragraph above | `[1, floor(n_atoms / mpi_np)]` — **the atom count**, and its worked example (*"200 atoms on 16 ranks → `BlockSize 8`"*, = 200/16) only works this way |
+  >
+  > **The section's own rule is *"whatever derives the value derives the bound,
+  > so there is one number in the system and not two that can drift"* — and it
+  > then prints two.** This is the drift it was written to prevent, in the
+  > paragraph that prevents it.
+  >
+  > **The physics says orbitals.** ScaLAPACK and ELPA distribute the
+  > **Hamiltonian**, whose dimension is the orbital count, not the atom count —
+  > which is why this block records `n_orbitals_est` at all, and why the
+  > guidance is *"the total number of orbitals divides reasonably well into the
+  > chosen block segments"* ([`tuning.md § 2.11`](?doc=engines/tuning.md)). So
+  > `n_orbitals_est / mpi_np` is the right quantity and `n_atoms / mpi_np` is a
+  > tenfold-tight bound.
+  >
+  > **Which one the code does is not settled here**, and the two cannot both be
+  > it: under the orbital reading the anecdote's own numbers give
+  > `2000/16 = 125 → 64`, which is *inside* the old `[16,256]` window and so
+  > cannot be the case that motivated changing it. **One of the two is a
+  > description of code that does not exist.** Resolving it is a code follow-up
+  > with a test — derive the value and the bound from **one** call, assert the
+  > `default` is inside its own declared `range`, and mutate the divisor to watch
+  > it fail.
+
   > **`BlockSize` is *proposed*, not dictated — clarified 2026-08-11 (user).**
   > The rule above is unchanged and is exactly why it survives: whatever derives
   > the value derives the bound. What changed is that deriving it is the
