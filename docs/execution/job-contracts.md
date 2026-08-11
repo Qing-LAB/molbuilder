@@ -150,10 +150,12 @@ This is not a rule the design is asking for. It is how the shipped submit path
 already works, in one line per mode, and the generated wrapper says so in its own
 header: *"this wrapper does NOT change cwd… the caller's cwd is the contract."*
 It is written down here because it was true everywhere and stated nowhere — and
-because the one place it is currently broken (a rendered block that `cd`s into an
-attempt it created) is being retired for exactly this reason
+because the one place it was broken (a rendered block that `cd`s into an attempt
+it created) was retired for exactly this reason
 ([`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)
-item 12a).
+item 12a). ✅ **Since 2026-08-10 the rule has no exception**: no generated
+wrapper contains a `cd` on either engine, which is `project-layout.md`
+invariant 6a.
 
 #### The third party in the directory: the monitor observes, and only observes
 
@@ -1024,21 +1026,30 @@ starts** — the same moment and the same place the MODE line above is computed.
 | when | why not |
 |---|---|
 | at produce | the files do not exist yet, and a `.TSHS` may arrive from a different calculation entirely — so *"does an earlier stage produce this?"* is unanswerable and is deliberately not asked |
-| at prep | `Carry`'s symlink is laid **before** the producer runs and is *meant* to dangle until the file appears (`job-system.md` D1). Prep has nothing to check |
+| at prep | for the same reason as the row above, which does not stop applying: a declared file may come from **a different calculation entirely**, so at prep it may legitimately not exist yet and its absence proves nothing. *(This row used to rest on `Carry`'s symlink being meant to dangle until the producer ran. That is no longer why — no producer emits a `Carry` since 2026-08-10, and prep copies real files. The row's conclusion is unchanged; its reason is now the one above it.)* |
 | **in the run directory** | **a definite answer, at the last moment before cluster time is spent** |
 
-**It reuses the shipped pattern rather than adding one.** `_warm_check` in the
-staged runner already does exactly this class of thing — it notices a stray
-`.XV` that does not match the `SystemLabel`, says SIESTA will silently
-re-initialise from the deck instead, offers an abort, and honours
-`MOLBUILDER_FORCE=1` for unattended runs. `required` extends that check to
-declared files. **Warn by name, offer abort, `MOLBUILDER_FORCE=1` to proceed:**
-a missing `.TSHS` is the same kind of problem the existing prompt exists for —
-the run starts, and produces something wrong.
+**Warn by name, offer abort, `MOLBUILDER_FORCE=1` to proceed:** a missing
+`.TSHS` is the same kind of problem the MODE line above exists for — the run
+starts, and produces something wrong.
 
-Both emitters carry it, because both put a job in a directory: the staged
-runner for the flat shape, and the per-job wrapper for the hierarchical one
-(which already reads the `SystemLabel` and computes the MODE line there).
+> ⚠ **This paragraph described the check by a function that no longer exists,
+> and by a two-emitter design that no longer exists either.** It read *"it
+> reuses the shipped pattern rather than adding one: `_warm_check` in the staged
+> runner already does exactly this class of thing"*, and *"both emitters carry
+> it — the staged runner for the flat shape, and the per-job wrapper for the
+> hierarchical one."*
+>
+> `render_siesta_stages_runner` and its `_warm_check` were **deleted on
+> 2026-08-10** (decision 29: the shape branches at `prep`, so **both shapes run
+> through the same wrapper** — flat is not a second emitter, it is the same one
+> in a directory laid out differently). **There is exactly one emitter**,
+> `runwrap.render_run_wrapper`, and it is where this check belongs — it already
+> reads the `SystemLabel` and computes the MODE line in the run directory.
+>
+> **The check is unbuilt.** Saying it "reuses a shipped pattern" was true of a
+> pattern that has since been removed, so what it reuses now is the MODE line's
+> own machinery, and nothing more has been written.
 
 ---
 
