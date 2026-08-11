@@ -3123,7 +3123,7 @@ Each replaces a re-derivation with an answer.
 | **`StageRef(seq, name)`** | 1 | six hand-rolled ordinal computations | decision 28's whole class of defect |
 | **`Shape`** | 3 | a producer emitting flat *and* hierarchical at once | *"the shape is never chosen"* |
 | **`LaunchSpec`** | 3 → 5 | the wrapper choosing ranks alone | the `-np 14` failure, permanently |
-| **`Attempt`** | 4 | `prepare_attempt` returning `Dict[str, object]` | a bag the CLI unpacks by string key |
+| **`Attempt`** | 4 | `prepare_attempt` returning `Dict[str, object]` | a bag the CLI unpacks by string key — ✅ **landed 2026-08-10** |
 
 > **`Attempt` is the author's own smell, recorded rather than excused.**
 > `prepare_attempt` landed on 2026-08-10 returning a dict, and `submit.py` grew
@@ -3171,8 +3171,22 @@ allowed to be "and while we are there".**
 | **`StageRef`** | **P9** (the command surface), pulled early — it is specced in § 8f and fixes two live display bugs | `plan`/`status` print `seq`; the CLI takes a name or a number; no caller computes an ordinal |
 | **`Shape`** | **P5** — landed 2026-08-10 as `jobset/shape.py` | it answers the two questions a layout answers — `stage_dir` (**where**) and `stage_glob` (**which files**) — so a caller is right in both shapes instead of asking "which directory" and being right in one. ~~a flat produce writes no `job-set.json`~~ **superseded by decision 29**: the shape branches at `prep`, so both shapes get a JobSet and flat runs on `submit --chain` |
 | **`LaunchSpec`** | **P6** unit 2 — *decided 2026-08-10; § 9.6a.* Not a missing object but a **conformance gap**: `project-layout.md § 2.3.1` already orders resolve-machine → resolve-parameters → render-deck and calls the order forced | a deck rendered for N ranks cannot be launched at M without a refusal |
-| **`Attempt`** | **P6** (`prep`: the five moves), whose first half landed 2026-08-10 | one loop in `submit.py`, one `Attempt` type, no dict keys |
+| **`Attempt`** | **P6** (`prep`: the five moves), whose first half landed 2026-08-10 | ✅ one `Attempt` type, no dict keys — **and the duplicated calls gone, but still two loops** (below) |
 | **fold `bench` in** | **after P9**, and after all four objects exist | `molbuilder bench` is gone; `jobset <verb> bench <stage>` does it |
+
+> **`Attempt` landed 2026-08-10, and one line of its "gain" was not delivered
+> as written.** The type exists, `prepare_attempt` returns it, and no surface
+> unpacks a string key any more. The duplicated calls this object was named
+> for — `_launch_dir` and `check_launch_matches_deck`, once in each of
+> `submit.py`'s two loops — are gone behind `_resolve_launch`, one call site.
+>
+> **What was not done is "one loop in `submit.py`".** The two middles are
+> genuinely different protocols: one parses a scheduler id and raises, the
+> other reads an exit status and propagates failure down the ladder. Merging
+> them would put a `mode` branch through the body and rebuild the shape the
+> split avoids. **Judged, not skipped** — and recorded here rather than in a
+> commit message so it can be argued with. If the single loop was the point
+> rather than the duplication, this is the line to reopen.
 
 **The dependency order among the objects still holds**, and it is why the phases
 run in the order they do: `Shape` before `LaunchSpec` (a launch cannot be pinned

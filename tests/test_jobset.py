@@ -1083,8 +1083,8 @@ def test_prepare_attempt_takes_the_same_three_spellings_as_every_surface():
     with tempfile.TemporaryDirectory() as td:
         for spelling in ("tight", "3", "03", "03_tight"):
             rep = prepare_attempt(js, td, spelling)
-            assert rep["stage"] == "tight"           # the NAME, always
-            assert rep["dir"].parent.name == "03_tight"
+            assert rep.stage == "tight"           # the NAME, always
+            assert rep.dir.parent.name == "03_tight"
 
 
 def test_prepare_attempt_refuses_with_the_one_listing_that_carries_ordinals():
@@ -1108,11 +1108,11 @@ def test_an_unlaunched_attempt_is_reused_and_a_launched_one_is_never_touched():
     from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
     js = _token_ladder("JOB_03_tight.fdf")
     with tempfile.TemporaryDirectory() as td:
-        first = prepare_attempt(js, td, "tight")["dir"]
+        first = prepare_attempt(js, td, "tight").dir
         assert first.name == "run-0"
-        assert prepare_attempt(js, td, "tight")["dir"] == first   # reused
+        assert prepare_attempt(js, td, "tight").dir == first   # reused
         write_run_launch(first, mode="direct", command=["bash", "x.sh"])
-        second = prepare_attempt(js, td, "tight")["dir"]
+        second = prepare_attempt(js, td, "tight").dir
         assert second.name == "run-1"                             # never reused
         assert (Path(first) / "run.json").is_file()               # left intact
 
@@ -1128,7 +1128,7 @@ def test_status_reads_the_attempt_because_that_is_where_the_run_happened(tmp_pat
     globs the container reports it as never launched, forever."""
     from molbuilder.jobset.materialize import prepare_attempt
     js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight")["dir"]
+    attempt = prepare_attempt(js, tmp_path, "tight").dir
     (attempt / "JOB_03_tight.out").write_text("Job completed\n")
 
     st = jobset_status(js, tmp_path).stages[0]
@@ -1162,7 +1162,7 @@ def test_warm_files_are_read_from_the_attempt_not_the_container(tmp_path):
     restart files a user is deciding on are in the attempt."""
     from molbuilder.jobset.materialize import prepare_attempt
     js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight")["dir"]
+    attempt = prepare_attempt(js, tmp_path, "tight").dir
     (attempt / "JOB.XV").write_text("")
     (attempt / "JOB_03_tight.out").write_text("Job completed\n")
 
@@ -1176,7 +1176,7 @@ def test_a_launched_attempt_with_no_output_is_queued_not_not_started(tmp_path):
     guessing from an absence"*."""
     from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
     js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight")["dir"]
+    attempt = prepare_attempt(js, tmp_path, "tight").dir
 
     before = jobset_status(js, tmp_path).stages[0]
     assert before.state == "pending"             # prepped, genuinely not launched
@@ -1195,17 +1195,17 @@ def test_re_prepping_cold_removes_what_the_previous_prep_carried_in(tmp_path):
     *"present but not honoured"* failure inverted, and it is silent."""
     from molbuilder.jobset.materialize import prepare_attempt
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    coarse = prepare_attempt(js, tmp_path, "coarse").dir
     (coarse / "JOB.XV").write_text("geometry from coarse\n")
 
     warm = prepare_attempt(js, tmp_path, "tight",
                            continue_from="01_coarse/run-0")
-    attempt = warm["dir"]
-    assert warm["copied"] == ["JOB.XV"]
+    attempt = warm.dir
+    assert warm.copied == ["JOB.XV"]
     assert (attempt / "JOB.XV").is_file()
 
     cold = prepare_attempt(js, tmp_path, "tight", cold=True)
-    assert cold["dir"] == attempt                # the same unlaunched attempt
+    assert cold.dir == attempt                # the same unlaunched attempt
     assert not (attempt / "JOB.XV").exists()     # and it is actually cold now
     assert not (attempt / ".continued-from").exists()
 
@@ -1256,10 +1256,10 @@ def test_status_takes_a_stage_and_answers_the_other_question(tmp_path):
     from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
     from molbuilder.jobset.runstatus import render_stage_status
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    coarse = prepare_attempt(js, tmp_path, "coarse").dir
     (coarse / "JOB.XV").write_text("COARSE-GEOM")
     tight = prepare_attempt(js, tmp_path, "tight",
-                            continue_from="01_coarse/run-0")["dir"]
+                            continue_from="01_coarse/run-0").dir
     write_run_launch(tight, mode="submit", command=["sbatch", "x.sbatch"],
                      job_id="481923", continued_from="01_coarse/run-0")
 
@@ -1296,7 +1296,7 @@ def test_a_cold_run_prints_no_provenance_line_at_all(tmp_path):
     from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
     from molbuilder.jobset.runstatus import render_stage_status
     js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight", cold=True)["dir"]
+    attempt = prepare_attempt(js, tmp_path, "tight", cold=True).dir
     write_run_launch(attempt, mode="direct", command=["bash", "x.sh"])
 
     out = render_stage_status(jobset_status(js, tmp_path), "tight")
@@ -1311,10 +1311,10 @@ def test_every_label_in_the_per_stage_view_is_padded_off_the_longest(tmp_path):
     from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
     from molbuilder.jobset.runstatus import render_stage_status
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    coarse = prepare_attempt(js, tmp_path, "coarse").dir
     (coarse / "JOB.XV").write_text("x")
     tight = prepare_attempt(js, tmp_path, "tight",
-                            continue_from="01_coarse/run-0")["dir"]
+                            continue_from="01_coarse/run-0").dir
     write_run_launch(tight, mode="direct", command=["bash", "x.sh"],
                      continued_from="01_coarse/run-0")
 
@@ -1385,11 +1385,11 @@ def test_what_a_run_continues_from_is_copied_never_linked(tmp_path):
     """
     from molbuilder.jobset.materialize import prepare_attempt
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    coarse = prepare_attempt(js, tmp_path, "coarse").dir
     (coarse / "JOB.XV").write_text("COARSE-GEOM")
 
     tight = prepare_attempt(js, tmp_path, "tight",
-                            continue_from="01_coarse/run-0")["dir"]
+                            continue_from="01_coarse/run-0").dir
     carried = tight / "JOB.XV"
     assert not carried.is_symlink(), "carried warm state is a LINK back to it"
     assert carried.read_text() == "COARSE-GEOM"
@@ -1457,8 +1457,8 @@ def test_the_optimizer_rule_is_asked_of_the_pair_not_of_the_ladders_neighbour(
 
     rep = prepare_attempt(js, tmp_path, "tight",
                           continue_from="01_coarse/run-0")
-    assert rep["copied"] == ["bdt.XV", "bdt.DM"]
-    assert not (rep["dir"] / "bdt.CG").exists(), (
+    assert rep.copied == ["bdt.XV", "bdt.DM"]
+    assert not (rep.dir / "bdt.CG").exists(), (
         "a CG history reached a Broyden stage -- the restart it corrupts "
         "still reports success")
 
@@ -1478,8 +1478,8 @@ def test_and_the_same_prep_does_carry_it_when_the_two_agree(tmp_path):
 
     rep = prepare_attempt(js, tmp_path, "tight",
                           continue_from="02_medium/run-0")
-    assert rep["copied"] == ["bdt.XV", "bdt.DM", "bdt.CG"]
-    assert (rep["dir"] / "bdt.CG").read_text() == "02_medium:CG"
+    assert rep.copied == ["bdt.XV", "bdt.DM", "bdt.CG"]
+    assert (rep.dir / "bdt.CG").read_text() == "02_medium:CG"
 
 
 def test_a_redo_of_one_stage_agrees_with_itself(tmp_path):
@@ -1494,8 +1494,8 @@ def test_a_redo_of_one_stage_agrees_with_itself(tmp_path):
 
     rep = prepare_attempt(js, tmp_path, "tight",
                           continue_from="03_tight/run-0")
-    assert rep["dir"].name == "run-1"            # the launched one is immutable
-    assert rep["copied"] == ["bdt.XV", "bdt.DM", "bdt.CG"]
+    assert rep.dir.name == "run-1"            # the launched one is immutable
+    assert rep.copied == ["bdt.XV", "bdt.DM", "bdt.CG"]
 
 
 def test_a_source_this_jobset_cannot_place_withholds_the_conditional_file(
@@ -1517,7 +1517,7 @@ def test_a_source_this_jobset_cannot_place_withholds_the_conditional_file(
 
     rep = prepare_attempt(js, tmp_path, "tight",
                           continue_from="99_elsewhere/run-0")
-    assert rep["copied"] == ["bdt.XV", "bdt.DM"]
+    assert rep.copied == ["bdt.XV", "bdt.DM"]
 
 
 def test_a_clean_stage_refuses_from_instead_of_copying_nothing(tmp_path):
@@ -1602,13 +1602,13 @@ def test_re_prep_sweeps_the_whole_declared_set_not_the_pair_filtered_one(
 
     warm = prepare_attempt(js, tmp_path, "tight",
                            continue_from="02_medium/run-0")
-    assert (warm["dir"] / "bdt.CG").is_file()
+    assert (warm.dir / "bdt.CG").is_file()
 
     again = prepare_attempt(js, tmp_path, "tight",
                             continue_from="01_coarse/run-0")
-    assert again["dir"] == warm["dir"]           # same unlaunched attempt
-    assert not (again["dir"] / "bdt.CG").exists()
-    assert (again["dir"] / "bdt.XV").read_text() == "01_coarse:XV"
+    assert again.dir == warm.dir           # same unlaunched attempt
+    assert not (again.dir / "bdt.CG").exists()
+    assert (again.dir / "bdt.XV").read_text() == "01_coarse:XV"
 
 
 def test_attempts_are_ordered_as_numbers_not_as_names(tmp_path):
@@ -1648,10 +1648,10 @@ def test_prepare_links_resolve_from_two_levels_down(tmp_path):
         (tmp_path / f).write_text("x")
 
     rep = prepare_attempt(js, tmp_path, "tight")
-    attempt = rep["dir"]
-    assert set(rep["linked"]) == {"JOB_03_tight.fdf", "C.psml",
+    attempt = rep.dir
+    assert set(rep.linked) == {"JOB_03_tight.fdf", "C.psml",
                                   "mb_monitor.py", "JOB_03_tight.run.sh"}
-    for name in rep["linked"]:
+    for name in rep.linked:
         link = attempt / name
         assert link.is_symlink(), f"{name} was copied, not linked"
         assert link.resolve() == (tmp_path / name).resolve(), \
@@ -1698,11 +1698,11 @@ def test_the_provenance_survives_the_prep_to_submit_handover(tmp_path):
     from molbuilder.jobset.materialize import prepare_attempt
     from molbuilder.jobset.submit import submit_jobset
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    coarse = prepare_attempt(js, tmp_path, "coarse").dir
     (coarse / "JOB.XV").write_text("geometry from coarse\n")
 
     tight = prepare_attempt(js, tmp_path, "tight",
-                            continue_from="01_coarse/run-0")["dir"]
+                            continue_from="01_coarse/run-0").dir
     # the wrapper prep would have linked in; submit only launches
     (tight / "JOB_03_tight.run.sh").write_text("#!/bin/bash\nexit 0\n")
     submit_jobset(js, tmp_path, mode="direct", only="tight")
@@ -1720,7 +1720,7 @@ def test_submit_refuses_an_attempt_that_has_already_been_launched(tmp_path):
     from molbuilder.jobset.materialize import prepare_attempt
     from molbuilder.jobset.submit import submit_jobset, SubmitError
     js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight")["dir"]
+    attempt = prepare_attempt(js, tmp_path, "tight").dir
     (attempt / "JOB_03_tight.run.sh").write_text("#!/bin/bash\nexit 0\n")
     submit_jobset(js, tmp_path, mode="direct", only="tight")
     (attempt / "JOB_03_tight.out").write_text("results of the first run\n")
@@ -1756,7 +1756,7 @@ def test_a_corrupt_run_json_still_reads_as_launched(tmp_path):
     'never started' -- which would invite a submit on top of a running job."""
     from molbuilder.jobset.materialize import prepare_attempt
     js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight")["dir"]
+    attempt = prepare_attempt(js, tmp_path, "tight").dir
     (attempt / "run.json").write_text('{"schema": "molbuilder/run-la')
 
     st = jobset_status(js, tmp_path).stages[0]
@@ -1966,7 +1966,7 @@ def test_prepare_attempt_refuses_a_flat_calculation(tmp_path):
     assert not (tmp_path / "03_tight").exists()    # and nothing was created
 
     _describe(tmp_path, "hierarchical")            # ...the hierarchy still does
-    assert prepare_attempt(js, tmp_path, "tight")["dir"].name == "run-0"
+    assert prepare_attempt(js, tmp_path, "tight").dir.name == "run-0"
 
 
 @pytest.mark.parametrize("shape", ["flat", "hierarchical"])
@@ -2265,7 +2265,7 @@ def test_the_hierarchy_is_unaffected_because_its_directory_already_chose(tmp_pat
     from molbuilder.jobset.materialize import prepare_attempt
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
     _describe(tmp_path, "hierarchical")
-    a = prepare_attempt(js, tmp_path, "coarse")["dir"]
+    a = prepare_attempt(js, tmp_path, "coarse").dir
     (a / "JOB_01_coarse.out").write_text("Job completed\n")
 
     by_name = {s.name: s for s in jobset_status(js, tmp_path).stages}

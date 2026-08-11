@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -302,10 +303,39 @@ def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     return Path(stage_dir) / "run-0", True
 
 
+@dataclass(frozen=True)
+class Attempt:
+    """One try at a stage: the directory, and what was put in it.
+
+    **§ 9.4's fourth value object, and the author's own smell.**
+    :func:`prepare_attempt` returned a ``Dict[str, object]`` when it landed on
+    2026-08-10 — *"a bag the CLI unpacks by string key"* — so every surface
+    spelled ``rep["continued_from"]`` and a typo was a ``KeyError`` at best and
+    a silent ``None`` at worst. The dict was noticed while being written and
+    shipped anyway, which is the argument for naming the habit rather than the
+    instance.
+
+    ``fresh`` is False when an unlaunched attempt was **reused** rather than
+    opened — § 1.6's *"preparing again is safe until the run has been
+    launched"*, which is what keeps a changed mind from leaking empty
+    directories. ``continued_from`` is **None** when this run starts from the
+    structure, and that is a different claim from *"continued from nothing"*
+    (`checkpointing.md` S3), which is why `run.json` omits the key entirely
+    rather than writing null.
+    """
+    stage:          str
+    dir:            Path
+    fresh:          bool
+    linked:         List[str]
+    copied:         List[str]
+    continued_from: Optional[str]
+    cold:           bool
+
+
 def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                     continue_from: Optional[str] = None,
                     cold: bool = False,
-                    carry: Optional[List[str]] = None) -> Dict[str, object]:
+                    carry: Optional[List[str]] = None) -> "Attempt":
     """Set ONE stage up to run, and report what was done.
 
     The five steps § 1.6 names: **resolve** the next ``run-<n>``, **create**
@@ -435,16 +465,16 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     if copied:
         marker.write_text(str(continue_from) + "\n", encoding="utf-8")
 
-    return {
-        "stage": stage_name,
-        "dir": attempt,
-        "fresh": is_new,
-        "linked": linked,
-        "copied": copied,
-        "continued_from": (None if (cold or not continue_from)
-                           else str(continue_from)),
-        "cold": bool(cold),
-    }
+    return Attempt(
+        stage=stage_name,
+        dir=attempt,
+        fresh=is_new,
+        linked=linked,
+        copied=copied,
+        continued_from=(None if (cold or not continue_from)
+                        else str(continue_from)),
+        cold=bool(cold),
+    )
 
 
 def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
@@ -498,7 +528,8 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
     return p
 
 
-__all__ = ["materialize", "job_dir_name", "job_dir_names", "stage_refs",
+__all__ = ["Attempt",
+           "materialize", "job_dir_name", "job_dir_names", "stage_refs",
            "relink",
            "attempts", "was_launched", "latest_attempt", "resolve_attempt",
            "prepare_attempt",

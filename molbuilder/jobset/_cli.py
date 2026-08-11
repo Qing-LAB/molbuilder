@@ -254,17 +254,17 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                               cold=cold)
     except ValueError as e:
         raise click.ClickException(str(e))
-    click.echo(f"prepared {rep['stage']}: {rep['dir'].relative_to(base)}"
-               f"{'' if rep['fresh'] else '  (reused -- not launched yet)'}")
-    click.echo(f"  linked: {', '.join(rep['linked'])}")
-    if rep["copied"]:
-        click.echo(f"  copied from {rep['continued_from']}: "
-                   f"{', '.join(rep['copied'])}")
-    elif rep["cold"]:
+    click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
+               f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
+    click.echo(f"  linked: {', '.join(rep.linked)}")
+    if rep.copied:
+        click.echo(f"  copied from {rep.continued_from}: "
+                   f"{', '.join(rep.copied)}")
+    elif rep.cold:
         click.echo("  cold start -- nothing copied in")
     else:
         click.echo("  nothing carried in (first stage, or none named)")
-    _echo_resolved(js, base, rep["stage"], rep["dir"])
+    _echo_resolved(js, base, rep.stage, rep.dir)
     click.echo(f"next: molbuilder jobset submit run {stage} "
                f"--mode submit|direct")
 

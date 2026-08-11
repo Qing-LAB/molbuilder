@@ -13,23 +13,26 @@ Two execution paths, chosen by ``mode`` (== ``execution.mode``):
     resources are CLI flags** (``-J``/``-n``/``-c``/``--gres``/``--mem``/
     ``-t``/``--exclusive`` + the domain's ``-p/-q``) over the (possibly
     shared) rendered ``.sbatch`` — exactly generalizing the benchmark launch
-    line, so one rendered wrapper serves every point of a sweep.  A ladder
-    threads ``--dependency=<dep_kind>:<jobid>`` down the chain; a sweep
-    submits with no dependency (jobs queue in parallel).
-  * ``"direct"`` — local shell.  Each job's ``<stem>.run.sh`` is run in
-    turn with its per-job knobs as args (``-np``/``-omp``), honoring
-    ``dep_kind`` locally (an ``afterok`` edge whose producer failed skips
-    the dependent and everything below it; ``afterany`` runs regardless —
-    the SLURM dependency-kind semantics reproduced on a workstation).
+    line, so one rendered wrapper serves every point of a sweep.  **One job
+    per invocation**, whatever the kind (§ 5.3, user rule 2026-08-10):
+    handing a scheduler several at once is refused, because they would start
+    together and — for a benchmark — measure contention rather than scaling.
+  * ``"direct"`` — local shell, and NOT submission: each job's
+    ``<stem>.run.sh`` is run in turn with its per-job knobs as args
+    (``-np``/``-omp``), waiting for each, so nothing queues and nothing
+    races.  A failure stops what depends on it — an explicit ``afterok``
+    edge, or, for a ladder, everything after it, since stage N continues
+    from stage N-1's warm files (:func:`_blocked_by_a_failure`).
 
 REUSE, not reinvention: prep renders via ``runwrap.write_run_wrapper``; this
 engine adds only the cross-job concerns — per-job CLI overrides, dependency
 threading, domain→``-p/-q`` resolution, and ordered local execution.
 
-RESUME IS THE MODELING SOFTWARE'S JOB (script-execution.md): this engine
-only launches.  It never inspects prior output to auto-recover — the carry
-symlinks prep laid let SIESTA/PySCF restart natively; the decision to
-continue or switch stays the user's (assistant, not nanny).  ``dry_run=True``
+RESUME IS THE MODELING SOFTWARE'S JOB: this engine only launches.  It never
+inspects prior output to auto-recover — the engine finds its own warm files
+under the label it was given (``run-identity.md``), which `prep` copied into
+the attempt; the decision to continue or switch stays the user's (assistant,
+not nanny).  ``dry_run=True``
 runs nothing: it returns the exact command line each job WOULD get, so the
 plan is reviewable before anything is irreversible.
 """
@@ -169,9 +172,8 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
     results: List[JobResult] = []
     ids: Dict[str, str] = {}            # job.name -> slurm job id
     for job in jobset.jobs:
-        job_dir, attempt = _launch_dir(jobset, base_dir, job)
-        sbatch_name = _wrapper_name(job.script, ".sbatch")
-        check_launch_matches_deck(job_dir, job)
+        job_dir, attempt, sbatch_name = _resolve_launch(
+            jobset, base_dir, job, ".sbatch")
         gpu = _job_wants_gpu(job_dir, job)
         pq = _resolve_domain(domain, gpu=gpu, project_dir=base_dir)
 
@@ -210,6 +212,39 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
             _record_launch(attempt, mode="submit", command=cmd, job_id=jid)
         results.append(JobResult(job.name, cmd, "submitted", job_id=jid))
     return results
+
+
+def _resolve_launch(jobset: JobSet, base_dir: Path, job, suffix: str):
+    """The prologue both launch paths share: **where**, **which wrapper**, and
+    **may this deck be launched like that**.
+
+    *Named ``_staged_for_launch`` for about a minute, until
+    `test_stage_vocabulary` refused it: it works for a sweep point as much as
+    a ladder stage, so borrowing the project's core noun for "set up" is the
+    collision that ledger exists to catch (§ 8c question 1).*
+
+    § 9.4 names the defect this removes: *"`submit.py` grew `_launch_dir` and
+    `_record_launch` **twice** — once in each of two near-identical loops"*.
+    Both were called with identical arguments in both paths, so a fix to either
+    had two sites and one of them would eventually be missed.
+
+    Returns ``(job_dir, attempt, wrapper_name)``. ``attempt`` is ``None`` for a
+    job with no attempt layer — a sweep point, or a ladder stage prepped
+    without ``prep run`` — and that is the caller's signal not to write a
+    ``run.json``.
+
+    **The two loops are NOT merged**, and that is a judgement rather than an
+    omission. § 9.6 lists *"one loop in `submit.py`"* as this object's gain;
+    what it is actually against is the duplicated calls, and those are gone.
+    The middles genuinely differ — one parses a scheduler id and raises, the
+    other reads an exit status and propagates failure down the ladder — so
+    folding them into a single loop would put a ``mode`` branch through the
+    body and rebuild the shape the split avoids. *If that reading is wrong,
+    this is the paragraph to argue with.*
+    """
+    job_dir, attempt = _launch_dir(jobset, base_dir, job)
+    check_launch_matches_deck(job_dir, job)
+    return job_dir, attempt, _wrapper_name(job.script, suffix)
 
 
 def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Path]]:
@@ -316,9 +351,8 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
     results: List[JobResult] = []
     failed: set = set()                 # job names that failed / were skipped
     for job in jobset.jobs:
-        job_dir, attempt = _launch_dir(jobset, base_dir, job)
-        check_launch_matches_deck(job_dir, job)
-        run_name = _wrapper_name(job.script, ".run.sh")
+        job_dir, attempt, run_name = _resolve_launch(
+            jobset, base_dir, job, ".run.sh")
         cmd = ["bash", run_name] + _run_sh_args(job.resources)
         if _blocked_by_a_failure(jobset, job, failed):
             results.append(JobResult(job.name, cmd, "skipped"))
