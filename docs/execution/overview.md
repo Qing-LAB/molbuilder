@@ -117,7 +117,7 @@ executed, and the whole `execution/` domain is shaped by it:
   what the **web UI** does today — it focuses on one generated task.
 - **Where the command line already is: a job system.** A real result needs a
   *sequence* of runs (coarse → tight), a project needs *many* such sequences,
-  and HPC adds scheduler headers, dependency chains, and the question of how many
+  and HPC adds scheduler headers, queue routing, and the question of how many
   GPUs/cores actually run fastest. The **JobSet framework** answers all of that —
   and it is **shipped on the CLI today**.
 - **Where it's going — and it is narrower than it used to be** (decided
@@ -160,7 +160,7 @@ flowchart TB
 | Staged relaxation ladder | ✅ | ⏳ | `job-system.md § 3` |
 | Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
 | Benchmark → recommended resources | ✅ | — | `job-system.md § 7` |
-| SLURM deployment (dependency chains, routing domains) | ✅ | ⏳ | `job-system.md § 6` |
+| SLURM deployment (routing domains; **one job per submission**) | ✅ | ⏳ | `job-system.md § 6` |
 | Checkpoint **branch** (explore a what-if tail) | ✅ | ⏳ | `job-system.md § 8` |
 
 `✅` shipped · `⏳` planned (see [`roadmap.md`](?doc=roadmap.md) workstream 1) ·
@@ -180,7 +180,7 @@ Two facts keep the picture honest:
 
 The status matrix above is about *which surface* can run a job. There is a second
 change in flight, about *what the folder looks like*, and it is the reason four of
-the eight documents here were written in August 2026.
+the nine documents here were written in August 2026.
 
 **What ships today is the flat shape.** One directory holds everything. Several
 stages live side by side, told apart by a suffix in the filename
@@ -201,9 +201,9 @@ a subdirectory inside it, so nothing overwrites anything.
 FLAT (ships today)                    HIERARCHICAL (proposed)
 bdt_au/                               bdt_au/
 ├── bdt_au_01_coarse.fdf                 ├── task.json
-├── bdt_au_stage2.fdf                 ├── bdt_au.psml
-├── bdt_au-run0.out   ← stage 1       ├── 01_coarse/
-├── bdt_au-run1.out   ← stage 2       │   ├── bdt_au.fdf
+├── bdt_au_02_tight.fdf               ├── bdt_au.psml
+├── bdt_au_01_coarse-run0.out         ├── 01_coarse/
+├── bdt_au_02_tight-run0.out          │   ├── bdt_au.fdf
 ├── bdt_au.XV     ← SHARED, and       │   └── run-0/
 ├── bdt_au.DM        overwritten      │       ├── bdt_au.out
 └── bdt_au.psml      every stage      │       └── bdt_au.XV
@@ -247,7 +247,8 @@ share one foundation:
    wrapper, run and watch.
 2. **The CLI single-job path** — `molbuilder fdf` / `pyscf` → `molbuilder run` →
    watch; plus checkpoints.
-3. **The CLI job system** — `molbuilder fdf --jobset` (or a benchmark) →
+3. **The CLI job system** — `molbuilder fdf --shape flat|hierarchical`
+   (or a benchmark) →
    `molbuilder jobset prep / plan / submit / status`.
 
 All three produce the **same run directory** (`job-contracts.md § 2`), the

@@ -15,9 +15,10 @@ fit when nobody is looking at them one at a time, and — because a walkthrough
 touches every seam — to **find the places where they do not fit yet**. § 8 is
 that list, and it is the more valuable half.
 
-**Status: the story is the target. Six of its steps do not work today**, and each
-is marked ⛔ where it appears, with the whole list in § 8. Two are closed — #7
-(the commands, which were specified elsewhere all along) and #8.
+**Status: the story is the target. Four of its steps do not work today**, and
+each is marked ⛔ where it appears, with the whole list in § 8. Four are closed
+— #5 and #6 (the stage-to-stage carry and the directory naming, both fixed
+2026-08-10), #7 (the commands, which were specified elsewhere all along) and #8.
 
 ---
 
@@ -281,24 +282,29 @@ otherwise overwrite coarse's result. And **you say which run** it comes from:
 continuing from `run-0` and continuing from `run-2` are different scientific
 choices.
 
-⛔ **Gap 5.** `materialize` still writes that hand-off as a symlink to
-`../<producer>/<label>.XV`, and `stages_to_jobset` still builds a chained ladder —
-`depends_on` on the previous stage, plus `.XV`/`.DM`/`.CG` carry edges. Since
-attempts moved outputs into `run-N/`, that link dangles. The fix is not a better
-link: the stage producer stops emitting a chain, and the copy happens when you
-set the stage up. (The chaining machinery itself stays — `jobset` is still the
-right tool for a benchmark sweep.)
+✅ **Gap 5 — closed 2026-08-10.** `materialize` wrote that hand-off as a symlink
+to `../<producer>/<label>.XV` and `stages_to_jobset` built a chained ladder —
+`depends_on` plus `.XV`/`.DM`/`.CG` carry edges — so once attempts moved outputs
+into `run-N/` the link dangled. The fix was not a better link: **the producer
+emits no chain and no carry at all**, and the copy happens exactly as described
+above, when you set the stage up. A produced tree now contains no dangling
+symlink. (The chaining machinery itself stays in `jobset` — though see
+`running-a-job.md` § 2.2a: no producer emits a `Carry` any more, and whether it
+should be retired outright is open.)
 
-⛔ **Gap 6, in the same code.** The folder name is wrong too.
-`materialize.job_dir_name` returns `point-<name>` for every job, so today the
-stage directory is `point-coarse/`, not `01_coarse/`. The layout contract
-specifies the fix — branch on `JobSet.kind` — but it is not written yet.
+✅ **Gap 6, in the same code — closed 2026-08-10.** `job_dir_names` branches on
+`JobSet.kind`, so a ladder's stage directories are `01_coarse/`, `02_medium/`,
+`03_tight/` while a benchmark's points stay `point-*`. The seq is read back off
+the deck's own token rather than counted, so disabling a stage leaves a gap
+rather than renumbering.
 
 **And the way I first tried to fix gap 5 was wrong**, which is the more useful
-lesson. I put attempt-directory logic in the wrapper: fifty lines of shell that
-scan for run directories, create one, link the deck in and copy files. That is
-`jobset/materialize.py` rewritten in bash, one level down, in the one layer kept
-free of filesystem work.
+lesson. I put attempt-directory logic in the wrapper: ~130 lines of shell that
+scan for run directories, create one, link the deck in, copy files and `cd` in.
+That is `jobset/materialize.py` rewritten in bash, one level down, in the one
+layer kept free of filesystem work — **and it was the only place in the system
+that changed directory.** It was retired on 2026-08-10, which is what makes
+`project-layout.md` invariant 6a held rather than aspirational.
 
 **If you have to re-run a stage**, you do not overwrite anything — each
 invocation gets `run-1`, then `run-2`, carrying the previous attempt's warm state
@@ -426,13 +432,15 @@ is that **a save is always an explicit act** — nothing takes one for you
 ## 8. What this walkthrough found
 
 Eight gaps, in the order a user meets them. Four were on no list before this
-document was written. **Two are now closed** — #7 and #8.
+document was written. **Four are now closed** — #5, #6, #7 and #8.
 
-The two that closed did so in opposite ways, and the contrast is worth keeping:
-#8 needed the checkpoint rework, real code. #7 needed nobody to build anything —
-the answer was already written in two other documents, and this one had gone on
-calling it unanswered. **A gap list is only as good as its last reconciliation
-against its neighbours.**
+They closed in three different ways, and the contrast is worth keeping: #8
+needed the checkpoint rework, real code. #5 and #6 needed the producer to stop
+doing something — subtraction, not addition. #7 needed nobody to build anything
+at all: the answer was already written in two other documents, and this one had
+gone on calling it unanswered. **A gap list is only as good as its last
+reconciliation against its neighbours** — and this one had also gone on
+describing #5's fix in terms the layout contract had already ruled out.
 
 | # | Gap | Severity |
 |---|---|---|
@@ -440,24 +448,25 @@ against its neighbours.**
 | 2 | **Produce/prep boundary is undefined locally.** Nothing says who creates the stage containers when host and target are the same machine | design decision, one sentence |
 | 3 | **Nothing connects a benchmark to the stage it measures.** The parts compose by hand and getting it wrong is silent | small |
 | 4 | **The measured answer reaches a script, never the description.** `bench prep-run` writes `run-production.sh`; `task.json` never learns, so the next `generate` reverts to defaults | medium — it is the point of measuring |
-| 5 | **Stage-to-stage carry is broken.** ⚠ `materialize` links `../<stage>/<label>.XV`; attempts moved outputs into `run-N/`, so the link dangles — and *which* N is unknowable at prep time. Fixed by resolving the attempt at **submit**, which knows both | **serious, and newly introduced by the attempt-directory change** |
-| 6 | **Stage directories are named `point-<name>`.** `job_dir_name` does not branch on `JobSet.kind` yet, so the ladder gets the sweep's naming | small, and in the same expression as #5 |
+| 5 | ~~**Stage-to-stage carry is broken.**~~ **Closed 2026-08-10.** The producer stopped emitting `depends_on` and `Carry` entirely, so nothing dangles. ⚠ This row used to say *"fixed by resolving the attempt at **submit**"* — which contradicted `project-layout.md § 2.3.4`, where the copy is made **at `prep`, from the run you name with `--from`**. The contract was right: by then the source has already finished, so there is nothing to resolve later | ✅ closed |
+| 6 | ~~**Stage directories are named `point-<name>`.**~~ **Closed 2026-08-10.** `job_dir_names` branches on `JobSet.kind`; a ladder gets `01_coarse/`, a sweep keeps `point-*` | ✅ closed |
 | 7 | ~~**No hand-run entry point for one stage.**~~ **Closed 2026-08-10.** The grammar was already fixed in `staged-runs-architecture.md` step 1c and used by two other documents; this file had not caught up. `jobset prep run <stage> --from <run>` / `jobset submit run <stage>`, stage as the positional (user, 2026-08-10), `--chain` to run a ladder unattended. The ordering constraint stands: it must exist before the wrapper's directory-making prologue is retired | ✅ closed |
 | 8 | ~~**The history cannot be created.**~~ **Closed by the checkpoint rework.** `init` accepts a folder whose root *declares* its subdirectories one calculation (`task.json`), which this tree carries; forking is restore-then-save, which needs no branch route. Saves stay explicit by design, which is § 9, not a gap | ✅ closed |
 
-### The one to fix first
+### The one that was fixed first, and why
 
-**Gap 5**, because it is a regression rather than a missing feature: staged runs
-handed geometry across correctly before attempt directories existed, and now they
-do not.
+**Gap 5**, because it was a regression rather than a missing feature: staged runs
+handed geometry across correctly before attempt directories existed, and then
+did not.
 
-The fix is the one in § 6, and it removes machinery rather than adding it: stages
-stop being chained, so the hand-off becomes a plain file copy made when you set
-the next stage up (`project-layout.md` § 1.6). **Gap 6 rides along**, being the
-same code. And the shell block that caused the regression is **retired rather
-than repaired** — its guard against being run from inside an attempt, its `$PWD`
-bug, and its `--force` refusal all stop existing once Python decides the
-directory.
+The fix was the one in § 6, and it **removed machinery rather than adding it**:
+stages stopped being chained, so the hand-off is a plain file copy made when you
+set the next stage up (`project-layout.md` § 1.6). **Gap 6 rode along**, being
+the same code. And the shell block that caused the regression was **retired
+rather than repaired** — its guard against being run from inside an attempt, its
+`$PWD` bug and its `--force` refusal all stopped existing once Python decided the
+directory. Of the four gaps still open, none is a regression: they are the four
+**joins** (§ "What the shape of this list says") that were never built.
 
 **The lesson is worth more than the fix.** The system was already built the right
 way — `materialize` lays out directories and links, `submit` picks the working
