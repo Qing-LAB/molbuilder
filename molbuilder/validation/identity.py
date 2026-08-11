@@ -289,7 +289,7 @@ def check_overwrite(directory, run_id: str, engine: str,
     ``error`` rather than a warning, and it is the one refusal in this module:
     everything else here is § 5's *report and get out of the way*, but this is
     about to write over inputs. :func:`refuse_on_error` turns it into the
-    exception, which is the shape `job-contracts.md § 5.4`'s handoff writer
+    exception, which is the shape `handoff-bundle.md § 5`'s writer
     already has — *it raises unless* ``overwrite=True``.
     """
     if overwrite:

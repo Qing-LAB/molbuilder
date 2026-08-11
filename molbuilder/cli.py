@@ -967,7 +967,7 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     # warm files from a previous calculation.
     #
     # Staged BESIDE the target so the publish is a same-filesystem os.replace,
-    # the discipline job-contracts.md § 5.4 already uses for a single file,
+    # the discipline handoff-bundle.md § 5 already uses for a single file,
     # applied to a directory.  Published file BY FILE rather than by swapping
     # the directory, because § 7.2 forbids the one thing a directory swap would
     # do: "it must NOT remove warm files that were already there" -- producing

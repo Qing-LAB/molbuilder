@@ -1453,7 +1453,7 @@ def apply_sidecar_if_possible(struct, structure_path):
 def apply_companion_labels_if_present(struct, structure_path, *, notices=None):
     """Same-stem ``.fdf`` / ``.py`` companion next to a ``.xyz`` /
     ``.pdb`` wins over a ``.molstruct.json`` sidecar as the label
-    source.  See ``docs/execution/job-contracts.md`` and § 5.3.
+    source.  See ``docs/execution/handoff-bundle.md`` § 4.
 
     Why companion-wins: the script was the actual basis of a
     molbuilder-generated run.  Its in-body ATOM-METADATA block is

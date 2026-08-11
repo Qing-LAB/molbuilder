@@ -6,7 +6,7 @@
 **Companions:** [`structure.md`](?doc=model/structure.md) (a `StructureResult` carries a `Structure`);
 `engines/siesta.md` + `engines/pyscf.md` (the `.out`/`.log`/geometry formats the
 leaf parsers read, migrating); `execution/job-decoder.md` +
-`execution/handoff-bundle.md` (the directory-level `JobResult`/`BundleResult`
+[`execution/handoff-bundle.md`](?doc=execution/handoff-bundle.md) (the directory-level `JobResult`/`BundleResult`
 contracts the two DirParsers implement, migrating). The **write** side (the
 inverse — turning data back into files) is `sidecars/molstruct.py`,
 `script_emit.py`, and `bundle_writer.py`, not this module.

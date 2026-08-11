@@ -594,7 +594,7 @@ the next run continues from, so making a name unique to avoid a clash would
 throw away the geometry the user is trying to keep. Rewriting decks does not
 touch them, and nothing in this document ever moves a file to make room.
 
-`job-contracts.md § 5.4`'s handoff writer still raises unless `overwrite=True`.
+`handoff-bundle.md § 5`'s handoff writer still raises unless `overwrite=True`.
 That is a **different** case and keeps its refusal: a handoff bundle is a single
 artifact being replaced wholesale, not a folder being worked in.
 

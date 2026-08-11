@@ -14,7 +14,7 @@ around.
 
 ## 1. The map — which doc to open
 
-Ten documents live here, and they come in **three kinds**. Knowing which kind
+Eleven documents live here, and they come in **three kinds**. Knowing which kind
 you are reading tells you how much to trust it and what to do when two disagree.
 
 - A **contract** says what a thing *is*. It is the authority. When a contract and
@@ -32,7 +32,8 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | Where a run's files go, what they are named, what a `.fdf`'s reserved comment blocks are, what warm/cold restart means, or what any persisted file's format is | **[`job-contracts.md`](?doc=execution/job-contracts.md)** |
 | What a whole project directory looks like — the **two shapes** (flat and hierarchical), what `prep` does, and why the browser cannot finish a deck | **[`project-layout.md`](?doc=execution/project-layout.md)** |
 | Why a calculation's files all share one name, and what actually makes a run *continue* from an earlier one | **[`run-identity.md`](?doc=execution/run-identity.md)** |
-| What a saved history must always guarantee — the 22 invariants behind `molbuilder snapshot` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
+| What a saved history must always guarantee — the 31 rules behind `molbuilder snapshot` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
+| How a **finished run** becomes the starting point of the next calculation | **[`handoff-bundle.md`](?doc=execution/handoff-bundle.md)** |
 | What a **stage** is (it is molbuilder's idea, not the engine's) and the file that describes one | **[`engines/stages.md`](?doc=engines/stages.md)** — in `engines/`, because a stage is about parameters |
 
 ### Guides — how you do it today
@@ -269,12 +270,13 @@ When two docs need the same fact, it lives once, in `job-contracts.md`:
 - **The generated-script reserved blocks** (provenance, atom-metadata, …) —
   `job-contracts.md § 3`.
 - **Warm / cold restart semantics** — `job-contracts.md § 4`.
-- **The workflow handoff bundle** (a finished run → the next calculation) —
-  `job-contracts.md § 5`.
+- **The handoff bundle** (a finished run → the next calculation) —
+  [`handoff-bundle.md`](?doc=execution/handoff-bundle.md), its own contract.
 - **The persisted-artifact registry, the `@major` schema rule, and the
   config ↔ scheduler parameter vocabulary** — `job-contracts.md § 6`.
 
 A note on one overloaded word: a **handoff bundle** (one finished run carried
 into the next calculation) is *not* a **JobSet bundle** (a directory of many
-parameterised jobs). Different objects, different docs — `job-contracts.md § 5`
+parameterised jobs). Different objects, different documents —
+`handoff-bundle.md`
 vs `job-system.md`.

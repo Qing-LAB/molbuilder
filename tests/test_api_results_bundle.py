@@ -1,6 +1,8 @@
 """L2 + L3 tests for ``POST /api/results/bundle`` (PR-E, task #492).
 
-Endpoint contract: ``docs/execution/job-contracts.md`` § 5.2 + § 7.
+Endpoint contract: ``docs/execution/handoff-bundle.md`` § 3 (the object) and
+§ 6 (the surfaces); the change process is ``docs/execution/job-contracts.md``
+§ 7.
 
 L2 = the endpoint shape + error envelope.
 L3 = end-to-end: write a fake run dir, POST the endpoint, assert the

@@ -131,7 +131,7 @@ def partial_spectra_inspector():
 # .xyz load path (which honors apply_sidecar_if_possible) picks the
 # pair up unchanged.
 #
-# Contract: ``docs/execution/job-contracts.md`` § 5.2 + § 7
+# Contract: ``docs/execution/handoff-bundle.md`` § 3 + § 6
 # (Storage and projects-sidebar integration).  This endpoint is
 # the picker-roots security boundary called out in § 7.1.
 

@@ -1100,7 +1100,7 @@ are built somewhere else and moved into place only when all of them succeeded. O
 failure nothing is moved, and the message names the stage that stopped it.
 
 This is the same discipline the sidecar and archive writers already use — build,
-verify, then `os.replace` (`job-contracts.md § 5.4`) — applied to a directory
+verify, then `os.replace` (`handoff-bundle.md § 5`) — applied to a directory
 rather than a file. What it must **not** do is remove warm files that were already
 there; producing twice is `execution/run-identity.md § 6`, and those files are
 the point.
@@ -1333,7 +1333,7 @@ were written for a flat directory and would silently have lost data in a tree.
   that produced them, and a folder of stages is a run directory, so it works
   unchanged.
 
-  > **One interaction to settle before this ships.** `job-contracts.md § 5.3`
+  > **One interaction to settle before this ships.** `handoff-bundle.md § 4`
   > resolves *which* script to read when a directory holds several: **largest by
   > atom count, ties broken lexicographically.** Every stage of one description has
   > the same atoms, so every produce is a tie — and lexicographic order picks

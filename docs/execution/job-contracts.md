@@ -48,7 +48,7 @@ their own.
 | The `project / topic / structure` folder tree and its fixed topic names | **§ 2.5** |
 | The comment blocks molbuilder reserves inside a `.fdf` / `.py` / `.run.sh` | **§ 3 — The generated-script contract** |
 | What "warm restart", `--continue`, and `--cold` actually do | **§ 4 — Warm & cold restart** |
-| How a finished run flows into Transport / a continuation / a spectrum | **§ 5 — The workflow handoff bundle** |
+| How a finished run flows into Transport / a continuation / a spectrum | **[`handoff-bundle.md`](?doc=execution/handoff-bundle.md)** — its own contract |
 | What a persisted file is called system-wide, and how a config value becomes a SLURM flag | **§ 6 — The shared data vocabulary** |
 
 Two conventions bind everything below and are stated once here:
@@ -1053,134 +1053,19 @@ starts, and produces something wrong.
 
 ---
 
-## 5. The workflow handoff bundle
+## 5. The handoff bundle — moved
 
-> **Vocabulary:** the object that carries a **finished run into the next
-> calculation** is the *handoff bundle*. Plain "bundle" belongs to the JobSet
-> framework (a bundled batch of jobs, `execution/job-system.md`) — do not use
-> the bare word for this object.
+**Its own document:**
+[`handoff-bundle.md`](?doc=execution/handoff-bundle.md).
 
-### 5.1 Purpose
+It carries a **finished run into the next calculation** — the engine's final
+coordinates fused with the labels from the script that started it, written as an
+ordinary `.xyz` + `.molstruct.json` pair.
 
-molbuilder writes an input script into a run directory; the run produces
-outputs (SIESTA `.XV`, a PySCF `_optimized.xyz`). Historically the originating
-`.xyz` + `.molstruct.json` were **not** copied into the run dir, so when a user
-wanted to continue — Transport (needs `L`/`R`/`bridge` regions), a restart from
-converged coords, a spectrum at the optimised geometry — the next stage had no
-clean source for the labels that defined the run. The handoff bundle closes
-that gap. It fuses:
-
-1. the **final structure** (coords + elements) read from the converged engine
-   output, with
-2. the **labels** (regions, frozen atoms) from the originating script's in-body
-   ATOM-METADATA (§ 3.4), and
-3. **provenance** from that script.
-
-Materialised to a destination, it writes an `.xyz` + `.molstruct.json` pair —
-a format the next tab's existing load path already understands. No new load
-primitive is needed downstream.
-
-### 5.2 The handoff object
-
-Assembly returns a typed, frozen `BundleResult`
-(`molbuilder/parse/types.py`; produced by
-`molbuilder/parse/dirs/bundle.py::BundleDirParser.parse(run_dir)`):
-
-```python
-@dataclass(frozen=True)
-class BundleResult(ParseResult):      # + base: schema_version, parsed_at, parser_name, source
-    structure:         Structure                 # final coords + elements
-    cell:              Optional[...]             # lattice, when present
-    regions:           Dict[str, List[int]]      # 0-based; may be {}
-    frozen_atoms:      List[int]                 # 0-based; may be []
-    source_engine:     Literal["siesta", "pyscf"]
-    source_script:     Optional[str]             # abs path to the .fdf / .py that fed extraction
-    final_coords_from: Literal["xv", "fdf-initial", "py-opt", "py-initial"]
-    block_schema_versions: ...                   # the ATOM-METADATA versions seen
-    notes:             List[str]                 # never None; diagnostics
-```
-
-`final_coords_from` is load-bearing: it tells a consumer whether the bundle
-reflects a **converged** optimization (`"xv"`, `"py-opt"`) or **fell back** to
-initial coordinates because the optimization output was missing
-(`"fdf-initial"`, `"py-initial"`). `notes` carries non-fatal diagnostics
-(schema-version mismatch, fallback reason, missing provenance) and is always a
-(possibly empty) list.
-
-> **Naming reconciled to code:** the old contract called this `RunBundle` with
-> `user_custom_lines` + `provenance` fields and a free `assemble_from_run_dir`
-> function. The shipped object is **`BundleResult`** (user-custom and
-> provenance live on the sibling **`ScriptResult`**, the per-script
-> extraction), and the entry point is the class method
-> **`BundleDirParser.parse`** (the free `_assemble_from_run_dir` is private and
-> returns a dict).
-
-The per-script extraction feeding the bundle is `ScriptResult`
-(`ScriptSourceTextParser.parse`), whose fields distinguish three states on
-purpose: `None` = block absent/unparseable, `[]`/`{}` = block present but
-deliberately empty. The bundle-layer convenience `_extract_script_source(text)
-→ dict` is re-exported for back-compat as
-`molbuilder.script_emit.extract_script_source`.
-
-### 5.3 Source priority and conflict policy
-
-**Final coordinates — first hit wins:**
-
-| Engine | Source | Mark | When |
-|---|---|---|---|
-| SIESTA | `<SystemLabel>.XV` | `xv` | any run that wrote `.XV` (`SystemLabel` read from the in-body directive, not the filename); falls back to `<fdf-stem>.XV`, then to the sole `*.XV` in the directory (a `note` records the fallback; multiple `*.XV` are left ambiguous and drop to initial coords) |
-| SIESTA | `.fdf` initial coords | `fdf-initial` | `.XV` absent/malformed — bundle still emits; `notes` records "NOT converged geometry" |
-| PySCF | `<JOB>_optimized.xyz` | `py-opt` | geom-opt success (`JOB` read from the `JOB = "…"` line) |
-| PySCF | `.py` initial atom-block | `py-initial` | `_optimized.xyz` absent — bundle still emits; `notes` records the fallback. Only the generator's whitespace atom-block is parsed; a hand-written list-of-tuple `.py` must be re-rendered through molbuilder first |
-
-**Labels:** in-body ATOM-METADATA is authoritative; where a `.xyz` load has
-both a sibling script *and* a `.molstruct.json`, **in-body wins** (§ 3.4).
-
-**Conflict rules:** multiple scripts in a dir ⇒ pick the largest by atom count
-(tie: lexicographic); both a `.fdf` **and** a `.py` present ⇒
-`BundleError("dir contains both …; ambiguous")`; the script's
-`n_atoms_total` not matching the final structure's atom count ⇒ `BundleError`
-(no silent reconciliation). A left-handed cell (det < 0) assembles but adds a
-loud `notes` warning (the check now lives in
-`molbuilder/parse/dirs/_assembler_helpers.py`).
-
-### 5.4 Materialisation and errors
-
-```python
-def write_bundle_as_handoff(bundle, target_dir, *, stem,
-                            overwrite=False) -> Tuple[Path, Path]:
-    """Write <target>/<stem>.xyz + <target>/<stem>.molstruct.json."""
-```
-
-(`molbuilder/bundle_writer.py`.) Each file is written atomically (tmp + fsync +
-`os.replace`, mirroring the sidecar writer); the **pair** is best-effort
-(`.xyz` lands first, then the sidecar). With `overwrite=False` (default) it
-raises **`BundleWriteError`** if **either** the `.xyz` or the
-`.molstruct.json` already exists at that stem — stricter than checking the XYZ
-alone, because overwriting a stale sidecar that points at a different XYZ would
-corrupt the structure↔sidecar pairing invariant. (Note the two distinct
-exceptions: `BundleError` for *assembly* problems, `BundleWriteError` for
-*write* problems.) The `overwrite=False` check is not a lock: two writers
-racing on the same target stem can each pass the existence check before either
-writes, so the pair could land mixed (`.xyz` from one, sidecar from the
-other). The per-file atomic rename keeps each file internally consistent, and
-the sidecar's `structure_hash` lets the next loader detect the mismatch — but
-a UI that writes a handoff SHOULD warn before targeting a stem that already
-exists.
-
-On schema: the reader handles ATOM-METADATA **v3 and v4**; a version below 3
-raises `BundleError` ("re-render with current molbuilder"); above 4 loads with
-a `notes` warning ("molbuilder expects 4").
-
-### 5.5 Surfaces
-
-- **Web** — the Results panel's "Bundle for next stage →" button posts to
-  `POST /api/results/bundle` (`molbuilder/web/blueprints/results.py`); the
-  frontend wiring is `lib/results/bundle-handoff.js`. The endpoint resolves the
-  target inside the project sandbox and then navigates the sidebar to it so the
-  new pair appears without manual refresh.
-- **CLI** — `BundleDirParser.parse` + `write_bundle_as_handoff` are the same
-  entry points a script or future CLI command calls directly.
+It moved out on 2026-08-10 because plain "bundle" belongs to the JobSet
+framework (a batch of jobs), and holding both senses in one document meant this
+section had to open with a warning about its own container. `README.md` R5
+already named `execution/handoff-bundle.md` as the home; now it exists.
 
 ---
 
