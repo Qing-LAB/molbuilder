@@ -788,8 +788,9 @@ not to discriminate at all.**
 
 | | **correctness** | **performance** | **readability** |
 |---|---|---|---|
-| **`key=value` in engine comments** *(chosen)* | one file cannot drift from itself; values are tokens once `kind=` exists | irrelevant | highest — the declaration sits directly above the line it produces |
-| **JSON inside the comment** | strongest as pure parsing: a spec, any string, no quoting rules to get wrong | irrelevant | poor — quote-dense, and a person editing it breaks it silently |
+| **TOML inline table in engine comments** *(chosen)* | one file cannot drift from itself, **and** a specified grammar with a stdlib parser | irrelevant | highest — the declaration sits directly above the line it produces, and reads as prose does |
+| **a bespoke `key=value` grammar** | one file, but a regex of ours: no spec, and it cannot express a string with spaces — which is how the kind ended up as prose | irrelevant | high |
+| **JSON inside the comment** | as strong as TOML on parsing | irrelevant | poor — quote-dense, and a person editing it breaks it silently |
 | **a sidecar `template.json`** | **worst: two files, and they can disagree** | irrelevant | fine, but you must read both to know one thing |
 | **YAML in the comment** | weakest: `no` parses as false, versions differ | irrelevant | good |
 
@@ -802,11 +803,14 @@ recoverable syntax problem; that one is silent and produces a wrong
 calculation. **One file cannot drift from itself** is worth more than any
 parser's strictness.
 
-JSON is genuinely better at parsing, and it loses anyway for two reasons that
-belong to this file specifically: the values are **tokens by construction** once
-the kind stops being prose — so the quoting JSON exists to handle is not
-needed — and `project-layout.md` treats the template as something **a person
-edits**, where a missing brace is a corrupted calculation rather than a typo.
+**Between the two spec'd formats, readability decides**, and TOML wins it:
+`kind="engine", anchor="MeshCutoff"` reads the way the rest of the block reads,
+where the JSON equivalent is a wall of braces and quotes in a file
+`project-layout.md` expects **a person to edit**. Rolling our own grammar was
+considered and rejected on the same axis it appears to win: it is only simpler
+until an item needs a string with a space in it, and then the prose goes
+somewhere it cannot be parsed — which is the defect this section exists to
+fix.
 
 **Performance is not a discriminator and it would be dishonest to claim it
 is.** A template is a few hundred lines, read once per `prep`. Every candidate
@@ -820,10 +824,29 @@ person can read the reference. The declaration sitting immediately above the
 line it produces is what lets you check a template by eye — the same property
 that makes the payload copyable makes the file reviewable.
 
-**Inside the comment, the grammar is the one § 3.3 already defines** —
-`field <name> key=value …`, space separated. Keeping it is the point: a second
-notation for the same job is the duplication this whole contract exists to
-prevent, and `key=value` parses in one line anyway.
+**Inside the comment: a TOML inline table, parsed by `tomllib`.** The
+declaration is a mature, specified format with a standard-library parser — not
+a grammar of ours:
+
+```fdf
+#   item mesh_cutoff = { kind="engine", anchor="MeshCutoff", type="float",
+#                        unit="Ry", range=[50,2000], default=300.0, group="stage" }
+```
+
+**§ 3.3's existing grammar is already most of the way there**, which is why this
+is a small move rather than a new notation: `range=[50,2000]` is a TOML array
+and `default=300.0` a TOML float today. What TOML adds is a **specification**
+instead of a regex, and the two cases the bespoke form cannot express —
+**strings containing spaces** (a `help` line, an enum label) and **lists**
+(`expands=["ChemicalSpeciesLabel"]`). Those are exactly the cases that pushed
+the kind into prose in the first place.
+
+> **The one real cost, stated plainly.** `tomllib` is standard library from
+> **Python 3.11**, and `pyproject.toml` declares `requires-python = ">=3.9"`.
+> So this needs either the floor raised to 3.11 — already a tracked item — or
+> the `tomli` backport, which is the same parser under its pre-stdlib name.
+> **That is a dependency decision, and it is the only thing standing between
+> this format and being written down as settled.**
 
 **What was genuinely unparseable was the KIND**, because it was written as
 English inside the anchor: `anchor=(molbuilder: ChemicalSpeciesLabel block
