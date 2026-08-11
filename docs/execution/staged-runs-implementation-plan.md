@@ -3085,6 +3085,17 @@ wish.
   builds one with an f-string. *Test:* no `f"…_{stage}…"` or `f"point-…"`
   outside `identity.py` / `materialize.py`. (Violated four times before
   2026-08-10; that is what made the `-stage<N>` rename cost a full batch.)
+  ⚠ **No such test exists** — searched 2026-08-10; the only matches are test
+  *fixtures* building `point-…` names, which is the opposite of a guard. Held
+  by review, like A7.
+
+> **Two of these seven invariants name a test that does not exist** (A1, A7),
+> and this section opens by saying *"an invariant nothing checks is a wish."*
+> Both were found by reading the section against the code rather than by
+> anything failing — which is the case for writing the two guards, and the
+> reason they are marked here instead of quietly left. **A2, A3, A5 and A6 are
+> genuinely covered**; A4 is covered for three of its four objects (see
+> below).
 - **A2 — one shape per calculation.** ~~A produce reads `task.shape` and emits
   exactly one layout's artifacts. *Test:* a flat produce writes no
   `job-set.json`; a hierarchical one writes no bash ladder runner.~~
@@ -3100,14 +3111,39 @@ wish.
   launch quantity is recorded **with that quantity**. *Test:* BENCH-MARKS'
   `mpi_np` equals what the wrapper resolves, or the mismatch is refused before
   the engine sees it.
-- **A4 — a caller asks; it does not re-derive.** *Test:* the value objects in
-  § 9.4 have exactly one construction site each.
+- **A4 — a caller asks; it does not re-derive.** *Test:* each value object in
+  § 9.4 has exactly one **owning function** — not merely one line, since a
+  function with three return paths is still one owner.
+
+  **Status, measured 2026-08-10 — three of four hold:**
+
+  | object | owner | |
+  |---|---|---|
+  | `Attempt` | `materialize.prepare_attempt` | ✅ |
+  | `LaunchAgreement` | `prep.launch_agreement` (3 returns, one owner) | ✅ |
+  | `Shape` | `materialize` — `shape_of`, plus `job_dir_names`' hierarchical default | ✅ one module, and the default is the documented *"no description to read"* fallback |
+  | `StageRef` | `materialize.stage_refs` **and `runstatus.render_stage_status`** | ⚠ **violated** |
+
+  > ⚠ **`runstatus.py:291` builds a second `StageRef`** — `StageRef(s.seq,
+  > s.name).label` — to format one heading, because `StageStatus` carries
+  > `seq` and `name` as loose fields instead of the ref the resolver already
+  > made. That is a caller re-deriving an answer a layer holds, **inside the
+  > object created to end exactly that** (decision 28). *Fix:* `jobset_status`
+  > already calls `stage_refs`; have `StageStatus` carry the `StageRef` and
+  > let `seq` delegate to it. Small, and it makes A4 true rather than
+  > aspirational.
 - **A5 — `seq` is derived, never stored** (decision 28). *Test:* `task@1` has no
   `seq`; `Stage` keeps three fields.
 - **A6 — an attempt is immutable once launched.** *Test:* `run.json` present ⇒
   prepare opens a new `run-<n>`.
 - **A7 — dependencies point down only.** No layer imports a layer above it.
-  *Test:* an import-direction check, the same shape as `test_layering.py`.
+  ⚠ **Currently a wish, by this section's own standard.** `test_layering.py`
+  enforces **import depth** (`L1`/`L2`/`L3`), which is a *different* partition
+  from the architectural layers — § 9.3 disambiguates the two. Import depth
+  cannot see a layer-5 module importing a layer-6 one when both are `L2`, and
+  `jobset` alone spans architectural 3–6 inside one import-depth tier.
+  *Test needed:* an import-direction check over the § 9.3.1 **layer** map, not
+  over the depth tiers. Until it exists, A7 is held by review.
 
 ### 9.3 The layers, and the sequencers that cross them
 
@@ -3122,7 +3158,7 @@ other**:
 A layer is a *stratum*: it may call downward, never upward or sideways. A
 sequencer is a *path*: it visits several layers in a fixed order, on purpose.
 `prep` is a sequencer, and trying to find it a row in the layer table is what
-left step 1 of its five with no owner (§ 9.3a).
+left step 1 of its five with no owner — the gap that produced this rewrite.
 
 > #### ⚠ Two things in this repository are called a "layer"
 >
@@ -3304,10 +3340,20 @@ Each replaces a re-derivation with an answer.
 
 | object | layer | replaces | kills |
 |---|---|---|---|
-| **`StageRef(seq, name)`** | 1 | six hand-rolled ordinal computations | decision 28's whole class of defect |
-| **`Shape`** | 3 | a producer emitting flat *and* hierarchical at once | *"the shape is never chosen"* |
-| **`LaunchSpec`** | 3 → 5 | the wrapper choosing ranks alone | the `-np 14` failure, permanently |
-| **`Attempt`** | 4 | `prepare_attempt` returning `Dict[str, object]` | a bag the CLI unpacks by string key — ✅ **landed 2026-08-10** |
+| **`StageRef(seq, name)`** | 1 | six hand-rolled ordinal computations | decision 28's whole class of defect — ✅ **landed** |
+| **`Shape`** | **4** | a producer emitting flat *and* hierarchical at once | *"the shape is never chosen"* — ✅ **landed** |
+| **`LaunchSpec`** | 5 | the wrapper choosing ranks alone | the `-np 14` failure — ◐ **the agreement landed as `LaunchAgreement`; the migration behind it did not** |
+| **`Attempt`** | 4 | `prepare_attempt` returning `Dict[str, object]` | a bag the CLI unpacks by string key — ✅ **landed** |
+
+> **Two of these rows were wrong about their own layer until 2026-08-10.**
+> `Shape` was filed under 3 (plan) while both § 9.3.1 and § 9.6 place it in
+> layout — it answers *where do this stage's files live*, which is a layout
+> question, and it is read by `job_dir_names`, not by a producer. `LaunchSpec`
+> read `3 → 5`, an arrow rather than an owner; the thing that exists,
+> `LaunchAgreement`, is layer 5 and is *consulted* by the `prep` sequencer at
+> step 4. **An object with two layers has no layer** — that is the same
+> confusion § 9.3 exists to end, and it survived inside the table of objects
+> § 9.3 was written to place.
 
 > **`Attempt` is the author's own smell, recorded rather than excused.**
 > `prepare_attempt` landed on 2026-08-10 returning a dict, and `submit.py` grew
