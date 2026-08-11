@@ -105,15 +105,25 @@ def _two_surfaces(text: str):
     return text[j:], text[i:j]
 
 
-@pytest.mark.parametrize("engine,const,ext,body", ENGINES)
-def test_the_carry_inventory_that_fed_attempt_directories_is_gone(
-        engine, const, ext, body):
-    """Fix by subtraction (P7 unit 5): the third list went with the block it
-    served, rather than becoming a third thing to keep in step."""
-    assert not hasattr(runwrap, "_SIESTA_WARM_SUFFIX_FILES")
-    assert not hasattr(runwrap, "_PYSCF_WARM_FILES")
-    assert not hasattr(runwrap, "_attempt_dir_block")
-    assert hasattr(runwrap, const), "the surviving inventory is named"
+def test_there_is_exactly_one_warm_inventory_per_engine():
+    """`job-contracts.md` § 4.2: **one warm-file inventory per engine.**
+
+    Stated as the set of inventories `runwrap` declares. Two lists per engine
+    agree by luck: add a warm suffix to one and a `--cold` run silently
+    warm-starts from the file the other does not know about -- a contaminated
+    calculation that reports success.
+
+    **An equality, so it fails both ways**: a third inventory fails whatever it
+    is called, and one of these two disappearing fails too. It replaced three
+    `not hasattr` assertions naming symbols this program deleted, which pinned
+    the absence of the past rather than the shape of the present.
+    """
+    import inspect
+    declared = set(re.findall(r"^(_[A-Z_]*WARM[A-Z_]*)\s*=",
+                              inspect.getsource(runwrap), re.M))
+    assert declared == {"_SIESTA_WARM_SUFFIXES", "_PYSCF_WARM_SUFFIXES"}, (
+        f"runwrap declares warm inventories {sorted(declared)}; the contract "
+        "gives each engine exactly one")
 
 
 @pytest.mark.parametrize("engine,const,ext,body", ENGINES)
@@ -133,9 +143,26 @@ def test_no_generated_wrapper_changes_directory(tmp_path, engine, const,
     assert cds == [], f"{engine} wrapper navigates: {cds}"
 
 
-def test_render_run_wrapper_no_longer_takes_attempt_dirs():
-    """The parameter is gone from both entry points, so no caller can ask for
-    the retired behaviour and quietly get the flat one instead."""
+def test_the_wrapper_writer_takes_exactly_these_parameters():
+    """The entry point every wrapper goes through, stated as what it accepts.
+
+    `running-a-job.md` § 2.2a: the wrapper activates and execs. Each parameter
+    is something a caller bakes in at generate time, so the set is a contract
+    surface -- a new one means new work on a compute node and should be argued
+    for rather than appear.
+    """
     import inspect
-    for fn in (runwrap.render_run_wrapper, runwrap.write_run_wrapper):
-        assert "attempt_dirs" not in inspect.signature(fn).parameters
+    assert set(inspect.signature(runwrap.write_run_wrapper).parameters) == {
+        "continue_retries",
+        "cpus_per_task",
+        "env",
+        "exclusive",
+        "gres",
+        "max_memory_mb",
+        "mem",
+        "mpi_np",
+        "omp_threads",
+        "script_path",
+        "time",
+        "emit_sbatch",
+    }

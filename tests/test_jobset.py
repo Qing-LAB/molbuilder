@@ -518,17 +518,36 @@ def test_render_plan_surfaces_per_job_ranks_and_cores():
 def test_submit_dry_run_emits_J_and_writes_nothing(tmp_path):
     """One job, SLURM, dry-run: the per-job ``-J`` and no side effects.
 
-    This asserted the threaded ``--dependency`` across a whole ladder until
-    2026-08-10, when handing a scheduler more than one job at a time was
-    retired (user rule). The ``-J`` half is untouched and still worth pinning;
-    the threading half is now covered by the refusal that replaced it.
+    **The name says which CALCULATION, then which stage.** It was the bare
+    stage name until 2026-08-10, so three concurrent ladders all showed
+    `coarse` in `squeue` -- the one place a scheduler shows you your own work,
+    showing you nothing. `JobSet.name` is the id, so it comes first.
     """
     res = submit_jobset(_ladder(), tmp_path, mode="submit", dry_run=True,
                         only="s1")
     assert [r.status for r in res] == ["planned"]
     assert res[0].command[0] == "sbatch"
-    assert res[0].command[res[0].command.index("-J") + 1] == "s1"
+    assert res[0].command[res[0].command.index("-J") + 1] == "demo/s1"
     assert list(tmp_path.iterdir()) == []          # wrote nothing
+
+
+def test_two_calculations_are_told_apart_in_the_queue(tmp_path):
+    """The point of the name, stated as the thing it prevents.
+
+    Two calculations, the same stage name in each -- which is ordinary, since
+    `coarse` is what a first stage is called everywhere. Their queue names must
+    differ, or `squeue` cannot tell you which of your runs is which.
+    """
+    import dataclasses
+    a = _ladder()
+    b = dataclasses.replace(_ladder(), name="other")
+    names = []
+    for js in (a, b):
+        r = submit_jobset(js, tmp_path, mode="submit", dry_run=True, only="s1")
+        names.append(r[0].command[r[0].command.index("-J") + 1])
+    assert names == ["demo/s1", "other/s1"]
+    assert len(set(names)) == 2, (
+        f"two calculations share one queue name: {names}")
 
 
 def test_submit_dry_run_sweep_per_job_flags_vary(tmp_path):
@@ -877,28 +896,40 @@ def test_status_finished_with_real_siesta_out(tmp_path):
 # --------------------------------------------------------------------- #
 
 def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
-    """The emitted wrapper's `# --- ... ---` sections, as a set.
+    """The emitted wrapper contains exactly the blocks the CONTRACT lists.
 
-    `running-a-job.md` § 2.2a: the wrapper makes the environment right and
-    execs; everything else belongs to Python on the host.  This pins the blocks
-    that rule leaves, so a block added to the GENERATED BASH -- which no unit
-    test of the Python would see -- fails here.
+    `job-contracts.md` § 2.6 tabulates them, and this reads that table rather
+    than carrying its own copy — so the rule has one home. Adding a block is a
+    contract change: each one is work happening on a compute node, which
+    `running-a-job.md` § 2.2a keeps narrow on purpose (the wrapper activates and
+    execs; anything that computes, decides or arranges files is Python's, on the
+    host).
+
+    An equality in both directions: a new block fails until it is documented,
+    and a documented block that stops being emitted fails too.
     """
     import re as _re
     from molbuilder.runwrap import write_run_wrapper
+
+    doc = (Path(__file__).resolve().parent.parent
+           / "docs" / "execution" / "job-contracts.md").read_text(encoding="utf-8")
+    start = doc.index("#### What a wrapper is made of")
+    # stop at the sentence that closes the table -- the section continues with
+    # OTHER tables, and running past this one silently harvested their rows.
+    end = doc.index("**Adding a block is a contract change", start)
+    documented = {m.group(1).strip()
+                  for m in _re.finditer(r"^\| \*\*(.+?)\*\* \|", doc[start:end], _re.M)}
+    assert documented, "§ 2.6's wrapper table could not be read — repoint this"
+
     (tmp_path / "JOB.fdf").write_text("x")
     txt = write_run_wrapper(tmp_path / "JOB.fdf", env="e").read_text()
-    blocks = {h.split("(")[0].strip()
-              for h in _re.findall(r"^# --- (.+?) -*$", txt, _re.M)}
-    assert blocks == {
-        "Baked preamble", "Activation", "Continuation flags",
-        "SIESTA-specific argument parsing", "Run index resolution",
-        "Cold-restart: move engine warm-start files aside",
-        "Per-run log file", "Runtime status banner",
-        "Probe SIESTA build at runtime",
-        "Record resolved launch command + placement",
-        "SCF per-iteration timing instrument", "Launch SIESTA + capture exit",
-    }, sorted(blocks)
+    emitted = {h.split("(")[0].strip()
+               for h in _re.findall(r"^# --- (.+?) -*$", txt, _re.M)}
+
+    assert emitted == documented, (
+        "the wrapper and job-contracts.md § 2.6 disagree about its blocks.\n"
+        f"  emitted, not documented: {sorted(emitted - documented)}\n"
+        f"  documented, not emitted: {sorted(documented - emitted)}")
 
 
 def test_prep_writes_stage_plan_md(tmp_path):
@@ -2276,3 +2307,128 @@ def test_a_machine_that_will_not_probe_does_not_stop_the_prep(tmp_path,
     assert len(dirs) == 2                                   # the tree is laid
     assert (tmp_path / "job-gpu.run.sh").is_file()          # wrappers rendered
     assert not (tmp_path / "environment.json").exists()     # and it said nothing
+
+
+# --------------------------------------------------------------------- #
+#  P12 unit 3 -- the two environments, pinned on the claim that matters  #
+# --------------------------------------------------------------------- #
+
+def _prep_bundle(base, *, scheduler: bool, monkeypatch):
+    """Prep the same two-stage flat calculation, with and without a cluster."""
+    import json
+    from molbuilder.jobset.prep import prep_jobset
+    base.mkdir(parents=True, exist_ok=True)
+    _describe(base, "flat", names=("coarse", "tight"))
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
+    for j in js.jobs:
+        (base / j.script).write_text("SystemLabel JOB\n")
+    cfg = {"script_generation": {"activation": "conda activate",
+                                 "preamble": "source /x/conda.sh"}}
+    if scheduler:
+        cfg["scheduler"] = {"kind": "slurm",
+                            "directives": {"partition": "public",
+                                           "qos": "public"},
+                            "defaults": {"time": "0-04:00:00"}}
+    (base / "molbuilder.json").write_text(json.dumps(cfg))
+    monkeypatch.chdir(base)
+    prep_jobset(js, base, env="molbuilder-siesta")
+    return base
+
+
+def test_a_workstation_gets_no_sbatch_and_a_cluster_gets_both(tmp_path,
+                                                              monkeypatch):
+    """`architecture.md` § 9: a workstation needs no `scheduler` block.
+
+    With none configured **no `.sbatch` is written at all** -- emitting one
+    would be inventing a queue the machine does not have, which is the nanny
+    behaviour this project refuses.  With one configured both files appear.
+    """
+    ws = _prep_bundle(tmp_path / "ws", scheduler=False, monkeypatch=monkeypatch)
+    assert sorted(p.name for p in ws.glob("*.run.sh")) == [
+        "JOB_01_coarse.run.sh", "JOB_02_tight.run.sh"]
+    assert list(ws.glob("*.sbatch")) == [], (
+        "a workstation with no scheduler block got a .sbatch")
+
+    hpc = _prep_bundle(tmp_path / "hpc", scheduler=True, monkeypatch=monkeypatch)
+    assert sorted(p.name for p in hpc.glob("*.sbatch")) == [
+        "JOB_01_coarse.sbatch", "JOB_02_tight.sbatch"]
+
+
+def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
+    """**The claim the whole two-layer split rests on**, and it was asserted
+    nowhere until 2026-08-10.
+
+    `architecture.md` § 9: the outer `.sbatch` is a header whose body calls the
+    inner `.run.sh`, and the inner one owns activation and launch.  If that is
+    true then the SAME `.run.sh` runs in both places -- so a run you debugged
+    on your laptop is the run the cluster performs.  If it ever stops being
+    true, the laptop stops being a rehearsal and this test is how you find out.
+    """
+    ws = _prep_bundle(tmp_path / "ws", scheduler=False, monkeypatch=monkeypatch)
+    hpc = _prep_bundle(tmp_path / "hpc", scheduler=True, monkeypatch=monkeypatch)
+    for name in ("JOB_01_coarse.run.sh", "JOB_02_tight.run.sh"):
+        a = (ws / name).read_text()
+        b = (hpc / name).read_text()
+        assert a == b, (
+            f"{name} differs between a workstation and a cluster -- the inner "
+            "wrapper is supposed to be the same file, so a laptop run is a "
+            "rehearsal of the cluster run")
+
+
+# --------------------------------------------------------------------- #
+#  P12 unit 4 -- the five steps run in their order                       #
+# --------------------------------------------------------------------- #
+
+def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
+                                                             monkeypatch):
+    """`project-layout.md` § 2.3.1: the order is forced, not chosen.
+
+    **Step 3 cannot precede step 1.** A deck carries values that depend on how
+    it will be launched -- a block size derived from the rank count, an
+    eigensolver that also picks which environment the wrapper activates -- so a
+    deck written before the machine is known has guessed at them.
+
+    The outcome alone cannot show this: a prep that resolved the machine LAST
+    would still leave the same files behind.  So the order is observed
+    directly, by recording when each step touches the disk.  `environment.json`
+    is step 1's output and the wrapper is step 4's; if the wrapper is written
+    first, the deck it accompanies was rendered against nothing.
+    """
+    import json
+    from molbuilder.jobset import prep as _prep
+
+    base = tmp_path / "b"
+    base.mkdir()
+    _describe(base, "flat", names=("coarse", "tight"))
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
+    for j in js.jobs:
+        (base / j.script).write_text("SystemLabel JOB\n")
+    (base / "molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "source /x/conda.sh"}}))
+    monkeypatch.chdir(base)
+
+    from molbuilder import runwrap as _rw
+
+    order: list = []
+    real_target, real_wrap = _prep.resolve_target, _rw.write_run_wrapper
+
+    def spy_target(b):
+        order.append("1 machine")
+        return real_target(b)
+
+    def spy_wrap(*a, **k):
+        order.append("4 wrapper")
+        return real_wrap(*a, **k)
+
+    # `prep_jobset` imports the wrapper writer inside its own body, so the
+    # patch goes on the SOURCE module -- patching `prep` would miss it.
+    monkeypatch.setattr(_prep, "resolve_target", spy_target)
+    monkeypatch.setattr(_rw, "write_run_wrapper", spy_wrap)
+    _prep.prep_jobset(js, base, env="molbuilder-siesta")
+
+    assert order[0] == "1 machine", (
+        f"prep wrote a wrapper before resolving the machine: {order}")
+    assert "4 wrapper" in order, "no wrapper was written at all"
+    # ...and the machine is resolved ONCE per bundle, not once per stage.
+    assert order.count("1 machine") == 1, order

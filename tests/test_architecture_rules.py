@@ -58,13 +58,10 @@ def _python_files() -> list[Path]:
 #  A1 -- one namer                                                      #
 # ===================================================================== #
 
-#: How a stage token is spelled, and the only spelling that counts as one.
-#: ``identity.stage_token`` is ``f"{int(seq):02d}_{name}"``; these patterns are
-#: the ways that same string gets re-assembled somewhere else.  The guard is
-#: deliberately about the ZERO-PADDED ordinal joined to a name, not about any
-#: ``f"{a}_{b}"`` -- the padding is what makes it a token rather than a coincidence,
-#: so this catches the real thing without shouting at every underscore.
-_HAND_BUILT_TOKEN = re.compile(
+#: How a stage token is spelled: ``identity.stage_token`` is
+#: ``f"{int(seq):02d}_{name}"``.  The patterns are the ways that same string
+#: gets assembled, so "does this file spell a token?" is answerable mechanically.
+_SPELLS_A_TOKEN = re.compile(
     r""":0\d+d\}_        # f-string:   f"{seq:02d}_{name}"
       | %0\d+d_          # %-format:   "%02d_%s" % (seq, name)
       | \.zfill\(\s*2\s*\)   # str build: str(seq).zfill(2) + "_" + name
@@ -72,85 +69,106 @@ _HAND_BUILT_TOKEN = re.compile(
     re.VERBOSE,
 )
 
-#: The one module allowed to spell it.  Not a list that grows: the whole point
-#: of A1 is that there is exactly one namer, so a second entry here would be
-#: the rule being repealed rather than an exception being granted.
-_THE_NAMER = Path("identity.py")
+#: A1's rule, as the set it permits: **one namer**.
+_THE_NAMERS = {Path("identity.py")}
 
 
-def test_a1_a_stage_token_is_spelled_in_exactly_one_place():
-    """**A1 -- one namer.** Only ``identity.py`` builds ``<NN>_<name>``.
+def test_a1_exactly_one_module_spells_a_stage_token():
+    """**A1 — one namer**, stated as the set of files allowed to be one.
 
-    ``run-identity.md`` § 3 rule 1 is that a name is normalised **once**, and
-    the reason is not tidiness: the CLI, the web tab and the codec must all
-    reach the same normaliser, or the id a surface shows is not the id the
-    engine wrote.  A second place that assembles the same string is a second
-    normaliser whether or not anyone calls it that.
+    `run-identity.md` § 3 rule 1: a name is tidied **once**.  The reason is not
+    tidiness — the CLI, the web tab and the codec must all reach the same
+    normaliser, or the id a surface shows is not the id the engine wrote.  A
+    second place that assembles the same string is a second normaliser whether
+    or not anyone calls it that.
 
-    **What this cannot see.**  Someone who builds the token by a route this
-    regex does not know -- string concatenation in a loop, say -- passes.  The
-    guard covers the three spellings a person actually reaches for; it is a
-    fence, not a proof.
+    **An equality, not a hunt for offenders.** The set of modules that spell a
+    token must BE ``{identity.py}`` — so a second speller fails, and so does
+    `identity.py` quietly losing the ability to spell one (which would mean the
+    namer moved and this guard had stopped watching anything).
+
+    **What it cannot see:** a token assembled by a route these three patterns
+    do not describe.  It covers the spellings a person actually reaches for; it
+    is a fence, not a proof.
     """
-    offenders = []
-    for rel in _python_files():
-        if rel == _THE_NAMER:
-            continue
-        src = (_PKG / rel).read_text(encoding="utf-8")
-        for m in _HAND_BUILT_TOKEN.finditer(src):
-            line = src.count("\n", 0, m.start()) + 1
-            offenders.append(f"{rel}:{line}  {m.group(0).strip()}")
-
-    assert not offenders, (
-        "these build a stage token by hand instead of asking "
-        "`identity.stage_token` for one (§ 9.6 rule A1):\n  "
-        + "\n  ".join(offenders))
+    spellers = {rel for rel in _python_files()
+                if _SPELLS_A_TOKEN.search((_PKG / rel).read_text(encoding="utf-8"))}
+    assert spellers == _THE_NAMERS, (
+        "A1 says exactly one module spells `<NN>_<name>`.\n"
+        f"  also spelling one: {sorted(str(p) for p in spellers - _THE_NAMERS)}\n"
+        f"  expected to, but does not: "
+        f"{sorted(str(p) for p in _THE_NAMERS - spellers)}")
 
 
 # ===================================================================== #
 #  A4 -- ask, do not work it out again                                  #
 # ===================================================================== #
 
-#: Where a ``StageRef`` may be created.  ``identity.py`` owns the class, and
-#: ``jobset/materialize.py`` holds ``stage_refs``, the resolver that reads each
-#: stage's ordinal back off its deck.  Anywhere else is a caller re-deriving
-#: what one of those two already worked out.
-_STAGEREF_OWNERS = {Path("identity.py"), Path("jobset/materialize.py")}
+#: Every § 3 object and the ONE function allowed to return it.  Measured, not
+#: assumed: ``Shape`` is never constructed directly (callers use ``Shape.named``),
+#: ``Attempt`` is built once inside ``prepare_attempt``, and
+#: ``LaunchAgreement``'s three constructions are three ``return`` lines in one
+#: function -- which is still one owner.  ``None`` means "only inside its own
+#: class definition", the classmethod case.
+_ONE_BUILDER = {
+    "StageRef":        ("jobset/materialize.py", "stage_refs"),
+    "Attempt":         ("jobset/materialize.py", "prepare_attempt"),
+    "LaunchAgreement": ("jobset/prep.py",        "launch_agreement"),
+    "Shape":           ("jobset/shape.py",       None),
+}
 
 
-def test_a4_a_stage_ref_is_built_only_by_its_resolver():
-    """**A4 -- one owning function per object**, for ``StageRef``.
+def test_a4_each_object_is_built_in_exactly_one_function():
+    """**A4 — ask, do not work it out again.**
 
-    § 9.6 measured this rule by hand on 2026-08-10 and found exactly one
-    violation: ``runstatus.py`` held a stage's name and number as two loose
-    fields, so ``render_stage_status`` built a **second** ``StageRef`` out of
-    them just to print the heading ``01_coarse``.  A caller working out an
-    answer a floor below already held -- inside the very object created to stop
-    that.  ``StageStatus`` now carries the ref whole, and this test is what
-    keeps it that way.
+    Each object in `execution/architecture.md` § 3 answers one question once.
+    A second construction site is a second answer, and stopping a caller from
+    working out something a floor below already knows is the entire reason
+    these objects were named.
 
-    **What this cannot see.**  It checks one of the four objects in § 9.5.
-    ``Attempt``, ``Shape`` and ``LaunchAgreement`` are each returned by one
-    function today, but they are dataclasses a caller could construct too; a
-    general version of this test would need a rule about which of those are
-    meant to be constructible.  Extending it is a judgement, not a copy-paste,
-    so it is left undone deliberately rather than half-done.
+    **The unit of the rule is the FUNCTION, not the module.** The owning module
+    legitimately builds its own object; what must not happen is a *second*
+    function building one — including inside the same file, which a
+    module-level rule would wave through.
+
+    The measurement behind this found the violation it now prevents:
+    ``runstatus`` built a second ``StageRef`` to format a heading, because
+    ``StageStatus`` carried the number and the name as loose fields instead of
+    the ref the resolver had already made.
+
+    ``identity.py`` is exempt for ``StageRef``: it defines the class, and a
+    namer building its own name is A1 doing its job rather than a second
+    answer.
     """
-    offenders = []
-    for rel in _python_files():
-        if rel in _STAGEREF_OWNERS:
-            continue
-        tree = ast.parse((_PKG / rel).read_text(encoding="utf-8"),
-                         filename=str(rel))
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id == "StageRef"):
-                offenders.append(f"{rel}:{node.lineno}")
+    import ast
+    offences = []
+    for cls, (owner_rel, owner_fn) in _ONE_BUILDER.items():
+        for rel in _python_files():
+            text = (_PKG / rel).read_text(encoding="utf-8")
+            tree = ast.parse(text, filename=str(rel))
+            defines_here = any(isinstance(n, ast.ClassDef) and n.name == cls
+                               for n in ast.walk(tree))
+            for fn in [n for n in ast.walk(tree)
+                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+                builds = [c.lineno for c in ast.walk(fn)
+                          if isinstance(c, ast.Call)
+                          and getattr(c.func, "id", "") == cls]
+                if not builds:
+                    continue
+                here = str(rel).replace("\\", "/")
+                allowed = (
+                    (here == owner_rel and fn.name == owner_fn)
+                    or (owner_fn is None and defines_here)
+                    or defines_here            # the class's own module
+                )
+                if not allowed:
+                    offences.append(
+                        f"{rel}:{min(builds)} {fn.name}() builds a {cls} — only "
+                        f"{owner_rel}::{owner_fn or 'its own classmethod'} may")
 
-    assert not offenders, (
-        "these build a StageRef instead of asking `stage_refs` for the one it "
-        "already made (§ 9.6 rule A4):\n  " + "\n  ".join(offenders))
+    assert not offences, (
+        "§ 3 gives each object exactly one builder (rule A4):\n  "
+        + "\n  ".join(offences))
 
 
 # ===================================================================== #
@@ -322,3 +340,74 @@ def test_the_floor_map_names_only_real_paths():
     missing = sorted(k for k in _FLOOR if not (_PKG / k).exists())
     assert not missing, (
         f"the floor map names paths that are not in the tree: {missing}")
+
+
+# ===================================================================== #
+#  The config map cannot go stale — P12 unit 1                          #
+# ===================================================================== #
+#
+#  `execution/architecture.md` § 8.2 tabulates every config section, who reads
+#  it, and where it lands.  Two documents used to hold PARTIAL tables --
+#  deployment.md six, running-a-job.md four -- and neither said so, which is
+#  how a reader concluded molbuilder.json is smaller than it is.
+#
+#  Writing this guard found three errors in that table on its first run:
+#  `providers` is `auth.providers` and not a section, `admin_emails` is the
+#  GETTER while the section is `admin`, and the count was 11 rather than 10.
+
+_CONFIG_DOC_SECTION = "## 8. Configuration"
+
+
+def _sections_the_code_reads() -> set[str]:
+    """Every top-level key of ``molbuilder.json`` the reader looks at.
+
+    Two populations, and the difference is worth keeping: what ``_normalise``
+    validates when the file is loaded, and what a getter reads on demand later.
+    Both are config sections; only the first is refused when malformed.
+    """
+    import inspect
+    from molbuilder import runtime_config as rc
+    validated = set(re.findall(r'out\["([a-z_]+)"\]',
+                               inspect.getsource(rc._normalise)))
+    lazy = set()
+    for name in dir(rc):
+        if not name.startswith("get_"):
+            continue
+        try:
+            src = inspect.getsource(getattr(rc, name))
+        except (TypeError, OSError):
+            continue
+        lazy |= set(re.findall(r'cfg\.get\(\s*"([a-z_]+)"', src))
+        lazy |= set(re.findall(r'cfg\[\s*"([a-z_]+)"\s*\]', src))
+    return validated | lazy
+
+
+def _sections_the_contract_documents() -> set[str]:
+    """The first column of § 8.2's table."""
+    text = _CONTRACT.read_text(encoding="utf-8")
+    start = text.index(_CONFIG_DOC_SECTION)
+    end = text.index("\n## ", start + 1)
+    out = set()
+    for line in text[start:end].splitlines():
+        cells = [c.strip() for c in line.split("|")]
+        # a section row: | `name` | read by | reaches | what it decides |
+        if len(cells) > 4 and cells[1].startswith("`") and cells[1].endswith("`"):
+            out.add(cells[1].strip("`"))
+    return out
+
+
+def test_every_config_section_is_documented_and_every_documented_one_exists():
+    """§ 8.2's table and the reader name the same sections.
+
+    An equality in both directions: a section added to `runtime_config` without
+    a row fails, and a row whose section was deleted fails too.  Either way the
+    map and the code cannot drift apart silently, which is what let two guides
+    each publish a different subset of one file.
+    """
+    code = _sections_the_code_reads()
+    doc = _sections_the_contract_documents()
+    assert code == doc, (
+        "execution/architecture.md § 8.2 and molbuilder/runtime_config.py "
+        "disagree about which config sections exist.\n"
+        f"  read by the code, not in the table: {sorted(code - doc)}\n"
+        f"  in the table, not read by the code: {sorted(doc - code)}")

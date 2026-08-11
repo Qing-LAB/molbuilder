@@ -408,6 +408,34 @@ activates the routed conda env and executes the tool
 - **`.py` → `molbuilder-pySCF`**, run as `python my-job.py` (OMP-only; the
   script writes its own `.molwatch.log` / `.pyscf.log`).
 
+#### What a wrapper is made of
+
+**The wrapper activates and execs** (`running-a-job.md` § 2.2a) — these are the
+blocks that serve those two jobs, and the list is exhaustive. A generated
+wrapper contains these and nothing else:
+
+| block | what it is for |
+|---|---|
+| **Baked preamble** | the site's own lines, verbatim from `script_generation.preamble` |
+| **Activation** | the one activation statement, verbatim |
+| **Continuation flags** | the shared `--continue` / `--cold` / `--force` handling |
+| **SIESTA-specific argument parsing** | `-np` / `-omp` and friends |
+| **Run index resolution** | picks `-runN` so a re-run never overwrites |
+| **Cold-restart: move engine warm-start files aside** | what `--cold` does |
+| **Per-run log file** | where this invocation's log goes |
+| **Runtime status banner** | prints what it found — warm files, ranks |
+| **Probe SIESTA build at runtime** | reads the build's own capabilities |
+| **Record resolved launch command + placement** | writes down what it is about to do |
+| **SCF per-iteration timing instrument** | the benchmark sampler |
+| **Launch SIESTA + capture exit** | the exec, and the exit code |
+
+**Adding a block is a contract change, not an implementation detail**, because
+each one is work happening on a compute node — the place this design keeps
+narrow on purpose. Anything that computes, decides or arranges files belongs to
+Python on the host instead. Pinned by
+`tests/test_jobset.py::test_a_wrapper_is_made_of_exactly_these_blocks`, which
+reads this table.
+
 The wrapper is **plain, readable bash**. Two properties are load-bearing:
 
 - **Activation is a configurable line, not `conda run`.** The wrapper emits an
@@ -1345,7 +1373,7 @@ ref may carry either.
 
 | What | Form |
 |---|---|
-| **SLURM job name** | a directly-submitted `.sbatch` carries `-J <script-stem>`; via the submit engine it is **overridden** per job on the command line — a stage is its bare stage name, a trial is `job-gpu-G<g>K<k>C<c>` / `job-cpu` |
+| **SLURM job name** | a directly-submitted `.sbatch` carries `-J <script-stem>`; via the submit engine it is **overridden** per job on the command line as **`<calculation>/<job>`** — `bdt_au/coarse`, `bdt_au/G1K2C4`. The calculation comes first because that is what you are telling apart when several are queued at once; the stage qualifies it |
 
 #### Persisted-file schema strings
 

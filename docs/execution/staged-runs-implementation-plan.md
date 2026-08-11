@@ -2038,45 +2038,66 @@ makes; the middle column is what enforces it today.
 
 | the contract says | pinned by | gap |
 |---|---|---|
-| § 2 · seven floors, each owning one decision | `test_architecture_rules` A7 + its doc-agreement check | judges only the 17 files § 2.1 names |
-| § 3 · each object has one builder | A4 | **`StageRef` only**; the other three are dataclasses anyone can construct |
-| § 4 · `prep` runs five steps in one order | `test_cli_siesta_stages` end-to-end | the **order** is not asserted — a reordered prep that still works would pass |
-| § 5 · the decision chain, nothing later rewrites earlier | rows 3, 9, 10 individually | the **sequence** is not checked anywhere |
-| § 8.2 · eleven config sections, each with one reader | — | **nothing**; a twelfth section could land undocumented |
+| § 2 · seven floors, each owning one decision | `test_architecture_rules` A7 + its doc-agreement check | judges only the files § 2.1 names |
+| § 3 · each object has one builder | A4, **all four objects** (unit 5) | ✅ |
+| § 4 · `prep` runs five steps in one order | unit 4 — the machine is resolved before any wrapper is written, once per bundle | ✅ for the forced pair; steps 2/3/5 are ordered by data, not asserted |
+| § 5 · the decision chain, nothing later rewrites earlier | rows 3, 9, 10 individually | the **sequence** is still not checked as a sequence |
+| § 8.2 · every config section has one reader | unit 1 — an equality both ways against `runtime_config` | ✅ |
 | § 8.3 · no wrapper without `activation` | `require_activation`'s own tests | ✅ |
-| § 9 · a workstation needs no scheduler block | — | **nothing**; and the claim the whole two-layer split rests on — *the inner `.run.sh` is byte-identical either way* — is asserted nowhere |
+| § 9 · a workstation needs no scheduler block | unit 3 | ✅ |
+| § 9 · the inner `.run.sh` is byte-identical on both | unit 3 | ✅ |
 | § 9.1 · shape and machine are independent | `test_jobset` shape tests | ✅ for shape; the crossing with mode is untested |
 
 **Units, smallest first — the last one is the migration everything else waits
-on.**
+on.** Units 1–5 landed 2026-08-10.
 
-1. **The config map cannot go stale.** A test that the sections
-   `runtime_config` normalises are exactly the sections § 8.2 tabulates —
-   an equality both ways, so a new section fails until it is documented and a
-   documented-but-deleted one fails too. This is the guard that would have
-   caught `deployment.md` and `running-a-job.md` each showing a subset.
+1. ✅ **The config map cannot go stale.** An equality both ways between § 8.2's
+   table and the sections `runtime_config` reads. **Writing it found three
+   errors in the table**: `providers` is `auth.providers` and not a section,
+   `admin_emails` is the *getter* while the section is `admin`, and the count
+   was 11 rather than 10. The guard also surfaced an asymmetry worth knowing —
+   eight sections are validated when the file loads, but `rate_limit` and
+   `admin` are read on demand, so a typo in those two is ignored rather than
+   refused.
 
-2. **A scheduler job name says which calculation it is.** `submit` passes
-   `-J <job.name>`, so three concurrent ladders show `coarse coarse coarse` in
-   `squeue`. `JobSet.name` is the id; `-J` should carry it, and the stage
-   within it. *(Found in the design draft's § 7, verified live 2026-08-10.)*
+2. ✅ **A scheduler job name says which calculation it is.** `-J` now carries
+   `<calculation>/<stage>` — `bdt_au/coarse`. It was the bare stage name, so
+   three concurrent ladders showed `coarse coarse coarse` in `squeue`: the one
+   place a scheduler shows you your own work, showing you nothing. Pinned by a
+   test that queues two calculations with the same stage name and requires the
+   two queue names to differ.
 
-3. **The two environments, pinned on the claim that matters.** Prep the same
-   calculation twice — once with no `scheduler` block, once with one — and
-   assert: no block ⇒ no `.sbatch` at all; with a block ⇒ both files; and
-   **the two `.run.sh` files are byte-identical**. That last assertion is § 9's
-   central promise and the reason the two-layer split exists.
+3. ✅ **The two environments.** No `scheduler` block ⇒ no `.sbatch` at all;
+   with one ⇒ both files; and **the two `.run.sh` files are byte-identical**.
+   That last is § 9's central promise — if it ever stops holding, a laptop run
+   stops being a rehearsal of the cluster run, and this is how you find out.
 
-4. **The five steps run in their order.** Assert the order, not just the
-   outcome: the machine is resolved before the deck is rendered, and the
-   wrapper before the directory is built. Cheapest honest form is a recording
-   seam — the report `prep` already prints names what it resolved, in order.
+4. ✅ **The five steps run in their order.** The outcome cannot show this: a
+   prep that resolved the machine *last* leaves the same files behind. So the
+   order is observed directly, and the machine must be resolved before any
+   wrapper is written — and exactly once per bundle, not once per stage.
 
-5. **A4 for the remaining three objects.** `Attempt`, `Shape` and
-   `LaunchAgreement` are dataclasses a caller could construct. Decide per
-   object whether that should be refused, then guard the ones that should be.
-   **This is a judgement, not a copy-paste** — which is why it is a unit and
-   not a line in unit 1.
+5. ✅ **A4 over all four objects, in one guard.** Measured before it was written:
+   `Shape` is never constructed directly (callers go through `Shape.named`),
+   `Attempt` is built once inside `prepare_attempt`, and `LaunchAgreement`'s
+   three constructions are three `return` lines in **one** function — one
+   owner. The rule's unit is the **function**, not the module, because a second
+   builder inside the owning file is exactly what a module-level rule waves
+   through.
+
+> **A sweep of the guards themselves closed the phase** (user rule: a test must
+> check what the contract *says*, never police something the contract does not
+> mention). Three failed it and were reworked:
+>
+> | guard | was | now |
+> |---|---|---|
+> | **A1** | hunted for three forbidden spellings of a hand-built token | an **equality**: the set of modules that spell one *is* `{identity.py}` — so a second speller fails, and so does the namer quietly losing the ability |
+> | **A4** | two tests, one for `StageRef` and one for the rest | **one** table over all four objects |
+> | the wrapper's blocks | pinned **eleven names that no contract stated** | `job-contracts.md § 2.6` now tabulates them — adding a block is a contract change, because each is work on a compute node — and the test **reads that table** |
+>
+> The third is the one worth remembering: a test can be perfectly green, fully
+> mutation-tested, and still be pinning something nobody agreed to. Writing the
+> rule down first is what makes it a contract rather than a habit.
 
 6. **The producer moves from *produce* to `prep`.** The one real migration
    (§ 9.3). It closes floor 3's asymmetry, `LaunchSpec`, M4's allocation-fixed-
@@ -2091,7 +2112,11 @@ stop being two answers to *what machine is this*).
 
 **Milestone M12.** Every statement in `execution/architecture.md` §§ 2–9 either
 names the test that checks it or says in the contract why it cannot be checked.
-No row of the audit table above still reads "nothing".
+**No row of the audit table still reads "nothing"** — units 1–5 closed the four
+that did. Two rows are honestly partial and say so: the decision chain's
+*sequence* (§ 5) is checked row by row rather than as an order, and § 9.1's
+shape/mode crossing is untested. Both are named rather than left to be
+rediscovered.
 
 **Reviews:** 1 · 2 · 3 — and pass 3 here is **the contract read against the
 tests**, not the code: the failure mode this phase exists to prevent is a green

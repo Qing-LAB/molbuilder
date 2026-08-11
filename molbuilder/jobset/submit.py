@@ -158,6 +158,19 @@ def _parse_sbatch_id(stdout: str) -> str:
     raise SubmitError(f"could not parse sbatch job id from: {stdout!r}")
 
 
+def _scheduler_job_name(jobset: JobSet, job) -> str:
+    """What `squeue` shows: the calculation, then the stage within it.
+
+    ``<jobset.name>/<job.name>`` -- the id first, because that is the thing you
+    are trying to tell apart when several calculations are queued at once, and
+    the stage second because within one calculation that is the question.
+
+    A sweep's points and a ladder's stages both go through this, so one reading
+    covers both: `bdt_au/coarse`, `bdt_au/G1K2C4`.
+    """
+    return f"{jobset.name}/{job.name}"
+
+
 def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                   dry_run: bool) -> List[JobResult]:
     """SLURM path: ``sbatch`` **one** job, with its resources as CLI flags.
@@ -180,7 +193,13 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         gpu = _job_wants_gpu(job_dir, job)
         pq = _resolve_domain(domain, gpu=gpu, project_dir=base_dir)
 
-        cmd = ["sbatch", "-J", job.name]
+        # WHICH CALCULATION, then which stage.  `-J` carried the bare stage
+        # name until 2026-08-10, so three concurrent ladders showed
+        # `coarse coarse coarse` in `squeue` and no amount of looking told you
+        # which was which -- the one place a scheduler shows you your own work,
+        # and it showed you nothing.  `JobSet.name` is the id (run-identity.md
+        # § 2), so it goes first and the stage qualifies it.
+        cmd = ["sbatch", "-J", _scheduler_job_name(jobset, job)]
         if pq:
             cmd += ["-p", pq[0], "-q", pq[1]]
         cmd += _sbatch_resource_flags(job.resources)

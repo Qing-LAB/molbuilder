@@ -964,9 +964,9 @@ system** adds is submission and routing:
   `submit` resolves it and refuses an unknown name with the list of configured
   ones. Partition and qos are **required** for a SLURM site — the framework
   refuses to emit a header it knows will be rejected (design decision #4).
-- **Job names read well.** A ladder job's `-J` is its bare stage name (`stage2`);
-  a benchmark point's is `job-gpu-G1K2C5` / `job-cpu`, so a `squeue` listing is
-  self-describing.
+- **Job names read well.** A job's `-J` is `<calculation>/<job>` —
+  `bdt_au/coarse`, `bdt_au/G1K2C4` — so a `squeue` listing tells you which of
+  your calculations each row belongs to, not just which stage.
 
 A workstation with no `scheduler` block configured simply gets `.run.sh` files
 and runs with `--mode direct`; the `.sbatch` is emitted only when a scheduler is

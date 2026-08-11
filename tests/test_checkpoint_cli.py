@@ -58,27 +58,31 @@ def _ids(output):
 
 
 def test_the_group_offers_exactly_the_contracts_verbs():
-    out = CliRunner().invoke(cli, ["snapshot", "--help"]).output
-    for verb in ("init", "save", "list", "tag", "restore", "config"):
-        assert f"\n  {verb}" in out, f"{verb} is missing from the group"
+    """§ 5 names six verbs, and the group offers those six.
+
+    **An equality.** It checked "each of these six appears" until 2026-08-11,
+    which a seventh verb passes -- and which needed a companion test naming the
+    retired ones (`checkpoint`, `branch`, `migrate-manifest`) to catch them
+    coming back. Stating the set instead covers both directions and keeps the
+    retired names out of the suite: a verb added without a contract change
+    fails here, whatever it is called.
+    """
+    from molbuilder.cli import cli as _cli
+    assert set(_cli.commands["snapshot"].commands) == {
+        "init", "save", "list", "tag", "restore", "config"}
 
 
-@pytest.mark.parametrize("verb", ["checkpoint", "branch", "migrate-manifest"])
-def test_a_retired_verb_is_gone_not_merely_undocumented(mb, verb):
-    """`checkpoint` became `save`; `branch` and `migrate-manifest` were
-    removed by the contract.  A verb left working is a verb a script calls."""
-    assert mb(verb).exit_code != 0
-
-
-def test_no_surface_offers_a_text_only_restore(mb):
+def test_restore_returns_the_whole_folder(mb):
     """A4: a restore returns the whole folder or it does not happen.
 
-    `--no-binaries` rewound the text and left every big file, which is a folder
-    no save ever produced — reached on purpose rather than by accident.
+    Stated as the options `restore` HAS. `--no-binaries` rewound the text and
+    left every big file -- a folder no save ever produced, reached on purpose
+    rather than by accident -- and naming the set is what keeps any future
+    partial-restore flag from landing without a contract change.
     """
-    mb("init")
-    assert "--no-binaries" not in mb("restore", "--help").output
-    assert mb("restore", "HEAD", "--no-binaries").exit_code != 0
+    from molbuilder.cli import cli as _cli
+    restore = _cli.commands["snapshot"].commands["restore"]
+    assert {q.name for q in restore.params} == {"state", "path", "force"}
 
 
 # ------------------------------------------------------------------ #

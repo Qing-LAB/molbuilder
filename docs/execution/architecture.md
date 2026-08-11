@@ -421,7 +421,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A1** | **one namer.** Every name a file gets comes from `identity`; nothing builds one by hand | `test_architecture_rules` — only `identity.py` may spell `<NN>_<name>` |
 | **A2** | **one layout per calculation**, and nothing guesses which | `test_jobset` — every consumer's layout comes from `Shape.named(task.shape)` |
 | **A3** | **a deck and its launch travel together** | `test_jobset` — the rank count in the deck equals the one it is started at, or it is refused first |
-| **A4** | **ask, do not work it out again.** Each object in § 3 has exactly one owning function | `test_architecture_rules` — a `StageRef` may be built only by its resolver |
+| **A4** | **ask, do not work it out again.** Each object in § 3 has exactly one owning function | `test_architecture_rules` — **all four**: a `StageRef` only by its resolver, and `Attempt` / `Shape` / `LaunchAgreement` each in one named function |
 | **A5** | **a stage's number is worked out, never stored** | `test_task_description`, `test_stage_resolution` |
 | **A6** | **once a run has started, its folder never changes** | `test_jobset` |
 | **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N | `test_architecture_rules`, whose floor map must match § 2.1's table |
@@ -430,18 +430,23 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > may build an object, who may import whom — and no amount of running the program
 > shows you that. They are checked by parsing `molbuilder/` rather than calling
 > it. **Each is a fence, not a proof:** A1 knows the spellings a person actually
-> reaches for; A4 covers `StageRef`; A7 judges the files § 2.1 names.
+> reaches for, and A7 judges the files § 2.1 names.
+>
+> **A4's unit is the function, not the module.** The owning module legitimately
+> builds its own object; what must not happen is a *second* function building
+> one — including inside the same file, which a module-level rule would wave
+> through.
 
 ---
 
 ## 8. Configuration — one file, and which floor reads each part
 
-**There is one config file, and it serves two different audiences.** Half of it
+**There is one config file, ten sections, and two different audiences.** Half of it
 configures the *server* (who may sign in, what the rate limiter does). Half
 configures *running calculations* (how to activate an environment, what the
 scheduler wants). Neither half knows about the other, and no document listed
-both until now — `deployment.md` § 5 showed six sections and
-`running-a-job.md` § 5 showed four, and neither said it was showing a subset.
+both until now — `deployment.md` § 5 showed six and `running-a-job.md` § 5 showed four, and
+neither said it was showing a subset.
 
 ### 8.1 Where it is found, and how two files become one
 
@@ -472,11 +477,19 @@ the project's if set, otherwise the server's.
 | `execution` | `get_execution` | **floor 5**, at `submit` | `mode` (`direct` or `submit`), and the default `domain` |
 | `envs` | `get_envs` | **floor 5**, `prep` step 4 | which conda environment each engine runs in |
 | `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol | the size at which a file goes to the archive instead of git, and the per-engine hints |
-| `auth`, `providers` | `get_auth`, `get_providers` | the **server** | who may sign in (`ops/access-control.md` § 3) |
+| `auth` | `get_auth`, `get_providers` | the **server** | who may sign in; the provider list is `auth.providers` (`ops/access-control.md` § 3) |
 | `secret_key_file` | `get_secret_key_file` | the **server** | the path to the session-signing key — a path, never the secret itself |
 | `tls` | `get_tls` | the **server** | the certificate and key for HTTPS |
 | `rate_limit` | `get_rate_limit` | the **server** | how the limiter judges traffic (§ 4 there) |
-| `admin_emails` | `get_admin_emails` | the **server** | who may clear the block list and restart the process |
+| `admin` | `get_admin_emails` | the **server** | `admin.emails` — who may clear the block list and restart the process. **Absent means nobody**, which is the safe state you get by writing no config |
+
+**Ten sections, and two of them are checked later than the rest.** The first
+eight are validated when the file is read, so a malformed `scheduler` refuses to
+start. `rate_limit` and `admin` are read on demand by the subsystem that wants
+them — which means a typo in those two is ignored rather than refused. Worth
+knowing before you debug why an admin list appears to do nothing.
+
+*(That the table and the reader name the same sections is checked — `test_architecture_rules::test_every_config_section_is_documented_and_every_documented_one_exists`, an equality both ways.)*
 
 **Read the first four rows as one thing.** They are the whole of what a
 calculation needs from config, and they arrive at exactly two moments:
@@ -538,7 +551,9 @@ the same five steps. What differs is what two floors *find*, and one flag.
 **The wrapper is the same file.** That is the point of the two-layer split: the
 inner `.run.sh` owns activation and launch and is byte-identical whether a
 scheduler is involved or not, so a run you debugged on your laptop is the run
-the cluster performs.
+the cluster performs. *(Checked — `test_jobset::test_the_inner_wrapper_is_byte_
+identical_on_both`, and its companion that a workstation gets no `.sbatch` at
+all.)*
 
 ```mermaid
 flowchart TB

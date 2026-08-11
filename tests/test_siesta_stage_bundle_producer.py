@@ -61,12 +61,16 @@ def test_the_producer_emits_ONE_PACKAGE_for_either_layout():
     assert sorted(b.fdf_files) == ["h2_01_coarse.fdf", "h2_02_medium.fdf"]
     assert all(txt.strip() for txt in b.fdf_files.values())
     assert b.pseudo_species == ["H"]
-    # the JobSet comes out for EITHER shape -- it is what makes
-    # `jobset submit run --chain` the launcher for both
+    # the JobSet comes out for EITHER shape -- it is what `prep` lays out and
+    # `submit run <stage>` launches, whichever directory shape you chose
     assert b.jobset is not None and b.jobset.kind == "ladder"
     assert [j.name for j in b.jobset.jobs] == ["coarse", "medium"]
-    # ...and no bash ladder runner comes out at all any more
-    assert not hasattr(b, "runner_text")
+    # A bundle is these three things.  Stated as an equality rather than as
+    # "no runner_text": one shape comes out, and a fourth field would be a
+    # second one arriving without a decision.
+    import dataclasses
+    assert {f.name for f in dataclasses.fields(StageBundle)} == {
+        "fdf_files", "jobset", "pseudo_species"}
 
 
 def test_jobset_shared_defaults_to_expected_psml_names():
