@@ -50,9 +50,13 @@ flowchart LR
 ```
 
 The things that are **shared across engines** live outside any one emitter, so they
-stay defined once. Three are defined in this document — the script wrapper (§ 2),
-the boundary-condition contract (§ 3), and the staged-optimization policy (§ 4) —
-and § 5 shows how a new engine plugs into all three. A fourth is large enough to
+stay defined once. **Two** are defined in this document — the script wrapper
+(§ 2) and the boundary-condition contract (§ 3) — and § 5 shows how a new engine
+plugs into them. § 4 is a **map** rather than a third definition: what the two
+ladders share is the **tier values**, and those are
+[`tuning.md`](?doc=engines/tuning.md) § 4's.  *(It counted three until
+2026-08-11, when the staged-optimization "policy" turned out to be PySCF's alone
+— see § 4.)* A fourth is large enough to
 have its own contract: the **template**
 ([`template.md`](?doc=engines/template.md)), the file that carries a calculation's
 parameters from a browser to whatever machine will run it.
@@ -173,10 +177,12 @@ only *seeds* via the Stage-1 pre-fill — the form stays authoritative.
 
 ---
 
-## 4. The shared staged-optimization contract
+## 4. Staged optimization — what the two engines share, and what they do not
 
 Both the SIESTA and PySCF emitters ship a **three-stage relaxation ladder**, and
-they no longer share a shape.
+**they share the tier values and nothing else.** The section title said *"the
+shared staged-optimization contract"* until 2026-08-11, which was true when the
+two halves were symmetric and has not been since 2026-08-07.
 
 > **The two halves separated on 2026-08-07, on purpose.** A stage is not a
 > property of a calculation, so an engine config carries no stage list:
@@ -195,24 +201,34 @@ they no longer share a shape.
 - **The tier *values*** (algorithm, steps, force / `gmax`, per stage) are owned by
   **[`tuning.md`](?doc=engines/tuning.md) § 4** — the single value table both emitters
   and this contract defer to.
-- **The non-convergence policy** is shared and defined here — but it is **not a
-  stage field and not a shared-schema field** for SIESTA
-  ([`stages.md`](?doc=engines/stages.md) § 3): its entire effect is the edge
-  between one attempt and the next, so it is the JobSet / runner producer's own
-  input. PySCF's in-script loop still carries it per stage, because there the
-  loop *is* the scheduler. When a stage exhausts its step budget without
-  converging:
-  - **`proceed`** — hand the partial geometry to the next stage (loose warm-ups).
-  - **`continue`** — re-enter the engine for up to `continue_retries` more batches
-    (total budget = the stage's step count × `(1 + continue_retries)`), then halt.
-  - **`halt`** — stop and raise (production tiers; failure is a real signal).
-  - The **last enabled stage is always forced to `halt`** at render time — the
-    contract is to produce a converged final geometry, so no knob can silently ship a
-    non-converged answer.
+- **The non-convergence policy is PySCF's alone, and is *not* defined here.**
+  ⚠ **This bullet claimed the opposite until 2026-08-11** — *"shared and defined
+  here… both realise the same policy"* — and it was the **fourth** copy of a rule
+  that had already been corrected in `stages.md` § 3, `job-contracts.md` § 6.2
+  and `job-system.md` § 4.1. The correction: `proceed` / `continue` / `halt`
+  decided the **scheduler edge** between one attempt and the next; a SIESTA
+  ladder emits no edges ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)),
+  so on 2026-08-10 the field was **removed from the SIESTA producer** rather than
+  left inert. PySCF keeps it because there the ladder is a loop inside one
+  process and the policy is real control flow. **Its semantics live with the
+  engine that has them** — [`pyscf.md`](?doc=engines/pyscf.md) § 3, with the
+  values in [`tuning.md`](?doc=engines/tuning.md) § 4.
 
-`pyscf.md` § 5 shows the in-script loop that implements this for PySCF (§ 3 holds the
-policy semantics); `siesta.md` § 8 shows the runner side for SIESTA. Both realise the
-*same* policy defined here.
+  **What a SIESTA stage does instead:** it runs out of steps and stops, and the
+  next stage exists only because you looked at the result and prepped it. Same
+  judgement, made where the evidence is.
+
+> **Why this one was worth catching rather than quietly editing.** A section
+> that says *"defined here"* is claiming to be the single owner, so a reader
+> checking the rule stops at it — and this one had been wrong for four days
+> about which engines it covered. **The tell was the sentence, not the
+> content:** the singularity claim is what made it worth verifying, and three
+> other documents already disagreed with it.
+
+`pyscf.md` § 5 shows the in-script loop that implements the policy for PySCF.
+`siesta.md` § 8 is where SIESTA's absence of one is recorded — **and it used to
+say "the runner side", a runner (`render_siesta_stages_runner`) deleted on
+2026-08-10.**
 
 ---
 
