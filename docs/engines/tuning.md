@@ -381,6 +381,47 @@ those ([`job-system.md § 7`](?doc=execution/job-system.md)).
 
 ## 3. Cross-engine parameter map
 
+### 3.0 Tier ↔ tier — and the tiers do NOT line up numerically
+
+*Written 2026-08-11. [`pyscf.md`](?doc=engines/pyscf.md) § 7 had promised "the
+full tier↔tier mapping lives in `tuning.md`" and it did not — § 3.1 below is a
+**keyword** map, which is a different question. This is the table that was
+missing, and building it turned up something worth knowing.*
+
+**The same tier name means a different force threshold on each engine.** At
+1 Ha/Bohr = 51.42 eV/Å:
+
+| tier | SIESTA `MD.MaxForceTol` | PySCF `gmax` | …in eV/Å | which is tighter on max force |
+|---|---|---|---|---|
+| **loose preopt** | 0.05 eV/Å | 2.0×10⁻³ Ha/Bohr | **0.103** | **SIESTA, by 2×** |
+| **publishable** | 0.04 eV/Å | 4.5×10⁻⁴ | **0.023** | **PySCF, by 1.7×** |
+| **tight** (crystal/surface) | 0.01 eV/Å | 2.0×10⁻⁴ | **0.0103** | *they coincide* |
+| **very-tight** (molecule vib) | — | 1.5×10⁻⁵ | **0.0008** | PySCF only |
+
+**Read the last column downward: the two engines cross over.** PySCF's *loose*
+stage is twice as permissive as SIESTA's on max force, its *publishable* stage is
+nearly twice as strict, and at *tight* they land on the same number to 3%. That
+is not sloppiness in either ladder — each tier was set from its own engine's
+conventions (Gaussian's `OPT` defaults for PySCF, crystal-relaxation practice for
+SIESTA) and they simply do not scale together.
+
+> **So "PySCF is stricter at the same tier" is true overall and false at loose,
+> and the difference matters.** It is stricter because geomeTRIC demands **all
+> five** criteria — max and rms gradient, max and rms step, and the energy change
+> — while SIESTA checks **max force alone** (§ 3.1's *not checked* rows). At
+> *publishable* and *tight* it is stricter on that one criterion too. **At
+> *loose* it is not**, and a PySCF stage-1 geometry is correspondingly rougher
+> than a SIESTA stage-1 one. That is fine — a warm-up is meant to be rough — but
+> it is the wrong thing to assume when comparing the two.
+
+**What this means when you port a calculation.** Matching tier *names* across
+engines does not match the physics; matching the number does. If you need a
+PySCF run to reach a SIESTA-`publishable` geometry, ask for **`gmax` 7.8×10⁻⁴**
+(0.04 ÷ 51.42), not the `GAU` preset — and remember you also inherit the other
+four criteria, so the run will stop later than the single number suggests.
+
+### 3.1 Keyword ↔ keyword
+
 For users who know one engine and want the other's equivalent.
 
 | Concept | SIESTA | PySCF / geomeTRIC | Units |

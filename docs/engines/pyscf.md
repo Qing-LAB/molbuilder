@@ -347,12 +347,20 @@ Head-Gordon, *JCP* **144**, 214110 (2016).
 
 ## 7. Cross-engine equivalence & versioning
 
-**SIESTA ↔ PySCF.** PySCF/geomeTRIC is **stricter** at the same tier: geomeTRIC
-requires **all five** criteria (energy + rms/max gradient + rms/max step, the
+**SIESTA ↔ PySCF.** PySCF/geomeTRIC is **stricter overall** at a given tier, for
+a reason that is about the *number of criteria* rather than their values:
+geomeTRIC requires **all five** (energy + rms/max gradient + rms/max step, the
 Gaussian OPT convention) to be met, while SIESTA checks **max force** only. So a
-PySCF "converged" structure is generally tighter than a SIESTA one at the same
-numeric threshold. The full tier↔tier mapping (loose 0.05 eV/Å ↔ 2e-3 Ha/Bohr;
-publishable 0.04 ↔ 4.5e-4; …) lives in `tuning.md`.
+PySCF "converged" structure generally stops later than a SIESTA one.
+
+> ⚠ **But the max-force thresholds themselves do not line up, and at the loose
+> tier PySCF is the *looser* of the two** *(measured 2026-08-11)*. Converted at
+> 1 Ha/Bohr = 51.42 eV/Å: loose is **0.103 vs SIESTA's 0.05** — twice as
+> permissive; publishable is **0.023 vs 0.04** — 1.7× stricter; tight lands on
+> **0.0103 vs 0.01**, the same number. **The ladders cross over.** The full
+> table, and what to ask for when porting a calculation between the engines, is
+> [`tuning.md § 3.0`](?doc=engines/tuning.md) — which is where this paragraph
+> claimed the mapping lived before it existed.
 
 **Versioning.** A change to this contract is at least a minor bump; removing or
 renaming a promised output file is a **major** bump. Purely additive changes (a new
