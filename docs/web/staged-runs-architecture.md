@@ -21,6 +21,33 @@ engine parameters that decide whether a stage continues);
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — the shipped
 ground everything rests on.
 
+> # ⚠ SUPERSEDED — do not read this as design
+>
+> **This document was written against the FLAT directory shape**, before the
+> hierarchical one existed — 36 mentions of *flat* against 9 of *hierarchical* —
+> and unifying the system on the hierarchical shape is the whole of the current
+> work. **Its design sections are the pre-job-system picture: one tab writing one
+> flat directory.**
+>
+> **Where the design lives now:**
+>
+> | you want | read |
+> |---|---|
+> | who owns which decision — floors, routes, vocabularies | [`execution/architecture.md`](?doc=execution/architecture.md) |
+> | what a directory *is*, the two shapes, what `prep` does | [`execution/project-layout.md`](?doc=execution/project-layout.md) |
+> | what a stage is, and the description on disk | [`engines/stages.md`](?doc=engines/stages.md) |
+> | the order the work is built in, and the gates | [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md) |
+>
+> **Two things here are still live and are why this file has not been archived:**
+> **§ 8**'s per-item acceptance criteria, which the implementation plan cites by
+> item (*"when is item N done?"*), and the **dated code audits** in § 8a–8b,
+> which are history and are kept as written. Everything else is superseded.
+>
+> **It never held decisions in the first place** — its own status line says so,
+> and says the contracts win. It was still being cited as design on 2026-08-11,
+> which is what prompted this banner. Archiving is blocked on moving § 8's
+> acceptance criteria into the plan; that is recorded there.
+
 **Status: a proposal.** Nothing here is built. This document holds the *why*, the
 order of work, and the open questions. **It holds no durable decisions** — those
 moved into the two contracts above, and where this plan and a contract disagree,
@@ -1356,6 +1383,16 @@ A reader should be able to check the design landed with four questions:
    stages, no loop over stages in a runner.
 
 ## 9. Open questions
+
+> **⚠ The five that were still open have MOVED to the contracts that own them**
+> (2026-08-11), because this document is superseded as design and an open
+> question is a live thing. **Q1 and Q7** → [`engines/stages.md`](?doc=engines/stages.md)
+> § 6b. **Q2, Q4 and Q5** → [`execution/run-identity.md`](?doc=execution/run-identity.md)
+> § 6a. **Q9 is closed** — `validation/stages.py::check_identical_stages` warns
+> on adjacent identical stages, wired into `validate_ladder`, and the reading is
+> written into `engines/stages.md` § 6.6a. The rest were already answered in
+> place. Kept below as the record of what was asked.
+
 
 1. **Is `task.json` the right name?** It sidesteps the four-way collision the
    word *plan* already has in this domain (`jobset plan` the verb,

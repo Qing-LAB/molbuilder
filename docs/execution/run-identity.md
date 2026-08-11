@@ -600,6 +600,27 @@ artifact being replaced wholesale, not a folder being worked in.
 
 ---
 
+## 6a. Open questions about the id
+
+*Migrated here 2026-08-11 from `web/staged-runs-architecture.md` § 9, which is
+superseded as design. They are about the id, so they belong to the contract that
+owns it.*
+
+1. **Should the folder really be named by the id** (§ 3)? It removes a second
+   name and makes a directory listing self-describing — at the cost of a folder
+   called `BDT_Au_relax_Au38C6H4S2` where somebody would have typed
+   `bdt-relax`.
+2. **What are the "components" of a composite system?** A junction is a molecule
+   *and* two electrodes. Naming it by total formula loses that structure; naming
+   it by parts needs a convention for what a part is.
+3. **When does the readable id stop being enough?** A formula does not tell two
+   isomers apart, and does not pin the **order species are declared in** — and a
+   `.XV` read against a different order lands every coordinate on the wrong atom
+   (§ 4). The likely answer is a short pin appended when, and only when, the
+   readable part cannot separate two things in the same project.
+
+---
+
 ## 7. What this contract does not own
 
 - **The warm-file inventory, the `--cold` move-aside glob, the restart banner

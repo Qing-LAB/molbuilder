@@ -892,6 +892,21 @@ separate question and still open (`project-layout.md § 8`).
 
 ---
 
+## 6b. Open questions about the description
+
+*Migrated here 2026-08-11 from `web/staged-runs-architecture.md` § 9, which is
+superseded as design. Both are about `task.json`, so they belong here.*
+
+1. **Is `task.json` the right name?** It sidesteps the collision the word *plan*
+   already has in this domain — `jobset plan` the verb, and *"Job-set plan"* the
+   registry label for `job-set.json`.
+2. **Is a description editable by hand?** It is JSON sitting beside the decks,
+   so it will be. If yes, the reader owes a person the same errors it owes the
+   browser — which is an argument for § 6's refusal rule being **loud rather
+   than tolerant**, since a hand-editor has no form to stop them first.
+
+---
+
 ## 7. What the generator must produce
 
 > **Scope, so this section does not drift into its neighbours' territory.** What

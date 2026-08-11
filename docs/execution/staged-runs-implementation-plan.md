@@ -22,8 +22,42 @@ document's job is to point at that sentence at the right moment.
 | | Where it lives | What it answers |
 |---|---|---|
 | **The design** | the five contracts above | *What is a stage? What does `prep` do? What may a name contain?* |
-| **The findings** | `staged-runs-architecture.md` § 8a–8b | *What is actually built, and where does it disagree?* |
-| **The acceptance criteria** | `staged-runs-architecture.md` § 8, per item | *When is item N done?* |
+| **The findings** | `staged-runs-architecture.md` § 8a–8b — **dated audits, history** | *What was built, and where did it disagree, as of 2026-08-07?* |
+| **The acceptance criteria** | **this document**, per phase and unit | *When is this unit done?* |
+
+> **⚠ That last row is the one thing keeping `staged-runs-architecture.md` alive,
+> and it should not stay that way** (2026-08-11). **That document is superseded as
+> design** — it was written against the **flat** shape before the hierarchical one
+> existed (36 mentions against 9), which is the pre-job-system picture: one tab
+> writing one flat directory. It carries a banner saying so, and
+> `execution/overview.md` no longer routes to it for the design.
+>
+> **It was still being cited as design on 2026-08-11** — twice in one session, as
+> the source of a decision it explicitly says it does not hold (*"It holds no
+> durable decisions… where this plan and a contract disagree, the contract
+> wins"*). A retired document left in the map gets read as current; that is the
+> whole reason to finish the move.
+>
+> **⚠ I claimed archiving was blocked on migrating § 8's acceptance criteria.
+> That was wrong, and checking took one grep.** This plan cites a numbered item
+> **seven times in 3,600 lines** — `item 11` once, and Track Z's five labels —
+> and **Track Z already states each item in full in its own table**. The `§ 8 `
+> prefix is a *label*, not a lookup: a reader learns what item 12e is from the
+> row, not from the other document. Everything else here is scheduled by this
+> plan's own phases and units.
+>
+> **So nothing live is stranded, and archiving is cheap:** drop the `§ 8 `
+> prefixes below, then repoint the 36 inbound references across 13 documents and
+> archive with an R4 row. The dated audits in § 8a–8b travel with it as history.
+>
+> **The lesson is the one this session keeps paying for:** *"the plan depends on
+> it"* was inherited from the header row above rather than measured, and the row
+> had simply gone stale when this plan grew its own units.
+>
+> **Already done, so the trap is closed even before the move:** the banner, the
+> map correction, and the five still-open questions migrated to the contracts
+> that own them — `engines/stages.md` § 6b (the description) and
+> `execution/run-identity.md` § 6a (the id).
 | **The order and the gates** | **this document** | *What do I build first, and how do I know it worked?* |
 
 So an item's **"*Done when:*"** sentence stays in § 8 and is cited here rather
@@ -2011,13 +2045,19 @@ Six items that touch none of the gated path. They may be taken whenever, and
 they are worth taking early because three of them are one-liners that currently
 mislead a reader of the code.
 
+> **The `Z` codes are this plan's own** (renamed 2026-08-11). They carried a
+> `§ 8 ` prefix pointing into `staged-runs-architecture.md`, which is superseded
+> as design — and the prefix was never a lookup, since each row already says what
+> its item is. Renaming them is what removes the last live reference to that
+> document from this plan.
+
 | Item | What |
 |---|---|
-| ~~§ 8 14~~ | ~~Repoint the checkpoint subsystem's dead doc references~~ — **done 2026-08-08**. All 9 live files repointed; invariants are now cited **by rule id** so a renumbering cannot break them again. The MANIFEST format was written into `job-contracts.md § 6.1` first, because the twenty error messages cited rules that lived only in the deleted document. `_GITIGNORE_LEGACY_HEAD` and the emitted `.gitignore` header left byte-for-byte |
-| § 8 14a | Module hygiene: `Any` annotated and not imported; unused `field` import; `__all__` omitting the four public names item 11 added; two copies of one `Checkpoint`-from-git-log builder; `list_checkpoints` walking every commit's archive |
-| § 8 10a | The archive-size display prints a number that is not true (hard links counted in full) and **feeds no decision — there is no `prune` verb**. Either drop it or make it match `du`. Two older faults ride along: `archive_total_bytes` is structurally always zero, and `missing_archive_warning` names `.DM/.HSX/.TSHS` whatever the engine |
-| § 8 12e | The checkpoint panel appears at a **fixed depth** (exactly 3 below the projects root) instead of wherever a repository is — so browsing into `01_coarse/` makes it vanish, in the shape where a checkpoint is load-bearing |
-| § 8 12c | If P7's subtraction does not resolve the two warm-file inventories, it becomes a real extraction here |
+| ~~Z14~~ | ~~Repoint the checkpoint subsystem's dead doc references~~ — **done 2026-08-08**. All 9 live files repointed; invariants are now cited **by rule id** so a renumbering cannot break them again. The MANIFEST format was written into `job-contracts.md § 6.1` first, because the twenty error messages cited rules that lived only in the deleted document. `_GITIGNORE_LEGACY_HEAD` and the emitted `.gitignore` header left byte-for-byte |
+| Z14a | Module hygiene: `Any` annotated and not imported; unused `field` import; `__all__` omitting the four public names item 11 added; two copies of one `Checkpoint`-from-git-log builder; `list_checkpoints` walking every commit's archive |
+| Z10a | The archive-size display prints a number that is not true (hard links counted in full) and **feeds no decision — there is no `prune` verb**. Either drop it or make it match `du`. Two older faults ride along: `archive_total_bytes` is structurally always zero, and `missing_archive_warning` names `.DM/.HSX/.TSHS` whatever the engine |
+| Z12e | The checkpoint panel appears at a **fixed depth** (exactly 3 below the projects root) instead of wherever a repository is — so browsing into `01_coarse/` makes it vanish, in the shape where a checkpoint is load-bearing |
+| Z12c | If P7's subtraction does not resolve the two warm-file inventories, it becomes a real extraction here |
 | — | ~~`tests/test_checkpoint_invariants.py`'s header~~ — void: the checkpoint rework retired that file. The rule set is 31 and is mapped test-by-test in `checkpointing.md § 13.4` |
 
 **Milestone MZ** and its three reviews apply to the batch, not to each item.

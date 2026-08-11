@@ -53,17 +53,21 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | You want to know… | Open |
 |---|---|
 | **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)** |
-| The design behind that work, the code audit that grades it, and each item's *"done when"* | **[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)** |
+| Each work item's *"done when"*, and the dated code audits — **⚠ superseded as design** (written against the flat shape only; see its banner) | **[`web/staged-runs-architecture.md`](?doc=web/staged-runs-architecture.md)** |
 | What the Structure-optimization tab will look like — the page that **writes** a description | **[`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)** |
 | The shared tab that **finishes** one — starts from a folder, fills in the per-stage values | **[`web/task-setup-plan.md`](?doc=web/task-setup-plan.md)** |
 
 **Where the design itself lives has changed.** It is
 [`architecture.md`](?doc=execution/architecture.md), a contract, because it says
-what the system *is*. `staged-runs-architecture.md` is what remains: the work
-item by item, and a dated audit of the code against the design. The plan says in
-what order it gets built and how each step is checked. **Three documents, three
-jobs** — the contract states the design, the draft holds the work list, the plan
-holds the order.
+what the system *is*.
+
+> **⚠ `staged-runs-architecture.md` is superseded as design** (2026-08-11). It
+> was written against the **flat** shape before the hierarchical one existed, so
+> its design sections describe the pre-job-system picture: one tab writing one
+> flat directory. What is still live in it is **§ 8**'s per-item acceptance
+> criteria and its **dated code audits**. Read the design in
+> `architecture.md`, `project-layout.md` and `engines/stages.md`; read the order
+> in the plan.
 
 ### How they stack
 
