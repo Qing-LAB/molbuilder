@@ -327,7 +327,15 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
   "jobs": [
     {
       "name":   "coarse",             // → folder 01_coarse/ AND squeue -J name
-      "script": "bdt_au_coarse.fdf",  // the deck, living in the bundle root
+      "script": "bdt_au_01_coarse.fdf",  // the deck, in the bundle root.  The
+                                      // TOKEN in this filename is where the
+                                      // directory's `01` comes from -- it is
+                                      // read back off the deck, never counted
+                                      // (decision 27).  A ladder job whose
+                                      // script carries no token falls back to
+                                      // `point-<name>`, because inventing a
+                                      // seq would be guessing at the one
+                                      // number that must never be guessed.
       "resources": {                  // ALL seven fields are always written,
         "domain":        null,        // nulls included — see the note below
         "time":          "04:00:00",
@@ -344,7 +352,7 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
     },
     {
       "name":   "tight",
-      "script": "bdt_au_tight.fdf",
+      "script": "bdt_au_02_tight.fdf",
       "resources": {
         "domain":        null,
         "time":          "24:00:00",
@@ -386,12 +394,12 @@ are.
 ```
 bdt_au-bundle/                       ← the bundle root: the real files live here
 ├── job-set.json                     the description above
-├── bdt_au_coarse.fdf                the two decks
-├── bdt_au_tight.fdf
+├── bdt_au_01_coarse.fdf             the two decks, each carrying its token
+├── bdt_au_02_tight.fdf
 ├── C.psml  H.psml  S.psml  Au.psml  the shared package
 ├── mb_monitor.py
-├── bdt_au_coarse.run.sh  .sbatch    wrappers, rendered once per distinct deck
-├── bdt_au_tight.run.sh   .sbatch
+├── bdt_au_01_coarse.run.sh .sbatch  wrappers, rendered once per distinct deck
+├── bdt_au_02_tight.run.sh  .sbatch
 ├── STAGE-PLAN.md                    a human-readable review of the jobs
 │
 ├── 01_coarse/                       ← <seq>_<name> for a LADDER's stages
@@ -420,7 +428,8 @@ run coarse, looked at it, and set tight up.
 > is prepped and run in its own folder. Nothing is copied between points.
 >
 > ```text
-> point-g1r2c4/                     ← named by its settings, not a position
+> point-G1K2C4/                     ← G<gpus>K<ranks-per-gpu>C<cores-per-rank>,
+> │                                   named by its SETTINGS, not a position
 > │   bdt_au.fdf  →  ../bdt_au.fdf
 > │   C.psml      →  ../C.psml      (and the other three)
 > └── bdt_au.run.sh → ../bdt_au.run.sh
@@ -467,11 +476,11 @@ A complete 2-stage ladder `job-set.json`:
   "name": "bdt", "engine": "siesta", "kind": "ladder",
   "shared": ["Au.psml", "S.psml", "C.psml", "H.psml", "mb_monitor.py"],
   "jobs": [
-    { "name": "stage1", "script": "bdt_stage1.fdf",
+    { "name": "stage1", "script": "bdt_01_stage1.fdf",
       "resources": { "domain": "htc", "time": "0-04:00:00" },
       "warm": [], "traits": { "optimizer": "CG" } },
 
-    { "name": "stage2", "script": "bdt_stage2.fdf",
+    { "name": "stage2", "script": "bdt_02_stage2.fdf",
       "resources": { "domain": "public", "time": "7-00:00:00", "exclusive": true },
       "warm": [ { "name": "bdt.XV" },
                 { "name": "bdt.DM" },
@@ -528,7 +537,9 @@ an argument rather than a field ([`engines/stages.md`](?doc=engines/stages.md)
   > ordinary control flow in the emitted script rather than a scheduler edge.
   > The same word does something on one engine and nothing on the other.
 - **The warm-file declaration is chosen for correctness, not convenience.**
-  Each stage declares what it would take from a run it is continued from. `.XV`
+  Each stage declares what it would take from a run it is continued from — and
+  **a stage whose description says `restart: clean` declares nothing at all**,
+  because it is not continuing from anything. For a continuing stage, `.XV`
   (coordinates) and `.DM` (density matrix) are unconditional; `.CG`
   (conjugate-gradient optimizer state) carries `requires_same: "optimizer"` —
   a CG state is meaningless to a Broyden stage, so carrying it blindly corrupts

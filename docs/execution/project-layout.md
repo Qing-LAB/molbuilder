@@ -644,8 +644,9 @@ Naming them apart is what makes step 1 answerable.
 | | rule | why |
 |---|---|---|
 | **M1** | **Capability is resolved on the machine that will run the job, never before.** | The bundle you produce names no machine (§ 2.1). This is target isolation — `job-system.md` § 2, decision 3 |
-| **M2** | **Capability comes from detection and config, and config wins.** Detection fills in what it can see (`lscpu`, `nvidia-smi`, `scontrol`); the config overrides it. Never the other way round | The machine can report what it *has*; only you know what you are *allowed to use*. A 64-core node you may only take 16 of is invisible to detection |
-| **M3** | **What was detected and what was declared must both be recoverable.** `environment.json` records the source of every fact | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
+| **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, the default partition — things a machine can be asked. *Declared:* the QoS, the account, the activation command, the partition you are entitled to — **site policy, which a machine cannot report.** | `environment.py::detect_site` states it: *"`qos`/`account` are intentionally left `None` — they are site policy, not reliably derivable from `sinfo`, so they come from the user's config"*. A node reports what it *has*; only your config knows what you may *use* |
+| **M2a** | **Where the two overlap, the declaration wins, and the disagreement is recorded rather than silently resolved.** The **partition** is the one fact both can supply | A detected default partition and a declared one that differ is a real situation — a cluster's default is rarely the one you are entitled to — and picking one without saying so produces a job that bounces with no trace of why |
+| **M3** | **What was detected and what was declared must both be recoverable from the run directory.** | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
 | **M4** | **Allocation is an input to `prep`, not a field of the description and not a decision at submit.** | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size, and which eigensolver — which in turn picks the environment the wrapper activates). A deck written before the allocation is known has guessed |
 | **M5** | **`submit` decides nothing. It checks that the deck and the launch still agree, refuses if they do not, and starts one job.** | The check already exists (`LaunchAgreement`). A launch that quietly disagrees with its deck is the failure M4 exists to prevent, arriving one step later |
 | **M6** | **A workstation needs no config file.** Detection alone is a complete capability there, and asking for a file would be the nanny behaviour § 0 forbids | There is one machine, you are on it, and nothing is rationed |
@@ -676,15 +677,24 @@ repeated — § 2.3.1a, which is why it is not a separate machine.
 | | status |
 |---|---|
 | M1 | ✅ `jobset/prep.py::resolve_target` — step 1, added 2026-08-10 |
-| M2 | ⚠ **half.** `resolve_environment(overrides=…)` implements the precedence, and `bench` passes overrides — but `jobset/prep.py` calls it with **none**, so the staged path detects the machine and never reads `molbuilder.json`. The config file exists; the staged path is not wired to it |
-| M3 | ✅ `Environment.source` records probe-vs-declared per fact |
+| M2 | ✅ as a **division of labour** — detection genuinely does not try to guess `qos`/`account`, and says why |
+| M2a | ✗ **not implemented, and this rule is what found it.** The two halves of capability are resolved in **two places that never meet**: topology and the default partition go into `environment.json` (via `environment.py`), while the `scheduler` block goes straight to `runwrap.py`, which is the *only* consumer of `get_scheduler` — it renders the `.sbatch` header from it. **Nothing compares them.** So `environment.json` can record a detected partition while the header submits to a declared one, and no surface shows the two side by side. Neither half is wrong on its own; there is no place where they are both true at once |
+| M3 | ⚠ **half.** `Environment.source` records provenance for everything it holds — but it holds only the detected half, so a declared `qos` or `account` appears in no run-directory record at all |
 | M4 | ⚠ the allocation is fixed at **produce**, on a laptop, before any machine is known. This is *"the one real migration"* (§ 1) |
 | M5 | ✅ `LaunchAgreement`, `prep.py::check_launch_matches_deck` |
 | M6 | ✅ detection needs no file |
 
-**The two gaps are one change.** When the producer moves from *produce* to
-`prep`, the allocation moves with it — and the same call that resolves the
-machine gains the config the CLI already knows how to read.
+**M4 and M2a are one change; M3's half follows from M2a.** When the producer
+moves from *produce* to `prep`, the allocation moves with it — and that is the
+same call that would merge the `scheduler` block into the machine record
+instead of letting it travel separately to the header emitter.
+
+> **M2a was written as a rule and immediately failed its own conformance
+> check**, which is the point of writing rules that can be checked. The gap it
+> exposed is not a missing feature: both halves work. It is that **capability
+> is assembled twice, in two modules, and the system has no single answer to
+> *what machine is this run going to?*** — the record says one thing, the
+> submitted header can say another, and both are believed.
 
 #### 2.3.1a `prep` is the framework; benchmarking is one thing you prep
 
