@@ -313,9 +313,11 @@ behind a "resources" label that reads as *speed only*
   (`running-a-job.md § 2.3`). A coarse stage on ScaLAPACK and a tight stage on
   ELPA-GPU is an ordinary thing to want, and it works — each deck gets its own
   wrapper.
-- **The rank count** feeds a deck line. `BlockSize` is derived from ranks and
-  atom count, so varying `mpi_np` per stage changes each stage's deck, not only
-  its launch (`engines/stages.md § 5.2`).
+- **The rank count** feeds a deck line. An unset `BlockSize` is proposed from
+  the **orbital** count over the rank count, so varying `mpi_np` per stage
+  changes each stage's deck, not only its launch (`engines/stages.md § 5.2`;
+  the values and the three states are [`engines/tuning.md`](?doc=engines/tuning.md)
+  § 2.11).
 
 So the table above puts *MPI ranks* among the ordinary rows, and the Resources
 subtab should say plainly which of its fields reach the deck. A field that
@@ -476,7 +478,8 @@ directory, several inputs allowed, one basename shared by all of them.
 It is **not** free of backend work, and saying otherwise would be the easy lie.
 The generator has to render from an effective config, expand `restart` into the
 engine's bound parameters, route a promoted `continue_retries` to that stage's
-wrapper, and derive `BlockSize` from that stage's rank count. Those are
+wrapper, and propose a `BlockSize` for that stage when the description leaves
+it unset. Those are
 `engines/stages.md` and `execution/run-identity.md`, and they come before any of
 this is drawn — milestone **M2** of
 [`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md),

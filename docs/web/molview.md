@@ -1379,6 +1379,11 @@ a fact of its own, and none reaches the drawing directly.
 | The control | Reads | Writes |
 |---|---|---|
 | **the frame bar** — slider, ‹ ▶ ›, loop, speed | the displayed frame and the count, from the model (§ 6.4); loop and speed, from the handle | the displayed frame, through the one write everyone uses; play, pause, loop and speed, through the handle (§ 9.2) |
+| **the rail** — atom numbers, forces, cell, axes, isolate, Reset (§ 1.1) | `selection`, for the lit state of each switch | the five switches to `selection`; **Reset** writes nothing — it re-fits the camera through the handle, the one thing on this card that is neither data nor a switch (§ 9.6) |
+| **the View menu** — style, radius, background, projection | `view` | all four to `view` |
+| **the panel** | one snapshot of `selection` (§ 8.4) | the selection, the switches, the filter rows, and labels |
+| **the measurement readout** | which atoms are picked **and in what order**, from `selection`; their coordinates from the **master copy** at the current frame | nothing |
+| **the Export menu** | what to export, over which frames, and where it goes (§ 11.4); the frame range's default from the model (§ 6.4) | nothing in the viewer |
 
 > **Speed was the one fact on this card with no home but its control**, and this
 > table used to name it without saying where it lived. Fixed 2026-08-01: it is
@@ -1391,7 +1396,6 @@ a fact of its own, and none reaches the drawing directly.
 > the box was simply wrong until the first press of play, and `handle.play()`
 > ran at a speed nothing on screen ever showed. Held there now by
 > `test_the_speed_box_sets_playback_and_shows_what_playback_took`.
-| **the rail** — atom numbers, forces, cell, axes, isolate, Reset (§ 1.1) | `selection`, for the lit state of each switch | the five switches to `selection`; **Reset** writes nothing — it re-fits the camera through the handle, the one thing on this card that is neither data nor a switch (§ 9.6) |
 
 > **Isolate has one control, on the rail.** This section used to add that it
 > *"is the one switch with a control of its own ('Show selected only')"* in the
@@ -1399,10 +1403,7 @@ a fact of its own, and none reaches the drawing directly.
 > stylesheet still carried a rule for it, whose own comment records it moving to
 > the rail. A second control for one switch is what § 5.2 forbids anyway; the
 > claim is dropped rather than the rule rebuilt.
-| **the View menu** — style, radius, background, projection | `view` | all four to `view` |
-| **the panel** | one snapshot of `selection` (§ 8.4) | the selection, the switches, the filter rows, and labels |
-| **the measurement readout** | which atoms are picked **and in what order**, from `selection`; their coordinates from the **master copy** at the current frame | nothing |
-| **the Export menu** | what to export, over which frames, and where it goes (§ 11.4); the frame range's default from the model (§ 6.4) | nothing in the viewer |
+
 
 **The frame bar is the clearest case of "one control, two owners."** The frame
 number is the model's (§ 6.4) and playback is the handle's (§ 9.2), so the bar

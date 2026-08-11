@@ -130,8 +130,10 @@ The model owns the atom-index convention (above) and the structure-metadata
 serialization contract (`structure.md § 2.2`). The **other** cross-system
 vocabulary — the config↔scheduler parameter names (`mpi_np`/`cpus_per_task`/
 `time`/`mem`/…), run identifiers and paths (`SystemLabel`, warm-restart files,
-`point-<name>/`, SLURM job names), and the full persisted-artifacts registry
-(`job-set.json`, `decoded.json`, `environment.json`, checkpoint files, …) — is
+stage and attempt directories, SLURM job names), and the full
+persisted-artifacts registry
+(`job-set.json`, `task.json`, `<label>.template.toml`, `environment.json`,
+`run.json`, checkpoint files, …) — is
 an **execution** concern and lives in
 [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6 (absorbed
 from the legacy `data-vocabulary.md`). This overview points there rather than

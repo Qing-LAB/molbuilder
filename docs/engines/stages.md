@@ -1115,6 +1115,26 @@ exist yet, and a **copy** made at `prep` from the run you name — is
 [`project-layout.md § 1.6`](?doc=execution/project-layout.md)'s, which owns the
 rule and the reasoning.
 
+> **The rule is about a LADDER, and this document once stated it as though it
+> covered everything** *(corrected 2026-08-11)*. It read *"nothing schedules a
+> stage after another, **here or anywhere**"* — and `transport bundle` ships a
+> `run-transport.sh` that runs three coupled SIESTA calculations in sequence
+> ([`transport.md § 8`](?doc=engines/transport.md)).
+>
+> **The two are different relationships, and the difference is what the rule is
+> protecting.** A ladder's stages are *attempts at one answer*: whether stage 2
+> should start is a judgement about the geometry stage 1 produced, and a chain
+> would spend a week refining something you would have rejected. Transport's
+> three runs are *one answer assembled from three pieces*: the electrode run
+> emits a `.TSHS` that is an **input**, not a result anybody evaluates, so there
+> is no judgement between them to take away.
+>
+> **What is true without exception is the narrower sentence:** *no **stage** of a
+> ladder is scheduled after another*. Whether a genuinely coupled set should get
+> a representation — and stop needing a shell script — is
+> [`job-system.md § 2`](?doc=execution/job-system.md) decision 6's recorded
+> limit, not a rule this contract may extend to cover it.
+
 **What this contract owns is only the part that is about a *stage*: which files
 it declares.** `.XV` always, `.DM` when the config saves it, and `.CG` **only
 when the run it continues from used the same relaxation method** — *"a CG state

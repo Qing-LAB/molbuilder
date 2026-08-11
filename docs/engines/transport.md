@@ -352,6 +352,43 @@ Three corrections that catch real mistakes:
 
 ## 8. Shipped vs coming
 
+> ### ⚠ This bundle runs outside the job system, and that is the one thing to
+> ### know before extending it *(named 2026-08-11)*
+>
+> `transport bundle` emits **`run-transport.sh`**, and you run the three
+> calculations with `bash run-transport.sh`. So a transport bundle is the **third
+> orchestration lifecycle** in molbuilder, beside `molbuilder jobset` and
+> `molbuilder bench` ([`process/conventions.md § 3`](?doc=process/conventions.md)),
+> and it is the only one that **chains** — a shell script starting one engine
+> after another.
+>
+> **Two rules it does not satisfy, stated plainly rather than left for somebody
+> to trip over:**
+>
+> | rule | where | what transport does |
+> |---|---|---|
+> | *the wrapper activates and execs; everything that computes, decides or arranges belongs to Python on the host* | [`running-a-job.md § 2.2a`](?doc=execution/running-a-job.md) | `run-transport.sh` is a **program** — it sequences three engines and moves a `.TSHS` between them |
+> | *nothing schedules a run after another; a person starts each one* | [`project-layout.md § 1.6`](?doc=execution/project-layout.md) · [`job-system.md § 2`](?doc=execution/job-system.md) decision 6 | the driver runs all three, unattended |
+>
+> **But it is not simply a violation, and the difference is scientific.** Those
+> rules exist because *should stage 2 start?* is a judgement about stage 1's
+> **result** — a geometry you might reject. Transport's three runs are not a
+> ladder: the electrode run produces a `.TSHS` that is an **input**, not a result
+> anybody evaluates, so there is no judgement between them to protect. **A ladder
+> is a sequence of attempts at one answer; this is one answer assembled from
+> three pieces.** The vocabulary for that does not exist yet — a `JobSet` carries
+> no edges at all, which is why `job-system.md § 2` records that *"a branching
+> graph (a diamond, for a two-electrode device) has no representation"*.
+>
+> **So what transport is: the live instance of the case the unified design
+> deliberately does not cover, solved locally with a shell script.** What it
+> costs today is everything the job system gives the other two paths — no
+> `prep`, no per-attempt directory, no `run.json`, no `--mode`, no status
+> roll-up, and no scheduler header. Folding it in is
+> [`job-system.md § 8`](?doc=execution/job-system.md) phase 3–4, *"where the
+> single-parent limit is lifted to a branching graph"*, and it is gated on the
+> SIESTA ladder proving out first.
+
 - **Shipped (zero-bias scope):** the `transport bundle`/`electrode`/`preflight`
   CLI, the electrode wizard, the 3-run orchestration + driver, the zero-bias
   TranSIESTA engine, and the region-label-driven derivation.

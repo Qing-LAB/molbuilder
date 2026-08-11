@@ -139,10 +139,25 @@ shared API.
 [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), `snapshot`
 (git run-checkpoints), `watch` (trajectory parse to JSON/NDJSON).
 
-#### The one overlap left, and it is a whole lifecycle
+#### Three orchestration lifecycles, where the design says one
 
-> ⚠ **`bench` and `jobset` are two CLI lifecycles for one act.** *Named as a
-> design problem 2026-08-11; the resolution was already decided and is not built.*
+> ⚠ **`jobset`, `bench` and `transport` each run calculations their own way.**
+> *Named as a design problem 2026-08-11. Two are the same act with two spellings;
+> the third is a case the unified design cannot yet express.*
+
+| group | how it runs work | status |
+|---|---|---|
+| **`jobset`** | `prep` → `submit`, one job per invocation, per-attempt directories, `run.json` | the design ([`job-system.md`](?doc=execution/job-system.md)) |
+| **`bench`** | `generate` → `prep` → `siesta-gpu` → `summarize` → `prep-run`, with its own baked executables | **the same act, a second spelling** — see below |
+| **`transport`** | `bundle` → `bash run-transport.sh`, a driver that **chains** three coupled runs | **the case with no representation** ([`transport.md § 8`](?doc=engines/transport.md)) |
+
+**They are not the same kind of problem, and conflating them would fix neither.**
+`bench` duplicates something that exists; `transport` does something the model
+cannot say. The first is a merge, the second needs a vocabulary — job-set edges
+between genuinely coupled runs, which decision 6 removed for ladders on purpose
+and would have to come back differently.
+
+##### `bench` and `jobset` — the same act, twice
 
 | the act | `jobset` says | `bench` says |
 |---|---|---|
@@ -164,12 +179,18 @@ doing the same thing. So `bench` is not a second system that should be
 integrated — **it is where that framework was built first**, because the need
 appeared there, and the general part needs lifting out of it.
 
-**Why this matters beyond tidiness.** It is the only surviving breach of
+**Why this matters beyond tidiness.** It breaches
 [`architecture.md § 0`](?doc=execution/architecture.md)'s rule that *every axis
 is a value read at one point, never a branch*: measuring and running are the same
 act over different parameters, and today they are two code paths that can drift.
 `bench probe-scheduler` is the deliberate exception and keeps its own verb — it
 reads a live cluster and proposes config, which is not a calculation at all.
+
+**`transport` breaches the same rule for the opposite reason** — not a second
+spelling of something that exists, but the only shipped work the job set cannot
+describe. Naming them together is the point: **one is a merge, the other is a
+gap**, and a plan that treated them alike would either delete a working
+capability or bless a permanent second path.
 
 ### The CLI-wide conventions
 
