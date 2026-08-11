@@ -884,9 +884,22 @@ def test_status_finished_with_real_siesta_out(tmp_path):
 # --------------------------------------------------------------------- #
 
 def test_carry_deref_localizes_and_isolates_producer(tmp_path):
-    # DEPTH: run the ACTUAL deref bash the generated wrapper emits, and prove
-    # the §4 guarantee holds -- the consumer gets a real local copy and a
-    # later write to it does NOT reach back and clobber the producer.
+    """DEPTH: run the ACTUAL deref bash the generated wrapper emits, and prove
+    § 4's guarantee holds — the consumer gets a real local copy, and a later
+    write to it does NOT reach back and clobber the producer.
+
+    **This is the path `carry_deref` still exists for, and its reason changed
+    on 2026-08-10.** It used to be justified by *"`jobset` can submit a whole
+    chain at once, so the producer has not run when the links are laid"*.
+    Nothing submits a chain at once any more — a scheduler takes one job per
+    invocation — so what it protects now is the other half, which never
+    depended on batching: a **hand-built chained JobSet** lays carry symlinks
+    at materialize, and an engine writing through one writes into the
+    producer's directory (`running-a-job.md` § 2.2a).
+
+    A **staged** ladder reaches none of this: it emits no `Carry` at all
+    (P7 unit 2), so its wrapper gets no `carry_in` and no deref block.
+    """
     import os
     import subprocess
     from molbuilder.runwrap import render_run_wrapper
@@ -915,7 +928,12 @@ def test_carry_deref_localizes_and_isolates_producer(tmp_path):
 
 
 def test_prep_carry_deref_only_in_consumer_wrapper(tmp_path):
-    # the deref preamble appears ONLY in the carrying stage's wrapper.
+    """The deref preamble appears ONLY in the carrying job's wrapper.
+
+    ``_ladder()`` is **hand-built and declares `carry`**, which since P7 unit 2
+    is the only kind of JobSet that does — the staged producer emits none. So
+    this is the surviving path exercised deliberately, not a leftover fixture.
+    """
     js = _ladder()                               # s1: no carry; s2: carries .XV/.DM
     _write_config(tmp_path)
     for s in ("demo_s1.fdf", "demo_s2.fdf"):

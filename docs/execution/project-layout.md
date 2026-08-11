@@ -298,14 +298,14 @@ of it is in place before the engine sees the directory:
 **A flat run directory is untouched.** It *is* a run (§ 1.4), so `bash job.run.sh`
 in it behaves exactly as it does today.
 
-> ⚠ **One violation is live.** `runwrap.py`'s `attempt_dirs` prologue creates
-> and arranges an attempt in shell — scanning for run directories, making one,
-> symlinking the deck and package in, copying warm files. That is
-> `jobset/materialize.py`'s job, one level down, in the layer
-> `running-a-job.md § 2.2a` keeps free of filesystem logic. It is to be retired
-> rather than extended, together with the guard it needed against being run from
-> inside an attempt — which stops being a hazard once the caller decides the
-> directory (invariant 6a).
+> ✅ **The one violation is gone (2026-08-10).** `runwrap.py`'s `attempt_dirs`
+> prologue created and arranged an attempt in shell — scanning for run
+> directories, making one, symlinking the deck and package in, copying warm
+> files. That is `jobset/materialize.py`'s job, one level down, in the layer
+> `running-a-job.md § 2.2a` keeps free of filesystem logic. It was retired
+> rather than extended, and the guard it needed against being run from inside an
+> attempt went with it — that stopped being a hazard the moment the caller
+> decides the directory (**invariant 6a, now held**).
 
 ### 1.6 Stages do not chain, and what that simplifies
 
@@ -1412,9 +1412,12 @@ than no invariant, because it fails a directory that is working correctly.
    in.
 6a. **Every directory and every link in this tree is made by Python.** The
    wrapper activates an environment and execs an engine in a directory it was
-   handed, and does nothing else (`running-a-job.md § 2.2a`). **Not held
-   today**: `runwrap.py`'s `attempt_dirs` prologue creates and arranges an
-   attempt in shell.
+   handed, and does nothing else (`running-a-job.md § 2.2a`). ✅ **Held since
+   2026-08-10**, when `runwrap.py`'s `attempt_dirs` prologue — the one place
+   that created and arranged an attempt in shell, and the only place in the
+   system that changed directory — was retired. *Test:* render a wrapper for
+   each engine and assert its text contains no `cd` command
+   (`tests/test_warm_file_inventory.py`).
 7. **[hierarchical] A shared file exists once, at ③**, and is linked into each stage. Never
    copied per stage.
 8. **Every directory is a container or a run, never both** (§ 1.4). A run's

@@ -798,6 +798,20 @@ appear together, which is exactly where a person should be looking.
     make the gate below moot: the gate is about what replaces the *capability*,
     not about protecting the current callers, of which there are none.
 
+    ✅ **DONE 2026-08-10 — 155 lines out of `runwrap.py`.** No generated wrapper
+    contains a `cd` on either engine, so `project-layout.md` invariant 6a is
+    held and `job-contracts.md § 2.1`'s cwd rule has no exception left.
+
+    ⚠ **The verification above was right about the block and wrong about its
+    helpers**, and the difference nearly shipped a break. `attempt_dirs` had no
+    production caller — but the two functions that built filenames *for* it,
+    `_SIESTA_WARM_SUFFIX_FILES` and `_PYSCF_WARM_FILES`, did:
+    `validation/identity.py::_foreign_state` imported both, then stripped the
+    run id back off the names to recover the **suffixes** it actually wanted. A
+    grep for `attempt_dirs` cannot find that, because that module never mentions
+    `attempt_dirs`. **A symbol's callers are found by searching for the symbol,
+    not for the feature it belongs to.** It reads the suffix tuples directly now.
+
     ⛔ **Gated, and this is the sequencing that matters:** retiring the block
     removes the only way to run a stage by hand, and nothing replaces it yet.
     `project-layout.md` § 8 question 4 — what the entry point is, and where

@@ -135,14 +135,26 @@ it computes, decides, or arranges files, the answer is no and it belongs upstrea
 
 > **One block looks like an exception and no longer is.** `runwrap.py`'s
 > `carry_deref` replaces an inherited restart-file symlink with a real local copy
-> at run start. That exists because `jobset` can submit a whole chain at once, in
-> which case the producer has not run when the links are laid, and the only
-> moment to make them real is on the compute node. It stays for that path. But
-> the staged framework **does not submit chains** — each stage is set up
-> separately, after the previous one finished
-> ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6) — so its files
-> are copied for real at setup, and nothing needs swapping later. The exception
-> belongs to the chained ladder, not to this design.
+> at run start. It stays, and **its reason changed on 2026-08-10.**
+>
+> It used to be justified by *"`jobset` can submit a whole chain at once, so the
+> producer has not run when the links are laid."* **Nothing can submit a chain at
+> once any more** — a scheduler is handed one job per invocation
+> ([`job-system.md`](?doc=execution/job-system.md) § 5.3, user rule), so by the
+> time a consumer is submitted its producer has already finished and the link
+> resolves.
+>
+> What it still protects is the other half, and that half never depended on
+> batching: a **hand-built chained JobSet** lays carry symlinks at materialize,
+> and an engine writing to `job.XV` through one would write **into the
+> producer's directory**, destroying the result being continued from. Localising
+> at run start is what stops that.
+>
+> The **staged** framework needs none of it: it emits no `Carry` at all (P7
+> unit 2), and what a stage continues from is a real file copied in at `prep`
+> from the run you name ([`project-layout.md`](?doc=execution/project-layout.md)
+> § 1.6). The exception belongs to the chained ladder `jobset` can still build,
+> not to this design.
 
 **This is forced, not stylistic.** Two facts make the compute node the wrong
 place for logic:
@@ -157,11 +169,16 @@ place for logic:
   nowhere else to live. That is why it is stdlib-only, and it is not a pattern to
   copy for anything that could run on the host instead.
 
-**One violation is live and is being retired.** `runwrap.py`'s `attempt_dirs`
-prologue (2026-08-06) scans for run directories, creates one, symlinks the deck
-and shared package in, and copies warm files — a second implementation of
-`jobset/materialize.py` in shell, one level down. It moves to Python; see
-[`project-layout.md`](?doc=execution/project-layout.md) § 1.6.
+**The one violation is gone (2026-08-10).** `runwrap.py`'s `attempt_dirs`
+prologue (2026-08-06) scanned for run directories, created one, symlinked the
+deck and shared package in, copied warm files and `cd`'d in — a second
+implementation of `jobset/materialize.py` in shell, one level down. **It was
+also the only place in the system that changed directory**, so retiring it
+restored the rule above rather than tidying it: **no generated wrapper contains
+a `cd` at all**, on either engine. The behaviour it established is right and
+lives in `jobset/materialize.py::prepare_attempt`, in Python, where the layout
+layer owns it. See [`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6 and invariant 6a.
 
 ### 2.3 Env routing
 
