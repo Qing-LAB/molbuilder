@@ -2143,13 +2143,40 @@ on.** Units 1–5 landed 2026-08-10.
    on a one-species molecule with default flags passes anyway, which is exactly
    how this would have shipped.
 
-   **6b's real first step is therefore: make the template lossless** — declare
-   the five deck-affecting fields, or prove each does not belong in the
-   portable half and remove it from the config. That is a per-field judgement
-   about what the *description* owns versus what the *machine* owns, and it is
-   the same question § 2.3.1b answered for capability and allocation. `stage`
-   is probably a deletion (the retired marker); `species_order` is plainly the
-   description's; the three write flags need a call.
+   **The contract decides which fields belong**, and it is a membership rule
+   rather than a list — `project-layout.md` § 2.1: the deck template is *"the
+   science backbone — **everything the calculation fixes and no stage
+   varies**."* Applied: `species_order` and the three write flags are the
+   template's; `copy_psml` is produce-time behaviour and correctly absent; and
+   `cfg.stage` should not exist at all — `engines/stages.md` § 1.1 says *"the
+   emitter that reads it never learns the word"*, and the renderer reads it in
+   six places.
+
+   **But the step is not "add the metadata", because of what that metadata
+   also does.** A field is in the template iff it carries `section`
+   (`template.py::declaration_for`) — and `section` has a **second consumer**:
+   `web/blueprints/_shared.py` builds the form from it. So one key answers two
+   different questions:
+
+   | question | who asks |
+   |---|---|
+   | is this field part of the portable description? | the template |
+   | does this field appear on the form? | the web schema builder |
+
+   **They are not the same question**, and nothing says they must have the same
+   answer. `write_coor_step` has no `section` while `write_coor_xmol`, declared
+   on the very next line, has one — which reads as an omission rather than a
+   decision precisely because the key means two things and neither is stated.
+
+   **So 6b step 1 is: give the template its own membership test**, derived from
+   § 2.1's rule, instead of borrowing the form's heading. Then the four fields
+   join the template without also landing on a form nobody asked to change —
+   which matters now that the browser is deliberately out of scope until the
+   framework is finished.
+
+   Only then does the guard mean anything: *every field the deck renderer reads
+   is either in the template or named, with its reason, as deliberately
+   absent.*
 
    **The guard this wants** is an equality: every field the deck renderer reads
    is either declared in the template or named, with its reason, as
