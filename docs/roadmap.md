@@ -537,6 +537,18 @@ hardness table / real-run verification / would risk false positives") and
 Named, bounded debt whose full statements live in their owning docs; listed
 here so scheduling them is a roadmap edit, not an archaeology dig:
 
+- **The code against the contracts, measured 2026-08-11 — twelve conformance
+  debts (C1–C12).** Where the code has not caught up with a contract that
+  already settled: `molbuilder run` and `molbuilder fdf` still registered, the
+  template still written as `.fdf.template`, trial directories still `point-`,
+  `cfg.stage` still the emitter's only channel for the stage token, no `jobset
+  describe`, no fingerprint writer — **and one line that prints a deleted flag
+  to the user**. Each is scheduled into an existing phase, with its order
+  argued, in
+  [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+  § 5g. They sit *behind* the front rather than blocking it, which is why none
+  earns a milestone.
+
 - **Backend concern seams W1–W5** — `backend-architecture.md § 5`:
   runwrap's SIESTA reach-ins (W1), `jobset/runstatus.py`'s warm-file
   table → producer-supplied inventory (W2), `runtime_config`'s untyped
