@@ -953,8 +953,10 @@ time.
 Say yes and step 2 has a third input, which wins over the defaults. The measured
 rank count flows into step 3, where it changes `BlockSize`; the measured
 eigensolver changes `Diag.Algorithm`, which in step 4 changes **which environment
-the wrapper activates**. One measurement, three destinations — which is why
-resources are not "just scheduler flags" here (`engines/stages.md § 5`).
+the wrapper activates**. One measurement, three destinations — the deck twice
+and the wrapper once — which is why resources are not "just scheduler flags"
+here. That is the **second** row of `engines/stages.md § 5`'s four (*a deck line
+that is also a resource decision*), not its section title.
 
 `prep` prints what it resolved, and that report is the point:
 

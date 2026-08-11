@@ -585,18 +585,35 @@ system pointed at a resource grid.
 
 ---
 
-## 5. The workflow — produce, prep, plan, submit, watch
+## 5. The workflow — describe, prep, plan, submit, summarize, status
 
-The lifecycle has one step on the **host** (where you design the calculation) and
-four verbs on the **target** (where it runs). They mirror the design: the host
-step is pure file-writing; scheduler contact happens only at `submit`.
+**One verb on the host** (where you design the calculation) and **five on the
+target** (where it runs). They mirror the design: the host step writes files and
+nothing else, and scheduler contact happens only at `submit`.
+
+| where | verb | what it does |
+|---|---|---|
+| **host** | `describe` | write the portable description — § 5.1 |
+| target | `prep` | resolve this machine, render the deck and wrapper, build the run directory |
+| target | `plan` | print the jobs and their resources; change nothing |
+| target | `submit` | start **one** job — `--mode direct` or `--mode submit` |
+| target | `summarize` | read a benchmark's trials into a verdict |
+| target | `status` | roll up where the calculation has got to |
+
+> **This section's title and its count were both stale** *(corrected
+> 2026-08-11)*. It read *"produce, prep, plan, submit, watch"* over *"four verbs
+> on the target"* — the set from before `describe` and `summarize` joined the
+> grammar in § 5.3, and *produce* is the undefined noun
+> [`architecture.md`](?doc=execution/architecture.md) § 4 retired in favour of
+> the verb people actually type. A section that names its own verbs is the last
+> place the list should lag.
 
 ```mermaid
 flowchart LR
     subgraph host["HOST — laptop or login node"]
       P["<b>describe</b><br/>→ the template · task.json<br/>· the data files"]
     end
-    subgraph target["TARGET — cluster or workstation"]
+    subgraph target["TARGET — the run loop (summarize joins it for a benchmark, § 5.3)"]
       direction LR
       PR["prep<br/>lay out the stage/point folders<br/>+ their wrappers"]
       PL["plan<br/>review the chain"]
