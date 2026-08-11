@@ -330,7 +330,7 @@ class SchedulerAdapter:
 class SlurmAdapter(SchedulerAdapter):
     """Shared cluster: jobs are submitted to a queue (one job per bench
     point, run in parallel).  Uses the thin sbatch header ->
-    ``bash .run.sh`` model (slurm-integration.md § 3)."""
+    ``bash .run.sh`` model (job-system.md § 6)."""
     name = "slurm"
 
     def matches(self, env: Environment) -> bool:
@@ -406,7 +406,7 @@ def get_adapter(env: Environment) -> SchedulerAdapter:
 def parse_walltime(s) -> int:
     """SLURM walltime string -> seconds.  Accepts the forms SLURM accepts:
     ``MM``, ``MM:SS``, ``HH:MM:SS``, ``D-HH``, ``D-HH:MM``, ``D-HH:MM:SS``
-    (slurm-integration.md § 4.3).  Empty -> 0.  Raises ValueError on garbage
+    (running-a-job.md § 5.3).  Empty -> 0.  Raises ValueError on garbage
     so a malformed config max_time fails loudly, not silently as 0."""
     s = str(s).strip()
     if not s:
@@ -433,7 +433,7 @@ def parse_walltime(s) -> int:
 def domain_fits(domain: Dict, job_secs: int,
                 job_mem_gb: Optional[float]) -> bool:
     """Does this routing ``domain`` fit a job of ``job_secs`` walltime and
-    ``job_mem_gb`` memory (slurm-integration.md § 4.3)?  A domain with a
+    ``job_mem_gb`` memory (running-a-job.md § 5.3)?  A domain with a
     ``max_mem_gb`` cap does NOT fit a job whose memory is unknown
     (``None``) -- we can't prove it fits, so we don't claim it (no silent
     over-ask, § 12)."""

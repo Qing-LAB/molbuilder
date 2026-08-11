@@ -953,14 +953,14 @@ The wrapper file shapes (`.run.sh` inner + `.sbatch` outer) and the meaning of
 each `#SBATCH` line are owned by
 [`running-a-job.md § 5.3`](?doc=execution/running-a-job.md) and
 [`job-contracts.md § 2.6`](?doc=execution/job-contracts.md). What the **job
-system** adds is submission, dependency threading, and routing:
+system** adds is submission and routing:
 
 - **The two layers.** The outer `.sbatch` is a thin `#SBATCH` header whose body
   is a single line — `bash <base>.run.sh "$@"`. The inner `.run.sh` owns
   activation and launch. You submit the outer file; it hands off to the inner
   one. This split means the scheduler header and the run logic evolve
   independently, and the exact same `.run.sh` works with or without a scheduler.
-- **One `sbatch` per job, per-job flags win.** The submitter passes each job's
+- **One `sbatch` per invocation, per-job flags win.** The submitter passes each job's
   resources as command-line `sbatch` flags (`-J`, `-n`, `-c`, `--gres`, `-t`,
   `--exclusive`), which **override** the rendered header — so a whole sweep can
   share one `.sbatch` file while each point still gets its own ranks and cores.

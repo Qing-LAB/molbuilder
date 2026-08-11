@@ -848,11 +848,11 @@ def _gpu_loadbalance_block() -> str:
     existing single-GPU behavior) with no code fork.
 
     ORDERING: emit AFTER ``$_mpi_np`` resolves and BEFORE the MPS block
-    (which reads ``$_ranks_per_gpu``).  slurm-integration.md § 7.5.1.
+    (which reads ``$_ranks_per_gpu``).  running-a-job.md § 3.3
     """
     return (
         "# --- GPU load-balance: rank <-> GPU matching "
-        "(slurm-integration.md § 7.5.1) ---\n"
+        "(running-a-job.md § 3.3) ---\n"
         "# Count ALLOCATED GPUs now and split ranks across them.  The\n"
         "# per-rank launcher maps rank -> GPU as\n"
         "# local_rank*ngpu/localsize, so K=mpi_np/ngpu ranks share\n"
@@ -884,8 +884,7 @@ def _gpu_loadbalance_block() -> str:
 
 def _gpu_socket_affinity_block() -> str:
     """Bash (rank-time, inside the quoted heredoc) implementing the
-    GPU↔CPU socket co-location framework fix (slurm-integration.md
-    § 7.5.2).
+    GPU↔CPU socket co-location framework fix (running-a-job.md § 3.3).
 
     Each rank already knows its GPU's NUMA node (``$_numa``).  This block
     resolves that NUMA node's **socket** (``physical_package_id``) and, by
@@ -910,7 +909,7 @@ def _gpu_socket_affinity_block() -> str:
     All sysfs reads are guarded; missing topology/``numactl`` -> no pin.
     """
     return (
-        '# --- GPU<->CPU socket co-location (slurm-integration.md 7.5.2) ---\n'
+        '# --- GPU<->CPU socket co-location (running-a-job.md § 3.3) ---\n'
         '# Disable the whole pin (trust the scheduler) with '
         'MB_NO_SOCKET_PIN=1 -- useful to A/B whether the pin actually '
         'helps on this machine.\n'
@@ -982,7 +981,7 @@ def _gpu_socket_affinity_block() -> str:
         '-- GPU numa=$_numa is on socket $_gpu_sock but this rank owns '
         'cores only on socket(s) $_my_socks; host<->device + ELPA OpenMP '
         'pay a remote hop. Request --exclusive for clean GPU timing '
-        '(slurm-integration.md 7.5.2)." >&2\n'
+        '(running-a-job.md § 3.3)." >&2\n'
         '        ;;\n'
         '    esac\n'
         'fi\n'
@@ -1063,7 +1062,7 @@ def _gpu_per_rank_launcher_block() -> str:
         # Under SLURM, the scheduler's cgroup cpuset (--gres-flags=
         # enforce-binding + -c) governs CPU/memory placement.  Do NOT
         # also numactl-wrap / --map-by -- that double-binds and can fight
-        # SLURM.  P1 in slurm-integration.md § 7.5.1.b.
+        # SLURM.  P1 in running-a-job.md § 3.3
         'if [ -n "${SLURM_JOB_ID:-}" ]; then\n'
         '    _numa_wrap_gpu=""\n'
         '    _mpirun_bind=""\n'
@@ -1153,7 +1152,7 @@ def _siesta_mem_audit_block(params: Mapping[str, Any]) -> str:
         "    if [ \"$_mb_mem_est\" -gt \"$_mb_mem_alloc\" ]; then\n"
         "        _log WARN \"memory          : estimate (~${_mb_mem_est}G) "
         "EXCEEDS allocation (~${_mb_mem_alloc}G) -- OOM risk; raise --mem "
-        "or lower -n (slurm-integration.md mem model)\"\n"
+        "or lower -n (running-a-job.md 5.3.1 mem model)\"\n"
         "    fi\n"
         "else\n"
         "    _mb_mem_phys=$(awk '/MemTotal/{printf \"%d\", $2/1048576}' "
@@ -1230,7 +1229,7 @@ def _siesta_dry_run_block(script_name: str, gpu_mode: bool) -> str:
 
 def _siesta_scf_timing_func() -> str:
     """Bash defining ``_mb_scf_tee`` — the SCF per-iteration timing
-    instrument (slurm-integration.md § 11.0b).
+    instrument (running-a-job.md § 4.1).
 
     GOAL: SIESTA emits **no usable per-iteration wall time** (the ``scf:``
     lines carry energies + dDmax but no time; ``timer: IterSCF`` is
@@ -1254,7 +1253,7 @@ def _siesta_scf_timing_func() -> str:
     """
     return (
         "# --- SCF per-iteration timing instrument "
-        "(slurm-integration.md § 11.0b) ---\n"
+        "(running-a-job.md § 4.1) ---\n"
         "# Tees SIESTA stdout to the .out AND stamps each scf: iteration\n"
         "# line into the per-run .scf-timing.log so per-iter wall time =\n"
         "# consecutive-epoch delta (SIESTA prints no per-iter time).\n"
@@ -1934,7 +1933,7 @@ def render_run_wrapper(script_path: Path, *,
             # unconditionally clobbered it, which surprised users
             # benching with ``OMP_NUM_THREADS=8 ./run.sh``.  Under sbatch
             # the scheduler reserved ``-c`` cores/rank (the OMP width per
-            # the slurm-integration.md § 7.5.1 sizing) -- honor it so the
+            # the running-a-job.md § 3.3 sizing) -- honor it so the
             # Sol allocation drives OMP automatically without a manual
             # -omp (config.md § 1.5: reading scheduler env for launch
             # tuning is part of the wrapper contract).
@@ -1960,7 +1959,7 @@ def render_run_wrapper(script_path: Path, *,
             f"            # rank<->GPU/NUMA placement, then exit WITHOUT\n"
             f"            # running SIESTA.  Lets you sbatch a preview and\n"
             f"            # read the log to confirm the command matches\n"
-            f"            # the allocation (slurm-integration.md § 7.5.1).\n"
+            f"            # the allocation (running-a-job.md § 3.3).\n"
             f'            _dry_run=1; shift ;;\n'
             # MPS toggle.  Default state is decided in the GPU runtime
             # defaults block based on (a) ``nvidia-cuda-mps-control``
@@ -2707,7 +2706,7 @@ def render_run_wrapper(script_path: Path, *,
             # records only the first iteration), and the external per-line
             # stamps in .scf-timing.log are subject to Fortran stdout
             # buffering -- so the headline benchmark number is total/N
-            # (slurm-integration.md § 11.0).  N = scf: iteration lines.
+            # (job-system.md § 7).  N = scf: iteration lines.
             f'if [ -f "$_scf_timing_log" ]; then\n'
             f'    _n_scf=$(wc -l < "$_scf_timing_log" | tr -d " ")\n'
             f'else\n'
@@ -3027,7 +3026,7 @@ def write_run_wrapper(script_path: Path, *,
     bound).  Parse-failure is treated as "unknown" and falls back to
     the unclamped behaviour rather than refusing to render.
 
-    **SLURM submission layer** (slurm-integration.md § 15 B): when a
+    **SLURM submission layer** (job-system.md § 6): when a
     ``scheduler`` block is configured (``get_scheduler`` non-None) and
     ``emit_sbatch`` is True, ALSO writes ``<basename>.sbatch`` -- the
     thin submission wrapper that ``sbatch``'s this same ``.run.sh``.
@@ -3076,7 +3075,7 @@ def write_run_wrapper(script_path: Path, *,
     if script_path.suffix.lower() == ".fdf":
         _ship_monitor_script(script_path.parent)
 
-    # --- SLURM submission layer (slurm-integration.md § 15 B) ---------
+    # --- SLURM submission layer (job-system.md § 6) ---------
     # Emit <basename>.sbatch iff a scheduler is configured.  Resolution
     # of the per-job header values (ntasks/cpus/gpu) lives here because
     # only this layer knows both the .fdf (GPU request, n_atoms) and the
@@ -3105,7 +3104,7 @@ def _maybe_write_sbatch(script_path: Path,
     """Resolve the per-job header values and write ``<basename>.sbatch``
     when a ``scheduler`` block is configured; else return None.
 
-    Resolution rules (slurm-integration.md § 6):
+    Resolution rules (running-a-job.md § 3.1):
       * ``-n`` (ntasks) = the **MPI rank count** (``mpi_np``) for BOTH CPU
         and GPU jobs.  For GPU jobs ``--gres`` carries the **GPU count**,
         which is INDEPENDENT of the rank count: under the K-ranks-per-GPU
@@ -3224,7 +3223,7 @@ def render_sbatch(script_path: Path,
                   exclusive: Optional[bool] = None) -> str:
     """Render the ``<basename>.sbatch`` submission script.
 
-    The thin two-layer model (slurm-integration.md § 3, § 5): an
+    The thin two-layer model (job-system.md § 6, § 5): an
     ``#SBATCH`` header that allocates resources, then a one-line body
     that delegates to the UNCHANGED launcher
     ``bash <basename>.run.sh "$@"``.  The launcher still owns env
@@ -3272,7 +3271,7 @@ def render_sbatch(script_path: Path,
     if not partition or not qos:
         raise WrapperError(
             "render_sbatch: scheduler.directives.partition + qos are "
-            "required (slurm-integration.md § 10).  Use "
+            "required (running-a-job.md § 5.3).  Use "
             "runtime_config.get_scheduler() which enforces this."
         )
 
@@ -3285,7 +3284,7 @@ def render_sbatch(script_path: Path,
             raise WrapperError(
                 "render_sbatch: GPU job but no gpu type resolved; set "
                 "scheduler.gpu.default_type or pass --gres <type>:<n> "
-                "(slurm-integration.md § 6)."
+                "(running-a-job.md § 3.1)."
             )
         if gpu_count is None:
             gpu_count = ntasks  # 1 rank per GPU (§ 7.5.1)
@@ -3411,7 +3410,7 @@ def render_sbatch(script_path: Path,
         # the node's memory.  The configured mem request is therefore
         # IGNORED here; --mem=0 = "all memory on the node".  Stated out loud
         # so the ignored value is never a silent surprise (the mem<->exclusive
-        # rule -- slurm-integration.md § 4.3.1).
+        # rule -- running-a-job.md § 5.3.1).
         lines.append(
             f"# --exclusive owns the whole node -> ALL its memory.  Configured "
             f"mem ({memory or 'unset'}) is IGNORED; --mem=0 = all node RAM.")

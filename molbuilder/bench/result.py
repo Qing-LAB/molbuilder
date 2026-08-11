@@ -41,7 +41,7 @@ def parse_scf_timing(text: str) -> Dict[str, Optional[float]]:
     Each line starts with an epoch timestamp; consecutive deltas are the
     per-iteration durations.  We drop the first delta (iter 1->2, which can
     still carry warm-up) when >=3 iterations are present, matching the
-    "mean of iters 3-5" rule (slurm-integration.md § 11.0).  Returns
+    "mean of iters 3-5" rule (job-system.md § 7).  Returns
     ``{"s_per_iter": float|None, "iters_measured": int}``.
     """
     epochs: List[float] = []

@@ -87,7 +87,7 @@ def _resolve_domain(domain: Optional[str], *, gpu: bool,
     """Resolve a ``scheduler.routing`` domain name to ``(partition, qos)``
     for the ``sbatch`` CLI.  ``None`` domain → ``None`` (use the rendered
     header's default directives).  A GPU job prefers the domain's
-    ``gpu_partition`` when set (slurm-integration.md § 4.3)."""
+    ``gpu_partition`` when set (running-a-job.md § 5.3)."""
     if not domain:
         return None
     from .. import runtime_config as _rc
@@ -100,7 +100,7 @@ def _resolve_domain(domain: Optional[str], *, gpu: bool,
     names = ", ".join(d["name"] for d in routing) or "(none configured)"
     raise SubmitError(
         f"unknown submission domain {domain!r}; configured: {names} "
-        "(scheduler.routing in .molbuilder.json, slurm-integration.md § 4.3)")
+        "(scheduler.routing in .molbuilder.json, running-a-job.md § 5.3)")
 
 
 # --------------------------------------------------------------------- #
@@ -112,7 +112,7 @@ def _sbatch_resource_flags(r: Resources) -> List[str]:
     header's #SBATCH defaults, so one shared ``.sbatch`` serves every job.
     ``--exclusive`` and ``--mem`` are mutually exclusive (whole-node owns all
     memory — the ``--mem`` is meaningless and rejected by some sites), so
-    exclusive suppresses ``--mem`` (slurm-integration.md § 4.3.1)."""
+    exclusive suppresses ``--mem`` (running-a-job.md § 5.3.1)."""
     flags: List[str] = []
     if r.mpi_np:
         flags += ["-n", str(r.mpi_np)]

@@ -421,7 +421,7 @@ TUNING -- how many cores/app (c) and apps/GPU (K)?  (first opinion; then MEASURE
     more c = more host OMP per app.
   Published optimum: ~4 apps/GPU + small OMP  -> on a 24-core socket, K=4 c=6.
 \b
-  Read the result (util sampling, slurm-integration.md § 11.0e):
+  Read the result (util sampling, job-system.md § 7):
     s/iter ~flat as c grows -> GPU-bound: don't spend cores on OMP (raise K
                                or add a GPU);
     s/iter drops as c grows -> host-bound: more c pays (big mesh / H/S setup).
@@ -492,7 +492,7 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
                        utc_now_iso)
 
     # Resolve the run-vs-submit LAUNCH policy (job-execution.md § 8.13) +
-    # the submission-domain routing table (slurm-integration.md § 4.3) from
+    # the submission-domain routing table (running-a-job.md § 5.3) from
     # the bundle's .molbuilder.json -- applied uniformly to the CPU baseline
     # and the GPU sweep, independent of the detected scheduler.
     try:
@@ -613,7 +613,7 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
 def cmd_probe_scheduler(out: str, do_write: bool, yes: bool) -> None:
     """Probe this SLURM cluster (sinfo/sacctmgr) and propose a `scheduler`
     config block -- partitions, GPU type, and the routing menu derived from
-    the LIVE system (slurm-integration.md § 4.5).  Run on the login node;
+    the LIVE system (job-system.md § 7).  Run on the login node;
     every name/limit comes from the cluster, none is hardcoded.
     """
     import getpass

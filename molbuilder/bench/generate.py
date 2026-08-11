@@ -8,7 +8,7 @@ recommendation -- each bundle just reports its own wall/iter).
 
 Both points use the SAME eigensolver (``Diag.Algorithm ELPA-1STAGE``) so
 the CPU-vs-GPU number isolates the *hardware*, not the solver
-(slurm-integration.md § 11): the GPU point sets ``Diag.ELPA.GPU .true.``,
+(job-system.md § 7): the GPU point sets ``Diag.ELPA.GPU .true.``,
 the CPU point sets it EXPLICITLY ``.false.`` (the ELPA-CUDA build defaults
 to GPU; omitting it crashed the CPU baseline in CUDA -- § 11).
 ELPA lives only in ``molbuilder-siesta-gpu`` (the precompiled
@@ -24,7 +24,7 @@ one declares that env EXPLICITLY (visible as "Target env" in its
 Both are made COLD and comparable (``MaxSCFIterations 5``,
 ``DM.UseSaveDM .false.``, MD/relaxation steps zeroed) -- everything else
 is copied verbatim from the input fdf.  Tuning is done at submit time via
-sbatch args (the launcher auto-adapts, slurm-integration.md § 7.3): the
+sbatch args (the launcher auto-adapts, job-system.md § 6): the
 CPU job scales with ``-n <np>``; the GPU job with ``--gres=gpu:a100:G``
 (GPUs) x ``-n (K*G)`` (K ranks/GPU) x ``-c (cores_per_socket/K)``.  The
 GPU **sweep** over (G, K) is written on the target by ``prep-bench``
@@ -169,7 +169,7 @@ def transform_fdf(src_text: str, *, label: str, gpu: bool,
     the flag crashes the CPU baseline in CUDA -- see below).  So the
     CPU-vs-GPU number isolates the *hardware* (the CUDA toggle), not *solver* —
     ScaLAPACK-CPU vs ELPA-GPU would conflate the two
-    (slurm-integration.md § 11).  ELPA lives only in ``molbuilder-siesta-gpu``
+    (job-system.md § 7).  ELPA lives only in ``molbuilder-siesta-gpu``
     (the CPU ``molbuilder-siesta`` conda package is built without it), so
     BOTH points route there: the CPU point declares that env EXPLICITLY
     (``env=`` to ``write_run_wrapper``), the GPU point auto-routes via its
@@ -328,7 +328,7 @@ then `bash job-gpu-sweep.sh`.  The knobs:
 * **Multi-GPU (G>=2) is NOT guaranteed to be faster** -- ELPA-CUDA has no
   NCCL inter-GPU path here.  Measure; do not assume.
 * **Do NOT add `--gpu-bind` for G>=2** -- it conflicts with the per-rank
-  CUDA_VISIBLE_DEVICES launcher (slurm-integration.md 7.5.2) and breaks
+  CUDA_VISIBLE_DEVICES launcher (running-a-job.md § 3.3) and breaks
   the K-ranks load balance.
 * Cross-socket GPU/CPU placement bites harder at G>=2; for the cleanest
   numbers run the GPU job `--exclusive`.
@@ -336,7 +336,7 @@ then `bash job-gpu-sweep.sh`.  The knobs:
 ## Reading the result
 
 Each job stamps every `scf:` line into `<job>-run0.scf-timing.log`.  The
-reliable metric is **total wall / N** (`slurm-integration.md` 11.0); the
+reliable metric is **total wall / N** (job-system.md § 7); the
 background monitor reports the live running average and stays quiet when
 stalled (11.0c).  Compare `job-cpu` vs the best `job-gpu` point and run
 your production job with that mechanism.
@@ -369,7 +369,7 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
 
     Returns ``(out_dir, [written paths])``.  The ``.sbatch`` files are
     emitted only when a ``scheduler`` block is configured (otherwise just
-    the ``.run.sh`` launchers, per slurm-integration.md § 10).
+    the ``.run.sh`` launchers, per running-a-job.md § 5.3).
 
     ``cpu_time`` / ``gpu_time`` set the per-bundle ``#SBATCH -t`` (else the
     scheduler default).  CPU diagon at a few-hundred atoms can exceed the
@@ -701,7 +701,7 @@ _RUN_BENCH_GUARD = (
 def _domain_select_block(routing, exec_domain, recommend,
                          fitting, job_time) -> str:
     """Bash that resolves the explicitly-selected routing domain
-    (slurm-integration.md § 4.3): parse ``--domain``, else ``execution.domain``,
+    (running-a-job.md § 5.3): parse ``--domain``, else ``execution.domain``,
     else print the menu + recommendation and EXIT (never push-button); validate
     the name; fit-check it against this run's walltime; export ``MB_GPU_PQ`` and
     set ``$_cpu_pq`` for the CPU baseline.  All names/limits are baked from the
@@ -727,7 +727,7 @@ def _domain_select_block(routing, exec_domain, recommend,
     exec_default = exec_domain or ""
     return (
         "# --- explicit submission-domain selection "
-        "(slurm-integration.md § 4.3) ---\n"
+        "(running-a-job.md § 5.3) ---\n"
         f'_rec="{rec}"\n'
         f'_fitting="{fit_set}"\n'
         f'_dom="{exec_default}"\n'

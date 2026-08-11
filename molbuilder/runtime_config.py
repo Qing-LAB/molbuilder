@@ -469,7 +469,7 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
         out["script_generation"] = _validate_script_generation(
             raw["script_generation"])
 
-    # --- scheduler section (slurm-integration.md § 4) --------------- #
+    # --- scheduler section (running-a-job.md § 5.3) --------------- #
     # Validated lazily by get_scheduler (which merges scopes first and
     # applies the refuse-to-emit rule on the MERGED result).  Here we
     # only need to (a) keep the key out of the allowlist's drop set and
@@ -1099,7 +1099,7 @@ _SCHEDULER_DIRECTIVE_KEYS: tuple = (
     "partition", "qos", "mail_type", "mail_user", "export",
 )
 
-# Per-job defaults (slurm-integration.md § 4.1, § 6).  ``time`` is a
+# Per-job defaults (running-a-job.md § 5.3, § 6).  ``time`` is a
 # walltime string; ``cpus_per_task`` an int (OMP width per rank); ``mem``
 # a string like "120G" or None (=> scheduler default).
 _SCHEDULER_DEFAULT_KEYS: tuple = ("time", "cpus_per_task", "mem")
@@ -1110,7 +1110,7 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
 
     Returns the resolved ``{kind, directives, gpu, defaults}`` dict.
     Raises :class:`RuntimeConfigError` on shape errors AND on the
-    refuse-to-emit rule (slurm-integration.md § 10): a ``slurm`` site
+    refuse-to-emit rule (running-a-job.md § 5.3): a ``slurm`` site
     that omits ``directives.partition`` or ``directives.qos`` cannot
     produce a header that will allocate, so we fail at generate time
     while the user is at a terminal -- never after a job has queued.
@@ -1255,7 +1255,7 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
         "mem_model":  mem_model,
     }
     # routing: pass through verbatim (deep-validated by get_routing, which
-    # owns the domain schema -- slurm-integration.md § 4.3).  Preserve it
+    # owns the domain schema -- running-a-job.md § 5.3).  Preserve it
     # here so get_scheduler -> get_routing can see it.
     if raw.get("routing") is not None:
         out["routing"] = raw["routing"]
@@ -1274,7 +1274,7 @@ def get_scheduler(
 
     Returns ``None`` when neither scope defines a ``scheduler`` block --
     the signal to emit only ``.run.sh`` (today's behaviour) and skip the
-    ``.sbatch`` (slurm-integration.md § 10).  When a block IS present it
+    ``.sbatch`` (running-a-job.md § 5.3).  When a block IS present it
     is validated strictly, so a malformed/partial site config raises
     here rather than producing a header that won't allocate.
 
@@ -1357,8 +1357,7 @@ def get_execution(
 def get_routing(
     project_dir: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
-    """Return the validated ``scheduler.routing`` list (slurm-integration.md
-    § 4.3): the named submission-domain menu, read at prep time.
+    """Return the validated ``scheduler.routing`` list (running-a-job.md § 5.3): the named submission-domain menu, read at prep time.
 
     Each entry is a domain ``{name, max_time, max_mem_gb?, partition, qos,
     gpu_partition?}``.  Returns ``[]`` when no table is configured (→ the
@@ -1375,7 +1374,7 @@ def get_routing(
     if not isinstance(raw, list):
         raise RuntimeConfigError(
             "scheduler.routing must be a list of domain objects "
-            "(slurm-integration.md § 4.3).")
+            "(running-a-job.md § 5.3).")
     out: List[Dict[str, Any]] = []
     seen = set()
     for i, dom in enumerate(raw):

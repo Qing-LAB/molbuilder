@@ -182,13 +182,16 @@ def measure_bare_archived_citations() -> list[str]:
 
 @pytest.mark.xfail(strict=True, reason=(
     "OPEN — decision 32 in docs/execution/staged-runs-implementation-plan.md "
-    "§ 8.  324 bare citations of 32 archived-only documents; the biggest are "
-    "slurm-integration.md (51), parse-module.md (46) and job-execution.md "
-    "(41).  Each document needs its own call: REPOINT where the successor "
-    "really carries the content, or UN-ARCHIVE where the narrative merged and "
-    "the specification did not.  Run `python -m tests.test_no_retired_doc_"
-    "paths` for the current count.  Strict, so this fails loudly the moment "
-    "the last one is resolved."))
+    "§ 8.  277 bare citations of 31 archived-only documents; the biggest are "
+    "parse-module.md (46) and job-execution.md (41).  slurm-integration.md was "
+    "the largest and is now CLOSED — all 51 repointed to running-a-job.md and "
+    "job-system.md.  It is also the worked example for the rest: a successor "
+    "is found by reading what the live doc POINTS AT (job-system § 6 names its "
+    "two owners in its first sentence), not by grepping successors for words "
+    "you expect to see — that method gave the wrong answer and a "
+    "recommendation to un-archive a correctly-superseded document.  Run "
+    "`python -m tests.test_no_retired_doc_paths` for the current count.  "
+    "Strict, so this fails loudly the moment the last one is resolved."))
 def test_no_active_source_cites_an_archived_doc_as_authority():
     hits = measure_bare_archived_citations()
     assert not hits, (

@@ -48,7 +48,7 @@ class Resources:
     artifacts (bench-manifest, scheduler config) so the system speaks one
     language on files: ``mpi_np`` / ``cpus_per_task`` / ``time`` / ``mem`` /
     ``exclusive`` (NOT ``omp`` / ``walltime``).  ``domain`` is a
-    ``scheduler.routing`` name (slurm-integration.md § 4.3) the submit engine
+    ``scheduler.routing`` name (running-a-job.md § 5.3) the submit engine
     resolves to ``-p``/``-q``; ``gres`` is a raw SLURM gres string (e.g.
     ``"gpu:a100:1"``) or None.
 

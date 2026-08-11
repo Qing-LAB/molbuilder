@@ -1,5 +1,5 @@
 """``molbuilder bench probe-scheduler`` -- turn a live SLURM cluster into a
-proposed ``scheduler`` config block (slurm-integration.md § 4.5).
+proposed ``scheduler`` config block (job-system.md § 7).
 
 Probes ``sinfo``/``sacctmgr`` on the target's login node and DERIVES the
 ``scheduler.{directives,gpu,routing}`` block the user would otherwise
@@ -189,7 +189,7 @@ def derive_scheduler_block(
     allowed: Set[str],
 ) -> Tuple[Optional[dict], List[str]]:
     """Live probes -> proposed ``scheduler`` block + a list of human notes /
-    assumptions (slurm-integration.md § 4.5).  Returns ``(block, notes)``;
+    assumptions (job-system.md § 7).  Returns ``(block, notes)``;
     ``block`` is None when no usable GPU partition/QoS was found."""
     notes: List[str] = []
     gpu_parts = sorted((p for p in partitions if p.has_gpu),
