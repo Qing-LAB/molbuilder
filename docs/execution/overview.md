@@ -14,7 +14,7 @@ around.
 
 ## 1. The map — which doc to open
 
-Nine documents live here, and they come in **three kinds**. Knowing which kind
+Ten documents live here, and they come in **three kinds**. Knowing which kind
 you are reading tells you how much to trust it and what to do when two disagree.
 
 - A **contract** says what a thing *is*. It is the authority. When a contract and
@@ -28,6 +28,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 
 | You want to know… | Open |
 |---|---|
+| **Who decides what** — the seven floors, the four routes, which function is the entry point at each floor, and the rules that must never break | **[`architecture.md`](?doc=execution/architecture.md)** |
 | Where a run's files go, what they are named, what a `.fdf`'s reserved comment blocks are, what warm/cold restart means, or what any persisted file's format is | **[`job-contracts.md`](?doc=execution/job-contracts.md)** |
 | What a whole project directory looks like — the **two shapes** (flat and hierarchical), what `prep` does, and why the browser cannot finish a deck | **[`project-layout.md`](?doc=execution/project-layout.md)** |
 | Why a calculation's files all share one name, and what actually makes a run *continue* from an earlier one | **[`run-identity.md`](?doc=execution/run-identity.md)** |

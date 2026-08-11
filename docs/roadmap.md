@@ -554,6 +554,25 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
 - **`structure_to_dict` disposition** — `model/structure.md` calls it the
   retained web composer; `backend-architecture.md § 2` calls it a vestigial
   wrapper to delete. One decision, then align both docs.
+- **The execution floors, against the code.** The design is
+  [`execution/architecture.md`](?doc=execution/architecture.md); this is how
+  much of it the code holds:
+
+  | floor | ok? | what remains |
+  |---|---|---|
+  | 1 names & facts | ✅ | — |
+  | 2 description | ✅ | — |
+  | 3 plan | ⚠ | `stages_to_jobset` receives **no machine**, though floor 3 is defined as *asked-for + machine*. Not a bug: it runs at **produce**, on a laptop, where there is no machine to receive |
+  | 4 layout | ✅ | — |
+  | 5 launch | ⚠ | `runwrap` **writes** a script and `submit` **starts** one; one floor holds both. Real, harmless, and splitting it costs more than it returns |
+  | 6 observe | ⚠ | in the flat layout, one stage's verdict is still read from the whole folder |
+  | 7 surfaces | ⚠ | the web has no staged path at all |
+  | — | `bench/` | a second copy of floors 3–6 for sweeps; folds in after the migration below |
+
+  **Every ⚠ except floor 5's is the same unfinished change** — the producer runs
+  at *produce* and needs to run at `prep`, which the plan calls "the one real
+  migration".
+
 - **Capability and allocation reach `prep`** — `project-layout.md § 2.3.1b`
   defines the two and rules M1–M6. Three are held today (M1 the machine is
   resolved on the target; M5 `submit` only checks the deck and the launch

@@ -118,7 +118,7 @@ concerns leak into each other — see
 |---|---|---|---|---|
 | `jobset/` | L2 | engine-agnostic **staged execution**: a set of related jobs sharing a package | `stages_to_jobset`; `prep_jobset`; `submit_jobset(mode=…)`; `jobset_status`; `render_plan`; `JobSet.write` / `load`; CLI `molbuilder jobset {plan,prep,status,submit}` | [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `bench/` | L2 | portable **benchmark** sweep (detect → format → run → summarize); a `jobset` producer (`sweep_to_jobset`) | `molbuilder bench {generate,prep,summarize,prep-run,…}`; `sweep_grid` (shared grid) | [`execution/job-system.md`](?doc=execution/job-system.md) |
-| `runwrap` | L2 | **launcher** emitter: `.run.sh` + `.sbatch` (env activation, MPI/OMP, mem, carry-localize) | `write_run_wrapper(…, carry_in=)`, `render_sbatch`, `write_sbatch` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
+| `runwrap` | L2 | **launcher** emitter: `.run.sh` + `.sbatch` (env activation, MPI/OMP, memory, GPU pinning) | `write_run_wrapper`, `render_sbatch`, `write_sbatch` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `runtime_config` | L2 | reader for `molbuilder.json` (scheduler / routing / script-gen) | `get_scheduler`, `get_routing`, `get_script_generation`, `require_activation`, `write_config_scope` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5 |
 | `diagnostics` | L2 | host capability detection + env-for-category routing | `get_capabilities().env_for_category(...)` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
 | `monitor` | L2 | stdlib-only progress/utilization sampler shipped next to jobs (`mb_monitor.py`) | copied verbatim to targets | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
@@ -192,6 +192,11 @@ This index is deliberately thin — it routes you to the authoritative doc.
   where the concerns leak into each other — is
   [`backend-architecture.md`](?doc=backend-architecture.md), the companion to
   this layer index.
+- **The execution domain's internal shape** — which of its floors owns which
+  decision, the routes that cross them, and the objects that travel between
+  them — is [`execution/architecture.md`](?doc=execution/architecture.md). It is
+  a **finer** grouping than the L1/L2/L3 index above: `jobset` is one import
+  tier here and spans four floors there.
 - **The domain docs are the authoritative per-subsystem source** for every row
   above: [`model/`](?doc=model/overview.md) (the L1 data model),
   [`science/`](?doc=science/overview.md) (correctness),

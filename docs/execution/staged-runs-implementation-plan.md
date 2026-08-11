@@ -134,15 +134,17 @@ the full suite.
 > be written before what*, and its boxes are groups of **phases**. § 9 answers
 > *what may depend on what*, and its boxes are **floors** of the running system.
 > They are close relatives and they are not the same picture: § 2's "acts"
-> — produce, prep, submit — are § 9's **routes**, which cross floors by design,
-> while § 2's "identity" and "rendering" are floors. **Putting both in one stack
-> is exactly the mix § 9.2 exists to undo**; this section keeps doing it because
-> as a build order it is right, and renaming it is cheaper than redrawing it.
+> — produce, prep, submit — are the **routes** of
+> [`execution/architecture.md`](?doc=execution/architecture.md), which cross floors by design, while § 2's "identity" and "rendering" are
+> floors. **Putting both in one stack is exactly the mix that contract's § 1
+> exists to undo**; this section keeps doing it because as a build order it is
+> right, and renaming it is cheaper than redrawing it.
 >
-> This document was written with **three** different things called a "layer" —
-> import depth (`test_layering`), architectural floor (§ 9), and this build
-> order — and this one, met first, was the one with no warning attached. If you
-> want the structure, read § 9. If you want the order of work, read on.
+> Three different things get called a "layer": import depth
+> (`test_layering`), the architectural **floor** (the contract above), and this
+> build order — and this one, met first, was the one with no warning attached.
+> **If you want the structure, read the contract. If you want the order of
+> work, read on.**
 
 The work is a stack. Each group is written against the one below it and never
 reaches past it, which is exactly why it can be built bottom-up: nothing above
@@ -1425,7 +1427,7 @@ jobs, and what goes in and comes out) · § 1.6 (**stages do not chain**).
    > the same deck migration `LaunchSpec` waits on, so the two are one piece of
    > work, not two.
 2. **The deck is rendered FOR the launch — steps 1→2→3, in that order.**
-   *(Placed here 2026-08-10 by user decision; § 9.5's `LaunchSpec` row.)*
+   *(Placed here 2026-08-10 by user decision; § 9.2's `LaunchSpec` row.)*
 
    **This is not new design. `project-layout.md § 2.3.1` already specifies it**,
    and finding that sentence changed what this unit is: the five steps are
@@ -1454,7 +1456,7 @@ jobs, and what goes in and comes out) · § 1.6 (**stages do not chain**).
 
    *Not this unit:* `runwrap`'s clamp is separately wrong — it resolves
    `min(physical_cores, n_atoms)` where SIESTA constrains **orbitals** per rank.
-   That is engine physics (§ 9.9), and fixing it inside this seam would hide it.
+   That is engine physics (§ 9.4), and fixing it inside this seam would hide it.
 
    > **The lesson, since it is the third time today.** This was written up as a
    > new value object needing a new phase, and the contract had specified it all
@@ -2986,7 +2988,7 @@ was named and accepted. It is the same question `Repo.restore` already asks
 before it overwrites a folder from history, asked before the other destructive
 act — overwriting it with new results.
 
-**It is already specified. It is A3, and § 9 is its table.** *"Where it asks —
+**It is already specified. It is A3 in [`execution/architecture.md`](?doc=execution/architecture.md) § 6.** *"Where it asks —
 interactive `prep`, **when the target already holds results**"*; *"Who decides —
 you, every time"*; *"Non-interactive (`--yes`, a script) — proceeds **without**
 saving and **says so**"*. That first row only means anything if prep runs again
@@ -3210,9 +3212,24 @@ preview (decision 28's last clause) is the one that will.
 
 ---
 
-## 9. The architecture — one idea, seven layers, four routes
+## 9. The architecture this plan converges on
 
-### 9.0 Why this section exists
+> **The design moved out of this plan on 2026-08-10.** It is
+> [`execution/architecture.md`](?doc=execution/architecture.md) — a **contract**,
+> because it states what the system *is*, and a plan is *"the only kind of
+> document allowed to describe something that does not exist yet"*
+> (`execution/overview.md` § 1). Holding a durable design inside a plan was the
+> same inversion as holding status inside a contract, and both were mine.
+>
+> Read it there for: the seven floors and each one's entry points, the objects
+> that travel between them, the four routes, `prep`'s five steps with a worked
+> example, the end-to-end workflow, and rules A1–A7.
+>
+> **What stays here is what a plan owns** — why this work was undertaken, what
+> "done" means for it, and which phase lands what. **Where the code stands
+> against it** is [`roadmap.md`](?doc=roadmap.md) § 6.
+
+### 9.0 Why this work was undertaken
 
 One sentence names every defect this rebuild has found:
 
@@ -3234,12 +3251,9 @@ The same rules are written three times — once in `jobset`, once in `bench`, an
 once inline in `cli.py` and the web build route. Three copies cannot disagree
 *politely*; they disagree by producing different answers on different days.
 
-This section exists to make "who is allowed to know what" answerable, so that
-three copies collapse into one and the next person does not have to guess.
-
 ---
 
-### 9.1 What "done" means
+### 9.1 What "done" means for this plan
 
 | | goal | done when |
 |---|---|---|
@@ -3250,303 +3264,48 @@ three copies collapse into one and the next person does not have to guess.
 
 ---
 
-### 9.2 The one idea: two different questions
+### 9.2 Which phase lands which object
 
-People ask two things about this system, and **an answer to one is not an answer
-to the other**:
+The contract's § 3 lists the objects that carry answers between floors. This is
+the schedule for them, which is the half that belongs to a plan:
 
-| the question | what kind of answer | when you find out you were wrong |
-|---|---|---|
-| *Who is allowed to know about whom?* | **layers** — about which file may read which | at rest, from a test |
-| *What happens, and in what order?* | **routes** — about time | when you run it |
-
-A **layer** is a floor of a building. You may always go *down* to a lower floor
-and come back with an answer. You may never go up, and never cut sideways
-through a wall.
-
-A **route** is the path a person walks through those floors to get one job done.
-A route visits several floors, in an order it chooses, and **that order is
-allowed to disagree with the floor numbers** — because "what depends on what"
-and "what happens first" are simply different things.
-
-`prep` is a route, not a floor. Trying to give it a floor number is what left
-one of its five steps with nobody responsible for it — the machine was never
-resolved for a staged run at all, because "resolve the machine" belonged to a
-thing the floor plan had no room for.
-
-> #### ⚠ Two different things in this repository are called a "layer"
->
-> Both are real. Confusing them costs an hour every time.
->
-> | | what it controls | who enforces it | the values |
-> |---|---|---|---|
-> | **import depth** | which file may `import` which | `tests/test_layering.py`, mechanically | `L1` (17 names) · `L2` (23) · `L3` (`cli`, `web`) |
-> | **architectural layer** | which *role* owns a decision | this section, by reading | 1 naming … 7 surfaces |
->
-> They overlap without matching. `persist` is import-depth **L1** and has no
-> architectural role at all — it is a small helper both sides borrow.
-> `identity` is both. `jobset` is one import-depth tier (`L2`) and spans
-> **four** architectural layers (3–6).
->
-> **In this section, "layer" always means the second one.**
-
----
-
-### 9.3 The seven layers
-
-```mermaid
-flowchart TB
-    subgraph L7["<b>7 · surfaces</b> — ask the person, show the answer"]
-      direction LR
-      S1["cli.py"]; S2["jobset/_cli.py"]; S3["web/"]
-    end
-    subgraph L6["<b>6 · observe</b> — read what happened; write nothing"]
-      direction LR
-      O1["jobset/runstatus.py"]; O2["parse/dirs/"]
-    end
-    subgraph L5["<b>5 · launch</b> — turn a folder into a running program"]
-      direction LR
-      U1["jobset/submit.py"]; U2["runwrap.py"]; U3["jobset/prep.py"]
-    end
-    subgraph L4["<b>4 · layout</b> — folders, links, copies, attempts"]
-      direction LR
-      Y1["jobset/materialize.py"]; Y2["jobset/shape.py"]
-    end
-    subgraph L3["<b>3 · plan</b> — what was asked for + this machine → a list of jobs"]
-      direction LR
-      P1["siesta/stages.py"]; P2["bench/to_jobset.py"]; P3["jobset/model.py"]
-    end
-    subgraph L2["<b>2 · description</b> — what the person asked for"]
-      direction LR
-      D1["task.py"]
-    end
-    subgraph L1["<b>1 · names &amp; plain facts</b>"]
-      direction LR
-      N1["identity.py"]; N2["environment.py"]; N3["persist.py"]
-    end
-    L7 --> L6 --> L5 --> L4 --> L3 --> L2 --> L1
-    L5 -.-> L1
-    L4 -.-> L1
-    L7 -.-> L3
-```
-
-Solid arrows are the ordinary way down. **Dotted arrows are allowed shortcuts**:
-any layer may reach straight to layer 1, because layer 1 holds plain values and
-keeps no state. `submit` asking `identity` for a name is not a violation — it is
-layer 1 doing the job it exists for.
-
-| # | layer | the decision it owns | files | the things it makes | what it writes | it must never |
-|---|---|---|---|---|---|---|
-| 1 | **names & plain facts** | what a thing is called; what this machine is | `identity` · `environment` · `persist` | `StageRef` · `Environment` · `RestartGroup` | `environment.json` | know what a folder is |
-| 2 | **description** | what the person asked for | `task` | `Task` · `Run` · `Stage` | `task.json` | **name a machine** |
-| 3 | **plan** | asked-for + machine → a list of jobs | `siesta/stages` · `bench/to_jobset` · `jobset/model` | `JobSet` · `Job` · `Resources` · `WarmFile` | `job-set.json` | touch the disk |
-| 4 | **layout** | where every file sits | `jobset/materialize` · `jobset/shape` | `Attempt` · `Shape` | the folder tree; `run-<n>/` | know about a queue |
-| 5 | **launch** | how a folder becomes a running program | `jobset/submit` · `runwrap` · `jobset/prep` | `JobResult` · `LaunchAgreement` | `.run.sh` · `.sbatch` · `run.json` | decide physics |
-| 6 | **observe** | what happened | `jobset/runstatus` · `parse/dirs` | `StageStatus` · `JobSetStatus` | — | write anything |
-| 7 | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `web` | — | — | work out a name, a folder, or a launch |
-
-**The rule that makes it a layering:** *a layer may call down and return up; it
-may never reach across.* Layer 5 deciding a rank count that layer 3 already
-assumed is the reach that cost a real run on 2026-08-10.
-
----
-
-### 9.4 The four routes
-
-A route owns **an order**, not a floor.
-
-| route | the job it does | its order | floors it visits |
-|---|---|---|---|
-| **produce** | turn a description into a portable folder | check → render → write | 2 → 3 |
-| **prep** | assemble a runnable folder **on the machine that will run it** | the five steps below | 1 → 2 → 3 → 5 → 4 |
-| **submit** | one job becomes one running program | find the folder → check it agrees → launch → record | 4 → 5 |
-| **observe** | answer *where has this got to* | newest attempt → read it → add up | 4 → 6 |
-
-`prep` is the important one, and `project-layout.md` § 2.3 calls it **the hub**:
-you come back to it after every look at a result.
-
-```mermaid
-flowchart LR
-    subgraph PREP["<b>prep</b> — the same five steps every time"]
-      direction TB
-      p1["1 · resolve the machine"] --> p2["2 · resolve the settings"]
-      p2 --> p3["3 · write the input deck"] --> p4["4 · write the run script"]
-      p4 --> p5["5 · build the run folder"]
-    end
-    p1 -.->|"floor 1"| q1["environment"]
-    p2 -.->|"floors 2→3"| q2["task + this stage's changes"]
-    p3 -.->|"floor 3"| q3["the engine's deck writer"]
-    p4 -.->|"floor 5"| q4["runwrap"]
-    p5 -.->|"floor 4"| q5["materialize"]
-```
-
-**Notice that step 4 uses floor 5 and step 5 uses floor 4.** That looks wrong
-and is not. The run script has to be written before the folder is assembled,
-and writing a run script is a *launch* job while assembling a folder is a
-*layout* job. **The order things happen in is simply not the order of who
-depends on whom** — which is exactly why one table cannot carry both, and why
-`prep` is a route rather than a floor.
-
-#### A worked example, in plain words
-
-You have looked at the coarse stage, you are happy with it, and you type:
-
-```bash
-molbuilder jobset prep run tight --from 01_coarse/run-0
-```
-
-Here is what happens, and **who decides each thing**:
-
-| # | what happens | who decides | why it is theirs |
-|---|---|---|---|
-| — | your words are read | **7 · surface** | the surface's whole job is asking and showing |
-| 2 | `task.json` is read: what you asked for, and what the tight stage changes | **2 · description** | it is the only thing that knows what you asked for |
-| 1 | the machine is probed — cores, GPUs, queue — into `environment.json` | **1 · plain facts** | it is a fact about this box, not about your calculation |
-| 3 | those two become a list of jobs | **3 · plan** | this is the only floor allowed to see both at once |
-| — | *"tight"* is turned into *which stage that is* | **1 · names** | so a name, a number and a token all reach the same stage |
-| 5 | the run script is written, with the environment baked in | **5 · launch** | it is the thing that starts the program |
-| — | the deck is checked against the launch it will get | **5 · launch** | a deck built for 8 ranks must not be started at 32 |
-| 4 | `03_tight/run-1/` is made; coarse's geometry is **copied** in | **4 · layout** | where files sit is this floor's only job |
-| — | what was resolved is printed for you | **7 · surface** | so the next command is a plain yes |
-
-**`prep` decided none of that.** It decided only **the order**. Every answer
-came from the floor that owns it, which is what makes it possible to change one
-answer without hunting through the others.
-
-**Why the copy and not a link** (step 4): the engine writes to that very
-filename. A link would reach back and overwrite the coarse result you chose to
-build on.
-
----
-
-### 9.5 The four objects that carry answers between floors
-
-Each one exists to replace *"work it out again"* with *"ask"*.
-
-| object | floor | what it replaces | the phase that landed it | status |
+| object | floor | what it replaced | phase | status |
 |---|---|---|---|---|
-| **`StageRef(seq, name)`** | 1 | six hand-written ways to compute a stage's number | **P9**, pulled early | ✅ landed |
+| **`StageRef`** | 1 | six hand-written ways to compute a stage's number | **P9**, pulled early | ✅ landed |
 | **`Shape`** | 4 | a producer emitting flat **and** nested at once | **P5** | ✅ landed |
-| **`LaunchSpec`** | 5 | the run script picking a rank count on its own | **P6** unit 2 | ◐ the *agreement* landed as `LaunchAgreement`; the move behind it did not |
 | **`Attempt`** | 4 | `prepare_attempt` handing back a bag of string keys | **P6** | ✅ landed |
+| **`LaunchSpec`** | 5 | the run script picking a rank count on its own | **P6** unit 2 | ◐ the *agreement* landed as `LaunchAgreement`; the move behind it did not |
 
-> **Two of these rows were wrong about their own floor until 2026-08-10.**
-> `Shape` was filed under 3 while it plainly answers *where do this stage's
-> files live*, which is floor 4 — and it is read by `job_dir_names`, not by any
-> producer. `LaunchSpec` read "3 → 5", an arrow instead of an owner. **A thing
-> with two floors has no floor**, which is the very confusion this section
-> exists to end, surviving inside the table this section wrote to end it.
+**The order was forced, not chosen.** `Shape` had to come before `LaunchSpec` —
+you cannot pin a deck to a launch while two layouts are being emitted at once.
+And **folding `bench` in comes last**: it is the largest, the hardest to undo,
+and it depends on all four being right. Doing it first would prove nothing and
+would risk the one workflow that works end to end today.
 
 > **`Attempt` is the author's own mistake, recorded rather than excused.**
 > `prepare_attempt` shipped returning a plain dictionary, and `submit.py` grew
 > the same two calls twice, once in each of two near-identical loops. Both were
 > noticed while being typed and shipped anyway. **The habit reproduces under
-> anyone's hands**, which is the argument for naming it rather than the
-> instance.
->
-> One line of its stated gain was **not** delivered: § 9.6 asked for *"one loop
-> in `submit.py`"* and there are still two. The duplicated calls are gone behind
-> one helper; the two middles are genuinely different jobs — one reads a queue
-> id and stops, the other reads an exit code and skips what follows — so merging
-> them would put a fork through the body and rebuild the shape the split avoids.
-> **Judged, not skipped.** If the single loop was the point rather than the
-> duplication, this is the line to argue with.
-
-**The order these landed in was forced, not chosen.** `Shape` had to come before
-`LaunchSpec` — you cannot pin a deck to a launch while two layouts are being
-emitted at once. And **folding `bench` in comes last**: it is the largest, the
-hardest to undo, and it depends on all four being right. Doing it first would
-prove nothing and would risk the one workflow that works end to end today.
+> anyone's hands**, which is the argument for naming it rather than the instance.
 
 ---
 
-### 9.6 The rules that must never break
+### 9.3 The one real migration, and why it sequences the rest
 
-Each is written so it can be **checked**, because a rule nobody checks is a
-wish. All seven are now checked; the status below is measured, not assumed.
+**Where the code stands floor by floor is [`roadmap.md`](?doc=roadmap.md) § 6.**
+What belongs here is the sequencing fact it produces: **every open item except
+one is the same unfinished change.** The producer runs at *produce* and needs to
+run at *prep* — `project-layout.md` § 1 calls it **"the one real migration"**.
+When it lands:
 
-| | rule | checked by | status |
-|---|---|---|---|
-| **A1** | **one namer.** Every name a file gets comes from `identity`; nothing builds one by hand | `test_architecture_rules` — only `identity.py` may spell `<NN>_<name>` | ✅ |
-| **A2** | **one layout per calculation**, and nothing guesses which | `test_jobset` — every consumer's layout comes from `Shape.named(task.shape)` | ✅ |
-| **A3** | **a deck and its launch travel together** | `test_jobset` — the rank count in the deck equals the one it is started at, or it is refused first | ✅ |
-| **A4** | **ask, do not work it out again.** Each object in § 9.5 has exactly one **owning function** | `test_architecture_rules` — a `StageRef` may be built only by its resolver | ✅ for `StageRef`; the other three are one-`return` by reading |
-| **A5** | **a stage's number is worked out, never stored** | `test_task_description`, `test_stage_resolution` | ✅ |
-| **A6** | **once a run has started, its folder never changes** | `test_jobset` | ✅ |
-| **A7** | **nothing depends upwards** | `test_architecture_rules` — a floor-N file may import floors ≤ N, and the map must match § 9.3's table | ✅ |
-
-> **What A1, A4 and A7 have in common, and why they went unchecked longest.**
-> A2, A3, A5 and A6 are about values moving through the code, so a test can run
-> it and look at what came out. These three are about **the shape of the source**
-> — who may spell a name, who may build an object, who may import whom — and no
-> amount of running the program shows you that. They are checked by parsing
-> `molbuilder/` rather than calling it, which is why they all landed together on
-> 2026-08-10 in one file, `tests/test_architecture_rules.py`.
-
-> **A4 was measured by hand first, and the measurement found one violation.**
-> `Attempt`, `LaunchAgreement` and `Shape` each had one owning function.
-> **`StageRef` had two**: the resolver in `materialize`, and `runstatus.py`,
-> which built a second one just to format a heading — because `StageStatus`
-> carried the number and the name as loose fields instead of the ref the
-> resolver had already made. *A caller working out an answer a floor below
-> already held, inside the object created to stop exactly that.* `StageStatus`
-> now carries the ref, and the guard keeps it that way.
-
-> **What the three guards cannot see, stated so nobody over-trusts them.** A1
-> knows three spellings of a hand-built token, not every possible one. A4 covers
-> `StageRef`; the other three objects are dataclasses a caller *could* construct,
-> and deciding which of those should be constructible is a judgement rather than
-> a copy-paste. A7 judges only the files § 9.3 names — reaching a higher floor
-> *through* an unmapped file would pass. Each is a fence, not a proof. All six
-> mutants were run against them before this row was ticked.
-
----
-
-### 9.7 How this serves the contracts
-
-Every contract sentence should land on **one** floor. Where it takes a route to
-make several sentences true in order, that is named too — and a sentence that
-needs "either here or there" to place is a sentence whose owner does not exist
-yet. That is G4, made checkable.
-
-| contract | the sentence | lands on |
-|---|---|---|
-| `run-identity.md` § 2 | one name, tidied once | floor 1 |
-| `engines/stages.md` § 6.7 | the layout is declared, never guessed | floor 2 writes it, floor 4 reads it |
-| `project-layout.md` § 2.1 | the portable folder names no machine | floor 2's *must never* |
-| `project-layout.md` § 2.3.1 | the five steps, in that order | **the `prep` route** |
-| `project-layout.md` § 1.6 | stages do not chain | floor 3 emits no link; the `submit` route refuses one |
-| `job-contracts.md` § 2.1 | the folder you are in is the contract | floor 5's run script does nothing but set up and start |
-| `job-system.md` § 5.3 | a queue is handed one job at a time | the `submit` route |
-| `checkpointing.md` § 2.1 | saving chooses *how*, never *whether* | **outside this stack entirely** — a file protocol that sits under all of it and knows nothing about stages |
-
----
-
-### 9.8 Where the code stands, and the one thing left
-
-| floor | ok? | what remains |
-|---|---|---|
-| 1 names & facts | ✅ | — |
-| 2 description | ✅ | — |
-| 3 plan | ⚠ | `stages_to_jobset` receives **no machine**, though floor 3 is defined as *asked-for + machine*. Not a bug: it runs at **produce**, on a laptop, where there is no machine to receive |
-| 4 layout | ✅ | — |
-| 5 launch | ⚠ | `runwrap` **writes** a script (a step-4 job) and `submit` **starts** one; a single floor holds both. Real, harmless today, and splitting it costs more than it returns |
-| 6 observe | ✅ | in the flat layout, one stage's verdict is still read from the whole folder |
-| 7 surfaces | ⚠ | the web has no staged path at all (P10, P11) |
-| — | `bench/` | a second copy of floors 3–6 for sweeps; folds in after the move below |
-
-**Every ⚠ above except floor 5's is the same unfinished change**: the producer
-runs at *produce* and needs to run at *prep*. `project-layout.md` § 1 calls it
-**"the one real migration"**. When it lands:
-
-- floor 3 finally receives a machine, and its definition becomes true of **both**
-  its entry points instead of one;
+- floor 3 finally receives a machine, and the contract's definition of it
+  becomes true of **both** its entry points instead of one;
 - `LaunchSpec` stops being a gap;
 - P6 units 2, 4 and 5 and P10 stop being separate items;
-- `bench/generate.py`'s deck writing becomes the *special case* it was always
-  meant to be, rather than a second implementation.
+- `bench/generate.py`'s deck writing becomes the *special case* § 2.3.1a always
+  meant it to be, rather than a second implementation.
 
-**And its shape is already known, because it has been done once.** Step 1 —
+**Its shape is already known, because it has been done once.** Step 1 —
 resolving the machine — was missing from the `prep` route and was added to it.
 No floor moved. No floor was created. **The migration is the same act: the route
 gains a step it currently skips.** That is the best evidence available that the
@@ -3554,7 +3313,7 @@ structure is sound and everything left is catching the code up to it.
 
 ---
 
-### 9.9 The size test
+### 9.4 The size test
 
 **§ 7 is the plan's scope and this does not replace it** — it narrows it for
 architectural work. Where they overlap, § 7 wins. In particular § 7 puts the

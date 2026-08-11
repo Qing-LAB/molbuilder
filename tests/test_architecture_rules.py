@@ -37,8 +37,11 @@ from pathlib import Path
 import pytest
 
 _PKG = Path(__file__).resolve().parent.parent / "molbuilder"
-_PLAN = (Path(__file__).resolve().parent.parent
-         / "docs" / "execution" / "staged-runs-implementation-plan.md")
+#: The contract this map must agree with.  It moved out of the implementation
+#: plan on 2026-08-10: a plan may describe what does not exist yet, and this
+#: design describes what IS, so it is a contract.
+_CONTRACT = (Path(__file__).resolve().parent.parent
+             / "docs" / "execution" / "architecture.md")
 
 
 def _python_files() -> list[Path]:
@@ -161,7 +164,8 @@ def test_a4_a_stage_ref_is_built_only_by_its_resolver():
 #  `jobset` alone spans four architectural floors inside that single tier,
 #  which is exactly where an upward import would hide.
 
-#: § 9.3's table, as code.  Keys are paths under ``molbuilder/``; a key ending
+#: `execution/architecture.md` § 2.1's table, as code.  Keys are paths under
+#: ``molbuilder/``; a key ending
 #: in ``/`` covers a directory.  A file with no entry has no architectural
 #: floor and is not judged -- most of the package is domain code that § 9's
 #: stack says nothing about.
@@ -278,30 +282,31 @@ def test_a7_nothing_imports_from_a_higher_floor(rel: Path):
 
 
 def test_a7_the_floor_map_still_matches_the_document():
-    """The map above and § 9.3's table must name the same files.
+    """The map above and the contract's floor table must name the same files.
 
     Without this the test passes forever while the design says something else
-    -- which is precisely the drift § 9 exists to prevent, and which this
-    session hit twice in one day.  The table is located by its heading text
-    rather than its number, because § 9 has been renumbered once already and
-    the renumbering silently repointed four cross-references.
+    -- precisely the drift the contract exists to prevent.  The table is
+    located by its heading TEXT rather than a section number, because numbers
+    move: this guard already had to follow the design from the implementation
+    plan into `execution/architecture.md`.
     """
-    text = _PLAN.read_text(encoding="utf-8")
+    text = _CONTRACT.read_text(encoding="utf-8")
     lines = text.splitlines()
     start = next((i for i, l in enumerate(lines)
-                  if re.match(r"^### .*seven layers\s*$", l, re.I)), None)
+                  if re.match(r"^#+ .*seven floors\s*$", l, re.I)), None)
     assert start is not None, (
-        "cannot find § 9.3's heading (a line matching '### ... seven layers') "
-        f"in {_PLAN.name} -- the section was renamed, so this guard is now "
-        "checking nothing.  Repoint it.")
+        "cannot find the floor table's heading (a line matching "
+        f"'... seven floors') in {_CONTRACT.name} -- it was renamed, so this "
+        "guard is now checking nothing.  Repoint it.")
 
     documented: set[str] = set()
     for line in lines[start + 1:]:
-        if line.startswith("### "):
+        if line.startswith("## "):
             break
-        cells = [c.strip() for c in line.split("|")]
-        # A layer row: | N | **name** | decision | files | ... -- the leading
-        # empty cell from the opening pipe makes the number cells[1].
+        cells = [c.strip().strip("*") for c in line.split("|")]
+        # A floor row: | N | name | decision | files | entry points | ...
+        # The leading empty cell from the opening pipe makes the number
+        # cells[1], and the files column cells[4].
         if len(cells) > 5 and cells[1].isdigit():
             documented |= set(re.findall(r"`([^`]+)`", cells[4]))
 
