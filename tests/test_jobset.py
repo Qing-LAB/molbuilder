@@ -2271,3 +2271,95 @@ def test_the_hierarchy_is_unaffected_because_its_directory_already_chose(tmp_pat
     by_name = {s.name: s for s in jobset_status(js, tmp_path).stages}
     assert by_name["coarse"].state not in ("pending", "not-started")
     assert by_name["tight"].state == "not-started"      # no directory at all
+
+
+# --------------------------------------------------------------------- #
+#  P6 unit 1 -- step ONE of the five, lifted out of the benchmark        #
+# --------------------------------------------------------------------- #
+
+def test_prep_resolves_the_machine_before_anything_else(tmp_path):
+    """`project-layout.md` § 2.3.1 step 1: *"Resolve the machine — detect
+    cores, GPUs, scheduler, conda → environment.json"*, and the order is
+    forced, not chosen.
+
+    **The general `prep` did not do this at all until 2026-08-10.**
+    `bench/prep.py` did; `prep_jobset` went straight to rendering wrappers on
+    a machine nobody had asked about. § 2.3.1a says how to read that: the
+    benchmark is *"the one place this framework is already built"*, built
+    there because that is where the need appeared first — so **the general
+    part is lifted out of it**, not borrowed from it.
+    """
+    from molbuilder.jobset.prep import prep_jobset
+    js = _sweep()
+    _write_config(tmp_path)
+    _write_fdf(tmp_path / "job-gpu.fdf")
+    assert not (tmp_path / "environment.json").exists()
+
+    prep_jobset(js, tmp_path, emit_sbatch=False)
+
+    import json
+    env = json.loads((tmp_path / "environment.json").read_text())
+    assert env["schema"] == "molbuilder/environment@1"
+    assert env["topology"]["cores_per_socket"] >= 1     # a real probe ran
+
+
+def test_a_second_prep_does_not_re_probe_the_machine(tmp_path):
+    """Two stages of one calculation must not disagree about their own target.
+
+    `prep` is a hub you come back to (§ 2.3), so it runs many times per
+    calculation; re-probing on each would let a machine that changed under you
+    — a different login node, a different allocation — silently give stage 2 a
+    different answer from stage 1, for no reason anyone asked for. Delete the
+    file to force a re-probe.
+    """
+    from molbuilder.jobset.prep import prep_jobset
+    js = _sweep()
+    _write_config(tmp_path)
+    _write_fdf(tmp_path / "job-gpu.fdf")
+    prep_jobset(js, tmp_path, emit_sbatch=False)
+    (tmp_path / "environment.json").write_text('{"schema": "sentinel"}')
+
+    prep_jobset(js, tmp_path, emit_sbatch=False)
+    assert '"sentinel"' in (tmp_path / "environment.json").read_text()
+
+
+def test_the_machine_probe_is_molbuilders_not_the_benchmarks():
+    """§ 2.3.1a: *"stating it the other way round would make the general case
+    look like a special case of the special case."*
+
+    The module moved out of `bench/` on 2026-08-10. Its persisted artifact was
+    **already** registered as `molbuilder/environment@1` (`job-contracts.md`
+    § 6.1) — the schema saying it was never the benchmark's to own.
+    """
+    import importlib
+    from molbuilder.environment import SCHEMA
+    assert SCHEMA == "molbuilder/environment@1"
+    assert importlib.util.find_spec("molbuilder.bench.environment") is None
+
+
+def test_a_machine_that_will_not_probe_does_not_stop_the_prep(tmp_path,
+                                                              monkeypatch):
+    """Best-effort, and the docstring said so before anything checked it — a
+    mutation making the probe fatal left every test green.
+
+    `prep` has four other steps, and the one that actually refuses a wrong
+    launch is the deck/launch agreement, not the probe. A machine molbuilder
+    cannot describe is still a machine you can render a wrapper for and lay a
+    tree on; failing the whole prep would turn a missing *description* into a
+    missing *calculation*.
+    """
+    import molbuilder.environment as env_mod
+    from molbuilder.jobset.prep import prep_jobset
+
+    def boom(*a, **k):
+        raise OSError("no /proc on this box")
+    monkeypatch.setattr(env_mod, "resolve_environment", boom)
+
+    js = _sweep()
+    _write_config(tmp_path)
+    _write_fdf(tmp_path / "job-gpu.fdf")
+    dirs = prep_jobset(js, tmp_path, emit_sbatch=False)
+
+    assert len(dirs) == 2                                   # the tree is laid
+    assert (tmp_path / "job-gpu.run.sh").is_file()          # wrappers rendered
+    assert not (tmp_path / "environment.json").exists()     # and it said nothing

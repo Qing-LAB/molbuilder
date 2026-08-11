@@ -77,7 +77,7 @@ def test_write_json_roundtrips_and_is_pretty(tmp_path):
 
 def test_adopters_use_the_shared_check():
     from molbuilder.jobset.model import JobSet, SCHEMA as JS
-    from molbuilder.bench.environment import Environment, SCHEMA as ENV
+    from molbuilder.environment import Environment, SCHEMA as ENV
     from molbuilder.bench.result import BenchResult, SCHEMA as RES
 
     for cls, good in ((JobSet, JS), (Environment, ENV), (BenchResult, RES)):

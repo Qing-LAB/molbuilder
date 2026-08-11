@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from .adapters import get_adapter
-from .environment import Environment, resolve_environment
+from ..environment import Environment, resolve_environment
 from .result import BenchResult
 
 

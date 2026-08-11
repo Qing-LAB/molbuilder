@@ -7,8 +7,8 @@ import subprocess
 import pytest
 
 from molbuilder.bench import adapters
-from molbuilder.bench import environment as env_mod
-from molbuilder.bench.environment import (
+from molbuilder import environment as env_mod
+from molbuilder.environment import (
     Environment, Site, Topology, _parse_gres, _parse_lscpu,
     _parse_nvidia_smi_l, _parse_scontrol_node, resolve_environment,
 )  # noqa: F401  (_parse_nvidia_smi_l used in the uuid test)

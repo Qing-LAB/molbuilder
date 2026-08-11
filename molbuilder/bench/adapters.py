@@ -24,7 +24,7 @@ import json
 import re
 from typing import Dict, List, Optional, Tuple
 
-from .environment import Environment, Topology
+from ..environment import Environment, Topology
 
 
 def _int_or(v, default):

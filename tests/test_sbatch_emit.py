@@ -474,7 +474,7 @@ def test_workstation_gpu_knobs_match_launcher_contract(project):
     # the rank/omp count is silently wrong (params valid bash, wrong
     # meaning).  This pins producer (adapter) <-> consumer (launcher).
     from molbuilder.bench.adapters import WorkstationAdapter
-    from molbuilder.bench.environment import Environment, Topology
+    from molbuilder.environment import Environment, Topology
 
     fdf = project / "g.fdf"
     fdf.write_text(_PARSEABLE_FDF + "Diag.ELPA.GPU .true.\n")

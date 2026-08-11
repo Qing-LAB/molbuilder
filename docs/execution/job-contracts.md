@@ -1197,7 +1197,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Artifact | File | Schema string | Authoritative code | Key top-level fields |
 |---|---|---|---|---|
 | User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `scheduler{kind,directives,gpu,defaults,mem_model,routing}`, `execution`, `script_generation`, `envs` |
-| Detected environment | `environment.json` | `molbuilder/environment@1` | `bench/environment.py` | `scheduler`, `topology`, `site` |
+| Detected environment | `environment.json` | `molbuilder/environment@1` | `environment.py` | `scheduler`, `topology`, `site` |
 | Benchmark manifest | `bench-manifest.json` | `molbuilder/bench-manifest@2` | `bench/generate.py` | `points.{cpu,gpu}` |
 | Benchmark result | `bench-result.json` | `molbuilder/bench-result@1` | `bench/result.py` | `points`, `choice`, `recommend` |
 | Job-set plan | `job-set.json` | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
@@ -1267,7 +1267,7 @@ users.
 **major only** — tolerating same-major minor bumps, rejecting a different
 major — through the single shared helper `molbuilder/persist.py`
 (`schema_major`, `check_schema_major`, `read_json`, `write_json`), now adopted
-by `bench/environment.py`, `bench/result.py`, and `jobset/model.py` (it was
+by `environment.py`, `bench/result.py`, and `jobset/model.py` (it was
 hand-rolled three times with a subtle missing-`@` inconsistency before). New
 persisted artifacts must use it. The two bare-integer exceptions
 (`.molstruct.json` = 6, the decoded run = 1) predate the convention.

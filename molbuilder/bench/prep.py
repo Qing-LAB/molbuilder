@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .adapters import resolve_launch_adapter
-from .environment import Environment, resolve_environment
+from ..environment import Environment, resolve_environment
 
 # Topology override keys accepted from the CLI / caller (flow to
 # detect_topology, where they win over detection).
@@ -65,6 +65,11 @@ def run_prep_bench(out_dir,
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    # Step 1 of the five (`project-layout.md` § 2.3.1), and it is the SAME
+    # step `jobset prep` now runs -- see `jobset/prep.py::resolve_target`.
+    # A benchmark prep passes topology overrides and a pinned timestamp
+    # because it is prep SPECIALISED (§ 2.3.1a), not because it is a
+    # different act.
     env = resolve_environment(overrides=overrides or None,
                               scheduler_override=scheduler_override,
                               now_iso=now_iso)

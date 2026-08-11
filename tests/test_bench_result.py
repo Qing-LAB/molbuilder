@@ -174,7 +174,7 @@ def test_choice_is_consumable_by_format_run():
     # The decoupling contract: the bench-result 'choice' feeds prep-run's
     # adapter.format_run directly (§ 5.4) -- no shared code path.
     from molbuilder.bench.adapters import SlurmAdapter
-    from molbuilder.bench.environment import Environment, Topology
+    from molbuilder.environment import Environment, Topology
     res = build_bench_result(_pts())
     env = Environment(scheduler="slurm",
                       topology=Topology(cores_per_socket=24, gpus_per_node=4,

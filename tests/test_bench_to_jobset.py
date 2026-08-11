@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 
 from molbuilder.bench import adapters, prep
-from molbuilder.bench.environment import Environment, Topology
+from molbuilder.environment import Environment, Topology
 from molbuilder.bench.to_jobset import sweep_to_jobset
 from molbuilder.jobset.materialize import materialize
 from molbuilder.jobset.model import JobSet

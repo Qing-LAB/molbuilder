@@ -149,6 +149,48 @@ def check_launch_matches_deck(job_dir, job) -> None:
         f"BENCH-MARKS block, which is what made this checkable.")
 
 
+def resolve_target(base_dir) -> Path:
+    """**Step 1 of the five: resolve the machine** (`project-layout.md`
+    § 2.3.1) — probe cores, GPUs, scheduler and conda, and persist the answer
+    as ``environment.json`` beside the bundle.
+
+    **This step existed only inside the benchmark until 2026-08-10.**
+    `bench/prep.py` did it; `prep_jobset` did not do it at all, so a staged
+    calculation went straight to rendering wrappers on a machine nobody had
+    asked about. § 2.3.1a is explicit about how to read that: *"`bench prep`
+    is the one place this framework is already built, and it was built inside
+    the benchmark because that is where the need appeared first … the general
+    part needs lifting out of it"* — and *"stating it the other way round
+    would make the general case look like a special case of the special
+    case."*
+
+    So the module moved out of `bench/` and became ``molbuilder/environment``.
+    Its persisted artifact was **already** registered as
+    ``molbuilder/environment@1`` (`job-contracts.md` § 6.1), which is the
+    schema saying it was never the benchmark's to own.
+
+    Written once per bundle and **not** overwritten on a later prep: the file
+    records what this machine is, and re-probing on every stage would make two
+    stages of one calculation disagree about their own target for no reason a
+    user asked for. Delete it to force a re-probe.
+
+    Returns the path to ``environment.json``.  Failure to probe is **not**
+    fatal here — `prep` still has wrappers to render and a tree to lay out,
+    and the deck/launch agreement (:func:`launch_agreement`) is what actually
+    refuses a wrong launch.
+    """
+    from ..environment import resolve_environment
+    out = Path(base_dir) / "environment.json"
+    if out.is_file():
+        return out
+    try:
+        env = resolve_environment()
+    except Exception:                     # pragma: no cover - probe is best-effort
+        return out
+    out.write_text(env.to_json() + "\n", encoding="utf-8")
+    return out
+
+
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 emit_sbatch: bool = True) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir``.
@@ -177,6 +219,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     base = Path(base_dir).resolve()
     if not base.is_dir():
         raise PrepError(f"bundle root not found: {base}")
+
+    # ---- 0. resolve the machine (§ 2.3.1 step ONE) ---------------------- #
+    resolve_target(base)
 
     # ---- 1. render wrappers once per distinct script (in the root) ------ #
     rendered: set = set()
@@ -245,6 +290,6 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     return dirs
 
 
-__all__ = ["prep_jobset", "PrepError",
+__all__ = ["prep_jobset", "PrepError", "resolve_target",
            "launch_agreement", "check_launch_matches_deck",
            "LaunchAgreement"]

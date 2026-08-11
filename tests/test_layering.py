@@ -81,6 +81,12 @@ _L1_MODULES = {
     "persist",           # versioned-document helpers (@major schema check +
                          # JSON IO); pure stdlib, no domain deps -- bench +
                          # jobset persisted artifacts share it.
+    "environment",       # the TARGET machine: probe cores/GPUs/scheduler/conda
+                         # and persist ``molbuilder/environment@1``.  Lifted out
+                         # of ``bench/`` 2026-08-10 -- it is step 1 of prep's
+                         # five (project-layout.md 2.3.1), which the benchmark
+                         # merely happened to need first (2.3.1a).  L1: stdlib
+                         # probes plus ``persist`` for the @major check.
     "identity",          # the run id: normalise once, build from inputs
                          # (execution/run-identity.md 2-3).  L1 on stdlib
                          # alone, and that is load-bearing: the CLI, the web

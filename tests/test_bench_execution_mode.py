@@ -17,7 +17,7 @@ import pytest
 from molbuilder.bench import adapters
 from molbuilder.bench.adapters import (SlurmAdapter, WorkstationAdapter,
                                        resolve_launch_adapter, resolve_mode)
-from molbuilder.bench.environment import Environment, Topology
+from molbuilder.environment import Environment, Topology
 from molbuilder.bench.generate import bake_run_bench, render_bench_plan
 from molbuilder.bench.prep import run_prep_bench
 from molbuilder.runtime_config import (PROJECT_CONFIG_FILENAME,

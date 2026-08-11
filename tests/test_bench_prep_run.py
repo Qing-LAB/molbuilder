@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from molbuilder.bench import environment as env_mod
+from molbuilder import environment as env_mod
 from molbuilder.bench import prep_run
 
 

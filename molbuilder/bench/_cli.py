@@ -622,7 +622,7 @@ def cmd_probe_scheduler(out: str, do_write: bool, yes: bool) -> None:
 
     from ..runtime_config import (RuntimeConfigError, get_scheduler,
                                    write_config_scope)
-    from .environment import _run
+    from ..environment import _run
     from .probe import (derive_scheduler_block, parse_allowed_qos, parse_qos,
                         parse_sinfo)
 

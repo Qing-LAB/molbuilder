@@ -1371,6 +1371,32 @@ jobs, and what goes in and comes out) · § 1.6 (**stages do not chain**).
    benchmarking is prep, specialised. *(Which direction the refactor moves the
    code is an implementation matter — but the general case must not end up
    looking like a special case of the special case.)*
+
+   > **Step 1 landed 2026-08-10, and the gap was starker than "shared code".**
+   > `prep_jobset` **did not resolve the machine at all** — it went straight to
+   > rendering wrappers on a target nobody had asked about, while step 1 of the
+   > five sat inside `bench/prep.py`. So this was not a duplication to merge; it
+   > was a step the general path skipped.
+   >
+   > `bench/environment.py` → **`molbuilder/environment.py`**, and the move was
+   > already sanctioned by the registry: its artifact has always been
+   > `molbuilder/environment@1` (`job-contracts.md` § 6.1), which is the schema
+   > saying it was never the benchmark's to own. Four importers, all inside
+   > `bench/`. `jobset/prep.py::resolve_target` is step 1 now, and
+   > `test_layering` required the new top-level name be given a layer — L1,
+   > stdlib probes plus `persist`.
+   >
+   > Written **once per bundle**, not re-probed on later preps: `prep` is a hub
+   > you return to (§ 2.3), and re-probing would let two stages of one
+   > calculation disagree about their own target. Probe failure is **not** fatal
+   > — the deck/launch agreement is what refuses a wrong launch, not this.
+   >
+   > **Steps 2–5 are not lifted.** What remains inside `bench` is the
+   > *specialisation* § 2.3.1a names — a grid of configurations rather than a
+   > point, one deck per point — plus `bench/generate.py`'s 1021 lines, which is
+   > where the deck rendering the general path still does not do lives. That is
+   > the same deck migration `LaunchSpec` waits on, so the two are one piece of
+   > work, not two.
 2. **The deck is rendered FOR the launch — steps 1→2→3, in that order.**
    *(Placed here 2026-08-10 by user decision; § 9.6a.)*
 
