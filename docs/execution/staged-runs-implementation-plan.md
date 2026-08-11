@@ -3109,84 +3109,194 @@ wish.
 - **A7 — dependencies point down only.** No layer imports a layer above it.
   *Test:* an import-direction check, the same shape as `test_layering.py`.
 
-### 9.3 The layers, and what each one owns
+### 9.3 The layers, and the sequencers that cross them
+
+Two different questions get asked about this system, and **neither answers the
+other**:
+
+| | question | kind of answer | when it is checked |
+|---|---|---|---|
+| **layers** | *who may depend on whom?* | **static** — about imports | at rest, by a test |
+| **sequencers** | *what happens, in what order?* | **dynamic** — about time | at run, by a person |
+
+A layer is a *stratum*: it may call downward, never upward or sideways. A
+sequencer is a *path*: it visits several layers in a fixed order, on purpose.
+`prep` is a sequencer, and trying to find it a row in the layer table is what
+left step 1 of its five with no owner (§ 9.3a).
+
+> #### ⚠ Two things in this repository are called a "layer"
+>
+> They are different, both are real, and confusing them wastes an hour.
+>
+> | | constrains | enforced by | values |
+> |---|---|---|---|
+> | **import depth** | which module may `import` which | `tests/test_layering.py`, mechanically | `L1` (17 leaf names) · `L2` (23) · `L3` (`cli`, `web`) |
+> | **architectural layer** | which *role* owns a decision | this section, by review | 1 naming … 7 surfaces |
+>
+> They overlap without matching. `persist` is import-depth **L1** and has no
+> architectural role at all — it is a helper both sides borrow. `identity` is
+> import-depth L1 **and** architectural layer 1. `jobset` is import-depth L2
+> and spans architectural layers 3–6.
+>
+> **When this document says "layer" it means the second.**
+
+#### 9.3.1 The stack, and what is in it
 
 ```mermaid
-flowchart TD
-    L7["<b>7 · surfaces</b><br/>CLI · web"]
-    L6["<b>6 · observe</b><br/>state from a directory"]
-    L5["<b>5 · launch</b><br/>directory → running process"]
-    L4["<b>4 · layout</b><br/>dirs · links · copies · attempts"]
-    L3["<b>3 · plan</b><br/>description × machine → JobSet"]
-    L2["<b>2 · description</b><br/>what the user wants"]
-    L1["<b>1 · naming</b><br/>pure strings"]
+flowchart TB
+    subgraph L7["<b>7 · surfaces</b> — ask the user, show the answer"]
+      direction LR
+      S1["cli.py"]; S2["jobset/_cli.py"]; S3["web/"]
+    end
+    subgraph L6["<b>6 · observe</b> — state from a directory, writes nothing"]
+      direction LR
+      O1["jobset/runstatus.py<br/><i>StageStatus · JobSetStatus</i>"]; O2["parse/dirs/"]
+    end
+    subgraph L5["<b>5 · launch</b> — a directory becomes a running process"]
+      direction LR
+      U1["jobset/submit.py<br/><i>JobResult</i>"]; U2["runwrap.py<br/><i>the wrapper text</i>"]
+      U3["jobset/prep.py<br/><i>LaunchAgreement</i>"]
+    end
+    subgraph L4["<b>4 · layout</b> — dirs, links, copies, attempts"]
+      direction LR
+      Y1["jobset/materialize.py<br/><i>Attempt</i>"]; Y2["jobset/shape.py<br/><i>Shape</i>"]
+    end
+    subgraph L3["<b>3 · plan</b> — description × machine → JobSet"]
+      direction LR
+      P1["siesta/stages.py"]; P2["bench/to_jobset.py"]
+      P3["jobset/model.py<br/><i>JobSet · Job · Resources · WarmFile · Carry</i>"]
+    end
+    subgraph L2["<b>2 · description</b> — what the user wants; names no machine"]
+      direction LR
+      D1["task.py<br/><i>Task · Run · Stage · StructureRef</i>"]
+    end
+    subgraph L1["<b>1 · naming &amp; ground facts</b> — pure values"]
+      direction LR
+      N1["identity.py<br/><i>StageRef · RestartGroup</i>"]
+      N2["environment.py<br/><i>Environment · Topology</i>"]
+      N3["persist.py<br/><i>the @major rule</i>"]
+    end
     L7 --> L6 --> L5 --> L4 --> L3 --> L2 --> L1
+    L5 -.-> L1
+    L4 -.-> L1
     L7 -.-> L3
-    L4 --> L1
-    L5 --> L1
 ```
 
-| # | layer | owns | entry point | must never |
-|---|---|---|---|---|
-| 1 | **naming** | tokens, ids, "is this ours" | `identity` | know what a directory is |
-| 2 | **description** | Stage, shape, id, overrides | `task` | name a machine |
-| 3 | **plan** | description × machine → JobSet | the producers — `siesta/stages.py::stages_to_jobset`, `bench/to_jobset.py::sweep_to_jobset` | touch the filesystem |
-| 4 | **layout** | dirs, links, copies, attempts | `jobset/materialize` | know a scheduler |
-| 5 | **launch** | wrapper, sbatch/bash, `run.json` | `jobset/submit` + `runwrap` | decide physics |
-| 6 | **observe** | state, resume point | `jobset/runstatus` + `parse/dirs` | write anything |
-| 7 | **surfaces** | asking the user, showing the answer | `cli`, `web` | compute a name, a layout or a launch |
+Solid arrows are the ordinary path down. Dotted arrows are the **legitimate
+shortcuts**: a layer may reach *past* one below it to layer 1, because layer 1
+is pure values with no state — `submit` asking `identity` for a token is not a
+layering violation, it is layer 1 doing its job.
+
+| # | layer | owns the decision | modules | value objects | persisted artifact | must never |
+|---|---|---|---|---|---|---|
+| 1 | **naming & ground facts** | what a thing is called; what this machine *is* | `identity` · `environment` · `persist` | `StageRef` · `RestartGroup` · `Environment` | `environment.json` (`molbuilder/environment@1`) | know what a directory is |
+| 2 | **description** | what the user asked for | `task` | `Task` · `Run` · `Stage` · `StructureRef` | `task.json` (`molbuilder/task@1`) | **name a machine** |
+| 3 | **plan** | description × machine → a set of jobs | `siesta/stages` · `bench/to_jobset` · `jobset/model` | `JobSet` · `Job` · `Resources` · `WarmFile` · `Carry` | `job-set.json` (`molbuilder/job-set@1`) | touch the filesystem |
+| 4 | **layout** | where every file sits | `jobset/materialize` · `jobset/shape` | `Attempt` · `Shape` | the tree; `run-<n>/` | know a scheduler |
+| 5 | **launch** | how a directory becomes a process | `jobset/submit` · `runwrap` · `jobset/prep` | `JobResult` · `LaunchAgreement` | `.run.sh` · `.sbatch` · `run.json` (`molbuilder/run-launch@1`) | decide physics |
+| 6 | **observe** | what happened | `jobset/runstatus` · `parse/dirs` | `StageStatus` · `JobSetStatus` | — | write anything |
+| 7 | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `web` | — | — | compute a name, a layout or a launch |
 
 **The one rule that makes it a layering:** *a layer may call downward and return
 upward; it may never reach across.* Layer 5 deciding a rank count that layer 3
 already assumed is the reach that cost a run on 2026-08-10.
 
-### 9.3a ⚠ The hole this table has, found 2026-08-10
+#### 9.3.2 The sequencers — how work is actually done
 
-**`prep` has no layer.** It appears in neither the table above nor § 9.5's
-*"where the code actually is"* — while `project-layout.md` § 2.3 calls it
-**the hub** and § 2.3.1a calls it **the framework**, owning all five steps.
-A responsibility the contract names as *the framework* is absent from the
-architecture section written to describe that framework.
+A sequencer owns **an order**, not a stratum. There are four, and every one of
+them crosses layers by design:
 
-**That hole is where a step fell.** `prep_jobset` did not resolve the machine
-at all until 2026-08-10 — step 1 of five existed only inside `bench/prep.py`.
-It was not forgotten by a careless hand; **it had no owner to be forgotten
-by.**
+```mermaid
+flowchart LR
+    subgraph PREP["<b>prep</b> — the hub (project-layout.md § 2.3)"]
+      direction TB
+      p1["1 · resolve the machine"] --> p2["2 · resolve the parameters"]
+      p2 --> p3["3 · render the deck"] --> p4["4 · render the wrapper"]
+      p4 --> p5["5 · build the run directory"]
+    end
+    p1 -.->|"layer 1"| q1["environment"]
+    p2 -.->|"layers 2→3"| q2["task ⊕ overrides<br/>→ producer"]
+    p3 -.->|"layer 3"| q3["the engine renderer"]
+    p4 -.->|"layer 5"| q4["runwrap"]
+    p5 -.->|"layer 4"| q5["materialize"]
+```
 
-**And the table already says where the machine belongs.** Layer 3 is defined
-as **"description × machine → JobSet"**. Its two declared entry points
-disagree with each other about that:
+**Read the step numbers against the layer numbers and they do not agree** —
+step 4 is layer 5, step 5 is layer 4. *That is correct, not a defect.* The
+wrapper must be rendered before the directory is built, and rendering a wrapper
+is a launch-layer act while building a directory is a layout-layer one. **Time
+order and dependency order are different orders**, which is precisely why one
+table cannot carry both.
 
-| entry point | takes a machine? |
-|---|---|
-| `bench/to_jobset.py::sweep_to_jobset(adapter, **env**, …)` | ✅ yes |
-| `siesta/stages.py::stages_to_jobset(cfg, stages, …)` | ❌ no |
+| sequencer | owns | its order | layers it visits |
+|---|---|---|---|
+| **produce** | turning a description into a portable package | validate → render → write | 2 → 3 |
+| **prep** | assembling a runnable directory *on the target* | the five steps above | 1 → 2 → 3 → 5 → 4 |
+| **submit** | one job becoming one process | resolve dir → agree → launch → record | 4 → 5 |
+| **observe** | answering *where is this up to* | latest attempt → decode → roll up | 4 → 6 |
 
-So the machine resolution living only on the bench side was not an accident of
-history: **the bench producer's signature demanded it and the staged
-producer's did not.** One of layer 3's two entry points has never met its own
-layer's definition.
+**Why `prep` is not a layer, stated once so it is not re-litigated.** It is the
+sequencer of the five steps. Giving it a row would put a time-ordering into a
+dependency table, and the two would then be checked by one test that can only
+express one of them. Its *absence* from § 9.3.1 is correct; what was missing
+until 2026-08-10 was this subsection saying so, which is why the absence read as
+a hole and a step fell into it.
 
-**Why `stages_to_jobset` cannot simply grow an `env` parameter today**, and
-this is the part that matters: it runs at **produce**, on the laptop, where
-there is no machine to pass. `job-system.md` decision #3 (*target isolation*)
-and layer 2's *"must never name a machine"* both hold — the producer is not
-wrong to lack a machine *where it currently runs*.
+**What a sequencer may and may not do.** It may call any layer, in any order it
+declares. It may **not** contain a decision that belongs to a layer — if `prep`
+computes a name, that name has escaped layer 1. The test is mechanical: *delete
+the sequencer and ask whether any rule was lost.* If yes, a layer was missing
+one.
 
-> **Which makes these one problem, not four.** The layer-3 asymmetry,
-> `LaunchSpec`'s unlanded half, P6 units 2/4/5, and P10 are all the same
-> unlanded change: **the producer runs at produce and must run at `prep`.**
-> `project-layout.md` § 1 already calls it *"the one real migration"*. When it
-> lands, `stages_to_jobset` runs where a machine exists, takes one like its
-> sibling does, and layer 3's definition becomes true of both its entry points.
+#### 9.3.3 How this serves the contract
 
-**⛔ Open, and it is a framework decision rather than a code change:** does
-`prep` become a layer in the table, or is it the *hub that calls* layers 1→5
-and therefore correctly absent? The contract describes it as a hub
-(§ 2.3, *"not step four of a line"*), which argues the second — but then
-`resolve_target` sitting in `jobset/prep.py` is a function in a module the
-architecture does not place, which is how it got there: **by convenience, not
-by right.** Recorded rather than decided.
+Each contract sentence should land on exactly one layer, and the sequencers are
+what make several sentences true *in order*:
+
+| contract | sentence | lands on |
+|---|---|---|
+| `run-identity.md` § 2 | one id, normalised once | layer 1 |
+| `engines/stages.md` § 6.7 | the shape is declared, never inferred | layer 2 writes it, layer 4 reads it |
+| `project-layout.md` § 2.1 | the package names no machine | layer 2's *must never* |
+| `project-layout.md` § 2.3.1 | the five steps, in that order | **the `prep` sequencer** |
+| `project-layout.md` § 1.6 | stages do not chain | layer 3 emits no edge; the `submit` sequencer refuses one |
+| `job-contracts.md` § 2.1 | the caller's cwd is the contract | layer 5's wrapper does nothing but activate and exec |
+| `checkpointing.md` § 2.1 | checkpoint chooses *how*, never *whether* | outside this stack entirely — it is a file protocol under all of it |
+
+**G4 restated:** *a contract sentence maps to exactly one function.* The table
+above is how that is checked — a sentence that needs a disjunction to place is
+a sentence whose owner does not exist yet.
+
+#### 9.3.4 Where the code stands against this, 2026-08-10
+
+| layer | conformant? | what is left |
+|---|---|---|
+| 1 naming | ✅ | — |
+| 2 description | ✅ | — |
+| 3 plan | ⚠ | `stages_to_jobset` takes **no machine**, though the layer is defined as *description × machine*. Not a bug: it runs at **produce**, where no machine exists |
+| 4 layout | ✅ | — |
+| 5 launch | ⚠ | `runwrap` **renders** (a step-4 act) and `submit` **launches**; one layer holds both. Real, harmless today, and splitting it costs more structure than it returns |
+| 6 observe | ✅ | flat's per-stage verdict is still directory-wide |
+| 7 surfaces | ⚠ | the web has no staged path at all (P10/P11) |
+| — | `bench/` | a parallel 3–6 for sweeps; folds in after the migration |
+
+**Every ⚠ above except layer 5's is the same unlanded change.** The producer runs
+at produce and must run at `prep`; `project-layout.md` § 1 calls it *"the one
+real migration"*. When it lands:
+
+- layer 3 gains its machine, and its definition becomes true of **both** entry
+  points rather than one;
+- `LaunchSpec` stops being a conformance gap;
+- P6 units 2/4/5 and P10 stop being separate items;
+- `bench/generate.py`'s deck rendering becomes the *specialisation* § 2.3.1a
+  describes rather than a second implementation.
+
+**And the shape of that change is now known, because it has been done once
+already.** Step 1 was missing from the `prep` sequencer and was added to it —
+no layer moved, no layer was created. The migration is the same act: **the
+sequencer gains a step it currently skips.** That is the strongest evidence
+available that the framework is sound and the remaining gaps are conformance
+rather than design.
 
 ### 9.4 The four value objects
 
@@ -3206,20 +3316,17 @@ Each replaces a re-derivation with an answer.
 > anyway. The habit this section names reproduces under anyone's hands, which is
 > the argument for naming it.
 
-### 9.5 Where the code actually is
+### 9.5 Where the code actually is → **§ 9.3.4**
 
-Honest mapping, not aspiration.
+*Collapsed 2026-08-10.* This section held a second per-layer status table, and
+by the time § 9.3.4 was written the two answered the same question with
+different answers — **six of its eight rows had gone stale** (`StageRef` not
+built, nothing reads `shape`, `Attempt` is a dict, two near-identical loops,
+`enumerate()` printed as `#`, and a `--vacuum` defect fixed on 2026-08-10).
 
-| layer | today | gap |
-|---|---|---|
-| 1 naming | `identity.py` (354 ln) — **exists and is right** | callers bypassed it four times; `StageRef` not built |
-| 2 description | `task.py` — solid; `shape` field defined | **nothing reads `shape`** |
-| 3 plan | `stages_to_jobset` + `sweep_to_jobset` | emits both shapes; `--vacuum` lost in a second branch of `cmd_fdf`; no `LaunchSpec` |
-| 4 layout | `materialize.py` (328 ln) — attempts landed 2026-08-10 | `Attempt` is a dict; `job_dir_name` and `job_dir_names` coexist |
-| 5 launch | `submit.py` (344) + `runwrap.py` (**3669**, 8 direct callers) | resolves ranks itself; two near-identical loops |
-| 6 observe | `runstatus.py` + `parse/dirs/job.py` | prints `enumerate()` as `#` |
-| 7 surfaces | `cli.py`, `web/blueprints/build.py` | both re-implement parts of 3; web has no staged path at all |
-| — | **`bench/` (~3500 ln)** | a parallel 3–6 for sweeps; `bench prep-run` **is** `jobset prep run` written twice |
+Two tables tracking one fact is the drift this document spends § 9 warning
+about, reproduced inside § 9 itself. **The per-layer status lives in § 9.3.4,
+once.**
 
 ### 9.6 How this merges with the phases — one plan, not two
 
