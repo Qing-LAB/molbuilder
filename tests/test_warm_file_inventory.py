@@ -143,26 +143,30 @@ def test_no_generated_wrapper_changes_directory(tmp_path, engine, const,
     assert cds == [], f"{engine} wrapper navigates: {cds}"
 
 
-def test_the_wrapper_writer_takes_exactly_these_parameters():
-    """The entry point every wrapper goes through, stated as what it accepts.
+def test_the_wrapper_entry_points_take_exactly_these_parameters():
+    """**Both** entry points, each stated as what it accepts.
 
     `running-a-job.md` § 2.2a: the wrapper activates and execs. Each parameter
     is something a caller bakes in at generate time, so the set is a contract
     surface -- a new one means new work on a compute node and should be argued
     for rather than appear.
+
+    **The two sets differ, and that is the design, not an accident.**
+    `render_run_wrapper` returns the inner script's TEXT, so it takes what
+    shapes that text -- including the sizing inputs `n_atoms` and `mem_audit`.
+    `write_run_wrapper` puts it on disk and may also emit the `.sbatch`, so it
+    takes the SCHEDULER's vocabulary instead: `time`, `mem`, `gres`,
+    `cpus_per_task`, `exclusive`. Six parameters are shared, and neither set is
+    a superset of the other -- which is why watching only one would leave a
+    real surface unguarded.
     """
     import inspect
+    assert set(inspect.signature(runwrap.render_run_wrapper).parameters) == {
+        "script_path", "env", "mpi_np", "omp_threads", "max_memory_mb",
+        "continue_retries", "n_atoms", "mem_audit",
+    }
     assert set(inspect.signature(runwrap.write_run_wrapper).parameters) == {
-        "continue_retries",
-        "cpus_per_task",
-        "env",
-        "exclusive",
-        "gres",
-        "max_memory_mb",
-        "mem",
-        "mpi_np",
-        "omp_threads",
-        "script_path",
-        "time",
-        "emit_sbatch",
+        "script_path", "env", "mpi_np", "omp_threads", "max_memory_mb",
+        "continue_retries", "time", "mem", "gres", "cpus_per_task",
+        "exclusive", "emit_sbatch",
     }

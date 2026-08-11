@@ -2389,10 +2389,10 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
     deck written before the machine is known has guessed at them.
 
     The outcome alone cannot show this: a prep that resolved the machine LAST
-    would still leave the same files behind.  So the order is observed
-    directly, by recording when each step touches the disk.  `environment.json`
-    is step 1's output and the wrapper is step 4's; if the wrapper is written
-    first, the deck it accompanies was rendered against nothing.
+    leaves exactly the same files behind.  So the order is observed directly --
+    the two steps' functions are wrapped and the call order recorded.  Step 1
+    is `resolve_target`, step 4 is `write_run_wrapper`; if the wrapper is
+    written first, the deck it accompanies was rendered against nothing.
     """
     import json
     from molbuilder.jobset import prep as _prep

@@ -136,9 +136,15 @@ def test_a4_each_object_is_built_in_exactly_one_function():
     ``StageStatus`` carried the number and the name as loose fields instead of
     the ref the resolver had already made.
 
-    ``identity.py`` is exempt for ``StageRef``: it defines the class, and a
-    namer building its own name is A1 doing its job rather than a second
-    answer.
+    **The class's own METHODS may build it** — that is how `Shape.named` works,
+    and a classmethod returning an instance of its own class is the builder,
+    not a second one. **Living in the same FILE is not enough**: `Attempt` is
+    defined in `materialize.py`, so a file-level exemption would let every
+    function in that module build one, which is exactly the rule this test
+    exists to enforce. (It did, briefly, on 2026-08-11 — the two A4 tests were
+    merged and the file-level clause came with them. The mutation that had been
+    killed before the merge survived after it, which is why the merge is
+    re-mutated rather than assumed.)
     """
     import ast
     offences = []
@@ -146,8 +152,13 @@ def test_a4_each_object_is_built_in_exactly_one_function():
         for rel in _python_files():
             text = (_PKG / rel).read_text(encoding="utf-8")
             tree = ast.parse(text, filename=str(rel))
-            defines_here = any(isinstance(n, ast.ClassDef) and n.name == cls
-                               for n in ast.walk(tree))
+            # the class's OWN methods -- not merely "this file defines it"
+            own_methods = set()
+            for n in ast.walk(tree):
+                if isinstance(n, ast.ClassDef) and n.name == cls:
+                    own_methods |= {
+                        m for m in ast.walk(n)
+                        if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))}
             for fn in [n for n in ast.walk(tree)
                        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
                 builds = [c.lineno for c in ast.walk(fn)
@@ -156,11 +167,8 @@ def test_a4_each_object_is_built_in_exactly_one_function():
                 if not builds:
                     continue
                 here = str(rel).replace("\\", "/")
-                allowed = (
-                    (here == owner_rel and fn.name == owner_fn)
-                    or (owner_fn is None and defines_here)
-                    or defines_here            # the class's own module
-                )
+                allowed = ((here == owner_rel and fn.name == owner_fn)
+                           or fn in own_methods)
                 if not allowed:
                     offences.append(
                         f"{rel}:{min(builds)} {fn.name}() builds a {cls} — only "
