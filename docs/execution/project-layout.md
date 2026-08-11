@@ -754,7 +754,7 @@ measured, so prep can always *find* one — but finding is not permission. You
 measured it in order to look at it, and a prep that silently applied a verdict
 from three weeks ago on a different node would be deciding the thing you asked
 to be shown. Same rule as the checkpoint question
-([`checkpointing.md`](?doc=execution/checkpointing.md) § 4.1): explicit, every
+([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): explicit, every
 time.
 
 Say yes and step 2 has a third input, which wins over the defaults. The measured

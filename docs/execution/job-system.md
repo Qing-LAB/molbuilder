@@ -592,72 +592,66 @@ laptop, not on the cluster (design decision #4).
 
 ### 5.2 What `prep` lays out on disk
 
-> ⚠ **This section describes the SWEEP, and the ladder as it was before stages
-> stopped chaining.** Read it for the benchmark, where every point is independent
-> and submitting the whole set at once is correct.
->
-> **For a stage ladder, three things below are superseded**, and § 5.3 plus
-> [`project-layout.md`](?doc=execution/project-layout.md) § 1.6 are the current
-> answer:
->
-> | here | for a ladder, today |
-> |---|---|
-> | job directory `point-<name>/` | **`<seq>_<name>/`** — `01_coarse`, `02_tight` (`project-layout.md` § 4.1) |
-> | carry as a **dangling symlink**, localized to a copy at run time by the wrapper | **a real copy, made at `prep`, from the attempt you name with `--from`.** Nothing points at a file that does not exist yet, so there is nothing to localize |
-> | how it is launched | **one stage at a time**, by a person |
->
-> A ladder's directories are `<seq>_<name>` (`project-layout.md` § 4.1), an
-> attempt inside one is made by `prep run <stage>`, and what it continues from
-> is copied in from the attempt you name.
+> **The tree below is a ladder's.** A **sweep** differs in two ways: its folders
+> are `point-<name>` — its points have no order, so no ordinal — and there is no
+> attempt layer, because a point is prepped and run in its own folder. Nothing
+> is copied between points; they are independent.
 
-`prep` turns the flat bundle into the materialized tree the scheduler runs. Two
-ideas make it safe and small:
+`prep` turns the portable bundle into a tree you can run. Two ideas make it
+safe and small:
 
-- **Wrappers are rendered once, from the real input file.** Each distinct
+- **Wrappers are written once, from the real input file.** Each distinct
   `script` gets its `.run.sh` / `.sbatch` built one time in the bundle root, by
   the *same* single-job wrapper builder — so a batch job's wrapper is
   byte-identical to a hand-run one.
-- **Shared and carried files are symlinked, not copied.** Each job folder links
-  back to the shared files and to its carried restart files in the *producer's*
-  folder.
+- **Shared files are linked, never copied.** Each job folder links back to the
+  pseudopotentials, the geometry and the monitor in the bundle root, so a
+  20-point sweep holds one copy of a 4 GB pseudopotential set, not twenty.
+
+**A job folder holds its own inputs and links to the shared package. Nothing
+else.** In particular it holds no link into a sibling's folder:
 
 ```
 bundle/
 ├── job-set.json
-├── STAGE-PLAN.md                 ← human-readable plan, written at prep
-├── bdt_stage1.run.sh  bdt_stage1.sbatch   ← wrappers, rendered once
-├── bdt_stage2.run.sh  bdt_stage2.sbatch
-├── Au.psml  S.psml  …  mb_monitor.py      ← the shared files (stored once)
-├── point-stage1/
-│   ├── bdt_stage1.fdf → ../bdt_stage1.fdf
-│   ├── Au.psml → ../Au.psml   …           ← shared, symlinked in
-│   └── (stage 1 writes bdt.XV / bdt.DM here when it runs)
-└── point-stage2/
-    ├── bdt_stage2.fdf → ../bdt_stage2.fdf
-    ├── bdt.XV → ../point-stage1/bdt.XV     ← carried (dangling until stage 1 runs)
-    └── bdt.DM → ../point-stage1/bdt.DM
+├── STAGE-PLAN.md                         ← human-readable plan, written at prep
+├── bdt_01_coarse.fdf   bdt_02_tight.fdf  ← the decks, each carrying its token
+├── bdt_01_coarse.run.sh   .sbatch        ← wrappers, written once
+├── bdt_02_tight.run.sh    .sbatch
+├── Au.psml  S.psml  …  mb_monitor.py     ← the shared package (stored once)
+│
+├── 01_coarse/
+│   ├── bdt_01_coarse.fdf → ../bdt_01_coarse.fdf
+│   ├── Au.psml → ../Au.psml   …          ← shared, linked in
+│   └── run-0/                            ← made by `prep run coarse`
+│       ├── run.json                          how and when it was started
+│       └── bdt.XV  bdt.DM                    what the run produced
+│
+└── 02_tight/
+    ├── bdt_02_tight.fdf → ../bdt_02_tight.fdf
+    └── run-0/                            ← made only when you ask for it
+        ├── bdt.XV                        ← a real COPY of 01_coarse/run-0/bdt.XV
+        └── bdt.DM                            made by `prep run tight --from …`
 ```
 
-The carry symlinks are **deliberately dangling** until stage 1 actually produces
-those files. And there is a subtle safety step at run time: before stage 2
-starts, its wrapper **replaces the inherited symlink with a real local copy**.
-Without that, stage 2 writing to `bdt.XV` would write *through* the link and
-overwrite stage 1's result — the "localize-on-run" rule closes that trap.
+**Why a copy and not a link.** Stage 2 writes to `bdt.XV` — that very filename.
+A link would carry the write back into stage 1's folder and destroy the result
+you chose to build on. The copy is made at `prep`, out of a run that has already
+finished, so there is never a window where anything points at a file that does
+not exist yet.
 
 ```mermaid
 flowchart LR
-    S1["point-stage1/<br/>runs → writes bdt.XV, bdt.DM"]
-    L["point-stage2/<br/>bdt.XV, bdt.DM as symlinks<br/>→ stage1's files"]
-    C["at run time: copy them<br/>local, THEN run stage 2<br/>(so stage 2 never clobbers stage 1)"]
-    S1 --> L --> C
+    A["01_coarse/run-0/<br/>bdt.XV · bdt.DM<br/><i>finished, and you read it</i>"]
+    P["prep run tight<br/>--from 01_coarse/run-0"]
+    B["02_tight/run-0/<br/>bdt.XV · bdt.DM<br/><i>real files, copied</i>"]
+    A --> P --> B
 ```
 
 ### 5.3 The execution loop — one grammar, one stage at a time
 
 > **This section is the authority for what you type.** `project-layout.md` § 1.6
-> owns *what happens on disk*; this owns *the commands*. Where § 5.2 above still
-> describes a submitted chain with dangling carry links, § 5.2 is the older
-> model — see the note at its head.
+> owns *what happens on disk*; this owns *the commands*.
 
 #### The grammar
 

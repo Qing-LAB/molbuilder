@@ -91,6 +91,42 @@ Read the last two rows together: **one list answers both**, and they refuse in
 different ways — a 403 for the block list, an absent route for the restart. § 5
 and § 6 are why.
 
+### 2.1 A request, walking through them
+
+Flask runs its before-request hooks in the order they were registered, and
+**auth is registered before the limiter**. That order is not a detail — it is
+why a hostile string aimed at a real page is refused but never *blocked* (§ 7):
+
+```mermaid
+flowchart TB
+    R(["a request arrives"])
+    A{"do I know<br/>who this is?"}
+    LOGIN["browser → /login<br/>/api/* → 401 JSON"]
+    SKIP["the gate marks its own 401<br/>so the limiter does not count it"]
+    L{"does this traffic<br/>look hostile?"}
+    B["empty 429 · Connection: close<br/>cooled off for 1 hour"]
+    ADM{"an admin-only route?"}
+    A403["403 — the block list"]
+    A404["404 — the restart route<br/><b>does not exist</b> for you"]
+    OK(["served"])
+
+    R --> A
+    A -->|"no session, and auth is on"| LOGIN --> SKIP
+    A -->|"known, or auth is off"| L
+    L -->|"hostile"| B
+    L -->|"fine, or allowlisted,<br/>or authenticated"| ADM
+    ADM -->|"no"| OK
+    ADM -->|"yes, and you are on the list"| OK
+    ADM -->|"yes, and you are not — block list"| A403
+    ADM -->|"yes, and you are not — restart"| A404
+```
+
+**Two boxes skip the limiter for two different reasons, and the difference
+matters.** *Allowlisted* means an address the limiter never counts — loopback,
+by default. *Authenticated* means the limiter has no reason to judge you,
+because you already answered the first question. Mixing them up is how the
+1-hour block ends up applied to somebody who signed in correctly.
+
 ---
 
 ## 3. Identity — outsourced, and optional

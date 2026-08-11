@@ -252,9 +252,9 @@ hub**: you come back to it after every look at a result.
 flowchart LR
     subgraph PREP["<b>prep</b>"]
       direction TB
-      p1["1 · resolve the machine"] --> p2["2 · resolve the settings"]
-      p2 --> p3["3 · write the input deck"] --> p4["4 · write the run script"]
-      p4 --> p5["5 · build the run folder"]
+      p1["1 · Resolve the machine"] --> p2["2 · Resolve the parameters"]
+      p2 --> p3["3 · Render the deck"] --> p4["4 · Render the wrapper"]
+      p4 --> p5["5 · Build the run directory"]
     end
     p1 -.->|"floor 1"| q1["resolve_environment"]
     p2 -.->|"floors 2→3"| q2["read_task + this stage's changes"]
@@ -263,9 +263,13 @@ flowchart LR
     p5 -.->|"floor 4"| q5["materialize / prepare_attempt"]
 ```
 
+**The five steps are named once**, in
+[`project-layout.md`](?doc=execution/project-layout.md) § 2.3.1, which owns
+them; this section says which floor answers each.
+
 **Step 4 uses floor 5 and step 5 uses floor 4.** That looks wrong and is not.
-The run script must be written before the folder is assembled, and writing a run
-script is a *launch* job while assembling a folder is a *layout* job. **The order
+The wrapper must be rendered before the directory is built, and rendering a
+wrapper is a *launch* job while building a directory is a *layout* job. **The order
 things happen in is not the order of who depends on whom** — which is exactly why
 one table cannot carry both, and why `prep` is a route rather than a floor.
 

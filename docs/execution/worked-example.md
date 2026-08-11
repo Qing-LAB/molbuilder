@@ -396,7 +396,7 @@ saying so.
 > That is why `checkpointing.md` is a contract with invariants rather than a
 > description of a feature, and why *"take a checkpoint before each stage"* is
 > not housekeeping in the flat shape — it is **the save point**
-> ([`checkpointing.md`](?doc=execution/checkpointing.md) § 5.0).
+> ([`checkpointing.md`](?doc=execution/checkpointing.md) § 8).
 >
 > It also changes what *restore* means to you. In the hierarchy you can open an
 > old attempt and copy something out of it. In flat there is nothing to open:
