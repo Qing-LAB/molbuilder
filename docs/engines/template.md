@@ -376,7 +376,102 @@ from there.
 
 ---
 
-## 8. Open, and recorded rather than guessed
+## 8. The reserved blocks — what reaches the final script, and from where
+
+A generated deck carries up to five reserved comment blocks
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1). The deck is
+rendered at `prep`, on a machine that may be seeing this calculation for the
+first time — so for each block there is one question: **where does its content
+come from, and does that source travel in the portable folder?**
+
+| block | its content comes from | what carries it | emitted by |
+|---|---|---|---|
+| **PROVENANCE** | molbuilder's version and the moment of rendering | nothing — it is generated at `prep`, which is the honest answer for a *generation* snapshot | the deck writer |
+| **BENCH-MARKS** | the same field metadata the template is built from | nothing — derived, which is why § 3.3 requires both to come from one source | the deck writer |
+| **ATOM-METADATA** | the structure's regions, frozen atoms and annotations | **the structure and its `.molstruct.json` sidecar** — data files in the folder (§ 8.1) | the deck writer |
+| **USER-CUSTOM** | text a person wrote | **an item in the template** (§ 8.2) | the deck writer, verbatim |
+| **HEADER** | reserved, emitted by nobody today | — | — |
+
+**Nothing about this is new machinery.** The deck writer already emits all five;
+what this section fixes is that two of them had an input which stopped travelling
+once the deck moved from *produce* to `prep`.
+
+### 8.1 Labels ride with the atoms, not with the parameters
+
+**ATOM-METADATA is not a template item, and should not become one.** A region
+label or a frozen flag is a fact about *which atoms* — it belongs to the
+structure, and it already has a carrier: the `.molstruct.json` sidecar that sits
+beside the structure file. `task.json` holds a `StructureRef`, which is *"a
+reference plus a witness, never a copy"*, so the structure and its sidecar live
+in the project tree and travel with the folder. The deck writer reads them at
+`prep` exactly as it reads them today.
+
+**Two things are named alike and must not be merged**, and the distinction is
+the one [`overview.md`](?doc=engines/overview.md) § 3 already draws:
+
+| | what it is | where it lives |
+|---|---|---|
+| the sidecar's **`frozen_atoms`** | the structure's own annotation. It **seeds** the form | with the structure, in the sidecar |
+| **`frozen_indices`** | what the user actually chose — this run's boundary condition | **a template item**, `kind="deck"`, producing `%block Geometry.Constraints` |
+
+The Stage-3A divergence warning exists precisely because those two can disagree,
+and nothing here changes it.
+
+### 8.2 A person's own text is an item, because there is no previous deck to read
+
+Today USER-CUSTOM survives a regeneration because molbuilder **reads the
+existing output file**, finds the zone and copies it forward
+(`merge_user_custom_from_target`). **That cannot work at `prep`**, for three
+independent reasons:
+
+- `prep` renders on the target machine, usually for the first time — **there is
+  no previous deck** to read.
+- `prep` renders **one deck per stage**, so *"the target"* names nothing.
+- **`prep` must be reproducible.** Harvesting from whatever happens to be on
+  disk would make the same template, on the same machine, produce different
+  decks — and [`project-layout.md`](?doc=execution/project-layout.md) says of a
+  deck *"written by `prep`; delete it and re-prep"*, which is only true if
+  re-prep reproduces it.
+
+So the text is carried in the template, as an ordinary item:
+
+```toml
+[item.user_custom]
+kind  = "deck"
+type  = "text"
+value = """
+# my own SIESTA lines — molbuilder copies these verbatim and never checks them
+SaveElectrostaticPotential   .true."""
+help  = "Your own engine text. Copied byte-for-byte into the deck's USER-CUSTOM zone."
+```
+
+**Three things follow, and each is free rather than a special case:**
+
+- **A stage may override it**, exactly like any other item — so per-stage custom
+  text needs no new mechanism.
+- **It is never validated.** § 3.5's rule is unchanged: molbuilder copies it and
+  the engine judges it. `type="text"` is what says so to every reader.
+- **The template is where you edit it**, which is the file this contract already
+  says is meant to be edited.
+
+> **One behaviour changes, and it is worth stating plainly rather than
+> discovering.** In the staged path, editing the custom zone of a *rendered
+> deck* does not survive the next `prep` — the template is what survives. The
+> **single-deck paths keep the read-back merge** (the web Build tab and
+> `molbuilder fdf` regenerate one file in place, where *"the target"* is one
+> well-defined file and the merge is exactly right). What is not allowed is
+> `prep` harvesting from a deck it is about to overwrite.
+
+> **⚠ This needs a schema field that does not exist yet.** Membership is total
+> over *the fields the engine's schema declares* (§ 5), and no engine config
+> carries a `user_custom` field today — the text has only ever lived in emitted
+> files. Adding it is what makes this an ordinary item rather than an exception
+> to the membership rule, and it is the one piece of new surface this section
+> asks for.
+
+---
+
+## 9. Open, and recorded rather than guessed
 
 - **A hand-edited value is the authority, and that now needs no rule.** The file
   is meant to be edited and each value appears once, so editing it is simply
