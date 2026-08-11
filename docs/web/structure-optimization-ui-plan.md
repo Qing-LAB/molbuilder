@@ -389,7 +389,7 @@ So the page writes what any machine can read, and stops:
 ```text
 Written to  projects/BDT-Au/optimization/BDT_Au_relax_Au38C6H4S2/
 
-    BDT_Au_relax_Au38C6H4S2.fdf.template   the science backbone
+    BDT_Au_relax_Au38C6H4S2.template.toml   the science backbone
     task.json                            what each stage tunes
     Au.psml  S.psml  C.psml  H.psml        the data files
     mb_monitor.py

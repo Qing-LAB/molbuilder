@@ -65,7 +65,7 @@ directory **in whichever shape you ask for**.
 
 ```mermaid
 flowchart LR
-    UI["<b>the browser</b><br/>fdf.template · task.json<br/>data files<br/><i>always the same output</i>"]
+    UI["<b>the browser</b><br/>template.toml · task.json<br/>data files<br/><i>always the same output</i>"]
     P{"<b>prep</b><br/>on the target machine"}
     F["<b>flat</b><br/>one directory<br/>suffixes keep stages apart"]
     H["<b>hierarchical</b><br/>directories keep them apart"]
@@ -113,7 +113,7 @@ exactly why stage 2 overwrites them.
 
 ```
 bdt-relax/                            the CALCULATION — the user typed this name
-├── <label>.fdf.template              ─┐ written by the browser
+├── <label>.template.toml              ─┐ written by the browser
 ├── task.json                         │ portable: names no machine, and
 ├── Au.psml  S.psml  mb_monitor.py    ─┘ says the id — label plus formula
 │
@@ -143,7 +143,7 @@ decision 21).
 ```mermaid
 flowchart TB
     subgraph CALC["<b>the calculation</b> — portable, names no machine"]
-      T["fdf.template · task.json<br/>pseudopotentials · monitor"]
+      T["template.toml · task.json<br/>pseudopotentials · monitor"]
     end
     subgraph ST["<b>a stage</b> — one science setting, built by prep"]
       D["the rendered deck · its wrapper<br/>links up to the shared package"]
@@ -499,7 +499,7 @@ last unknowns are known.
 
 ```mermaid
 flowchart LR
-    T["<b>fdf.template</b><br/>the science that never varies<br/><i>the browser · portable</i>"]
+    T["<b>template.toml</b><br/>the science that never varies<br/><i>the browser · portable</i>"]
     S["<b>task.json</b><br/>this stage's values<br/><i>the browser · portable</i>"]
     M["<b>molbuilder.json</b><br/>activation · scheduler · env names<br/><i>this machine · outside the tree</i>"]
     B["<b>bench-result.json</b><br/>ranks · solver · GPU · memory<br/><i>measured here, optional</i>"]
@@ -518,7 +518,7 @@ until you are standing on the machine.
 
 | Input | Comes from | Decides |
 |---|---|---|
-| `fdf.template` | the browser | the physics: functional, basis, k-grid, everything no stage touches |
+| `template.toml` | the browser | the physics: functional, basis, k-grid, everything no stage touches |
 | `task.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type |
 | `molbuilder.json` | this machine, outside the tree | how to activate an environment, which queue, what a walltime looks like |
 | `bench-result.json` | measured on this machine, optional | rank count → `BlockSize`; solver → `Diag.Algorithm` **and** which conda env |
@@ -532,7 +532,7 @@ until you are standing on the machine.
 | `Diag.Algorithm` | ScaLAPACK | ELPA |
 | env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` |
 | the wrapper | `mpirun -np 8` | `#SBATCH` header + `srun` |
-| **`fdf.template` and `task.json`** | **byte-identical** | **byte-identical** |
+| **`template.toml` and `task.json`** | **byte-identical** | **byte-identical** |
 
 The last row is the point. The portable half did not move; only what the machine
 decided did.
@@ -886,7 +886,7 @@ sequenceDiagram
     participant E as the engine
 
     U->>B: pick a structure, describe the stages
-    B->>T: fdf.template · task.json · pseudopotentials
+    B->>T: template.toml · task.json · pseudopotentials
     Note over T: portable — names no machine
 
     U->>C: prep tight --bench
@@ -1305,7 +1305,7 @@ how a folder stops being trustworthy.
 |---|---|---|---|
 | `molbuilder.json` | outside the tree — cwd or `$XDG_CONFIG_HOME` | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
 | `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | machine settings for this project |
-| `<label>.fdf.template` | ③ calculation | engine deck, incomplete | **the science backbone** — everything fixed, nothing a stage varies, nothing the hardware decides |
+| `<label>.template.toml` | ③ calculation | `molbuilder/template@1` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter with its value; nothing the hardware decides |
 | `task.json` | ③ calculation | `molbuilder/task@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
 | `<label>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
 | `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6); the edge fields serve the benchmark sweep |

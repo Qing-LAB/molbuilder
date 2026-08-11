@@ -48,7 +48,7 @@ untouched.
 ```mermaid
 flowchart LR
     T1["<b>a generating tab</b><br/>Structure optimization ·<br/>Transport · Spectra<br/><i>physics · what varies · the shape</i>"]
-    F[("<b>the folder</b><br/>&lt;id&gt;.fdf.template<br/>task.json<br/>data files")]
+    F[("<b>the folder</b><br/>&lt;id&gt;.template.toml<br/>task.json<br/>data files")]
     T2["<b>Task Setup</b><br/><i>the per-stage values ·<br/>what has run · the next command</i>"]
     CLI["<b>the terminal</b><br/>prep · submit"]
     T1 -->|writes| F
@@ -103,10 +103,9 @@ closure variables that nothing wrote down
 The table's rows are parameters. **Which** parameters is read from `varies` in
 the description — the user picked them. What each one is **called**, what unit it
 carries, what values it accepts, is read from the item's own declaration in the
-**template** (`job-contracts.md § 3.7`: each block carries
-`field <name> type=… range=… unit=… default=… group=…`, the same grammar
-BENCH-MARKS uses), which is itself generated from the Python dataclass
-(`form-schema.md`).
+**template** ([`engines/template.md`](?doc=engines/template.md) § 3.3: each item
+carries `type` · `range` · `unit` · `default` · `choices` · `group`), which is
+itself generated from the Python dataclass (`form-schema.md`).
 
 > **So this tab needs the folder and nothing else** — it does not have to ask a
 > server what a field is. The template that travels with the calculation carries

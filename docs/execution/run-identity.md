@@ -358,7 +358,7 @@ is `BDT_Au_relax_Au38C6H4S2` — in the flat shape:
 ```text
 projects/BDT-Au/optimization/bdt-relax/   ← the folder is what the user typed
 ├── task.json                             ← and this says the id, formula and all
-├── BDT_Au_relax.fdf.template
+├── BDT_Au_relax.template.toml
 ├── BDT_Au_relax_01_coarse.fdf               ┐ what MOLBUILDER named
 ├── BDT_Au_relax_02_tight.fdf                │ carries the stage: <label>_<stage>
 ├── BDT_Au_relax_01_coarse-run0.out       ┘

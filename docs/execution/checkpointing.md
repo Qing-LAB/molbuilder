@@ -201,7 +201,7 @@ bdt-relax/                           the folder: the user typed this name
 │       ├── 02_tight/run-0/BDT_Au_relax.DM
 │       └── MANIFEST.do_not_edit
 ├── task.json                        ┐  (and this is where the run id lives)
-├── BDT_Au_relax.fdf.template        │  small → git
+├── BDT_Au_relax.template.toml        │  small → git
 ├── 01_coarse/                       │
 │   ├── BDT_Au_relax_01_coarse.fdf      │
 │   └── run-0/                       │

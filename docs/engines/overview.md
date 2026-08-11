@@ -4,7 +4,8 @@
 **Domain:** engines
 **Companions (the peer docs this maps):** [`builders.md`](?doc=engines/builders.md),
 [`siesta.md`](?doc=engines/siesta.md), [`pyscf.md`](?doc=engines/pyscf.md),
-[`transport.md`](?doc=engines/transport.md), [`tuning.md`](?doc=engines/tuning.md).
+[`transport.md`](?doc=engines/transport.md), [`tuning.md`](?doc=engines/tuning.md),
+[`stages.md`](?doc=engines/stages.md), [`template.md`](?doc=engines/template.md).
 **Upstream/downstream:** [`model/structure.md`](?doc=model/structure.md) (the
 `Structure` every engine consumes) + [`model/structure-annotations.md`](?doc=model/structure-annotations.md)
 (the region-label + frozen-atom *vocabulary*) + [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md)
@@ -30,6 +31,8 @@ can each stay focused on their own emitter.
 | [`pyscf.md`](?doc=engines/pyscf.md) | The **PySCF `.py` emitter** — output-file set, the in-script staged-opt loop, and the engine-agnostic **molwatch-log format** (which SIESTA also writes). |
 | [`transport.md`](?doc=engines/transport.md) | The **TranSIESTA / NEGF workflow** — one region-labeled device → three coupled SIESTA runs, and the cross-run consistency preflight (I1–I13). |
 | [`tuning.md`](?doc=engines/tuning.md) | The **cross-engine VALUES guide** — the single owner of what number each convergence / quality knob should carry, per tier. Every other doc that names a tier value defers here. |
+| [`stages.md`](?doc=engines/stages.md) | What a **stage** is — molbuilder's idea, not any engine's — and `task.json`, the file that describes a ladder of them. |
+| [`template.md`](?doc=engines/template.md) | The **template** — a calculation's parameter catalogue: the TOML file holding every parameter with its value, the `kind` vocabulary that says which layer owns each one, and what *complete* and *lossless* mean for it. Shared by every engine; only the items differ. |
 
 ```mermaid
 flowchart LR
@@ -44,10 +47,13 @@ flowchart LR
     TB --> RUN
 ```
 
-The three things that are **shared across engines** — the script wrapper (§ 2), the
-boundary-condition contract (§ 3), and the staged-optimization policy (§ 4) — live
-here rather than in any one emitter, so they stay defined once; § 5 shows how a new
-engine plugs into all three.
+The things that are **shared across engines** live outside any one emitter, so they
+stay defined once. Three are defined in this document — the script wrapper (§ 2),
+the boundary-condition contract (§ 3), and the staged-optimization policy (§ 4) —
+and § 5 shows how a new engine plugs into all three. A fourth is large enough to
+have its own contract: the **template**
+([`template.md`](?doc=engines/template.md)), the file that carries a calculation's
+parameters from a browser to whatever machine will run it.
 
 ---
 

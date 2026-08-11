@@ -101,6 +101,9 @@
         },
         {
           "path": "engines/stages.md"
+        },
+        {
+          "path": "engines/template.md"
         }
       ]
     },
@@ -134,6 +137,12 @@
         },
         {
           "path": "execution/staged-runs-implementation-plan.md"
+        },
+        {
+          "path": "execution/architecture.md"
+        },
+        {
+          "path": "execution/handoff-bundle.md"
         }
       ]
     },
@@ -321,6 +330,16 @@
           "path": "archive/2026-08-04-closed-tasks.md",
           "label": "Closed tasks — snapshot 2026-08-04",
           "subtitle": "Closed tasks — snapshot 2026-08-04"
+        },
+        {
+          "path": "archive/2026-08-10-stage-chaining.md",
+          "label": "Stage chaining — the retired design",
+          "subtitle": "Stage chaining — the retired design"
+        },
+        {
+          "path": "archive/2026-08-11-template-item-blocks.md",
+          "label": "The template as an `.fdf` with item blocks — the retired design",
+          "subtitle": "The template as an `.fdf` with item blocks — the retired design"
         },
         {
           "path": "archive/MIGRATION.md",

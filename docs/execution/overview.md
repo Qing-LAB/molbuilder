@@ -37,6 +37,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | What a saved history must always guarantee — the 31 rules behind `molbuilder snapshot` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
 | How a **finished run** becomes the starting point of the next calculation | **[`handoff-bundle.md`](?doc=execution/handoff-bundle.md)** |
 | What a **stage** is (it is molbuilder's idea, not the engine's) and the file that describes one | **[`engines/stages.md`](?doc=engines/stages.md)** — in `engines/`, because a stage is about parameters |
+| What a **template** is — the file that carries every parameter with its value, and which layer owns each one | **[`engines/template.md`](?doc=engines/template.md)** — in `engines/`, by the same rule: a template is nothing but parameters |
 
 ### Guides — how you do it today
 

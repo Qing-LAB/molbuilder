@@ -300,7 +300,7 @@ would rename it.
   "ok": true,
   "id": "BDT_Au_relax_Au38C6H4S2",
   "written": { "folder":      "projects/BDT-Au/optimization/BDT_Au_relax_Au38C6H4S2/",
-               "template":    "…/BDT_Au_relax_Au38C6H4S2.fdf.template",
+               "template":    "…/BDT_Au_relax_Au38C6H4S2.template.toml",
                "description": "…/task.json",
                "data":        ["Au.psml", "S.psml", "C.psml", "H.psml"] },
   "findings": [ /* warnings that did not block, each naming its stage */ ]

@@ -374,18 +374,17 @@ schema; what the generator does with it is
 
 > **effective config = the template's values ⊕ that stage's `overrides`.**
 
-The template (`<label>.fdf.template`) is the science backbone the generating tab
+The template (`<label>.template.toml`) is the science backbone the generating tab
 wrote — **everything a script owns, with values**: what the user set, or the
 default where they did not touch it. A stage supplies only the cells it changes.
 
-**Its format is [`job-contracts.md § 3.7`](?doc=execution/job-contracts.md)** —
-every item exactly as it will be copied, wrapped in
-`# === molbuilder item <field> BEGIN/END ===`, with what we know about that item
-in comments inside the block. That is what makes this section implementable:
-the markers name the field, so `prep` rebuilds a config by scanning them, and
-**nothing has to parse an `.fdf`** — which nothing in molbuilder can do. Together they make an ordinary instance of the engine's config
-dataclass — a `SiestaConfig`, not a new type — so every default, every bound and
-every `engine_key` mapping applies to it unchanged.
+**Its format is [`template.md`](?doc=engines/template.md)** — a TOML file with
+one table per parameter, each carrying the value in force plus everything known
+about it. That is what makes this section implementable: `prep` reads the values
+with one `tomllib.load`, and **nothing has to parse an `.fdf`** — which nothing
+in molbuilder can do. Together they make an ordinary instance of the engine's
+config dataclass — a `SiestaConfig`, not a new type — so every default, every
+bound and every `engine_key` mapping applies to it unchanged.
 
 > **Corrected 2026-08-07 (user). This section used to say `base` ⊕ `overrides`,
 > and `base` was a key in `task.json` holding "every schema field, one value".**
@@ -451,7 +450,7 @@ decks that are subtly wrong for the machine they run on.
 > **A genuinely derived value is a different case** — `BlockSize` from the rank
 > count. There the default is computed at generation, an explicit user setting
 > wins, and both are available at that moment
-> (`job-contracts.md § 3.7`).
+> ([`template.md`](?doc=engines/template.md) § 8).
 | a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at install (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
 | **a field that is a claim about the run directory** | `required` | **the check the wrapper runs in the directory the job runs in**, immediately before the engine starts — and nowhere else (`job-contracts.md § 2.1`, § 4.4) |
 
@@ -979,7 +978,7 @@ ever disagree that one wins.
 
 ```
 projects/BDT-Au/optimization/bdt-relax/     ← the folder: the user typed this
-├── <label>.fdf.template               ← the science backbone
+├── <label>.template.toml               ← the science backbone
 ├── task.json                          ← what each stage tunes, and the run id
 ├── Au.psml  S.psml  C.psml  H.psml    ← shared, stored ONCE
 ├── mb_monitor.py
@@ -1005,7 +1004,7 @@ and never a filename (`run-identity.md § 2.0a`). A molbuilder-named file adds
 
 ```mermaid
 flowchart LR
-    T["<b>&lt;id&gt;.fdf.template</b><br/>functional · basis · k-grid<br/>everything no stage varies"]
+    T["<b>&lt;id&gt;.template.toml</b><br/>functional · basis · k-grid<br/>everything no stage varies"]
     J["<b>task.json</b><br/>coarse: mesh 150, tol 0.04<br/>tight:  mesh 300, tol 0.01"]
     M["<b>this machine</b><br/>ranks · solver · GPU"]
     DC["<b>01_coarse/&lt;label&gt;_coarse.fdf</b>"]

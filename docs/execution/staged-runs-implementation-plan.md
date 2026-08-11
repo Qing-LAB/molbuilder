@@ -2182,41 +2182,52 @@ on.** Units 1–5 landed 2026-08-10.
    on the very next line, has one — which reads as an omission rather than a
    decision precisely because the key means two things and neither is stated.
 
-   **And "lossless" was my word, not the contract's.** Asked to define it, the
-   answer came out of `job-contracts.md` § 3.7 — now written down there as
-   *what the template is for, who uses it, and what complete means*:
+   **"Lossless" was my word, and defining it moved the contract.** The answer is
+   now [`engines/template.md`](?doc=engines/template.md) § 7, and getting there
+   corrected the mechanism *and* the format — see the closed decision above.
 
-   - **its function** — the calculation's own catalogue: every item a script
-     owns, with its value, its declaration and its prose. One file that is both
-     the reference and the source.
-   - **its two consumers** — a **generating surface** needs the *declarations*
-     (type, range, default, group) to build `task.json` without a server;
-     **`prep`** needs the *payloads and anchors*, because a stage's deck is made
-     by **substituting that stage's overrides at their anchors**.
-   - **complete, twice over** — for the surface, every item has a block; for
-     `prep`, substituting a stage's overrides yields **exactly** the deck that
-     stage would otherwise have been rendered with.
+   - **its function** — the calculation's own catalogue: every parameter the
+     schema declares, with its value, its declaration and its prose.
+   - **its two consumers** — a **generating surface** needs the declarations
+     (type, range, default, choices, group) to build `task.json` without a
+     server; **`prep`** needs the values, which it resolves with the stage's
+     `overrides` into one ordinary config object and renders through the
+     shipped emitter.
+   - **complete, twice over** — for the surface, every parameter has an item;
+     for `prep`, resolving a stage against the template yields **exactly** the
+     deck that stage would otherwise have been rendered with.
+   - **lossless per `kind`** — `engine` and `deck` items round-trip exactly;
+     `wrapper` / `produce` / `monitor` items must be carried and legible.
 
-   **That corrects the mechanism I had assumed.** `prep` does not rebuild a
-   config and re-render — § 3.7 says `anchor=` exists so an override finds its
-   site *by anchor, not by line*. The 6b I wrote and reverted reconstructed a
-   config, which is why its correctness rested on a round-trip the contract
-   never promised.
+   **So 6b, restated against the settled contract:**
 
-   **So 6b, restated:**
+   1. **The template becomes a TOML file** — `<label>.template.toml`, one table
+      per parameter. This **reverses 6a's artifact shape**, and with it goes the
+      payload machinery whose own docstrings admit it is fragile:
+      `_anchor_token`'s three unusable anchor shapes, `_payload_for`'s block
+      scanning, and `render_template`'s `deck_text` argument. The value is
+      stored once, so `value=` versus payload cannot disagree.
+   2. **Membership becomes total and reads `kind`**, not `section`. Every
+      parameter is an item; the three exclusions each carry an existing rule (a
+      machine fact — floor 2 must never name one; the ladder; the structure).
+      That brings `species_order`, `write_forces`, `write_coor_step` and
+      `write_molwatch_log` in **without touching the form**, because `section`
+      goes back to answering only *where on the form does this appear*.
+   3. **`cfg.stage` is deleted** and its five read sites in
+      `siesta/input.py` (630, 633, 640, 641, 1724) with it —
+      `engines/stages.md` § 1.1: the emitter that reads it never learns the word.
+   4. **`prep` resolves and renders** — values ⊕ overrides ⊕ this machine → one
+      config object → validate → the shipped emitter. Not substitution: option
+      (b) above, rejected because R1 and R2 cannot hold without a config object.
+   5. **The guard is the second completeness, as a comparison**: *render a
+      stage's deck from the template and from the config a surface held; the
+      text is identical.* One assertion, and it subsumes field-by-field
+      checking.
 
-   1. Give the template its own membership test derived from § 2.1's rule,
-      instead of borrowing `section` from the form — which also keeps four
-      fields off a form nobody asked to change, the browser being out of scope.
-   2. Bring the four deck-affecting fields in through it.
-   3. `prep` renders a stage's deck **by substitution at anchors**.
-   4. The guard is the second completeness, stated as a comparison: *render a
-      stage's deck both ways and the text is identical.* That is one assertion
-      and it subsumes the field-by-field checking.
-
-   **The guard this wants** is an equality: every field the deck renderer reads
-   is either declared in the template or named, with its reason, as
-   deliberately absent. Without it "lossless" is an intention.
+   > **6a's red xfail turns green by the floor rule, not by a fix.** It fires
+   > because the template carries `mpi_np`. § 2 of the new contract settles it:
+   > a rank count is a machine fact, floor 2 must never name a machine, so it
+   > was never an item.
 
    **6c** — produce stops writing finished decks — waits on 6b. **6d**, the
    browser, is out of scope until the framework is finished (user, 2026-08-11).
@@ -2711,6 +2722,27 @@ written**, and P2 cannot be finished until this is settled.
 > **(a) is the recommendation.** It is what `base` was *for*, moved to where the
 > split says it belongs — its own artifact, holding only what does not vary —
 > rather than a second copy inside the description.
+
+> **⚠ Closed 2026-08-11, and the answer is (a) after all** — the `.fdf`-with-item-blocks
+> shape was an attempt to have (a) and keep the engine's format, and it carried
+> the cost the (a) row names: *"the name `.fdf.template` becomes wrong: it is a
+> config, not an fdf."* Two findings closed it:
+>
+> 1. **The paragraph that justified the engine format described option (b).** It
+>    said `prep` *"substitutes a stage's overrides at their anchors"* — textual
+>    substitution, rejected in this very table because **R1 and R2 cannot hold**
+>    without a config object. `engines/stages.md` § 4 and `job-contracts.md`
+>    § 3.7's own property 1 both already said `prep` rebuilds and renders.
+> 2. **Being an `.fdf` stored every value twice** — once in the declaration's
+>    `value=`, once in the payload line beside it — so the file could disagree
+>    with itself, and a hand-edit of one would be silently ignored.
+>
+> **The template is now a TOML file**, `<label>.template.toml`, specified by
+> [`engines/template.md`](?doc=engines/template.md) — which is also **where the
+> definition moved**, out of `job-contracts.md` § 3 (the *generated-script*
+> contract; a template is not a generated script) and into `engines/`, by the
+> same rule that puts a stage there. Retired text:
+> [`archive/2026-08-11-template-item-blocks.md`](?doc=archive/2026-08-11-template-item-blocks.md).
 
 ---
 
