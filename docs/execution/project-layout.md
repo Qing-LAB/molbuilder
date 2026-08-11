@@ -381,9 +381,163 @@ of it is in place before the engine sees the directory:
 
 | | How | Why |
 |---|---|---|
-| the deck, the monitor, the pseudopotentials | **linked** from the container | five attempts share one copy of each |
+| the monitor, the pseudopotentials | **linked** from the container | they are the same for every attempt, and the engine only reads them |
+| the deck | **linked** from the container | every attempt of a stage runs the same deck — a different deck means a different stage (§ 1.5a) |
 | whatever this run continues from | **copied** | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
 | everything the run writes | created in place | it is already the working directory |
+
+**One rule generates that whole table: link what the engine only reads, copy
+what it writes.** A pseudopotential and a deck are read, so one copy serves every
+attempt. A `.XV` is written, so a link would reach back and destroy the result
+you built on.
+
+#### 1.5a Two levels, two reasons — the directory says what happened
+
+*Settled with the user, 2026-08-11.* **A directory exists for a reason, and there
+are exactly two.**
+
+| a new… | exists because | so it holds |
+|---|---|---|
+| **stage directory** — `02_tight/` | **the science changed** — a threshold, a tolerance, a method | its own rendered deck and wrapper |
+| **run directory** — `run-1/` | **you continued** the previous run | only what that invocation produced |
+
+**That is the whole rule, and it is deliberately the whole rule.** The contract
+stays small; the **directory structure** carries the flexibility. You can read a
+folder and know what happened without opening a file: a new stage name means
+somebody changed the science, a new `run-` number means somebody decided to keep
+going.
+
+**Every attempt of a stage runs the same deck.** A different deck means different
+science, and different science is a stage. That is why § 1.5's table links the
+deck rather than copying it — there is never a second version of it to hold.
+
+**The case that looks like it needs a third mechanism does not.** *"Coarse hit
+its step limit and I want to keep going, but with a tighter force tolerance"* is
+**a stage that continues from a named run**, and it already works:
+
+```bash
+jobset prep run tight --from 01_coarse/run-0
+```
+
+The tolerance changed, so it is a stage. It continues, so it names what from.
+**Nothing new is required** — no per-attempt override, no extra field in
+`run.json`, no third level of parameter merging. The two reasons above already
+place it.
+
+> **Why this is worth stating as a rule rather than leaving to taste.** The
+> alternative — letting an attempt carry its own parameter changes — needs a
+> place to record them, a merge order to define, and a way to reproduce an
+> attempt from the description. That is three new things to keep true, in
+> exchange for saving one directory. **A design that never creates the problem
+> beats one that solves it**, which is the same reasoning that retired chaining
+> (§ 1.6).
+
+**And continuing is one act at two levels.** Across stages it lands in
+`02_tight/run-0`; within a stage it lands in `01_coarse/run-1`. Same decision,
+same `continued_from` record, different depth.
+
+> **The one case the rule does not name, extended rather than left silent.** A
+> **cold** redo — running a stage again from scratch after a crash that left
+> nothing worth keeping — is still a `run-x`, with `continued_from` **empty** and
+> no warm files copied. Otherwise § 1.5's *"a redo is `run-2`"* would have
+> nowhere to land. Continuation is why a `run-x` normally exists; the record is
+> what says when it did not.
+
+#### Where a run happens
+
+**Inside the attempt directory**, which was created and filled when you prepared
+the stage (§ 1.6, and § 2.5 step 4). By the time anything is launched it already
+holds its inputs. The wrapper is invoked there; it activates and execs, and every
+later line of it — the launch, the monitor, the SCF tee, the failure hints —
+works relative to the current directory, so everything lands in the attempt with
+no change to the wrapper at all.
+
+```
+prepare  →  01_coarse/run-0/ exists, deck linked, inputs copied
+submit   →  launched there
+```
+
+Launching in a chosen directory is what `jobset submit` already does one level
+up: `subprocess.run(cmd, cwd=<job dir>)` for the local path, and `sbatch` from
+the same place for SLURM, which lands the job in `SLURM_SUBMIT_DIR`. Pointing it
+at the attempt instead of the container is a change in the caller, not in the
+wrapper.
+
+**Everything the attempt needs is put there before the wrapper starts**, and all
+of it is in place before the engine sees the directory:
+
+| | How | Why |
+|---|---|---|
+| the monitor, the pseudopotentials | **linked** from the container | they are the same for every attempt, and the engine only reads them |
+| the deck | **linked** from the container | every attempt of a stage runs the same deck — a different deck means a different stage (§ 1.5a) |
+| whatever this run continues from | **copied** | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
+| everything the run writes | created in place | it is already the working directory |
+
+**One rule generates that whole table: link what the engine only reads, copy
+what it writes.** A pseudopotential and a deck are read, so one copy serves every
+attempt. A `.XV` is written, so a link would reach back and destroy the result
+you built on.
+
+#### 1.5a `run-0` is the stage; a later `run-x` is a continuation
+
+*Simplified by the user, 2026-08-11.* **A `run-x` beyond `run-0` exists for one
+reason: you looked at the previous result and chose to keep going.** That single
+sentence settles what an attempt directory means, and everything below follows
+from it.
+
+| | `run-0` | `run-x`, x > 0 |
+|---|---|---|
+| **why it exists** | the stage was prepared and submitted | **you chose to continue** |
+| **its deck** | the stage's, **linked** | linked if you changed nothing; **rendered into the attempt** if you varied a parameter |
+| **warm files** | copied at prep from the earlier *stage* you named, if any | copied from the run it continues |
+| **`continued_from`** | that earlier stage's run, or empty | the run it continues |
+
+**Continuing is one act at two levels.** Across stages it lands in
+`02_tight/run-0`; within a stage it lands in `01_coarse/run-1`. Same decision,
+same record, different depth — and in both cases a directory appears **because a
+person decided something**, which is the whole of § 1.6.
+
+**And the case that motivates varying a parameter is exactly a continuation.**
+Coarse hit its step limit and you want to keep going with a tighter force
+tolerance. That is not a new rung of the ladder — it is the same rung, continued
+differently, in reaction to a result you just looked at.
+
+**So an attempt may carry its own overrides, and `prep` renders it its own
+deck.** Everything else is unchanged: the pseudopotentials are still linked, the
+warm files are still copied from the run it continues, the outputs still land in
+place.
+
+> **The one case this rule does not name, extended rather than left silent.** A
+> **cold** redo — running the stage again from scratch after a crash that left
+> nothing worth keeping — is still a `run-x`, with `continued_from` **empty** and
+> no warm files copied. Otherwise it would have no home, and § 1.5's *"a redo is
+> `run-2`"* would have nowhere to land. **Continuation is why a `run-x` normally
+> exists; the record is what says when it did not.**
+
+> **Forcing this into a new stage would be the wrong shape.** A stage is a
+> **planned** rung, declared before anything ran; an attempt override is a
+> **reaction** to a result. If every nudge appended a stage, `task.json` would
+> stop being the ladder you designed and become a log of what you tried.
+
+**That makes three levels of override, and each is recorded where it belongs:**
+
+| level | what it says | recorded in |
+|---|---|---|
+| the **template** | every parameter's base value | `<label>.template.toml`, at the parent |
+| the **stage** | what this rung changes — **planned** | `task.json` |
+| the **attempt** | what this try changes — **a reaction**, usually while continuing | `run.json` (§ 1.6) |
+| the **machine** | ranks, block size, the environment | resolved at `prep`; recorded in the deck's PROVENANCE |
+
+**The attempt's overrides must be written down, and that is the only part of
+this proposal that needed adding.** If the change lived solely in the rendered
+deck, three things this contract relies on would quietly stop being true:
+`task.json` would no longer describe the calculation, nothing could reproduce the
+attempt, and § 1.0's *"every file is rendered from the template or copied in"*
+would be false — a hand-edited deck is neither.
+
+**`prep` stays the only thing that writes a deck**, so § 1.0's two origins hold
+exactly as before. What varies is an *input* to `prep`, never an edit to its
+output.
 
 **A flat run directory is untouched.** It *is* a run (§ 1.4), so `bash job.run.sh`
 in it behaves exactly as it does today.
@@ -472,6 +626,7 @@ attempt exactly as prepare left it — still safe to prepare again.
 > the answer a reader is meant to consult is `run.json`'s field
 > (`checkpointing.md` **S3**). Small text either way, so it lands in git with
 > the rest of the container.
+
 
 #### Continuing from an earlier run is a copy, not a link
 
