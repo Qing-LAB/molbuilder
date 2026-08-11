@@ -55,11 +55,13 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | What the Structure-optimization tab will look like — the page that **writes** a description | **[`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)** |
 | The shared tab that **finishes** one — starts from a folder, fills in the per-stage values | **[`web/task-setup-plan.md`](?doc=web/task-setup-plan.md)** |
 
-The first two are a pair, and the split is deliberate: the architecture document
-says **what the design is** and what is wrong with the code today; the
-implementation plan says **in what order it gets fixed and how each step is
-verified**. Neither repeats the other — the plan cites § 8's acceptance criteria
-rather than copying them.
+**Where the design itself lives has changed.** It is
+[`architecture.md`](?doc=execution/architecture.md), a contract, because it says
+what the system *is*. `staged-runs-architecture.md` is what remains: the work
+item by item, and a dated audit of the code against the design. The plan says in
+what order it gets built and how each step is checked. **Three documents, three
+jobs** — the contract states the design, the draft holds the work list, the plan
+holds the order.
 
 ### How they stack
 

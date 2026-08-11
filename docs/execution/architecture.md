@@ -310,7 +310,76 @@ A link would reach back and overwrite the coarse result you chose to build on.
 
 ---
 
-## 5. The whole workflow, once through
+## 5. The decision chain — the same question, answered as a sequence
+
+§ 2 says **who owns** each decision. This says **in what order** decisions get
+fixed, and the two are different views of one rule.
+
+Overlap between modules is fine. A **loop** is not: if two parties can each
+overrule the other, nobody can predict the outcome and nobody can test it. So
+the whole system is one sequence, and one rule keeps it one:
+
+> **Each step decides within what the steps above it already fixed, and nothing
+> later rewrites something earlier.**
+
+| # | who decides | what it fixes | written down in |
+|---|---|---|---|
+| 1 | the **project tree** | where anything may live — the topics, and `[A-Za-z0-9_-]+` per segment | `job-contracts.md` § 2.5 |
+| 2 | the **structure** | which atoms exist — an input, never edited by the generator | `model/structure.md` |
+| 3 | **2 + the name you typed**, inside 1's character set | the **id**, tidied once and then quoted by everything after | `run-identity.md` §§ 2–3 |
+| 4 | the **schema** | which fields exist, their types and ranges | `web/form-schema.md` |
+| 5 | the **description** | the values, which fields vary, the stages and their order | `engines/stages.md` § 6 |
+| 6 | the **preflight** | whether this file can be read here at all | `engines/stages.md` § 6.5 |
+| 7 | **validation** | whether it may be written — errors block, per stage, on the resolved whole | `science/validation.md` |
+| 8 | the **generator** | the decks and their wrappers: the merge, the cell, the pseudopotentials, BENCH-MARKS | `engines/stages.md` § 7 |
+| 9 | the **machine's config** | the wrapper's shell — preamble and activation (§ 8.3) | `running-a-job.md` § 5.2 |
+| 10 | **you** | which stage to run, and when | — this is the point of the whole framework |
+| 11 | the **wrapper**, at run time | ranks, threads, GPU pinning, the run index, the restart banner | `running-a-job.md` § 3 |
+| 12 | the **engine** | whether warm files are honoured, given those parameters | `job-contracts.md` § 4 |
+
+Read it downward and the tangles disappear:
+
+- **The browser lives in rows 3–5 only.** That is why it never renders a deck or
+  computes a cell — those are row 8, and row 8 needs row 9, which is a fact
+  about a machine the browser is not on.
+- **The id is fixed at row 3 and quoted by everything after.** No later step
+  derives it again, which is why tidying it once is a rule rather than a
+  tidiness preference.
+- **Row 10 is a person, and that is deliberate.** Every earlier row exists to
+  make row 10's choice safe; none of them makes it.
+- **Nothing in rows 1–8 knows what a cluster is.** *The portable folder names no
+  machine* is not a policy anyone has to remember — it falls out of where row 9
+  sits.
+
+**Rows 6 and 7 both refuse things, and both belong.** One asks *can this file be
+read here at all*, the other *is this a sound calculation*. They are ordered, so
+a description aimed at an engine this backend does not have never receives a
+lecture about its mesh cutoff first.
+
+### 5.1 How the chain and the floors line up
+
+They are not a re-labelling of each other — the chain spans domains the floors
+do not:
+
+| chain rows | floor |
+|---|---|
+| 1–2 | outside this stack — the project tree and the structure model |
+| 3 | **1 · names** |
+| 4–5 | **2 · description** |
+| 6–7 | outside — preflight and validation are their own contracts |
+| 8 | **3 · plan** (and the engine renderers it calls) |
+| 9 | **5 · launch**, at `prep` step 4 |
+| 10 | **7 · surfaces** |
+| 11–12 | outside — the wrapper and the engine, at run time |
+
+**Four of the twelve rows sit outside the floors**, and that is the honest
+answer rather than a gap: this stack is about turning a description into a
+running job, and the structure model, the form schema and the science
+validators are separately-owned contracts that hand it their results.
+
+---
+
+## 6. The whole workflow, once through
 
 ```mermaid
 sequenceDiagram
@@ -343,7 +412,7 @@ week refining a geometry you would have rejected in a minute.
 
 ---
 
-## 6. The rules that must never break
+## 7. The rules that must never break
 
 Each is written so it can be **checked**, because a rule nobody checks is a wish.
 
@@ -365,7 +434,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 
 ---
 
-## 7. Configuration — one file, and which floor reads each part
+## 8. Configuration — one file, and which floor reads each part
 
 **There is one config file, and it serves two different audiences.** Half of it
 configures the *server* (who may sign in, what the rate limiter does). Half
@@ -374,7 +443,7 @@ scheduler wants). Neither half knows about the other, and no document listed
 both until now — `deployment.md` § 5 showed six sections and
 `running-a-job.md` § 5 showed four, and neither said it was showing a subset.
 
-### 7.1 Where it is found, and how two files become one
+### 8.1 Where it is found, and how two files become one
 
 ```mermaid
 flowchart LR
@@ -394,7 +463,7 @@ rather than half-configuring something.
 answer there: **preambles join, server first, then project**; `activation` is
 the project's if set, otherwise the server's.
 
-### 7.2 The complete map — section, reader, and where it lands
+### 8.2 The complete map — section, reader, and where it lands
 
 | section | read by | reaches | what it decides |
 |---|---|---|---|
@@ -431,7 +500,7 @@ flowchart TB
     W -.->|"reads NOTHING at run time"| W
 ```
 
-### 7.3 The one setting that stops everything
+### 8.3 The one setting that stops everything
 
 `script_generation.activation` has **no default**, and rendering *any* wrapper
 refuses without it — not only a cluster one. On a fresh install that is the
@@ -453,7 +522,7 @@ the error where you can act on it.
 
 ---
 
-## 8. The same design on a workstation and on a cluster
+## 9. The same design on a workstation and on a cluster
 
 **Nothing in §§ 2–4 changes between them.** The same floors, the same routes,
 the same five steps. What differs is what two floors *find*, and one flag.
@@ -496,7 +565,7 @@ refuses. **A cluster needs one**, because `partition` and `qos` cannot be
 guessed and a header without them is rejected by the scheduler rather than by
 molbuilder; so molbuilder refuses first, where the message is useful.
 
-### 8.1 The two shapes are the same on both
+### 9.1 The two shapes are the same on both
 
 The **flat** and **hierarchical** layouts (`project-layout.md` § 1) are a
 separate choice from where you run. Either shape works on either machine:
@@ -507,7 +576,7 @@ in the framework ties a shape to a machine.
 
 ---
 
-## 9. How this serves the other contracts
+## 10. How this serves the other contracts
 
 Every contract sentence should land on **one** floor. Where it takes a route to
 make several sentences true in order, that is named too — and a sentence that

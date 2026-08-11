@@ -2024,6 +2024,81 @@ mislead a reader of the code.
 
 ---
 
+### P12 — Pin the architecture into code and tests
+
+**Why this is a phase and not a cleanup.** The design is now a contract —
+[`execution/architecture.md`](?doc=execution/architecture.md) — and a contract
+sentence that nothing checks is a wish (§ 9.1's G4). This phase walks that
+contract statement by statement and asks one question of each: **what fails if
+the code stops doing this?** Where the answer is "nothing", that is a unit
+below.
+
+**The audit, done before writing the units.** Each row is a claim the contract
+makes; the middle column is what enforces it today.
+
+| the contract says | pinned by | gap |
+|---|---|---|
+| § 2 · seven floors, each owning one decision | `test_architecture_rules` A7 + its doc-agreement check | judges only the 17 files § 2.1 names |
+| § 3 · each object has one builder | A4 | **`StageRef` only**; the other three are dataclasses anyone can construct |
+| § 4 · `prep` runs five steps in one order | `test_cli_siesta_stages` end-to-end | the **order** is not asserted — a reordered prep that still works would pass |
+| § 5 · the decision chain, nothing later rewrites earlier | rows 3, 9, 10 individually | the **sequence** is not checked anywhere |
+| § 8.2 · eleven config sections, each with one reader | — | **nothing**; a twelfth section could land undocumented |
+| § 8.3 · no wrapper without `activation` | `require_activation`'s own tests | ✅ |
+| § 9 · a workstation needs no scheduler block | — | **nothing**; and the claim the whole two-layer split rests on — *the inner `.run.sh` is byte-identical either way* — is asserted nowhere |
+| § 9.1 · shape and machine are independent | `test_jobset` shape tests | ✅ for shape; the crossing with mode is untested |
+
+**Units, smallest first — the last one is the migration everything else waits
+on.**
+
+1. **The config map cannot go stale.** A test that the sections
+   `runtime_config` normalises are exactly the sections § 8.2 tabulates —
+   an equality both ways, so a new section fails until it is documented and a
+   documented-but-deleted one fails too. This is the guard that would have
+   caught `deployment.md` and `running-a-job.md` each showing a subset.
+
+2. **A scheduler job name says which calculation it is.** `submit` passes
+   `-J <job.name>`, so three concurrent ladders show `coarse coarse coarse` in
+   `squeue`. `JobSet.name` is the id; `-J` should carry it, and the stage
+   within it. *(Found in the design draft's § 7, verified live 2026-08-10.)*
+
+3. **The two environments, pinned on the claim that matters.** Prep the same
+   calculation twice — once with no `scheduler` block, once with one — and
+   assert: no block ⇒ no `.sbatch` at all; with a block ⇒ both files; and
+   **the two `.run.sh` files are byte-identical**. That last assertion is § 9's
+   central promise and the reason the two-layer split exists.
+
+4. **The five steps run in their order.** Assert the order, not just the
+   outcome: the machine is resolved before the deck is rendered, and the
+   wrapper before the directory is built. Cheapest honest form is a recording
+   seam — the report `prep` already prints names what it resolved, in order.
+
+5. **A4 for the remaining three objects.** `Attempt`, `Shape` and
+   `LaunchAgreement` are dataclasses a caller could construct. Decide per
+   object whether that should be refused, then guard the ones that should be.
+   **This is a judgement, not a copy-paste** — which is why it is a unit and
+   not a line in unit 1.
+
+6. **The producer moves from *produce* to `prep`.** The one real migration
+   (§ 9.3). It closes floor 3's asymmetry, `LaunchSpec`, M4's allocation-fixed-
+   at-produce, and M2a's capability-assembled-twice; it makes the `bench`
+   fold-in a subtraction. **Its shape is known** — the route gains a step it
+   currently skips, exactly as step 1 was added. It touches the web surface, so
+   it is sequenced last and wants an explicit go.
+
+**Subtracts:** the second assembly of capability (unit 6 folds the `scheduler`
+block into the machine record, so `environment.json` and the emitted header
+stop being two answers to *what machine is this*).
+
+**Milestone M12.** Every statement in `execution/architecture.md` §§ 2–9 either
+names the test that checks it or says in the contract why it cannot be checked.
+No row of the audit table above still reads "nothing".
+
+**Reviews:** 1 · 2 · 3 — and pass 3 here is **the contract read against the
+tests**, not the code: the failure mode this phase exists to prevent is a green
+suite that pins something the contract no longer says.
+
+---
+
 ## 5. The milestone map
 
 ```mermaid
@@ -2037,7 +2112,8 @@ flowchart TB
     M6 --> M7["M7 · one attempt, no chain"]
     M7 --> M8["M8 · 22 invariants + the prompt"]
     M8 --> M9["M9 · one CLI grammar"]
-    M9 --> D7{{"D7 · prove it on a real cluster"}}
+    M9 --> M12["M12 · the architecture is pinned"]
+    M12 --> D7{{"D7 · prove it on a real cluster"}}
     M2 -. "unblocks, but wait for M5" .-> M10["M10 · route + the generating tab"]
     M9 --> M10 --> M11["M11 · Task Setup<br/>shared, schema-driven"]
     MZ["MZ · Track Z<br/>no gate"]
@@ -2059,6 +2135,7 @@ flowchart TB
 | M9 | the D7 gate, then other engines | — |
 | M10 | M11, and a single-stage user's whole workflow in the browser | — |
 | M11 | **every later engine** — Transport and Spectra inherit this tab rather than copying it | — |
+| **M12** | the D7 cluster gate, and any later change to the design — a contract statement that nothing checks is a wish | — (it installs the checks for §§ 2–9) |
 
 > **Every milestone above is gated on R×3** (§ 3.0): the review is run **three
 > times with fresh eyes**, widening from the unit, to every commit since the

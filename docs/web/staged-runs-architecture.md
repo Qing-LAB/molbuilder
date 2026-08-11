@@ -315,83 +315,33 @@ field.
 
 ---
 
-## 6. The decision chain — who dictates what, in order
+## 6. The decision chain — moved
 
-Overlap between modules is fine. A **loop** is not: if two parties can each
-overrule the other, nobody can predict the outcome and nobody can test it. So the
-whole system is one sequence, and the rule that keeps it one is:
-
-> **Each step decides within what the steps above it already fixed, and nothing
-> later rewrites something earlier.**
-
-| # | Who decides | What it fixes | Fixed by |
-|---|---|---|---|
-| 1 | the **project tree** | where anything may live: the nine topics, `[A-Za-z0-9_-]+` per segment | `job-contracts.md § 2.5` |
-| 2 | the **structure** | which atoms exist — an input, never edited by the generator | `model/structure.md` |
-| 3 | **2 + the user's name**, within 1's character set | the **id**, normalised once and then quoted by everything after | `run-identity.md § 2–3` |
-| 4 | the **schema** | which fields exist, their types, ranges and `engine_key`s | `web/form-schema.md` |
-| 5 | the **description** | values, which fields vary, the stages and their order | `engines/stages.md § 6` |
-| 6 | the **preflight** | whether this file can be read here at all | `engines/stages.md § 6.5` |
-| 7 | **validation** | whether it may be written: `error` blocks, per stage, on the resolved whole | `science/validation.md` |
-| 8 | the **generator** | the decks and their wrappers — the merge, the cell, the pseudos, the identity group, BENCH-MARKS | `engines/stages.md § 7` |
-| 9 | the **target's config** | the wrapper's shell: preamble and activation — and generation refuses without an activation, which has no default | `running-a-job.md § 5.2` |
-| 10 | the **user** | which deck to run, and when | — this is the point of the framework |
-| 11 | the **wrapper**, at run time | ranks, threads, GPU pinning, the run index, the restart banner | `running-a-job.md § 3` |
-| 12 | the **engine** | whether warm files are honoured, given those parameters | `job-contracts.md § 4` |
-
-Read it downward and the entanglements disappear:
-
-- **The browser lives entirely in rows 3–5.** That is why § 5.1 can say it never
-  renders a deck or computes a cell — those are row 8.
-- **The id is fixed at row 3 and quoted by everything after.** No later step
-  derives it again, which is why normalising once is a rule rather than an
-  optimisation.
-- **Row 10 is a person, and that is deliberate.** Every earlier row exists to
-  make row 10's choice safe; none of them makes it.
-- **Nothing in rows 1–8 knows what a cluster is.** Target isolation is not a
-  policy anyone has to remember; it falls out of where row 9 sits.
-
-Rows 6 and 7 both refuse things, and both belong — one asks *can this file be
-read here at all*, the other *is this a sound calculation*. They are ordered, so
-a description aimed at an engine this backend does not have never receives a
-lecture about its mesh cutoff.
+It is now [`execution/architecture.md`](?doc=execution/architecture.md) § 5, a
+contract, beside the floors it complements: § 2 says who **owns** each decision,
+§ 5 says in what **order** decisions are fixed. § 5.1 lines the two up and names
+the four rows that sit outside the execution stack.
 
 ---
 
-## 7. Exporting to a scheduler — optional, and downstream
+## 7. Running it through a scheduler
 
-Some day a user will want a scheduler to run the decks in order without being
-asked twice, and that framework ships: `job-system.md`'s `stages_to_jobset` turns
-a staged config into a ladder, and `prep` / `plan` / `submit` / `status` run it.
+**This is not an export and not a future thing** — it is the framework, and it
+ships. `stages_to_jobset` turns a described ladder into a `JobSet`; `prep`,
+`plan`, `submit` and `status` run it. What a scheduler adds is a header and a
+queue, not a different design: `execution/architecture.md` § 9 is the whole of
+what differs between a workstation and a cluster.
 
-**It is an export, not a destination**, and the difference is what it needs that
-this framework does not:
+**The hierarchy is the flat shape nested, not a rival to it.** Each leaf is the
+one-job-per-directory shape `job-contracts.md § 2.1` describes, and the tree is a
+directory *of* those. `project-layout.md § 1` makes the choice explicit; running
+through a scheduler changes neither shape.
 
-| The export needs | Where it comes from |
-|---|---|
-| ~~`on_nonconvergence` per stage~~ | **nothing needs it — deleted 2026-08-10.** It became the scheduler edge and nothing else, so with no edge there is nothing left for it to do. (PySCF's is untouched: its ladder runs in one process, where the policy is real control flow.) |
-| `Job.warm` per stage | **already in the layout.** What a stage would take from a run it continues is a *layout* fact, not a scheduling one, so the export inherits it rather than asking (`engines/stages.md § 7.1`). It replaced `Job.carry`, which named the source job and so could only be written by something that had already decided the order |
-| `Job.resources` per stage | **already in the description.** The export applies the translation `job-contracts.md § 6.2` already fixes, at its own boundary |
-
-Only the first describes *having something else run it* rather than the
-calculation, and it is the only thing the export has to ask for. The other two
-are already here — carry because the layout needs it whether or not a scheduler
-exists, resources because they change the deck (`engines/stages.md § 5`). The
-export threads edges through a tree this framework already built.
-
-Two facts to carry forward when it is built:
-
-- **The hierarchy is the flat shape nested, not a rival to it.**
-  `job-contracts.md § 2.5`'s `<structure>/` and `job-system.md § 5.2`'s
-  `point-<name>/` tree are the same layout at two levels: each leaf is the
-  one-job-per-directory shape `job-contracts.md § 2.1` describes, and the tree is
-  a directory *of* those. `project-layout.md § 1` makes the choice between them
-  explicit; nothing about the export changes which one you are in. This framework
-  and the export produce the same tree — the export adds edges to it.
-- **`JobSet.name` should be the id**, and the submitter's `-J` should carry it.
-  Today a ladder's scheduler name is the bare stage name
-  (`job-contracts.md § 6.3`), so three concurrent ladders show
-  `coarse coarse coarse` in `squeue`.
+> ⚠ **One live defect, carried to the plan.** A ladder's scheduler job name is
+> the bare stage name — `submit.py` passes `-J <job.name>` — so three concurrent
+> ladders show `coarse coarse coarse` in `squeue` and you cannot tell which
+> calculation is which. **`JobSet.name` is the id and should be what `-J`
+> carries.** Recorded as P12 unit 3.
 
 ---
 
