@@ -1,16 +1,31 @@
 """The template's declarations, and the fingerprint of the schema they describe.
 
-Contract: ``docs/execution/job-contracts.md`` § 3.7 (the item block's ``field``
-declaration line — *"the grammar § 3.3 already defines … extended with
-``group=`` and ``choices=``. Not a parallel notation"*) and § 3.3 (that
-grammar) · ``docs/engines/stages.md`` § 6.6 (the preflight row *"the schema
-fingerprint matches"*, the only one that does not refuse).
+.. warning::
 
-P2 unit 4a. These are the two halves that do **not** depend on the two open
-questions § 3.7 leaves — which anchor a multi-anchor field declares, and what a
-conditionally-emitted item's payload is when the deck would have no line. A
-declaration and a fingerprint are the same under every answer to those, so they
-are built now and the emitter waits.
+   **These tests guard a RETIRED format, and they are kept only because the code
+   still implements it.** ``job-contracts.md`` § 3.7 used to specify the template
+   as an ``.fdf`` whose metadata rode in ``# === molbuilder item … ===`` comment
+   blocks. That design was retired on 2026-08-11 —
+   ``docs/archive/2026-08-11-template-item-blocks.md`` says why — and replaced by
+   ``docs/engines/template.md``: **one TOML file**, one table per parameter, each
+   value stored once.
+
+   **Do not read anything here as policy.** The item-block assertions below —
+   ``MARKER_RE``, the ``field <name> key=value`` declaration line, the payload —
+   describe what ``molbuilder/template.py`` does today, not what the contract
+   says. **P12 unit 6b replaces both**, and this file is rewritten from the new
+   contract at that point rather than patched.
+
+   **The fingerprint half survives the move unchanged** (``template.md`` § 10),
+   as does the *"every allowed parameter has a place in the file"* premise
+   (§ 7) — those tests are about the schema, not about the file format.
+
+Contract for what is still live: ``docs/engines/template.md`` (the format) ·
+``docs/execution/job-contracts.md`` § 3.3 (BENCH-MARKS, whose declarations come
+from the same field metadata) · ``docs/engines/stages.md`` § 6.6 (the preflight
+row *"the schema fingerprint matches"*, the only one that does not refuse).
+
+P2 unit 4a.
 """
 from __future__ import annotations
 

@@ -17,7 +17,7 @@ An **engine** turns a validated [`Structure`](?doc=model/structure.md) plus a us
 config into something a quantum-chemistry code will run: a SIESTA `.fdf`, a PySCF
 `.py`, or a derived multi-file transport bundle. The **builders** sit just upstream —
 they *produce* the `Structure` from a sequence / SMILES / name. This doc is the
-**map** of that layer and the **contracts every engine shares**, so the five peer docs
+**map** of that layer and the **contracts every engine shares**, so the peer docs
 can each stay focused on their own emitter.
 
 ---
@@ -98,7 +98,7 @@ script's ATOM-METADATA block (§ 2). The Stage-3 divergence check (A) is spectra
 so far, but the unrecognized-label notice (B) is not — transport's engine preflight
 already warns on region labels it doesn't recognise (`transiesta.py:748`). ("spectra" =
 the vibrational / IR-spectrum engine that rides
-on PySCF; it lives in its own `spectrum-calculation` domain, not among the five docs
+on PySCF; it lives in its own `spectrum-calculation` domain, not among the docs mapped
 above, but it's the reference for this contract.)
 
 ```mermaid

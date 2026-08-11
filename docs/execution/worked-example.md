@@ -111,7 +111,7 @@ stage it is about. Then **Generate**:
 
 ```
 projects/BDT-Au/optimization/bdt-relax/    ← the folder name is yours to pick
-├── BDT_Au_relax.template.toml      the science, minus what a stage varies
+├── BDT_Au_relax.template.toml      every parameter, with its base value
 │                                  and minus what the hardware decides
 ├── task.json                      what each stage tunes, + resource intent,
 │                                  and the id — BDT_Au_relax_Au38C6H4S2

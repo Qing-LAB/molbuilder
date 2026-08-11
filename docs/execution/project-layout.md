@@ -465,7 +465,7 @@ what only the target machine can**.
 | | What | Why it is portable |
 |---|---|---|
 | the **data files** | pseudopotentials, the structure | they are the same everywhere |
-| the **deck template** | the science backbone — everything the calculation fixes and no stage varies | it is physics |
+| the **deck template** | the science backbone — **every parameter, carrying the value that holds unless a stage changes it** | it is physics |
 | **`task.json`** | the variables each stage tunes | it is the mission |
 | the **resource intent** | *use a GPU · this is a big job · aim for this scale* | a wish, not a number |
 
@@ -518,7 +518,7 @@ until you are standing on the machine.
 
 | Input | Comes from | Decides |
 |---|---|---|
-| `template.toml` | the browser | the physics: functional, basis, k-grid, everything no stage touches |
+| `template.toml` | the browser | the physics: functional, basis, k-grid — **every parameter, with its base value** |
 | `task.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type |
 | `molbuilder.json` | this machine, outside the tree | how to activate an environment, which queue, what a walltime looks like |
 | `bench-result.json` | measured on this machine, optional | rank count → `BlockSize`; solver → `Diag.Algorithm` **and** which conda env |

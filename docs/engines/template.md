@@ -311,9 +311,18 @@ flowchart LR
 **Every key comes from the field's own metadata**
 ([`web/form-schema.md`](?doc=web/form-schema.md) § 1a: `help`, `range`, `unit`,
 `choices`, `engine_key`, `workflow_group`). The template and the form are
-generated from one source and cannot drift apart — the same rule
-[`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3 states for
-BENCH-MARKS.
+generated from one source and cannot drift apart.
+
+> **The same source feeds BENCH-MARKS, and that is a rule.** A generated deck's
+> BENCH-MARKS block ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3)
+> declares `type`, `range`, `unit` and `default` for the subset a tool may
+> override; a template declares them for every parameter. **Both are emitted from
+> the field metadata**, because two hand-maintained copies of `default` would
+> drift silently. Their `type` vocabularies differ in size on purpose: § 3.3's
+> `{int, float, str, pow2, enum}` is enough for the numeric knobs a benchmark
+> turns, and the template adds `bool`, `int3`, `strlist`, `intlist` and `text`
+> because it must describe everything. **The narrower set is a subset, never a
+> competing definition.**
 
 ---
 
@@ -382,6 +391,21 @@ Three things are **not** items, each excluded by a rule that already exists:
 **A parameter that cannot be given a `kind` is a gap in this vocabulary**, and
 the loud version of that is the only one that gets fixed: whatever writes a
 template refuses rather than omitting the item.
+
+> **There is no slot for a keyword molbuilder does not model, and that is the
+> premise rather than an omission.** A template is built from what molbuilder
+> *knows*: every parameter the schema declares, each validated, each with what we
+> have learned about it. So there is no *"what about a keyword we do not model"*
+> case to design for — **a keyword molbuilder does not model is work not done
+> yet, and the answer is to model it.** `user_custom` (§ 9.2) is **not** that
+> slot either: it is a person's own text, copied byte-for-byte and never
+> validated. Putting an unmodelled engine keyword there hides it from every
+> check the schema exists to run.
+
+> **A parameter a stage varies is still an item.** An override *replaces an
+> item's value*; it does not remove the item, and the template carries the value
+> that holds when no stage says otherwise. *"Everything no stage varies"*
+> describes what the template is **authoritative** for — not what is in it.
 
 ---
 

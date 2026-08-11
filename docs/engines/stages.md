@@ -1004,7 +1004,7 @@ and never a filename (`run-identity.md § 2.0a`). A molbuilder-named file adds
 
 ```mermaid
 flowchart LR
-    T["<b>&lt;id&gt;.template.toml</b><br/>functional · basis · k-grid<br/>everything no stage varies"]
+    T["<b>&lt;id&gt;.template.toml</b><br/>functional · basis · k-grid<br/>every parameter, with its base value"]
     J["<b>task.json</b><br/>coarse: mesh 150, tol 0.04<br/>tight:  mesh 300, tol 0.01"]
     M["<b>this machine</b><br/>ranks · solver · GPU"]
     DC["<b>01_coarse/&lt;label&gt;_coarse.fdf</b>"]

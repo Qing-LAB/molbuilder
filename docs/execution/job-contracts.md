@@ -648,6 +648,21 @@ what limits:
   the rank count since the beginning; that block is the record a **human**
   reads, and this is the one a **tool** parses.
 
+> **BENCH-MARKS and the template are emitted from ONE source, and that is a
+> rule rather than a convenience.** Both declare `type`, `range`, `unit` and
+> `default` for the same fields — this block for the subset a tool may override,
+> [`engines/template.md`](?doc=engines/template.md) for every parameter there is
+> — and both are generated from the field's own metadata
+> ([`web/form-schema.md`](?doc=web/form-schema.md) § 1a). **Two hand-maintained
+> copies of `default=` would drift, and the drift would be silent**: a tool would
+> validate an override against a bound the deck no longer honours.
+>
+> **Their `type` vocabularies are not the same size, and that is deliberate.**
+> This block's is `{int, float, str, pow2, enum}` — enough for the numeric knobs a
+> benchmark harness turns. A template must describe *every* parameter, so it adds
+> `bool`, `int3`, `strlist`, `intlist` and `text` (`template.md` § 5). The
+> narrower set is a subset of the wider one, never a competing definition.
+
 > **Gap:** the PySCF `.py` does not yet carry a BENCH-MARKS block. When it
 > lands, its `field` declarations get listed here.
 

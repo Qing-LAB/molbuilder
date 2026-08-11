@@ -2207,6 +2207,24 @@ on.** Units 1–5 landed 2026-08-10.
       `_anchor_token`'s three unusable anchor shapes, `_payload_for`'s block
       scanning, and `render_template`'s `deck_text` argument. The value is
       stored once, so `value=` versus payload cannot disagree.
+
+      > **The rename has four code sites, and one of them is a correctness trap**
+      > (found in the 2026-08-11 cross-boundary review, not by a failing test):
+      >
+      > | site | what it is | what happens if it is missed |
+      > |---|---|---|
+      > | **`identity.py:144`** | the *"what molbuilder wrote"* pattern list — `"{label}.fdf", "{label}_*.fdf", "{label}.fdf.template"` | **the trap.** `warm_files_present` subtracts our own files from what it finds; a template under an unlisted name is counted as **engine warm state**, so a calculation that has never run reads as *"something has run here"* and its id reads as **not editable** (`run-identity.md`) |
+      > | `cli.py:989` | writes the file (6a's writer) | nothing is written under the new name |
+      > | `siesta/stages.py:304` | the `StageBundle.template` comment | stale prose |
+      > | `task.py:13` | the module docstring's *"written once, so there is no `base` key"* | stale prose |
+      >
+      > **`identity.py` and `tests/test_run_identity_editable.py:153` must move
+      > together** — the parametrised list there pins `{ID}.fdf.template`, so the
+      > test stays **green against the old name while the live artifact carries
+      > the new one**. A guard that passes while the thing it guards is broken is
+      > the failure mode `feedback_mutation_test_the_test` exists for, and the
+      > mutation to run is: rename the artifact, do **not** touch `identity.py`,
+      > and watch `warm_files_present` report the template.
    2. **Membership becomes total and reads `kind`**, not `section`. Every
       parameter is an item; the three exclusions each carry an existing rule (a
       machine fact — floor 2 must never name one; the ladder; the structure).

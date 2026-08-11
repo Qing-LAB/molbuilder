@@ -79,7 +79,7 @@
     },
     {
       "label": "Engines",
-      "meta": "Per-engine emitter specs: SIESTA, PySCF, transport, builders, tuning",
+      "meta": "Per-engine specs and the cross-engine contracts: emitters, tuning, stages, the template",
       "children": [
         {
           "path": "engines/overview.md"

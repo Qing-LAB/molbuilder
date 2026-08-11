@@ -87,6 +87,7 @@ flowchart TB
       CP["checkpointing.md<br/>the history"]
       RI["run-identity.md<br/>the name"]
       ST["engines/stages.md<br/>a stage"]
+      TPL["engines/template.md<br/>the parameter catalogue"]
       JC["job-contracts.md<br/>the file formats"]
     end
     UIP --> SRA
@@ -96,10 +97,11 @@ flowchart TB
     WE --> PL & CP
     JS --> JC
     RAJ --> JC
-    PL --> JC & RI & CP & ST
+    PL --> JC & RI & CP & ST & TPL
     CP --> JC
     RI --> JC
-    ST --> JC
+    ST --> JC & TPL
+    TPL --> JC
 ```
 
 **Read the arrows as *"is defined in terms of"*.** `job-contracts.md` has no
