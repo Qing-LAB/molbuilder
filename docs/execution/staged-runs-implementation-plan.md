@@ -2271,9 +2271,18 @@ on.** Units 1–5 landed 2026-08-10.
       That brings `species_order`, `write_forces`, `write_coor_step` and
       `write_molwatch_log` in **without touching the form**, because `section`
       goes back to answering only *where on the form does this appear*.
-   3. **`cfg.stage` is deleted** and its five read sites in
-      `siesta/input.py` (630, 633, 640, 641, 1724) with it —
-      `engines/stages.md` § 1.1: the emitter that reads it never learns the word.
+   3. **`cfg.stage` is deleted** — `engines/stages.md` § 1.1: the emitter that
+      reads it never learns the word.
+
+      > **⚠ Deleting the field is the easy half, and doing only that renames
+      > every artifact.** `cfg.stage` carries the **artifact token** (`01_coarse`)
+      > and **three names read it** — the deck, the stdout and the molwatch log
+      > (`siesta/input.py` 633, 640, 1724). Remove the field and all three
+      > collapse to the unsuffixed form, breaking `job-contracts.md` § 6.3 and
+      > the self-check decision 21 exists for. **The token must arrive as a
+      > render argument instead**, from `identity.stage_token` via the
+      > `StageRef` `prep` already holds — a name fragment is not *the word*.
+      > § 5g's C7 note carries the mutation that proves it.
    4. **`prep` resolves and renders** — values ⊕ overrides ⊕ this machine → one
       config object → validate → the shipped emitter. Not substitution: option
       (b) above, rejected because R1 and R2 cannot hold without a config object.
@@ -2748,12 +2757,30 @@ contract is in doubt.***
 | **C4** | the description's deck template is **`<label>.template.toml`**, one TOML file (`template.md` § 4, `job-contracts.md` § 6.3) | `cli.py:989` writes `<label>.fdf.template`, the retired item-block format | **P12 u6b** |
 | **C5** | *(the same rename)* | `identity.py:144`'s `OUR_FILE_PATTERNS` lists `{label}.fdf.template` | **P12 u6b, same commit as C4** |
 | **C6** | a trial directory is **`bench-G<g>K<k>C<c>`** (`job-contracts.md` § 6.3, the cross-layer authority) | `bench/adapters.py:225` writes `point-G…`; `bench/summarize.py:30`'s `_POINT_RE` parses it back | **Track Z** |
-| **C7** | *"the emitter that reads it never learns the word"* — `cfg.stage` is deleted (`stages.md` § 1.1) | live at `siesta/input.py` 633, 640, 1724 | **P12 u6b** |
+| **C7** | *"the emitter that reads it never learns the word"* — `cfg.stage` is deleted (`stages.md` § 1.1) | live at `siesta/input.py` 633, 640, 1724 (plus the explanatory comment at 615). **⚠ It is not three stray reads — it is the ONLY channel carrying the stage token into THREE artifact names**: the deck, the stdout and the molwatch log all read `cfg.stage` to build `<label>_<NN>_<stage>`. Delete it without replacing the channel and every one of them silently collapses to the unsuffixed form, breaking `job-contracts.md § 6.3` and decision 21's self-check | **P12 u6b — see the note below** |
 | **C8** | `BlockSize` has **three** states: set · unset→proposed · **omitted entirely** (`tuning.md` § 2.11, decision 35) | `_auto_block_size` always returns a number, floored at 8, and the emitter always writes the line — the third state cannot be expressed | **P4** |
 | **C9** | describing a calculation is **`jobset describe`** (`job-system.md` § 5.1) | the verb does not exist | **P10** |
 | **C10** | *"whatever writes the template computes the fingerprint"* (`stages.md` § 6.6) | `schema_fingerprint()` exists and `validation/task.py` **reads** it; **nothing writes it** — a check with no producer either never fires or always complains | **P12 u6b, with C4** |
 | **C11** | `execution.mode` is what gates submission (`running-a-job.md` § 5.4) | `submit`'s docstring says `mode == execution.mode`, but only `bench` consults the config; `--mode` stays required | **P9** |
 | **C12** | the auto rank clamp is a **heuristic**, and `propor: IMAX = 0` depends on the **species count and radial-table size**, not the atom count (`running-a-job.md` § 3.1, corrected 2026-08-11 from the code's own 2026-05-28 empirical sweep) | `runwrap` clamps to `n_atoms`, and the post-run hint says *"too many MPI ranks for the system size"* — the right advice for the wrong reason. **Unscheduled, and deliberately so:** the clamp is cheap and usually conservative, so this is a *message and a bound* to improve, not a break to fix. `NumberOfSpecies` is already in the `.fdf`, so the input exists | **open — needs a call**, not a phase |
+
+> ### C7's replacement, since deleting the field is the easy half
+>
+> **The emitter must still be told which artifact token to use — it must simply
+> stop being told *what a stage is*.** Those are different things, and
+> `stages.md` § 1.1 only forbids the second: *"an engine config is one parameter
+> set… the emitter that reads it never learns the word."* A **name fragment**
+> passed as a render argument is not the word; a `stage` field on the config is.
+>
+> So the token comes from `identity.stage_token`, resolved by whoever is
+> rendering — `prep`, which holds the `StageRef` already (§ 9.2's landed object)
+> — and reaches `render_fdf` as an argument beside the config, the way `cell=`
+> does. **The config gains nothing and loses a field.**
+>
+> **The mutation that proves it:** render a two-stage ladder, delete the field,
+> and assert the deck is still `<label>_01_coarse.fdf` and its log
+> `<label>_01_coarse.molwatch.log`. A test that only checks the config no longer
+> has a `stage` attribute passes while every artifact has quietly been renamed.
 
 ### The order, and why this one
 
