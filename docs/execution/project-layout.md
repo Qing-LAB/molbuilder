@@ -415,17 +415,14 @@ This is the same shape one level down: a redo of a stage — `run-1` after
 **The flat case.** A plain run directory *is* a run (§ 1.4), so `bash job.run.sh`
 in it behaves exactly as it does today.
 
-**Nothing chains, and the machinery to chain is gone.** Decided 2026-08-10
-(user): `depends_on`, `dep_kind`, `Carry` and `carry_deref` are deleted, and
-`jobset` can no longer thread a scheduler dependency or carry a file between
-queued jobs. `stages_to_jobset` had already stopped emitting edges; a sweep
-never emitted any; what was left was a mechanism reachable only by hand-writing
-`job-set.json`.
+**A stage starts because a person prepped it and submitted it.** A `JobSet`
+carries no scheduler dependency and no instruction to take a file from another
+job; `jobset` cannot thread one and there is no flag that asks for it.
 
 **The reason is scientific rather than technical.** Whether stage 2 should start
 depends on what stage 1 actually produced, and that is a judgement — so no field
-in a description, and no flag at launch, is permitted to make it. **A stage
-starts because a person prepped it and submitted it.**
+in a description, and no flag at launch, is permitted to make it. (The earlier
+scheduler-chained design: `archive/2026-08-10-stage-chaining.md`.)
 
 #### `--cold`, and running a stage by hand
 
@@ -672,29 +669,9 @@ flowchart TB
 that allocation**, producing a deck sized for it. Benchmarking is the same act
 repeated — § 2.3.1a, which is why it is not a separate machine.
 
-##### Conformance, 2026-08-10
-
-| | status |
-|---|---|
-| M1 | ✅ `jobset/prep.py::resolve_target` — step 1, added 2026-08-10 |
-| M2 | ✅ as a **division of labour** — detection genuinely does not try to guess `qos`/`account`, and says why |
-| M2a | ✗ **not implemented, and this rule is what found it.** The two halves of capability are resolved in **two places that never meet**: topology and the default partition go into `environment.json` (via `environment.py`), while the `scheduler` block goes straight to `runwrap.py`, which is the *only* consumer of `get_scheduler` — it renders the `.sbatch` header from it. **Nothing compares them.** So `environment.json` can record a detected partition while the header submits to a declared one, and no surface shows the two side by side. Neither half is wrong on its own; there is no place where they are both true at once |
-| M3 | ⚠ **half.** `Environment.source` records provenance for everything it holds — but it holds only the detected half, so a declared `qos` or `account` appears in no run-directory record at all |
-| M4 | ⚠ the allocation is fixed at **produce**, on a laptop, before any machine is known. This is *"the one real migration"* (§ 1) |
-| M5 | ✅ `LaunchAgreement`, `prep.py::check_launch_matches_deck` |
-| M6 | ✅ detection needs no file |
-
-**M4 and M2a are one change; M3's half follows from M2a.** When the producer
-moves from *produce* to `prep`, the allocation moves with it — and that is the
-same call that would merge the `scheduler` block into the machine record
-instead of letting it travel separately to the header emitter.
-
-> **M2a was written as a rule and immediately failed its own conformance
-> check**, which is the point of writing rules that can be checked. The gap it
-> exposed is not a missing feature: both halves work. It is that **capability
-> is assembled twice, in two modules, and the system has no single answer to
-> *what machine is this run going to?*** — the record says one thing, the
-> submitted header can say another, and both are believed.
+Status of these rules against the code lives in
+[`roadmap.md`](?doc=roadmap.md) § 6 (R3 — contracts hold the rule, the roadmap
+holds what is left to do).
 
 #### 2.3.1a `prep` is the framework; benchmarking is one thing you prep
 

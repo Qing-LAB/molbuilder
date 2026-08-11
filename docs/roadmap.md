@@ -542,7 +542,9 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   runwrap's SIESTA reach-ins (W1), `jobset/runstatus.py`'s warm-file
   table → producer-supplied inventory (W2), `runtime_config`'s untyped
   scheduler dicts + mixed concerns (W3), transport's framework bypass
-  (W4, gated on multi-parent `depends_on` — the § 1 Phase 3 diamond),
+  (W4, gated on the § 1 Phase 3 diamond — a branching workflow, which has no
+  representation today and would come back as something a person asks for at
+  launch, never as a field a description stores),
   `bundle_writer`/`script_emit` re-filing (W5).
 - **Boundary-condition contract rollout per engine** —
   `engines/overview.md § 5` defines the four obligations (declare consumed
@@ -552,6 +554,27 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
 - **`structure_to_dict` disposition** — `model/structure.md` calls it the
   retained web composer; `backend-architecture.md § 2` calls it a vestigial
   wrapper to delete. One decision, then align both docs.
+- **Capability and allocation reach `prep`** — `project-layout.md § 2.3.1b`
+  defines the two and rules M1–M6. Three are held today (M1 the machine is
+  resolved on the target; M5 `submit` only checks the deck and the launch
+  agree; M6 a workstation needs no config file). Three are not, and they are
+  one change:
+  - **M2a — capability is assembled twice and never reconciled.** Topology and
+    the detected default partition go into `environment.json`; the
+    `molbuilder.json` `scheduler` block goes straight to the `.sbatch` header
+    emitter. Nothing compares them, so the record can name one partition while
+    the header submits to another.
+  - **M3 — only the detected half is recorded.** A declared `qos` or `account`
+    appears in no run-directory record.
+  - **M4 — the allocation is still fixed at *produce*,** on a laptop, before
+    any machine is known.
+
+  All three close with the same move: the producer runs at `prep` rather than
+  at produce, and the call that resolves the machine merges the config block
+  into the machine record. That move is `project-layout.md § 1`'s *"one real
+  migration"*; it also closes `LaunchSpec` and unblocks the `bench` fold-in.
+  **Open, and the user's:** how a person states an allocation, and whether a
+  per-project default belongs beside the `scheduler` block.
 
 ---
 

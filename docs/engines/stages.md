@@ -1076,11 +1076,9 @@ meaningless to a Broyden stage"* (`job-system.md § 4.1`). The stage declares
 that as its `warm` list; the comparison is made at `prep`, against the attempt
 you named.
 
-> **The scheduling machinery is not merely outside this contract — it is
-> gone.** `depends_on`, `dep_kind`, `Carry` and `carry_deref` were deleted on
-> 2026-08-10. This paragraph used to add that they *"remain the right tool for a
-> benchmark sweep"*, which was wrong: a sweep's points are independent and
-> `sweep_to_jobset` never emitted an edge.
+> **Nothing schedules a stage after another**, here or anywhere: a sweep's
+> points are independent, and a ladder's stages are started one at a time by a
+> person (`job-system.md` § 2, decision 6).
 
 **And `restart` gets sharper.** In one directory, *continue* could only mean
 "whatever ran here last" — order-of-execution dependent, and wrong if you re-ran

@@ -46,7 +46,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .materialize import job_dir_names
+# NOTE: `job_dir_names` is NOT imported here.  It is the naming
+# authority (materialize.py) and very much alive -- six callers -- but
+# the one place THIS module needs it, `_launch_dir`, imports it locally
+# alongside three siblings that are not needed anywhere else.  A second,
+# top-level import shadowed by that one sat here until 2026-08-10 doing
+# nothing.
 from .model import JobSet, Resources
 from .prep import check_launch_matches_deck
 

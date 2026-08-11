@@ -1295,7 +1295,7 @@ them; within a layer, one concept has exactly one name.
 | Routing domain | `routing[].name` / `execution.domain` | `domain` (in `jobset.Resources`) | `--domain` → `-p`/`-q` |
 | GPU request | `enable_gpu` + `diag_algorithm` | `gres` → `--gres` | derived from `.fdf` + GPU type |
 | Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
-| ~~Non-convergence policy~~ | ~~`on_nonconvergence`~~ | ~~`dep_kind`~~ | **retired 2026-08-10** — `stages_to_jobset` no longer performs this translation. `engines/stages.md § 3`: *"its entire effect is the edge between one attempt and the next"*, and a staged ladder emits no edge, so the policy had no effect left. It was never reachable by a user either — not a `task.json` stage field. *(PySCF's own `on_nonconvergence` is untouched: its ladder runs in one process, so its policy becomes real control flow rather than a scheduler edge.)* |
+| Non-convergence policy (**PySCF only**) | `on_nonconvergence` | *(no scheduler name)* | the emitted `.py`'s own control flow — PySCF's ladder runs as a loop in one process, so the policy is a branch inside the script. SIESTA's stages are separate jobs a person starts, so it has no equivalent; `engines/stages.md § 3` keeps the field out of the shared stage schema for that reason |
 | Warm-retry budget | `continue_retries` (1–5) | `continue_retries` — **not a SLURM flag** | `stages_to_jobset` |
 
 > **One row in this table becomes no scheduler flag at all, and it is not an
@@ -1327,11 +1327,10 @@ The `jobset.Resources` dataclass holds exactly **seven** fields — `domain`,
 `qos` are **not** `Resources` fields; they are config `directives.*` resolved
 from `domain` by the submit engine.
 
-> **`dep_kind` used to be named here as *"a per-job edge field, not a
-> resource"*.** It is deleted (2026-08-10) along with `depends_on`, `Carry` and
-> `carry_deref` — **a `Job` has no edge field of any kind**. What a job declares
-> instead is `warm`: which files it would take from a run it is continued from,
-> and the condition on each. Which run that is, is named by a person at `prep`.
+**Everything else a `Job` carries is `warm` and `traits`** — which files it
+would take from a run it is continued from, and the values a condition on one is
+compared against. Neither is a resource, and neither names another job: which
+run this one continues is named by a person at `prep`.
 
 ### 6.3 Identifier & path conventions — every name in the system
 
@@ -1448,7 +1447,6 @@ ref may carry either.
 | What | Form |
 |---|---|
 | **SLURM job name** | a directly-submitted `.sbatch` carries `-J <script-stem>`; via the submit engine it is **overridden** per job on the command line — a stage is its bare stage name, a trial is `job-gpu-G<g>K<k>C<c>` / `job-cpu` |
-| ~~**Dependency kind**~~ | **deleted 2026-08-10.** `afterok` / `afterany` were the two values of `Job.dep_kind`; nothing in molbuilder emits a `--dependency` flag now, so the vocabulary has no referent |
 
 #### Persisted-file schema strings
 

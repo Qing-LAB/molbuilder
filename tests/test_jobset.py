@@ -39,8 +39,8 @@ def _ladder() -> JobSet:
             Job(name="s2", script="demo_s2.fdf",
                 resources=Resources(domain="public", exclusive=True),
                 # WHAT it would take from a run it is continued from -- never
-                # WHICH job.  The fixture used to carry `depends_on="s1"` and
-                # two `Carry`s; all of it was deleted 2026-08-10 (user).
+                # WHICH job -- that is named by a person at prep, with
+                # `--from` (project-layout.md 1.6).
                 warm=[WarmFile("demo.XV"), WarmFile("demo.DM")]),
         ],
     )
@@ -73,53 +73,24 @@ def test_validate_catches_duplicate_names():
     assert any("duplicate" in e for e in js.validate())
 
 
-def test_a_job_cannot_name_another_job_at_all():
-    """The strongest form of *stages do not chain*: there is no field for it.
+def test_a_job_declares_exactly_these_five_things():
+    """A `Job` is a name, a script, resources, what it would warm-start from,
+    and the traits a warm-start condition is compared against.
 
-    Two validation tests stood here -- a forward `depends_on` is refused, a bad
-    `dep_kind` is refused -- and both were retired on 2026-08-10 when the
-    fields were deleted (user decision 30).  **A rule enforced by a validator
-    is weaker than a rule enforced by the schema**: the validator refuses a
-    malformed edge, the schema refuses the concept.  So this asserts the
-    concept is gone rather than that a bad instance of it is caught.
-
-    Checked on the dataclass fields, not on an instance, because
-    `job.depends_on = "s1"` on a plain dataclass would simply create the
-    attribute and prove nothing.
+    Asserted as an EQUALITY on the field set, in both the dataclass and the
+    wire form.  An equality is the whole rule in one line: any field added
+    without a decision fails, including one that would let a job name another
+    job -- and the test never has to spell out what such a field would be
+    called, so a retired vocabulary stays out of the suite.
     """
     import dataclasses
-    names = {f.name for f in dataclasses.fields(Job)}
-    gone = {"depends_on", "dep_kind", "carry"} & names
-    assert not gone, (
-        f"Job still declares {sorted(gone)} -- a job that can name another job "
-        "can express a chain, which is the thing decision 30 removed")
-    assert names == {"name", "script", "resources", "warm", "traits"}, names
-
-    # ...and the wire form carries no edge either, so a hand-written
-    # job-set.json cannot smuggle one back in.
-    d = _ladder().to_dict()["jobs"][1]
-    assert set(d) == {"name", "script", "resources", "warm", "traits"}, d
+    assert {f.name for f in dataclasses.fields(Job)} == {
+        "name", "script", "resources", "warm", "traits"}
+    assert set(_ladder().to_dict()["jobs"][1]) == {
+        "name", "script", "resources", "warm", "traits"}
 
 
-def test_an_edge_in_a_job_set_json_is_ignored_not_honoured():
-    """An OLD job-set.json still parses, and its edges do not come back.
 
-    This is the case a reader will actually hit: a bundle produced before
-    2026-08-10 has `depends_on` / `dep_kind` / `carry` keys in it.
-    `Job.from_dict` reads only the fields it knows, so the file loads and the
-    edge is simply not there -- which is the right outcome for a pre-1.0
-    deletion, and is worth pinning so nobody "helpfully" restores the keys.
-    """
-    old = {"schema": SCHEMA, "name": "demo", "engine": "siesta",
-           "kind": "ladder", "shared": [],
-           "jobs": [{"name": "s1", "script": "a.fdf"},
-                    {"name": "s2", "script": "b.fdf",
-                     "depends_on": "s1", "dep_kind": "afterok",
-                     "carry": [{"pattern": "demo.XV", "from_job": "s1"}]}]}
-    js = JobSet.from_dict(old)
-    assert js.validate() == []
-    assert not hasattr(js.jobs[1], "depends_on")
-    assert "depends_on" not in js.to_dict()["jobs"][1]
 
 
 def test_validate_catches_empty_and_bad_kind():
@@ -314,11 +285,8 @@ def test_stages_to_jobset_default_ladder():
     assert [j.name for j in js.jobs] == ["coarse", "medium"]
     assert js.jobs[0].script == "siesta_01_coarse.fdf"
     assert js.jobs[1].script == "siesta_02_medium.fdf"
-    # NO edge of any kind: stages do not chain, so nothing here says the
-    # scheduler should start the next one (P7 unit 2; the fields themselves
-    # were deleted 2026-08-10 -- see test_a_job_cannot_name_another_job_at_all).
-    assert not any(hasattr(j, "depends_on") or hasattr(j, "carry")
-                   for j in js.jobs)
+    # What a job carries is pinned once, as an equality, by
+    # test_a_job_declares_exactly_these_five_things.
     # What medium WOULD take from a run it is pointed at: .XV and .DM
     # unconditionally, .CG only if the source agrees on the optimizer -- which
     # coarse (CG) does not, medium being Broyden.  The condition travels; the
@@ -388,8 +356,7 @@ def test_a_staged_ladder_declares_no_edge_of_any_kind():
 
     js = stages_to_jobset(SiestaConfig(), default_siesta_stages("vib-quality"))
     assert len(js.jobs) == 3
-    for j in js.jobs:
-        assert not hasattr(j, "depends_on") and not hasattr(j, "carry")
+    assert all(j.script.endswith(".fdf") for j in js.jobs)
 
 
 def test_stages_to_jobset_resources_injection():
@@ -661,31 +628,11 @@ def test_direct_mode_is_untouched_because_it_is_not_submission(tmp_path,
     assert [r.status for r in res] == ["ran", "ran"]
 
 
-#  RETIRED 2026-08-10 with `--chain` itself (user decision 30).  Four tests
-#  stood here and every one of them took `chain=True`:
-#
-#    test_a_hierarchical_ladder_refuses_to_chain_in_either_mode
-#    test_a_chained_ladder_stops_at_the_first_failure
-#    test_a_flat_ladder_still_chains_locally
-#    test_a_flat_ladder_chained_at_a_scheduler_is_still_refused
-#
-#  They are DELETED rather than adapted, because their subject is gone: three
-#  described what a chain does and the fourth described when a chain is
-#  refused, and there is no chain to do or refuse anything.  Adapting them
-#  would have produced four tests of `--chain`-shaped nothing.
-#
-#  Two of them were load-bearing, and where their intent survives it moved:
-#
-#    * the halt-on-failure one caught a real regression the day it was written
-#      -- a chain whose first stage died computed the next two from it and
-#      reported success.  Its intent is now structural: a ladder cannot reach
-#      `_run_direct` with more than one job (`_resolve_stage` refuses), so
-#      there is no second stage to wrongly continue.  Pinned by
-#      `test_a_ladder_refuses_to_act_on_all_of_itself` below.
-#    * the scheduler refusal is still live and still tested, as
-#      `test_a_scheduler_is_handed_one_job_at_a_time` -- that rule survived the
-#      deletion untouched, because it is about the CHANNEL, not the chain.
-
+#  A ladder is submitted one stage at a time, so the tests below cover one
+#  launch each.  The scheduler rule that survives -- one job per invocation --
+#  is `test_a_scheduler_is_never_handed_more_than_one_job`; the halt-on-failure
+#  case is structural, see `test_a_ladder_refuses_to_act_on_all_of_itself`.
+#  The earlier scheduler-chained design: docs/archive/2026-08-10-stage-chaining.md
 
 def test_a_failure_skips_nothing_because_nothing_depends_on_anything(tmp_path,
                                                                     monkeypatch):
@@ -816,28 +763,15 @@ def test_cli_submit_dry_run_lists_commands(tmp_path):
     assert "-J" in r.output and "G1K1C4" in r.output
 
 
-def test_the_cli_has_no_chain_flag_at_all(tmp_path):
-    """Not "refuses `--chain` here" -- **does not accept the word**.
+def test_submit_accepts_exactly_these_options(tmp_path):
+    """`jobset submit` takes a kind, a stage, and four options -- no more.
 
-    This test used to check that `--chain` on a hierarchical bundle was
-    refused, which was the right guard while flat could still be chained.
-    Decision 30 removed the flag from both shapes and both modes, so the
-    guard that replaces it is stronger and simpler: click itself rejects an
-    unknown option, and no bundle, shape or mode can make it appear.
-
-    Kept at the CLI rather than the library because this is the surface a
-    person types, and a flag quietly still parsed -- ignored, or worse,
-    honoured -- would be invisible to every library-level test.
+    An equality, and at the CLI because that is the surface a person types: an
+    option added without a decision fails here whatever it is called.
     """
-    _describe(tmp_path, "hierarchical", names=("coarse", "tight"))
-    _token_ladder("JOB_01_coarse.fdf",
-                  "JOB_02_tight.fdf").write(tmp_path / "job-set.json")
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "run", "coarse", "--bundle",
-                            str(tmp_path), "--mode", "direct", "--chain",
-                            "--dry-run"])
-    assert r.exit_code != 0
-    assert "no such option" in r.output.lower(), r.output
+    from molbuilder.jobset._cli import submit_cmd
+    assert {q.name for q in submit_cmd.params} == {
+        "kind", "stage", "bundle", "mode", "domain", "dry_run"}
 
 
 def test_cli_submit_of_a_whole_sweep_refuses_and_says_which(tmp_path):
@@ -942,34 +876,29 @@ def test_status_finished_with_real_siesta_out(tmp_path):
 #  carry-forward BEHAVIOR (the §4 isolation guarantee, end-result)       #
 # --------------------------------------------------------------------- #
 
-def test_no_generated_wrapper_localizes_a_carried_file(tmp_path):
-    """`carry_deref` is gone, and no wrapper emits its block any more.
+def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
+    """The emitted wrapper's `# --- ... ---` sections, as a set.
 
-    Two tests stood here: one dereferenced a real symlink and checked the
-    producer's file survived, one checked the block appeared only in the
-    consumer's wrapper.  Both tested a **mechanism that existed to make
-    dangling carry symlinks safe** -- and with `Carry` deleted (2026-08-10)
-    nothing lays a dangling symlink, so nothing needs localizing.
-
-    Replaced by a guard rather than deleted outright, because the block was
-    generated bash: a subtraction from a template is exactly the kind that
-    leaves a fragment behind, and no unit test of the Python would see it.
-    Checked on the EMITTED TEXT of both engines' wrappers.
+    `running-a-job.md` § 2.2a: the wrapper makes the environment right and
+    execs; everything else belongs to Python on the host.  This pins the blocks
+    that rule leaves, so a block added to the GENERATED BASH -- which no unit
+    test of the Python would see -- fails here.
     """
+    import re as _re
     from molbuilder.runwrap import write_run_wrapper
-    for engine, script in (("siesta", "JOB.fdf"), ("pyscf", "JOB.py")):
-        d = tmp_path / engine
-        d.mkdir()
-        (d / script).write_text("x")
-        txt = write_run_wrapper(d / script, env="e").read_text()
-        assert "Carry-forward" not in txt, engine
-        assert "carry: localized" not in txt, engine
-        assert "cp --remove-destination" not in txt, engine
-        # NOT asserted: `readlink -f`.  The wrapper uses it legitimately to
-        # resolve its own path for re-exec, so forbidding it would be a guard
-        # that fails for a reason unrelated to what it claims to check.  The
-        # first draft of this test did exactly that and failed on a clean
-        # tree -- which is the test working, one step before it was right.
+    (tmp_path / "JOB.fdf").write_text("x")
+    txt = write_run_wrapper(tmp_path / "JOB.fdf", env="e").read_text()
+    blocks = {h.split("(")[0].strip()
+              for h in _re.findall(r"^# --- (.+?) -*$", txt, _re.M)}
+    assert blocks == {
+        "Baked preamble", "Activation", "Continuation flags",
+        "SIESTA-specific argument parsing", "Run index resolution",
+        "Cold-restart: move engine warm-start files aside",
+        "Per-run log file", "Runtime status banner",
+        "Probe SIESTA build at runtime",
+        "Record resolved launch command + placement",
+        "SCF per-iteration timing instrument", "Launch SIESTA + capture exit",
+    }, sorted(blocks)
 
 
 def test_prep_writes_stage_plan_md(tmp_path):
@@ -1336,13 +1265,10 @@ def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
     a minute."*
 
     **The refusal now has no escape hatch**, and that is the change of
-    2026-08-10: it read *"...without `--chain`"* and offered the flag in its
-    own message.  The flag is gone, so the refusal is the end of the road, and
-    the message must not advertise a way round it that no longer exists.
-
-    This also carries the intent of the retired halt-on-failure test: because a
-    ladder can never reach `_run_direct` with more than one job, there is no
-    second stage that could wrongly continue from a failed first.
+    **The refusal is the end of the road**, so its message offers only the
+    one-stage form.  It is also why a ladder can never reach `_run_direct` with
+    more than one job, and therefore why no second stage can continue from a
+    failed first.
     """
     _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf").write(
         tmp_path / "job-set.json")
@@ -1353,11 +1279,12 @@ def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
     assert r.exit_code != 0
     assert "acts on ONE stage" in r.output
     assert "01_coarse, 03_tight" in r.output   # ordinals, at the moment you choose
-    assert "--chain" not in r.output, (
-        "the refusal offers a flag that was deleted -- a reader who follows "
-        "the advice gets `no such option`")
-    # There is no second invocation to make, which is the point: no phrasing
-    # of this command runs both stages.
+    # Every line of advice it prints must be a command that works -- the
+    # option set is pinned by test_submit_accepts_exactly_these_options.
+    for line in r.output.splitlines():
+        for word in re.findall(r"--[a-z-]+", line):
+            assert word in {"--bundle", "--mode", "--domain", "--dry-run"}, (
+                f"the refusal advertises {word}, which submit does not accept")
 
 
 def test_what_a_run_continues_from_is_copied_never_linked(tmp_path):
@@ -1529,7 +1456,7 @@ def test_a_clean_stage_refuses_from_instead_of_copying_nothing(tmp_path):
 
 
 def test_the_declaration_is_now_the_only_rendering_of_the_rule():
-    """This asserted that the derived ``Carry`` list and ``warm_carry`` agreed
+    """The warm declaration is the one rendering of the warm-start rule.
     -- `staged-runs-architecture.md` 12c's *"two lists that agree today and
     nothing keeps them agreeing"*, held in step by derivation.
 
@@ -1539,8 +1466,7 @@ def test_the_declaration_is_now_the_only_rendering_of_the_rule():
     reintroduces it as a convenience.
     """
     js = _shipped_ladder()
-    assert not any(hasattr(j, "carry") for j in js.jobs)
-    assert all(j.warm for j in js.jobs[1:])      # ...and the rule still travels
+    assert all(j.warm for j in js.jobs[1:])      # the rule travels as `warm`
 
 
 def test_validate_refuses_a_condition_the_job_could_never_meet():

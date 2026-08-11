@@ -133,27 +133,13 @@ needs the activated environment. It is Python's.
 **The test, when adding to a wrapper:** *does this need the activated shell?* If
 it computes, decides, or arranges files, the answer is no and it belongs upstream.
 
-> **One block looked like an exception, and it is now deleted.**
-> `runwrap.py`'s `carry_deref` replaced an inherited restart-file symlink with a
-> real local copy at run start. Its stated reason was *"`jobset` can submit a
-> whole chain at once, so the producer has not run when the links are laid"*.
-> **Both halves of that became false**: a scheduler is handed one job per
-> invocation ([`job-system.md`](?doc=execution/job-system.md) § 5.3), and no
-> producer emitted a `Carry` at all — the staged ladder stopped (P7 unit 2) and
-> a sweep never did, its points being independent.
->
-> **Retired 2026-08-10 (user).** `Carry`, `carry_deref`, `depends_on` and
-> `dep_kind` are deleted. The sentence that had kept them — `job-system.md`
-> § 2's *"a benchmark sweep and an explicitly-chained workflow both still want
-> them"* — was wrong on the sweep and named nobody on the workflow, so what
-> remained was a validated, tested mechanism reachable only by hand-writing
-> `job-set.json`. The decision is scientific: *whether a later stage should
-> pick up an earlier one cannot be settled without reviewing the earlier one's
-> result*, so no data structure is allowed to settle it.
->
-> **What the staged framework does instead** is unchanged and is the point:
-> what a stage continues from is a real file copied in at `prep`, from the run
-> you name ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6).
+> **The rule holds with no exception**, and the reason it can is that nothing
+> arrives at a run directory needing to be resolved. What a stage continues
+> from is a **real file, copied in at `prep`** from the run you name
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6) — present and
+> local before the wrapper starts. There is nothing for bash to dereference,
+> localize or wait for. (A wrapper block that did such work for an earlier
+> design: `archive/2026-08-10-stage-chaining.md`.)
 
 **This is forced, not stylistic.** Two facts make the compute node the wrong
 place for logic:

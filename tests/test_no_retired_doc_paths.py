@@ -24,6 +24,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 
 SCAN_DIRS = ("molbuilder", "tests", "scripts")
@@ -85,8 +87,13 @@ def test_no_active_source_cites_a_retired_doc_path():
     assert not hits, (
         "active sources cite RETIRED doc paths — repoint each to its "
         "owner in the domain tree (the migration ledger "
-        "docs/archive/MIGRATION.md maps old -> new), or cite "
-        "docs/archive/old_docs/... explicitly for history:\n  "
+        "docs/archive/MIGRATION.md maps old -> new).\n"
+        "  NOT a remedy: rewriting the citation as docs/archive/old_docs/... "
+        "That form was recommended here until 2026-08-10 and it is the wrong "
+        "answer for CODE — docs/README.md calls the archive 'Not a source of "
+        "truth', so a docstring that specifies behaviour by citing it is "
+        "describing live code with a document nobody maintains.  Cite the "
+        "archive only to narrate history, never to specify.\n  "
         + "\n  ".join(sorted(hits)))
 
 
@@ -108,3 +115,96 @@ def test_every_cited_doc_path_exists():
         "active sources cite docs paths that do not exist — a doc "
         "moved without its references (update them in the same "
         "commit):\n  " + "\n  ".join(sorted(missing)))
+
+
+# ===================================================================== #
+#  A bare filename is a citation too — and it was the blind spot        #
+# ===================================================================== #
+#
+#  The two tests above catch a retired PATH (`docs/protocols/x.md`) and a
+#  path that does not resolve.  A docstring saying `slurm-integration.md
+#  § 4.3` is neither: no `docs/` prefix, so no pattern matches, and it reads
+#  exactly like a citation of a live contract.
+#
+#  That is not hypothetical.  The 2026-07-29 sweep repointed ~319 PATH
+#  references and this guard has been green ever since, while ~230 bare
+#  citations of 29 archived-only documents sat untouched in the package.
+#  Found 2026-08-10 while chasing one redundant import.
+
+
+def _archived_only_basenames() -> set[str]:
+    """Doc basenames that exist ONLY under ``docs/archive/``.
+
+    A basename with a live twin (``design.md``, ``structure-periodicity.md``,
+    ``README.md``) is excluded: a bare citation of one of those resolves to
+    the live document, which is correct and common.  What is left can only
+    mean the archived file.
+    """
+    docs = REPO / "docs"
+    archived = {p.name for p in (docs / "archive").rglob("*.md")}
+    live = {p.name for p in docs.rglob("*.md")
+            if "archive" not in p.relative_to(docs).parts}
+    return archived - live
+
+
+_ARCHIVED_ONLY = _archived_only_basenames()
+_BARE_ARCHIVED = re.compile(
+    r"(?<![\w/.-])(" + "|".join(re.escape(n) for n in sorted(_ARCHIVED_ONLY))
+    + r")") if _ARCHIVED_ONLY else None
+
+# These narrate the archive rather than specifying against it.
+_NARRATION_OK = {
+    "tests/test_docs_structure.py",
+    "tests/test_bench_generate.py",
+    "tests/test_no_retired_doc_paths.py",
+}
+
+
+def measure_bare_archived_citations() -> list[str]:
+    """``file:line: basename`` for every bare citation of an archived-only doc."""
+    if _BARE_ARCHIVED is None:
+        return []
+    hits = []
+    for p in _scan_files():
+        rel = p.relative_to(REPO).as_posix()
+        if rel in _NARRATION_OK or rel in ALLOWLIST:
+            continue
+        text = _read(p)
+        if text is None:
+            continue
+        for m in _BARE_ARCHIVED.finditer(text):
+            # The explicit `docs/archive/old_docs/...` form is excluded by the
+            # lookbehind; this is the bare one.
+            line = text.count("\n", 0, m.start()) + 1
+            hits.append(f"{rel}:{line}: {m.group(1)}")
+    return hits
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "OPEN — decision 32 in docs/execution/staged-runs-implementation-plan.md "
+    "§ 8.  324 bare citations of 32 archived-only documents; the biggest are "
+    "slurm-integration.md (51), parse-module.md (46) and job-execution.md "
+    "(41).  Each document needs its own call: REPOINT where the successor "
+    "really carries the content, or UN-ARCHIVE where the narrative merged and "
+    "the specification did not.  Run `python -m tests.test_no_retired_doc_"
+    "paths` for the current count.  Strict, so this fails loudly the moment "
+    "the last one is resolved."))
+def test_no_active_source_cites_an_archived_doc_as_authority():
+    hits = measure_bare_archived_citations()
+    assert not hits, (
+        f"{len(hits)} bare citations of archived-only documents.  "
+        "docs/README.md: the archive is 'Not a source of truth', so code "
+        "specified by one is code with no maintained contract:\n  "
+        + "\n  ".join(sorted(hits)[:40])
+        + (f"\n  ... and {len(hits) - 40} more" if len(hits) > 40 else ""))
+
+
+if __name__ == "__main__":                      # a number, on demand
+    hits = measure_bare_archived_citations()
+    by_doc: dict[str, int] = {}
+    for h in hits:
+        by_doc[h.rsplit(": ", 1)[1]] = by_doc.get(h.rsplit(": ", 1)[1], 0) + 1
+    print(f"bare citations of archived-only docs: {len(hits)} "
+          f"across {len(by_doc)} documents")
+    for name, n in sorted(by_doc.items(), key=lambda kv: -kv[1]):
+        print(f"  {n:4d}  {name}")

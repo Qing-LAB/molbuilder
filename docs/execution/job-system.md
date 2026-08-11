@@ -91,57 +91,24 @@ which copies coarse's relaxed coordinates in — and submit that. You check
 > drive any of it yet**; it still generates and runs one task at a time. Moving
 > the job system into the browser is the target migration, laid out in § 8.
 
-> ### ⚠ Automatic stage-to-stage chaining was retired on 2026-08-10
+> ### How a ladder advances
 >
-> **Kept as a record of what changed and why**, because `depends_on` and `Carry`
-> appear in older notes and in this document's own history.
+> **You prepare one stage, look at what it produced, and prepare the next.**
+> Nothing starts a stage but a person — there is no flag and no field that
+> makes one follow another (§ 2, decision 6).
 >
-> A ladder used to be a **chain**: stage 2 was a separate job that `depends_on`
-> stage 1, the scheduler started it automatically when stage 1 succeeded, and a
-> `Carry` edge handed stage 1's relaxed geometry across. **None of that exists
-> now.** The reason is not technical — it is that *a stage is a long job*:
+> What a stage continues from is a **real file, copied in at `prep`**, from a
+> run **you name**. By then it has finished and you have read it, so there is
+> nothing to resolve later and nothing pointing at a file that does not exist.
 >
-> > A chain that continues by itself can spend a week computing from a geometry
-> > you would have rejected in a minute.
+> | | |
+> |---|---|
+> | Who starts stage 2 | **you**, after looking |
+> | How stage 1's geometry arrives | a **file copy**, made at prep from the attempt you name |
+> | If stage 1 converged to something wrong | you never started stage 2 |
 >
-> So each stage becomes **its own prep and its own submission**, done after you
-> have looked at the previous one. Whatever a run continues from is a **real file
-> copied in at prep time**, and *which* run it comes from is something **you
-> say** — by then it has already finished, so there is nothing to resolve later
-> and nothing to point at that does not yet exist.
->
-> | | Ladder as a chain (until 2026-08-10) | Staged calculation (now) |
-> |---|---|---|
-> | Who starts stage 2 | the scheduler, automatically | **you**, after looking |
-> | How stage 1's geometry arrives | a `Carry` edge resolved at run time | a **file copy**, made at prep |
-> | `Job.depends_on` between stages | set | **the field is deleted** |
-> | If stage 1 converged to something wrong | stage 2 is already running | you never started it |
->
-> **The mechanism is deleted — decided 2026-08-10 (user).** `depends_on`,
-> `dep_kind`, `Carry` and `carry_deref` are removed from the system, not merely
-> left unused. **Nothing in molbuilder starts a stage but a person.**
->
-> > *"The chaining of operation should be manual for now… it is unpredictable
-> > between stages at this point. It is really difficult to justify that a later
-> > stage should automatically pick up the earlier stage, because without
-> > reviewing the result carefully and validating, we can't make that decision
-> > easily. Manual, explicit and controlled sequential execution is the right
-> > way to go."*
->
-> **The sentence that used to keep it was wrong.** This paragraph read *"a
-> benchmark sweep and an explicitly-chained workflow both still want them"*.
-> The sweep half is false — a sweep's points are independent and
-> `sweep_to_jobset` has never emitted an edge — and the workflow half named
-> nobody. Once `stages_to_jobset` stopped emitting edges (P7 unit 2), **no
-> producer in molbuilder built a chain at all**, so the machinery was validated,
-> tested, and reachable only by hand-writing `job-set.json`.
->
-> **Landed 2026-08-10.** Stage directories are `<seq>_<name>` rather than
-> `point-<name>`; `prep run <stage>` opens a `run-<n>` attempt and **copies** in
-> what you name with `--from`; `submit run <stage>` launches one stage inside
-> that attempt and writes `run.json`. The contract is
-> [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6, and
-> the commands are § 5.3 below.
+> The earlier scheduler-chained design is recorded in
+> `archive/2026-08-10-stage-chaining.md`.
 
 ---
 
@@ -183,25 +150,21 @@ auto-resumes a failed or interrupted run. `status` tells you which stage is
 incomplete and what restart files exist; **you** choose to re-submit. This keeps
 a surprising re-run from quietly overwriting hours of results.
 
-**6. A `JobSet` has no edges. The order is a person's, not the data's.**
-Decided 2026-08-10 (user). Every job in a `JobSet` is independent as far as the
-framework is concerned; **nothing in a `JobSet` can say "start this one after
-that one."** A *ladder* and a *sweep* differ in how their directories are laid
-out and named, not in whether one job waits for another — neither waits.
+**6. The order is a person's, not the data's.** Every job in a `JobSet` is
+independent as far as the framework is concerned: **nothing in a `JobSet` says
+"start this one after that one."** A *ladder* and a *sweep* differ in how their
+directories are named and whether a person is meant to take them in order —
+neither waits for the other.
 
-**Why the graph was removed rather than kept simple.** The old rule was *"a job
-has one parent (or none)"*, which made a ladder a straight chain the scheduler
-could run unattended. The reason that is wrong is scientific, not technical:
-**whether stage 2 should start at all is a judgement about stage 1's result**,
-and nothing in the data can make it. A chain that continues by itself can spend
-a week refining a geometry you would have rejected in a minute. So the ordering
-lives where the judgement lives — with the person, one `prep` and one `submit`
-at a time.
+**Why the ordering lives with the person.** Whether stage 2 should start is a
+judgement about stage 1's result, and nothing in the data can make it. A stage
+is a long job; one that continues by itself can spend a week refining a geometry
+you would have rejected in a minute. So the order lives where the judgement
+lives — one `prep` and one `submit` at a time.
 
 **What this costs, stated plainly.** A branching graph (a "diamond", for a
-two-electrode device) is not merely deferred now; it has no representation at
-all. If one is ever needed, it comes back as an explicit thing a person asks
-for at launch — never as a field a description stores.
+two-electrode device) has no representation. If one is ever needed it comes back
+as something a person asks for at launch, never as a field a description stores.
 
 ---
 
@@ -282,19 +245,15 @@ Walk through it with the *why* for each piece:
   concrete filename; `requires_same` names a key both runs must agree on for the
   file to mean anything, looked up in `Job.traits`.
 
-  > **This is the same information as the old `Carry`, asked the other way
-  > round, and the difference is the whole design.** `Carry` said *take `bdt.XV`
-  > from job `coarse`* — answerable only if you already know that stage 2
-  > follows stage 1, which is exactly the decision the framework is no longer
-  > allowed to make. `warm` says *if I am continued from something, these are
-  > the files I would take, and here is when each is safe*. **Which** run it is
-  > continued from is named by a person at `prep`, with `--from`, after they
-  > have looked at it.
+  > **It says WHAT, never FROM WHOM**, and that is the whole design. Which
+  > run this job is continued from is named by a person at `prep`, with
+  > `--from`, after they have looked at it — so the producer, which runs long
+  > before anyone has looked at anything, is not asked to know.
   >
   > `.CG` is why `requires_same` exists: a conjugate-gradient history is
   > meaningless to a Broyden stage, so carrying it blindly corrupts the restart.
-  > SIESTA puts its optimizer in `traits`; the framework compares two strings and
-  > knows nothing else about either engine.
+  > SIESTA puts its optimizer in `traits`; the framework compares two strings
+  > and knows nothing else about either engine.
 
 - **`Job.traits`** are opaque per-job strings a `requires_same` is compared
   against. The framework never interprets them.
@@ -436,18 +395,12 @@ run coarse, looked at it, and set tight up.
 > ```
 
 **Nothing dangles, because nothing points at a file that has not been written.**
-Until 2026-08-10 the tight stage's folder held two symlinks aimed into the
-coarse stage's folder, laid at `prep` before coarse had run. They pointed at
-nothing until it did. Keeping them safe took two more mechanisms — a scheduler
-dependency so the tight stage could not start early, and a run-time step
-(`carry_deref`) that replaced each link with a real copy so SIESTA, opening
-`bdt_au.DM` for writing, would not follow the link and overwrite the coarse
-stage's density matrix.
+Every path in that tree either belongs to the job or is a link to the shared
+package one level up. **No job's directory reaches into another's.**
 
-**All three are gone, and they went together.** The copy is now made by
-`prep run tight --from 01_coarse/run-0`, from an attempt that has already
-finished and that you have already looked at. There is no window in which a
-link is dangling, so nothing has to guard it:
+What a stage continues from is copied by `prep run tight --from
+01_coarse/run-0`, out of an attempt that has already finished and that you have
+already looked at:
 
 ```mermaid
 sequenceDiagram
@@ -464,9 +417,8 @@ sequenceDiagram
     U->>S: submit run tight
 ```
 
-**Three mechanisms replaced by one copy**, and the copy is the one a person can
-check. That is the shape of the whole decision: *the safe version of an
-automatic hand-off is a manual one.*
+**The copy is the thing a person can check** — it is a real file, present
+before the stage starts, from a run named on the command line.
 
 A complete 2-stage ladder `job-set.json`:
 
@@ -524,18 +476,14 @@ flowchart LR
 an argument rather than a field ([`engines/stages.md`](?doc=engines/stages.md)
 § 1.1). Three things are *derived*, and each encodes a design decision:
 
-- **No dependency edge is derived, because none exists.** This bullet used to
-  say the non-convergence policy became a scheduler edge — `proceed → afterany`,
-  `halt → afterok`. Nothing threads such an edge now, so the producer's
-  `on_nonconvergence` input went with it (deleted 2026-08-10 along with
-  `_dep_kind` and `DEFAULT_NONCONVERGENCE`). **A stage that hits its step cap
-  without converging simply stops, and you decide what to do about it** — which
-  is what you were doing between stages anyway.
+- **A stage that runs out of steps without converging simply stops**, and you
+  decide what to do about it — which is what you were doing between stages
+  anyway.
 
-  > **PySCF's `on_nonconvergence` is untouched, and the asymmetry is real.** Its
-  > ladder runs as a loop inside one process (§ 4.2), so its policy becomes
-  > ordinary control flow in the emitted script rather than a scheduler edge.
-  > The same word does something on one engine and nothing on the other.
+  > **PySCF is different, and the asymmetry is real.** Its ladder runs as a
+  > loop inside one process (§ 4.2), so its `on_nonconvergence` is ordinary
+  > control flow in the emitted script. SIESTA's stages are separate jobs
+  > started by a person, so there is no equivalent for it to control.
 - **The warm-file declaration is chosen for correctness, not convenience.**
   Each stage declares what it would take from a run it is continued from — and
   **a stage whose description says `restart: clean` declares nothing at all**,
@@ -546,7 +494,8 @@ an argument rather than a field ([`engines/stages.md`](?doc=engines/stages.md)
   the restart. The comparison is made at `prep`, between **this stage and the
   attempt you named with `--from`**, over each one's resolved config. Note what
   changed: the old rule compared *consecutive* stages, which silently assumed
-  the thing that is no longer true — that stage N+1 follows stage N.
+  **this stage and the attempt you named with `--from`**, over each one's
+  resolved config.
 - **Resources are per-stage**, defaulting to inherit the config's ranks/threads
   and otherwise resolved at submit — so a coarse stage and a tight stage can be
   sized differently.
@@ -560,9 +509,8 @@ scientific rationale live in [`engines/tuning.md`](?doc=engines/tuning.md)):
 | stage2 | ✅ | Broyden | 200 |
 | stage3 | — | Broyden | 100 |
 
-*(The "on non-convergence" and "edge to next" columns were deleted with the
-edges. Whether to go on after a stage runs out of steps is now a question you
-answer by looking at it.)*
+*(Whether to go on after a stage runs out of steps is a question you answer by
+looking at it.)*
 
 The three **strategy presets** flip only the enable flags:
 `loose-only` = (✅, —, —), `publishable` = (✅, ✅, —),
@@ -574,26 +522,16 @@ carries it into `jobset.Resources` — the same road `mpi_np` and `omp_threads`
 ride — and `jobset/prep` hands it to `write_run_wrapper`, which bakes it into
 the wrapper's own retry loop (`?doc=execution/running-a-job.md` § 3.5). It
 becomes **no `sbatch` flag**, which is why it is the one row of
-`job-contracts.md § 6.2`'s translation table with no SLURM name. Before that
-last hop existed the field validated everywhere and was **silently dropped at
-prep**, so a `continue` stage was indistinguishable from a `halt` one — this
-paragraph used to record that as a standing gap.
+`job-contracts.md § 6.2`'s translation table with no SLURM name.
 
-**The retries happen inside the one job the scheduler ran**, which is why this
-survived the edge's deletion untouched: `continue_retries` was never a
-between-jobs mechanism. It is a loop in the wrapper of a single job.
+**The retries happen inside the one job the scheduler ran.** `continue_retries`
+is a loop in a single job's wrapper — it is not a between-jobs mechanism, and
+`job-contracts.md § 6.2` marks it as the one row of the translation table with
+no SLURM name.
 
-> **`on_nonconvergence` is gone for SIESTA, and the reason it was kept out of
-> the stage schema is the reason it left.** `engines/stages.md` § 3 excluded it
-> from the shared schema because *its entire effect was the dependency edge* —
-> so once no edge is threaded, nothing is left for it to do. It was the
-> producer's own input, keyed by stage name; that parameter, `_dep_kind` and
-> `DEFAULT_NONCONVERGENCE` were all deleted together on 2026-08-10.
-
-There is also a pure, side-effect-free **`build_siesta_stage_bundle(struct,
-cfg, stages)`** that returns a ready-to-write stage bundle by reusing the stage
-`.fdf` renderers plus `stages_to_jobset`. It exists as the clean seam a future
-**web** Build producer will call (§ 8).
+> **`on_nonconvergence` is a PySCF field.** `engines/stages.md` § 3 keeps it out
+> of the shared stage schema: it controls a loop inside one emitted script, and
+> SIESTA has no such loop to control.
 
 ### 4.2 The benchmark sweep (`sweep_to_jobset`)
 
@@ -666,12 +604,11 @@ laptop, not on the cluster (design decision #4).
 > |---|---|
 > | job directory `point-<name>/` | **`<seq>_<name>/`** — `01_coarse`, `02_tight` (`project-layout.md` § 4.1) |
 > | carry as a **dangling symlink**, localized to a copy at run time by the wrapper | **a real copy, made at `prep`, from the attempt you name with `--from`.** Nothing points at a file that does not exist yet, so there is nothing to localize |
-> | one `submit` hands the whole chain to the scheduler with `--dependency` | **one stage at a time. There is no `--chain`** |
+> | how it is launched | **one stage at a time**, by a person |
 >
-> **The chaining machinery is gone** (2026-08-10) — not left standing for a
-> sweep, which never used it, and not for a hand-written chain, which is
-> precisely the unreviewed hand-off the decision rejects. `--dependency` is no
-> longer threaded by anything molbuilder emits.
+> A ladder's directories are `<seq>_<name>` (`project-layout.md` § 4.1), an
+> attempt inside one is made by `prep run <stage>`, and what it continues from
+> is copied in from the attempt you name.
 
 `prep` turns the flat bundle into the materialized tree the scheduler runs. Two
 ideas make it safe and small:
@@ -783,34 +720,27 @@ over different parameters (`project-layout.md § 2.3.1a`).
 
 #### Three ideas, in plain language
 
-**1. A stage at a time, and there is no other way.** A ladder is not a
-pipeline. You run `coarse`, you *look* at what it produced, and only then do you
-set up `tight`. `submit run` names **one** stage. There is no flag that runs the
-ladder unattended — `--chain` existed until 2026-08-10 and was deleted.
+**1. A stage at a time.** A ladder is not a pipeline. You run `coarse`, you
+*look* at what it produced, and only then do you set up `tight`. `submit run`
+names **one** stage.
 
-**Why no flag, not even an opt-in one.** The reason is money and time, not
-tidiness: a stage is a long job, and a run that continues on its own can spend a
-week refining a geometry you would have rejected in a minute. An opt-in flag
-does not fix that; it just moves the mistake to the moment you type it, when you
-have least information — before any stage has run. The judgement belongs where
-the evidence is, which is *between* two stages, and nothing typed in advance can
-be there.
+**Why there is no flag for the whole ladder, not even an opt-in one.** The cost
+is money and time: a stage is a long job, and a run that continues on its own
+can spend a week refining a geometry you would have rejected in a minute. An
+opt-in flag does not fix that — it moves the mistake to the moment you type it,
+before any stage has run, when you have least information. The judgement belongs
+*between* two stages, where the evidence is.
 
 A **sweep** differs in one respect only: its points are independent, so which
 one you mean must still be named, but the order you take them in carries no
 meaning.
 
-> ### ⚠ A scheduler is handed ONE job at a time — decided 2026-08-10 (user)
+> ### A scheduler is handed ONE job at a time
 >
 > > *"SLURM should never submit jobs in parallel. Submission is manual and one
 > > by one. It is a disaster to do parallel job submission on HPC."*
 >
-> **This paragraph used to end *"so submitting all of them is the ordinary
-> thing"*, and `_submit_slurm` did exactly that** — one command, one `sbatch`
-> per point, no dependency between them. Its own docstring called the result
-> intended: *"its jobs queue in parallel."*
->
-> Two reasons that is wrong, and the second is scientific:
+> Two reasons, and the second is scientific:
 >
 > - **On a shared cluster it is antisocial.** N jobs entering the queue
 >   together start together if there is room, and the allocation goes with
@@ -976,14 +906,7 @@ nothing"* (`checkpointing.md` S3).
   re-submit the incomplete stage yourself, and the engine warm-starts from its
   own `.XV`.
 
-### 5.4 Nothing waits on anything — how a ladder actually advances
-
-**Deleted 2026-08-10 (user).** This section used to show two `sbatch` calls from
-one command, the second threaded with `--dependency=afterany` onto the first.
-That mechanism is gone: no `depends_on`, no `dep_kind`, no `Carry`, no
-`--chain`, and nothing in molbuilder emits a `--dependency` flag.
-
-**What replaces it is not a smaller mechanism, it is you.**
+### 5.4 How a ladder advances
 
 ```mermaid
 sequenceDiagram
@@ -1003,9 +926,7 @@ sequenceDiagram
 
 **The gap in the middle of that diagram is the feature.** It is where the
 judgement goes that no data structure can hold: *is this result worth building
-on?* A chain removes the gap, and with it the only chance to answer no cheaply
-— a stage is a long job, and one that continues by itself can spend a week
-refining a geometry you would have rejected in a minute.
+on?*
 
 ### 5.5 Watching a stage while it runs
 
