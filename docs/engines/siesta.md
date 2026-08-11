@@ -2,15 +2,18 @@
 
 **Role:** contract
 **Domain:** engines
-**Companions:** `overview.md` (the shared engine-emit + boundary-condition
-contract — composed last, named not linked yet); `ops/` (how the
-`molbuilder-siesta-gpu` env is *built* from CUDA/ELPA source — a deployment concern,
-ops wave); [`science/validation.md`](?doc=science/validation.md)
+**Companions:** [`engines/overview.md`](?doc=engines/overview.md) (the shared
+engine-emit + boundary-condition contract);
+[`ops/installation.md`](?doc=ops/installation.md) (how the
+`molbuilder-siesta-gpu` env is *built* from CUDA/ELPA source — a deployment
+concern); [`science/validation.md`](?doc=science/validation.md)
 (the preflight that gates emission); [`model/structure.md`](?doc=model/structure.md)
 + [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) (the
 `Structure` + cell it consumes); [`engines/tuning.md`](?doc=engines/tuning.md) (the
 value owner — what numbers the convergence/quality knobs should carry);
-`execution/` (running a stage ladder on a scheduler — named, execution wave).
+[`execution/job-system.md`](?doc=execution/job-system.md) (running a stage ladder
+on a scheduler) + [`engines/stages.md`](?doc=engines/stages.md) (what a stage is,
+and where its deck comes from).
 
 This is how molbuilder turns a `Structure` + a `SiestaConfig` into a
 **SIESTA-runnable `.fdf` text**. SIESTA is a periodic-DFT code (Soler et al. 2002 — see References); a `.fdf`

@@ -9,9 +9,11 @@
 **Upstream/downstream:** [`model/structure.md`](?doc=model/structure.md) (the
 `Structure` every engine consumes) + [`model/structure-annotations.md`](?doc=model/structure-annotations.md)
 (the region-label + frozen-atom *vocabulary*) + [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md)
-(the `.molstruct.json` sidecar the boundary contract reads); `web/` (the selection UI
-— migrating later); `execution/` (running the emitted scripts on a scheduler —
-migrating later); `architecture.md` (where engines sit in the whole — composed last).
+(the `.molstruct.json` sidecar the boundary contract reads);
+[`web/tabs.md`](?doc=web/tabs.md) (the selection UI);
+[`execution/overview.md`](?doc=execution/overview.md) (running the emitted scripts —
+start there for the whole execution domain);
+[`architecture.md`](?doc=architecture.md) (where engines sit in the package as a whole).
 
 An **engine** turns a validated [`Structure`](?doc=model/structure.md) plus a user
 config into something a quantum-chemistry code will run: a SIESTA `.fdf`, a PySCF

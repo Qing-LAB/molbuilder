@@ -357,7 +357,7 @@ dna = build_dna("ATGC", add_hydrogens="on")
 
 **Web** — the Build tab calls the same builder functions server-side and drops the
 result into the workspace via the load door (`/api/build/load`). That client-side
-flow is documented under `web/` (migrating in a later wave); this doc is the
+flow is [`web/tabs.md`](?doc=web/tabs.md) § 2; this doc is the
 synthesis contract behind it.
 
 ---

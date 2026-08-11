@@ -6,7 +6,8 @@
 emitter transport extends); [`model/structure-annotations.md`](?doc=model/structure-annotations.md)
 (the region-label *vocabulary* the derivation reads);
 [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) (the Au pseudo
-the leads need); `overview.md` (the shared engine contract — composed last).
+the leads need); [`engines/overview.md`](?doc=engines/overview.md) (the shared
+engine contract).
 
 This is how molbuilder computes **electron transport** (conductance) through a
 molecular junction — e.g. a single benzene-1,4-dithiol molecule bridging two gold

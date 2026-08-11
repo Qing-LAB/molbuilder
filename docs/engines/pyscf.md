@@ -2,10 +2,10 @@
 
 **Role:** contract
 **Domain:** engines
-**Companions:** `overview.md` (the shared engine-emit contract — composed last,
-named not linked yet); [`engines/siesta.md`](?doc=engines/siesta.md) (the SIESTA
-equivalent); `tuning.md` (the cross-engine convergence-tier framework — this doc is
-the PySCF-specific companion, named, this wave);
+**Companions:** [`engines/overview.md`](?doc=engines/overview.md) (the shared
+engine-emit contract); [`engines/siesta.md`](?doc=engines/siesta.md) (the SIESTA
+equivalent); [`engines/tuning.md`](?doc=engines/tuning.md) (the cross-engine
+convergence-tier framework — this doc is its PySCF-specific companion);
 [`science/validation.md`](?doc=science/validation.md) (the preflight that gates
 emission); [`model/chemistry.md`](?doc=model/chemistry.md) (charge / ECP resolution).
 

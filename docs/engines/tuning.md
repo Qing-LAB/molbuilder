@@ -7,8 +7,9 @@
 says what *values* to write and why); [`engines/transport.md`](?doc=engines/transport.md)
 (the device k-grid / mesh contract for TranSIESTA — where transport overrides this
 doc's general k-grid + mesh guidance); [`science/validation.md`](?doc=science/validation.md)
-(the preflight that gates a job before you spend cluster time); `overview.md` (the
-engines map — composed last, named not linked yet).
+(the preflight that gates a job before you spend cluster time);
+[`engines/overview.md`](?doc=engines/overview.md) (the engines map, and the
+three cross-engine contracts).
 
 This is the canonical answer to **"what value should this knob carry, for what
 purpose, and why?"** — the reference the SIESTA/PySCF form-field `help` strings and
