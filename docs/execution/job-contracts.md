@@ -606,7 +606,7 @@ generation time:
 #   form-config-hash     sha256:7c4d…            # optional
 #   resolved-defaults:
 #     mpi_np            auto -> 4 (gpu+mps policy)
-#     BlockSize         auto -> 256 (10 * 212 atoms / mpi_np, capped pow2)
+#     BlockSize         auto -> 256 (n_orbitals_est 2120 / mpi_np, capped pow2)
 #     kgrid             1x1x1 (auto-from-cell-vacuum)
 # === molbuilder provenance END ===
 ```
@@ -664,46 +664,62 @@ what limits:
 - **A bound on a derived field is derived too, and `default` is always inside
   it** *(2026-08-10)*. `BlockSize` is the one field here computed from a
   **launch** quantity rather than read off the config, so its window is a fact
-  about *this deck's* rank count — `[1, floor(n_atoms / mpi_np)]` rounded to
-  powers of two on CPU, the ELPA-CUDA window on GPU. It was a fixed
-  `[16,256]` until this date, which the emitted `default` contradicted
-  routinely rather than exceptionally: at 200 atoms on 16 ranks the generator
-  writes `BlockSize 8`, below the floor it declared legal. A reader could
-  neither validate the block against itself nor trust the advice, and the
-  advice erred **upward** — past the point where ranks start receiving no
-  block at all. The rule now: whatever derives the value derives the bound, so
-  there is one number in the system and not two that can drift.
-  > ### ⚠ This document states that derivation TWICE, a factor of ten apart
+  about *this deck's* rank count — **`[1, floor(n_orbitals_est / mpi_np)]`**
+  rounded to powers of two on CPU, the ELPA-CUDA window on GPU. It was a fixed
+  `[16,256]` until this date, which the emitted `default` contradicted routinely
+  rather than exceptionally: **a 20-atom molecule on 16 ranks** has 200
+  estimated orbitals, so the ceiling is `200/16 = 12.5 → 8` — below the floor
+  the block declared legal. A reader could neither validate the block against
+  itself nor trust the advice, and the advice erred **upward** — past the point
+  where ranks start receiving no block at all. The rule now: whatever derives
+  the value derives the bound, so there is one number in the system and not two
+  that can drift.
+
+  **The quantity is `n_orbitals_est`, not `n_atoms`** *(settled 2026-08-11,
+  user)*. ScaLAPACK and ELPA distribute the **Hamiltonian**, and its dimension is
+  the orbital count — which is why this block records `n_orbitals_est` beside
+  `n_atoms` in the first place, and why the guidance is *"the total number of
+  orbitals divides reasonably well into the chosen block segments"*
+  ([`tuning.md § 2.11`](?doc=engines/tuning.md)). The atom count is not a
+  distribution quantity at all; it reached this bound by being the number that
+  happened to be to hand.
+
+  **When the ceiling actually bites:** it falls under the old `16` floor once
+  `10·n_atoms / mpi_np < 16` — roughly **when the rank count passes ~0.6× the
+  atom count**. That is a small molecule on a big node, which is ordinary, and
+  it stays inside the regime `running-a-job.md § 3.1` allows (the wrapper caps
+  auto ranks at `n_atoms`). It is the same *"small systems → load imbalance"*
+  case `tuning.md § 2.11` warns about, arriving as a number.
+  > ### ⚠ This document stated that derivation twice, a factor of ten apart
   >
-  > *Found 2026-08-11, in the third review pass, by writing
-  > [`tuning.md § 2.11`](?doc=engines/tuning.md) against it.*
+  > *Found 2026-08-11 in the third review pass, by writing
+  > [`tuning.md § 2.11`](?doc=engines/tuning.md) against it. **Resolved the same
+  > day (user): orbitals.** Recorded because the two readings are not
+  > interchangeable and code may still hold the wrong one.*
   >
-  > | where | the quantity per rank |
-  > |---|---|
-  > | § 3.2's PROVENANCE example | `10 * 212 atoms / mpi_np, capped pow2` — **ten times the atom count**, i.e. `n_orbitals_est` |
-  > | the paragraph above | `[1, floor(n_atoms / mpi_np)]` — **the atom count**, and its worked example (*"200 atoms on 16 ranks → `BlockSize 8`"*, = 200/16) only works this way |
+  > | where | the quantity per rank | |
+  > |---|---|---|
+  > | § 3.2's PROVENANCE example | `10 * 212 atoms / mpi_np` — ten times the atom count, i.e. `n_orbitals_est` | ✅ right all along |
+  > | the paragraph above, until today | `floor(n_atoms / mpi_np)` — the atom count | ❌ **a tenfold-tight bound** |
   >
   > **The section's own rule is *"whatever derives the value derives the bound,
   > so there is one number in the system and not two that can drift"* — and it
-  > then prints two.** This is the drift it was written to prevent, in the
-  > paragraph that prevents it.
+  > printed two.** This was the drift it exists to prevent, in the paragraph that
+  > prevents it.
   >
-  > **The physics says orbitals.** ScaLAPACK and ELPA distribute the
-  > **Hamiltonian**, whose dimension is the orbital count, not the atom count —
-  > which is why this block records `n_orbitals_est` at all, and why the
-  > guidance is *"the total number of orbitals divides reasonably well into the
-  > chosen block segments"* ([`tuning.md § 2.11`](?doc=engines/tuning.md)). So
-  > `n_orbitals_est / mpi_np` is the right quantity and `n_atoms / mpi_np` is a
-  > tenfold-tight bound.
+  > **The old anecdote went with the old bound.** It read *"at 200 atoms on 16
+  > ranks the generator writes `BlockSize 8`"* — which is `200/16`, the atom
+  > reading. Under orbitals those numbers give `2000/16 = 125 → 64`, comfortably
+  > inside the `[16,256]` window, so they could never have been the case that
+  > motivated widening it. **The lesson was real and the numbers were a tenth of
+  > the system they needed to be**; the corrected paragraph uses a 20-atom
+  > molecule, where the ceiling genuinely lands at 8.
   >
-  > **Which one the code does is not settled here**, and the two cannot both be
-  > it: under the orbital reading the anecdote's own numbers give
-  > `2000/16 = 125 → 64`, which is *inside* the old `[16,256]` window and so
-  > cannot be the case that motivated changing it. **One of the two is a
-  > description of code that does not exist.** Resolving it is a code follow-up
-  > with a test — derive the value and the bound from **one** call, assert the
-  > `default` is inside its own declared `range`, and mutate the divisor to watch
-  > it fail.
+  > **The code follow-up, with the test that settles it:** derive the value and
+  > the bound from **one** call, assert the emitted `default` is inside its own
+  > declared `range`, and mutate the divisor from `n_orbitals_est` to `n_atoms`
+  > to watch it fail. A test that only reads the emitted block cannot catch this
+  > — both readings produce a well-formed block.
 
   > **`BlockSize` is *proposed*, not dictated — clarified 2026-08-11 (user).**
   > The rule above is unchanged and is exactly why it survives: whatever derives

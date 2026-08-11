@@ -214,8 +214,8 @@ carries a parser cost in `summarize`.*
 
 **Why under the stage, and not once per project.** The best rank count depends on
 the science: mesh cutoff changes the grid, basis size changes the matrix, and
-`BlockSize` is derived from the rank count. Coarse and tight can genuinely want
-different hardware.
+`BlockSize` is bounded by the orbital count over the rank count — so a bigger
+basis moves it. Coarse and tight can genuinely want different hardware.
 
 **Why the trials cannot hurt the real run.** The benchmark relabels its decks to
 `job-gpu` / `job-cpu` and forces a cold start. So a five-iteration timing run

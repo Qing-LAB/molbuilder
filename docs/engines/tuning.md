@@ -323,15 +323,28 @@ hardware-dependent:**
 a block above `N / R` means some rank receives **no block at all**. It is a
 ceiling to stay under, not a target to aim at.
 
-> **Orbitals, not atoms — and `job-contracts.md § 3.3` currently says both.**
-> The block distributes the **Hamiltonian**, whose dimension is the orbital
-> count; SIESTA's DZP basis is roughly ten orbitals per atom, which is why
-> BENCH-MARKS records `n_orbitals_est` beside `n_atoms` at all. That section
-> declares the bound as `n_atoms / mpi_np` while its own PROVENANCE example
-> derives the value as `10 * n_atoms / mpi_np` — **a factor of ten, in the
-> paragraph whose rule is that the value and its bound come from one place.**
-> The physics decides it in favour of orbitals; which one the code does is an
-> open follow-up recorded there.
+> **Orbitals, not atoms** *(settled 2026-08-11, user)*. The block distributes the
+> **Hamiltonian**, whose dimension is the orbital count; SIESTA's DZP basis is
+> roughly ten orbitals per atom, which is why BENCH-MARKS records
+> `n_orbitals_est` beside `n_atoms` at all. `job-contracts.md § 3.3` declared the
+> bound as `n_atoms / mpi_np` while its own PROVENANCE example derived the value
+> from `10 × n_atoms` — a factor of ten, in the paragraph whose rule is that the
+> value and its bound come from one place. **The bound is now
+> `n_orbitals_est / mpi_np`** and the two agree; the code follow-up and its
+> mutation test are recorded there.
+
+**A consequence worth seeing, because it is the whole reason this is not a
+formula.** The ceiling moves with the **basis**, not only the hardware:
+
+| | a 20-atom molecule | a 200-atom slab |
+|---|---|---|
+| orbitals (DZP, ≈10/atom) | 200 | 2000 |
+| ceiling on **16** ranks | `200/16 = 12.5` → **8** | `2000/16 = 125` → **64** |
+| ceiling on **4** ranks | `200/4 = 50` → **32** | `2000/4 = 500` → **256** |
+
+Same hardware, same rank count, a tenfold difference in the answer — and
+upgrading the basis on one system moves it again. That is why § 2.11 opens with
+*match the problem scale* and why a measurement beats a default.
 
 #### The three states, and the third one is new
 

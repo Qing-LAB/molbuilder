@@ -1216,9 +1216,11 @@ inside the other.**
 
 **Why trials nest under a stage rather than beside the calculation.** The best
 rank count depends on the science: mesh cutoff changes the grid, basis size
-changes the matrix, and `BlockSize` is derived from ranks and atom count. A
-coarse stage and a tight stage can genuinely want different resources, so the
-measurement belongs to the stage that was measured.
+changes the matrix, and `BlockSize` is bounded by **orbitals over ranks**
+([`tuning.md § 2.11`](?doc=engines/tuning.md)) — so the basis decides it as much
+as the hardware does. A coarse stage and a tight stage can genuinely want
+different resources, so the measurement belongs to the stage that was
+measured.
 
 ### 3.1 Why the mechanisms differ
 

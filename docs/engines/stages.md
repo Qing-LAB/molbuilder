@@ -529,8 +529,10 @@ Two consequences:
 
 **A deck's own values can be derived from resources the deck does not contain.**
 SIESTA's `BlockSize` is the standing example: PROVENANCE records it as
-`auto -> 256 (10 * 212 atoms / mpi_np, capped pow2)` (`job-contracts.md § 3.2`).
-A deck rendered for 8 ranks is not the right deck for 16.
+`auto -> 256 (n_orbitals_est 2120 / mpi_np, capped pow2)` (`job-contracts.md
+§ 3.2`) — **orbitals over ranks**, because the block distributes the Hamiltonian
+([`tuning.md § 2.11`](?doc=engines/tuning.md)). A deck rendered for 8 ranks is
+not the right deck for 16.
 
 And the rank count is genuinely not settled at generate time.
 `running-a-job.md § 2.1` fixes the rule — at run time the wrapper reads the
@@ -558,15 +560,31 @@ rather than inventing a second mechanism.
 >   and the picker takes three inputs — so nothing downstream could re-derive
 >   the value the block was declaring;
 > - the declared **bound** was a module constant `[16,256]` while the value
->   beside it was derived, so the two disagreed whenever
->   `floor(n_atoms / mpi_np) < 16` — which is most small-and-wide runs, not a
->   corner. The block advised climbing to 256 on a deck whose ranks empty
->   above 4.
+>   beside it was derived, so the two disagreed whenever the ceiling fell under
+>   16. The block advised climbing to 256 on a deck whose ranks empty long
+>   before that.
 >
 > Both are now derived from the same picker (`job-contracts.md § 3.3`). The
 > shape of the fix is this section's own rule seen once more: **whatever
 > derives the value derives the bound**, so there is one number and not two
 > that can drift.
+>
+> > **And on 2026-08-11 that fix needed a correction of its own.** It wrote the
+> > ceiling as `floor(n_atoms / mpi_np)` — **atoms** — while the value beside it
+> > came from `10 × n_atoms`, the estimated orbital count. A block distributes
+> > the **Hamiltonian**, so **orbitals is the quantity** (user's call;
+> > [`tuning.md § 2.11`](?doc=engines/tuning.md)), and the bound is
+> > `floor(n_orbitals_est / mpi_np)`.
+> >
+> > **Which also shrinks the claim this bullet used to make.** *"Most
+> > small-and-wide runs, not a corner"* was true of the atom reading, where the
+> > ceiling drops under 16 as soon as ranks pass `n_atoms/16`. Under orbitals it
+> > takes ranks past **~0.6 × the atom count** — a small molecule on a big node.
+> > Still real, still worth fixing, and **ten times rarer than the sentence
+> > said**. Two documents held one derivation and neither noticed they had
+> > written different arithmetic, which is § 10.4 of
+> > [`architecture.md`](?doc=execution/architecture.md) happening to this very
+> > paragraph.
 
 ---
 
