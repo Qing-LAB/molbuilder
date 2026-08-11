@@ -2367,6 +2367,14 @@ flowchart TB
 | M11 | **every later engine** — Transport and Spectra inherit this tab rather than copying it | — |
 | **M12** | the D7 cluster gate, and any later change to the design — a contract statement that nothing checks is a wish | — (it installs the checks for §§ 2–9) |
 
+> **The milestone ladder is not the whole work list.** § 5g measures the code
+> against the contracts as they stand on 2026-08-11 and carries **eleven
+> conformance debts (C1–C11)** — `molbuilder run` and `molbuilder fdf` still
+> registered, the template still emitted as `.fdf.template`, trial directories
+> still `point-`, and one line that **prints a deleted flag to the user**. They
+> sit behind the front rather than blocking it, so they are scheduled into
+> existing phases (P4, P9, P10, P12 u6b, Track Z) instead of earning milestones.
+
 > **Every milestone above is gated on R×3** (§ 3.0): the review is run **three
 > times with fresh eyes**, widening from the unit, to every commit since the
 > last milestone, to the tests themselves. **A milestone with fewer than three
@@ -2699,7 +2707,104 @@ The same read surfaced the sentence that is now **decision 30**: `job-system.md`
 
 ---
 
+## 5g. The code against the contracts, measured 2026-08-11
+
+*§ 5a below is the 2026-08-07 audit and stays as the record of that date. This
+is the same measurement taken again, after the contracts moved: the template
+became TOML, `run` and `fdf` were deleted, `BlockSize` became a knob bounded by
+orbitals, and the trial prefix became `bench-`. **The contract is the source of
+truth; every row below is a place the code disagrees with it, not a place the
+contract is in doubt.***
+
+> **These are rows, not a milestone.** M0–M12 in § 5 are the build ladder and
+> **M8 there is the history milestone** — nothing to do with this. C1–C11 are
+> *conformance debts*: places the code has not caught up with a contract that
+> already settled. Each is scheduled into an existing phase rather than given a
+> milestone of its own, because none of them unblocks anything — they close gaps
+> behind the front.
+
+> **Method, so the next reader can repeat it.** Each row starts from a contract
+> sentence and asks *what does the code do*. It does **not** start from the code
+> and ask what it means — that is the inversion § 0 forbids. Where the code
+> turned out to be **right and a contract wrong**, that is recorded too, and the
+> contract was fixed first.
+
+### What the code already satisfies — verified, not assumed
+
+| contract sentence | evidence |
+|---|---|
+| **A `Job` names no other `Job`** (`architecture.md` § 3; decision 30) | `Carry`, `depends_on`, `dep_kind`, `carry_deref` and the `--chain` **flag** are gone from live code — every surviving mention is a docstring *recording* the deletion. `render_siesta_stages_runner`, `_warm_check` and `attempt_dirs` likewise |
+| **a stage's artifact token is `<NN>_<name>`** (decision 27) | `identity.stage_token` / `identity.parse_stage_token` exist and are the one namer |
+| **submitting writes `run.json`; `continued_from` is its provenance** (`project-layout.md` § 1.6) | `jobset/runstatus.py` reads it, distinguishes *prepped-not-launched* from *launched*, and prints `continued from` only when present |
+| **`BlockSize`'s bound is the ORBITAL count over ranks** (`tuning.md` § 2.11) | ✅ **the code was right and the contract was wrong.** `_auto_block_size` already computes `floor(10·n_atoms / mpi_np)` — the DZP orbital estimate — while `job-contracts.md` § 3.3 declared `floor(n_atoms / mpi_np)`. The contract was corrected on 2026-08-11; **no code change is owed here** |
+
+### Where the code disagrees — rows C1–C11
+
+| # | the contract says | the code does | fix in |
+|---|---|---|---|
+| **C1** | *"There is no `molbuilder run`… deleted, not deprecated"* (`conventions.md` § 3, decision 7) | `cli.py:1804` still registers `cmd_run` | **P9** |
+| **C2** | *"there is no `molbuilder fdf`"* (`conventions.md` § 3, decision 34) | `cli.py:515` still registers `cmd_fdf` | **P9** |
+| **C3** | *"no flag for the whole ladder, not even an opt-in one"* (`job-system.md` § 5.3; decision 30) | **`cli.py:1151` PRINTS, to the user, `` `submit run --chain` runs the whole ladder unattended``** | **P9, first** |
+| **C4** | the description's deck template is **`<label>.template.toml`**, one TOML file (`template.md` § 4, `job-contracts.md` § 6.3) | `cli.py:989` writes `<label>.fdf.template`, the retired item-block format | **P12 u6b** |
+| **C5** | *(the same rename)* | `identity.py:144`'s `OUR_FILE_PATTERNS` lists `{label}.fdf.template` | **P12 u6b, same commit as C4** |
+| **C6** | a trial directory is **`bench-G<g>K<k>C<c>`** (`job-contracts.md` § 6.3, the cross-layer authority) | `bench/adapters.py:225` writes `point-G…`; `bench/summarize.py:30`'s `_POINT_RE` parses it back | **Track Z** |
+| **C7** | *"the emitter that reads it never learns the word"* — `cfg.stage` is deleted (`stages.md` § 1.1) | live at `siesta/input.py` 633, 640, 1724 | **P12 u6b** |
+| **C8** | `BlockSize` has **three** states: set · unset→proposed · **omitted entirely** (`tuning.md` § 2.11, decision 35) | `_auto_block_size` always returns a number, floored at 8, and the emitter always writes the line — the third state cannot be expressed | **P4** |
+| **C9** | describing a calculation is **`jobset describe`** (`job-system.md` § 5.1) | the verb does not exist | **P10** |
+| **C10** | *"whatever writes the template computes the fingerprint"* (`stages.md` § 6.6) | `schema_fingerprint()` exists and `validation/task.py` **reads** it; **nothing writes it** — a check with no producer either never fires or always complains | **P12 u6b, with C4** |
+| **C11** | `execution.mode` is what gates submission (`running-a-job.md` § 5.4) | `submit`'s docstring says `mode == execution.mode`, but only `bench` consults the config; `--mode` stays required | **P9** |
+
+### The order, and why this one
+
+**C3 first, and on its own.** It is the only row that actively *instructs a user
+to do something the design forbids* — the other ten are code that has not caught
+up, which is inert. A user who types what that line prints gets an error, and the
+message is molbuilder's own.
+
+**Then C1, C2, C11 together (P9).** They are one surface: the CLI's command
+list. Doing them in one commit is what keeps `conventions.md` § 3's count honest
+at every point rather than between two of them.
+
+**Then C4+C5+C10+C7 as one unit (P12 u6b).** This is the keystone the gap list
+already names — `worked-example.md` § 8.1 gap 9 — and the four are one change:
+the artifact becomes TOML, the pattern list follows it **in the same commit**,
+the writer computes the fingerprint because it is the moment the schema is in
+hand, and `cfg.stage` goes because the emitter stops being told about stages.
+
+> **C5 is the trap, and it is worth the sentence.** Rename the artifact without
+> `identity.py` and `warm_files_present` counts the template as **engine warm
+> state** — so a calculation that has never run reads as *"something has run
+> here"*, and its id reads as not editable. **The mutation that proves the
+> guard:** rename the artifact, do not touch `identity.py`, and watch
+> `warm_files_present` report the template.
+
+**C8 with P4**, because it changes what the deck writer emits, and **C6 in
+Track Z**, because it is a rename with a parser on the other side and blocks
+nothing.
+
+**C9 last of the code rows**, because `describe` writes what C4 defines: a verb
+that emits the old artifact would have to be written twice.
+
+### What this does NOT claim
+
+**No row here is a bug report about behaviour.** Nothing was executed — this is
+a static read of the code against the contracts, which is what a plan needs to
+schedule work. Whether `--chain`'s printed instruction, for instance, produces a
+usage error or something worse is not measured here; that it contradicts the
+contract is enough to schedule it.
+
+---
+
 ## 5a. Where the code actually is — verified 2026-08-07
+
+> ⚠ **This audit is dated, and the contracts have moved since.** It is kept as
+> the record of 2026-08-07 — what had landed by then, phase by phase. **For the
+> current measurement read § 5g above**, taken 2026-08-11 after the template
+> became TOML, `run` and `fdf` were deleted, `BlockSize` became a knob bounded
+> by orbitals, and the trial prefix became `bench-`. Two rows below are known to
+> read differently now: *"4a · emit + read a whole template"* ✅ refers to the
+> **retired** item-block format (§ 5g C4), and *"4a · `schema_fingerprint`"* ✅
+> covers the function, not a writer for it (§ 5g C10).
 
 Not the plan's own markers: each row was **checked against the code** by
 importing the module and asking. Re-run the checks rather than trusting this
