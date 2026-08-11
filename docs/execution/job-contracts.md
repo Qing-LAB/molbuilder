@@ -885,6 +885,42 @@ MeshCutoff   300.0 Ry
 | `produce` | shapes what the produce step does | none | the producer |
 | `monitor` | shapes what the monitor writes | none | `mb_monitor.py` |
 
+**Text and choices raise the case the kinds alone cannot carry.** A number is
+usually consumed where it lands. A **choice** often is not:
+
+```fdf
+# === molbuilder item diag_algorithm BEGIN ===
+#   item diag_algorithm = { kind="engine", anchor="Diag.Algorithm", type="enum",
+#                           choices=["ScaLAPACK","ELPA-1STAGE","ELPA-2STAGE"],
+#                           default="ScaLAPACK", read_by=["wrapper"] }
+#   Which eigensolver SIESTA uses.  ELPA also decides WHICH ENVIRONMENT the
+#   wrapper activates: an ELPA or GPU deck routes to molbuilder-siesta-gpu
+#   (§ 2.6), so this value leaves the deck and reaches the launch.
+Diag.Algorithm   ScaLAPACK
+# === molbuilder item diag_algorithm END ===
+```
+
+**`kind=` says who owns the payload. `read_by=` says who else derives from the
+value.** They are different questions and one key cannot answer both — this item
+is unambiguously the engine's, *and* the wrapper acts on it.
+
+**Why that key earns its place rather than documenting a curiosity.** Today the
+wrapper finds this out by **reading the deck text and looking for ELPA**
+(`runwrap._fdf_requests_gpu`). That is a layer re-deriving an answer another
+layer already holds — the one habit this architecture exists to remove
+(`execution/architecture.md` § 1). With `read_by`, the wrapper is *told* which
+items it depends on instead of pattern-matching someone else's artifact, and a
+new engine declares its own without anyone editing `runwrap`.
+
+**It also explains an ordering the contract already forces.** `project-layout.md`
+§ 2.3.1 renders the deck (step 3) before the wrapper (step 4) and calls the
+order forced rather than chosen. `read_by=["wrapper"]` is that dependency,
+written on the item that creates it: the wrapper cannot be written until every
+value it reads is fixed.
+
+**Free text** (`type="str"`) needs nothing further — TOML quotes it, including
+spaces and commas, which is the case the bespoke grammar could not hold.
+
 **Three properties make it universal:**
 
 - **A layer filters on one token.** *"Emit every `kind=engine` and `kind=deck`
