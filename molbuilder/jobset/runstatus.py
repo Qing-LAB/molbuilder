@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..identity import StageRef, seq_text
+from ..identity import StageRef
 from .materialize import (RUN_LAUNCH_FILE, attempts, job_dir_names,
                           latest_attempt, shape_of, stage_refs)
 from .model import JobSet
@@ -42,8 +42,18 @@ _DONE = "finished"
 
 @dataclass(frozen=True)
 class StageStatus:
-    """One stage's status (read-only snapshot)."""
-    name:       str
+    """One stage's status (read-only snapshot).
+
+    **WHICH stage this is arrives as a whole :class:`~molbuilder.identity.
+    StageRef`, not as a loose name and a loose number.** It used to be the
+    latter, and the cost was immediate: ``render_stage_status`` wanted the
+    heading ``01_coarse``, had only the two halves, and so built a SECOND
+    ``StageRef`` out of them to ask for it -- a caller working out an answer a
+    floor below already held, inside the very object made to stop that (§ 9.6's
+    rule A4). Carrying the ref means the resolver in ``materialize`` is the only
+    place one is ever made.
+    """
+    ref:        StageRef
     dir:        str
     #: not-started/pending/queued/running/stale/failed/finished.  ``queued`` is
     #: the contract's own word (project-layout.md § 1.6, *"queued as job
@@ -52,9 +62,6 @@ class StageStatus:
     state:      str
     detail:     str
     warm_files: List[str] = field(default_factory=list)  # restart files present
-    #: The stage's assigned ordinal, read back off its deck -- NOT its row.
-    #: ``None`` for a sweep point, which has no seq (project-layout.md § 4.1).
-    seq: Optional[int] = None
     #: Which attempt this status was read from (``run-0``), or ``None`` for a
     #: flat run, which happens in the container itself (§ 1.5).
     attempt: Optional[str] = None
@@ -68,8 +75,30 @@ class StageStatus:
     #: versioned (``molbuilder/run-launch@1``) and may grow fields.
     launch: Optional[Dict[str, Any]] = None
 
+    @property
+    def name(self) -> str:
+        """The stage's name -- from the ref, so there is exactly one holder."""
+        return self.ref.name
+
+    @property
+    def seq(self) -> Optional[int]:
+        """Its assigned ordinal, read back off its deck -- NOT its row.
+
+        ``None`` for a sweep point, which has no order at all
+        (`project-layout.md` § 4.1).
+        """
+        return self.ref.seq
+
     def to_dict(self) -> Dict[str, Any]:
-        return dataclasses.asdict(self)
+        """The wire form -- ``name`` and ``seq`` FLAT, not a nested ref.
+
+        A surface reading JSON wants two plain fields; ``StageRef`` is how the
+        library keeps them together, not a shape to export. Flattening here
+        rather than nesting keeps this dict exactly what it has always been.
+        """
+        d = dataclasses.asdict(self)
+        d.pop("ref")
+        return {"name": self.ref.name, "seq": self.ref.seq, **d}
 
 
 @dataclass(frozen=True)
@@ -189,8 +218,7 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
                     if (sh is not None and token) else "*")
         state, detail = _stage_state(observed, launch, out_glob)
         stages.append(StageStatus(
-            name=job.name, dir=d.name, state=state, detail=detail,
-            seq=refs[job.name].seq,
+            ref=refs[job.name], dir=d.name, state=state, detail=detail,
             attempt=(attempt.name if attempt else None),
             attempts=attempts(d),
             launch=launch,
@@ -221,7 +249,7 @@ def render_status(status: JobSetStatus) -> str:
     # difference between run-0 and run-2 is the whole question.  `-` for a flat
     # run, which happens in the container itself (project-layout.md § 1.5).
     hdr = ("seq", "stage", "attempt", "state", "warm files", "detail")
-    rows = [(seq_text(s.seq), s.name, s.attempt or "-", s.state,
+    rows = [(s.ref.seq_text, s.ref.name, s.attempt or "-", s.state,
              ", ".join(s.warm_files) or "-", s.detail)
             for s in status.stages]
     # Widths and the rule are both driven off `hdr`, never off a literal count.
@@ -288,7 +316,7 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     # it was 14 -- exactly the width of "continued from", so the one row that
     # had something to say ran its value straight into its own name.
     w = max(len(k) for k, _ in rows) + 2
-    lines = [f"STAGE {StageRef(s.seq, s.name).label} -- {s.state}", ""]
+    lines = [f"STAGE {s.ref.label} -- {s.state}", ""]
     lines += [f"  {k.ljust(w)}{v}" for k, v in rows]
     lines.append("")
     lines.append(

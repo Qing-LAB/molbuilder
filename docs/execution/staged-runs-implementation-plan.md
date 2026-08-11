@@ -3277,30 +3277,42 @@ prove nothing and would risk the one workflow that works end to end today.
 ### 9.6 The rules that must never break
 
 Each is written so it can be **checked**, because a rule nobody checks is a
-wish. Four are genuinely checked; the status below is measured, not assumed.
+wish. All seven are now checked; the status below is measured, not assumed.
 
 | | rule | checked by | status |
 |---|---|---|---|
-| **A1** | **one namer.** Every name a file gets comes from `identity`; nothing builds one by hand | *(no test)* | ⚠ **a wish** — searched 2026-08-10; the only matches are test *fixtures* building such names, which is the opposite of a guard |
+| **A1** | **one namer.** Every name a file gets comes from `identity`; nothing builds one by hand | `test_architecture_rules` — only `identity.py` may spell `<NN>_<name>` | ✅ |
 | **A2** | **one layout per calculation**, and nothing guesses which | `test_jobset` — every consumer's layout comes from `Shape.named(task.shape)` | ✅ |
 | **A3** | **a deck and its launch travel together** | `test_jobset` — the rank count in the deck equals the one it is started at, or it is refused first | ✅ |
-| **A4** | **ask, do not work it out again.** Each object in § 9.5 has exactly one **owning function** | measured by hand | ⚠ **three of four** — see below |
+| **A4** | **ask, do not work it out again.** Each object in § 9.5 has exactly one **owning function** | `test_architecture_rules` — a `StageRef` may be built only by its resolver | ✅ for `StageRef`; the other three are one-`return` by reading |
 | **A5** | **a stage's number is worked out, never stored** | `test_task_description`, `test_stage_resolution` | ✅ |
 | **A6** | **once a run has started, its folder never changes** | `test_jobset` | ✅ |
-| **A7** | **nothing depends upwards** | *(no test that can see it)* | ⚠ **a wish** — `test_layering` checks *import depth*, a different grouping; it cannot see a floor-5 file importing a floor-6 one when both are `L2`, and `jobset` alone spans floors 3–6 inside one tier |
+| **A7** | **nothing depends upwards** | `test_architecture_rules` — a floor-N file may import floors ≤ N, and the map must match § 9.3's table | ✅ |
 
-> **A4, measured.** `Attempt`, `LaunchAgreement` and `Shape` each have one
-> owning function — three `return` lines inside one function is still one owner.
-> **`StageRef` has two**: the resolver in `materialize`, and `runstatus.py:291`,
-> which builds a second one just to format a heading, because `StageStatus`
-> carries the number and the name as loose fields instead of the ref the
-> resolver already made. *A caller working out an answer a floor already holds —
-> inside the object created to stop exactly that.* **Fix:** let `StageStatus`
-> carry the ref. Small, and it turns A4 from mostly-true into true.
+> **What A1, A4 and A7 have in common, and why they went unchecked longest.**
+> A2, A3, A5 and A6 are about values moving through the code, so a test can run
+> it and look at what came out. These three are about **the shape of the source**
+> — who may spell a name, who may build an object, who may import whom — and no
+> amount of running the program shows you that. They are checked by parsing
+> `molbuilder/` rather than calling it, which is why they all landed together on
+> 2026-08-10 in one file, `tests/test_architecture_rules.py`.
 
-> **Two rules name a test that does not exist** (A1, A7), in a section that
-> opens by calling that a wish. Both were found by reading this section against
-> the code, which is the case for writing the two guards.
+> **A4 was measured by hand first, and the measurement found one violation.**
+> `Attempt`, `LaunchAgreement` and `Shape` each had one owning function.
+> **`StageRef` had two**: the resolver in `materialize`, and `runstatus.py`,
+> which built a second one just to format a heading — because `StageStatus`
+> carried the number and the name as loose fields instead of the ref the
+> resolver had already made. *A caller working out an answer a floor below
+> already held, inside the object created to stop exactly that.* `StageStatus`
+> now carries the ref, and the guard keeps it that way.
+
+> **What the three guards cannot see, stated so nobody over-trusts them.** A1
+> knows three spellings of a hand-built token, not every possible one. A4 covers
+> `StageRef`; the other three objects are dataclasses a caller *could* construct,
+> and deciding which of those should be constructible is a judgement rather than
+> a copy-paste. A7 judges only the files § 9.3 names — reaching a higher floor
+> *through* an unmapped file would pass. Each is a fence, not a proof. All six
+> mutants were run against them before this row was ticked.
 
 ---
 
