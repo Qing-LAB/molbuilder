@@ -370,27 +370,17 @@ _CONFIG_DOC_SECTION = "## 8. Configuration"
 
 
 def _sections_the_code_reads() -> set[str]:
-    """Every top-level key of ``molbuilder.json`` the reader looks at.
+    """Every top-level key of ``molbuilder.json`` the reader knows.
 
-    Two populations, and the difference is worth keeping: what ``_normalise``
-    validates when the file is loaded, and what a getter reads on demand later.
-    Both are config sections; only the first is refused when malformed.
+    Since U7 (2026-08-12) this is a DATA structure, not a source scrape:
+    the section registry (`_SECTIONS`, architecture.md § 8.2a) is the
+    loader's one total list -- ask it, do not work it out again.  The
+    scrape this replaced read ``out["..."]`` literals from `_normalise`,
+    which the registry loop no longer contains; it returned the empty set
+    and this guard caught the drift.
     """
-    import inspect
     from molbuilder import runtime_config as rc
-    validated = set(re.findall(r'out\["([a-z_]+)"\]',
-                               inspect.getsource(rc._normalise)))
-    lazy = set()
-    for name in dir(rc):
-        if not name.startswith("get_"):
-            continue
-        try:
-            src = inspect.getsource(getattr(rc, name))
-        except (TypeError, OSError):
-            continue
-        lazy |= set(re.findall(r'cfg\.get\(\s*"([a-z_]+)"', src))
-        lazy |= set(re.findall(r'cfg\[\s*"([a-z_]+)"\s*\]', src))
-    return validated | lazy
+    return set(rc._SECTIONS)
 
 
 def _sections_the_contract_documents() -> set[str]:

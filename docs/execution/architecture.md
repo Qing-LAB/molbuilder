@@ -590,13 +590,36 @@ the project's if set, otherwise the server's.
 | `rate_limit` | `get_rate_limit` | the **server** | how the limiter judges traffic (§ 4 there) |
 | `admin` | `get_admin_emails` | the **server** | `admin.emails` — who may clear the block list and restart the process. **Absent means nobody**, which is the safe state you get by writing no config |
 
-**Ten sections, and two of them are checked later than the rest.** The first
-eight are validated when the file is read, so a malformed `scheduler` refuses to
-start. `rate_limit` and `admin` are read on demand by the subsystem that wants
-them — which means a typo in those two is ignored rather than refused. Worth
-knowing before you debug why an admin list appears to do nothing.
+### 8.2a The section registry — the loader's one table *(U7, 2026-08-12)*
 
-*(That the table and the reader name the same sections is checked — `test_architecture_rules::test_every_config_section_is_documented_and_every_documented_one_exists`, an equality both ways.)*
+**Everything the loader knows about a section is one row of one table** —
+`_SECTIONS` in `runtime_config.py`: the section's validator, the scopes it
+may live in, and whether provenance may print its values. `_normalise` (the
+loader), the project-scope refusal, `config_provenance`'s safe list and
+`write_config_scope` all consult that table and nothing else.
+
+**Why it exists — the defect it ended.** Until 2026-08-12 each of those four
+sites kept its own partial list. The loader's list had never learned `admin`
+or `rate_limit`, so it silently DROPPED them and `get_admin_emails` read
+post-strip config: **the file looked configured and nobody could be admin**,
+with nothing anywhere saying why. The paragraph that stood here documented
+that state as a gotcha (*"a typo in those two is ignored rather than
+refused — worth knowing before you debug why an admin list appears to do
+nothing"*) — a sentence that should have been a bug report. Every section is
+now validated when the file is read; a malformed one refuses to start.
+
+Three rules fall out of the table, and each was a scattered special case
+before:
+
+| rule | what it means for you |
+|---|---|
+| **an unknown top-level key is refused, never ignored** | a typo'd section name (`"shceduler"`) is an error naming the known sections, not a silently dead block. *Amended contract — `running-a-job.md` § 5 said "unknown keys are ignored", and that tolerance is exactly the hole that ate `admin`.* The one carve-out: a key starting with `_` (the templates' `"_comment_tls"` idiom) is a comment by design |
+| **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `secret_key_file`, `checkpoint`, `rate_limit` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `execution`, `script_generation`, `scheduler`. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
+| **provenance prints only what its row allows** | `config_provenance` (the `config:` lines prep and submit echo and the decision ledger records) shows values only for `execution` and `script_generation` — never anything near a secret |
+
+*(That the § 8.2 table and the registry name the same sections is checked —
+`test_architecture_rules::test_every_config_section_is_documented_and_every_documented_one_exists`,
+an equality both ways, reading `_SECTIONS` directly since U7.)*
 
 **Read the first four rows as one thing.** They are the whole of what a
 calculation needs from config, and they arrive at exactly two moments:
