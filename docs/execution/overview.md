@@ -29,6 +29,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | You want to know… | Open |
 |---|---|
 | **Who decides what** — the seven floors, the four routes, which function is the entry point at each floor, and the rules that must never break | **[`architecture.md`](?doc=execution/architecture.md)** |
+| **What ASU Sol actually provides** — node types, partitions, QOS, and how to ask for resources | **[`asu-sol.md`](?doc=execution/asu-sol.md)** |
 | **How declared data becomes a job set** — schema → template → `ParameterSet` → decks, and why benchmarking and running are one pipeline | **[`generator.md`](?doc=execution/generator.md)** |
 | **Which config setting reaches which part of the system**, and at which step | **[`architecture.md`](?doc=execution/architecture.md)** § 8 |
 | **What differs between a workstation and a cluster** — and what does not | **[`architecture.md`](?doc=execution/architecture.md)** § 9 |

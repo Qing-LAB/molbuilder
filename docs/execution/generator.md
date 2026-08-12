@@ -274,6 +274,14 @@ this work**, and the existing split is already the right one:
 | **`choice`** | the **mechanism** — which engine build, ranks per GPU, block size | **yes, unchanged** — provided the node type is comparable |
 | **`recommend`** | **sizing measured on that machine** — memory from peak + 15%, walltime from seconds-per-iteration × assumed iterations | **no.** It is a measurement of a specific node, and it is labelled as a starting point for exactly this reason |
 
+> **⭐ And on ASU Sol the condition is checkable, which is the proof this design
+> is not abstract.** `public`, `general` and `htc` draw from **uniformly AMD EPYC**
+> nodes, so a benchmark on `htc` (4 h, fast queue) and a run on `public` (7 days)
+> are the same silicon and `choice` carries. Where it breaks is visible in the
+> same table: a **GPU node has 48 cores against a standard node's 128**, so a
+> GPU-measured choice does not carry to a CPU run. **The comparison is by node
+> type, not partition name** — [`asu-sol.md`](?doc=execution/asu-sol.md) § 5.2.
+>
 > **This is what makes decision 38 load-bearing, and for a second reason.** Knowing
 > each cluster's hardware is not only *"does my allocation fit?"* — it is
 > **"are these two domains comparable enough for `choice` to carry, and by what
