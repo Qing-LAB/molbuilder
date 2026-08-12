@@ -886,20 +886,52 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
     # stop at the sentence that closes the table -- the section continues with
     # OTHER tables, and running past this one silently harvested their rows.
     end = doc.index("**Adding a block is a contract change", start)
-    documented = {m.group(1).strip()
-                  for m in _re.finditer(r"^\| \*\*(.+?)\*\* \|", doc[start:end], _re.M)}
+    rows = {m.group(1).strip(): m.group(2)
+            for m in _re.finditer(r"^\| \*\*(.+?)\*\* \|([^|]*)\|",
+                                  doc[start:end], _re.M)}
+    documented = set(rows)
+    conditional = {name for name, desc in rows.items() if "*(" in desc}
     assert documented, "§ 2.6's wrapper table could not be read — repoint this"
 
-    _write_config(tmp_path)      # activation from the bundle, not the cwd
-    (tmp_path / "JOB.fdf").write_text("x")
-    txt = write_run_wrapper(tmp_path / "JOB.fdf", env="e").read_text()
-    emitted = {h.split("(")[0].strip()
-               for h in _re.findall(r"^# --- (.+?) -*$", txt, _re.M)}
+    # documented rows may carry a *(conditional: ...)* tag -- strip it the
+    # same way headers strip their parentheticals
+    documented = {d.split("*(")[0].strip() for d in documented}
 
-    assert emitted == documented, (
-        "the wrapper and job-contracts.md § 2.6 disagree about its blocks.\n"
-        f"  emitted, not documented: {sorted(emitted - documented)}\n"
-        f"  documented, not emitted: {sorted(documented - emitted)}")
+    def _blocks(txt):
+        return {h.split("(")[0].strip()
+                for h in _re.findall(r"^# --- (.+?) -*$", txt, _re.M)}
+
+    _write_config(tmp_path)      # activation from the bundle, not the cwd
+    # an ESTIMABLE CPU deck: the memory block only renders when the
+    # estimator can read the size fields (and never for GPU decks, which
+    # budget through gpu.mem) -- an "x" deck hid the row
+    (tmp_path / "JOB.fdf").write_text(
+        "SystemName j\nSystemLabel JOB\nNumberOfAtoms 100\n"
+        "NumberOfSpecies 1\nMeshCutoff 300 Ry\nBasis.Size DZP\n")
+    minimal = _blocks(write_run_wrapper(tmp_path / "JOB.fdf",
+                                        env="e", mpi_np=4).read_text())
+    # The MAXIMAL wrapper (R9, 2026-08-12): a GPU deck with an estimable
+    # size and a retry budget emits the four conditional blocks the table
+    # omitted -- and this guard, rendering only the minimal wrapper,
+    # could not see that its own "exhaustive" claim was false.
+    (tmp_path / "GPU.fdf").write_text(
+        "SystemName g\nSystemLabel GPU\nNumberOfAtoms 100\n"
+        "NumberOfSpecies 1\nMeshCutoff 300 Ry\nBasis.Size DZP\n"
+        "Diag.ELPA.GPU .true.\n")
+    maximal = _blocks(write_run_wrapper(tmp_path / "GPU.fdf", env="e",
+                                        mpi_np=4, gres="gpu:a100:1",
+                                        continue_retries=2).read_text())
+    union = minimal | maximal
+    assert union <= documented, (
+        "the wrapper emits blocks job-contracts.md § 2.6 does not list:\n"
+        f"  {sorted(union - documented)}")
+    # a documented row these two renders did not produce must SAY it is
+    # conditional -- the memory audit needs a chemically parseable deck
+    # (species + coordinates) neither fixture carries
+    unrendered = documented - union
+    assert unrendered <= conditional, (
+        "§ 2.6 lists unconditional blocks the wrapper never emitted:\n"
+        f"  {sorted(unrendered - conditional)}")
 
 
 def test_prep_writes_stage_plan_md(tmp_path):

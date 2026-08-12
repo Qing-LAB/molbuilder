@@ -478,7 +478,18 @@ wrapper contains these and nothing else:
 | **Probe SIESTA build at runtime** | reads the build's own capabilities |
 | **Record resolved launch command + placement** | writes down what it is about to do |
 | **SCF per-iteration timing instrument** | the benchmark sampler |
+| **GPU load-balance: rank <-> GPU matching** | *(GPU decks only)* maps MPI ranks onto visible GPUs (K ranks per device via MPS) so a 2-GPU node does not stack every rank on device 0 |
+| **GPU mode: ELPA-CUDA defaults** | *(GPU decks only)* the researched rank/thread policy for the ELPA-CUDA build, overridable by every knob the usage names |
+| **GPU<->CPU socket co-location** | *(GPU decks only)* pins ranks beside the GPU's own NUMA node so host<->device traffic stays on-socket |
+| **Memory: estimate** | *(decks the estimator can read)* the CPU memory estimate vs the SLURM allocation, so an OOM is predicted in the log rather than discovered by the scheduler |
+| **Geometry-cap check + warm-retry** | *(`continue_retries` > 0)* bounded re-exec with `--continue` on a geometry-step cap hit — the retry budget the deck records |
 | **Launch SIESTA + capture exit** | the exec, and the exit code |
+
+*(Amended 2026-08-12, R9: the table claimed exhaustiveness while listing
+only the blocks of a minimal CPU wrapper — the five conditional rows above
+were emitted, headered, and undocumented, and the equality guard rendered
+only the minimal wrapper so it could not see them.  The guard now renders
+a maximal wrapper too.)*
 
 **Adding a block is a contract change, not an implementation detail**, because
 each one is work happening on a compute node — the place this design keeps
