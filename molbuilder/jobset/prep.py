@@ -224,7 +224,9 @@ class EngineSeam:
     """
     #: The config class the template rebuilds into.
     config_cls: type
-    #: ``(structure, config) -> deck text``.
+    #: ``(structure, config, stage_token=) -> deck text`` -- the token is
+    #: a RENDER ARGUMENT (step 7, C7): the emitter never learns the word,
+    #: the deck's filename carries it.
     render_deck: Callable
     #: The deck's type suffix (``.fdf``).
     suffix: str

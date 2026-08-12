@@ -3177,15 +3177,22 @@ def render_sbatch(script_path: Path,
 
     Value sourcing (§ 6): stable site directives come from ``scheduler``;
     per-job values (``ntasks``/``cpus_per_task``/``time``/``mem``/GPU
-    type+count/``exclusive``) are resolved by the CALLER (CLI flag →
-    ``.fdf`` → config default) and passed in here already resolved.
+    type+count/``exclusive``) arrive already resolved from the JOB'S OWN
+    RESOURCES -- floor 3 resolved them per element, ``prep`` passes them
+    through ``write_run_wrapper`` -> ``_maybe_write_sbatch``.  *(This
+    said "CLI flag -> .fdf -> config default" until the follow-up sweep,
+    2026-08-12 -- the resolution chain of the deleted ``molbuilder fdf``
+    route, not of any caller that exists.)*
 
     Args:
       scheduler: the resolved block from
         :func:`runtime_config.get_scheduler` (``directives`` carry a
         validated ``partition``+``qos``).
-      ntasks: ``-n``.  CPU jobs: the MPI rank count.  GPU jobs: 1 rank
-        per GPU (§ 7.5.1) -- pass ``gpu_count``.  Under sbatch the
+      ntasks: ``-n``.  The MPI rank count for CPU **and** GPU jobs --
+        ``--gres`` carries the GPU count separately, and K ranks may
+        share one GPU via MPS, so ntasks = mpi_np, NOT the GPU count
+        (this line said "1 rank per GPU -- pass gpu_count", which its
+        own caller contradicts).  Under sbatch the
         launcher reads ``SLURM_NTASKS`` (runwrap line ~1367), so this
         ``-n`` and ``mpirun -np`` agree by construction (§ 7.3).
       gpu: emit the ``--gres`` + ``--gres-flags=enforce-binding`` lines

@@ -459,3 +459,62 @@ def test_a_trial_is_cold_by_construction(calc):
         import re
         deck = (d / f"JOB-{j['name']}_01_coarse.fdf").read_text()
         assert re.search(rf"^SystemLabel\s+JOB-{j['name']}\s*$", deck, re.M)
+
+
+def test_each_trials_wrapper_carries_its_own_translated_launch(calc):
+    """The STOMP's true regression pin (U1 fixed it at the job-set level;
+    this pins the WRAPPER TEXT, where the bug actually bit): every
+    trial's .run.sh bakes ITS OWN G*K rank default, not the base
+    allocation's -- a stomped wrapper launches every trial at the same
+    np and the benchmark measures nothing."""
+    import re
+    js = _prep_bench(calc)
+    seen = set()
+    for j in js["jobs"]:
+        name = j["name"]
+        g = int(name[1])
+        k = int(name[name.index("K") + 1:name.index("C")])
+        w = (calc / "01_coarse" / "bench" / f"bench-{name}"
+             / f"JOB-{name}_01_coarse.run.sh").resolve().read_text()
+        # ANCHORED to the assignment lines: the GPU policy block's
+        # ``_gpu_mpi_np_default=4`` contains this name as a substring,
+        # which is exactly what an unanchored search matched first.
+        vals = re.findall(r"^\s*_mpi_np_default=(\d+)$", w, re.M)
+        assert vals, "wrapper carries no baked rank default"
+        assert all(int(v) == g * k for v in vals), (name, vals)
+        seen.add(g * k)
+    assert len(seen) > 1, "all wrappers share one rank count -- the stomp"
+
+
+def test_stage_plan_records_the_config_provenance(calc):
+    """STAGE-PLAN.md is the reviewable record; the provenance block
+    (which file supplied each setting) is what makes a machine
+    difference debuggable from the plan alone (user rule 2026-08-12)."""
+    _prep_bench(calc)
+    plan = (calc / "01_coarse" / "bench" / "STAGE-PLAN.md").read_text()
+    assert "config:" in plan
+    assert ".molbuilder.json" in plan
+
+
+def test_the_two_stage_sequence_carries_the_geometry_forward(calc):
+    """The cross-stage story end-to-end: prep+launch-record coarse, then
+    prep medium --from coarse's attempt -- the carried warm files land
+    in medium's attempt, which is what the root plan's MERGE (U1) keeps
+    verifiable."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["prep", "run", "coarse",
+                                  "--bundle", str(calc), "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    attempt = calc / "01_coarse" / "run-0"
+    (attempt / "JOB.XV").write_text("relaxed coords")
+    res = r.invoke(jobset_group, ["prep", "run", "medium",
+                                  "--bundle", str(calc), "--no-sbatch",
+                                  "--from", "01_coarse/run-0"])
+    assert res.exit_code == 0, res.output
+    carried = list((calc / "02_medium").rglob("JOB.XV"))
+    assert carried, "the geometry did not carry"
+    assert carried[0].read_text() == "relaxed coords"
+    js = json.loads((calc / "job-set.json").read_text())
+    assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]

@@ -86,6 +86,19 @@ Three things follow immediately, and each is a rule elsewhere in these documents
 | cannot fetch anything | put **everything the run will read in place before it starts** — which is why a carried restart file is copied at prep rather than resolved later (`project-layout.md § 1.6`), and why a stage may **declare** what it needs (below) |
 | assumes the environment is already correct | give the wrapper exactly two jobs — **activate, then exec** — and do every decision and arrangement in Python beforehand (`running-a-job.md § 2.2a`) |
 
+> **One carve-out, stated rather than smuggled** *(U-program follow-up,
+> 2026-08-12 — § 2.6's wrapper carried this while the rule above read as
+> absolute, and the two documents conflicted)*: the wrapper may probe **the
+> engine build it is about to run** — `siesta --version` for its
+> MPI/OpenMP parallelisations, deciding the launcher form (`mpirun` vs
+> direct). That fact does not exist before the run: the binary on the
+> target's PATH at run time may have been rebuilt since `prep`, and baking
+> the answer would pin yesterday's build to today's launch. The carve-out
+> is bounded by what it reads: the probe consults the ENGINE itself, never
+> a config file, the description, or anything molbuilder wrote — those all
+> had their one moment earlier, and § 8 of `running-a-job.md` still holds
+> (**nothing reads config at run time**).
+
 **"Reachable from there" is the precise word, not "physically present."** A
 symlink to `../Au.psml` opens as a real file from inside the directory, and the
 engine cannot tell the difference — so sharing one copy of a large
