@@ -2893,12 +2893,22 @@ contract is enough to schedule it.
 
 ## 5h. The top-down build — one defect, and the order it forces
 
-*Full-text static read of the generating half (~8,000 lines) against
-[`generator.md`](?doc=execution/generator.md), 2026-08-11. **This section
-supersedes § 5g's ordering as the plan of record.** § 5g stays as the
-conformance measurement it is — but its rows are **consequences** of what is
+*Static read against [`generator.md`](?doc=execution/generator.md), 2026-08-11.
+**This section supersedes § 5g's ordering as the plan of record.** § 5g stays as
+the conformance measurement it is — but its rows are **consequences** of what is
 below, not the work itself, and building them as thirteen patches would leave the
 defect that produced them in place.*
+
+> **What was read, so the evidence can be weighed.** In full: `task.py` (595),
+> `template.py` (376), `siesta/stages.py` (397), `jobset/prep.py` (292),
+> `bench/to_jobset.py` (66) — **1,726 lines**, chosen because they are the
+> floor-1-to-floor-3 path this section is about. Structurally (signatures,
+> constants, call sites): `script_emit`, `jobset/model`, `jobset/_cli`,
+> `bench/generate`, `bench/prep`, `config/siesta`. **Not yet read:**
+> `jobset/materialize` (537), `jobset/submit` (510), `jobset/runstatus` (328),
+> `identity` (479) and most of `bench/` (~3,000) — floors 4–6, where this
+> section's findings predict *consequences* rather than causes. Every row below
+> carries a `file:line`; nothing is inferred from a module not named here.
 
 ### The one defect, stated once
 

@@ -176,6 +176,15 @@ and no downstream reader ever re-derives a value or asks *"was this a benchmark?
 > `bench-G<g>K<k>C<c>` (`job-contracts.md` § 6.3) is `point` rendered — one
 > function, fed by data, rather than a format string in the benchmark module.
 
+> **And it settles an asymmetry the code carries today.**
+> `materialize.shape_of` returns `None` for a sweep, on the stated grounds that
+> *"a benchmark bundle carries no description and needs none"* — true now,
+> because a benchmark is a separate lifecycle. **Under this design it stops being
+> true:** a sweep is a `ParameterSet` inside a described calculation, so it has a
+> description like anything else, and its trials nest inside the stage they
+> measure — `<seq>_<name>/bench-<point>/`. The two directory conventions become
+> one question (*does this element have a `point`?*) instead of two kinds.
+
 ---
 
 ## 6. The module map — one direction, no cycles
