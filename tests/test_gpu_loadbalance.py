@@ -271,7 +271,11 @@ def test_wrapper_launches_low_priority_monitor(tmp_path):
     t = _gpu(tmp_path)
     assert 'if [ "${MB_MONITOR:-1}" = "1" ]' in t
     assert "[ -f mb_monitor.py ]" in t
-    assert "nice -n 19 python mb_monitor.py" in t        # shipped, not -m
+    # R9: the interpreter is PROBED (python3-first) -- bare `python`
+    # does not exist on python3-only hosts, and the backgrounded 127 was
+    # swallowed while the log claimed a live pid.
+    assert '_mb_py="$(command -v python3 || command -v python' in t
+    assert 'nice -n 19 "$_mb_py" mb_monitor.py' in t     # shipped, not -m
     assert "python -m molbuilder monitor" not in t       # NOT the package form
     assert "--watch-pid $$" in t
     assert "--interval \"${MB_MONITOR_INTERVAL:-5}\"" in t

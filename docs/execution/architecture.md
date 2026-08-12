@@ -175,7 +175,7 @@ flowchart TB
     end
     subgraph F3["<b>3 · plan</b> — what was asked for + this machine → a list of jobs"]
       direction LR
-      P1["siesta/stages.py"]; P2["bench/to_jobset.py"]; P3["jobset/model.py"]
+      P1["siesta/stages.py"]; P2["resolve.py"]; P3["bench/grid.py"]; P4["jobset/model.py"]
     end
     subgraph F2["<b>2 · description</b> — what the person asked for"]
       direction LR
@@ -195,6 +195,10 @@ Solid arrows are the ordinary way down. **Dotted arrows are allowed shortcuts:**
 any floor may reach straight to floor 1, because floor 1 holds plain values and
 keeps no state. `submit` asking `identity` for a name is not a violation — it is
 floor 1 doing the job it exists for.
+
+*(The floor-3 nodes drew `bench/to_jobset.py` until 2026-08-12 — deleted with
+the pre-resolve producers; the diagram now matches § 2.1's row 3, whose own
+note records the deletion.)*
 
 ### 2.1 What each floor owns, and how you call it
 
@@ -307,7 +311,7 @@ classDiagram
 | **`StageRef`** | 1 | *which stage is this?* — an ordinal and a name, together | the resolver, `stage_refs` |
 | **`Environment`** | 1 | *what is this machine?* | `resolve_environment` |
 | **`Task` / `Stage`** | 2 | *what did the person ask for?* | `read_task` |
-| **`JobSet` / `Job` / `WarmFile`** | 3 | *what jobs does that mean, on this machine?* | a producer (`stages_to_jobset`, `sweep_to_jobset`) |
+| **`JobSet` / `Job` / `WarmFile`** | 3 | *what jobs does that mean, on this machine?* | `prep`, from the resolved `ParameterSet` (`resolve.py`) — one `Job` per element *(the producers `stages_to_jobset` / `sweep_to_jobset` built these until 2026-08-12; deleted, § 2.1's row-3 note)* |
 | **`Shape`** | 4 | *where do this stage's files live?* | `Shape.named`, from the description |
 | **`Attempt`** | 4 | *which try is this, and what was put in it?* | `prepare_attempt` |
 | **`LaunchAgreement`** | 5 | *does this deck match the launch it is about to get?* | `launch_agreement` (`jobset/agreement.py` — its own floor-5 module since 2026-08-12, so `prep` and `submit` both import it downward and neither imports the other) |
@@ -882,11 +886,16 @@ flowchart LR
 | **V2 → V4** | rendering the deck | **prep step 3** | the deck writer, via `anchor` / `expands` | ✅ the item carries its keyword |
 | **V8 → V4** | ATOM-METADATA + `Geometry.Constraints` | **prep step 3** | the deck writer | ✅ |
 | **0-based → 1-based** | the single conversion boundary | **prep step 3** | `model/overview.md` | ✅ one point, stated once |
-| **V2 → V6** | asked-for + machine → a list of jobs | floor 3 | a producer | ✅ |
-| **V2 → V5** | building the job's resources | floor 3 | `stages_to_jobset` | ❌ **a maintained table** — § 6.2 |
+| **V2 → V6** | asked-for + machine → a list of jobs | floor 3, at `prep` | `resolve` (the `ParameterSet`); `prep` writes the `JobSet` from it | ✅ |
+| **V2 → V5** | building the job's resources | floor 3, at `prep` | `resolve` — the allocation rides the element, a sweep axis enters only through its declared `MachineTranslation` | ❌ **a maintained table** — § 6.2 |
 | **V5 → SLURM** | building the command | **submit** | `render_sbatch` | ✅ from § 6.2 |
 | **label → V7** | naming any file | every route | **`identity` and nothing else** (A1) | ✅ |
 | **run dir → V9** | reading it back | observe | `decode_run_dir` | ✅ |
+
+*(The V2 → V6 and V2 → V5 rows named "a producer" and `stages_to_jobset` as
+owners until 2026-08-12 — deleted with the fold (§ 2.1's row-3 note). The
+ownership moved, not the rule: § 6.2's table is still the one maintained
+translation, applied now at `resolve`'s boundary instead of a producer's.)*
 
 ### 10.3 The rule, and why it is the flexible part
 

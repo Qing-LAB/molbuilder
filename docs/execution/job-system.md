@@ -865,9 +865,12 @@ meaning.
 > all. The refusal lives in `submit_jobset`, not in the CLI, so the web surface
 > and any other caller get it too.
 >
-> The benchmark already worked this way by hand — `bench generate` **emits**
-> `job-cpu.sbatch` and tells you to `sbatch` it yourself — so this makes the
-> framework agree with the workflow it already recommends.
+> The benchmark already worked this way by hand — the old `bench generate`
+> emitted `job-cpu.sbatch` and told you to `sbatch` it yourself — so the rule
+> made the framework agree with the workflow it already recommended. *(That
+> verb is gone — 2026-08-12, step 6 u5 — and its manner of working survives it:
+> `submit bench` hands over one trial per invocation, the next unlaunched by
+> default.)*
 
 **2. What a stage continues from is something you say.** `--from
 01_coarse/run-0` names the attempt whose results this run starts from. Those

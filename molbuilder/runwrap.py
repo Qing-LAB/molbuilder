@@ -1217,8 +1217,12 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '# Hardware probe -- prefer lscpu because it gives PHYSICAL\n'
         '# cores (HT-aware); nproc returns logical, which counts HT\n'
         '# siblings and would make _cps too large -> over-binding.\n'
+        # ``|| true`` INSIDE the substitution: an assignment whose
+        # substitution fails triggers errexit, so with lscpu absent the
+        # wrapper died HERE -- before the nproc fallback written for
+        # exactly that case, and before -h could print usage (R9).
         '_phys_cores=$(LANG=C lscpu -p=Core,Socket 2>/dev/null '
-        '| grep -v "^#" | sort -u | wc -l 2>/dev/null)\n'
+        '| grep -v "^#" | sort -u | wc -l 2>/dev/null || true)\n'
         'if [ -z "$_phys_cores" ] || [ "$_phys_cores" -lt 1 ]; then\n'
         '    # Fallback: nproc / 2 (assume 2-way HT, conservative\n'
         '    # estimate; bare nproc would over-count on HT boxes).\n'
@@ -1228,7 +1232,7 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '    [ "$_phys_cores" -lt 1 ] && _phys_cores=$_logical\n'
         'fi\n'
         '_n_sockets=$(LANG=C lscpu -p=Socket 2>/dev/null '
-        '| grep -v "^#" | sort -u | wc -l 2>/dev/null)\n'
+        '| grep -v "^#" | sort -u | wc -l 2>/dev/null || true)\n'
         'if [ -z "$_n_sockets" ] || [ "$_n_sockets" -lt 1 ]; '
         'then _n_sockets=1; fi\n'
         '_cps=$(( _phys_cores / _n_sockets ))\n'

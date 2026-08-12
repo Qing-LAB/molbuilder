@@ -1143,8 +1143,14 @@ on the science.
 | ③ **calculation** | the run id (`run-identity.md § 3`) | **the browser** (step 3), in one transaction | the template, `task.json`, the shared package, the history |
 | ④ **stage** | `<seq>_<name>` (§ 4) | **`prep`** — the rendered deck and wrapper land here | its deck, its wrapper, its attempts — **a container** |
 | ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **`prep`** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable** |
-| — **benchmark** | `bench` | `prep --bench` | its own decks, wrappers, config and results — a self-contained **container** |
-| — **trial** | `bench-<knobs>` (§ 4.4) | the sweep script, then the engine | one throwaway **run** |
+| — **benchmark** | `bench`, inside the stage it measures | `prep bench <stage>` | its trials, the sweep's own `job-set.json`, and `bench-result.json` — a **container** |
+| — **trial** | `bench-<knobs>` (§ 4.4) | `prep bench` (its deck + wrapper), then the engine when submitted | one throwaway **run** — its own attempt, carrying its `run.json` |
+
+*(Numbering note, 2026-08-12: this table is the authority, and it gives the
+benchmark and trial rows **no circled number** — they are nested containers
+inside a stage (④), not levels of the tree. Three sections had each invented
+one — ⑤ in § 5.1, ⑥ in §§ 3 and 5, ④ in invariant 10 — three numbers for one
+unnumbered thing; all now say "the stage's `bench/` container" in words.)*
 
 Three rules, and everything else follows:
 
@@ -1159,13 +1165,18 @@ Three rules, and everything else follows:
 The engine never writes above itself — whatever a run continues from is a real
 copy put there before it starts (§ 1.6).
 
-**A benchmark gets its own directory, and that is not tidiness.**
-`generate_bench_bundle` writes its own decks, wrappers, pseudopotential copies,
-`README.md` and `.molbuilder.json` — it owns a directory. Pointed at a stage
-directory it would put a second job's inputs beside the real run's, which
-`job-contracts.md § 2.1` Rule 1 forbids, and duplicate the pseudopotentials
-already linked from the parent. Pointed at `01_coarse/bench/` it needs **no
-change at all**: the bundle root moves, everything inside it stays as it ships.
+**A benchmark gets its own directory, and that is not tidiness.** `prep bench
+<stage>` writes the stage's `bench/` container — the sweep's own
+`job-set.json`, and a deck + wrapper per trial in `bench-<point>/` — so a
+trial's inputs never sit beside the real run's, which `job-contracts.md § 2.1`
+Rule 1 forbids. *(Amended 2026-08-12: this paragraph walked
+`generate_bench_bundle` — the shipped standalone bundle writer, with its
+pseudopotential copies, `README.md` and `.molbuilder.json` — as today's
+builder, and argued it could be pointed at `01_coarse/bench/` "with no change
+at all". The function was deleted in the fold, step 6 u5; the container it
+argued for is now simply where `prep bench` builds, and the two § 2.6 rows
+above were corrected the same day — they credited `prep --bench`, a flag that
+was never the grammar, and "the sweep script", which died with the bundle.)*
 
 **Storage topics are flat and shared.** `structure/` and `pseudopotential/` hold
 files, not calculations. A calculation *points* at a structure and *copies* the
@@ -1223,15 +1234,22 @@ There are two things a user varies. They vary for different reasons, they need
 different machinery, and — this is the part that was implicit — **one nests
 inside the other.**
 
-| | **Stage** (④) — parameter tuning | **Trial** (⑥) — resource tuning |
+| | **Stage** (④) — parameter tuning | **Trial** (in the stage's `bench/`) — resource tuning |
 |---|---|---|
 | What varies | the science: mesh cutoff, force tolerance, relaxation method, k-grid | the machine: GPUs, MPI ranks, cores per rank |
 | Why | to approach an answer in steps — coarse first, then tight | to find out what runs *this* science fastest *here* |
-| The deck | **its own file**, rendered from the shared settings with this stage's values substituted | the stage's deck **transformed to be measurable** (§ 3.2) |
-| Identity | shares the calculation's id, so it warm-starts from the stage before | **its own throwaway label** — `job-gpu` / `job-cpu` |
-| Ordered? | **yes** — each continues the one before | **no** — trials are independent and can all queue at once |
+| The deck | **its own file**, rendered from the shared settings with this stage's values substituted | the stage's science **rendered measurable** — the same resolve, with the benchmark's pins laid over (§ 3.2) |
+| Identity | shares the calculation's label, so it warm-starts from the stage before | **its own label** — relabelled per trial (`<label>-<point>`) |
+| Ordered? | **yes** — each continues the one before | **no** — trials are independent; submitted one per invocation (`job-system.md § 5.3`) |
 | Outcome | a result you keep | a number; the run is thrown away |
-| Produced by | `prep`, from the template + this stage's values | `generate_bench_bundle` + `sweep_to_jobset` |
+| Produced by | `prep run`, from the template + this stage's values | `prep bench <stage>` — the same five steps, parameters as a set (§ 2.3.1a) |
+
+*(The trial column corrected 2026-08-12 with the fold: its header numbered the
+trial "⑥" — a level § 2.6's table does not define; its identity row still
+said `job-gpu` / `job-cpu`, the two-point bundle's throwaway labels; its
+"Ordered?" row said trials "can all queue at once", which the one-job-per-
+invocation submission rule had already overruled; and its producers were
+`generate_bench_bundle` + `sweep_to_jobset`, both deleted in step 6 u5.)*
 
 **Why trials nest under a stage rather than beside the calculation.** The best
 rank count depends on the science: mesh cutoff changes the grid, basis size
@@ -1263,31 +1281,40 @@ mechanism:
 | MPI ranks | **no**, but an unset `BlockSize` is proposed from them | the scheduler's `-n`, and the launch |
 | `BlockSize` | **yes** — a tunable knob, set by you or measured by a benchmark ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | nothing else; it is pure parallel efficiency |
 
-### 3.2 A trial's deck is the stage's deck, made measurable
+### 3.2 A trial's deck is the stage's science, made measurable
 
-A trial does **not** run the stage's deck. `transform_fdf` derives a variant that
-can be timed:
+A trial does **not** run the stage's deck — and it does not *edit* it either.
+Its deck is **rendered from the description like any other**, with the
+benchmark's **pins** laid over the resolved values
+(`template.md § 8.1`: rebuild and render, never splice):
 
-- **SCF capped** (5 iterations) and `SCF.MustConverge` **off**, so a capped run
-  exits cleanly instead of aborting and reading as a scheduler failure;
-- **MD steps zeroed** — a single point, because you are timing an iteration, not
-  converging a geometry;
-- **cold start forced** (`DM.UseSaveDM .false.`);
-- **relabelled** to `job-gpu` / `job-cpu`;
-- **one solver for both points** (`ELPA-1STAGE`), the GPU point setting the CUDA
-  flag on and the CPU point setting it *explicitly* off — so the number isolates
-  the hardware rather than the solver.
+- **SCF capped** (5 iterations) — you are timing an iteration, not converging
+  the chemistry;
+- **relaxation steps zeroed** — a single point, not a geometry;
+- **cold start forced** (`restart: clean`);
+- **relabelled per trial** — the calculation's label with the point's token
+  appended;
+- **the GPU eigensolver pinned** (`ELPA-1STAGE`, GPU on) for every trial, so
+  the grid isolates the hardware.
 
-**The last two are what make it safe to nest.** A trial that kept the stage's
-label and honoured saved state would read the stage's `.XV`/`.DM` and then
-overwrite them — a five-iteration throwaway destroying the state the real run
-depends on. Relabelling and forcing cold are not artefacts of the benchmark once
+**The relabel and the forced cold are what make it safe to nest.** A trial that
+kept the stage's label and honoured saved state would read the stage's
+`.XV`/`.DM` and then overwrite them — a five-iteration throwaway destroying the
+state the real run depends on. They are not artefacts of the benchmark once
 having been standalone; they are the reason it can live inside a stage's
 directory at all.
 
-> **A trial belongs to the deck it was derived from.** Change the stage's science
-> and the measurement no longer applies. The manifest records the source deck's
-> hash so a stale answer can be recognised rather than reused.
+> **This section walked `transform_fdf` until 2026-08-12** — the splicer that
+> derived a measurable variant by editing a *finished* deck, relabelled
+> `job-gpu` / `job-cpu`, with `SCF.MustConverge` forced off. It was deleted in
+> the fold (step 6 u5) with the two-point bundle around it. Two consequences
+> worth recording: `SCF.MustConverge` has **no schema field** (the splice
+> invented the line), so a capped trial now reports its nonconvergence honestly
+> rather than being silenced — adding the field is a recorded vocabulary gap
+> (`template.md § 7`); and the closing note here — *"the manifest records the
+> source deck's hash so a stale answer can be recognised"* — died with
+> `bench-manifest.json`: nothing records a source hash today, and how a surface
+> shows a verdict whose science has since changed remains § 8's open question.
 
 ### 3.3 How the levels compose
 
@@ -1495,7 +1522,7 @@ how a folder stops being trustworthy.
 | `job-set.json`, `STAGE-PLAN.md` | derived | the producer / prep | regenerate |
 | `*.psml`, `mb_monitor.py` | **input**, copied in | the producer | re-resolve from the project's cache |
 | stage outputs (④) | **result** | the engine | gone — this is what the history is for |
-| trial outputs (⑥) | **scratch** | the engine | nothing lost; `bench-result.json` is the answer |
+| trial outputs (the stage's `bench/`) | **scratch** | the engine | nothing lost; `bench-result.json` is the answer |
 
 > **One source, everything else derived.** `task.json` is the only file at the
 > calculation level that cannot be reconstructed from the others. That is what
@@ -1511,11 +1538,23 @@ how a folder stops being trustworthy.
 | `<label>.template.toml` | ③ calculation | `molbuilder/template@1` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter with its value; nothing the hardware decides |
 | `task.json` | ③ calculation | `molbuilder/task@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
 | `<label>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
-| `job-set.json` | ③ calculation | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6); the edge fields serve the benchmark sweep |
-| `.molbuilder.json` | ⑤ benchmark bundle | same as project | **the activation the bundle carries to the target** — written by `_write_activation_config`, the single place that decision is persisted. A fourth scope in practice, and deliberate: the bundle must be runnable after `scp` |
-| `environment.json` | ⑤ benchmark bundle | `molbuilder/environment@1` | the machine as detected when this stage was measured |
-| `bench-manifest.json` | ⑤ benchmark bundle | `molbuilder/bench-manifest@2` | the two comparable points, and the source deck's hash |
-| `bench-result.json` | ⑤ benchmark bundle | `molbuilder/bench-result@1` | every trial's timing, the winner, a recommendation |
+| `job-set.json` | ③ calculation (the RUN plan, merged per stage); a sweep's own record in the stage's `bench/` | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6) |
+| ~~`.molbuilder.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the activation the bundle carries to the target~~ |
+| `environment.json` | ③ calculation | `molbuilder/environment@1` | the machine as `prep` step 1 detected it |
+| ~~`bench-manifest.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the two comparable points, and the source deck's hash~~ |
+| `bench-result.json` | the stage's `bench/` container | `molbuilder/bench-result@1` | every trial's timing, the winner, a recommendation |
+
+*(Four rows corrected 2026-08-12. The "⑤ benchmark bundle" level never existed
+in § 2.6's table — ⑤ is the attempt — and the bundle it described died in the
+fold: the bundle-scope `.molbuilder.json` and its writer
+`_write_activation_config` were deleted with it, so activation now comes from
+the machine's own config, resolved at `prep` on the target, and travels in no
+folder; `bench-manifest.json` was retired the same day — nothing writes or
+reads it (`job-contracts.md § 6.1`'s tombstone). `environment.json` is written
+by `prep` step 1 at the calculation root, on every prep, not only when
+measuring; and `job-set.json`'s old clause "the edge fields serve the
+benchmark sweep" had been dead since 2026-08-10, when the edge fields
+themselves were deleted.)*
 
 **The split is strict, and it is why a calculation folder is portable**: the
 machine's knowledge lives in `molbuilder.json`, outside the calculation; the
@@ -1523,10 +1562,13 @@ science lives in `task.json`, inside it. A calculation carries no walltime, no
 partition, no activation command. Copy it to another cluster and it still
 describes the same calculation (`job-system.md § 2`, decision 3).
 
-The benchmark files are the one deliberate exception, and they sit at **⑤, not
-③**: they are a measurement of *this machine* for *this stage*, so they are not
-portable and are not meant to be. Moving a calculation to a different cluster
-leaves them stale, which the recorded environment makes visible.
+The machine-measurement files are the one deliberate exception, and they sit
+with the machine's work, **not in the description**: `environment.json` at the
+root and the benchmark files in the stage's `bench/` container are a
+measurement of *this machine* for *this stage*, so they are not portable and
+are not meant to be. Moving a calculation to a different cluster leaves them
+stale, which the recorded environment makes visible. *(This paragraph placed
+them "at ⑤, not ③" until 2026-08-12 — see the numbering note at § 2.6.)*
 
 ---
 

@@ -295,9 +295,13 @@ and **there is one convention for it**:
 
 - **The staged ladder** — the ladder from `task.json` (an engine config carries
   no stage list; that field was **deleted** 2026-08-07 —
-  [`engines/stages.md`](?doc=engines/stages.md) § 1.1) rendered by
-  `siesta/input.py::render_siesta_stage_fdfs` (the decks) and
-  `siesta/stages.py::stages_to_jobset` (the JobSet) — names each stage's input `.fdf`
+  [`engines/stages.md`](?doc=engines/stages.md) § 1.1), each stage's deck
+  rendered by `prep` step 3 through the engine seam (`jobset/prep.py`, calling
+  `siesta/input.py::render_fdf` per resolved element) and the plan written as
+  `job-set.json` by the same `prep` *(until 2026-08-12 this named
+  `render_siesta_stage_fdfs` and `stages_to_jobset` as the renderers — both
+  deleted in the fold, step 6 u5; the JobSet is derived from the description,
+  never emitted beside it)* — names each stage's input `.fdf`
   and stdout `.out` **`<label>_<NN>_<name>`**: an **underscore** joining the
   label, the stage's assigned ordinal and its name (the shipped ladder's names
   are `coarse` / `medium` / `tight`):
@@ -1098,7 +1102,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 |---|---|---|---|---|
 | User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `scheduler{kind,directives,gpu,defaults,mem_model,routing}`, `execution`, `script_generation`, `envs` |
 | Detected environment | `environment.json` | `molbuilder/environment@1` | `environment.py` | `scheduler`, `topology`, `site` |
-| Benchmark manifest | `bench-manifest.json` | `molbuilder/bench-manifest@2` | `bench/generate.py` | `points.{cpu,gpu}` |
+| ~~Benchmark manifest~~ | ~~`bench-manifest.json`~~ | ~~`molbuilder/bench-manifest@2`~~ | *(retired — no writer, no reader; note below)* | ~~`points.{cpu,gpu}`~~ |
 | Benchmark result | `<seq>_<stage>/bench/bench-result.json` — in the stage's container (§ 6.3) | `molbuilder/bench-result@1` | `bench/result.py` | `points`, `choice`, `recommend` |
 | Job-set plan | `job-set.json` at the root — the RUN plan, **merged per stage, never overwritten**; a sweep's own record is `<seq>_<stage>/bench/job-set.json` (§ 6.3) | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
 | Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]` — **what changes**; what does not is in `<label>.template.toml` |
@@ -1109,7 +1113,16 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Decision ledger | `jobset-decisions.log` — append-only JSONL at the bundle root; every verb records each decision it makes (config provenance, mode + its source, trial pick, verdict offer + answer), so a machine's behaviour is explained by reading the file, hours later, without the terminal | *(one JSON object per line, `at`/`verb`/`decision` + facts)* | `jobset/ledger.py` | `at`, `verb`, `decision` |
 | Decoded run | *(served, not written to disk)* | bare-int `schema_version` | `parse/dirs/job.py` | see below |
 
-> **The MANIFEST's third column is a repo-relative path, not a basename**
+> **The bench-manifest row is retired, struck rather than deleted**
+> *(2026-08-12, step 6 u5)*. `bench-manifest.json` recorded the shipped
+> benchmark bundle's two comparable CPU/GPU points and its source deck's hash;
+> its writer `bench/generate.py` and every reader died with that bundle
+> lifecycle in the fold — a trial is now **rendered from the description with
+> pins** (`template.md § 8.1`: rebuild and render, never splice), so there is
+> no spliced deck for a manifest to describe. Nothing writes
+> `molbuilder/bench-manifest@2` today. The row stays visible because this
+> table is the artifact registry, and an artifact that shipped is history a
+> reader of old bundles may still meet, not noise.
 > (2026-08-06). It was a bare basename, and the parser rejected a separator. It
 > could not be: `.gitignore` receives the raw archive globs (`*.DM`), and a
 > gitignore pattern with no slash matches at **every** level, while the archive
@@ -1166,13 +1179,19 @@ users.
 > `execution/running-a-job.md`.
 
 **Schema-string convention:** `molbuilder/<name>@<major>`. A reader checks the
-**major only** — tolerating same-major minor bumps, rejecting a different
-major — through the single shared helper `molbuilder/persist.py`
-(`schema_major`, `check_schema_major`, `read_json`, `write_json`), now adopted
-by `environment.py`, `bench/result.py`, and `jobset/model.py` (it was
+**name and the major** — tolerating same-major minor bumps, rejecting a
+different major *and* rejecting the wrong artifact by name — through the
+single shared helper `molbuilder/persist.py` (`schema_major`, `check_schema`,
+`read_json`, `write_json`), adopted by `environment.py`, `bench/result.py`,
+`jobset/model.py`, `task.py`, `template.py`, and `checkpoint.py` (it was
 hand-rolled three times with a subtle missing-`@` inconsistency before). New
 persisted artifacts must use it. The two bare-integer exceptions
 (`.molstruct.json` = 6, the decoded run = 1) predate the convention.
+*(Amended 2026-08-12, U9: this said "the major only" and named the helper
+`check_schema_major` — and the check implemented "major only" literally, so
+any `@1` artifact parsed as any other `@1` artifact. § 6.3's own amendment
+records the same correction: "major-only" was always about tolerating minors
+within one artifact, never about ignoring which artifact.)*
 
 ### 6.2 The parameter vocabulary — config ↔ scheduler
 
@@ -1188,7 +1207,7 @@ them; within a layer, one concept has exactly one name.
 | Concept | config-layer name | exchange / SLURM name | translated at |
 |---|---|---|---|
 | MPI ranks | `mpi_np` | `mpi_np` → `-n` | *(same name)* |
-| OMP cores / rank | `omp_threads` | **`cpus_per_task`** → `-c` | `siesta/stages.py::stages_to_jobset` |
+| OMP cores / rank | `omp_threads` | **`cpus_per_task`** → `-c` | `resolve.py` — the allocation is assembled at `prep` in exchange names (`--cpus-per-task`); a sweep's `C` axis reaches it through `MachineTranslation` |
 | Walltime | `defaults.time` | **`time`** → `-t` | — |
 | Memory | `max_memory_mb` / `defaults.mem` | `mem` → `--mem` | `render_sbatch` (estimate) |
 | Whole-node | `gpu.exclusive` | `exclusive` → `--exclusive` | — |
@@ -1198,7 +1217,7 @@ them; within a layer, one concept has exactly one name.
 | GPU request | `enable_gpu` + `diag_algorithm` | `gres` → `--gres` | derived from `.fdf` + GPU type |
 | Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
 | Non-convergence policy (**PySCF only**) | `on_nonconvergence` | *(no scheduler name)* | the emitted `.py`'s own control flow — PySCF's ladder runs as a loop in one process, so the policy is a branch inside the script. SIESTA's stages are separate jobs a person starts, so it has no equivalent; `engines/stages.md § 3` keeps the field out of the shared stage schema for that reason |
-| Warm-retry budget | `continue_retries` (1–5) | `continue_retries` — **not a SLURM flag** | `stages_to_jobset` |
+| Warm-retry budget | `continue_retries` (1–5) | `continue_retries` — **not a SLURM flag** | `resolve.py` — rides the element's `Resources`; `prep` bakes it into the wrapper |
 
 > **One row in this table becomes no scheduler flag at all, and it is not an
 > oversight.** `continue_retries` rides `jobset.Resources` because that is the
@@ -1215,9 +1234,13 @@ them; within a layer, one concept has exactly one name.
 > docstring, because a field sitting in a class called *a per-job scheduler ask*
 > is otherwise an invitation to render it into a directive.
 
-**The translation rule:** persisted/exchange files use the exchange name; a
-*producer* maps config → exchange at its boundary (e.g. `stages_to_jobset`
-maps `SiestaConfig.omp_threads` → `cpus_per_task`). Never mix the two within
+**The translation rule:** persisted/exchange files use the exchange name;
+**floor 3 maps config → exchange at its boundary** — since 2026-08-12 that
+boundary is `resolve.py` (`prep` step 2): the allocation is assembled in
+exchange names and rides the `ParameterSet` element, and a sweep axis reaches
+`Resources` only through its declared `MachineTranslation` *(the producer
+`stages_to_jobset` owned this map, and this sentence named it, until the
+fold deleted it)*. Never mix the two within
 one file. `render_sbatch` is a *consumer* — it receives `cpus_per_task`
 already translated and does not re-derive it from `omp_threads`. (In the
 wrapper these are two distinct knobs that *coincide* on SLURM, where `-c` sets
