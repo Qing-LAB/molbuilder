@@ -761,12 +761,16 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
     from ..bench.summarize import (run_summarize_jobset,
                                    summary_text, utc_now_iso)
     container, _ = _stage_bench_dir(base, stage)
-    # The container's job-set holds ONLY this stage's trials, so the verdict
-    # goes back where they live and no name filter is needed; the filter
-    # remains only for the description-less fallback.
+    # The container's job-set holds ONLY this stage's trials (U1), so the
+    # SET is the scope and the verdict goes back where they live -- there
+    # is no name filter anywhere (U12).  A description-less sweep has no
+    # stages to name at all:
+    if container is None and stage is not None:
+        raise click.ClickException(
+            f"this sweep carries no description, so it has no stage named "
+            f"{stage!r} -- run `molbuilder jobset summarize bench` bare.")
     res, out_path = run_summarize_jobset(
         js, base,
-        stage=None if container is not None else stage,
         out=(container / "bench-result.json") if container is not None
             else None,
         now_iso=utc_now_iso())

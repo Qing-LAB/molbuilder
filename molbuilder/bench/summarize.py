@@ -147,31 +147,34 @@ def _read_system(bundle: Path) -> Dict:
     return sysd
 
 
-def discover_points_from_jobset(bundle, jobset,
-                                stage: Optional[str] = None
-                                ) -> List[BenchPoint]:
+def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
     """Discovery keyed by the DATA floor 3 wrote — the fold's reader
     (plan step 6 u4).
 
     Each trial's directory comes from the naming authority
     (``job_dir_names``) and its knobs from the job's own ``resources`` —
     never by parsing a directory name back (`job-contracts.md` § 6.3: the
-    token is an identifier, not a parser target).  ``stage`` filters to the
-    trials of one stage, read off each deck's own token.
+    token is an identifier, not a parser target).
+
+    **There is no stage parameter** (U12, 2026-08-12).  A described
+    sweep's job-set lives in its stage's ``bench/`` container (U1), so
+    the set IS the scope — every job in it belongs to the stage that was
+    named at the surface.  The ``stage`` filter that stood here was a raw
+    suffix match (``tok.endswith(f"_{{stage}}")`` — `coarse` matched
+    `extra_coarse`) that bypassed the one stage resolver, and after U1
+    its only reachable use was the description-less fallback, whose jobs
+    carry no tokens at all: a stage arg filtered out EVERY point and
+    wrote an empty verdict.  A filter whose only reachable answer is
+    wrong is retired, not repaired.
 
     Its regex-keyed predecessor ``discover_points`` died with the OLD
     bundle format (u5).
     """
-    from ..jobset.materialize import (_trial_stage_token, job_dir_names,
-                                      shape_of)
+    from ..jobset.materialize import job_dir_names, shape_of
     bundle = Path(bundle)
     dirs = job_dir_names(jobset, shape_of(jobset, bundle))
     pts: List[BenchPoint] = []
     for j in jobset.jobs:
-        if stage is not None:
-            tok = _trial_stage_token(jobset, j)
-            if not tok or not tok.endswith(f"_{stage}"):
-                continue
         knobs: Dict = {}
         if j.resources.mpi_np:
             knobs["ranks"] = j.resources.mpi_np
@@ -185,12 +188,12 @@ def discover_points_from_jobset(bundle, jobset,
     return pts
 
 
-def run_summarize_jobset(jobset, bundle, *, stage: Optional[str] = None,
+def run_summarize_jobset(jobset, bundle, *,
                          out=None, now_iso: Optional[str] = None):
     """Summarize a described sweep through the data-keyed reader and write
     ``bench-result.json``; returns ``(BenchResult, out_path)``."""
     res = build_bench_result(
-        discover_points_from_jobset(bundle, jobset, stage=stage),
+        discover_points_from_jobset(bundle, jobset),
         environment=_read_environment(Path(bundle)),
         system=_read_system(Path(bundle)),
         now_iso=now_iso)
