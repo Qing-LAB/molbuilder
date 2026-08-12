@@ -103,11 +103,11 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
         state = "completed"
     else:
         state = "incomplete"
-    if engine == "cpu" and "ranks" not in knobs:
+    if engine == "cpu" and "mpi_np" not in knobs:
         n = (parse_mpi_ranks(_read(out, head=16384))
              if out is not None else None)
         if n is not None:
-            knobs["ranks"] = n
+            knobs["mpi_np"] = n
 
     return BenchPoint(label=label, engine=engine, knobs=knobs,
                       metrics=metrics, bound=bound, state=state)
@@ -175,17 +175,53 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
     dirs = job_dir_names(jobset, shape_of(jobset, bundle))
     pts: List[BenchPoint] = []
     for j in jobset.jobs:
+        # Knobs speak the EXCHANGE vocabulary -- the job-set's own field
+        # names (jobset/model.Resources) -- because the choice they feed
+        # goes straight back into an allocation (U13, 2026-08-12).  They
+        # were renamed to grid words here (ranks/cores_per_rank) and
+        # renamed BACK by the offer: two renames for nothing, and a third
+        # vocabulary for one fact (job-contracts § 6 note: one language).
         knobs: Dict = {}
         if j.resources.mpi_np:
-            knobs["ranks"] = j.resources.mpi_np
+            knobs["mpi_np"] = j.resources.mpi_np
         if j.resources.cpus_per_task:
-            knobs["cores_per_rank"] = j.resources.cpus_per_task
+            knobs["cpus_per_task"] = j.resources.cpus_per_task
         if j.resources.gres:
             knobs["gres"] = j.resources.gres
         pts.append(parse_point(
             j.name, bundle / dirs[j.name], Path(j.script).stem,
             "gpu" if j.resources.gres else "cpu", knobs))
     return pts
+
+
+def _winner_mechanism(bundle, jobset, label: str) -> Dict:
+    """HOW the winning trial computed -- read from ITS OWN deck, never
+    re-derived (U13b, 2026-08-12).  The offer used to pin
+    ``diag_algorithm='ELPA-1STAGE'`` from ``engine == 'gpu'`` alone --
+    inventing the mechanism the measurement never named, and wrong the
+    day the grid grows a second eigensolver.  The deck the trial RAN is
+    on disk beside its results; its BENCH-MARKS block says gpu_mode and
+    its body says the algorithm."""
+    job = next((j for j in jobset.jobs if j.name == label), None)
+    if job is None:
+        return {}
+    from ..jobset.materialize import job_dir_names, shape_of
+    import os as _os
+    d = Path(bundle) / job_dir_names(jobset, shape_of(jobset, bundle))[label]
+    deck = d / _os.path.basename(job.script)
+    text = _read(deck)
+    if not text:
+        return {}
+    mech: Dict = {}
+    from ..parse.scripts.bench_marks import _extract_bench_marks_dict
+    marks = _extract_bench_marks_dict(text) or {}
+    if "gpu_mode" in marks:
+        mech["enable_gpu"] = str(marks["gpu_mode"]).lower() == "true"
+    for line in text.splitlines():
+        toks = line.split("#", 1)[0].split()
+        if len(toks) >= 2 and _norm(toks[0]) == "diagalgorithm":
+            mech["diag_algorithm"] = toks[1]
+    return mech
 
 
 def run_summarize_jobset(jobset, bundle, *,
@@ -197,6 +233,10 @@ def run_summarize_jobset(jobset, bundle, *,
         environment=_read_environment(Path(bundle)),
         system=_read_system(Path(bundle)),
         now_iso=now_iso)
+    if res.choice.get("label"):
+        mech = _winner_mechanism(bundle, jobset, res.choice["label"])
+        if mech:
+            res.choice["mechanism"] = mech
     out_path = Path(out) if out else Path(bundle) / "bench-result.json"
     out_path.write_text(res.to_json() + "\n", encoding="utf-8")
     return res, out_path

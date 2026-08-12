@@ -324,14 +324,20 @@ def _offer_bench_verdict(base, allocation, stage=None):
             else Path(base) / "bench-result.json")
     if not path.is_file():
         return allocation, {}
+    # Through the TYPED reader (U13): from_dict checks the schema by name
+    # and major (persist.check_schema), so a stray artifact of the same
+    # major cannot masquerade as a verdict -- raw json.loads checked
+    # nothing.
+    from ..bench.result import BenchResult
     try:
-        res = _json.loads(path.read_text(encoding="utf-8"))
+        res = BenchResult.from_dict(
+            _json.loads(path.read_text(encoding="utf-8")))
     except ValueError as e:
         click.echo(f"  (bench-result.json unreadable -- ignored: {e})",
                    err=True)
         return allocation, {}
-    choice = res.get("choice") or {}
-    rec = res.get("recommend") or {}
+    choice = res.choice or {}
+    rec = res.recommend or {}
     if not choice:
         return allocation, {}
     knobs = choice.get("knobs") or {}
@@ -341,8 +347,10 @@ def _offer_bench_verdict(base, allocation, stage=None):
     if rec:
         click.echo(f"    sizing (measured on THAT machine -- a starting "
                    f"point, not a guarantee): {rec}")
-    when = res.get("generated") or (res.get("environment") or {}).get(
-        "detected_at")
+    # `generated_at` is the artifact's own key -- this read `generated`
+    # (a key nobody writes) until U13, so the measured-when line never
+    # showed.
+    when = res.generated_at or (res.environment or {}).get("detected_at")
     if when:
         click.echo(f"    measured: {when}")
     try:
@@ -363,18 +371,34 @@ def _offer_bench_verdict(base, allocation, stage=None):
         click.echo("  not applied -- your flags and defaults stand.")
         return allocation, {}
     stated = {}
-    for src, dst in (("ranks", "mpi_np"), ("cores_per_rank", "cpus_per_task"),
-                     ("gres", "gres")):
-        if knobs.get(src) is not None and getattr(allocation, dst) is None:
-            stated[dst] = knobs[src]
+    # The knobs already speak the exchange vocabulary (U13: summarize
+    # writes the job-set's own field names), so this is a fill-in of what
+    # the user did NOT state -- no renaming.
+    for field_name in ("mpi_np", "cpus_per_task", "gres"):
+        if (knobs.get(field_name) is not None
+                and getattr(allocation, field_name) is None):
+            stated[field_name] = knobs[field_name]
     if rec.get("mem_gb") and allocation.mem is None:
         stated["mem"] = f"{rec['mem_gb']}GB"
     if rec.get("time") and allocation.time is None:
         stated["time"] = rec["time"]
     if stated:
         allocation = _dc.replace(allocation, **stated)
-    pins = ({"enable_gpu": True, "diag_algorithm": "ELPA-1STAGE"}
-            if choice.get("engine") == "gpu" else {"enable_gpu": False})
+    # The MECHANISM comes from the winner's own deck, recorded by
+    # summarize (U13b) -- until then this pinned ELPA-1STAGE from
+    # `engine == "gpu"` alone, inventing the mechanism the measurement
+    # never named.
+    mech = choice.get("mechanism") or {}
+    if mech:
+        pins = {k: v for k, v in (("enable_gpu", mech.get("enable_gpu")),
+                                  ("diag_algorithm",
+                                   mech.get("diag_algorithm")))
+                if v is not None}
+    else:
+        pins = {}
+        click.echo("  (this bench-result predates the mechanism record -- "
+                   "no engine pins applied; re-run `jobset summarize "
+                   "bench` to refresh it)", err=True)
     click.echo("  applied: "
                + (", ".join(f"{k}={v}" for k, v in stated.items()) or "(all "
                   "machine fields were stated explicitly -- flags win)")

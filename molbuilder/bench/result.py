@@ -242,8 +242,12 @@ def choose_winner(points: List[BenchPoint]) -> Dict:
     if others:
         nxt = others[0]
         bits.append(f"vs {nxt.label} {nxt.s_per_iter():g} s/iter")
-    return {"engine": win.engine, "knobs": dict(win.knobs),
-            "rationale": "; ".join(bits)}
+    # ``label`` is DATA (U13, 2026-08-12): it identified the winner only
+    # inside the rationale prose, so anything needing the winning trial
+    # back -- the mechanism read, a human's cross-check -- had to parse a
+    # sentence.  The id is the id.
+    return {"label": win.label, "engine": win.engine,
+            "knobs": dict(win.knobs), "rationale": "; ".join(bits)}
 
 
 def recommend_resources(points: List[BenchPoint], choice: Dict, *,

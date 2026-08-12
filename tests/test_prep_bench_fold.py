@@ -355,3 +355,24 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     assert launch["mode"] == "submit"
     assert launch["mode_source"] == "--mode flag"
     assert launch["jobs"][0]["status"] == "planned"
+
+
+def test_the_choice_names_its_winner_and_its_mechanism(calc):
+    """U13: the verdict is consumable as DATA -- the winner's label is a
+    field (not a sentence to parse), the knobs speak the job-set's own
+    exchange vocabulary, and the MECHANISM is read from the winning
+    trial's own deck, never re-derived from `engine == "gpu"`."""
+    _finished_trial_and_verdict(calc)
+    res = json.loads((calc / "01_coarse" / "bench"
+                      / "bench-result.json").read_text())
+    choice = res["choice"]
+    assert choice["label"] and choice["label"] in (
+        j["name"] for j in json.loads(
+            (calc / "01_coarse" / "bench" / "job-set.json").read_text()
+        )["jobs"])
+    assert "mpi_np" in choice["knobs"]          # exchange, not "ranks"
+    assert "ranks" not in choice["knobs"]
+    mech = choice["mechanism"]
+    assert mech["enable_gpu"] is True           # the deck's gpu_mode
+    assert mech["diag_algorithm"] == "ELPA-1STAGE"   # the deck's own line
+    assert res["generated_at"]                  # the offer reads this key

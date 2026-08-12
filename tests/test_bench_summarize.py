@@ -36,7 +36,8 @@ def test_cpu_point_recovers_np_from_its_own_out(tmp_path):
     d = _point_dir(tmp_path, "cpu", "job",
                    "* Running on    8 nodes in parallel\n>> End of run:\n")
     pt = parse_point("cpu", d, "job", "cpu", {})
-    assert pt.knobs.get("ranks") == 8
+    # exchange vocabulary (U13): the knob is the job-set's own field name
+    assert pt.knobs.get("mpi_np") == 8
     assert pt.state == "completed"
 
 
@@ -53,7 +54,7 @@ def test_cpu_ranks_survive_a_real_sized_out(tmp_path):
                    "* Running on   16 nodes in parallel\n"
                    + body + ">> End of run:\n")
     pt = parse_point("cpu2", d, "job", "cpu", {})
-    assert pt.knobs.get("ranks") == 16, "header lost outside the tail window"
+    assert pt.knobs.get("mpi_np") == 16, "header lost outside the tail window"
     assert pt.state == "completed"
 
 
