@@ -630,21 +630,25 @@ def test_cli_errors_without_jobset_json(tmp_path):
     assert "no job-set.json" in r.output
 
 
-def test_cli_prep_lays_out_dirs(tmp_path):
+def test_cli_prep_is_described_only(tmp_path):
+    """U2/U4 (2026-08-12): the pre-made-bundle arm is RETIRED -- `describe`
+    is floor 2's only writer, and the old bench bundles died in step 6 u5.
+    A folder without the task.json + template pair is refused with the next
+    step named; hand-built job-sets stay LAUNCHABLE (submit/status read
+    job-set.json directly) -- prep is what they lose."""
     js = _sweep()
     js.write(tmp_path / "job-set.json")
     _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
     runner, grp = _runner()
-    # Grammar: `jobset <verb> <kind> [<stage>]` (job-system.md § 5.3).  The
-    # bundle moved to --bundle because a session runs from inside the
-    # calculation folder; the KIND is a positional because `prep bench` and
-    # `prep run` are peers.
     r = runner.invoke(grp, ["prep", "bench", "--bundle", str(tmp_path),
                             "--no-sbatch"])
-    assert r.exit_code == 0, r.output
-    assert "prepped 2 trial dir(s)" in r.output
-    assert (tmp_path / "bench-G1K1C4" / "job-gpu.run.sh").is_symlink()
+    assert r.exit_code != 0
+    assert "not a described calculation" in r.output
+    assert "jobset describe" in r.output
+    # the library route for laying out a hand-built set is prep_jobset,
+    # pinned by the prep_jobset tests above; nothing was laid out here
+    assert not (tmp_path / "bench-G1K1C4").exists()
 
 
 def test_cli_submit_dry_run_lists_commands(tmp_path):
@@ -2077,28 +2081,28 @@ def test_the_prep_warning_and_the_submit_refusal_cannot_disagree(
 
 
 def _prep_output(tmp_path, mpi_np_deck, mpi_np_launch):
-    """Run the real `jobset prep run coarse` on a hierarchical bundle and give
-    back everything it said (stdout and stderr are one stream here)."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
+    """The prep report's agreement half, at its unit (`_echo_resolved`).
+
+    Until 2026-08-12 this drove the scenario through `prep` of a HAND-BUILT
+    bundle -- the pre-made-bundle arm, retired with U2/U4 (described-only:
+    `describe` is floor 2's only writer).  The contract these tests pin is
+    unchanged and lives where it lived: the reporter and submit's refusal
+    both read the ONE comparison, `prep.launch_agreement`."""
+    import contextlib, io
+    from molbuilder.jobset._cli import _echo_resolved
     from molbuilder.jobset.model import Job, JobSet, Resources
 
-    _describe(tmp_path, "hierarchical", names=("coarse",))
-    _write_config(tmp_path)      # the wrapper's activation, bundle-scoped
     _deck_rendered_for(tmp_path / "JOB_01_coarse.fdf", mpi_np_deck)
-    (tmp_path / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
-    JobSet(name="JOB", engine="siesta", kind="ladder",
-           jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
-                     resources=Resources(mpi_np=mpi_np_launch))]
-           ).write(tmp_path / "job-set.json")
-    # `output` is stdout and stderr interleaved (click >= 8.2), which is what
-    # a person at a terminal actually sees -- and the warning goes to stderr on
-    # purpose, so a report piped to a file still carries it to the screen.
-    res = CliRunner().invoke(
-        jobset_group, ["prep", "run", "coarse", "--bundle", str(tmp_path),
-                       "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    return res.output
+    js = JobSet(name="JOB", engine="siesta", kind="ladder",
+                jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
+                          resources=Resources(mpi_np=mpi_np_launch))])
+    # stdout and stderr are one stream here, as at a terminal -- the warning
+    # goes to stderr on purpose, so a report piped to a file still carries
+    # it to the screen.
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        _echo_resolved(js, tmp_path, "coarse", tmp_path)
+    return out.getvalue() + err.getvalue()
 
 
 def test_prep_names_both_numbers_and_says_submit_will_refuse(tmp_path):
@@ -2128,23 +2132,18 @@ def test_prep_stays_quiet_about_a_deck_that_makes_no_claim(tmp_path):
     """A deck with no BENCH-MARKS block has said nothing about its launch, so
     there is nothing to report — and reporting *"agrees"* would be a claim
     nobody made."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
+    import contextlib, io
+    from molbuilder.jobset._cli import _echo_resolved
     from molbuilder.jobset.model import Job, JobSet, Resources
 
-    _describe(tmp_path, "hierarchical", names=("coarse",))
-    _write_config(tmp_path)      # the wrapper's activation, bundle-scoped
     (tmp_path / "JOB_01_coarse.fdf").write_text("SystemLabel JOB\n")
-    (tmp_path / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
-    JobSet(name="JOB", engine="siesta", kind="ladder",
-           jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
-                     resources=Resources(mpi_np=99))]
-           ).write(tmp_path / "job-set.json")
-    res = CliRunner().invoke(
-        jobset_group, ["prep", "run", "coarse", "--bundle", str(tmp_path),
-                       "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    out = res.output
+    js = JobSet(name="JOB", engine="siesta", kind="ladder",
+                jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
+                          resources=Resources(mpi_np=99))])
+    buf, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+        _echo_resolved(js, tmp_path, "coarse", tmp_path)
+    out = buf.getvalue() + err.getvalue()
     assert "rendered for" not in out
     assert "resources:" in out                    # the rest of the report stays
 

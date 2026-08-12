@@ -4,8 +4,10 @@
 description plus its template in, one rendered deck and wrapper **per
 element** of the resolved :class:`~molbuilder.resolve.ParameterSet` out.
 :func:`prep_jobset` is steps 4–5 alone, over an existing ``job-set.json`` —
-the route a bundle from before ``describe`` takes, and the shared tail of
-both.
+the shared tail of the described route, and the library surface a
+hand-built set uses directly.  It stopped being a CLI route on 2026-08-12
+(U2/U4): `prep` is described-only, because the pre-made-bundle arm had no
+producer left.
 
 The framework here was first built inside the benchmark and the general part
 lifted out (§ 2.3.1a: *benchmarking is `prep` whose parameters are a set
@@ -200,8 +202,7 @@ def resolve_target(base_dir) -> Path:
 
 
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
-                emit_sbatch: bool = True, allocation=None,
-                record_dir=None) -> List[Path]:
+                emit_sbatch: bool = True, record_dir=None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir``.
 
     Steps, in order:
@@ -221,19 +222,12 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     """
     from ..runwrap import write_run_wrapper
 
-    # ---- the ALLOCATION -- what you asked for, on this prep --------------- #
-    # `project-layout.md` M4: an allocation is an input to `prep`, not a field
-    # of the description and not a decision at submit.  Where it states a value
-    # it WINS over whatever the JobSet carried, because the JobSet was built on
-    # a machine that, by construction, did not know this one.
-    if allocation is not None:
-        stated = {k: v for k, v in dataclasses.asdict(allocation).items()
-                  if v is not None}
-        jobset = dataclasses.replace(jobset, jobs=[
-            dataclasses.replace(j, resources=dataclasses.replace(j.resources,
-                                                                 **stated))
-            for j in jobset.jobs])
-
+    # The allocation is NOT a parameter here (U2, 2026-08-12; it was, and
+    # re-applying it over per-element resources was the review's "stomp").
+    # `project-layout.md` M4 still holds -- an allocation is an input to
+    # *prep* -- but it enters ONCE, at resolve, where each element folds it
+    # into its own resources (generator.md § 5); by this floor every job
+    # already carries the answer.
     errs = jobset.validate()
     if errs:
         raise PrepError(

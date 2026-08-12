@@ -22,7 +22,7 @@ import click
 from .ledger import record as _ledger
 from .model import JobSet
 from .plan import render_plan
-from .prep import prep_jobset, PrepError
+from .prep import PrepError
 from .submit import submit_jobset, SubmitError
 from .runstatus import jobset_status, render_stage_status, render_status
 
@@ -555,12 +555,18 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     # bundles down a path that then asked for a template they never had.
     from pathlib import Path as _P
     from ..task import FILENAME as _TASK
-    _b = _P(bundle)
-    described = (_b / _TASK).is_file() and any(_b.glob("*.template.toml"))
-    if described:
-        base, js = _P(bundle).resolve(), None
-    else:
-        js, base = _load(bundle)
+    base = _P(bundle).resolve()
+    if not ((base / _TASK).is_file() and any(base.glob("*.template.toml"))):
+        # Described-only (U2/U4, 2026-08-12): the pre-made-bundle arm that
+        # stood here had NO producer left -- `describe` is the only writer
+        # of floor 2, and the old bench bundles died in step 6 u5.  A
+        # folder without the pair gets the next step, not a guess.
+        raise click.ClickException(
+            f"{base} is not a described calculation -- no task.json + "
+            "template pair.  `prep` derives everything from those two "
+            "(project-layout.md § 2.1); run `molbuilder jobset describe` "
+            "first.  (Hand-built job-sets remain launchable: `submit` and "
+            "`status` read job-set.json directly.)")
     if (from_attempt or cold) and stage is None:
         raise click.ClickException(
             "--from / --cold describe ONE stage's attempt; name the stage:\n"
@@ -573,45 +579,36 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
                             gres=gres, time=time_, mem=mem,
                             max_memory_mb=max_memory_mb, domain=domain)
-        if described:
-            # The five steps, from the DESCRIPTION -- `prep` resolves the
-            # machine, resolves the parameters, and renders the decks itself.
-            # `bench` is the same call with a longer step 2: the grid as
-            # explicit points, the G/K/C translation, and the trial pins
-            # (§ 2.3.1a -- benchmarking is prep whose parameters are a set).
-            sweep = pins = translation = None
-            if kind == "bench":
-                if stage is None:
-                    raise click.ClickException(
-                        "prep bench measures ONE stage's configuration; "
-                        "name it:\n    molbuilder jobset prep bench <stage>")
-                sweep, pins, translation = _bench_inputs(base)
-            elif stage is not None:
-                # § 2.3.2's other half: a run prepped where a verdict sits
-                # is OFFERED it -- asked, never applied silently.
-                allocation, verdict_pins = _offer_bench_verdict(
-                    base, allocation, stage=stage)
-                pins = verdict_pins or None
-            from .prep import prep_calculation
-            dirs = prep_calculation(base, stage, allocation=allocation,
-                                    env=env, emit_sbatch=emit_sbatch,
-                                    sweep=sweep, pins=pins,
-                                    translation=translation)
-            # `prep` WROTE floor 3 as part of those five steps; read it back
-            # rather than keeping a second copy in hand, so what the attempt
-            # setup below sees is exactly what landed on disk.  A sweep's
-            # record lives in the stage's bench/ container (§ 6.3), a run's
-            # at the root -- read each from its own home.
-            js, _ = (_load_bench_set(str(base), stage) if kind == "bench"
-                     else _load(str(base)))
-        else:
-            # A pre-made bundle: the benchmark's own, and anything produced
-            # before `describe` existed.  It carries finished decks and a
-            # job-set.json, so steps 2 and 3 have already happened elsewhere.
-            # This branch goes when the old bench bundles do (step 6 u5).
-            _check_kind(kind, js)
-            dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
-                               allocation=allocation)
+        # The five steps, from the DESCRIPTION -- `prep` resolves the
+        # machine, resolves the parameters, and renders the decks itself.
+        # `bench` is the same call with a longer step 2: the grid as
+        # explicit points, the G/K/C translation, and the trial pins
+        # (§ 2.3.1a -- benchmarking is prep whose parameters are a set).
+        sweep = pins = translation = None
+        if kind == "bench":
+            if stage is None:
+                raise click.ClickException(
+                    "prep bench measures ONE stage's configuration; "
+                    "name it:\n    molbuilder jobset prep bench <stage>")
+            sweep, pins, translation = _bench_inputs(base)
+        elif stage is not None:
+            # § 2.3.2's other half: a run prepped where a verdict sits
+            # is OFFERED it -- asked, never applied silently.
+            allocation, verdict_pins = _offer_bench_verdict(
+                base, allocation, stage=stage)
+            pins = verdict_pins or None
+        from .prep import prep_calculation
+        dirs = prep_calculation(base, stage, allocation=allocation,
+                                env=env, emit_sbatch=emit_sbatch,
+                                sweep=sweep, pins=pins,
+                                translation=translation)
+        # `prep` WROTE floor 3 as part of those five steps; read it back
+        # rather than keeping a second copy in hand, so what the attempt
+        # setup below sees is exactly what landed on disk.  A sweep's
+        # record lives in the stage's bench/ container (§ 6.3), a run's
+        # at the root -- read each from its own home.
+        js, _ = (_load_bench_set(str(base), stage) if kind == "bench"
+                 else _load(str(base)))
     except PrepError as e:
         raise click.ClickException(str(e))
 
