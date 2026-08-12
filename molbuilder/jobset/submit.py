@@ -291,10 +291,25 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
     honest answer to *has this started?* -- a queued job has produced nothing
     yet, so absence of output proves nothing (§ 1.6).
     """
-    from .materialize import attempts, job_dir_names, shape_of, was_launched
+    from .materialize import (RUN_LAUNCH_FILE, attempts, job_dir_names,
+                              shape_of, was_launched)
     d = base_dir / job_dir_names(jobset, shape_of(jobset, base_dir))[job.name]
     ns = attempts(d)
     if not ns:
+        # An attempt-less dir (a sweep trial) is ITS OWN attempt, and
+        # § 1.5's immutability applies to it the same way (R2, 2026-08-12:
+        # until then a named trial -- or any direct re-invocation -- was
+        # silently relaunchable in place, run.json overwritten; the rule
+        # held only through the CLI's bare-form next-unlaunched skip, the
+        # guard-only-a-surface-applies pattern this module names below).
+        if was_launched(d):
+            raise SubmitError(
+                f"job {job.name!r}: already launched -- "
+                f"{(d / RUN_LAUNCH_FILE)} records it.  A trial measures "
+                f"its point ONCE (project-layout.md § 1.5: immutable once "
+                f"it has run); read the sweep back with `molbuilder "
+                f"jobset summarize bench <stage>`, or prep a fresh "
+                f"benchmark to measure again.")
         return d, None
     last = d / f"run-{ns[-1]}"
     if was_launched(last):

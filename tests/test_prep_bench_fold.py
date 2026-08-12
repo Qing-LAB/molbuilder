@@ -570,3 +570,31 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
                    jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
                              resources=Resources())])
     assert job_dir_names(sweep)["G1K1C4"] == "bench-G1K1C4"
+
+
+def test_a_launched_trial_refuses_relaunch_and_selection_skips_it(calc):
+    """R2: § 1.5's immutability holds for trials AT THE SEAM -- a named
+    relaunch is refused by the library naming run.json and the next
+    verbs, and the bare form's next-unlaunched pick SKIPS the launched
+    trial (the first test anywhere to exercise selection with a launched
+    trial present)."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.materialize import write_run_launch
+    js = _prep_bench(calc)
+    first = js["jobs"][0]["name"]
+    second = js["jobs"][1]["name"]
+    write_run_launch(calc / "01_coarse" / "bench" / f"bench-{first}",
+                     mode="submit", command=["sbatch", "x"], job_id="42")
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["submit", "bench", "coarse", first,
+                                  "--bundle", str(calc),
+                                  "--mode", "submit", "--dry-run"])
+    assert res.exit_code != 0
+    assert "already launched" in res.output
+    assert "summarize" in res.output
+    res = r.invoke(jobset_group, ["submit", "bench", "coarse",
+                                  "--bundle", str(calc),
+                                  "--mode", "submit", "--dry-run"])
+    assert res.exit_code == 0, res.output
+    assert f"next unlaunched trial: {second}" in res.output
