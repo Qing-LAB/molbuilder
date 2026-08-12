@@ -69,6 +69,101 @@ _bundle_option = click.option(
          "where a session is normally run from).")
 
 
+@jobset_group.command("describe",
+                      short_help="write the portable description (floor 2 only)")
+@click.argument("structure", type=click.Path(exists=True, dir_okay=False))
+@click.argument("dest", type=click.Path(file_okay=False))
+@click.option("--shape", required=True,
+              type=click.Choice(("flat", "hierarchical")),
+              help="how the stages sit on disk. REQUIRED and never inferred -- "
+                   "inferring it would hand you a directory tree you did not "
+                   "ask for (engines/stages.md 6.7).")
+@click.option("--stage-strategy", default=None,
+              help="which shipped ladder to describe (e.g. publishable). Omit "
+                   "for a calculation with a SINGLE parameter set, which is a "
+                   "description with no stages at all (6.5).")
+@click.option("--name", default=None, metavar="NAME",
+              help="what you call this calculation; the label and the run id "
+                   "derive from it. Default: the destination folder's name.")
+@click.option("--engine", default="siesta", type=click.Choice(("siesta",)),
+              help="whose parameters these are.")
+@click.option("--psml-lib", default=None, metavar="DIR",
+              type=click.Path(exists=True, file_okay=False),
+              help="where to read pseudopotentials from. A path on THIS "
+                   "machine: the files travel with the calculation, the path "
+                   "does not.")
+@click.option("--vacuum", type=float, default=None, metavar="ANGSTROM",
+              help="isolation vacuum (A) per side on isolated axes. Needed "
+                   "for a flat or linear molecule from a bare XYZ, which "
+                   "otherwise has a degenerate cell.")
+def describe_cmd(structure: str, dest: str, shape: str,
+                 stage_strategy, name, engine: str, psml_lib, vacuum) -> None:
+    """Write the portable description: the template, ``task.json``, and the
+    data files.
+
+    **Floor 2 only -- it renders no deck.**  A deck carries values that depend
+    on how it will be launched, so rendering belongs to ``prep`` on the machine
+    that will run it (project-layout.md 2.3.1).  What this writes names no
+    machine and therefore means the same thing wherever you copy it.
+
+    Names and values are validated HERE, on your laptop, not on the cluster: a
+    stage name outside [A-Za-z0-9_]+, a duplicate stage, an override key the
+    schema does not know, or a value outside its bounds is refused with the
+    field named -- and refused before anything is written.
+    """
+    import dataclasses as _dc
+    from pathlib import Path as _P
+
+    from .. import load as _load_structure
+    from ..config.siesta import SiestaConfig
+    from ..describe import DescribeError, build_description, write_description
+    from ..identity import normalise_id
+    from ..siesta.input import _detect_species
+    from ..siesta.stages import default_siesta_stages
+
+    out_dir = _P(dest)
+    run_name = name or out_dir.name
+
+    try:
+        struct = _load_structure(structure)
+        if vacuum is not None:
+            # The same channel the Modify -> Cell tab uses: the vacuum lives on
+            # the STRUCTURE, not on the engine config, so every surface that
+            # reads this structure sees the same isolation.
+            struct = _dc.replace(struct, vacuum=(vacuum, vacuum, vacuum))
+
+        stages = (tuple(default_siesta_stages(stage_strategy))
+                  if stage_strategy else ())
+        # The label goes through the SAME normaliser Task.label uses, so the
+        # template's SystemLabel and the description's id cannot disagree
+        # about what this calculation is called.
+        label = normalise_id(run_name, what="name",
+                             stage_names=tuple(s.name for s in stages))
+        cfg = SiestaConfig(system_label=label, psml_lib=psml_lib)
+
+        desc = build_description(
+            struct, cfg, stages,
+            engine=engine, shape=shape, name=run_name,
+            source=str(structure),
+            pseudo_species=_detect_species(struct.elements),
+        )
+        written = write_description(desc, out_dir, psml_lib=psml_lib)
+    except DescribeError as e:
+        raise click.ClickException(str(e))
+    except (ValueError, OSError) as e:
+        raise click.ClickException(str(e))
+
+    ladder = (f"{len(desc.task.stages)} stage(s): "
+              f"{', '.join(s.name for s in desc.task.stages)}"
+              if desc.task.stages else "one parameter set (no ladder)")
+    click.echo(f"Described {desc.label!r} in {out_dir} -- {ladder}, "
+               f"shape {shape}.", err=True)
+    click.echo("  " + "\n  ".join(p.name for p in written), err=True)
+    click.echo(
+        f"\nIt names no machine. On the machine that will run it:\n"
+        f"  cd {out_dir} && molbuilder jobset prep run <stage>", err=True)
+
+
 @jobset_group.command("plan", short_help="show the plan (jobs, resources, deps)")
 @_bundle_option
 def plan_cmd(bundle: str) -> None:

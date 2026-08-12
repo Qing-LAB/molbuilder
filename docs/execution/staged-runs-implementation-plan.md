@@ -3059,6 +3059,26 @@ own § 5h.***
 > one object carried on the element, a call site cannot forget half of it** —
 > that is what the design buys, stated as a bug it makes unconstructible.
 
+### ⚠ A pre-existing order-dependent failure, found while building step 2
+
+`tests/test_jobset.py::test_the_inner_wrapper_is_byte_identical_on_both`
+**passes alone and fails when `tests/test_task_description.py` runs first, in
+the same process.** Verified on the **pre-change tree** with the identical
+command, so it is **not** a regression from the generator work — it was found by
+running two files together that the suite had not previously combined.
+
+**It matters more than an ordering nuisance**, which is why it is recorded here
+rather than shrugged at: the test is
+[`architecture.md`](?doc=execution/architecture.md) § 9's central claim — *the
+inner `.run.sh` is the same file on a workstation and on a cluster, so a laptop
+run is a rehearsal of the cluster run*. Something process-global is leaking
+between the two `prep` calls; the fixture writes a different `molbuilder.json`
+into each bundle and `chdir`s, so a cached or first-wins config is the obvious
+suspect and the first place to look.
+
+**Not fixed here.** It belongs to whoever owns `runtime_config`'s lookup, not to
+the template format, and folding it into a step-2 commit would hide it.
+
 ### Verdict
 
 **The design is consistent and the build order holds** — no pass found a

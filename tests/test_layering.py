@@ -122,10 +122,16 @@ _L2_MODULES = {
     "builders",          # backends/* package
     "backends",          # back-compat shim re-exporting builders.backends
     "template",          # the parameter catalogue, one TOML file
-                         # (job-contracts.md § 3.7).  L2 because it imports the
-                         # L1 config dataclasses and ``script_emit``, and is
-                         # imported by the siesta producers and (later) prep --
+                         # (engines/template.md).  L2 because it imports the
+                         # L1 config dataclasses, and is imported by the siesta
+                         # producers, by ``describe`` and (later) by prep --
                          # a config-shaped verb, not a core type.
+    "describe",          # the `describe` ROUTE, floor 2 only
+                         # (execution/architecture.md § 4).  L2 because it
+                         # composes L1 ``task`` with L2 ``template`` and
+                         # ``validation.task``; it is imported by the jobset
+                         # CLI group and (later) by the web's describe route,
+                         # and imports neither.
     "siesta", "pyscf",   # script generators
     "spectra",           # spectra engines + script renderers
     "transport",         # transport engines + results (Phase B.2)
