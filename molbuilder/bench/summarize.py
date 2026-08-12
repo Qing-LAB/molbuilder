@@ -30,8 +30,16 @@ _DONE_MARKERS = ("Job completed", "End of run", "siesta: Final energy",
 _RUN_IDX = re.compile(r"-run(\d+)\.")
 
 
-def _read(path: Path, *, tail: Optional[int] = None) -> str:
+def _read(path: Path, *, tail: Optional[int] = None,
+          head: Optional[int] = None) -> str:
+    """Whole file, or its first ``head`` / last ``tail`` bytes.  The split
+    matters: a SIESTA ``.out`` announces its launch (the rank count) in
+    the first KB and its fate (the end-of-run markers) in the last —
+    reading one window for both answers one of them wrong."""
     try:
+        if head is not None:
+            with path.open("rb") as fh:
+                return fh.read(head).decode("utf-8", "replace")
         if tail is None:
             return path.read_text(encoding="utf-8", errors="replace")
         size = path.stat().st_size
@@ -81,8 +89,12 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
         if peak is not None:
             metrics["peak_rss_gb"] = peak
 
-    # Read the .out once: end-of-run state + (CPU) the np from the
-    # "Running on N nodes" header, which no filename records.
+    # The .out is read TWICE, one window each, because its two answers
+    # live at opposite ends: the end-of-run markers in the tail, and the
+    # "Running on N nodes" launch HEADER in the first KB.  Until U11
+    # (2026-08-12) the ranks were searched in the tail window, so any run
+    # whose .out outgrew 16 KB -- i.e. any real run -- silently lost its
+    # rank count, and the verdict's CPU half had no np.
     out = _latest_run_file(d, basename, "out")
     out_tail = _read(out, tail=16384) if out is not None else ""
     if out is None:
@@ -92,7 +104,8 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     else:
         state = "incomplete"
     if engine == "cpu" and "ranks" not in knobs:
-        n = parse_mpi_ranks(out_tail)
+        n = (parse_mpi_ranks(_read(out, head=16384))
+             if out is not None else None)
         if n is not None:
             knobs["ranks"] = n
 

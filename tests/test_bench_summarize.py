@@ -40,6 +40,23 @@ def test_cpu_point_recovers_np_from_its_own_out(tmp_path):
     assert pt.state == "completed"
 
 
+def test_cpu_ranks_survive_a_real_sized_out(tmp_path):
+    """THE U11 pin.  "Running on N nodes" is a LAUNCH HEADER -- the first
+    KB of the .out -- while the done-markers are in the tail.  Until
+    2026-08-12 both were searched in one 16 KB tail window, so any run
+    whose .out outgrew it (i.e. any real run) silently lost its rank
+    count and the verdict's CPU half had no np.  The tiny fixture above
+    fits both ends in one window, which is exactly why the bug never
+    fired in tests."""
+    body = "scf: iteration data line\n" * 4000        # ~100 KB of middle
+    d = _point_dir(tmp_path, "cpu2", "job",
+                   "* Running on   16 nodes in parallel\n"
+                   + body + ">> End of run:\n")
+    pt = parse_point("cpu2", d, "job", "cpu", {})
+    assert pt.knobs.get("ranks") == 16, "header lost outside the tail window"
+    assert pt.state == "completed"
+
+
 def test_an_incomplete_point_is_never_the_winner(tmp_path):
     fast_but_unfinished = parse_point(
         "x", _point_dir(tmp_path, "x", "job", "going\n"), "job", "gpu", {})
