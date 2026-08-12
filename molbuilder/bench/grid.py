@@ -13,21 +13,11 @@ see the tombstone below.)
 
 from __future__ import annotations
 
-import json
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 
-from ..environment import Environment, Topology
+from ..environment import Topology
 
-
-def _int_or(v, default):
-    """Coerce ``v`` to int; return ``default`` on anything non-integer.
-    Used to sanitize knob values from a foreign bench-result before they
-    are interpolated into generated shell."""
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return default
 
 # Fallback rank-counts when cores-per-socket is unknown (so the sweep is
 # still useful; the adapter notes the missing topology).
@@ -39,7 +29,8 @@ def _bracket_cs(cps: Optional[int], k: int) -> List[int]:
     """Default cores-per-rank set for a given K: the *bracket*
     ``{1, cores//K, 2*cores//K}`` -- starved / one-socket / cross-socket --
     so each K row probes minimal, the conventional full-socket footprint, AND
-    a deliberately cross-socket one (job-execution.md § 8.12).  Deduped, >=1.
+    a deliberately cross-socket one (archived job-execution.md § 8.12, the
+    design record).  Deduped, >=1.
     Falls back to ``_FALLBACK_CS`` when cores/socket is unknown."""
     if not cps:
         return list(_FALLBACK_CS)
@@ -64,24 +55,10 @@ def sweep_grid(gpn, cps, ks, cs_explicit):
 _SAFE_BASE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
-def _check_base(base: str) -> str:
-    if not isinstance(base, str) or not _SAFE_BASE.fullmatch(base):
-        raise ValueError(
-            f"unsafe script_base {base!r}: only letters, digits, '.', "
-            f"'_', '-' are allowed (it is interpolated into shell).")
-    return base
-
 
 # GPU type goes into ``--gres=gpu:<type>:N`` -- keep it a bare token.
 _SAFE_GPU_TYPE = re.compile(r"^[A-Za-z0-9_-]+$")
 
-
-def _check_gpu_type(gtype: Optional[str]) -> str:
-    """Sanitize the detected GPU type for shell interpolation; fall back
-    to the generic ``gpu`` if absent or odd."""
-    if gtype and _SAFE_GPU_TYPE.fullmatch(gtype):
-        return gtype
-    return "gpu"
 
 
 def divisors(n: int) -> List[int]:
@@ -127,8 +104,7 @@ def sweep_K(topo: Topology) -> List[int]:
 # floor 1 import upward -- the A-rules import checker is what caught it.
 
 
-__all__ = [
-    "divisors", "SchedulerAdapter", "SlurmAdapter",
-    "WorkstationAdapter", "ADAPTERS", "get_adapter",
-    "parse_walltime", "sweep_grid",
-]
+# (R8, 2026-08-12: this list still exported six names the fold deleted
+# or moved -- the adapter classes, get_adapter, parse_walltime -- and
+# omitted the two live ones; `import *` raised AttributeError.)
+__all__ = ["divisors", "sweep_grid", "sweep_K", "_FALLBACK_KS"]

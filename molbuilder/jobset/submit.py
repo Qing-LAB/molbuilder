@@ -1,11 +1,13 @@
 """Submit engine — launch a *prepped* :class:`JobSet`
-(docs/execution/job-system.md, § 7-9).
+(docs/execution/job-system.md § 5.3-5.4; the wrapper contract is
+job-contracts § 2).
 
-This is the keystone both producers feed: the SIESTA stage ladder and
-(once it migrates) the benchmark sweep render to a JobSet, ``prep_jobset``
-renders the launchers + lays out the ``bench-<name>/`` tree, and THIS engine
-launches them.  It assumes prep already ran (the wrappers are symlinked into
-each job dir); it renders nothing itself.
+``prep`` derives floor 3 from the described calculation and lays out the
+tree (job-contracts § 6.3's naming); THIS engine launches ONE job per
+invocation and renders nothing itself.  *(R8, 2026-08-12: this header
+still introduced itself as "the keystone both producers feed", named a
+bench migration that landed, a ``bench-<name>/`` tree that is now the
+hand-built fallback only, and §§ 7-9 of a renumbered document.)*
 
 Two execution paths, chosen by ``mode`` (== ``execution.mode``):
 

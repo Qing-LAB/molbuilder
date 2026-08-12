@@ -32,7 +32,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Matches the molbuilder/<name>@<major> convention used by
-# bench/environment.py and bench/result.py (same major-version check).
+# environment.py and bench/result.py (the same check_schema gate --
+# name AND major since U9).
 SCHEMA = "molbuilder/job-set@1"
 
 _KINDS = ("sweep", "ladder")
@@ -258,7 +259,7 @@ class JobSet:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "JobSet":
         # Major-version check via the shared helper (persist.py), same rule
-        # bench/environment + bench/result use.
+        # environment.py + bench/result.py use.
         from ..persist import check_schema
         check_schema(str(d.get("schema") or ""), SCHEMA, label="job-set")
         return cls(
@@ -271,14 +272,16 @@ class JobSet:
 
     def write(self, path) -> Path:
         """Persist to ``job-set.json`` -- the bundle's plan, carried
-        host->target (data-vocabulary.md § 1).  Pretty JSON so a human can
+        host->target (the exchange vocabulary, job-contracts § 6.2; its
+    original home data-vocabulary.md is archived).  Pretty JSON so a human can
         read/diff the plan in the bundle."""
         from ..persist import write_json
         return write_json(path, self.to_dict())
 
     @classmethod
     def load(cls, path) -> "JobSet":
-        """Read a ``job-set.json`` back into a JobSet (major-version checked
+        """Read a ``job-set.json`` back into a JobSet (schema checked by name
+        and major -- persist.check_schema
         via ``from_dict``)."""
         from ..persist import read_json
         return cls.from_dict(read_json(path))

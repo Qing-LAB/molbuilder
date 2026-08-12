@@ -19,10 +19,13 @@ the real file**: ``write_run_wrapper`` resolves symlinks, so rendering from a
 materialized link would land the wrapper beside the resolved target instead
 of where the job runs.  On the described route every element renders its own
 deck, so per-script is per-element and each wrapper carries its own
-element's resources.  A legacy sweep whose jobs share one script gets one
-wrapper carrying the first job's resources as defaults, with ``submit``
-varying the rest per job as scheduler flags — a mechanism that folds away
-with ``bench`` (plan step 6).
+element's resources.  *(A "legacy sweep whose jobs share one script"
+paragraph stood here promising its own fold "with bench (plan step 6)" —
+the fold landed 2026-08-12 and no producer emits shared-script sets; for a
+HAND-BUILT set that shares one script, the first job's resources still
+become the wrapper defaults and ``submit`` passes each job's own as flags,
+which is now a property of the fallback rather than a design of its own;
+R8.)*
 """
 
 from __future__ import annotations

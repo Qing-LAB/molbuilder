@@ -1,7 +1,7 @@
 """The template — a calculation's parameter catalogue, as one TOML file.
 
 **Module:** L2 (model). Imports ``persist`` and the standard library; imported by
-``siesta/*`` producers, by ``validation/task``, and (when it exists) by
+``siesta/*`` producers, by ``validation/task``, and by
 ``resolve/``. Nothing here touches the filesystem or a scheduler.
 
 **Contract:** [`engines/template.md`](?doc=engines/template.md) — § 3 the required
@@ -261,9 +261,11 @@ def _decl_type(ann, choices) -> Optional[str]:
 def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     """The § 3 item for one config field, or ``None`` if it has no place here.
 
-    ``None`` means **not exposed** — a field with no ``section`` is internal
-    (`web/form-schema.md` § 1a), so no surface renders it and a template that
-    listed it would offer the user something no tab can show.
+    ``None`` means **excluded by § 7's named rows** (a machine fact, or the
+    ladder) — never by a missing ``section``: since U16 membership is total
+    and ``section`` answers only *where on the form* (empty = no tab shows
+    it, and the item still travels).  *(R8: this paragraph taught the
+    retired section gate ten lines above the U16 comment that deleted it.)*
 
     Raises ``ValueError`` for an exposed field whose type has no name in the
     grammar: that is a gap in the vocabulary, and the loud version of it is the

@@ -1,20 +1,19 @@
 """Materialize engine — turn a :class:`JobSet` into on-disk per-job
-directories (docs/execution/job-system.md).
+directories (docs/execution/job-system.md; naming: job-contracts § 6.3).
 
 Filesystem ONLY: it knows nothing about schedulers or engines.  For each
-job it creates ``bench-<name>/`` and lays relative symlinks for
+job it creates the directory :func:`job_dir_names` assigns (a stage's
+``<NN>_<name>/``, a trial's ``<NN>_<name>/bench/bench-<point>/``, the
+bundle root for a stageless calculation, ``bench-<name>/`` for hand-built
+sets) and lays relative symlinks for the static ``shared`` package plus
+the job's own ``script``.
 
-  * the static ``shared`` package + the job's own ``script`` (identical
-    bytes for the job — pseudos, geometry, monitor, the per-job input),
-  * each ``carry`` file from the producing job's directory.
-
-This is the generalization of the benchmark's ``_mb_point`` helper.
-
-Carry symlinks point at concrete filenames in the producer's dir (e.g.
-``../bench-stage1/job.XV``).  At materialize time (prep) the producer has
-not run yet, so these are intentionally **dangling** symlinks — they
-resolve once the producer writes the file, and the submit engine's
-dependency ordering guarantees the consumer starts only after that.
+*(R8, 2026-08-12: this header still described Carry symlinks laid into a
+producer's directory and "the submit engine's dependency ordering" — both
+deleted 2026-08-10 with stage chaining (a carry is a COPY prep makes at
+`--from`, and nothing orders anything), and the `_mb_point` helper it
+called its ancestor is long gone.  A front door describing a deleted
+design misleads at the file's most-read lines.)*
 """
 
 from __future__ import annotations

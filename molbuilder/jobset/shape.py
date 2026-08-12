@@ -1,8 +1,11 @@
 """``Shape`` — where a stage's files live, in whichever layout was chosen.
 
-**Module:** L4 (layout).  Imports ``identity`` (L1, naming) and ``task`` (L1,
-the description's vocabulary) and nothing else in the tree, so the layers below
-it stay reachable from anywhere that needs a path.
+**Module:** floor 4 (layout).  Imports exactly one thing of the tree —
+``task.SHAPES``, floor 2's vocabulary constant — and callers hand it
+tokens, so it stays reachable from anywhere that needs a path.  *(R8,
+2026-08-12: this header claimed an ``identity`` import it does not make
+and labelled ``task`` L1 where the floor table puts the description on
+floor 2.)*
 
 **Contract:** [`execution/project-layout.md`](?doc=execution/project-layout.md)
 § 1 (the two shapes, and the table this object is a transcription of) ·

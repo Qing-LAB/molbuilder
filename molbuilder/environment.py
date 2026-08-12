@@ -3,10 +3,15 @@
 The first half of the benchmark workflow's pluggable seam
 (docs/execution/job-system.md, § 5): **probes** that learn the
 target's scheduler + hardware topology + site facts, and the versioned
-JSON record they produce (``environment@1``, § 5.2) that every later stage
+JSON record they produce (``environment@1`` — registry row: job-contracts
+§ 6.1; produced by ``resolve_target`` at prep step 1) that every later stage
 and any external tool reads.
 
-Detection priority for topology (§ 4.6): the **compute node**, not where
+**Section references below cite the archived job-execution.md design
+record** (the live homes are job-system § 7 and job-contracts § 6.1; R8,
+2026-08-12 — the numbers no longer resolve in the live doc set and are
+kept as the design's own history).  Detection priority for topology
+(§ 4.6 there): the **compute node**, not where
 this runs.
 
   1. SLURM  -> ``scontrol show node`` (correct compute-node shape, askable

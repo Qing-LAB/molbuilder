@@ -29,9 +29,12 @@ Schema (all sections optional)::
 
 For backwards compatibility with the flat shape shipped before the
 2026-05-14 four-env design, top-level ``cert`` and ``key`` keys are
-also honoured (folded into ``tls`` by :func:`_normalise`).  Unknown
-keys are ignored silently so the file can grow new sections without
-breaking older readers.
+also honoured (folded into ``tls`` by :func:`_normalise`).  **An
+unknown top-level key is REFUSED with the known sections named** (U7,
+2026-08-12; ``_``-prefixed keys are comments) — this header taught
+"ignored silently so the file can grow" until R8, the exact tolerance
+that silently ate ``admin``/``rate_limit``; the one total list of
+sections is the ``_SECTIONS`` registry below (architecture § 8.2a).
 
 This reader is intentionally stateless: it reads the file each time
 it's called, parses, validates.  Callers that want a single

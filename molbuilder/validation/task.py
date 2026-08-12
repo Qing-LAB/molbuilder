@@ -3,7 +3,8 @@
 **Module:** L2, inside the ``validation`` package. Imports ``issues`` and
 ``task`` (both L1), ``template`` (L2) and an engine's config (L1) — the config
 lazily, so importing ``validation`` does not drag the engine stack in. To be
-called by ``jobset/prep`` (P6) and the web Build route (P10); it has no caller
+called by ``describe._check`` on the host and ``prep``'s § 6.6 preflight
+on the target (R5, 2026-08-12); this line claimed "no caller
 yet because no phase has built the reader, which is the plan's sequencing
 rather than a function written on spec.
 

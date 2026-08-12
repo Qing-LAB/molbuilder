@@ -1,10 +1,12 @@
 """Plan engine — render a human-readable table from a :class:`JobSet`
-(docs/execution/job-system.md, § 8 D3).
+(docs/execution/job-system.md § 8).
 
-Pure formatting: it knows nothing but the data model.  This is the unified
-basis for ``STAGE-PLAN.md`` (and, once the bench migrates onto the
-framework, ``BENCH-PLAN.md``) so the per-job resources + the dependency
-graph + the carry-forward are visible before anything is submitted.
+Pure formatting: it knows nothing but the data model.  The one basis for
+``STAGE-PLAN.md`` — per-job resources, visible before anything is
+submitted.  *(R8, 2026-08-12: the header promised "the dependency graph +
+the carry-forward" columns deleted 2026-08-10 with stage chaining, cited
+a "§ 8 D3" that names no D3, and predicted a BENCH-PLAN.md the fold
+superseded — a sweep's plan IS a STAGE-PLAN.md in its bench/ container.)*
 """
 
 from __future__ import annotations
