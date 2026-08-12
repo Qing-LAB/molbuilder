@@ -241,17 +241,14 @@ def test_the_nonconvergence_policy_left_with_the_edges_it_was():
     **and** a reader that does something with it. This test is what fails if
     half of that lands.
     """
-    import inspect
     import molbuilder.siesta.stages as stages_mod
 
-    # What the producer TAKES, as an equality.  It listed the two deleted
-    # module symbols by name until 2026-08-11 -- which kept a retired
-    # vocabulary alive in the suite and still missed a third parameter
-    # arriving.  Naming the set covers both.
-    assert set(inspect.signature(stages_mod.stages_to_jobset).parameters) == {
-        "cfg", "stages", "resources_for", "shared"}
-    sig = inspect.signature(stages_mod.build_siesta_stage_bundle)
-    assert "on_nonconvergence" not in sig.parameters
+    # The producers this pinned by signature -- stages_to_jobset,
+    # build_siesta_stage_bundle -- were DELETED 2026-08-12 (u5): their
+    # ABSENCE is now the assertion, and reinstating a per-stage policy
+    # means giving it a home in the description first.
+    assert not hasattr(stages_mod, "stages_to_jobset")
+    assert not hasattr(stages_mod, "build_siesta_stage_bundle")
 
 
 def test_continue_retries_is_a_shared_field_not_a_stage_one():

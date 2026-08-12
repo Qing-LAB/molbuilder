@@ -172,7 +172,7 @@ def test_job_dir_name():
 
 
 def _token_ladder(*scripts, optimizers=None):
-    """A ladder shaped like the one ``stages_to_jobset`` actually emits.
+    """A ladder shaped like the one the described producer emits.
 
     The warm declaration is part of that shape, not decoration: `prep` reads it
     to decide what `--from` copies, so a fixture without one stands in for a
@@ -271,147 +271,19 @@ def test_render_plan_sweep_says_independent():
 #  SIESTA stage producer                                                #
 # --------------------------------------------------------------------- #
 
-def test_stages_to_jobset_default_ladder():
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import (default_siesta_stages,
-                                          stages_to_jobset)
+# --------------------------------------------------------------------- #
+#  The ``stages_to_jobset`` producer tests were RETIRED 2026-08-12       #
+#  (step 6 u5) with the producer, which had no production caller.        #
+#  Each property's live home:                                            #
+#    * default ladder shape / schema-refused override -> the described   #
+#      route (test_prep_calculation.py; resolve refuses by name);        #
+#    * the .CG carry conditionals -> test_restart_group.py, repointed    #
+#      at the live `_warm_declaration` seam the same day;                #
+#    * no-edges / continue_retries on resources -> carried per element   #
+#      (test_prep_calculation.py::test_the_allocation_reaches_...);      #
+#    * invalid-ladder refusal -> task.py at read + resolve._stage_of.    #
+# --------------------------------------------------------------------- #
 
-    cfg = SiestaConfig()                   # the template -- no ladder in it
-    stages = default_siesta_stages()       # coarse+medium on, tight off
-    js = stages_to_jobset(cfg, stages, shared=["C.psml"])
-    assert js.kind == "ladder" and js.engine == "siesta"
-    # The JOB keeps the stage's NAME; its SCRIPT carries the artifact
-    # token, because that is the file the renderer wrote (decision 27).
-    assert [j.name for j in js.jobs] == ["coarse", "medium"]
-    assert js.jobs[0].script == "siesta_01_coarse.fdf"
-    assert js.jobs[1].script == "siesta_02_medium.fdf"
-    # What a job carries is pinned once, as an equality, by
-    # test_a_job_declares_exactly_these_five_things.
-    # What medium WOULD take from a run it is pointed at: .XV and .DM
-    # unconditionally, .CG only if the source agrees on the optimizer -- which
-    # coarse (CG) does not, medium being Broyden.  The condition travels; the
-    # comparison happens at prep, where the source is known.
-    warm = {w.name: w.requires_same for w in js.jobs[1].warm}
-    assert warm == {"siesta.XV": None, "siesta.DM": None,
-                    "siesta.CG": "optimizer"}
-    assert js.jobs[0].traits["optimizer"] != js.jobs[1].traits["optimizer"]
-    assert js.validate() == []             # framework-valid
-
-
-def test_stages_to_jobset_carries_cg_when_same_relax_type():
-    """The comparison is over the RESOLVED optimizer, not a stage field:
-    a stage that does not override ``relax_type`` has the template's."""
-    import dataclasses
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.model import warm_carry
-    from molbuilder.siesta.stages import (default_siesta_stages,
-                                          stages_to_jobset)
-
-    stages = default_siesta_stages()
-    # make medium use CG too (same as coarse) -> .CG should carry forward.
-    stages[1] = dataclasses.replace(
-        stages[1], overrides={**stages[1].overrides, "relax_type": "CG"})
-    js = stages_to_jobset(SiestaConfig(), stages)
-    # Same optimizer, so `warm_carry` lets the history across when medium is
-    # pointed at coarse.  Asserted through the resolver rather than off a
-    # produce-time edge: the edge is gone (P7 unit 2) and the SOURCE is named
-    # at prep, which is the whole reason the condition travels.
-    assert "siesta.CG" in warm_carry(js.jobs[1], js.jobs[0])
-
-
-def test_stages_to_jobset_carries_cg_when_neither_stage_overrides_it():
-    """Both stages inherit the template's optimizer, so they match -- a
-    case the old field-comparison could not even express, since every
-    stage carried its own ``relax_type`` whether or not it meant to."""
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.model import warm_carry
-    from molbuilder.siesta.stages import stages_to_jobset
-    from molbuilder.task import Stage
-
-    # `b` must SAY it continues.  Before P3 unit 4 a bare stage carried state
-    # anyway, because the carry keyed on the template's use_save_dm, which
-    # defaulted True -- so this fixture used to pass without stating the one
-    # thing it depends on.  The optimizer inheritance under test is unchanged:
-    # neither stage overrides relax_type.
-    js = stages_to_jobset(SiestaConfig(relax_type="Broyden"),
-                          [Stage(name="a"),
-                           Stage(name="b", overrides={"restart": "continue"})])
-    assert "siesta.CG" in warm_carry(js.jobs[1], js.jobs[0])
-
-
-def test_a_staged_ladder_declares_no_edge_of_any_kind():
-    """Two tests lived here, asserting that `on_nonconvergence` became an
-    ``afterok`` / ``afterany`` dependency kind.  P7 unit 2 retired the edges,
-    and the policy went with them: `engines/stages.md § 3` says *"its entire
-    effect is the edge between one attempt and the next"*, so with no edge it
-    had no effect -- and it was never reachable by a user, being absent from
-    `task.json`'s three stage fields.
-
-    What replaces those assertions is this one: nothing in a produced ladder
-    says the scheduler should start the next stage. A person does.
-    """
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import (default_siesta_stages,
-                                          stages_to_jobset)
-
-    js = stages_to_jobset(SiestaConfig(), default_siesta_stages("vib-quality"))
-    assert len(js.jobs) == 3
-    assert all(j.script.endswith(".fdf") for j in js.jobs)
-
-
-def test_stages_to_jobset_resources_injection():
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.model import Resources
-    from molbuilder.siesta.stages import stages_to_jobset
-
-    from molbuilder.siesta.stages import default_siesta_stages
-
-    overrides = {"medium": Resources(domain="public", time="7-00:00:00",
-                                     exclusive=True)}
-    js = stages_to_jobset(SiestaConfig(), default_siesta_stages(),
-                          resources_for=overrides.get)
-    assert js.jobs[1].resources.domain == "public"
-    assert js.jobs[1].resources.exclusive is True
-    # coarse (no override) inherits job-level defaults.
-    assert js.jobs[0].resources.domain is None
-
-
-def test_stages_to_jobset_rejects_invalid_ladder():
-    import dataclasses
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import (default_siesta_stages,
-                                          stages_to_jobset)
-
-    stages = default_siesta_stages()
-    stages[1] = dataclasses.replace(stages[1], name="coarse")  # duplicate
-    with pytest.raises(ValueError, match="collide|silently"):
-        stages_to_jobset(SiestaConfig(), stages)
-
-
-def test_stages_to_jobset_rejects_an_override_the_schema_has_no_field_for():
-    """The refusal arrives BEFORE any Job is built, and names the field --
-    the preflight rule applied at the producer (stages.md § 6.6)."""
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.model import warm_carry
-    from molbuilder.siesta.stages import stages_to_jobset
-    from molbuilder.task import Stage
-
-    with pytest.raises(ValueError, match="mesh_cutof"):
-        stages_to_jobset(SiestaConfig(),
-                         [Stage(name="a", overrides={"mesh_cutof": 300})])
-
-
-def test_stages_to_jobset_carries_continue_retries_into_resources():
-    """job-contracts.md § 6.2: the warm-retry budget rides Resources under
-    its own name.  It is the one field there that becomes no SLURM flag --
-    the wrapper bakes it in (running-a-job.md § 3.5)."""
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import (default_siesta_stages,
-                                          stages_to_jobset)
-
-    js = stages_to_jobset(SiestaConfig(continue_retries=3),
-                          default_siesta_stages())
-    assert [j.resources.continue_retries for j in js.jobs] == [3, 3]
 
 
 # --------------------------------------------------------------------- #
@@ -1443,11 +1315,26 @@ def _shipped_ladder():
     optimizer between rung one and rung two, which is what makes `.CG` a live
     question rather than a hypothetical one.
     """
+    # Built the way the LIVE path builds it (`prep._job_for`, u5): each
+    # enabled stage resolved through the one seam, warm + traits from the
+    # engine's own declarations.
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import (default_siesta_stages,
-                                          stages_to_jobset)
-    js = stages_to_jobset(SiestaConfig(system_label="bdt"),
-                          default_siesta_stages("vib-quality"))
+    from molbuilder.identity import stage_token
+    from molbuilder.siesta.input import effective_config
+    from molbuilder.siesta.stages import (_traits, _warm_declaration,
+                                          default_siesta_stages)
+    label = "bdt"
+    jobs = []
+    for i, st in enumerate(default_siesta_stages("vib-quality"), start=1):
+        if not st.enabled:
+            continue
+        eff = effective_config(SiestaConfig(system_label=label), st)
+        jobs.append(Job(name=st.name,
+                        script=f"{label}_{stage_token(i, st.name)}.fdf",
+                        resources=Resources(),
+                        warm=_warm_declaration(label, eff),
+                        traits=_traits(eff)))
+    js = JobSet(name=label, engine="siesta", kind="ladder", jobs=jobs)
     assert [j.traits["optimizer"] for j in js.jobs] == \
         ["CG", "Broyden", "Broyden"], "the fixture's premise moved"
     return js

@@ -14,7 +14,6 @@ from .input import (
     copy_pseudopotentials,
     find_psml,
     render_fdf,
-    render_siesta_stage_fdfs,
 )
 # Internal helpers exposed for tests.  Not part of the public API.
 # Drop _wrap_into_cell -- nobody imports it anymore (was used by an
@@ -30,7 +29,6 @@ __all__ = [
     "copy_pseudopotentials",
     "find_psml",
     "render_fdf",
-    "render_siesta_stage_fdfs",
     "_auto_block_size",
     "_detect_species",
 ]

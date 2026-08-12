@@ -463,9 +463,9 @@ def _validate_siesta(struct: Structure, cfg,
     #
     # The two checks that were genuinely about the LADDER rather than about
     # any one stage moved to where the ladder is: an empty / all-disabled
-    # list and duplicate names are refused by ``siesta/input.py``'s
-    # ``_enabled_stages`` (and, for a description read from disk, by
-    # ``task.py``).  Cross-stage findings -- a ladder that loosens -- are
+    # list and duplicate names are refused by ``task.py``, where a
+    # description's ladder is read (the render-time copy in
+    # ``_enabled_stages`` died with its producers, step 6 u5).  Cross-stage findings -- a ladder that loosens -- are
     # P2 unit 6 and carry no stage label (§ 4).
 
     # SIESTA-specific: spin_polarized + no spin_total + open-shell metal

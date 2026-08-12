@@ -182,18 +182,20 @@ def test_prep_carries_state_only_into_a_stage_that_will_read_it():
 
     The carry used to key on the template's ``use_save_dm``, so a stage
     saying 'clean' still had the previous stage's ``.DM`` carried in."""
-    from molbuilder.siesta.stages import stages_to_jobset
+    # Repointed 2026-08-12 (u5): the producer this drove is deleted; the
+    # declaration is built the LIVE way -- the resolved stage through the
+    # one seam, exactly what `prep`'s `_job_for` hands each Job.
+    from molbuilder.siesta.input import effective_config
+    from molbuilder.siesta.stages import _warm_declaration
     from molbuilder.task import Stage
     tpl = SiestaConfig(system_label="job", relax_type="CG")
-    js = stages_to_jobset(tpl, [
-        Stage(name="coarse", overrides={"restart": "clean"}),
-        Stage(name="fresh",  overrides={"restart": "clean"}),
-        Stage(name="warm",   overrides={"restart": "continue"}),
-    ], shared=[], resources_for=None)
-    by_name = {j.name: j for j in js.jobs}
-    assert by_name["coarse"].warm == []       # nothing before it
-    assert by_name["fresh"].warm == []        # told to start clean
-    assert [w.name for w in by_name["warm"].warm] == [
+
+    def warm(overrides):
+        eff = effective_config(tpl, Stage(name="s", overrides=overrides))
+        return _warm_declaration("job", eff)
+
+    assert warm({"restart": "clean"}) == []   # told to start clean
+    assert [w.name for w in warm({"restart": "continue"})] == [
         "job.XV", "job.DM", "job.CG"]
 
 
@@ -216,7 +218,8 @@ def test_the_group_reaches_prep_as_a_declaration_not_as_engine_knowledge():
     """
     import importlib
 
-    from molbuilder.siesta.stages import stages_to_jobset
+    from molbuilder.siesta.input import effective_config
+    from molbuilder.siesta.stages import _warm_declaration
     from molbuilder.task import Stage
 
     # ``import_module``, not ``from molbuilder.jobset import materialize``:
@@ -228,12 +231,11 @@ def test_the_group_reaches_prep_as_a_declaration_not_as_engine_knowledge():
         importlib.import_module(f"molbuilder.jobset.{n}")
         for n in ("materialize", "model", "prep"))
 
-    js = stages_to_jobset(
+    eff = effective_config(
         SiestaConfig(system_label="job", relax_type="CG"),
-        [Stage(name="coarse", overrides={"restart": "clean"}),
-         Stage(name="tight", overrides={"restart": "continue"})])
-    tight = next(j for j in js.jobs if j.name == "tight")
-    assert [w.name for w in tight.warm] == ["job.XV", "job.DM", "job.CG"]
+        Stage(name="tight", overrides={"restart": "continue"}))
+    assert [w.name for w in _warm_declaration("job", eff)] == [
+        "job.XV", "job.DM", "job.CG"]
 
     # ...and the framework that consumes it builds none of them.
     for mod in (_materialize, _model, _prep):
@@ -253,13 +255,13 @@ def test_only_the_optimizer_history_is_conditional():
     condition — and a condition on the geometry would make a continuation
     silently lose the very thing it exists to move forward.
     """
-    from molbuilder.siesta.stages import stages_to_jobset
+    from molbuilder.siesta.input import effective_config
+    from molbuilder.siesta.stages import _warm_declaration
     from molbuilder.task import Stage
-    js = stages_to_jobset(
+    eff = effective_config(
         SiestaConfig(system_label="job", relax_type="CG"),
-        [Stage(name="a", overrides={"restart": "clean"}),
-         Stage(name="b", overrides={"restart": "continue"})])
-    warm = {w.name: w.requires_same for w in js.jobs[1].warm}
+        Stage(name="b", overrides={"restart": "continue"}))
+    warm = {w.name: w.requires_same for w in _warm_declaration("job", eff)}
     assert warm == {"job.XV": None, "job.DM": None, "job.CG": "optimizer"}
 
 

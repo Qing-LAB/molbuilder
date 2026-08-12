@@ -290,8 +290,8 @@ class JobSet:
         the invariants the engines can't recover from -- exactly the same
         discipline as PySCF's ``validate_stages``.  (It used to name SIESTA's
         alongside it; that one was deleted with ``SiestaStageSpec`` in P2, and
-        the ladder-level checks it made now live at
-        ``siesta/input.py::_enabled_stages``.)
+        the ladder-level checks it made live in ``task.py``,
+        where a description's ladder is read and refused.)
 
           * non-empty; ``kind`` known;
           * unique job names (the dir + ``-J`` collide otherwise);

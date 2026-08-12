@@ -135,11 +135,6 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         None, "molbuilder/identity.py",
         "reads it back.  The decoder used to keep its own `-stage(N)` regex, "
         "a second spelling of the emitter's convention that could drift"),
-    "_stage_tokens": (
-        None, "molbuilder/siesta/input.py",
-        "pairs each ENABLED stage with its token, numbering from its place "
-        "in the FULL ladder so disabling one leaves a gap rather than "
-        "renumbering what follows (project-layout 4.2)"),
     "_detect_stage_name": (
         None, "molbuilder/parse/dirs/job.py",
         "the observing side -- the half of the token a person reads"),
@@ -209,15 +204,11 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         1, "molbuilder/config/siesta.py",
         "what each tier is CALLED -- read by both doors (the --stage overlay "
         "and default_siesta_stages) so one tier cannot have two names"),
-    "render_siesta_stage_fdfs": (
-        6, "molbuilder/siesta/input.py", "flat -- one deck per enabled stage"),
     #  ``render_siesta_stages_runner`` stood here.  DELETED 2026-08-10 with the
     #  function, its 142-line bash template and its fourteen tests (P5 unit 3,
     #  decision 29).  The row is removed rather than commented: its ABSENCE is
     #  what proves the subtraction, and the guard below fails if the name comes
     #  back.  Mechanism 6 is now the deck renderer alone.
-    "_enabled_stages": (
-        6, "molbuilder/siesta/input.py", "what both of those iterate"),
     #  ``STAGES`` -- the bash array in the runner's template -- went with the
     #  template on 2026-08-10.  It was the only stage vocabulary that lived in
     #  GENERATED TEXT, which is where questions 3 and 4 used to look.
@@ -228,9 +219,6 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "mechanism 2's.  It produces the design's own stage rather than "
         "being a way of expressing one, which is why it is 11 and not a "
         "twelfth"),
-    "stages_to_jobset": (
-        7, "molbuilder/siesta/stages.py",
-        "hierarchical -- a ladder JobSet, wired stage-to-stage"),
     "StageSpec": (
         8, "molbuilder/config/pyscf.py",
         "PySCF's ladder: one process, one file, an in-script loop -- "
@@ -274,15 +262,6 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         None, "molbuilder/parse/dirs/job.py",
         "the decoder reading a stage back OUT of an emitted name -- "
         "question 2's other end"),
-    "StageBundle": (
-        None, "molbuilder/siesta/stages.py", "the carrier the producer returns"),
-    "build_siesta_stage_bundle": (
-        None, "molbuilder/siesta/stages.py",
-        "composition of 6 and 7, and since 2026-08-10 (P5 unit 1) it READS "
-        "the shape and emits ONE layout: flat -> decks + the runner, "
-        "hierarchical -> decks + the JobSet.  It used to call both and let "
-        "whatever command you typed next settle it -- the code that decided "
-        "the shape by not deciding it"),
     "check_identical_stages": (
         None, "molbuilder/validation/stages.py",
         "§ 6.6a's check that a stage does not recompute the one before it -- "
@@ -332,7 +311,12 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
 #: surface (the presets remain as the ladder's defaults, applied by
 #: ``apply_siesta_stage`` at resolve time).  ``--stage-strategy`` moved to
 #: `jobset describe`, where the ladder is DESCRIBED rather than rendered.
-MECHANISM_COUNT = 9
+#: SEVEN since step 6 u5 (2026-08-12): mechanisms 6 and 7 -- the
+#: produce-time renderer ``render_siesta_stage_fdfs`` and the producer
+#: ``stages_to_jobset`` -- are DELETED with the second lifecycle.  The deck
+#: is rendered by `prep` per resolved element, which carries no stage-named
+#: symbol of its own: the ladder is data, not a mechanism.
+MECHANISM_COUNT = 7
 
 
 def _py_sources() -> list[Path]:
@@ -470,20 +454,19 @@ def measure_positional_names() -> list[str]:
     # moves anything.  (test_siesta_stages_emit.py pins the deck's exact name;
     # this asks the different question of whether ANY producer has drifted
     # onto a position, and three lines is a cheap way to not find out late.)
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.input import render_siesta_stage_fdfs
-    from molbuilder.structure import Structure
-    import numpy as np
-    h2 = Structure(elements=["H", "H"],
-                   positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
-                   vacuum=(12.0, 12.0, 12.0))
+    # Repointed 2026-08-12 (u5): the render-time producer died; the LIVE
+    # namer is `identity.stage_token` from each stage's place in the FULL
+    # ladder (prep._token_for), so the scan runs over exactly the names
+    # `prep` writes.
+    from molbuilder.identity import stage_token
     from molbuilder.siesta.stages import default_siesta_stages
-    decks = render_siesta_stage_fdfs(h2, SiestaConfig(system_label="JOB"),
-                                     default_siesta_stages())
+    decks = [f"JOB_{stage_token(i, st.name)}.fdf"
+             for i, st in enumerate(default_siesta_stages(), start=1)
+             if st.enabled]
     positional_decks = sorted(n for n in decks if _POSITIONAL.search(n))
     if positional_decks:
         offences.append(
-            f"render_siesta_stage_fdfs emits {positional_decks} -- the deck "
+            f"the live namer emits {positional_decks} -- the deck "
             "and its log would then key on different things")
 
     # The flat runner had a probe here until 2026-08-10; P5 unit 3 deleted the
@@ -617,11 +600,26 @@ def measure_chaining_producers() -> list[str]:
     import dataclasses
     offences = []
 
+    # Repointed 2026-08-12 (u5) to the LIVE construction: each enabled
+    # stage through the one seam, jobs built the way `prep._job_for`
+    # builds them.
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.stages import (default_siesta_stages,
-                                          stages_to_jobset)
-    js = stages_to_jobset(SiestaConfig(system_label="JOB"),
-                          default_siesta_stages())
+    from molbuilder.identity import stage_token
+    from molbuilder.jobset.model import Job, JobSet, Resources
+    from molbuilder.siesta.input import effective_config
+    from molbuilder.siesta.stages import (_traits, _warm_declaration,
+                                          default_siesta_stages)
+    jobs = []
+    for i, st in enumerate(default_siesta_stages(), start=1):
+        if not st.enabled:
+            continue
+        eff = effective_config(SiestaConfig(system_label="JOB"), st)
+        jobs.append(Job(name=st.name,
+                        script=f"JOB_{stage_token(i, st.name)}.fdf",
+                        resources=Resources(),
+                        warm=_warm_declaration("JOB", eff),
+                        traits=_traits(eff)))
+    js = JobSet(name="JOB", engine="siesta", kind="ladder", jobs=jobs)
     names = {j.name for j in js.jobs}
     for j in js.jobs:
         for f in dataclasses.fields(j):
@@ -631,7 +629,7 @@ def measure_chaining_producers() -> list[str]:
             found = [o for o in names if o != j.name and o == val]
             if found:
                 offences.append(
-                    f"stages_to_jobset: job {j.name!r} field {f.name!r} names "
+                    f"live construction: job {j.name!r} field {f.name!r} names "
                     f"another job ({found}) -- that job is waiting on one")
 
     # A stage says WHAT it would warm-start from; the run is named by a person
@@ -642,7 +640,7 @@ def measure_chaining_producers() -> list[str]:
                      - {"name", "requires_same"})
             if extra:
                 offences.append(
-                    f"stages_to_jobset: {j.name!r} declares a warm file "
+                    f"live construction: {j.name!r} declares a warm file "
                     f"carrying {sorted(extra)} -- a warm declaration is a "
                     "filename and its condition, nothing else")
 
