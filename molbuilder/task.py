@@ -59,7 +59,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, NoReturn, Optional, Tuple
 
 from .identity import normalise_id, run_id
-from .persist import check_schema_major, read_json, write_json
+from .persist import check_schema, read_json, write_json
 
 
 SCHEMA = "molbuilder/task@1"
@@ -328,7 +328,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     if not isinstance(obj, Mapping):
         _refuse(f"expected a JSON object, got {type(obj).__name__}")
 
-    check_schema_major(str(obj.get("schema") or ""), SCHEMA, label=FILENAME)
+    check_schema(str(obj.get("schema") or ""), SCHEMA, label=FILENAME)
     _check_keys(obj, _TOP_KEYS, where="")
 
     engine_obj = _as_object(_require(obj, "engine", where=""), where="engine")

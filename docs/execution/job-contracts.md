@@ -1347,8 +1347,14 @@ ref may carry either.
 
 #### Persisted-file schema strings
 
-`molbuilder/<name>@<major>`, checked **major-only** through `molbuilder/persist.py`
-— a reader meeting a newer major refuses rather than mis-parsing (§ 6.1, § 6.2).
+`molbuilder/<name>@<major>`, checked **name + major** through
+`molbuilder/persist.py` (`check_schema`) — a reader meeting a newer major
+refuses rather than mis-parsing, and a reader handed the WRONG artifact
+refuses by name (§ 6.1, § 6.2). *Amended 2026-08-12, U9: this said
+"major-only", and the check implemented it literally — any `@1` artifact
+parsed as any other `@1` artifact, so a `task.json` handed to the
+Environment reader sailed through the gate. "Major-only" was always about
+tolerating minors within one artifact, never about ignoring which artifact.*
 
 > **Two rows corrected 2026-08-07.** This table used to give the per-job
 > directory as `point-<name>/` for everything — *"benchmark `point-G<g>K<k>C<c>/`;

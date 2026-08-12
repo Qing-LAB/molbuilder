@@ -40,18 +40,38 @@ def schema_major(schema: str) -> str:
     return s.rsplit("@", 1)[-1].split(".", 1)[0]
 
 
-def check_schema_major(got: str, want: str, *, label: str = "") -> None:
-    """Raise :class:`ValueError` unless ``got`` and ``want`` share the same
-    major version (tolerate same-major minor bumps, reject a different
-    major).  ``label`` prefixes the message so the artifact is obvious.
+def schema_name(schema: str) -> str:
+    """The name half of ``molbuilder/<name>@<major>`` -- everything before
+    the last ``@``, or ``""`` when there is no ``@`` (so a bare/garbage
+    value never matches a real name)."""
+    s = str(schema or "")
+    if "@" not in s:
+        return ""
+    return s.rsplit("@", 1)[0]
+
+
+def check_schema(got: str, want: str, *, label: str = "") -> None:
+    """Raise :class:`ValueError` unless ``got`` and ``want`` name the SAME
+    artifact at the same major (tolerate same-major minor bumps, reject a
+    different major).  ``label`` prefixes the message so the artifact is
+    obvious.
 
     The single enforcement point for the schema convention -- adopted by
-    ``environment@1`` / ``bench-result@1`` / ``job-set@1`` (was duplicated)."""
-    if schema_major(got) != schema_major(want):
+    ``environment@1`` / ``bench-result@1`` / ``job-set@1`` (was duplicated).
+
+    *Named ``check_schema_major`` until U9 (2026-08-12), and the name was
+    the bug's alibi: it compared ONLY the majors, so any ``@1`` artifact
+    parsed as any other -- ``task.json`` handed to the Environment reader
+    sailed through the schema gate and failed later, somewhere the message
+    named the wrong thing.  The NAME half is what says which artifact this
+    is; a version check that ignores it checks nothing worth the word.*"""
+    if (schema_name(got) != schema_name(want)
+            or schema_major(got) != schema_major(want)):
         prefix = f"{label} " if label else ""
         raise ValueError(
-            f"{prefix}schema mismatch: got {got!r}, need major "
-            f"{schema_major(want)} ({want}).")
+            f"{prefix}schema mismatch: got {got!r}, need "
+            f"{schema_name(want)}@{schema_major(want)} "
+            f"(same name, same major; minors tolerated).")
 
 
 def read_json(path) -> Any:
@@ -117,5 +137,5 @@ def write_json(path, obj: Any, *, tmp_dir: Optional[Path] = None) -> Path:
     return write_bytes(path, data, tmp_dir=tmp_dir)
 
 
-__all__ = ["schema_major", "check_schema_major", "read_json", "write_json",
-           "write_bytes"]
+__all__ = ["schema_major", "schema_name", "check_schema", "read_json",
+           "write_json", "write_bytes"]

@@ -95,8 +95,8 @@ class Environment:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Environment":
-        from .persist import check_schema_major
-        check_schema_major(str(d.get("schema", "")), SCHEMA,
+        from .persist import check_schema
+        check_schema(str(d.get("schema", "")), SCHEMA,
                            label="environment")
         # Tolerant of unknown/extra keys; missing keys -> dataclass default.
         topo_fields = {f for f in Topology.__dataclass_fields__}

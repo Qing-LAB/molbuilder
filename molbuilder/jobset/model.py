@@ -259,8 +259,8 @@ class JobSet:
     def from_dict(cls, d: Dict[str, Any]) -> "JobSet":
         # Major-version check via the shared helper (persist.py), same rule
         # bench/environment + bench/result use.
-        from ..persist import check_schema_major
-        check_schema_major(str(d.get("schema") or ""), SCHEMA, label="job-set")
+        from ..persist import check_schema
+        check_schema(str(d.get("schema") or ""), SCHEMA, label="job-set")
         return cls(
             name=d["name"],
             engine=d["engine"],

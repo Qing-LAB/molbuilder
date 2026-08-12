@@ -59,7 +59,7 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
 
-from .persist import check_schema_major
+from .persist import check_schema
 
 
 SCHEMA = "molbuilder/template@1"
@@ -621,7 +621,7 @@ def read_template(text: str) -> Template:
     except tomllib.TOMLDecodeError as exc:
         _refuse(f"not valid TOML -- {exc}")
 
-    check_schema_major(str(raw.get("schema") or ""), SCHEMA, label="template")
+    check_schema(str(raw.get("schema") or ""), SCHEMA, label="template")
 
     engine = raw.get("engine")
     if not engine or not isinstance(engine, str):

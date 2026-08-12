@@ -10,7 +10,7 @@ from molbuilder import persist
 
 
 # --------------------------------------------------------------------- #
-#  schema_major / check_schema_major                                     #
+#  schema_major / check_schema                                     #
 # --------------------------------------------------------------------- #
 
 def test_schema_major_extracts_major_or_empty():
@@ -32,32 +32,32 @@ def test_schema_major_ignores_a_minor_component():
     """
     assert persist.schema_major("molbuilder/task@1.4") == "1"
     assert persist.schema_major("molbuilder/task@2.0.1") == "2"
-    persist.check_schema_major("molbuilder/task@1.4", "molbuilder/task@1")
+    persist.check_schema("molbuilder/task@1.4", "molbuilder/task@1")
     with pytest.raises(ValueError):
-        persist.check_schema_major("molbuilder/task@2.0", "molbuilder/task@1")
+        persist.check_schema("molbuilder/task@2.0", "molbuilder/task@1")
 
 
-def test_check_schema_major_accepts_same_major():
+def test_check_schema_accepts_same_major():
     # same major -> OK.  Minors aren't encoded in the string: the convention
     # is a single integer major (@1) that STAYS PUT when fields are added, so
     # "tolerate minor bumps" means the string is unchanged, not "@1.4".
-    persist.check_schema_major("molbuilder/x@1", "molbuilder/x@1")
+    persist.check_schema("molbuilder/x@1", "molbuilder/x@1")
 
 
-def test_check_schema_major_rejects_different_major():
+def test_check_schema_rejects_different_major():
     with pytest.raises(ValueError, match="schema mismatch"):
-        persist.check_schema_major("molbuilder/x@2", "molbuilder/x@1")
+        persist.check_schema("molbuilder/x@2", "molbuilder/x@1")
 
 
-def test_check_schema_major_rejects_missing_at():
+def test_check_schema_rejects_missing_at():
     # a bare/garbage schema has no major and must never match.
     with pytest.raises(ValueError, match="schema mismatch"):
-        persist.check_schema_major("garbage", "molbuilder/x@1")
+        persist.check_schema("garbage", "molbuilder/x@1")
 
 
-def test_check_schema_major_label_prefixes_message():
+def test_check_schema_label_prefixes_message():
     with pytest.raises(ValueError, match="job-set schema mismatch"):
-        persist.check_schema_major("x@9", "x@1", label="job-set")
+        persist.check_schema("x@9", "x@1", label="job-set")
 
 
 # --------------------------------------------------------------------- #
@@ -173,3 +173,19 @@ def test_write_json_tmp_dir_stages_outside_the_target_dir(tmp_path,
     p.parent.mkdir()
     persist.write_json(p, {"a": 1}, tmp_dir=stage)
     assert seen["src"].startswith(str(stage))
+
+
+def test_check_schema_rejects_the_wrong_artifact_at_the_same_major():
+    """THE U9 pin: the check compared MAJORS ONLY until 2026-08-12, so any
+    @1 artifact parsed as any other -- a task.json handed to the
+    Environment reader sailed through the gate and failed later, with a
+    message naming the wrong thing.  The name half is what says WHICH
+    artifact this is."""
+    with pytest.raises(ValueError, match="schema mismatch"):
+        persist.check_schema("molbuilder/task@1", "molbuilder/environment@1")
+    with pytest.raises(ValueError, match="schema mismatch"):
+        persist.check_schema("molbuilder/job-set@1",
+                             "molbuilder/bench-result@1")
+    # and the name helper itself
+    assert persist.schema_name("molbuilder/task@1") == "molbuilder/task"
+    assert persist.schema_name("garbage") == ""

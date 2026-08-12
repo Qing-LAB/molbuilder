@@ -204,8 +204,8 @@ class BenchResult:
 
     @classmethod
     def from_dict(cls, d: dict) -> "BenchResult":
-        from ..persist import check_schema_major
-        check_schema_major(str(d.get("schema", "")), SCHEMA,
+        from ..persist import check_schema
+        check_schema(str(d.get("schema", "")), SCHEMA,
                            label="bench-result")
         pt_fields = {f for f in BenchPoint.__dataclass_fields__}
         points = [BenchPoint(**{k: v for k, v in p.items() if k in pt_fields})

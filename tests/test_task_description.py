@@ -11,7 +11,7 @@ WHAT P1 OWNS, AND WHAT IT DOES NOT.  § 6.6's preflight is eight rows, and they
 do not all belong to the same layer:
 
   P1, here -- purely structural, answerable from the file alone:
-    * the schema string's major (through ``persist.check_schema_major``)
+    * the schema string's major (through ``persist.check_schema``)
     * ``shape`` present and one of the two legal values
     * stage names match ``[A-Za-z0-9_]+`` and are unique case-insensitively
     * no ``overrides`` key names a stage field (§ 2's three)
