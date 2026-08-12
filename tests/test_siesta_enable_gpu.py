@@ -618,8 +618,13 @@ def test_wrapper_emits_fdf_aware_rank_default_selector(
     wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
     # The runtime selector must be emitted -- a literal
     # ``_mpi_np_default=<int>`` at top level would be the pre-fix
-    # shape.  After the fix the assignment lives inside an if/else.
-    assert 'grep -qiE \'^[[:space:]]*Diag\\.ELPA\\.GPU' in wrapper_text
+    # shape.  Since R6 (2026-08-12) the detector is the SAME rule as
+    # generation's _fdf_requests_gpu: both keyword spellings, the fdf_get
+    # truthy set, last occurrence wins -- the old single-spelling
+    # any-occurrence grep re-opened the task-#36 class for UseGPU decks.
+    assert 'tolower($1) == "diag.elpa.gpu"' in wrapper_text
+    assert 'tolower($1) == "diag.elpa.usegpu"' in wrapper_text
+    assert ".true.|true|yes|t|y|1)" in wrapper_text
     assert "default mpi_np=$_mpi_np_default" in wrapper_text
     # GPU branch references the runtime-probed default; CPU branch
     # references the bake.  Both branches MUST be present.
@@ -652,8 +657,9 @@ def test_cpu_mode_wrapper_falls_back_to_safe_gpu_default_if_toggled(
         fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
         wrapper_text = _runwrap.write_run_wrapper(
             fdf).read_text(encoding="utf-8")
-        # The grep selector is still emitted (so toggling GPU works).
-        assert 'grep -qiE \'^[[:space:]]*Diag\\.ELPA\\.GPU' in wrapper_text
+        # The launch-time selector is still emitted (so toggling GPU
+        # works), in its R6 shared-rule form.
+        assert 'tolower($1) == "diag.elpa.usegpu"' in wrapper_text
         # GPU branch uses the safe hardcoded 4 / 1 -- no reference to
         # _gpu_mpi_np_default because that variable wasn't emitted.
         assert "_mpi_np_default=$_gpu_mpi_np_default" not in wrapper_text

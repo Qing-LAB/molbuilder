@@ -1377,6 +1377,16 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
     )
 
 
+#: SIESTA's own truthy set for the GPU toggle (fdf_get's accepted values;
+#: Src/diag_option.F90).  Shared between the Python parser below and the
+#: wrapper's LAUNCH-TIME re-detect, so the two rules cannot diverge (R6,
+#: 2026-08-12: the emitted grep matched one spelling, one truthy value,
+#: any-occurrence -- a ``Diag.ELPA.UseGPU yes`` deck got the GPU env with
+#: the CPU all-cores rank default, the task-#36 OOM class; and
+#: ``.true.``-then-``.false.`` read as GPU although SIESTA reads false).
+_GPU_TRUTHY = (".true.", "true", "yes", "t", "y", "1")
+
+
 def _fdf_requests_gpu(fdf_path: Path) -> bool:
     """Whether the .fdf has ``Diag.ELPA.GPU`` set true.
 
@@ -1403,7 +1413,7 @@ def _fdf_requests_gpu(fdf_path: Path) -> bool:
     pat = re.compile(
         r"(?im)^\s*Diag\.ELPA\.(?:Use)?GPU\b\s+(\S+)"
     )
-    truthy = {".true.", "true", "yes", "t", "y", "1"}
+    truthy = set(_GPU_TRUTHY)
     # FDF re-reads the same keyword: last occurrence wins (matches
     # SIESTA's read_options.F90 semantics).
     last_value: Optional[str] = None
@@ -1774,18 +1784,26 @@ def render_run_wrapper(script_path: Path, *,
         # user later set Diag.ELPA.GPU .true.  See task #36.
         _mpi_np_default_assignment = (
             f'# Default mpi_np / omp_threads -- re-evaluated at LAUNCH\n'
-            f'# from the current .fdf so toggling Diag.ELPA.GPU after\n'
+            f'# from the current .fdf so toggling the GPU flag after\n'
             f'# generation picks up the right rank count (task #36 fix).\n'
-            f'if grep -qiE \'^[[:space:]]*Diag\\.ELPA\\.GPU[[:space:]]+'
-            f'\\.true\\.\' "{script_name}" 2>/dev/null; then\n'
-            f'    _mpi_np_default={gpu_mpi_default}\n'
-            f'    _omp_threads_default={gpu_omp_default}\n'
-            f'    echo "molbuilder: .fdf has Diag.ELPA.GPU .true. -> '
-            f'default mpi_np=$_mpi_np_default, omp=$_omp_threads_default" >&2\n'
-            f'else\n'
-            f'    _mpi_np_default={cpu_mpi_default}\n'
-            f'    _omp_threads_default={cpu_omp_default}\n'
-            f'fi\n'
+            f'# SAME RULE as generation (_fdf_requests_gpu): BOTH keyword\n'
+            f'# spellings, SIESTA fdf_get\'s truthy set, LAST occurrence\n'
+            f'# wins -- the grep this replaced matched one spelling, one\n'
+            f'# value, any occurrence (R6, 2026-08-12).\n'
+            f'_mb_gpu_val=$(awk \'tolower($1) == "diag.elpa.gpu" || '
+            f'tolower($1) == "diag.elpa.usegpu" {{ v = tolower($2) }} '
+            f'END {{ print v }}\' "{script_name}" 2>/dev/null || true)\n'
+            f'case "$_mb_gpu_val" in\n'
+            f'    {"|".join(_GPU_TRUTHY)})\n'
+            f'        _mpi_np_default={gpu_mpi_default}\n'
+            f'        _omp_threads_default={gpu_omp_default}\n'
+            f'        echo "molbuilder: .fdf requests GPU '
+            f'($_mb_gpu_val) -> default mpi_np=$_mpi_np_default, '
+            f'omp=$_omp_threads_default" >&2 ;;\n'
+            f'    *)\n'
+            f'        _mpi_np_default={cpu_mpi_default}\n'
+            f'        _omp_threads_default={cpu_omp_default} ;;\n'
+            f'esac\n'
         )
         siesta_args_block = (
             _continue_force_args_parser("SIESTA wrapper")
