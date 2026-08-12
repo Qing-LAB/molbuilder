@@ -2957,13 +2957,31 @@ The order is forced by what each needs to exist beneath it:
 
 | # | build | why here | closes |
 |---|---|---|---|
-| **1** | **`template/` in TOML.** One file, `kind` · `read_by` · no payload, **plus `label` · `section` · `null_label` so the UI can be built from it** ([`generator.md`](?doc=execution/generator.md) § 3.1). Writer computes the fingerprint. **Move `mpi_np`, `omp_threads` and `max_memory_mb` out of the exposed set** — they become allocation fields (A). `continue_retries` stays | it is the bottom of the data spine; everything else reads it. Doing (A) here rather than later means floor 3 is *built* against a clean floor 2 instead of being corrected afterwards | G · H · A · C4 · C5 · C10 · **the UI key set** |
+| **1** | **`template/` in TOML.** One file, `kind` · `read_by` · no payload, **plus `label` · `section` · `null_label` so the UI can be built from it** ([`generator.md`](?doc=execution/generator.md) § 3.1). Writer computes the fingerprint. **⚠ The machine facts do NOT move here — see below** | it is the bottom of the data spine; everything else reads it. Doing (A) here rather than later means floor 3 is *built* against a clean floor 2 instead of being corrected afterwards | G · H · A · C4 · C5 · C10 · **the UI key set** |
 | **2** | **`jobset describe`** — writes template + `task.json` + data files, floor 2 only | the only writer of floor 2 today is the verb step 4 deletes | C9 |
-| **3** | **`resolve/` → `ParameterSet`.** template ⊕ overrides ⊕ sweep point → `list[ResolvedConfig]`; `Resources` built from `Environment` + the allocation | **the hinge.** It consumes floor 1 and floor 2 — the two artifacts nothing reads — and it is what makes a run *"a sweep of length one"* | the one defect · B · C |
+| **3** | **`resolve/` → `ParameterSet`.** template ⊕ overrides ⊕ sweep point ⊕ pin → `list[ResolvedConfig]`, each carrying its **own** `resources`, built from `Environment` + the allocation. **⚠ `mpi_np`, `omp_threads` and `max_memory_mb` leave the exposed item set HERE, not at step 1** | **the hinge.** It consumes floor 1 and floor 2 — the two artifacts nothing reads — and it is what makes a run *"a sweep of length one"* | the one defect · B · C |
 | **4** | **`prep` gains steps 2 and 3**, looping over the `ParameterSet` | steps 2 and 3 have nothing to do until step 3 above exists | E · § 9.3's migration |
 | **5** | **delete the old surface** — `cmd_run`, `cmd_fdf`, the `--chain` message | now that a producer exists to replace it | C1 · C2 · C3 · C11 |
 | **6** | **fold `bench`**: `sweep_to_jobset` and `stages_to_jobset` become one enumeration; `transform_fdf` deletes | `project-layout.md` § 2.3.1a's *"largest, least revertible"* — and it is only safe once (3) is proven on the staged path | F · C6 |
 | **7** | **`cfg.stage` out of the emitter**, token as a render argument | `prep` holds the `StageRef` only after (4) | C7 · C8 |
+
+> ### ⚠ Why the machine facts move at step 3 and not step 1 — found at the gate
+>
+> **The same error as the C4 → C9 → C2 chain, one layer along.** Removing
+> `section` from `mpi_np`, `omp_threads` and `max_memory_mb` takes them out of the
+> form. **The allocation input that is supposed to receive them does not exist
+> until step 3.** Do it at step 1 and there is a window — steps 1 and 2 — in which
+> **a person has no way to set a rank count at all**: gone from the UI, and not yet
+> anywhere else.
+>
+> So step 1 changes the **format** (TOML, the UI keys, the fingerprint writer) and
+> leaves the item *set* alone. **Step 3 moves the three**, in the same change that
+> gives them their new home on `ResolvedConfig.resources`. `system_label` and
+> `psml_lib`'s path half (A2) move then too, for the same reason.
+>
+> **The general rule this is the second instance of:** *never remove a channel
+> before the one replacing it exists.* It is worth stating because it caught two
+> different steps of this plan.
 
 > **C3 still goes first and alone**, unchanged from § 5g: it is the one row that
 > *instructs a user to do something the design forbids*, it is one line, and it
