@@ -175,6 +175,68 @@ def test_cli_summarize_bench_reads_trials_by_data(calc):
     assert r.exit_code != 0
 
 
+def _finished_trial_and_verdict(calc):
+    """prep bench + one completed trial + summarize -> bench-result.json."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    js = _prep_bench(calc)
+    name = js["jobs"][0]["name"]
+    d = calc / "01_coarse" / f"bench-{name}"
+    (d / f"JOB-{name}_01_coarse-run0.out").write_text(
+        "x\n>> End of run:\n")
+    # epoch-per-line format: consecutive deltas are the per-iter durations
+    (d / f"JOB-{name}_01_coarse-run0.scf-timing.log").write_text(
+        "100.0 scf 1\n104.0 scf 2\n108.0 scf 3\n112.0 scf 4\n")
+    r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
+                                          "--bundle", str(calc)])
+    assert r.exit_code == 0, r.output
+    return name
+
+
+def test_prep_run_offers_the_verdict_and_silence_is_no(calc):
+    """§ 2.3.2: it asks; it does not just take it — and a non-interactive
+    shell's silence is No, so nothing is ever applied by default."""
+    import re
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    _finished_trial_and_verdict(calc)
+    r = CliRunner().invoke(jobset_group,
+                           ["prep", "run", "coarse", "--bundle", str(calc),
+                            "--no-sbatch"])
+    assert r.exit_code == 0, r.output
+    assert "a benchmark result exists" in r.output
+    assert "use it?" in r.output
+    assert "not applied" in r.output
+    deck = (calc / "JOB_01_coarse.fdf").read_text()
+    assert not re.search(r"^Diag\.ELPA\.GPU\s+\.true\.", deck, re.M)
+
+
+def test_prep_run_applies_an_accepted_verdict_but_flags_win(calc):
+    """On yes, the measured machine half fills only what the user did NOT
+    state, and the winner's eigensolver arrives as pins."""
+    import re
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.parse.scripts.bench_marks import _extract_bench_marks_dict
+    name = _finished_trial_and_verdict(calc)
+    g = int(name[1])
+    k = int(name[name.index("K") + 1:name.index("C")])
+    r = CliRunner().invoke(jobset_group,
+                           ["prep", "run", "coarse", "--bundle", str(calc),
+                            "--cpus-per-task", "3", "--no-sbatch"],
+                           input="y\n")
+    assert r.exit_code == 0, r.output
+    assert "applied:" in r.output
+    deck = (calc / "JOB_01_coarse.fdf").read_text()
+    marks = _extract_bench_marks_dict(deck)
+    assert marks.get("mpi_np") == g * k          # measured, user said nothing
+    assert re.search(r"^Diag\.Algorithm\s+ELPA-1STAGE\s*$", deck, re.M)
+    assert re.search(r"^Diag\.ELPA\.GPU\s+\.true\.\s*$", deck, re.M)
+    # the flag the user DID state beat the verdict
+    js = json.loads((calc / "job-set.json").read_text())
+    assert js["jobs"][0]["resources"]["cpus_per_task"] == 3
+
+
 def test_cli_submit_bench_is_one_trial_per_invocation(calc):
     """Bare `submit bench` refuses and names the trials; naming one plans
     exactly one launch (§ 2.3.2, decided 2026-08-12)."""

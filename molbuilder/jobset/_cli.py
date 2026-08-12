@@ -229,6 +229,73 @@ def _check_kind(kind: str, js=None) -> None:
             f"(job-system.md § 5.3).")
 
 
+def _offer_bench_verdict(base, allocation):
+    """§ 2.3.2: a verdict can always be FOUND — finding is not permission.
+
+    A benchmark lives inside the calculation it measured, so `prep run` can
+    always see ``bench-result.json``; it shows the choice and ASKS, every
+    time, and a non-interactive shell's silence is No (same doctrine as the
+    checkpoint question).  On yes, the measured machine half fills only the
+    allocation fields the user did NOT state — your explicit flags stay
+    yours — and the winning engine's eigensolver arrives as pins.  Returns
+    ``(allocation, pins)``.
+    """
+    import dataclasses as _dc
+    import json as _json
+    path = Path(base) / "bench-result.json"
+    if not path.is_file():
+        return allocation, {}
+    try:
+        res = _json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as e:
+        click.echo(f"  (bench-result.json unreadable -- ignored: {e})",
+                   err=True)
+        return allocation, {}
+    choice = res.get("choice") or {}
+    rec = res.get("recommend") or {}
+    if not choice:
+        return allocation, {}
+    knobs = choice.get("knobs") or {}
+    click.echo("a benchmark result exists for this calculation:")
+    click.echo(f"    {choice.get('rationale', choice)}")
+    if rec:
+        click.echo(f"    sizing (measured on THAT machine -- a starting "
+                   f"point, not a guarantee): {rec}")
+    when = res.get("generated") or (res.get("environment") or {}).get(
+        "detected_at")
+    if when:
+        click.echo(f"    measured: {when}")
+    try:
+        accepted = click.confirm("  use it?", default=False)
+    except click.exceptions.Abort:
+        # EOF / no stdin: SILENCE IS NO.  confirm() aborts on EOF, which
+        # would kill a scripted prep outright -- the doctrine is that the
+        # question is asked and an unanswered question declines.
+        click.echo("")
+        accepted = False
+    if not accepted:
+        click.echo("  not applied -- your flags and defaults stand.")
+        return allocation, {}
+    stated = {}
+    for src, dst in (("ranks", "mpi_np"), ("cores_per_rank", "cpus_per_task"),
+                     ("gres", "gres")):
+        if knobs.get(src) is not None and getattr(allocation, dst) is None:
+            stated[dst] = knobs[src]
+    if rec.get("mem_gb") and allocation.mem is None:
+        stated["mem"] = f"{rec['mem_gb']}GB"
+    if rec.get("time") and allocation.time is None:
+        stated["time"] = rec["time"]
+    if stated:
+        allocation = _dc.replace(allocation, **stated)
+    pins = ({"enable_gpu": True, "diag_algorithm": "ELPA-1STAGE"}
+            if choice.get("engine") == "gpu" else {"enable_gpu": False})
+    click.echo("  applied: "
+               + (", ".join(f"{k}={v}" for k, v in stated.items()) or "(all "
+                  "machine fields were stated explicitly -- flags win)")
+               + f"; pins: {pins}")
+    return allocation, pins
+
+
 def _bench_inputs(base):
     """The benchmark specialisation's three inputs — `project-layout.md`
     § 2.3.1a's split, stated as data: WHERE the values come from (the GPU
@@ -433,6 +500,12 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                         "prep bench measures ONE stage's configuration; "
                         "name it:\n    molbuilder jobset prep bench <stage>")
                 sweep, pins, translation = _bench_inputs(base)
+            elif stage is not None:
+                # § 2.3.2's other half: a run prepped where a verdict sits
+                # is OFFERED it -- asked, never applied silently.
+                allocation, verdict_pins = _offer_bench_verdict(base,
+                                                                allocation)
+                pins = verdict_pins or None
             from .prep import prep_calculation
             dirs = prep_calculation(base, stage, allocation=allocation,
                                     env=env, emit_sbatch=emit_sbatch,
