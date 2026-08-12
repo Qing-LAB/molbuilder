@@ -345,6 +345,12 @@ class EngineSeam:
     suffix: str
     #: ``config -> the engine's identity literal`` (``SystemLabel`` / ``JOB``).
     label_of: Callable
+    #: ``(config, label) -> config`` — the identity WRITTEN, for a trial's
+    #: relabelling.  Filename relabelling alone is not the § 2.3.2
+    #: protection: the deck's own ``SystemLabel`` line is what keys the warm
+    #: files, and until 2026-08-12 it kept the run's label (found by the
+    #: first sweep that ever rendered a deck).
+    relabel: Callable
     #: ``(label, config) -> warm-file declaration`` for the Job.
     warm_for: Callable
     #: ``config -> traits`` the launcher routes on (GPU solver, …).
@@ -359,6 +365,8 @@ def _engine_seam(engine: str) -> EngineSeam:
         return EngineSeam(config_cls=SiestaConfig, render_deck=render_fdf,
                           suffix=".fdf",
                           label_of=lambda cfg: cfg.system_label,
+                          relabel=lambda cfg, label: dataclasses.replace(
+                              cfg, system_label=label),
                           warm_for=_warm_declaration, traits_for=_traits)
     raise PrepError(
         f"no deck writer for engine {engine!r}. An engine supplies its schema "
@@ -374,13 +382,22 @@ def _environment_for(base: Path):
     downstream ever heard the answer. That is the same defect as floor 2's, one
     storey down, and it is why this returns the object.
     """
+    import json as _json
+
     from ..environment import Environment, resolve_environment
     path = resolve_target(base)
     if path.is_file():
+        # NARROW except, deliberately: this called a method that did not
+        # exist (`from_json`) from 2026-08-11 to 2026-08-12 and the broad
+        # `except Exception` swallowed the AttributeError -- so the persisted
+        # answer was never read back and every prep silently re-probed.  A
+        # hand-edited file earns tolerance (fall through to a fresh probe);
+        # a programming error does not.
         try:
-            return Environment.from_json(path.read_text(encoding="utf-8"))
-        except Exception:              # pragma: no cover - a hand-edited file
-            pass
+            return Environment.from_dict(
+                _json.loads(path.read_text(encoding="utf-8")))
+        except (ValueError, TypeError, KeyError):
+            pass                       # malformed file -> re-probe below
     try:
         return resolve_environment()
     except Exception:                  # pragma: no cover - probing is optional
@@ -426,7 +443,7 @@ def _structure_for(task, base: Path):
 def prep_calculation(base_dir, stage: Optional[str] = None, *,
                      allocation=None, env: str = None,
                      emit_sbatch: bool = True,
-                     sweep=None, pins=None) -> List[Path]:
+                     sweep=None, pins=None, translation=None) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.
 
@@ -477,7 +494,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         pset = resolve(template_path.read_text(encoding="utf-8"), task,
                        seam.config_cls, allocation=(allocation or Resources()),
                        stage=stage, sweep=sweep, pins=pins,
-                       environment=environment)
+                       translation=translation, environment=environment)
     except ResolveError as exc:
         raise PrepError(str(exc)) from exc
 
@@ -501,6 +518,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         # field is how the emitter is told, and `prep` -- which holds the
         # StageRef -- is what tells it.
         cfg = element.render_config()
+        if element.is_trial:
+            # The deck's OWN identity line carries the trial label -- this,
+            # not the filename, is what keys SIESTA's warm files away from
+            # the real run's (project-layout.md § 2.3.2).
+            cfg = seam.relabel(cfg, element.label)
         if token and hasattr(cfg, "stage"):
             cfg = dataclasses.replace(cfg, stage=token)
         (base / script).write_text(seam.render_deck(struct, cfg),

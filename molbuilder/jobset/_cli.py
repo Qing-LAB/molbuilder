@@ -209,24 +209,69 @@ def status_cmd(stage, bundle: str) -> None:
 _KINDS = ("run", "bench")
 
 
-def _check_kind(kind: str) -> None:
-    """Refuse ``bench`` with a pointer rather than a shrug.
+def _check_kind(kind: str, js=None) -> None:
+    """The KIND positional against the bundle's actual kind.
 
-    The grammar has room for it and the fold-in is designed
-    (`staged-runs-implementation-plan.md` step 6 / P9: ``bench generate`` +
-    ``bench prep`` become ``jobset prep bench``, and ``bench prep-run`` IS
-    ``jobset prep run`` written a second time).  Until that lands, saying
-    where the working command lives beats pretending the word is unknown.
+    ``bench`` stopped refusing on 2026-08-12 (plan step 6, u2): ``prep
+    bench`` enumerates the grid on this machine and ``submit bench <trial>``
+    launches ONE trial per invocation through the same resolver as
+    everything else.  What remains checkable is AGREEMENT: a kind that
+    contradicts the bundle's own is a typo about to act on the wrong thing.
     """
-    if kind == "bench":
+    if js is None:
+        return
+    actual = "bench" if js.kind == "sweep" else "run"
+    if kind != actual:
         raise click.ClickException(
-            "`jobset prep|submit bench` is not folded in yet -- the benchmark "
-            "still has its own group:\n"
-            "    molbuilder bench generate ...   (build the sweep)\n"
-            "    molbuilder bench prep ...       (format it for this machine)\n"
-            "    molbuilder bench summarize ...  (write the verdict)\n"
-            "The grammar reserves `bench` because measuring and running are "
-            "peers; see job-system.md § 5.3.")
+            f"this bundle's job set is a {js.kind}, which the grammar calls "
+            f"{actual!r} -- and the command says {kind!r}.  The kind states "
+            f"what the calculation IS, it does not switch modes "
+            f"(job-system.md § 5.3).")
+
+
+def _bench_inputs(base):
+    """The benchmark specialisation's three inputs — `project-layout.md`
+    § 2.3.1a's split, stated as data: WHERE the values come from (the GPU
+    grid, enumerated from THIS machine's probed topology, as explicit
+    points), the G/K/C → Resources translation, and the trial pins.  The
+    framework — `prep`'s five steps — receives a longer list and never asks
+    why (`generator.md` § 2).
+    """
+    from ..bench.adapters import _FALLBACK_KS, get_adapter, sweep_grid
+    from ..resolve import MachineTranslation
+    from .prep import _environment_for
+    environment = _environment_for(base)
+    topo = getattr(environment, "topology", None)
+    gpn = getattr(topo, "gpus_per_node", None) or 0
+    cps = getattr(topo, "cores_per_socket", None)
+    gtype = getattr(topo, "gpu_type", None)
+    if not gpn or not gtype:
+        raise click.ClickException(
+            f"prep bench enumerates the GPU grid (G × ranks-per-GPU × "
+            f"cores), and this machine's probe found no GPU topology "
+            f"(gpus_per_node={gpn!r}, gpu_type={gtype!r}).  Delete "
+            f"environment.json to re-probe, or run the benchmark on the "
+            f"target it is meant to measure -- the comparison is by node "
+            f"type (asu-sol.md § 5.2).")
+    ks = get_adapter(environment).sweep_K(topo) or list(_FALLBACK_KS)
+    points = [{"G": g, "K": k, "C": c}
+              for g, k, c in sweep_grid(gpn, cps, ks, None)]
+    translation = MachineTranslation(
+        axes=("G", "K", "C"),
+        to_resources=lambda p, _env: {
+            "mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
+            "gres": f"gpu:{gtype}:{p['G']}"})
+    # The trial pins -- what `transform_fdf` used to SPLICE into a finished
+    # deck, now schema values resolved like any other (`template.md` § 8.1:
+    # rebuild and render, never splice): capped SCF, single point, forced
+    # cold, the GPU eigensolver.  ``SCF.MustConverge`` has NO schema field
+    # (the splice invented it); a capped trial therefore reports its
+    # nonconvergence honestly rather than being silenced -- adding the field
+    # is a recorded vocabulary gap (template.md § 7), not this unit's scope.
+    pins = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean",
+            "diag_algorithm": "ELPA-1STAGE", "enable_gpu": True,
+            "parallel_block_size": 256}
+    return points, pins, translation
 
 
 def _resolve_stage_name(js, stage: str) -> str:
@@ -348,7 +393,6 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     every stage's container without opening an attempt, which is what a sweep
     wants and what a ladder needs before its first stage.
     """
-    _check_kind(kind)
     # A DESCRIBED calculation is "a template PLUS task.json"
     # (project-layout.md § 2.1), and `prep` builds everything else from the
     # two.  **Both are required to take this route, and the template is the
@@ -379,9 +423,21 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         if described:
             # The five steps, from the DESCRIPTION -- `prep` resolves the
             # machine, resolves the parameters, and renders the decks itself.
+            # `bench` is the same call with a longer step 2: the grid as
+            # explicit points, the G/K/C translation, and the trial pins
+            # (§ 2.3.1a -- benchmarking is prep whose parameters are a set).
+            sweep = pins = translation = None
+            if kind == "bench":
+                if stage is None:
+                    raise click.ClickException(
+                        "prep bench measures ONE stage's configuration; "
+                        "name it:\n    molbuilder jobset prep bench <stage>")
+                sweep, pins, translation = _bench_inputs(base)
             from .prep import prep_calculation
             dirs = prep_calculation(base, stage, allocation=allocation,
-                                    env=env, emit_sbatch=emit_sbatch)
+                                    env=env, emit_sbatch=emit_sbatch,
+                                    sweep=sweep, pins=pins,
+                                    translation=translation)
             # `prep` WROTE floor 3 as part of those five steps; read it back
             # rather than keeping a second copy in hand, so what the attempt
             # setup below sees is exactly what landed on disk.
@@ -390,7 +446,8 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             # A pre-made bundle: the benchmark's own, and anything produced
             # before `describe` existed.  It carries finished decks and a
             # job-set.json, so steps 2 and 3 have already happened elsewhere.
-            # This branch goes when `bench` folds in (step 6).
+            # This branch goes when the old bench bundles do (step 6 u5).
+            _check_kind(kind, js)
             dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                                allocation=allocation)
     except PrepError as e:
@@ -402,6 +459,18 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     # took effect (user request 2026-08-12; secrets excluded by design).
     from ..runtime_config import config_provenance, format_provenance
     click.echo(format_provenance(config_provenance(project_dir=base)))
+
+    if kind == "bench":
+        # Trials RUN in their own directories; the attempt machinery below
+        # is the run-kind's shape (a stage's run-N), and a sweep's jobs are
+        # named by coordinate, not by the stage the ladder names.
+        where = f" for stage {stage!r}" if stage else ""
+        click.echo(f"prepped {len(dirs)} trial dir(s){where} under {base}:")
+        for d in dirs:
+            click.echo(f"  {d.name}")
+        click.echo("next: molbuilder jobset submit bench <trial> "
+                   "-- one trial per invocation")
+        return
 
     if stage is None:
         click.echo(f"prepped {len(dirs)} job dir(s) under {base}:")
@@ -543,8 +612,8 @@ def submit_cmd(kind: str, stage, bundle: str, mode: str, domain,
                 "  'direct' runs it here with bash; 'submit' hands it to the "
                 "scheduler.  Set execution.mode once for this machine, or pass "
                 "--mode for this call (running-a-job.md § 5.4).")
-    _check_kind(kind)
     js, base = _load(bundle)
+    _check_kind(kind, js)
     # The same provenance line prep printed, at the LAST moment before the
     # launch -- the mode above may have come from config, and this names
     # which file said so (user request 2026-08-12).

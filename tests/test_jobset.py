@@ -762,10 +762,10 @@ def test_cli_prep_lays_out_dirs(tmp_path):
     # bundle moved to --bundle because a session runs from inside the
     # calculation folder; the KIND is a positional because `prep bench` and
     # `prep run` are peers.
-    r = runner.invoke(grp, ["prep", "run", "--bundle", str(tmp_path),
+    r = runner.invoke(grp, ["prep", "bench", "--bundle", str(tmp_path),
                             "--no-sbatch"])
     assert r.exit_code == 0, r.output
-    assert "prepped 2 job dir(s)" in r.output
+    assert "prepped 2 trial dir(s)" in r.output
     assert (tmp_path / "point-G1K1C4" / "job-gpu.run.sh").is_symlink()
 
 
@@ -775,7 +775,7 @@ def test_cli_submit_dry_run_lists_commands(tmp_path):
     gets exactly one.  Naming the point is how you say which."""
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "run", "G1K1C4", "--bundle",
+    r = runner.invoke(grp, ["submit", "bench", "G1K1C4", "--bundle",
                             str(tmp_path), "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
     assert "planned" in r.output and "sbatch" in r.output
@@ -799,7 +799,7 @@ def test_cli_submit_of_a_whole_sweep_refuses_and_says_which(tmp_path):
     disaster with worse ergonomics."""
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path),
+    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path),
                             "--mode", "submit", "--dry-run"])
     assert r.exit_code != 0
     assert "one at a time" in r.output and "G1K1C4" in r.output
@@ -818,7 +818,7 @@ def test_cli_submit_refuses_when_no_mode_is_set_anywhere(tmp_path, monkeypatch):
     monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {})
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path)])
+    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path)])
     assert r.exit_code != 0
     assert "execution.mode" in r.output
 
@@ -867,7 +867,7 @@ def test_cli_submit_falls_back_to_the_configs_mode(tmp_path, monkeypatch):
     monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {"mode": "submit"})
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path),
+    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path),
                             "--dry-run"])
     assert r.exit_code != 0 and "one at a time" in r.output
 
@@ -885,7 +885,7 @@ def test_cli_submit_surfaces_a_broken_config_as_its_own_error(
     monkeypatch.setattr(rc, "get_execution", boom)
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path)])
+    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path)])
     assert r.exit_code != 0
     assert "could not be resolved" in r.output
     assert "must be 'direct' or 'submit'" in r.output

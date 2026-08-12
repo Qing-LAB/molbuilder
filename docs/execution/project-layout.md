@@ -926,7 +926,9 @@ naming a trial (`jobset submit bench tight G1K8C2`) submits that one.
 Nothing submits the whole set: submission is manual and one by one, the same
 rule as every other launch *(decided 2026-08-12, user — the earlier reading
 of this sentence, one command queueing every trial, was residue of the
-retired `run-bench` batch launcher)*. When the queue has drained,
+retired `run-bench` batch launcher)*. `--mode direct` on a workstation is
+not submission and is exempt as ever: it runs the trials sequentially,
+in-shell, waiting for each. When the queue has drained,
 `jobset summarize bench tight` reads the timings and writes
 `bench-result.json` — a recommendation, not a decision:
 
