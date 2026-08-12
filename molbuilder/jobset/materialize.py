@@ -103,11 +103,12 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     One question, not two kinds (`generator.md` § 5): *does this job have a
     stage, a point, or both?*
 
-    | the deck says | directory |
-    |---|---|
-    | a stage token, job named for the stage | ``<NN>_<name>`` — the rung itself |
-    | a stage token, job named by coordinate | ``<NN>_<name>/bench/bench-<point>`` — a trial, in the stage's ``bench/`` container |
-    | no token | ``bench-<name>`` at the root — the old bench bundles, and hand-built sets |
+    | the deck says | the set says | directory |
+    |---|---|---|
+    | a stage token, job named for the stage | — | ``<NN>_<name>`` — the rung itself |
+    | a stage token, job named by coordinate | — | ``<NN>_<name>/bench/bench-<point>`` — a trial, in the stage's ``bench/`` container |
+    | no token | ``kind="ladder"``, job named AS the set | ``.`` — the bundle root: a STAGELESS calculation (`engines/stages.md` § 6.5) IS its own one rung, and runs where its deck already sits.  In § 6.5's form the job and the set share the calculation's one label (`run-identity.md` § 2) — an identity that survives submit's only-narrowing, where a length test flipped the answer mid-flight (found by this row's first cut, R1) |
+    | no token | anything else | ``bench-<name>`` at the root — hand-built sets (sweeps, and tokenless ladders whose jobs are their own names), told apart by name alone |
 
     Until 2026-08-10 every kind got the trial prefix, so a staged run's
     directories came out ``point-coarse/`` (`worked-example.md` gap 6); until
@@ -122,16 +123,24 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     exactly what `engines/stages.md` R5 forbids: a number that shifts when the
     ladder changes, silently handing one stage's directory to another.
 
-    A ladder job whose script carries no token falls back to ``bench-<name>``.
-    That is not a staged-producer JobSet — hand-written, or older than decision
-    27 — and inventing a seq for it would be guessing at the one number that
-    must never be guessed.
+    **A tokenless job is the one place ``kind`` is consulted, and that is
+    not the branching the paragraph below forbids** (R1, 2026-08-12).  For
+    a TOKENED job the deck already answers, and asking ``kind`` a second
+    time is how directory and deck disagree.  For a tokenless job the deck
+    says nothing — the table's question has the answer *neither* — and
+    ``kind`` is the only data left: a stageless described RUN is the
+    calculation itself (its deck, wrapper and attempts live at the root),
+    while a hand-built SWEEP's points are siblings told apart by name.
+    Until R1 both fell to ``bench-<name>``, which put a stageless
+    calculation's RUN in a directory named for a benchmark, made its
+    attempt unreachable, and broke § 6.5's single-parameter-set form
+    end-to-end.  Inventing a seq for either would still be guessing at the
+    one number that must never be guessed.
 
-    **The two conventions meet in one expression**, because :func:`stage_refs`
-    already answered which applies: a job with an ordinal has a token and is
-    named by it; a job without one has no token and falls back. Branching on
-    ``jobset.kind`` a second time here is how the directory and the deck get to
-    disagree about what a job is.
+    **The conventions meet in one expression**, because :func:`stage_refs`
+    already answered which applies: a job with an ordinal has a token and
+    is named by it; a job without one has no token and falls to the
+    kind-split above.
 
     ``shape`` decides where a **stage** sits: hierarchical gives each one a
     directory, flat is depth 1 and they all sit in the bundle root
@@ -176,9 +185,13 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
             container = "bench" if sd == "." else f"{sd}/bench"
             out[j.name] = f"{container}/{job_dir_name(j.name)}"
             continue
-        # Tokenless: the OLD bench bundle's trials, and hand-built sets --
-        # the bundle root, told apart by name alone.
-        out[j.name] = job_dir_name(j.name)
+        # Tokenless: the deck says nothing, so the SET is the only data
+        # left (see the docstring's R1 paragraph).  A stageless ladder IS
+        # its own one rung and runs at the root; a hand-built sweep's
+        # points are siblings told apart by name.
+        out[j.name] = ("." if jobset.kind == "ladder"
+                       and j.name == jobset.name
+                       else job_dir_name(j.name))
     return out
 
 

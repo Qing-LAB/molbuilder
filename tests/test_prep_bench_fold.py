@@ -518,3 +518,55 @@ def test_the_two_stage_sequence_carries_the_geometry_forward(calc):
     assert carried[0].read_text() == "relaxed coords"
     js = json.loads((calc / "job-set.json").read_text())
     assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]
+
+
+def test_a_stageless_calculation_runs_end_to_end(tmp_path):
+    """R1 (review-4 keystone): `engines/stages.md` § 6.5's single-
+    parameter-set calculation is a FIRST-CLASS run.  Until 2026-08-12 the
+    tokenless fallback filed it under ``bench-<label>/`` (a directory
+    named for a benchmark), the hint said "prep run <stage>" over a
+    ladder with no stages, and submit was unreachable -- the whole form
+    was dead end-to-end.  The calculation IS its own one rung: deck,
+    wrapper and attempts at the bundle root, bare verbs acting on it."""
+    from click.testing import CliRunner
+    from molbuilder import describe as D
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.structure import Structure
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "calc"
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="JOB"), (),
+                            engine="siesta", shape="hierarchical",
+                            name="JOB", source=str(tmp_path / "h2.xyz")),
+        dest)
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
+                                  "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    assert (dest / "run-0").is_dir()          # the attempt, at the root
+    assert not (dest / "bench-JOB").exists()  # the old misfiling
+    assert "prep run <stage>" not in res.output   # no circular hint
+    assert "submit run --mode" in res.output
+    js = json.loads((dest / "job-set.json").read_text())
+    assert js["kind"] == "ladder" and len(js["jobs"]) == 1
+    res = r.invoke(jobset_group, ["submit", "run", "--bundle", str(dest),
+                                  "--mode", "direct", "--dry-run"])
+    assert res.exit_code == 0, res.output
+    assert res.output.count("WOULD run") == 1
+    res = r.invoke(jobset_group, ["status", "--bundle", str(dest)])
+    assert res.exit_code == 0, res.output
+    # a hand-built SWEEP's tokenless jobs keep their bench-<name> homes
+    from molbuilder.jobset.materialize import job_dir_names
+    from molbuilder.jobset.model import Job, JobSet, Resources
+    sweep = JobSet(name="X", engine="siesta", kind="sweep",
+                   jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
+                             resources=Resources())])
+    assert job_dir_names(sweep)["G1K1C4"] == "bench-G1K1C4"

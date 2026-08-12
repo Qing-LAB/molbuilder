@@ -535,6 +535,23 @@ def _resolve_stage_name(js, stage: str) -> str:
         raise click.ClickException(str(e))
 
 
+def _lone_stageless_job(js):
+    """The single job of a STAGELESS calculation (`engines/stages.md`
+    § 6.5), or ``None``.  A ladder-kind set with ONE job whose deck
+    carries no stage token IS the calculation itself — the bare verbs act
+    on it, because there is no stage name a user could type (R1,
+    2026-08-12: until then the bare forms refused with a list of stages
+    that did not exist)."""
+    from .materialize import stage_refs
+    if js.kind != "ladder" or len(js.jobs) != 1:
+        return None
+    job = js.jobs[0]
+    if job.name != js.name:
+        return None            # hand-built lone job, not § 6.5's form
+    ref = stage_refs(js)[job.name]
+    return None if ref.token else job.name
+
+
 def _resolve_stage(js, stage, verb: str):
     """Which jobs a verb acts on, and the refusal when that is ambiguous.
 
@@ -565,6 +582,9 @@ def _resolve_stage(js, stage, verb: str):
     from .materialize import stage_refs
     if stage is not None:
         return _resolve_stage_name(js, stage)
+    lone = _lone_stageless_job(js)
+    if lone is not None:
+        return lone            # § 6.5: the calculation is its own stage
     refs = stage_refs(js)
     ordered = [refs[j.name] for j in js.jobs]
     if js.kind == "ladder":
@@ -657,9 +677,15 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             "first.  (Hand-built job-sets remain launchable: `submit` and "
             "`status` read job-set.json directly.)")
     if (from_attempt or cold) and stage is None:
-        raise click.ClickException(
-            "--from / --cold describe ONE stage's attempt; name the stage:\n"
-            "    molbuilder jobset prep run <stage> --from 01_coarse/run-0")
+        # A stageless calculation (§ 6.5) has exactly one attempt line, so
+        # the bare flags are unambiguous there (R1); a LADDER must name it.
+        from ..task import read_task as _read_task_for_gate
+        if _read_task_for_gate(base / _TASK).stages:
+            raise click.ClickException(
+                "--from / --cold describe ONE stage's attempt; name the "
+                "stage:\n"
+                "    molbuilder jobset prep run <stage> --from "
+                "01_coarse/run-0")
     try:
         # The ALLOCATION -- what you ask the scheduler for on THIS prep.
         # Assembled here and nowhere else, so a value cannot reach the wrapper
@@ -686,6 +712,15 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             allocation, verdict_pins = _offer_bench_verdict(
                 base, allocation, stage=stage)
             pins = verdict_pins or None
+        else:
+            from ..task import read_task as _rt
+            if not _rt(base / _TASK).stages:
+                # § 6.5 stageless: ONE parameter set, its verdict in the
+                # root bench/ container -- the bare prep is its only prep,
+                # so the offer happens here or never (R1, 2026-08-12).
+                allocation, verdict_pins = _offer_bench_verdict(
+                    base, allocation, stage=None)
+                pins = verdict_pins or None
         if kind == "run":
             # § 6's say-what-is-there, and the A3 ask when a run already
             # happened here (U14).
@@ -734,7 +769,11 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                    "-- one trial per invocation")
         return
 
-    if stage is None:
+    # § 6.5 (R1): a stageless calculation's bare prep IS its stage prep --
+    # the attempt machinery runs on the one job.  Only a LADDER's bare
+    # prep stops at the listing, because there the user still owes a name.
+    attempt_target = stage if stage is not None else _lone_stageless_job(js)
+    if attempt_target is None:
         click.echo(f"prepped {len(dirs)} job dir(s) under {base}:")
         for d in dirs:
             click.echo(f"  {d.name}")
@@ -744,7 +783,8 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
 
     from .materialize import prepare_attempt
     try:
-        rep = prepare_attempt(js, base, stage, continue_from=from_attempt,
+        rep = prepare_attempt(js, base, attempt_target,
+                              continue_from=from_attempt,
                               cold=cold)
     except ValueError as e:
         raise click.ClickException(str(e))
@@ -759,8 +799,9 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     else:
         click.echo("  nothing carried in (first stage, or none named)")
     _echo_resolved(js, base, rep.stage, rep.dir)
-    click.echo(f"next: molbuilder jobset submit run {stage} "
-               f"--mode submit|direct")
+    click.echo("next: molbuilder jobset submit run "
+               + (f"{stage} " if stage is not None else "")
+               + "--mode submit|direct")
 
 
 def _echo_resolved(js, base, stage_name: str, attempt) -> None:
