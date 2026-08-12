@@ -52,11 +52,20 @@ flowchart TB
 | **environment** — workstation or HPC | one flag, one extra file, two floor-1 facts (§ 9) | floors 2, 3, 4, 6, 7 — and the inner `.run.sh` **byte for byte** | detected at `prep` |
 | **shape** — flat or hierarchical | where results sit, and what survives | every rule in `project-layout.md`; only *depth* differs | `task.json`'s `shape`, once |
 | **engine** — SIESTA, PySCF, … | which items exist and what keyword each becomes | the template format, the routes, the verbs, the layout | the engine's own metadata |
+| **kind** — run · benchmark · study | **how many configurations get rendered** | every step of `prep`, which loops rather than branches | the length of the `ParameterSet`, at `prep` step 2 |
 
 **One property makes it unified, and it is worth naming because everything else
 follows from it:** *every axis is a **value read at one point**, never a branch
 that grows a second code path.* A shape is a field somebody set; an environment
-is what floor 1 found; an engine is a `kind` on an item. **No axis is a fork.**
+is what floor 1 found; an engine is a `kind` on an item; **a benchmark is a list
+with more than one element.** No axis is a fork.
+
+> **The fifth axis is the newest and the one that was a fork until it was named**
+> *(added 2026-08-11)*. `project-layout.md` § 2.3.1a already said it in words —
+> *"benchmarking is `prep` whose parameters are a set rather than a point"* — and
+> [`generator.md`](?doc=execution/generator.md) makes it an object, so **a
+> production run is that set with one element**. That document owns the data
+> spine this axis rides on: schema → template → `ParameterSet` → decks.
 
 **And one property makes it flexible: the contract stays small, and the
 directory structure carries the variety.** Two reasons for a directory — the

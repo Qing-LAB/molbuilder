@@ -2726,6 +2726,8 @@ The same read surfaced the sentence that is now **decision 30**: `job-system.md`
 
 ## 5g. The code against the contracts, measured 2026-08-11
 
+> ⚠ **Superseded as the plan of record by § 5h**, written later the same day after the full-text source read. The rows below are a correct *measurement* and stay; **their build order does not** — § 5h shows they are consequences of one defect, and building them as separate patches would leave it in place.
+
 *§ 5a below is the 2026-08-07 audit and stays as the record of that date. This
 is the same measurement taken again, after the contracts moved: the template
 became TOML, `run` and `fdf` were deleted, `BlockSize` became a knob bounded by
@@ -2886,6 +2888,89 @@ a static read of the code against the contracts, which is what a plan needs to
 schedule work. Whether `--chain`'s printed instruction, for instance, produces a
 usage error or something worse is not measured here; that it contradicts the
 contract is enough to schedule it.
+
+---
+
+## 5h. The top-down build — one defect, and the order it forces
+
+*Full-text static read of the generating half (~8,000 lines) against
+[`generator.md`](?doc=execution/generator.md), 2026-08-11. **This section
+supersedes § 5g's ordering as the plan of record.** § 5g stays as the
+conformance measurement it is — but its rows are **consequences** of what is
+below, not the work itself, and building them as thirteen patches would leave the
+defect that produced them in place.*
+
+### The one defect, stated once
+
+> **Every floor writes its artifact and reads none of them.** The floors are
+> *emitted side by side* from one in-memory config, not chained.
+
+| floor | its artifact | written by | read by |
+|---|---|---|---|
+| 1 · machine | `environment.json` | `jobset/prep.py:190` | **nobody on this path** — `resolve_target(base)` is called at `:224` and its **return value discarded**; the only reader anywhere is `bench/summarize.py:124` |
+| 2 · description | `task.json` | `cli.py:1121` (one non-test writer) | `materialize.shape_of`, for **one field** |
+| 2 · description | the template | `siesta/stages.py:382`, **best-effort inside `except Exception`** | **nobody.** `template.read_template` and `template.config_from_template` are written, correct, and have **zero callers** |
+
+**The read-back half is not missing — it is unwired.** That is a better position
+than the plan assumed, and it changes the work: `resolve/` has a parser to call.
+
+### What that one defect forces downstream
+
+Because floor 3 has no input, it takes an in-memory config assembled from CLI
+flags — and **that config carries three facts floor 2 may not name**:
+
+| # | finding | evidence |
+|---|---|---|
+| **A** | **`mpi_np`, `omp_threads`, `continue_retries` are template items.** Of 39 exposed `SiestaConfig` items, these three are machine facts, and `template.md` § 7 forbids exactly them: *"a machine fact — ranks, GPUs, queue, partition, wall time … resolved at `prep`"* | `config/siesta.py:830` et al. carry a `section`, so `template.declaration_for` emits them. *(`diag_algorithm` was checked and is **correct** — `template.md` § 6.1 names it `kind="engine"` with `read_by=["wrapper"]`.)* |
+| **B** | those three are **exactly** what floor 3 reads back out | `siesta/stages.py:226-228` — `Resources(mpi_np=eff.mpi_np, cpus_per_task=eff.omp_threads, continue_retries=eff.continue_retries)` |
+| **C** | **the two producers differ precisely where one is wrong.** `sweep_to_jobset` builds `Resources` from **`env.topology`** — correct under M4. `stages_to_jobset` builds it from the **config** — the leak | `bench/to_jobset.py:56-60` vs `siesta/stages.py:226` |
+| **D** | **~75 lines exist to detect the leak rather than remove it.** `launch_agreement` + `check_launch_matches_deck` compare *what the deck was rendered for* against *what it will be launched at* — a disagreement that is only constructible because a machine fact rode through floor 2. Its own docstring records the shipped crash (`-np 14`, `propor: IMAX = 0`) | `jobset/prep.py:76-149`, and the diagnosis at `:88-91` |
+| **E** | **`prep` implements three of its five steps, and says so in an error.** Steps 2 (resolve parameters) and 3 (render deck) are absent; step 3's absence is a refusal: *"script not in bundle root (render the inputs before prep)"* | `jobset/prep.py:233-235` |
+| **F** | **`bench/generate.py` implements the design D4 rejects.** `transform_fdf` does string surgery on a rendered deck — `_set_or_append`, `_remove_directive` — because it has no template to re-render from. `template.md` § 8.1: *"`prep` rebuilds and renders — it does not splice"* | `bench/generate.py:102-211` |
+| **G** | **the template module implements the retired format.** Not a rename: `_anchor_token`, `_payload_for`, `_BLOCK_OPEN`, `_DECL_RE`, `_coerce` and `render_template`'s **`deck_text` argument** exist only to serve the item-block *payload*, and the TOML format has no payload key | `template.py` throughout; `template.md` § 5's key list |
+| **H** | **the template is derived from a deck — the direction is inverted.** `render_template(deck_text, config)` lifts payloads *out of* a rendered deck by regex. The contract's direction is schema → template → deck | `template.py:272-294`; `siesta/stages.py:382` |
+
+> **What is already right, and must not be "fixed":** `task.py` is the model
+> module of this subsystem — sealed, total, refuses rather than guesses.
+> `template.declarations_for` **already generates declarations from the schema**,
+> which is `generator.md` § 3's load-bearing edge. `script_emit.BenchField` is
+> **already shared** between BENCH-MARKS and the template, so `template.md` § 5's
+> *"both are emitted from the field metadata"* is built. And `shape_of` reading
+> only `shape` is **conformant** — `stages.md` § 6.7 grants floor 2 exactly one
+> downstream reader.
+
+### The build order, top-down
+
+**Each step is a layer that becomes askable, not a defect that gets patched.**
+The order is forced by what each needs to exist beneath it:
+
+| # | build | why here | closes |
+|---|---|---|---|
+| **1** | **`template/` in TOML.** One file, `kind` · `read_by` · no payload. Writer computes the fingerprint. **Move the three machine facts out of the schema's exposed set** | it is the bottom of the data spine; everything else reads it. Doing (A) here rather than later means floor 3 is *built* against a clean floor 2 instead of being corrected afterwards | G · H · A · C4 · C5 · C10 |
+| **2** | **`jobset describe`** — writes template + `task.json` + data files, floor 2 only | the only writer of floor 2 today is the verb step 4 deletes | C9 |
+| **3** | **`resolve/` → `ParameterSet`.** template ⊕ overrides ⊕ sweep point → `list[ResolvedConfig]`; `Resources` built from `Environment` + the allocation | **the hinge.** It consumes floor 1 and floor 2 — the two artifacts nothing reads — and it is what makes a run *"a sweep of length one"* | the one defect · B · C |
+| **4** | **`prep` gains steps 2 and 3**, looping over the `ParameterSet` | steps 2 and 3 have nothing to do until step 3 above exists | E · § 9.3's migration |
+| **5** | **delete the old surface** — `cmd_run`, `cmd_fdf`, the `--chain` message | now that a producer exists to replace it | C1 · C2 · C3 · C11 |
+| **6** | **fold `bench`**: `sweep_to_jobset` and `stages_to_jobset` become one enumeration; `transform_fdf` deletes | `project-layout.md` § 2.3.1a's *"largest, least revertible"* — and it is only safe once (3) is proven on the staged path | F · C6 |
+| **7** | **`cfg.stage` out of the emitter**, token as a render argument | `prep` holds the `StageRef` only after (4) | C7 · C8 |
+
+> **C3 still goes first and alone**, unchanged from § 5g: it is the one row that
+> *instructs a user to do something the design forbids*, it is one line, and it
+> waits on nothing.
+
+### What this deletes — the size test, applied
+
+| deleted | lines | because |
+|---|--:|---|
+| `launch_agreement` + `check_launch_matches_deck` | ~75 | the disagreement becomes unconstructible once (A) lands |
+| `_anchor_token` · `_payload_for` · `_DECL_RE` · `_coerce` · `render_template`'s deck arg | ~120 | TOML has no payload |
+| `transform_fdf` · `_set_or_append` · `_remove_directive` · `_norm_label` | ~120 | render from the template instead of splicing a deck |
+| one of the two producers | ~60 | one enumeration, two lengths |
+| every `if` on *"is this a benchmark"* below floor 7 | — | length is data |
+
+**Net: the build adds two modules and removes more than it adds**, which is
+§ 9.4's test and the reason this is the right shape rather than merely a tidier
+one.
 
 ---
 
