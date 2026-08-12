@@ -51,7 +51,7 @@ flowchart TB
 | axis | what it changes | what stays identical | where it is decided |
 |---|---|---|---|
 | **surface** — browser or terminal | how you *say* it | the files written (§ 11) | you |
-| **environment** — workstation or HPC | one flag, one extra file, two floor-1 facts (§ 9) | floors 2, 3, 4, 6, 7 — and the inner `.run.sh` **byte for byte** | detected at `prep` |
+| **environment** — workstation or HPC | one flag, one extra file, two floor-1 facts (§ 9) | floors 2, 3, 4, 6, 7 — and the inner `.run.sh` **byte for byte** | detected at `prep`, **declared** in `molbuilder.json` |
 | **shape** — flat or hierarchical | where results sit, and what survives | every rule in `project-layout.md`; only *depth* differs | `task.json`'s `shape`, once |
 | **engine** — SIESTA, PySCF, … | which items exist and what keyword each becomes | the template format, the routes, the verbs, the layout | the engine's own metadata |
 | **kind** — run · benchmark · study | **how many configurations get rendered** | every step of `prep`, which loops rather than branches | the length of the `ParameterSet`, at `prep` step 2 |
@@ -68,6 +68,19 @@ with more than one element.** No axis is a fork.
 > [`generator.md`](?doc=execution/generator.md) makes it an object, so **a
 > production run is that set with one element**. That document owns the data
 > spine this axis rides on: schema → template → `ParameterSet` → decks.
+
+> **Why the inner `.run.sh` really can be byte-for-byte, when the two machines
+> load software differently** *(user, 2026-08-11)*. The package manager and its
+> activation are **declared in `molbuilder.json`** — `script_generation.preamble`
+> (e.g. `module load mamba/latest`) and `activation` (`conda activate` /
+> `source activate`). A cluster names its own there; **a workstation's default
+> conda setup can be written into the same file**, and then nothing about the
+> emitted script differs. So *"what differs between a laptop and Sol"* is **the
+> config, not the code path** — which is this section's rule, applied to the one
+> place people expect an exception.
+>
+> The init lines a person *sees* may differ between two machines. That is the
+> **data** differing, not a second script.
 
 **And one property makes it flexible: the contract stays small, and the
 directory structure carries the variety.** Two reasons for a directory — the

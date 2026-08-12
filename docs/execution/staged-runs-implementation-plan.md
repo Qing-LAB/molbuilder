@@ -3067,17 +3067,29 @@ the same process.** Verified on the **pre-change tree** with the identical
 command, so it is **not** a regression from the generator work — it was found by
 running two files together that the suite had not previously combined.
 
-**It matters more than an ordering nuisance**, which is why it is recorded here
-rather than shrugged at: the test is
-[`architecture.md`](?doc=execution/architecture.md) § 9's central claim — *the
-inner `.run.sh` is the same file on a workstation and on a cluster, so a laptop
-run is a rehearsal of the cluster run*. Something process-global is leaking
-between the two `prep` calls; the fixture writes a different `molbuilder.json`
-into each bundle and `chdir`s, so a cached or first-wins config is the obvious
-suspect and the first place to look.
+**Root-caused by reading `script_emit.emit_provenance`, and it is the test that
+was wrong.** `generated_at_now()` stamps wall clock at **seconds precision** into
+every PROVENANCE block, and the two preps run in sequence — so a byte-for-byte
+comparison fails whenever they straddle a second boundary. Running another file
+first only makes the process slow enough for that to happen more often. **It has
+nothing to do with workstation versus cluster.**
 
-**Not fixed here.** It belongs to whoever owns `runtime_config`'s lookup, not to
-the template format, and folding it into a step-2 commit would hide it.
+**The contract's claim stands, and the user's reasoning is why** *(2026-08-11)*:
+the package manager and its activation come from `molbuilder.json` for **both**
+environments, so what differs between a laptop and Sol is **the config, not the
+code path** — which is exactly `architecture.md` § 0's *"every axis is a value
+read at one point, never a branch"*. A workstation's default conda setup can be
+written into the same JSON, and then the scripts really are the same.
+
+**Fixed by narrowing the comparison to the script's logic**, excluding the
+`generated-at` line: the claim is about what the script *does*, and a generation
+timestamp is provenance by definition. Weakening the claim instead would have
+given up the property the two-layer split rests on.
+
+> **⚠ And a process note, because it cost four turns.** I diagnosed this by
+> repeatedly running the thing instead of reading `emit_provenance` — against
+> the standing rule *static review first, running is the last resort*. One read
+> of the emitter would have named the timestamp immediately.
 
 ### Verdict
 

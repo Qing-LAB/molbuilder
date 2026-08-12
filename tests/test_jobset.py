@@ -2366,9 +2366,23 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
     """
     ws = _prep_bundle(tmp_path / "ws", scheduler=False, monkeypatch=monkeypatch)
     hpc = _prep_bundle(tmp_path / "hpc", scheduler=True, monkeypatch=monkeypatch)
+    def _logic(text: str) -> str:
+        """The script without its PROVENANCE timestamp.
+
+        ``generated-at`` is wall clock at seconds precision, and the two preps
+        above run in sequence -- so a byte-for-byte comparison fails whenever
+        they straddle a second boundary, which has nothing to do with
+        workstation versus cluster and everything to do with how busy the
+        process was. The claim being tested is about the script's LOGIC; a
+        generation timestamp is provenance by definition, so it is excluded
+        rather than the claim being weakened.
+        """
+        return "\n".join(l for l in text.splitlines()
+                          if not l.lstrip("# ").startswith("generated-at"))
+
     for name in ("JOB_01_coarse.run.sh", "JOB_02_tight.run.sh"):
-        a = (ws / name).read_text()
-        b = (hpc / name).read_text()
+        a = _logic((ws / name).read_text())
+        b = _logic((hpc / name).read_text())
         assert a == b, (
             f"{name} differs between a workstation and a cluster -- the inner "
             "wrapper is supposed to be the same file, so a laptop run is a "
