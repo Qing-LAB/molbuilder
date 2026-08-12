@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 
 def schema_major(schema: str) -> str:
@@ -58,16 +59,63 @@ def read_json(path) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def write_json(path, obj: Any) -> Path:
-    """Write ``obj`` as pretty JSON (2-space indent, trailing newline).
-    ATOMIC: writes a sibling ``.tmp`` then ``os.replace`` into place, so a
-    crash mid-write never leaves a truncated/corrupt config (which readers
-    would then fail to parse).  Returns the path."""
-    p = Path(path)
-    tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, p)                 # atomic on the same filesystem
-    return p
+def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None) -> Path:
+    """Write via a **unique** temp + ``os.replace`` — the checkpoint's shape
+    (`checkpoint._atomic_write_bytes` carried it first and now delegates
+    here), adopted package-wide at U8 (2026-08-12).
+
+    Two properties, and ``write_json`` used to have only the first: a reader
+    never sees a partial file, and **two writers never collide**.  The old
+    DERIVED temp name (``<target>.tmp``) is the trap `checkpointing.md` § 6
+    names: two concurrent writers agree on one temp path, one renames it into
+    place, and the other's ``os.replace`` either fails on a file that is no
+    longer there or — worse — installs the other writer's half-written bytes.
+    A unique name reduces the shared moment to the rename itself, which is
+    atomic and where last-writer-wins is the right answer.
+
+    A crash between write and rename leaves the unique temp behind as inert
+    litter; with the derived name it also poisoned the NEXT writer.  For a
+    target inside a folder a checkpoint save will store, pass ``tmp_dir``
+    pointing somewhere never stored (the checkpoint passes ``.git``), so the
+    litter cannot be committed into history.
+
+    ``mkstemp`` creates 0600, which is not what a shared artifact should end
+    up as, so the mode is the target's own if it already exists and 0644 if
+    it does not — what an ordinary create under a normal umask gives.
+    """
+    target = Path(target)
+    parent = Path(tmp_dir) if tmp_dir is not None else target.parent
+    if not parent.is_dir():
+        parent = target.parent
+    try:
+        mode = target.stat().st_mode & 0o777
+    except OSError:
+        mode = 0o644
+    fd, tmp_name = tempfile.mkstemp(dir=str(parent),
+                                    prefix=target.name + ".", suffix=".tmp")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.chmod(tmp, mode)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+    return target
 
 
-__all__ = ["schema_major", "check_schema_major", "read_json", "write_json"]
+def write_json(path, obj: Any, *, tmp_dir: Optional[Path] = None) -> Path:
+    """Write ``obj`` as pretty JSON (2-space indent, trailing newline),
+    atomically and collision-safely via :func:`write_bytes`.  Serialisation
+    happens BEFORE the temp file exists, so an unserialisable object fails
+    clean — no temp created, the target untouched.  Returns the path."""
+    data = (json.dumps(obj, indent=2) + "\n").encode("utf-8")
+    return write_bytes(path, data, tmp_dir=tmp_dir)
+
+
+__all__ = ["schema_major", "check_schema_major", "read_json", "write_json",
+           "write_bytes"]

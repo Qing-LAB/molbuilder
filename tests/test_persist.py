@@ -1,6 +1,9 @@
 """The shared versioned-document helpers (molbuilder/persist.py)."""
 from __future__ import annotations
 
+import json
+import os
+
 import pytest
 
 from molbuilder import persist
@@ -88,7 +91,8 @@ def test_adopters_use_the_shared_check():
 
 
 def test_write_json_is_atomic_no_tmp_left(tmp_path):
-    """C2: write_json publishes via os.replace -- no .tmp sibling remains,
+    """C2 + U8: write_json publishes via a UNIQUE temp + os.replace -- no
+    temp file of any name remains,
     content is complete."""
     p = tmp_path / "cfg.json"
     persist.write_json(p, {"schema": "molbuilder/x@1", "archive_globs": ["*.DM"]})
@@ -99,3 +103,73 @@ def test_write_json_is_atomic_no_tmp_left(tmp_path):
     persist.write_json(p, {"schema": "molbuilder/x@1", "archive_globs": ["*.chk"]})
     assert not (tmp_path / "cfg.json.tmp").exists()
     assert persist.read_json(p)["archive_globs"] == ["*.chk"]
+
+
+# --------------------------------------------------------------------- #
+#  U8 -- the unique-temp shape (checkpoint's lesson, adopted here)      #
+# --------------------------------------------------------------------- #
+
+
+def test_write_json_uses_a_unique_temp_never_the_derived_name(tmp_path,
+                                                              monkeypatch):
+    """The derived ``<target>.tmp`` is the trap checkpointing.md § 6 names:
+    two concurrent writers agree on one temp path and one installs the
+    other's half-written bytes.  The temp must be mkstemp-unique."""
+    import molbuilder.persist as persist
+    seen = {}
+    real = os.replace
+
+    def spy(src, dst):
+        seen["src"] = str(src)
+        return real(src, dst)
+    monkeypatch.setattr(persist.os, "replace", spy)
+    p = tmp_path / "cfg.json"
+    persist.write_json(p, {"schema": "molbuilder/x@1"})
+    assert seen["src"] != str(tmp_path / "cfg.json.tmp")
+    assert "cfg.json." in seen["src"] and seen["src"].endswith(".tmp")
+
+
+def test_write_json_preserves_the_targets_mode(tmp_path):
+    """mkstemp creates 0600; a rewrite must keep the target's own mode
+    (and a fresh file gets 0644, the ordinary-create answer)."""
+    import molbuilder.persist as persist
+    p = tmp_path / "cfg.json"
+    persist.write_json(p, {"a": 1})
+    assert (p.stat().st_mode & 0o777) == 0o644
+    os.chmod(p, 0o600)
+    persist.write_json(p, {"a": 2})
+    assert (p.stat().st_mode & 0o777) == 0o600
+
+
+def test_write_json_fails_clean_on_an_unserialisable_object(tmp_path):
+    """Serialisation happens BEFORE the temp exists: the target is
+    untouched and no litter is left."""
+    import pytest
+    import molbuilder.persist as persist
+    p = tmp_path / "cfg.json"
+    persist.write_json(p, {"a": 1})
+    with pytest.raises(TypeError):
+        persist.write_json(p, {"bad": object()})
+    assert json.loads(p.read_text()) == {"a": 1}
+    assert list(tmp_path.iterdir()) == [p]
+
+
+def test_write_json_tmp_dir_stages_outside_the_target_dir(tmp_path,
+                                                          monkeypatch):
+    """For a target inside a checkpointed folder, tmp_dir points the
+    staging somewhere never stored -- the litter of a crash cannot be
+    committed into history."""
+    import molbuilder.persist as persist
+    stage = tmp_path / "never-stored"
+    stage.mkdir()
+    seen = {}
+    real = os.replace
+
+    def spy(src, dst):
+        seen["src"] = str(src)
+        return real(src, dst)
+    monkeypatch.setattr(persist.os, "replace", spy)
+    p = tmp_path / "calc" / "job-set.json"
+    p.parent.mkdir()
+    persist.write_json(p, {"a": 1}, tmp_dir=stage)
+    assert seen["src"].startswith(str(stage))

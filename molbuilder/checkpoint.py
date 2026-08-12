@@ -646,53 +646,16 @@ def _atomic_write_bytes(target: Path, data: bytes,
                         tmp_dir: Optional[Path] = None) -> None:
     """Write via a **unique** temp + ``os.replace``.
 
-    Two properties, and the second was missing: a reader never sees a partial
-    file, and two writers never collide.
-
-    **A DERIVED temp name is the trap § 6 names**, and it is not only about
-    archives.  This wrote ``<target>.tmp``, which is fine while every caller
-    owns a private directory — and the moment ``write_gitignore`` started using
-    it, two concurrent saves agreed on one temp path in a *shared* directory:
-    one renamed it into place, and the other's ``os.replace`` failed on a file
-    that was no longer there.  A unique name reduces the shared moment to the
-    rename itself, which is atomic and where last-writer-wins is the right
-    answer, because both wrote the same bytes (S9).
-
-    ``mkstemp`` creates 0600, which is not what a config file should end up as,
-    so the mode is set to the target's own if it already exists and 0644 if it
-    does not — matching what an ordinary create under a normal umask gives.
-
-    ``tmp_dir`` puts the temp file somewhere **that is never stored**, which
-    matters for a target inside the folder being saved. A save killed hard
-    between the write and the rename leaves the temp behind, and S1 stores
-    everything — so the next save committed `.gitignore.a1b2c3.tmp` into the
-    history, permanently, for a file that was never anybody's. § 6 says the
-    worst an interruption leaves is *an archive nothing points at*; debris in
-    every future state is worse than that. Callers writing into the working
-    tree pass ``.git``, which :data:`NEVER_STORED` excludes; the MANIFEST needs
-    nothing, since its whole staging directory is already private.
+    The shape was built HERE (two properties, and the second was missing
+    package-wide: a reader never sees a partial file, and two writers never
+    collide — the derived-name trap § 6 names, plus the ``tmp_dir``
+    never-stored escape for targets inside the folder being saved).  At U8
+    (2026-08-12) it moved to :func:`molbuilder.persist.write_bytes` so every
+    persisted artifact writes the same way; this name stays because it is
+    this module's seam — the states tests inject failure through it.
     """
-    parent = Path(tmp_dir) if tmp_dir is not None else target.parent
-    if not parent.is_dir():
-        parent = target.parent
-    try:
-        mode = target.stat().st_mode & 0o777
-    except OSError:
-        mode = 0o644
-    fd, tmp_name = tempfile.mkstemp(dir=str(parent),
-                                    prefix=target.name + ".", suffix=".tmp")
-    tmp = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(data)
-        os.chmod(tmp, mode)
-        os.replace(tmp, target)
-    except BaseException:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-        raise
+    from .persist import write_bytes
+    write_bytes(target, data, tmp_dir=tmp_dir)
 
 
 #: Big enough that the syscall overhead disappears, small enough that a 2 GB
