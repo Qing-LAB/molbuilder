@@ -1815,7 +1815,7 @@ def render_run_wrapper(script_path: Path, *,
             # the scheduler reserved ``-c`` cores/rank (the OMP width per
             # the running-a-job.md § 3.3 sizing) -- honor it so the
             # Sol allocation drives OMP automatically without a manual
-            # -omp (config.md § 1.5: reading scheduler env for launch
+            # -omp (running-a-job.md § 5: reading scheduler env for launch
             # tuning is part of the wrapper contract).
             f'_omp_threads="${{OMP_NUM_THREADS:-'
             f'${{SLURM_CPUS_PER_TASK:-$_omp_threads_default}}}}"\n'
@@ -2418,10 +2418,10 @@ def render_run_wrapper(script_path: Path, *,
         f"# CPU / PySCF / non-MPS runs.  Cleans (a) the per-rank GPU\n"
         f"# launcher temp file and (b) the MPS daemon + its pipe/log dirs.\n"
         f"_mb_cleanup() {{\n"
-        f"    # The finished attempt takes its own session log with it\n"
-        f"    # (defined only when this wrapper uses attempt dirs).\n"
-        f'    command -v _mb_claim_runwrap_log >/dev/null 2>&1 '
-        f"&& _mb_claim_runwrap_log\n"
+        # (a ``_mb_claim_runwrap_log`` hook call sat here until U19,
+        # guarded by ``command -v`` -- for a function NO emitter ever
+        # defined.  A hook nothing defines is dead weight in every
+        # wrapper and a false lead in every debugging session.)
 
         f'    [ -n "${{_monitor_pid:-}}" ] && kill "$_monitor_pid" '
         f"2>/dev/null\n"
@@ -3388,7 +3388,7 @@ def render_sbatch(script_path: Path,
     body = (
         "\n"
         "# SLURM lands us in SLURM_SUBMIT_DIR = the project dir; the\n"
-        "# launcher never cd's (config.md § 1).  --export=NONE means a\n"
+        "# launcher never cd's (running-a-job.md § 5).  --export=NONE means a\n"
         "# clean env, so the launcher's `module load mamba` + activation\n"
         "# are load-bearing (§ 7.1).  \"$@\" forwards --cold / --continue.\n"
         f"bash {basename}.run.sh \"$@\"\n"

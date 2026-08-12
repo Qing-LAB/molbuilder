@@ -2453,3 +2453,17 @@ def test_the_library_itself_refuses_a_whole_ladder(tmp_path):
     res = submit_jobset(js, tmp_path, mode="direct", dry_run=True,
                         only="coarse")
     assert [r.name for r in res] == ["coarse"]
+
+
+def test_resources_fields_equal_the_contracts_list_exactly():
+    """job-contracts § 6.2's sentence and the dataclass, an equality in
+    BOTH directions (U19, 2026-08-12).  The sentence said 'exactly seven'
+    over a nine-field class for months because nothing compared them: a
+    field added without a § 6.2 decision fails here, and so does a row
+    whose field was deleted."""
+    import dataclasses
+    from molbuilder.jobset.model import Resources
+    documented = {"domain", "time", "exclusive", "mem", "gres",
+                  "mpi_np", "cpus_per_task",
+                  "continue_retries", "max_memory_mb"}
+    assert {f.name for f in dataclasses.fields(Resources)} == documented

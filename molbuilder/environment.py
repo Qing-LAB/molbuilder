@@ -110,7 +110,10 @@ class Environment:
             topology=topo, site=site,
             source=dict(d.get("source") or {}),
             detected_at=d.get("detected_at"),
-            tool=str(d.get("tool", "prep-bench@1")),
+            # the default names the LIVE writer; "prep-bench@1" (the deleted
+            # verb) stood here until U19, stamping every re-read record
+            # with a tool that no longer exists
+            tool=str(d.get("tool", "jobset-prep@1")),
         )
 
 

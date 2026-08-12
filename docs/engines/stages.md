@@ -722,16 +722,26 @@ that omits a varied key renders with the template's value for it (§ 4).
 > what**. A stage that overrides it wins; a stage that does not takes the
 > template's. That is the whole relationship, and it is why there is no `base`.
 
-### 6.3 `structure` is a reference plus a witness, never a copy
+### 6.3 `structure` is a reference plus a witness — and the FILE travels
 
-Coordinates are what runs *produce*; a description that embedded them would be a
-second copy of a file the tree already holds, drifting from it the moment either
-moved. So `source` points into the tree, and `formula` and `atoms` travel beside
-it as evidence of what was there when the description was written — which is what
-the id was built from (`execution/run-identity.md § 2`). A description opened
-against a structure that has since changed can therefore *say so*, rather than
-silently building a different calculation under the same id
-(`run-identity.md § 5`).
+Coordinates are what runs *produce*; a description that embedded them in
+`task.json` would be a second copy drifting from the file the moment either
+moved. So `source` records the reference, and `formula` and `atoms` travel
+beside it as evidence of what was there when the description was written —
+which is what the id was built from (`execution/run-identity.md § 2`). A
+description opened against a structure that has since changed can therefore
+*say so*, rather than silently building a different calculation under the
+same id (`run-identity.md § 5`).
+
+**The structure FILE is copied into the calculation at `describe`, exactly
+like the pseudopotentials** *(M9, 2026-08-12 — this section's title said
+"never a copy", and the sentence conflated two different copies)*. What
+§ 6.3 forbids is coordinates embedded **in `task.json`**; what M9 requires
+is the data file **beside it**, because the description is the portable
+package and a relative `source` recorded from another cwd was unresolvable
+the moment the bundle moved. `prep` resolves the reference
+beside-the-calculation FIRST, then at the recorded path; the file is the
+calculation's data, the PATH stays the describing machine's.
 
 ### 6.4 What writing it down buys
 

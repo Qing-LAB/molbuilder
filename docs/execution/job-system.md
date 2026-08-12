@@ -1067,21 +1067,22 @@ many CPU cores per rank actually run it fastest? Guessing wastes allocation. The
 benchmark workflow measures it, and it is just the job system pointed at a
 resource grid.
 
-Its guiding idea (**target isolation**, design decision #3): you generate a
-benchmark *bundle* on your laptop; everything machine-specific is discovered on
-the target. Five steps: `generate` on the host (`molbuilder bench generate`),
-then the bundle's own baked **`prep-bench`** and **`run-bench`** executables on
-the target (they self-bootstrap molbuilder and shim to the CLI), then
-`summarize` and `prep-run` back under `molbuilder bench`:
+Its guiding idea (**target isolation**, design decision #3) survived its
+machinery: everything machine-specific is discovered on the target. The
+machinery is the ordinary jobset loop since the 2026-08-12 fold — *(this
+section walked the shipped-bundle lifecycle — `bench generate`, baked
+`prep-bench`/`run-bench` executables, `bench summarize`/`prep-run` — until
+U19; those verbs died in step 6 u5, and benchmarking is `prep` whose
+parameters are a set, `project-layout.md` § 2.3.1a)*:
 
 ```mermaid
 flowchart LR
-    G["generate<br/>(host)<br/>one .fdf → a bundle"]
-    P["prep-bench<br/>(target)<br/>detect the machine →<br/>environment.json + the real grid + BENCH-PLAN.md"]
-    R["run-bench<br/>CPU baseline + GPU grid<br/>(self-bootstraps molbuilder)"]
-    S["summarize<br/>every point → bench-result.json<br/>(the winner + a recommendation)"]
-    PR["prep-run<br/>the winner → run-production.sh<br/>(re-resolved for this machine)"]
-    G --> P --> R --> S --> PR
+    D["jobset describe<br/>(host)<br/>the portable calculation"]
+    P["jobset prep bench &lt;stage&gt;<br/>(target)<br/>probe → environment.json<br/>+ the grid as trial decks in<br/>&lt;NN&gt;_&lt;stage&gt;/bench/"]
+    R["jobset submit bench &lt;stage&gt;<br/>one trial per invocation<br/>(next unlaunched by default)"]
+    S["jobset summarize bench &lt;stage&gt;<br/>trials → bench/bench-result.json<br/>(winner + mechanism + sizing)"]
+    PR["jobset prep run &lt;stage&gt;<br/>FINDS the verdict and ASKS"]
+    D --> P --> R --> S --> PR
 ```
 
 - **Detect the machine → `environment.json`** (`molbuilder/environment@1`): the

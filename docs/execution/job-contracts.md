@@ -1211,10 +1211,17 @@ wrapper these are two distinct knobs that *coincide* on SLURM, where `-c` sets
 `SLURM_CPUS_PER_TASK`, which the wrapper uses as its OMP default — the "one
 concept, one name" framing here is the SLURM mapping, not a Python rename.)
 
-The `jobset.Resources` dataclass holds exactly **seven** fields — `domain`,
-`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`. `partition` and
-`qos` are **not** `Resources` fields; they are config `directives.*` resolved
-from `domain` by the submit engine.
+The `jobset.Resources` dataclass holds exactly **nine** fields — `domain`,
+`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the two
+riders that become no scheduler flag: `continue_retries` (the warm-retry
+budget, this table's last row) and `max_memory_mb` (the wrapper's
+`ulimit -v` cap — the runtime guard against a runaway allocation, applied
+in the wrapper itself, distinct from `mem` which asks the scheduler).
+*(This sentence said "exactly seven" while its own table already carried
+`continue_retries` — amended U19, 2026-08-12, and pinned by an equality
+test in both directions.)*  `partition` and `qos` are **not** `Resources`
+fields; they are config `directives.*` resolved from `domain` by the
+submit engine.
 
 **Everything else a `Job` carries is `warm` and `traits`** — which files it
 would take from a run it is continued from, and the values a condition on one is

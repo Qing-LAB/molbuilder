@@ -1986,7 +1986,7 @@ def cmd_snapshot_init(engine, note, calculation, path):
 
     One repository per calculation.  A folder whose subdirectories are working
     dirs is accepted only when this folder carries its description --
-    task.json, job-set.json or bench-manifest.json -- because without one,
+    task.json or job-set.json -- because without one,
     several independent calculations would share a history and rewind together.
     """
     from molbuilder.checkpoint import (

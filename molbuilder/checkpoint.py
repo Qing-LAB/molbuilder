@@ -352,7 +352,10 @@ def _run_git(argv: List[str], cwd: str, *,
 #: job-set's job directories, a benchmark's trials.  Each is already an entry in
 #: the persisted-artifact registry (job-contracts.md § 6.1), so this reuses the
 #: system's existing self-description instead of inventing a marker file.
-_BUNDLE_DESCRIPTORS = ("task.json", "job-set.json", "bench-manifest.json")
+# ``bench-manifest.json`` was the third entry until U19 (2026-08-12): its
+#: producer (``bench generate``, the shipped-bundle lifecycle) died in step
+#: 6 u5, and a descriptor nothing writes declares nothing.
+_BUNDLE_DESCRIPTORS = ("task.json", "job-set.json")
 
 
 def _is_bundle_root(path: Path) -> bool:
