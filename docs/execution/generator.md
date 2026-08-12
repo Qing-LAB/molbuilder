@@ -173,6 +173,11 @@ sweep         the points a benchmark tries    must FIT INSIDE the allocation
 > **The rule:** a sweep point that exceeds the allocation is refused, **not**
 > silently clamped and **not** checked against capability instead. *"The sweep …
 > should not exceed that allowable resource. It should be compatible."*
+>
+> **Which allocation?** The one for *this* `prep`. A benchmark and the run it
+> informs are two separate preps, usually on two different domains (§ 4.4a), so
+> each has its own allocation and the sweep is checked against the benchmark's —
+> never against the one the real run will later ask for.
 
 **Why the allocation is not just "the capability" — and this is the part a
 design would get wrong by collapsing them:**
@@ -232,6 +237,52 @@ benchmark, what you then run at the configuration you chose, and what someone
 else runs on a different cluster at a configuration of their own. **None of
 those three edits it.** That is what floor 2's *names no machine* is actually
 buying.
+
+### 4.4 What a benchmark actually produces — a scaling rule, measured elsewhere
+
+*Specified by the user, 2026-08-11.*
+
+**A benchmark is not a stopwatch, it is a scaling rule.** The monitor already
+records what it needs: node CPU percent, memory in use, per-GPU SM and memory
+utilisation, sampled through the run (`monitor.py`), and the SCF timing at the
+end. **Averaged across a trial, those numbers say what happens if you spend
+more** — which combination goes faster, where the returns stop, what block size
+suits this shape of problem.
+
+**And it answers only half the question.** The other half — *should we ask for
+the maximum?* — is § 4.1's priority trade, and no measurement settles it:
+
+> **The configuration a real run asks for sits somewhere between *fastest* and
+> *soonest*.** The benchmark tells you the first. The queue tells you the second.
+> **The person picks the point between them**, which is why `summarize` writes a
+> recommendation and not a decision (`project-layout.md` § 2.3.2).
+
+#### 4.4a The benchmark normally runs on a *different* cluster
+
+**This is the ordinary workflow, not an edge case:**
+
+| | typically runs on | why |
+|---|---|---|
+| **the benchmark** | a short, high-priority domain | trials are minutes — SCF capped, MD steps zeroed — so they fit a short limit and get scheduled quickly |
+| **the real run** | a long domain, often 24 h | the calculation needs it; and the more resources it asks for, the longer it waits |
+
+**So the two halves of `bench-result@1` are not a nicety — they are what makes
+this work**, and the existing split is already the right one:
+
+| half | what it is | crosses to another cluster? |
+|---|---|---|
+| **`choice`** | the **mechanism** — which engine build, ranks per GPU, block size | **yes, unchanged** — provided the node type is comparable |
+| **`recommend`** | **sizing measured on that machine** — memory from peak + 15%, walltime from seconds-per-iteration × assumed iterations | **no.** It is a measurement of a specific node, and it is labelled as a starting point for exactly this reason |
+
+> **This is what makes decision 38 load-bearing, and for a second reason.** Knowing
+> each cluster's hardware is not only *"does my allocation fit?"* — it is
+> **"are these two domains comparable enough for `choice` to carry, and by what
+> factor does `recommend` scale?"** Without per-domain hardware in config, a
+> result measured on the short queue is applied to the long queue on trust.
+>
+> **Until that lands, the honest behaviour is to say where a result came from**,
+> not to silently transfer it. `BenchResult` already carries `environment` and
+> `system`, so the provenance exists; what is missing is the comparison.
 
 
 ## 5. `ParameterSet` — the object that makes `kind` a value
