@@ -1,14 +1,18 @@
 """Regression test for the 2026-06-14 ``--cold`` / ``--from-scratch``
 flag on the SIESTA + PySCF run wrappers.
 
-User-visible contract:
+User-visible contract (job-contracts.md § 4.1 -- a NAME SWEEP since
+U17, 2026-08-12; the suffix list the sentence below used to carry was a
+snapshot of one build, and a file nobody listed was a file --cold
+walked past):
 
-  * ``bash <name>.run.sh --cold`` moves SIESTA's warm-start files
-    (.DM, .CG, .XV, .LWF, .ZM, .Bonds, .PARTIAL, .EIG) -- and
-    PySCF's .chk -- into ``<basename>-restart-aside-<UTC>/``
-    BEFORE the engine launches.  SIESTA's ``DM.UseSaveDM`` /
-    ``MD.UseSaveCG`` / ``MD.UseSaveXV`` then find nothing, so the
-    calc starts strictly from the .fdf coords + conditions.
+  * ``bash <name>.run.sh --cold`` moves EVERYTHING named after the
+    run's id -- minus what molbuilder itself wrote (deck, template,
+    .psml, wrappers, molbuilder's logs) -- into
+    ``<basename>-restart-aside-<UTC>/`` BEFORE the engine launches.
+    SIESTA's ``DM.UseSaveDM`` / ``MD.UseSaveCG`` / ``MD.UseSaveXV``
+    then find nothing, so the calc starts strictly from the .fdf
+    coords + conditions.
   * Distinct from ``--force``: ``--force`` only resets the
     run-index sequence; the warm-start files stay on disk and the
     engine still loads them.  ``--cold`` resets the engine state.
@@ -147,16 +151,22 @@ def _strip_preamble_activation(text: str) -> str:
     runs.  ``_log`` is defined earlier (block 2) so the cold block's
     logging survives the strip.  Mirrors test_runwrap.py's executable-
     test stripping; the difference here is we KEEP ``_log``."""
-    start = text.find("# --- Baked preamble")
-    assert start >= 0, "baked-preamble marker not found in wrapper"
-    em = text.find("which python:", start)
+    pre = text.find("# --- Baked preamble")
+    assert pre >= 0, "baked-preamble marker not found in wrapper"
+    # Since U10 the bootstrap AND the post-activation state dump each sit
+    # inside a help guard (if [ "$_mb_help" = "0" ]); the cut must span
+    # from the FIRST guard's opener through the SECOND guard's close, or
+    # the truncated wrapper keeps an unopened fi.
+    start = text.rfind('if [ "$_mb_help" = "0" ]; then', 0, pre)
+    assert start >= 0, "help-guard opener not found before the preamble"
+    em = text.find("which python:", pre)
     assert em >= 0, "activation conda-dump end marker not found"
-    eol = text.find("\n", em)
-    assert eol >= 0
+    close = text.find("\nfi\n", em)
+    assert close >= 0, "post-activation guard close not found"
     return (
         text[:start]
         + "# preamble + activation stripped for CI (no conda here).\n"
-        + text[eol + 1:]
+        + text[close + 4:]
     )
 
 
@@ -203,6 +213,9 @@ class TestColdBehaviour:
             ["bash", str(wrapper), "--cold"],
             cwd=tmp_path,
             capture_output=True, text=True, timeout=20,
+            # U10's launch-door gate: these tests exercise the SWEEP;
+            # the claim is the deliberate manual door
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
         )
         assert proc.returncode == 0, (
             f"wrapper exited {proc.returncode}\n"
@@ -230,6 +243,9 @@ class TestColdBehaviour:
             ["bash", str(wrapper), "--cold"],
             cwd=tmp_path,
             capture_output=True, text=True, timeout=20,
+            # U10's launch-door gate: these tests exercise the SWEEP;
+            # the claim is the deliberate manual door
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
         )
         assert proc.returncode == 0, (
             f"wrapper exited {proc.returncode}\nstderr:\n{proc.stderr}"
@@ -253,6 +269,9 @@ class TestColdBehaviour:
             ["bash", str(wrapper)],
             cwd=tmp_path,
             capture_output=True, text=True, timeout=20,
+            # U10's launch-door gate: these tests exercise the SWEEP;
+            # the claim is the deliberate manual door
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
         )
         assert proc.returncode == 0
         # Originals remain.
@@ -339,6 +358,9 @@ class TestColdBehaviourSystemLabelMismatch:
             ["bash", str(wrapper), "--cold"],
             cwd=tmp_path,
             capture_output=True, text=True, timeout=20,
+            # U10's launch-door gate: these tests exercise the SWEEP;
+            # the claim is the deliberate manual door
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
         )
         assert proc.returncode == 0, (
             f"wrapper exited {proc.returncode}\n"
@@ -382,6 +404,9 @@ class TestColdBehaviourSystemLabelMismatch:
             ["bash", str(wrapper), "--cold"],
             cwd=tmp_path,
             capture_output=True, text=True, timeout=20,
+            # U10's launch-door gate: these tests exercise the SWEEP;
+            # the claim is the deliberate manual door
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
         )
         assert proc.returncode == 0
         # All four should be gone.
@@ -417,6 +442,9 @@ class TestColdBehaviourSystemLabelMismatch:
             ["bash", str(wrapper), "--cold"],
             cwd=tmp_path,
             capture_output=True, text=True, timeout=20,
+            # U10's launch-door gate: these tests exercise the SWEEP;
+            # the claim is the deliberate manual door
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
         )
         assert proc.returncode == 0, (
             f"wrapper exited {proc.returncode}\n"
@@ -461,6 +489,9 @@ class TestColdBehaviourSystemLabelMismatch:
             ["bash", str(wrapper), "--cold"],
             cwd=tmp_path,
             capture_output=True, text=True, timeout=20,
+            # U10's launch-door gate: these tests exercise the SWEEP;
+            # the claim is the deliberate manual door
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
         )
         assert proc.returncode == 0
         assert not (tmp_path / "foo.DM").exists(), (
@@ -492,6 +523,9 @@ class TestColdBehaviourSystemLabelMismatch:
             ["bash", str(wrapper)],
             cwd=tmp_path,
             capture_output=True, text=True, timeout=20,
+            # U10's launch-door gate: these tests exercise the SWEEP;
+            # the claim is the deliberate manual door
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
         )
         assert proc.returncode == 0
         combined = proc.stdout + proc.stderr
@@ -502,3 +536,49 @@ class TestColdBehaviourSystemLabelMismatch:
             "``initial-run`` even with bdt.DM on disk.\n\n"
             f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
         )
+
+
+class TestNameSweep:
+    """U17: the sweep is BY NAME (job-contracts § 4.1), so completeness
+    is by construction -- the cases a suffix list could never pass."""
+
+    def test_a_file_no_list_ever_named_is_swept(self, tmp_path):
+        """The defect the name sweep ends: an engine build writing a
+        state file nobody enumerated.  Under the list this survived
+        --cold and silently warmed the 'clean' run."""
+        wrapper = _truncated_siesta(tmp_path)
+        (tmp_path / "myjob.DM").write_text("x")
+        (tmp_path / "myjob.NEWFANGLED_STATE").write_text("x")
+        (tmp_path / "myjob.orbdata.v99").write_text("x")
+        proc = subprocess.run(
+            ["bash", str(wrapper), "--cold"], cwd=tmp_path,
+            capture_output=True, text=True, timeout=20,
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"})
+        assert proc.returncode == 0, proc.stderr
+        aside = list(tmp_path.glob("myjob-restart-aside-*"))
+        assert len(aside) == 1
+        moved = {p.name for p in aside[0].iterdir()}
+        assert {"myjob.DM", "myjob.NEWFANGLED_STATE",
+                "myjob.orbdata.v99"} <= moved
+
+    def test_what_molbuilder_wrote_survives_the_sweep(self, tmp_path):
+        """§ 4.1's exception: the deck, the template, the
+        pseudopotentials, the wrappers and molbuilder's own logs stay
+        put -- and prior -runN outputs survive by name shape (hyphen-
+        joined, never matching ``<id>.*``)."""
+        wrapper = _truncated_siesta(tmp_path)
+        (tmp_path / "myjob.template.toml").write_text("x")
+        (tmp_path / "myjob.molwatch.log").write_text("x")
+        (tmp_path / "myjob-run0.out").write_text("results")
+        (tmp_path / "myjob.DM").write_text("state")
+        proc = subprocess.run(
+            ["bash", str(wrapper), "--cold"], cwd=tmp_path,
+            capture_output=True, text=True, timeout=20,
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"})
+        assert proc.returncode == 0, proc.stderr
+        assert (tmp_path / "myjob.fdf").is_file()
+        assert (tmp_path / "myjob.run.sh").is_file()
+        assert (tmp_path / "myjob.template.toml").is_file()
+        assert (tmp_path / "myjob.molwatch.log").is_file()
+        assert (tmp_path / "myjob-run0.out").is_file()
+        assert not (tmp_path / "myjob.DM").exists()

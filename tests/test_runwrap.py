@@ -997,58 +997,26 @@ _PYSCF_WARM_RESTART_INVENTORY = (
 )
 
 
-def test_pyscf_cold_aside_block_covers_full_warm_restart_inventory():
-    """The PySCF ``--cold`` glob must move EVERY file in the
-    warm-restart inventory aside (per job-contracts.md § 4.2's warm-file inventory).  A future warm-restart hook added in the
-    generator without a matching glob entry here would silently
-    state-leak: the user runs ``--cold`` expecting a fresh start but
-    geomeTRIC's append-mode (or the script's _atom_block override)
-    picks up the prior run's file.
-
-    Pinned per-suffix in BOTH the JOB-keyed (``$_warm_label``) form
-    and the wrapper-basename-keyed fallback so a JOB-vs-basename
-    mismatch can't slip a file past the move-aside step.
-    """
-    from molbuilder.runwrap import _cold_restart_aside_block
-    basename = "myjob"
-    block = _cold_restart_aside_block(basename, engine="pyscf")
-    for suffix in _PYSCF_WARM_RESTART_INVENTORY:
-        # JOB-keyed form: ``"${_warm_label}.chk"`` etc.  Braces are
-        # load-bearing for suffixes starting with ``_`` (bash would
-        # otherwise absorb the suffix into the variable name and
-        # trip ``set -u``).  Quoted so a JOB string with whitespace
-        # doesn't word-split.
-        assert f'"${{_warm_label}}{suffix}"' in block, (
-            f"PySCF --cold glob is missing JOB-keyed entry "
-            f"${{_warm_label}}{suffix}; design.md "
-            f'"Generator-side warm-restart contract" requires every '
-            f"warm-restart hook ship its --cold glob entry in the "
-            f"same commit (with braced ${{...}} expansion to handle "
-            f"underscore-prefixed suffixes safely)")
-        # Wrapper-basename fallback: ``myjob.chk`` etc.  Catches the
-        # case where the script's JOB string equals the wrapper
-        # basename and the SystemLabel/JOB extract returned the
-        # default.
-        assert f"{basename}{suffix}" in block, (
-            f"PySCF --cold glob is missing basename-keyed entry "
-            f"{basename}{suffix}; covers the JOB=='basename' case")
-
-
-def test_pyscf_cold_aside_block_does_not_glob_unrelated_files():
-    """Defense in depth: the PySCF cold block must not accidentally
-    glob files that aren't in the warm-restart inventory.  Catches
-    a copy-paste regression where the SIESTA extensions (.DM, .XV,
-    .CG, .HSX, .WFSX, ...) get pasted into the PySCF branch and the
-    runwrap would happily delete unrelated SIESTA artifacts in a
-    mixed-engine project directory."""
+def test_pyscf_cold_block_sweeps_by_name_not_by_inventory():
+    """U17 (job-contracts § 4.1): the two tests that stood here pinned the
+    per-suffix glob list -- one entry per warm-restart inventory row, plus
+    a guard that SIESTA extensions never leak into the PySCF branch.  The
+    LIST is retired: a list is a snapshot of one build, and a file nobody
+    listed is a file --cold walks past.  The sweep is by NAME (id-keyed
+    globs, molbuilder's own writes excepted), so inventory coverage holds
+    by construction -- behaviourally proven in
+    test_runwrap_cold_restart.TestNameSweep, including a file no list
+    ever named.  What THIS pin keeps: the PySCF block carries the
+    id-keyed glob forms (braced for underscore suffixes) and no suffix
+    enumeration."""
     from molbuilder.runwrap import _cold_restart_aside_block
     block = _cold_restart_aside_block("myjob", engine="pyscf")
-    # SIESTA-only extensions must NOT appear in the PySCF block.
-    for ext in ("DM", "XV", "CG", "LWF", "HSX", "WFSX", "TSHS"):
-        assert f"myjob.{ext}" not in block, (
-            f"PySCF cold-restart block contains SIESTA-only "
-            f"extension .{ext}; cross-engine leak risk")
-
+    assert '"$_warm_label".*' in block
+    assert '"${_warm_label}"_*' in block
+    assert "myjob.*" in block and "myjob_*" in block
+    for retired in ("_optimized.xyz", "_geom_optim", ".chk\""):
+        assert retired not in block, (
+            f"a suffix enumeration crept back in: {retired}")
 
 def test_pyscf_wrapper_with_full_inventory_passes_bash_n(tmp_path):
     """End-to-end syntax check: the rendered PySCF wrapper, with

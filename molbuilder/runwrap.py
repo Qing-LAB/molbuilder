@@ -168,12 +168,15 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
       * ``--force`` / ``-f``: start a fresh run-index sequence
         (-run0) even when prior outputs exist.  Does NOT touch the
         engine warm-start files -- the engine still loads them.
-      * ``--cold`` / ``--from-scratch``: move prior warm-start
-        files (SIESTA .DM/.CG/.XV/.LWF/.ZM; PySCF .chk) into a
-        timestamped backup directory before running, so the engine
-        starts strictly from the .fdf / .py coordinates and
-        conditions.  Distinct from ``--force`` which only resets
-        the run-index; ``--cold`` resets the engine state too.
+      * ``--cold`` / ``--from-scratch``: NAME SWEEP -- move
+        everything named after the run's id, minus what molbuilder
+        itself wrote, into a timestamped backup directory before
+        running (`job-contracts.md` § 4.1: a list of extensions is
+        a snapshot of one build, and a file nobody listed is a file
+        --cold walks past).  The engine starts strictly from the
+        .fdf / .py coordinates and conditions.  Distinct from
+        ``--force`` which only resets the run-index; ``--cold``
+        resets the engine state too.
 
     Added 2026-06-14 after the BDT-stage-2 incident where stage 2
     ran without the user's frozen-atom constraints (contract bug
@@ -192,8 +195,9 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
         f"#                          warm-start files remain on disk\n"
         f"#                          and the engine still loads them.\n"
         f"# ``--cold`` / ``--from-scratch``:\n"
-        f"#                          move warm-start files (.DM/.CG/\n"
-        f"#                          .XV/.LWF/.ZM/.chk) into a\n"
+        f"#                          move EVERYTHING named after the\n"
+        f"#                          run's id -- minus what molbuilder\n"
+        f"#                          itself wrote -- into a\n"
         f"#                          timestamped backup dir BEFORE\n"
         f"#                          running, so the engine starts\n"
         f"#                          purely from the .fdf/.py.  Use\n"
@@ -257,152 +261,57 @@ _PYSCF_WARM_SUFFIXES = (
 
 
 def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
-    """Bash snippet that moves engine warm-start files aside when
-    ``_cold=1``.  Idempotent: no-op when ``_cold=0`` or when no
-    warm-start files exist.
+    """Bash snippet that moves prior run state aside when ``_cold=1``.
 
-    Engine extensions handled:
+    **A NAME SWEEP, not a list** (`job-contracts.md` § 4.1, decided
+    2026-08-08; implemented U17, 2026-08-12): everything matching the
+    run's id goes aside, except the files molbuilder itself wrote.  The
+    suffix enumeration that stood here (13 SIESTA extensions, 5 PySCF
+    suffixes, each with its own hazard comment) was a snapshot of one
+    build's behaviour, and its failure mode was silent in the worst
+    direction -- a file nobody listed is a file ``--cold`` walks past,
+    in the one operation whose entire purpose is leaving nothing behind.
+    The engine's output set depends on its version and options;
+    completeness was never purchasable by maintenance.
 
-      * ``siesta``: ``.DM``, ``.CG``, ``.XV``, ``.LWF``, ``.ZM``,
-        ``.Bonds``, ``.PARTIAL``, ``.EIG`` (anything SIESTA's
-        ``DM.UseSaveDM`` / ``MD.UseSaveCG`` / ``MD.UseSaveXV``
-        family auto-loads).  We move them all so a partial set
-        can't trigger a half-warm-start.
-      * ``pyscf``: ``.chk`` (SCF DM init guess), ``_optimized.xyz``
-        (geometry warm-restart hook, task #539), ``_geom_optim.xyz``
-        / ``_geom_optim.tmp`` / ``_geom.tmp`` (geomeTRIC trajectory
-        + checkpoints).  Anything the generator's auto-resume
-        branches (or geomeTRIC's own append mode) would pick up.
+    The engines' suffix tuples (``_SIESTA_WARM_SUFFIXES`` /
+    ``_PYSCF_WARM_SUFFIXES``) keep their OTHER § 4.2 job -- the short
+    hint list a deck writes and ``prep`` carries between stages -- and
+    stop being read here.
 
-    Backups land in
-    ``<basename>-restart-aside-<UTC-timestamp>/`` so the user can
-    inspect / recover the prior state if needed.  Deleting that
-    directory is a manual user action -- we never auto-delete the
-    user's prior results.
+    What survives the sweep is § 4.1's exception, by name shape:
+
+      * the deck and script (``*.fdf`` / ``*.py``), the template
+        (``*.template.toml``), the pseudopotentials (``*.psml``) --
+        molbuilder wrote them;
+      * the wrappers (``*.run.sh`` / ``*.sbatch``) and molbuilder's own
+        logs (``*.runwrap-*.log`` / ``*.molwatch.log``);
+      * prior OUTPUTS survive by construction: ``<basename>-run0.out``
+        and friends are hyphen-joined, so ``<id>.*`` / ``<id>_*`` never
+        match them -- the engine reads none of them, and results are not
+        state.
+
+    Backups land in ``<basename>-restart-aside-<UTC-timestamp>/`` so the
+    user can inspect / recover the prior state.  Deleting that directory
+    is a manual user action -- we never auto-delete prior results.
     """
     if engine == "siesta":
-        # SIESTA warm-start file extensions.  Every one of these
-        # carries SCF / geometry / electronic state that a fresh
-        # run would otherwise pick up via ioxv / restart code paths,
-        # silently contaminating the "cold" run.
-        #
-        #   DM, CG, XV, LWF, ZM, Bonds, PARTIAL, EIG
-        #     -- canonical relaxation restart set (density matrix,
-        #        CG geometry checkpoint, coordinates+velocities,
-        #        Wannier functions, Z-matrix, bond cache, partial
-        #        sums, eigenvalues).
-        #   HSX     -- Hamiltonian + overlap matrices.  Loaded by
-        #              TranSIESTA NEGF on restart.  Missing this in
-        #              the first --cold ship was a B.3 transport
-        #              hazard: a fresh run could pick up the prior
-        #              run's H/S matrices and silently reuse them.
-        #   WFSX    -- saved wavefunctions (SaveWaveFunctions /
-        #              post-processing).  Loaded on TS.SaveBias /
-        #              transmission calculations.
-        #   STRUCT_NEXT_ITER -- next-iteration geometry checkpoint
-        #              written by SIESTA at the end of every CG /
-        #              FIRE step.  SIESTA reads it on restart with
-        #              ``MD.UseStructFile T`` (default true for
-        #              relaxations); without removal a stage-2
-        #              cold run reuses the stage-1 geometry.
-        #   TSHS    -- TranSIESTA self-energy Hamiltonian; loaded on
-        #              electrode reuse.  Critical for transport.
-        #   TSDE    -- TranSIESTA density matrix (NEGF-specific
-        #              counterpart of .DM).  Same restart hazard.
-        #
-        # Intentionally OMITTED: .PSF (pseudopotential cache;
-        # regenerable, and a stale cache may carry the user's
-        # custom pseudo which would be destructive to remove).
-        # DERIVED from the module's one tuple, not retyped.  These two were
-        # equal by hand until P3's Review 2 checked; the banner's copy below
-        # was not (see there).
-        exts = tuple(s.lstrip(".") for s in _SIESTA_WARM_SUFFIXES)
-    elif engine == "pyscf":
-        # PySCF warm-start file SUFFIXES (NOT bare extensions -- the
-        # generator names per-stage trajectory files
-        # ``<JOB>_geom_optim.xyz`` and the optimized-geometry hook
-        # ``<JOB>_optimized.xyz``, neither of which a plain
-        # ``{ext}`` glob would catch).  The runwrap must move ALL of
-        # these aside on ``--cold`` so a fresh run can't silently
-        # warm-restart from a partial prior state.
-        #
-        # Inventory (synced with docs/execution/job-contracts.md
-        # § "Warm-restart file inventory" -> PySCF table):
-        #
-        #   .chk              -- SCF density matrix.  Auto-loaded by
-        #                        the ``mf.chkfile`` + ``if exists ->
-        #                        init_guess="chkfile"`` block in the
-        #                        generated script.
-        #   _optimized.xyz    -- last converged geometry.  Auto-loaded
-        #                        by the ``_atom_block`` warm-restart
-        #                        hook in the generated script (task
-        #                        #539 generator side).
-        #   _geom_optim.xyz   -- geomeTRIC trajectory frames.  Not
-        #                        auto-loaded by molbuilder but
-        #                        geomeTRIC's own append mode picks
-        #                        them up if present + can corrupt the
-        #                        new trajectory.
-        #   _geom_optim.tmp,
-        #   _geom.tmp         -- geomeTRIC checkpoints.  geomeTRIC
-        #                        resumes from these on certain failure
-        #                        modes; leaving them in place defeats
-        #                        ``--cold``.
-        #
-        # Suffix-keyed, not extension-keyed: ``.chk`` is just
-        # "``.chk``" but the others end in ``_optimized.xyz`` etc.
-        # The glob template below interpolates each suffix verbatim
-        # against ``$_warm_label`` + the wrapper basename.
-        # DERIVED from the module's one tuple, not retyped -- same rule as
-        # SIESTA's above, and for the same reason.
-        suffixes = _PYSCF_WARM_SUFFIXES
-    else:                                  # pragma: no cover
-        raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
-    # 2026-06-14 fix: SIESTA names its warm-start files after the
-    # ``SystemLabel`` from inside the .fdf, NOT after the .fdf's
-    # filename basename.  E.g. an .fdf named ``foo-stage2.fdf``
-    # whose ``SystemLabel`` line says ``foo`` writes ``foo.DM`` /
-    # ``foo.XV`` / ``foo.CG`` -- NOT ``foo-stage2.DM``.  The first
-    # ``--cold`` ship missed this and emitted a glob against the
-    # wrapper basename only, which silently missed every staged-
-    # relaxation project (basename ``foo-stage2`` vs SystemLabel
-    # ``foo``).  At runtime we read the SystemLabel from the .fdf
-    # for SIESTA; for PySCF we read the ``JOB`` assignment from
-    # the .py script which is the equivalent.
-    # The glob also covers the wrapper-basename case as a fallback
-    # because some users name SystemLabel == basename and we still
-    # want to clean those up.
-    if engine == "siesta":
         label_extract = (
-            f'# Read SystemLabel from the .fdf so the warm-start glob\n'
-            f"# matches the files SIESTA will look for at startup\n"
-            f"# (not what the wrapper's filename happens to be).\n"
-            f"# Robustness notes:\n"
-            f"#   * Lower-case the line before matching instead of\n"
-            f"#     using gawk's IGNORECASE (mawk / BusyBox awk /\n"
-            f"#     BSD awk silently ignore IGNORECASE).\n"
-            f"#   * Strip surrounding ``\"...\"`` quotes from the\n"
-            f"#     extracted token -- SIESTA accepts quoted labels.\n"
-            f"#   * ``|| true`` keeps awk's non-zero exit (e.g.\n"
-            f"#     missing .fdf) from aborting the wrapper under\n"
-            f"#     ``set -euo pipefail``.\n"
-            f"#   * The :- default guards against ``set -u`` when\n"
-            f"#     awk produced no output at all.\n"
+            f'# Read SystemLabel from the .fdf so the sweep matches what\n'
+            f"# SIESTA will look for at startup (not what the wrapper's\n"
+            f"# filename happens to be).  Robustness: lower-case before\n"
+            f"# matching (mawk/BSD awk ignore IGNORECASE); strip quotes;\n"
+            f"# ``|| true`` keeps a missing .fdf from aborting under\n"
+            f"# ``set -euo pipefail``; the :- default guards ``set -u``.\n"
             f'_warm_label=$(awk \''
             f'tolower($1) == "systemlabel" '
             f'{{ gsub(/"/, "", $2); print $2; exit }}'
             f'\' "{basename}.fdf" 2>/dev/null || true)\n'
             f'_warm_label="${{_warm_label:-{basename}}}"\n'
-            # J1 2026-06-14 (defense in depth): sanitize the
-            # SystemLabel string read from the .fdf to the same
-            # charset the wrapper basename already enforces
-            # ([A-Za-z0-9._-]; ``_SAFE_WRAPPER_NAME_RE``).  Bash
-            # double-quotes already block command-substitution
-            # on ``$_warm_label`` -- this is belt + suspenders for
-            # the case where a future emitter forgets the quotes
-            # and ``rm -rf /`` lives in a SystemLabel.  ``tr`` is
-            # POSIX so we don't drag in awk or grep for the
-            # sanitiser; everything matching the safe charset
-            # passes through, everything else is dropped.
+            # J1 2026-06-14 (defense in depth): sanitize the label read
+            # from the .fdf to the wrapper-name charset.  Bash double
+            # quotes already block command substitution -- this is belt +
+            # suspenders for a future emitter that forgets the quotes.
             'case "$_warm_label" in\n'
             '    *[!A-Za-z0-9._-]*)\n'
             f'        echo "[molbuilder] warning: SystemLabel in '
@@ -412,34 +321,13 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
             '        ;;\n'
             'esac\n'
         )
-        # Two-label glob: SystemLabel-keyed AND wrapper-basename-keyed
-        # so we catch both naming styles.
-        glob_pieces = " ".join(
-            f'"$_warm_label.{ext}" "$_warm_label".*.{ext} '
-            f"{basename}.{ext} {basename}.*.{ext}"
-            for ext in exts
-        )
-    else:
-        # PySCF: extract the JOB assignment from the script.
-        # Anchored to a literal ``JOB =`` (whitespace tolerant) on
-        # a single line.  Same set-u guard as SIESTA.
-        # The -F char class needs to match both ``"`` and ``'``.
-        # We use awk's octal ``\047`` for ``'`` so the bash-side SQ
-        # delimiter never has to be escape-broken.  The malformed
-        # ``-F'["\\'"]'`` pattern that shipped pre-2026-06-20 left
-        # bash with an unterminated DQ; gated now by `bash -n` self-
-        # check in :func:`_validate_rendered_wrapper` + an L2 test on
-        # the PySCF render path (test_runwrap_pyscf_bash_n).
+    elif engine == "pyscf":
         label_extract = (
             f'_warm_label=$(awk -F\'["\\047]\' \''
             f'/^[[:space:]]*JOB[[:space:]]*=/ '
             f'{{print $2; exit}}'
             f'\' "{basename}.py" 2>/dev/null || true)\n'
             f'_warm_label="${{_warm_label:-{basename}}}"\n'
-            # Mirror of the SIESTA-side sanitizer above (J1 2026-
-            # 06-14): the PySCF JOB string is user-controlled too
-            # (read from the user's script).  Sanitize to the same
-            # safe charset.
             'case "$_warm_label" in\n'
             '    *[!A-Za-z0-9._-]*)\n'
             f'        echo "[molbuilder] warning: JOB string in '
@@ -449,53 +337,42 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
             '        ;;\n'
             'esac\n'
         )
-        # Suffix-based glob template: each entry expands to BOTH the
-        # JOB-keyed name (from inside the .py) AND the wrapper-
-        # basename-keyed fallback (for users whose JOB happens to
-        # match the wrapper basename).  Both forms are emitted so a
-        # mismatch between JOB and basename can't slip a warm-start
-        # file past the move-aside step.
-        #
-        # CRITICAL: brace the var expansion as ``${_warm_label}``,
-        # NOT bare ``$_warm_label``.  Suffixes here START with ``_``
-        # (e.g. ``_optimized.xyz``), and bash absorbs trailing
-        # ``[A-Za-z0-9_]+`` into the variable name -- so
-        # ``"$_warm_label_optimized.xyz"`` would dereference the
-        # variable ``_warm_label_optimized`` (unset -> trips
-        # ``set -u``) instead of the intended concatenation.  Braces
-        # terminate the variable name explicitly.  The pre-#539 glob
-        # template happened to be safe because every suffix started
-        # with ``.`` which terminates the var name naturally.
-        glob_pieces = " ".join(
-            f'"${{_warm_label}}{suffix}" {basename}{suffix}'
-            for suffix in suffixes
-        )
+    else:                                  # pragma: no cover
+        raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
     return (
-        f"# --- Cold-restart: move engine warm-start files aside ---\n"
+        f"# --- Cold-restart: NAME SWEEP (job-contracts.md 4.1) --------\n"
+        f"# Everything named after the run's id goes aside, except what\n"
+        f"# molbuilder itself wrote.  No list of engine extensions: a\n"
+        f"# list is a snapshot of one build, and a file nobody listed\n"
+        f"# is a file --cold walks past.\n"
         f'if [ "$_cold" = "1" ]; then\n'
-        f"    # UTC timestamp keeps multiple cold runs from\n"
-        f"    # colliding when they fire within a second of each\n"
-        f"    # other.\n"
+        f"    # UTC timestamp keeps multiple cold runs from colliding.\n"
         f'    _aside="{basename}-restart-aside-$(date -u +%Y%m%dT%H%M%SZ)"\n'
         f"    _moved=0\n"
         f"    shopt -s nullglob 2>/dev/null || true\n"
         f"    {label_extract}"
-        f"    echo \"[molbuilder] --cold: scanning for "
-        f"\\\"$_warm_label\\\".* and \\\"{basename}\\\".* warm-start files\" >&2\n"
-        f"    for _f in {glob_pieces}; do\n"
-        f'        if [ -e "$_f" ]; then\n'
-        f'            if [ "$_moved" = "0" ]; then\n'
-        f'                mkdir -p "$_aside"\n'
-        f"                _moved=1\n"
-        f"            fi\n"
-        f'            mv "$_f" "$_aside/"\n'
-        f'            echo "[molbuilder] --cold: moved $_f" >&2\n'
+        f"    echo \"[molbuilder] --cold: name sweep over "
+        f"\\\"$_warm_label\\\".* and \\\"{basename}\\\".* -- everything the id "
+        f"names, minus what molbuilder wrote\" >&2\n"
+        f'    for _f in "$_warm_label".* "${{_warm_label}}"_* '
+        f'{basename}.* {basename}_*; do\n'
+        f'        [ -e "$_f" ] || continue\n'
+        f'        case "$_f" in\n'
+        f"            # molbuilder-written, by name shape (4.1's exception)\n"
+        f"            *.fdf|*.py|*.psml|*.template.toml|*.run.sh|*.sbatch|\\\n"
+        f"            *.runwrap-*.log|*.molwatch.log|*-restart-aside-*) continue ;;\n"
+        f"        esac\n"
+        f'        if [ "$_moved" = "0" ]; then\n'
+        f'            mkdir -p "$_aside"\n'
+        f"            _moved=1\n"
         f"        fi\n"
+        f'        mv "$_f" "$_aside/"\n'
+        f'        echo "[molbuilder] --cold: moved $_f" >&2\n'
         f"    done\n"
         f'    if [ "$_moved" = "1" ]; then\n'
-        f'        echo "[molbuilder] --cold: moved warm-start files into $_aside/" >&2\n'
+        f'        echo "[molbuilder] --cold: moved prior state into $_aside/" >&2\n'
         f"    else\n"
-        f'        echo "[molbuilder] --cold: no warm-start files to move; already a clean start" >&2\n'
+        f'        echo "[molbuilder] --cold: nothing under this name to move; already a clean start" >&2\n'
         f"    fi\n"
         f"fi\n"
         f"\n"
