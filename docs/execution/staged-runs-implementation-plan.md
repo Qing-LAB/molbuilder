@@ -3237,6 +3237,7 @@ open.
 | 34 | ~~**Does `molbuilder fdf` survive alongside `jobset`?**~~ — **decided 2026-08-11 (user): no, it is deleted.** *"molbuilder fdf is gone — this is obsolete residue from the flat dir design."* It is decision 7's shape one step earlier: it rendered a **finished deck** straight from CLI flags, and `fdf --jobset` wrote a whole flat bundle — both skipping the description, and both finishing a deck on a machine that cannot know the rank count (`project-layout.md § 2.2`). **Describing is `jobset describe`**, and `prep` renders. **The emitter is untouched** — `render_fdf` / `convert` are the Python API and stay; what is deleted is the *verb* that reached them without a description. `conventions.md § 3` now counts **13** top-level commands. `pyscf` survives only because its ladder runs inside one emitted script, and goes the same way when that path is reworked. **Code follow-up:** delete the command; `tests/test_cli_run.py` and `tests/test_cli_siesta_stages.py` were deleted 2026-08-11 as guards for verbs that no longer exist | **P9**, with decision 7 |
 | 35 | ~~**Is `BlockSize` derived, or is it a knob?**~~ — **decided 2026-08-11 (user): a knob, measured and then chosen — "just like gpu and cpu assignment".** It is **not** a value molbuilder hands you. Three states: you set it and it is honoured verbatim; you leave it unset and `prep` **proposes** one; or the keyword is **omitted entirely** so SIESTA uses its own default — the third of which the old design could not express. It becomes an ordinary template item with no `value` (closing `template.md § 12`'s open question) and a **fourth axis of the benchmark grid**. **And the bound is orbitals, not atoms**: `job-contracts.md § 3.3` declared `floor(n_atoms / mpi_np)` while its own PROVENANCE example derived from `10 × n_atoms` — a factor of ten, in the paragraph whose rule is that the value and its bound come from one place. The block distributes the **Hamiltonian**, so the quantity is `n_orbitals_est`. Values and the three states: `tuning.md § 2.11`. **Code follow-up, with its mutation:** derive value and bound from **one** call, assert the emitted `default` is inside its own declared `range`, and swap the divisor back to `n_atoms` to watch it fail — a test that only reads the emitted block cannot catch this, because both readings produce a well-formed block | **P4 / P6**, and P12 u6b for the item |
 | 36 | ~~**Is a stage's deck rendered per attempt, or linked into each one?**~~ — **decided 2026-08-11 (user): linked.** Every attempt of a stage runs the **same** deck — a different deck means different science, and different science is a **stage** (`project-layout.md § 1.5a`). So the deck, the wrapper, the monitor and the pseudopotentials are **linked** from the container and only the warm files are **copied**; *link what the engine only reads, copy what it writes*. This closes the question left open when the over-built alternative — per-attempt overrides, a `run.json` field, a three-level merge — was reverted for being three new things to keep true in exchange for saving one directory | ~~P6~~ |
+| 37 | ~~**Is `transport` a `ParameterSet`, a ladder, or something else?**~~ — **decided 2026-08-11 (user): something else — a separate kind, a MULTI-COMPONENT job.** *"it involves multiple results and the transportation needs to combine all of them… that's a different kind of beast"*, and *"we should put that in a separate kind of job"*. The pipeline this plan builds is for jobs that **take one set of parameters** — structure, optimization, spectra — where a benchmark is the same pipeline with a longer list. Transport is not that shape: it does not vary one calculation, it **combines several**. So it is designed on its own, and [`generator.md`](?doc=execution/generator.md) explicitly does not cover it. **What this closes:** the standing question of whether `JobSet` needs edges — it does not, and it is not getting any | nothing in this plan. It **unblocks** the generator work by removing the one case that argued for edges |
 
 
 **Already decided, recorded so they are not reopened:** the shape is a required
@@ -3892,12 +3893,21 @@ once inline in `cli.py` and the web build route. Three copies cannot disagree
 > **three** orchestration lifecycles where the design says one — `jobset`,
 > `bench`, and `transport` — and separates them: **`bench` is a merge**
 > (the same act with two spellings, and G3 is its *done when*), while
-> **`transport` is a gap** (`run-transport.sh` chains three coupled runs the
-> `JobSet` model cannot describe, since it carries no edges —
-> [`engines/transport.md § 8`](?doc=engines/transport.md)). **G3 does not
-> cover the second**, and no goal here does: lifting the single-parent limit
-> is `job-system.md § 8`'s phase 3–4, gated on the SIESTA ladder proving out.
-> Recorded so nobody reads a finished G3 as a finished unification.
+> **`transport` is a separate kind** — `run-transport.sh` chains three coupled
+> runs the `JobSet` model cannot describe, since it carries no edges
+> ([`engines/transport.md § 8`](?doc=engines/transport.md)). **G3 does not
+> cover the second, and no goal here does.**
+>
+> **⚠ This paragraph called it *"a gap"* until 2026-08-11, and that framing is
+> now wrong** — decision 37 settled it. A gap is something the design owes an
+> answer to; this is a **different kind of job**, and the user's words are the
+> distinction: the pipeline here serves calculations that *"take only one set of
+> parameters"*, whereas transport *"involves multiple results and needs to
+> combine all of them"*. It **varies nothing and combines several runs**, so it
+> is a multi-component job designed on its own. What that closes is the standing
+> argument for giving `JobSet` edges: there is now no case asking for them.
+> Recorded so nobody reads a finished G3 as a finished unification — and so
+> nobody reopens edges to serve a case that has been scoped out.
 
 
 ---

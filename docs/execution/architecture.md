@@ -22,14 +22,14 @@ depth** (`L1`/`L2`/`L3`), a different and coarser grouping than this one;
 
 ---
 
-## 0. The goal: one workflow, flexible in four directions
+## 0. The goal: one workflow, flexible in five directions
 
 *Stated 2026-08-11 (user): **"we need a unified and flexible workflow."** Every
 rule below serves this; if a rule and this section disagree, this section is what
 the rule was for.*
 
-> **There is ONE way to run a calculation, and it bends in four places rather
-> than forking into four systems.**
+> **There is ONE way to run a calculation, and it bends in five places rather
+> than forking into five systems.**
 
 ```mermaid
 flowchart TB
@@ -38,10 +38,12 @@ flowchart TB
     W --> A2["<b>environment</b><br/>workstation · HPC"]
     W --> A3["<b>shape</b><br/>flat · hierarchical"]
     W --> A4["<b>engine</b><br/>SIESTA · PySCF · …"]
+    W --> A5["<b>kind</b><br/>run · benchmark · study"]
     A1 --> R["<b>the same run directory,<br/>the same deck, the same wrapper</b>"]
     A2 --> R
     A3 --> R
     A4 --> R
+    A5 --> R
 ```
 
 **What each axis is allowed to change, and what it may never touch:**
@@ -80,18 +82,19 @@ rule, and you can read a folder and know what happened without opening a file.
 > ([`process/conventions.md § 3`](?doc=process/conventions.md)): a second way in
 > is the first crack in the first axis.
 
-> #### ⚠ Two things breach this today, and stating the rule without them would
-> #### be the overclaim this section exists to prevent
+> #### ⚠ One thing breaches this today, and one is scoped out — stating the rule
+> #### without both would be the overclaim this section exists to prevent
 >
 > | | what it is | which kind |
 > |---|---|---|
 > | **`bench`** | a whole second lifecycle for measuring — build · run · read · use-the-answer, each with two spellings | **a merge.** The resolution is already settled: *benchmarking is `prep`, specialised* (`project-layout.md § 2.3.1a`) |
-> | **`transport`** | `transport bundle` emits `run-transport.sh`, which **chains** three coupled runs outside the job system entirely | **a gap.** A `JobSet` carries no edges, so there is nothing for it to be expressed as ([`engines/transport.md`](?doc=engines/transport.md) § 8) |
+> | **`transport`** | `transport bundle` emits `run-transport.sh`, which **chains** three coupled runs outside the job system entirely | **a separate kind** *(decided 2026-08-11, user)*. A `JobSet` carries no edges, and it is not getting any: transport is a **multi-component job** — several results combined — designed on its own rather than folded into the single-parameter-set pipeline ([`engines/transport.md`](?doc=engines/transport.md) § 8) |
 >
 > **They are not the same problem, and a plan that treated them alike would
 > either delete a working capability or bless a permanent second path.** One is
-> duplicated machinery; the other is the only shipped work this model cannot
-> describe. The full comparison is
+> duplicated machinery to fold in; the other is **a different kind of job**, and
+> the user's decision of 2026-08-11 is that it stays that way rather than being
+> bent into a pipeline built for one parameter set. The full comparison is
 > [`process/conventions.md § 3`](?doc=process/conventions.md).
 
 ---

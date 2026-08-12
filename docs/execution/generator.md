@@ -5,7 +5,7 @@
 
 **Companions:**
 [`execution/architecture.md`](?doc=execution/architecture.md) — the floors, the
-routes, and the four axes this adds a fifth to;
+routes, and the axes this adds the fifth to;
 [`engines/template.md`](?doc=engines/template.md) — the item model this reads;
 [`execution/project-layout.md`](?doc=execution/project-layout.md) — `prep`'s five
 steps, and § 2.3.1a's *framework vs specialisation* split, which this makes
@@ -24,6 +24,16 @@ formats it writes;
 
 ## 1. What this owns, and what it does not
 
+> **The normal case is one parameter set, and this contract is built for it**
+> *(user, 2026-08-11)*. A structure optimization, a relaxation, a spectra run —
+> *"takes only one set of parameters to set up and then formulate the actual
+> job"*. That is a `ParameterSet` of **length one**, and nothing about sweeps
+> appears on that path. The list exists so that a benchmark is the *same*
+> pipeline rather than a second one — not because the ordinary job needs it.
+>
+> **Transport is deliberately not here.** It is a **multi-component job** — several
+> results that must be combined — and therefore its own kind (§ 9, decision 37).
+
 | owns | does not own |
 |---|---|
 | the **data spine** — schema → template → description → parameter set → jobs | what a project directory *is* (`project-layout.md`) |
@@ -35,13 +45,14 @@ formats it writes;
 
 ## 2. The one idea: a run is a sweep of length one
 
-[`architecture.md`](?doc=execution/architecture.md) § 0 names four axes and one
+[`architecture.md`](?doc=execution/architecture.md) § 0 names the axes and one
 property that makes them work:
 
 > *every axis is a **value read at one point**, never a branch that grows a
 > second code path.*
 
-**There is a fifth axis, and today it is the one that is a branch.**
+**The fifth is the one this document adds, and today it is the only one that is
+a branch rather than a value.**
 
 | axis | the value | where it is read |
 |---|---|---|
@@ -276,4 +287,4 @@ where two things can disagree, is not this work.
 |---|---|---|
 | **31** | how a person *states* an allocation and a sweep | a surface decision, and the user's — § 4.1 fixes the shape without it |
 | **G3** | whether `bench` keeps a positional in the grammar | `architecture.md` § 0 settles the *mechanism* (a merge); the word is P9's |
-| — | whether `transport`'s chained runs become a `ParameterSet` or need edges | a `JobSet` carries no edges; this is the one shipped thing the model cannot express (`transport.md` § 8) |
+| **37** | ~~whether `transport`'s chained runs become a `ParameterSet`~~ — **decided 2026-08-11 (user): they do not.** Transport is a **separate kind — a multi-component job**: *"it involves multiple results and the transportation needs to combine all of them… a different kind of beast"* | it is not a sweep and not a ladder. **This contract covers single-parameter-set jobs** — structure, optimization, spectra — and a multi-component kind is designed on its own, not folded in here |
