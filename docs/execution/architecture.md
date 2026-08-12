@@ -454,7 +454,7 @@ do not:
 | 10 | **7 · surfaces** |
 | 11–12 | outside — the wrapper and the engine, at run time |
 
-**Four of the twelve rows sit outside the floors**, and that is the honest
+**Four of the thirteen rows sit outside the floors**, and that is the honest
 answer rather than a gap: this stack is about turning a description into a
 running job, and the structure model, the form schema and the science
 validators are separately-owned contracts that hand it their results.

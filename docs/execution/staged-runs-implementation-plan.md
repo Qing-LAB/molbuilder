@@ -1893,6 +1893,14 @@ doctrine: a thin shell over the web API; `click`).
 
 **Units:**
 
+0. **The producer chain, pulled in from § 5g** *(added 2026-08-11)*: the template
+   becomes TOML (**C4+C5+C10**) → **`jobset describe`** is built (**C9**) → the
+   old surface is deleted (**C1+C2+C11**). **This ordering is forced, not
+   preferred**: `cmd_fdf` is the only writer of `task.json`, so deleting it
+   before `describe` exists leaves the staged route with no way to produce its
+   own description. § 5g's correction note carries the argument and the evidence.
+   **This is what makes unit 1's grammar demonstrable** — the milestone below
+   walks `describe` first.
 1. One group, one grammar: **`jobset <verb> <kind> [<stage>]`**. `describe` and
    `status` take no kind, because they are about the calculation rather than one
    run of it.
@@ -2378,11 +2386,11 @@ flowchart TB
 
 > **The milestone ladder is not the whole work list.** § 5g measures the code
 > against the contracts as they stand on 2026-08-11 and carries **eleven
-> conformance debts (C1–C11)** — `molbuilder run` and `molbuilder fdf` still
+> conformance debts (C1–C13)** — `molbuilder run` and `molbuilder fdf` still
 > registered, the template still emitted as `.fdf.template`, trial directories
 > still `point-`, and one line that **prints a deleted flag to the user**. They
 > sit behind the front rather than blocking it, so they are scheduled into
-> existing phases (P4, P9, P10, P12 u6b, Track Z) instead of earning milestones.
+> existing phases (P4, P6, P9, P10, P12 u6b, Track Z) instead of earning milestones.
 
 > **Every milestone above is gated on R×3** (§ 3.0): the review is run **three
 > times with fresh eyes**, widening from the unit, to every commit since the
@@ -2726,7 +2734,7 @@ truth; every row below is a place the code disagrees with it, not a place the
 contract is in doubt.***
 
 > **These are rows, not a milestone.** M0–M12 in § 5 are the build ladder and
-> **M8 there is the history milestone** — nothing to do with this. C1–C11 are
+> **M8 there is the history milestone** — nothing to do with this. C1–C13 are
 > *conformance debts*: places the code has not caught up with a contract that
 > already settled. Each is scheduled into an existing phase rather than given a
 > milestone of its own, because none of them unblocks anything — they close gaps
@@ -2747,22 +2755,43 @@ contract is in doubt.***
 | **submitting writes `run.json`; `continued_from` is its provenance** (`project-layout.md` § 1.6) | `jobset/runstatus.py` reads it, distinguishes *prepped-not-launched* from *launched*, and prints `continued from` only when present |
 | **`BlockSize`'s bound is the ORBITAL count over ranks** (`tuning.md` § 2.11) | ✅ **the code was right and the contract was wrong.** `_auto_block_size` already computes `floor(10·n_atoms / mpi_np)` — the DZP orbital estimate — while `job-contracts.md` § 3.3 declared `floor(n_atoms / mpi_np)`. The contract was corrected on 2026-08-11; **no code change is owed here** |
 
-### Where the code disagrees — rows C1–C11
+### Where the code disagrees — rows C1–C13
 
 | # | the contract says | the code does | fix in |
 |---|---|---|---|
 | **C1** | *"There is no `molbuilder run`… deleted, not deprecated"* (`conventions.md` § 3, decision 7) | `cli.py:1804` still registers `cmd_run` | **P9** |
 | **C2** | *"there is no `molbuilder fdf`"* (`conventions.md` § 3, decision 34) | `cli.py:515` still registers `cmd_fdf` | **P9** |
 | **C3** | *"no flag for the whole ladder, not even an opt-in one"* (`job-system.md` § 5.3; decision 30) | **`cli.py:1151` PRINTS, to the user, `` `submit run --chain` runs the whole ladder unattended``** | **P9, first** |
-| **C4** | the description's deck template is **`<label>.template.toml`**, one TOML file (`template.md` § 4, `job-contracts.md` § 6.3) | `cli.py:989` writes `<label>.fdf.template`, the retired item-block format | **P12 u6b** |
-| **C5** | *(the same rename)* | `identity.py:144`'s `OUR_FILE_PATTERNS` lists `{label}.fdf.template` | **P12 u6b, same commit as C4** |
+| **C4** | the description's deck template is **`<label>.template.toml`**, one TOML file (`template.md` § 4, `job-contracts.md` § 6.3) | `cli.py:989` writes `<label>.fdf.template`, the retired item-block format | **P9 u0** |
+| **C5** | *(the same rename)* | `identity.py:144`'s `OUR_FILE_PATTERNS` lists `{label}.fdf.template` | **P9 u0, same commit as C4** |
 | **C6** | a trial directory is **`bench-G<g>K<k>C<c>`** (`job-contracts.md` § 6.3, the cross-layer authority) | `bench/adapters.py:225` writes `point-G…`; `bench/summarize.py:30`'s `_POINT_RE` parses it back | **Track Z** |
 | **C7** | *"the emitter that reads it never learns the word"* — `cfg.stage` is deleted (`stages.md` § 1.1) | live at `siesta/input.py` 633, 640, 1724 (plus the explanatory comment at 615). **⚠ It is not three stray reads — it is the ONLY channel carrying the stage token into THREE artifact names**: the deck, the stdout and the molwatch log all read `cfg.stage` to build `<label>_<NN>_<stage>`. Delete it without replacing the channel and every one of them silently collapses to the unsuffixed form, breaking `job-contracts.md § 6.3` and decision 21's self-check | **P12 u6b — see the note below** |
 | **C8** | `BlockSize` has **three** states: set · unset→proposed · **omitted entirely** (`tuning.md` § 2.11, decision 35) | `_auto_block_size` always returns a number, floored at 8, and the emitter always writes the line — the third state cannot be expressed | **P4** |
-| **C9** | describing a calculation is **`jobset describe`** (`job-system.md` § 5.1) | the verb does not exist | **P10** |
-| **C10** | *"whatever writes the template computes the fingerprint"* (`stages.md` § 6.6) | `schema_fingerprint()` exists and `validation/task.py` **reads** it; **nothing writes it** — a check with no producer either never fires or always complains | **P12 u6b, with C4** |
+| **C9** | describing a calculation is **`jobset describe`** (`job-system.md` § 5.1) | the verb does not exist | **P9 u0** — it is the chain's hinge, not a late verb |
+| **C10** | *"whatever writes the template computes the fingerprint"* (`stages.md` § 6.6) | `schema_fingerprint()` exists and `validation/task.py` **reads** it; **nothing writes it** — a check with no producer either never fires or always complains | **P9 u0, with C4** |
 | **C11** | `execution.mode` is what gates submission (`running-a-job.md` § 5.4) | `submit`'s docstring says `mode == execution.mode`, but only `bench` consults the config; `--mode` stays required | **P9** |
 | **C12** | the auto rank clamp is a **heuristic**, and `propor: IMAX = 0` depends on the **species count and radial-table size**, not the atom count (`running-a-job.md` § 3.1, corrected 2026-08-11 from the code's own 2026-05-28 empirical sweep) | `runwrap` clamps to `n_atoms`, and the post-run hint says *"too many MPI ranks for the system size"* — the right advice for the wrong reason. **Unscheduled, and deliberately so:** the clamp is cheap and usually conservative, so this is a *message and a bound* to improve, not a break to fix. `NumberOfSpecies` is already in the `.fdf`, so the input exists | **open — needs a call**, not a phase |
+| **C13** | floor 3 is *"asked-for **+ machine** → a list of jobs"* (`architecture.md` § 2.1) — so the **description is floor 3's input** | `stages_to_jobset(cfg, stages, …)` receives neither. It takes an in-memory engine config assembled from CLI flags by the same function that writes the description, so **`job-set.json` and `task.json` are emitted side by side — `cli.py:1057` and `cli.py:1121`, four lines apart — rather than one being derived from the other.** This is § 9.3's migration seen from its other end: § 9.3 says *the machine arrives too late*, this says *the description is never consumed* | **§ 9.3's migration** (P6 u2/u4/u5 + P10) — C9 is its precondition, not its whole |
+
+> ### C13 is the missing edge, not a missing function — and it bounds C2
+>
+> **What is built, and is conformant:** `stages.md` § 6.7 grants floor 2 exactly
+> one downstream reader — *"floor 2 writes it, floor 4 reads it"*, for the layout
+> — and `materialize.shape_of` is precisely that: `Shape.named(read_task(desc).shape)`.
+> **That edge is not a gap and must not be "fixed".**
+>
+> **What is missing is the other edge.** `task.json` has **one writer**
+> (`cli.py:1121`) and **one reader** (`shape_of`, for one field). `prep_jobset`
+> and `submit_jobset` both take a **`JobSet`** — floor 3 — and `jobset/_cli.py`
+> loads it from **`job-set.json`**. So the artifact that actually drives prep and
+> submit is floor 3's, and floor 2's is a sidecar written beside it.
+>
+> **Why this bounds the order:** `cmd_fdf` is the **only** non-test caller of
+> `write_task`, and (on the staged path) of `js.write("job-set.json")`. **C2
+> deletes it.** Delete it before `jobset describe` exists and the staged route has
+> no producer of either artifact — and `checkpoint.py`'s `_BUNDLE_DESCRIPTORS`,
+> which recognises a calculation root by the *presence* of `task.json`, stops
+> recognising anything a fresh describe would make.
 
 > ### C7's replacement, since deleting the field is the easy half
 >
@@ -2785,7 +2814,7 @@ contract is in doubt.***
 ### The order, and why this one
 
 **C3 first, and on its own.** It is the only row that actively *instructs a user
-to do something the design forbids* — the other ten are code that has not caught
+to do something the design forbids* — the other twelve are code that has not caught
 up, which is inert. A user who types what that line prints gets an error, and the
 message is molbuilder's own.
 
@@ -2793,11 +2822,14 @@ message is molbuilder's own.
 list. Doing them in one commit is what keeps `conventions.md` § 3's count honest
 at every point rather than between two of them.
 
-**Then C4+C5+C10+C7 as one unit (P12 u6b).** This is the keystone the gap list
-already names — `worked-example.md` § 8.1 gap 9 — and the four are one change:
+**Then C4+C5+C10 as one unit** *(written as "C4+C5+C10+C7, P12 u6b"; the
+correction below moves the first three to **P9 u0** and leaves C7 behind — the
+argument for grouping them is untouched)*. This is the keystone the gap list
+already names — `worked-example.md` § 8.1 gap 9 — and the three are one change:
 the artifact becomes TOML, the pattern list follows it **in the same commit**,
-the writer computes the fingerprint because it is the moment the schema is in
-hand, and `cfg.stage` goes because the emitter stops being told about stages.
+and the writer computes the fingerprint because it is the moment the schema is
+in hand. *(C7 — `cfg.stage` goes because the emitter stops being told about
+stages — is a separate act on a separate module; see below.)*
 
 > **C5 is the trap, and it is worth the sentence.** Rename the artifact without
 > `identity.py` and `warm_files_present` counts the template as **engine warm
@@ -2810,8 +2842,42 @@ hand, and `cfg.stage` goes because the emitter stops being told about stages.
 Track Z**, because it is a rename with a parser on the other side and blocks
 nothing.
 
-**C9 last of the code rows**, because `describe` writes what C4 defines: a verb
-that emits the old artifact would have to be written twice.
+### ⚠ The correction, found 2026-08-11: three rows chain backwards through the phases
+
+**The paragraphs above are kept because their arguments are still right about
+each pair. Read together they are wrong about the whole**, and the audit that
+produced C13 is what showed it. The claim they make between them is:
+
+> C2 in P9 (early) · C9 "last of the code rows" (P10) · C4 in P12 u6b (last).
+
+**Every one of those three depends on the next.** The chain runs
+**C4 → C9 → C2**, and the phases run **P12 → P10 → P9** — exactly backwards:
+
+| the dependency | why it is real |
+|---|---|
+| **C4 before C9** | the original argument, unchanged and still correct: `describe` **writes the template** (`architecture.md` § 4, the `describe` row), so a `describe` built before the artifact is TOML would be written twice |
+| **C9 before C2** | **C13's evidence.** `cmd_fdf` is the only non-test caller of `write_task`. C2 deletes it. Without `describe` there is then no producer of `task.json` at all — and `shape_of`, `_is_bundle_root` and every route below floor 2 read a file nothing writes |
+
+**And P9's own milestone already assumed this.** M9 says the § 1c session runs
+verbatim, and its review 3 walks **`describe` → prep bench → submit → summarize
+→ prep run → submit**. A phase cannot both demonstrate `describe` and be the
+phase that deletes its only predecessor without building it first.
+
+**So the three come out of the phase ladder and go in as one ordered unit**, at
+the earliest phase that holds any of them — **P9**:
+
+1. **C4 + C5 + C10** — the template becomes `<label>.template.toml`, `OUR_FILE_PATTERNS` follows it in the same commit (the C5 trap below), the writer computes the fingerprint.
+2. **C9** — `jobset describe`, writing what step 1 just defined.
+3. **C1 + C2 + C11** — the old surface goes, now that a producer exists to replace it. `conventions.md` § 3's count is honest at the end of this step, which is the point of doing the three together.
+
+**C7 stays with P12 u6b.** It is about what the *emitter* is told, not about
+what `describe` writes, so it gates nothing in the chain — and its replacement
+(the render argument, below) wants `prep` holding a `StageRef`, which is P6's.
+
+> **What this costs, said out loud:** P9 grows from a CLI-surface phase into the
+> phase that lands the description's producer. That is a real increase, and the
+> alternative is worse — the ordering as written has a window in which the staged
+> route cannot produce its own description.
 
 ### What this does NOT claim
 

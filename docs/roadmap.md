@@ -538,7 +538,7 @@ Named, bounded debt whose full statements live in their owning docs; listed
 here so scheduling them is a roadmap edit, not an archaeology dig:
 
 - **The code against the contracts, measured 2026-08-11 — twelve conformance
-  debts (C1–C12).** Where the code has not caught up with a contract that
+  debts (C1–C13).** Where the code has not caught up with a contract that
   already settled: `molbuilder run` and `molbuilder fdf` still registered, the
   template still written as `.fdf.template`, trial directories still `point-`,
   `cfg.stage` still the emitter's only channel for the stage token, no `jobset
