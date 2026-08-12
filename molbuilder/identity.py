@@ -35,7 +35,7 @@ here still described a file that *"already has an id"*.
 decision"* — `job-contracts.md § 2.1` Rule 2 fixes it, and this module does not
 get to widen it. Four validators in the tree already spell it
 (``projects._NAME_PATTERN``, ``checkpoint._REF_SAFE_ID`` — which cites this very
-contract — plus ``bench/adapters`` and ``config/pyscf``). **None of them
+contract — plus ``bench/grid`` and ``config/pyscf``). **None of them
 normalises**; they all reject. This is the first transform, so nothing is being
 duplicated here. Consolidating those four spellings is a real cleanup and is
 *not* this phase's — P3 subtracts *"any second normaliser"*, and there is not

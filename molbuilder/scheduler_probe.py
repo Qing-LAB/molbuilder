@@ -10,6 +10,12 @@ NO partition names or limits -- everything here comes from the live system
 Pure parsing + derivation lives here (testable on captured text); the CLI
 (``_cli.cmd_probe_scheduler``) runs the subprocesses and optionally merges
 the result into ``.molbuilder.json`` via ``runtime_config.write_config_scope``.
+
+Moved ``bench/probe.py`` -> ``molbuilder/scheduler_probe.py`` 2026-08-12
+(follow-up to the U-program): what it produces is a ``scheduler`` CONFIG
+block for molbuilder.json -- runtime_config's domain, floor 1 -- and
+nothing it does is benchmarking.  It lives beside ``environment.py``, the
+other machine-probe.
 """
 
 from __future__ import annotations
@@ -17,13 +23,39 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
-from .adapters import parse_walltime
 
 # sinfo timelimit tokens that mean "no ceiling".
 _INFINITE = {"infinite", "unlimited", "n/a", ""}
 # A finite sentinel for an unbounded partition so a domain can still be built.
 _INFINITE_SECS = 30 * 24 * 3600
 _INFINITE_STR = "30-00:00:00"
+
+
+def parse_walltime(s) -> int:
+    """SLURM walltime string -> seconds.  Accepts the forms SLURM accepts:
+    ``MM``, ``MM:SS``, ``HH:MM:SS``, ``D-HH``, ``D-HH:MM``, ``D-HH:MM:SS``
+    (running-a-job.md § 5.3).  Empty -> 0.  Raises ValueError on garbage
+    so a malformed config max_time fails loudly, not silently as 0."""
+    s = str(s).strip()
+    if not s:
+        return 0
+    days = 0
+    if "-" in s:
+        d, _, s = s.partition("-")
+        days = int(d)
+        parts = [int(x) for x in s.split(":")] if s else [0]
+        while len(parts) < 3:
+            parts.append(0)
+        h, m, sec = parts[0], parts[1], parts[2]
+    else:
+        parts = [int(x) for x in s.split(":")]
+        if len(parts) == 1:
+            h, m, sec = 0, parts[0], 0          # bare = minutes (SLURM rule)
+        elif len(parts) == 2:
+            h, m, sec = 0, parts[0], parts[1]   # MM:SS
+        else:
+            h, m, sec = parts[0], parts[1], parts[2]
+    return ((days * 24 + h) * 60 + m) * 60 + sec
 
 
 @dataclass

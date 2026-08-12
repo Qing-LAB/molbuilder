@@ -1,5 +1,12 @@
 """The sweep's reader — trials' artifacts → ``bench-result.json``.
 
+Moved ``bench/summarize.py`` → ``jobset/summarize.py`` 2026-08-12
+(follow-up to the U-program): everything it reads is the JOB SET's —
+`job-set.json` for discovery, `materialize` for the trial directories,
+the winner's own deck for the mechanism — and its verdict feeds
+`jobset prep run`.  A jobset reader living in `bench/` made the package
+boundary lie about the dependency direction.
+
 Serves ``molbuilder jobset summarize bench`` (step 6 u4): discovery keyed
 by ``job-set.json``'s own data, each trial parsed with the pure parsers in
 :mod:`molbuilder.bench.result`, the verdict written as a recommendation.
@@ -18,7 +25,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .result import (
+from ..bench.result import (
     BenchPoint, BenchResult, build_bench_result, parse_mpi_ranks,
     parse_scf_timing, parse_util_csv_peak_mem, parse_util_summary,
 )
@@ -170,7 +177,7 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
     Its regex-keyed predecessor ``discover_points`` died with the OLD
     bundle format (u5).
     """
-    from ..jobset.materialize import job_dir_names, shape_of
+    from .materialize import job_dir_names, shape_of
     bundle = Path(bundle)
     dirs = job_dir_names(jobset, shape_of(jobset, bundle))
     pts: List[BenchPoint] = []
@@ -205,7 +212,7 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     job = next((j for j in jobset.jobs if j.name == label), None)
     if job is None:
         return {}
-    from ..jobset.materialize import job_dir_names, shape_of
+    from .materialize import job_dir_names, shape_of
     import os as _os
     d = Path(bundle) / job_dir_names(jobset, shape_of(jobset, bundle))[label]
     deck = d / _os.path.basename(job.script)

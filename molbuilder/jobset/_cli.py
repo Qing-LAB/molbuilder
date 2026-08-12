@@ -479,7 +479,7 @@ def _bench_inputs(base):
     framework — `prep`'s five steps — receives a longer list and never asks
     why (`generator.md` § 2).
     """
-    from ..bench.adapters import _FALLBACK_KS, get_adapter, sweep_grid
+    from ..bench.grid import _FALLBACK_KS, sweep_K, sweep_grid
     from ..resolve import MachineTranslation
     from .prep import _environment_for
     environment = _environment_for(base)
@@ -495,7 +495,7 @@ def _bench_inputs(base):
             f"environment.json to re-probe, or run the benchmark on the "
             f"target it is meant to measure -- the comparison is by node "
             f"type (asu-sol.md § 5.2).")
-    ks = get_adapter(environment).sweep_K(topo) or list(_FALLBACK_KS)
+    ks = sweep_K(topo) or list(_FALLBACK_KS)
     points = [{"G": g, "K": k, "C": c}
               for g, k, c in sweep_grid(gpn, cps, ks, None)]
     translation = MachineTranslation(
@@ -851,7 +851,7 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
             "the Watch tab are their readers (job-system.md § 5.3).")
     js, base = _load_bench_set(bundle, stage)
     _check_kind(kind, js)
-    from ..bench.summarize import (run_summarize_jobset,
+    from .summarize import (run_summarize_jobset,
                                    summary_text, utc_now_iso)
     container, _ = _stage_bench_dir(base, stage)
     # The container's job-set holds ONLY this stage's trials (U1), so the

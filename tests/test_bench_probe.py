@@ -2,7 +2,7 @@
 (execution/job-system.md § 7).  Fixtures are the REAL ASU Sol output captured
 2026-06-29, so the derivation is validated against the actual cluster."""
 
-from molbuilder.bench.probe import (best_gpu_type, derive_scheduler_block,
+from molbuilder.scheduler_probe import (best_gpu_type, derive_scheduler_block,
                                      parse_allowed_qos, parse_qos, parse_sinfo)
 
 # Real Sol `sinfo -h -o "%P|%30l|%D|%40G"` (pipe-delimited; untruncated).

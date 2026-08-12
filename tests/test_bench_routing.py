@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from molbuilder.bench.adapters import parse_walltime
+from molbuilder.scheduler_probe import parse_walltime
 from molbuilder.runtime_config import (PROJECT_CONFIG_FILENAME,
                                        RuntimeConfigError, get_routing)
 

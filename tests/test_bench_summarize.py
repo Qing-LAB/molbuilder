@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from molbuilder.bench.result import build_bench_result, choose_winner
-from molbuilder.bench.summarize import parse_point, summary_text
+from molbuilder.jobset.summarize import parse_point, summary_text
 
 
 def _point_dir(tmp_path, name, basename, out_text=None):
