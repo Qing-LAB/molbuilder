@@ -694,6 +694,30 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
                             gres=gres, time=time_, mem=mem,
                             max_memory_mb=max_memory_mb, domain=domain)
+        # § 6.6's preflight, at its LIVE moment (R5, 2026-08-12).  It ran
+        # only inside `describe`, BEFORE the fingerprint stamp -- where the
+        # description had just been built from one schema and could not
+        # mismatch itself.  The hazard the fingerprint row exists for is
+        # HERE: prep on a machine whose molbuilder differs from the
+        # description's author.  Errors refuse before anything renders; the
+        # fingerprint row warns and proceeds (§ 6.6's one non-refusal), and
+        # the note lands in the ledger.
+        from ..task import read_task as _rt_preflight
+        from ..validation.task import preflight as _preflight
+        _pf_issues = _preflight(_rt_preflight(base / _TASK))
+        _pf_errs = [i for i in _pf_issues if i.severity == "error"]
+        _pf_warns = [i for i in _pf_issues if i.severity != "error"]
+        for _i in _pf_warns:
+            click.echo(f"note: {_i.message}", err=True)
+        if _pf_warns:
+            _ledger(base, "prep", "preflight-report", stage=stage,
+                    notes=[_i.message for _i in _pf_warns])
+        if _pf_errs:
+            raise click.ClickException(
+                "the description fails its own preflight "
+                "(engines/stages.md § 6.6):\n  - "
+                + "\n  - ".join(_i.message for _i in _pf_errs))
+
         # The five steps, from the DESCRIPTION -- `prep` resolves the
         # machine, resolves the parameters, and renders the decks itself.
         # `bench` is the same call with a longer step 2: the grid as

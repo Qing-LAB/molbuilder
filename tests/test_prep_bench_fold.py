@@ -598,3 +598,27 @@ def test_a_launched_trial_refuses_relaunch_and_selection_skips_it(calc):
                                   "--mode", "submit", "--dry-run"])
     assert res.exit_code == 0, res.output
     assert f"next unlaunched trial: {second}" in res.output
+
+
+def test_prep_reports_a_foreign_fingerprint_and_proceeds(calc):
+    """R5: the fingerprint row's live moment is PREP on a machine whose
+    molbuilder differs from the description's author -- until 2026-08-12
+    nothing checked it there (describe preflighted the pre-stamp task,
+    whose empty fingerprint matches anything).  § 6.6: report, never
+    refuse."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    tj = json.loads((calc / "task.json").read_text())
+    tj["schema_fingerprint"] = "0000000000000000"
+    (calc / "task.json").write_text(json.dumps(tj, indent=2) + "\n")
+    r = CliRunner().invoke(jobset_group, ["prep", "run", "coarse",
+                                          "--bundle", str(calc),
+                                          "--no-sbatch"])
+    assert r.exit_code == 0, r.output          # reported, NOT refused
+    assert "note:" in r.output
+    assert "written against a different" in r.output
+    assert "0000000000000000" in r.output      # the recorded print named
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    lines = [json.loads(l) for l in
+             (calc / LEDGER_FILE).read_text().splitlines()]
+    assert any(e["decision"] == "preflight-report" for e in lines)
