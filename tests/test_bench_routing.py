@@ -3,24 +3,21 @@ names (execution/job-system.md § 6, § 4.4; execution/job-system.md § 6).
 
 * ``get_routing`` reads/validates the named-domain menu (survives the
   scheduler-block normalisation);
-* ``parse_walltime`` parses SLURM time strings; ``recommend_domain`` /
-  ``fitting_domains`` pick by walltime/memory;
-* ``bake_run_bench`` bakes the explicit-selection gate (menu on no domain,
-  fit-refuse on a too-small domain, accept on a fitting one);
-* the sweep names each point ``-J job-gpu-G<g>K<k>C<c>``.
+* ``parse_walltime`` parses SLURM time strings.
 """
 
 import json
-import subprocess
 
 import pytest
 
-from molbuilder.bench.adapters import (SlurmAdapter, domain_fits,
-                                       fitting_domains, parse_walltime,
-                                       recommend_domain)
-from molbuilder.bench.generate import bake_run_bench
+from molbuilder.bench.adapters import parse_walltime
 from molbuilder.runtime_config import (PROJECT_CONFIG_FILENAME,
                                        RuntimeConfigError, get_routing)
+
+
+def _write(tmp_path, scheduler_block):
+    (tmp_path / PROJECT_CONFIG_FILENAME).write_text(
+        json.dumps({"scheduler": scheduler_block}))
 
 
 @pytest.fixture(autouse=True)
@@ -67,34 +64,12 @@ def test_parse_walltime_garbage_raises():
 
 # ---- recommend / fit -------------------------------------------------- #
 
-def test_recommend_cheapest_fitting_domain():
-    # 10 min fits all -> cheapest (debug); 3h fits htc+public -> htc; 5d -> public
-    assert recommend_domain(_DOMAINS, parse_walltime("0-00:10:00"), None) == "debug"
-    assert recommend_domain(_DOMAINS, parse_walltime("0-03:00:00"), None) == "htc"
-    assert recommend_domain(_DOMAINS, parse_walltime("5-00:00:00"), None) == "public"
 
-
-def test_recommend_none_when_over_all_ceilings():
-    assert recommend_domain(_DOMAINS, parse_walltime("9-00:00:00"), None) is None
-
-
-def test_mem_cap_domain_skipped_when_job_mem_unknown():
-    doms = [{"name": "big", "max_time": "7-00:00:00", "max_mem_gb": 256,
-             "partition": "highmem", "qos": "public"}]
-    # job_mem None -> can't prove it fits a capped domain (§ 4.3)
-    assert not domain_fits(doms[0], parse_walltime("01:00:00"), None)
-    assert domain_fits(doms[0], parse_walltime("01:00:00"), 128)
-    assert not domain_fits(doms[0], parse_walltime("01:00:00"), 300)
-    assert fitting_domains(doms, parse_walltime("01:00:00"), None) == []
-
-
-# ---- get_routing ------------------------------------------------------ #
-
-def _write(tmp_path, sched):
-    (tmp_path / PROJECT_CONFIG_FILENAME).write_text(
-        json.dumps({"scheduler": sched}))
-
-
+# `recommend_cheapest_fitting_domain` & friends, and the baked run-bench
+# quartet, were RETIRED 2026-08-12 (u5): the domain-fit helpers' one
+# caller was the deleted `bench prep`, and the baked launcher died with
+# the bundle.  A submit-side recommendation rebuilds against
+# `scheduler.routing` where it is read, when it is designed.
 def test_get_routing_reads_and_survives_normalise(tmp_path):
     _write(tmp_path, {"kind": "slurm",
                       "directives": {"partition": "public", "qos": "public"},
@@ -127,42 +102,4 @@ def test_get_routing_missing_field_raises(tmp_path):
         get_routing(project_dir=tmp_path)
 
 
-# ---- bake_run_bench: the explicit-selection gate ---------------------- #
 
-def _bake(tmp_path, **kw):
-    return bake_run_bench(tmp_path, SlurmAdapter(), 64, "submit",
-                          routing=_DOMAINS, **kw).read_text()
-
-
-def test_run_bench_menu_when_no_domain(tmp_path):
-    text = _bake(tmp_path, recommend="htc",
-                 fitting=_DOMAINS[1:], job_time="0-04:00:00")
-    # Bakes the menu + recommendation + the explicit-select exit path.
-    assert "--domain <name>" in text
-    assert "recommended for this run" in text and "$_rec" in text
-    assert 'case "$_dom" in' in text
-    # the syntax is valid bash
-    assert subprocess.run(["bash", "-n", str(tmp_path / "run-bench")],
-                          capture_output=True).returncode == 0
-
-
-def test_run_bench_domain_resolves_partition_qos(tmp_path):
-    text = _bake(tmp_path, recommend="htc",
-                 fitting=_DOMAINS[1:], job_time="0-04:00:00")
-    assert '_cpu_pq="-p htc -q public"' in text       # htc domain
-    assert '_cpu_pq="-p htc -q debug"' in text        # debug domain
-    assert 'export MB_GPU_PQ="$_gpu_pq"' in text
-
-
-def test_run_bench_fitting_set_baked(tmp_path):
-    # Only htc+public fit a 4h run; debug must be absent from the fit set
-    # so selecting it is refused at runtime.
-    text = _bake(tmp_path, recommend="htc",
-                 fitting=_DOMAINS[1:], job_time="0-04:00:00")
-    assert '_fitting="htc public"' in text
-
-
-def test_run_bench_exec_domain_default_baked(tmp_path):
-    text = _bake(tmp_path, exec_domain="htc", recommend="htc",
-                 fitting=_DOMAINS[1:], job_time="0-04:00:00")
-    assert '_dom="htc"' in text                        # standing default

@@ -1,18 +1,18 @@
-"""``bench summarize`` -- read a run sweep's artifacts -> ``bench-result``.
+"""The sweep's reader — trials' artifacts → ``bench-result.json``.
 
-Step 3 of the target side (benchmark-workflow.md § 7.4): walk the
-per-point ``bench-G<g>K<k>C<c>/`` directories the sweep produced (§ 7.3
-isolation), parse each point's timing / utilization / state with the pure
-parsers in :mod:`molbuilder.bench.result`, and write ``bench-result.json``
-(§ 5.3) -- the only input ``prep-run`` needs.
+Serves ``molbuilder jobset summarize bench`` (step 6 u4): discovery keyed
+by ``job-set.json``'s own data, each trial parsed with the pure parsers in
+:mod:`molbuilder.bench.result`, the verdict written as a recommendation.
 
-**Stdlib-only** (imports the stdlib ``result`` model + parsers): ships to
-the target.  ``summarize_bundle`` is the testable core; ``main`` is the
-standalone entry; the ``molbuilder bench summarize`` CLI calls the core.
+The OLD half — ``discover_points``' directory-name regex,
+``summarize_bundle``/``run_summarize`` over the shipped bundle format —
+was DELETED 2026-08-12 (u5) with that lifecycle: the token is an
+identifier, never a parser target (`job-contracts.md` § 6.3).
 """
 
 from __future__ import annotations
 
+import datetime
 import json
 import re
 from pathlib import Path
@@ -27,7 +27,6 @@ from .result import (
 # with SCF.MustConverge .false. still exits cleanly and prints these).
 _DONE_MARKERS = ("Job completed", "End of run", "siesta: Final energy",
                  ">> End of run:")
-_POINT_RE = re.compile(r"^bench-G(\d+)K(\d+)C(\d+)$")
 _RUN_IDX = re.compile(r"-run(\d+)\.")
 
 
@@ -101,25 +100,6 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
                       metrics=metrics, bound=bound, state=state)
 
 
-def discover_points(bundle) -> List[BenchPoint]:
-    """Find + parse every sweep point: the GPU ``bench-G<g>K<k>C<c>/`` dirs,
-    plus a single CPU run (``job-cpu-*`` in the bundle root) if present."""
-    bundle = Path(bundle)
-    pts: List[BenchPoint] = []
-    for d in sorted(p for p in bundle.glob("bench-G*K*C*") if p.is_dir()):
-        m = _POINT_RE.match(d.name)
-        if not m:
-            continue
-        pts.append(parse_point(
-            d.name, d, "job-gpu", "gpu",
-            {"gpus": int(m.group(1)), "ranks_per_gpu": int(m.group(2)),
-             "cores_per_rank": int(m.group(3))}))
-    if list(bundle.glob("job-cpu-run*.out")):
-        # the CPU bench is a single root-level run; np isn't recorded in
-        # the filenames (set via sbatch -n), so knobs stay empty.
-        pts.append(parse_point("cpu", bundle, "job-cpu", "cpu", {}))
-    return pts
-
 
 def _read_environment(bundle: Path) -> Dict:
     p = Path(bundle) / "environment.json"
@@ -166,8 +146,8 @@ def discover_points_from_jobset(bundle, jobset,
     token is an identifier, not a parser target).  ``stage`` filters to the
     trials of one stage, read off each deck's own token.
 
-    :func:`discover_points` above remains for the OLD bench bundle format
-    and dies with it (u5).
+    Its regex-keyed predecessor ``discover_points`` died with the OLD
+    bundle format (u5).
     """
     from ..jobset.materialize import (_trial_stage_token, job_dir_names,
                                       shape_of)
@@ -206,23 +186,6 @@ def run_summarize_jobset(jobset, bundle, *, stage: Optional[str] = None,
     return res, out_path
 
 
-def summarize_bundle(bundle, *, now_iso: Optional[str] = None) -> BenchResult:
-    """Assemble the ``bench-result`` for a run bundle directory."""
-    return build_bench_result(
-        discover_points(bundle),
-        environment=_read_environment(bundle),
-        system=_read_system(bundle),
-        now_iso=now_iso)
-
-
-def run_summarize(bundle, *, out=None, now_iso: Optional[str] = None):
-    """Summarize ``bundle`` and write ``bench-result.json``; returns
-    ``(BenchResult, out_path)``."""
-    res = summarize_bundle(bundle, now_iso=now_iso)
-    out_path = Path(out) if out else Path(bundle) / "bench-result.json"
-    out_path.write_text(res.to_json() + "\n", encoding="utf-8")
-    return res, out_path
-
 
 def summary_text(res: BenchResult, out_path: Path) -> str:
     lines = ["bench-summarize: ranked points (fastest first)"]
@@ -243,7 +206,15 @@ def summary_text(res: BenchResult, out_path: Path) -> str:
     return "\n".join(lines)
 
 
+def utc_now_iso() -> str:
+    """UTC timestamp ``YYYY-MM-DDThh:mm:ssZ`` (moved from the deleted
+    ``bench/prep.py`` at u5 -- its one surviving caller is the summarize
+    verb's stamp)."""
+    return datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+
+
 __all__ = [
-    "parse_point", "discover_points", "summarize_bundle", "run_summarize",
-    "summary_text",
+    "parse_point", "discover_points_from_jobset", "run_summarize_jobset",
+    "summary_text", "utc_now_iso",
 ]

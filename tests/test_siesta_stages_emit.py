@@ -1,5 +1,5 @@
 """Tests for the SIESTA multi-stage deck emitter,
-:func:`render_siesta_stage_fdfs`.
+the live per-stage render (repointed 2026-08-12, u5).
 
 Pins the per-stage emission contract:
   * one .fdf per enabled stage, filename ``{system_label}_{NN}_{name}.fdf``
@@ -29,9 +29,7 @@ import numpy as np
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.siesta import (
-    render_siesta_stage_fdfs,
-)
+
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
@@ -70,13 +68,13 @@ def stages():
 
 
 def test_fdfs_returns_one_per_enabled_stage(h2, cfg, stages):
-    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages)
     assert sorted(fdfs) == ["JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
 
 
 def test_fdfs_filename_uses_system_label(h2, stages):
     cfg = SiestaConfig(system_label="TJ-BDT-Au111")
-    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages)
     assert all(name.startswith("TJ-BDT-Au111_") for name in fdfs)
 
 
@@ -84,7 +82,7 @@ def test_fdfs_share_systemlabel_for_warm_restart(h2, cfg, stages):
     """Each emitted fdf must declare the SAME SystemLabel as cfg --
     that's the mechanism by which SIESTA auto-reads <label>.XV across
     stage invocations."""
-    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages)
     for body in fdfs.values():
         assert f"SystemLabel       {cfg.system_label}" in body
 
@@ -93,7 +91,7 @@ def test_fdfs_per_stage_md_block_uses_stage_values(h2, cfg, stages):
     """stage1 = CG / 600 / 0.05 / 0.20, 02_medium = Broyden / 200 / 0.04
     / 0.05.  Each fdf's MD block reflects its own stage's values, NOT
     the cfg.relax_* default."""
-    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages)
     s1 = fdfs["JOB_01_coarse.fdf"]
     s2 = fdfs["JOB_02_medium.fdf"]
 
@@ -112,18 +110,40 @@ def test_fdfs_disabled_stages_drop_out(h2, cfg, stages):
     # Disable stage2; enable stage3.
     stages[1] = dataclasses.replace(stages[1], enabled=False)
     stages[2] = dataclasses.replace(stages[2], enabled=True)
-    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages)
     assert sorted(fdfs) == ["JOB_01_coarse.fdf", "JOB_03_tight.fdf"]
 
 
 def test_fdfs_single_enabled_stage_is_still_emitted(h2, cfg, stages):
     for i in (1, 2):
         stages[i] = dataclasses.replace(stages[i], enabled=False)
-    fdfs = render_siesta_stage_fdfs(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages)
     assert list(fdfs) == ["JOB_01_coarse.fdf"]
 
 
-def test_fdfs_zero_enabled_raises(h2, cfg, stages):
-    stages = [dataclasses.replace(s, enabled=False) for s in stages]
-    with pytest.raises(ValueError, match="no enabled entries"):
-        render_siesta_stage_fdfs(h2, cfg, stages)
+# ``test_fdfs_zero_enabled_raises`` RETIRED 2026-08-12 (u5): the render-time
+# refusal of an all-disabled ladder lived in the deleted ``_enabled_stages``.
+# The LIVE refusal is earlier and better placed -- a description's ladder is
+# validated where it is written and read (`describe` / task.py), before
+# anything renders; the render loop never meets an all-disabled ladder.
+
+
+def _live_ladder_decks(struct, template, stages):
+    """The decks the LIVE route renders: each ENABLED stage through the one
+    seam, one deck per element, exactly as `prep` builds them (repointed
+    2026-08-12, u5, from the deleted ``render_siesta_stage_fdfs``).  The
+    ordinal comes from the stage's place in the FULL ladder."""
+    import dataclasses as _dc
+
+    from molbuilder.identity import stage_token
+    from molbuilder.siesta.input import effective_config, render_fdf
+    label = template.system_label
+    out = {}
+    for i, st in enumerate(stages, start=1):
+        if not getattr(st, "enabled", True):
+            continue
+        eff = effective_config(template, st)
+        tok = stage_token(i, st.name)
+        eff = _dc.replace(eff, stage=tok)
+        out[f"{label}_{tok}.fdf"] = render_fdf(struct, eff)
+    return out

@@ -7,7 +7,7 @@ values ⊕ that stage's ``overrides``*, one object validated **and** rendered
 P2 unit 1 of ``docs/execution/staged-runs-implementation-plan.md`` pinned
 today's behaviour **before** changing anything: four relaxation values lived
 in two places — on ``SiestaConfig`` and again on ``SiestaStageSpec`` — and
-``render_siesta_stage_fdfs`` resolved the collision with a hard-coded
+the old renderer resolved the collision with a hard-coded
 ``dataclasses.replace``.  Whoever relied on a staged ladder had built on
 whichever one won, so it was written down before the mechanism was replaced.
 
@@ -26,7 +26,6 @@ import numpy as np
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.siesta.input import render_siesta_stage_fdfs
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
 
@@ -67,7 +66,7 @@ def _deck(h2: Structure, cfg: SiestaConfig, stage: str,
     every one of these tests depend on where the stage sits in ``_ladder()``
     -- which is the coupling R5 is about.  The caller says "the tight one";
     this finds it."""
-    decks = render_siesta_stage_fdfs(
+    decks = _live_ladder_decks(
         h2, cfg, stages if stages is not None else _ladder())
     hit = [k for k in decks if k.endswith(f"_{stage}.fdf")]
     assert len(hit) == 1, f"no single deck for stage {stage!r} in {sorted(decks)}"
@@ -142,7 +141,7 @@ def test_the_template_is_not_mutated_by_rendering(h2):
     cfg = _tpl(relax_type="FIRE", relax_steps=1,
                     relax_force_tol=0.99, relax_max_displ=0.99)
     before = dataclasses.asdict(cfg)
-    render_siesta_stage_fdfs(h2, cfg, _ladder())
+    _live_ladder_decks(h2, cfg, _ladder())
     assert dataclasses.asdict(cfg) == before
 
 
@@ -207,7 +206,7 @@ def test_the_validator_sees_each_stages_resolved_config(h2, monkeypatch):
     come apart.
 
     It holds by construction -- ``render_fdf`` calls the validator on the
-    very object it then renders, and ``render_siesta_stage_fdfs`` hands it
+    very object it then renders, and the live per-stage render hands it
     ``effective_config``'s result -- but "by construction" is exactly the
     kind of claim that stops being true during a refactor and takes a while
     to notice.  So: spy on the validator, render a two-stage ladder whose
@@ -231,7 +230,7 @@ def test_the_validator_sees_each_stages_resolved_config(h2, monkeypatch):
     monkeypatch.setattr(mv, "validate", _spy)
 
     cfg = _tpl(mesh_cutoff=150)
-    render_siesta_stage_fdfs(h2, cfg, [
+    _live_ladder_decks(h2, cfg, [
         Stage(name="coarse", overrides={"mesh_cutoff": 150}),
         Stage(name="tight", overrides={"mesh_cutoff": 300})])
 
@@ -246,22 +245,21 @@ def test_the_validator_sees_each_stages_resolved_config(h2, monkeypatch):
 #  What a ladder must refuse                                            #
 # --------------------------------------------------------------------- #
 
-def test_a_ladder_with_nothing_enabled_is_refused(h2):
-    with pytest.raises(ValueError, match="enabled"):
-        render_siesta_stage_fdfs(h2, _tpl(), [
-            Stage(name="coarse", enabled=False),
-            Stage(name="tight", enabled=False)])
+# ``test_a_ladder_with_nothing_enabled_is_refused`` RETIRED 2026-08-12
+# (u5): the render-time copy of that refusal died with its renderer.  The
+# LIVE refusal is the description's -- a ladder is validated where it is
+# written and read (describe / task.py), before anything renders.
 
 
-def test_two_enabled_stages_with_one_name_are_refused(h2):
+def test_two_stages_with_one_name_are_refused_where_the_ladder_is_read():
     """Every per-stage artifact is keyed ``<label>_<name>.fdf``, so a name
-    collision does not fail -- it silently overwrites a stage.  The check
-    ``validate_siesta_stages`` used to make lives here now, at the producer
-    that owns the filename convention."""
-    with pytest.raises(ValueError, match="collide|silently"):
-        render_siesta_stage_fdfs(h2, _tpl(), [
-            Stage(name="tight", overrides={"mesh_cutoff": 150}),
-            Stage(name="Tight", overrides={"mesh_cutoff": 300})])
+    collision does not fail -- it silently overwrites a stage.  The refusal
+    lives where the ladder is READ (task.py; repointed 2026-08-12, u5 --
+    the render-time copy died with its renderer), and it is
+    case-insensitive because the names become filenames."""
+    from molbuilder.task import stages_from_dicts
+    with pytest.raises(ValueError, match="two stages named"):
+        stages_from_dicts([{"name": "tight"}, {"name": "Tight"}])
 
 
 def test_a_stage_name_that_is_not_a_filename_is_refused():
@@ -396,6 +394,24 @@ def test_an_error_in_any_stage_blocks_the_whole_produce(h2, monkeypatch):
         if cfg.mesh_cutoff == 999.0 else real(st, cfg, **kw)))
 
     with pytest.raises(ValidationError):
-        render_siesta_stage_fdfs(h2, _tpl(), [
+        _live_ladder_decks(h2, _tpl(), [
             Stage(name="ok"),
             Stage(name="bad", overrides={"mesh_cutoff": 999.0})])
+
+
+def _live_ladder_decks(struct, template, stages):
+    """The decks the LIVE route renders (repointed 2026-08-12, u5): each
+    ENABLED stage through the one seam, exactly as `prep` builds them."""
+    import dataclasses as _dc
+
+    from molbuilder.identity import stage_token
+    from molbuilder.siesta.input import effective_config, render_fdf
+    out = {}
+    for i, st in enumerate(stages, start=1):
+        if not getattr(st, "enabled", True):
+            continue
+        eff = effective_config(template, st)
+        tok = stage_token(i, st.name)
+        eff = _dc.replace(eff, stage=tok)
+        out[f"{template.system_label}_{tok}.fdf"] = render_fdf(struct, eff)
+    return out

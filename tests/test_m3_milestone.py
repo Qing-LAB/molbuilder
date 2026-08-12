@@ -17,7 +17,6 @@ import pytest
 
 from molbuilder.config.siesta import SIESTA_RESTART_GROUP, SiestaConfig
 from molbuilder.issues import ValidationError
-from molbuilder.siesta.input import render_siesta_stage_fdfs
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
 from molbuilder.validation.identity import check_overwrite
@@ -57,10 +56,10 @@ def test_a_two_stage_ladder_renders_all_of_the_group_and_none_of_it(h2o):
     that through.
 
     A ladder, not two single configs -- the two decks come out of ONE
-    ``render_siesta_stage_fdfs`` call against one template, which is the
+    ladder walk against one template, which is the
     path a user actually takes."""
     template = SiestaConfig(system_label=ID, relax_type="CG")
-    decks = render_siesta_stage_fdfs(h2o, template, [
+    decks = _live_ladder_decks(h2o, template, [
         Stage(name="coarse", overrides={"restart": "clean",
                                         "mesh_cutoff": 150.0}),
         Stage(name="tight",  overrides={"restart": "continue",
@@ -81,7 +80,7 @@ def test_the_two_stages_are_otherwise_the_same_calculation(h2o):
     § 1). If this drifted, the group above would be set correctly and still
     resume from nothing."""
     template = SiestaConfig(system_label=ID, relax_type="CG")
-    decks = render_siesta_stage_fdfs(h2o, template, [
+    decks = _live_ladder_decks(h2o, template, [
         Stage(name="coarse", overrides={"restart": "clean"}),
         Stage(name="tight",  overrides={"restart": "continue"}),
     ])
@@ -155,3 +154,24 @@ def test_the_refusal_says_the_files_are_safe(tmp_path):
 # DIFFERENT question -- a deck is derived from the description now, and
 # `project-layout.md` § 1.5 makes each ATTEMPT immutable rather than each deck.
 # Reinstating this against the new path would assert an answer nobody has made.
+
+
+def _live_ladder_decks(struct, template, stages):
+    """The decks the LIVE route renders: each ENABLED stage through the one
+    seam, one deck per element, exactly as `prep` builds them (repointed
+    2026-08-12, u5, from the deleted ``render_siesta_stage_fdfs``).  The
+    ordinal comes from the stage's place in the FULL ladder."""
+    import dataclasses as _dc
+
+    from molbuilder.identity import stage_token
+    from molbuilder.siesta.input import effective_config, render_fdf
+    label = template.system_label
+    out = {}
+    for i, st in enumerate(stages, start=1):
+        if not getattr(st, "enabled", True):
+            continue
+        eff = effective_config(template, st)
+        tok = stage_token(i, st.name)
+        eff = _dc.replace(eff, stage=tok)
+        out[f"{label}_{tok}.fdf"] = render_fdf(struct, eff)
+    return out

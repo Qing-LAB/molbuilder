@@ -1,125 +1,60 @@
-"""Tests for the summarize driver (molbuilder/bench/summarize.py)."""
+"""The sweep reader's pure units — ``parse_point``, the winner, the text.
+
+The bundle-walking half this file used to exercise (``discover_points``'
+directory regex, ``summarize_bundle``/``run_summarize``) was DELETED
+2026-08-12 (u5) with the shipped-bundle lifecycle; the LIVE, data-keyed
+path — ``discover_points_from_jobset`` / ``run_summarize_jobset`` — is
+covered end-to-end in tests/test_prep_bench_fold.py.  What remains here
+are the parsing units both paths share.
+"""
 from __future__ import annotations
 
-import json
+from pathlib import Path
 
-from molbuilder.bench import summarize
-from molbuilder.bench.result import BenchResult
-
-
-# Real gpu timing trace shape (5 iters); fast point vs slow point.
-def _timing(per_iter: float) -> str:
-    lines = []
-    t = 1000.0
-    for i in range(1, 6):
-        lines.append(f"{t:.3f} {i}    scf:    {i} -100.{i}")
-        t += per_iter
-    return "\n".join(lines) + "\n"
+from molbuilder.bench.result import build_bench_result, choose_winner
+from molbuilder.bench.summarize import parse_point, summary_text
 
 
-def _make_point(bundle, g, k, c, per_iter, sm, cpu, bound, mem, *,
-                completed=True):
-    # points are G x K x c (independent cores/rank axis); the dir + knobs
-    # carry all three (execution/job-system.md § 7, "knobs": {gpus, ranks_per_gpu,
-    # cores_per_rank}).
-    d = bundle / f"bench-G{g}K{k}C{c}"
+def _point_dir(tmp_path, name, basename, out_text=None):
+    d = tmp_path / name
     d.mkdir()
-    (d / "job-gpu-run0.scf-timing.log").write_text(_timing(per_iter))
-    (d / "job-gpu.monitor.log").write_text(
-        f"[t] [UTIL-SUMMARY] cpu mean={cpu}% (..); gpu0 sm mean={sm}% (..) "
-        f"-> {bound}\n")
-    (d / "job-gpu.util.csv").write_text(
-        "epoch,iso,cpu_pct,mem_gb,gpu0_sm,gpu0_memutil,gpu0_vram_gb\n"
-        f"1,a,5,{mem},0,0,0\n2,b,5,{mem - 1},0,0,0\n")
-    out = "scf: 5\n>> End of run: completed\n" if completed else "scf: 3\n"
-    (d / "job-gpu-run0.out").write_text(out)
+    if out_text is not None:
+        (d / f"{basename}-run0.out").write_text(out_text)
+    return d
 
 
-def _bundle(tmp_path):
-    b = tmp_path / "bundle"
-    b.mkdir()
-    (b / "environment.json").write_text(json.dumps(
-        {"schema": "molbuilder/environment@1", "scheduler": "slurm",
-         "topology": {"cores_per_socket": 24}}))
-    (b / "job-gpu.fdf").write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
-    # gpu-k8 fast + GPU-bound; gpu-k4 slower
-    _make_point(b, 1, 8, 3, 1538.0, 91, 40, "GPU-bound (GPU saturated)", 25.2)
-    _make_point(b, 1, 4, 6, 1938.0, 70, 60, "mixed (..)", 22.3)
-    return b
+def test_parse_point_states_are_the_three_honest_answers(tmp_path):
+    done = _point_dir(tmp_path, "a", "job", "x\nsiesta: Final energy = -1\n")
+    part = _point_dir(tmp_path, "b", "job", "still going\n")
+    none = _point_dir(tmp_path, "c", "job")
+    assert parse_point("a", done, "job", "gpu", {}).state == "completed"
+    assert parse_point("b", part, "job", "gpu", {}).state == "incomplete"
+    assert parse_point("c", none, "job", "gpu", {}).state == "unknown"
 
 
-def test_summarize_bundle_builds_result_and_winner(tmp_path):
-    b = _bundle(tmp_path)
-    res = summarize.summarize_bundle(b, now_iso="2026-06-27T22:00:00Z")
-
-    assert {p.label for p in res.points} == {"bench-G1K8C3", "bench-G1K4C6"}
-    win = res.choice
-    assert win["engine"] == "gpu"
-    assert win["knobs"] == {"gpus": 1, "ranks_per_gpu": 8,
-                            "cores_per_rank": 3}          # the fast one
-    assert "bench-G1K8C3 fastest" in win["rationale"]
-
-    # per-point metrics parsed from the artifacts
-    p8 = next(p for p in res.points if p.label == "bench-G1K8C3")
-    assert p8.s_per_iter() == 1538.0
-    assert p8.metrics["gpu_sm_mean_pct"] == 91.0
-    assert p8.metrics["peak_rss_gb"] == 25.2
-    assert p8.bound == "gpu"
-    assert p8.state == "completed"
-    # system descriptor read from the fdf
-    assert res.system["n_atoms"] == 444
-    assert res.environment["scheduler"] == "slurm"
+def test_cpu_point_recovers_np_from_its_own_out(tmp_path):
+    d = _point_dir(tmp_path, "cpu", "job",
+                   "* Running on    8 nodes in parallel\n>> End of run:\n")
+    pt = parse_point("cpu", d, "job", "cpu", {})
+    assert pt.knobs.get("ranks") == 8
+    assert pt.state == "completed"
 
 
-def test_run_summarize_writes_valid_bench_result(tmp_path):
-    b = _bundle(tmp_path)
-    res, out_path = summarize.run_summarize(b, now_iso="t")
-    assert out_path == b / "bench-result.json"
-    doc = json.loads(out_path.read_text())
-    assert doc["schema"] == "molbuilder/bench-result@1"
-    # round-trips + the choice feeds prep-run
-    back = BenchResult.from_dict(doc)
-    assert back.choice["knobs"]["ranks_per_gpu"] == 8
+def test_an_incomplete_point_is_never_the_winner(tmp_path):
+    fast_but_unfinished = parse_point(
+        "x", _point_dir(tmp_path, "x", "job", "going\n"), "job", "gpu", {})
+    done = parse_point(
+        "y", _point_dir(tmp_path, "y", "job", ">> End of run:\n"),
+        "job", "gpu", {})
+    choice = choose_winner([fast_but_unfinished, done])
+    assert (choice or {}).get("label", "y") == "y"
 
 
-def test_incomplete_point_is_not_chosen(tmp_path):
-    b = tmp_path / "b"
-    b.mkdir()
-    _make_point(b, 1, 8, 3, 1500.0, 90, 40, "GPU-bound", 25.0, completed=False)
-    res = summarize.summarize_bundle(b)
-    pt = res.points[0]
-    assert pt.state == "incomplete"
-    assert res.choice == {}            # no completed point -> no winner
-
-
-def test_discover_ignores_non_point_dirs(tmp_path):
-    b = tmp_path / "b"
-    b.mkdir()
-    (b / "notapoint").mkdir()
-    (b / "bench-bad").mkdir()
-    _make_point(b, 2, 4, 4, 1000.0, 80, 30, "GPU-bound", 30.0)
-    pts = summarize.discover_points(b)
-    assert [p.label for p in pts] == ["bench-G2K4C4"]
-
-
-def test_cpu_point_recovers_np_from_out(tmp_path):
-    # The CPU bench is a single root-level run; np (sbatch -n) isn't in any
-    # filename, so summarize recovers it from the SIESTA .out header.
-    b = tmp_path / "b"
-    b.mkdir()
-    (b / "job-cpu-run0.out").write_text(
-        "* Running on 64 nodes in parallel.\n>> End of run: completed\n")
-    (b / "job-cpu-run0.scf-timing.log").write_text(
-        "100.0 1 scf:1\n200.0 2 scf:2\n300.0 3 scf:3\n")
-    pts = summarize.discover_points(b)
-    cpu = next(p for p in pts if p.engine == "cpu")
-    assert cpu.knobs == {"ranks": 64}
-    assert cpu.state == "completed"
-
-
-def test_summary_text_smoke(tmp_path):
-    b = _bundle(tmp_path)
-    res, out_path = summarize.run_summarize(b, now_iso="t")
-    txt = summarize.summary_text(res, out_path)
-    assert "ranked points" in txt
-    assert "bench-G1K8C3" in txt and "winner" in txt
+def test_summary_text_names_every_point_and_the_output(tmp_path):
+    res = build_bench_result(
+        [parse_point("p1", _point_dir(tmp_path, "p1", "job",
+                                      ">> End of run:\n"), "job", "gpu", {})],
+        environment={}, system={}, now_iso="2026-08-12T00:00:00Z")
+    text = summary_text(res, Path("/tmp/bench-result.json"))
+    assert "p1" in text and "completed" in text
+    assert "bench-result.json" in text

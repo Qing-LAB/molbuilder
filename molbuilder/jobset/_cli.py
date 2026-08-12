@@ -38,8 +38,8 @@ def _load(bundle: str) -> tuple:
     if not jpath.is_file():
         raise click.ClickException(
             f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
-            "produces it (stages_to_jobset(...).write()); ship the bundle "
-            "here first (job-system.md § 5.1).")
+            "describes it and `prep` derives it (job-system.md § 5.1); run "
+            "`molbuilder jobset describe` first.")
     try:
         return JobSet.load(jpath), base
     except ValueError as e:                      # bad schema / shape
@@ -585,8 +585,8 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
             "summarize reads a BENCH sweep's measurements.  A run's own "
             "outputs are the calculation's results -- `jobset status` and "
             "the Watch tab are their readers (job-system.md § 5.3).")
-    from ..bench.prep import utc_now_iso
-    from ..bench.summarize import run_summarize_jobset, summary_text
+    from ..bench.summarize import (run_summarize_jobset,
+                                   summary_text, utc_now_iso)
     res, out_path = run_summarize_jobset(js, base, stage=stage,
                                          now_iso=utc_now_iso())
     click.echo(summary_text(res, out_path))

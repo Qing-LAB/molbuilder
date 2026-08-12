@@ -55,9 +55,9 @@ def _bracket_cs(cps: Optional[int], k: int) -> List[int]:
 
 def sweep_grid(gpn, cps, ks, cs_explicit):
     """The canonical ``(G, K, c)`` enumeration -- the SINGLE source of truth
-    for the sweep grid, iterated by BOTH the bash emitter (``format_bench``)
-    AND the JobSet producer (``bench.to_jobset.sweep_to_jobset``), so the two
-    can never define the grid differently.  Order: G outer, then K, then c
+    for the sweep grid, iterated by every consumer of the grid
+    (today: `jobset prep bench`'s `_bench_inputs`), so no two consumers
+    can define it differently.  Order: G outer, then K, then c
     (the per-K bracket ``{1, cores//K, 2*cores//K}`` when ``cs_explicit`` is
     None).  Yields ``(g, k, c)`` tuples."""
     for g in range(1, gpn + 1):
@@ -125,212 +125,20 @@ class SchedulerAdapter:
 
     # ----- formatting (§ 4.3) --------------------------------------- #
 
-    def gpu_launch_line(self, g: int, k: int, c: Optional[int],
-                        gpu_type: str, script_base: str = "job-gpu") -> str:
-        """One runnable launch command for a GPU (G, K) point against
-        ``<script_base>``.  The ONLY scheduler-specific line; the grid
-        logic (bench) and the single-point logic (run) are shared.
-        Subclasses implement it."""
-        raise NotImplementedError
-
-    def cpu_launch_line(self, np: int, script_base: str) -> str:
-        """One runnable launch command for a CPU point (``np`` ranks)
-        against ``<script_base>``.  Subclasses implement it."""
-        raise NotImplementedError
-
-    def format_bench(self, env: Environment, *,
-                     gpus_per_node: Optional[int] = None,
-                     ks: Optional[List[int]] = None,
-                     cs: Optional[List[int]] = None
-                     ) -> Dict[str, str]:
-        """Render the environment-tailored ``job-gpu-sweep.sh`` for this
-        scheduler: the (G, K, c) grid as runnable lines.  Returns
-        ``{filename: content}`` so it can grow to emit more files later.
-
-        ``ks`` overrides the swept ranks-per-GPU values (default: cores-per-
-        socket divisors).  ``cs`` overrides the swept cores-per-rank (=OMP
-        threads/rank) values (default per K: the *bracket*
-        ``{1, cores//K, 2*cores//K}`` -- starved / one-socket / cross-socket).
-
-        c is an INDEPENDENT axis, deliberately NOT capped at one socket: on a
-        system where the scheduler does not co-locate the GPU with its ranks'
-        socket (e.g. Sol), the "optimal" full-socket footprint is wishful and
-        the real question -- *does more CPU working with the GPU beat the
-        cross-socket traffic?* -- is exactly what the sweep must MEASURE rather
-        than pre-decide (job-execution.md § 8.12).  Per-rank GPU<->NUMA binding
-        stays best-effort in the wrapper (adapts to what SLURM granted, logs
-        cross-socket); it no longer constrains the generated conditions.
-
-        Running the produced script does the right thing per scheduler by
-        construction: under SLURM each point is an ``sbatch`` (queue in
-        parallel); on a workstation each runs in-place (sequential).
-
-        **Output isolation:** every (G, K, c) point runs in its own
-        ``bench-G<g>K<k>C<c>/`` subdirectory (shared artifacts symlinked in),
-        so points never clobber the ``job-gpu`` basename and summarize maps
-        each directory back to its (G, K, c) label."""
-        topo = env.topology
-        gpn = gpus_per_node or topo.gpus_per_node or 1
-        cps = topo.cores_per_socket
-        gtype = _check_gpu_type(topo.gpu_type)
-        ks = [int(k) for k in ks] if ks else (
-            self.sweep_K(topo) or list(_FALLBACK_KS))
-        cs_explicit = [int(c) for c in cs] if cs else None
-
-        head = [
-            "#!/usr/bin/env bash",
-            # TRANSITIONAL (dies with this launcher at plan step 6 u5): the
-            # wrappers gate on the launch-door claim; this runner is the
-            # shipped bench door until `jobset submit bench` lands.
-            "export MB_LAUNCHED_BY=bench-runner",
-            f"# job-gpu-sweep.sh -- generated for scheduler '{self.name}'",
-            f"#   topology: gpus/node={gpn} cores/socket="
-            f"{cps if cps else '?'} gpu_type={gtype}",
-            "#   knobs: G=GPUs, K=MPI ranks/GPU (-n=K*G), c=cores(OMP)/rank "
-            "(-c=c).  c is an independent axis, NOT capped at one socket.",
-            "#   K values = " + ",".join(str(k) for k in ks)
-            + (" (cores/socket unknown -> fallback set)" if not cps else ""),
-            "#   c values = " + (",".join(str(c) for c in cs_explicit)
-                                 if cs_explicit
-                                 else "{1, cores//K, 2*cores//K} per K "
-                                      "(starved / 1-socket / cross-socket)"),
-            "#   each point runs in its own bench-G<g>K<k>C<c>/ dir (isolated "
-            "outputs).",
-        ]
-        if self.name == "slurm":
-            head.append("#   sbatch per point -> points QUEUE IN PARALLEL.")
-        else:
-            head.append("#   in-place per point -> points run SEQUENTIALLY "
-                        "(one box).")
-        head += [
-            "set -u",
-            "",
-            "# Isolate a sweep point: its own dir with the shared artifacts",
-            "# symlinked in, so outputs don't collide on the job-gpu base.",
-            "_mb_point() {",
-            '    d="$1"; mkdir -p "$d"',
-            "    for f in job-gpu.fdf job-gpu.run.sh job-gpu.sbatch "
-            "mb_monitor.py; do",
-            '        [ -e "$f" ] && ln -sfn "../$f" "$d/$f"',
-            "    done",
-            "    for p in *.psml *.psf *.vps; do",
-            '        [ -e "$p" ] && ln -sfn "../$p" "$d/$p"',
-            "    done",
-            "}",
-        ]
-
-        body: List[str] = []
-        # K = MPI ranks SHARING the GPU (via MPS).  c = cores (OMP threads)
-        # per rank -- an INDEPENDENT axis, not capped at one socket (§ 8.12).
-        # Total CPU for this point = K*c*G.  The grid enumeration is the
-        # shared ``sweep_grid`` (single source of truth with the JobSet
-        # producer); this loop only renders each point's bash.
-        for (g, k, c) in sweep_grid(gpn, cps, ks, cs_explicit):
-            d = f"bench-G{g}K{k}C{c}"
-            total = k * c
-            notes = []
-            if cps and k > cps:
-                notes.append(f"K={k} > cores/socket={cps}: ranks "
-                             f"oversubscribe cores")
-            if cps and total > 2 * cps:
-                notes.append(f"{total} cores > node ({2*cps}): SLURM "
-                             f"may REJECT -- a 'did not fit' data point")
-            elif cps and total > cps:
-                notes.append(f"{total} cores > 1 socket ({cps}): "
-                             f"CROSS-SOCKET -- measures traffic vs "
-                             f"throughput")
-            if g >= 2:
-                notes.append("multi-GPU: no NCCL -- MEASURE; do NOT "
-                             "add --gpu-bind")
-            note = ("  (" + "; ".join(notes) + ")") if notes else ""
-            # Per-point job name (squeue differentiation, § 4.4) +
-            # the explicitly-selected domain's -p/-q via $MB_GPU_PQ
-            # (set by run-bench; empty -> the .sbatch header default).
-            launch = self.gpu_launch_line(
-                g, k, c, gtype, job_name=f"job-gpu-G{g}K{k}C{c}",
-                pq="${MB_GPU_PQ:-}")
-            body.append(f"# G={g} K={k} c={c} (total {total} cores){note}")
-            body.append(f"_mb_point {d}")
-            body.append(f"( cd {d} && {launch} )")
-
-        content = "\n".join(head) + "\n\n" + "\n".join(body) + "\n"
-        return {"job-gpu-sweep.sh": content}
-
-    def format_run(self, choice: Dict, env: Environment, *,
-                   script_base: str = "job") -> Dict[str, str]:
-        """Apply the portable benchmark ``choice`` to the production job,
-        **re-resolving the machine-specific knobs from this Environment**
-        (benchmark-workflow.md § 5.4): the *mechanism* transfers (engine,
-        ranks-per-GPU K), but the concrete per-rank cores ``c`` and GPU
-        count ``G`` are recomputed for the local topology, never copied
-        from the machine the benchmark ran on.
-
-        ``choice`` is the ``choice`` block of a ``bench-result`` document
-        (§ 5.3): ``{"engine": "gpu"|"cpu", "knobs": {...}}``.  Returns
-        ``{"run-production.sh": <script>}`` -- a tiny launcher that records
-        the translation and runs/submits the production scripts (assumed
-        already engine-correct, the caller's job).
-        """
-        _check_base(script_base)
-        engine = (choice or {}).get("engine")
-        knobs = (choice or {}).get("knobs") or {}
-        topo = env.topology
-        notes: List[str] = []
-
-        # EVERY knob that reaches the shell MUST be integer-coerced first
-        # -- the values come straight from a (possibly hand-edited or
-        # foreign) bench-result JSON.  A raw string would otherwise be
-        # interpolated unquoted and could inject (audit: format_run
-        # cores_per_rank).  Non-numeric -> 1 (counts) or None (optional c).
-        if engine == "gpu":
-            k = _int_or(knobs.get("ranks_per_gpu"), 1)
-            g_req = _int_or(knobs.get("gpus"), 1)
-            bench_c = _int_or(knobs.get("cores_per_rank"), None)
-            g = min(g_req, topo.gpus_per_node) if topo.gpus_per_node else g_req
-            if topo.gpus_per_node and g < g_req:
-                notes.append(f"G clamped {g_req}->{g} (this machine has "
-                             f"{topo.gpus_per_node} GPU(s))")
-            if topo.cores_per_socket:
-                c = max(1, topo.cores_per_socket // k)
-                if bench_c not in (None, c):
-                    notes.append(f"c re-resolved to {c} = cores/socket"
-                                 f"({topo.cores_per_socket})//K({k}) "
-                                 f"[bench had {bench_c}]")
-            else:
-                c = bench_c
-                notes.append("cores/socket unknown -> kept bench c; verify")
-            cmd = self.gpu_launch_line(g, k, c, _check_gpu_type(topo.gpu_type),
-                                       script_base)
-        elif engine == "cpu":
-            np = _int_or(knobs.get("ranks"), 1)
-            total = ((topo.sockets or 1) * topo.cores_per_socket
-                     if topo.cores_per_socket else None)
-            if total and np > total:
-                notes.append(f"np clamped {np}->{total} (this machine has "
-                             f"{total} cores)")
-                np = total
-            cmd = self.cpu_launch_line(np, script_base)
-        else:
-            raise ValueError(
-                f"choice.engine must be 'gpu' or 'cpu'; got {engine!r}")
-
-        head = [
-            "#!/usr/bin/env bash",
-            "export MB_LAUNCHED_BY=bench-runner",   # transitional, see sweep
-            f"# run-production.sh -- generated for scheduler '{self.name}'",
-            # json.dumps keeps the knobs on ONE escaped line: a newline /
-            # metachar in a value can't break out of this '#' comment.
-            f"#   from the benchmark winner: engine={engine} "
-            f"knobs={json.dumps(knobs)}",
-            "#   the MECHANISM transfers across machines; the concrete -n/"
-            "-c/-G are re-resolved here for THIS machine (§ 5.4):",
-        ]
-        head += [f"#     - {n}" for n in (notes or ["(no re-resolution "
-                                                    "needed)"])]
-        head.append("set -u")
-        content = "\n".join(head) + "\n\n" + cmd + "\n"
-        return {"run-production.sh": content}
-
+# --------------------------------------------------------------------- #
+#  The bash-sweep EMITTERS (`format_bench` / `format_run`, the per-       #
+#  scheduler launch lines) and the launch-policy pair (`resolve_mode` /   #
+#  `resolve_launch_adapter`) were DELETED 2026-08-12 (step 6 u5) with     #
+#  the shipped-bundle lifecycle: trials are rendered by `jobset prep      #
+#  bench` and launched ONE per invocation by `jobset submit`, whose mode  #
+#  comes from --mode / execution.mode and is never derived (running-a-    #
+#  job.md § 5.4).  The domain-fit helpers (`domain_fits` /                #
+#  `fitting_domains` / `recommend_domain`) went too -- their one caller   #
+#  was the deleted `bench prep`; a future submit-side recommendation      #
+#  rebuilds them against `scheduler.routing` where it is read.            #
+#  What remains is the GRID (the single source the fold kept) and the     #
+#  topology/adapter halves `_bench_inputs` consumes.                      #
+# --------------------------------------------------------------------- #
 
 class SlurmAdapter(SchedulerAdapter):
     """Shared cluster: jobs are submitted to a queue (one job per bench
@@ -340,28 +148,6 @@ class SlurmAdapter(SchedulerAdapter):
 
     def matches(self, env: Environment) -> bool:
         return env.scheduler == "slurm"
-
-    def gpu_launch_line(self, g, k, c, gpu_type, script_base="job-gpu",
-                        *, job_name=None, pq=None):
-        # Override the sbatch header's defaults; the launcher reads
-        # SLURM_NTASKS/_CPUS_PER_TASK so -n/-c and mpirun agree (§ 7.3).
-        # Omit -c when cores/socket is unknown (let the header default it).
-        # ``pq`` injects the explicitly-selected routing domain's -p/-q
-        # (a shell expansion like ``$MB_GPU_PQ``; § 4.3); ``job_name`` makes
-        # squeue rows distinct per point (§ 4.4).  BARE command (no trailing
-        # comment): format_bench wraps it in ``( cd <dir> && ... )`` where an
-        # inline '#' would comment out ')'.
-        cflag = "" if c is None else f"-c {c} "
-        pqf = f"{pq} " if pq else ""
-        jf = f"-J {job_name} " if job_name else ""
-        return (f"sbatch {pqf}{jf}--gres=gpu:{gpu_type}:{g} -n {k * g} {cflag}"
-                f"{script_base}.sbatch")
-
-    def cpu_launch_line(self, np, script_base, *, job_name=None, pq=None):
-        pqf = f"{pq} " if pq else ""
-        jf = f"-J {job_name} " if job_name else ""
-        return f"sbatch {pqf}{jf}-n {np} {script_base}.sbatch"
-
 
 class WorkstationAdapter(SchedulerAdapter):
     """Single machine: no scheduler; points run sequentially via a direct
@@ -373,28 +159,6 @@ class WorkstationAdapter(SchedulerAdapter):
     def matches(self, env: Environment) -> bool:
         return env.scheduler == "workstation"
 
-    def gpu_launch_line(self, g, k, c, gpu_type, script_base="job-gpu",
-                        *, job_name=None, pq=None):
-        # Direct launch: no scheduler -> ``pq``/``job_name`` (sbatch-only
-        # concepts) are ignored.
-        # No scheduler: pick the GPUs with CUDA_VISIBLE_DEVICES and set the
-        # per-point ranks/threads.  Use MB_NP / OMP_NUM_THREADS -- the vars
-        # the wrapper actually honors for the LAUNCH (`_mpi_np` reads
-        # MB_NP/SLURM_NTASKS; `_omp_threads` reads OMP_NUM_THREADS).  NOT
-        # MOLBUILDER_MPI_NP/MOLBUILDER_OMP_NUM_THREADS: those only set the
-        # GPU auto-default, which the wrapper's baked explicit mpi_np
-        # SHADOWS -- so the sweep would not vary K (bug found 2026-06-28).
-        # Same MB_NP convention as cpu_launch_line.
-        cvd = ",".join(str(i) for i in range(g))
-        omp = "" if c is None else f"OMP_NUM_THREADS={c} "
-        return (f"CUDA_VISIBLE_DEVICES={cvd} MB_NP={k * g} "
-                f"{omp}./{script_base}.run.sh")
-
-    def cpu_launch_line(self, np, script_base, *, job_name=None, pq=None):
-        return f"MB_NP={np} ./{script_base}.run.sh"
-
-
-# Registry — resolution order.  A new scheduler appends one entry here.
 ADAPTERS: List[SchedulerAdapter] = [SlurmAdapter(), WorkstationAdapter()]
 
 
@@ -435,85 +199,9 @@ def parse_walltime(s) -> int:
     return ((days * 24 + h) * 60 + m) * 60 + sec
 
 
-def domain_fits(domain: Dict, job_secs: int,
-                job_mem_gb: Optional[float]) -> bool:
-    """Does this routing ``domain`` fit a job of ``job_secs`` walltime and
-    ``job_mem_gb`` memory (running-a-job.md § 5.3)?  A domain with a
-    ``max_mem_gb`` cap does NOT fit a job whose memory is unknown
-    (``None``) -- we can't prove it fits, so we don't claim it (no silent
-    over-ask, § 12)."""
-    if job_secs > parse_walltime(domain["max_time"]):
-        return False
-    cap = domain.get("max_mem_gb")
-    if cap is not None:
-        if job_mem_gb is None or job_mem_gb > cap:
-            return False
-    return True
-
-
-def fitting_domains(routing: List[Dict], job_secs: int,
-                    job_mem_gb: Optional[float]) -> List[Dict]:
-    """The domains (in list order) that fit the job -- § 4.3."""
-    return [d for d in routing if domain_fits(d, job_secs, job_mem_gb)]
-
-
-def recommend_domain(routing: List[Dict], job_secs: int,
-                     job_mem_gb: Optional[float]) -> Optional[str]:
-    """The recommended domain NAME: the FIRST (cheapest, by list order)
-    that fits -- § 4.3.  ``None`` when none fits (the caller surfaces a
-    refuse-to-emit)."""
-    fits = fitting_domains(routing, job_secs, job_mem_gb)
-    return fits[0]["name"] if fits else None
-
-
-def resolve_mode(mode: Optional[str] = None) -> str:
-    """Validate the launch MODE (`running-a-job.md` § 5.4): an explicit
-    ``execution.mode`` ("direct" | "submit") is returned as given, and unset
-    is a REFUSAL — never a derivation from the detected scheduler.
-
-    Deriving ``submit`` from detection would gate submission on where you
-    happen to be standing, which § 5.4 forbids (*the mode, not the detected
-    scheduler, gates submission*).  Until 2026-08-12 this function derived,
-    and was the one door that disagreed with ``jobset submit``'s — which is
-    why it no longer takes the ``Environment``: an input it may not consult
-    is an invitation to consult it.
-    """
-    if mode in ("direct", "submit"):
-        return mode
-    raise ValueError(
-        "no execution.mode is set.  'direct' runs points here with bash; "
-        "'submit' hands them to the scheduler.  Set execution.mode in "
-        "molbuilder.json (running-a-job.md 5.4) -- it is never derived from "
-        "the detected scheduler.")
-
-
-def resolve_launch_adapter(*, mode: Optional[str] = None,
-                           submit_via: str = "slurm"
-                           ) -> Tuple[SchedulerAdapter, str]:
-    """Select the adapter that LAUNCHES benchmark points, honoring the
-    run-vs-submit policy independently of the detected scheduler
-    (`running-a-job.md` § 5.4).  Returns ``(adapter, resolved_mode)``.
-
-      * ``submit`` -> the ``submit_via`` adapter (picked BY NAME, bypassing
-        ``matches`` so "submit from an interactive shell" works);
-      * ``direct`` -> the workstation adapter (direct bash, sequential).
-
-    Topology stays with the ``Environment`` where the ADAPTER reads it
-    (``format_bench(env, …)``); the selection here consults nothing but the
-    policy, which is why this function no longer takes the environment."""
-    rmode = resolve_mode(mode)
-    if rmode == "submit":
-        for a in ADAPTERS:
-            if a.name == submit_via:
-                return a, rmode
-        raise ValueError(
-            f"execution.submit_via={submit_via!r} has no registered adapter; "
-            f"available: {[a.name for a in ADAPTERS]}")
-    return WorkstationAdapter(), rmode
-
 
 __all__ = [
-    "divisors", "SchedulerAdapter", "SlurmAdapter", "WorkstationAdapter",
-    "ADAPTERS", "get_adapter", "resolve_mode", "resolve_launch_adapter",
-    "parse_walltime", "domain_fits", "fitting_domains", "recommend_domain",
+    "divisors", "SchedulerAdapter", "SlurmAdapter",
+    "WorkstationAdapter", "ADAPTERS", "get_adapter",
+    "parse_walltime", "sweep_grid",
 ]
