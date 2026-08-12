@@ -534,7 +534,10 @@ def _runtime_status_block(
             f'if [ -e "$_py_path" ]; then\n'
             f'    _frozen_line=$(grep -E \'^[[:space:]]*#[[:space:]]*Source:[[:space:]]+Structure\\.frozen_atoms\' "$_py_path" | head -1 || true)\n'
             f'    if [ -n "$_frozen_line" ]; then\n'
-            f'        _ncon_indices=$(printf %s "$_frozen_line" | grep -oE \'[0-9]+\' | wc -l)\n'
+            # || true: with ZERO digits in the line, grep -o exits 1 and
+            # pipefail killed the wrapper -- making the very "lists 0
+            # indices" branch below unreachable (R9).
+            f'        _ncon_indices=$(printf %s "$_frozen_line" | grep -oE \'[0-9]+\' | wc -l || true)\n'
             f'        if [ "$_ncon_indices" = "0" ]; then\n'
             f'            _constraints="frozen_atoms comment present but lists 0 indices -- all atoms free"\n'
             f"        else\n"
@@ -2022,7 +2025,12 @@ def render_run_wrapper(script_path: Path, *,
                 '    # started outside this run uses a different dir,\n'
                 '    # so this check is independent).\n'
                 '    if [ ! -S "$CUDA_MPS_PIPE_DIRECTORY/control" ]; then\n'
-                '        nvidia-cuda-mps-control -d 2>/dev/null\n'
+                '        # || true: under set -e a failed daemon start\n'
+                '        # (perms, global daemon holding the device) killed\n'
+                '        # the wrapper HERE -- before the readiness loop\n'
+                '        # below, whose whole job is timing out to the\n'
+                '        # graceful no-MPS fallback (R9).\n'
+                '        nvidia-cuda-mps-control -d 2>/dev/null || true\n'
                 '        # Daemon readiness signal: the control UNIX\n'
                 '        # SOCKET file appears in the pipe directory.\n'
                 '        # 2026-06-16 audit fix: the prior probe polled\n'
